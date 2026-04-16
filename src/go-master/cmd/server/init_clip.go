@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers"
+	"velox/go-master/internal/catalogdb"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/clipdb"
 	"velox/go-master/internal/runtime"
@@ -19,6 +20,7 @@ import (
 type ClipDeps struct {
 	StockDB          *stockdb.StockDB
 	ClipDB           *clipdb.ClipDB
+	CatalogDB        *catalogdb.CatalogDB
 	ClipIndexStore   *jsondb.ClipIndexStore
 	ArtlistSrc       *clip.ArtlistSource
 	ScriptMapper     *script.Mapper
@@ -26,7 +28,7 @@ type ClipDeps struct {
 	ClipHandler      *handlers.ClipHandler
 }
 
-// initClipSystem initializes clip indexing, databases (StockDB, ClipDB),
+// initClipSystem initializes clip indexing, databases (StockDB, ClipDB, CatalogDB),
 // the Artlist source, and script mapper.
 //
 // The ClipScanner is created but NOT started here — it is returned as a
@@ -119,9 +121,19 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 		}
 	}
 
+	// === Unified CatalogDB ===
+	catalogPath := cfg.Storage.DataDir + "/clips_catalog.db"
+	catalog, err := catalogdb.Open(catalogPath)
+	if err != nil {
+		log.Warn("Failed to open CatalogDB", zap.String("path", catalogPath), zap.Error(err))
+	} else {
+		log.Info("CatalogDB opened", zap.String("path", catalogPath))
+	}
+
 	return &ClipDeps{
 		StockDB:          stockDB,
 		ClipDB:           clipDB,
+		CatalogDB:        catalog,
 		ClipIndexStore:   clipIndexStore,
 		ArtlistSrc:       artlistSrc,
 		ScriptMapper:     scriptMapper,
