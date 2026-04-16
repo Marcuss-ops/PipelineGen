@@ -122,6 +122,11 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		return nil, err
 	}
 
+	var catalogHandler *handlers.CatalogHandler
+	if clipDeps.CatalogDB != nil {
+		catalogHandler = handlers.NewCatalogHandler(clipDeps.CatalogDB)
+	}
+
 	// === Assemble RouterDeps ===
 	deps := &api.RouterDeps{
 		VideoProcessor:  coreDeps.VideoProc,
@@ -151,6 +156,7 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		StockProcess: handlers.NewStockProcessHandler(coreDeps.StockMgr, cfg.GetVideoStockCreatorBinary(), cfg.GetEffectsDir()),
 		Clip:         clipDeps.ClipHandler,
 		ClipIndex:    clipDeps.ClipIndexHandler,
+		Catalog:      catalogHandler,
 		Dashboard:    handlers.NewDashboardHandler(coreDeps.JobService, coreDeps.WorkerService),
 		Stats:        handlers.NewStatsHandler(coreDeps.JobService, coreDeps.WorkerService),
 		Scraper:      handlers.NewScraperHandler(cfg.Scraper.Dir, cfg.Scraper.NodeBin),
