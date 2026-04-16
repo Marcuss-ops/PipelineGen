@@ -75,10 +75,15 @@ effects/Test/
 
 # Duplicate assets
 config/assets/
-src/python-legacy/video/assets/
 
-# Python legacy (if not needed)
-src/python-legacy/credentials.json
-src/python-legacy/token.json
-tests/lightpanda/lightpanda
+# Go compiled test binaries
+src/go-master/test_artlist
+src/go-master/test_harvester
+
+# Media files (use Git LFS instead)
 effects/overlays/*.mp4
+
+# Python legacy (fully removed from repo)
+src/python-legacy/
+
+tests/lightpanda/lightpanda

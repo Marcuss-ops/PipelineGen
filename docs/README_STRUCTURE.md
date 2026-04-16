@@ -1,193 +1,92 @@
-# Velox Editing - Struttura Progetto
+# PipelineGen - Struttura Progetto
 
-Panoramica completa della struttura del progetto organizzata in moduli.
+Panoramica della struttura del progetto.
 
 ## 📁 Struttura Principale
 
 ```
-refactored/
-├── README_STRUCTURE.md           # Questo file
-├── requirements.txt               # Dipendenze Python
+PipelineGen/
+├── README.md                     # Documentazione principale
+├── requirements.txt               # Dipendenze Python (Ollama + requests)
 │
+├── src/                           # 📦 Source Code
+│   ├── go-master/                 # 🟢 Go API Server (PRIMARY — port 8080)
+│   │   ├── cmd/server/           # Entry point
+│   │   ├── internal/             # Core logic (50+ packages)
+│   │   ├── pkg/                  # Shared models, config, logger
+│   │   ├── data/                 # JSON database (runtime)
+│   │   ├── tests/                # Unit & integration tests
+│   │   └── Makefile              # Build & test commands
+│   ├── python/                    # 🐍 Ollama text generation
+│   │   ├── llm_client.py         # Client Ollama
+│   │   ├── script_generation.py  # Generazione script da testo/YouTube
+│   │   ├── youtube_transcript.py # Estrazione transcript YouTube
+│   │   └── yt_dlp_utils.py       # Utility yt-dlp
+│   ├── rust/                      # 🦀 Rust video processing
+│   └── node-scraper/             # 🌐 Node.js Artlist scraper
+│
+├── scripts/                      # 🛠️ Utility scripts
+│   └── generate_script_from_text.py  # Script generation via Go API
 ├── docs/                          # 📚 Documentazione
-│   ├── README.md                  # Indice documentazione
-│   ├── scalability/               # Doc scalabilità
-│   └── architecture/              # Doc architettura
-│
-├── modules/                       # 📦 Moduli Organizzati
-│   ├── README.md                  # Indice moduli
-│   ├── scalability/               # Scalabilità 1000+ worker
-│   ├── video/                     # Video processing
-│   ├── audio/                     # Audio processing
-│   ├── web/                       # Web automation
-│   ├── management/                # Machine & worker management
-│   ├── cleanup/                   # Cleanup & maintenance
-│   ├── installation/              # Installation & bootstrap
-│   └── utils/                     # Utilities & config
-│
-├── routes/                        # 🔌 API Routes
-│   └── README.md                  # Documentazione routes
-│
-├── tests/                         # 🧪 Test Files
-│   └── README.md                  # Documentazione test
-│
+├── data/                          # 💾 JSON database + output artifacts
+├── assets/                        # 🎨 Audio, fonts, transizioni
+├── effects/                       # ✨ Overlay video effects
 ├── config/                        # ⚙️ Configuration Files
-│   └── README.md                  # Documentazione config
-│
-├── job_master_server.py           # 🎛️ Master Server
-├── job_worker.py                  # 👷 Worker
-├── standalone_multi_video.py      # 📹 Multi-video interface
-└── ... (altri file principali)
+└── tests/                         # 🧪 Test Files
 ```
-
-## 📚 Documentazione
-
-### `docs/`
-Documentazione completa organizzata:
-- **`scalability/`**: Sistema scalabilità 1000+ worker
-- **`architecture/`**: Architettura e design
-
-Vedi [docs/README.md](./docs/README.md) per dettagli.
-
-### Ogni Cartella Modulo
-Ogni cartella in `modules/` ha un `README.md` che documenta:
-- Scopo della cartella
-- File contenuti e loro funzione
-- Come utilizzare i moduli
-- Esempi d'uso
 
 ## 📦 Moduli Principali
 
-### `modules/scalability/`
-Sistema per 1000+ worker:
-- Database schema
-- Lease system
-- Idempotency
-- Object storage
-- Throttle & jitter
+### `src/go-master/` (Go — PRIMARY)
+Il backend Go è il componente principale:
+- API HTTP (60+ endpoints, Gin framework)
+- Job / Worker Management
+- Script Generation (Ollama integration)
+- Entity Extraction (NLP + Ollama)
+- Clip Indexing & Stock Orchestrator
+- Channel Monitor (cron, AI folder classification)
+- Google Drive / YouTube Upload
+- GPU / NVIDIA AI Integration
 
-Vedi [modules/scalability/README.md](./modules/scalability/README.md)
+Vedi [src/go-master/README.md](../src/go-master/README.md)
 
-### `modules/video/`
-Video processing completo:
-- Core processing
-- Audio/video muxing
-- Effetti e transizioni
-- Generazione parallelizzata
+### `src/python/` (Python — Ollama text generation)
+Modulo Python minimale per generazione testi:
+- `llm_client.py` — Client Ollama (chiama `/api/generate`)
+- `script_generation.py` — Generazione script da testo o YouTube
+- `youtube_transcript.py` — Estrazione transcript VTT da YouTube
+- `yt_dlp_utils.py` — Utility per costruire comandi yt-dlp
 
-Vedi [modules/video/README.md](./modules/video/README.md)
-
-### `modules/audio/`
-Audio processing:
-- Analisi audio
-- Voiceover processing
-
-Vedi [modules/audio/README.md](./modules/audio/README.md)
-
-### `modules/management/`
-Gestione macchine e worker:
-- Inventory
-- Monitoring
-- Provisioning
-- Alerting
-
-Vedi [modules/management/README.md](./modules/management/README.md)
-
-### `modules/cleanup/`
-Pulizia e manutenzione:
-- Cleanup job
-- Pulizia sistema
-- Rimozione file temporanei
-
-Vedi [modules/cleanup/README.md](./modules/cleanup/README.md)
-
-### `modules/installation/`
-Installazione automatica:
-- Installer worker
-- Bootstrap sistema
-- Setup VPS
-
-Vedi [modules/installation/README.md](./modules/installation/README.md)
-
-### `modules/utils/`
-Utility e configurazione:
-- Config management
-- Cache management
-- Utility varie
-- CLI tools
-
-Vedi [modules/utils/README.md](./modules/utils/README.md)
-
-## 🔌 Routes
-
-Tutte le API routes in `routes/`:
-- Dashboard
-- Worker API
-- Job management
-- Statistics
-- YouTube
-- Logging
-
-Vedi [routes/README.md](./routes/README.md)
-
-## 🧪 Tests
-
-File di test in `tests/`:
-- Unit test
-- Integration test
-- Test specifici funzionalità
-
-Vedi [tests/README.md](./tests/README.md)
-
-## ⚙️ Config
-
-File di configurazione JSON in `config/`:
-- Master config
-- Queue & jobs
-- Worker data
-- Inventory
-
-Vedi [config/README.md](./config/README.md)
+Vedi [src/python/README.md](../src/python/README.md)
 
 ## 🚀 Utilizzo
 
-### Import Moduli
+### Import Python (Ollama diretto)
 
 ```python
-# Scalabilità
-from modules.scalability import DatabaseManager, JobLeaseManager
-
-# Video
-from modules.video import video_generation, video_audio
-
-# Management
-from modules.management import machine_inventory
-
-# Utils
-from modules.utils import config, cache_manager
+import sys; sys.path.insert(0, 'src')
+from python.script_generation import generate_script_from_text, generate_script_from_youtube
 ```
 
-### Routes
+### API Go (primaria)
 
-Le routes vengono aggiunte in `job_master_server.py`:
-```python
-from routes import dashboard_routes, worker_routes
-add_dashboard_routes(app, deps)
-add_worker_routes(app, deps)
+Tutte le operazioni passano dall'API Go sulla porta 8080:
+```bash
+curl http://localhost:8080/health
+curl -X POST http://localhost:8080/api/script/generate -d '{...}'
 ```
 
 ## 📝 Convenzioni
 
-- **Un README per cartella**: Documenta tutti i file, non un MD per file
-- **Moduli organizzati**: Per funzionalità, non per tipo file
-- **Documentazione concentrata**: Info correlate insieme
-- **Config separata**: File JSON in `config/`
+- **Go è il backend primario** — tutta la logica business è in Go
+- **Python è solo per Ollama** — generazione testi, nessun video/audio processing
+- **Config in JSON** — file JSON in `config/` e `data/`
+- **Docs in Markdown** — ogni cartella importante ha un README.md
 
 ## 🔍 Navigazione
 
 1. **Struttura generale?** → `README_STRUCTURE.md` (questo file)
-2. **Documentazione?** → `docs/README.md`
-3. **Moduli?** → `modules/README.md`
-4. **Scalabilità?** → `docs/scalability/README.md`
-5. **Un modulo specifico?** → `modules/[nome]/README.md`
-
+2. **API endpoints?** → `docs/API_ENDPOINTS.md`
+3. **Go backend?** → `src/go-master/README.md`
+4. **Python Ollama?** → `src/python/README.md`
+5. **Configurazione?** → `config/README.md`

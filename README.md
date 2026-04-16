@@ -1,7 +1,7 @@
 # VeloxEditing Backend — Production
 
 > **Automated Video Content Creation Backend**
-> **Stack:** Go + Rust + Python (legacy)
+> **Stack:** Go + Rust + Python (Ollama)
 > **Updated:** April 14, 2026
 
 ---
@@ -40,15 +40,15 @@ refactored/
 │   │   └── Makefile            # Build & test commands
 │   ├── rust/                   # Rust video processing (Cargo project)
 │   │   └── src/main.rs         # FFmpeg pipeline, transitions, effects
-│   └── python-legacy/          # Legacy Python modules (NOT used by Go)
+│   └── python/                 # Ollama text generation (script + transcript)
 │
 ├── bin/                         # Compiled binaries
 │   ├── server                  # Go server binary
 │   └── video-stock-creator.bundle  # Rust binary
 │
 ├── scripts/                     # Utility scripts
-│   ├── download_artlist_to_stock.py  # Download Artlist clips to Drive
-│   └── worker_bootstrap.py          # Worker bootstrap
+│   ├── generate_script_from_text.py  # Script generation via Go API
+│   └── generate_gervonta_script.sh   # Gervonta test script
 │
 ├── docs/                        # Documentation (32 files)
 │   ├── API_DOCUMENTATION.md     # Full API docs
@@ -70,7 +70,7 @@ refactored/
 ├── effects/                     # Video effect definitions
 ├── config/                      # Configuration files
 ├── tests/                       # Test environments (lightpanda/, stock-links/)
-├── requirements.txt             # Python dependencies (legacy)
+├── requirements.txt             # Python dependencies (Ollama + requests)
 └── .env                         # Environment variables (NVIDIA, etc.)
 ```
 
@@ -288,7 +288,7 @@ Place `credentials.json` and `token.json` in `src/go-master/` or set `VELOX_CRED
 - **Go Master** is the only required component
 - **Go Worker** is optional (Master executes jobs synchronously)
 - **Rust Binary** must be available in PATH
-- **Python files** in `src/python-legacy/` are legacy and NOT used by the Go backend
+- **Python files** in `src/python/` are for Ollama text generation only (script + transcript)
 - **Ollama** must be running with `gemma3:4b` model loaded
 - **yt-dlp** must be installed for YouTube operations
 
