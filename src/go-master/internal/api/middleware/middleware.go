@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,13 +15,13 @@ import (
 
 // RequestLogEntry represents a logged API request
 type RequestLogEntry struct {
-	Timestamp   time.Time `json:"timestamp"`
-	Path        string    `json:"path"`
-	Status      int       `json:"status"`
-	DurationMS  int64     `json:"duration_ms"`
-	ErrorType   string    `json:"error_type,omitempty"`
-	ClientIP    string    `json:"client_ip"`
-	Method      string    `json:"method"`
+	Timestamp  time.Time `json:"timestamp"`
+	Path       string    `json:"path"`
+	Status     int       `json:"status"`
+	DurationMS int64     `json:"duration_ms"`
+	ErrorType  string    `json:"error_type,omitempty"`
+	ClientIP   string    `json:"client_ip"`
+	Method     string    `json:"method"`
 }
 
 var (
@@ -93,15 +94,16 @@ func Logger() gin.HandlerFunc {
 // Auth returns a gin middleware for authentication
 func Auth() gin.HandlerFunc {
 	cfg := config.Get()
-	
+
 	return func(c *gin.Context) {
 		if !cfg.Security.EnableAuth {
 			c.Next()
 			return
 		}
 
+		token := extractAuthToken(c)
+
 		// Check admin token
-		token := c.GetHeader("X-Velox-Admin-Token")
 		if token != "" && token == cfg.Security.AdminToken {
 			c.Set("is_admin", true)
 			c.Next()
@@ -123,14 +125,33 @@ func Auth() gin.HandlerFunc {
 	}
 }
 
+func extractAuthToken(c *gin.Context) string {
+	if token := strings.TrimSpace(c.GetHeader("X-Velox-Admin-Token")); token != "" {
+		return token
+	}
+
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if authHeader == "" {
+		return ""
+	}
+
+	const bearerPrefix = "Bearer "
+	if strings.HasPrefix(authHeader, bearerPrefix) {
+		return strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+	}
+
+	return authHeader
+}
+
 // RateLimiter implements a simple rate limiter
 type RateLimiter struct {
 	requests map[string][]time.Time
 	mu       sync.RWMutex
 	limit    int
 	window   time.Duration
-	maxKeys  int         // maximum number of tracked IPs
+	maxKeys  int           // maximum number of tracked IPs
 	stopCh   chan struct{} // signals the cleanup goroutine to stop
+	stopOnce sync.Once
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -232,7 +253,9 @@ func (rl *RateLimiter) cleanupOnce() {
 
 // Stop signals the cleanup goroutine to terminate
 func (rl *RateLimiter) Stop() {
-	close(rl.stopCh)
+	rl.stopOnce.Do(func() {
+		close(rl.stopCh)
+	})
 }
 
 // RateLimitMiddleware holds the middleware and its associated rate limiter
@@ -300,7 +323,7 @@ func Recovery() gin.HandlerFunc {
 func GetRequestLogs() []RequestLogEntry {
 	logsMu.RLock()
 	defer logsMu.RUnlock()
-	
+
 	logs := make([]RequestLogEntry, len(requestLogs))
 	copy(logs, requestLogs)
 	return logs
@@ -309,7 +332,7 @@ func GetRequestLogs() []RequestLogEntry {
 func addRequestLog(entry RequestLogEntry) {
 	logsMu.Lock()
 	defer logsMu.Unlock()
-	
+
 	requestLogs = append(requestLogs, entry)
 	if len(requestLogs) > maxLogs {
 		requestLogs = requestLogs[len(requestLogs)-maxLogs:]
