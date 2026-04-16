@@ -1,0 +1,31 @@
+{
+  "channels": [
+    {
+      "url": "https://www.youtube.com/@vladtv",
+      "category": "HipHop",
+      "keywords": ["rapper", "hip hop", "drill", "trap", "interview"],
+      "min_views": 10000,
+      "max_clip_duration": 60
+    },
+    {
+      "url": "https://www.youtube.com/@AllThingsSmitty",
+      "category": "Boxe",
+      "keywords": ["boxing", "fight", "knockout", "interview"],
+      "min_views": 50000,
+      "max_clip_duration": 90
+    },
+    {
+      "url": "https://www.youtube.com/@Discovery",
+      "category": "Discovery",
+      "keywords": ["documentary", "celebrity", "biography", "story"],
+      "min_views": 100000,
+      "max_clip_duration": 60
+    }
+  ],
+  "check_interval_hours": 24,
+  "stock_root_id": "",
+  "ytdlp_path": "",
+  "cookies_path": "",
+  "max_clip_duration": 60,
+  "ollama_url": ""
+}

@@ -1,0 +1,18 @@
+from .config import (
+    ConfigWrapper,
+    BACKGROUND_MUSIC_VOLUME,
+    BACKGROUND_MUSIC_PATHS,
+    FONT_PATH_DEFAULT,
+    BASE_FPS_DEFAULT,
+    BASE_W_DEFAULT,
+    BASE_H_DEFAULT,
+)
+__all__ = [
+    "ConfigWrapper",
+    "BACKGROUND_MUSIC_VOLUME",
+    "BACKGROUND_MUSIC_PATHS",
+    "FONT_PATH_DEFAULT",
+    "BASE_FPS_DEFAULT",
+    "BASE_W_DEFAULT",
+    "BASE_H_DEFAULT",
+]

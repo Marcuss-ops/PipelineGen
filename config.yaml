@@ -1,0 +1,4 @@
+server:
+  port: 8081
+drive:
+  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"

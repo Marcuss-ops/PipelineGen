@@ -1,0 +1,10 @@
+{
+    "urls": [
+        "https://www.youtube.com/watch?v=VIDEO_ID_1",
+        "https://www.youtube.com/watch?v=VIDEO_ID_2",
+        "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+    ],
+    "final_duration": 1200,
+    "clip_duration": 5,
+    "segment_duration": 25
+}

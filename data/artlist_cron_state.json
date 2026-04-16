@@ -1,0 +1,139 @@
+{
+  "schedule": {
+    "jobs": [
+      {
+        "name": "Morning Batch",
+        "time": "06:00",
+        "clips_per_term": 20,
+        "terms": [
+          "sunset",
+          "ocean",
+          "mountain",
+          "forest",
+          "rain",
+          "snow"
+        ],
+        "enabled": true
+      },
+      {
+        "name": "Midday Batch",
+        "time": "12:00",
+        "clips_per_term": 20,
+        "terms": [
+          "gym",
+          "yoga",
+          "running",
+          "soccer",
+          "swimming",
+          "fitness"
+        ],
+        "enabled": true
+      },
+      {
+        "name": "Afternoon Batch",
+        "time": "15:00",
+        "clips_per_term": 20,
+        "terms": [
+          "cooking",
+          "food",
+          "kitchen",
+          "chef",
+          "business",
+          "travel"
+        ],
+        "enabled": true
+      },
+      {
+        "name": "Evening Batch",
+        "time": "18:00",
+        "clips_per_term": 20,
+        "terms": [
+          "dog",
+          "cat",
+          "bird",
+          "horse",
+          "butterfly",
+          "music"
+        ],
+        "enabled": true
+      },
+      {
+        "name": "Night Batch",
+        "time": "00:00",
+        "clips_per_term": 15,
+        "terms": [
+          "car",
+          "train",
+          "airplane",
+          "wedding",
+          "party",
+          "concert"
+        ],
+        "enabled": true
+      }
+    ]
+  },
+  "runs": [
+    {
+      "job": "Night Batch",
+      "started_at": "2026-04-14T22:19:58.639935",
+      "clips_per_term": 15,
+      "terms": [
+        "car",
+        "train",
+        "airplane",
+        "wedding",
+        "party",
+        "concert"
+      ],
+      "exit_code": 0,
+      "success": true
+    },
+    {
+      "job": "Morning Batch",
+      "started_at": "2026-04-15T04:26:24.516954",
+      "clips_per_term": 20,
+      "terms": [
+        "sunset",
+        "ocean",
+        "mountain",
+        "forest",
+        "rain",
+        "snow"
+      ],
+      "exit_code": 0,
+      "success": true
+    },
+    {
+      "job": "Midday Batch",
+      "started_at": "2026-04-15T10:23:55.814723",
+      "clips_per_term": 20,
+      "terms": [
+        "gym",
+        "yoga",
+        "running",
+        "soccer",
+        "swimming",
+        "fitness"
+      ],
+      "exit_code": 0,
+      "success": true
+    },
+    {
+      "job": "Afternoon Batch",
+      "started_at": "2026-04-15T13:00:00.693813",
+      "clips_per_term": 20,
+      "terms": [
+        "cooking",
+        "food",
+        "kitchen",
+        "chef",
+        "business",
+        "travel"
+      ],
+      "exit_code": 2,
+      "success": false
+    }
+  ],
+  "last_updated": "2026-04-15T13:00:00.694224"
+}

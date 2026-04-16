@@ -1,0 +1,47 @@
+[
+  {
+    "name": "Boxing Daily",
+    "query": "boxing highlights interview",
+    "channel": "",
+    "interval": "daily",
+    "max_results": 20,
+    "min_views": 10000,
+    "timeframe": "week"
+  },
+  {
+    "name": "Floyd Mayweather Weekly",
+    "query": "Floyd Mayweather interview",
+    "channel": "",
+    "interval": "weekly",
+    "max_results": 10,
+    "min_views": 5000,
+    "timeframe": "week"
+  },
+  {
+    "name": "Andrew Tate Daily",
+    "query": "Andrew Tate interview",
+    "channel": "",
+    "interval": "daily",
+    "max_results": 15,
+    "min_views": 10000,
+    "timeframe": "week"
+  },
+  {
+    "name": "Business Interview Weekly",
+    "query": "business interview documentary",
+    "channel": "",
+    "interval": "weekly",
+    "max_results": 10,
+    "min_views": 5000,
+    "timeframe": "month"
+  },
+  {
+    "name": "Tech News Daily",
+    "query": "technology news",
+    "channel": "",
+    "interval": "daily",
+    "max_results": 20,
+    "min_views": 10000,
+    "timeframe": "week"
+  }
+]

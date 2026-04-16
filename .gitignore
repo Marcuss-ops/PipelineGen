@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+
+# Go
+src/go-master/server
+bin/server
+src/go-master/token.json
+src/go-master/credentials.json
+
+# Rust
+src/rust/target/
+bin/video-stock-creator.bundle
+*.bundle
+Cargo.lock
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backups
+*.backup*
+*.bak
+*.old
+
+# Database
+*.db
+
+# Config backups
+config/backups/
+
+# Test data
+data/stock-links/
+data/lightpanda/
+
+# Effects test directory
+effects/Test/
+
+# Duplicate assets
+config/assets/
+src/python-legacy/video/assets/
+
+# Python legacy (if not needed)
+src/python-legacy/credentials.json
+src/python-legacy/token.json
+tests/lightpanda/lightpanda
+effects/overlays/*.mp4
