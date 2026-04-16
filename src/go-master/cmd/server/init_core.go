@@ -14,11 +14,11 @@ import (
 	"velox/go-master/internal/gpu"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/nvidia"
+	"velox/go-master/internal/queue"
 	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/service/maintenance"
 	"velox/go-master/internal/service/pipeline"
 	"velox/go-master/internal/stock"
-	"velox/go-master/internal/storage/jsondb"
 	"velox/go-master/internal/textgen"
 	"velox/go-master/internal/video"
 	"velox/go-master/internal/youtube"
@@ -27,7 +27,8 @@ import (
 
 // CoreDeps holds the core infrastructure services that most other modules depend on.
 type CoreDeps struct {
-	Storage         *jsondb.Storage
+	Storage         runtimeStorage
+	Queue           queue.Queue
 	JobService      *job.Service
 	WorkerService   *worker.Service
 	OllamaClient    *ollama.Client
@@ -53,11 +54,16 @@ type CoreDeps struct {
 func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.BackgroundService, CleanupFunc, error) {
 	var services []runtime.BackgroundService
 
-	// === Storage ===
-	storage, err := jsondb.NewStorage(cfg.Storage.DataDir)
+	// === Storage / Queue ===
+	storage, err := buildRuntimeStorage(cfg)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	q := buildQueueBackend()
+	log.Info("Runtime backend selected",
+		zap.String("storage_backend", selectStorageBackend(cfg)),
+		zap.String("queue_backend", string(selectQueueBackend())),
+	)
 
 	jobService := job.NewService(storage, cfg)
 	workerService := worker.NewService(storage, cfg)
@@ -171,11 +177,13 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 	}
 
 	cleanup := func() {
-		storage.Close()
+		_ = q.Close()
+		_ = storage.Close()
 	}
 
 	return &CoreDeps{
 		Storage:         storage,
+		Queue:           q,
 		JobService:      jobService,
 		WorkerService:   workerService,
 		OllamaClient:    ollamaClient,
