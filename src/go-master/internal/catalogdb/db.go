@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/glebarez/sqlite"
 )
 
 // CatalogDB provides a normalized local SQLite catalog for clips coming from
@@ -28,7 +28,7 @@ func Open(path string) (*CatalogDB, error) {
 		return nil, fmt.Errorf("create catalog dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite catalog: %w", err)
 	}
