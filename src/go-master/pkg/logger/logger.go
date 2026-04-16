@@ -86,13 +86,17 @@ func New(opts ...Option) *zap.Logger {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
+	var encoder zapcore.Encoder
 	if cfg.encoding == "console" {
 		ec.EncodeLevel = zapcore.CapitalColorLevelEncoder
 		ec.ConsoleSeparator = " | "
+		encoder = zapcore.NewConsoleEncoder(ec)
+	} else {
+		encoder = zapcore.NewJSONEncoder(ec)
 	}
 
 	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(ec),
+		encoder,
 		zapcore.AddSync(cfg.output),
 		cfg.level,
 	)
