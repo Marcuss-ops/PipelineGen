@@ -14,12 +14,10 @@ import (
 
 // GenerateScriptDoc runs the full pipeline (single or multi-language).
 func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocRequest) (*ScriptDocResult, error) {
-	// Validate request
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
 
-	// Set current template for use during processing
 	s.currentTemplate = req.Template
 
 	logger.Info("Starting script doc pipeline",
@@ -29,11 +27,8 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 		zap.Int("duration", req.Duration),
 	)
 
-	// Resolve Stock folder for this topic
 	stockFolder := s.resolveStockFolder(req.Topic)
 
-	// Generate script + extract entities + associate clips for each language
-	// For multi-language, generate in parallel
 	var langResults []LanguageResult
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -52,7 +47,6 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 
 			logger.Info("Generating script", zap.String("lang", lang), zap.String("topic", req.Topic))
 
-			// 1. Generate script via Ollama in target language with retry
 			fullText, err := s.generateScriptForLangWithRetry(ctx, req.Topic, req.Duration, info.PromptLang, 3)
 			if err != nil {
 				mu.Lock()
@@ -63,7 +57,6 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 				return
 			}
 
-			// 2. Extract entities
 			sentences := ExtractSentences(fullText)
 			if len(sentences) == 0 {
 				mu.Lock()
@@ -73,17 +66,18 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 				mu.Unlock()
 				return
 			}
-			frasiImportanti := sentences[:util.Min(4, len(sentences))]
+
+			frasiImportanti := SelectImportantPhrases(fullText, req.Topic, util.Min(5, len(sentences)))
+			if len(frasiImportanti) == 0 {
+				frasiImportanti = sentences[:util.Min(4, len(sentences))]
+			}
 			nomiSpeciali := extractProperNouns(sentences)
 			paroleImportant := extractKeywords(fullText)
 			entitaConImmagine := extractEntitiesWithImages(sentences)
 
-			// 2.5. Dynamic clip search for keywords extracted from phrases
 			keywords := s.extractClipKeywords(frasiImportanti, nomiSpeciali, paroleImportant)
 			if len(keywords) > 0 && s.clipSearch != nil {
-				logger.Info("Starting dynamic clip search",
-					zap.Strings("keywords", keywords),
-				)
+				logger.Info("Starting dynamic clip search", zap.Strings("keywords", keywords))
 				dynamicClips, err := s.clipSearch.SearchClips(ctx, keywords)
 				if err != nil {
 					logger.Warn("Dynamic clip search failed", zap.Error(err))
@@ -91,14 +85,11 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 					s.dynamicClipsMu.Lock()
 					s.dynamicClips = append(s.dynamicClips, dynamicClips...)
 					s.dynamicClipsMu.Unlock()
-					logger.Info("Dynamic clips found",
-						zap.Int("count", len(dynamicClips)),
-					)
+					logger.Info("Dynamic clips found", zap.Int("count", len(dynamicClips)))
 				}
 			}
 
-			// 3. Associate clips to phrases (multilingual matching)
-			associations := s.associateClips(frasiImportanti)
+			associations := s.associateClips(frasiImportanti, stockFolder, req.Topic)
 
 			result := LanguageResult{
 				Language:          lang,
@@ -121,15 +112,11 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 	if firstErr != nil {
 		return nil, firstErr
 	}
-
 	if len(langResults) == 0 {
 		return nil, fmt.Errorf("no languages were successfully generated")
 	}
 
-	// 4. Build document content with all languages
 	content := s.buildMultilingualDocument(req.Topic, req.Duration, stockFolder, langResults)
-
-	// 5. Create Google Doc with graceful degradation
 	title := fmt.Sprintf("Script: %s (%s)", req.Topic, langNames(langResults))
 	docID, docURL, err := s.createDocWithFallback(ctx, title, content)
 	if err != nil {
