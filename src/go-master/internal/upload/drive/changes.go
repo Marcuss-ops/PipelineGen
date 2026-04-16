@@ -56,7 +56,7 @@ func (c *Client) ListChanges(ctx context.Context, pageToken string, pageSize int
 
 func mapDriveChange(change *gdrive.Change) DriveChange {
 	mapped := DriveChange{
-		ChangeID:   change.Id,
+		ChangeID:   0,
 		FileID:     change.FileId,
 		Removed:    change.Removed,
 		Time:       parseTime(change.Time),
