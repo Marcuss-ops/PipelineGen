@@ -129,7 +129,8 @@ func newTestVideoHandlerService(opts ...func(*mockScriptGenerator, *mockEntitySe
 	return pipeline.NewVideoCreationService(ms, me, mt, mv)
 }
 
-func setupVideoTestRouter(svc *pipeline.VideoCreationService) *gin.Engine {
+func setupVideoTestRouter(t *testing.T, svc *pipeline.VideoCreationService) *gin.Engine {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -139,7 +140,7 @@ func setupVideoTestRouter(svc *pipeline.VideoCreationService) *gin.Engine {
 
 	handler, err := NewVideoHandler(svc)
 	if err != nil {
-		panic(err)
+		t.Fatalf("Failed to create video handler: %v", err)
 	}
 	handler.RegisterRoutes(apiGroup)
 
@@ -327,7 +328,7 @@ func TestVideoHandler_CreateMaster(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newTestVideoHandlerService(tt.setupMocks)
-			router := setupVideoTestRouter(svc)
+			router := setupVideoTestRouter(t, svc)
 
 			var body *bytes.Buffer
 			if tt.payload != nil {
@@ -380,7 +381,7 @@ func TestVideoHandler_CreateMaster(t *testing.T) {
 
 func TestVideoHandler_Health(t *testing.T) {
 	svc := newTestVideoHandlerService()
-	router := setupVideoTestRouter(svc)
+	router := setupVideoTestRouter(t, svc)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/video/health", nil)
@@ -403,7 +404,7 @@ func TestVideoHandler_Health(t *testing.T) {
 
 func TestVideoHandler_GetInfo(t *testing.T) {
 	svc := newTestVideoHandlerService()
-	router := setupVideoTestRouter(svc)
+	router := setupVideoTestRouter(t, svc)
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/video/info", nil)
@@ -455,7 +456,7 @@ func TestVideoHandler_CreateMaster_ResponseStructure(t *testing.T) {
 		}
 	})
 
-	router := setupVideoTestRouter(svc)
+	router := setupVideoTestRouter(t, svc)
 
 	payload := CreateMasterRequest{
 		VideoName:   "Test Video",
@@ -528,7 +529,7 @@ func TestVideoHandler_CreateMaster_LanguageCodes(t *testing.T) {
 	for _, tt := range languageTests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newTestVideoHandlerService()
-			router := setupVideoTestRouter(svc)
+			router := setupVideoTestRouter(t, svc)
 
 			payload := CreateMasterRequest{
 				VideoName:  "Language Test",
@@ -570,7 +571,7 @@ func TestVideoHandler_CreateMaster_SkipGDocs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := newTestVideoHandlerService()
-			router := setupVideoTestRouter(svc)
+			router := setupVideoTestRouter(t, svc)
 
 			payload := CreateMasterRequest{
 				VideoName:  "Test",
@@ -596,7 +597,7 @@ func TestVideoHandler_CreateMaster_SkipGDocs(t *testing.T) {
 
 func TestVideoHandler_CreateMaster_ConcurrentRequests(t *testing.T) {
 	svc := newTestVideoHandlerService()
-	router := setupVideoTestRouter(svc)
+	router := setupVideoTestRouter(t, svc)
 
 	requests := []CreateMasterRequest{
 		{VideoName: "Video 1", ScriptText: "script 1", Duration: 30, SkipGDocs: true},
@@ -635,7 +636,7 @@ func TestVideoHandler_CreateMaster_VideoProcessorFailure(t *testing.T) {
 		}
 	})
 
-	router := setupVideoTestRouter(svc)
+	router := setupVideoTestRouter(t, svc)
 
 	payload := CreateMasterRequest{
 		VideoName:  "Video Proc Fail",

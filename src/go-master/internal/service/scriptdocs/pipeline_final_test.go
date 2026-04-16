@@ -12,9 +12,9 @@ import (
 	"velox/go-master/pkg/util"
 )
 
-// TestGervontaDavisFullPipeline is the COMPLETE end-to-end test.
+// TestScriptDocsFullPipeline is the COMPLETE end-to-end test.
 // Tests: entity extraction, clip association, deduplication, section separation, DB lookup.
-func TestGervontaDavisFullPipeline(t *testing.T) {
+func TestScriptDocsFullPipeline(t *testing.T) {
 	// 1. Setup: Create a test DB with real Drive data
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "stock.db.json")
@@ -119,10 +119,10 @@ func TestGervontaDavisFullPipeline(t *testing.T) {
 		}
 	})
 
-	// ===== TEST 4: Entity Extraction from Gervonta Text =====
-	t.Run("entity_extraction_gervonta", func(t *testing.T) {
-		script := loadGervontaScript()
-		sentences := extractSentences(script)
+	// ===== TEST 4: Entity Extraction =====
+	t.Run("entity_extraction", func(t *testing.T) {
+		script := loadSampleScript()
+		sentences := ExtractSentences(script)
 
 		if len(sentences) < 20 {
 			t.Errorf("Expected at least 20 sentences, got %d", len(sentences))
@@ -187,8 +187,8 @@ func TestGervontaDavisFullPipeline(t *testing.T) {
 			stockDB:      db,
 		}
 
-		script := loadGervontaScript()
-		sentences := extractSentences(script)
+		script := loadSampleScript()
+		sentences := ExtractSentences(script)
 		frasi := sentences[:util.Min(12, len(sentences))]
 
 		// Associate clips (with deduplication)
@@ -359,7 +359,7 @@ func TestDBLookupSpeed(t *testing.T) {
 	}
 }
 
-func loadGervontaScript() string {
+func loadSampleScript() string {
 	return `From Nothing
 
 He was born Gervonta Bryant Davis on November 7, 1994, not into boxing royalty but into Sandtown-Winchester, West Baltimore, one of the most violent zip codes in America. The official biography puts it plainly: Davis was raised in Sandtown-Winchester, his parents were drug addicts and were frequently in and out of jail.

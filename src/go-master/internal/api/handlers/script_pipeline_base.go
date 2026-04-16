@@ -24,8 +24,9 @@ type ScriptPipelineHandler struct {
 	artlistSrc      *clip.ArtlistSource
 	driveClient     *drive.Client
 	clipSearch      *clipsearch.Service
-	clipIndexer     *clip.Indexer
-	stockRootFolder string
+	clipIndexer       *clip.Indexer
+	stockRootFolder   string
+	artlistDriveFolderID string // Artlist Drive folder ID for document linking
 }
 
 func NewScriptPipelineHandler(
@@ -39,6 +40,7 @@ func NewScriptPipelineHandler(
 	clipSearch *clipsearch.Service,
 	clipIndexer *clip.Indexer,
 	stockRootFolder string,
+	artlistDriveFolderID string,
 ) *ScriptPipelineHandler {
 	if ai == nil {
 		fmt.Println("DEBUG: NewScriptPipelineHandler: artlistIndex is NIL")
@@ -46,16 +48,17 @@ func NewScriptPipelineHandler(
 		fmt.Printf("DEBUG: NewScriptPipelineHandler: artlistIndex is LOADED with %d clips\n", len(ai.Clips))
 	}
 	return &ScriptPipelineHandler{
-		generator:       gen,
-		docClient:       dc,
-		stockDB:         sdb,
-		artlistDB:       alDB,
-		artlistIndex:    ai,
-		artlistSrc:      alSrc,
-		driveClient:     driveClient,
-		clipSearch:      clipSearch,
-		clipIndexer:     clipIndexer,
-		stockRootFolder: stockRootFolder,
+		generator:           gen,
+		docClient:           dc,
+		stockDB:             sdb,
+		artlistDB:           alDB,
+		artlistIndex:        ai,
+		artlistSrc:          alSrc,
+		driveClient:         driveClient,
+		clipSearch:          clipSearch,
+		clipIndexer:         clipIndexer,
+		stockRootFolder:     stockRootFolder,
+		artlistDriveFolderID: artlistDriveFolderID,
 	}
 }
 

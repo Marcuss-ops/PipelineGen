@@ -2,7 +2,7 @@
 
 Fonte: `VeloxEditing/refactored/routes/youtube_routes.py`
 
-Base URL (esempio): `http://<MASTER>:8000`
+Base URL (esempio): `http://<MASTER>:8080`
 
 ## Stato credenziali / quota
 - **GET** `/api/v1/youtube/credentials/health`

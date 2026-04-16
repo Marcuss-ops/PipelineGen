@@ -170,9 +170,6 @@ func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string
 	}
 
 	// Search for existing category folder
-	query := fmt.Sprintf("name='%s' and '%s' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'",
-		category, stockRootID)
-
 	result, err := m.driveClient.ListFolders(ctx, drive.ListFoldersOptions{
 		ParentID: stockRootID,
 		MaxDepth: 1,

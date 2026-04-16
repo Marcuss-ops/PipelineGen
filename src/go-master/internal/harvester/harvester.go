@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"velox/go-master/internal/downloader"
+	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
 
@@ -60,6 +61,9 @@ type BlacklistRecord struct {
 	BlacklistedAt time.Time `json:"blacklisted_at"`
 }
 
+// Compile-time check that Harvester satisfies BackgroundService.
+var _ runtime.BackgroundService = (*Harvester)(nil)
+
 type Harvester struct {
 	config        *Config
 	youtubeClient YouTubeSearcher
@@ -72,6 +76,7 @@ type Harvester struct {
 	wg            sync.WaitGroup
 	running       bool
 	stopCh        chan struct{}
+	stopOnce      sync.Once // prevents double-close panic on stopCh
 }
 
 type ClipDatabase interface {
@@ -177,18 +182,20 @@ func (h *Harvester) Start(ctx context.Context) error {
 	return nil
 }
 
+// Stop signals the harvester to shut down and waits for workers to finish.
+// Safe to call multiple times (idempotent via sync.Once).
 func (h *Harvester) Stop() error {
-	if !h.running {
-		return nil
-	}
-
-	close(h.stopCh)
-	h.wg.Wait()
-	h.running = false
-
-	logger.Info("Harvester stopped")
+	h.stopOnce.Do(func() {
+		close(h.stopCh)
+		h.wg.Wait()
+		h.running = false
+		logger.Info("Harvester stopped")
+	})
 	return nil
 }
+
+// Name returns the service name for lifecycle logging.
+func (h *Harvester) Name() string { return "Harvester" }
 
 func (h *Harvester) run(ctx context.Context) {
 	ticker := time.NewTicker(h.config.CheckInterval)

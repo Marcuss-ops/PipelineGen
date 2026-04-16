@@ -124,7 +124,3 @@ type ScriptDocService struct {
 	dynamicClipsMu        sync.Mutex
 }
 
-// Validate checks request validity.
-func (r *ScriptDocRequest) Validate() error {
-	return validateRequest(r)
-}

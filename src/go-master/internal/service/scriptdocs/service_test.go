@@ -100,9 +100,9 @@ func TestExtractSentences(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractSentences(tt.input)
+			result := ExtractSentences(tt.input)
 			if len(result) != tt.expected {
-				t.Errorf("extractSentences() got %d sentences, want %d", len(result), tt.expected)
+				t.Errorf("ExtractSentences() got %d sentences, want %d", len(result), tt.expected)
 			}
 		})
 	}
@@ -439,7 +439,7 @@ func TestMin(t *testing.T) {
 	for _, tt := range tests {
 		result := util.Min(tt.a, tt.b)
 		if result != tt.want {
-			t.Errorf("util.Min(%d, %d) = %d, want %d", tt.a, tt.b, tt.want)
+			t.Errorf("util.Min(%d, %d) = %d, want %d", tt.a, tt.b, result, tt.want)
 		}
 	}
 }

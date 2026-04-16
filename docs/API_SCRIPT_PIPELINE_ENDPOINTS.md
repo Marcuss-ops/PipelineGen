@@ -2,7 +2,7 @@
 
 ## Panoramica del Servizio
 
-**Server unico**: Il servizio Go è gestito da un unico server (`go-master/cmd/server/main.go`) che espone tutti gli endpoint HTTP sulla porta configurata (default: 8000).
+**Server unico**: Il servizio Go è gestito da un unico server (`src/go-master/cmd/server/main.go`) che espone tutti gli endpoint HTTP sulla porta configurata (default: 8080).
 
 **Modulo Script Pipeline**: Il file `src/go-master/internal/api/handlers/script_pipeline.go` (1017 righe) contiene tutta la logica dei 9 endpoint REST per la gestione degli script.
 
@@ -443,8 +443,8 @@ Tutti gli endpoint ritornano:
 ## Avvio Server
 
 ```bash
-cd /home/pierone/Pyt/VeloxEditing/refactored/go-master
-export VELOX_PORT=8000
+cd /home/pierone/Pyt/VeloxEditing/refactored/src/go-master
+export VELOX_PORT=8080
 export OLLAMA_ADDR=http://localhost:11434
 
 # Build
@@ -457,7 +457,7 @@ make build
 go run cmd/server/main.go
 ```
 
-**Log file:** `go-master/server.log`
+**Log file:** `src/go-master/server.log`
 
 ---
 
@@ -465,14 +465,14 @@ go run cmd/server/main.go
 
 ```bash
 # Test entity extraction
-curl -X POST http://localhost:8000/api/script-pipeline/extract-entities \
+curl -X POST http://localhost:8080/api/script-pipeline/extract-entities \
   -H "Content-Type: application/json" \
   -d '{
     "segments": [{"text": "Gervonta Davis is a boxer from Baltimore"}]
   }'
 
 # Test full pipeline con script
-curl -X POST http://localhost:8000/api/script-pipeline/generate-text \
+curl -X POST http://localhost:8080/api/script-pipeline/generate-text \
   -H "Content-Type: application/json" \
   -d '{"topic": "Gervonta Davis", "duration": 80}'
 ```

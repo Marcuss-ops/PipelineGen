@@ -10,7 +10,7 @@ PipelineGen/
 ├── requirements.txt               # Dipendenze Python (Ollama + requests)
 │
 ├── src/                           # 📦 Source Code
-│   ├── go-master/                 # 🟢 Go API Server (PRIMARY — port 8080)
+│   ├── go-master/                 # 🟢 Go API Server (PRIMARY)
 │   │   ├── cmd/server/           # Entry point
 │   │   ├── internal/             # Core logic (50+ packages)
 │   │   ├── pkg/                  # Shared models, config, logger

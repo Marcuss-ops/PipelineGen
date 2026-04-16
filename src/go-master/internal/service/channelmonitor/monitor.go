@@ -4,12 +4,16 @@ import (
 	"context"
 	"time"
 
+	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
 )
+
+// Compile-time check that Monitor satisfies BackgroundService.
+var _ runtime.BackgroundService = (*Monitor)(nil)
 
 // Monitor is the channel monitor service
 type Monitor struct {
@@ -52,19 +56,24 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient *drive.C
 	return m
 }
 
-// Start runs the monitor in a loop until context is cancelled
-func (m *Monitor) Start(ctx context.Context) {
-	// Run initial scan asynchronously
-	go func() {
-		results, err := m.RunOnce(ctx)
-		if err != nil {
-			logger.Error("Initial monitor run failed", zap.Error(err))
-		} else {
-			logger.Info("Initial monitor run completed",
-				zap.Int("videos_processed", len(results)),
-			)
-		}
-	}()
+// Start runs the monitor in a background goroutine until context is cancelled.
+// Returns immediately (non-blocking) to satisfy BackgroundService.
+func (m *Monitor) Start(ctx context.Context) error {
+	go m.runLoop(ctx)
+	return nil
+}
+
+// runLoop is the main monitoring loop, executed in a goroutine by Start.
+func (m *Monitor) runLoop(ctx context.Context) {
+	// Run initial scan
+	results, err := m.RunOnce(ctx)
+	if err != nil {
+		logger.Error("Initial monitor run failed", zap.Error(err))
+	} else {
+		logger.Info("Initial monitor run completed",
+			zap.Int("videos_processed", len(results)),
+		)
+	}
 
 	// Run periodic scans
 	ticker := time.NewTicker(m.config.CheckInterval)
@@ -87,6 +96,14 @@ func (m *Monitor) Start(ctx context.Context) {
 		}
 	}
 }
+
+// Stop is a no-op; goroutines exit via context cancellation from ServiceGroup.
+func (m *Monitor) Stop() error {
+	return nil
+}
+
+// Name returns the service name for lifecycle logging.
+func (m *Monitor) Name() string { return "ChannelMonitor" }
 
 // RunOnce performs one complete monitoring cycle
 func (m *Monitor) RunOnce(ctx context.Context) ([]VideoResult, error) {
@@ -115,22 +132,22 @@ func (m *Monitor) RunOnce(ctx context.Context) ([]VideoResult, error) {
 	return allResults, nil
 }
 
-// ExtractTranscript is the public wrapper for transcript extraction
+// ExtractTranscript extracts transcript from a YouTube video
 func (m *Monitor) ExtractTranscript(ctx context.Context, videoID string) (string, error) {
 	return m.extractTranscript(ctx, videoID)
 }
 
-// FindHighlights is the public wrapper for finding highlights
+// FindHighlights extracts interesting segments from a transcript
 func (m *Monitor) FindHighlights(transcript string) []HighlightSegment {
 	return m.findHighlights(transcript)
 }
 
-// ResolveFolder is the public wrapper for folder resolution
+// ResolveFolder determines the Drive folder for a video's clips
 func (m *Monitor) ResolveFolder(ctx context.Context, ch ChannelConfig, videoTitle string) (string, string, bool, error) {
 	return m.resolveFolder(ctx, ch, videoTitle)
 }
 
-// DownloadAndUploadClips is the public wrapper for clip download/upload
+// DownloadAndUploadClips downloads highlight clips and uploads them to Drive
 func (m *Monitor) DownloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, folderExisted bool, maxDuration int) ([]ClipResult, error) {
 	return m.downloadAndUploadClips(ctx, video, highlights, folderID, folderPath, folderExisted, maxDuration)
 }

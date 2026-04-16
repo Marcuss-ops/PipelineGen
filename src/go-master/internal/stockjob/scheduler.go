@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"velox/go-master/internal/clip"
-	"velox/go-master/internal/youtube"
 	"velox/go-master/internal/downloader"
+	"velox/go-master/internal/runtime"
+	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
 )
@@ -70,6 +71,9 @@ type ClipRecord struct {
 }
 
 // Scheduler gestisce il cron job di arricchimento
+// Compile-time check that Scheduler satisfies BackgroundService.
+var _ runtime.BackgroundService = (*Scheduler)(nil)
+
 type Scheduler struct {
 	config       *Config
 	youtubeClient youtube.Client
@@ -79,6 +83,7 @@ type Scheduler struct {
 	running      bool
 	mu           sync.Mutex
 	stopCh       chan struct{}
+	stopOnce     sync.Once // prevents double-close panic on stopCh
 }
 
 // NewScheduler crea un nuovo scheduler
@@ -136,21 +141,21 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop ferma il cron job
+// Stop ferma il cron job.
+// Safe to call multiple times (idempotent via sync.Once).
 func (s *Scheduler) Stop() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.running {
-		return nil
-	}
-
-	close(s.stopCh)
-	s.running = false
-
-	logger.Info("Stock enrichment cron job stopped")
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+		logger.Info("Stock enrichment cron job stopped")
+	})
 	return nil
 }
+
+// Name returns the service name for lifecycle logging.
+func (s *Scheduler) Name() string { return "StockScheduler" }
 
 // run ciclo principale
 func (s *Scheduler) run(ctx context.Context) {

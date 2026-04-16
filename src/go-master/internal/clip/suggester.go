@@ -13,8 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// DefaultMinScore is the default minimum relevance score for clip suggestions
-const DefaultMinScore = 10.0
 
 // Suggester provides clip suggestions based on title/script matching.
 // It now uses the in-memory clip index for instant suggestions (sub-ms),
@@ -333,7 +331,7 @@ func (s *Suggester) calculateRelevance(clip Clip, folder Folder, titleKeywords, 
 			if matchType == "" {
 				matchType = "file_name"
 			}
-			if !contains(matchTerms, kw.Word) {
+			if !containsString(matchTerms, kw.Word) {
 				matchTerms = append(matchTerms, kw.Word)
 			}
 		}
@@ -349,7 +347,7 @@ func (s *Suggester) calculateRelevance(clip Clip, folder Folder, titleKeywords, 
 			if matchType == "" {
 				matchType = "content"
 			}
-			if !contains(matchTerms, kw.Word) {
+			if !containsString(matchTerms, kw.Word) {
 				matchTerms = append(matchTerms, kw.Word)
 			}
 		}
@@ -376,15 +374,6 @@ func (s *Suggester) calculateRelevance(clip Clip, folder Folder, titleKeywords, 
 	return score, matchType, matchTerms
 }
 
-// contains checks if a string slice contains a string
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if strings.EqualFold(s, item) {
-			return true
-		}
-	}
-	return false
-}
 
 // sortSuggestions sorts suggestions by score descending
 func sortSuggestions(suggestions []Suggestion) {

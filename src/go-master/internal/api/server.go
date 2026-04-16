@@ -13,25 +13,25 @@ import (
 	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/core/job"
 	"velox/go-master/internal/core/worker"
-	"velox/go-master/internal/service/maintenance"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
 )
 
-// Server represents the HTTP server
+// Server represents the HTTP server.
+// Background services (maintenance, watchers, etc.) are managed externally
+// by the ServiceGroup — not by the Server.
 type Server struct {
-	cfg               *config.Config
-	router            *gin.Engine
-	appRouter         *Router        // reference to the Router for cleanup
-	httpServer        *http.Server
-	jobService        *job.Service
-	workerService     *worker.Service
-	maintenanceSvc    *maintenance.Service
-	bgCancel          context.CancelFunc // cancels background goroutines on shutdown
+	cfg           *config.Config
+	router        *gin.Engine
+	appRouter     *Router        // reference to the Router for cleanup
+	httpServer    *http.Server
+	jobService    *job.Service
+	workerService *worker.Service
 }
 
-// NewServerWithHandlers creates a new HTTP server with pre-constructed handlers
+// NewServerWithHandlers creates a new HTTP server with pre-constructed handlers.
+// Background services are managed externally by the ServiceGroup.
 func NewServerWithHandlers(
 	cfg *config.Config,
 	jobService *job.Service,
@@ -41,15 +41,12 @@ func NewServerWithHandlers(
 	router := NewRouter(cfg, deps.Handlers)
 	r := router.Setup()
 
-	maintenanceSvc := maintenance.New(cfg, jobService, workerService)
-
 	return &Server{
 		cfg:           cfg,
 		router:        r,
 		appRouter:     router,
 		jobService:    jobService,
 		workerService: workerService,
-		maintenanceSvc: maintenanceSvc,
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 			Handler:      r,
@@ -59,48 +56,46 @@ func NewServerWithHandlers(
 	}
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server. Background services are managed by the
+// ServiceGroup in main.go — this method only handles the HTTP lifecycle.
 func (s *Server) Start() error {
 	logger.Info("Starting HTTP server",
 		zap.String("addr", s.httpServer.Addr),
 	)
 
-	// Create a context for background goroutines
-	bgCtx, bgCancel := context.WithCancel(context.Background())
-	s.bgCancel = bgCancel
-
-	// Start background maintenance tasks
-	s.maintenanceSvc.Start(bgCtx)
-
 	// Start server in a goroutine
+	srvErr := make(chan error, 1)
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to start server", zap.Error(err))
+			srvErr <- err
 		}
+		close(srvErr)
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	logger.Info("Shutting down server...")
-
-	// Stop background goroutines
-	bgCancel()
+	select {
+	case err := <-srvErr:
+		// Server failed to start
+		return fmt.Errorf("server listen error: %w", err)
+	case <-quit:
+		logger.Info("Shutting down server...")
+	}
 
 	// Stop rate limiter cleanup goroutine
 	if s.appRouter != nil {
 		s.appRouter.Stop()
 	}
 
-	// Graceful shutdown
+	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		logger.Error("Server forced to shutdown", zap.Error(err))
-		return err
+		return fmt.Errorf("server shutdown error: %w", err)
 	}
 
 	logger.Info("Server exited gracefully")

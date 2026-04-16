@@ -247,13 +247,13 @@ func (h *ClipApprovalHandler) ApproveClip(c *gin.Context) {
 	for i, clip := range clips {
 		if clip.ClipID == req.ClipID {
 			// Update tags to include approval status
-			tags := strings.Split(clip.Tags, ",")
+			tags := clip.Tags
 			if req.Approved {
 				tags = append(tags, "approved")
 			} else {
 				tags = append(tags, "rejected")
 			}
-			clips[i].Tags = strings.Join(tags, ",")
+			clips[i].Tags = tags
 			if err := h.StockDB.UpsertClip(clip); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save approval"})
 				return
@@ -303,9 +303,8 @@ func (h *ClipApprovalHandler) GetPendingClips(c *gin.Context) {
 
 	var pending []PendingClipItem
 	for _, clip := range clips {
-		tags := strings.Split(clip.Tags, ",")
 		hasApproval := false
-		for _, t := range tags {
+		for _, t := range clip.Tags {
 			t = strings.TrimSpace(t)
 			if t == "approved" || t == "rejected" {
 				hasApproval = true
@@ -374,7 +373,7 @@ func (h *ClipApprovalHandler) GetClipSuggestions(c *gin.Context) {
 			ClipID:   clip.ClipID,
 			Filename: clip.Filename,
 			Source:   clip.Source,
-			Tags:     clip.Tags,
+			Tags:     strings.Join(clip.Tags, ","),
 			Duration: clip.Duration,
 		})
 	}

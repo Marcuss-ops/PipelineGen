@@ -250,8 +250,17 @@ func (cc *ClipCache) GetClipUsageHistory(clipID string) []ClipUsageRecord {
 	return usages
 }
 
+// ClipCacheStats holds typed cache statistics.
+type ClipCacheStats struct {
+	TotalSegments int     `json:"total_segments"`
+	TotalUsages   int     `json:"total_usages"`
+	TotalHits     int     `json:"total_hits"`
+	CacheHitRate  float64 `json:"cache_hit_rate"`
+	LastUpdated   string  `json:"last_updated"`
+}
+
 // GetStats returns cache statistics.
-func (cc *ClipCache) GetStats() map[string]interface{} {
+func (cc *ClipCache) GetStats() ClipCacheStats {
 	cc.mu.RLock()
 	defer cc.mu.RUnlock()
 
@@ -260,12 +269,12 @@ func (cc *ClipCache) GetStats() map[string]interface{} {
 		totalHits += segment.HitCount
 	}
 
-	return map[string]interface{}{
-		"total_segments":  len(cc.data.Segments),
-		"total_usages":    len(cc.data.ClipUsages),
-		"total_hits":      totalHits,
-		"cache_hit_rate":  float64(totalHits) / maxFloat(1, float64(len(cc.data.Segments))),
-		"last_updated":    cc.data.LastUpdated,
+	return ClipCacheStats{
+		TotalSegments: len(cc.data.Segments),
+		TotalUsages:   len(cc.data.ClipUsages),
+		TotalHits:     totalHits,
+		CacheHitRate:  float64(totalHits) / maxFloat(1, float64(len(cc.data.Segments))),
+		LastUpdated:   cc.data.LastUpdated,
 	}
 }
 

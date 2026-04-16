@@ -2,64 +2,65 @@ package main
 
 import (
 	"context"
-	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/audio/tts"
-	"velox/go-master/internal/clip"
-	"velox/go-master/internal/clipdb"
-	"velox/go-master/internal/clipsearch"
 	"velox/go-master/internal/core/entities"
 	"velox/go-master/internal/core/job"
 	"velox/go-master/internal/core/worker"
 	"velox/go-master/internal/download"
 	"velox/go-master/internal/downloader"
 	"velox/go-master/internal/gpu"
-	"velox/go-master/internal/harvester"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/nvidia"
-	"velox/go-master/internal/script"
-	"velox/go-master/internal/service/channelmonitor"
+	"velox/go-master/internal/runtime"
+	"velox/go-master/internal/service/maintenance"
 	"velox/go-master/internal/service/pipeline"
-	"velox/go-master/internal/service/scriptclips"
-	"velox/go-master/internal/service/scriptdocs"
-	"velox/go-master/internal/service/stockorchestrator"
 	"velox/go-master/internal/stock"
-	"velox/go-master/internal/stockdb"
-	"velox/go-master/internal/stockjob"
 	"velox/go-master/internal/storage/jsondb"
 	"velox/go-master/internal/textgen"
 	"velox/go-master/internal/video"
 	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/logger"
 )
 
-// initCoreServices initializes the core infrastructure: storage, job/worker services,
-// Ollama, TTS, video processor, YouTube client, stock manager, entity service, pipeline.
-func initCoreServices(cfg *config.Config, log *zap.Logger) (
-	storage *jsondb.Storage,
-	jobService *job.Service,
-	workerService *worker.Service,
-	ollamaClient *ollama.Client,
-	scriptGen *ollama.Generator,
-	edgeTTS *tts.EdgeTTS,
-	videoProc *video.Processor,
-	youtubeClientV2 youtube.Client,
-	stockMgr *stock.Manager,
-	entityService *entities.EntityService,
-	pipelineService *pipeline.VideoCreationService,
-	videoDownloader *download.Downloader,
-	err error,
-) {
-	storage, err = jsondb.NewStorage(cfg.Storage.DataDir)
+// CoreDeps holds the core infrastructure services that most other modules depend on.
+type CoreDeps struct {
+	Storage         *jsondb.Storage
+	JobService      *job.Service
+	WorkerService   *worker.Service
+	OllamaClient    *ollama.Client
+	ScriptGen       *ollama.Generator
+	EdgeTTS         *tts.EdgeTTS
+	VideoProc       *video.Processor
+	YouTubeClientV2 youtube.Client
+	StockMgr        *stock.StockManager
+	EntityService   *entities.EntityService
+	PipelineService *pipeline.VideoCreationService
+	Downloader      *download.Downloader
+	NvidiaClient    *nvidia.Client
+	GpuMgr          *gpu.Manager
+	TextGen         *textgen.Generator
+	TikTokClient    downloader.Downloader
+}
+
+// initCore initializes the foundational services: storage, job/worker management,
+// AI clients (Ollama, NVIDIA, GPU), video pipeline, YouTube, stock, and downloaders.
+//
+// The Maintenance service is returned as a BackgroundService for registration
+// with the ServiceGroup — it is NOT started here.
+func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.BackgroundService, CleanupFunc, error) {
+	var services []runtime.BackgroundService
+
+	// === Storage ===
+	storage, err := jsondb.NewStorage(cfg.Storage.DataDir)
 	if err != nil {
-		log.Fatal("Failed to initialize storage", zap.Error(err))
-		return
+		return nil, nil, nil, err
 	}
 
-	jobService = job.NewService(storage, cfg)
-	workerService = worker.NewService(storage, cfg)
+	jobService := job.NewService(storage, cfg)
+	workerService := worker.NewService(storage, cfg)
 
 	ctx := context.Background()
 	if err := jobService.LoadQueue(ctx); err != nil {
@@ -69,68 +70,72 @@ func initCoreServices(cfg *config.Config, log *zap.Logger) (
 		log.Warn("Failed to load workers", zap.Error(err))
 	}
 
-	ollamaClient = ollama.NewClient(cfg.External.OllamaURL, "")
-	scriptGen = ollama.NewGenerator(ollamaClient)
-	edgeTTS = tts.NewEdgeTTS(cfg.GetVoiceoverDir())
+	// === Maintenance (returned as BackgroundService, NOT started) ===
+	maintSvc := maintenance.New(cfg, jobService, workerService)
+	services = append(services, maintSvc)
 
-	videoProc, err = video.NewProcessor("", cfg.GetVideoWorkDir())
+	// === AI: Ollama ===
+	ollamaClient := ollama.NewClient(cfg.External.OllamaURL, "")
+	scriptGen := ollama.NewGenerator(ollamaClient)
+
+	// === TTS ===
+	edgeTTS := tts.NewEdgeTTS(cfg.GetVoiceoverDir())
+
+	// === Video Processor ===
+	videoProc, err := video.NewProcessor("", cfg.GetVideoWorkDir())
 	if err != nil {
 		log.Warn("Failed to create video processor", zap.Error(err))
 		videoProc = nil
 	}
 
+	// === YouTube Client ===
+	var youtubeClientV2 youtube.Client
 	ytCfg := &youtube.Config{Backend: "ytdlp", YtDlpPath: cfg.Paths.YtDlpPath}
 	youtubeClientV2, err = youtube.NewClient("ytdlp", ytCfg)
 	if err != nil {
 		log.Warn("Failed to create YouTube client v2", zap.Error(err))
 	} else {
 		log.Info("YouTube client v2 initialized")
+		// Inject YouTube client into script generator for transcript-based generation
+		scriptGen.SetYouTubeClient(youtubeClientV2)
 	}
 
-	stockMgr, err = stock.NewManager(cfg.GetStockDir(), youtubeClientV2)
+	// === Stock Manager ===
+	stockMgr, err := stock.NewManager(cfg.GetStockDir(), youtubeClientV2)
 	if err != nil {
 		log.Warn("Failed to create stock manager", zap.Error(err))
 		stockMgr = nil
 	}
 
+	// === Entity Service ===
 	extractor := entities.NewOllamaExtractor(ollamaClient)
 	segmenter := entities.NewNLPSegmenter()
-	entityService = entities.NewEntityService(extractor, segmenter)
+	entityService := entities.NewEntityService(extractor, segmenter)
 
+	// === Pipeline Service ===
 	ttsAdapter := tts.NewTTSAdapter(edgeTTS)
 	videoAdapter := video.NewVideoProcessorAdapter(videoProc)
-	pipelineService = pipeline.NewVideoCreationServiceWithOutputDir(
+	pipelineService := pipeline.NewVideoCreationServiceWithOutputDir(
 		scriptGen, entityService, ttsAdapter, videoAdapter, cfg.GetOutputDir(),
 	)
-	videoDownloader = download.NewDownloader(cfg.GetDownloadDir())
 
-	return
-}
+	// === Downloader ===
+	videoDownloader := download.NewDownloader(cfg.GetDownloadDir())
 
-// initGPUAndTextGen initializes GPU manager, NVIDIA client, and text generator.
-func initGPUAndTextGen(cfg *config.Config, log *zap.Logger) (
-	gpuMgr *gpu.Manager,
-	nvidiaClient *nvidia.Client,
-	textGen *textgen.Generator,
-	err error,
-) {
-	var nErr error
-	nvCfg := nvidia.DefaultConfig()
-	if nvCfg.APIKey != "" {
-		nvidiaClient, nErr = nvidia.NewClient(nvCfg)
-		if nErr != nil {
-			log.Warn("Failed to initialize NVIDIA AI client", zap.Error(nErr))
-		} else {
-			log.Info("NVIDIA AI client initialized",
-				zap.String("model", nvCfg.Model),
-				zap.String("base_url", nvCfg.BaseURL),
-			)
-		}
+	// === TikTok ===
+	var tiktokClient downloader.Downloader
+	tiktokBackend := downloader.NewTikTokBackend(cfg.Paths.YtDlpPath, "", "")
+	if err := tiktokBackend.IsAvailable(context.Background()); err == nil {
+		tiktokClient = tiktokBackend
+		log.Info("TikTok client initialized")
+	} else {
+		log.Warn("TikTok client not available", zap.Error(err))
 	}
 
+	// === GPU & NVIDIA ===
 	gpuCfg := &gpu.GPUConfig{Enabled: true}
-	gpuMgr = gpu.NewManager(gpuCfg)
-	if err := gpuMgr.Initialize(context.Background()); err != nil {
+	gpuMgr := gpu.NewManager(gpuCfg)
+	if err := gpuMgr.Initialize(ctx); err != nil {
 		log.Warn("GPU manager initialization failed (continuing without GPU acceleration)", zap.Error(err))
 	} else {
 		selectedGPU, _ := gpuMgr.GetSelectedGPU()
@@ -143,90 +148,48 @@ func initGPUAndTextGen(cfg *config.Config, log *zap.Logger) (
 
 	textGenCfg := &textgen.GeneratorConfig{
 		DefaultModel: cfg.TextGen.DefaultModel,
-		Timeout:      timeDuration(cfg.TextGen.Timeout) * timeSecond,
+		Timeout:      time.Duration(cfg.TextGen.Timeout) * time.Second,
 		GPUSupported: true,
 	}
-	textGen = textgen.NewGenerator(gpuMgr, textGenCfg)
+	textGen := textgen.NewGenerator(gpuMgr, textGenCfg)
 	if textGen != nil {
 		log.Info("Text generator initialized")
 	}
 
-	return
-}
-
-// initDatabases initializes StockDB and ClipDB.
-func initDatabases(cfg *config.Config, log *zap.Logger) (
-	stockDB *stockdb.StockDB,
-	clipDB *clipdb.ClipDB,
-	err error,
-) {
-	// StockDB
-	stockDBPaths := []string{
-		cfg.Storage.DataDir + "/stock.db.json",
-		"src/go-master/data/stock.db.json",
-		"data/stock.db.json",
-	}
-	for _, stockDBPath := range stockDBPaths {
-		if _, statErr := os.Stat(stockDBPath); statErr == nil {
-			stockDB, err = stockdb.Open(stockDBPath)
-			if err != nil {
-				log.Warn("Failed to open StockDB", zap.String("path", stockDBPath), zap.Error(err))
-			} else {
-				log.Info("StockDB opened", zap.String("path", stockDBPath))
-			}
-			break
-		}
-	}
-
-	// ClipDB
-	clipDBPath := cfg.Storage.DataDir + "/clip_index.json"
-	clipDB, err = clipdb.Open(clipDBPath)
-	if err != nil {
-		log.Warn("Failed to open ClipDB", zap.Error(err))
-	} else {
-		log.Info("ClipDB opened", zap.Int("clips", clipDB.GetClipCount()))
-	}
-
-	return
-}
-
-// initScriptDocsService initializes the ScriptDocs handler, Artlist index, DB, clip search.
-func initScriptDocsService(
-	cfg *config.Config, log *zap.Logger,
-	scriptGen *ollama.Generator, ollamaClient *ollama.Client,
-	stockDB *stockdb.StockDB, artlistSrc *clip.ArtlistSource,
-	driveHandler *handlers,
-) (
-	scriptDocsHandler *handlers,
-	artlistPipelineHandler *handlers,
-	artlistIdx *scriptdocs.ArtlistIndex,
-	artlistDB *artlistdb.ArtlistDB,
-	clipSearch *clipsearch.Service,
-) {
-	artlistIndexPath := cfg.Storage.DataDir + "/artlist_stock_index.json"
-	if idx, err := scriptdocs.LoadArtlistIndex(artlistIndexPath); err == nil {
-		artlistIdx = idx
-		log.Info("Artlist index loaded", zap.Int("clips", len(artlistIdx.Clips)))
-
-		// Open local ArtlistDB
-		artlistDB, err = artlistdb.Open(cfg.Storage.DataDir + "/artlist_local.db.json")
+	var nvidiaClient *nvidia.Client
+	nvCfg := nvidia.DefaultConfig()
+	if nvCfg.APIKey != "" {
+		nvidiaClient, err = nvidia.NewClient(nvCfg)
 		if err != nil {
-			log.Warn("Failed to open ArtlistDB", zap.Error(err))
+			log.Warn("Failed to initialize NVIDIA AI client", zap.Error(err))
 		} else {
-			log.Info("ArtlistDB opened", zap.String("path", cfg.Storage.DataDir+"/artlist_local.db.json"))
-		}
-
-		// Initialize dynamic clip search service
-		if driveHandler.GetDriveClient() != nil && stockDB != nil {
-			clipSearch = clipsearch.New(
-				driveHandler.GetDriveClient(), stockDB, artlistDB,
-				cfg.GetDownloadDir(), cfg.Paths.YtDlpPath,
+			log.Info("NVIDIA AI client initialized",
+				zap.String("model", nvCfg.Model),
+				zap.String("base_url", nvCfg.BaseURL),
 			)
-			log.Info("Dynamic clip search service initialized")
 		}
 	}
-	return
-}
 
-// Placeholder type aliases for time imports used in init functions
-type timeDuration = timeDuration
+	cleanup := func() {
+		storage.Close()
+	}
+
+	return &CoreDeps{
+		Storage:         storage,
+		JobService:      jobService,
+		WorkerService:   workerService,
+		OllamaClient:    ollamaClient,
+		ScriptGen:       scriptGen,
+		EdgeTTS:         edgeTTS,
+		VideoProc:       videoProc,
+		YouTubeClientV2: youtubeClientV2,
+		StockMgr:        stockMgr,
+		EntityService:   entityService,
+		PipelineService: pipelineService,
+		Downloader:      videoDownloader,
+		NvidiaClient:    nvidiaClient,
+		GpuMgr:          gpuMgr,
+		TextGen:         textGen,
+		TikTokClient:    tiktokClient,
+	}, services, cleanup, nil
+}

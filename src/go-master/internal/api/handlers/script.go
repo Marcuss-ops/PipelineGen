@@ -137,10 +137,19 @@ func (h *ScriptHandler) GenerateFromYouTube(c *gin.Context) {
 		zap.String("title", req.Title),
 	)
 
-	// This endpoint is not yet implemented - return 501 Not Implemented
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"ok":    false,
-		"error": "YouTube transcript download is not yet implemented. Use /script/from-transcript endpoint with a pre-fetched transcript instead.",
+	result, err := h.generator.GenerateFromYouTube(c.Request.Context(), &req)
+	if err != nil {
+		logger.Error("YouTube script generation failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":           true,
+		"script":       result.Script,
+		"word_count":   result.WordCount,
+		"est_duration": result.EstDuration,
+		"model":        result.Model,
 	})
 }
 

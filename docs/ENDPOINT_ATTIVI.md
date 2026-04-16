@@ -1,6 +1,6 @@
 # 📡 Endpoint Attivi - Mappa Completa
 
-> **Data:** 12 Marzo 2026  
+> **Data:** Aprile 2026  
 > **Stato:** Endpoint Go (primari) + Endpoint Python (secondari/utility)
 
 ---
@@ -11,14 +11,19 @@ Il sistema ha **due strati di endpoint** attivi:
 
 | Strato | Tecnologia | Porta | Scopo |
 |--------|------------|-------|-------|
-| **Primario** | Go (Gin) | 8080 | API core, job management, video creation, clip indexing |
-| **Utility** | Python | Varie | Tracing, YouTube Manager, altri servizi |
+| **Primario** | Go Master (Gin) | **8080** | API core, job management, video creation, clip indexing |
+| **Worker** | Go Worker (opzionale) | 5000 | Job execution (se attivo) |
+| **Tracing** | Python (Flask) | 5555 | Monitoring e tracing API |
+| **Editor** | Python (FastAPI) | 8081 | Dark Editor video standalone |
+| **Legacy** | Python (FastAPI) | 8000 | ⚠️ OBSOLETO - Archiviato |
+
+> **⚠️ Nota importante sulle porte:** Il Go Master è l'unico servizio obbligatorio e gira su **porta 8080** (configurabile via `VELOX_PORT`). Tutte le altre porte sono servizi opzionali/Python indipendenti. Non confondere la porta 8080 del Go Master con la porta 5000 del Go Worker o le porte dei servizi Python.
 
 ---
 
-## 🟢 STRATO 1: GO MASTER (Porta 8080) - PRIMARIO
+## 🟢 STRATO 1: GO MASTER (Porta **8080**) - PRIMARIO
 
-> **Nota:** La porta corretta è **8080**, non 8000. Se vedi 8000, aggiorna la configurazione.
+> **Configurazione:** `VELOX_PORT=8080` (default). La porta era 8000 in vecchie versioni; ora è 8080.
 
 **Tutti i endpoint principali sono qui.** Questo è il backend principale.
 
@@ -184,7 +189,7 @@ TRACING_PORT=5555 python scripts/tracing_dashboard.py
 ---
 
 ### 3. Dark Editor Standalone (`scripts/run_standalone_editor.py`)
-**Porta:** 8081  
+**Porta:** 8081 (Python, non Go)  
 **Tecnologia:** FastAPI + Uvicorn  
 **Scopo:** Editor video standalone
 
@@ -201,9 +206,9 @@ python scripts/run_standalone_editor.py
 ---
 
 ### 4. Job Master Server Python (Legacy) (`archive/python-cleanup-*/job_master_server.py`)
-**Porta:** 8000  
+**Porta:** 8000 (⚠️ OBSOLETO - non usare)  
 **Tecnologia:** FastAPI  
-**Stato:** ⚠️ ARCHIVIATO - Sostituito da Go  
+**Stato:** ⚠️ ARCHIVIATO - Sostituito da Go Master su porta 8080  
 **Nota:** Presente in `archive/`, non usato in produzione.
 
 ---
@@ -230,7 +235,7 @@ python scripts/run_standalone_editor.py
 ```
 🟡 /api/tracing/* (porta 5555) - Monitoring
 🟡 /api/youtube/manager/* - YouTube Manager (non integrato in Go)
-🟡 /dark_editor/* (porta 8081) - Editor standalone
+🟡 /dark_editor/* (porta 8081, Python) - Editor standalone
 ```
 
 ### Endpoint Python (DEPRECATI - Non usati)
@@ -269,7 +274,7 @@ resp = requests.get('http://localhost:5000/health', timeout=5)
 
 ### 1. Go Master (Obbligatorio)
 ```bash
-cd go-master
+cd src/go-master
 go run cmd/server/main.go
 # Porta 8080
 ```
@@ -296,7 +301,7 @@ python scripts/tracing_dashboard.py
 ### 5. Dark Editor (Opzionale)
 ```bash
 python scripts/run_standalone_editor.py
-# Porta 8081
+# Porta 8081 (Python Dark Editor - non Go Master)
 ```
 
 ---

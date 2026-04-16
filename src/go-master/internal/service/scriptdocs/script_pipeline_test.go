@@ -7,8 +7,8 @@ import (
 	"velox/go-master/pkg/util"
 )
 
-// TestGervontaDavisScript tests the full pipeline with a realistic long-form biography
-func TestGervontaDavisScript(t *testing.T) {
+// TestScriptPipeline tests the full pipeline with a realistic long-form biography
+func TestScriptPipeline(t *testing.T) {
 	// This is the real text provided by the user
 	script := `From Nothing
 
@@ -105,7 +105,7 @@ Whether this is the end or just the middle depends on courtrooms, not training c
 Tank's story was always about power, the ability to change a life with one shot. He did it to opponents for a decade. The tragedy is that the shots he could not see coming were the ones he threw outside the ring.`
 
 	// ===== STEP 1: Sentence Extraction =====
-	sentences := extractSentences(script)
+	sentences := ExtractSentences(script)
 
 	if len(sentences) < 20 {
 		t.Errorf("Expected at least 20 sentences from long script, got %d", len(sentences))
@@ -250,8 +250,8 @@ Tank's story was always about power, the ability to change a life with one shot.
 	}
 }
 
-// TestGervontaDavisMultilingual tests entity extraction across languages for Gervonta text
-func TestGervontaDavisMultilingual(t *testing.T) {
+// TestScriptPipelineMultilingual tests entity extraction across languages
+func TestScriptPipelineMultilingual(t *testing.T) {
 	// Simulate what the pipeline would do with different languages
 	// The actual script is in English, but we test concept mapping for other languages
 

@@ -1,8 +1,8 @@
 package channelmonitor
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -171,12 +171,9 @@ func (m *Monitor) scanExistingFolders() {
 	)
 }
 
-// contextWithTimeout is a helper to create a context with timeout
-// This avoids importing context everywhere since it's already imported in monitor.go
-func contextWithTimeout(timeout time.Duration) (interface{ Done() <-chan struct{} }, func()) {
-	// We need to return context.Context but avoid circular import
-	// This is handled via the Monitor methods that already import context
-	return nil, func() {}
+// contextWithTimeout creates a context with timeout for Drive API calls
+func contextWithTimeout(timeout time.Duration) (context.Context, func()) {
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 // GetProcessedVideos returns a copy of all processed video entries

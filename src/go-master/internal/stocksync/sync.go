@@ -25,7 +25,6 @@ type DriveSync struct {
 	lastSync    time.Time
 	mu          sync.Mutex
 	running     bool
-	stopCh      chan struct{}
 }
 
 // NewDriveSync creates a new Drive sync service (backward compatible)
@@ -34,7 +33,6 @@ func NewDriveSync(driveClient *drive.Client, stockDB *stockdb.StockDB, stockRoot
 		driveClient: driveClient,
 		stockDB:     stockDB,
 		stockRootID: stockRootID,
-		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -45,7 +43,6 @@ func NewDriveSyncWithClips(driveClient *drive.Client, stockDB *stockdb.StockDB, 
 		stockDB:     stockDB,
 		clipDB:      clipDB,
 		stockRootID: stockRootID,
-		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -150,7 +147,7 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 					FolderID: sub.ID,
 					Filename: file.Name,
 					Source:   section,
-					Tags:     generateTags(file.Name),
+					Tags:     strings.Join(generateTags(file.Name), " "),
 					Duration: int(file.DurationMs / 1000),
 					DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", file.ID),
 				}
@@ -207,16 +204,16 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 							Tags:     generateTags(file.Name),
 							Duration: int(file.DurationMs / 1000),
 						})
-					} else {
-						clipClips = append(clipClips, clipdb.ClipEntry{
-							ClipID:   file.ID,
-							FolderID: sub2.ID,
-							Filename: file.Name,
-							Source:   section,
-							Tags:     generateTags(file.Name),
-							Duration: int(file.DurationMs / 1000),
-							DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", file.ID),
-						})
+				} else {
+					clipClips = append(clipClips, clipdb.ClipEntry{
+						ClipID:   file.ID,
+						FolderID: sub2.ID,
+						Filename: file.Name,
+						Source:   section,
+						Tags:     strings.Join(generateTags(file.Name), " "),
+						Duration: int(file.DurationMs / 1000),
+						DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", file.ID),
+					})
 					}
 				}
 			}
@@ -256,35 +253,6 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 	return nil
 }
 
-// StartAutoSync starts periodic synchronization
-func (s *DriveSync) StartAutoSync(ctx context.Context, interval time.Duration) {
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				if err := s.Sync(ctx); err != nil {
-					logger.Warn("Auto sync failed", zap.Error(err))
-				}
-			case <-ctx.Done():
-				return
-			case <-s.stopCh:
-				return
-			}
-		}
-	}()
-
-	logger.Info("Auto sync started", zap.Duration("interval", interval))
-}
-
-// StopAutoSync stops the automatic synchronization
-func (s *DriveSync) StopAutoSync() {
-	close(s.stopCh)
-	logger.Info("Auto sync stopped")
-}
-
 // GetLastSyncTime returns the last sync time
 func (s *DriveSync) GetLastSyncTime() time.Time {
 	return s.lastSync
@@ -319,13 +287,14 @@ func isVideoFile(filename string) bool {
 		strings.HasSuffix(ext, ".webm")
 }
 
-func generateTags(filename string) string {
+// generateTags extracts keyword tags from a filename, returning them as a slice.
+func generateTags(filename string) []string {
 	name := strings.ToLower(filename)
 	name = strings.TrimSuffix(name, ".mp4")
 	name = strings.TrimSuffix(name, ".mov")
 	name = strings.ReplaceAll(name, "_", " ")
 	name = strings.ReplaceAll(name, "-", " ")
-	return name
+	return strings.Fields(name)
 }
 
 func normalizeSlug(s string) string {

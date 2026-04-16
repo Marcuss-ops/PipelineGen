@@ -84,7 +84,7 @@
 
 ## 🎯 Divisione Responsabilità per Layer
 
-### **LAYER 1: GO MASTER** (`go-master/`)
+### **LAYER 1: GO MASTER** (`src/go-master/`)
 
 **Responsabilità:** API HTTP, orchestrazione, state management
 
@@ -254,7 +254,7 @@ output, err := cmd.CombinedOutput()
 
 ## 📁 Struttura File per Componente
 
-### **Go Master** (`go-master/`)
+### **Go Master** (`src/go-master/`)
 ```
 cmd/server/           # Entry point
 internal/
@@ -307,7 +307,7 @@ modules/core/               # NON USATO - sostituito da Go
 
 ### **1. Avvia Go Master**
 ```bash
-cd go-master
+cd src/go-master
 go run cmd/server/main.go
 # oppure
 ./server
@@ -362,13 +362,13 @@ Deve essere nel PATH o specificare path assoluto.
 
 ### **Test Go Master:**
 ```bash
-cd go-master
+cd src/go-master
 go test ./... -v
 ```
 
 ### **Test E2E:**
 ```bash
-cd go-master
+cd src/go-master
 go test ./tests/e2e/... -v
 ```
 
@@ -385,7 +385,7 @@ curl -X POST http://localhost:8080/api/video/create-master \
 ## 📞 Supporto
 
 Per domande sull'architettura:
-- Documentazione Go: `go-master/README.md`
+- Documentazione Go: `src/go-master/README.md`
 - Documentazione Worker: `go-worker/README.md`
 - Documentazione API: `http://localhost:8080/api/docs/index.html` (Swagger)
 

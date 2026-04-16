@@ -109,8 +109,19 @@ func (ss *StatsStore) GetStats() []VideoStats {
 	return ss.data.Videos
 }
 
+// StatsSummary holds typed aggregate statistics.
+type StatsSummary struct {
+	TotalVideos      int     `json:"total_videos"`
+	TotalRequests    int     `json:"total_requests"`
+	TotalCacheHits   int     `json:"total_cache_hits"`
+	TotalNewDownloads int    `json:"total_new_downloads"`
+	TotalClips       int     `json:"total_clips"`
+	HitRatePct       float64 `json:"hit_rate_pct"`
+	NewDownloadsPct  float64 `json:"new_downloads_pct"`
+}
+
 // GetSummary returns aggregate stats.
-func (ss *StatsStore) GetSummary() map[string]interface{} {
+func (ss *StatsStore) GetSummary() StatsSummary {
 	ss.mu.RLock()
 	defer ss.mu.RUnlock()
 
@@ -137,14 +148,14 @@ func (ss *StatsStore) GetSummary() map[string]interface{} {
 		newPct = float64(totalNewDownloads) / float64(totalRequests) * 100
 	}
 
-	return map[string]interface{}{
-		"total_videos":       totalVideos,
-		"total_requests":     totalRequests,
-		"total_cache_hits":   totalCacheHits,
-		"total_new_downloads": totalNewDownloads,
-		"total_clips":        totalClips,
-		"hit_rate_pct":       hitRate,
-		"new_downloads_pct":  newPct,
+	return StatsSummary{
+		TotalVideos:       totalVideos,
+		TotalRequests:     totalRequests,
+		TotalCacheHits:    totalCacheHits,
+		TotalNewDownloads: totalNewDownloads,
+		TotalClips:        totalClips,
+		HitRatePct:        hitRate,
+		NewDownloadsPct:   newPct,
 	}
 }
 

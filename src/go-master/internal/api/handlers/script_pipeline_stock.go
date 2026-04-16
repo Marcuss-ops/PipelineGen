@@ -57,8 +57,18 @@ func (h *ScriptPipelineHandler) AssociateStock(c *gin.Context) {
 			
 			matched := false
 			for _, term := range searchTerms {
-				if strings.Contains(strings.ToLower(clip.Tags), strings.ToLower(term)) ||
-					strings.Contains(strings.ToLower(clip.Filename), strings.ToLower(term)) {
+				termLower := strings.ToLower(term)
+				// Check tags (clip.Tags is []string)
+				for _, tag := range clip.Tags {
+					if strings.Contains(strings.ToLower(tag), termLower) {
+						matched = true
+						break
+					}
+				}
+				if matched {
+					break
+				}
+				if strings.Contains(strings.ToLower(clip.Filename), termLower) {
 					matched = true
 					break
 				}

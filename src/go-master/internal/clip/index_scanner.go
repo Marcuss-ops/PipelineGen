@@ -5,16 +5,21 @@ import (
 	"sync"
 	"time"
 
+	"velox/go-master/internal/runtime"
 	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
 )
 
 // IndexScanner periodically scans and updates the clip index
+// Compile-time check that IndexScanner satisfies BackgroundService.
+var _ runtime.BackgroundService = (*IndexScanner)(nil)
+
 type IndexScanner struct {
 	indexer        *Indexer
 	indexStore     IndexStore // Interface for saving/loading index
 	scanInterval   time.Duration
 	stopCh         chan struct{}
+	stopOnce       sync.Once // prevents double-close panic on stopCh
 	mu             sync.Mutex
 	lastScanResult *ScanResult
 }
@@ -47,13 +52,25 @@ func NewIndexScanner(indexer *Indexer, indexStore IndexStore, scanInterval time.
 	}
 }
 
-// Start begins the periodic scanning loop
-func (s *IndexScanner) Start(ctx context.Context) {
+// Start begins the periodic scanning loop in a background goroutine.
+// Returns immediately (non-blocking) to satisfy BackgroundService.
+func (s *IndexScanner) Start(ctx context.Context) error {
 	logger.Info("Clip index scanner started",
 		zap.Duration("scan_interval", s.scanInterval))
 
+	go s.runLoop(ctx)
+	return nil
+}
+
+// runLoop is the main scanning loop, executed in a goroutine by Start.
+//
+// Note: periodic scans run synchronously within this loop (not as separate
+// goroutines). This is intentional — it prevents scan pile-up where a slow
+// scan overlaps with the next tick. The effective interval becomes
+// scanInterval + scanDuration, which is safer than unbounded concurrency.
+func (s *IndexScanner) runLoop(ctx context.Context) {
 	// Run an initial scan on startup
-	go s.performScan(ctx, "startup")
+	s.performScan(ctx, "startup")
 
 	// Run periodic scans
 	ticker := time.NewTicker(s.scanInterval)
@@ -68,15 +85,20 @@ func (s *IndexScanner) Start(ctx context.Context) {
 			logger.Info("Clip index scanner stopping (manual stop)")
 			return
 		case <-ticker.C:
-			go s.performScan(ctx, "periodic")
+			s.performScan(ctx, "periodic")
 		}
 	}
 }
 
-// Stop stops the periodic scanning
-func (s *IndexScanner) Stop() {
-	close(s.stopCh)
+// Stop stops the periodic scanning.
+// Safe to call multiple times (idempotent via sync.Once).
+func (s *IndexScanner) Stop() error {
+	s.stopOnce.Do(func() { close(s.stopCh) })
+	return nil
 }
+
+// Name returns the service name for lifecycle logging.
+func (s *IndexScanner) Name() string { return "ClipScanner" }
 
 // TriggerManualScan triggers an immediate scan (callable from API)
 func (s *IndexScanner) TriggerManualScan(ctx context.Context) *ScanResult {

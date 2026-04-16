@@ -50,7 +50,7 @@ type StockClipEntry struct {
 	FolderID string
 	Filename string
 	Source   string
-	Tags     string
+	Tags     []string
 	Duration int
 }
 

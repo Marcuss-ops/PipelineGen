@@ -1,4 +1,4 @@
-// Test finale completo per Gervonta Davis
+// Test finale completo per pipeline di script documentali
 // Verifica: segmentazione testo, estrazione entità, clip association, deduplicazione, Stock folders
 package scriptdocs
 
@@ -13,8 +13,8 @@ import (
 	"velox/go-master/pkg/util"
 )
 
-// Testo completo Gervonta Davis (fornito dall'utente)
-const gervontaDavisFullText = `From Nothing
+// Testo completo per test pipeline (biografia fornita dall'utente)
+const sampleFullText = `From Nothing
 
 He was born Gervonta Bryant Davis on November 7, 1994, not into boxing royalty but into Sandtown-Winchester, West Baltimore, one of the most violent zip codes in America. The official biography puts it plainly: Davis was raised in Sandtown-Winchester, his parents were drug addicts and were frequently in and out of jail. He has spoken about bouncing between homes, and reporting from his hometown notes he grew up in a foster home due to his father's absence and faced early struggles with substance abuse.
 
@@ -62,7 +62,7 @@ The outside-the-ring story had been building for almost a decade, parallel to th
 //   - 12+ immagini entity associate
 //   - Clip da Drive associate alle frasi migliori (no duplicati)
 //   - Categorie Stock associate per ogni timestamp
-func TestPipelineGervontaDavis(t *testing.T) {
+func TestPipelineScriptDocs(t *testing.T) {
 	// 1. Setup DB con dati reali
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "stock.db.json")
@@ -86,7 +86,7 @@ func TestPipelineGervontaDavis(t *testing.T) {
 
 	// 2. Test segmentazione testo
 	t.Run("text_segmentation", func(t *testing.T) {
-		sentences := extractSentences(gervontaDavisFullText)
+		sentences := ExtractSentences(sampleFullText)
 
 		if len(sentences) < 3 {
 			t.Errorf("Expected at least 3 sentences, got %d", len(sentences))
@@ -105,7 +105,7 @@ func TestPipelineGervontaDavis(t *testing.T) {
 	// 3. Test estrazione entità complete
 	t.Run("entity_extraction", func(t *testing.T) {
 		// Divide il testo in 3 segmenti
-		allSentences := extractSentences(gervontaDavisFullText)
+		allSentences := ExtractSentences(sampleFullText)
 		segmentSize := len(allSentences) / 3
 		if segmentSize < 1 {
 			segmentSize = 1
@@ -184,7 +184,7 @@ func TestPipelineGervontaDavis(t *testing.T) {
 		t.Logf("🎬 Artlist index: %d clips across %d terms", len(artlistIdx.Clips), len(artlistIdx.ByTerm))
 
 		// Simulate association logic
-		sentences := extractSentences(gervontaDavisFullText)
+		sentences := ExtractSentences(sampleFullText)
 		frasiImportanti := sentences[:util.Min(12, len(sentences))]
 
 		associatedClips := 0
@@ -192,9 +192,9 @@ func TestPipelineGervontaDavis(t *testing.T) {
 			fraseLower := strings.ToLower(frase)
 			// Check concept mapping
 			for _, concept := range conceptMap {
-				for _, kw := range concept.keywords {
+				for _, kw := range concept.Keywords {
 					if strings.Contains(fraseLower, strings.ToLower(kw)) {
-						if clips, ok := artlistIdx.ByTerm[concept.term]; ok && len(clips) > 0 {
+						if clips, ok := artlistIdx.ByTerm[concept.Term]; ok && len(clips) > 0 {
 							associatedClips++
 						}
 						break
@@ -275,7 +275,7 @@ func TestPipelineGervontaDavis(t *testing.T) {
 	t.Run("entity_images", func(t *testing.T) {
 		// This would test Unsplash integration
 		// For now, just verify the entity extraction for image-worthy nouns
-		sentences := extractSentences(gervontaDavisFullText)
+		sentences := ExtractSentences(sampleFullText)
 		nomiSpeciali := extractProperNouns(sentences)
 
 		imageWorthy := 0
@@ -295,7 +295,7 @@ func TestPipelineGervontaDavis(t *testing.T) {
 
 	// 8. Test timestamp association
 	t.Run("timestamp_associations", func(t *testing.T) {
-		allSentences := extractSentences(gervontaDavisFullText)
+		allSentences := ExtractSentences(sampleFullText)
 		_ = allSentences // used for validation above
 		totalDuration := 80 // seconds
 		numSegments := 3
@@ -323,11 +323,11 @@ func TestPipelineGervontaDavis(t *testing.T) {
 	// 9. Test full document generation
 	t.Run("document_generation", func(t *testing.T) {
 		// Simulate document building
-		content := fmt.Sprintf("📝 Gervonta Davis: The Complete Story\n\n%s\n\n", gervontaDavisFullText[:500])
+		content := fmt.Sprintf("📝 Sample Script: The Complete Story\n\n%s\n\n", sampleFullText[:500])
 
-		allSentences := extractSentences(gervontaDavisFullText)
+		allSentences := ExtractSentences(sampleFullText)
 		nomi := extractProperNouns(allSentences)
-		parole := extractKeywords(gervontaDavisFullText)
+		parole := extractKeywords(sampleFullText)
 
 		content += fmt.Sprintf("👤 Nomi Speciali: %v\n", nomi[:util.Min(12, len(nomi))])
 		content += fmt.Sprintf("🔑 Parole Importanti: %v\n", parole[:util.Min(12, len(parole))])
@@ -342,9 +342,9 @@ func TestPipelineGervontaDavis(t *testing.T) {
 
 	// 10. Test complete pipeline summary
 	t.Run("pipeline_summary", func(t *testing.T) {
-		allSentences := extractSentences(gervontaDavisFullText)
+		allSentences := ExtractSentences(sampleFullText)
 		nomi := extractProperNouns(allSentences)
-		parole := extractKeywords(gervontaDavisFullText)
+		parole := extractKeywords(sampleFullText)
 
 		t.Logf("🏁 PIPELINE SUMMARY:")
 		t.Logf("   📝 Total sentences: %d", len(allSentences))

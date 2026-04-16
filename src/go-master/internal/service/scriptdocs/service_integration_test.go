@@ -184,9 +184,9 @@ func TestEntityExtractionCorrectness(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test sentence extraction
-			sentences := extractSentences(tt.text)
+			sentences := ExtractSentences(tt.text)
 			if len(sentences) != tt.wantSentences {
-				t.Errorf("extractSentences() got %d sentences, want %d", len(sentences), tt.wantSentences)
+				t.Errorf("ExtractSentences() got %d sentences, want %d", len(sentences), tt.wantSentences)
 			}
 
 			// Test proper noun extraction
@@ -226,7 +226,7 @@ Nel dicembre 2022 Andrew e suo fratello Tristan sono stati arrestati in Romania.
 La sua influenza continua nonostante le controversie legali. Milioni di giovani lo seguono e condividono i suoi contenuti online.`
 
 	// Test sentence extraction
-	sentences := extractSentences(longScript)
+	sentences := ExtractSentences(longScript)
 	if len(sentences) < 15 {
 		t.Errorf("Long script should have at least 15 sentences, got %d", len(sentences))
 	}
@@ -348,7 +348,7 @@ func TestFullStockAndArtlistIntegration(t *testing.T) {
 	script := `Andrew Tate è nato in Romania nel 1986 e ha dominato il kickboxing mondiale per molti anni. Ha costruito un impero di business online con milioni di follower su tutte le piattaforme social. La sua influenza sui giovani è enorme con corsi di trading e lifestyle. Washington ha arrestato Andrew Tate con accuse di crimine organizzato e violenza. Il processo è ancora in corso con udienze previste per il futuro.`
 
 	// Step 1: Extract sentences
-	sentences := extractSentences(script)
+	sentences := ExtractSentences(script)
 	if len(sentences) < 3 {
 		t.Fatalf("Script too short, got %d sentences", len(sentences))
 	}
@@ -468,7 +468,7 @@ func TestEntityExtractionWithMultipleLanguages(t *testing.T) {
 
 	for lang, script := range scripts {
 		t.Run(lang, func(t *testing.T) {
-			sentences := extractSentences(script)
+			sentences := ExtractSentences(script)
 			if len(sentences) == 0 {
 				t.Errorf("Should extract at least 1 sentence for %s", lang)
 			}
@@ -587,7 +587,7 @@ func TestStockAndArtlistNotDrive(t *testing.T) {
 
 	// Simulate script generation and entity extraction
 	script := "Molte persone seguono la tecnologia della città con innovazione."
-	sentences := extractSentences(script)
+	sentences := ExtractSentences(script)
 	frasi := sentences[:util.Min(3, len(sentences))]
 	nouns := extractProperNouns(sentences)
 	keywords := extractKeywords(script)
@@ -658,10 +658,10 @@ func TestSaveResultsToFile(t *testing.T) {
 		Topic:       "Andrew Tate",
 		Duration:    80,
 		StockFolder: svc.resolveStockFolder("Andrew Tate"),
-		Sentences:   extractSentences(script),
-		Nouns:       extractProperNouns(extractSentences(script)),
+		Sentences:   ExtractSentences(script),
+		Nouns:       extractProperNouns(ExtractSentences(script)),
 		Keywords:    extractKeywords(script),
-		Associations: svc.associateClips(extractSentences(script)[:util.Min(5, len(extractSentences(script)))]),
+		Associations: svc.associateClips(ExtractSentences(script)[:util.Min(5, len(ExtractSentences(script)))]),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 

@@ -383,7 +383,7 @@ curl -s http://localhost:8080/api/clip/index/stats
 **Fix:**
 - Use more specific topic: "Tesla Model S" instead of "cars"
 - Increase `target_duration` for more context
-- Check logs: `tail -f go-master/data/logs/server.log`
+- Check logs: `tail -f src/go-master/data/logs/server.log`
 
 ---
 
@@ -504,7 +504,7 @@ curl -s http://localhost:8080/api/clip/index/stats
 
 1. **Avvia il server:**
    ```bash
-   cd go-master
+   cd src/go-master
    ./start.sh
    ```
 

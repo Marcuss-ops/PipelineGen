@@ -29,7 +29,7 @@ Avvio wake: **`./run_wake_server.sh`** (log in `/tmp/wake_api.log`). Per dettagl
 ### 1.1 Impostazione all’avvio
 
 - **`config.js`** (caricato da `index.html`):
-  - `window.API_BASE_URL = window.location.origin` (es. `http://localhost:8000` o `http://77.93.152.122:8000`)
+  - `window.API_BASE_URL = window.location.origin` (es. `http://localhost:8080` o `http://77.93.152.122:8080`)
   - `window.VOICEOVER_SERVER_URL = 'http://' + host + ':8001'` (fallback se il backend non fornisce altro)
   - `window.voiceover_server_url = window.VOICEOVER_SERVER_URL`
 
@@ -37,9 +37,9 @@ Avvio wake: **`./run_wake_server.sh`** (log in `/tmp/wake_api.log`). Per dettagl
   - **GET** `{API_BASE_URL}/api/client-config`
   - Body: nessuno
   - In risposta: se `data.ok && data.voiceover_server_url` → `window.voiceover_server_url = data.voiceover_server_url`
-  - Così il frontend usa l’URL voiceover restituito dal backend (es. stesso host:8000 se il voiceover è esposto lì), invece del default :8001.
+  - Così il frontend usa l’URL voiceover restituito dal backend (es. stesso host:8080 se il voiceover è esposto lì), invece del default :8001.
 
-In sintesi: **tutte le chiamate API** usano `(window.API_BASE_URL || '') + '/api/...'`. Il voiceover può usare lo stesso host (es. `/api/voiceover` su 8000) o un server dedicato (8001) se restituito da `client-config`.
+In sintesi: **tutte le chiamate API** usano `(window.API_BASE_URL || '') + '/api/...'`. Il voiceover può usare lo stesso host (es. `/api/voiceover` su 8080) o un server dedicato (8001) se restituito da `client-config`.
 
 ---
 
@@ -105,7 +105,7 @@ In sintesi: **tutte le chiamate API** usano `(window.API_BASE_URL || '') + '/api
   - Ripetuto a intervalli fino a `task.status === 'completed'` o `'failed'` o timeout.
   - Da `task.drive_file_id` o `task.drive_url` il frontend costruisce l’URL Drive e lo associa al titolo/lingua.
 
-Quindi: **le chiamate voiceover** possono andare tutte allo stesso `API_BASE_URL` (es. porta 8000) se il backend espone `/api/voiceover` lì; altrimenti si usa il server restituito da client-config (es. :8001).
+Quindi: **le chiamate voiceover** possono andare tutte allo stesso `API_BASE_URL` (es. porta 8080) se il backend espone `/api/voiceover` lì; altrimenti si usa il server restituito da client-config (es. :8001).
 
 ---
 
@@ -199,8 +199,8 @@ Anche queste usano `API_BASE_URL`.
 
 - **Sempre** `fetch()` nativo (nessun axios).
 - **Headers**: per JSON viene impostato `Content-Type: application/json` e il body è `JSON.stringify(...)`.
-- **Base URL**: `(window.API_BASE_URL || '') + path`; se la pagina è servita dallo stesso server (stessa origin), `API_BASE_URL` è l’origin quindi le chiamate sono same-origin (es. `http://localhost:8000/api/...`).
-- **Voiceover**: prima si prova `API_BASE_URL` (stesso server), poi eventuale server dedicato da `client-config` / `VOICEOVER_SERVER_URL`, così con un solo host (es. 8000) tutto funziona senza 8001.
+- **Base URL**: `(window.API_BASE_URL || '') + path`; se la pagina è servita dallo stesso server (stessa origin), `API_BASE_URL` è l’origin quindi le chiamate sono same-origin (es. `http://localhost:8080/api/...`).
+- **Voiceover**: prima si prova `API_BASE_URL` (stesso server), poi eventuale server dedicato da `client-config` / `VOICEOVER_SERVER_URL`, così con un solo host (es. 8080) tutto funziona senza 8001.
 
 ---
 

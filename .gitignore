@@ -66,7 +66,12 @@ logs/
 # Sensitive credentials (never commit)
 credentials.json
 token.json
+
+# Runtime data files (JSON databases regenerated at startup)
 *.db.json
+
+# Runtime data directories
+src/go-master/data/
 
 # Config backups
 config/backups/
@@ -74,6 +79,7 @@ config/backups/
 # Test data
 data/stock-links/
 data/lightpanda/
+data/examples/
 
 # Effects test directory
 effects/Test/
@@ -95,3 +101,4 @@ assets/fonts/*.ttf
 src/python-legacy/
 
 tests/lightpanda/lightpanda
+.github/workflows/

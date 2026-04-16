@@ -173,10 +173,10 @@ func TestFullPipelineWithRealDB(t *testing.T) {
 		}
 	})
 
-	// ===== TEST 4: Entity Extraction from Gervonta Script =====
-	t.Run("entity_extraction_gervonta_real", func(t *testing.T) {
-		script := loadGervontaScript()
-		sentences := extractSentences(script)
+	// ===== TEST 4: Entity Extraction =====
+	t.Run("entity_extraction_real_db", func(t *testing.T) {
+		script := loadSampleScript()
+		sentences := ExtractSentences(script)
 
 		if len(sentences) < 10 {
 			t.Errorf("Expected at least 10 sentences, got %d", len(sentences))
@@ -216,8 +216,8 @@ func TestFullPipelineWithRealDB(t *testing.T) {
 			stockDB: db,
 		}
 
-		script := loadGervontaScript()
-		sentences := extractSentences(script)
+		script := loadSampleScript()
+		sentences := ExtractSentences(script)
 		frasi := sentences[:util.Min(12, len(sentences))]
 
 		// Associate clips with deduplication
@@ -321,8 +321,8 @@ func TestFullPipelineWithRealDB(t *testing.T) {
 	})
 }
 
-// TestGervontaEndToEnd tests the full Gervonta Davis pipeline with real DB
-func TestGervontaEndToEnd(t *testing.T) {
+// TestScriptDocsEndToEnd tests the full script docs pipeline with real DB
+func TestScriptDocsEndToEnd(t *testing.T) {
 	// Load real DB
 	dbPath := "../../../data/stock.db.json"
 	if _, err := os.Stat(dbPath); err != nil {
@@ -335,7 +335,7 @@ func TestGervontaEndToEnd(t *testing.T) {
 	}
 	defer db.Close()
 
-	t.Logf("=== GERvonta Davis End-to-End Test ===")
+	t.Logf("=== Script Docs End-to-End Test ===")
 	t.Logf("DB loaded: %d folders, %d clips", len(mustGetFolders(db)), len(mustGetClips(db)))
 
 	// Step 1: Resolve Stock folder
@@ -391,26 +391,3 @@ func mustGetClips(db *stockdb.StockDB) []stockdb.StockClipEntry {
 	return clips
 }
 
-func loadGervontaScriptForRealDB() string {
-	return `From Nothing
-
-He was born Gervonta Bryant Davis on November 7, 1994, not into boxing royalty but into Sandtown-Winchester, West Baltimore, one of the most violent zip codes in America. The official biography puts it plainly: Davis was raised in Sandtown-Winchester, his parents were drug addicts and were frequently in and out of jail.
-
-Boxing was not a hobby. It was daycare, then discipline, then salvation. At five years old he walked into Upton Boxing Center, a converted gym on Pennsylvania Avenue, and met Calvin Ford, the man who would become trainer, father figure, and legal guardian in practice if not on paper.
-
-He turned pro at 18, on February 22, 2013, against Desi Williams at the D.C. Armory, and won via first-round knockout. By August 2014 he was 8-0, all inside the distance. Floyd Mayweather Jr. saw the tape and signed him to Mayweather Promotions in 2015.
-
-The rise was violent and fast. On January 14, 2017, at Barclays Center, the 22-year-old challenged undefeated IBF super featherweight champion Jose Pedraza. Davis defeated Pedraza in a seventh-round KO to win the IBF super featherweight title.
-
-What followed was a rare kind of dominance across weight. He became a holder of the IBF super featherweight title in 2017, the WBA super featherweight title twice between 2018 and 2020, the WBA super lightweight title in 2021, and the WBA lightweight title from 2023 to 2026.
-
-Léo Santa Cruz, October 31, 2020. Alamodome, pandemic era. Davis retained his WBA lightweight title and won the WBA super featherweight title with a left uppercut in round six that is still replayed as a perfect punch.
-
-Mario Barrios, June 26, 2021. Moving up to 140 pounds, Davis stopped the bigger Barrios in the 11th to win the WBA super lightweight title. He became a three-division champion at 26.
-
-Ryan Garcia, April 22, 2023. This was the cultural peak. T-Mobile Arena, Showtime and DAZN joint PPV, two undefeated social-media stars in their prime. Davis won by KO in round 7. The fight did 1,200,000 buys and $87,000,000 in revenue.
-
-By then Tank was no longer just a fighter. He was a Baltimore homecoming, he was Under Armour deals, 3.4 million Instagram followers, and a knockout rate of 93 percent.
-
-Then came the case that broke the career. On October 31, 2025, his former girlfriend filed a civil lawsuit alleging battery, kidnapping and false imprisonment. The boxing world reacted instantly. WBA announced Davis was no longer the active titleholder but had been given the title of champion in recess.`
-}

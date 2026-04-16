@@ -31,9 +31,8 @@ def start_server():
     print("▶ Avvio server Go...")
     # Cerca il server in vari percorsi
     server_paths = [
-        os.path.join(os.path.dirname(__file__), "..", "go-master", "server"),
-        "/home/pierone/Pyt/VeloxEditing/refactored/go-master/server",
-        os.path.join(os.getcwd(), "go-master", "server")
+        os.path.join(os.path.dirname(__file__), "..", "src", "go-master", "server"),
+        os.path.join(os.getcwd(), "src", "go-master", "server")
     ]
     
     server_path = None
@@ -44,7 +43,7 @@ def start_server():
     
     if not server_path:
         print(f"✗ Server non trovato")
-        print("  Compila con: cd go-master && make build")
+        print("  Compila con: cd src/go-master && make build")
         return False
     
     server_dir = os.path.dirname(server_path)

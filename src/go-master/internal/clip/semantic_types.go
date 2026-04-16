@@ -50,9 +50,7 @@ func containsString(slice []string, item string) bool {
 
 // normalizeSentence normalizes whitespace and trims for consistent cache keys
 func normalizeSentence(sentence string) string {
-	// Trim whitespace
 	s := strings.TrimSpace(sentence)
-	// Normalize internal whitespace: collapse multiple spaces into one
 	var result strings.Builder
 	prevSpace := false
 	for _, r := range s {
@@ -72,6 +70,6 @@ func normalizeSentence(sentence string) string {
 // buildCacheKey creates a compact cache key using SHA256 hash for long strings
 func buildCacheKey(prefix, text string, maxResults int, minScore float64, mediaType string) string {
 	hash := sha256.Sum256([]byte(text))
-	hashStr := fmt.Sprintf("%x", hash[:8]) // Use first 8 bytes for uniqueness
+	hashStr := fmt.Sprintf("%x", hash[:8])
 	return fmt.Sprintf("%s:%s:%d:%.0f:%s", prefix, hashStr, maxResults, minScore, mediaType)
 }

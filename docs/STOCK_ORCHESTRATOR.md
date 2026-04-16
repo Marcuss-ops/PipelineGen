@@ -274,10 +274,10 @@ pip install --upgrade yt-dlp
 
 ```bash
 # Check credentials
-ls -lh go-master/credentials.json go-master/token.json
+ls -lh src/go-master/credentials.json src/go-master/token.json
 
 # Re-authenticate
-rm go-master/token.json
+rm src/go-master/token.json
 # Restart server and follow OAuth flow
 ```
 

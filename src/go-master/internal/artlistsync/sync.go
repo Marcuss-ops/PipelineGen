@@ -38,7 +38,6 @@ type ArtlistSync struct {
 	lastSync      time.Time
 	mu            sync.Mutex
 	running       bool
-	stopCh        chan struct{}
 }
 
 func NewArtlistSync(driveClient *drive.Client, artlistRootID, outputPath string) *ArtlistSync {
@@ -46,7 +45,6 @@ func NewArtlistSync(driveClient *drive.Client, artlistRootID, outputPath string)
 		driveClient:   driveClient,
 		artlistRootID: artlistRootID,
 		outputPath:    outputPath,
-		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -198,30 +196,6 @@ func (s *ArtlistSync) Sync(ctx context.Context) error {
 	)
 
 	return nil
-}
-
-func (s *ArtlistSync) StartAutoSync(ctx context.Context, interval time.Duration) {
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if err := s.Sync(ctx); err != nil {
-					logger.Error("Artlist auto-sync failed", zap.Error(err))
-				}
-			case <-s.stopCh:
-				return
-			}
-		}
-	}()
-}
-
-func (s *ArtlistSync) StopAutoSync() {
-	close(s.stopCh)
 }
 
 func (s *ArtlistSync) GetLastSyncTime() time.Time {

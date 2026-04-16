@@ -107,14 +107,4 @@ func (h *DriveHandler) GetDriveClient() *drive.Client {
 	return h.driveClient
 }
 
-// Helper functions
 
-func parseIntQuery(c *gin.Context, key string, defaultVal int) int {
-	if val := c.Query(key); val != "" {
-		var result int
-		if _, err := fmt.Sscanf(val, "%d", &result); err == nil {
-			return result
-		}
-	}
-	return defaultVal
-}

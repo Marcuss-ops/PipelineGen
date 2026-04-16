@@ -3,8 +3,13 @@
 package textgen
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -92,36 +97,63 @@ type ScriptSection struct {
 type Generator struct {
 	gpuManager *gpu.Manager
 	config     *GeneratorConfig
+	httpClient *http.Client
 }
 
 // GeneratorConfig holds configuration for the text generator
 type GeneratorConfig struct {
-	DefaultProvider Provider `json:"default_provider"`
-	DefaultModel    string   `json:"default_model"`
-	DefaultTemperature float64 `json:"default_temperature"`
-	DefaultMaxTokens   int     `json:"default_max_tokens"`
-	MaxRetries      int      `json:"max_retries"`
-	Timeout         time.Duration `json:"timeout"`
-	GPUSupported    bool     `json:"gpu_supported"`
+	DefaultProvider    Provider       `json:"default_provider"`
+	DefaultModel       string         `json:"default_model"`
+	DefaultTemperature float64       `json:"default_temperature"`
+	DefaultMaxTokens   int           `json:"default_max_tokens"`
+	MaxRetries         int           `json:"max_retries"`
+	Timeout            time.Duration `json:"timeout"`
+	GPUSupported       bool          `json:"gpu_supported"`
+
+	// Provider endpoints
+	OllamaURL  string `json:"ollama_url"`
+	OpenAIKey  string `json:"openai_key"`
+	GroqKey    string `json:"groq_key"`
+	GroqURL    string `json:"groq_url"`
 }
 
 // NewGenerator creates a new text generator
 func NewGenerator(gpuMgr *gpu.Manager, config *GeneratorConfig) *Generator {
 	if config == nil {
 		config = &GeneratorConfig{
-			DefaultProvider:  ProviderOllama,
-			DefaultModel:     "llama2",
+			DefaultProvider:    ProviderOllama,
+			DefaultModel:       "llama2",
 			DefaultTemperature: 0.7,
 			DefaultMaxTokens:   2048,
-			MaxRetries:        3,
-			Timeout:           5 * time.Minute,
-			GPUSupported:      true,
+			MaxRetries:         3,
+			Timeout:            5 * time.Minute,
+			GPUSupported:       true,
 		}
 	}
-	
+
+	// Populate API keys from environment if not set in config
+	if config.OllamaURL == "" {
+		config.OllamaURL = os.Getenv("OLLAMA_ADDR")
+		if config.OllamaURL == "" {
+			config.OllamaURL = "http://localhost:11434"
+		}
+	}
+	if config.OpenAIKey == "" {
+		config.OpenAIKey = os.Getenv("OPENAI_API_KEY")
+	}
+	if config.GroqKey == "" {
+		config.GroqKey = os.Getenv("GROQ_API_KEY")
+	}
+	if config.GroqURL == "" {
+		config.GroqURL = "https://api.groq.com/openai/v1"
+	}
+
 	return &Generator{
 		gpuManager: gpuMgr,
 		config:     config,
+		httpClient: &http.Client{
+			Timeout: config.Timeout,
+		},
 	}
 }
 
@@ -256,42 +288,56 @@ func (g *Generator) GenerateScript(ctx context.Context, req *ScriptRequest) (*Sc
 	return scriptResult, nil
 }
 
-// generateWithOllama generates text using Ollama
+// generateWithOllama generates text using Ollama API
 func (g *Generator) generateWithOllama(ctx context.Context, req *GenerationRequest, gpuEnabled bool) (string, error) {
-	// This would call your existing Ollama integration
-	// For now, return a placeholder showing GPU integration
 	logger.Info("Generating with Ollama",
 		zap.String("model", req.Model),
 		zap.Bool("gpu_enabled", gpuEnabled),
 	)
 
-	// TODO: Implement actual Ollama API call
-	// Use GPU environment variables from gpu manager if enabled
-	// Example:
-	// env := g.gpuManager.GetOllamaEnv()
-	// Make HTTP request to Ollama API with prompt
+	url := g.config.OllamaURL + "/api/generate"
+	ollamaReq := map[string]interface{}{
+		"model":  req.Model,
+		"prompt": req.Prompt,
+		"stream": false,
+		"options": map[string]interface{}{
+			"temperature": req.Temperature,
+			"num_predict":  req.MaxTokens,
+		},
+	}
+	if req.SystemPrompt != "" {
+		ollamaReq["system"] = req.SystemPrompt
+	}
 
-	return "", fmt.Errorf("Ollama integration pending - connect to existing ml module")
+	return g.doJSONPost(ctx, url, ollamaReq, "response")
 }
 
-// generateWithOpenAI generates text using OpenAI API
+// generateWithOpenAI generates text using OpenAI Chat Completions API
 func (g *Generator) generateWithOpenAI(ctx context.Context, req *GenerationRequest) (string, error) {
+	if g.config.OpenAIKey == "" {
+		return "", fmt.Errorf("OpenAI API key not configured: set OPENAI_API_KEY env var")
+	}
+
 	logger.Info("Generating with OpenAI",
 		zap.String("model", req.Model),
 	)
-	
-	// TODO: Implement OpenAI API call
-	return "", fmt.Errorf("OpenAI integration pending")
+
+	url := "https://api.openai.com/v1/chat/completions"
+	return g.doChatCompletion(ctx, url, g.config.OpenAIKey, req)
 }
 
-// generateWithGroq generates text using Groq API
+// generateWithGroq generates text using Groq Chat Completions API
 func (g *Generator) generateWithGroq(ctx context.Context, req *GenerationRequest) (string, error) {
+	if g.config.GroqKey == "" {
+		return "", fmt.Errorf("Groq API key not configured: set GROQ_API_KEY env var")
+	}
+
 	logger.Info("Generating with Groq",
 		zap.String("model", req.Model),
 	)
-	
-	// TODO: Implement Groq API call
-	return "", fmt.Errorf("Groq integration pending")
+
+	url := g.config.GroqURL + "/chat/completions"
+	return g.doChatCompletion(ctx, url, g.config.GroqKey, req)
 }
 
 // buildScriptSystemPrompt creates the system prompt for script generation
@@ -378,7 +424,7 @@ func (g *Generator) GetGPUStatus(ctx context.Context) map[string]interface{} {
 			"reason":        "GPU manager not configured",
 		}
 	}
-	
+
 	gpu, err := g.gpuManager.GetSelectedGPU()
 	if err != nil {
 		return map[string]interface{}{
@@ -386,10 +432,125 @@ func (g *Generator) GetGPUStatus(ctx context.Context) map[string]interface{} {
 			"error":         err.Error(),
 		}
 	}
-	
+
 	return map[string]interface{}{
 		"gpu_available": true,
 		"gpu_info":      gpu,
 		"is_healthy":    g.gpuManager.IsHealthy(ctx),
+	}
+}
+
+// doChatCompletion sends a request to an OpenAI-compatible Chat Completions API.
+// Used by both OpenAI and Groq since they share the same API format.
+func (g *Generator) doChatCompletion(ctx context.Context, url, apiKey string, req *GenerationRequest) (string, error) {
+	messages := []map[string]string{}
+	if req.SystemPrompt != "" {
+		messages = append(messages, map[string]string{"role": "system", "content": req.SystemPrompt})
+	}
+	messages = append(messages, map[string]string{"role": "user", "content": req.Prompt})
+
+	body := map[string]interface{}{
+		"model":       req.Model,
+		"messages":    messages,
+		"temperature": req.Temperature,
+		"max_tokens":  req.MaxTokens,
+		"stream":      false,
+	}
+	if req.TopP > 0 {
+		body["top_p"] = req.TopP
+	}
+
+	return g.doJSONPostWithAuth(ctx, url, "Bearer "+apiKey, body, "choices.0.message.content")
+}
+
+// doJSONPost sends a JSON POST request and extracts a field from the response.
+// responseKey uses dot notation to navigate nested JSON (e.g., "choices.0.message.content").
+func (g *Generator) doJSONPost(ctx context.Context, url string, payload interface{}, responseKey string) (string, error) {
+	return g.doJSONPostWithAuth(ctx, url, "", payload, responseKey)
+}
+
+// doJSONPostWithAuth sends a JSON POST with optional Authorization header.
+func (g *Generator) doJSONPostWithAuth(ctx context.Context, url, authHeader string, payload interface{}, responseKey string) (string, error) {
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// Parse response and extract the requested key
+	var result interface{}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return extractJSONKey(result, responseKey)
+}
+
+// extractJSONKey navigates a nested JSON structure using dot notation.
+// Numeric keys (e.g., "0") are treated as array indices.
+func extractJSONKey(data interface{}, key string) (string, error) {
+	parts := strings.Split(key, ".")
+	current := data
+
+	for _, part := range parts {
+		if current == nil {
+			return "", fmt.Errorf("key %q not found in response", key)
+		}
+
+		// Try array index first
+		var i int
+		if n, err := fmt.Sscanf(part, "%d", &i); err == nil && n == 1 {
+			arr, ok := current.([]interface{})
+			if !ok || i >= len(arr) {
+				return "", fmt.Errorf("key %q: array index %d out of bounds", key, i)
+			}
+			current = arr[i]
+			continue
+		}
+
+		// Map key
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("key %q: expected object, got %T", key, current)
+		}
+		val, exists := m[part]
+		if !exists {
+			return "", fmt.Errorf("key %q not found in response", key)
+		}
+		current = val
+	}
+
+	switch v := current.(type) {
+	case string:
+		return v, nil
+	default:
+		bytes, err := json.Marshal(v)
+		if err != nil {
+			return "", fmt.Errorf("failed to serialize result: %w", err)
+		}
+		return string(bytes), nil
 	}
 }

@@ -5,18 +5,25 @@ import (
 	"context"
 	"fmt"
 
+	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
 )
 
 // Generator implementa ScriptGenerator
 type Generator struct {
-	client *Client
+	client       *Client
+	youtubeClient youtube.Client
 }
 
 // NewGenerator crea un nuovo generatore di script
 func NewGenerator(client *Client) *Generator {
 	return &Generator{client: client}
+}
+
+// SetYouTubeClient sets the YouTube client for transcript download
+func (g *Generator) SetYouTubeClient(ytClient youtube.Client) {
+	g.youtubeClient = ytClient
 }
 
 // GetClient restituisce il client Ollama sottostante
@@ -82,9 +89,27 @@ func (g *Generator) GenerateFromYouTube(ctx context.Context, req *YouTubeGenerat
 		req.Model = "gemma3:4b"
 	}
 
-	// TODO: Implementare download transcript YouTube
-	// Per ora ritorna errore esplicativo
-	return nil, fmt.Errorf("YouTube transcript download not yet implemented - use GenerateFromText with transcript text")
+	if g.youtubeClient == nil {
+		return nil, fmt.Errorf("YouTube client not configured - use GenerateFromYouTubeTranscript with pre-fetched transcript text")
+	}
+
+	// Download transcript using YouTube client
+	transcript, err := g.youtubeClient.GetTranscript(ctx, req.YouTubeURL, req.Language)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download YouTube transcript: %w", err)
+	}
+
+	if transcript == "" {
+		return nil, fmt.Errorf("YouTube transcript is empty — the video may not have subtitles available")
+	}
+
+	logger.Info("YouTube transcript downloaded",
+		zap.String("url", req.YouTubeURL),
+		zap.Int("transcript_len", len(transcript)),
+	)
+
+	// Delegate to GenerateFromYouTubeTranscript
+	return g.GenerateFromYouTubeTranscript(ctx, transcript, req)
 }
 
 // GenerateFromYouTubeTranscript genera uno script da trascrizione YouTube

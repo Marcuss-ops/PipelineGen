@@ -3,19 +3,23 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/service/channelmonitor"
 	"velox/go-master/internal/youtube"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
+	"velox/go-master/pkg/security"
 
 	"go.uber.org/zap"
 )
@@ -26,16 +30,18 @@ type ChannelMonitorHandler struct {
 	ytClient    youtube.Client
 	driveClient *drive.Client
 	ollamaURL   string
+	configDir   string // base directory for config/data files (from cfg.Storage.DataDir)
 	mu          sync.RWMutex // protects monitor re-creation
 }
 
 // NewChannelMonitorHandler creates a new handler
-func NewChannelMonitorHandler(monitor *channelmonitor.Monitor, ytClient youtube.Client, driveClient *drive.Client, ollamaURL string) *ChannelMonitorHandler {
+func NewChannelMonitorHandler(monitor *channelmonitor.Monitor, ytClient youtube.Client, driveClient *drive.Client, ollamaURL, configDir string) *ChannelMonitorHandler {
 	return &ChannelMonitorHandler{
 		monitor:     monitor,
 		ytClient:    ytClient,
 		driveClient: driveClient,
 		ollamaURL:   ollamaURL,
+		configDir:   configDir,
 	}
 }
 
@@ -69,8 +75,19 @@ type ProcessSingleVideoRequest struct {
 // @Router /monitor/process-video [post]
 func (h *ChannelMonitorHandler) ProcessSingleVideo(c *gin.Context) {
 	var req ProcessSingleVideoRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "youtube_url is required"})
+	if err := middleware.BindAndValidate(c, &req); err != nil {
+		var ve *middleware.ValidationError
+		if errors.As(err, &ve) {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": ve.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "youtube_url is required"})
+		}
+		return
+	}
+
+	// Validate YouTube URL before processing
+	if err := security.ValidateDownloadURL(req.YouTubeURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid YouTube URL: " + err.Error()})
 		return
 	}
 
@@ -78,6 +95,10 @@ func (h *ChannelMonitorHandler) ProcessSingleVideo(c *gin.Context) {
 	videoID := extractVideoIDFromURL(req.YouTubeURL)
 	if videoID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid YouTube URL"})
+		return
+	}
+	if err := security.ValidateVideoID(videoID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid video ID: " + err.Error()})
 		return
 	}
 
@@ -135,7 +156,7 @@ func (h *ChannelMonitorHandler) processVideoAsync(ctx context.Context, videoID s
 	}
 
 	// Get channel config for defaults
-	cfg, _ := channelmonitor.LoadConfigWithDefaults("data/channel_monitor_config.json")
+	cfg, _ := channelmonitor.LoadConfigWithDefaults(filepath.Join(h.configDir, "channel_monitor_config.json"))
 	maxClipDuration := cfg.MaxClipDuration
 	if maxClipDuration == 0 {
 		maxClipDuration = 60
@@ -354,7 +375,7 @@ func (h *ChannelMonitorHandler) GetStatus(c *gin.Context) {
 // @Success 200 {object} map[string]interface{}
 // @Router /monitor/config [get]
 func (h *ChannelMonitorHandler) GetConfig(c *gin.Context) {
-	cfg, err := channelmonitor.LoadConfigWithDefaults("data/channel_monitor_config.json")
+	cfg, err := channelmonitor.LoadConfigWithDefaults(filepath.Join(h.configDir, "channel_monitor_config.json"))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"ok": true,
@@ -399,8 +420,8 @@ func (h *ChannelMonitorHandler) GetProcessedVideos(c *gin.Context) {
 	// Return the processed videos log file content
 	c.JSON(http.StatusOK, gin.H{
 		"ok": true,
-		"processed_videos_file": "data/channel_monitor_processed.json",
-		"message": "Check data/channel_monitor_processed.json for full list",
+		"processed_videos_file": filepath.Join(h.configDir, "channel_monitor_processed.json"),
+		"message": fmt.Sprintf("Check %s for full list", filepath.Join(h.configDir, "channel_monitor_processed.json")),
 	})
 }
 

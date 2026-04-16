@@ -133,6 +133,14 @@ func (m *StockManager) searchYouTubeWithYtDlp(ctx context.Context, query string,
 		return nil, fmt.Errorf("yt-dlp not found in PATH")
 	}
 
+	// Sanitize query to prevent injection (yt-dlp takes it as a single arg)
+	if strings.ContainsAny(query, "`;|&$\"'\\") {
+		return nil, fmt.Errorf("search query contains forbidden characters")
+	}
+	if len(query) > 200 {
+		return nil, fmt.Errorf("search query too long (max 200 chars)")
+	}
+
 	args := []string{
 		fmt.Sprintf("ytsearch%d:%s", maxResults, query),
 		"--dump-json",

@@ -6,7 +6,7 @@ Documentazione per l’accesso alle API dal PC dove gira il server e per l’acc
 
 ## 1. Accesso API e documentazione (docs)
 
-- **Se il server API è spento**: nessun endpoint è raggiungibile (né script, né voiceover, né documentazione). Le chiamate verso la porta dell’API (es. 5000 o 8000) vanno in timeout o connessione rifiutata.
+- **Se il server API è spento**: nessun endpoint è raggiungibile (né script, né voiceover, né documentazione). Le chiamate verso la porta dell’API (es. 5000 o 8080) vanno in timeout o connessione rifiutata.
 
 - **Se il server API è acceso**:
   - **GET /api/docs** è disponibile e restituisce la documentazione completa in JSON (base_url, endpoints, curl, availability, wake_from_remote, ecc.).
@@ -32,7 +32,7 @@ In sintesi: la documentazione e le API sono disponibili **solo quando il process
 
 Tutti i messaggi sono scritti su **stderr** (prefisso `[wake]`), così compaiono in console e in `nohup ... >> file 2>&1`:
 - `Wake server in ascolto su http://0.0.0.0:4999`
-- `Docs API: http://...:8000/api/docs`
+- `Docs API: http://...:8080/api/docs`
 - `Avvio server API in background: ...` quando viene lanciato il processo API
 - `Server API partito e raggiungibile su http://.../api/docs` quando l’API risponde dopo l’avvio (automatico o da /wake)
 
@@ -41,7 +41,7 @@ Tutti i messaggi sono scritti su **stderr** (prefisso `[wake]`), così compaiono
 | Variabile   | Significato                          | Default   |
 |------------|--------------------------------------|-----------|
 | **WAKE_PORT** | Porta su cui resta in ascolto il wake server | 4999      |
-| **API_PORT**  | Porta su cui gira (o deve girare) l’API      | 8000 (o 5000) |
+| **API_PORT**  | Porta su cui gira (o deve girare) l’API      | 8080 (o 5000) |
 | **AUTO_START_API** | Se "1" (default), all’avvio del wake server avvia anche l’API se non risponde; "0" = avvio solo su GET /wake | 1 |
 | **START_API_CMD** | Comando per avviare l’API in background (es. `python studio_app.py` o `python job_master_server.py`) | vedi script |
 
@@ -85,7 +85,7 @@ Per verificare lo stato (senza avviare):
 curl -s http://<IP_QUESTO_PC>:4999/status
 ```
 
-Risposta tipica di **/status**: `{"api_running": true, "docs_url": "http://...:8000/api/docs", "api_port": 8000, "wake_port": 4999}` (porte in base a API_PORT e WAKE_PORT).
+Risposta tipica di **/status**: `{"api_running": true, "docs_url": "http://...:8080/api/docs", "api_port": 8080, "wake_port": 4999}` (porte in base a API_PORT e WAKE_PORT).
 
 ---
 

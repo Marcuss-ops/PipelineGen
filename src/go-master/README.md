@@ -1,283 +1,219 @@
-# VeloxEditing Go Master - Agent 1 (Job Master Core)
+# VeloxEditing Go Master Server
 
-This is the **Agent 1** implementation of the VeloxEditing backend migration to Go. This agent is responsible for the Job Master Core, including HTTP API, routing, business logic for job and worker management, and background goroutines orchestration.
+> **Primary backend for the VeloxEditing automated video content creation system**
+> **Stack:** Go (Gin) + Ollama + Google Drive/YouTube APIs
+> **Default port:** 8080
 
-## 📋 Responsibilities
+---
 
-As per the migration document, Agent 1 handles:
+## 📋 Overview
 
-- ✅ **HTTP Server** (Gin framework)
-- ✅ **Routing and Handlers** for all endpoints
-- ✅ **Middleware** (CORS, Gzip, auth, logging, rate limiting)
-- ✅ **Business Logic Job Management** (CRUD job, scheduling)
-- ✅ **Business Logic Worker Management** (registration, heartbeat, commands)
-- ✅ **Background Goroutines** orchestration
-- ✅ **API Documentation** (Swagger)
+The Go Master server is the central API hub for the VeloxEditing platform. It exposes 60+ HTTP endpoints for video creation, script generation, clip indexing, stock management, YouTube integration, and job/worker orchestration.
 
 ## 📁 Project Structure
 
 ```
-go-master/
+src/go-master/
 ├── cmd/
-│   └── server/
-│       └── main.go                 # Entry point
+│   ├── server/           # Entry point + DI wiring (main.go, wire.go, helpers.go)
+│   ├── drive_scanner/    # Drive folder scanner utility
+│   ├── test_artlist/     # Artlist integration tester
+│   ├── test_drive/       # Drive integration tester
+│   ├── test_harvester/   # Harvester integration tester
+│   └── test_scan/        # Scanner integration tester
 ├── internal/
-│   ├── api/
-│   │   ├── handlers/               # HTTP handlers
-│   │   │   ├── job.go              # Job handlers
-│   │   │   ├── worker.go           # Worker handlers
-│   │   │   └── health.go           # Health check handlers
-│   │   ├── middleware/             # HTTP middleware
-│   │   │   └── middleware.go       # Logger, auth, rate limit
-│   │   ├── routes.go               # Route configuration
-│   │   └── server.go               # HTTP server setup
+│   ├── adapters/         # Cross-package adapters
+│   ├── api/              # HTTP server, routes, handlers (50+ files)
+│   ├── appenddb/         # Append-only database
+│   ├── artlist/          # Artlist watcher & downloader
+│   ├── artlistdb/        # Artlist local DB
+│   ├── artlistsync/      # Artlist Drive sync
+│   ├── audio/tts/        # EdgeTTS voiceover generation
+│   ├── clip/             # Clip indexing, semantic matching, scoring
+│   ├── clipcache/        # Clip download cache
+│   ├── clipdb/           # Clip index DB
+│   ├── clipprocessor/    # Clip processing pipeline
+│   ├── clipsearch/       # Dynamic clip search service
 │   ├── core/
-│   │   ├── job/
-│   │   │   ├── interfaces.go       # Interfaces for other agents
-│   │   │   └── service.go          # Job business logic
-│   │   └── worker/
-│   │       ├── interfaces.go       # Interfaces for other agents
-│   │       └── service.go          # Worker business logic
+│   │   ├── entities/     # Entity extraction (Ollama + NLP)
+│   │   ├── job/          # Job management service
+│   │   └── worker/       # Worker management service
+│   ├── ddgimages/        # DuckDuckGo image search
+│   ├── download/         # Generic video downloader
+│   ├── downloader/       # Platform-specific downloaders (TikTok)
+│   ├── entityimages/     # Entity image finder
+│   ├── gpu/              # GPU detection & management
+│   ├── harvester/        # YouTube content harvester
+│   ├── interview/        # Interview analyzer
+│   ├── ml/ollama/        # Ollama AI client & generators
+│   ├── nvidia/           # NVIDIA AI client
+│   ├── nlp/              # NLP tokenization & TF-IDF
+│   ├── script/           # Script → clip mapping
+│   ├── stock/            # Stock video management
+│   ├── stockdb/          # Stock clip DB
+│   ├── stockjob/         # Stock job scheduler
+│   ├── stocksync/        # Drive sync for stock clips
+│   ├── storage/jsondb/   # JSON file storage (queue, workers, clip index)
+│   ├── textgen/          # AI text generation with GPU support
+│   ├── timestamp/        # Timestamp mapping service
+│   ├── translation/      # Italian → English clip search translation
+│   ├── upload/drive/     # Google Drive upload & OAuth
+│   ├── video/            # Video processing adapter
+│   ├── watcher/          # Drive file change watcher
+│   └── youtube/          # YouTube client (yt-dlp backend)
 ├── pkg/
-│   ├── models/                     # Shared data models
-│   │   ├── job.go                  # Job models
-│   │   └── worker.go               # Worker models
-│   ├── config/                     # Configuration
-│   │   └── config.go
-│   └── logger/                     # Logging
-│       └── logger.go
+│   ├── config/           # Configuration (tag-driven defaults + env overrides)
+│   ├── logger/           # Zap-based structured logging
+│   ├── models/           # Shared data models (Job, Worker)
+│   ├── security/         # Sanitization & URL validation
+│   └── util/             # Math utilities
+├── tests/
+│   ├── e2e/              # End-to-end tests
+│   ├── integration/      # Integration tests
+│   └── mocks/            # Test mocks
+├── config/               # Prometheus & alerting config
+├── data/                 # JSON database files (runtime)
 ├── go.mod
-└── README.md                       # This file
+├── go.sum
+└── Makefile
 ```
 
-## 🔌 Interfaces for Other Agents
-
-Agent 1 defines the following interfaces that other agents must implement:
-
-### Agent 2 (Storage Layer) - MUST IMPLEMENT:
-
-```go
-// job.StorageInterface
-type StorageInterface interface {
-    LoadQueue(ctx context.Context) (*models.Queue, error)
-    SaveQueue(ctx context.Context, queue *models.Queue) error
-    GetJob(ctx context.Context, id string) (*models.Job, error)
-    SaveJob(ctx context.Context, job *models.Job) error
-    DeleteJob(ctx context.Context, id string) error
-    ListJobs(ctx context.Context, filter models.JobFilter) ([]*models.Job, error)
-    LogJobEvent(ctx context.Context, event *models.JobEvent) error
-    GetJobEvents(ctx context.Context, jobID string, limit int) ([]*models.JobEvent, error)
-}
-
-// worker.StorageInterface  
-type StorageInterface interface {
-    LoadWorkers(ctx context.Context) (map[string]*models.Worker, error)
-    SaveWorkers(ctx context.Context, workers map[string]*models.Worker) error
-    GetWorker(ctx context.Context, id string) (*models.Worker, error)
-    SaveWorker(ctx context.Context, worker *models.Worker) error
-    DeleteWorker(ctx context.Context, id string) error
-    SaveWorkerCommand(ctx context.Context, command *models.WorkerCommand) error
-    GetWorkerCommands(ctx context.Context, workerID string) ([]*models.WorkerCommand, error)
-    AckWorkerCommand(ctx context.Context, commandID string) error
-    LoadRevokedWorkers(ctx context.Context) (map[string]bool, error)
-    SaveRevokedWorkers(ctx context.Context, revoked map[string]bool) error
-    LoadQuarantinedWorkers(ctx context.Context) (map[string]*QuarantineInfo, error)
-    SaveQuarantinedWorkers(ctx context.Context, quarantined map[string]*QuarantineInfo) error
-}
-```
-
-### Agent 4 (Video Processing) - MUST IMPLEMENT:
-
-```go
-type VideoProcessorInterface interface {
-    GenerateVideo(ctx context.Context, req VideoGenerationRequest) (*VideoGenerationResult, error)
-    GetGenerationStatus(ctx context.Context, generationID string) (*GenerationStatus, error)
-    CancelGeneration(ctx context.Context, generationID string) error
-    ValidatePayload(payload map[string]interface{}) error
-}
-```
-
-### Agent 5 (External Integrations) - MUST IMPLEMENT:
-
-```go
-type UploadServiceInterface interface {
-    UploadToDrive(ctx context.Context, videoPath string, folderID string) (string, error)
-    UploadToYouTube(ctx context.Context, videoPath string, metadata YouTubeMetadata) (string, error)
-    CreateDriveFolder(ctx context.Context, name string, parentID string) (string, error)
-    GetOrCreateDriveFolder(ctx context.Context, name string, parentID string) (string, error)
-}
-
-type ScriptGeneratorInterface interface {
-    GenerateFromText(ctx context.Context, source, title, lang string, duration int) (string, error)
-    GenerateFromYouTube(ctx context.Context, url, title, lang string, duration int) (string, error)
-}
-```
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Go 1.21 or higher
-- Make (optional)
+- Go 1.21+
+- Ollama running with `gemma3:4b` model
+- Google OAuth credentials (`credentials.json` + `token.json`)
+- yt-dlp installed
+- FFmpeg installed (for video processing)
 
-### Installation
-
-```bash
-# Clone the repository
-cd /home/pierone/Pyt/VeloxEditing/refactored/go-master
-
-# Download dependencies
-go mod download
-
-# Build the server
-go build -o server ./cmd/server
-```
-
-### Running the Server
+### Build & Run
 
 ```bash
-# Run with default configuration
-./server
+cd src/go-master
 
-# Or with custom configuration
-export VELOX_PORT=8000
-export VELOX_HOST=0.0.0.0
-export VELOX_LOG_LEVEL=debug
-./server
+# Build
+go build -o ../../bin/server ./cmd/server
+
+# Run with defaults
+../../bin/server
+
+# Or directly
+go run ./cmd/server
 ```
 
-### Environment Variables
+### Health Check
+
+```bash
+curl http://localhost:8080/health
+```
+
+---
+
+## ⚙️ Configuration
+
+All configuration is **tag-driven**: defaults are defined via `default:` struct tags in `pkg/config/types.go`, and environment variable names via `env:` tags. The loader applies them automatically via reflection.
+
+### Load Order
+1. **Defaults** from struct tags (applied to zero-value fields)
+2. **YAML config file** (if `config.yaml` exists, or path from `VELOX_CONFIG`)
+3. **Environment variables** (from `env:` tags)
+
+### Key Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VELOX_HOST` | `0.0.0.0` | Server host |
-| `VELOX_PORT` | `8000` | Server port |
+| `VELOX_HOST` | `0.0.0.0` | Server bind address |
+| `VELOX_PORT` | `8080` | Server port |
+| `VELOX_READ_TIMEOUT` | `600` | HTTP read timeout (seconds) |
+| `VELOX_WRITE_TIMEOUT` | `600` | HTTP write timeout (seconds) |
 | `VELOX_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 | `VELOX_LOG_FORMAT` | `json` | Log format (json, console) |
 | `VELOX_DATA_DIR` | `./data` | Data directory |
-| `VELOX_ENABLE_AUTH` | `false` | Enable authentication |
+| `VELOX_ENABLE_AUTH` | `false` | Enable auth middleware |
 | `VELOX_ADMIN_TOKEN` | `` | Admin API token |
-| `VELOX_MAX_PARALLEL_PER_PROJECT` | `2` | Max parallel jobs per project |
+| `OLLAMA_ADDR` | `http://localhost:11434` | Ollama server URL |
+| `VELOX_STOCK_DIR` | `/tmp/velox` | Stock video directory |
+| `VELOX_DOWNLOAD_DIR` | `/tmp/velox/downloads` | Download directory |
+| `VELOX_YTDLP_PATH` | `yt-dlp` | Path to yt-dlp binary |
 
-## 📚 API Documentation
+Full list in `pkg/config/types.go`.
 
-Once the server is running, you can access the Swagger documentation at:
-
-```
-http://localhost:8000/api/docs/index.html
-```
-
-### Key Endpoints
-
-#### Jobs
-- `GET /api/jobs` - List jobs
-- `POST /api/jobs` - Create job
-- `GET /api/jobs/:id` - Get job
-- `PUT /api/jobs/:id/status` - Update job status
-- `DELETE /api/jobs/:id` - Delete job
-- `POST /api/jobs/:id/assign` - Assign job to worker
-- `POST /api/jobs/:id/lease` - Renew job lease
-
-#### Workers
-- `GET /api/workers` - List workers
-- `POST /api/workers/register` - Register worker
-- `GET /api/workers/:id` - Get worker
-- `POST /api/workers/:id/heartbeat` - Worker heartbeat
-- `GET /api/workers/:id/commands` - Get pending commands
-- `POST /api/workers/:id/commands/:command_id/ack` - Ack command
-- `POST /api/workers/:id/revoke` - Revoke worker
-- `POST /api/workers/:id/quarantine` - Quarantine worker
-- `POST /api/workers/:id/unquarantine` - Unquarantine worker
-- `POST /api/workers/:id/command` - Send command to worker
-- `POST /api/worker/poll` - Worker polling endpoint
-
-#### Health & Status
-- `GET /health` - Health check
-- `GET /status` - Server status
-- `GET /metrics` - Server metrics
-- `GET /api/docs` - Swagger documentation
+---
 
 ## 🧪 Testing
 
 ```bash
-# Run tests
+# Run all tests
 go test ./...
 
-# Run with race detection
+# With race detection
 go test -race ./...
 
-# Generate coverage report
+# Coverage report
 go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
+
+# Integration tests only
+go test -tags=integration ./tests/integration/...
 ```
 
-## 🔗 Integration with Other Agents
+### Makefile Targets
 
-### Integration with Agent 2 (Storage)
-
-Agent 2 must implement the `StorageInterface` defined in:
-- `internal/core/job/interfaces.go`
-- `internal/core/worker/interfaces.go`
-
-The current implementation uses a mock storage. To use the real storage:
-
-```go
-// In cmd/server/main.go, replace:
-storage := NewMockStorage()
-
-// With:
-storage := agent2storage.NewJSONStorage(cfg.Storage.DataDir)
+```bash
+make build          # Compile server
+make test           # Run all tests
+make test-unit      # Unit tests with race detection
+make test-integration  # Integration tests
+make coverage       # HTML coverage report
+make lint           # golangci-lint
+make fmt            # go fmt
+make vet            # go vet
+make swagger        # Generate Swagger docs
+make ci             # Full CI pipeline (fmt + vet + lint + test + build)
 ```
 
-### Integration with Agent 4 (Video Processing)
+---
 
-Inject the video processor into the job service:
+## 📚 API Documentation
 
-```go
-videoProcessor := agent4video.NewProcessor(cfg)
-jobService.SetVideoProcessor(videoProcessor)
+When the server is running, Swagger UI is available at:
+
+```
+http://localhost:8080/api/docs/index.html
 ```
 
-### Integration with Agent 5 (External Integrations)
+See the root [README.md](../../README.md) for the full endpoint listing.
 
-Inject the upload service:
+---
 
-```go
-uploadService := agent5upload.NewService(cfg)
-jobService.SetUploadService(uploadService)
+## 🏗️ Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  GO MASTER (Port 8080)                                  │
+│  ├─ API HTTP (Gin, 60+ endpoints)                      │
+│  ├─ DI Container (cmd/server/wire.go)                  │
+│  ├─ Job / Worker Management                             │
+│  ├─ Script Generation (Ollama)                          │
+│  ├─ Entity Extraction (Ollama + NLP)                    │
+│  ├─ Voiceover (EdgeTTS)                                │
+│  ├─ Clip Indexing (Drive scanning + semantic match)     │
+│  ├─ Stock Orchestrator (YouTube → download → Drive)     │
+│  ├─ Channel Monitor (cron, AI folder classification)    │
+│  ├─ Artlist Pipeline (search → download → classify)     │
+│  ├─ Google Drive / YouTube Upload                       │
+│  ├─ DriveSync / ArtlistSync (background)                │
+│  ├─ DriveWatcher (file change events)                   │
+│  ├─ Harvester (YouTube content harvesting)              │
+│  ├─ Stock Job Scheduler (cron)                          │
+│  └─ GPU / NVIDIA AI Integration                         │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## 📦 Checklist Pre-Consegna
+---
 
-- [x] Codice nel mio package compilato (`go build ./...`)
-- [x] Interfacce che esporto sono documentate
-- [x] Non ho import diretti da package di altri agenti (solo interfacce)
-- [x] Non ho duplicato logica di altri agenti
-- [x] README.md nel mio package spiega l'uso
-- [ ] Unit tests (to be completed)
-- [ ] Esempi di codice per interfacce pubbliche (to be completed)
-
-## 🚨 Note per gli Altri Agenti
-
-### Agente 2 (Storage)
-- Implementare le interfacce in `internal/core/job/interfaces.go` e `internal/core/worker/interfaces.go`
-- Mantenere compatibilità formato JSON con Python
-- Assicurare thread-safety con `sync.RWMutex`
-
-### Agente 3 (Worker)
-- Usare l'endpoint `POST /api/worker/poll` per polling
-- Implementare heartbeat con `POST /api/workers/:id/heartbeat`
-- Gestire comandi ricevuti dal master
-
-### Agente 4 (Video)
-- Implementare `VideoProcessorInterface` in `internal/core/job/interfaces.go`
-- Fornire metodi per generazione video, controllo stato, cancellazione
-
-### Agente 5 (Integrazioni)
-- Implementare `UploadServiceInterface` e `ScriptGeneratorInterface`
-- Gestire OAuth2 per Google Drive/YouTube
-- Implementare retry logic con exponential backoff
-
-## 📝 License
-
-Apache 2.0
+*Updated April 2026 — Production Ready*

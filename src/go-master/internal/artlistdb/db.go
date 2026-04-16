@@ -312,8 +312,16 @@ func (db *ArtlistDB) SetDriveFolder(term string, folderID string) error {
 	return nil
 }
 
+// DBStats holds typed database statistics.
+type DBStats struct {
+	TotalSearches  int    `json:"total_searches"`
+	TotalClips     int    `json:"total_clips"`
+	TotalDownloaded int   `json:"total_downloaded"`
+	LastUpdated    string `json:"last_updated"`
+}
+
 // GetStats returns DB statistics.
-func (db *ArtlistDB) GetStats() map[string]interface{} {
+func (db *ArtlistDB) GetStats() DBStats {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
@@ -322,11 +330,11 @@ func (db *ArtlistDB) GetStats() map[string]interface{} {
 		totalDownloaded += len(sr.DownloadedClipIDs)
 	}
 
-	return map[string]interface{}{
-		"total_searches":   len(db.data.Searches),
-		"total_clips":      db.data.TotalClips,
-		"total_downloaded": totalDownloaded,
-		"last_updated":     db.data.LastUpdated,
+	return DBStats{
+		TotalSearches:  len(db.data.Searches),
+		TotalClips:     db.data.TotalClips,
+		TotalDownloaded: totalDownloaded,
+		LastUpdated:    db.data.LastUpdated,
 	}
 }
 

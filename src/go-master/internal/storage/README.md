@@ -249,7 +249,7 @@ err := store.Restore("./backups/backup_20240115_103000")
 ## Testing
 
 ```bash
-cd go-master
+cd src/go-master
 go test ./internal/storage/jsondb/... -v
 ```
 

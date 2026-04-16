@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -10,8 +11,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
+	"velox/go-master/pkg/security"
 	"go.uber.org/zap"
 )
 
@@ -145,8 +148,13 @@ func (h *DriveHandler) DownloadAndUploadClip(c *gin.Context) {
 	}
 
 	var req drive.DownloadUploadClipRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+	if err := middleware.BindAndValidate(c, &req); err != nil {
+		var ve *middleware.ValidationError
+		if errors.As(err, &ve) {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": ve.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		}
 		return
 	}
 
@@ -171,6 +179,22 @@ func (h *DriveHandler) DownloadAndUploadClip(c *gin.Context) {
 	topicFolderID, err := client.GetOrCreateFolder(c.Request.Context(), topic, groupFolderID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "Failed to create topic folder"})
+		return
+	}
+
+	// Validate YouTube URL before passing to yt-dlp
+	if err := security.ValidateDownloadURL(req.YouTubeURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Invalid YouTube URL: " + err.Error()})
+		return
+	}
+
+	// Validate timestamps to prevent flag injection
+	if err := security.SanitizeTimestamp(req.StartTime); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Invalid start time: " + err.Error()})
+		return
+	}
+	if err := security.SanitizeTimestamp(req.EndTime); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Invalid end time: " + err.Error()})
 		return
 	}
 

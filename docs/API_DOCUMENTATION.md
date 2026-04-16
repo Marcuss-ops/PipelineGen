@@ -1734,7 +1734,7 @@ http://localhost:8080/api/docs/index.html
 ## Quick Start
 
 ```bash
-cd go-master
+cd src/go-master
 go build -o server ./cmd/server
 ./server
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,17 +10,24 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
+	"velox/go-master/pkg/security"
 	"go.uber.org/zap"
 )
 
 // DownloadClip downloads a clip from YouTube and uploads to Drive
 func (h *ClipHandler) DownloadClip(c *gin.Context) {
 	var req clip.DownloadClipRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+	if err := middleware.BindAndValidate(c, &req); err != nil {
+		var ve *middleware.ValidationError
+		if errors.As(err, &ve) {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": ve.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		}
 		return
 	}
 
@@ -62,6 +70,12 @@ func (h *ClipHandler) DownloadClip(c *gin.Context) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Validate YouTube URL before passing to yt-dlp
+	if err := security.ValidateDownloadURL(req.YouTubeURL); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Invalid YouTube URL: " + err.Error()})
+		return
+	}
+
 	// Build yt-dlp command
 	outputTemplate := filepath.Join(tempDir, "%(title)s.%(ext)s")
 	args := []string{
@@ -70,8 +84,16 @@ func (h *ClipHandler) DownloadClip(c *gin.Context) {
 		"-o", outputTemplate,
 	}
 
-	// Add time range if specified
+	// Add time range if specified (validate timestamps first)
 	if req.StartTime != "" && req.EndTime != "" {
+		if err := security.SanitizeTimestamp(req.StartTime); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Invalid start time: " + err.Error()})
+			return
+		}
+		if err := security.SanitizeTimestamp(req.EndTime); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Invalid end time: " + err.Error()})
+			return
+		}
 		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", req.StartTime, req.EndTime))
 	}
 

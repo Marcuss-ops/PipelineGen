@@ -151,7 +151,7 @@ func (s *Service) findClipInDB(keyword string) (*SearchResult, error) {
 
 	keywordLower := strings.ToLower(keyword)
 	for _, clip := range allClips {
-		tags := strings.ToLower(clip.Tags)
+		tags := strings.ToLower(strings.Join(clip.Tags, ","))
 		folderID := strings.ToLower(clip.FolderID)
 
 		// Check if keyword appears in tags or folder
@@ -181,7 +181,7 @@ func (s *Service) downloadClip(ctx context.Context, keyword string) (string, err
 	outputDir := filepath.Join(s.downloadDir, "dynamic_clips")
 	os.MkdirAll(outputDir, 0755)
 
-	outputPattern := filepath.Join(outputDir, fmt.Sprintf("dynamic_%s_%%(id)s.%(ext)s", sanitizeFilename(keyword)))
+	outputPattern := filepath.Join(outputDir, fmt.Sprintf("dynamic_%s_%%(id)s.%%(ext)s", sanitizeFilename(keyword)))
 
 	// Search YouTube for the keyword and download a short clip (max 60s)
 	args := []string{
@@ -250,7 +250,7 @@ func (s *Service) saveToStockDB(keyword string, driveResult *DriveUploadResult) 
 		FolderID: "Stock/Artlist/" + keyword,
 		Filename: driveResult.Filename,
 		Source:   "dynamic",
-		Tags:     keyword,
+		Tags:     []string{keyword},
 		Duration: 0,
 	}
 

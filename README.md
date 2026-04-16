@@ -11,7 +11,7 @@
 ```
 refactored/
 ├── src/                         # Source code
-│   ├── go-master/              # Go API Server (PRIMARY — port 8080)
+│   ├── go-master/              # Go API Server (PRIMARY)
 │   │   ├── cmd/server/         # Entry point (42 lines, DI pattern)
 │   │   ├── internal/           # Core logic (50+ packages)
 │   │   │   ├── api/            # HTTP handlers (48 files) + middleware + routes

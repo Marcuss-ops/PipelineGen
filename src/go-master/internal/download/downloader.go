@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"velox/go-master/pkg/logger"
+	"velox/go-master/pkg/security"
 	"go.uber.org/zap"
 )
 
@@ -50,17 +51,22 @@ func NewDownloader(outputDir string) *Downloader {
 }
 
 // Download downloads a video from the given URL
-func (d *Downloader) Download(ctx context.Context, url string) (*DownloadResult, error) {
-	platform := DetectPlatform(url)
+func (d *Downloader) Download(ctx context.Context, rawURL string) (*DownloadResult, error) {
+	// Validate URL before passing to yt-dlp
+	if err := security.ValidateDownloadURL(rawURL); err != nil {
+		return nil, fmt.Errorf("invalid download URL: %w", err)
+	}
+
+	platform := DetectPlatform(rawURL)
 	if platform == "" {
-		return nil, fmt.Errorf("unsupported URL: %s. Supported platforms: YouTube, TikTok", url)
+		return nil, fmt.Errorf("unsupported URL: %s. Supported platforms: YouTube, TikTok", rawURL)
 	}
 
 	switch platform {
 	case PlatformYouTube:
-		return d.downloadYouTube(ctx, url)
+		return d.downloadYouTube(ctx, rawURL)
 	case PlatformTikTok:
-		return d.downloadTikTok(ctx, url)
+		return d.downloadTikTok(ctx, rawURL)
 	default:
 		return nil, fmt.Errorf("platform not supported: %s", platform)
 	}

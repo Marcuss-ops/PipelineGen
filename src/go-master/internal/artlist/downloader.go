@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"velox/go-master/pkg/logger"
+	"velox/go-master/pkg/security"
 	"velox/go-master/internal/upload/drive"
 	"go.uber.org/zap"
 )
@@ -255,19 +256,25 @@ func (d *Downloader) getDownloadURL(clipID string) (string, error) {
 	return url, nil
 }
 
-// downloadTemp scarica file temporaneamente
-func (d *Downloader) downloadTemp(ctx context.Context, url, clipID string) (string, error) {
+// downloadTemp scarica file temporaneamente usando argomenti separati (no shell injection)
+func (d *Downloader) downloadTemp(ctx context.Context, rawURL, clipID string) (string, error) {
+	// Validate URL before passing to curl (prevents injection even from compromised DB entries)
+	if err := security.ValidateDownloadURL(rawURL); err != nil {
+		return "", fmt.Errorf("invalid download URL: %w", err)
+	}
+
 	tempDir := "/tmp/velox/artlist_downloads"
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
-	// Usa wget o curl per download
+	// Sanitize clipID to prevent path injection
+	clipID = security.SanitizeFilename(clipID)
 	tempPath := filepath.Join(tempDir, fmt.Sprintf("%s.mp4", clipID))
 
-	// Implementazione semplificata - in produzione usare HTTP client Go
-	cmd := fmt.Sprintf("wget -q -O %s %s", tempPath, url)
-	if err := exec.CommandContext(ctx, "bash", "-c", cmd).Run(); err != nil {
+	// Use curl with separate args — never shell-concatenate URLs
+	args := []string{"-sL", "-o", tempPath, rawURL}
+	if err := exec.CommandContext(ctx, "curl", args...).Run(); err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}
 

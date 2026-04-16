@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -538,9 +539,10 @@ func TestGenerator_GenerateFromText_Defaults(t *testing.T) {
 	}
 }
 
-func TestGenerator_GenerateFromYouTube_NotImplemented(t *testing.T) {
+func TestGenerator_GenerateFromYouTube_NoYouTubeClient(t *testing.T) {
 	client := NewClient("http://localhost:11434", "llama2")
 	gen := NewGenerator(client)
+	// No YouTube client set — should return error
 
 	req := &YouTubeGenerationRequest{
 		YouTubeURL: "https://youtube.com/watch?v=abc",
@@ -549,7 +551,10 @@ func TestGenerator_GenerateFromYouTube_NotImplemented(t *testing.T) {
 
 	_, err := gen.GenerateFromYouTube(context.Background(), req)
 	if err == nil {
-		t.Fatal("expected error, got nil")
+		t.Fatal("expected error when YouTube client not configured, got nil")
+	}
+	if !strings.Contains(err.Error(), "YouTube client not configured") {
+		t.Errorf("error = %q, want error containing 'YouTube client not configured'", err.Error())
 	}
 }
 

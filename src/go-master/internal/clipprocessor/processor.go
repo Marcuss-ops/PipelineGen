@@ -262,7 +262,7 @@ func (p *Processor) getVideoDuration(ctx context.Context, videoPath string) (flo
 	return duration, nil
 }
 
-func (p *Processor) ExportClip(videoPath string, clip Clip, outputDir string) (string, error) {
+func (p *Processor) ExportClip(ctx context.Context, videoPath string, clip Clip, outputDir string) (string, error) {
 	os.MkdirAll(outputDir, 0755)
 
 	outputName := fmt.Sprintf("%s_%.0f_%.0f.mp4",
@@ -272,7 +272,7 @@ func (p *Processor) ExportClip(videoPath string, clip Clip, outputDir string) (s
 	)
 	outputPath := filepath.Join(outputDir, outputName)
 
-	cmd := exec.CommandContext(context.Background(), "ffmpeg",
+	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-i", videoPath,
 		"-ss", fmt.Sprintf("%.0f", clip.StartTime),
 		"-to", fmt.Sprintf("%.0f", clip.EndTime),

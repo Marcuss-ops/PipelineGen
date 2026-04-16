@@ -4,7 +4,7 @@
 
 set -e
 
-API_URL="${API_URL:-http://localhost:8000}"
+API_URL="${API_URL:-http://localhost:8080}"
 TOPIC="Gervonta Davis"
 DURATION=120
 
@@ -25,7 +25,7 @@ echo ""
 echo -e "${YELLOW}▶ Check server Go...${NC}"
 if ! curl -s "$API_URL/health" > /dev/null 2>&1; then
     echo -e "${RED}✗ Server non raggiungibile${NC}"
-    echo "  Avvia: cd go-master && ./server"
+    echo "  Avvia: cd src/go-master && ./server"
     exit 1
 fi
 echo -e "${GREEN}✓ Server attivo${NC}"

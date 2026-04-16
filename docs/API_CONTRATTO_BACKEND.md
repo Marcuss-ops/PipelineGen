@@ -12,8 +12,8 @@ Documentazione **esatta** delle chiamate che il frontend fa alle API, così puoi
 ```json
 {
   "ok": true,
-  "api_base_url": "http://51.91.11.36:8000",
-  "voiceover_server_url": "http://51.91.11.36:8000"
+  "api_base_url": "http://51.91.11.36:8080",
+  "voiceover_server_url": "http://51.91.11.36:8080"
 }
 ```
 - **Note:** Il frontend usa `voiceover_server_url` per le chiamate voiceover; se manca, usa `host:8001`.

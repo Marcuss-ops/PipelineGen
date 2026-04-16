@@ -6,17 +6,11 @@ import "strings"
 func (s *SemanticSuggester) extractEntities(text string) []Entity {
 	var entities []Entity
 
-	// Simple entity extraction based on patterns
-	// In production, this would use spaCy or similar
-
-	// Person names: Capitalized words (simple heuristic)
 	words := strings.Fields(text)
 	for i, word := range words {
 		cleaned := strings.Trim(word, ".,!?;:\\\"'()[]{}")
 
-		// Check if it's a capitalized word (potential name)
 		if len(cleaned) > 1 && cleaned[0] >= 'A' && cleaned[0] <= 'Z' {
-			// Check if next word is also capitalized (full name pattern)
 			if i+1 < len(words) {
 				nextWord := strings.Trim(words[i+1], ".,!?;:\\\"'()[]{}")
 				if len(nextWord) > 1 && nextWord[0] >= 'A' && nextWord[0] <= 'Z' {
@@ -25,12 +19,11 @@ func (s *SemanticSuggester) extractEntities(text string) []Entity {
 						Value: fullName,
 						Type:  "PERSON",
 					})
-					i++ // Skip next word
+					i++
 					continue
 				}
 			}
 
-			// Single capitalized word
 			if len(cleaned) > 2 {
 				entities = append(entities, Entity{
 					Value: cleaned,
@@ -47,7 +40,6 @@ func (s *SemanticSuggester) extractEntities(text string) []Entity {
 func (s *SemanticSuggester) extractActionVerbs(sentence string) []string {
 	var verbs []string
 
-	// Common action verbs in Italian and English
 	actionVerbs := []string{
 		"saluta", "greet", "greets", "greeting",
 		"parla", "talk", "talks", "speaking", "speak",
@@ -102,16 +94,12 @@ func (s *SemanticSuggester) detectGroupFromSentence(sentence string) string {
 
 // splitIntoSentences splits text into sentences
 func (s *SemanticSuggester) splitIntoSentences(text string) []string {
-	// Simple sentence splitting
-	// In production, use proper NLP sentence segmentation
-
 	var sentences []string
 	var current strings.Builder
 
 	for _, char := range text {
 		current.WriteRune(char)
 
-		// Check for sentence ending
 		if char == '.' || char == '!' || char == '?' {
 			sentence := strings.TrimSpace(current.String())
 			if len(sentence) > 0 {
@@ -121,7 +109,6 @@ func (s *SemanticSuggester) splitIntoSentences(text string) []string {
 		}
 	}
 
-	// Add remaining text
 	remaining := strings.TrimSpace(current.String())
 	if len(remaining) > 0 {
 		sentences = append(sentences, remaining)

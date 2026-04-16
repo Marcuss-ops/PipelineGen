@@ -7,11 +7,15 @@ import (
 
 	"velox/go-master/internal/core/job"
 	"velox/go-master/internal/core/worker"
+	"velox/go-master/internal/runtime"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
 )
+
+// Compile-time check that Service satisfies BackgroundService.
+var _ runtime.BackgroundService = (*Service)(nil)
 
 // Service manages background maintenance tasks
 type Service struct {
@@ -30,13 +34,22 @@ func New(cfg *config.Config, jobService *job.Service, workerService *worker.Serv
 }
 
 // Start launches all background maintenance goroutines.
-// It respects context cancellation and cleans up on exit.
-func (s *Service) Start(ctx context.Context) {
+// Returns immediately (non-blocking) to satisfy BackgroundService.
+func (s *Service) Start(ctx context.Context) error {
 	go s.zombieChecker(ctx)
 	go s.autoCleanup(ctx)
 	go s.workerOfflineChecker(ctx)
 	go s.autoSave(ctx)
+	return nil
 }
+
+// Stop is a no-op; goroutines exit via context cancellation from ServiceGroup.
+func (s *Service) Stop() error {
+	return nil
+}
+
+// Name returns the service name for lifecycle logging.
+func (s *Service) Name() string { return "Maintenance" }
 
 func (s *Service) zombieChecker(ctx context.Context) {
 	ticker := time.NewTicker(time.Duration(s.cfg.Jobs.ZombieCheckInterval) * time.Second)

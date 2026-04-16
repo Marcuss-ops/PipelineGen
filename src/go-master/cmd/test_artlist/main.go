@@ -145,7 +145,7 @@ func main() {
 	fmt.Printf("Clips indexed:        %d\n", totalIndexed)
 	fmt.Printf("Clips downloaded:     %d\n", totalDownloaded)
 	fmt.Printf("Clips uploaded Drive: %d\n", totalUploaded)
-	fmt.Printf("Total clips in DB:    %d\n", artlistDB.GetStats()["total_clips"])
+	fmt.Printf("Total clips in DB:    %d\n", artlistDB.GetStats().TotalClips)
 	fmt.Println("========================================")
 
 	// Per-key detail

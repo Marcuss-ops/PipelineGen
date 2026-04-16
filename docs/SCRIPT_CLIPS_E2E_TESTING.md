@@ -104,12 +104,12 @@ Before testing, ensure these services are running:
    ```
 
 3. **Google Drive Credentials**
-   - `credentials.json` and `token.json` must exist in `go-master/`
+   - `credentials.json` and `token.json` must exist in `src/go-master/`
    - Drive API must be enabled in Google Cloud Console
 
 4. **Go Master Server** running on port 8080
    ```bash
-   cd go-master
+   cd src/go-master
    ./start.sh
    ```
 
@@ -217,7 +217,7 @@ curl -X POST http://localhost:8080/api/script/generate-with-clips \
 ### **Check Server Logs**
 
 ```bash
-tail -f go-master/data/logs/server.log
+tail -f src/go-master/data/logs/server.log
 ```
 
 Look for these log lines:
@@ -278,7 +278,7 @@ yt-dlp --version
 **Fix:**
 ```bash
 # Re-authenticate
-rm go-master/token.json
+rm src/go-master/token.json
 # Restart server and re-authenticate via browser
 ```
 
@@ -300,7 +300,7 @@ rm go-master/token.json
 ### **Unit + Integration Tests**
 
 ```bash
-cd go-master
+cd src/go-master
 
 # Run script+clips tests only
 go test ./tests/integration -run TestScriptClipsEndpoint -v

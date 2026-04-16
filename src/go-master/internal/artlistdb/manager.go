@@ -199,24 +199,32 @@ func (m *Manager) GetAllTerms() []string {
 	return terms
 }
 
+// ManagerStats holds typed index manager statistics.
+type ManagerStats struct {
+	Loaded          bool      `json:"loaded"`
+	Path            string    `json:"path,omitempty"`
+	Terms           int       `json:"terms,omitempty"`
+	Clips           int       `json:"clips,omitempty"`
+	LastModified    time.Time `json:"last_modified,omitempty"`
+	RefreshInterval string    `json:"refresh_interval,omitempty"`
+}
+
 // GetStats returns index statistics.
-func (m *Manager) GetStats() map[string]interface{} {
+func (m *Manager) GetStats() ManagerStats {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	if m.index == nil {
-		return map[string]interface{}{
-			"loaded": false,
-		}
+		return ManagerStats{Loaded: false}
 	}
 
-	return map[string]interface{}{
-		"loaded":           true,
-		"path":             m.path,
-		"terms":            len(m.index.ByTerm),
-		"clips":            len(m.index.Clips),
-		"last_modified":    m.lastModified,
-		"refresh_interval": m.refreshInterval.String(),
+	return ManagerStats{
+		Loaded:          true,
+		Path:            m.path,
+		Terms:           len(m.index.ByTerm),
+		Clips:           len(m.index.Clips),
+		LastModified:    m.lastModified,
+		RefreshInterval: m.refreshInterval.String(),
 	}
 }
 

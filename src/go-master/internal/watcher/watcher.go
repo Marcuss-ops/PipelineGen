@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
 
@@ -33,24 +34,32 @@ type DriveEvent struct {
 
 type EventHandler func(event DriveEvent) error
 
+type CycleCallback func(ctx context.Context) error
+
+// Compile-time check that Watcher satisfies BackgroundService.
+var _ runtime.BackgroundService = (*Watcher)(nil)
+
 type Watcher struct {
-	driveClient  *drive.Client
-	rootFolderID string
-	handlers     map[EventType][]EventHandler
-	mu           sync.RWMutex
-	running      bool
-	stopCh       chan struct{}
-	interval     time.Duration
-	lastSync     time.Time
+	driveClient      *drive.Client
+	rootFolderID     string
+	handlers         map[EventType][]EventHandler
+	cycleCallbacks   []CycleCallback // called after each check cycle completes
+	mu               sync.RWMutex
+	running          bool
+	stopOnce         sync.Once     // prevents double-close panic on stopCh
+	stopCh           chan struct{}
+	interval         time.Duration
+	lastSync         time.Time
 }
 
 func NewWatcher(driveClient *drive.Client, rootFolderID string) *Watcher {
 	return &Watcher{
-		driveClient:  driveClient,
-		rootFolderID: rootFolderID,
-		handlers:     make(map[EventType][]EventHandler),
-		stopCh:       make(chan struct{}),
-		interval:     5 * time.Minute,
+		driveClient:    driveClient,
+		rootFolderID:   rootFolderID,
+		handlers:       make(map[EventType][]EventHandler),
+		cycleCallbacks: nil,
+		stopCh:         make(chan struct{}),
+		interval:       5 * time.Minute,
 	}
 }
 
@@ -58,6 +67,15 @@ func (w *Watcher) RegisterHandler(eventType EventType, handler EventHandler) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.handlers[eventType] = append(w.handlers[eventType], handler)
+}
+
+// OnCycleComplete registers a callback that fires after each periodic check
+// completes. This is the mechanism by which sync services (DriveSync,
+// ArtlistSync) are triggered, making the Watcher the sole polling authority.
+func (w *Watcher) OnCycleComplete(cb CycleCallback) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.cycleCallbacks = append(w.cycleCallbacks, cb)
 }
 
 func (w *Watcher) Start(ctx context.Context) error {
@@ -77,16 +95,16 @@ func (w *Watcher) Start(ctx context.Context) error {
 }
 
 func (w *Watcher) Stop() error {
-	if !w.running {
-		return nil
-	}
-
-	close(w.stopCh)
-	w.running = false
-
-	logger.Info("Drive watcher stopped")
+	w.stopOnce.Do(func() {
+		close(w.stopCh)
+		w.running = false
+		logger.Info("Drive watcher stopped")
+	})
 	return nil
 }
+
+// Name returns the service name for lifecycle logging.
+func (w *Watcher) Name() string { return "Watcher" }
 
 func (w *Watcher) run(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
@@ -152,6 +170,9 @@ func (w *Watcher) initialSync(ctx context.Context) {
 
 	w.lastSync = time.Now()
 	logger.Info("Initial sync completed", zap.Int("folders", len(folders)))
+
+	// Fire cycle callbacks after initial sync so dependent sync services run once on boot
+	w.fireCycleCallbacks(ctx)
 }
 
 func (w *Watcher) checkForChanges(ctx context.Context) {
@@ -192,6 +213,26 @@ func (w *Watcher) checkForChanges(ctx context.Context) {
 
 	w.lastSync = time.Now()
 	logger.Info("Change check completed")
+
+	// Notify registered sync services to update their DBs
+	w.fireCycleCallbacks(ctx)
+}
+
+// fireCycleCallbacks invokes all registered OnCycleComplete callbacks.
+// This triggers DB sync services (DriveSync, ArtlistSync) after the Watcher
+// has finished its Drive polling cycle, making the Watcher the sole
+// authority for Drive API access.
+func (w *Watcher) fireCycleCallbacks(ctx context.Context) {
+	w.mu.RLock()
+	callbacks := make([]CycleCallback, len(w.cycleCallbacks))
+	copy(callbacks, w.cycleCallbacks)
+	w.mu.RUnlock()
+
+	for _, cb := range callbacks {
+		if err := cb(ctx); err != nil {
+			logger.Warn("Cycle callback failed", zap.Error(err))
+		}
+	}
 }
 
 func (w *Watcher) emit(event DriveEvent) {

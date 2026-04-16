@@ -123,26 +123,36 @@ func (w *ArtlistIndexWatcher) GetClipByTerm(term string) []scriptdocs.ArtlistCli
 	return w.index.ByTerm[term]
 }
 
+// WatcherStats holds typed index watcher statistics.
+type WatcherStats struct {
+	IndexPath    string    `json:"index_path"`
+	LastModified time.Time `json:"last_modified"`
+	Loaded       bool      `json:"loaded"`
+	LastError    string    `json:"last_error"`
+	TotalClips   int       `json:"total_clips,omitempty"`
+	TotalTerms   int       `json:"total_terms,omitempty"`
+	CreatedAt    string    `json:"created_at,omitempty"`
+}
+
 // GetStats returns index statistics
-func (w *ArtlistIndexWatcher) GetStats() map[string]interface{} {
+func (w *ArtlistIndexWatcher) GetStats() WatcherStats {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
-	stats := map[string]interface{}{
-		"index_path":    w.indexPath,
-		"last_modified": w.lastModified,
-		"loaded":        w.index != nil,
-		"last_error":    nil,
+	stats := WatcherStats{
+		IndexPath:    w.indexPath,
+		LastModified: w.lastModified,
+		Loaded:       w.index != nil,
 	}
 
 	if w.lastError != nil {
-		stats["last_error"] = w.lastError.Error()
+		stats.LastError = w.lastError.Error()
 	}
 
 	if w.index != nil {
-		stats["total_clips"] = len(w.index.Clips)
-		stats["total_terms"] = len(w.index.ByTerm)
-		stats["created_at"] = w.index.CreatedAt
+		stats.TotalClips = len(w.index.Clips)
+		stats.TotalTerms = len(w.index.ByTerm)
+		stats.CreatedAt = w.index.CreatedAt
 	}
 
 	return stats

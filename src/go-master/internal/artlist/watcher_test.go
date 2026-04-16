@@ -118,16 +118,16 @@ func TestArtlistIndexWatcherGetStats(t *testing.T) {
 
 	stats := watcher.GetStats()
 
-	if stats["loaded"] != true {
+	if !stats.Loaded {
 		t.Error("Expected index to be loaded")
 	}
 
-	if stats["total_clips"] != 3 {
-		t.Errorf("Expected 3 clips in stats, got %v", stats["total_clips"])
+	if stats.TotalClips != 3 {
+		t.Errorf("Expected 3 clips in stats, got %d", stats.TotalClips)
 	}
 
-	if stats["total_terms"] != 3 {
-		t.Errorf("Expected 3 terms in stats, got %v", stats["total_terms"])
+	if stats.TotalTerms != 3 {
+		t.Errorf("Expected 3 terms in stats, got %d", stats.TotalTerms)
 	}
 }
 
