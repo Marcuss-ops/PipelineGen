@@ -33,8 +33,8 @@ type ArtlistIndex struct {
 type ScriptDocRequest struct {
 	Topic            string   `json:"topic" binding:"required"`
 	Duration         int      `json:"duration"`
-	Languages        []string `json:"languages"` // e.g. ["it", "es"] — default ["it"]
-	Template         string   `json:"template"`  // "documentary", "storytelling", "top10", "biography"
+	Languages        []string `json:"languages"`
+	Template         string   `json:"template"`
 	BoostKeywords    []string `json:"boost_keywords"`
 	SuppressKeywords []string `json:"suppress_keywords"`
 }
@@ -54,7 +54,7 @@ const (
 // LanguageInfo maps language code to display name and prompt language.
 var LanguageInfo = map[string]struct {
 	Name       string
-	PromptLang string // how to tell Ollama to write
+	PromptLang string
 }{
 	"it": {"Italiano", "italiano"},
 	"en": {"English", "English"},
@@ -89,10 +89,11 @@ type ScriptDocResult struct {
 // ClipAssociation represents a phrase-to-clip association.
 type ClipAssociation struct {
 	Phrase         string                   `json:"phrase"`
-	Type           string                   `json:"type"` // "DYNAMIC", "STOCK_DB", "ARTLIST", or "STOCK"
+	Type           string                   `json:"type"`
 	DynamicClip    *clipsearch.SearchResult `json:"dynamic_clip,omitempty"`
 	Clip           *ArtlistClip             `json:"clip,omitempty"`
 	ClipDB         *stockdb.StockClipEntry  `json:"clip_db,omitempty"`
+	StockFolder    *StockFolder             `json:"stock_folder,omitempty"`
 	Confidence     float64                  `json:"confidence"`
 	MatchedKeyword string                   `json:"matched_keyword,omitempty"`
 }
@@ -100,7 +101,7 @@ type ClipAssociation struct {
 // StockFolder represents a Drive Stock folder.
 type StockFolder struct {
 	ID   string
-	Name string // e.g., "Stock/Boxe/Andrewtate"
+	Name string
 	URL  string
 }
 
@@ -123,4 +124,3 @@ type ScriptDocService struct {
 	dynamicClips          []clipsearch.SearchResult
 	dynamicClipsMu        sync.Mutex
 }
-
