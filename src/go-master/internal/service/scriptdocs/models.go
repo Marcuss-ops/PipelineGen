@@ -1,9 +1,6 @@
-package scriptdocs
-
-import (
+package scriptdocsimport (
 	"fmt"
 	"strings"
-
 
 	"velox/go-master/internal/clipsearch"
 	"velox/go-master/internal/stockdb"

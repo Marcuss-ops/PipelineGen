@@ -7,23 +7,6 @@ import (
 	"strings"
 )
 
-// ArtlistClip represents an Artlist clip uploaded to Drive Stock.
-type ArtlistClip struct {
-	Name     string `json:"name"`
-	Term     string `json:"term"`
-	URL      string `json:"url"`
-	Folder   string `json:"folder"`
-	FolderID string `json:"folder_id"`
-}
-
-// ArtlistIndex holds all Artlist clips available for association.
-type ArtlistIndex struct {
-	FolderID  string               `json:"folder_id"`
-	Clips     []ArtlistClip        `json:"clips"`
-	CreatedAt string               `json:"created_at,omitempty"`
-	ByTerm    map[string][]ArtlistClip `json:"-"`
-}
-
 // LoadArtlistIndex loads the Artlist clip index from JSON file.
 func LoadArtlistIndex(path string) (*ArtlistIndex, error) {
 	data, err := os.ReadFile(path)

@@ -63,6 +63,11 @@ logs/
 # Database
 *.db
 
+# Sensitive credentials (never commit)
+credentials.json
+token.json
+*.db.json
+
 # Config backups
 config/backups/
 
@@ -82,6 +87,9 @@ src/go-master/test_harvester
 
 # Media files (use Git LFS instead)
 effects/overlays/*.mp4
+assets/transitions/*.mp4
+assets/audio/*.mp3
+assets/fonts/*.ttf
 
 # Python legacy (fully removed from repo)
 src/python-legacy/
