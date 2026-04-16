@@ -26,9 +26,27 @@ type File struct {
 	Parents      []string  `json:"parents,omitempty"`
 
 	// Video properties (populated for video files)
-	DurationMs int64  `json:"duration_ms,omitempty"`
-	Width      int64  `json:"width,omitempty"`
-	Height     int64  `json:"height,omitempty"`
+	DurationMs int64 `json:"duration_ms,omitempty"`
+	Width      int64 `json:"width,omitempty"`
+	Height     int64 `json:"height,omitempty"`
+}
+
+// DriveChange represents a single item returned by the Google Drive changes feed.
+type DriveChange struct {
+	ChangeID     int64     `json:"change_id"`
+	FileID       string    `json:"file_id"`
+	Removed      bool      `json:"removed"`
+	Time         time.Time `json:"time"`
+	File         *File     `json:"file,omitempty"`
+	DriveID      string    `json:"drive_id,omitempty"`
+	ChangeType   string    `json:"change_type,omitempty"`
+}
+
+// ChangeList represents one page of changes from the Google Drive changes feed.
+type ChangeList struct {
+	Changes           []DriveChange `json:"changes"`
+	NextPageToken     string        `json:"next_page_token,omitempty"`
+	NewStartPageToken string        `json:"new_start_page_token,omitempty"`
 }
 
 // Doc represents a Google Docs document
@@ -73,10 +91,10 @@ type FolderContent struct {
 
 // ListFoldersOptions options for listing folders
 type ListFoldersOptions struct {
-	ParentID  string `json:"parent_id,omitempty"`
-	MaxDepth  int    `json:"max_depth"`
-	MaxItems  int    `json:"max_items"`
-	OrderBy   string `json:"order_by,omitempty"`
+	ParentID string `json:"parent_id,omitempty"`
+	MaxDepth int    `json:"max_depth"`
+	MaxItems int    `json:"max_items"`
+	OrderBy  string `json:"order_by,omitempty"`
 }
 
 // CreateFolderRequest request for creating a folder
@@ -101,11 +119,11 @@ type AppendDocRequest struct {
 
 // UploadClipRequest request for uploading a clip
 type UploadClipRequest struct {
-	Topic      string                   `json:"topic" binding:"required,min=1"`
-	VideoURL   string                   `json:"video_url,omitempty"`
-	VideoTitle string                   `json:"video_title,omitempty"`
-	Moments    []ClipMoment             `json:"moments" binding:"required,min=1"`
-	Group      string                   `json:"group,omitempty"`
+	Topic      string       `json:"topic" binding:"required,min=1"`
+	VideoURL   string       `json:"video_url,omitempty"`
+	VideoTitle string       `json:"video_title,omitempty"`
+	Moments    []ClipMoment `json:"moments" binding:"required,min=1"`
+	Group      string       `json:"group,omitempty"`
 }
 
 // ClipMoment represents a clip moment
@@ -141,12 +159,12 @@ type DownloadUploadClipRequest struct {
 
 // StockDriveGroups predefined groups for stock clips
 var StockDriveGroups = map[string]string{
-	"elon_musk":  "Elon Musk",
-	"tech":       "Tech & AI",
-	"business":   "Business",
-	"interview":  "Interviews",
-	"podcast":    "Podcasts",
-	"news":       "News",
-	"science":    "Science",
-	"default":    "Stock Footage",
+	"elon_musk": "Elon Musk",
+	"tech":      "Tech & AI",
+	"business":  "Business",
+	"interview": "Interviews",
+	"podcast":   "Podcasts",
+	"news":      "News",
+	"science":   "Science",
+	"default":   "Stock Footage",
 }
