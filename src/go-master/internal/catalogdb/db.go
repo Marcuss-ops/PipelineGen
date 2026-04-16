@@ -16,8 +16,9 @@ import (
 // CatalogDB provides a normalized local SQLite catalog for clips coming from
 // Artlist, Clip Drive, and Stock Drive.
 type CatalogDB struct {
-	db   *sql.DB
-	path string
+	db       *sql.DB
+	path     string
+	ftsReady bool
 }
 
 // Open opens or creates the local catalog database and initializes the schema.
@@ -86,16 +87,6 @@ func (c *CatalogDB) initSchema() error {
 			last_incremental_at DATETIME,
 			updated_at DATETIME NOT NULL
 		);`,
-		`CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(
-			id UNINDEXED,
-			title,
-			description,
-			filename,
-			category,
-			folder_path,
-			tags,
-			metadata
-		);`,
 	}
 
 	for _, stmt := range stmts {
@@ -103,7 +94,29 @@ func (c *CatalogDB) initSchema() error {
 			return fmt.Errorf("init catalog schema: %w", err)
 		}
 	}
+
+	if err := c.initFTS(); err != nil {
+		fmt.Printf("WARN: FTS5 not available, using fallback text search: %v\n", err)
+	}
+
 	return nil
+}
+
+func (c *CatalogDB) initFTS() error {
+	_, err := c.db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(
+		id UNINDEXED,
+		title,
+		description,
+		filename,
+		category,
+		folder_path,
+		tags,
+		metadata
+	);`)
+	if err == nil {
+		c.ftsReady = true
+	}
+	return err
 }
 
 // Close closes the underlying SQLite database.
@@ -233,11 +246,13 @@ func (c *CatalogDB) BulkUpsertClips(clips []Clip) (err error) {
 			return fmt.Errorf("upsert catalog clip %s: %w", clip.ID, err)
 		}
 
-		if _, err = ftsDelete.Exec(clip.ID); err != nil {
-			return fmt.Errorf("delete existing fts row: %w", err)
-		}
-		if _, err = ftsInsert.Exec(clip.ID, clip.Title, clip.Description, clip.Filename, clip.Category, clip.FolderPath, strings.Join(normalizedTags, " "), clip.MetadataJSON); err != nil {
-			return fmt.Errorf("insert fts row: %w", err)
+		if c.ftsReady {
+			if _, err = ftsDelete.Exec(clip.ID); err != nil {
+				return fmt.Errorf("delete existing fts row: %w", err)
+			}
+			if _, err = ftsInsert.Exec(clip.ID, clip.Title, clip.Description, clip.Filename, clip.Category, clip.FolderPath, strings.Join(normalizedTags, " "), clip.MetadataJSON); err != nil {
+				return fmt.Errorf("insert fts row: %w", err)
+			}
 		}
 	}
 
@@ -338,16 +353,19 @@ func (c *CatalogDB) SearchClips(opts SearchOptions) ([]SearchResult, error) {
 		limit = 20
 	}
 	terms := normalizeTags(strings.Fields(opts.Query))
-	results, err := c.searchViaFTS(opts, terms, limit)
-	if err == nil && len(results) > 0 {
-		sort.SliceStable(results, func(i, j int) bool { return results[i].Score > results[j].Score })
-		return trimResults(results, limit), nil
+
+	if c.ftsReady {
+		results, err := c.searchViaFTS(opts, terms, limit)
+		if err == nil && len(results) > 0 {
+			sort.SliceStable(results, func(i, j int) bool { return results[i].Score > results[j].Score })
+			return trimResults(results, limit), nil
+		}
 	}
 	return c.searchViaLike(opts, terms, limit)
 }
 
 func (c *CatalogDB) searchViaFTS(opts SearchOptions, terms []string, limit int) ([]SearchResult, error) {
-	if len(terms) == 0 {
+	if !c.ftsReady || len(terms) == 0 {
 		return nil, nil
 	}
 	matchExpr := strings.Join(terms, " OR ")
@@ -493,7 +511,9 @@ func (c *CatalogDB) GetSyncState(source string) (*SyncState, error) {
 	return &state, nil
 }
 
-func scanClip(scanner interface{ Scan(dest ...interface{}) error }) (Clip, error) {
+func scanClip(scanner interface {
+	Scan(dest ...interface{}) error
+}) (Clip, error) {
 	var clip Clip
 	var tagsJSON string
 	var createdAt, modifiedAt, lastSyncedAt sql.NullTime
@@ -542,7 +562,9 @@ func scanClip(scanner interface{ Scan(dest ...interface{}) error }) (Clip, error
 	return clip, nil
 }
 
-func scanClipWithRank(scanner interface{ Scan(dest ...interface{}) error }) (Clip, float64, error) {
+func scanClipWithRank(scanner interface {
+	Scan(dest ...interface{}) error
+}) (Clip, float64, error) {
 	var clip Clip
 	var tagsJSON string
 	var createdAt, modifiedAt, lastSyncedAt sql.NullTime
@@ -579,9 +601,15 @@ func scanClipWithRank(scanner interface{ Scan(dest ...interface{}) error }) (Cli
 	); err != nil {
 		return Clip{}, 0, fmt.Errorf("scan catalog clip with rank: %w", err)
 	}
-	if createdAt.Valid { clip.CreatedAt = createdAt.Time }
-	if modifiedAt.Valid { clip.ModifiedAt = modifiedAt.Time }
-	if lastSyncedAt.Valid { clip.LastSyncedAt = lastSyncedAt.Time }
+	if createdAt.Valid {
+		clip.CreatedAt = createdAt.Time
+	}
+	if modifiedAt.Valid {
+		clip.ModifiedAt = modifiedAt.Time
+	}
+	if lastSyncedAt.Valid {
+		clip.LastSyncedAt = lastSyncedAt.Time
+	}
 	clip.IsActive = isActive == 1
 	_ = json.Unmarshal([]byte(tagsJSON), &clip.Tags)
 	return clip, rank, nil
