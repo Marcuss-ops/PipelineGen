@@ -6,13 +6,15 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"velox/go-master/tests/mocks"
 )
 
 // --- NewManager Tests ---
 
 func TestNewManager(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, err := NewManager(tmpDir)
+	m, err := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,7 +34,7 @@ func TestNewManager_CreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectsDir := filepath.Join(tmpDir, "stock_projects")
 
-	_, err := NewManager(tmpDir)
+	_, err := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,7 +48,7 @@ func TestNewManager_CreatesDirectory(t *testing.T) {
 
 func TestStockManager_CreateProject(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	tests := []struct {
 		name        string
@@ -106,7 +108,7 @@ func TestStockManager_CreateProject(t *testing.T) {
 
 func TestStockManager_CreateProject_Duplicate(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.CreateProject(context.Background(), "dup-project", &ProjectConfig{})
 	if err != nil {
@@ -123,7 +125,7 @@ func TestStockManager_CreateProject_Duplicate(t *testing.T) {
 
 func TestStockManager_ListProjects(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	// Empty list
 	projects, err := m.ListProjects(context.Background())
@@ -151,7 +153,7 @@ func TestStockManager_ListProjects(t *testing.T) {
 
 func TestStockManager_GetProject(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "my-project", &ProjectConfig{Description: "desc"})
 
@@ -166,7 +168,7 @@ func TestStockManager_GetProject(t *testing.T) {
 
 func TestStockManager_GetProject_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.GetProject(context.Background(), "nonexistent")
 	if err == nil {
@@ -178,7 +180,7 @@ func TestStockManager_GetProject_NotFound(t *testing.T) {
 
 func TestStockManager_DeleteProject(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "to-delete", &ProjectConfig{})
 
@@ -202,7 +204,7 @@ func TestStockManager_DeleteProject(t *testing.T) {
 
 func TestStockManager_DeleteProject_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	err := m.DeleteProject(context.Background(), "nonexistent")
 	if err == nil {
@@ -214,7 +216,7 @@ func TestStockManager_DeleteProject_NotFound(t *testing.T) {
 
 func TestStockManager_GetProjectDir(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	result := m.GetProjectDir("my-project")
 	expected := filepath.Join(tmpDir, "stock_projects", "my-project")
@@ -225,7 +227,7 @@ func TestStockManager_GetProjectDir(t *testing.T) {
 
 func TestStockManager_GetVideosDir(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	result := m.GetVideosDir("my-project")
 	expected := filepath.Join(tmpDir, "stock_projects", "my-project", "videos")
@@ -238,7 +240,7 @@ func TestStockManager_GetVideosDir(t *testing.T) {
 
 func TestStockManager_DownloadVideo_ProjectNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.DownloadVideo(context.Background(), "https://youtube.com/watch?v=abc", "nonexistent")
 	if err == nil {
@@ -248,7 +250,7 @@ func TestStockManager_DownloadVideo_ProjectNotFound(t *testing.T) {
 
 func TestStockManager_DownloadVideo_Success(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "dl-project", &ProjectConfig{})
 
@@ -272,7 +274,7 @@ func TestStockManager_DownloadVideo_Success(t *testing.T) {
 
 func TestStockManager_GetDownloadStatus_Success(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "status-project", &ProjectConfig{})
 	task, _ := m.DownloadVideo(context.Background(), "https://youtube.com/watch?v=abc", "status-project")
@@ -288,7 +290,7 @@ func TestStockManager_GetDownloadStatus_Success(t *testing.T) {
 
 func TestStockManager_GetDownloadStatus_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.GetDownloadStatus(context.Background(), "nonexistent-task")
 	if err == nil {
@@ -318,7 +320,7 @@ func TestGenerateTaskID(t *testing.T) {
 
 func TestStockManager_GetReport_ProjectNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.GetReport(context.Background(), "nonexistent")
 	if err == nil {
@@ -328,7 +330,7 @@ func TestStockManager_GetReport_ProjectNotFound(t *testing.T) {
 
 func TestStockManager_GetReport_Success(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "report-project", &ProjectConfig{})
 
@@ -348,7 +350,7 @@ func TestStockManager_GetReport_Success(t *testing.T) {
 
 func TestStockManager_ProcessProject_Success(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "process-project", &ProjectConfig{})
 
@@ -365,7 +367,7 @@ func TestStockManager_ProcessProject_Success(t *testing.T) {
 
 func TestStockManager_ProcessProject_MissingName(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.ProcessProject(context.Background(), &ProcessOptions{ProjectName: ""})
 	if err == nil {
@@ -375,7 +377,7 @@ func TestStockManager_ProcessProject_MissingName(t *testing.T) {
 
 func TestStockManager_ProcessProject_NilOptions(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, err := m.ProcessProject(context.Background(), nil)
 	if err == nil {
@@ -387,7 +389,7 @@ func TestStockManager_ProcessProject_NilOptions(t *testing.T) {
 
 func TestStockManager_UpdateProject(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	_, _ = m.CreateProject(context.Background(), "update-project", &ProjectConfig{
 		Description: "original",
@@ -413,7 +415,7 @@ func TestStockManager_UpdateProject(t *testing.T) {
 
 func TestStockManager_UpdateProject_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	err := m.UpdateProject(context.Background(), "nonexistent", &ProjectConfig{})
 	if err == nil {
@@ -459,7 +461,7 @@ func TestDetectLatestFile_NonExistentDir(t *testing.T) {
 
 func TestStockManager_Search_InvalidSource(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	// Search with invalid source should not panic and return empty/error gracefully
 	results, err := m.Search(context.Background(), "test query", []string{"invalid_source"})
@@ -472,7 +474,7 @@ func TestStockManager_Search_InvalidSource(t *testing.T) {
 
 func TestStockManager_Search_EmptySources(t *testing.T) {
 	tmpDir := t.TempDir()
-	m, _ := NewManager(tmpDir)
+	m, _ := NewManager(tmpDir, &mocks.MockYouTubeClient{})
 
 	// Empty sources defaults to youtube
 	results, err := m.Search(context.Background(), "test", []string{})

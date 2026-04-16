@@ -94,13 +94,13 @@ type JobsConfig struct {
 // WorkersConfig holds worker-related configuration
 type WorkersConfig struct {
 	HeartbeatTimeout          int      `yaml:"heartbeat_timeout" env:"VELOX_HEARTBEAT_TIMEOUT" default:"120"`
-	WorkerFailWindowSeconds  int      `yaml:"worker_fail_window_seconds" env:"VELOX_WORKER_FAIL_WINDOW_SECONDS" default:"300"`
-	WorkerFailThreshold      int      `yaml:"worker_fail_threshold" env:"VELOX_WORKER_FAIL_THRESHOLD" default:"5"`
-	MaxWorkerLogs            int      `yaml:"max_worker_logs" env:"VELOX_MAX_WORKER_LOGS" default:"100"`
-	MaxWorkerErrors          int      `yaml:"max_worker_errors" env:"VELOX_MAX_WORKER_ERRORS" default:"15"`
-	AllowedIPs               []string `yaml:"allowed_ips" env:"VELOX_ALLOWED_WORKER_IPS" default:"[]"`
-	AutoDrainThresholdGB     float64  `yaml:"auto_drain_threshold_gb" env:"VELOX_AUTO_DRAIN_THRESHOLD_GB" default:"5.0"`
-	AutoRepairCooldownSeconds int     `yaml:"auto_repair_cooldown" env:"VELOX_AUTO_REPAIR_COOLDOWN" default:"600"`
+	WorkerFailWindowSeconds   int      `yaml:"worker_fail_window_seconds" env:"VELOX_WORKER_FAIL_WINDOW_SECONDS" default:"300"`
+	WorkerFailThreshold       int      `yaml:"worker_fail_threshold" env:"VELOX_WORKER_FAIL_THRESHOLD" default:"5"`
+	MaxWorkerLogs             int      `yaml:"max_worker_logs" env:"VELOX_MAX_WORKER_LOGS" default:"100"`
+	MaxWorkerErrors           int      `yaml:"max_worker_errors" env:"VELOX_MAX_WORKER_ERRORS" default:"15"`
+	AllowedIPs                []string `yaml:"allowed_ips" env:"VELOX_ALLOWED_WORKER_IPS" default:"[]"`
+	AutoDrainThresholdGB      float64  `yaml:"auto_drain_threshold_gb" env:"VELOX_AUTO_DRAIN_THRESHOLD_GB" default:"5.0"`
+	AutoRepairCooldownSeconds int      `yaml:"auto_repair_cooldown" env:"VELOX_AUTO_REPAIR_COOLDOWN" default:"600"`
 }
 
 // SecurityConfig holds security-related configuration
@@ -145,17 +145,11 @@ type PathsConfig struct {
 	YtDlpPath               string `yaml:"ytdlp_path" env:"VELOX_YTDLP_PATH" default:"yt-dlp"`
 }
 
-// DriveConfig holds Google Drive folder IDs
+// DriveConfig holds Google Drive folder IDs (main roots - subfolders are discovered dynamically)
 type DriveConfig struct {
 	StockRootFolderID string `yaml:"stock_root_folder" env:"VELOX_STOCK_ROOT_FOLDER" default:"1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"`
-	ClipsRootFolderID string `yaml:"clips_root_folder" env:"VELOX_CLIPS_ROOT_FOLDER" default:"root"`
-	ArtlistFolderID   string `yaml:"artlist_folder" env:"VELOX_ARTLIST_FOLDER" default:"1ktDuzVYvA1xfpja78VAEWt9KhwsthPod"`
-	BoxeFolderID      string `yaml:"boxe_folder" env:"VELOX_BOXE_FOLDER" default:"14HWILTg8L9ST0bnorgmHzZknel9buJjb"`
-	CrimineFolderID   string `yaml:"crimine_folder" env:"VELOX_CRIMINE_FOLDER" default:"1KhJ6bSty9r4EP_2gVpTzz4BWdKhsI0pG"`
-	DiscoveryFolderID string `yaml:"discovery_folder" env:"VELOX_DISCOVERY_FOLDER" default:"11-O6LvlcL0Hj_ktiUOJDnpPYerSpWNiW"`
-	WweFolderID       string `yaml:"wwe_folder" env:"VELOX_WWE_FOLDER" default:"1_7U8yEeQZEH7vxgDIRketFL85F96O_Ws"`
-	HipHopFolderID    string `yaml:"hiphop_folder" env:"VELOX_HIPHOP_FOLDER" default:"16D3qvbv3Y4TlNahQ3sWq6N7ITgwWm6DD"`
-	MusicaFolderID    string `yaml:"musica_folder" env:"VELOX_MUSICA_FOLDER" default:"1_PQj7fok1UEzzQgTnUcTP3FHnZBnwv9t"`
+	ClipsRootFolderID string `yaml:"clips_root_folder" env:"VELOX_CLIPS_ROOT_FOLDER" default:"1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"`
+	ArtlistFolderID   string `yaml:"artlist_folder" env:"VELOX_ARTLIST_FOLDER" default:"1aMjQlK9J1mEyT2TOYDNjeynO1GzZS4_S"`
 }
 
 // SchedulerConfig holds StockJob Scheduler configuration
@@ -191,16 +185,11 @@ type TextGenConfig struct {
 	Timeout      int    `yaml:"timeout" env:"VELOX_TEXTGEN_TIMEOUT" default:"60"`
 }
 
-// GetStockFolders returns all Stock category folders as a map of ID
+// GetStockFolders returns Stock root - subfolders are discovered dynamically from Drive
 func (d *DriveConfig) GetStockFolders() map[string]string {
 	return map[string]string{
-		"boxe":      d.BoxeFolderID,
-		"crimine":   d.CrimineFolderID,
-		"discovery": d.DiscoveryFolderID,
-		"wwe":       d.WweFolderID,
-		"hiphop":    d.HipHopFolderID,
-		"musica":    d.MusicaFolderID,
-		"artlist":   d.ArtlistFolderID,
+		"stock": d.StockRootFolderID,
+		"clips": d.ClipsRootFolderID,
 	}
 }
 
@@ -211,21 +200,18 @@ type StockFolderEntry struct {
 	URL  string
 }
 
-// GetStockFolderEntries returns Stock folders with full metadata
+// GetStockFolderEntries returns Stock folders - subfolders are discovered dynamically at runtime
 func (d *DriveConfig) GetStockFolderEntries() map[string]StockFolderEntry {
-	folders := d.GetStockFolders()
-	result := make(map[string]StockFolderEntry, len(folders))
-	names := map[string]string{
-		"boxe": "Stock/Boxe", "crimine": "Stock/Crimine", "discovery": "Stock/Discovery",
-		"wwe": "Stock/Wwe", "hiphop": "Stock/HipHop", "musica": "Stock/Musica", "artlist": "Stock/Artlist",
+	return map[string]StockFolderEntry{
+		"stock": {
+			ID:   d.StockRootFolderID,
+			Name: "Stock",
+			URL:  fmt.Sprintf("https://drive.google.com/drive/folders/%s", d.StockRootFolderID),
+		},
+		"clips": {
+			ID:   d.ClipsRootFolderID,
+			Name: "Clips",
+			URL:  fmt.Sprintf("https://drive.google.com/drive/folders/%s", d.ClipsRootFolderID),
+		},
 	}
-	for k, id := range folders {
-		name := names[k]
-		result[k] = StockFolderEntry{
-			ID:   id,
-			Name: name,
-			URL:  fmt.Sprintf("https://drive.google.com/drive/folders/%s", id),
-		}
-	}
-	return result
 }

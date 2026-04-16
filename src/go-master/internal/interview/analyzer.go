@@ -105,7 +105,7 @@ func (a *Analyzer) FindInterviews(ctx context.Context, topic string, maxResults 
 
 	for _, query := range queries[:2] {
 		cmd := exec.CommandContext(ctx, a.cfg.YTDLPPath,
-			fmt.Sprintf("ytsearch%d:%s", maxResults), query,
+			fmt.Sprintf("ytsearch%d:%s", maxResults, query),
 			"--dump-json", "--flat-playlist", "--no-warnings",
 		)
 		cmd.Stderr = nil

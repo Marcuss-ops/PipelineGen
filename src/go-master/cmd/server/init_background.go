@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"time"
 
 	"go.uber.org/zap"
@@ -33,9 +34,9 @@ func initBackgroundServices(
 	driveClient := drive.DriveHandler.GetDriveClient()
 	var services []runtime.BackgroundService
 
-	// === Channel Monitor ===
+	// === Channel Monitor === (disabled by default, set VELOX_ENABLE_CHANNEL_MONITOR=true to enable)
 	var channelMonitorHandler *handlers.ChannelMonitorHandler
-	if core.YouTubeClientV2 != nil && driveClient != nil {
+	if os.Getenv("VELOX_ENABLE_CHANNEL_MONITOR") == "true" && core.YouTubeClientV2 != nil && driveClient != nil {
 		configPath := "data/channel_monitor_config.json"
 		fileCfg, err := channelmonitor.LoadConfigWithDefaults(configPath)
 		if err != nil {
@@ -58,7 +59,7 @@ func initBackgroundServices(
 			monitorCfg.YtDlpPath = cfg.Paths.YtDlpPath
 		}
 		if monitorCfg.StockRootID == "" {
-			monitorCfg.StockRootID = "1ayEZ-CV18xfHQT7RLB4Xgh-TrlkGs-0X"
+			monitorCfg.StockRootID = "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
 		}
 		if monitorCfg.CheckInterval == 0 {
 			monitorCfg.CheckInterval = 24 * time.Hour
@@ -80,9 +81,9 @@ func initBackgroundServices(
 		services = append(services, monitor)
 	}
 
-	// === Stock Job Scheduler ===
+	// === Stock Job Scheduler === (disabled by default)
 	var stockScheduler *stockjob.Scheduler
-	if clips.StockDB != nil && core.YouTubeClientV2 != nil {
+	if os.Getenv("VELOX_ENABLE_STOCK_SCHEDULER") == "true" && clips.StockDB != nil && core.YouTubeClientV2 != nil {
 		clipDBAdapter := &mainClipDB{db: clips.StockDB}
 		searchQueries := cfg.Scheduler.SearchQueries
 		if len(searchQueries) == 0 {
