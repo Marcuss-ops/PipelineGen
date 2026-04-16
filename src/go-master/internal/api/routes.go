@@ -2,6 +2,8 @@
 package api
 
 import (
+	"time"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -94,6 +96,30 @@ func NewRouter(
 	}
 }
 
+func buildCORSConfig(cfg *config.Config) cors.Config {
+	corsCfg := cors.Config{
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Velox-Admin-Token"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}
+
+	origins := cfg.Security.CORSOrigins
+	if len(origins) == 0 {
+		corsCfg.AllowAllOrigins = true
+		return corsCfg
+	}
+
+	if len(origins) == 1 && origins[0] == "*" {
+		corsCfg.AllowAllOrigins = true
+		return corsCfg
+	}
+
+	corsCfg.AllowOrigins = origins
+	return corsCfg
+}
+
 // Setup configures the gin router
 func (r *Router) Setup() *gin.Engine {
 	gin.SetMode(r.cfg.Server.GinMode)
@@ -101,9 +127,10 @@ func (r *Router) Setup() *gin.Engine {
 	engine := gin.New()
 
 	// Global middleware
-	engine.Use(gin.Recovery())
+	engine.Use(middleware.Logger())
+	engine.Use(middleware.Recovery())
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
-	engine.Use(cors.Default())
+	engine.Use(cors.New(buildCORSConfig(r.cfg)))
 
 	h := r.handlers
 
@@ -112,8 +139,9 @@ func (r *Router) Setup() *gin.Engine {
 	rateLimitMW := middleware.RateLimit()
 	r.rateLimitMiddleware = rateLimitMW
 
-	// Health check (public — no auth/rate limit)
+	// Health checks (public — no auth/rate limit)
 	engine.GET("/health", h.Health.Health)
+	engine.GET("/api/health", h.Health.Health)
 
 	// Public routes (no auth, no rate limit) — accessible from any machine
 	public := engine.Group("/api")
@@ -139,120 +167,78 @@ func (r *Router) Setup() *gin.Engine {
 		{
 			// Job management
 			h.Job.RegisterRoutes(protected)
-
 			// Worker management
 			h.Worker.RegisterRoutes(protected)
-
 			// Video processing
 			h.Video.RegisterRoutes(protected)
-
 			// YouTube integration
 			h.YouTube.RegisterRoutes(protected)
-
 			// Script generation
 			h.Script.RegisterRoutes(protected)
-
 			// Google Drive (write operations)
 			h.Drive.RegisterRoutes(protected)
-
 			// Voiceover
 			h.Voiceover.RegisterRoutes(protected)
-
 			// NLP
 			h.NLP.RegisterRoutes(protected)
-
 			// Stock - Projects
 			h.StockProject.RegisterRoutes(protected)
-
 			// Stock - Search
 			h.StockSearch.RegisterRoutes(protected)
-
 			// Stock - Process
 			h.StockProcess.RegisterRoutes(protected)
-
 			// Clip (write operations)
 			h.Clip.RegisterRoutes(protected)
-
 			// Clip Index (write operations)
 			h.ClipIndex.RegisterRoutes(protected)
-
 			// Dashboard
 			h.Dashboard.RegisterRoutes(protected)
-
 			// Stats
 			h.Stats.RegisterRoutes(protected)
-
 			// Scraper
 			h.Scraper.RegisterRoutes(protected)
-
 			// Admin
 			h.Admin.RegisterRoutes(protected)
-
 			// Download
 			h.Download.RegisterRoutes(protected)
 
-			// Timestamp mapping (text segments → Drive/Artlist clips)
 			if h.Timestamp != nil {
 				h.Timestamp.RegisterRoutes(protected)
 			}
-
-			// Clip Approval & AI Verification
 			if h.ClipApproval != nil {
 				h.ClipApproval.RegisterRoutes(protected)
 			}
-
-			// YouTube V2 (new client interface)
 			if h.YouTubeV2 != nil {
 				h.YouTubeV2.RegisterRoutes(protected)
 			}
-
-			// GPU & Text Generation
 			if h.GPUTextGen != nil {
 				h.GPUTextGen.RegisterRoutes(protected)
 			}
-
-			// Script Generation with Clips (end-to-end pipeline)
 			if h.ScriptClips != nil {
 				h.ScriptClips.RegisterRoutes(protected)
 			}
-
-			// Script Generation FROM Clips (based on existing clips)
 			if h.ScriptFromClips != nil {
 				h.ScriptFromClips.RegisterRoutes(protected)
 			}
-
-			// Stock Orchestrator (full pipeline: YouTube → Download → Drive)
 			if h.StockOrchestrator != nil {
 				h.StockOrchestrator.RegisterRoutes(protected)
 			}
-
-			// Script Docs (script + entities + clips → Google Docs)
 			if h.ScriptDocs != nil {
 				scriptDocsGroup := protected.Group("/script-docs")
 				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)
 			}
-
-			// Channel Monitor (manual trigger + status)
 			if h.ChannelMonitor != nil {
 				h.ChannelMonitor.RegisterRoutes(protected)
 			}
-
-			// Async Pipeline (Job ID + status polling)
 			if h.AsyncPipeline != nil {
 				h.AsyncPipeline.RegisterRoutes(protected)
 			}
-
-			// Artlist Pipeline (text → clips → video)
 			if h.ArtlistPipeline != nil {
 				h.ArtlistPipeline.RegisterRoutes(protected)
 			}
-
-			// Harvester (YouTube → Download → Drive)
 			if h.Harvester != nil {
 				h.Harvester.RegisterRoutes(protected)
 			}
-
-			// Script Pipeline (modular script processing)
 			if h.ScriptPipeline != nil {
 				h.ScriptPipeline.RegisterRoutes(protected)
 			}
