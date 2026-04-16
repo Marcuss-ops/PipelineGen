@@ -147,7 +147,7 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 					FolderID: sub.ID,
 					Filename: file.Name,
 					Source:   section,
-					Tags:     strings.Join(generateTags(file.Name), " "),
+					Tags:     generateTags(file.Name),
 					Duration: int(file.DurationMs / 1000),
 					DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", file.ID),
 				}
@@ -204,16 +204,16 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 							Tags:     generateTags(file.Name),
 							Duration: int(file.DurationMs / 1000),
 						})
-				} else {
-					clipClips = append(clipClips, clipdb.ClipEntry{
-						ClipID:   file.ID,
-						FolderID: sub2.ID,
-						Filename: file.Name,
-						Source:   section,
-						Tags:     strings.Join(generateTags(file.Name), " "),
-						Duration: int(file.DurationMs / 1000),
-						DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", file.ID),
-					})
+					} else {
+						clipClips = append(clipClips, clipdb.ClipEntry{
+							ClipID:   file.ID,
+							FolderID: sub2.ID,
+							Filename: file.Name,
+							Source:   section,
+							Tags:     generateTags(file.Name),
+							Duration: int(file.DurationMs / 1000),
+							DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view?usp=drivesdk", file.ID),
+						})
 					}
 				}
 			}

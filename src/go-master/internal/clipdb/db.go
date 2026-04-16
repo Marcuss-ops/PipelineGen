@@ -37,14 +37,14 @@ type ClipFolder struct {
 }
 
 type ClipEntry struct {
-	ClipID    string `json:"clip_id"`
-	FolderID  string `json:"folder_id"`
-	Filename  string `json:"filename"`
-	Source    string `json:"source"` // "youtube", "tiktok", "artlist"
-	Tags      string `json:"tags"`
-	Duration  int    `json:"duration"`
-	DriveURL  string `json:"drive_url,omitempty"`
-	LocalPath string `json:"local_path,omitempty"`
+	ClipID    string   `json:"clip_id"`
+	FolderID  string   `json:"folder_id"`
+	Filename  string   `json:"filename"`
+	Source    string   `json:"source"` // "youtube", "tiktok", "artlist"
+	Tags      []string `json:"tags"`
+	Duration  int      `json:"duration"`
+	DriveURL  string   `json:"drive_url,omitempty"`
+	LocalPath string   `json:"local_path,omitempty"`
 }
 
 func Open(dbPath string) (*ClipDB, error) {
@@ -239,11 +239,10 @@ func (s *ClipDB) UpdateClip(record *ClipEntry) error {
 	return nil
 }
 
-func containsTag(clipTags, searchTag string) bool {
-	lowerTags := toLowerWords(clipTags)
+func containsTag(clipTags []string, searchTag string) bool {
 	lowerSearch := strings.ToLower(searchTag)
-	for _, t := range lowerTags {
-		if t == lowerSearch {
+	for _, t := range clipTags {
+		if strings.ToLower(t) == lowerSearch {
 			return true
 		}
 	}

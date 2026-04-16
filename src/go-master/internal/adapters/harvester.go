@@ -113,7 +113,7 @@ func (a *ClipDBToHarvesterAdapter) AddClip(record *harvester.ClipRecord) error {
 		ClipID:   record.VideoID,
 		Filename: record.Title,
 		Source:   "youtube",
-		Tags:     "",
+		Tags:     []string{},
 		Duration: record.Duration,
 		DriveURL: record.DriveURL,
 	}
@@ -142,7 +142,7 @@ func (a *ClipDBToHarvesterAdapter) UpdateClip(record *harvester.ClipRecord) erro
 		ClipID:    record.VideoID,
 		Filename:  record.Title,
 		Source:    "youtube",
-		Tags:      "",
+		Tags:      []string{},
 		Duration:  record.Duration,
 		DriveURL:  record.DriveURL,
 		LocalPath: record.DownloadPath,
