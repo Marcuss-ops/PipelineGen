@@ -1,4 +1,6 @@
-package scriptdocsimport (
+package scriptdocs
+
+import (
 	"fmt"
 	"strings"
 
@@ -122,4 +124,3 @@ type StockFolder struct {
 	Name string // e.g., "Stock/Boxe/Andrewtate"
 	URL  string
 }
-

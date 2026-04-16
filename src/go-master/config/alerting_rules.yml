@@ -1,0 +1,221 @@
+# Alerting Rules for Velox Go-Live
+# SLO: 99.9% availability, p99 < 500ms, Error Rate < 0.1%
+
+groups:
+  - name: velox_critical
+    interval: 30s
+    rules:
+      # CRITICAL: High Error Rate
+      - alert: VeloxHighErrorRate
+        expr: |
+          (
+            sum(rate(stock_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(stock_requests_total[5m]))
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "🚨 Velox Go error rate > 1%"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+          runbook_url: "https://wiki.velox.io/runbooks/high-error-rate"
+          action: "Considera rollback: ./scripts/emergency_rollback.sh"
+
+      # CRITICAL: High Latency p99
+      - alert: VeloxHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(stock_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "🚨 Velox Go p99 latency > 1s"
+          description: "p99 latency is {{ $value }}s"
+          runbook_url: "https://wiki.velox.io/runbooks/high-latency"
+          action: "Verifica load e considera scale-up"
+
+      # CRITICAL: Service Down
+      - alert: VeloxGoDown
+        expr: up{job="velox-go"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "🔥 Velox Go backend DOWN!"
+          description: "Go backend has been down for more than 1 minute"
+          runbook_url: "https://wiki.velox.io/runbooks/service-down"
+          action: "ESEGUI: ./scripts/emergency_rollback.sh"
+
+      # WARNING: Error Rate approaching threshold
+      - alert: VeloxErrorRateWarning
+        expr: |
+          (
+            sum(rate(stock_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(stock_requests_total[5m]))
+          ) > 0.005
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "⚠️ Velox Go error rate > 0.5%"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      # WARNING: Latency p95 high
+      - alert: VeloxLatencyP95Warning
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(stock_request_duration_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "⚠️ Velox Go p95 latency > 500ms"
+          description: "p95 latency is {{ $value }}s"
+
+      # INFO: Low throughput (may indicate issues)
+      - alert: VeloxLowThroughput
+        expr: sum(rate(stock_requests_total[5m])) < 10
+        for: 10m
+        labels:
+          severity: info
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "ℹ️ Velox Go throughput low"
+          description: "Throughput is {{ $value }} req/s"
+
+  - name: velox_slo
+    interval: 1m
+    rules:
+      # SLO: Availability 99.9%
+      - alert: VeloxSLOAvailability
+        expr: |
+          (
+            1 - (
+              sum(rate(stock_requests_total{status=~"5.."}[1h]))
+              /
+              sum(rate(stock_requests_total[1h]))
+            )
+          ) < 0.999
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          slo: availability
+        annotations:
+          summary: "🚨 SLO Breach: Availability < 99.9%"
+          description: "Current availability: {{ $value | humanizePercentage }}"
+          action: "Pagina il on-call engineer immediatamente"
+
+      # SLO: Error Rate < 0.1%
+      - alert: VeloxSLOErrorRate
+        expr: |
+          (
+            sum(rate(stock_requests_total{status=~"5.."}[1h]))
+            /
+            sum(rate(stock_requests_total[1h]))
+          ) > 0.001
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          slo: error-rate
+        annotations:
+          summary: "🚨 SLO Breach: Error Rate > 0.1%"
+          description: "Current error rate: {{ $value | humanizePercentage }}"
+
+      # SLO: Latency p99 < 500ms
+      - alert: VeloxSLOLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(stock_request_duration_seconds_bucket[1h])) by (le)
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          slo: latency
+        annotations:
+          summary: "🚨 SLO Breach: p99 Latency > 500ms"
+          description: "Current p99: {{ $value }}s"
+
+  - name: velox_system
+    interval: 30s
+    rules:
+      # WARNING: High memory usage
+      - alert: VeloxHighMemory
+        expr: go_memstats_heap_inuse_bytes / 1024 / 1024 > 1024
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "⚠️ Velox Go memory usage > 1GB"
+          description: "Current heap: {{ $value | humanize }}MB"
+
+      # WARNING: High goroutine count
+      - alert: VeloxHighGoroutines
+        expr: go_goroutines > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "⚠️ Velox Go goroutines > 1000"
+          description: "Current goroutines: {{ $value }}"
+          action: "Possibile goroutine leak, verifica codice"
+
+      # WARNING: High GC pause
+      - alert: VeloxHighGCPause
+        expr: rate(go_gc_duration_seconds_sum[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+        annotations:
+          summary: "⚠️ Velox Go GC pause high"
+          description: "GC pause: {{ $value }}s"
+          action: "Considera tuning GOGC"
+
+  - name: velox_canary
+    interval: 15s
+    rules:
+      # CRITICAL: Canary error rate high
+      - alert: VeloxCanaryHighErrorRate
+        expr: |
+          (
+            sum(rate(stock_requests_total{backend="go",status=~"5.."}[2m]))
+            /
+            sum(rate(stock_requests_total{backend="go"}[2m]))
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          canary: "true"
+        annotations:
+          summary: "🚨 CANARY ALERT: Error rate > 5%"
+          description: "Canary error rate: {{ $value | humanizePercentage }}"
+          action: "ROLLBACK IMMEDIATO: ./scripts/emergency_rollback.sh"
