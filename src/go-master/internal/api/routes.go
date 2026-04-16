@@ -41,6 +41,7 @@ type Handlers struct {
 	StockProcess      *handlers.StockProcessHandler
 	Clip              *handlers.ClipHandler
 	ClipIndex         *handlers.ClipIndexHandler
+	Catalog           *handlers.CatalogHandler
 	Dashboard         *handlers.DashboardHandler
 	Stats             *handlers.StatsHandler
 	Scraper           *handlers.ScraperHandler
@@ -152,6 +153,9 @@ func (r *Router) Setup() *gin.Engine {
 		// Clip read endpoints (suggest, search, list, folder browsing)
 		h.Clip.RegisterPublicRoutes(public)
 		h.ClipIndex.RegisterPublicRoutes(public)
+		if h.Catalog != nil {
+			h.Catalog.RegisterPublicRoutes(public)
+		}
 
 		// Drive read endpoints (folders, folder content)
 		h.Drive.RegisterPublicRoutes(public)
@@ -191,6 +195,9 @@ func (r *Router) Setup() *gin.Engine {
 			h.Clip.RegisterRoutes(protected)
 			// Clip Index (write operations)
 			h.ClipIndex.RegisterRoutes(protected)
+			if h.Catalog != nil {
+				h.Catalog.RegisterRoutes(protected)
+			}
 			// Dashboard
 			h.Dashboard.RegisterRoutes(protected)
 			// Stats
