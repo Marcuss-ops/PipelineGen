@@ -8,8 +8,8 @@ import (
 	"velox/go-master/internal/core/worker"
 	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/service/stockorchestrator"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/timestamp"
+	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 )
 
@@ -48,6 +48,11 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	if err != nil {
 		runCleanups(cleanups)
 		return nil, err
+	}
+	if clipDeps.CatalogDB != nil {
+		cleanups = append(cleanups, func() {
+			_ = clipDeps.CatalogDB.Close()
+		})
 	}
 	for _, svc := range clipBgSvcs {
 		sg.Add(svc)
@@ -119,14 +124,14 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 
 	// === Assemble RouterDeps ===
 	deps := &api.RouterDeps{
-		VideoProcessor: coreDeps.VideoProc,
-		ScriptGen:      coreDeps.ScriptGen,
-		OllamaClient:   coreDeps.OllamaClient,
-		EdgeTTS:        coreDeps.EdgeTTS,
-		StockManager:   coreDeps.StockMgr,
-		EntityService:  coreDeps.EntityService,
+		VideoProcessor:  coreDeps.VideoProc,
+		ScriptGen:       coreDeps.ScriptGen,
+		OllamaClient:    coreDeps.OllamaClient,
+		EdgeTTS:         coreDeps.EdgeTTS,
+		StockManager:    coreDeps.StockMgr,
+		EntityService:   coreDeps.EntityService,
 		PipelineService: coreDeps.PipelineService,
-		Downloader:     coreDeps.Downloader,
+		Downloader:      coreDeps.Downloader,
 	}
 
 	// === Assemble Handlers ===
@@ -175,15 +180,12 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		ChannelMonitor:  bgDeps.ChannelMonitorHandler,
 		AsyncPipeline:   pipelineDeps.AsyncPipelineHandler,
 		ArtlistPipeline: pipelineDeps.ArtlistPipelineHandler,
-		Harvester: bgDeps.HarvesterHandler,
+		Harvester:       bgDeps.HarvesterHandler,
 	}
 
 	routerDeps := &api.RouterDepsWithHandlers{Handlers: allHandlers, Deps: deps}
 
 	// === Aggregated Cleanup ===
-	// ServiceGroup.Stop() cancels the shared context and calls Stop() on
-	// every registered service in reverse order. Then we run individual
-	// cleanups (storage close, cache save, etc.).
 	baseCleanup := func() {
 		_ = sg.Stop()
 		if pipelineDeps.ClipCache != nil {
@@ -201,8 +203,6 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}, nil
 }
 
-// runCleanups executes cleanup functions in reverse order so that dependents
-// shut down before their dependencies.
 func runCleanups(cleanups []CleanupFunc) {
 	for i := len(cleanups) - 1; i >= 0; i-- {
 		if cleanups[i] != nil {
