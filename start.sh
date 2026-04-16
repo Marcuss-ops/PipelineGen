@@ -7,14 +7,19 @@ set -e
 echo "🚀 Avvio VeloxEditing Backend..."
 echo ""
 
-# Verifica binary Rust
-if [ ! -f "./bin/video-stock-creator.bundle" ]; then
-    echo "❌ Errore: bin/video-stock-creator.bundle non trovato!"
-    echo "   Il binary Rust deve essere nella directory bin/"
-    exit 1
-fi
+RUST_BUNDLE="./bin/video-stock-creator.bundle"
+RUST_AVAILABLE=false
 
-echo "✅ Binary Rust trovato"
+# Verifica binary Rust
+if [ -f "$RUST_BUNDLE" ]; then
+    echo "✅ Binary Rust trovato: $RUST_BUNDLE"
+    RUST_AVAILABLE=true
+else
+    echo "⚠️  Binary Rust non trovato: $RUST_BUNDLE"
+    echo "   Avvio comunque il Go Master in modalità API-only."
+    echo "   Gli endpoint di video processing che dipendono dal bundle Rust"
+    echo "   resteranno indisponibili finché il binary non verrà compilato."
+fi
 
 # Verifica Go
 if ! command -v go &> /dev/null; then
@@ -54,8 +59,16 @@ echo "   • http://localhost:8080/api/clip/*"
 echo ""
 echo "📚 Documentazione:"
 echo "   • README.md"
-echo "   • ENDPOINT_ATTIVI.md"
+echo "   • docs/ENDPOINT_ATTIVI.md"
 echo ""
+
+if [ "$RUST_AVAILABLE" = false ]; then
+    echo "⚠️  Modalità API-only attiva:"
+    echo "   • Compila il bundle Rust per abilitare gli endpoint video completi"
+    echo "   • Percorso atteso: ./bin/video-stock-creator.bundle"
+    echo ""
+fi
+
 echo "🛑 Per fermare: kill $MASTER_PID"
 echo ""
 
