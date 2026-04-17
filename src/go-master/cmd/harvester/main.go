@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"velox/go-master/internal/adapters"
 	"velox/go-master/internal/api/handlers"
 	"velox/go-master/internal/harvester"
+	"velox/go-master/internal/queue"
+	pgstorage "velox/go-master/internal/storage/postgres"
 	"velox/go-master/internal/storage/jsondb"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/youtube"
@@ -26,13 +29,27 @@ func main() {
 	log := logger.Get()
 	defer logger.Sync()
 
-	log.Info("Starting Dedicated Harvester Service", zap.String("version", "1.0.0"))
+	log.Info("Starting Dedicated Harvester Service", zap.String("version", "1.1.0"))
+
+	// Initialize Queue
+	var q queue.Queue = queue.NewNoopQueue()
+	dsn := strings.TrimSpace(os.Getenv("VELOX_DB_DSN"))
+	if dsn != "" {
+		storage, err := pgstorage.NewStorage(dsn)
+		if err != nil {
+			log.Fatal("Failed to connect to Postgres", zap.Error(err))
+		}
+		defer storage.Close()
+		q = queue.NewPostgresQueue(storage.GetDB())
+		log.Info("Connected to Postgres Queue")
+	}
 
 	// Initialize Storage (Shared boundary)
 	storage, err := jsondb.NewStorage(cfg.Storage.DataDir)
 	if err != nil {
 		log.Fatal("Failed to initialize storage", zap.Error(err))
 	}
+	defer storage.Close()
 
 	// Initialize YouTube V2
 	ytCfg := &youtube.Config{Backend: "ytdlp", YtDlpPath: cfg.Paths.YtDlpPath}
@@ -56,6 +73,8 @@ func main() {
 	clipDB, err := clip.OpenClipDB(clipDBPath)
 	if err != nil {
 		log.Warn("Failed to open ClipDB", zap.Error(err))
+	} else {
+		defer clipDB.Close()
 	}
 
 	// Setup Harvester
@@ -74,10 +93,10 @@ func main() {
 			DriveFolderID:      cfg.Drive.StockRootFolderID,
 		}
 		clipAdapter := adapters.NewClipDBToHarvesterAdapter(clipDB)
-		harvesterSvc := harvester.NewHarvester(harvesterConfig, ytAdapter, tiktokBackend, driveClient, clipAdapter)
+		harvesterSvc := harvester.NewHarvester(harvesterConfig, ytAdapter, tiktokBackend, driveClient, clipAdapter, q)
 
 		log.Info("Harvester service running...")
-		
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -92,8 +111,6 @@ func main() {
 
 		log.Info("Shutting down Harvester...")
 		_ = harvesterSvc.Stop()
-		_ = clipDB.Close()
-		_ = storage.Close()
 	} else {
 		log.Fatal("Harvester dependencies not met (YouTube, Drive, or ClipDB missing)")
 	}

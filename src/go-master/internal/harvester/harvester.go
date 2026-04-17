@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"velox/go-master/internal/downloader"
+	"velox/go-master/internal/queue"
 	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
+	"velox/go-master/pkg/models"
 
 	"go.uber.org/zap"
 )
@@ -70,6 +72,7 @@ type Harvester struct {
 	downloader    downloader.Downloader
 	driveClient   *drive.Client
 	db            ClipDatabase
+	queue         queue.Queue
 	blacklist     []BlacklistRecord
 	downloadCh    chan SearchResult
 	resultCh      chan HarvestResult
@@ -122,6 +125,7 @@ func NewHarvester(
 	dl downloader.Downloader,
 	driveClient *drive.Client,
 	db ClipDatabase,
+	q queue.Queue,
 ) *Harvester {
 	if config == nil {
 		config = &Config{
@@ -144,6 +148,7 @@ func NewHarvester(
 		downloader:    dl,
 		driveClient:   driveClient,
 		db:            db,
+		queue:         q,
 		blacklist:     []BlacklistRecord{},
 		downloadCh:    make(chan SearchResult, 100),
 		resultCh:      make(chan HarvestResult, 100),
@@ -353,6 +358,26 @@ func (h *Harvester) worker(ctx context.Context, id int) {
 
 func (h *Harvester) processVideo(ctx context.Context, result SearchResult) {
 	logger.Info("Processing video", zap.String("video_id", result.VideoID), zap.String("title", result.Title))
+
+	// If a distributed queue is available, offload the work
+	if h.queue != nil {
+		payloadData := map[string]string{"url": result.URL}
+		payloadBytes, _ := json.Marshal(payloadData)
+
+		msg := queue.Message{
+			ID:      fmt.Sprintf("harv_%s_%d", result.VideoID, time.Now().Unix()),
+			Topic:   string(models.TypeStockDownload),
+			JobID:   result.VideoID,
+			Payload: payloadBytes,
+		}
+
+		if err := h.queue.Publish(ctx, msg); err == nil {
+			logger.Info("Video offloaded to distributed queue", zap.String("video_id", result.VideoID))
+			return
+		} else {
+			logger.Warn("Failed to publish to queue, falling back to local processing", zap.Error(err))
+		}
+	}
 
 	hr := HarvestResult{
 		VideoID: result.VideoID,

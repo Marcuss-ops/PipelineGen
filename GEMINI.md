@@ -16,19 +16,23 @@ VeloxEditing is an automated video content creation platform. The system is a mu
 ### 1. Go Master (`src/go-master`)
 The central node that provides the HTTP API and manages the lifecycle of video "jobs" and "workers".
 - **Framework:** [Gin Gonic](https://github.com/gin-gonic/gin)
-- **Database:** JSON files + SQLite (transitioning to PostgreSQL per ADR-0001).
+- **Database & Queue:** PostgreSQL (Primary durable storage and atomic queue using `SKIP LOCKED`).
 - **Service Discovery:** Modular initialization pattern in `cmd/server/` (see `wire.go`, `init_*.go`).
 - **Integrations:** Google Drive, YouTube API, Ollama (local AI), OpenAI.
 
-### 2. Rust Video Engine (`src/rust`)
+### 2. Dedicated Services (Micro-services ready)
+- **Harvester:** `src/go-master/cmd/harvester` (IO-bound content harvesting)
+- **Downloader:** `src/go-master/cmd/downloader` (Parallel video fetching)
+
+### 3. Rust Video Engine (`src/rust`)
 A high-performance video processing tool that wraps FFmpeg to perform complex assembly, transitions, and audio mixing.
 - **Output:** Compiled into `bin/video-stock-creator.bundle`.
 - **Communication:** Called by Go via subprocess/CLI.
 
-### 3. Python Helpers (`src/python`)
+### 4. Python Helpers (`src/python`)
 Utilities for LLM interactions (Ollama) and extracting YouTube transcripts.
 
-### 4. Node Scraper (`src/node-scraper`)
+### 5. Node Scraper (`src/node-scraper`)
 Playwright/Puppeteer-based scrapers for indexing stock footage and other metadata.
 
 ## 🚀 Building and Running
@@ -38,6 +42,7 @@ Playwright/Puppeteer-based scrapers for indexing stock footage and other metadat
 - Rust toolchain
 - Python 3.10+
 - Node.js 18+
+- PostgreSQL 14+ (for production mode)
 - Ollama (running `gemma3:4b` or equivalent)
 - `yt-dlp` installed globally
 
@@ -46,11 +51,19 @@ Playwright/Puppeteer-based scrapers for indexing stock footage and other metadat
 | Task | Command | Location |
 | :--- | :--- | :--- |
 | **Start Backend** | `./start.sh` | Root |
-| **Build Go** | `make build` | `src/go-master` |
+| **Build Go Master** | `make build` | `src/go-master` |
+| **Build Harvester** | `go build -o ../../bin/harvester ./cmd/harvester` | `src/go-master` |
+| **Build Downloader** | `go build -o ../../bin/downloader ./cmd/downloader` | `src/go-master` |
 | **Build Rust** | `cargo build --release` | `src/rust` |
 | **Test Go** | `make test` | `src/go-master` |
-| **Linter Go** | `make lint` | `src/go-master` |
-| **Install Python deps** | `pip install -r requirements.txt` | Root |
+
+### Production Persistence (Postgres)
+To enable the robust persistence layer, set the following env vars:
+```bash
+export VELOX_DB_DSN="postgres://user:pass@localhost:5432/velox?sslmode=disable"
+export VELOX_STORAGE_BACKEND="postgres"
+export VELOX_QUEUE_BACKEND="postgres"
+```
 
 ### Manual Execution (Go)
 ```bash

@@ -123,8 +123,9 @@ func initBackgroundServices(
 			DriveFolderID:      cfg.Drive.StockRootFolderID,
 		}
 		clipAdapter := adapters.NewClipDBToHarvesterAdapter(clips.ClipDB)
-		harvesterSvc = harvester.NewHarvester(harvesterConfig, ytAdapter, core.TikTokClient, driveClient, clipAdapter)
+		harvesterSvc = harvester.NewHarvester(harvesterConfig, ytAdapter, core.TikTokClient, driveClient, clipAdapter, core.Queue)
 		harvesterHandler = harvester.NewHandler(harvesterSvc)
+
 		// Register as BackgroundService (native implementation)
 		services = append(services, harvesterSvc)
 		log.Info("Harvester initialized")
