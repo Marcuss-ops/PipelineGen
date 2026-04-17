@@ -24,14 +24,26 @@ else
     echo "   resteranno indisponibili finché il binary non verrà compilato."
 fi
 
-# Verifica Go
-if ! command -v go &> /dev/null; then
-    echo "❌ Errore: Go non installato!"
-    exit 1
-fi
+# Verifica dipendenze esterne
+check_dependencies() {
+    local deps=("go" "ffmpeg" "python3" "node" "yt-dlp")
+    local missing=()
+    
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            missing+=("$dep")
+        fi
+    done
+    
+    if [ ${#missing[@]} -ne 0 ]; then
+        echo "❌ Errore: Dipendenze mancanti: ${missing[*]}"
+        echo "   Assicurati di installarle prima di avviare il backend."
+        exit 1
+    fi
+    echo "✅ Tutte le dipendenze esterne (go, ffmpeg, python3, node, yt-dlp) sono presenti."
+}
 
-echo "✅ Go installato: $(go version)"
-echo ""
+check_dependencies
 
 # Avvia Go Master
 PORT="${VELOX_PORT:-8080}"

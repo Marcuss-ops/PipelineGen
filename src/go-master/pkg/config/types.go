@@ -78,6 +78,7 @@ type StorageConfig struct {
 	WorkersFile      string `yaml:"workers_file" env:"VELOX_WORKERS_FILE" default:"workers.json"`
 	BackupDir        string `yaml:"backup_dir" env:"VELOX_BACKUP_DIR" default:"./backups"`
 	AutoSaveInterval int    `yaml:"auto_save_interval" env:"VELOX_AUTO_SAVE_INTERVAL" default:"60"`
+	PostgresDSN      string `yaml:"postgres_dsn" env:"VELOX_POSTGRES_DSN" default:""`
 }
 
 // JobsConfig holds job-related configuration
