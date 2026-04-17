@@ -41,6 +41,11 @@ func NewStorage(dsn string) (*Storage, error) {
 	}, nil
 }
 
+// GetDB restituisce l'istanza sql.DB (usata per la coda).
+func (s *Storage) GetDB() *sql.DB {
+	return s.db
+}
+
 // HealthCheck verifica la connessione al database.
 func (s *Storage) HealthCheck() error {
 	return s.db.Ping()

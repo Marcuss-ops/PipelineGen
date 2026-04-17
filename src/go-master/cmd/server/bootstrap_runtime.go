@@ -49,12 +49,26 @@ func selectQueueBackend() queue.Backend {
 			return queue.BackendNATS
 		case "json":
 			return queue.BackendJSON
+		case "postgres":
+			return queue.BackendPostgres
 		}
+	}
+	// Default to postgres if DSN is present but backend not specified
+	if strings.TrimSpace(os.Getenv("VELOX_DB_DSN")) != "" {
+		return queue.BackendPostgres
 	}
 	return queue.BackendNoop
 }
 
-func buildQueueBackend() queue.Queue {
+func buildQueueBackend(s runtimeStorage) queue.Queue {
+	backend := selectQueueBackend()
+	
+	if backend == queue.BackendPostgres {
+		if pg, ok := s.(*pgstorage.Storage); ok {
+			return queue.NewPostgresQueue(pg.GetDB())
+		}
+	}
+
 	// Real transports will replace this switch incrementally.
 	return queue.NewNoopQueue()
 }

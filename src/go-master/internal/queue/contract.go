@@ -9,6 +9,7 @@ const (
 	BackendJSON         Backend = "json"
 	BackendRedisStreams Backend = "redis-streams"
 	BackendNATS         Backend = "nats"
+	BackendPostgres     Backend = "postgres"
 	BackendNoop         Backend = "noop"
 )
 
