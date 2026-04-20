@@ -107,7 +107,7 @@ func (b *DataAPIBackend) GetSubtitles(ctx context.Context, videoID string, lang 
 	return nil, nil
 }
 func (b *DataAPIBackend) GetTranscript(ctx context.Context, url string, lang string) (string, error) {
-	return nil, nil
+	return "", nil
 }
 func (b *DataAPIBackend) CheckAvailable(ctx context.Context) error {
 	return nil
