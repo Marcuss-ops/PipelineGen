@@ -4,11 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
-	artlistpipeline "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers"
+	artlistpipeline "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clipcache"
 	"velox/go-master/internal/clipsearch"
@@ -128,12 +129,41 @@ func initPipeline(
 			log.Info("ArtlistDB opened", zap.String("path", cfg.Storage.DataDir+"/artlist_local.db.json"))
 		}
 
-		if driveClient != nil && clips.StockDB != nil {
+		if driveClient != nil {
 			clipSearch = clipsearch.New(
 				driveClient, clips.StockDB, artlistDB,
 				cfg.GetDownloadDir(), cfg.Paths.YtDlpPath,
 			)
-			log.Info("Dynamic clip search service initialized")
+			checkpointPath := cfg.Storage.DataDir + "/clipsearch_checkpoints.json"
+			if err := clipSearch.SetCheckpointStorePath(checkpointPath); err != nil {
+				log.Warn("Failed to initialize clipsearch checkpoint store",
+					zap.String("path", checkpointPath),
+					zap.Error(err),
+				)
+			}
+			uploadRootID := strings.TrimSpace(os.Getenv("VELOX_DYNAMIC_CLIP_UPLOAD_ROOT"))
+			if uploadRootID == "" {
+				uploadRootID = strings.TrimSpace(cfg.Drive.ClipsRootFolderID)
+			}
+			if uploadRootID == "" {
+				uploadRootID = strings.TrimSpace(cfg.Drive.StockRootFolderID)
+			}
+			if uploadRootID == "" {
+				uploadRootID = strings.TrimSpace(cfg.Drive.ArtlistFolderID)
+			}
+			clipSearch.SetUploadFolderID(uploadRootID)
+			if clips.ClipIndexHandler != nil {
+				clipSearch.SetIndexer(clips.ClipIndexHandler.GetIndexer())
+			}
+			if clips.ArtlistSrc != nil {
+				clipSearch.SetArtlistSource(clips.ArtlistSrc)
+			}
+			if core.OllamaClient != nil {
+				clipSearch.SetOllamaClient(core.OllamaClient)
+			}
+			log.Info("Dynamic clip search service initialized",
+				zap.Bool("stock_db_available", clips.StockDB != nil),
+			)
 		}
 	}
 

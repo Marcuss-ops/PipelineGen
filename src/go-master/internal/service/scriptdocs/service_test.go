@@ -281,7 +281,7 @@ func TestAssociateClips(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := svc.associateClips(tt.frasi)
+			result := svc.associateClips(tt.frasi, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 			artlistCount := 0
 			stockCount := 0
@@ -397,7 +397,7 @@ func TestAssociateClipsMultilingual(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := svc.associateClips([]string{tt.frase})
+			result := svc.associateClips([]string{tt.frase}, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 			if len(result) != 1 {
 				t.Fatalf("associateClips() got %d results, want 1", len(result))

@@ -1,5 +1,430 @@
 {
   "searches": {
+    "amish": {
+      "term": "amish",
+      "clips": [
+        {
+          "id": "dynamic_178oChZyzFzPzBAbNUhy4ImbPjOi-jwG_",
+          "video_id": "178oChZyzFzPzBAbNUhy4ImbPjOi-jwG_",
+          "title": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "name": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "term": "amish",
+          "folder": "Stock/Artlist/amish",
+          "folder_id": "1Hhw_SYc6aOaxcNUuuRO9k8nsaPLtC41a",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "178oChZyzFzPzBAbNUhy4ImbPjOi-jwG_",
+          "drive_url": "https://drive.google.com/file/d/178oChZyzFzPzBAbNUhy4ImbPjOi-jwG_/view",
+          "local_path_drive": "Stock/Artlist/amish/amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "amish",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:18:06Z",
+          "downloaded_at": "2026-04-19T08:18:06Z"
+        },
+        {
+          "id": "dynamic_1E-1L16Z8fL6fvSw34ROz2UNkH_DP8V91",
+          "video_id": "1E-1L16Z8fL6fvSw34ROz2UNkH_DP8V91",
+          "title": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "name": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "term": "amish",
+          "folder": "Stock/Artlist/amish",
+          "folder_id": "1Hhw_SYc6aOaxcNUuuRO9k8nsaPLtC41a",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "amish",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:20:45Z"
+        },
+        {
+          "id": "dynamic_1j_8bK5gdplU2oD-ULZfK-HlP0lfE4ooh",
+          "video_id": "1j_8bK5gdplU2oD-ULZfK-HlP0lfE4ooh",
+          "title": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "name": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "term": "amish",
+          "folder": "Stock/Artlist/amish",
+          "folder_id": "1Hhw_SYc6aOaxcNUuuRO9k8nsaPLtC41a",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "amish",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:23:37Z"
+        },
+        {
+          "id": "dynamic_1XwucVQnrlxbNOeQUFLq4ZtZUUoX9Su6P",
+          "video_id": "1XwucVQnrlxbNOeQUFLq4ZtZUUoX9Su6P",
+          "title": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "name": "amish_dynamic_amish_g5LxNhTTdcM_7s_1080p.mp4",
+          "term": "amish",
+          "folder": "Stock/Artlist/amish",
+          "folder_id": "1Hhw_SYc6aOaxcNUuuRO9k8nsaPLtC41a",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "amish",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:25:23Z"
+        },
+        {
+          "id": "dynamic_1x9mHpoc85xzTv6cwNUiS08144UmwGMJZ",
+          "video_id": "1x9mHpoc85xzTv6cwNUiS08144UmwGMJZ",
+          "title": "amish_dynamic_amish_lOfZLb33uCg_yt_moment_1080p.mp4",
+          "name": "amish_dynamic_amish_lOfZLb33uCg_yt_moment_1080p.mp4",
+          "term": "amish",
+          "folder": "Stock/Artlist/amish",
+          "folder_id": "11o6QBfUKX-HwQtfyLkzpTgNWuUOGw_s_",
+          "original_url": "https://www.youtube.com/watch?v=lOfZLb33uCg",
+          "url": "https://www.youtube.com/watch?v=lOfZLb33uCg",
+          "drive_file_id": "1x9mHpoc85xzTv6cwNUiS08144UmwGMJZ",
+          "drive_url": "https://drive.google.com/file/d/1x9mHpoc85xzTv6cwNUiS08144UmwGMJZ/view",
+          "local_path_drive": "Stock/Artlist/amish/amish_dynamic_amish_lOfZLb33uCg_yt_moment_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_amish_lOfZLb33uCg_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "amish",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:lofzlb33ucg",
+            "yt_hash:4716a903722f695c6251e6259642f8157ccfe05c"
+          ],
+          "visual_hash": "55419c26f0710b02c1a1b237b6a63409403d527c",
+          "downloaded": true,
+          "added_at": "2026-04-20T10:15:28Z",
+          "downloaded_at": "2026-04-20T10:15:28Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:18:06Z",
+      "downloaded_clip_ids": [
+        "dynamic_178oChZyzFzPzBAbNUhy4ImbPjOi-jwG_",
+        "dynamic_1x9mHpoc85xzTv6cwNUiS08144UmwGMJZ"
+      ],
+      "drive_folder_id": "11o6QBfUKX-HwQtfyLkzpTgNWuUOGw_s_"
+    },
+    "and": {
+      "term": "and",
+      "clips": [
+        {
+          "id": "dynamic_1UWb2BQpDl1aShjMC2s5XtmOzvHzgSfjj",
+          "video_id": "1UWb2BQpDl1aShjMC2s5XtmOzvHzgSfjj",
+          "title": "and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "name": "and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "term": "and",
+          "folder": "Stock/Artlist/and",
+          "folder_id": "15CcNeqZpo1jDbu81Q8b8c0U9wHBwivL-",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1UWb2BQpDl1aShjMC2s5XtmOzvHzgSfjj",
+          "drive_url": "https://drive.google.com/file/d/1UWb2BQpDl1aShjMC2s5XtmOzvHzgSfjj/view",
+          "local_path_drive": "Stock/Artlist/and/and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "and",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:18:38Z",
+          "downloaded_at": "2026-04-19T08:18:38Z"
+        },
+        {
+          "id": "dynamic_1nG7eYW4sRH3H0KUaq2IYJNsS8TOTiz2j",
+          "video_id": "1nG7eYW4sRH3H0KUaq2IYJNsS8TOTiz2j",
+          "title": "and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "name": "and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "term": "and",
+          "folder": "Stock/Artlist/and",
+          "folder_id": "15CcNeqZpo1jDbu81Q8b8c0U9wHBwivL-",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "and",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:21:12Z"
+        },
+        {
+          "id": "dynamic_19jYc18KYlkwaEaYW4Pmrsw_DFySN8hrM",
+          "video_id": "19jYc18KYlkwaEaYW4Pmrsw_DFySN8hrM",
+          "title": "and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "name": "and_dynamic_and_4kpkgyGv0CA_7s_1080p.mp4",
+          "term": "and",
+          "folder": "Stock/Artlist/and",
+          "folder_id": "15CcNeqZpo1jDbu81Q8b8c0U9wHBwivL-",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "and",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:24:03Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:18:38Z",
+      "downloaded_clip_ids": [
+        "dynamic_1UWb2BQpDl1aShjMC2s5XtmOzvHzgSfjj"
+      ],
+      "drive_folder_id": "15CcNeqZpo1jDbu81Q8b8c0U9wHBwivL-"
+    },
+    "boxer": {
+      "term": "boxer",
+      "clips": [
+        {
+          "id": "dynamic_1pzXeunvuLt_CDck-EuwRdeLFVnld2RFx",
+          "video_id": "1pzXeunvuLt_CDck-EuwRdeLFVnld2RFx",
+          "title": "boxer_dynamic_boxer_RkYu4NNA7jI_7s_1080p.mp4",
+          "name": "boxer_dynamic_boxer_RkYu4NNA7jI_7s_1080p.mp4",
+          "term": "boxer",
+          "folder": "Stock/Artlist/boxer",
+          "folder_id": "11k1NLOF9hKGFq7pltB-iDP6qF3snPbWA",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1pzXeunvuLt_CDck-EuwRdeLFVnld2RFx",
+          "drive_url": "https://drive.google.com/file/d/1pzXeunvuLt_CDck-EuwRdeLFVnld2RFx/view",
+          "local_path_drive": "Stock/Artlist/boxer/boxer_dynamic_boxer_RkYu4NNA7jI_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_boxer_RkYu4NNA7jI_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "boxer",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:09:03Z",
+          "downloaded_at": "2026-04-18T16:09:03Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:09:03Z",
+      "downloaded_clip_ids": [
+        "dynamic_1pzXeunvuLt_CDck-EuwRdeLFVnld2RFx"
+      ],
+      "drive_folder_id": "11k1NLOF9hKGFq7pltB-iDP6qF3snPbWA"
+    },
+    "buggy": {
+      "term": "buggy",
+      "clips": [
+        {
+          "id": "dynamic_1DHc0it8O-H93OCgFytpgwf31v9A26PeL",
+          "video_id": "1DHc0it8O-H93OCgFytpgwf31v9A26PeL",
+          "title": "buggy_dynamic_buggy_tsv4tGKupGU_yt_moment_1080p.mp4",
+          "name": "buggy_dynamic_buggy_tsv4tGKupGU_yt_moment_1080p.mp4",
+          "term": "buggy",
+          "folder": "Stock/Artlist/buggy",
+          "folder_id": "1aCMcaz_1ZwaCRrjcV_Y58obWaeGS7dpL",
+          "original_url": "https://www.youtube.com/watch?v=tsv4tGKupGU",
+          "url": "https://www.youtube.com/watch?v=tsv4tGKupGU",
+          "drive_file_id": "1DHc0it8O-H93OCgFytpgwf31v9A26PeL",
+          "drive_url": "https://drive.google.com/file/d/1DHc0it8O-H93OCgFytpgwf31v9A26PeL/view",
+          "local_path_drive": "Stock/Artlist/buggy/buggy_dynamic_buggy_tsv4tGKupGU_yt_moment_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_buggy_tsv4tGKupGU_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "buggy",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:tsv4tgkupgu",
+            "yt_hash:112da4f148aa071da913fe2f683678d76718c626"
+          ],
+          "visual_hash": "f6bb479d30fef041b383124358e507d49525557e",
+          "downloaded": true,
+          "added_at": "2026-04-20T10:15:38Z",
+          "downloaded_at": "2026-04-20T10:15:38Z"
+        }
+      ],
+      "searched_at": "2026-04-20T10:15:38Z",
+      "downloaded_clip_ids": [
+        "dynamic_1DHc0it8O-H93OCgFytpgwf31v9A26PeL"
+      ],
+      "drive_folder_id": "1aCMcaz_1ZwaCRrjcV_Y58obWaeGS7dpL"
+    },
+    "car": {
+      "term": "car",
+      "clips": [
+        {
+          "id": "dynamic_1kLnEWH1VhT8yRsgQCzSFqPIwGFiHjZa1",
+          "video_id": "1kLnEWH1VhT8yRsgQCzSFqPIwGFiHjZa1",
+          "title": "car_dynamic_car_6QG4cVQ7IrE_7s_1080p.mp4",
+          "name": "car_dynamic_car_6QG4cVQ7IrE_7s_1080p.mp4",
+          "term": "car",
+          "folder": "Stock/Artlist/car",
+          "folder_id": "1VNIMjubMYU6Bz0ZjqVcrU13KWWH5x9ps",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1kLnEWH1VhT8yRsgQCzSFqPIwGFiHjZa1",
+          "drive_url": "https://drive.google.com/file/d/1kLnEWH1VhT8yRsgQCzSFqPIwGFiHjZa1/view",
+          "local_path_drive": "Stock/Artlist/car/car_dynamic_car_6QG4cVQ7IrE_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_car_6QG4cVQ7IrE_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "car",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:09:48Z",
+          "downloaded_at": "2026-04-18T16:09:48Z"
+        },
+        {
+          "id": "dynamic_1n7Z2ITX-3n5v5w9aoOBju9Mpj6YexZSb",
+          "video_id": "1n7Z2ITX-3n5v5w9aoOBju9Mpj6YexZSb",
+          "title": "car_dynamic_car_6QG4cVQ7IrE_7s_1080p.mp4",
+          "name": "car_dynamic_car_6QG4cVQ7IrE_7s_1080p.mp4",
+          "term": "car",
+          "folder": "Stock/Artlist/car",
+          "folder_id": "1VNIMjubMYU6Bz0ZjqVcrU13KWWH5x9ps",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "car",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-18T16:11:57Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:09:48Z",
+      "downloaded_clip_ids": [
+        "dynamic_1kLnEWH1VhT8yRsgQCzSFqPIwGFiHjZa1"
+      ],
+      "drive_folder_id": "1VNIMjubMYU6Bz0ZjqVcrU13KWWH5x9ps"
+    },
+    "central": {
+      "term": "central",
+      "clips": [
+        {
+          "id": "dynamic_1AW8OLXJb39WGTuEsHGcPn6qoiixBQeSY",
+          "video_id": "1AW8OLXJb39WGTuEsHGcPn6qoiixBQeSY",
+          "title": "central_dynamic_central_WftEH1HPsrk_7s_1080p.mp4",
+          "name": "central_dynamic_central_WftEH1HPsrk_7s_1080p.mp4",
+          "term": "central",
+          "folder": "Stock/Artlist/central",
+          "folder_id": "1wHAa_Wa6GNMU9VOTDsL954m-QY0B_GrB",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1AW8OLXJb39WGTuEsHGcPn6qoiixBQeSY",
+          "drive_url": "https://drive.google.com/file/d/1AW8OLXJb39WGTuEsHGcPn6qoiixBQeSY/view",
+          "local_path_drive": "Stock/Artlist/central/central_dynamic_central_WftEH1HPsrk_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_central_WftEH1HPsrk_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "central",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:21:29Z",
+          "downloaded_at": "2026-04-19T08:21:29Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:21:29Z",
+      "downloaded_clip_ids": [
+        "dynamic_1AW8OLXJb39WGTuEsHGcPn6qoiixBQeSY"
+      ],
+      "drive_folder_id": "1wHAa_Wa6GNMU9VOTDsL954m-QY0B_GrB"
+    },
+    "children": {
+      "term": "children",
+      "clips": [
+        {
+          "id": "dynamic_1dYvzFMxhJDsmiTn3-bL9oYcPZda7DgO4",
+          "video_id": "1dYvzFMxhJDsmiTn3-bL9oYcPZda7DgO4",
+          "title": "children_dynamic_children_jPTdG3_fuPI_7s_1080p.mp4",
+          "name": "children_dynamic_children_jPTdG3_fuPI_7s_1080p.mp4",
+          "term": "children",
+          "folder": "Stock/Artlist/children",
+          "folder_id": "10jXDQ7msNKDM9ZWEbYA1sZENbDpNii1F",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1dYvzFMxhJDsmiTn3-bL9oYcPZda7DgO4",
+          "drive_url": "https://drive.google.com/file/d/1dYvzFMxhJDsmiTn3-bL9oYcPZda7DgO4/view",
+          "local_path_drive": "Stock/Artlist/children/children_dynamic_children_jPTdG3_fuPI_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_children_jPTdG3_fuPI_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "children",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:27:24Z",
+          "downloaded_at": "2026-04-19T08:27:24Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:27:24Z",
+      "downloaded_clip_ids": [
+        "dynamic_1dYvzFMxhJDsmiTn3-bL9oYcPZda7DgO4"
+      ],
+      "drive_folder_id": "10jXDQ7msNKDM9ZWEbYA1sZENbDpNii1F"
+    },
     "city": {
       "term": "city",
       "clips": [
@@ -9,10 +434,6 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/138498_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/138498_playlist.m3u8",
-          "drive_file_id": "1zzyx8azu-ol3LzzoKBbEcaV2VZsY6pt0",
-          "drive_url": "https://drive.google.com/file/d/1zzyx8azu-ol3LzzoKBbEcaV2VZsY6pt0/view",
-          "local_path_drive": "Stock/Artlist/city/artlist_138498.mp4",
-          "download_path": "data/downloads/artlist/city/artlist_138498.mp4_1080p_7s.mp4",
           "duration": 41200,
           "width": 6016,
           "height": 3200,
@@ -22,9 +443,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:57:45Z",
-          "downloaded_at": "2026-04-14T13:58:12Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:57:45Z"
         },
         {
           "id": "artlist_72596_289",
@@ -32,10 +452,6 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/72596_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/72596_playlist.m3u8",
-          "drive_file_id": "1j_Ip3IPafegsnFx0xi8a-dHbWROciYQv",
-          "drive_url": "https://drive.google.com/file/d/1j_Ip3IPafegsnFx0xi8a-dHbWROciYQv/view",
-          "local_path_drive": "Stock/Artlist/city/artlist_72596.mp4",
-          "download_path": "data/downloads/artlist/city/artlist_72596.mp4_1080p_7s.mp4",
           "duration": 39373,
           "width": 3840,
           "height": 2160,
@@ -45,9 +461,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:57:45Z",
-          "downloaded_at": "2026-04-14T13:58:31Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:57:45Z"
         },
         {
           "id": "artlist_398212_296",
@@ -239,6 +654,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-514096_playlist_1660571362.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-514096_playlist_1660571362.m3u8",
+          "drive_file_id": "1SiTf1gXI3726b_6DzV2Ll-T6d3F3ZZuz",
+          "drive_url": "https://drive.google.com/file/d/1SiTf1gXI3726b_6DzV2Ll-T6d3F3ZZuz/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_514096.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_514096.mp4_1080p_7s.mp4",
           "duration": 18852,
           "width": 3840,
           "height": 2160,
@@ -248,8 +667,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:58:37Z"
         },
         {
           "id": "artlist_6519643_275",
@@ -257,6 +677,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f6f04e09-9cf9-4da0-9f4d-8c0b468b9812_playlist_1750900921.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f6f04e09-9cf9-4da0-9f4d-8c0b468b9812_playlist_1750900921.m3u8",
+          "drive_file_id": "1tLFB1WbusOJ_eDCy4ZSkT1LWKwwqCJxl",
+          "drive_url": "https://drive.google.com/file/d/1tLFB1WbusOJ_eDCy4ZSkT1LWKwwqCJxl/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6519643.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6519643.mp4_1080p_7s.mp4",
           "duration": 18418,
           "width": 5120,
           "height": 2700,
@@ -266,8 +690,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:58:50Z"
         },
         {
           "id": "artlist_46601_278",
@@ -275,6 +700,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/46601_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/46601_playlist.m3u8",
+          "drive_file_id": "1FivgJB_BPAdlJ4L2g0KwiyY2ufv1mF6L",
+          "drive_url": "https://drive.google.com/file/d/1FivgJB_BPAdlJ4L2g0KwiyY2ufv1mF6L/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_46601.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_46601.mp4_1080p_7s.mp4",
           "duration": 17918,
           "width": 4096,
           "height": 2160,
@@ -284,8 +713,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:59:07Z"
         },
         {
           "id": "artlist_39755_286",
@@ -293,6 +723,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/39755_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/39755_playlist.m3u8",
+          "drive_file_id": "1WYsLqs-hUQ3EPEmpXzWVpFSxs1P6AKMy",
+          "drive_url": "https://drive.google.com/file/d/1WYsLqs-hUQ3EPEmpXzWVpFSxs1P6AKMy/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_39755.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_39755.mp4_1080p_7s.mp4",
           "duration": 17467,
           "width": 4096,
           "height": 2160,
@@ -302,8 +736,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:59:23Z"
         },
         {
           "id": "artlist_6430823_279",
@@ -311,6 +746,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/297cc3ef-5825-4b3b-9110-c7f577b0d81b_playlist_1740021867.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/297cc3ef-5825-4b3b-9110-c7f577b0d81b_playlist_1740021867.m3u8",
+          "drive_file_id": "1OdWphgdIWWsu_h1mxoFFZisEL9ggZtT8",
+          "drive_url": "https://drive.google.com/file/d/1OdWphgdIWWsu_h1mxoFFZisEL9ggZtT8/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6430823.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6430823.mp4_1080p_7s.mp4",
           "duration": 17000,
           "width": 3840,
           "height": 2160,
@@ -320,8 +759,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:59:36Z"
         },
         {
           "id": "artlist_6524808_298",
@@ -329,6 +769,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/0c091cc1-0759-4250-b0a1-2ab6efcc47b1_playlist_1751869281.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/0c091cc1-0759-4250-b0a1-2ab6efcc47b1_playlist_1751869281.m3u8",
+          "drive_file_id": "15kSCgYV0zUJiWmouEAQTAe6dnKGV4Vbh",
+          "drive_url": "https://drive.google.com/file/d/15kSCgYV0zUJiWmouEAQTAe6dnKGV4Vbh/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6524808.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6524808.mp4_1080p_7s.mp4",
           "duration": 16600,
           "width": 3840,
           "height": 2160,
@@ -338,8 +782,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:59:48Z"
         },
         {
           "id": "artlist_6602939_295",
@@ -347,6 +792,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/8dee5d01-b6bc-44b0-ad0c-e25deee215aa_playlist_1772393975.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/8dee5d01-b6bc-44b0-ad0c-e25deee215aa_playlist_1772393975.m3u8",
+          "drive_file_id": "1XVLt7djCgvJPbL_lrS1qrB0EmW3xN-_7",
+          "drive_url": "https://drive.google.com/file/d/1XVLt7djCgvJPbL_lrS1qrB0EmW3xN-_7/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6602939.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6602939.mp4_1080p_7s.mp4",
           "duration": 15800,
           "width": 3840,
           "height": 2160,
@@ -356,8 +805,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T18:59:58Z"
         },
         {
           "id": "artlist_6601023_290",
@@ -365,6 +815,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a0993520-dd7a-433b-aaa7-d1b2ff828856_playlist_1771243849.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a0993520-dd7a-433b-aaa7-d1b2ff828856_playlist_1771243849.m3u8",
+          "drive_file_id": "1tXSXNDQyvnVI6Vk6lu1MHmgY8lEZY93a",
+          "drive_url": "https://drive.google.com/file/d/1tXSXNDQyvnVI6Vk6lu1MHmgY8lEZY93a/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6601023.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6601023.mp4_1080p_7s.mp4",
           "duration": 15567,
           "width": 3840,
           "height": 2160,
@@ -374,8 +828,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T19:00:09Z"
         },
         {
           "id": "artlist_6074552_253",
@@ -383,6 +838,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/5c4571e9-7d1c-4d1c-ac39-d32faf96fddb_playlist_1704662780.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/5c4571e9-7d1c-4d1c-ac39-d32faf96fddb_playlist_1704662780.m3u8",
+          "drive_file_id": "14tTDHuaDfdz0MSVJmQWCVVjFXLltdMV8",
+          "drive_url": "https://drive.google.com/file/d/14tTDHuaDfdz0MSVJmQWCVVjFXLltdMV8/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6074552.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6074552.mp4_1080p_7s.mp4",
           "duration": 15432,
           "width": 3840,
           "height": 2160,
@@ -392,8 +851,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T19:00:19Z"
         },
         {
           "id": "artlist_6074551_281",
@@ -401,6 +861,10 @@
           "title": "city",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f205c309-9e31-4e33-be99-3f4837bd5252_playlist_1704640470.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f205c309-9e31-4e33-be99-3f4837bd5252_playlist_1704640470.m3u8",
+          "drive_file_id": "1r5lUJMD2M4NZUNTqd5iD6ZGLpw7ljRRg",
+          "drive_url": "https://drive.google.com/file/d/1r5lUJMD2M4NZUNTqd5iD6ZGLpw7ljRRg/view",
+          "local_path_drive": "Stock/Artlist/city/artlist_6074551.mp4",
+          "download_path": "data/downloads/artlist/city/artlist_6074551.mp4_1080p_7s.mp4",
           "duration": 15349,
           "width": 3840,
           "height": 2160,
@@ -410,8 +874,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:45Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:45Z",
+          "downloaded_at": "2026-04-17T19:00:28Z"
         },
         {
           "id": "artlist_514098_259",
@@ -596,8 +1061,6 @@
       ],
       "searched_at": "2026-04-14T13:57:45Z",
       "downloaded_clip_ids": [
-        "artlist_138498_267",
-        "artlist_72596_289",
         "artlist_398212_296",
         "artlist_6557182_276",
         "artlist_6156961_285",
@@ -605,9 +1068,1224 @@
         "artlist_136176_251",
         "artlist_6074554_288",
         "artlist_6601650_265",
-        "artlist_6600494_266"
+        "artlist_6600494_266",
+        "artlist_514096_268",
+        "artlist_6519643_275",
+        "artlist_46601_278",
+        "artlist_39755_286",
+        "artlist_6430823_279",
+        "artlist_6524808_298",
+        "artlist_6602939_295",
+        "artlist_6601023_290",
+        "artlist_6074552_253",
+        "artlist_6074551_281"
       ],
       "drive_folder_id": "Stock/Artlist/city"
+    },
+    "community": {
+      "term": "community",
+      "clips": [
+        {
+          "id": "dynamic_1zGdi7y_4n6ORYBV4YLE_I4ATsDharbma",
+          "video_id": "1zGdi7y_4n6ORYBV4YLE_I4ATsDharbma",
+          "title": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "name": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "term": "community",
+          "folder": "Stock/Artlist/community",
+          "folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1zGdi7y_4n6ORYBV4YLE_I4ATsDharbma",
+          "drive_url": "https://drive.google.com/file/d/1zGdi7y_4n6ORYBV4YLE_I4ATsDharbma/view",
+          "local_path_drive": "Stock/Artlist/community/community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "community",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:12:03Z",
+          "downloaded_at": "2026-04-19T08:12:03Z"
+        },
+        {
+          "id": "dynamic_1bYj2QYH8hB6BqjdhVaS77fd-XmyY7_4U",
+          "video_id": "1bYj2QYH8hB6BqjdhVaS77fd-XmyY7_4U",
+          "title": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "name": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "term": "community",
+          "folder": "Stock/Artlist/community",
+          "folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "community",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:17:40Z"
+        },
+        {
+          "id": "dynamic_1_1w2V4ZuOqEb2WfdkaHjOTsK1lWD4Cjw",
+          "video_id": "1_1w2V4ZuOqEb2WfdkaHjOTsK1lWD4Cjw",
+          "title": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "name": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "term": "community",
+          "folder": "Stock/Artlist/community",
+          "folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "community",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:20:17Z"
+        },
+        {
+          "id": "dynamic_16flNQV7Ge-c7Wm0IAf3QttUG_926ZHQX",
+          "video_id": "16flNQV7Ge-c7Wm0IAf3QttUG_926ZHQX",
+          "title": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "name": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "term": "community",
+          "folder": "Stock/Artlist/community",
+          "folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "community",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:23:09Z"
+        },
+        {
+          "id": "dynamic_1zE-ya4ahTUrQ0H8XC6Ba7pyNXjoP5-iZ",
+          "video_id": "1zE-ya4ahTUrQ0H8XC6Ba7pyNXjoP5-iZ",
+          "title": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "name": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "term": "community",
+          "folder": "Stock/Artlist/community",
+          "folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "community",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:24:42Z"
+        },
+        {
+          "id": "dynamic_1t-hxPywd5mopP8G_qJ6RRsOdgxjalr_M",
+          "video_id": "1t-hxPywd5mopP8G_qJ6RRsOdgxjalr_M",
+          "title": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "name": "community_dynamic_community_yB4iJwxS-NE_7s_1080p.mp4",
+          "term": "community",
+          "folder": "Stock/Artlist/community",
+          "folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "community",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:25:42Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:12:03Z",
+      "downloaded_clip_ids": [
+        "dynamic_1zGdi7y_4n6ORYBV4YLE_I4ATsDharbma"
+      ],
+      "drive_folder_id": "1H64840mpEyzVwh5JCdWlNoAwdyo4P6T4"
+    },
+    "countryside": {
+      "term": "countryside",
+      "clips": [
+        {
+          "id": "dynamic_1i8RYNQI6eHOzrTUK-arYoQgcsDtowkHk",
+          "video_id": "1i8RYNQI6eHOzrTUK-arYoQgcsDtowkHk",
+          "title": "countryside_dynamic_countryside_Ab7wBY666vY_yt_moment_1080p.mp4",
+          "name": "countryside_dynamic_countryside_Ab7wBY666vY_yt_moment_1080p.mp4",
+          "term": "countryside",
+          "folder": "Stock/Artlist/countryside",
+          "folder_id": "16QiVIb-EzzyKsdAEDItL5MXMWYj6qw-0",
+          "original_url": "https://www.youtube.com/watch?v=Ab7wBY666vY",
+          "url": "https://www.youtube.com/watch?v=Ab7wBY666vY",
+          "drive_file_id": "1i8RYNQI6eHOzrTUK-arYoQgcsDtowkHk",
+          "drive_url": "https://drive.google.com/file/d/1i8RYNQI6eHOzrTUK-arYoQgcsDtowkHk/view",
+          "local_path_drive": "Stock/Artlist/countryside/countryside_dynamic_countryside_Ab7wBY666vY_yt_moment_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_countryside_Ab7wBY666vY_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "countryside",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:ab7wby666vy",
+            "yt_hash:6e062f79e823bf2e4d98399d4459531dc40e7fc3"
+          ],
+          "visual_hash": "7ac8f299b02448d9f0b247ae48947565467626d0",
+          "downloaded": true,
+          "added_at": "2026-04-20T10:15:23Z",
+          "downloaded_at": "2026-04-20T10:15:23Z"
+        }
+      ],
+      "searched_at": "2026-04-20T10:15:23Z",
+      "downloaded_clip_ids": [
+        "dynamic_1i8RYNQI6eHOzrTUK-arYoQgcsDtowkHk"
+      ],
+      "drive_folder_id": "16QiVIb-EzzyKsdAEDItL5MXMWYj6qw-0"
+    },
+    "cut": {
+      "term": "cut",
+      "clips": [
+        {
+          "id": "dynamic_1edoNxHUFasDbr0ObeL4ECg3vo6qPVNBw",
+          "video_id": "1edoNxHUFasDbr0ObeL4ECg3vo6qPVNBw",
+          "title": "cut_dynamic_cut_HS24PywYlxg_7s_1080p.mp4",
+          "name": "cut_dynamic_cut_HS24PywYlxg_7s_1080p.mp4",
+          "term": "cut",
+          "folder": "Stock/Artlist/cut",
+          "folder_id": "1NK19f7uxu4UK_mQwjkpO1dVIbsjdP8jh",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1edoNxHUFasDbr0ObeL4ECg3vo6qPVNBw",
+          "drive_url": "https://drive.google.com/file/d/1edoNxHUFasDbr0ObeL4ECg3vo6qPVNBw/view",
+          "local_path_drive": "Stock/Artlist/cut/cut_dynamic_cut_HS24PywYlxg_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_cut_HS24PywYlxg_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "cut",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:12:18Z",
+          "downloaded_at": "2026-04-19T08:12:18Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:12:18Z",
+      "downloaded_clip_ids": [
+        "dynamic_1edoNxHUFasDbr0ObeL4ECg3vo6qPVNBw"
+      ],
+      "drive_folder_id": "1NK19f7uxu4UK_mQwjkpO1dVIbsjdP8jh"
+    },
+    "davis": {
+      "term": "davis",
+      "clips": [
+        {
+          "id": "dynamic_1IWi9C5_0Sfdb6anwZGwKyZvTU9aZ--FU",
+          "video_id": "1IWi9C5_0Sfdb6anwZGwKyZvTU9aZ--FU",
+          "title": "davis_dynamic_davis_RA0opzP8GC0_7s_1080p.mp4",
+          "name": "davis_dynamic_davis_RA0opzP8GC0_7s_1080p.mp4",
+          "term": "davis",
+          "folder": "Stock/Artlist/davis",
+          "folder_id": "1gM0-1zbat9iArLX_rkW0n2yGw-ApIhc5",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1IWi9C5_0Sfdb6anwZGwKyZvTU9aZ--FU",
+          "drive_url": "https://drive.google.com/file/d/1IWi9C5_0Sfdb6anwZGwKyZvTU9aZ--FU/view",
+          "local_path_drive": "Stock/Artlist/davis/davis_dynamic_davis_RA0opzP8GC0_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_davis_RA0opzP8GC0_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "davis",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:12:23Z",
+          "downloaded_at": "2026-04-18T16:12:23Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:12:23Z",
+      "downloaded_clip_ids": [
+        "dynamic_1IWi9C5_0Sfdb6anwZGwKyZvTU9aZ--FU"
+      ],
+      "drive_folder_id": "1gM0-1zbat9iArLX_rkW0n2yGw-ApIhc5"
+    },
+    "davis’s": {
+      "term": "davis’s",
+      "clips": [
+        {
+          "id": "dynamic_1vnYzgL30EKQq7a0V8xi-UOjwTB1WuyLq",
+          "video_id": "1vnYzgL30EKQq7a0V8xi-UOjwTB1WuyLq",
+          "title": "davis’s_dynamic_davis’s_aZwK_fyNqMA_7s_1080p.mp4",
+          "name": "davis’s_dynamic_davis’s_aZwK_fyNqMA_7s_1080p.mp4",
+          "term": "davis’s",
+          "folder": "Stock/Artlist/davis’s",
+          "folder_id": "1pxCSM1sVZmKM7Q-DPPjbx5oqTn5DM0XY",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1vnYzgL30EKQq7a0V8xi-UOjwTB1WuyLq",
+          "drive_url": "https://drive.google.com/file/d/1vnYzgL30EKQq7a0V8xi-UOjwTB1WuyLq/view",
+          "local_path_drive": "Stock/Artlist/davis’s/davis’s_dynamic_davis’s_aZwK_fyNqMA_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_davis’s_aZwK_fyNqMA_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "davis’s",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:12:37Z",
+          "downloaded_at": "2026-04-18T16:12:37Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:12:37Z",
+      "downloaded_clip_ids": [
+        "dynamic_1vnYzgL30EKQq7a0V8xi-UOjwTB1WuyLq"
+      ],
+      "drive_folder_id": "1pxCSM1sVZmKM7Q-DPPjbx5oqTn5DM0XY"
+    },
+    "faith": {
+      "term": "faith",
+      "clips": [
+        {
+          "id": "dynamic_1XtfyXI8Ublgf1wmYlHsF2ktdpQs5Gz2A",
+          "video_id": "1XtfyXI8Ublgf1wmYlHsF2ktdpQs5Gz2A",
+          "title": "faith_dynamic_faith_8wmyLosC5u8_7s_1080p.mp4",
+          "name": "faith_dynamic_faith_8wmyLosC5u8_7s_1080p.mp4",
+          "term": "faith",
+          "folder": "Stock/Artlist/faith",
+          "folder_id": "1HG-J2kCNx63--25SLejaJfK-AcTCHTXN",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1XtfyXI8Ublgf1wmYlHsF2ktdpQs5Gz2A",
+          "drive_url": "https://drive.google.com/file/d/1XtfyXI8Ublgf1wmYlHsF2ktdpQs5Gz2A/view",
+          "local_path_drive": "Stock/Artlist/faith/faith_dynamic_faith_8wmyLosC5u8_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_faith_8wmyLosC5u8_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "faith",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:16:31Z",
+          "downloaded_at": "2026-04-19T08:16:31Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:16:31Z",
+      "downloaded_clip_ids": [
+        "dynamic_1XtfyXI8Ublgf1wmYlHsF2ktdpQs5Gz2A"
+      ],
+      "drive_folder_id": "1HG-J2kCNx63--25SLejaJfK-AcTCHTXN"
+    },
+    "family": {
+      "term": "family",
+      "clips": [
+        {
+          "id": "dynamic_1UJnWjTZD5wpP6-c1taRDstLZB1JzLH_c",
+          "video_id": "1UJnWjTZD5wpP6-c1taRDstLZB1JzLH_c",
+          "title": "family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "name": "family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "term": "family",
+          "folder": "Stock/Artlist/family",
+          "folder_id": "1r_CiQBvdbrAB3gxRn8n7dKsc3NQmGdse",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1UJnWjTZD5wpP6-c1taRDstLZB1JzLH_c",
+          "drive_url": "https://drive.google.com/file/d/1UJnWjTZD5wpP6-c1taRDstLZB1JzLH_c/view",
+          "local_path_drive": "Stock/Artlist/family/family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "family",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:11:50Z",
+          "downloaded_at": "2026-04-19T08:11:50Z"
+        },
+        {
+          "id": "dynamic_1PTqiSUlys0jfqI2lFgO3A8tgXVqNR6tN",
+          "video_id": "1PTqiSUlys0jfqI2lFgO3A8tgXVqNR6tN",
+          "title": "family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "name": "family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "term": "family",
+          "folder": "Stock/Artlist/family",
+          "folder_id": "1r_CiQBvdbrAB3gxRn8n7dKsc3NQmGdse",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "family",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:13:53Z"
+        },
+        {
+          "id": "dynamic_14K96PBhdv_NUQby84TeWXp7DIK2M0Ewm",
+          "video_id": "14K96PBhdv_NUQby84TeWXp7DIK2M0Ewm",
+          "title": "family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "name": "family_dynamic_family_BK8kWLQQph0_7s_1080p.mp4",
+          "term": "family",
+          "folder": "Stock/Artlist/family",
+          "folder_id": "1r_CiQBvdbrAB3gxRn8n7dKsc3NQmGdse",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "family",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:25:11Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:11:50Z",
+      "downloaded_clip_ids": [
+        "dynamic_1UJnWjTZD5wpP6-c1taRDstLZB1JzLH_c"
+      ],
+      "drive_folder_id": "1r_CiQBvdbrAB3gxRn8n7dKsc3NQmGdse"
+    },
+    "floyd mayweather interview": {
+      "term": "Floyd Mayweather interview",
+      "clips": [
+        {
+          "id": "dynamic_1525BoagibNDF16JD_CSsuVnaPlRF_csP",
+          "video_id": "1525BoagibNDF16JD_CSsuVnaPlRF_csP",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=CsdzflTXBVQ",
+          "url": "https://www.youtube.com/watch?v=CsdzflTXBVQ",
+          "drive_file_id": "1525BoagibNDF16JD_CSsuVnaPlRF_csP",
+          "drive_url": "https://drive.google.com/file/d/1525BoagibNDF16JD_CSsuVnaPlRF_csP/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:csdzfltxbvq",
+            "yt_hash:ac8e2cb72f8d8fc22d0a9d2e724f7d29e0e879b2"
+          ],
+          "visual_hash": "7f0a4ac040bc712becb4e0622f3a9d2c55c3bcb3",
+          "downloaded": true,
+          "added_at": "2026-04-19T13:55:56Z",
+          "downloaded_at": "2026-04-19T13:55:56Z"
+        },
+        {
+          "id": "dynamic_1bHj800qKuJDZRz74dTIrImnDJuE9W3LU",
+          "video_id": "1bHj800qKuJDZRz74dTIrImnDJuE9W3LU",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_hPHk7M4H3YM_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_hPHk7M4H3YM_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=hPHk7M4H3YM",
+          "url": "https://www.youtube.com/watch?v=hPHk7M4H3YM",
+          "drive_file_id": "1bHj800qKuJDZRz74dTIrImnDJuE9W3LU",
+          "drive_url": "https://drive.google.com/file/d/1bHj800qKuJDZRz74dTIrImnDJuE9W3LU/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_hPHk7M4H3YM_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_hPHk7M4H3YM_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:hphk7m4h3ym",
+            "yt_hash:06bdee77b0ad1d8680385c649bdd68f2431f5e19"
+          ],
+          "visual_hash": "feeed1fc6a0354f52888b51218506f7b6136ebb8",
+          "downloaded": true,
+          "added_at": "2026-04-19T13:56:34Z",
+          "downloaded_at": "2026-04-19T13:56:34Z"
+        },
+        {
+          "id": "dynamic_17rtYuzMviKOQFCojY358S6m2rcaaGQ5y",
+          "video_id": "17rtYuzMviKOQFCojY358S6m2rcaaGQ5y",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview__WmYPpuT1Vk_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview__WmYPpuT1Vk_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=_WmYPpuT1Vk",
+          "url": "https://www.youtube.com/watch?v=_WmYPpuT1Vk",
+          "drive_file_id": "17rtYuzMviKOQFCojY358S6m2rcaaGQ5y",
+          "drive_url": "https://drive.google.com/file/d/17rtYuzMviKOQFCojY358S6m2rcaaGQ5y/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview__WmYPpuT1Vk_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview__WmYPpuT1Vk_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:_wmypput1vk",
+            "yt_hash:7875d7dd1c1a909d775bd12c32c042018bad1d5b"
+          ],
+          "visual_hash": "7253faa1119e643a4354d4cbf47d839891ad3a78",
+          "downloaded": true,
+          "added_at": "2026-04-19T13:57:09Z",
+          "downloaded_at": "2026-04-19T13:57:09Z"
+        },
+        {
+          "id": "dynamic_1tmfF5XTLaBW66v51qWX7MxfafnQLLT05",
+          "video_id": "1tmfF5XTLaBW66v51qWX7MxfafnQLLT05",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_0-_LJZQh_wY_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_0-_LJZQh_wY_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=0-_LJZQh_wY",
+          "url": "https://www.youtube.com/watch?v=0-_LJZQh_wY",
+          "drive_file_id": "1tmfF5XTLaBW66v51qWX7MxfafnQLLT05",
+          "drive_url": "https://drive.google.com/file/d/1tmfF5XTLaBW66v51qWX7MxfafnQLLT05/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_0-_LJZQh_wY_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_0-_LJZQh_wY_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:0-_ljzqh_wy",
+            "yt_hash:c1237f050deadcc302f173a414b338e3316df106"
+          ],
+          "visual_hash": "6fcc74a3c1b444e3a4f0bb63e9dac2b67f88cddb",
+          "downloaded": true,
+          "added_at": "2026-04-19T13:57:55Z",
+          "downloaded_at": "2026-04-19T13:57:55Z"
+        },
+        {
+          "id": "dynamic_1DW3A2Udw4ihrecPEeylSl9oS3oGK5E21",
+          "video_id": "1DW3A2Udw4ihrecPEeylSl9oS3oGK5E21",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_OoAtQq2bWX8_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_OoAtQq2bWX8_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=OoAtQq2bWX8",
+          "url": "https://www.youtube.com/watch?v=OoAtQq2bWX8",
+          "drive_file_id": "1DW3A2Udw4ihrecPEeylSl9oS3oGK5E21",
+          "drive_url": "https://drive.google.com/file/d/1DW3A2Udw4ihrecPEeylSl9oS3oGK5E21/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_OoAtQq2bWX8_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_OoAtQq2bWX8_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:ooatqq2bwx8",
+            "yt_hash:e5b8f3f95e698d951ffe600ca2826f8123d1a681"
+          ],
+          "visual_hash": "04d4dc01289b08422879519ac95225a2b46d7689",
+          "downloaded": true,
+          "added_at": "2026-04-19T13:58:38Z",
+          "downloaded_at": "2026-04-19T13:58:38Z"
+        },
+        {
+          "id": "dynamic_17TOCIIPp8oOCbjjWMe87fC2XYWXmgYsA",
+          "video_id": "17TOCIIPp8oOCbjjWMe87fC2XYWXmgYsA",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_J6Zert5VaWk_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_J6Zert5VaWk_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=J6Zert5VaWk",
+          "url": "https://www.youtube.com/watch?v=J6Zert5VaWk",
+          "drive_file_id": "17TOCIIPp8oOCbjjWMe87fC2XYWXmgYsA",
+          "drive_url": "https://drive.google.com/file/d/17TOCIIPp8oOCbjjWMe87fC2XYWXmgYsA/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_J6Zert5VaWk_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_J6Zert5VaWk_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:j6zert5vawk",
+            "yt_hash:4228b502b539bc1e2e65a75dee11d72a0390054b"
+          ],
+          "visual_hash": "dae237ce241a150aacce0c497a48884f8774748a",
+          "downloaded": true,
+          "added_at": "2026-04-19T13:59:18Z",
+          "downloaded_at": "2026-04-19T13:59:18Z"
+        },
+        {
+          "id": "dynamic_1T93ktIYv8DHxa_9HPVYkCBTHk2SMHtNG",
+          "video_id": "1T93ktIYv8DHxa_9HPVYkCBTHk2SMHtNG",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_B9IZn88zfHE_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_B9IZn88zfHE_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=B9IZn88zfHE",
+          "url": "https://www.youtube.com/watch?v=B9IZn88zfHE",
+          "drive_file_id": "1T93ktIYv8DHxa_9HPVYkCBTHk2SMHtNG",
+          "drive_url": "https://drive.google.com/file/d/1T93ktIYv8DHxa_9HPVYkCBTHk2SMHtNG/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_B9IZn88zfHE_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_B9IZn88zfHE_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:b9izn88zfhe",
+            "yt_hash:df366e62e588e72c4c9dabe8e23fcdde904abc86"
+          ],
+          "visual_hash": "4159f0977d28f4e75af074558acb43448a6dbefa",
+          "downloaded": true,
+          "added_at": "2026-04-19T14:01:46Z",
+          "downloaded_at": "2026-04-19T14:01:46Z"
+        },
+        {
+          "id": "dynamic_1hbW8WqAYVkwN3o3PxXzOeieqMkvL24YV",
+          "video_id": "1hbW8WqAYVkwN3o3PxXzOeieqMkvL24YV",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_zCGsw8SA6Bo_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_zCGsw8SA6Bo_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=zCGsw8SA6Bo",
+          "url": "https://www.youtube.com/watch?v=zCGsw8SA6Bo",
+          "drive_file_id": "1hbW8WqAYVkwN3o3PxXzOeieqMkvL24YV",
+          "drive_url": "https://drive.google.com/file/d/1hbW8WqAYVkwN3o3PxXzOeieqMkvL24YV/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_zCGsw8SA6Bo_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_zCGsw8SA6Bo_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:zcgsw8sa6bo",
+            "yt_hash:e51596ddb51194838344aa8260c2ed372cfcfcb9"
+          ],
+          "visual_hash": "df84887814f543179a3bd6b6d4d9a48c8ab67e86",
+          "downloaded": true,
+          "added_at": "2026-04-19T14:02:22Z",
+          "downloaded_at": "2026-04-19T14:02:22Z"
+        },
+        {
+          "id": "dynamic_1udfDPa0Vp5YF12uNX6LeIWnQeKieNqBT",
+          "video_id": "1udfDPa0Vp5YF12uNX6LeIWnQeKieNqBT",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_Z5-AvjDuuJM_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_Z5-AvjDuuJM_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=Z5-AvjDuuJM",
+          "url": "https://www.youtube.com/watch?v=Z5-AvjDuuJM",
+          "drive_file_id": "1udfDPa0Vp5YF12uNX6LeIWnQeKieNqBT",
+          "drive_url": "https://drive.google.com/file/d/1udfDPa0Vp5YF12uNX6LeIWnQeKieNqBT/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_Z5-AvjDuuJM_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_Z5-AvjDuuJM_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:z5-avjduujm",
+            "yt_hash:4fdd37a54961dd4691e03adcbf1b30b3c0d65cf9"
+          ],
+          "visual_hash": "09c302b0b0e5dcfedb59dad5e452cbc978bb4a6e",
+          "downloaded": true,
+          "added_at": "2026-04-19T14:03:09Z",
+          "downloaded_at": "2026-04-19T14:03:09Z"
+        },
+        {
+          "id": "dynamic_1GroysHxDClUQfRbx8rHwdgm5yDJXR-8M",
+          "video_id": "1GroysHxDClUQfRbx8rHwdgm5yDJXR-8M",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_7JcjxJi164M_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_7JcjxJi164M_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=7JcjxJi164M",
+          "url": "https://www.youtube.com/watch?v=7JcjxJi164M",
+          "drive_file_id": "1GroysHxDClUQfRbx8rHwdgm5yDJXR-8M",
+          "drive_url": "https://drive.google.com/file/d/1GroysHxDClUQfRbx8rHwdgm5yDJXR-8M/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_7JcjxJi164M_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_7JcjxJi164M_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:7jcjxji164m",
+            "yt_hash:1db6f753fb9b2c14a290c2eb4deb0e876e5081f6"
+          ],
+          "visual_hash": "69ce69d13811dc3c1209107285004fd28e34f1d2",
+          "downloaded": true,
+          "added_at": "2026-04-19T14:05:06Z",
+          "downloaded_at": "2026-04-19T14:05:06Z"
+        },
+        {
+          "id": "dynamic_1RKJjtMPyTkx9WU1nisBPeSToFWbUFo6o",
+          "video_id": "1RKJjtMPyTkx9WU1nisBPeSToFWbUFo6o",
+          "title": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_dOF7Vi6OLCg_yt_moment_1080p.mp4",
+          "name": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_dOF7Vi6OLCg_yt_moment_1080p.mp4",
+          "term": "Floyd Mayweather interview",
+          "folder": "Stock/Artlist/Floyd Mayweather",
+          "folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9",
+          "original_url": "https://www.youtube.com/watch?v=dOF7Vi6OLCg",
+          "url": "https://www.youtube.com/watch?v=dOF7Vi6OLCg",
+          "drive_file_id": "1RKJjtMPyTkx9WU1nisBPeSToFWbUFo6o",
+          "drive_url": "https://drive.google.com/file/d/1RKJjtMPyTkx9WU1nisBPeSToFWbUFo6o/view",
+          "local_path_drive": "Stock/Artlist/Floyd Mayweather/Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_dOF7Vi6OLCg_yt_moment_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_interview_dOF7Vi6OLCg_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "Floyd Mayweather interview",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:dof7vi6olcg",
+            "yt_hash:f6d375532472c4bbb7a8a32fbadbd01999ac6f0b"
+          ],
+          "visual_hash": "1e1e70826b6e332f57bf5d050da91a57ae02b46c",
+          "downloaded": true,
+          "added_at": "2026-04-19T14:05:47Z",
+          "downloaded_at": "2026-04-19T14:05:47Z"
+        }
+      ],
+      "searched_at": "2026-04-19T13:55:56Z",
+      "downloaded_clip_ids": [
+        "dynamic_1525BoagibNDF16JD_CSsuVnaPlRF_csP",
+        "dynamic_1bHj800qKuJDZRz74dTIrImnDJuE9W3LU",
+        "dynamic_17rtYuzMviKOQFCojY358S6m2rcaaGQ5y",
+        "dynamic_1tmfF5XTLaBW66v51qWX7MxfafnQLLT05",
+        "dynamic_1DW3A2Udw4ihrecPEeylSl9oS3oGK5E21",
+        "dynamic_17TOCIIPp8oOCbjjWMe87fC2XYWXmgYsA",
+        "dynamic_1T93ktIYv8DHxa_9HPVYkCBTHk2SMHtNG",
+        "dynamic_1hbW8WqAYVkwN3o3PxXzOeieqMkvL24YV",
+        "dynamic_1udfDPa0Vp5YF12uNX6LeIWnQeKieNqBT",
+        "dynamic_1GroysHxDClUQfRbx8rHwdgm5yDJXR-8M",
+        "dynamic_1RKJjtMPyTkx9WU1nisBPeSToFWbUFo6o"
+      ],
+      "drive_folder_id": "1ITO-yB7cX0I5UZ2K75gT_D6DdJQTLIE9"
+    },
+    "generations": {
+      "term": "generations",
+      "clips": [
+        {
+          "id": "dynamic_1JvL7zblBEoDAHvmf_PnjCUonWHnSgnpe",
+          "video_id": "1JvL7zblBEoDAHvmf_PnjCUonWHnSgnpe",
+          "title": "generations_dynamic_generations_oAYDKEqH_kw_7s_1080p.mp4",
+          "name": "generations_dynamic_generations_oAYDKEqH_kw_7s_1080p.mp4",
+          "term": "generations",
+          "folder": "Stock/Artlist/generations",
+          "folder_id": "176_MVbqo2U8HqNwJMWlRWe47OpkBml2c",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1JvL7zblBEoDAHvmf_PnjCUonWHnSgnpe",
+          "drive_url": "https://drive.google.com/file/d/1JvL7zblBEoDAHvmf_PnjCUonWHnSgnpe/view",
+          "local_path_drive": "Stock/Artlist/generations/generations_dynamic_generations_oAYDKEqH_kw_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_generations_oAYDKEqH_kw_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "generations",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:23:03Z",
+          "downloaded_at": "2026-04-19T08:23:03Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:23:03Z",
+      "downloaded_clip_ids": [
+        "dynamic_1JvL7zblBEoDAHvmf_PnjCUonWHnSgnpe"
+      ],
+      "drive_folder_id": "176_MVbqo2U8HqNwJMWlRWe47OpkBml2c"
+    },
+    "gervonta": {
+      "term": "gervonta",
+      "clips": [
+        {
+          "id": "dynamic_1sBiEOV42jYbpOsMcx3d5RizlcGpADn2a",
+          "video_id": "1sBiEOV42jYbpOsMcx3d5RizlcGpADn2a",
+          "title": "gervonta_dynamic_gervonta_Eel8ExbRBw0_7s_1080p.mp4",
+          "name": "gervonta_dynamic_gervonta_Eel8ExbRBw0_7s_1080p.mp4",
+          "term": "gervonta",
+          "folder": "Stock/Artlist/gervonta",
+          "folder_id": "110rgiCYTCsI2odYuTwvxwSjN394lMaEH",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "gervonta",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-18T16:10:02Z"
+        },
+        {
+          "id": "dynamic_1lq_HKUDTq1JWCOW3pnCVLADy2x5qvxah",
+          "video_id": "1lq_HKUDTq1JWCOW3pnCVLADy2x5qvxah",
+          "title": "gervonta_dynamic_gervonta_Eel8ExbRBw0_7s_1080p.mp4",
+          "name": "gervonta_dynamic_gervonta_Eel8ExbRBw0_7s_1080p.mp4",
+          "term": "gervonta",
+          "folder": "Stock/Artlist/gervonta",
+          "folder_id": "110rgiCYTCsI2odYuTwvxwSjN394lMaEH",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "gervonta",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-18T16:12:10Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:10:02Z",
+      "downloaded_clip_ids": [],
+      "drive_folder_id": "110rgiCYTCsI2odYuTwvxwSjN394lMaEH"
+    },
+    "gym": {
+      "term": "gym",
+      "clips": [
+        {
+          "id": "artlist_262565_2698",
+          "video_id": "artlist_262565_2698",
+          "title": "gym",
+          "name": "gym_artlist_gym_artlist_262565_2698_7s_1080p.mp4",
+          "term": "gym",
+          "folder": "Stock/Artlist/gym",
+          "folder_id": "1Hy4fMZR83W-l1AnMQPDAI7Plz06mpVrj",
+          "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/262565_playlist.m3u8",
+          "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/262565_playlist.m3u8",
+          "duration": 7,
+          "width": 1920,
+          "height": 1080,
+          "category": "Dynamic Artlist",
+          "tags": [
+            "gym",
+            "artlist",
+            "artlist",
+            "gym",
+            "artlist"
+          ],
+          "visual_hash": "15bfd229f1a7f1f97789c5f296794bb237dfb9cf",
+          "downloaded": false,
+          "added_at": "2026-04-18T09:31:45Z"
+        },
+        {
+          "id": "dynamic_1CZOcyvvoBfm4U4loKcPQ_39pclIaUQAn",
+          "video_id": "1CZOcyvvoBfm4U4loKcPQ_39pclIaUQAn",
+          "title": "gym_dynamic_gym_DsMVr5G7oyk_7s_1080p.mp4",
+          "name": "gym_dynamic_gym_DsMVr5G7oyk_7s_1080p.mp4",
+          "term": "gym",
+          "folder": "Stock/Artlist/gym",
+          "folder_id": "1Hy4fMZR83W-l1AnMQPDAI7Plz06mpVrj",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1CZOcyvvoBfm4U4loKcPQ_39pclIaUQAn",
+          "drive_url": "https://drive.google.com/file/d/1CZOcyvvoBfm4U4loKcPQ_39pclIaUQAn/view",
+          "local_path_drive": "Stock/Artlist/gym/gym_dynamic_gym_DsMVr5G7oyk_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_gym_DsMVr5G7oyk_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "gym",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:09:19Z",
+          "downloaded_at": "2026-04-18T16:09:19Z"
+        },
+        {
+          "id": "dynamic_1d6eUjjrezteVfjl20D8kVl2BuX_qCBou",
+          "video_id": "1d6eUjjrezteVfjl20D8kVl2BuX_qCBou",
+          "title": "gym_dynamic_gym_DsMVr5G7oyk_7s_1080p.mp4",
+          "name": "gym_dynamic_gym_DsMVr5G7oyk_7s_1080p.mp4",
+          "term": "gym",
+          "folder": "Stock/Artlist/gym",
+          "folder_id": "1Hy4fMZR83W-l1AnMQPDAI7Plz06mpVrj",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "gym",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-18T16:11:28Z"
+        }
+      ],
+      "searched_at": "2026-04-18T09:31:45Z",
+      "downloaded_clip_ids": [
+        "dynamic_1CZOcyvvoBfm4U4loKcPQ_39pclIaUQAn"
+      ],
+      "drive_folder_id": "1Hy4fMZR83W-l1AnMQPDAI7Plz06mpVrj"
+    },
+    "horse-drawn": {
+      "term": "horse-drawn",
+      "clips": [
+        {
+          "id": "dynamic_1Iz_pakDK-iZS_V17_rjbqM4hZ3_Nnfq5",
+          "video_id": "1Iz_pakDK-iZS_V17_rjbqM4hZ3_Nnfq5",
+          "title": "horse-drawn_dynamic_horse-drawn_rkJPetfniTc_yt_moment_1080p.mp4",
+          "name": "horse-drawn_dynamic_horse-drawn_rkJPetfniTc_yt_moment_1080p.mp4",
+          "term": "horse-drawn",
+          "folder": "Stock/Artlist/horse-drawn",
+          "folder_id": "1h6hQJUna2geNOmVd3tJPwquVKcX87QlI",
+          "original_url": "https://www.youtube.com/watch?v=rkJPetfniTc",
+          "url": "https://www.youtube.com/watch?v=rkJPetfniTc",
+          "drive_file_id": "1Iz_pakDK-iZS_V17_rjbqM4hZ3_Nnfq5",
+          "drive_url": "https://drive.google.com/file/d/1Iz_pakDK-iZS_V17_rjbqM4hZ3_Nnfq5/view",
+          "local_path_drive": "Stock/Artlist/horse-drawn/horse-drawn_dynamic_horse-drawn_rkJPetfniTc_yt_moment_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_horse-drawn_rkJPetfniTc_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "horse-drawn",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:rkjpetfnitc",
+            "yt_hash:1bf19bfe843330113ab0b24af9c345907a995f2a"
+          ],
+          "visual_hash": "614395b27e2446b9f0c1b38f0bf5f6b416d0c690",
+          "downloaded": true,
+          "added_at": "2026-04-20T10:15:28Z",
+          "downloaded_at": "2026-04-20T10:15:28Z"
+        }
+      ],
+      "searched_at": "2026-04-20T10:15:28Z",
+      "downloaded_clip_ids": [
+        "dynamic_1Iz_pakDK-iZS_V17_rjbqM4hZ3_Nnfq5"
+      ],
+      "drive_folder_id": "1h6hQJUna2geNOmVd3tJPwquVKcX87QlI"
+    },
+    "leggenda": {
+      "term": "leggenda",
+      "clips": [
+        {
+          "id": "dynamic_1ZicUT3e4ltiNGQSb2Xe0RoD9n5OZ8YeV",
+          "video_id": "1ZicUT3e4ltiNGQSb2Xe0RoD9n5OZ8YeV",
+          "title": "leggenda_dynamic_leggenda_FIZUrrRKG_Q_7s_1080p.mp4",
+          "name": "leggenda_dynamic_leggenda_FIZUrrRKG_Q_7s_1080p.mp4",
+          "term": "leggenda",
+          "folder": "Stock/Artlist/leggenda",
+          "folder_id": "1S5xrLG982a6M8w7cM6xCxzjsiSCdUVJd",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1ZicUT3e4ltiNGQSb2Xe0RoD9n5OZ8YeV",
+          "drive_url": "https://drive.google.com/file/d/1ZicUT3e4ltiNGQSb2Xe0RoD9n5OZ8YeV/view",
+          "local_path_drive": "Stock/Artlist/leggenda/leggenda_dynamic_leggenda_FIZUrrRKG_Q_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_leggenda_FIZUrrRKG_Q_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "leggenda",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T07:49:40Z",
+          "downloaded_at": "2026-04-19T07:49:40Z"
+        }
+      ],
+      "searched_at": "2026-04-19T07:49:40Z",
+      "downloaded_clip_ids": [
+        "dynamic_1ZicUT3e4ltiNGQSb2Xe0RoD9n5OZ8YeV"
+      ],
+      "drive_folder_id": "1S5xrLG982a6M8w7cM6xCxzjsiSCdUVJd"
+    },
+    "lifestyle": {
+      "term": "lifestyle",
+      "clips": [
+        {
+          "id": "dynamic_18s5u1gUfjxqTFNy2LZlBwVLe5ai8BEc6",
+          "video_id": "18s5u1gUfjxqTFNy2LZlBwVLe5ai8BEc6",
+          "title": "lifestyle_dynamic_lifestyle_zVjEVpzaL_M_7s_1080p.mp4",
+          "name": "lifestyle_dynamic_lifestyle_zVjEVpzaL_M_7s_1080p.mp4",
+          "term": "lifestyle",
+          "folder": "Stock/Artlist/lifestyle",
+          "folder_id": "1u7hySfMLOfzmgw3QIO6hmLIVwPu0pnwA",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "18s5u1gUfjxqTFNy2LZlBwVLe5ai8BEc6",
+          "drive_url": "https://drive.google.com/file/d/18s5u1gUfjxqTFNy2LZlBwVLe5ai8BEc6/view",
+          "local_path_drive": "Stock/Artlist/lifestyle/lifestyle_dynamic_lifestyle_zVjEVpzaL_M_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_lifestyle_zVjEVpzaL_M_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "lifestyle",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:18:25Z",
+          "downloaded_at": "2026-04-19T08:18:25Z"
+        },
+        {
+          "id": "dynamic_1naZ2fkjFJDgeOIUOhQUg5k3L1vzeSa0s",
+          "video_id": "1naZ2fkjFJDgeOIUOhQUg5k3L1vzeSa0s",
+          "title": "lifestyle_dynamic_lifestyle_QuPQpeMpqNg_7s_1080p.mp4",
+          "name": "lifestyle_dynamic_lifestyle_QuPQpeMpqNg_7s_1080p.mp4",
+          "term": "lifestyle",
+          "folder": "Stock/Artlist/lifestyle",
+          "folder_id": "1u7hySfMLOfzmgw3QIO6hmLIVwPu0pnwA",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1naZ2fkjFJDgeOIUOhQUg5k3L1vzeSa0s",
+          "drive_url": "https://drive.google.com/file/d/1naZ2fkjFJDgeOIUOhQUg5k3L1vzeSa0s/view",
+          "local_path_drive": "Stock/Artlist/lifestyle/lifestyle_dynamic_lifestyle_QuPQpeMpqNg_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_lifestyle_QuPQpeMpqNg_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "lifestyle",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:21:01Z",
+          "downloaded_at": "2026-04-19T08:21:01Z"
+        },
+        {
+          "id": "dynamic_11iSfgBuPVNP03Cp9199Vp2EaZ8CD7YFH",
+          "video_id": "11iSfgBuPVNP03Cp9199Vp2EaZ8CD7YFH",
+          "title": "lifestyle_dynamic_lifestyle_-QfbD9ZGfu0_7s_1080p.mp4",
+          "name": "lifestyle_dynamic_lifestyle_-QfbD9ZGfu0_7s_1080p.mp4",
+          "term": "lifestyle",
+          "folder": "Stock/Artlist/lifestyle",
+          "folder_id": "1u7hySfMLOfzmgw3QIO6hmLIVwPu0pnwA",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "11iSfgBuPVNP03Cp9199Vp2EaZ8CD7YFH",
+          "drive_url": "https://drive.google.com/file/d/11iSfgBuPVNP03Cp9199Vp2EaZ8CD7YFH/view",
+          "local_path_drive": "Stock/Artlist/lifestyle/lifestyle_dynamic_lifestyle_-QfbD9ZGfu0_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_lifestyle_-QfbD9ZGfu0_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "lifestyle",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:23:51Z",
+          "downloaded_at": "2026-04-19T08:23:51Z"
+        },
+        {
+          "id": "dynamic_1M_ywiVHXQ3gdCveGDY5fh_Z8WaYgoGMp",
+          "video_id": "1M_ywiVHXQ3gdCveGDY5fh_Z8WaYgoGMp",
+          "title": "lifestyle_dynamic_lifestyle_QuPQpeMpqNg_7s_1080p.mp4",
+          "name": "lifestyle_dynamic_lifestyle_QuPQpeMpqNg_7s_1080p.mp4",
+          "term": "lifestyle",
+          "folder": "Stock/Artlist/lifestyle",
+          "folder_id": "1u7hySfMLOfzmgw3QIO6hmLIVwPu0pnwA",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "lifestyle",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:25:37Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:18:25Z",
+      "downloaded_clip_ids": [
+        "dynamic_18s5u1gUfjxqTFNy2LZlBwVLe5ai8BEc6",
+        "dynamic_1naZ2fkjFJDgeOIUOhQUg5k3L1vzeSa0s",
+        "dynamic_11iSfgBuPVNP03Cp9199Vp2EaZ8CD7YFH"
+      ],
+      "drive_folder_id": "1u7hySfMLOfzmgw3QIO6hmLIVwPu0pnwA"
+    },
+    "meal": {
+      "term": "meal",
+      "clips": [
+        {
+          "id": "dynamic_1fTBk3wWtdnaxnOyDiKOFQ7AdELgNx-C2",
+          "video_id": "1fTBk3wWtdnaxnOyDiKOFQ7AdELgNx-C2",
+          "title": "meal_dynamic_meal_mfR8SVKia8Q_7s_1080p.mp4",
+          "name": "meal_dynamic_meal_mfR8SVKia8Q_7s_1080p.mp4",
+          "term": "meal",
+          "folder": "Stock/Artlist/meal",
+          "folder_id": "11znyr9_FrFKzpx9BH-PFYLDRuM9lk7kt",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1fTBk3wWtdnaxnOyDiKOFQ7AdELgNx-C2",
+          "drive_url": "https://drive.google.com/file/d/1fTBk3wWtdnaxnOyDiKOFQ7AdELgNx-C2/view",
+          "local_path_drive": "Stock/Artlist/meal/meal_dynamic_meal_mfR8SVKia8Q_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_meal_mfR8SVKia8Q_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "meal",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:27:09Z",
+          "downloaded_at": "2026-04-19T08:27:09Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:27:09Z",
+      "downloaded_clip_ids": [
+        "dynamic_1fTBk3wWtdnaxnOyDiKOFQ7AdELgNx-C2"
+      ],
+      "drive_folder_id": "11znyr9_FrFKzpx9BH-PFYLDRuM9lk7kt"
+    },
+    "music": {
+      "term": "music",
+      "clips": [
+        {
+          "id": "dynamic_1RoUc261Xe4F7IHhfsypp_iY3JlVSpjfE",
+          "video_id": "1RoUc261Xe4F7IHhfsypp_iY3JlVSpjfE",
+          "title": "music_dynamic_music_WF2FrEIUgkE_7s_1080p.mp4",
+          "name": "music_dynamic_music_WF2FrEIUgkE_7s_1080p.mp4",
+          "term": "music",
+          "folder": "Stock/Artlist/music",
+          "folder_id": "132_694H2PNmmplRfGOApIO2AAqAmuvTn",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1RoUc261Xe4F7IHhfsypp_iY3JlVSpjfE",
+          "drive_url": "https://drive.google.com/file/d/1RoUc261Xe4F7IHhfsypp_iY3JlVSpjfE/view",
+          "local_path_drive": "Stock/Artlist/music/music_dynamic_music_WF2FrEIUgkE_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_music_WF2FrEIUgkE_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "music",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T07:57:50Z",
+          "downloaded_at": "2026-04-19T07:57:50Z"
+        }
+      ],
+      "searched_at": "2026-04-19T07:57:50Z",
+      "downloaded_clip_ids": [
+        "dynamic_1RoUc261Xe4F7IHhfsypp_iY3JlVSpjfE"
+      ],
+      "drive_folder_id": "132_694H2PNmmplRfGOApIO2AAqAmuvTn"
     },
     "nature": {
       "term": "nature",
@@ -618,10 +2296,6 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/0b0be5a1-4aac-42ba-abb1-d40e1f786942_playlist_1751546298.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/0b0be5a1-4aac-42ba-abb1-d40e1f786942_playlist_1751546298.m3u8",
-          "drive_file_id": "1gSvZYHtWCRpiDNvaXAexiqFBH6fG_fym",
-          "drive_url": "https://drive.google.com/file/d/1gSvZYHtWCRpiDNvaXAexiqFBH6fG_fym/view",
-          "local_path_drive": "Stock/Artlist/nature/artlist_6523978.mp4",
-          "download_path": "data/downloads/artlist/nature/artlist_6523978.mp4_1080p_7s.mp4",
           "duration": 30960,
           "width": 3840,
           "height": 2160,
@@ -631,9 +2305,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:57:43Z",
-          "downloaded_at": "2026-04-14T13:58:10Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:57:43Z"
         },
         {
           "id": "artlist_6019473_224",
@@ -641,10 +2314,6 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/1ae4dfcf-3969-49ea-ac74-e570f2e8cc81_playlist_1696405850.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/1ae4dfcf-3969-49ea-ac74-e570f2e8cc81_playlist_1696405850.m3u8",
-          "drive_file_id": "1shgXP5nE5mZ63d3CRg68ybjjzmYI_CYT",
-          "drive_url": "https://drive.google.com/file/d/1shgXP5nE5mZ63d3CRg68ybjjzmYI_CYT/view",
-          "local_path_drive": "Stock/Artlist/nature/artlist_6019473.mp4",
-          "download_path": "data/downloads/artlist/nature/artlist_6019473.mp4_1080p_7s.mp4",
           "duration": 28500,
           "width": 4096,
           "height": 1728,
@@ -654,9 +2323,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:57:43Z",
-          "downloaded_at": "2026-04-14T13:58:23Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:57:43Z"
         },
         {
           "id": "artlist_6523981_220",
@@ -848,6 +2516,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-482620_playlist_1655629444.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-482620_playlist_1655629444.m3u8",
+          "drive_file_id": "1uUJlOb4pwr3e6UdI3mVbh1gn155hvrss",
+          "drive_url": "https://drive.google.com/file/d/1uUJlOb4pwr3e6UdI3mVbh1gn155hvrss/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_482620.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_482620.mp4_1080p_7s.mp4",
           "duration": 13280,
           "width": 3840,
           "height": 2160,
@@ -857,8 +2529,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:58:02Z"
         },
         {
           "id": "artlist_467469_232",
@@ -866,6 +2539,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-467469_playlist_1652816953.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-467469_playlist_1652816953.m3u8",
+          "drive_file_id": "1iIbh9XM4wANi3MUoiSgwUnsc1DwUew5J",
+          "drive_url": "https://drive.google.com/file/d/1iIbh9XM4wANi3MUoiSgwUnsc1DwUew5J/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_467469.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_467469.mp4_1080p_7s.mp4",
           "duration": 12760,
           "width": 3840,
           "height": 2160,
@@ -875,8 +2552,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:58:14Z"
         },
         {
           "id": "artlist_6605329_229",
@@ -884,6 +2562,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/c79311f4-055d-4153-9a68-63befa92ab0c_playlist_1773838677.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/c79311f4-055d-4153-9a68-63befa92ab0c_playlist_1773838677.m3u8",
+          "drive_file_id": "1NjlIn5HxRcjiFNpn9Q4UFS5G_83K-HbS",
+          "drive_url": "https://drive.google.com/file/d/1NjlIn5HxRcjiFNpn9Q4UFS5G_83K-HbS/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_6605329.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_6605329.mp4_1080p_7s.mp4",
           "duration": 12167,
           "width": 3840,
           "height": 2160,
@@ -893,8 +2575,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:58:28Z"
         },
         {
           "id": "artlist_98611_233",
@@ -902,6 +2585,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/b083922d-a2f3-43d3-813b-654685547867_playlist_1771854132.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/b083922d-a2f3-43d3-813b-654685547867_playlist_1771854132.m3u8",
+          "drive_file_id": "1lcuUOulFG28H0sjRu60F_wf4_sPlSvup",
+          "drive_url": "https://drive.google.com/file/d/1lcuUOulFG28H0sjRu60F_wf4_sPlSvup/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_98611.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_98611.mp4_1080p_7s.mp4",
           "duration": 11960,
           "width": 4608,
           "height": 2160,
@@ -911,8 +2598,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:58:43Z"
         },
         {
           "id": "artlist_6457293_214",
@@ -920,6 +2608,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/e0c908ce-d8ec-4cf8-8f29-9feee1fe4187_playlist_1743439141.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/e0c908ce-d8ec-4cf8-8f29-9feee1fe4187_playlist_1743439141.m3u8",
+          "drive_file_id": "18B3_zUgsIAt4bkajez3vzkbo6sL8_rMu",
+          "drive_url": "https://drive.google.com/file/d/18B3_zUgsIAt4bkajez3vzkbo6sL8_rMu/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_6457293.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_6457293.mp4_1080p_7s.mp4",
           "duration": 11386,
           "width": 4096,
           "height": 2160,
@@ -929,8 +2621,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:58:56Z"
         },
         {
           "id": "artlist_498264_240",
@@ -938,6 +2631,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-498264_playlist_1658057186.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-498264_playlist_1658057186.m3u8",
+          "drive_file_id": "1PqgTry502yVP91zUPeDmPOqohdmu2wxB",
+          "drive_url": "https://drive.google.com/file/d/1PqgTry502yVP91zUPeDmPOqohdmu2wxB/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_498264.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_498264.mp4_1080p_7s.mp4",
           "duration": 10744,
           "width": 3840,
           "height": 2160,
@@ -947,8 +2644,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:59:07Z"
         },
         {
           "id": "artlist_229760_216",
@@ -956,6 +2654,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/229760_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/229760_playlist.m3u8",
+          "drive_file_id": "17mAtk9vb7rQyJMtk4Y5J0eO2k-nifv9h",
+          "drive_url": "https://drive.google.com/file/d/17mAtk9vb7rQyJMtk4Y5J0eO2k-nifv9h/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_229760.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_229760.mp4_1080p_7s.mp4",
           "duration": 10583,
           "width": 4096,
           "height": 1716,
@@ -965,8 +2667,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:59:18Z"
         },
         {
           "id": "artlist_32987_247",
@@ -974,6 +2677,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a201c2bf-0c5c-4f8f-8db1-31e6758d3cc7_playlist_1772039310.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a201c2bf-0c5c-4f8f-8db1-31e6758d3cc7_playlist_1772039310.m3u8",
+          "drive_file_id": "17zyDhczB1Q5p-plruQz1_2atU126sYlM",
+          "drive_url": "https://drive.google.com/file/d/17zyDhczB1Q5p-plruQz1_2atU126sYlM/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_32987.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_32987.mp4_1080p_7s.mp4",
           "duration": 10480,
           "width": 4608,
           "height": 2160,
@@ -983,8 +2690,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:59:29Z"
         },
         {
           "id": "artlist_57967_218",
@@ -992,6 +2700,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f0725d4c-67fe-410f-a52e-f550d5deab8c_playlist_1771942581.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f0725d4c-67fe-410f-a52e-f550d5deab8c_playlist_1771942581.m3u8",
+          "drive_file_id": "1tSO2vlKRRWMeqkGpHZyb31sjSL_-qNTS",
+          "drive_url": "https://drive.google.com/file/d/1tSO2vlKRRWMeqkGpHZyb31sjSL_-qNTS/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_57967.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_57967.mp4_1080p_7s.mp4",
           "duration": 10320,
           "width": 4608,
           "height": 2160,
@@ -1001,8 +2713,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:59:38Z"
         },
         {
           "id": "artlist_57968_246",
@@ -1010,6 +2723,10 @@
           "title": "nature",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/8ec87fb5-2ee1-48dd-9806-3d63a1fcb8f3_playlist_1771936145.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/8ec87fb5-2ee1-48dd-9806-3d63a1fcb8f3_playlist_1771936145.m3u8",
+          "drive_file_id": "15oZv4wpsET-vtlu5pw6yftcoZXQ8GkcV",
+          "drive_url": "https://drive.google.com/file/d/15oZv4wpsET-vtlu5pw6yftcoZXQ8GkcV/view",
+          "local_path_drive": "Stock/Artlist/nature/artlist_57968.mp4",
+          "download_path": "data/downloads/artlist/nature/artlist_57968.mp4_1080p_7s.mp4",
           "duration": 10320,
           "width": 4608,
           "height": 2160,
@@ -1019,8 +2736,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:57:43Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:57:43Z",
+          "downloaded_at": "2026-04-17T18:59:51Z"
         },
         {
           "id": "artlist_6592551_202",
@@ -1205,8 +2923,6 @@
       ],
       "searched_at": "2026-04-14T13:57:43Z",
       "downloaded_clip_ids": [
-        "artlist_6523978_203",
-        "artlist_6019473_224",
         "artlist_6523981_220",
         "artlist_385900_228",
         "artlist_6269034_238",
@@ -1214,7 +2930,17 @@
         "artlist_164048_236",
         "artlist_71082_209",
         "artlist_6592550_204",
-        "artlist_6227228_212"
+        "artlist_6227228_212",
+        "artlist_482620_227",
+        "artlist_467469_232",
+        "artlist_6605329_229",
+        "artlist_98611_233",
+        "artlist_6457293_214",
+        "artlist_498264_240",
+        "artlist_229760_216",
+        "artlist_32987_247",
+        "artlist_57967_218",
+        "artlist_57968_246"
       ],
       "drive_folder_id": "Stock/Artlist/nature"
     },
@@ -1227,10 +2953,6 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-514208_playlist_1660576002.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-514208_playlist_1660576002.m3u8",
-          "drive_file_id": "1YZdfC9CSaQCRYzXpeIoYvAf77sh3VvXl",
-          "drive_url": "https://drive.google.com/file/d/1YZdfC9CSaQCRYzXpeIoYvAf77sh3VvXl/view",
-          "local_path_drive": "Stock/Artlist/people/artlist_514208.mp4",
-          "download_path": "data/downloads/artlist/people/artlist_514208.mp4_1080p_7s.mp4",
           "duration": 31365,
           "width": 3840,
           "height": 2160,
@@ -1240,9 +2962,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:55:26Z",
-          "downloaded_at": "2026-04-14T13:55:45Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:55:26Z"
         },
         {
           "id": "artlist_235766_343",
@@ -1250,10 +2971,6 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/953603a8-0ea8-47af-9ba4-bfa401eef412_playlist_1771781578.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/953603a8-0ea8-47af-9ba4-bfa401eef412_playlist_1771781578.m3u8",
-          "drive_file_id": "1k6srcbXTe3P_HBCA9hNhooV2OptJ_CjC",
-          "drive_url": "https://drive.google.com/file/d/1k6srcbXTe3P_HBCA9hNhooV2OptJ_CjC/view",
-          "local_path_drive": "Stock/Artlist/people/artlist_235766.mp4",
-          "download_path": "data/downloads/artlist/people/artlist_235766.mp4_1080p_7s.mp4",
           "duration": 28960,
           "width": 4096,
           "height": 2160,
@@ -1263,9 +2980,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:55:26Z",
-          "downloaded_at": "2026-04-14T13:55:58Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:55:26Z"
         },
         {
           "id": "artlist_230046_342",
@@ -1457,6 +3173,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-607858_playlist_1674470849.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-607858_playlist_1674470849.m3u8",
+          "drive_file_id": "1ksuUwb3W8dI-jgRu7bAvgYqMlQL4U7Oh",
+          "drive_url": "https://drive.google.com/file/d/1ksuUwb3W8dI-jgRu7bAvgYqMlQL4U7Oh/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_607858.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_607858.mp4_1080p_7s.mp4",
           "duration": 17651,
           "width": 3840,
           "height": 2160,
@@ -1466,8 +3186,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:18Z"
         },
         {
           "id": "artlist_689923_347",
@@ -1475,6 +3196,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-689923_playlist_1685864192.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-689923_playlist_1685864192.m3u8",
+          "drive_file_id": "1_CbcSW__2BYKVBAJ68NFdf7D7_LZQCgb",
+          "drive_url": "https://drive.google.com/file/d/1_CbcSW__2BYKVBAJ68NFdf7D7_LZQCgb/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_689923.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_689923.mp4_1080p_7s.mp4",
           "duration": 17117,
           "width": 3840,
           "height": 2160,
@@ -1484,8 +3209,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:35Z"
         },
         {
           "id": "artlist_6512728_330",
@@ -1493,6 +3219,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/9b57be62-46f1-410a-90de-f1316de23e01_playlist_1749787567.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/9b57be62-46f1-410a-90de-f1316de23e01_playlist_1749787567.m3u8",
+          "drive_file_id": "1cZXjYOOgLkSxr26RXYAqXflxQMlko-H8",
+          "drive_url": "https://drive.google.com/file/d/1cZXjYOOgLkSxr26RXYAqXflxQMlko-H8/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_6512728.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_6512728.mp4_1080p_7s.mp4",
           "duration": 16720,
           "width": 4096,
           "height": 1716,
@@ -1502,8 +3232,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:48Z"
         },
         {
           "id": "artlist_699328_311",
@@ -1511,6 +3242,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-699328_playlist_1687335494.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-699328_playlist_1687335494.m3u8",
+          "drive_file_id": "1nFbxca9b0Ua5r7zUWwn1uUI8i0NxoB6S",
+          "drive_url": "https://drive.google.com/file/d/1nFbxca9b0Ua5r7zUWwn1uUI8i0NxoB6S/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_699328.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_699328.mp4_1080p_7s.mp4",
           "duration": 15920,
           "width": 4096,
           "height": 2160,
@@ -1520,8 +3255,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:59Z"
         },
         {
           "id": "artlist_713468_331",
@@ -1529,6 +3265,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-713468_playlist_1689087458.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-713468_playlist_1689087458.m3u8",
+          "drive_file_id": "1UlPNStbvl0mrGtLA4pBcEBbXEbZvy9mg",
+          "drive_url": "https://drive.google.com/file/d/1UlPNStbvl0mrGtLA4pBcEBbXEbZvy9mg/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_713468.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_713468.mp4_1080p_7s.mp4",
           "duration": 15720,
           "width": 4096,
           "height": 2160,
@@ -1538,8 +3278,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:17Z"
         },
         {
           "id": "artlist_710883_324",
@@ -1547,6 +3288,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-710883_playlist_1688905749.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-710883_playlist_1688905749.m3u8",
+          "drive_file_id": "1xLMHgG08dMuCQPETN7L578OCkS3ymm_j",
+          "drive_url": "https://drive.google.com/file/d/1xLMHgG08dMuCQPETN7L578OCkS3ymm_j/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_710883.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_710883.mp4_1080p_7s.mp4",
           "duration": 15680,
           "width": 4096,
           "height": 2160,
@@ -1556,8 +3301,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:30Z"
         },
         {
           "id": "artlist_6049397_325",
@@ -1565,6 +3311,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/72c35880-4e98-4816-b190-4f04098139e6_playlist_1700574514.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/72c35880-4e98-4816-b190-4f04098139e6_playlist_1700574514.m3u8",
+          "drive_file_id": "15EMbvAvqghtn-2CFj8XfKhGGf5bOsI8_",
+          "drive_url": "https://drive.google.com/file/d/15EMbvAvqghtn-2CFj8XfKhGGf5bOsI8_/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_6049397.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_6049397.mp4_1080p_7s.mp4",
           "duration": 15320,
           "width": 6144,
           "height": 3456,
@@ -1574,8 +3324,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:42Z"
         },
         {
           "id": "artlist_699318_345",
@@ -1583,6 +3334,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-699318_playlist_1687335326.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-699318_playlist_1687335326.m3u8",
+          "drive_file_id": "1jTl6h6C_qlA67udoCrCNXZ4BEFixDEVF",
+          "drive_url": "https://drive.google.com/file/d/1jTl6h6C_qlA67udoCrCNXZ4BEFixDEVF/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_699318.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_699318.mp4_1080p_7s.mp4",
           "duration": 15320,
           "width": 4096,
           "height": 2160,
@@ -1592,8 +3347,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:55Z"
         },
         {
           "id": "artlist_173509_339",
@@ -1601,6 +3357,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/1792f420-41b0-411d-83fd-3dff46fccb52_playlist_1771867040.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/1792f420-41b0-411d-83fd-3dff46fccb52_playlist_1771867040.m3u8",
+          "drive_file_id": "1pzhApkv6cbdfD7bPkokuw23TeQNUOCFr",
+          "drive_url": "https://drive.google.com/file/d/1pzhApkv6cbdfD7bPkokuw23TeQNUOCFr/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_173509.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_173509.mp4_1080p_7s.mp4",
           "duration": 15033,
           "width": 4096,
           "height": 1720,
@@ -1610,8 +3370,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:58:09Z"
         },
         {
           "id": "artlist_496016_306",
@@ -1619,6 +3380,10 @@
           "title": "people",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-496016_playlist_1657620273.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-496016_playlist_1657620273.m3u8",
+          "drive_file_id": "1C5E12NpxRNXi3KGHCqVhGXMm4HW5v6dO",
+          "drive_url": "https://drive.google.com/file/d/1C5E12NpxRNXi3KGHCqVhGXMm4HW5v6dO/view",
+          "local_path_drive": "Stock/Artlist/people/artlist_496016.mp4",
+          "download_path": "data/downloads/artlist/people/artlist_496016.mp4_1080p_7s.mp4",
           "duration": 14720,
           "width": 3840,
           "height": 2160,
@@ -1628,8 +3393,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:58:19Z"
         },
         {
           "id": "artlist_110764_349",
@@ -1810,12 +3576,135 @@
           ],
           "downloaded": false,
           "added_at": "2026-04-14T13:55:26Z"
+        },
+        {
+          "id": "dynamic_1b48G8eoQAtiPcoym8-TBeWPwWTd5l293",
+          "video_id": "1b48G8eoQAtiPcoym8-TBeWPwWTd5l293",
+          "title": "people_dynamic_people__Wgl0P-uIFc_7s_1080p.mp4",
+          "name": "people_dynamic_people__Wgl0P-uIFc_7s_1080p.mp4",
+          "term": "people",
+          "folder": "Stock/Artlist/people",
+          "folder_id": "12RL4Ha_S5yaN96L1q9eZr6RrSt6qfjQD",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1b48G8eoQAtiPcoym8-TBeWPwWTd5l293",
+          "drive_url": "https://drive.google.com/file/d/1b48G8eoQAtiPcoym8-TBeWPwWTd5l293/view",
+          "local_path_drive": "Stock/Artlist/people/people_dynamic_people__Wgl0P-uIFc_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_people__Wgl0P-uIFc_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "people",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:17:53Z",
+          "downloaded_at": "2026-04-19T08:17:53Z"
+        },
+        {
+          "id": "dynamic_1EoPiZFQx-NLi4vo0nHXju7LpYylJpY45",
+          "video_id": "1EoPiZFQx-NLi4vo0nHXju7LpYylJpY45",
+          "title": "people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "name": "people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "term": "people",
+          "folder": "Stock/Artlist/people",
+          "folder_id": "12RL4Ha_S5yaN96L1q9eZr6RrSt6qfjQD",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1EoPiZFQx-NLi4vo0nHXju7LpYylJpY45",
+          "drive_url": "https://drive.google.com/file/d/1EoPiZFQx-NLi4vo0nHXju7LpYylJpY45/view",
+          "local_path_drive": "Stock/Artlist/people/people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "people",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:20:33Z",
+          "downloaded_at": "2026-04-19T08:20:33Z"
+        },
+        {
+          "id": "dynamic_1KlqfZK7-u9l4gLR74-fNtXnqRQZwksko",
+          "video_id": "1KlqfZK7-u9l4gLR74-fNtXnqRQZwksko",
+          "title": "people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "name": "people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "term": "people",
+          "folder": "Stock/Artlist/people",
+          "folder_id": "12RL4Ha_S5yaN96L1q9eZr6RrSt6qfjQD",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "people",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:23:25Z"
+        },
+        {
+          "id": "dynamic_1BAyvG-NNR-H0GmhklStCU98-xjnEt9sm",
+          "video_id": "1BAyvG-NNR-H0GmhklStCU98-xjnEt9sm",
+          "title": "people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "name": "people_dynamic_people_jrIkCCdstCA_7s_1080p.mp4",
+          "term": "people",
+          "folder": "Stock/Artlist/people",
+          "folder_id": "12RL4Ha_S5yaN96L1q9eZr6RrSt6qfjQD",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "people",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-19T08:24:59Z"
+        },
+        {
+          "id": "dynamic_1xmh4McDbMqh_HiLODLy2__yvbCRErLeR",
+          "video_id": "1xmh4McDbMqh_HiLODLy2__yvbCRErLeR",
+          "title": "people_dynamic_people_ExJZAegsOis_7s_1080p.mp4",
+          "name": "people_dynamic_people_ExJZAegsOis_7s_1080p.mp4",
+          "term": "people",
+          "folder": "Stock/Artlist/people",
+          "folder_id": "12RL4Ha_S5yaN96L1q9eZr6RrSt6qfjQD",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1xmh4McDbMqh_HiLODLy2__yvbCRErLeR",
+          "drive_url": "https://drive.google.com/file/d/1xmh4McDbMqh_HiLODLy2__yvbCRErLeR/view",
+          "local_path_drive": "Stock/Artlist/people/people_dynamic_people_ExJZAegsOis_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_people_ExJZAegsOis_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "people",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:25:56Z",
+          "downloaded_at": "2026-04-19T08:25:56Z"
         }
       ],
       "searched_at": "2026-04-14T13:55:26Z",
       "downloaded_clip_ids": [
-        "artlist_514208_305",
-        "artlist_235766_343",
         "artlist_230046_342",
         "artlist_6303725_334",
         "artlist_676723_326",
@@ -1823,9 +3712,302 @@
         "artlist_6139229_313",
         "artlist_662198_316",
         "artlist_607868_302",
-        "artlist_711849_341"
+        "artlist_711849_341",
+        "artlist_607858_323",
+        "artlist_689923_347",
+        "artlist_6512728_330",
+        "artlist_699328_311",
+        "artlist_713468_331",
+        "artlist_710883_324",
+        "artlist_6049397_325",
+        "artlist_699318_345",
+        "artlist_173509_339",
+        "artlist_496016_306",
+        "dynamic_1b48G8eoQAtiPcoym8-TBeWPwWTd5l293",
+        "dynamic_1EoPiZFQx-NLi4vo0nHXju7LpYylJpY45",
+        "dynamic_1xmh4McDbMqh_HiLODLy2__yvbCRErLeR"
       ],
-      "drive_folder_id": "Stock/Artlist/people"
+      "drive_folder_id": "12RL4Ha_S5yaN96L1q9eZr6RrSt6qfjQD"
+    },
+    "power": {
+      "term": "power",
+      "clips": [
+        {
+          "id": "dynamic_1MFSloR_idVDsu346hC3YjWLypZqTwpVu",
+          "video_id": "1MFSloR_idVDsu346hC3YjWLypZqTwpVu",
+          "title": "power_dynamic_power_4MqLgdf448o_7s_1080p.mp4",
+          "name": "power_dynamic_power_4MqLgdf448o_7s_1080p.mp4",
+          "term": "power",
+          "folder": "Stock/Artlist/power",
+          "folder_id": "1uzPgKNLEtJUy8OKMeVe4cFxL0Utgd6-i",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "power",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-18T16:13:57Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:13:57Z",
+      "downloaded_clip_ids": [],
+      "drive_folder_id": "1uzPgKNLEtJUy8OKMeVe4cFxL0Utgd6-i"
+    },
+    "ring": {
+      "term": "ring",
+      "clips": [
+        {
+          "id": "dynamic_1S9qwx1ED_EG4NobiqvPeDuMJSpDBNW1N",
+          "video_id": "1S9qwx1ED_EG4NobiqvPeDuMJSpDBNW1N",
+          "title": "ring_dynamic_ring_ng9O4SYIpHc_7s_1080p.mp4",
+          "name": "ring_dynamic_ring_ng9O4SYIpHc_7s_1080p.mp4",
+          "term": "ring",
+          "folder": "Stock/Artlist/ring",
+          "folder_id": "1pVtGD9TtFJFbb7OBSXb3H7fV3GWAM0Ml",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1S9qwx1ED_EG4NobiqvPeDuMJSpDBNW1N",
+          "drive_url": "https://drive.google.com/file/d/1S9qwx1ED_EG4NobiqvPeDuMJSpDBNW1N/view",
+          "local_path_drive": "Stock/Artlist/ring/ring_dynamic_ring_ng9O4SYIpHc_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_ring_ng9O4SYIpHc_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "ring",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:02:55Z",
+          "downloaded_at": "2026-04-19T08:02:55Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:02:55Z",
+      "downloaded_clip_ids": [
+        "dynamic_1S9qwx1ED_EG4NobiqvPeDuMJSpDBNW1N"
+      ],
+      "drive_folder_id": "1pVtGD9TtFJFbb7OBSXb3H7fV3GWAM0Ml"
+    },
+    "ritmo": {
+      "term": "ritmo",
+      "clips": [
+        {
+          "id": "dynamic_1nhZ1_kdy8ICbM7ydJxFpQxvVhh77Mk75",
+          "video_id": "1nhZ1_kdy8ICbM7ydJxFpQxvVhh77Mk75",
+          "title": "ritmo_dynamic_ritmo_sbAKwRHMJDk_7s_1080p.mp4",
+          "name": "ritmo_dynamic_ritmo_sbAKwRHMJDk_7s_1080p.mp4",
+          "term": "ritmo",
+          "folder": "Stock/Artlist/ritmo",
+          "folder_id": "1rycZl3wY2mac-5klviWdXEOmbyaBuYqJ",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1nhZ1_kdy8ICbM7ydJxFpQxvVhh77Mk75",
+          "drive_url": "https://drive.google.com/file/d/1nhZ1_kdy8ICbM7ydJxFpQxvVhh77Mk75/view",
+          "local_path_drive": "Stock/Artlist/ritmo/ritmo_dynamic_ritmo_sbAKwRHMJDk_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_ritmo_sbAKwRHMJDk_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "ritmo",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T07:58:56Z",
+          "downloaded_at": "2026-04-19T07:58:56Z"
+        }
+      ],
+      "searched_at": "2026-04-19T07:58:56Z",
+      "downloaded_clip_ids": [
+        "dynamic_1nhZ1_kdy8ICbM7ydJxFpQxvVhh77Mk75"
+      ],
+      "drive_folder_id": "1rycZl3wY2mac-5klviWdXEOmbyaBuYqJ"
+    },
+    "road": {
+      "term": "road",
+      "clips": [
+        {
+          "id": "dynamic_1Vy7krvpIGtxbg0h6u1uBDiBRO0p3kMEp",
+          "video_id": "1Vy7krvpIGtxbg0h6u1uBDiBRO0p3kMEp",
+          "title": "road_dynamic_road_xvaEJzoaYZk_yt_moment_1080p.mp4",
+          "name": "road_dynamic_road_xvaEJzoaYZk_yt_moment_1080p.mp4",
+          "term": "road",
+          "folder": "Stock/Artlist/road",
+          "folder_id": "1YURWQbDfeFYb1fQFwyTzrrPc3adpgbOa",
+          "original_url": "https://www.youtube.com/watch?v=xvaEJzoaYZk",
+          "url": "https://www.youtube.com/watch?v=xvaEJzoaYZk",
+          "drive_file_id": "1Vy7krvpIGtxbg0h6u1uBDiBRO0p3kMEp",
+          "drive_url": "https://drive.google.com/file/d/1Vy7krvpIGtxbg0h6u1uBDiBRO0p3kMEp/view",
+          "local_path_drive": "Stock/Artlist/road/road_dynamic_road_xvaEJzoaYZk_yt_moment_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_road_xvaEJzoaYZk_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "road",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:xvaejzoayzk",
+            "yt_hash:f44118bfb9d5f1e764a9824b103676e38165bf47"
+          ],
+          "visual_hash": "be73283ad13cbf454abc8f4a64d4768f6ba693f2",
+          "downloaded": true,
+          "added_at": "2026-04-20T10:16:20Z",
+          "downloaded_at": "2026-04-20T10:16:20Z"
+        }
+      ],
+      "searched_at": "2026-04-20T10:16:20Z",
+      "downloaded_clip_ids": [
+        "dynamic_1Vy7krvpIGtxbg0h6u1uBDiBRO0p3kMEp"
+      ],
+      "drive_folder_id": "1YURWQbDfeFYb1fQFwyTzrrPc3adpgbOa"
+    },
+    "running": {
+      "term": "running",
+      "clips": [
+        {
+          "id": "dynamic_15Ev2x15e7dfw7lPdC6f96J6Ns47aVCzf",
+          "video_id": "15Ev2x15e7dfw7lPdC6f96J6Ns47aVCzf",
+          "title": "running_dynamic_running_Q2qRfxNooqE_7s_1080p.mp4",
+          "name": "running_dynamic_running_Q2qRfxNooqE_7s_1080p.mp4",
+          "term": "running",
+          "folder": "Stock/Artlist/running",
+          "folder_id": "1ejB6hLOzMYFO9HvQeAhABQDGrl3eF_yS",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "15Ev2x15e7dfw7lPdC6f96J6Ns47aVCzf",
+          "drive_url": "https://drive.google.com/file/d/15Ev2x15e7dfw7lPdC6f96J6Ns47aVCzf/view",
+          "local_path_drive": "Stock/Artlist/running/running_dynamic_running_Q2qRfxNooqE_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_running_Q2qRfxNooqE_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "running",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:09:34Z",
+          "downloaded_at": "2026-04-18T16:09:34Z"
+        },
+        {
+          "id": "dynamic_1CzcqbYx0Ki-f_8Y89gICurRBzkfKijO9",
+          "video_id": "1CzcqbYx0Ki-f_8Y89gICurRBzkfKijO9",
+          "title": "running_dynamic_running_Q2qRfxNooqE_7s_1080p.mp4",
+          "name": "running_dynamic_running_Q2qRfxNooqE_7s_1080p.mp4",
+          "term": "running",
+          "folder": "Stock/Artlist/running",
+          "folder_id": "1ejB6hLOzMYFO9HvQeAhABQDGrl3eF_yS",
+          "original_url": "",
+          "url": "",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "running",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": false,
+          "added_at": "2026-04-18T16:11:43Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:09:34Z",
+      "downloaded_clip_ids": [
+        "dynamic_15Ev2x15e7dfw7lPdC6f96J6Ns47aVCzf"
+      ],
+      "drive_folder_id": "1ejB6hLOzMYFO9HvQeAhABQDGrl3eF_yS"
+    },
+    "rural": {
+      "term": "rural",
+      "clips": [
+        {
+          "id": "dynamic_173DZIf23_vkthdmDyx53FY0HV9lzQ2lV",
+          "video_id": "173DZIf23_vkthdmDyx53FY0HV9lzQ2lV",
+          "title": "rural_dynamic_rural_7Am_GRySV4g_yt_moment_1080p.mp4",
+          "name": "rural_dynamic_rural_7Am_GRySV4g_yt_moment_1080p.mp4",
+          "term": "rural",
+          "folder": "Stock/Artlist/rural",
+          "folder_id": "1XPuomfnxSLvF1VBCzYy76f8yQjutFILd",
+          "original_url": "https://www.youtube.com/watch?v=7Am_GRySV4g",
+          "url": "https://www.youtube.com/watch?v=7Am_GRySV4g",
+          "drive_file_id": "173DZIf23_vkthdmDyx53FY0HV9lzQ2lV",
+          "drive_url": "https://drive.google.com/file/d/173DZIf23_vkthdmDyx53FY0HV9lzQ2lV/view",
+          "local_path_drive": "Stock/Artlist/rural/rural_dynamic_rural_7Am_GRySV4g_yt_moment_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_rural_7Am_GRySV4g_yt_moment_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "rural",
+            "dynamic",
+            "auto-registered",
+            "yt_video_id:7am_grysv4g",
+            "yt_hash:5f7c42320900efe90635b2ff031d440c6432904f"
+          ],
+          "visual_hash": "fe509e16d03c9e40f2a525031ae79892afcb3d03",
+          "downloaded": true,
+          "added_at": "2026-04-20T10:15:22Z",
+          "downloaded_at": "2026-04-20T10:15:22Z"
+        }
+      ],
+      "searched_at": "2026-04-20T10:15:22Z",
+      "downloaded_clip_ids": [
+        "dynamic_173DZIf23_vkthdmDyx53FY0HV9lzQ2lV"
+      ],
+      "drive_folder_id": "1XPuomfnxSLvF1VBCzYy76f8yQjutFILd"
+    },
+    "speed": {
+      "term": "speed",
+      "clips": [
+        {
+          "id": "dynamic_1AlwvnfvZpYDP3-nsolMOfZi8b6S-bPSn",
+          "video_id": "1AlwvnfvZpYDP3-nsolMOfZi8b6S-bPSn",
+          "title": "speed_dynamic_speed_nwDEVNgkbyk_7s_1080p.mp4",
+          "name": "speed_dynamic_speed_nwDEVNgkbyk_7s_1080p.mp4",
+          "term": "speed",
+          "folder": "Stock/Artlist/speed",
+          "folder_id": "1cTupapMVMkYMxlxtHvwj6RpkpT_Fvvua",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1AlwvnfvZpYDP3-nsolMOfZi8b6S-bPSn",
+          "drive_url": "https://drive.google.com/file/d/1AlwvnfvZpYDP3-nsolMOfZi8b6S-bPSn/view",
+          "local_path_drive": "Stock/Artlist/speed/speed_dynamic_speed_nwDEVNgkbyk_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_speed_nwDEVNgkbyk_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "speed",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:07:40Z",
+          "downloaded_at": "2026-04-18T16:07:40Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:07:40Z",
+      "downloaded_clip_ids": [
+        "dynamic_1AlwvnfvZpYDP3-nsolMOfZi8b6S-bPSn"
+      ],
+      "drive_folder_id": "1cTupapMVMkYMxlxtHvwj6RpkpT_Fvvua"
     },
     "spider": {
       "term": "spider",
@@ -1836,10 +4018,6 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-423036_playlist_1646568180.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-423036_playlist_1646568180.m3u8",
-          "drive_file_id": "1IwedxP8X-JSglYMoHzXHRZYwdnoSSVuV",
-          "drive_url": "https://drive.google.com/file/d/1IwedxP8X-JSglYMoHzXHRZYwdnoSSVuV/view",
-          "local_path_drive": "Stock/Artlist/spider/artlist_423036.mp4",
-          "download_path": "data/downloads/artlist/spider/artlist_423036.mp4_1080p_7s.mp4",
           "duration": 34680,
           "width": 3840,
           "height": 2160,
@@ -1849,9 +4027,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:55:26Z",
-          "downloaded_at": "2026-04-14T13:55:52Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:55:26Z"
         },
         {
           "id": "artlist_6155893_91",
@@ -1859,10 +4036,6 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/ee65d8ae-3aee-4c19-8830-bc35cf815dfb_playlist_1711885875.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/ee65d8ae-3aee-4c19-8830-bc35cf815dfb_playlist_1711885875.m3u8",
-          "drive_file_id": "1d32SEzuonAWEYvgg1Bhe760BbCZQyDKk",
-          "drive_url": "https://drive.google.com/file/d/1d32SEzuonAWEYvgg1Bhe760BbCZQyDKk/view",
-          "local_path_drive": "Stock/Artlist/spider/artlist_6155893.mp4",
-          "download_path": "data/downloads/artlist/spider/artlist_6155893.mp4_1080p_7s.mp4",
           "duration": 32099,
           "width": 3840,
           "height": 2160,
@@ -1872,9 +4045,8 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": true,
-          "added_at": "2026-04-14T13:55:26Z",
-          "downloaded_at": "2026-04-14T13:56:11Z"
+          "downloaded": false,
+          "added_at": "2026-04-14T13:55:26Z"
         },
         {
           "id": "artlist_6155896_25",
@@ -2084,6 +4256,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/570c7188-76c1-454e-a2d3-479abdf100bc_playlist_1724835783.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/570c7188-76c1-454e-a2d3-479abdf100bc_playlist_1724835783.m3u8",
+          "drive_file_id": "18AwuBAb-R9l4Qb9zCdiyy7nusPphl94a",
+          "drive_url": "https://drive.google.com/file/d/18AwuBAb-R9l4Qb9zCdiyy7nusPphl94a/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6297982.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6297982.mp4_1080p_7s.mp4",
           "duration": 29930,
           "width": 3840,
           "height": 2160,
@@ -2093,8 +4269,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:37Z"
         },
         {
           "id": "artlist_6297997_58",
@@ -2102,6 +4279,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/1b754661-e3a7-4cc1-8ad7-655bae3e11cb_playlist_1724835618.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/1b754661-e3a7-4cc1-8ad7-655bae3e11cb_playlist_1724835618.m3u8",
+          "drive_file_id": "13YHX9Dlja3LtZDEv7FsJjBfwVE1VQrPC",
+          "drive_url": "https://drive.google.com/file/d/13YHX9Dlja3LtZDEv7FsJjBfwVE1VQrPC/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6297997.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6297997.mp4_1080p_7s.mp4",
           "duration": 28228,
           "width": 3840,
           "height": 2160,
@@ -2111,8 +4292,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:56Z"
         },
         {
           "id": "artlist_6155892_15",
@@ -2120,6 +4302,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/859cd67a-fd01-4a3e-8cc1-26f1748a6593_playlist_1711880829.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/859cd67a-fd01-4a3e-8cc1-26f1748a6593_playlist_1711880829.m3u8",
+          "drive_file_id": "1POwcM-xEqhCWG_ykb1nty2e9lAmfQizl",
+          "drive_url": "https://drive.google.com/file/d/1POwcM-xEqhCWG_ykb1nty2e9lAmfQizl/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6155892.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6155892.mp4_1080p_7s.mp4",
           "duration": 27903,
           "width": 1920,
           "height": 1080,
@@ -2129,8 +4315,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:17Z"
         },
         {
           "id": "artlist_6298004_80",
@@ -2138,6 +4325,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a85822b0-3771-4e0e-8776-5376dda37218_playlist_1724835727.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a85822b0-3771-4e0e-8776-5376dda37218_playlist_1724835727.m3u8",
+          "drive_file_id": "1XwIzAO5acGlwjxi8W7oe1Tzl1hsrgdVE",
+          "drive_url": "https://drive.google.com/file/d/1XwIzAO5acGlwjxi8W7oe1Tzl1hsrgdVE/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6298004.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6298004.mp4_1080p_7s.mp4",
           "duration": 27561,
           "width": 3840,
           "height": 2160,
@@ -2147,8 +4338,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:36Z"
         },
         {
           "id": "artlist_6155903_23",
@@ -2156,6 +4348,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a8ec103a-986c-4d6e-91ad-e997a1fc119f_playlist_1711881416.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/a8ec103a-986c-4d6e-91ad-e997a1fc119f_playlist_1711881416.m3u8",
+          "drive_file_id": "17lGPyr7rWKOtE_qeP1oRfWDX9oyuxuFK",
+          "drive_url": "https://drive.google.com/file/d/17lGPyr7rWKOtE_qeP1oRfWDX9oyuxuFK/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6155903.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6155903.mp4_1080p_7s.mp4",
           "duration": 27160,
           "width": 3840,
           "height": 2160,
@@ -2165,8 +4361,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:55Z"
         },
         {
           "id": "artlist_6447627_93",
@@ -2174,6 +4371,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/e646cb48-884f-432d-8cef-292a4f804450_playlist_1742230946.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/e646cb48-884f-432d-8cef-292a4f804450_playlist_1742230946.m3u8",
+          "drive_file_id": "1q7akwhnnbkigMysVwgkSa29Ma_DW7UDv",
+          "drive_url": "https://drive.google.com/file/d/1q7akwhnnbkigMysVwgkSa29Ma_DW7UDv/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6447627.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6447627.mp4_1080p_7s.mp4",
           "duration": 25515,
           "width": 3840,
           "height": 2160,
@@ -2183,8 +4384,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:58:12Z"
         },
         {
           "id": "artlist_423023_43",
@@ -2192,6 +4394,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-423023_playlist_1646567449.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-423023_playlist_1646567449.m3u8",
+          "drive_file_id": "1Ju38N6VQOrSOhdx2Cqb6MOQlDuv8JD7l",
+          "drive_url": "https://drive.google.com/file/d/1Ju38N6VQOrSOhdx2Cqb6MOQlDuv8JD7l/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_423023.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_423023.mp4_1080p_7s.mp4",
           "duration": 25480,
           "width": 3840,
           "height": 2160,
@@ -2201,8 +4407,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:58:28Z"
         },
         {
           "id": "artlist_6568804_97",
@@ -2210,6 +4417,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/5cee4971-a876-443a-95b7-47bcfe8ecb51_playlist_1757331711.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/5cee4971-a876-443a-95b7-47bcfe8ecb51_playlist_1757331711.m3u8",
+          "drive_file_id": "1y-cjXnOcx08b3xbMQ1M0IQGCT2xiiXFq",
+          "drive_url": "https://drive.google.com/file/d/1y-cjXnOcx08b3xbMQ1M0IQGCT2xiiXFq/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6568804.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6568804.mp4_1080p_7s.mp4",
           "duration": 24000,
           "width": 3840,
           "height": 2160,
@@ -2219,8 +4430,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:58:43Z"
         },
         {
           "id": "artlist_6298000_60",
@@ -2228,6 +4440,10 @@
           "title": "spider",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/59d9ad13-7210-4a81-b92e-45b3d36b15d2_playlist_1724835229.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/59d9ad13-7210-4a81-b92e-45b3d36b15d2_playlist_1724835229.m3u8",
+          "drive_file_id": "1tjy1oBvOuTDmzuN1cG3ndB8KoHVjIxKN",
+          "drive_url": "https://drive.google.com/file/d/1tjy1oBvOuTDmzuN1cG3ndB8KoHVjIxKN/view",
+          "local_path_drive": "Stock/Artlist/spider/artlist_6298000.mp4",
+          "download_path": "data/downloads/artlist/spider/artlist_6298000.mp4_1080p_7s.mp4",
           "duration": 22923,
           "width": 3840,
           "height": 2160,
@@ -2237,8 +4453,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:59:00Z"
         },
         {
           "id": "artlist_350654_72",
@@ -2423,8 +4640,6 @@
       ],
       "searched_at": "2026-04-14T13:55:26Z",
       "downloaded_clip_ids": [
-        "artlist_423036_81",
-        "artlist_6155893_91",
         "artlist_6155896_25",
         "artlist_6297985_90",
         "artlist_6155897_4",
@@ -2432,7 +4647,16 @@
         "artlist_6297981_71",
         "artlist_423024_40",
         "artlist_6297986_100",
-        "artlist_6155898_22"
+        "artlist_6155898_22",
+        "artlist_6297982_52",
+        "artlist_6297997_58",
+        "artlist_6155892_15",
+        "artlist_6298004_80",
+        "artlist_6155903_23",
+        "artlist_6447627_93",
+        "artlist_423023_43",
+        "artlist_6568804_97",
+        "artlist_6298000_60"
       ],
       "drive_folder_id": "Stock/Artlist/spider"
     },
@@ -2445,10 +4669,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/63370_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/63370_playlist.m3u8",
-          "drive_file_id": "1Yy-jBJU36iqHbxVgcRUsKn4CxPr2wn-5",
-          "drive_url": "https://drive.google.com/file/d/1Yy-jBJU36iqHbxVgcRUsKn4CxPr2wn-5/view",
+          "drive_file_id": "1zTyG_jZfCJGvwOM8o9P3EbJZaEXd5eqc",
+          "drive_url": "https://drive.google.com/file/d/1zTyG_jZfCJGvwOM8o9P3EbJZaEXd5eqc/view",
           "local_path_drive": "Stock/Artlist/technology/artlist_63370.mp4",
-          "download_path": "data/downloads/artlist/technology/artlist_63370.mp4_1080p_7s.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/artlist/artlist_technology_artlist_63370_368_7s_1080p.mp4",
           "duration": 35458,
           "width": 4096,
           "height": 2160,
@@ -2460,7 +4684,7 @@
           ],
           "downloaded": true,
           "added_at": "2026-04-14T13:55:26Z",
-          "downloaded_at": "2026-04-14T13:55:52Z"
+          "downloaded_at": "2026-04-18T06:52:23Z"
         },
         {
           "id": "artlist_360418_397",
@@ -2675,6 +4899,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/878b0b7a-30cc-4618-9953-aaaa0c69b311_playlist_1709148849.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/878b0b7a-30cc-4618-9953-aaaa0c69b311_playlist_1709148849.m3u8",
+          "drive_file_id": "1X1VP4s82lNhvJxPPLZIfiQKryzxT_qG2",
+          "drive_url": "https://drive.google.com/file/d/1X1VP4s82lNhvJxPPLZIfiQKryzxT_qG2/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_6128614.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_6128614.mp4_1080p_7s.mp4",
           "duration": 14083,
           "width": 4096,
           "height": 2160,
@@ -2684,8 +4912,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:11Z"
         },
         {
           "id": "artlist_642674_370",
@@ -2693,6 +4922,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-642674_playlist_1678287958.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-642674_playlist_1678287958.m3u8",
+          "drive_file_id": "1CI3cQl7mUc74ApcrzRoWcHjc5sGTKvxF",
+          "drive_url": "https://drive.google.com/file/d/1CI3cQl7mUc74ApcrzRoWcHjc5sGTKvxF/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_642674.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_642674.mp4_1080p_7s.mp4",
           "duration": 13375,
           "width": 4096,
           "height": 2160,
@@ -2702,8 +4935,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:19Z"
         },
         {
           "id": "artlist_215957_398",
@@ -2711,6 +4945,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/215957_playlist.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/215957_playlist.m3u8",
+          "drive_file_id": "1ubE0NS5XWDGimgmkKRClM3tznfrsa4pM",
+          "drive_url": "https://drive.google.com/file/d/1ubE0NS5XWDGimgmkKRClM3tznfrsa4pM/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_215957.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_215957.mp4_1080p_7s.mp4",
           "duration": 12880,
           "width": 3840,
           "height": 2160,
@@ -2720,8 +4958,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:30Z"
         },
         {
           "id": "artlist_250912_381",
@@ -2729,6 +4968,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/ceb8a45d-22dd-4b42-8c53-05b0a6d36216_playlist_1771507175.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/ceb8a45d-22dd-4b42-8c53-05b0a6d36216_playlist_1771507175.m3u8",
+          "drive_file_id": "1bBorGXIozTII_mRpTnyG_HTlCswuBSjT",
+          "drive_url": "https://drive.google.com/file/d/1bBorGXIozTII_mRpTnyG_HTlCswuBSjT/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_250912.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_250912.mp4_1080p_7s.mp4",
           "duration": 12040,
           "width": 2048,
           "height": 1080,
@@ -2738,8 +4981,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:42Z"
         },
         {
           "id": "artlist_250918_387",
@@ -2747,6 +4991,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/b483fab3-eef3-436a-9bc7-5b0fc5778aaf_playlist_1771500614.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/b483fab3-eef3-436a-9bc7-5b0fc5778aaf_playlist_1771500614.m3u8",
+          "drive_file_id": "1m-8ii7r_pZ93CtpD5PGUvz2m5EZv39Ue",
+          "drive_url": "https://drive.google.com/file/d/1m-8ii7r_pZ93CtpD5PGUvz2m5EZv39Ue/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_250918.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_250918.mp4_1080p_7s.mp4",
           "duration": 12040,
           "width": 2048,
           "height": 1080,
@@ -2756,8 +5004,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:56:55Z"
         },
         {
           "id": "artlist_6244256_380",
@@ -2765,6 +5014,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f8a18029-b311-4994-ad14-2a3ce1e188be_playlist_1718871980.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/f8a18029-b311-4994-ad14-2a3ce1e188be_playlist_1718871980.m3u8",
+          "drive_file_id": "1NtL4gO0p3CSGedr247uWCWIx3I_ZBkXX",
+          "drive_url": "https://drive.google.com/file/d/1NtL4gO0p3CSGedr247uWCWIx3I_ZBkXX/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_6244256.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_6244256.mp4_1080p_7s.mp4",
           "duration": 11792,
           "width": 4096,
           "height": 2160,
@@ -2774,8 +5027,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:04Z"
         },
         {
           "id": "artlist_6132467_373",
@@ -2783,6 +5037,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/b5e82ac0-391c-45e1-8079-4b8dc9a6ee30_playlist_1709470432.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/b5e82ac0-391c-45e1-8079-4b8dc9a6ee30_playlist_1709470432.m3u8",
+          "drive_file_id": "1VAXoBlhpnKXwg7F2Vt6_eRXaJDcUwpp1",
+          "drive_url": "https://drive.google.com/file/d/1VAXoBlhpnKXwg7F2Vt6_eRXaJDcUwpp1/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_6132467.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_6132467.mp4_1080p_7s.mp4",
           "duration": 11167,
           "width": 3840,
           "height": 2160,
@@ -2792,8 +5050,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:13Z"
         },
         {
           "id": "artlist_6141878_357",
@@ -2801,6 +5060,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/5caf2b5d-6ab2-4124-ba4c-b668d3843834_playlist_1755305518.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/5caf2b5d-6ab2-4124-ba4c-b668d3843834_playlist_1755305518.m3u8",
+          "drive_file_id": "1TztAZIKJ89wKmVuRUXSFSpYr6d81uQfC",
+          "drive_url": "https://drive.google.com/file/d/1TztAZIKJ89wKmVuRUXSFSpYr6d81uQfC/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_6141878.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_6141878.mp4_1080p_7s.mp4",
           "duration": 11120,
           "width": 8192,
           "height": 4320,
@@ -2810,8 +5073,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:23Z"
         },
         {
           "id": "artlist_6010665_371",
@@ -2819,6 +5083,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/672b5d1a-3917-4d98-a392-0b9b9b8e9c35_playlist_1695110067.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/672b5d1a-3917-4d98-a392-0b9b9b8e9c35_playlist_1695110067.m3u8",
+          "drive_file_id": "1ij2CnWf4hxQKBxORYpNuxuhvMNhSEZZs",
+          "drive_url": "https://drive.google.com/file/d/1ij2CnWf4hxQKBxORYpNuxuhvMNhSEZZs/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_6010665.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_6010665.mp4_1080p_7s.mp4",
           "duration": 11040,
           "width": 3840,
           "height": 2160,
@@ -2828,8 +5096,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:34Z"
         },
         {
           "id": "artlist_536225_400",
@@ -2837,6 +5106,10 @@
           "title": "technology",
           "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-536225_playlist_1663749576.m3u8",
           "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-536225_playlist_1663749576.m3u8",
+          "drive_file_id": "1SwYI1KlEmW0O2fpuXbr14r-i137Q--va",
+          "drive_url": "https://drive.google.com/file/d/1SwYI1KlEmW0O2fpuXbr14r-i137Q--va/view",
+          "local_path_drive": "Stock/Artlist/technology/artlist_536225.mp4",
+          "download_path": "data/downloads/artlist/technology/artlist_536225.mp4_1080p_7s.mp4",
           "duration": 11040,
           "width": 6144,
           "height": 3456,
@@ -2846,8 +5119,9 @@
             "artlist",
             "artlist"
           ],
-          "downloaded": false,
-          "added_at": "2026-04-14T13:55:26Z"
+          "downloaded": true,
+          "added_at": "2026-04-14T13:55:26Z",
+          "downloaded_at": "2026-04-17T18:57:43Z"
         },
         {
           "id": "artlist_642682_389",
@@ -3041,11 +5315,172 @@
         "artlist_6293005_376",
         "artlist_6293018_363",
         "artlist_738295_367",
-        "artlist_642675_377"
+        "artlist_642675_377",
+        "artlist_6128614_354",
+        "artlist_642674_370",
+        "artlist_215957_398",
+        "artlist_250912_381",
+        "artlist_250918_387",
+        "artlist_6244256_380",
+        "artlist_6132467_373",
+        "artlist_6141878_357",
+        "artlist_6010665_371",
+        "artlist_536225_400",
+        "artlist_63370_368"
       ],
-      "drive_folder_id": "Stock/Artlist/technology"
+      "drive_folder_id": "1iwxpUBKXyiGwP3w1k1K7odarK5YEt5AG"
+    },
+    "the": {
+      "term": "the",
+      "clips": [
+        {
+          "id": "dynamic_1JXDhE0IgX1bNerneez8w6GKRff60Bm3d",
+          "video_id": "1JXDhE0IgX1bNerneez8w6GKRff60Bm3d",
+          "title": "the_dynamic_the_BcgCketoy1Q_7s_1080p.mp4",
+          "name": "the_dynamic_the_BcgCketoy1Q_7s_1080p.mp4",
+          "term": "the",
+          "folder": "Stock/Artlist/the",
+          "folder_id": "1KMzfJY6yP6UfwOMJG_7JQnR3edSmuSb7",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1JXDhE0IgX1bNerneez8w6GKRff60Bm3d",
+          "drive_url": "https://drive.google.com/file/d/1JXDhE0IgX1bNerneez8w6GKRff60Bm3d/view",
+          "local_path_drive": "Stock/Artlist/the/the_dynamic_the_BcgCketoy1Q_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_the_BcgCketoy1Q_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "the",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:25:52Z",
+          "downloaded_at": "2026-04-19T08:25:52Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:25:52Z",
+      "downloaded_clip_ids": [
+        "dynamic_1JXDhE0IgX1bNerneez8w6GKRff60Bm3d"
+      ],
+      "drive_folder_id": "1KMzfJY6yP6UfwOMJG_7JQnR3edSmuSb7"
+    },
+    "their": {
+      "term": "their",
+      "clips": [
+        {
+          "id": "dynamic_1Bes_ONJ_nNb5Mr4vpwvtNFgvuyG4C94L",
+          "video_id": "1Bes_ONJ_nNb5Mr4vpwvtNFgvuyG4C94L",
+          "title": "their_dynamic_their_BcgCketoy1Q_7s_1080p.mp4",
+          "name": "their_dynamic_their_BcgCketoy1Q_7s_1080p.mp4",
+          "term": "their",
+          "folder": "Stock/Artlist/their",
+          "folder_id": "1rvdtuQ0vkVy2w8YauDINMoTb0ex0J_fA",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1Bes_ONJ_nNb5Mr4vpwvtNFgvuyG4C94L",
+          "drive_url": "https://drive.google.com/file/d/1Bes_ONJ_nNb5Mr4vpwvtNFgvuyG4C94L/view",
+          "local_path_drive": "Stock/Artlist/their/their_dynamic_their_BcgCketoy1Q_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_their_BcgCketoy1Q_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "their",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:16:17Z",
+          "downloaded_at": "2026-04-19T08:16:17Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:16:17Z",
+      "downloaded_clip_ids": [
+        "dynamic_1Bes_ONJ_nNb5Mr4vpwvtNFgvuyG4C94L"
+      ],
+      "drive_folder_id": "1rvdtuQ0vkVy2w8YauDINMoTb0ex0J_fA"
+    },
+    "training": {
+      "term": "training",
+      "clips": [
+        {
+          "id": "dynamic_1tQuXGQhuYNZD8RYvKy4mrzFNHqW4teZZ",
+          "video_id": "1tQuXGQhuYNZD8RYvKy4mrzFNHqW4teZZ",
+          "title": "training_dynamic_training_DsMVr5G7oyk_7s_1080p.mp4",
+          "name": "training_dynamic_training_DsMVr5G7oyk_7s_1080p.mp4",
+          "term": "training",
+          "folder": "Stock/Artlist/training",
+          "folder_id": "1vhCUhCYQgAh9wMpNPVeo81NNz_IcUYfJ",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1tQuXGQhuYNZD8RYvKy4mrzFNHqW4teZZ",
+          "drive_url": "https://drive.google.com/file/d/1tQuXGQhuYNZD8RYvKy4mrzFNHqW4teZZ/view",
+          "local_path_drive": "Stock/Artlist/training/training_dynamic_training_DsMVr5G7oyk_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_training_DsMVr5G7oyk_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "training",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T08:01:59Z",
+          "downloaded_at": "2026-04-19T08:01:59Z"
+        }
+      ],
+      "searched_at": "2026-04-19T08:01:59Z",
+      "downloaded_clip_ids": [
+        "dynamic_1tQuXGQhuYNZD8RYvKy4mrzFNHqW4teZZ"
+      ],
+      "drive_folder_id": "1vhCUhCYQgAh9wMpNPVeo81NNz_IcUYfJ"
+    },
+    "travel": {
+      "term": "travel",
+      "clips": [
+        {
+          "id": "artlist_125761_2878",
+          "video_id": "artlist_125761_2878",
+          "title": "travel",
+          "name": "travel_artlist_travel_artlist_125761_2878_7s_1080p.mp4",
+          "term": "travel",
+          "folder": "Stock/Artlist/travel",
+          "folder_id": "1VXi3RcFKoDjo-AP9L9fQIz3lt0DLhfdm",
+          "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/125761_playlist.m3u8",
+          "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/125761_playlist.m3u8",
+          "drive_file_id": "1u6tBXyy8BLDULNgM8m7gzG4XikJHVTM2",
+          "drive_url": "https://drive.google.com/file/d/1u6tBXyy8BLDULNgM8m7gzG4XikJHVTM2/view",
+          "local_path_drive": "Stock/Artlist/travel/travel_artlist_travel_artlist_125761_2878_7s_1080p.mp4",
+          "download_path": "../../data/dynamic_test/dynamic_clips/artlist/artlist_travel_artlist_125761_2878_7s_1080p.mp4",
+          "duration": 7,
+          "width": 1920,
+          "height": 1080,
+          "category": "Dynamic Artlist",
+          "tags": [
+            "travel",
+            "artlist",
+            "artlist",
+            "travel",
+            "artlist"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T07:06:20Z",
+          "downloaded_at": "2026-04-18T07:06:20Z"
+        }
+      ],
+      "searched_at": "2026-04-18T07:06:20Z",
+      "downloaded_clip_ids": [
+        "artlist_125761_2878"
+      ],
+      "drive_folder_id": "1VXi3RcFKoDjo-AP9L9fQIz3lt0DLhfdm"
     }
   },
-  "total_clips": 150,
-  "last_updated": "2026-04-14T14:00:18Z"
+  "total_clips": 220,
+  "last_updated": "2026-04-20T10:16:20Z"
 }

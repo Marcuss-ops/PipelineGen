@@ -14,8 +14,8 @@ func (r *ScriptDocRequest) Validate() error {
 	if r.Duration == 0 {
 		r.Duration = DefaultDuration
 	}
-	if r.Duration < MinDuration || r.Duration > MaxDuration {
-		return fmt.Errorf("duration must be between %d and %d seconds", MinDuration, MaxDuration)
+	if r.Duration < MinDuration || r.Duration > 600 {
+		return fmt.Errorf("duration must be between %d and 600 seconds", MinDuration)
 	}
 
 	if len(r.Languages) == 0 {
@@ -42,6 +42,15 @@ func (r *ScriptDocRequest) Validate() error {
 	}
 	if !validTemplates[r.Template] {
 		return fmt.Errorf("invalid template: %s (valid: documentary, storytelling, top10, biography)", r.Template)
+	}
+
+	r.AssociationMode = normalizeAssociationMode(r.AssociationMode)
+	validModes := map[string]bool{
+		AssociationModeDefault:     true,
+		AssociationModeFullArtlist: true,
+	}
+	if !validModes[r.AssociationMode] {
+		return fmt.Errorf("invalid association_mode: %s (valid: default, fullartlist)", r.AssociationMode)
 	}
 
 	return nil

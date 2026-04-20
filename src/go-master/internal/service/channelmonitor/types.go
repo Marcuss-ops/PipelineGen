@@ -9,16 +9,17 @@ import (
 // ChannelConfig holds configuration for a monitored channel
 type ChannelConfig struct {
 	URL             string   `json:"url"`               // e.g. "https://www.youtube.com/@vladtv"
-	Category        string   `json:"category"`           // e.g. "Music", "HipHop", "Wwe"
-	Keywords        []string `json:"keywords"`           // keywords to match in titles for relevance
-	MinViews        int64    `json:"min_views"`          // minimum views to consider
-	MaxClipDuration int      `json:"max_clip_duration"`  // max seconds per clip (default 60)
+	Category        string   `json:"category"`          // e.g. "Music", "HipHop", "Wwe"
+	Keywords        []string `json:"keywords"`          // keywords to match in titles for relevance
+	MinViews        int64    `json:"min_views"`         // minimum views to consider
+	MaxClipDuration int      `json:"max_clip_duration"` // max seconds per clip (default 60)
 }
 
 // MonitorConfig holds the full monitor configuration
 type MonitorConfig struct {
 	Channels        []ChannelConfig `json:"channels"`
 	CheckInterval   time.Duration   `json:"check_interval"`    // default 24h
+	VideoTimeframe  string          `json:"video_timeframe"`   // 24h, week, month (default month)
 	StockRootID     string          `json:"stock_root_id"`     // Drive Stock root folder ID
 	YtDlpPath       string          `json:"ytdlp_path"`        // path to yt-dlp binary
 	CookiesPath     string          `json:"cookies_path"`      // optional: browser cookies file
@@ -40,14 +41,14 @@ type ClipResult struct {
 
 // VideoResult represents the result of processing one video
 type VideoResult struct {
-	VideoID    string            `json:"video_id"`
-	Title      string            `json:"title"`
-	Channel    string            `json:"channel"`
-	Views      int64             `json:"views"`
-	Transcript string            `json:"transcript"`
+	VideoID    string             `json:"video_id"`
+	Title      string             `json:"title"`
+	Channel    string             `json:"channel"`
+	Views      int64              `json:"views"`
+	Transcript string             `json:"transcript"`
 	Highlights []HighlightSegment `json:"highlights"` // interesting segments with timestamps
-	Clips      []ClipResult      `json:"clips"`
-	FolderPath string            `json:"folder_path"`
+	Clips      []ClipResult       `json:"clips"`
+	FolderPath string             `json:"folder_path"`
 }
 
 // HighlightSegment represents a highlight with its timestamp position in the transcript

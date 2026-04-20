@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH=$PATH:/usr/local/go/bin
 # VeloxEditing Backend - Script di avvio
 # Sistema semplificato: solo Go Master
 
@@ -56,7 +57,7 @@ if [ -f "$ROOT_DIR/bin/server" ]; then
     "$ROOT_DIR/bin/server" &
 else
     echo "   Compilazione..."
-    go build -o "$ROOT_DIR/bin/server" ./cmd/server
+    (cd "$ROOT_DIR/src/go-master" && (cd "$ROOT_DIR/src/go-master" && go build -o "$ROOT_DIR/bin/server" ./cmd/server))
     "$ROOT_DIR/bin/server" &
 fi
 

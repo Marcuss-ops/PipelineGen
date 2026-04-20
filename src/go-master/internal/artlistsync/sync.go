@@ -209,8 +209,9 @@ func (s *ArtlistSync) IsRunning() bool {
 }
 
 func normalizeTerm(name string) string {
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, " ", "")
+	name = strings.ToLower(strings.TrimSpace(name))
+	// Also allow underscore as space
+	name = strings.ReplaceAll(name, "_", " ")
 	return name
 }
 

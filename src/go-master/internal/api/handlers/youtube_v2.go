@@ -3,6 +3,8 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"velox/go-master/internal/gpu"
 	"velox/go-master/internal/textgen"
@@ -94,6 +96,9 @@ func (h *YouTubeV2Handler) DownloadVideoV2(c *gin.Context) {
 // @Produce json
 // @Param query query string true "Search query"
 // @Param max_results query int false "Maximum results (default 10)"
+// @Param sort_by query string false "Sort by: relevance|views|date|rating"
+// @Param upload_date query string false "Time filter: hour|today|week|month|year"
+// @Param duration query string false "Duration filter: short|medium|long"
 // @Success 200 {array} youtube.SearchResult
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -106,10 +111,20 @@ func (h *YouTubeV2Handler) SearchVideosV2(c *gin.Context) {
 	}
 
 	maxResults := 10
-	c.Query("max_results")
+	if raw := strings.TrimSpace(c.Query("max_results")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "max_results must be a positive integer"})
+			return
+		}
+		maxResults = parsed
+	}
 
 	opts := &youtube.SearchOptions{
 		MaxResults: maxResults,
+		SortBy:     strings.TrimSpace(c.DefaultQuery("sort_by", "relevance")),
+		UploadDate: strings.TrimSpace(c.Query("upload_date")),
+		Duration:   strings.TrimSpace(c.Query("duration")),
 	}
 
 	results, err := h.Client.Search(c.Request.Context(), query, opts)
@@ -182,8 +197,8 @@ func (h *YouTubeV2Handler) GetTranscriptV2(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"url":      url,
-		"language": lang,
+		"url":        url,
+		"language":   lang,
 		"transcript": transcript,
 	})
 }
@@ -207,7 +222,7 @@ func (h *YouTubeV2Handler) CheckHealthV2(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "healthy",
+		"status":  "healthy",
 		"backend": "ytdlp",
 	})
 }

@@ -3,11 +3,8 @@ package queue
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
-
-	"velox/go-master/pkg/models"
 )
 
 // PostgresQueue implementa l'interfaccia Queue usando PostgreSQL.

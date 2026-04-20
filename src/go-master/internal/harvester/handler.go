@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"velox/go-master/pkg/logger"
@@ -15,11 +16,19 @@ import (
 )
 
 type Handler struct {
-	harvester *Harvester
+	harvester   *Harvester
+	cronManager *CronManager
+	cronHandler *CronHandler
 }
 
 func NewHandler(h *Harvester) *Handler {
-	return &Handler{harvester: h}
+	handler := &Handler{harvester: h}
+	if h != nil {
+		manager := NewCronManager(h)
+		handler.cronManager = manager
+		handler.cronHandler = NewCronHandler(manager)
+	}
+	return handler
 }
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
@@ -35,6 +44,14 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.DELETE("/blacklist/:videoID", h.UnblacklistVideo)
 	r.POST("/run", h.RunNow)
 	r.GET("/results", h.GetResults)
+	if h.cronHandler != nil {
+		cronGroup := r.Group("/cron")
+		h.cronHandler.RegisterRoutes(cronGroup)
+	}
+}
+
+func (h *Handler) CronManager() *CronManager {
+	return h.cronManager
 }
 
 func (h *Handler) GetStats(c *gin.Context) {
@@ -160,6 +177,8 @@ type CronManager struct {
 	harvester  *Harvester
 	intervalCh chan *CronJob
 	stopCh     chan struct{}
+	stopOnce   sync.Once
+	mu         sync.RWMutex
 }
 
 func NewCronManager(h *Harvester) *CronManager {
@@ -177,7 +196,9 @@ func (m *CronManager) Start(ctx context.Context) {
 }
 
 func (m *CronManager) Stop() {
-	close(m.stopCh)
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
 	logger.Info("Cron manager stopped")
 }
 
@@ -199,6 +220,9 @@ func (m *CronManager) run(ctx context.Context) {
 
 func (m *CronManager) checkAndRun(ctx context.Context) {
 	now := time.Now()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for _, job := range m.jobs {
 		if !job.Enabled {
@@ -241,6 +265,9 @@ func (m *CronManager) checkAndRun(ctx context.Context) {
 }
 
 func (m *CronManager) AddJob(name, query, channel, interval string) *CronJob {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	job := &CronJob{
 		ID:        fmt.Sprintf("job_%d", len(m.jobs)+1),
 		Name:      name,
@@ -257,11 +284,17 @@ func (m *CronManager) AddJob(name, query, channel, interval string) *CronJob {
 }
 
 func (m *CronManager) RemoveJob(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	delete(m.jobs, id)
 	logger.Info("Cron job removed", zap.String("id", id))
 }
 
 func (m *CronManager) GetJobs() []*CronJob {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	jobs := make([]*CronJob, 0, len(m.jobs))
 	for _, job := range m.jobs {
 		jobs = append(jobs, job)
@@ -270,6 +303,9 @@ func (m *CronManager) GetJobs() []*CronJob {
 }
 
 func (m *CronManager) ToggleJob(id string, enabled bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if job, ok := m.jobs[id]; ok {
 		job.Enabled = enabled
 		logger.Info("Cron job toggled", zap.String("id", id), zap.Bool("enabled", enabled))

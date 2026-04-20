@@ -30,44 +30,46 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 		return nil, nil
 	}
 
-	// Filter to current month only
-	now := time.Now()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	var monthVideos []youtube.SearchResult
+	// Filter by configured timeframe (default month).
+	timeframe := normalizeVideoTimeframe(m.config.VideoTimeframe)
+	windowStart := timeframeStart(time.Now().UTC(), timeframe)
+	var windowVideos []youtube.SearchResult
 	var filtered int
 	for _, v := range videos {
-		if isCurrentMonth(v, monthStart) {
-			monthVideos = append(monthVideos, v)
+		if isWithinTimeframe(v, windowStart) {
+			windowVideos = append(windowVideos, v)
 		} else {
 			filtered++
 		}
 	}
 
-	if len(monthVideos) == 0 {
-		logger.Info("No videos from current month found",
+	if len(windowVideos) == 0 {
+		logger.Info("No videos found in timeframe",
 			zap.String("channel", ch.URL),
+			zap.String("timeframe", timeframe),
 			zap.Int("filtered_out", filtered),
 		)
 		return nil, nil
 	}
 
-	logger.Info("Found videos for current month",
+	logger.Info("Found videos in timeframe",
 		zap.String("channel", ch.URL),
-		zap.Int("count", len(monthVideos)),
-		zap.String("month", monthStart.Format("January 2006")),
+		zap.Int("count", len(windowVideos)),
+		zap.String("timeframe", timeframe),
+		zap.String("window_start", windowStart.Format(time.RFC3339)),
 	)
 
 	// Sort by views descending
-	sort.Slice(monthVideos, func(i, j int) bool {
-		return monthVideos[i].Views > monthVideos[j].Views
+	sort.Slice(windowVideos, func(i, j int) bool {
+		return windowVideos[i].Views > windowVideos[j].Views
 	})
 
-	// Process up to 5 top videos from this month
+	// Process up to 5 top videos in the selected timeframe
 	var results []VideoResult
 	maxVideos := 5
 	processed := 0
 
-	for _, v := range monthVideos {
+	for _, v := range windowVideos {
 		if processed >= maxVideos {
 			break
 		}
@@ -186,34 +188,60 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 
 	logger.Info("Channel processing complete",
 		zap.Int("videos_processed", processed),
-		zap.Int("total_month_videos", len(monthVideos)),
+		zap.Int("total_timeframe_videos", len(windowVideos)),
 	)
 
 	return results, nil
 }
 
-// isCurrentMonth checks if a video was uploaded in the current month
-func isCurrentMonth(v youtube.SearchResult, monthStart time.Time) bool {
+func normalizeVideoTimeframe(tf string) string {
+	switch strings.ToLower(strings.TrimSpace(tf)) {
+	case "24h", "day", "today":
+		return "24h"
+	case "week", "7d":
+		return "week"
+	case "month", "30d":
+		return "month"
+	default:
+		return "month"
+	}
+}
+
+func timeframeStart(now time.Time, tf string) time.Time {
+	switch tf {
+	case "24h":
+		return now.Add(-24 * time.Hour)
+	case "week":
+		return now.Add(-7 * 24 * time.Hour)
+	case "month":
+		return now.Add(-30 * 24 * time.Hour)
+	default:
+		return now.Add(-30 * 24 * time.Hour)
+	}
+}
+
+func isWithinTimeframe(v youtube.SearchResult, windowStart time.Time) bool {
 	if v.UploadDate == "" || v.UploadDate == "NA" {
-		return true // If we don't know, include it
+		return true // Keep permissive behavior if upload date is unavailable.
 	}
 
-	// Parse upload date formats: "20060102" or "2006-01-02" or "20060102T150405Z"
-	dateStr := v.UploadDate
+	uploadDate, err := parseUploadDate(v.UploadDate)
+	if err != nil {
+		return true // Keep permissive behavior on unparseable dates.
+	}
+	return uploadDate.After(windowStart) || uploadDate.Equal(windowStart)
+}
+
+func parseUploadDate(raw string) (time.Time, error) {
+	dateStr := strings.TrimSpace(raw)
 	dateStr = strings.ReplaceAll(dateStr, "T", "")
 	dateStr = strings.ReplaceAll(dateStr, "-", "")
 	dateStr = strings.ReplaceAll(dateStr, "Z", "")
 
 	if len(dateStr) < 8 {
-		return true // Can't parse, include
+		return time.Time{}, fmt.Errorf("invalid upload date: %q", raw)
 	}
-
-	uploadDate, err := time.Parse("20060102", dateStr[:8])
-	if err != nil {
-		return true // Can't parse, include
-	}
-
-	return uploadDate.After(monthStart) || uploadDate.Equal(monthStart)
+	return time.Parse("20060102", dateStr[:8])
 }
 
 // isShorts checks if a video is a YouTube Short

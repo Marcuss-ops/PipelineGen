@@ -57,7 +57,8 @@ func initSyncServices(
 	var services []runtime.BackgroundService
 
 	if driveClient != nil {
-		driveWatcher = watcher.NewWatcher(driveClient, cfg.Drive.StockRootFolderID)
+		syncInterval := time.Duration(cfg.DriveSync.Interval) * time.Second
+		driveWatcher = watcher.NewWatcher(driveClient, cfg.Drive.StockRootFolderID, syncInterval)
 
 		if driveSync != nil {
 			driveSyncRef := driveSync

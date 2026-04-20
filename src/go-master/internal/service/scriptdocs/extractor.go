@@ -168,6 +168,7 @@ func extractProperNounsInternal(sentences []string) []string {
 		"un": true, "una": true, "uno": true, "e": true, "o": true,
 		"di": true, "da": true, "in": true, "con": true, "su": true,
 		"per": true, "tra": true, "fra": true, "non": true, "che": true,
+		"davis": true, "tank": true, "baltimore": true, // User specific high-frequency but generic in context
 	}
 	for _, sentence := range sentences {
 		for _, word := range strings.Fields(sentence) {
@@ -182,7 +183,7 @@ func extractProperNounsInternal(sentences []string) []string {
 				seen[clean] = true
 				result = append(result, clean)
 			}
-			if len(result) >= 8 {
+			if len(result) >= 30 { // Increased from 20 to 30
 				return result
 			}
 		}
@@ -266,9 +267,14 @@ func extractMultiWordEntities(sentences []string) []string {
 func extractKeywords(text string) []string {
 	wordCount := make(map[string]int)
 	totalWords := 0
+	stopWords := map[string]bool{
+		"della": true, "delle": true, "degli": true, "dallo": true, "dalla": true,
+		"nelle": true, "nello": true, "nella": true, "sulla": true, "sulle": true,
+		"questo": true, "quello": true, "tutti": true, "tutte": true, "tutto": true,
+	}
 	for _, word := range strings.Fields(strings.ToLower(text)) {
 		clean := strings.TrimFunc(word, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
-		if len(clean) <= 4 {
+		if len(clean) <= 4 || stopWords[clean] {
 			continue
 		}
 		wordCount[clean]++
@@ -278,8 +284,9 @@ func extractKeywords(text string) []string {
 	var sortedKV []kv
 	for k, v := range wordCount { sortedKV = append(sortedKV, kv{k, v}) }
 	sort.Slice(sortedKV, func(i, j int) bool { return sortedKV[j].Value < sortedKV[i].Value })
-	logger.Debug("Keyword extraction completed", zap.Int("total_words", totalWords), zap.Int("unique_keywords", len(sortedKV)))
-	result := make([]string, 0, util.Min(4, len(sortedKV)))
-	for i := 0; i < len(sortedKV) && i < 4; i++ { result = append(result, sortedKV[i].Key) }
+	
+	limit := 8
+	result := make([]string, 0, util.Min(limit, len(sortedKV)))
+	for i := 0; i < len(sortedKV) && i < limit; i++ { result = append(result, sortedKV[i].Key) }
 	return result
 }

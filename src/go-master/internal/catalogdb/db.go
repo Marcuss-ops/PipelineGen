@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/glebarez/sqlite"
+	_ "modernc.org/sqlite"
 )
 
 // CatalogDB provides a normalized local SQLite catalog for clips coming from

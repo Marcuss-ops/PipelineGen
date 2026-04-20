@@ -1,0 +1,323 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-19T14:05:06.059250505Z",
+  "jobs": [
+    {
+      "job_id": "clip_1776606081468823355_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "queued",
+      "attempts": 15,
+      "updated_at": "2026-04-19T14:05:06.059230319Z",
+      "created_at": "2026-04-19T13:41:21.468830566Z"
+    },
+    {
+      "job_id": "clip_1776605728476357496_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "19LD_Zk9l_ZX7MjvYcdPEsAKp-RkG_RNT",
+      "drive_url": "https://drive.google.com/file/d/19LD_Zk9l_ZX7MjvYcdPEsAKp-RkG_RNT/view",
+      "filename": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd Mayweather",
+      "updated_at": "2026-04-19T13:35:37.754844724Z",
+      "created_at": "2026-04-19T13:35:28.476375329Z"
+    },
+    {
+      "job_id": "clip_1776605616560509624_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "19LD_Zk9l_ZX7MjvYcdPEsAKp-RkG_RNT",
+      "drive_url": "https://drive.google.com/file/d/19LD_Zk9l_ZX7MjvYcdPEsAKp-RkG_RNT/view",
+      "filename": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd Mayweather",
+      "updated_at": "2026-04-19T13:34:12.954258463Z",
+      "created_at": "2026-04-19T13:33:36.560521785Z"
+    },
+    {
+      "job_id": "clip_1776605571713512618_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "19LD_Zk9l_ZX7MjvYcdPEsAKp-RkG_RNT",
+      "drive_url": "https://drive.google.com/file/d/19LD_Zk9l_ZX7MjvYcdPEsAKp-RkG_RNT/view",
+      "filename": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_CsdzflTXBVQ_yt_moment_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd Mayweather",
+      "updated_at": "2026-04-19T13:33:31.689511074Z",
+      "created_at": "2026-04-19T13:32:51.71352091Z"
+    },
+    {
+      "job_id": "clip_1776605040754837195_Floyd_Mayweather_interview_post_fight",
+      "keyword": "Floyd Mayweather interview post fight",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1fXj3IdvCyyEm2DUIBSDSl2epGYV_G7k1",
+      "drive_url": "https://drive.google.com/file/d/1fXj3IdvCyyEm2DUIBSDSl2epGYV_G7k1/view",
+      "filename": "Floyd_Mayweather_interview_post_fight_dynamic_Floyd_Mayweather_interview_post_fight_gXvtYt-hEEQ_yt_moment_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd Mayweather",
+      "updated_at": "2026-04-19T13:24:40.18391128Z",
+      "created_at": "2026-04-19T13:24:00.754846293Z"
+    },
+    {
+      "job_id": "clip_1776604579162434252_Floyd_Mayweather_interview_post_fight",
+      "keyword": "Floyd Mayweather interview post fight",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "14FwUGugiFAZ3QmmLvRiioiwL0PTZyFT4",
+      "drive_url": "https://drive.google.com/file/d/14FwUGugiFAZ3QmmLvRiioiwL0PTZyFT4/view",
+      "filename": "Floyd_Mayweather_interview_post_fight_dynamic_Floyd_Mayweather_interview_post_fight_gXvtYt-hEEQ_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd Mayweather",
+      "updated_at": "2026-04-19T13:17:03.71562346Z",
+      "created_at": "2026-04-19T13:16:19.162445235Z"
+    },
+    {
+      "job_id": "clip_1776604123921862746_Floyd_Mayweather_backstage_interview",
+      "keyword": "Floyd Mayweather backstage interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "125j9XvSf3D-PGFuN1ghgZb1jCb_nPLTv",
+      "drive_url": "https://drive.google.com/file/d/125j9XvSf3D-PGFuN1ghgZb1jCb_nPLTv/view",
+      "filename": "Floyd_Mayweather_backstage_interview_dynamic_Floyd_Mayweather_backstage_interview_Tr0Bnbcp9Lo_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd Mayweather",
+      "updated_at": "2026-04-19T13:09:15.916558865Z",
+      "created_at": "2026-04-19T13:08:43.921870539Z"
+    },
+    {
+      "job_id": "clip_1776604030790924448_Floyd_Mayweather_media_workout",
+      "keyword": "Floyd Mayweather media workout",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1zghxvvhn6lhcYiTbJrHoYdQm9EFkpJgb",
+      "drive_url": "https://drive.google.com/file/d/1zghxvvhn6lhcYiTbJrHoYdQm9EFkpJgb/view",
+      "filename": "Floyd_Mayweather_media_workout_dynamic_Floyd_Mayweather_media_workout_d8rVa7FnNYo_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/Floyd ",
+      "updated_at": "2026-04-19T13:07:44.01341075Z",
+      "created_at": "2026-04-19T13:07:10.790932087Z"
+    },
+    {
+      "job_id": "clip_1776603682532801002_Floyd_Mayweather_press_conference",
+      "keyword": "Floyd Mayweather press conference",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1is8GM0ZSJQQqRcKL5iga_dEhWGf0AJ5t",
+      "drive_url": "https://drive.google.com/file/d/1is8GM0ZSJQQqRcKL5iga_dEhWGf0AJ5t/view",
+      "filename": "Floyd_Mayweather_press_conference_dynamic_Floyd_Mayweather_press_conference_TY5H0NT3Avg_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/floyd",
+      "updated_at": "2026-04-19T13:01:40.987937411Z",
+      "created_at": "2026-04-19T13:01:22.532808498Z"
+    },
+    {
+      "job_id": "clip_1776603625168741481_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1SvEOTqdJtVf7Ud0NDgmgQtlG5EslsQDs",
+      "drive_url": "https://drive.google.com/file/d/1SvEOTqdJtVf7Ud0NDgmgQtlG5EslsQDs/view",
+      "filename": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_1aTe0XZS0Cw_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/floyd_mayweather_interview",
+      "updated_at": "2026-04-19T13:00:36.891355683Z",
+      "created_at": "2026-04-19T13:00:25.168751512Z"
+    },
+    {
+      "job_id": "clip_1776603281685041590_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1SvEOTqdJtVf7Ud0NDgmgQtlG5EslsQDs",
+      "drive_url": "https://drive.google.com/file/d/1SvEOTqdJtVf7Ud0NDgmgQtlG5EslsQDs/view",
+      "filename": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_1aTe0XZS0Cw_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/floyd_mayweather_interview",
+      "updated_at": "2026-04-19T12:54:52.521434153Z",
+      "created_at": "2026-04-19T12:54:41.685048759Z"
+    },
+    {
+      "job_id": "clip_1776603259273603344_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1SvEOTqdJtVf7Ud0NDgmgQtlG5EslsQDs",
+      "drive_url": "https://drive.google.com/file/d/1SvEOTqdJtVf7Ud0NDgmgQtlG5EslsQDs/view",
+      "filename": "Floyd_Mayweather_interview_dynamic_Floyd_Mayweather_interview_1aTe0XZS0Cw_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/floyd_mayweather_interview",
+      "updated_at": "2026-04-19T12:54:34.319224228Z",
+      "created_at": "2026-04-19T12:54:19.273610723Z"
+    },
+    {
+      "job_id": "clip_1776603228978705759_Floyd_Mayweather_interview",
+      "keyword": "Floyd Mayweather interview",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather interview), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7f31860be140\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (1/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7f3185ed6470\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (2/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7f3185ed4760\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (3/3)...\nWARNING: [youtube:search] Unable to download webpage: \u003curllib3.connection.HTTPSConnection object at 0x7f3185ed4250\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known) (caused by TransportError(\"\u003curllib3.connection.HTTPSConnection object at 0x7f3185ed4250\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known)\")). Giving up after 3 retries\nWARNING: [youtube:search] Playlists that require authentication may not extract correctly without a successful webpage download\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7f3185d64580\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (1/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7f3185d65450\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (2/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7f3185d64670\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (3/3)...\nERROR: Unable to download API page: \u003curllib3.connection.HTTPSConnection object at 0x7f3185ed4730\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known) (caused by TransportError(\"\u003curllib3.connection.HTTPSConnection object at 0x7f3185ed4730\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known)\"))\nTraceback (most recent call last):\n  File \"/home/pierone/venv/bin/yt-dlp\", line 6, in \u003cmodule\u003e\n    sys.exit(main())\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/__init__.py\", line 1079, in main\n    _exit(*variadic(_real_main(argv)))\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/__init__.py\", line 981, in _real_main\n    with YoutubeDL(ydl_opts) as ydl:\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/YoutubeDL.py\", line 1051, in __exit__\n    self.close()\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/YoutubeDL.py\", line 1054, in close\n    self.save_cookies()\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/YoutubeDL.py\", line 1046, in save_cookies\n    self.cookiejar.save()\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/cookies.py\", line 1350, in save\n    with self.open(filename, write=True) as f:\n  File \"/usr/lib/python3.10/contextlib.py\", line 135, in __enter__\n    return next(self.gen)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/cookies.py\", line 1305, in open\n    with open(file, 'w' if write else 'r', encoding='utf-8') as f:\nOSError: [Errno 30] Read-only file system: '/home/pierone/Downloads/coo1kies.txt'))",
+      "updated_at": "2026-04-19T12:53:56.44875745Z",
+      "created_at": "2026-04-19T12:53:48.978713801Z"
+    },
+    {
+      "job_id": "clip_1776524945536079657_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "14VzEgdKjX8LV7rJFTabh0_aDQmTqOPwJ",
+      "drive_url": "https://drive.google.com/file/d/14VzEgdKjX8LV7rJFTabh0_aDQmTqOPwJ/view",
+      "filename": "Floyd_Mayweather_Interviews_dynamic_Floyd_Mayweather_Interviews_VZ4PI7FRe34_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/floyd_mayweather_interviews",
+      "updated_at": "2026-04-18T15:09:23.878232245Z",
+      "created_at": "2026-04-18T15:09:05.536090352Z"
+    },
+    {
+      "job_id": "clip_1776524765668684641_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1o_qA1JlXeaoouGuOwit2CaiOnwAZSLIM",
+      "drive_url": "https://drive.google.com/file/d/1o_qA1JlXeaoouGuOwit2CaiOnwAZSLIM/view",
+      "filename": "Floyd_Mayweather_Interviews_dynamic_Floyd_Mayweather_Interviews_J6Zert5VaWk_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/floyd_mayweather_interviews",
+      "updated_at": "2026-04-18T15:06:18.244795516Z",
+      "created_at": "2026-04-18T15:06:05.668693425Z"
+    },
+    {
+      "job_id": "clip_1776524657096310244_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 101 (WARNING: [GetPOT] Failed to fetch player PO Token for mweb client: No request handlers configured))",
+      "updated_at": "2026-04-18T15:05:21.327393286Z",
+      "created_at": "2026-04-18T15:04:17.096317308Z"
+    },
+    {
+      "job_id": "clip_1776524549379264694_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 101 (WARNING: [GetPOT] Failed to fetch player PO Token for mweb client: No request handlers configured))",
+      "updated_at": "2026-04-18T15:03:40.758016212Z",
+      "created_at": "2026-04-18T15:02:29.379276632Z"
+    },
+    {
+      "job_id": "clip_1776514362726603827_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 ([debug] Command-line config: ['--format', 'bestvideo[height\u003c=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--max-downloads', '1', '--match-filter', 'duration \u003e= 4 \u0026 duration \u003c 600', '--output', '../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_Interviews_%(id)s.%(ext)s', '--no-playlist', 'ytsearch12:Floyd Mayweather Interviews']\n[debug] User config \"/home/pierone/.config/yt-dlp/config\": ['--extractor-args', 'youtube:player_client=mweb', '--verbose']\n[debug] Encodings: locale UTF-8, fs utf-8, pref UTF-8, out utf-8 (No ANSI), error utf-8 (No ANSI), screen utf-8 (No ANSI)\n[debug] yt-dlp version stable@2026.03.17 from yt-dlp/yt-dlp [04d6974f5] (pip)\n[debug] Python 3.10.12 (CPython x86_64 64bit) - Linux-5.15.0-174-generic-x86_64-with-glibc2.35 (OpenSSL 3.0.2 15 Mar 2022, glibc 2.35)\n[debug] exe versions: ffmpeg 4.4.2 (setts), ffprobe 4.4.2\n[debug] Optional libraries: brotli-1.2.0, certifi-2025.11.12, requests-2.32.5, sqlite3-3.37.2, urllib3-2.5.0, websockets-15.0.1\n[debug] JS runtimes: none\n[debug] Proxy map: {}\n[debug] Request Handlers: urllib, requests, websockets\n[debug] Extractor Plugins: GetPOT (YoutubeIE)\n[debug] Plugin directories: /home/pierone/venv/lib/python3.10/site-packages/yt_dlp_plugins\n[debug] Loaded 1864 extractors\n[debug] GetPOT plugin version 0.3.0\n[debug] [GetPOT] PO Token Providers: none\n[debug] [youtube+GetPOT] [pot:bgutil:script-node] No server_home or script_path passed, defaulting to /home/pierone/bgutil-ytdlp-pot-provider/server\nerror: unknown option '--version'\nWARNING: [youtube+GetPOT] [pot:bgutil:script-node] Failed to check script version. Script returned 1 exit status. Script stdout:\n\n[debug] [youtube+GetPOT] [pot:bgutil:script-deno] No server_home or script_path passed, defaulting to /home/pierone/bgutil-ytdlp-pot-provider/server\n[debug] [youtube+GetPOT] [pot:bgutil:script-deno] Deno executable not found. Please ensure Deno is installed and available in PATH or passed to yt-dlp with --js-runtimes.\n[debug] [youtube+GetPOT] [pot] PO Token Providers: bgutil:http-1.3.1 (external), bgutil:script-node-1.3.1 (external, unavailable), bgutil:script-deno-1.3.1 (external, unavailable)\n[debug] [youtube+GetPOT] [pot] PO Token Cache Providers: memory\n[debug] [youtube+GetPOT] [pot] PO Token Cache Spec Providers: webpo\n[debug] [youtube+GetPOT] [jsc] JS Challenge Providers: bun (unavailable), deno (unavailable), node (unavailable), quickjs (unavailable)\n[debug] [youtube+GetPOT] Forcing \"main\" player JS variant for player 4b0d80ee\n        original url = /s/player/4b0d80ee/player_es6.vflset/en_US/base.js\n[debug] [youtube+GetPOT] LdiPoBjZB4Q: Detected experiment to bind GVS PO Token to video ID for mweb client\n[debug] [GetPOT] Fetching player PO Token for mweb client\nWARNING: [GetPOT] Failed to fetch player PO Token for mweb client: No request handlers configured\n[debug] [youtube+GetPOT] LdiPoBjZB4Q: mweb player response playability status: LOGIN_REQUIRED\nWARNING: [youtube+GetPOT] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube+GetPOT] LdiPoBjZB4Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 765, in extract\n    ie_result = self._real_extract(url)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/youtube/_video.py\", line 4061, in _real_extract\n    self.raise_no_formats(reason, expected=True)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 1277, in raise_no_formats\n    raise ExtractorError(msg, expected=expected, video_id=video_id)\n\n[debug] [youtube+GetPOT] pTDuCNkbMLI: Detected experiment to bind GVS PO Token to video ID for mweb client\n[debug] [GetPOT] Fetching player PO Token for mweb client\nWARNING: [GetPOT] Failed to fetch player PO Token for mweb client: No request handlers configured\n[debug] [youtube+GetPOT] pTDuCNkbMLI: mweb player response playability status: LOGIN_REQUIRED\nWARNING: [youtube+GetPOT] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube+GetPOT] pTDuCNkbMLI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 765, in extract\n    ie_result = self._real_extract(url)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/youtube/_video.py\", line 4061, in _real_extract\n    self.raise_no_formats(reason, expected=True)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 1277, in raise_no_formats\n    raise ExtractorError(msg, expected=expected, video_id=video_id)\n\n[debug] [youtube+GetPOT] bf2jqnhOKXo: Detected experiment to bind GVS PO Token to video ID for mweb client\n[debug] [GetPOT] Fetching player PO Token for mweb client\nWARNING: [GetPOT] Failed to fetch player PO Token for mweb client: No request handlers configured\n[debug] [youtube+GetPOT] bf2jqnhOKXo: mweb player response playability status: LOGIN_REQUIRED\nWARNING: [youtube+GetPOT] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube+GetPOT] bf2jqnhOKXo: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 765, in extract\n    ie_result = self._real_extract(url)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/youtube/_video.py\", line 4061, in _real_extract\n    self.raise_no_formats(reason, expected=True)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 1277, in raise_no_formats\n    raise ExtractorError(msg, expected=expected, video_id=video_id)))",
+      "updated_at": "2026-04-18T12:13:30.521418731Z",
+      "created_at": "2026-04-18T12:12:42.726611266Z"
+    },
+    {
+      "job_id": "clip_1776514321006952109_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 ([debug] Command-line config: ['--format', 'bestvideo[height\u003c=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--max-downloads', '1', '--match-filter', 'duration \u003e= 4 \u0026 duration \u003c 600', '--output', '../../data/dynamic_test/dynamic_clips/dynamic_Floyd_Mayweather_Interviews_%(id)s.%(ext)s', '--no-playlist', 'ytsearch12:Floyd Mayweather Interviews']\n[debug] User config \"/home/pierone/.config/yt-dlp/config\": ['--extractor-args', 'youtube:player_client=mweb', '--verbose']\n[debug] Encodings: locale UTF-8, fs utf-8, pref UTF-8, out utf-8 (No ANSI), error utf-8 (No ANSI), screen utf-8 (No ANSI)\n[debug] yt-dlp version stable@2026.03.17 from yt-dlp/yt-dlp [04d6974f5] (pip)\n[debug] Python 3.10.12 (CPython x86_64 64bit) - Linux-5.15.0-174-generic-x86_64-with-glibc2.35 (OpenSSL 3.0.2 15 Mar 2022, glibc 2.35)\n[debug] exe versions: ffmpeg 4.4.2 (setts), ffprobe 4.4.2\n[debug] Optional libraries: brotli-1.2.0, certifi-2025.11.12, requests-2.32.5, sqlite3-3.37.2, urllib3-2.5.0, websockets-15.0.1\n[debug] JS runtimes: none\n[debug] Proxy map: {}\n[debug] Request Handlers: urllib, requests, websockets\n[debug] Extractor Plugins: GetPOT (YoutubeIE)\n[debug] Plugin directories: /home/pierone/venv/lib/python3.10/site-packages/yt_dlp_plugins\n[debug] Loaded 1864 extractors\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7fac252aea70\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (1/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7fac2519eb90\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (2/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7fac24f7b010\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (3/3)...\nWARNING: [youtube:search] Unable to download webpage: \u003curllib3.connection.HTTPSConnection object at 0x7fac2519fb50\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known) (caused by TransportError(\"\u003curllib3.connection.HTTPSConnection object at 0x7fac2519fb50\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known)\")). Giving up after 3 retries\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7fac2519e740\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (1/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7fac24f76bf0\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (2/3)...\nWARNING: [youtube:search] \u003curllib3.connection.HTTPSConnection object at 0x7fac24f74d60\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known). Retrying (3/3)...\nERROR: Unable to download API page: \u003curllib3.connection.HTTPSConnection object at 0x7fac24f758a0\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known) (caused by TransportError(\"\u003curllib3.connection.HTTPSConnection object at 0x7fac24f758a0\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known)\"))\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connection.py\", line 198, in _new_conn\n    sock = connection.create_connection(\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/util/connection.py\", line 60, in create_connection\n    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):\n  File \"/usr/lib/python3.10/socket.py\", line 955, in getaddrinfo\n    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):\nsocket.gaierror: [Errno -2] Name or service not known\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/networking/_requests.py\", line 324, in _send\n    requests_res = session.request(\n  File \"/home/pierone/venv/lib/python3.10/site-packages/requests/sessions.py\", line 589, in request\n    resp = self.send(prep, **send_kwargs)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/requests/sessions.py\", line 703, in send\n    r = adapter.send(request, **kwargs)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/requests/adapters.py\", line 644, in send\n    resp = conn.urlopen(\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connectionpool.py\", line 841, in urlopen\n    retries = retries.increment(\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/util/retry.py\", line 449, in increment\n    raise reraise(type(error), error, _stacktrace)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/util/util.py\", line 39, in reraise\n    raise value\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connectionpool.py\", line 787, in urlopen\n    response = self._make_request(\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connectionpool.py\", line 488, in _make_request\n    raise new_e\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connectionpool.py\", line 464, in _make_request\n    self._validate_conn(conn)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connectionpool.py\", line 1093, in _validate_conn\n    conn.connect()\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connection.py\", line 753, in connect\n    self.sock = sock = self._new_conn()\n  File \"/home/pierone/venv/lib/python3.10/site-packages/urllib3/connection.py\", line 205, in _new_conn\n    raise NameResolutionError(self.host, self, e) from e\nurllib3.exceptions.NameResolutionError: \u003curllib3.connection.HTTPSConnection object at 0x7fac24f758a0\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known)\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/extractor/common.py\", line 912, in _request_webpage\n    return self._downloader.urlopen(self._create_request(url_or_request, data, headers, query, extensions))\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/YoutubeDL.py\", line 4260, in urlopen\n    return self._request_director.send(req)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/networking/common.py\", line 117, in send\n    response = handler.send(request)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/networking/_helper.py\", line 194, in wrapper\n    return func(self, *args, **kwargs)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/networking/common.py\", line 359, in send\n    return self._send(request)\n  File \"/home/pierone/venv/lib/python3.10/site-packages/yt_dlp/networking/_requests.py\", line 352, in _send\n    raise TransportError(cause=e) from e\nyt_dlp.networking.exceptions.TransportError: \u003curllib3.connection.HTTPSConnection object at 0x7fac24f758a0\u003e: Failed to resolve 'www.youtube.com' ([Errno -2] Name or service not known)))",
+      "updated_at": "2026-04-18T12:12:10.548705881Z",
+      "created_at": "2026-04-18T12:12:01.006964489Z"
+    },
+    {
+      "job_id": "clip_1776506514950802339_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube] LdiPoBjZB4Q: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] LdiPoBjZB4Q: Requested format is not available. Use --list-formats for a list of available formats\nWARNING: [youtube] J6Zert5VaWk: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] J6Zert5VaWk: Requested format is not available. Use --list-formats for a list of available formats\nWARNING: [youtube] pTDuCNkbMLI: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] pTDuCNkbMLI: Requested format is not available. Use --list-formats for a list of available formats\nWARNING: [youtube] epjCH_M6oe4: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] epjCH_M6oe4: Requested format is not available. Use --list-formats for a list of available formats\nWARNING: [youtube] CQM2H2YUGW4: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] CQM2H2YUGW4: Requested format is not available. Use --list-formats for a list of available formats))",
+      "updated_at": "2026-04-18T10:03:13.676633597Z",
+      "created_at": "2026-04-18T10:01:54.950814017Z"
+    },
+    {
+      "job_id": "clip_1776505477203195797_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube] LdiPoBjZB4Q: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] LdiPoBjZB4Q: Requested format is not available. Use --list-formats for a list of available formats\nWARNING: [youtube] bf2jqnhOKXo: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] bf2jqnhOKXo: Requested format is not available. Use --list-formats for a list of available formats\nWARNING: [youtube] pTDuCNkbMLI: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS\nWARNING: Only images are available for download. use --list-formats to see them\nERROR: [youtube] pTDuCNkbMLI: Requested format is not available. Use --list-formats for a list of available formats))",
+      "updated_at": "2026-04-18T09:45:43.628063839Z",
+      "created_at": "2026-04-18T09:44:37.203208364Z"
+    },
+    {
+      "job_id": "clip_1776505444331652341_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] _WmYPpuT1Vk: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] J6Zert5VaWk: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] pTDuCNkbMLI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] CsdzflTXBVQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] 4kXwJo7DWPA: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] epjCH_M6oe4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies))",
+      "updated_at": "2026-04-18T09:44:35.741451541Z",
+      "created_at": "2026-04-18T09:44:04.331659727Z"
+    },
+    {
+      "job_id": "clip_1776504962045310421_gym",
+      "keyword": "gym",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1Zn94kydbjybyKubErGt0vIomDULRhUEk",
+      "drive_url": "https://drive.google.com/file/d/1Zn94kydbjybyKubErGt0vIomDULRhUEk/view",
+      "filename": "gym_artlist_gym_artlist_262565_2698_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/gym",
+      "updated_at": "2026-04-18T09:36:09.608374132Z",
+      "created_at": "2026-04-18T09:36:02.045327411Z"
+    },
+    {
+      "job_id": "clip_1776504909403081626_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] _WmYPpuT1Vk: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] J6Zert5VaWk: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] epjCH_M6oe4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] 7JcjxJi164M: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] pTDuCNkbMLI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] CsdzflTXBVQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies))",
+      "updated_at": "2026-04-18T09:35:55.741670261Z",
+      "created_at": "2026-04-18T09:35:09.403098754Z"
+    },
+    {
+      "job_id": "clip_1776504691293993091_gym",
+      "keyword": "gym",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1Zn94kydbjybyKubErGt0vIomDULRhUEk",
+      "drive_url": "https://drive.google.com/file/d/1Zn94kydbjybyKubErGt0vIomDULRhUEk/view",
+      "filename": "gym_artlist_gym_artlist_262565_2698_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/gym",
+      "updated_at": "2026-04-18T09:31:45.686619747Z",
+      "created_at": "2026-04-18T09:31:31.294002386Z"
+    },
+    {
+      "job_id": "clip_1776504618610383591_boxing",
+      "keyword": "boxing",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword boxing), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] HdSNnZ1OhaU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] aPX2RkraXA0: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] aF0C6OBw8zw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] HHlfRxgEnZ4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] V-HF47QAgOs: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies))",
+      "updated_at": "2026-04-18T09:30:54.466286225Z",
+      "created_at": "2026-04-18T09:30:18.610392636Z"
+    },
+    {
+      "job_id": "clip_1776504508806567936_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp args failed: exit status 1 (WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] LdiPoBjZB4Q: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies\nWARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing. See  https://github.com/yt-dlp/yt-dlp/wiki/EJS  for details on installing one\nWARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing\nERROR: [youtube] pTDuCNkbMLI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies))",
+      "updated_at": "2026-04-18T09:28:58.659751288Z",
+      "created_at": "2026-04-18T09:28:28.806574608Z"
+    },
+    {
+      "job_id": "clip_1776504453045219167_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp failed: exit status 1)",
+      "updated_at": "2026-04-18T09:27:39.417983437Z",
+      "created_at": "2026-04-18T09:27:33.045227148Z"
+    },
+    {
+      "job_id": "clip_1776504385396880327_Floyd_Mayweather_Interviews",
+      "keyword": "Floyd Mayweather Interviews",
+      "status": "failed",
+      "attempts": 1,
+      "last_error": "download failed: artlist failed (no Artlist clips for keyword Floyd Mayweather Interviews), yt-dlp failed (yt-dlp failed: exit status 1)",
+      "updated_at": "2026-04-18T09:26:27.878445741Z",
+      "created_at": "2026-04-18T09:26:25.396889313Z"
+    },
+    {
+      "job_id": "clip_1776504009388002383_travel",
+      "keyword": "travel",
+      "status": "done",
+      "attempts": 1,
+      "drive_id": "1u6tBXyy8BLDULNgM8m7gzG4XikJHVTM2",
+      "drive_url": "https://drive.google.com/file/d/1u6tBXyy8BLDULNgM8m7gzG4XikJHVTM2/view",
+      "filename": "travel_artlist_travel_artlist_125761_2878_7s_1080p.mp4",
+      "folder_path": "Stock/Artlist/travel",
+      "updated_at": "2026-04-18T09:20:15.203062848Z",
+      "created_at": "2026-04-18T09:20:09.388010964Z"
+    }
+  ]
+}

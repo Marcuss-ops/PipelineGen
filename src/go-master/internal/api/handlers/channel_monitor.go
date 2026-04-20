@@ -2,13 +2,11 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"path/filepath"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +14,8 @@ import (
 
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/service/channelmonitor"
-	"velox/go-master/internal/youtube"
 	"velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/logger"
 	"velox/go-master/pkg/security"
 
@@ -30,7 +28,7 @@ type ChannelMonitorHandler struct {
 	ytClient    youtube.Client
 	driveClient *drive.Client
 	ollamaURL   string
-	configDir   string // base directory for config/data files (from cfg.Storage.DataDir)
+	configDir   string       // base directory for config/data files (from cfg.Storage.DataDir)
 	mu          sync.RWMutex // protects monitor re-creation
 }
 
@@ -53,6 +51,9 @@ func (h *ChannelMonitorHandler) RegisterRoutes(r *gin.RouterGroup) {
 		monitorGroup.POST("/process-video", h.ProcessSingleVideo)
 		monitorGroup.GET("/status", h.GetStatus)
 		monitorGroup.GET("/config", h.GetConfig)
+		monitorGroup.GET("/channels", h.GetChannels)
+		monitorGroup.POST("/channels", h.AddChannel)
+		monitorGroup.DELETE("/channels", h.RemoveChannel)
 		monitorGroup.GET("/processed", h.GetProcessedVideos)
 	}
 }
@@ -60,8 +61,8 @@ func (h *ChannelMonitorHandler) RegisterRoutes(r *gin.RouterGroup) {
 // ProcessSingleVideoRequest represents a request to process a single video
 type ProcessSingleVideoRequest struct {
 	YouTubeURL string `json:"youtube_url" binding:"required"`
-	Category   string `json:"category"`   // optional override
-	MaxClips   int    `json:"max_clips"`  // optional, default 5
+	Category   string `json:"category"`  // optional override
+	MaxClips   int    `json:"max_clips"` // optional, default 5
 }
 
 // ProcessSingleVideo godoc
@@ -102,12 +103,8 @@ func (h *ChannelMonitorHandler) ProcessSingleVideo(c *gin.Context) {
 		return
 	}
 
-	// Use background context for async processing (request context dies after response)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-	defer cancel()
-
 	log := logger.Get()
-	log.Info("Processing single video",
+	log.Info("Processing single video requested",
 		zap.String("url", req.YouTubeURL),
 		zap.String("video_id", videoID),
 	)
@@ -122,156 +119,74 @@ func (h *ChannelMonitorHandler) ProcessSingleVideo(c *gin.Context) {
 
 	// Process in background
 	go func() {
-		h.processVideoAsync(ctx, videoID, req, log)
+		h.mu.RLock()
+		monitor := h.monitor
+		h.mu.RUnlock()
+
+		if monitor == nil {
+			log.Error("Monitor not initialized")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+
+		startTime := time.Now()
+		result, err := monitor.ProcessVideo(ctx, videoID, req.Category)
+		if err != nil {
+			log.Error("Async video processing failed", zap.String("video_id", videoID), zap.Error(err))
+			return
+		}
+
+		log.Info("=== ASYNC PROCESSING COMPLETE ===",
+			zap.String("video_id", result.VideoID),
+			zap.String("title", result.Title),
+			zap.Int("highlights", len(result.Highlights)),
+			zap.Int("clips_uploaded", len(result.Clips)),
+			zap.String("folder", result.FolderPath),
+			zap.Duration("duration", time.Since(startTime)),
+		)
 	}()
-}
-
-func (h *ChannelMonitorHandler) processVideoAsync(ctx context.Context, videoID string, req ProcessSingleVideoRequest, log *zap.Logger) {
-	startTime := time.Now()
-	log.Info("=== ASYNC PROCESSING STARTED ===",
-		zap.String("video_id", videoID),
-	)
-
-	// Get video metadata with its own timeout
-	metaCtx, metaCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	videoInfo, err := h.ytClient.GetVideo(metaCtx, videoID)
-	metaCancel()
-
-	var videoTitle string
-	if err != nil {
-		// Fallback: get title via yt-dlp --dump-json with its own timeout
-		log.Warn("API GetVideo failed, using yt-dlp fallback", zap.Error(err))
-		dlCtx, dlCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		videoTitle = h.getVideoTitleFallback(dlCtx, videoID)
-		dlCancel()
-		log.Info("Fallback title extracted", zap.String("title", videoTitle))
-	} else {
-		videoTitle = videoInfo.Title
-	}
-
-	// Determine category
-	category := req.Category
-	if category == "" {
-		category = "HipHop" // default for unknown
-	}
-
-	// Get channel config for defaults
-	cfg, _ := channelmonitor.LoadConfigWithDefaults(filepath.Join(h.configDir, "channel_monitor_config.json"))
-	maxClipDuration := cfg.MaxClipDuration
-	if maxClipDuration == 0 {
-		maxClipDuration = 60
-	}
-
-	// Build a minimal channel config for this video
-	chConfig := channelmonitor.ChannelConfig{
-		URL:             "",
-		Category:        category,
-		Keywords:        []string{},
-		MinViews:        0,
-		MaxClipDuration: maxClipDuration,
-	}
-
-	// Get monitor reference
-	h.mu.RLock()
-	monitor := h.monitor
-	h.mu.RUnlock()
-
-	if monitor == nil {
-		log.Error("Monitor not initialized")
-		return
-	}
-
-	// Extract transcript with its own timeout
-	transCtx, transCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	transcript, err := monitor.ExtractTranscript(transCtx, videoID)
-	transCancel()
-	if err != nil {
-		log.Warn("Transcript extraction failed", zap.Error(err))
-		return
-	}
-	log.Info("Transcript extracted", zap.Int("length", len(transcript)))
-
-	// Find highlights
-	highlights := monitor.FindHighlights(transcript)
-	log.Info("Highlights found", zap.Int("count", len(highlights)))
-
-	// Resolve folder with its own timeout
-	folderCtx, folderCancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	folderPath, folderID, folderExisted, err := monitor.ResolveFolder(folderCtx, chConfig, videoTitle)
-	folderCancel()
-	if err != nil {
-		log.Warn("Folder resolution failed", zap.Error(err))
-		return
-	}
-	log.Info("Folder resolved", zap.String("path", folderPath), zap.String("id", folderID))
-
-	// Download and upload clips with its own timeout
-	clipCtx, clipCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	clips, err := monitor.DownloadAndUploadClips(clipCtx, youtube.SearchResult{
-		ID:    videoID,
-		Title: videoTitle,
-	}, highlights, folderID, folderPath, folderExisted, maxClipDuration)
-	clipCancel()
-	if err != nil {
-		log.Warn("Clip download/upload failed", zap.Error(err))
-	}
-
-	log.Info("=== ASYNC PROCESSING COMPLETE ===",
-		zap.String("video_id", videoID),
-		zap.String("title", videoTitle),
-		zap.Int("highlights", len(highlights)),
-		zap.Int("clips_uploaded", len(clips)),
-		zap.String("folder", folderPath),
-		zap.String("folder_url", drive.GetFolderLink(folderID)),
-		zap.Duration("duration", time.Since(startTime)),
-	)
 }
 
 // Helper functions
 func extractVideoIDFromURL(url string) string {
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?:v=|/v/|/embed/|youtu\.be/)([a-zA-Z0-9_-]{11})`),
+	// Simple ID extractor, also available in security package or youtube module
+	if strings.Contains(url, "v=") {
+		parts := strings.Split(url, "v=")
+		if len(parts) > 1 {
+			id := parts[1]
+			if idx := strings.Index(id, "&"); idx != -1 {
+				id = id[:idx]
+			}
+			return id
+		}
 	}
-	for _, pattern := range patterns {
-		matches := pattern.FindStringSubmatch(url)
-		if len(matches) > 1 {
-			return matches[1]
+	if strings.Contains(url, "youtu.be/") {
+		parts := strings.Split(url, "youtu.be/")
+		if len(parts) > 1 {
+			return parts[1]
 		}
 	}
 	return ""
 }
 
-// getVideoTitleFallback uses yt-dlp to get video title when API fails
-func (h *ChannelMonitorHandler) getVideoTitleFallback(ctx context.Context, videoID string) string {
-	ytdlpPath := h.findYtDlpLocal()
-	if ytdlpPath == "" {
-		return fmt.Sprintf("Video_%s", videoID)
-	}
-	url := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
-
-	cmd := exec.CommandContext(ctx, ytdlpPath, "--dump-json", "--no-warnings", url)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log := logger.Get()
-		log.Warn("yt-dlp title fallback failed", zap.Error(err))
-		return fmt.Sprintf("Video_%s", videoID)
-	}
-
-	var info map[string]interface{}
-	if err := json.Unmarshal(output, &info); err != nil {
-		return fmt.Sprintf("Video_%s", videoID)
-	}
-
-	if title, ok := info["title"].(string); ok {
-		return title
-	}
-	return fmt.Sprintf("Video_%s", videoID)
-}
-
 // RunOnceRequest represents a manual run request
 type RunOnceRequest struct {
 	ChannelURL string `json:"channel_url"` // optional: run only for specific channel
-	MaxVideos  int    `json:"max_videos"`   // optional: override max videos per channel
+	MaxVideos  int    `json:"max_videos"`  // optional: override max videos per channel
+}
+
+type addChannelRequest struct {
+	URL             string   `json:"url" binding:"required"`
+	Category        string   `json:"category"`
+	Keywords        []string `json:"keywords"`
+	MinViews        int64    `json:"min_views"`
+	MaxClipDuration int      `json:"max_clip_duration"`
+}
+
+type removeChannelRequest struct {
+	URL string `json:"url" binding:"required"`
 }
 
 // RunOnce godoc
@@ -301,6 +216,32 @@ func (h *ChannelMonitorHandler) RunOnce(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
 	defer cancel()
 
+	if strings.TrimSpace(req.ChannelURL) != "" {
+		cfg, err := h.loadMonitorConfig()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+			return
+		}
+		var selected *channelmonitor.ChannelConfig
+		for _, ch := range cfg.Channels {
+			if strings.EqualFold(strings.TrimSpace(ch.URL), strings.TrimSpace(req.ChannelURL)) {
+				cp := ch
+				selected = &cp
+				break
+			}
+		}
+		if selected == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok":    false,
+				"error": "channel_url not found in monitor config",
+			})
+			return
+		}
+		tempCfg := *cfg
+		tempCfg.Channels = []channelmonitor.ChannelConfig{*selected}
+		monitor = channelmonitor.NewMonitor(tempCfg, h.ytClient, h.driveClient, h.ollamaURL)
+	}
+
 	results, err := monitor.RunOnce(ctx)
 	if err != nil {
 		logger.Error("Monitor run failed", zap.Error(err))
@@ -313,12 +254,12 @@ func (h *ChannelMonitorHandler) RunOnce(c *gin.Context) {
 
 	// Build summary
 	type VideoSummary struct {
-		VideoID      string `json:"video_id"`
-		Title        string `json:"title"`
-		Channel      string `json:"channel"`
-		Highlights   int    `json:"highlights"`
-		ClipsCount   int    `json:"clips_count"`
-		FolderPath   string `json:"folder_path"`
+		VideoID    string `json:"video_id"`
+		Title      string `json:"title"`
+		Channel    string `json:"channel"`
+		Highlights int    `json:"highlights"`
+		ClipsCount int    `json:"clips_count"`
+		FolderPath string `json:"folder_path"`
 	}
 
 	var summaries []VideoSummary
@@ -334,9 +275,9 @@ func (h *ChannelMonitorHandler) RunOnce(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":             true,
+		"ok":               true,
 		"videos_processed": len(results),
-		"videos":         summaries,
+		"videos":           summaries,
 	})
 }
 
@@ -357,12 +298,17 @@ func (h *ChannelMonitorHandler) GetStatus(c *gin.Context) {
 		return
 	}
 
+	channelsCount := 0
+	if cfg, err := h.loadMonitorConfig(); err == nil {
+		channelsCount = len(cfg.Channels)
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"ok": true,
 		"status": gin.H{
-			"running": true,
-			"channels_configured": 3, // will be dynamic later
-			"last_run": "see logs for details",
+			"running":             true,
+			"channels_configured": channelsCount,
+			"last_run":            "see logs for details",
 		},
 	})
 }
@@ -375,13 +321,13 @@ func (h *ChannelMonitorHandler) GetStatus(c *gin.Context) {
 // @Success 200 {object} map[string]interface{}
 // @Router /monitor/config [get]
 func (h *ChannelMonitorHandler) GetConfig(c *gin.Context) {
-	cfg, err := channelmonitor.LoadConfigWithDefaults(filepath.Join(h.configDir, "channel_monitor_config.json"))
+	cfg, err := h.loadMonitorConfig()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"ok": true,
 			"config": gin.H{
 				"channels": []string{},
-				"message": "No config file found, using defaults",
+				"message":  "No config file found, using defaults",
 			},
 		})
 		return
@@ -390,13 +336,117 @@ func (h *ChannelMonitorHandler) GetConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"ok": true,
 		"config": gin.H{
-			"channels":             cfg.Channels,
-			"check_interval":       cfg.CheckInterval.String(),
-			"ytdlp_path":          cfg.YtDlpPath,
-			"cookies_path":        cfg.CookiesPath,
-			"max_clip_duration":   cfg.MaxClipDuration,
-			"ollama_url":          cfg.OllamaURL,
+			"channels":          cfg.Channels,
+			"check_interval":    cfg.CheckInterval.String(),
+			"ytdlp_path":        cfg.YtDlpPath,
+			"cookies_path":      cfg.CookiesPath,
+			"max_clip_duration": cfg.MaxClipDuration,
+			"ollama_url":        cfg.OllamaURL,
 		},
+	})
+}
+
+// GetChannels returns configured channels for monitor cron.
+func (h *ChannelMonitorHandler) GetChannels(c *gin.Context) {
+	cfg, err := h.loadMonitorConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":       true,
+		"channels": cfg.Channels,
+		"count":    len(cfg.Channels),
+	})
+}
+
+// AddChannel adds or updates a channel in channel_monitor_config.json.
+func (h *ChannelMonitorHandler) AddChannel(c *gin.Context) {
+	var req addChannelRequest
+	if err := middleware.BindAndValidate(c, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	cfg, err := h.loadMonitorConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	entry := channelmonitor.ChannelConfig{
+		URL:             strings.TrimSpace(req.URL),
+		Category:        strings.TrimSpace(req.Category),
+		Keywords:        req.Keywords,
+		MinViews:        req.MinViews,
+		MaxClipDuration: req.MaxClipDuration,
+	}
+	if entry.Category == "" {
+		entry.Category = "Discovery"
+	}
+	if entry.MaxClipDuration <= 0 {
+		entry.MaxClipDuration = cfg.MaxClipDuration
+		if entry.MaxClipDuration <= 0 {
+			entry.MaxClipDuration = 60
+		}
+	}
+
+	updated := false
+	for i := range cfg.Channels {
+		if strings.EqualFold(strings.TrimSpace(cfg.Channels[i].URL), entry.URL) {
+			cfg.Channels[i] = entry
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		cfg.Channels = append(cfg.Channels, entry)
+	}
+	if err := h.saveMonitorConfig(cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"updated": updated,
+		"channel": entry,
+		"count":   len(cfg.Channels),
+	})
+}
+
+// RemoveChannel removes a channel by URL from channel_monitor_config.json.
+func (h *ChannelMonitorHandler) RemoveChannel(c *gin.Context) {
+	var req removeChannelRequest
+	if err := middleware.BindAndValidate(c, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	cfg, err := h.loadMonitorConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	target := strings.TrimSpace(req.URL)
+	filtered := make([]channelmonitor.ChannelConfig, 0, len(cfg.Channels))
+	removed := false
+	for _, ch := range cfg.Channels {
+		if strings.EqualFold(strings.TrimSpace(ch.URL), target) {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, ch)
+	}
+	if !removed {
+		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": "channel not found"})
+		return
+	}
+	cfg.Channels = filtered
+	if err := h.saveMonitorConfig(cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"removed": true,
+		"count":   len(cfg.Channels),
 	})
 }
 
@@ -419,24 +469,16 @@ func (h *ChannelMonitorHandler) GetProcessedVideos(c *gin.Context) {
 
 	// Return the processed videos log file content
 	c.JSON(http.StatusOK, gin.H{
-		"ok": true,
+		"ok":                    true,
 		"processed_videos_file": filepath.Join(h.configDir, "channel_monitor_processed.json"),
-		"message": fmt.Sprintf("Check %s for full list", filepath.Join(h.configDir, "channel_monitor_processed.json")),
+		"message":               fmt.Sprintf("Check %s for full list", filepath.Join(h.configDir, "channel_monitor_processed.json")),
 	})
 }
 
-// findYtDlpLocal finds the yt-dlp executable path
-func (h *ChannelMonitorHandler) findYtDlpLocal() string {
-	paths := []string{
-		"yt-dlp",
-		"/usr/local/bin/yt-dlp",
-		"/usr/bin/yt-dlp",
-	}
-	for _, path := range paths {
-		cmd := exec.Command(path, "--version")
-		if err := cmd.Run(); err == nil {
-			return path
-		}
-	}
-	return ""
+func (h *ChannelMonitorHandler) loadMonitorConfig() (*channelmonitor.MonitorConfig, error) {
+	return channelmonitor.LoadConfigWithDefaults(filepath.Join(h.configDir, "channel_monitor_config.json"))
+}
+
+func (h *ChannelMonitorHandler) saveMonitorConfig(cfg *channelmonitor.MonitorConfig) error {
+	return channelmonitor.SaveConfig(filepath.Join(h.configDir, "channel_monitor_config.json"), cfg)
 }

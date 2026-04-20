@@ -52,14 +52,17 @@ type Watcher struct {
 	lastSync         time.Time
 }
 
-func NewWatcher(driveClient *drive.Client, rootFolderID string) *Watcher {
+func NewWatcher(driveClient *drive.Client, rootFolderID string, interval time.Duration) *Watcher {
+	if interval == 0 {
+		interval = 5 * time.Minute
+	}
 	return &Watcher{
 		driveClient:    driveClient,
 		rootFolderID:   rootFolderID,
 		handlers:       make(map[EventType][]EventHandler),
 		cycleCallbacks: nil,
 		stopCh:         make(chan struct{}),
-		interval:       5 * time.Minute,
+		interval:       interval,
 	}
 }
 

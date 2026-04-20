@@ -3,6 +3,7 @@ package harvester
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -301,7 +302,7 @@ func (h *Harvester) searchChannel(ctx context.Context, channel string) {
 		ChannelID:  channel,
 	}
 
-	results, err := h.youtubeClient.Search(ctx, channel, opts)
+	results, err := h.youtubeClient.SearchByChannel(ctx, channel, opts)
 	if err != nil {
 		logger.Warn("Channel search failed", zap.Error(err), zap.String("channel", channel))
 		return

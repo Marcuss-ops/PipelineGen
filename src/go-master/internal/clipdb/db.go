@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -239,6 +240,11 @@ func (s *ClipDB) UpdateClip(record *ClipEntry) error {
 	return nil
 }
 
+// Close is a no-op for JSON backend
+func (s *ClipDB) Close() error {
+	return s.save()
+}
+
 func containsTag(clipTags []string, searchTag string) bool {
 	lowerSearch := strings.ToLower(searchTag)
 	for _, t := range clipTags {
@@ -264,4 +270,118 @@ func toLowerWords(s string) []string {
 		result = append(result, strings.ToLower(word))
 	}
 	return result
+}
+
+// DeleteClipByID removes one clip entry by Drive file ID.
+func (s *ClipDB) DeleteClipByID(clipID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(clipID) == "" {
+		return nil
+	}
+	out := make([]ClipEntry, 0, len(s.data.Clips))
+	for _, c := range s.data.Clips {
+		if c.ClipID == clipID {
+			continue
+		}
+		out = append(out, c)
+	}
+	s.data.Clips = out
+	s.data.LastSynced = time.Now()
+	return s.save()
+}
+
+// DeleteClipsByIDs removes multiple clip entries by Drive file ID.
+func (s *ClipDB) DeleteClipsByIDs(clipIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(clipIDs) == 0 {
+		return nil
+	}
+	rm := make(map[string]bool, len(clipIDs))
+	for _, id := range clipIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			rm[id] = true
+		}
+	}
+	if len(rm) == 0 {
+		return nil
+	}
+	out := make([]ClipEntry, 0, len(s.data.Clips))
+	for _, c := range s.data.Clips {
+		if rm[c.ClipID] {
+			continue
+		}
+		out = append(out, c)
+	}
+	s.data.Clips = out
+	s.data.LastSynced = time.Now()
+	return s.save()
+}
+
+// DeduplicateByFolderAndFilename removes duplicate clip entries with same (folder_id, filename).
+// It keeps one deterministic canonical entry and returns duplicate clip IDs removed from DB.
+func (s *ClipDB) DeduplicateByFolderAndFilename() ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	type key struct {
+		folder string
+		name   string
+	}
+	type entryRef struct {
+		idx    int
+		clipID string
+	}
+
+	byKey := make(map[key][]entryRef)
+	for i, c := range s.data.Clips {
+		k := key{
+			folder: strings.TrimSpace(strings.ToLower(c.FolderID)),
+			name:   strings.TrimSpace(strings.ToLower(c.Filename)),
+		}
+		if k.folder == "" || k.name == "" {
+			continue
+		}
+		byKey[k] = append(byKey[k], entryRef{idx: i, clipID: strings.TrimSpace(c.ClipID)})
+	}
+
+	keepIndex := make(map[int]bool, len(s.data.Clips))
+	for i := range s.data.Clips {
+		keepIndex[i] = true
+	}
+	removedIDs := make([]string, 0)
+	for _, refs := range byKey {
+		if len(refs) <= 1 {
+			continue
+		}
+		sort.SliceStable(refs, func(i, j int) bool {
+			return refs[i].clipID < refs[j].clipID
+		})
+		for i := 1; i < len(refs); i++ {
+			keepIndex[refs[i].idx] = false
+			if refs[i].clipID != "" {
+				removedIDs = append(removedIDs, refs[i].clipID)
+			}
+		}
+	}
+	if len(removedIDs) == 0 {
+		return nil, nil
+	}
+
+	out := make([]ClipEntry, 0, len(s.data.Clips)-len(removedIDs))
+	for i, c := range s.data.Clips {
+		if !keepIndex[i] {
+			continue
+		}
+		out = append(out, c)
+	}
+	s.data.Clips = out
+	s.data.LastSynced = time.Now()
+	if err := s.save(); err != nil {
+		return nil, err
+	}
+	sort.Strings(removedIDs)
+	return removedIDs, nil
 }

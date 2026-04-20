@@ -1,5 +1,0 @@
-# HTTP & Requests (used by llm_client.py and generate_script_from_text.py)
-requests>=2.31.0
-
-# YouTube transcript extraction (used by youtube_transcript.py via subprocess)
-# yt-dlp must be installed on the system: pip install yt-dlp or apt install yt-dlp

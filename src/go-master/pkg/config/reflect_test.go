@@ -199,8 +199,8 @@ func TestDriveConfigDefaults(t *testing.T) {
 	if cfg.Drive.StockRootFolderID != "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh" {
 		t.Errorf("Drive.StockRootFolderID default = %q, want default tag value", cfg.Drive.StockRootFolderID)
 	}
-	if cfg.DriveSync.Interval != 86400 {
-		t.Errorf("DriveSync.Interval default = %d, want %d", cfg.DriveSync.Interval, 86400)
+	if cfg.DriveSync.Interval != 21600 {
+		t.Errorf("DriveSync.Interval default = %d, want %d", cfg.DriveSync.Interval, 21600)
 	}
 	if cfg.DriveSync.SyncTimeout != 600 {
 		t.Errorf("DriveSync.SyncTimeout default = %d, want %d", cfg.DriveSync.SyncTimeout, 600)

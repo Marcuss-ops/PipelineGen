@@ -290,8 +290,8 @@ func (s *Storage) GetJobEvents(ctx context.Context, jobID string, limit int) ([]
 // === Worker Operations ===
 
 func (s *Storage) LoadWorkers(ctx context.Context) (map[string]*models.Worker, error) {
-	query := `SELECT id, status, hostname, ip_address, capabilities, metadata, 
-	                 created_at, updated_at, last_heartbeat_at FROM workers`
+query := `SELECT id, status, hostname, ip_address, capabilities, metadata, 
+		                 created_at, updated_at, last_heartbeat_at FROM workers`	
 	
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -302,14 +302,19 @@ func (s *Storage) LoadWorkers(ctx context.Context) (map[string]*models.Worker, e
 	workers := make(map[string]*models.Worker)
 	for rows.Next() {
 		var w models.Worker
+		var ipAddress string
+		var createdAt, updatedAt, lastHeartbeatAt time.Time
 		var capsJSON, metaJSON []byte
 		err := rows.Scan(
-			&w.ID, &w.Status, &w.Hostname, &w.IPAddress, &capsJSON, &metaJSON,
-			&w.CreatedAt, &w.UpdatedAt, &w.LastHeartbeatAt,
+			&w.ID, &w.Status, &w.Hostname, &ipAddress, &capsJSON, &metaJSON,
+			&createdAt, &updatedAt, &lastHeartbeatAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+w.IP = ipAddress
+			w.UpdatedAt = updatedAt
+			w.LastHeartbeat = lastHeartbeatAt
 		json.Unmarshal(capsJSON, &w.Capabilities)
 		json.Unmarshal(metaJSON, &w.Metadata)
 		workers[w.ID] = &w
@@ -333,16 +338,18 @@ func (s *Storage) SaveWorkers(ctx context.Context, workers map[string]*models.Wo
 }
 
 func (s *Storage) GetWorker(ctx context.Context, id string) (*models.Worker, error) {
-	query := `SELECT id, status, hostname, ip_address, capabilities, metadata, 
-	                 created_at, updated_at, last_heartbeat_at 
-			  FROM workers WHERE id = $1`
+query := `SELECT id, status, hostname, ip_address, capabilities, metadata, 
+		                 created_at, updated_at, last_heartbeat_at 
+				  FROM workers WHERE id = $1`
 	
 	row := s.db.QueryRowContext(ctx, query, id)
 	var w models.Worker
+	var ipAddress string
+	var createdAt, updatedAt, lastHeartbeatAt time.Time
 	var capsJSON, metaJSON []byte
 	err := row.Scan(
-		&w.ID, &w.Status, &w.Hostname, &w.IPAddress, &capsJSON, &metaJSON,
-		&w.CreatedAt, &w.UpdatedAt, &w.LastHeartbeatAt,
+		&w.ID, &w.Status, &w.Hostname, &ipAddress, &capsJSON, &metaJSON,
+		&createdAt, &updatedAt, &lastHeartbeatAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -350,6 +357,9 @@ func (s *Storage) GetWorker(ctx context.Context, id string) (*models.Worker, err
 	if err != nil {
 		return nil, err
 	}
+w.IP = ipAddress
+		w.UpdatedAt = updatedAt
+		w.LastHeartbeat = lastHeartbeatAt
 	json.Unmarshal(capsJSON, &w.Capabilities)
 	json.Unmarshal(metaJSON, &w.Metadata)
 	return &w, nil
@@ -381,8 +391,8 @@ func (s *Storage) saveWorkerTx(ctx context.Context, ex execer, w *models.Worker)
 		last_heartbeat_at = EXCLUDED.last_heartbeat_at`
 
 	_, err := ex.ExecContext(ctx, query,
-		w.ID, w.Status, w.Hostname, w.IPAddress, capsJSON, metaJSON,
-		w.CreatedAt, w.UpdatedAt, w.LastHeartbeatAt,
+		w.ID, w.Status, w.Hostname, w.IP, capsJSON, metaJSON,
+		w.UpdatedAt,
 	)
 	return err
 }

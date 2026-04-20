@@ -1,6 +1,11 @@
 // Package youtube provides YouTube video download functionality for Agent 5.
 package youtube
 
+import (
+	"go.uber.org/zap"
+	"velox/go-master/pkg/logger"
+)
+
 // Downloader wrapper using new unified client
 type Downloader struct {
 	client    Client
@@ -13,7 +18,10 @@ type Downloader struct {
 func NewDownloader(outputDir string) *Downloader {
 	client, err := NewDefaultClient()
 	if err != nil {
-		// Fallback to yt-dlp backend if default fails
+		// Log warning before falling back to yt-dlp backend
+		logger.Warn("Primary YouTube client failed, using fallback yt-dlp backend",
+			zap.Error(err),
+		)
 		client = NewYtDlpBackend(nil)
 	}
 	

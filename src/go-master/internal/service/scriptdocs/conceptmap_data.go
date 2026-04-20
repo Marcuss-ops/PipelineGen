@@ -20,7 +20,7 @@ var conceptMap = []clipConcept{
 		"pessoas", "público", "seguidores", "fãs", "influência", "comunidade", "indivíduo",
 		// Romanian
 		"oameni", "public", "fani", "influență", "comunitate", "individ",
-	}, "people", 0.85},
+	}, "people", 0.50},
 
 	// === CITY (50 clips) ===
 	{[]string{
@@ -92,20 +92,30 @@ var conceptMap = []clipConcept{
 		"academia", "treino", "força", "poder", "fitness", "exercício", "músculo", "pesos", "atleta",
 		// Romanian
 		"sală", "antrenament", "putere", "fitness", "exercițiu", "mușchi", "greutăți", "atlet",
-	}, "gym", 0.80},
+	}, "gym", 0.70},
 
-	// === BOXING / COMBAT (mapped to gym since no dedicated boxing term) ===
+	// === FLOYD MAYWEATHER (specific person) ===
+	{[]string{
+		"floyd", "mayweather", "mayweather jr", "money", "pretty boy",
+	}, "floyd", 0.95},
+
+	// === MIKE TYSON (specific person) ===
+	{[]string{
+		"tyson", "iron mike", "mike tyson", "baddest man on the planet",
+	}, "tyson", 0.95},
+
+	// === BOXING / COMBAT (specific sport) ===
 	{[]string{
 		// Italian
-		"combattimento", "lotta", "boxe", "pugile", "pugilato", "sport", "knockout", "ko", "campione", "medaglia", "torneo", "ring", "guantoni", " combattente",
+		"combattimento", "lotta", "boxe", "pugile", "pugilato", "knockout", "ko", "campione", "medaglia", "torneo", "ring", "guantoni", "combattente",
 		// English
-		"fight", "boxing", "boxer", "sport", "knockout", "champion", "medal", "tournament", "ring", "gloves", "fighter", "combat",
+		"boxing", "boxer", "knockout", "champion", "tournament", "ring", "gloves", "fighter", "combat", "punch", "uppercut", "jab", "hook", "referee",
 		// French
-		"combat", "boxe", "boxeur", "sport", "force", "puissance", "champion", "médaille", "ring", "combattant",
+		"combat", "boxe", "boxeur", "force", "puissance", "champion", "médaille", "ring", "combattant",
 		// Spanish
-		"pelea", "boxeo", "boxeador", "deporte", "fuerza", "poder", "campeón", "medalla", "ring", "combatiente",
+		"pelea", "boxeo", "boxeador", "fuerza", "poder", "campeón", "medalla", "ring", "combatiente",
 		// German
-		"kampf", "boxen", "boxer", "sport", "stärke", "kraft", "meister", "medaille", "kämpfer",
+		"kampf", "boxen", "boxer", "stärke", "kraft", "meister", "medaille", "kämpfer",
 		// Portuguese
 		"luta", "boxe", "boxeador", "esporte", "força", "poder", "campeão", "medalha", "lutador",
 		// Romanian
@@ -151,20 +161,20 @@ var conceptMap = []clipConcept{
 	// === SOCCER (100 clips) ===
 	{[]string{
 		// Italian
-		"calcio", "soccer", "partita", "goal", "gol", "stadio", "tifosi", "squadra", "giocatore", "pallone", "campo da calcio", "football",
+		"calcio", "soccer", "goal", "gol", "tifosi", "pallone", "campo da calcio", "football",
 		// English
-		"soccer", "football", "match", "goal", "stadium", "fans", "team", "player", "ball", "pitch", "game",
+		"soccer", "football", "goalkeeper", "pitch", "penalty", "striker", "referee", "jersey", "league",
 		// French
-		"football", "soccer", "match", "but", "stade", "fans", "équipe", "joueur", "ballon",
+		"football", "soccer", "gardien", "stade", "équipe", "joueur", "ballon",
 		// Spanish
-		"fútbol", "partido", "gol", "estadio", "aficionados", "equipo", "jugador", "pelota",
+		"fútbol", "gol", "estadio", "aficionados", "equipo", "jugador", "pelota",
 		// German
-		"fussball", "spiel", "tor", "stadion", "fans", "mannschaft", "spieler", "ball",
+		"fussball", "tor", "stadion", "mannschaft", "spieler", "ball",
 		// Portuguese
-		"futebol", "jogo", "gol", "estádio", "fãs", "equipe", "jogador", "bola",
+		"futebol", "gol", "estádio", "equipe", "jogador", "bola",
 		// Romanian
-		"fotbal", "meci", "gol", "stadion", "fani", "echipă", "jucător", "minge",
-	}, "soccer", 0.80},
+		"fotbal", "gol", "stadion", "echipă", "jucător", "minge",
+	}, "soccer", 0.40},
 
 	// === SWIMMING (100 clips) ===
 	{[]string{

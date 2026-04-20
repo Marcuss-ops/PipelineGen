@@ -47,6 +47,7 @@ func LoadConfigWithDefaults(path string) (*MonitorConfig, error) {
 func DefaultConfig() *MonitorConfig {
 	return &MonitorConfig{
 		CheckInterval:   24 * time.Hour,
+		VideoTimeframe:  "month",
 		StockRootID:     "",
 		YtDlpPath:       "yt-dlp",
 		CookiesPath:     "",
@@ -87,6 +88,9 @@ func defaultChannels() []ChannelConfig {
 func applyDefaults(cfg *MonitorConfig) {
 	if cfg.CheckInterval == 0 {
 		cfg.CheckInterval = 24 * time.Hour
+	}
+	if cfg.VideoTimeframe == "" {
+		cfg.VideoTimeframe = "month"
 	}
 	if cfg.YtDlpPath == "" {
 		cfg.YtDlpPath = "yt-dlp"

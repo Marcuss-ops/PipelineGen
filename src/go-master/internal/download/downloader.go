@@ -12,9 +12,10 @@ import (
 	"regexp"
 	"strings"
 
+	"go.uber.org/zap"
+	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/logger"
 	"velox/go-master/pkg/security"
-	"go.uber.org/zap"
 )
 
 // Platform represents a video source platform
@@ -175,13 +176,28 @@ func (d *Downloader) downloadYouTube(ctx context.Context, url string) (*Download
 		"--output", outputPath,
 		"--restrict-filenames",
 		"--no-warnings",
-		url,
 	}
+	args = append(args, youtube.BuildYtDlpAuthArgs("", "")...)
 
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("yt-dlp download failed: %w\n%s", err, string(output))
+	var lastErr error
+	for _, extractorArgs := range youtube.YouTubeExtractorArgsVariants() {
+		attemptArgs := append([]string{}, args...)
+		if extractorArgs != "" {
+			attemptArgs = append(attemptArgs, "--extractor-args", extractorArgs)
+		}
+		attemptArgs = append(attemptArgs, url)
+
+		cmd := exec.CommandContext(ctx, "yt-dlp", attemptArgs...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			lastErr = fmt.Errorf("yt-dlp download failed (extractor-args=%q): %w\n%s", extractorArgs, err, string(output))
+			continue
+		}
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	// Find downloaded file
@@ -288,17 +304,34 @@ type VideoInfo struct {
 
 // getVideoInfo fetches video metadata without downloading
 func (d *Downloader) getVideoInfo(ctx context.Context, url string) (*VideoInfo, error) {
-	args := []string{
+	baseArgs := []string{
 		"--dump-json",
 		"--no-download",
 		"--no-warnings",
-		url,
 	}
+	baseArgs = append(baseArgs, youtube.BuildYtDlpAuthArgs("", "")...)
 
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get video info: %w", err)
+	var output []byte
+	var lastErr error
+	for _, extractorArgs := range youtube.YouTubeExtractorArgsVariants() {
+		args := append([]string{}, baseArgs...)
+		if extractorArgs != "" {
+			args = append(args, "--extractor-args", extractorArgs)
+		}
+		args = append(args, url)
+
+		cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+		attemptOutput, err := cmd.CombinedOutput()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to get video info (extractor-args=%q): %w", extractorArgs, err)
+			continue
+		}
+		output = attemptOutput
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	var info VideoInfo

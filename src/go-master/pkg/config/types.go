@@ -143,7 +143,7 @@ type PathsConfig struct {
 	ClipRootFolder          string `yaml:"clip_root_folder" env:"VELOX_CLIP_ROOT_FOLDER" default:"root"`
 	VideoStockCreatorBinary string `yaml:"video_stock_creator_binary" env:"VELOX_VIDEO_STOCK_CREATOR_BINARY" default:"video-stock-creator"`
 	ArtlistDBPath           string `yaml:"artlist_db_path" env:"VELOX_ARTLIST_DB_PATH" default:""`
-	YtDlpPath               string `yaml:"ytdlp_path" env:"VELOX_YTDLP_PATH" default:"yt-dlp"`
+	YtDlpPath               string `yaml:"ytdlp_path" env:"VELOX_YTDLP_PATH" default:"/home/pierone/venv/bin/yt-dlp"`
 }
 
 // DriveConfig holds Google Drive folder IDs (main roots - subfolders are discovered dynamically)
@@ -164,7 +164,7 @@ type SchedulerConfig struct {
 
 // DriveSyncConfig holds DriveSync configuration
 type DriveSyncConfig struct {
-	Interval    int `yaml:"interval" env:"VELOX_DRIVESYNC_INTERVAL" default:"86400"`
+	Interval    int `yaml:"interval" env:"VELOX_DRIVESYNC_INTERVAL" default:"21600"`
 	SyncTimeout int `yaml:"sync_timeout" env:"VELOX_DRIVESYNC_TIMEOUT" default:"600"`
 }
 
@@ -177,7 +177,7 @@ type ClipApprovalConfig struct {
 
 // ClipIndexConfig holds clip index scanner configuration
 type ClipIndexConfig struct {
-	ScanInterval int `yaml:"scan_interval" env:"VELOX_CLIP_SCAN_INTERVAL" default:"3600"`
+	ScanInterval int `yaml:"scan_interval" env:"VELOX_CLIP_SCAN_INTERVAL" default:"86400"`
 }
 
 // TextGenConfig holds text generator configuration

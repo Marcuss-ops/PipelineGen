@@ -283,7 +283,7 @@ La sua influenza continua nonostante le controversie legali. Milioni di giovani 
 		artlistIndex: idx,
 	}
 
-	associations := svc.associateClips(frasiImportanti)
+	associations := svc.associateClips(frasiImportanti, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 	// Should have 5 associations (one per sentence)
 	if len(associations) != 5 {
@@ -365,7 +365,7 @@ func TestFullStockAndArtlistIntegration(t *testing.T) {
 	t.Logf("  Keywords: %v", paroleImportant)
 
 	// Step 3: Clip associations
-	associations := svc.associateClips(frasiImportanti)
+	associations := svc.associateClips(frasiImportanti, StockFolder{ID: "root", Name: "Stock"}, "Andrew Tate")
 
 	// Verify associations
 	if len(associations) != len(frasiImportanti) {
@@ -517,7 +517,7 @@ func TestArtlistRoundRobinDistribution(t *testing.T) {
 		"Le persone influenzano i giovani",
 	}
 
-	associations := svc.associateClips(frasi)
+	associations := svc.associateClips(frasi, StockFolder{ID: "root", Name: "Stock"}, "Andrew Tate")
 
 	// Count clip usage
 	clipUsage := make(map[string]int)
@@ -593,7 +593,7 @@ func TestStockAndArtlistNotDrive(t *testing.T) {
 	keywords := extractKeywords(script)
 
 	// Clip associations
-	associations := svc.associateClips(frasi)
+	associations := svc.associateClips(frasi, stockFolder, req.Topic)
 
 	t.Logf("Full pipeline without Drive:")
 	t.Logf("  Stock folder: %s (%s)", stockFolder.Name, stockFolder.URL)
@@ -661,7 +661,7 @@ func TestSaveResultsToFile(t *testing.T) {
 		Sentences:   ExtractSentences(script),
 		Nouns:       extractProperNouns(ExtractSentences(script)),
 		Keywords:    extractKeywords(script),
-		Associations: svc.associateClips(ExtractSentences(script)[:util.Min(5, len(ExtractSentences(script)))]),
+		Associations: svc.associateClips(ExtractSentences(script)[:util.Min(5, len(ExtractSentences(script)))], svc.resolveStockFolder("Andrew Tate"), "Andrew Tate"),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 

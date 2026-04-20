@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +85,8 @@ type ArtlistClip struct {
 	Tags []string `json:"tags"`
 	// Embedding is a placeholder for future semantic search (optional, stores vector path or hash)
 	Embedding string `json:"embedding,omitempty"`
+	// VisualHash is a perceptual-like hash extracted from the clip content for dedup.
+	VisualHash string `json:"visual_hash,omitempty"`
 	// Downloaded is true when the clip has been downloaded and uploaded to Drive
 	Downloaded bool `json:"downloaded"`
 	// AddedAt tracks when this clip was added to the DB
@@ -92,6 +95,14 @@ type ArtlistClip struct {
 	DownloadedAt string `json:"downloaded_at,omitempty"`
 	// UsedInVideos tracks which video projects used this clip
 	UsedInVideos []string `json:"used_in_videos,omitempty"`
+}
+
+func isPreviewArtlistClipDB(c ArtlistClip) bool {
+	lc := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+	return strings.Contains(lc(c.Name), "preview") ||
+		strings.Contains(lc(c.Title), "preview") ||
+		strings.Contains(lc(c.URL), "preview") ||
+		strings.Contains(lc(c.OriginalURL), "preview")
 }
 
 // Open opens or creates the Artlist local DB.
@@ -184,7 +195,7 @@ func (db *ArtlistDB) GetDownloadedClipsForTerm(term string) ([]ArtlistClip, bool
 
 	var downloaded []ArtlistClip
 	for _, clip := range result.Clips {
-		if clip.Downloaded && clip.DriveFileID != "" {
+		if clip.Downloaded && clip.DriveFileID != "" && !isPreviewArtlistClipDB(clip) {
 			downloaded = append(downloaded, clip)
 		}
 	}
@@ -269,7 +280,16 @@ func (db *ArtlistDB) MarkClipDownloaded(clipID string, term string, driveFileID,
 			result.Clips[i].DriveFileID = driveFileID
 			result.Clips[i].DriveURL = driveURL
 			result.Clips[i].DownloadPath = downloadPath
-			result.Clips[i].LocalPathDrive = fmt.Sprintf("Stock/Artlist/%s/%s", term, result.Clips[i].VideoID)
+			name := strings.TrimSpace(result.Clips[i].Name)
+			if name == "" {
+				name = result.Clips[i].VideoID
+			}
+			folder := strings.TrimSpace(result.Clips[i].Folder)
+			if folder == "" {
+				folder = fmt.Sprintf("Stock/Artlist/%s", term)
+			}
+			// Keep LocalPathDrive aligned with the latest uploaded filename.
+			result.Clips[i].LocalPathDrive = fmt.Sprintf("%s/%s", folder, name)
 			result.Clips[i].DownloadedAt = time.Now().Format(time.RFC3339)
 			found = true
 			break
@@ -282,7 +302,9 @@ func (db *ArtlistDB) MarkClipDownloaded(clipID string, term string, driveFileID,
 
 	// Track downloaded clip IDs
 	result.DownloadedClipIDs = append(result.DownloadedClipIDs, clipID)
-	result.DriveFolderID = "Stock/Artlist/" + term
+	if strings.TrimSpace(result.DriveFolderID) == "" {
+		result.DriveFolderID = "Stock/Artlist/" + term
+	}
 
 	db.data.Searches[key] = result
 
@@ -314,10 +336,10 @@ func (db *ArtlistDB) SetDriveFolder(term string, folderID string) error {
 
 // DBStats holds typed database statistics.
 type DBStats struct {
-	TotalSearches  int    `json:"total_searches"`
-	TotalClips     int    `json:"total_clips"`
-	TotalDownloaded int   `json:"total_downloaded"`
-	LastUpdated    string `json:"last_updated"`
+	TotalSearches   int    `json:"total_searches"`
+	TotalClips      int    `json:"total_clips"`
+	TotalDownloaded int    `json:"total_downloaded"`
+	LastUpdated     string `json:"last_updated"`
 }
 
 // GetStats returns DB statistics.
@@ -331,10 +353,10 @@ func (db *ArtlistDB) GetStats() DBStats {
 	}
 
 	return DBStats{
-		TotalSearches:  len(db.data.Searches),
-		TotalClips:     db.data.TotalClips,
+		TotalSearches:   len(db.data.Searches),
+		TotalClips:      db.data.TotalClips,
 		TotalDownloaded: totalDownloaded,
-		LastUpdated:    db.data.LastUpdated,
+		LastUpdated:     db.data.LastUpdated,
 	}
 }
 
@@ -390,6 +412,9 @@ func (db *ArtlistDB) FindDownloadedClipsWithSimilarTags(tags []string, minTagMat
 			if !clip.Downloaded || clip.DriveFileID == "" {
 				continue
 			}
+			if isPreviewArtlistClipDB(clip) {
+				continue
+			}
 
 			// Count matching tags
 			matchCount := 0
@@ -416,6 +441,9 @@ func (db *ArtlistDB) IsClipAlreadyDownloaded(clipID, url string) (ArtlistClip, b
 	for _, result := range db.data.Searches {
 		for _, clip := range result.Clips {
 			if !clip.Downloaded {
+				continue
+			}
+			if isPreviewArtlistClipDB(clip) {
 				continue
 			}
 			if clip.ID == clipID || clip.URL == url || clip.OriginalURL == url {
@@ -497,6 +525,9 @@ func (db *ArtlistDB) GetUniqueDownloadedClipsForTerm(term string, excludeUsedInV
 		if !clip.Downloaded || clip.DriveFileID == "" {
 			continue
 		}
+		if isPreviewArtlistClipDB(clip) {
+			continue
+		}
 
 		// Skip if already used in the specified video
 		if excludeUsedInVideo != "" {
@@ -516,4 +547,158 @@ func (db *ArtlistDB) GetUniqueDownloadedClipsForTerm(term string, excludeUsedInV
 	}
 
 	return clips, nil
+}
+
+type DedupStats struct {
+	CanonicalKept    int      `json:"canonical_kept"`
+	DuplicateMarked  int      `json:"duplicate_marked"`
+	DriveIDsToDelete []string `json:"drive_ids_to_delete"`
+}
+
+// DeduplicateDownloadedByVisualHash marks duplicate downloaded clips (same visual hash) as not downloaded.
+// It returns duplicate Drive IDs that can be deleted from Drive + StockDB.
+func (db *ArtlistDB) DeduplicateDownloadedByVisualHash() (DedupStats, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	type ref struct {
+		term string
+		idx  int
+	}
+	stats := DedupStats{
+		DriveIDsToDelete: make([]string, 0),
+	}
+	seenHash := make(map[string]ref)
+	deleteSet := make(map[string]bool)
+
+	terms := make([]string, 0, len(db.data.Searches))
+	for term := range db.data.Searches {
+		terms = append(terms, term)
+	}
+	sort.Strings(terms)
+
+	for _, term := range terms {
+		result := db.data.Searches[term]
+		changed := false
+
+		for i := range result.Clips {
+			c := &result.Clips[i]
+			if !c.Downloaded || strings.TrimSpace(c.DriveFileID) == "" {
+				continue
+			}
+			hash := strings.TrimSpace(c.VisualHash)
+			if hash == "" {
+				continue
+			}
+			if first, ok := seenHash[hash]; !ok {
+				seenHash[hash] = ref{term: term, idx: i}
+				stats.CanonicalKept++
+				continue
+			} else {
+				_ = first
+				if strings.TrimSpace(c.DriveFileID) != "" {
+					deleteSet[c.DriveFileID] = true
+				}
+				c.Downloaded = false
+				c.DriveFileID = ""
+				c.DriveURL = ""
+				c.DownloadPath = ""
+				c.LocalPathDrive = ""
+				c.DownloadedAt = ""
+				stats.DuplicateMarked++
+				changed = true
+			}
+		}
+
+		// Rebuild DownloadedClipIDs list from current clips state.
+		if changed {
+			newDownloaded := make([]string, 0, len(result.Clips))
+			for _, c := range result.Clips {
+				if c.Downloaded {
+					newDownloaded = append(newDownloaded, c.ID)
+				}
+			}
+			result.DownloadedClipIDs = newDownloaded
+			db.data.Searches[term] = result
+		}
+	}
+
+	if len(deleteSet) > 0 {
+		for id := range deleteSet {
+			stats.DriveIDsToDelete = append(stats.DriveIDsToDelete, id)
+		}
+		sort.Strings(stats.DriveIDsToDelete)
+	}
+	db.data.LastUpdated = time.Now().Format(time.RFC3339)
+	data, err := json.MarshalIndent(db.data, "", "  ")
+	if err != nil {
+		return DedupStats{}, fmt.Errorf("failed to marshal ArtlistDB: %w", err)
+	}
+	if err := os.WriteFile(db.path, data, 0644); err != nil {
+		return DedupStats{}, err
+	}
+	return stats, nil
+}
+
+// ClearDeletedDriveFiles clears downloaded metadata for clips whose Drive file was removed.
+func (db *ArtlistDB) ClearDeletedDriveFiles(driveIDs []string) (int, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if len(driveIDs) == 0 {
+		return 0, nil
+	}
+	rm := make(map[string]bool, len(driveIDs))
+	for _, id := range driveIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			rm[id] = true
+		}
+	}
+	if len(rm) == 0 {
+		return 0, nil
+	}
+
+	cleared := 0
+	for term, result := range db.data.Searches {
+		changed := false
+		for i := range result.Clips {
+			c := &result.Clips[i]
+			if !c.Downloaded {
+				continue
+			}
+			if rm[c.DriveFileID] {
+				c.Downloaded = false
+				c.DriveFileID = ""
+				c.DriveURL = ""
+				c.DownloadPath = ""
+				c.LocalPathDrive = ""
+				c.DownloadedAt = ""
+				cleared++
+				changed = true
+			}
+		}
+		if changed {
+			newDownloaded := make([]string, 0, len(result.Clips))
+			for _, c := range result.Clips {
+				if c.Downloaded {
+					newDownloaded = append(newDownloaded, c.ID)
+				}
+			}
+			result.DownloadedClipIDs = newDownloaded
+			db.data.Searches[term] = result
+		}
+	}
+	if cleared == 0 {
+		return 0, nil
+	}
+	db.data.LastUpdated = time.Now().Format(time.RFC3339)
+	data, err := json.MarshalIndent(db.data, "", "  ")
+	if err != nil {
+		return 0, fmt.Errorf("failed to marshal ArtlistDB: %w", err)
+	}
+	if err := os.WriteFile(db.path, data, 0644); err != nil {
+		return 0, err
+	}
+	return cleared, nil
 }

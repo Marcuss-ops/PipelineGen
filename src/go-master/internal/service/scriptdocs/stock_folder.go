@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clip"
@@ -139,22 +140,76 @@ func NewScriptDocServiceWithDynamicFolders(
 	return svc
 }
 
+func normalizeLoose(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func (s *ScriptDocService) isValidDriveFolder(ctx context.Context, folder StockFolder) bool {
+	if strings.TrimSpace(folder.ID) == "" || folder.ID == "root" {
+		return false
+	}
+	if s.driveClient == nil {
+		return true
+	}
+	f, err := s.driveClient.GetFile(ctx, folder.ID)
+	if err != nil || f == nil {
+		return false
+	}
+	return f.MimeType == "application/vnd.google-apps.folder"
+}
+
 // resolveStockFolder finds the best matching Stock folder for a topic.
-// Uses StockDB keyword search on full_path — no hardcoded IDs.
 func (s *ScriptDocService) resolveStockFolder(topic string) StockFolder {
-	// 1. Try StockDB keyword search on full_path
+	ctx := context.Background()
+
+	// 1. Try StockDB keyword search on full_path (source of truth for STOCK section)
 	if s.stockDB != nil {
-		folder, err := s.stockDB.FindFolderByTopic(topic)
+		folder, err := s.stockDB.FindFolderByTopicInSection(topic, "stock")
+		if err == nil && folder != nil {
+			logger.Info("Resolved Stock folder from StockDB section",
+				zap.String("topic", topic),
+				zap.String("folder", folder.FullPath),
+			)
+			candidate := StockFolder{
+				ID:   folder.DriveID,
+				Name: folder.FullPath,
+				URL:  fmt.Sprintf("https://drive.google.com/drive/folders/%s", folder.DriveID),
+			}
+			if s.isValidDriveFolder(ctx, candidate) && !isGenericStockFolderName(candidate.Name) {
+				return candidate
+			}
+			logger.Warn("StockDB(section) resolved stale/generic/non-folder Drive ID, skipping",
+				zap.String("topic", topic),
+				zap.String("folder_id", folder.DriveID),
+				zap.String("folder_path", folder.FullPath),
+			)
+		}
+
+		folder, err = s.stockDB.FindFolderByTopic(topic)
 		if err == nil && folder != nil {
 			logger.Info("Resolved Stock folder from StockDB",
 				zap.String("topic", topic),
 				zap.String("folder", folder.FullPath),
 			)
-			return StockFolder{
+			candidate := StockFolder{
 				ID:   folder.DriveID,
 				Name: folder.FullPath,
 				URL:  fmt.Sprintf("https://drive.google.com/drive/folders/%s", folder.DriveID),
 			}
+			if s.isValidDriveFolder(ctx, candidate) && !isGenericStockFolderName(candidate.Name) {
+				return candidate
+			}
+			logger.Warn("StockDB resolved stale/generic/non-folder Drive ID, skipping",
+				zap.String("topic", topic),
+				zap.String("folder_id", folder.DriveID),
+				zap.String("folder_path", folder.FullPath),
+			)
 		}
 	}
 
@@ -197,6 +252,7 @@ func (s *ScriptDocService) resolveStockFolder(topic string) StockFolder {
 	defer s.stockFoldersMu.RUnlock()
 
 	topicLower := strings.ToLower(topic)
+	topicLoose := normalizeLoose(topic)
 
 	// 3. Try keyword match in cache (longest match first)
 	type keywordFolder struct {
@@ -217,7 +273,13 @@ func (s *ScriptDocService) resolveStockFolder(topic string) StockFolder {
 	}
 
 	for _, kf := range sorted {
-		if strings.Contains(topicLower, kf.keyword) {
+		keywordLower := strings.ToLower(kf.keyword)
+		keywordLoose := normalizeLoose(kf.keyword)
+		folderLoose := normalizeLoose(kf.folder.Name)
+		if strings.Contains(topicLower, keywordLower) ||
+			(keywordLoose != "" && strings.Contains(topicLoose, keywordLoose)) ||
+			(keywordLoose != "" && strings.Contains(keywordLoose, topicLoose)) ||
+			(topicLoose != "" && folderLoose != "" && strings.Contains(folderLoose, topicLoose)) {
 			// Register in DB for future instant lookup
 			if s.stockDB != nil {
 				s.stockDB.UpsertFolder(stockdb.StockFolderEntry{
@@ -228,55 +290,42 @@ func (s *ScriptDocService) resolveStockFolder(topic string) StockFolder {
 					Section:   "stock",
 				})
 			}
-			return kf.folder
-		}
-	}
-
-	// 4. Fallback: Auto-create folder on Drive if client available
-	if s.driveClient != nil && s.stockRootFolderID != "" {
-		slug := stockdb.NormalizeSlug(topic)
-		folderName := strings.Title(strings.ReplaceAll(slug, "-", " "))
-		if folderName == "" {
-			folderName = "Unknown"
-		}
-
-		// Try to create on Drive
-		folderID, err := s.driveClient.CreateFolder(context.Background(), folderName, s.stockRootFolderID)
-		if err == nil && folderID != "" {
-			folderLink := fmt.Sprintf("https://drive.google.com/drive/folders/%s", folderID)
-			newFolder := StockFolder{
-				ID:   folderID,
-				Name: fmt.Sprintf("Stock/%s", folderName),
-				URL:  folderLink,
+			if s.isValidDriveFolder(ctx, kf.folder) {
+				return kf.folder
 			}
-
-			// Register in DB
-			if s.stockDB != nil {
-				s.stockDB.UpsertFolder(stockdb.StockFolderEntry{
-					TopicSlug: slug,
-					DriveID:   folderID,
-					ParentID:  s.stockRootFolderID,
-					FullPath:  newFolder.Name,
-					Section:   "stock",
-				})
-			}
-
-			// Add to cache
-			s.stockFolders[slug] = newFolder
-
-			logger.Info("Auto-created Stock folder for topic",
+			logger.Warn("Cache resolved stale/non-folder Drive ID, skipping",
 				zap.String("topic", topic),
-				zap.String("folder", newFolder.Name),
+				zap.String("folder_id", kf.folder.ID),
+				zap.String("folder_name", kf.folder.Name),
 			)
-
-			return newFolder
 		}
 	}
 
-	// 5. Ultimate fallback
+	// 4. Ultimate fallback
 	return StockFolder{
-		ID:   "root",
-		Name: "Stock",
-		URL:  "https://drive.google.com/drive/u/0/my-drive",
+		ID:   "",
+		Name: "None",
+		URL:  "None",
 	}
+}
+
+func isGenericStockFolderName(name string) bool {
+	v := strings.ToLower(strings.TrimSpace(name))
+	if v == "" {
+		return true
+	}
+	generics := []string{
+		"stock root",
+		"stock",
+		"clips",
+		"artlist",
+		"stock/artlist",
+		"root",
+	}
+	for _, g := range generics {
+		if v == g {
+			return true
+		}
+	}
+	return false
 }

@@ -3,15 +3,19 @@ package clipsearch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"velox/go-master/internal/artlistdb"
+	"velox/go-master/internal/clip"
+	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/stockdb"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
@@ -19,296 +23,604 @@ import (
 	"go.uber.org/zap"
 )
 
-// Service dynamically searches, downloads, and uploads video clips.
 type Service struct {
-	driveClient *drive.Client
-	stockDB     *stockdb.StockDB
-	artlistDB   *artlistdb.ArtlistDB
+	downloader *ClipDownloader
+	uploader   *DriveUploader
+	persister  *ClipPersister
+	finder     *ClipFinder
+	processor  *ClipProcessor
+
+	artlistSrc *clip.ArtlistSource
+	indexer    *clip.Indexer
+	ollama     *ollama.Client
+
+	ytDlpPath  string
+	ffmpegPath string
+
 	downloadDir string
-	ytDlpPath   string
-	mu          sync.Mutex
+
+	postCycleSync func(context.Context) error
+	mu            sync.Mutex
+
+	keywordFailures map[string]int
+	keywordBlocked  map[string]time.Time
+	checkpoints     *ClipJobCheckpointStore
+
+	// Concurrency control
+	workerSemaphore chan struct{}
 }
 
-// SearchResult represents a found and processed clip.
+const (
+	defaultPerKeywordTimeout = 90 * time.Second // Increased for parallel load
+	keywordFailThreshold     = 3
+	keywordBlockDuration     = 10 * time.Minute
+	maxParallelDownloads     = 5
+)
+
+type SearchOptions struct {
+	ForceFresh         bool
+	MaxClipsPerKeyword int
+}
+
 type SearchResult struct {
-	Keyword  string `json:"keyword"`
-	ClipID   string `json:"clip_id"`
-	Filename string `json:"filename"`
-	DriveURL string `json:"drive_url"`
-	DriveID  string `json:"drive_id"`
-	Folder   string `json:"folder"`
+	Keyword           string   `json:"keyword"`
+	ClipID            string   `json:"clip_id"`
+	Filename          string   `json:"filename"`
+	Source            string   `json:"source,omitempty"`
+	DriveURL          string   `json:"drive_url"`
+	DriveID           string   `json:"drive_id"`
+	Folder            string   `json:"folder"`
+	FolderID          string   `json:"folder_id,omitempty"`
+	Description       string   `json:"description,omitempty"`
+	Tags              []string `json:"tags,omitempty"`
+	StartSec          float64  `json:"start_sec,omitempty"`
+	EndSec            float64  `json:"end_sec,omitempty"`
+	Score             float64  `json:"score,omitempty"`
+	TranscriptSnippet string   `json:"transcript_snippet,omitempty"`
+	ThumbnailURL      string   `json:"thumbnail_url,omitempty"`
+	TextDriveURL      string   `json:"text_drive_url,omitempty"`
+	TextDriveID       string   `json:"text_drive_id,omitempty"`
 }
 
-// New creates a new dynamic clip search service.
-func New(driveClient *drive.Client, stockDB *stockdb.StockDB, artlistDB *artlistdb.ArtlistDB, downloadDir, ytDlpPath string) *Service {
-	return &Service{
-		driveClient: driveClient,
-		stockDB:     stockDB,
-		artlistDB:   artlistDB,
-		downloadDir: downloadDir,
-		ytDlpPath:   ytDlpPath,
+type DriveUploadResult struct {
+	DriveID    string
+	Filename   string
+	DriveURL   string
+	FolderID   string
+	FolderName string
+	FolderPath string
+	TextFileID string
+	TextURL    string
+	TextName   string
+}
+
+func (s *Service) GetIndexer() *clip.Indexer {
+	return s.indexer
+}
+
+func (s *Service) SetIndexer(i *clip.Indexer) {
+	s.indexer = i
+}
+
+func (s *Service) SetArtlistSource(src *clip.ArtlistSource) {
+	s.artlistSrc = src
+	if s.downloader != nil {
+		s.downloader.artlistSrc = src
 	}
 }
 
-// SearchClips searches for clips matching keywords, downloads, uploads, and saves to DB.
-// Returns found clips (from DB cache or newly downloaded).
-func (s *Service) SearchClips(ctx context.Context, keywords []string) ([]SearchResult, error) {
-	var results []SearchResult
+func (s *Service) SetOllamaClient(c *ollama.Client) {
+	s.ollama = c
+}
 
-	for _, kw := range keywords {
-		kw = strings.TrimSpace(kw)
-		if kw == "" {
-			continue
-		}
+func (s *Service) SetUploadFolderID(folderID string) {
+	if s.uploader != nil {
+		s.uploader.SetUploadFolderID(folderID)
+	}
+}
 
-		// 1. Check if we already have a clip for this keyword in DB
-		existing, err := s.findClipInDB(kw)
-		if err == nil && existing != nil {
-			results = append(results, *existing)
-			logger.Info("Found clip in DB cache",
-				zap.String("keyword", kw),
-				zap.String("clip_id", existing.ClipID),
-			)
-			continue
-		}
+func (s *Service) SetPostCycleSync(fn func(context.Context) error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.postCycleSync = fn
+}
 
-		// 2. Search and download via yt-dlp
-		downloadedPath, err := s.downloadClip(ctx, kw)
-		if err != nil {
-			logger.Warn("Failed to download clip for keyword",
-				zap.String("keyword", kw),
-				zap.Error(err),
-			)
-			continue
-		}
+func New(driveClient *drive.Client, stockDB *stockdb.StockDB, artlistDB *artlistdb.ArtlistDB, downloadDir, ytDlpPath string) *Service {
+	processor := NewClipProcessor("ffmpeg", "ffprobe")
+	downloader := NewClipDownloader(nil, ytDlpPath, downloadDir)
+	uploader := NewDriveUploader(driveClient, "")
+	persister := NewClipPersister(stockDB, artlistDB)
+	finder := NewClipFinder(stockDB, artlistDB)
 
-		// 3. Upload to Drive
-		driveResult, err := s.uploadToDrive(ctx, downloadedPath, kw)
-		if err != nil {
-			logger.Warn("Failed to upload clip to Drive",
-				zap.String("keyword", kw),
-				zap.Error(err),
-			)
-			os.Remove(downloadedPath)
-			continue
-		}
-
-		// 4. Save to StockDB
-		if s.stockDB != nil {
-			err = s.saveToStockDB(kw, driveResult)
-			if err != nil {
-				logger.Warn("Failed to save clip to StockDB",
-					zap.String("keyword", kw),
-					zap.Error(err),
-				)
-			}
-		}
-
-		// 5. Save to ArtlistDB (Registration back to Artlist index)
-		if s.artlistDB != nil {
-			err = s.saveToArtlistDB(kw, driveResult, downloadedPath)
-			if err != nil {
-				logger.Warn("Failed to save clip to ArtlistDB",
-					zap.String("keyword", kw),
-					zap.Error(err),
-				)
-			}
-		}
-
-		// 6. Cleanup downloaded file
-		os.Remove(downloadedPath)
-
-		result := SearchResult{
-			Keyword:  kw,
-			ClipID:   driveResult.DriveID,
-			Filename: driveResult.Filename,
-			DriveURL: driveResult.DriveURL,
-			DriveID:  driveResult.DriveID,
-			Folder:   "Stock/Artlist/" + kw,
-		}
-		results = append(results, result)
-
-		logger.Info("Dynamic clip processed and registered",
-			zap.String("keyword", kw),
-			zap.String("drive_url", driveResult.DriveURL),
+	svc := &Service{
+		downloader:      downloader,
+		uploader:        uploader,
+		persister:       persister,
+		finder:          finder,
+		processor:       processor,
+		downloadDir:     downloadDir,
+		ytDlpPath:       ytDlpPath,
+		ffmpegPath:      "ffmpeg",
+		keywordFailures: make(map[string]int),
+		keywordBlocked:  make(map[string]time.Time),
+		workerSemaphore: make(chan struct{}, maxParallelDownloads),
+	}
+	downloader.SetAlreadyDownloadedChecker(func(meta *YouTubeClipMetadata) bool {
+		return svc.finder != nil && svc.finder.FindDownloadedYouTubeByMeta(meta) != nil
+	})
+	defaultCheckpoint := filepath.Join(downloadDir, "clipsearch_checkpoints.json")
+	if err := svc.SetCheckpointStorePath(defaultCheckpoint); err != nil {
+		logger.Warn("Failed to initialize default clipsearch checkpoint store",
+			zap.String("path", defaultCheckpoint),
+			zap.Error(err),
 		)
+	}
+	return svc
+}
+
+func (s *Service) SetCheckpointStorePath(path string) error {
+	store, err := OpenClipJobCheckpointStore(path)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.checkpoints = store
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Service) SearchClips(ctx context.Context, keywords []string) ([]SearchResult, error) {
+	return s.SearchClipsWithOptions(ctx, keywords, SearchOptions{})
+}
+
+func (s *Service) SearchClipsWithOptions(ctx context.Context, keywords []string, opts SearchOptions) ([]SearchResult, error) {
+	normalizedKeywords := normalizeKeywords(keywords)
+	results, newUploads := s.processKeywords(ctx, normalizedKeywords, opts)
+
+	if newUploads > 0 {
+		s.runPostCycleSync(ctx, newUploads)
 	}
 
 	return results, nil
 }
 
-// findClipInDB searches StockDB for an existing clip matching the keyword.
-func (s *Service) findClipInDB(keyword string) (*SearchResult, error) {
-	// ... (no changes here but keeping for context)
-	if s.stockDB == nil {
-		return nil, fmt.Errorf("StockDB not available")
+func (s *Service) processKeywords(ctx context.Context, keywords []string, opts SearchOptions) ([]SearchResult, int) {
+	if opts.MaxClipsPerKeyword > 1 {
+		return s.processKeywordsMulti(ctx, keywords, opts)
 	}
 
-	allClips, err := s.stockDB.GetAllClips()
-	if err != nil {
-		return nil, err
+	newUploads := int32(0)
+	g, gCtx := errgroup.WithContext(ctx)
+
+	var mu sync.Mutex
+	finalResults := make([]SearchResult, 0, len(keywords))
+
+	for _, kw := range keywords {
+		kw := kw // capture
+		g.Go(func() error {
+			// Acquire semaphore
+			select {
+			case s.workerSemaphore <- struct{}{}:
+				defer func() { <-s.workerSemaphore }()
+			case <-gCtx.Done():
+				return gCtx.Err()
+			}
+
+			jobID := s.ensureKeywordJobCheckpoint(kw)
+			res, uploaded, found := s.processKeyword(gCtx, kw, opts, jobID)
+			if found {
+				mu.Lock()
+				finalResults = append(finalResults, res)
+				if uploaded {
+					newUploads++
+				}
+				mu.Unlock()
+			}
+			return nil
+		})
 	}
 
-	keywordLower := strings.ToLower(keyword)
-	for _, clip := range allClips {
-		tags := strings.ToLower(strings.Join(clip.Tags, ","))
-		folderID := strings.ToLower(clip.FolderID)
+	_ = g.Wait()
+	return finalResults, int(newUploads)
+}
 
-		// Check if keyword appears in tags or folder
-		if strings.Contains(tags, keywordLower) ||
-			strings.Contains(folderID, keywordLower) {
-			return &SearchResult{
-				Keyword:  keyword,
-				ClipID:   clip.ClipID,
-				Filename: clip.Filename,
-				DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view", clip.ClipID),
-				DriveID:  clip.ClipID,
-				Folder:   clip.FolderID,
-			}, nil
+func (s *Service) processKeyword(ctx context.Context, kw string, opts SearchOptions, jobID string) (SearchResult, bool, bool) {
+	s.markCheckpoint(jobID, ClipJobStatusSearched, "", nil)
+
+	if !opts.ForceFresh {
+		existing, err := s.finder.FindClipInDB(kw)
+		if err == nil && existing != nil {
+			logger.Info("Found clip in DB cache",
+				zap.String("keyword", kw),
+				zap.String("clip_id", existing.ClipID),
+			)
+			s.markCheckpoint(jobID, ClipJobStatusDone, "", existing)
+			return *existing, false, true
 		}
 	}
 
-	return nil, fmt.Errorf("clip not found for keyword: %s", keyword)
-}
-
-// downloadClip uses yt-dlp to download a short clip for the keyword.
-func (s *Service) downloadClip(ctx context.Context, keyword string) (string, error) {
-	// ... (no changes here but keeping for context)
-	if s.ytDlpPath == "" {
-		return "", fmt.Errorf("yt-dlp not configured")
-	}
-
-	outputDir := filepath.Join(s.downloadDir, "dynamic_clips")
-	os.MkdirAll(outputDir, 0755)
-
-	outputPattern := filepath.Join(outputDir, fmt.Sprintf("dynamic_%s_%%(id)s.%%(ext)s", sanitizeFilename(keyword)))
-
-	// Search YouTube for the keyword and download a short clip (max 60s)
-	args := []string{
-		"--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-		"--max-downloads", "1",
-		"--match-filter", "duration < 60",
-		"--output", outputPattern,
-		"--no-playlist",
-		fmt.Sprintf("ytsearch1:%s boxing highlights", keyword),
-	}
-
-	cmd := exec.CommandContext(ctx, s.ytDlpPath, args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("yt-dlp failed: %w", err)
-	}
-
-	// Find the downloaded file
-	files, err := filepath.Glob(filepath.Join(outputDir, fmt.Sprintf("dynamic_%s_*", sanitizeFilename(keyword))))
-	if err != nil || len(files) == 0 {
-		return "", fmt.Errorf("no files found after download")
-	}
-
-	// Return the video file (not thumbnail)
-	for _, f := range files {
-		ext := strings.ToLower(filepath.Ext(f))
-		if ext == ".mp4" || ext == ".webm" || ext == ".mkv" {
-			return f, nil
+	if shouldPreferYouTubeKeyword(kw) {
+		if result, uploaded, found := s.processYTDLPKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+		if result, uploaded, found := s.processArtlistKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+	} else {
+		if result, uploaded, found := s.processArtlistKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+		if result, uploaded, found := s.processYTDLPKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
 		}
 	}
-
-	return files[0], nil
+	return SearchResult{}, false, false
 }
 
-// uploadToDrive uploads a file to Google Drive and returns the Drive URL.
-func (s *Service) uploadToDrive(ctx context.Context, filePath, keyword string) (*DriveUploadResult, error) {
-	// ... (no changes here but keeping for context)
-	if s.driveClient == nil {
-		return nil, fmt.Errorf("Drive client not available")
-	}
-
-	// Upload file to stock root folder (folder creation not yet implemented)
-	filename := sanitizeFilename(keyword) + "_" + filepath.Base(filePath)
-	fileID, err := s.driveClient.UploadFile(ctx, filePath, "", filename)
+func (s *Service) processArtlistKeyword(ctx context.Context, kw string, jobID string) (SearchResult, bool, bool) {
+	artlistPath, artlistClip, err := s.downloadFromArtlist(ctx, kw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload file: %w", err)
+		logger.Warn("Artlist direct download failed, falling back to yt-dlp search",
+			zap.String("keyword", kw),
+			zap.Error(err),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusDownloaded, "", nil)
+	defer os.Remove(artlistPath)
+
+	// Deduplicate by source clip identity + keyword: skip new upload when already present.
+	if existing := s.finder.FindDownloadedArtlistBySource(kw, artlistClip); existing != nil {
+		logger.Info("Skipping upload for already downloaded Artlist source clip",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.String("drive_id", existing.DriveID),
+		)
+		return *existing, false, true
 	}
 
-	return &DriveUploadResult{
-		DriveID:  fileID,
-		Filename: filename,
-		DriveURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view", fileID),
-	}, nil
+	normalizedPath, normErr := s.processor.NormalizeClipToSevenSeconds1080p(ctx, artlistPath, artlistClip.Duration)
+	if normErr != nil {
+		logger.Warn("Artlist clip normalization failed, falling back to yt-dlp search",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.Error(normErr),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusProcessed, "", nil)
+	defer os.Remove(normalizedPath)
+
+	visualHash, hashErr := s.processor.ComputeVisualHash(ctx, normalizedPath)
+	if hashErr != nil {
+		logger.Warn("Failed to compute clip visual hash",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.Error(hashErr),
+		)
+	}
+
+	if existing := s.finder.FindDownloadedArtlistByVisualAndTitle(kw, visualHash, artlistClip.Name); existing != nil {
+		logger.Info("Skipping upload for visually duplicated Artlist clip",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.String("drive_id", existing.DriveID),
+		)
+		s.markCheckpoint(jobID, ClipJobStatusDone, "", existing)
+		return *existing, false, true
+	}
+
+	driveResult, upErr := s.uploader.UploadToDrive(ctx, normalizedPath, kw)
+	if upErr != nil {
+		logger.Warn("Artlist clip upload failed, falling back to yt-dlp search",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.Error(upErr),
+		)
+		return SearchResult{}, false, false
+	}
+	res := searchResultFromDrive(kw, driveResult)
+	s.uploadClipSidecarText(ctx, kw, driveResult, buildArtlistClipSidecarText(kw, artlistClip))
+	res.TextDriveID = driveResult.TextFileID
+	res.TextDriveURL = driveResult.TextURL
+	s.markCheckpoint(jobID, ClipJobStatusUploaded, "", &res)
+
+	s.persister.PersistClipMetadata(kw, driveResult, normalizedPath, &artlistClip, visualHash, nil)
+
+	logger.Info("Dynamic Artlist clip processed and registered",
+		zap.String("keyword", kw),
+		zap.String("clip_id", artlistClip.ID),
+		zap.String("drive_url", driveResult.DriveURL),
+	)
+	return res, true, true
 }
 
-// saveToStockDB saves the new clip metadata to StockDB.
-func (s *Service) saveToStockDB(keyword string, driveResult *DriveUploadResult) error {
-	if s.stockDB == nil {
-		return fmt.Errorf("StockDB not available")
-	}
-
-	clip := stockdb.StockClipEntry{
-		ClipID:   driveResult.DriveID,
-		FolderID: "Stock/Artlist/" + keyword,
-		Filename: driveResult.Filename,
-		Source:   "dynamic",
-		Tags:     []string{keyword},
-		Duration: 0,
-	}
-
-	return s.stockDB.UpsertClip(clip)
-}
-
-// saveToArtlistDB saves the new clip metadata to ArtlistDB.
-func (s *Service) saveToArtlistDB(keyword string, driveResult *DriveUploadResult, downloadPath string) error {
-	if s.artlistDB == nil {
-		return fmt.Errorf("ArtlistDB not available")
-	}
-
-	clip := artlistdb.ArtlistClip{
-		ID:             "dynamic_" + driveResult.DriveID,
-		VideoID:        driveResult.DriveID,
-		Title:          driveResult.Filename,
-		Name:           driveResult.Filename,
-		Term:           keyword,
-		Folder:         "Stock/Artlist/" + keyword,
-		DriveFileID:    driveResult.DriveID,
-		DriveURL:       driveResult.DriveURL,
-		DownloadPath:   downloadPath,
-		Downloaded:     true,
-		DownloadedAt:   time.Now().Format(time.RFC3339),
-		AddedAt:        time.Now().Format(time.RFC3339),
-		Category:       "Dynamic Search",
-		Tags:           []string{keyword, "dynamic", "auto-registered"},
-		LocalPathDrive: "Stock/Artlist/" + keyword + "/" + driveResult.Filename,
-	}
-
-	// Add search result entry if doesn't exist
-	err := s.artlistDB.AddSearchResults(keyword, []artlistdb.ArtlistClip{clip})
+func (s *Service) processYTDLPKeyword(ctx context.Context, kw string, jobID string) (SearchResult, bool, bool) {
+	downloadedPath, ytMeta, err := s.downloadClip(ctx, kw)
 	if err != nil {
-		return err
+		if errors.Is(err, ErrYouTubeAlreadyDownloaded) {
+			if existing := s.finder.FindDownloadedYouTubeByMeta(ytMeta); existing != nil {
+				logger.Info("Skipping download for already downloaded YouTube interview hash",
+					zap.String("keyword", kw),
+					zap.String("video_id", strings.TrimSpace(ytMeta.VideoID)),
+					zap.String("drive_id", existing.DriveID),
+				)
+				s.markCheckpoint(jobID, ClipJobStatusDone, "", existing)
+				return *existing, false, true
+			}
+		}
+		logger.Warn("Failed to download clip for keyword",
+			zap.String("keyword", kw),
+			zap.Error(err),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusDownloaded, "", nil)
+	defer os.Remove(downloadedPath)
+
+	s.markCheckpoint(jobID, ClipJobStatusProcessed, "", nil)
+	results, uploads, procErr := s.processYouTubeMomentsFromDownloaded(ctx, kw, downloadedPath, ytMeta)
+	if procErr != nil || len(results) == 0 {
+		logger.Warn("Failed to process yt-dlp moments",
+			zap.String("keyword", kw),
+			zap.Error(procErr),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusUploaded, "", &results[0])
+	return results[0], uploads > 0, true
+}
+
+func (s *Service) downloadFromArtlist(ctx context.Context, keyword string) (string, clip.IndexedClip, error) {
+	return s.downloader.DownloadFromArtlist(ctx, keyword)
+}
+
+func (s *Service) downloadClip(ctx context.Context, keyword string) (string, *YouTubeClipMetadata, error) {
+	return s.downloader.DownloadClipWithMetadata(ctx, keyword)
+}
+
+func searchResultFromDrive(kw string, driveResult *DriveUploadResult) SearchResult {
+	folder := driveResult.FolderPath
+	if folder == "" {
+		folder = "Stock/Artlist/" + kw
+	}
+	return SearchResult{
+		Keyword:      kw,
+		ClipID:       driveResult.DriveID,
+		Filename:     driveResult.Filename,
+		DriveURL:     driveResult.DriveURL,
+		DriveID:      driveResult.DriveID,
+		Folder:       folder,
+		FolderID:     driveResult.FolderID,
+		TextDriveID:  driveResult.TextFileID,
+		TextDriveURL: driveResult.TextURL,
+	}
+}
+
+func (s *Service) uploadClipSidecarText(ctx context.Context, keyword string, driveResult *DriveUploadResult, content string) {
+	// Default behavior: avoid per-clip txt explosion in Drive.
+	// Enable only if explicitly requested.
+	if strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_ENABLE_PER_CLIP_TXT"))) != "true" {
+		return
+	}
+	if s.uploader == nil || driveResult == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	res, err := s.uploader.UploadTextSidecar(ctx, driveResult.FolderID, driveResult.Filename, keyword, content)
+	if err != nil {
+		logger.Warn("Failed to upload clip sidecar text",
+			zap.String("keyword", keyword),
+			zap.String("drive_id", driveResult.DriveID),
+			zap.Error(err),
+		)
+		return
+	}
+	driveResult.TextFileID = res.DriveID
+	driveResult.TextURL = res.DriveURL
+	driveResult.TextName = res.Filename
+}
+
+func buildArtlistClipSidecarText(keyword string, c clip.IndexedClip) string {
+	var b strings.Builder
+	b.WriteString("keyword: " + strings.TrimSpace(keyword) + "\n")
+	b.WriteString("source: artlist\n")
+	if strings.TrimSpace(c.ID) != "" {
+		b.WriteString("clip_id: " + strings.TrimSpace(c.ID) + "\n")
+	}
+	if strings.TrimSpace(c.Name) != "" {
+		b.WriteString("title: " + strings.TrimSpace(c.Name) + "\n")
+	}
+	if strings.TrimSpace(c.DownloadLink) != "" {
+		b.WriteString("source_url: " + strings.TrimSpace(c.DownloadLink) + "\n")
+	} else if strings.TrimSpace(c.DriveLink) != "" {
+		b.WriteString("source_url: " + strings.TrimSpace(c.DriveLink) + "\n")
+	}
+	if len(c.Tags) > 0 {
+		b.WriteString("tags: " + strings.Join(c.Tags, ", ") + "\n")
+	}
+	b.WriteString("\ntranscript:\n")
+	b.WriteString("Not available for Artlist source in current pipeline.\n")
+	return b.String()
+}
+
+func buildYouTubeClipSidecarText(keyword string, m *YouTubeClipMetadata) string {
+	var b strings.Builder
+	b.WriteString("keyword: " + strings.TrimSpace(keyword) + "\n")
+	b.WriteString("source: youtube\n")
+	if m == nil {
+		b.WriteString("note: metadata unavailable (fallback download path)\n")
+		return b.String()
+	}
+	if strings.TrimSpace(m.VideoID) != "" {
+		b.WriteString("video_id: " + strings.TrimSpace(m.VideoID) + "\n")
+	}
+	if strings.TrimSpace(m.VideoURL) != "" {
+		b.WriteString("video_url: " + strings.TrimSpace(m.VideoURL) + "\n")
+	}
+	if strings.TrimSpace(m.Title) != "" {
+		b.WriteString("title: " + strings.TrimSpace(m.Title) + "\n")
+	}
+	if strings.TrimSpace(m.Channel) != "" {
+		b.WriteString("channel: " + strings.TrimSpace(m.Channel) + "\n")
+	}
+	if strings.TrimSpace(m.Uploader) != "" {
+		b.WriteString("uploader: " + strings.TrimSpace(m.Uploader) + "\n")
+	}
+	if m.ViewCount > 0 {
+		b.WriteString(fmt.Sprintf("views: %d\n", m.ViewCount))
+	}
+	if m.DurationSec > 0 {
+		b.WriteString(fmt.Sprintf("duration_sec: %.1f\n", m.DurationSec))
+	}
+	if strings.TrimSpace(m.UploadDate) != "" {
+		b.WriteString("upload_date: " + strings.TrimSpace(m.UploadDate) + "\n")
+	}
+	if strings.TrimSpace(m.SearchQuery) != "" {
+		b.WriteString("search_query: " + strings.TrimSpace(m.SearchQuery) + "\n")
+	}
+	if m.Relevance != 0 {
+		b.WriteString(fmt.Sprintf("relevance_score: %d\n", m.Relevance))
+	}
+	if m.SelectedMoment != nil {
+		b.WriteString(fmt.Sprintf("selected_moment_start_sec: %.1f\n", m.SelectedMoment.StartSec))
+		b.WriteString(fmt.Sprintf("selected_moment_end_sec: %.1f\n", m.SelectedMoment.EndSec))
+		if strings.TrimSpace(m.SelectedMoment.Reason) != "" {
+			b.WriteString("selected_moment_reason: " + strings.TrimSpace(m.SelectedMoment.Reason) + "\n")
+		}
+		if strings.TrimSpace(m.SelectedMoment.Source) != "" {
+			b.WriteString("selected_moment_source: " + strings.TrimSpace(m.SelectedMoment.Source) + "\n")
+		}
+	}
+	if hash := buildYouTubeInterviewHash(m); hash != "" {
+		b.WriteString("interview_hash: " + hash + "\n")
+	}
+	if strings.TrimSpace(m.Description) != "" {
+		b.WriteString("\ndescription:\n")
+		b.WriteString(strings.TrimSpace(m.Description) + "\n")
+	}
+	b.WriteString("\ntranscript:\n")
+	if strings.TrimSpace(m.Transcript) != "" {
+		b.WriteString(strings.TrimSpace(m.Transcript) + "\n")
+	} else {
+		b.WriteString("Subtitles/transcript not available from source.\n")
+	}
+	return b.String()
+}
+
+func (s *Service) runPostCycleSync(ctx context.Context, newUploads int) {
+	s.mu.Lock()
+	syncFn := s.postCycleSync
+	s.mu.Unlock()
+
+	if syncFn == nil {
+		return
+	}
+	if err := syncFn(ctx); err != nil {
+		logger.Warn("Post-cycle DB sync failed",
+			zap.Int("new_uploads", newUploads),
+			zap.Error(err),
+		)
+		return
+	}
+	logger.Info("Post-cycle DB sync completed",
+		zap.Int("new_uploads", newUploads),
+	)
+}
+
+func (s *Service) isKeywordBlocked(keyword string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	until, ok := s.keywordBlocked[keyword]
+	if !ok {
+		return false
+	}
+	if time.Now().After(until) {
+		delete(s.keywordBlocked, keyword)
+		delete(s.keywordFailures, keyword)
+		return false
+	}
+	return true
+}
+
+func (s *Service) recordKeywordFailure(keyword string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.keywordFailures[keyword]++
+	if s.keywordFailures[keyword] >= keywordFailThreshold {
+		s.keywordBlocked[keyword] = time.Now().Add(keywordBlockDuration)
+	}
+}
+
+func (s *Service) resetKeywordFailures(keyword string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.keywordFailures, keyword)
+	delete(s.keywordBlocked, keyword)
+}
+
+func (s *Service) ensureKeywordJobCheckpoint(keyword string) string {
+	s.mu.Lock()
+	store := s.checkpoints
+	s.mu.Unlock()
+	if store == nil {
+		return ""
 	}
 
-	// Mark it as downloaded explicitly to ensure metadata is consistent
-	return s.artlistDB.MarkClipDownloaded(clip.ID, keyword, driveResult.DriveID, driveResult.DriveURL, downloadPath)
+	if existing, ok := store.GetLatestByKeyword(keyword); ok && !existing.IsTerminal() {
+		existing.Attempts++
+		existing.Status = ClipJobStatusQueued
+		existing.LastError = ""
+		existing.UpdatedAt = time.Now().UTC()
+		_ = store.SaveOrUpdate(existing)
+		return existing.JobID
+	}
+
+	jobID := fmt.Sprintf("clip_%d_%s", time.Now().UTC().UnixNano(), sanitizeFilename(keyword))
+	checkpoint := ClipJobCheckpoint{
+		JobID:     jobID,
+		Keyword:   strings.TrimSpace(keyword),
+		Status:    ClipJobStatusQueued,
+		Attempts:  1,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	_ = store.SaveOrUpdate(checkpoint)
+	return jobID
 }
 
-// DriveUploadResult holds the result of a Drive upload.
-type DriveUploadResult struct {
-	DriveID  string
-	Filename string
-	DriveURL string
-}
-
-// sanitizeFilename removes special characters from a filename.
-func sanitizeFilename(name string) string {
-	result := strings.ReplaceAll(name, " ", "_")
-	result = strings.ReplaceAll(result, "/", "_")
-	result = strings.ReplaceAll(result, "\\", "_")
-	result = strings.ReplaceAll(result, ":", "_")
-	result = strings.ReplaceAll(result, "*", "_")
-	result = strings.ReplaceAll(result, "?", "_")
-	result = strings.ReplaceAll(result, "\"", "_")
-	result = strings.ReplaceAll(result, "<", "_")
-	result = strings.ReplaceAll(result, ">", "_")
-	result = strings.ReplaceAll(result, "|", "_")
-	return result
+func (s *Service) markCheckpoint(jobID string, status ClipJobStatus, errMsg string, result *SearchResult) {
+	if strings.TrimSpace(jobID) == "" {
+		return
+	}
+	s.mu.Lock()
+	store := s.checkpoints
+	s.mu.Unlock()
+	if store == nil {
+		return
+	}
+	if err := store.Transition(jobID, status, errMsg, result); err != nil {
+		logger.Debug("Failed to update clipsearch checkpoint",
+			zap.String("job_id", jobID),
+			zap.String("status", string(status)),
+			zap.Error(err),
+		)
+	}
+	if s.persister != nil {
+		keyword := ""
+		if checkpoint, ok := store.Get(jobID); ok {
+			keyword = checkpoint.Keyword
+		}
+		mappedStatus := "processing"
+		switch status {
+		case ClipJobStatusQueued:
+			mappedStatus = "queued"
+		case ClipJobStatusSearched, ClipJobStatusDownloaded, ClipJobStatusProcessed:
+			mappedStatus = "processing"
+		case ClipJobStatusUploaded, ClipJobStatusDone:
+			mappedStatus = "uploaded"
+		case ClipJobStatusFailed:
+			mappedStatus = "failed"
+		}
+		_ = s.persister.SaveJobStatus(keyword, "job_"+jobID, mappedStatus, errMsg)
+	}
 }

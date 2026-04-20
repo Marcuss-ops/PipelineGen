@@ -35,13 +35,14 @@ type ScriptDocRequest struct {
 	Duration         int      `json:"duration"`
 	Languages        []string `json:"languages"`
 	Template         string   `json:"template"`
+	AssociationMode  string   `json:"association_mode,omitempty"`
 	BoostKeywords    []string `json:"boost_keywords"`
 	SuppressKeywords []string `json:"suppress_keywords"`
 }
 
 const (
 	MinDuration     = 30
-	MaxDuration     = 180
+	MaxDuration     = 600
 	DefaultDuration = 80
 	MaxLanguages    = 5
 
@@ -67,13 +68,25 @@ var LanguageInfo = map[string]struct {
 
 // LanguageResult holds the result for a single language.
 type LanguageResult struct {
-	Language          string            `json:"language"`
-	FullText          string            `json:"full_text"`
-	FrasiImportanti   []string          `json:"frasi_importanti"`
-	NomiSpeciali      []string          `json:"nomi_speciali"`
-	ParoleImportant   []string          `json:"parole_importanti"`
-	EntitaConImmagine map[string]string `json:"entita_con_immagine,omitempty"`
-	Associations      []ClipAssociation `json:"associations"`
+	Language            string            `json:"language"`
+	FullText            string            `json:"full_text"`
+	Chapters            []ScriptChapter   `json:"chapters,omitempty"`
+	FrasiImportanti     []string          `json:"frasi_importanti"`
+	NomiSpeciali        []string          `json:"nomi_speciali"`
+	ParoleImportant     []string          `json:"parole_importanti"`
+	EntitaConImmagine   map[string]string `json:"entita_con_immagine,omitempty"`
+	Associations        []ClipAssociation `json:"associations"`
+	StockAssociations   []ClipAssociation `json:"stock_associations,omitempty"`
+	ArtlistAssociations []ClipAssociation `json:"artlist_associations,omitempty"`
+	ArtlistTimeline     []ArtlistTimeline `json:"artlist_timeline,omitempty"`
+}
+
+// ArtlistTimeline groups content windows by timestamp to direct Artlist folders.
+type ArtlistTimeline struct {
+	Timestamp  string `json:"timestamp"`
+	Keyword    string `json:"keyword"`
+	FolderName string `json:"folder_name"`
+	FolderURL  string `json:"folder_url"`
 }
 
 // ScriptDocResult represents the output of the pipeline.
@@ -107,20 +120,39 @@ type StockFolder struct {
 
 // ScriptDocService orchestrates the full pipeline.
 type ScriptDocService struct {
-	generator             *ollama.Generator
-	docClient             *drive.DocClient
-	artlistIndex          *ArtlistIndex
-	artlistSrc            *clip.ArtlistSource
-	artlistDB             *artlistdb.ArtlistDB
-	stockDB               *stockdb.StockDB
-	stockFolders          map[string]StockFolder
-	stockFoldersMu        sync.RWMutex
-	stockFoldersCacheTime time.Time
-	stockFoldersCacheTTL  time.Duration
-	driveClient           *drive.Client
-	stockRootFolderID     string
-	currentTemplate       string
-	clipSearch            *clipsearch.Service
-	dynamicClips          []clipsearch.SearchResult
-	dynamicClipsMu        sync.Mutex
+	generator              *ollama.Generator
+	docClient              *drive.DocClient
+	artlistIndex           *ArtlistIndex
+	artlistSrc             *clip.ArtlistSource
+	artlistDB              *artlistdb.ArtlistDB
+	stockDB                *stockdb.StockDB
+	stockFolders           map[string]StockFolder
+	stockFoldersMu         sync.RWMutex
+	stockFoldersCacheTime  time.Time
+	stockFoldersCacheTTL   time.Duration
+	driveClient            *drive.Client
+	stockRootFolderID      string
+	currentTemplate        string
+	currentAssociationMode string
+	currentTopic           string
+	folderTopic            string
+	clipSearch             *clipsearch.Service
+	dynamicClips           []clipsearch.SearchResult
+	dynamicClipsMu         sync.Mutex
+}
+
+// ScriptChapter represents a semantic chapter in a generated script.
+type ScriptChapter struct {
+	Index            int      `json:"index"`
+	Title            string   `json:"title"`
+	StartSentence    int      `json:"start_sentence"`
+	EndSentence      int      `json:"end_sentence"`
+	StartTime        int      `json:"start_time"`
+	EndTime          int      `json:"end_time"`
+	SentenceCount    int      `json:"sentence_count"`
+	DominantEntities []string `json:"dominant_entities,omitempty"`
+	Summary          string   `json:"summary,omitempty"`
+	Confidence       float64  `json:"confidence,omitempty"`
+	SourceText       string   `json:"source_text,omitempty"`
+	TranslatedText   string   `json:"translated_text,omitempty"`
 }

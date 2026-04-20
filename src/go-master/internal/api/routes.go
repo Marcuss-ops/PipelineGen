@@ -26,10 +26,7 @@ import (
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
-	Job               *handlers.JobHandler
-	Worker            *handlers.WorkerHandler
 	Health            *handlers.HealthHandler
-	Admin             *handlers.AdminHandler
 	Video             *handlers.VideoHandler
 	YouTube           *handlers.YouTubeHandler
 	Script            *handlers.ScriptHandler
@@ -42,9 +39,6 @@ type Handlers struct {
 	Clip              *handlers.ClipHandler
 	ClipIndex         *handlers.ClipIndexHandler
 	Catalog           *handlers.CatalogHandler
-	Dashboard         *handlers.DashboardHandler
-	Stats             *handlers.StatsHandler
-	Scraper           *handlers.ScraperHandler
 	Download          *handlers.DownloadHandler
 	Timestamp         *handlers.TimestampHandler
 	ClipApproval      *handlers.ClipApprovalHandler
@@ -56,9 +50,9 @@ type Handlers struct {
 	ScriptDocs        *handlers.ScriptDocsHandler
 	ScriptPipeline    *handlers.ScriptPipelineHandler
 	ChannelMonitor    *handlers.ChannelMonitorHandler
-	AsyncPipeline     *handlers.AsyncPipelineHandler
 	ArtlistPipeline   *artlistpipeline.Handler
 	Harvester         *harvester.Handler
+	Utility           *handlers.UtilityHandler
 }
 
 // RouterDepsWithHandlers holds both handlers and raw dependencies
@@ -159,6 +153,9 @@ func (r *Router) Setup() *gin.Engine {
 
 		// Drive read endpoints (folders, folder content)
 		h.Drive.RegisterPublicRoutes(public)
+
+		// Internal utilities (can be accessed by scripts without auth)
+		public.GET("/internal/slug", h.Utility.Slugify)
 	}
 
 	// API routes
@@ -169,10 +166,6 @@ func (r *Router) Setup() *gin.Engine {
 		protected.Use(authMW)
 		protected.Use(rateLimitMW.Handler)
 		{
-			// Job management
-			h.Job.RegisterRoutes(protected)
-			// Worker management
-			h.Worker.RegisterRoutes(protected)
 			// Video processing
 			h.Video.RegisterRoutes(protected)
 			// YouTube integration
@@ -198,14 +191,6 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Catalog != nil {
 				h.Catalog.RegisterRoutes(protected)
 			}
-			// Dashboard
-			h.Dashboard.RegisterRoutes(protected)
-			// Stats
-			h.Stats.RegisterRoutes(protected)
-			// Scraper
-			h.Scraper.RegisterRoutes(protected)
-			// Admin
-			h.Admin.RegisterRoutes(protected)
 			// Download
 			h.Download.RegisterRoutes(protected)
 
@@ -237,14 +222,12 @@ func (r *Router) Setup() *gin.Engine {
 			if h.ChannelMonitor != nil {
 				h.ChannelMonitor.RegisterRoutes(protected)
 			}
-			if h.AsyncPipeline != nil {
-				h.AsyncPipeline.RegisterRoutes(protected)
-			}
 			if h.ArtlistPipeline != nil {
 				h.ArtlistPipeline.RegisterRoutes(protected)
 			}
 			if h.Harvester != nil {
-				h.Harvester.RegisterRoutes(protected)
+				harvesterGroup := protected.Group("/harvester")
+				h.Harvester.RegisterRoutes(harvesterGroup)
 			}
 			if h.ScriptPipeline != nil {
 				h.ScriptPipeline.RegisterRoutes(protected)

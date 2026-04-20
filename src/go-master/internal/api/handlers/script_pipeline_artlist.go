@@ -27,10 +27,14 @@ func (h *ScriptPipelineHandler) AssociateArtlist(c *gin.Context) {
 	for _, seg := range req.Segments {
 		var clips []ArtlistClipRef
 
-		// Collect search terms from segment text and entities
-		searchTerms := scriptdocs.ExtractKeywords(seg.Text)
+		// Use generic concepts, not full sentence text.
+		searchTerms := buildGenericClipTerms(req.Topic, seg.Text)
 		if len(searchTerms) == 0 {
-			searchTerms = append(searchTerms, seg.Text)
+			searchTerms = uniqueAndLimit(scriptdocs.ExtractKeywords(seg.Text), maxEntityListItems)
+		}
+		bestTerm := seg.Text
+		if len(searchTerms) > 0 {
+			bestTerm = searchTerms[0]
 		}
 
 		// 1. Try local ArtlistDB ONLY (Pure source)
@@ -46,7 +50,7 @@ func (h *ScriptPipelineHandler) AssociateArtlist(c *gin.Context) {
 				clips = append(clips, ArtlistClipRef{
 					ClipID:    r.URL,
 					Name:      r.Name,
-					Term:      seg.Text,
+					Term:      bestTerm,
 					URL:       r.DriveURL,
 					Folder:    r.FolderID,
 					Timestamp: fmt.Sprintf("%d-%d sec", seg.StartTime, seg.EndTime),
@@ -68,7 +72,7 @@ func (h *ScriptPipelineHandler) AssociateArtlist(c *gin.Context) {
 				clips = append(clips, ArtlistClipRef{
 					ClipID:    r.URL,
 					Name:      r.Name,
-					Term:      seg.Text,
+					Term:      bestTerm,
 					URL:       r.URL,
 					Folder:    "Stock/Artlist (Indexed)",
 					Timestamp: fmt.Sprintf("%d-%d sec", seg.StartTime, seg.EndTime),

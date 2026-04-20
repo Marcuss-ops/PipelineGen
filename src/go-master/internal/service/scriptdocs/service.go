@@ -19,6 +19,7 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 	}
 
 	s.currentTemplate = req.Template
+	s.currentAssociationMode = req.AssociationMode
 
 	logger.Info("Starting script doc pipeline",
 		zap.String("topic", req.Topic),
@@ -67,7 +68,18 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 				return
 			}
 
-			frasiImportanti := SelectImportantPhrases(fullText, req.Topic, util.Min(5, len(sentences)))
+			chapters := s.planSemanticChapters(ctx, req.Topic, fullText, req.Duration, 4, info.PromptLang)
+
+			frasiImportanti := make([]string, 0, util.Min(5, len(sentences)))
+			for _, chapter := range chapters {
+				phrases := SelectImportantPhrases(chapter.SourceText, req.Topic, 1)
+				if len(phrases) > 0 {
+					frasiImportanti = append(frasiImportanti, phrases[0])
+				}
+			}
+			if len(frasiImportanti) == 0 {
+				frasiImportanti = SelectImportantPhrases(fullText, req.Topic, util.Min(5, len(sentences)))
+			}
 			if len(frasiImportanti) == 0 {
 				frasiImportanti = sentences[:util.Min(4, len(sentences))]
 			}
@@ -75,8 +87,14 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 			paroleImportant := extractKeywords(fullText)
 			entitaConImmagine := extractEntitiesWithImages(sentences)
 
+			// Keep outputs compact and stable for downstream matching and docs readability.
+			frasiImportanti = limitStringList(frasiImportanti, 5)
+			nomiSpeciali = limitStringList(nomiSpeciali, 5)
+			paroleImportant = limitStringList(paroleImportant, 5)
+			entitaConImmagine = limitEntityImageMap(entitaConImmagine, 5)
+
 			keywords := s.extractClipKeywords(frasiImportanti, nomiSpeciali, paroleImportant)
-			if len(keywords) > 0 && s.clipSearch != nil {
+			if normalizeAssociationMode(req.AssociationMode) != AssociationModeFullArtlist && len(keywords) > 0 && s.clipSearch != nil {
 				logger.Info("Starting dynamic clip search", zap.Strings("keywords", keywords))
 				dynamicClips, err := s.clipSearch.SearchClips(ctx, keywords)
 				if err != nil {
@@ -90,15 +108,22 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 			}
 
 			associations := s.associateClips(frasiImportanti, stockFolder, req.Topic)
+			associations = filterAssociationsByMode(associations, req.AssociationMode)
+			stockAssociations, artlistAssociations := s.splitAssociationsBySource(associations)
+			timeline := s.buildArtlistTimeline(associations, req.Duration)
 
 			result := LanguageResult{
-				Language:          lang,
-				FullText:          fullText,
-				FrasiImportanti:   frasiImportanti,
-				NomiSpeciali:      nomiSpeciali,
-				ParoleImportant:   paroleImportant,
-				EntitaConImmagine: entitaConImmagine,
-				Associations:      associations,
+				Language:            lang,
+				FullText:            fullText,
+				Chapters:            chapters,
+				FrasiImportanti:     frasiImportanti,
+				NomiSpeciali:        nomiSpeciali,
+				ParoleImportant:     paroleImportant,
+				EntitaConImmagine:   entitaConImmagine,
+				Associations:        associations,
+				StockAssociations:   stockAssociations,
+				ArtlistAssociations: artlistAssociations,
+				ArtlistTimeline:     timeline,
 			}
 
 			mu.Lock()

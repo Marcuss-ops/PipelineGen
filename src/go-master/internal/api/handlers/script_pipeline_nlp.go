@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -31,24 +32,24 @@ func (h *ScriptPipelineHandler) DivideIntoSegments(c *gin.Context) {
 		req.MaxSegments = 3
 	}
 
-	sentences := scriptdocs.ExtractSentences(req.Script)
-	if len(sentences) == 0 {
+	topic := inferPlannerTopic(req.Script)
+	segments, _, err := h.buildSemanticSegments(c.Request.Context(), topic, req.Script, 60, "english", req.MaxSegments)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	if len(segments) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "no sentences found"})
 		return
 	}
-
-	var segments []Segment
-	avgDuration := 60 / len(sentences)
-	for i, sentence := range sentences {
-		if i >= req.MaxSegments {
-			break
+	if len(segments) < req.MaxSegments {
+		sentences := scriptdocs.ExtractSentences(req.Script)
+		if len(sentences) > 1 {
+			segments = chaptersToSegments(fallbackChapters(sentences, 60))
+			if len(segments) > req.MaxSegments {
+				segments = segments[:req.MaxSegments]
+			}
 		}
-		segments = append(segments, Segment{
-			Index:     i,
-			Text:      sentence,
-			StartTime: i * avgDuration,
-			EndTime:   (i + 1) * avgDuration,
-		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -56,6 +57,41 @@ func (h *ScriptPipelineHandler) DivideIntoSegments(c *gin.Context) {
 		"segments": segments,
 		"count":    len(segments),
 	})
+}
+
+func inferPlannerTopic(script string) string {
+	sentences := scriptdocs.ExtractSentences(script)
+	if len(sentences) == 0 {
+		return ""
+	}
+
+	seen := make(map[string]bool)
+	entities := make([]string, 0, 3)
+	for _, sentence := range sentences {
+		for _, entity := range scriptdocs.ExtractProperNouns([]string{sentence}) {
+			cleaned := strings.TrimSpace(entity)
+			if cleaned == "" {
+				continue
+			}
+			key := strings.ToLower(cleaned)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			entities = append(entities, cleaned)
+			if len(entities) >= 3 {
+				break
+			}
+		}
+		if len(entities) >= 3 {
+			break
+		}
+	}
+
+	if len(entities) > 0 {
+		return strings.Join(entities, " to ")
+	}
+	return sentences[0]
 }
 
 type ExtractEntitiesRequest struct {
@@ -77,12 +113,7 @@ type ExtractEntitiesResponse struct {
 	FrasiImportanti   []string          `json:"frasi_importanti"`
 	NomiSpeciali      []string          `json:"nomi_speciali"`
 	ParoleImportanti  []string          `json:"parole_importanti"`
-	EntitaConImmagine []EntityWithImage `json:"entita_con_immagine"`
-}
-
-type EntityWithImage struct {
-	Entity   string `json:"entity"`
-	ImageURL string `json:"image_url"`
+	EntitaConImmagine []EntityImage     `json:"entita_con_immagine"`
 }
 
 func (h *ScriptPipelineHandler) ExtractEntities(c *gin.Context) {
@@ -168,9 +199,9 @@ func (h *ScriptPipelineHandler) ExtractEntities(c *gin.Context) {
 	uniqueNomi := make([]string, 0)
 	seenNomi := make(map[string]bool)
 	for _, n := range nomiSpecialiAll {
-		lower := strings.ToLower(n)
-		if !seenNomi[lower] && len(n) > 2 {
-			seenNomi[lower] = true
+		norm := normalizeEntityToken(n)
+		if !seenNomi[norm] && len(norm) > 2 {
+			seenNomi[norm] = true
 			uniqueNomi = append(uniqueNomi, n)
 		}
 	}
@@ -178,14 +209,14 @@ func (h *ScriptPipelineHandler) ExtractEntities(c *gin.Context) {
 	uniqueParole := make([]string, 0)
 	seenParole := make(map[string]bool)
 	for _, p := range paroleImportantiAll {
-		lower := strings.ToLower(p)
-		if !seenParole[lower] && len(p) > 2 {
-			seenParole[lower] = true
+		norm := normalizeEntityToken(p)
+		if !seenParole[norm] && len(norm) > 2 {
+			seenParole[norm] = true
 			uniqueParole = append(uniqueParole, p)
 		}
 	}
 
-	entitaConImmagine := make([]EntityWithImage, 0)
+	entitaConImmagine := make([]EntityImage, 0)
 	allSentences := make([]string, 0)
 	for _, seg := range req.Segments {
 		allSentences = append(allSentences, seg.Text)
@@ -194,13 +225,25 @@ func (h *ScriptPipelineHandler) ExtractEntities(c *gin.Context) {
 		entityImages := scriptdocs.ExtractEntitiesWithImages(allSentences)
 		for entity, imageURL := range entityImages {
 			if imageURL != "" {
-				entitaConImmagine = append(entitaConImmagine, EntityWithImage{
+				entitaConImmagine = append(entitaConImmagine, EntityImage{
 					Entity:   entity,
 					ImageURL: imageURL,
 				})
 			}
 		}
 	}
+
+	// Hard cap to avoid noisy outputs.
+	const tightLimit = 6
+	frasiImportanti = uniqueAndLimit(frasiImportanti, tightLimit)
+	uniqueNomi = uniqueAndLimit(uniqueNomi, tightLimit)
+	uniqueParole = uniqueAndLimit(uniqueParole, tightLimit)
+	entitaConImmagine = uniqueEntitiesWithImage(entitaConImmagine, tightLimit)
+	allEntities = uniqueAndLimit(allEntities, tightLimit)
+
+	sort.Strings(frasiImportanti)
+	sort.Strings(uniqueNomi)
+	sort.Strings(uniqueParole)
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":                  true,

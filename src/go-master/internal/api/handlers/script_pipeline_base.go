@@ -4,6 +4,8 @@ package handlers
 import (
 	"github.com/gin-gonic/gin"
 
+	"fmt"
+	"strings"
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/clipsearch"
@@ -11,21 +13,19 @@ import (
 	"velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/internal/stockdb"
 	"velox/go-master/internal/upload/drive"
-	"strings"
-	"fmt"
 )
 
 type ScriptPipelineHandler struct {
-	generator       *ollama.Generator
-	docClient       *drive.DocClient
-	stockDB         *stockdb.StockDB
-	artlistDB       *artlistdb.ArtlistDB
-	artlistIndex    *scriptdocs.ArtlistIndex
-	artlistSrc      *clip.ArtlistSource
-	driveClient     *drive.Client
-	clipSearch      *clipsearch.Service
-	clipIndexer       *clip.Indexer
-	stockRootFolder   string
+	generator            *ollama.Generator
+	docClient            *drive.DocClient
+	stockDB              *stockdb.StockDB
+	artlistDB            *artlistdb.ArtlistDB
+	artlistIndex         *scriptdocs.ArtlistIndex
+	artlistSrc           *clip.ArtlistSource
+	driveClient          *drive.Client
+	clipSearch           *clipsearch.Service
+	clipIndexer          *clip.Indexer
+	stockRootFolder      string
 	artlistDriveFolderID string // Artlist Drive folder ID for document linking
 }
 
@@ -48,16 +48,16 @@ func NewScriptPipelineHandler(
 		fmt.Printf("DEBUG: NewScriptPipelineHandler: artlistIndex is LOADED with %d clips\n", len(ai.Clips))
 	}
 	return &ScriptPipelineHandler{
-		generator:           gen,
-		docClient:           dc,
-		stockDB:             sdb,
-		artlistDB:           alDB,
-		artlistIndex:        ai,
-		artlistSrc:          alSrc,
-		driveClient:         driveClient,
-		clipSearch:          clipSearch,
-		clipIndexer:         clipIndexer,
-		stockRootFolder:     stockRootFolder,
+		generator:            gen,
+		docClient:            dc,
+		stockDB:              sdb,
+		artlistDB:            alDB,
+		artlistIndex:         ai,
+		artlistSrc:           alSrc,
+		driveClient:          driveClient,
+		clipSearch:           clipSearch,
+		clipIndexer:          clipIndexer,
+		stockRootFolder:      stockRootFolder,
 		artlistDriveFolderID: artlistDriveFolderID,
 	}
 }
@@ -67,6 +67,7 @@ func (h *ScriptPipelineHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	{
 		script.POST("/generate-text", h.GenerateText)
 		script.POST("/divide", h.DivideIntoSegments)
+		script.POST("/plan-chapters", h.PlanChapters)
 		script.POST("/extract-entities", h.ExtractEntities)
 		script.POST("/associate-stock", h.AssociateStock)
 		script.POST("/associate-artlist", h.AssociateArtlist)

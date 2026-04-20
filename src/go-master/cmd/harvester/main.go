@@ -15,10 +15,9 @@ import (
 	"velox/go-master/internal/queue"
 	pgstorage "velox/go-master/internal/storage/postgres"
 	"velox/go-master/internal/storage/jsondb"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/youtube"
 	"velox/go-master/internal/downloader"
-	"velox/go-master/internal/clip"
+	"velox/go-master/internal/clipdb"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 )
@@ -70,7 +69,7 @@ func main() {
 
 	// Initialize ClipDB (Required for deduplication)
 	clipDBPath := cfg.Storage.DataDir + "/clips_index.db"
-	clipDB, err := clip.OpenClipDB(clipDBPath)
+	clipDB, err := clipdb.Open(clipDBPath)
 	if err != nil {
 		log.Warn("Failed to open ClipDB", zap.Error(err))
 	} else {

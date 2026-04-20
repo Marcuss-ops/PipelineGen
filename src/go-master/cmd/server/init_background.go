@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -44,7 +45,8 @@ func initBackgroundServices(
 		}
 		monitorCfg := channelmonitor.MonitorConfig{
 			Channels: fileCfg.Channels, CheckInterval: fileCfg.CheckInterval,
-			StockRootID: fileCfg.StockRootID, YtDlpPath: fileCfg.YtDlpPath,
+			VideoTimeframe: fileCfg.VideoTimeframe,
+			StockRootID:    fileCfg.StockRootID, YtDlpPath: fileCfg.YtDlpPath,
 			CookiesPath: fileCfg.CookiesPath, MaxClipDuration: fileCfg.MaxClipDuration,
 			OllamaURL: fileCfg.OllamaURL,
 		}
@@ -63,6 +65,9 @@ func initBackgroundServices(
 		}
 		if monitorCfg.CheckInterval == 0 {
 			monitorCfg.CheckInterval = 24 * time.Hour
+		}
+		if monitorCfg.VideoTimeframe == "" {
+			monitorCfg.VideoTimeframe = "month"
 		}
 		if monitorCfg.MaxClipDuration == 0 {
 			monitorCfg.MaxClipDuration = 60
@@ -125,6 +130,19 @@ func initBackgroundServices(
 		clipAdapter := adapters.NewClipDBToHarvesterAdapter(clips.ClipDB)
 		harvesterSvc = harvester.NewHarvester(harvesterConfig, ytAdapter, core.TikTokClient, driveClient, clipAdapter, core.Queue)
 		harvesterHandler = harvester.NewHandler(harvesterSvc)
+		if cronManager := harvesterHandler.CronManager(); cronManager != nil {
+			services = append(services, runtime.NewServiceAdapter(
+				"HarvesterCronManager",
+				func(ctx context.Context) error {
+					cronManager.Start(ctx)
+					return nil
+				},
+				func() error {
+					cronManager.Stop()
+					return nil
+				},
+			))
+		}
 
 		// Register as BackgroundService (native implementation)
 		services = append(services, harvesterSvc)

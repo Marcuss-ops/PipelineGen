@@ -1,0 +1,15 @@
+server:
+  port: 8080
+
+paths:
+  credentials_file: "credentials.json"
+  token_file: "token.json"
+  ytdlp_path: "/home/pierone/venv/bin/yt-dlp"
+
+drive:
+  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+  clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
+
+textgen:
+  default_model: "gemma3:4b"
+  timeout: 60

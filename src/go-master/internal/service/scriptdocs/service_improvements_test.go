@@ -199,7 +199,7 @@ func TestAssociateClipsWithConfidence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := svc.associateClips([]string{tt.phrase})
+			result := svc.associateClips([]string{tt.phrase}, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 			if len(result) != 1 {
 				t.Fatalf("associateClips() got %d results, want 1", len(result))
@@ -352,7 +352,7 @@ func TestParallelGeneration_Safety(t *testing.T) {
 				"Arrestato dalla polizia",
 				"Frase generica senza match",
 			}
-			result := svc.associateClips(frasi)
+			result := svc.associateClips(frasi, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 			if len(result) != 3 {
 				t.Errorf("Expected 3 associations, got %d", len(result))
 			}

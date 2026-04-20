@@ -1,41 +1,47 @@
-# Documentazione Velox Editing
+# 📚 Documentazione Velox Editing
 
-Documentazione completa del progetto organizzata per area.
+Benvenuto nella documentazione del progetto **VeloxEditing**. Qui troverai tutte le informazioni necessarie per comprendere l'architettura, configurare l'ambiente di sviluppo e utilizzare le API del sistema.
 
-## 📁 Struttura
+---
 
-```
-docs/
-├── README.md                          # Questo file
-├── scalability/                       # Scalabilità 1000+ worker
-│   ├── README.md
-│   └── SCALABILITY_IMPLEMENTATION.md
-├── architecture/                      # Architettura sistema
-│   ├── ARCHITETTURA_JOB_DISTRIBUZIONE.md
-│   └── PROCESSO_CREAZIONE_VIDEO.md
-└── (altri file .md vari)
-```
+## 🚀 Inizia da Qui
 
-## 📚 Aree Documentate
+Se sei un nuovo sviluppatore, inizia da questa guida:
+- **[DEVELOPER_SETUP_GUIDE.md](./DEVELOPER_SETUP_GUIDE.md)** – Guida passo-passo per configurare Go, Rust, Python e Node.js.
 
-### Scalabilità
-Sistema per gestire 1000+ worker simultanei. Vedi [scalability/](./scalability/README.md).
+---
 
-### Architettura
-Documentazione architettura sistema:
-- Distribuzione job
-- Processo creazione video
-- Design decisions
+## 🏗️ Architettura e Core
 
-Vedi [architecture/](./architecture/) per dettagli.
+- **[ARCHITETTURA_BACKEND.md](./ARCHITETTURA_BACKEND.md)** – Panoramica dei layer Go (Master), Rust (Engine) e Python (Legacy).
+- **[ADR-0001-postgres-queue-core-boundary.md](./ADR-0001-postgres-queue-core-boundary.md)** – Decisione architetturale sulla persistenza Postgres.
+- **[YOUTUBE_CLIENT_GPU_GUIDE.md](./YOUTUBE_CLIENT_GPU_GUIDE.md)** – Integrazione YouTube e accelerazione GPU NVIDIA.
 
-## 🔍 File Markdown Vari
+---
 
-Altri file `.md` nella root di `docs/`:
-- **[REMOTE_ENDPOINTS.md](./REMOTE_ENDPOINTS.md)** – Endpoint Master/Worker, API script/voiceover/Docs, **docs pubbliche** (`GET /api/docs`), client-config, come usare da browser e curl
-- **[API_TRIGGER_QUESTO_PC.md](./API_TRIGGER_QUESTO_PC.md)** – Accesso API e documentazione (server spento/acceso), **accensione API da remoto** (wake server su porta 4999: `/wake`, `/status`)
-- **[FRONTEND_API_CHIAMATE.md](./FRONTEND_API_CHIAMATE.md)** – Interazione frontend–API, disponibilità docs, wake da remoto, elenco chiamate per flusso
-- **[API_CONTRATTO_BACKEND.md](./API_CONTRATTO_BACKEND.md)** – Contratto esatto: endpoint, body e risposta per ogni chiamata (per adattare solo il backend)
-- Documentazione vari aspetti del sistema
-- Note tecniche
-- Guide operative
+## 🔌 API e Integrazioni
+
+- **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** – Documentazione completa di tutti gli endpoint API.
+- **[API_ENDPOINTS.md](./API_ENDPOINTS.md)** – Elenco rapido degli endpoint principali.
+- **[API_CONTRATTO_BACKEND.md](./API_CONTRATTO_BACKEND.md)** – Contratto formale delle API per il frontend.
+- **[GOOGLE_DOCS_INSTRUCTIONS.md](./GOOGLE_DOCS_INSTRUCTIONS.md)** – Guida all'integrazione con Google Docs/Drive.
+
+---
+
+## 🛠️ Guide Operative e Runbook
+
+- **[RUNBOOK_AUTOMAZIONE_CLIP.md](./RUNBOOK_AUTOMAZIONE_CLIP.md)** – Operazioni per la pipeline automatica delle clip.
+- **[STATO_FUNZIONALITA_AUTOMAZIONE.md](./STATO_FUNZIONALITA_AUTOMAZIONE.md)** – Stato attuale (OK/Parziale/No) delle varie feature.
+- **[TRACCIA_COMPLETA_CLIPSEARCH.md](./TRACCIA_COMPLETA_CLIPSEARCH.md)** – Esempio di flusso end-to-end della ricerca clip.
+- **[SCRIPT_CLIPS_E2E_TESTING.md](./SCRIPT_CLIPS_E2E_TESTING.md)** – Guida ai test end-to-end per la pipeline script->clip.
+
+---
+
+## 📂 Altre Risorse
+
+- **[archive/](./archive/)** – Documentazione storica e report di implementazioni passate.
+- **[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** – Riassunto delle ultime implementazioni (YouTube Client, GPU, etc.).
+
+---
+
+*Ultimo aggiornamento: Aprile 2026*

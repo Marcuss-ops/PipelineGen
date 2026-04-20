@@ -40,10 +40,10 @@ func (h *ScriptPipelineHandler) AssociateStock(c *gin.Context) {
 		var clips []StockClip
 		initial, final := extractPhrases(seg.Text)
 
-		// Collect search terms
-		searchTerms := scriptdocs.ExtractKeywords(seg.Text)
+		// Collect generic searchable terms for reusable stock matching.
+		searchTerms := buildGenericClipTerms(req.Topic, seg.Text)
 		if len(searchTerms) == 0 {
-			searchTerms = append(searchTerms, seg.Text)
+			searchTerms = uniqueAndLimit(scriptdocs.ExtractKeywords(seg.Text), maxEntityListItems)
 		}
 
 		// 1. Search in topic-specific clips first

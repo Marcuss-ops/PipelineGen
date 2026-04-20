@@ -221,7 +221,7 @@ func TestFullPipelineWithRealDB(t *testing.T) {
 		frasi := sentences[:util.Min(12, len(sentences))]
 
 		// Associate clips with deduplication
-		associations := svc.associateClips(frasi)
+		associations := svc.associateClips(frasi, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 		if len(associations) != len(frasi) {
 			t.Errorf("Expected %d associations, got %d", len(frasi), len(associations))

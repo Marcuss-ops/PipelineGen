@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"velox/go-master/internal/youtube"
@@ -13,6 +14,11 @@ import (
 
 	"go.uber.org/zap"
 )
+
+func shouldUploadPerClipText() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_ENABLE_PER_CLIP_TXT")))
+	return v == "true" || v == "1" || v == "yes"
+}
 
 // downloadAndUploadClips downloads highlight clips from a YouTube video
 // and uploads them to the specified Drive folder.
@@ -70,24 +76,26 @@ func (m *Monitor) downloadAndUploadClips(ctx context.Context, video youtube.Sear
 			continue
 		}
 
-		// Also upload a .txt description
-		txtContent := fmt.Sprintf("Source: %s\nTitle: %s\nSegment: %d-%d sec\nHighlight: %s",
-			video.ID, video.Title, seg.StartSec, seg.EndSec, seg.Text)
-		txtFile := filepath.Join(tmpDir, clipName+".txt")
-		if err := os.WriteFile(txtFile, []byte(txtContent), 0644); err == nil {
-			txtFilename := sanitizeFolderName(video.Title) + fmt.Sprintf("_clip%d.txt", i+1)
-			if txtFileID, err := m.driveClient.UploadFile(ctx, txtFile, folderID, txtFilename); err == nil {
-				results = append(results, ClipResult{
-					VideoID:      video.ID,
-					VideoTitle:   video.Title,
-					ClipFile:     filename,
-					Duration:     seg.Duration,
-					Description:  seg.Text,
-					DriveFileID:  driveFileID,
-					DriveFileURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID),
-					TxtFileID:    txtFileID,
-				})
-				continue
+		if shouldUploadPerClipText() {
+			// Optional legacy behavior: upload per-clip txt only when explicitly enabled.
+			txtContent := fmt.Sprintf("Source: %s\nTitle: %s\nSegment: %d-%d sec\nHighlight: %s",
+				video.ID, video.Title, seg.StartSec, seg.EndSec, seg.Text)
+			txtFile := filepath.Join(tmpDir, clipName+".txt")
+			if err := os.WriteFile(txtFile, []byte(txtContent), 0644); err == nil {
+				txtFilename := sanitizeFolderName(video.Title) + fmt.Sprintf("_clip%d.txt", i+1)
+				if txtFileID, err := m.driveClient.UploadFile(ctx, txtFile, folderID, txtFilename); err == nil {
+					results = append(results, ClipResult{
+						VideoID:      video.ID,
+						VideoTitle:   video.Title,
+						ClipFile:     filename,
+						Duration:     seg.Duration,
+						Description:  seg.Text,
+						DriveFileID:  driveFileID,
+						DriveFileURL: fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID),
+						TxtFileID:    txtFileID,
+					})
+					continue
+				}
 			}
 		}
 
@@ -141,5 +149,4 @@ func (m *Monitor) downloadClip(ctx context.Context, videoID string, startSec, du
 
 	return nil
 }
-
 

@@ -192,7 +192,7 @@ Tank's story was always about power, the ability to change a life with one shot.
 		stockFolders: stockFolders,
 	}
 
-	associations := svc.associateClips(frasiImportanti)
+	associations := svc.associateClips(frasiImportanti, StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 	artlistCount := 0
 	stockCount := 0
@@ -296,7 +296,7 @@ func TestScriptPipelineMultilingual(t *testing.T) {
 
 	for lang, phrases := range testPhrases {
 		t.Run(lang, func(t *testing.T) {
-			associations := svc.associateClips(phrases[:util.Min(3, len(phrases))])
+			associations := svc.associateClips(phrases[:util.Min(3, len(phrases))], StockFolder{ID: "root", Name: "Stock"}, "Test Topic")
 
 			t.Logf("Language: %s", lang)
 			for i, assoc := range associations {

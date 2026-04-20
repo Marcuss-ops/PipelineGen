@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/api/handlers"
 	"velox/go-master/internal/audio/tts"
 	"velox/go-master/internal/core/entities"
 	"velox/go-master/internal/core/job"
@@ -44,6 +45,7 @@ type CoreDeps struct {
 	GpuMgr          *gpu.Manager
 	TextGen         *textgen.Generator
 	TikTokClient    downloader.Downloader
+	Utility         *handlers.UtilityHandler
 }
 
 // initCore initializes the foundational services: storage, job/worker management,
@@ -181,6 +183,9 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 		_ = storage.Close()
 	}
 
+	// === Utility ===
+	utilityHandler := handlers.NewUtilityHandler()
+
 	return &CoreDeps{
 		Storage:         storage,
 		Queue:           q,
@@ -199,5 +204,6 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 		GpuMgr:          gpuMgr,
 		TextGen:         textGen,
 		TikTokClient:    tiktokClient,
+		Utility:         utilityHandler,
 	}, services, cleanup, nil
 }

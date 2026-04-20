@@ -31,6 +31,11 @@ func (g *Generator) GetClient() *Client {
 	return g.client
 }
 
+// Generate is a thin wrapper around client.Generate
+func (g *Generator) Generate(ctx context.Context, prompt string) (string, error) {
+	return g.client.Generate(ctx, prompt)
+}
+
 // GenerateFromText genera uno script da testo
 func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationRequest) (*GenerationResult, error) {
 	// Applica defaults

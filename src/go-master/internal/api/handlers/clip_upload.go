@@ -10,12 +10,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/youtube"
 	"velox/go-master/pkg/logger"
 	"velox/go-master/pkg/security"
-	"go.uber.org/zap"
 )
 
 // DownloadClip downloads a clip from YouTube and uploads to Drive
@@ -83,6 +84,7 @@ func (h *ClipHandler) DownloadClip(c *gin.Context) {
 		"--no-playlist",
 		"-o", outputTemplate,
 	}
+	args = append(args, youtube.BuildYtDlpAuthArgs("", "")...)
 
 	// Add time range if specified (validate timestamps first)
 	if req.StartTime != "" && req.EndTime != "" {
@@ -97,11 +99,20 @@ func (h *ClipHandler) DownloadClip(c *gin.Context) {
 		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", req.StartTime, req.EndTime))
 	}
 
-	args = append(args, req.YouTubeURL)
+	var output []byte
+	for _, extractorArgs := range youtube.YouTubeExtractorArgsVariants() {
+		attemptArgs := append([]string{}, args...)
+		if extractorArgs != "" {
+			attemptArgs = append(attemptArgs, "--extractor-args", extractorArgs)
+		}
+		attemptArgs = append(attemptArgs, req.YouTubeURL)
 
-	// Execute download
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
-	output, err := cmd.CombinedOutput()
+		cmd := exec.CommandContext(ctx, "yt-dlp", attemptArgs...)
+		output, err = cmd.CombinedOutput()
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		logger.Error("yt-dlp download failed",
 			zap.String("output", string(output)),

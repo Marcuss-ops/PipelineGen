@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"velox/go-master/internal/stock"
 	"velox/go-master/pkg/logger"
-	"go.uber.org/zap"
 )
 
 // StockSearchHandler handles stock video search endpoints
@@ -37,6 +37,7 @@ func (h *StockSearchHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	{
 		s.GET("/search", h.Search)
 		s.GET("/search/youtube", h.SearchYouTube)
+		s.GET("/search/youtube/top", h.SearchYouTubeTop)
 		s.POST("/search/download", h.DownloadVideo)
 	}
 }
@@ -110,11 +111,66 @@ func (h *StockSearchHandler) SearchYouTube(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":      true,
-		"query":   query,
-		"results": results,
-		"count":   len(results),
+		"ok":       true,
+		"query":    query,
+		"results":  results,
+		"count":    len(results),
 		"platform": "youtube",
+	})
+}
+
+// SearchYouTubeTop searches YouTube by keyword and returns the most viewed videos in a time window.
+// Query params:
+// - q: required keyword
+// - max: optional (default 10, max 50)
+// - period: optional one of hour|today|week|month|year (default week)
+// - duration: optional one of short|medium|long
+func (h *StockSearchHandler) SearchYouTubeTop(c *gin.Context) {
+	query := c.Query("q")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "Query parameter 'q' is required"})
+		return
+	}
+
+	maxResults := 10
+	if max := c.Query("max"); max != "" {
+		if parsed, err := strconv.Atoi(max); err == nil && parsed > 0 {
+			maxResults = parsed
+		}
+	}
+	if maxResults > 50 {
+		maxResults = 50
+	}
+
+	period := c.DefaultQuery("period", "week")
+	duration := c.Query("duration")
+	logger.Info("YouTube top search requested",
+		zap.String("query", query),
+		zap.Int("max_results", maxResults),
+		zap.String("period", period),
+		zap.String("duration", duration),
+	)
+
+	results, err := h.manager.SearchYouTubeWithOptions(c.Request.Context(), query, stock.SearchYouTubeOptions{
+		MaxResults: maxResults,
+		SortBy:     "views",
+		UploadDate: period,
+		Duration:   duration,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "YouTube top search failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":        true,
+		"query":     query,
+		"period":    period,
+		"duration":  duration,
+		"results":   results,
+		"count":     len(results),
+		"platform":  "youtube",
+		"sorted_by": "views",
 	})
 }
 
@@ -161,9 +217,9 @@ func (h *StockSearchHandler) DownloadVideo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":          true,
-		"file":        outputPath,
-		"quality":     req.Quality,
+		"ok":            true,
+		"file":          outputPath,
+		"quality":       req.Quality,
 		"downloaded_at": time.Now(),
 	})
 }

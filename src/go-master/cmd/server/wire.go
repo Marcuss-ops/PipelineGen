@@ -1,6 +1,11 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
 	"velox/go-master/internal/api/handlers"
@@ -78,13 +83,71 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}
 
 	// 5. Sync services (Watcher = Drive polling authority → drives DriveSync + ArtlistSync)
-	_, syncBgSvcs, err := initSyncServices(cfg, log, clipDeps, driveDeps)
+	syncDeps, syncBgSvcs, err := initSyncServices(cfg, log, clipDeps, driveDeps)
 	if err != nil {
 		runCleanups(cleanups)
 		return nil, err
 	}
 	for _, svc := range syncBgSvcs {
 		sg.Add(svc)
+	}
+
+	// Trigger explicit sync after dynamic clip cycles that upload new clips.
+	if pipelineDeps.ClipSearch != nil && syncDeps != nil {
+		pipelineDeps.ClipSearch.SetPostCycleSync(func(ctx context.Context) error {
+			syncTimeout := time.Duration(cfg.DriveSync.SyncTimeout) * time.Second
+			if syncTimeout <= 0 {
+				syncTimeout = 2 * time.Minute
+			}
+			syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+			defer cancel()
+
+			var syncErr error
+			if syncDeps.DriveSync != nil {
+				if err := syncDeps.DriveSync.Sync(syncCtx); err != nil {
+					if isAlreadyRunningSyncErr(err) {
+						log.Info("Post-cycle DriveSync skipped (already running)")
+					} else {
+						log.Warn("Post-cycle DriveSync failed", zap.Error(err))
+						syncErr = err
+					}
+				} else {
+					log.Info("Post-cycle DriveSync completed")
+				}
+			}
+			if syncDeps.ArtlistSync != nil {
+				if err := syncDeps.ArtlistSync.Sync(syncCtx); err != nil {
+					if isAlreadyRunningSyncErr(err) {
+						log.Info("Post-cycle ArtlistSync skipped (already running)")
+					} else {
+						log.Warn("Post-cycle ArtlistSync failed", zap.Error(err))
+						if syncErr == nil {
+							syncErr = err
+						}
+					}
+				} else {
+					log.Info("Post-cycle ArtlistSync completed")
+				}
+			}
+			if syncDeps.CatalogSync != nil {
+				if err := syncDeps.CatalogSync.Sync(syncCtx); err != nil {
+					if isAlreadyRunningSyncErr(err) {
+						log.Info("Post-cycle CatalogSync skipped (already running)")
+					} else {
+						log.Warn("Post-cycle CatalogSync failed", zap.Error(err))
+						if syncErr == nil {
+							syncErr = err
+						}
+					}
+				} else {
+					log.Info("Post-cycle CatalogSync completed")
+				}
+			}
+			if syncErr != nil {
+				return fmt.Errorf("one or more post-cycle sync tasks failed: %w", syncErr)
+			}
+			return nil
+		})
 	}
 
 	// 6. Background services (channel monitor, stock scheduler, harvester)
@@ -140,11 +203,12 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}
 
 	// === Assemble Handlers ===
+	if clipDeps.ClipHandler != nil {
+		clipDeps.ClipHandler.SetClipSearch(pipelineDeps.ClipSearch)
+		clipDeps.ClipHandler.SetStockDB(clipDeps.StockDB)
+	}
 	allHandlers := &api.Handlers{
-		Job:          handlers.NewJobHandler(coreDeps.JobService),
-		Worker:       handlers.NewWorkerHandler(coreDeps.WorkerService),
 		Health:       handlers.NewHealthHandler(cfg, coreDeps.JobService, coreDeps.WorkerService),
-		Admin:        handlers.NewAdminHandler(coreDeps.JobService, coreDeps.WorkerService),
 		Video:        videoHandler,
 		YouTube:      handlers.NewYouTubeHandler(cfg.GetYouTubeDir()),
 		Script:       handlers.NewScriptHandler(coreDeps.ScriptGen, coreDeps.OllamaClient),
@@ -157,9 +221,6 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		Clip:         clipDeps.ClipHandler,
 		ClipIndex:    clipDeps.ClipIndexHandler,
 		Catalog:      catalogHandler,
-		Dashboard:    handlers.NewDashboardHandler(coreDeps.JobService, coreDeps.WorkerService),
-		Stats:        handlers.NewStatsHandler(coreDeps.JobService, coreDeps.WorkerService),
-		Scraper:      handlers.NewScraperHandler(cfg.Scraper.Dir, cfg.Scraper.NodeBin),
 		Download:     handlers.NewDownloadHandler(coreDeps.Downloader),
 		Timestamp:    handlers.NewTimestampHandler(timestamp.NewService(clipDeps.ClipIndexHandler.GetIndexer(), clipDeps.ArtlistSrc)),
 		ClipApproval: pipelineDeps.ClipApprovalHandler,
@@ -184,9 +245,9 @@ func wireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 			cfg.Drive.ArtlistFolderID,
 		),
 		ChannelMonitor:  bgDeps.ChannelMonitorHandler,
-		AsyncPipeline:   pipelineDeps.AsyncPipelineHandler,
 		ArtlistPipeline: pipelineDeps.ArtlistPipelineHandler,
 		Harvester:       bgDeps.HarvesterHandler,
+		Utility:         coreDeps.Utility,
 	}
 
 	routerDeps := &api.RouterDepsWithHandlers{Handlers: allHandlers, Deps: deps}
@@ -215,4 +276,11 @@ func runCleanups(cleanups []CleanupFunc) {
 			cleanups[i]()
 		}
 	}
+}
+
+func isAlreadyRunningSyncErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "already running")
 }
