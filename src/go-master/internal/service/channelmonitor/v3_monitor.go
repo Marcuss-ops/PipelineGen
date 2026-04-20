@@ -36,6 +36,11 @@ func NewV3Monitor(db *sql.DB, ytData *youtube.DataAPIBackend, ytdlp youtube.Clie
 }
 
 func (m *V3Monitor) RunOnce(ctx context.Context) error {
+	// 0. Health check: Verify Ollama is running
+	if err := m.checkOllamaHealth(ctx); err != nil {
+		return fmt.Errorf("ollama health check failed, skipping pipeline: %w", err)
+	}
+
 	channels, err := m.listMonitoredChannels(ctx)
 	if err != nil {
 		return err
@@ -269,18 +274,26 @@ func (m *V3Monitor) findHighlightsV3(ctx context.Context, title, transcript stri
 		transcript = transcript[:maxTranscriptLen] + "..."
 	}
 
-	prompt := fmt.Sprintf(`You are a video highlight expert. Analyze this YouTube transcript and identify the 3 most viral/interesting segments.
+	prompt := fmt.Sprintf(`You are a YouTube viral moments expert. Analyze this video transcript and find the 3 MOST INTERESTING/VIRAL segments.
 
 Title: "%s"
-Transcript: "%s"
+Transcript with timestamps: "%s"
 
-Rules:
-- Each segment must be between 30 and 60 seconds.
-- Return ONLY valid JSON array, no other text.
-- Use format: [{"start_sec": <number>, "duration": <number>, "reason": "<text>"}]
+CRITICAL REQUIREMENTS:
+1. Extract timestamps directly from the transcript (look for timing markers like 0:15, 1:23, etc.)
+2. EACH segment MUST be between 30-60 seconds duration. NO EXCEPTIONS.
+3. Find moments with high engagement potential (surprising twists, peak emotional moments, shocking revelations, climactic points)
+4. Prioritize moments where the speaker emphasizes or repeats important words
+5. Return ONLY valid JSON array, no explanation text.
 
-Example output:
-[{"start_sec": 15, "duration": 45, "reason": "Breaking news moment"}, {"start_sec": 120, "duration": 50, "reason": "Dramatic reaction"}]`, title, transcript)
+JSON format (MUST match exactly):
+[
+  {"start_sec": <seconds as integer>, "duration": <seconds as integer>, "reason": "<why this is viral>"},
+  {"start_sec": <seconds as integer>, "duration": <seconds as integer>, "reason": "<why this is viral>"},
+  {"start_sec": <seconds as integer>, "duration": <seconds as integer>, "reason": "<why this is viral>"}
+]
+
+Examples of good reasons: "shocking reveal", "peak emotional moment", "surprising plot twist", "viral trend reference"`, title, transcript)
 
 	reqBody := map[string]interface{}{
 		"model":  "gemma3:4b",
@@ -599,13 +612,107 @@ func (m *V3Monitor) queueDownloadJob(ctx context.Context, info interface{}, clas
 }
 
 type GemmaResult struct {
-	Category string `json:"category"`
-	Reason   string `json:"reason"`
+	Category    string `json:"category"`
+	Protagonist string `json:"protagonist"`
+	Reason      string `json:"reason"`
 }
 
 func (m *V3Monitor) classifyWithGemma(ctx context.Context, info interface{}) (*GemmaResult, error) {
-	// Stub - implement full classification as needed
-	return &GemmaResult{Category: "General", Reason: "Placeholder"}, nil
+	// Extract title and description from info
+	var title, description string
+
+	switch v := info.(type) {
+	case map[string]interface{}:
+		if t, ok := v["title"].(string); ok {
+			title = t
+		}
+		if d, ok := v["description"].(string); ok {
+			description = d
+		}
+	default:
+		// Try to handle as struct
+		return &GemmaResult{Category: "General", Reason: "Unable to extract info"}, nil
+	}
+
+	// Truncate to prevent token overflow
+	if len(description) > 500 {
+		description = description[:500] + "..."
+	}
+
+	// Classify: extract category and protagonist from title/description
+	prompt := fmt.Sprintf(`You are a video content classifier. Analyze this YouTube video and classify it.
+
+Title: "%s"
+Description: "%s"
+
+Extract and return JSON with:
+1. category: One of [Gaming, Music, Education, Entertainment, Sports, Technology, Lifestyle, News, Other]
+2. protagonist: Main person/subject in the video (e.g., "PewDiePie", "Taylor Swift", "Gordon Ramsay"). If not a person, use the topic.
+3. reason: One sentence explanation
+
+Return ONLY valid JSON, no other text:
+{"category": "<category>", "protagonist": "<name>", "reason": "<explanation>"}`, title, description)
+
+	reqBody := map[string]interface{}{
+		"model":  "gemma3:4b",
+		"prompt": prompt,
+		"stream": false,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal classification request: %w", err)
+	}
+
+	// 20 second timeout for classification
+	classCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(classCtx, "POST", m.ollamaURL+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create classification request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 25 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("classification api call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode classification response: %w", err)
+	}
+
+	// Parse classification JSON from response
+	jsonStart := strings.Index(result.Response, "{")
+	jsonEnd := strings.LastIndex(result.Response, "}")
+	if jsonStart == -1 || jsonEnd == -1 {
+		return &GemmaResult{Category: "General", Reason: "Failed to parse JSON"}, nil
+	}
+
+	jsonStr := result.Response[jsonStart : jsonEnd+1]
+	var classification struct {
+		Category    string `json:"category"`
+		Protagonist string `json:"protagonist"`
+		Reason      string `json:"reason"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &classification); err != nil {
+		logger.Warn("Failed to parse classification JSON",
+			zap.String("json", jsonStr),
+			zap.Error(err))
+		return &GemmaResult{Category: "General", Reason: "JSON parse error"}, nil
+	}
+
+	return &GemmaResult{
+		Category:    classification.Category,
+		Protagonist: classification.Protagonist,
+		Reason:      classification.Reason,
+	}, nil
 }
 
 func (m *V3Monitor) fallbackHighlights(transcript string) []Highlight {
@@ -643,4 +750,48 @@ func (m *V3Monitor) fallbackHighlights(transcript string) []Highlight {
 
 	logger.Info("Using fallback highlights", zap.Int("count", len(highlights)))
 	return highlights
+}
+
+func (m *V3Monitor) checkOllamaHealth(ctx context.Context) error {
+	// Check if Ollama service is running and gemma3:4b is available
+	healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(healthCtx, "GET", m.ollamaURL+"/api/tags", nil)
+	if err != nil {
+		return fmt.Errorf("create ollama health check request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("ollama service unavailable at %s: %w", m.ollamaURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	var tagsResp struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
+		return fmt.Errorf("parse ollama tags response: %w", err)
+	}
+
+	// Check if gemma3:4b is available
+	for _, model := range tagsResp.Models {
+		if model.Name == "gemma3:4b" {
+			logger.Info("Ollama health check passed",
+				zap.String("service", m.ollamaURL),
+				zap.String("model", "gemma3:4b"))
+			return nil
+		}
+	}
+
+	return fmt.Errorf("ollama running but gemma3:4b model not found")
 }
