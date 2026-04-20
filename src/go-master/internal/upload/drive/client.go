@@ -128,11 +128,25 @@ func (r *refreshingTokenSource) Token() (*oauth2.Token, error) {
 
 // UploadVideo carica un video su Drive
 func (c *Client) UploadVideo(ctx context.Context, videoPath, folderID, filename string) (string, error) {
+	// Validate folderID
+	if folderID == "" {
+		return "", fmt.Errorf("folderID cannot be empty")
+	}
+
 	file, err := os.Open(videoPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open video: %w", err)
 	}
 	defer file.Close()
+
+	// Validate file exists and is readable
+	stat, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat video: %w", err)
+	}
+	if stat.Size() == 0 {
+		return "", fmt.Errorf("video file is empty")
+	}
 
 	if filename == "" {
 		filename = filepath.Base(videoPath)
@@ -174,7 +188,10 @@ func (c *Client) CreateFolder(ctx context.Context, name, parentID string) (strin
 
 // GetOrCreateFolder ottiene o crea una cartella
 func (c *Client) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	query := fmt.Sprintf("name='%s' and '%s' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'", name, parentID)
+	// Escape single quotes in the folder name to prevent query syntax errors
+	escapedName := strings.ReplaceAll(name, "'", "\\'")
+	
+	query := fmt.Sprintf("name='%s' and '%s' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'", escapedName, parentID)
 
 	result, err := c.service.Files.List().
 		Q(query).
@@ -199,10 +216,12 @@ func (c *Client) GetFolderByPath(ctx context.Context, path string, rootFolderID 
 		return rootFolderID, nil
 	}
 
-	parts := filepath.SplitList(path)
+	// Fixed: Use strings.Split() instead of filepath.SplitList() for forward-slash separated paths
+	parts := strings.Split(path, "/")
 	currentParentID := rootFolderID
 
 	for _, part := range parts {
+		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
@@ -477,11 +496,25 @@ func (c *Client) GetFolderByName(ctx context.Context, name, parentID string) (*F
 
 // UploadFile carica un file generico su Drive
 func (c *Client) UploadFile(ctx context.Context, filePath, folderID, filename string) (string, error) {
+	// Validate folderID
+	if folderID == "" {
+		return "", fmt.Errorf("folderID cannot be empty")
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
+
+	// Validate file exists and is readable
+	stat, err := file.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+	if stat.Size() == 0 {
+		return "", fmt.Errorf("file is empty")
+	}
 
 	if filename == "" {
 		filename = filepath.Base(filePath)
