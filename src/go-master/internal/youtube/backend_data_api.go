@@ -65,12 +65,11 @@ func (b *DataAPIBackend) GetChannelUploadsPlaylistID(ctx context.Context, channe
 	return resp.Items[0].ContentDetails.RelatedPlaylists.Uploads, nil
 }
 
-
 func (b *DataAPIBackend) GetPlaylistItems(ctx context.Context, playlistID string, limit int64) ([]SearchResult, error) {
 	call := b.service.PlaylistItems.List([]string{"snippet", "contentDetails"}).
 		PlaylistId(playlistID).
 		MaxResults(limit)
-	
+
 	resp, err := call.Context(ctx).Do()
 	if err != nil {
 		return nil, err
@@ -95,7 +94,7 @@ func (b *DataAPIBackend) DownloadAudio(ctx context.Context, req *AudioDownloadRe
 	return nil, fmt.Errorf("download not supported by Data API backend")
 }
 func (b *DataAPIBackend) Search(ctx context.Context, query string, opts *SearchOptions) ([]SearchResult, error) {
-	return nil, nil 
+	return nil, nil
 }
 func (b *DataAPIBackend) GetChannelVideos(ctx context.Context, channelURL string, opts *ChannelOptions) ([]SearchResult, error) {
 	return nil, nil
