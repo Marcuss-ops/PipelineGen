@@ -1,0 +1,866 @@
+package scriptdocs
+
+import (
+	"context"
+	"math/rand"
+	"strings"
+	"time"
+	"unicode"
+
+	"velox/go-master/internal/clipsearch"
+	"velox/go-master/internal/stockdb"
+	"velox/go-master/internal/translation"
+	"velox/go-master/pkg/logger"
+
+	"go.uber.org/zap"
+)
+
+// ClipConcept maps multilingual keywords to an Artlist search term.
+type ClipConcept struct {
+	Keywords []string `json:"keywords"`
+	Term     string   `json:"term"`
+	BaseConf float64  `json:"base_conf"`
+}
+
+type clipConcept = ClipConcept
+
+func GetConceptMap() []ClipConcept { return conceptMap }
+
+const (
+	minDirectAssociationConfidence = 0.70
+	forceDynamicSearchConfidence   = 0.90
+)
+
+// associateClips associates each important phrase with one primary clip choice.
+func (s *ScriptDocService) associateClips(frasi []string, stockFolder StockFolder, topic string) []ClipAssociation {
+	usedClipIDs := make(map[string]bool)
+	return s.associateClipsWithDedup(frasi, usedClipIDs, stockFolder, topic)
+}
+
+func scoreConceptForPhrase(fraseLower string, cm clipConcept) (int, string) {
+	tokens := tokenizeWords(fraseLower)
+	if len(tokens) == 0 {
+		return 0, ""
+	}
+	tokenSet := make(map[string]bool, len(tokens))
+	for _, t := range tokens {
+		tokenSet[t] = true
+	}
+
+	bestKeyword := ""
+	bestLen := 0
+	matchCount := 0
+	for _, kw := range cm.Keywords {
+		kwLower := normalizeKeyword(kw)
+		if len(kwLower) < 3 {
+			continue
+		}
+
+		matched := tokenSet[kwLower]
+		// Keep support for intentional keyword stems in conceptMap (e.g. "umanit" -> "umanita").
+		if !matched && len(kwLower) >= 5 {
+			for _, tok := range tokens {
+				if strings.HasPrefix(tok, kwLower) {
+					matched = true
+					break
+				}
+			}
+		}
+		if matched {
+			matchCount++
+			if len(kwLower) > bestLen {
+				bestLen = len(kwLower)
+				bestKeyword = kwLower
+			}
+		}
+	}
+	return matchCount, bestKeyword
+}
+
+func normalizeKeyword(raw string) string {
+	return strings.TrimFunc(strings.ToLower(strings.TrimSpace(raw)), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+func isUsableDynamicKeyword(raw string) bool {
+	kw := normalizeKeyword(raw)
+	if len(kw) < 3 {
+		return false
+	}
+	hasLetter := false
+	for _, r := range kw {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+			break
+		}
+	}
+	return hasLetter
+}
+
+func phraseMatchesTopicFolder(phrase, topic string, stockFolder StockFolder) (bool, string) {
+	if stockFolder.ID == "" || stockFolder.ID == "root" || stockFolder.Name == "Stock" {
+		return false, ""
+	}
+	phraseLower := strings.ToLower(phrase)
+	for _, tok := range significantTokens(topic) {
+		if strings.Contains(phraseLower, tok) {
+			return true, tok
+		}
+	}
+	folderTokens := significantTokens(strings.ReplaceAll(stockFolder.Name, "/", " "))
+	for _, tok := range folderTokens {
+		if strings.Contains(phraseLower, tok) {
+			return true, tok
+		}
+	}
+	return false, ""
+}
+
+func clipSearchKeys(clip stockdb.StockClipEntry) []string {
+	seen := make(map[string]bool)
+	var keys []string
+
+	add := func(raw string) {
+		token := strings.TrimSpace(strings.ToLower(raw))
+		if len(token) < 3 || seen[token] {
+			return
+		}
+		seen[token] = true
+		keys = append(keys, token)
+	}
+
+	for _, tag := range clip.Tags {
+		for _, part := range strings.FieldsFunc(tag, func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+		}) {
+			add(part)
+		}
+	}
+
+	for _, part := range strings.FieldsFunc(clip.Filename, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		add(part)
+	}
+
+	return keys
+}
+
+func extractDriveFileIDFromURL(raw string) string {
+	u := strings.TrimSpace(raw)
+	if u == "" {
+		return ""
+	}
+	if i := strings.Index(u, "/file/d/"); i >= 0 {
+		rest := u[i+len("/file/d/"):]
+		if j := strings.Index(rest, "/"); j >= 0 {
+			return strings.TrimSpace(rest[:j])
+		}
+		return strings.TrimSpace(rest)
+	}
+	if i := strings.Index(u, "id="); i >= 0 {
+		rest := u[i+len("id="):]
+		if j := strings.Index(rest, "&"); j >= 0 {
+			return strings.TrimSpace(rest[:j])
+		}
+		return strings.TrimSpace(rest)
+	}
+	return ""
+}
+
+func isArtlistPathLike(raw string) bool {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		return false
+	}
+	return strings.Contains(s, "/artlist") || strings.Contains(s, "stock/artlist") || strings.Contains(s, "stock cartella/artlist")
+}
+
+func isArtlistFilenameLike(raw string) bool {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		return false
+	}
+	return strings.Contains(s, "artlist")
+}
+
+func isArtlistStockClipEntry(clip stockdb.StockClipEntry, folderPathByID map[string]string) bool {
+	if strings.EqualFold(strings.TrimSpace(clip.Source), "artlist") {
+		return true
+	}
+	if isArtlistFilenameLike(clip.Filename) {
+		return true
+	}
+	if folderPath, ok := folderPathByID[clip.FolderID]; ok && isArtlistPathLike(folderPath) {
+		return true
+	}
+	return false
+}
+
+func isArtlistDynamicResult(dc clipsearch.SearchResult, stockClipByID map[string]stockdb.StockClipEntry, folderPathByID map[string]string) bool {
+	if isArtlistFilenameLike(dc.Filename) || isArtlistPathLike(dc.Folder) {
+		return true
+	}
+	if clip, ok := stockClipByID[dc.DriveID]; ok {
+		return isArtlistStockClipEntry(clip, folderPathByID)
+	}
+	return false
+}
+
+func pickRandomArtlistClip(
+	rng *rand.Rand,
+	clips []ArtlistClip,
+	usedClipIDs map[string]bool,
+	isValid func(string) bool,
+) (*ArtlistClip, bool) {
+	if len(clips) == 0 {
+		return nil, false
+	}
+	candidateIdx := make([]int, 0, len(clips))
+	for i := range clips {
+		if usedClipIDs[clips[i].URL] || !isValid(clips[i].URL) {
+			continue
+		}
+		candidateIdx = append(candidateIdx, i)
+	}
+	if len(candidateIdx) == 0 {
+		return nil, false
+	}
+	clip := clips[candidateIdx[rng.Intn(len(candidateIdx))]]
+	return &clip, true
+}
+
+func pickFirstArtlistDynamicResult(
+	results []clipsearch.SearchResult,
+	stockClipByID map[string]stockdb.StockClipEntry,
+	folderPathByID map[string]string,
+) *clipsearch.SearchResult {
+	for i := range results {
+		if isArtlistDynamicResult(results[i], stockClipByID, folderPathByID) {
+			return &results[i]
+		}
+	}
+	return nil
+}
+
+func (s *ScriptDocService) artlistClipsForTerm(term string) []ArtlistClip {
+	if s.artlistIndex == nil {
+		return nil
+	}
+	normalized := normalizeKeyword(term)
+	if normalized == "" {
+		return nil
+	}
+	if clips, ok := s.artlistIndex.ByTerm[normalized]; ok && len(clips) > 0 {
+		return clips
+	}
+	if clips, ok := s.artlistIndex.ByTerm[term]; ok && len(clips) > 0 {
+		return clips
+	}
+	return nil
+}
+
+func buildDynamicArtlistClip(dc clipsearch.SearchResult, fallbackTerm string) ArtlistClip {
+	term := normalizeKeyword(dc.Keyword)
+	if term == "" {
+		term = normalizeKeyword(fallbackTerm)
+	}
+	if term == "" {
+		term = "people"
+	}
+	return ArtlistClip{
+		Name:   dc.Filename,
+		Term:   term,
+		URL:    dc.DriveURL,
+		Folder: "Stock/Artlist/" + term,
+	}
+}
+
+func resolveReferenceKeyword(
+	frase string,
+	topic string,
+	bestKeyword string,
+	bestTerm string,
+	translator *translation.ClipSearchTranslator,
+) string {
+	refKeyword := normalizeKeyword(bestKeyword)
+	if refKeyword == "" {
+		refKeyword = normalizeKeyword(bestTerm)
+	}
+	if refKeyword == "" {
+		toks := significantTokens(frase)
+		if len(toks) > 0 {
+			refKeyword = normalizeKeyword(toks[0])
+		}
+	}
+	if refKeyword == "" {
+		toks := significantTokens(topic)
+		if len(toks) > 0 {
+			refKeyword = normalizeKeyword(toks[0])
+		}
+	}
+	if refKeyword != "" && translator != nil {
+		tr := translator.TranslateKeywords([]string{refKeyword})
+		if len(tr) > 0 {
+			refKeyword = normalizeKeyword(tr[0])
+		}
+	}
+	return refKeyword
+}
+
+func clipMatchesContext(clip ArtlistClip, contextTokens []string, topicConceptTerms []string) (bool, string) {
+	blob := strings.ToLower(strings.TrimSpace(clip.Term + " " + clip.Name + " " + clip.Folder))
+	if blob == "" {
+		return false, ""
+	}
+
+	seen := make(map[string]bool)
+	for _, t := range topicConceptTerms {
+		t = normalizeKeyword(t)
+		if len(t) < 3 || seen[t] {
+			continue
+		}
+		seen[t] = true
+		if strings.Contains(blob, t) {
+			return true, t
+		}
+	}
+	for _, t := range contextTokens {
+		t = normalizeKeyword(t)
+		if len(t) < 4 || seen[t] {
+			continue
+		}
+		seen[t] = true
+		if strings.Contains(blob, t) {
+			return true, t
+		}
+	}
+	return false, ""
+}
+
+// Priority: Dynamic clips → StockDB → Artlist concept match → Artlist text fallback → Topic folder → Dynamic download.
+func (s *ScriptDocService) associateClipsWithDedup(frasi []string, usedClipIDs map[string]bool, stockFolder StockFolder, topic string) []ClipAssociation {
+	var associations []ClipAssociation
+	translator := translation.NewClipSearchTranslator()
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	artlistURLValidity := make(map[string]bool)
+	isArtlistURLValid := func(rawURL string) bool {
+		rawURL = strings.TrimSpace(rawURL)
+		if rawURL == "" {
+			return false
+		}
+		lowerURL := strings.ToLower(rawURL)
+		if !strings.HasPrefix(lowerURL, "http://") && !strings.HasPrefix(lowerURL, "https://") {
+			artlistURLValidity[rawURL] = false
+			return false
+		}
+		if ok, cached := artlistURLValidity[rawURL]; cached {
+			return ok
+		}
+		// No drive client: keep old behavior to avoid blocking tests/offline runs.
+		if s.driveClient == nil {
+			artlistURLValidity[rawURL] = true
+			return true
+		}
+		fileID := extractDriveFileIDFromURL(rawURL)
+		if fileID == "" {
+			artlistURLValidity[rawURL] = false
+			return false
+		}
+		f, err := s.driveClient.GetFile(context.Background(), fileID)
+		// Soft validation: if Drive API is temporarily unavailable, do not discard
+		// otherwise-usable Artlist clips (prevents false "None" outcomes).
+		if err != nil {
+			artlistURLValidity[rawURL] = true
+			return true
+		}
+		ok := f != nil && f.MimeType != "application/vnd.google-apps.folder"
+		artlistURLValidity[rawURL] = ok
+		return ok
+	}
+	topicConceptTerms := make([]string, 0, 3)
+	{
+		type termScore struct {
+			term  string
+			score int
+		}
+		var termScores []termScore
+		topicContext := strings.ToLower(topic + " " + strings.Join(frasi, " "))
+		for _, cm := range conceptMap {
+			score, _ := scoreConceptForPhrase(topicContext, cm)
+			if score > 0 {
+				termScores = append(termScores, termScore{term: cm.Term, score: score})
+			}
+		}
+		for i := 0; i < len(termScores)-1; i++ {
+			for j := i + 1; j < len(termScores); j++ {
+				if termScores[j].score > termScores[i].score {
+					termScores[i], termScores[j] = termScores[j], termScores[i]
+				}
+			}
+		}
+		seenTerm := make(map[string]bool)
+		for _, ts := range termScores {
+			term := normalizeKeyword(ts.term)
+			if term == "" || seenTerm[term] {
+				continue
+			}
+			seenTerm[term] = true
+			topicConceptTerms = append(topicConceptTerms, term)
+			if len(topicConceptTerms) >= 3 {
+				break
+			}
+		}
+	}
+
+	s.dynamicClipsMu.Lock()
+	dynamicClips := make([]clipsearch.SearchResult, len(s.dynamicClips))
+	copy(dynamicClips, s.dynamicClips)
+	s.dynamicClipsMu.Unlock()
+
+	dynamicClipByKeyword := make(map[string]clipsearch.SearchResult)
+	stockClipByID := make(map[string]stockdb.StockClipEntry)
+	folderPathByID := make(map[string]string)
+	if s.stockDB != nil {
+		if allFolders, err := s.stockDB.GetAllFolders(); err == nil {
+			for _, f := range allFolders {
+				folderPathByID[f.DriveID] = f.FullPath
+			}
+		}
+		if allClips, err := s.stockDB.GetAllClips(); err == nil {
+			for _, c := range allClips {
+				stockClipByID[c.ClipID] = c
+			}
+		}
+	}
+	for _, dc := range dynamicClips {
+		if isArtlistDynamicResult(dc, stockClipByID, folderPathByID) {
+			continue
+		}
+		dynamicClipByKeyword[strings.ToLower(dc.Keyword)] = dc
+	}
+
+	var dbClips []stockdb.StockClipEntry
+	if s.stockDB != nil {
+		conceptTags := []string{"people", "city", "technology", "crowd", "arrest", "tech", "fight", "boxing", "gym", "sport", "courtroom"}
+		allClips, _ := s.stockDB.SearchClipsByTags(conceptTags)
+
+		// IMPORTANT: Also include ALL clips from the resolved topic folder
+		if stockFolder.ID != "" && stockFolder.ID != "root" {
+			folderClips, _ := s.stockDB.GetClipsForFolder(stockFolder.ID)
+			allClips = append(allClips, folderClips...)
+		}
+
+		for _, c := range allClips {
+			if isArtlistStockClipEntry(c, folderPathByID) {
+				continue
+			}
+			if !usedClipIDs[c.ClipID] {
+				dbClips = append(dbClips, c)
+			}
+		}
+	}
+
+	dbClipByTag := make(map[string][]stockdb.StockClipEntry)
+	for _, clip := range dbClips {
+		for _, key := range clipSearchKeys(clip) {
+			dbClipByTag[key] = append(dbClipByTag[key], clip)
+		}
+	}
+	dbClipIndex := make(map[string]int)
+
+	for _, frase := range frasi {
+		fraseLower := strings.ToLower(frase)
+		contextLower := fraseLower + " " + strings.ToLower(topic)
+		foundForThisPhrase := false
+
+		type conceptScore struct {
+			cm          clipConcept
+			score       int
+			bestKeyword string
+		}
+		var scores []conceptScore
+		for _, cm := range conceptMap {
+			matchCount, bestKw := scoreConceptForPhrase(contextLower, cm)
+			if matchCount > 0 {
+				scores = append(scores, conceptScore{cm: cm, score: matchCount, bestKeyword: bestKw})
+			}
+		}
+		for i := 0; i < len(scores)-1; i++ {
+			for j := i + 1; j < len(scores); j++ {
+				if scores[j].score > scores[i].score || (scores[j].score == scores[i].score && scores[j].cm.BaseConf > scores[i].cm.BaseConf) {
+					scores[i], scores[j] = scores[j], scores[i]
+				}
+			}
+		}
+
+		bestKWPre := ""
+		bestTermPre := ""
+		bestConfidence := 0.0
+		if len(scores) > 0 {
+			bestKWPre = scores[0].bestKeyword
+			bestTermPre = scores[0].cm.Term
+			bestConfidence = scores[0].cm.BaseConf
+		}
+		refKeywordPre := resolveReferenceKeyword(frase, topic, bestKWPre, bestTermPre, translator)
+		allowDirectAssociations := bestConfidence >= minDirectAssociationConfidence
+		forceDynamicSearch := s.clipSearch != nil && bestConfidence < forceDynamicSearchConfidence
+
+		if forceDynamicSearch {
+			candidates := make([]string, 0, 6)
+			seenKW := make(map[string]bool)
+			addKW := func(raw string) {
+				kw := normalizeKeyword(raw)
+				if kw == "" || seenKW[kw] || !isUsableDynamicKeyword(kw) {
+					return
+				}
+				translated := translator.TranslateKeywords([]string{kw})
+				if len(translated) > 0 {
+					kw = normalizeKeyword(translated[0])
+				}
+				if kw == "" || seenKW[kw] || !isUsableDynamicKeyword(kw) {
+					return
+				}
+				seenKW[kw] = true
+				candidates = append(candidates, kw)
+			}
+			for i, cs := range scores {
+				if i >= 3 {
+					break
+				}
+				addKW(cs.bestKeyword)
+				addKW(cs.cm.Term)
+			}
+			for _, conceptTerm := range topicConceptTerms {
+				addKW(conceptTerm)
+				if len(candidates) >= 5 {
+					break
+				}
+			}
+			for _, tok := range tokenizeWords(topic) {
+				addKW(tok)
+				if len(candidates) >= 5 {
+					break
+				}
+			}
+			for _, tok := range tokenizeWords(frase) {
+				addKW(tok)
+				if len(candidates) >= 5 {
+					break
+				}
+			}
+			if refKeywordPre != "" {
+				addKW(refKeywordPre)
+			}
+			if len(candidates) > 0 {
+				logger.Info("Forced dynamic search for low-confidence phrase",
+					zap.String("phrase", truncate(frase, 80)),
+					zap.Float64("confidence", bestConfidence),
+					zap.Strings("keywords", candidates),
+				)
+				results, err := s.clipSearch.SearchClipsWithOptions(
+					context.Background(),
+					candidates,
+					clipsearch.SearchOptions{ForceFresh: true},
+				)
+				if err == nil && len(results) > 0 {
+					dc := pickFirstArtlistDynamicResult(results, stockClipByID, folderPathByID)
+					if dc != nil {
+						clip := buildDynamicArtlistClip(*dc, refKeywordPre)
+						usedClipIDs[clip.URL] = true
+						associations = append(associations, ClipAssociation{
+							Phrase:         frase,
+							Type:           "ARTLIST",
+							Clip:           &clip,
+							Confidence:     0.90,
+							MatchedKeyword: clip.Term,
+						})
+						foundForThisPhrase = true
+					}
+				}
+			}
+			if !foundForThisPhrase && !allowDirectAssociations {
+				continue
+			}
+		}
+
+		if !foundForThisPhrase && allowDirectAssociations {
+			for _, cs := range scores {
+				cm := cs.cm
+				kw := cs.bestKeyword
+
+				if len(kw) < 4 {
+					continue
+				}
+
+				// 1. Try existing Dynamic Clips (Cache)
+				if dc, ok := dynamicClipByKeyword[strings.ToLower(kw)]; ok {
+					if !usedClipIDs["dynamic_"+dc.DriveID] {
+						usedClipIDs["dynamic_"+dc.DriveID] = true
+						associations = append(associations, ClipAssociation{Phrase: frase, Type: "DYNAMIC", DynamicClip: &dc, Confidence: 0.98, MatchedKeyword: kw})
+						foundForThisPhrase = true
+						break
+					}
+				}
+
+				// 2. High Confidence StockDB
+				if clips, ok := dbClipByTag[strings.ToLower(kw)]; ok && len(clips) > 0 && cm.BaseConf >= 0.90 {
+					idx := dbClipIndex[strings.ToLower(kw)] % len(clips)
+					clip := clips[idx]
+					dbClipIndex[strings.ToLower(kw)]++
+					usedClipIDs[clip.ClipID] = true
+					associations = append(associations, ClipAssociation{Phrase: frase, Type: "STOCK_DB", ClipDB: &clip, Confidence: cm.BaseConf, MatchedKeyword: kw})
+					foundForThisPhrase = true
+					break
+				}
+
+				// 3. High Confidence Artlist (random among existing clips for matched tag)
+				if s.artlistIndex != nil && cm.BaseConf >= 0.85 {
+					artlistKeywords := translator.TranslateKeywords([]string{kw})
+					artlistKW := kw
+					if len(artlistKeywords) > 0 {
+						artlistKW = artlistKeywords[0]
+					}
+					if clips := s.artlistClipsForTerm(cm.Term); len(clips) > 0 {
+						clip, ok := pickRandomArtlistClip(rng, clips, usedClipIDs, isArtlistURLValid)
+						if !ok || clip == nil {
+							continue
+						}
+						usedClipIDs[clip.URL] = true
+						associations = append(associations, ClipAssociation{Phrase: frase, Type: "ARTLIST", Clip: clip, Confidence: cm.BaseConf, MatchedKeyword: artlistKW})
+						foundForThisPhrase = true
+						break
+					}
+				}
+			}
+		}
+
+		// Reference keyword/tag for phrase-driven selection.
+		bestKW := ""
+		bestTerm := ""
+		if len(scores) > 0 {
+			bestKW = scores[0].bestKeyword
+			bestTerm = scores[0].cm.Term
+		}
+		refKeyword := resolveReferenceKeyword(frase, topic, bestKW, bestTerm, translator)
+
+		// 4. Artlist text fallback (when phrase has no concept-map hit but index has matching clips)
+		if !foundForThisPhrase && allowDirectAssociations && s.artlistIndex != nil {
+			contextTokens := significantTokens(frase)
+			if len(contextTokens) < 2 {
+				contextTokens = append(contextTokens, significantTokens(topic)...)
+			}
+			if len(contextTokens) > 0 {
+				fallbackClips := s.artlistIndex.Search(contextTokens, 3)
+				for _, clip := range fallbackClips {
+					if usedClipIDs[clip.URL] {
+						continue
+					}
+					if !isArtlistURLValid(clip.URL) {
+						continue
+					}
+					ok, matched := clipMatchesContext(clip, contextTokens, topicConceptTerms)
+					if !ok {
+						continue
+					}
+					usedClipIDs[clip.URL] = true
+					associations = append(associations, ClipAssociation{
+						Phrase:         frase,
+						Type:           "ARTLIST",
+						Clip:           &clip,
+						Confidence:     0.72,
+						MatchedKeyword: matched,
+					})
+					foundForThisPhrase = true
+					break
+				}
+			}
+		}
+
+		// 5. Phrase/tag-level Artlist fallback:
+		// pick random clip among existing ones for the reference tag.
+		if !foundForThisPhrase && allowDirectAssociations && s.artlistIndex != nil {
+			termSet := make(map[string]bool)
+			var candidateTerms []string
+			addTerm := func(raw string) {
+				term := normalizeKeyword(raw)
+				if term == "" || termSet[term] {
+					return
+				}
+				termSet[term] = true
+				candidateTerms = append(candidateTerms, term)
+			}
+
+			if refKeyword != "" {
+				addTerm(refKeyword)
+			}
+			for _, t := range topicConceptTerms {
+				addTerm(t)
+			}
+			for i, cs := range scores {
+				if i >= 3 {
+					break
+				}
+				addTerm(cs.cm.Term)
+			}
+			// Last-resort generic visual bucket when no concept term is available.
+			if len(candidateTerms) == 0 {
+				addTerm("people")
+			}
+
+			for _, term := range candidateTerms {
+				clips := s.artlistClipsForTerm(term)
+				if len(clips) == 0 {
+					continue
+				}
+				clip, ok := pickRandomArtlistClip(rng, clips, usedClipIDs, isArtlistURLValid)
+				if !ok || clip == nil {
+					continue
+				}
+				usedClipIDs[clip.URL] = true
+				associations = append(associations, ClipAssociation{
+					Phrase:         frase,
+					Type:           "ARTLIST",
+					Clip:           clip,
+					Confidence:     0.65,
+					MatchedKeyword: term,
+				})
+				foundForThisPhrase = true
+				if foundForThisPhrase {
+					break
+				}
+			}
+		}
+
+		// 6. Dynamic Artlist creation:
+		// if tag has no existing clip, search/download dynamically and register new tag->link.
+		if !foundForThisPhrase && s.clipSearch != nil && !forceDynamicSearch {
+			candidates := make([]string, 0, 6)
+			seenKW := make(map[string]bool)
+			addKW := func(raw string) {
+				kw := normalizeKeyword(raw)
+				if kw == "" || seenKW[kw] || !isUsableDynamicKeyword(kw) {
+					return
+				}
+				translated := translator.TranslateKeywords([]string{kw})
+				if len(translated) > 0 {
+					kw = normalizeKeyword(translated[0])
+				}
+				if kw == "" || seenKW[kw] || !isUsableDynamicKeyword(kw) {
+					return
+				}
+				seenKW[kw] = true
+				candidates = append(candidates, kw)
+			}
+
+			for i, cs := range scores {
+				if i >= 3 {
+					break
+				}
+				addKW(cs.bestKeyword)
+				addKW(cs.cm.Term)
+			}
+			for _, conceptTerm := range topicConceptTerms {
+				addKW(conceptTerm)
+				if len(candidates) >= 5 {
+					break
+				}
+			}
+			for _, tok := range tokenizeWords(topic) {
+				addKW(tok)
+				if len(candidates) >= 5 {
+					break
+				}
+			}
+			for _, tok := range tokenizeWords(frase) {
+				addKW(tok)
+				if len(candidates) >= 5 {
+					break
+				}
+			}
+			if refKeyword != "" {
+				addKW(refKeyword)
+			}
+
+			if len(candidates) > 0 {
+				logger.Info("Forcing dynamic download for phrase",
+					zap.String("phrase", truncate(frase, 80)),
+					zap.Strings("keywords", candidates),
+				)
+				results, err := s.clipSearch.SearchClips(context.Background(), candidates)
+				if err == nil && len(results) > 0 {
+					dc := pickFirstArtlistDynamicResult(results, stockClipByID, folderPathByID)
+					if dc == nil {
+						continue
+					}
+					clip := buildDynamicArtlistClip(*dc, refKeyword)
+					usedClipIDs[clip.URL] = true
+					associations = append(associations, ClipAssociation{
+						Phrase:         frase,
+						Type:           "ARTLIST",
+						Clip:           &clip,
+						Confidence:     0.66,
+						MatchedKeyword: clip.Term,
+					})
+					foundForThisPhrase = true
+				}
+			}
+
+		}
+
+		// 7. Hard fallback on common visual buckets:
+		// ensures we still return meaningful Artlist associations when phrase-level matching is weak.
+		if !foundForThisPhrase && allowDirectAssociations && s.artlistIndex != nil {
+			genericTerms := []string{"people", "technology", "city", "nature", "gym", "running", "ocean", "mountain"}
+			for _, term := range genericTerms {
+				clips := s.artlistClipsForTerm(term)
+				if len(clips) == 0 {
+					continue
+				}
+				clip, ok := pickRandomArtlistClip(rng, clips, usedClipIDs, isArtlistURLValid)
+				if !ok || clip == nil {
+					continue
+				}
+				usedClipIDs[clip.URL] = true
+				associations = append(associations, ClipAssociation{
+					Phrase:         frase,
+					Type:           "ARTLIST",
+					Clip:           clip,
+					Confidence:     0.55,
+					MatchedKeyword: term,
+				})
+				foundForThisPhrase = true
+				break
+			}
+		}
+
+		// 8. Absolute fallback: pick any valid Artlist clip to avoid empty output.
+		if !foundForThisPhrase && allowDirectAssociations && s.artlistIndex != nil && len(s.artlistIndex.Clips) > 0 {
+			for _, candidate := range s.artlistIndex.Clips {
+				if usedClipIDs[candidate.URL] || !isArtlistURLValid(candidate.URL) {
+					continue
+				}
+				clip := candidate
+				usedClipIDs[clip.URL] = true
+				associations = append(associations, ClipAssociation{
+					Phrase:         frase,
+					Type:           "ARTLIST",
+					Clip:           &clip,
+					Confidence:     0.40,
+					MatchedKeyword: normalizeKeyword(clip.Term),
+				})
+				foundForThisPhrase = true
+				break
+			}
+		}
+	}
+
+	logger.Info("Clip association completed",
+		zap.Int("phrases", len(frasi)),
+		zap.Int("associations", len(associations)),
+		zap.Int("dynamic_clips", len(dynamicClips)),
+		zap.Int("db_clips", len(dbClips)),
+	)
+	return associations
+}

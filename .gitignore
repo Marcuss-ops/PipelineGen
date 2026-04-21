@@ -1,0 +1,104 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.env
+.venv
+
+# Go
+src/go-master/server
+bin/server
+src/go-master/token.json
+src/go-master/credentials.json
+
+# Rust
+src/rust/target/
+bin/video-stock-creator.bundle
+*.bundle
+Cargo.lock
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Backups
+*.backup*
+*.bak
+*.old
+
+# Database
+*.db
+
+# Sensitive credentials (never commit)
+credentials.json
+token.json
+
+# Runtime data files (JSON databases regenerated at startup)
+*.db.json
+
+# Runtime data directories
+src/go-master/data/
+
+# Config backups
+config/backups/
+
+# Test data
+data/stock-links/
+data/lightpanda/
+data/examples/
+
+# Effects test directory
+effects/Test/
+
+# Duplicate assets
+config/assets/
+
+# Go compiled test binaries
+src/go-master/test_artlist
+src/go-master/test_harvester
+
+# Media files (use Git LFS instead)
+effects/overlays/*.mp4
+assets/transitions/*.mp4
+assets/audio/*.mp3
+assets/fonts/*.ttf
+
+# Python legacy (fully removed from repo)
+src/python-legacy/
+
+tests/lightpanda/lightpanda
+.github/workflows/

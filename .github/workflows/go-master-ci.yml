@@ -1,0 +1,56 @@
+name: Go Master CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/go-master/**'
+      - '.github/workflows/go-master-ci.yml'
+  pull_request:
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/go-master/**'
+      - '.github/workflows/go-master-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/go-master
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go-master/go.mod
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc
+
+      - name: Download dependencies
+        run: make deps
+
+      - name: Format check
+        run: |
+          make fmt
+          git diff --exit-code
+
+      - name: Vet
+        run: make vet
+
+      - name: Run unit tests
+        run: make test-unit
+
+      - name: Run integration tests
+        run: make test-integration
+
+      - name: Coverage threshold
+        run: make coverage-check
+
+      - name: Build
+        run: make build
