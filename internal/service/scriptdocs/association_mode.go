@@ -9,6 +9,7 @@ import (
 const (
 	AssociationModeDefault     = "default"
 	AssociationModeFullArtlist = "fullartlist"
+	AssociationModeImagesFull  = "images_full"
 )
 
 func normalizeAssociationMode(raw string) string {
@@ -18,6 +19,8 @@ func normalizeAssociationMode(raw string) string {
 		return AssociationModeDefault
 	case "full_artlist", "full-artlist", AssociationModeFullArtlist:
 		return AssociationModeFullArtlist
+	case "images_full", "images-full", "full_images", "full-images", "images", "images-only", "images_only":
+		return AssociationModeImagesFull
 	default:
 		return mode
 	}
@@ -25,11 +28,14 @@ func normalizeAssociationMode(raw string) string {
 
 func filterAssociationsByMode(associations []ClipAssociation, mode string) []ClipAssociation {
 	mode = normalizeAssociationMode(mode)
-	if mode != AssociationModeFullArtlist {
+	if mode != AssociationModeFullArtlist && mode != AssociationModeImagesFull {
 		return associations
 	}
 	filtered := make([]ClipAssociation, 0, len(associations))
 	for _, assoc := range associations {
+		if mode == AssociationModeImagesFull {
+			continue
+		}
 		if assoc.Type == "ARTLIST" {
 			filtered = append(filtered, assoc)
 		}

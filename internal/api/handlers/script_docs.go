@@ -26,6 +26,7 @@ func NewScriptDocsHandler(svc *scriptdocs.ScriptDocService) *ScriptDocsHandler {
 func (h *ScriptDocsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 	r.POST("/generate/fullartlist", h.GenerateFullArtlist)
+	r.POST("/generate/imagesfull", h.GenerateImagesFull)
 }
 
 // Generate generates a script and creates a Google Doc with entity extraction and clip associations
@@ -60,6 +61,8 @@ func (h *ScriptDocsHandler) Generate(c *gin.Context) {
 		"title":            result.Title,
 		"stock_folder":     result.StockFolder,
 		"stock_folder_url": result.StockFolderURL,
+		"image_plan":       result.ImagePlan,
+		"image_plan_path":  result.ImagePlanPath,
 		"languages": func() []map[string]interface{} {
 			var out []map[string]interface{}
 			for _, lr := range result.Languages {
@@ -71,6 +74,7 @@ func (h *ScriptDocsHandler) Generate(c *gin.Context) {
 					"entita_con_immagine": len(lr.EntitaConImmagine),
 					"associations":        len(lr.Associations),
 					"artlist_matches":     countArtlistMatches(lr.Associations),
+					"image_associations":  len(lr.ImageAssociations),
 					"avg_confidence":      avgConfidence(lr.Associations),
 				})
 			}
@@ -108,6 +112,8 @@ func (h *ScriptDocsHandler) GenerateFullArtlist(c *gin.Context) {
 		"title":            result.Title,
 		"stock_folder":     result.StockFolder,
 		"stock_folder_url": result.StockFolderURL,
+		"image_plan":       result.ImagePlan,
+		"image_plan_path":  result.ImagePlanPath,
 		"languages": func() []map[string]interface{} {
 			var out []map[string]interface{}
 			for _, lr := range result.Languages {
@@ -119,6 +125,54 @@ func (h *ScriptDocsHandler) GenerateFullArtlist(c *gin.Context) {
 					"non_artlist_associations": len(lr.Associations) - artlistMatches,
 					"timeline_entries":         len(lr.ArtlistTimeline),
 					"avg_confidence":           avgConfidence(lr.Associations),
+				})
+			}
+			return out
+		}(),
+	})
+}
+
+// GenerateImagesFull generates docs using image-only associations.
+// Forces association_mode=images_full and defaults language to English.
+func (h *ScriptDocsHandler) GenerateImagesFull(c *gin.Context) {
+	var req scriptdocs.ScriptDocRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	req.AssociationMode = scriptdocs.AssociationModeImagesFull
+	if len(req.Languages) == 0 {
+		req.Languages = []string{"en"}
+	}
+
+	result, err := h.service.GenerateScriptDoc(c.Request.Context(), req)
+	if err != nil {
+		logger.Error("Script doc imagesfull generation failed", zap.Error(err))
+		sanitizedErr := sanitizeErrorMessage(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": sanitizedErr})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":               true,
+		"mode":             scriptdocs.AssociationModeImagesFull,
+		"doc_id":           result.DocID,
+		"doc_url":          result.DocURL,
+		"title":            result.Title,
+		"stock_folder":     result.StockFolder,
+		"stock_folder_url": result.StockFolderURL,
+		"image_plan":       result.ImagePlan,
+		"image_plan_path":  result.ImagePlanPath,
+		"languages": func() []map[string]interface{} {
+			var out []map[string]interface{}
+			for _, lr := range result.Languages {
+				out = append(out, map[string]interface{}{
+					"language":            lr.Language,
+					"frasi_importanti":    len(lr.FrasiImportanti),
+					"nomi_speciali":       len(lr.NomiSpeciali),
+					"parole_importanti":   len(lr.ParoleImportant),
+					"entita_con_immagine": len(lr.EntitaConImmagine),
+					"image_associations":  len(lr.ImageAssociations),
 				})
 			}
 			return out
