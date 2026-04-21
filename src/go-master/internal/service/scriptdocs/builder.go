@@ -124,6 +124,39 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 		b.WriteString("\n")
 		b.WriteString(strings.Repeat("-", 80) + "\n\n")
 
+		if normalizeAssociationMode(s.currentAssociationMode) == AssociationModeImagesFull {
+			b.WriteString(fmt.Sprintf("🖼️ IMAGES FULL (%d)\n", len(lr.ImageAssociations)))
+			b.WriteString(strings.Repeat("-", 30) + "\n")
+			if len(lr.ImageAssociations) == 0 {
+				b.WriteString("   - Nessuna immagine rilevante trovata\n\n")
+			} else {
+				for i, img := range lr.ImageAssociations {
+					b.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", i+1, truncate(associationLabel(ClipAssociation{Phrase: img.Phrase, MatchedKeyword: img.Entity}), 160)))
+					if img.StartTime > 0 || img.EndTime > 0 {
+						b.WriteString(fmt.Sprintf("   ⏱ %s\n", formatTimestampWindow(img.StartTime, img.EndTime)))
+					}
+					if img.Entity != "" {
+						b.WriteString(fmt.Sprintf("   🏷 Entity: %s\n", img.Entity))
+					}
+					if img.Title != "" {
+						b.WriteString(fmt.Sprintf("   🖼 Titolo: %s\n", img.Title))
+					}
+					if img.ImageURL != "" {
+						b.WriteString(fmt.Sprintf("   🔗 %s\n", img.ImageURL))
+					}
+					if img.PageURL != "" {
+						b.WriteString(fmt.Sprintf("   🌐 %s\n", img.PageURL))
+					}
+					if img.Source != "" {
+						b.WriteString(fmt.Sprintf("   ✅ Fonte: %s\n", img.Source))
+					}
+					b.WriteString(fmt.Sprintf("   📊 Score: %.2f\n\n", img.Score))
+				}
+			}
+			b.WriteString(strings.Repeat("=", 100) + "\n\n")
+			continue
+		}
+
 		if len(lr.Associations) >= 0 {
 			// Group 1: Drive Clips (real clips only: Dynamic + Stock DB)
 			driveCount := 0
@@ -133,7 +166,7 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 				if sourceKind != "stock" && sourceKind != "dynamic" {
 					continue
 				}
-				
+
 				hasValidClip := false
 				if assoc.DynamicClip != nil {
 					folderCheck := assoc.DynamicClip.Folder
@@ -147,8 +180,8 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 							}
 						}
 					}
-					if assoc.DynamicClip.Filename != "" && 
-					   !strings.HasPrefix(assoc.DynamicClip.Filename, assoc.MatchedKeyword) {
+					if assoc.DynamicClip.Filename != "" &&
+						!strings.HasPrefix(assoc.DynamicClip.Filename, assoc.MatchedKeyword) {
 						hasValidClip = true
 					}
 				}
@@ -165,7 +198,7 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 						hasValidClip = true
 					}
 				}
-				
+
 				if !hasValidClip {
 					continue
 				}
@@ -329,7 +362,7 @@ func (s *ScriptDocService) buildStockDriveSections(stockFolder StockFolder, lang
 				FolderName:   folderName,
 				FolderURL:    folderURL,
 				StartTime:    chapter.StartTime,
-				EndTime:     chapter.EndTime,
+				EndTime:      chapter.EndTime,
 				Links: []stockDriveLink{{
 					StartPhrase: startPhrase,
 					EndPhrase:   endPhrase,

@@ -10,6 +10,7 @@ import (
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/clipsearch"
+	"velox/go-master/internal/entityimages"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/stockdb"
 	"velox/go-master/internal/upload/drive"
@@ -92,6 +93,7 @@ func NewScriptDocService(
 		artlistIndex:         ai,
 		artlistSrc:           alSrc,
 		artlistDB:            alDB,
+		imageFinder:          entityimages.New(),
 		stockDB:              sdb,
 		stockFolders:         stockFolders,
 		stockFoldersCacheTTL: 24 * time.Hour,
@@ -117,6 +119,7 @@ func NewScriptDocServiceWithDynamicFolders(
 		artlistIndex:         ai,
 		artlistSrc:           alSrc,
 		artlistDB:            alDB,
+		imageFinder:          entityimages.New(),
 		stockDB:              sdb,
 		driveClient:          driveClient,
 		stockRootFolderID:    stockRootFolderID,
