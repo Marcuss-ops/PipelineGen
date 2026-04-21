@@ -13,6 +13,13 @@ import (
 	"velox/go-master/internal/service/channelmonitor"
 	"velox/go-master/internal/stockjob"
 	"velox/go-master/pkg/config"
+
+	// New pipeline imports
+	"velox/go-master/internal/pipeline/analyzer"
+	"velox/go-master/internal/pipeline/coordinator"
+	"velox/go-master/internal/pipeline/downloader"
+	"velox/go-master/internal/pipeline/fetcher"
+	"velox/go-master/internal/pipeline/store"
 )
 
 // BackgroundDeps holds the background service handlers and the services themselves.
@@ -21,19 +28,42 @@ type BackgroundDeps struct {
 	StockScheduler        *stockjob.Scheduler
 	HarvesterSvc          *harvester.Harvester
 	HarvesterHandler      *harvester.Handler
+	PipelineEngine        *coordinator.Engine
 }
 
 // initBackgroundServices initializes the long-running background services:
 // channel monitor, stock job scheduler, and YouTube harvester.
-//
-// Services are created but NOT started here — they are returned as
-// BackgroundService instances for registration with the ServiceGroup,
-// which provides unified lifecycle management (start, stop, rollback).
 func initBackgroundServices(
 	cfg *config.Config, log *zap.Logger, core *CoreDeps, clips *ClipDeps, drive *DriveDeps,
 ) (*BackgroundDeps, []runtime.BackgroundService, error) {
 	driveClient := drive.DriveHandler.GetDriveClient()
 	var services []runtime.BackgroundService
+
+	// === New Modular Pipeline Engine ===
+	pipelineStore, err := store.NewPipelineStore(cfg.GetDataPath("pipeline.db"))
+	if err != nil {
+		log.Error("Failed to initialize pipeline store", zap.Error(err))
+		return nil, nil, err
+	}
+
+	pipelineFetcher := fetcher.NewYtDlpFetcher(cfg.Paths.YtDlpPath)
+	pipelineAnalyzer := analyzer.NewGemmaAnalyzer("", "gemma3:4b")
+	pipelineDownloader := downloader.NewYtDlpDownloader(cfg.Paths.YtDlpPath, cfg.GetDownloadDir())
+
+	pipelineEngine := coordinator.NewEngine(pipelineStore, pipelineFetcher, pipelineAnalyzer, pipelineDownloader, 3)
+
+	// Wrap for ServiceGroup
+	services = append(services, runtime.NewServiceAdapter(
+		"PipelineEngineV3",
+		func(ctx context.Context) error {
+			pipelineEngine.Start(ctx)
+			return nil
+		},
+		func() error {
+			pipelineEngine.Stop()
+			return nil
+		},
+	))
 
 	// === Channel Monitor === (disabled by default, set VELOX_ENABLE_CHANNEL_MONITOR=true to enable)
 	var channelMonitorHandler *handlers.ChannelMonitorHandler
@@ -154,5 +184,6 @@ func initBackgroundServices(
 		StockScheduler:        stockScheduler,
 		HarvesterSvc:          harvesterSvc,
 		HarvesterHandler:      harvesterHandler,
+		PipelineEngine:        pipelineEngine,
 	}, services, nil
 }
