@@ -73,11 +73,17 @@ func initBackgroundServices(
 		if err != nil {
 			log.Warn("Failed to load channel monitor config", zap.Error(err))
 		}
+		clipRootID := cfg.GetClipRootFolder()
+		if clipRootID == "" && fileCfg != nil {
+			clipRootID = fileCfg.ClipRootID
+		}
 		monitorCfg := channelmonitor.MonitorConfig{
 			Channels: fileCfg.Channels, CheckInterval: fileCfg.CheckInterval,
 			VideoTimeframe: fileCfg.VideoTimeframe,
-			StockRootID:    fileCfg.StockRootID, YtDlpPath: fileCfg.YtDlpPath,
-			CookiesPath: fileCfg.CookiesPath, MaxClipDuration: fileCfg.MaxClipDuration,
+			ClipRootID:     clipRootID,
+			YtDlpPath:      fileCfg.YtDlpPath,
+			FFmpegPath:     fileCfg.FFmpegPath,
+			CookiesPath:    fileCfg.CookiesPath, MaxClipDuration: fileCfg.MaxClipDuration,
 			OllamaURL: fileCfg.OllamaURL,
 		}
 		if len(monitorCfg.Channels) == 0 {
@@ -90,8 +96,11 @@ func initBackgroundServices(
 		if monitorCfg.YtDlpPath == "" {
 			monitorCfg.YtDlpPath = cfg.Paths.YtDlpPath
 		}
-		if monitorCfg.StockRootID == "" {
-			monitorCfg.StockRootID = "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+		if monitorCfg.FFmpegPath == "" {
+			monitorCfg.FFmpegPath = "ffmpeg"
+		}
+		if monitorCfg.ClipRootID == "" {
+			monitorCfg.ClipRootID = clipRootID
 		}
 		if monitorCfg.CheckInterval == 0 {
 			monitorCfg.CheckInterval = 24 * time.Hour

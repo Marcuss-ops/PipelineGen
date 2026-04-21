@@ -3,6 +3,7 @@ package channelmonitor
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -31,11 +32,16 @@ type Monitor struct {
 	config          MonitorConfig
 	ytClient        youtube.Client
 	driveClient     driveClientAPI
+	clipRunStore    *ClipRunStore
 	downloadClipFn  func(ctx context.Context, videoID string, startSec, duration int, outputFile string) error
 	folderCache     map[string]string               // category/protagonist -> folder ID
 	processedVideos map[string]*ProcessedVideoEntry // videoID -> entry
 	processedFile   string                          // path to processed videos JSON file
 	ollamaURL       string                          // Ollama URL for AI classification
+}
+
+func (m *Monitor) clipRootID() string {
+	return m.config.ClipRootID
 }
 
 // NewMonitor creates a new channel monitor
@@ -53,11 +59,24 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 		config:          cfg,
 		ytClient:        ytClient,
 		driveClient:     driveClient,
+		clipRunStore:    nil,
 		downloadClipFn:  nil,
 		folderCache:     make(map[string]string),
 		processedVideos: make(map[string]*ProcessedVideoEntry),
 		processedFile:   "data/channel_monitor_processed.json",
 		ollamaURL:       ollamaURL,
+	}
+	clipRunDBPath := cfg.ClipRunDBPath
+	if clipRunDBPath == "" {
+		clipRunDBPath = os.Getenv("VELOX_CHANNELMONITOR_CLIP_RUN_DB")
+	}
+	if clipRunDBPath == "" {
+		clipRunDBPath = "data/channel_monitor_clip_runs.sqlite"
+	}
+	if store, err := OpenClipRunStore(clipRunDBPath); err == nil {
+		m.clipRunStore = store
+	} else {
+		logger.Warn("Failed to open clip run store", zap.Error(err))
 	}
 	m.downloadClipFn = m.downloadClip
 
@@ -161,7 +180,7 @@ func (m *Monitor) ProcessVideo(ctx context.Context, videoID, categoryOverride st
 	// 2. Determine category
 	category := categoryOverride
 	if category == "" {
-		category = "HipHop" // Default
+		category = ""
 	}
 
 	// 3. Setup config for folder resolution
@@ -186,7 +205,7 @@ func (m *Monitor) ProcessVideo(ctx context.Context, videoID, categoryOverride st
 	}
 
 	// 6. Resolve folder
-	folderPath, folderID, folderExisted, err := m.resolveFolder(ctx, chConfig, videoTitle)
+	folderPath, folderID, folderExisted, decision, err := m.resolveFolder(ctx, chConfig, videoTitle)
 	if err != nil {
 		return nil, fmt.Errorf("folder resolution failed: %w", err)
 	}
@@ -195,7 +214,7 @@ func (m *Monitor) ProcessVideo(ctx context.Context, videoID, categoryOverride st
 	clips, err := m.downloadAndUploadClips(ctx, youtube.SearchResult{
 		ID:    videoID,
 		Title: videoTitle,
-	}, highlights, folderID, folderPath, folderExisted, chConfig.MaxClipDuration)
+	}, highlights, folderID, folderPath, folderExisted, chConfig.MaxClipDuration, decision)
 	if err != nil {
 		logger.Warn("Some clips failed to process", zap.Error(err))
 	}
@@ -238,18 +257,19 @@ func (m *Monitor) FindHighlights(transcript string) []HighlightSegment {
 }
 
 // ResolveFolder determines the Drive folder for a video's clips
-func (m *Monitor) ResolveFolder(ctx context.Context, ch ChannelConfig, videoTitle string) (string, string, bool, error) {
+func (m *Monitor) ResolveFolder(ctx context.Context, ch ChannelConfig, videoTitle string) (string, string, bool, CategoryDecision, error) {
 	return m.resolveFolder(ctx, ch, videoTitle)
 }
 
 // DownloadAndUploadClips downloads highlight clips and uploads them to Drive
-func (m *Monitor) DownloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, folderExisted bool, maxDuration int) ([]ClipResult, error) {
-	return m.downloadAndUploadClips(ctx, video, highlights, folderID, folderPath, folderExisted, maxDuration)
+func (m *Monitor) DownloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, folderExisted bool, maxDuration int, decision CategoryDecision) ([]ClipResult, error) {
+	return m.downloadAndUploadClips(ctx, video, highlights, folderID, folderPath, folderExisted, maxDuration, decision)
 }
 
 // ClassifyCategory resolves the best category for a video title using Gemma + guardrails.
 func (m *Monitor) ClassifyCategory(ctx context.Context, title string) (string, error) {
-	return m.classifyEntity(ctx, title, extractProtagonist(title))
+	category, _, err := m.classifyEntity(ctx, title, extractProtagonist(title))
+	return category, err
 }
 
 // CategoryChoices returns the 6 canonical categories used by monitor routing.
