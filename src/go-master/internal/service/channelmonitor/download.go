@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -122,31 +121,25 @@ func (m *Monitor) downloadAndUploadClips(ctx context.Context, video youtube.Sear
 func (m *Monitor) downloadClip(ctx context.Context, videoID string, startSec, duration int, outputFile string) error {
 	url := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
 
-	// Clamp duration
-	if duration <= 0 || duration > 120 {
-		duration = 60
+	maxDuration := m.config.MaxClipDuration
+	if maxDuration <= 0 {
+		maxDuration = 60
 	}
-
-	args := []string{
-		"--download-section", fmt.Sprintf("*%d:%02d-%d:%02d", startSec/60, startSec%60, (startSec+duration)/60, (startSec+duration)%60),
-		"-o", outputFile,
-		"--no-warnings",
-		"--force-keyframes-at-cuts",
-		url,
-	}
-	if m.config.CookiesPath != "" {
-		args = append(args, "--cookies", m.config.CookiesPath)
+	if duration <= 0 || duration > maxDuration {
+		duration = maxDuration
 	}
 
 	dlCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(dlCtx, m.config.YtDlpPath, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("yt-dlp failed: %w\n%s", err, string(output))
-	}
-
-	return nil
+	return youtube.DownloadSection(dlCtx, youtube.SectionDownloadOptions{
+		YtDlpPath:          m.config.YtDlpPath,
+		URL:                url,
+		OutputFile:         outputFile,
+		StartSec:           startSec,
+		Duration:           duration,
+		CookiesFile:        m.config.CookiesPath,
+		DefaultCookiesFile: "",
+		MaxFilesize:        "1G",
+	})
 }
-

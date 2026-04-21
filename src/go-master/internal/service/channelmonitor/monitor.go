@@ -2,9 +2,8 @@ package channelmonitor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
+	"strings"
 	"time"
 
 	"velox/go-master/internal/runtime"
@@ -200,25 +199,17 @@ func (m *Monitor) ProcessVideo(ctx context.Context, videoID, categoryOverride st
 
 // GetVideoTitleFallback uses yt-dlp to get video title when API fails
 func (m *Monitor) GetVideoTitleFallback(ctx context.Context, videoID string) string {
-	ytdlpPath := m.config.YtDlpPath
-	if ytdlpPath == "" {
-		ytdlpPath = "yt-dlp"
+	if m.ytClient == nil {
+		return fmt.Sprintf("Video_%s", videoID)
 	}
-	url := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
 
-	cmd := exec.CommandContext(ctx, ytdlpPath, "--dump-json", "--no-warnings", url)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	info, err := m.ytClient.GetVideo(ctx, videoID)
+	if err != nil || info == nil {
 		logger.Warn("yt-dlp title fallback failed", zap.Error(err))
 		return fmt.Sprintf("Video_%s", videoID)
 	}
 
-	var info map[string]interface{}
-	if err := json.Unmarshal(output, &info); err != nil {
-		return fmt.Sprintf("Video_%s", videoID)
-	}
-
-	if title, ok := info["title"].(string); ok {
+	if title := strings.TrimSpace(info.Title); title != "" {
 		return title
 	}
 	return fmt.Sprintf("Video_%s", videoID)
