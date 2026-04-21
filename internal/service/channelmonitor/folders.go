@@ -20,7 +20,7 @@ import (
 
 const protagonistMergeThreshold = 0.88
 
-var monitorDefaultCategories = []string{"Boxe", "Crime", "Discovery", "HipHop", "Music", "Wwe"}
+var monitorDefaultCategories = []string{"Boxe", "Crime", "Discovery", "HipHop", "Music", "Various", "Wwe"}
 
 var protagonistNoiseWords = map[string]struct{}{
 	"official": {}, "video": {}, "audio": {}, "lyrics": {}, "lyric": {},
@@ -35,8 +35,8 @@ var protagonistNoiseWords = map[string]struct{}{
 // resolveFolder determines the Drive folder where clips for a video should be uploaded.
 // It extracts the protagonist from the title, classifies the entity via Ollama,
 // finds or creates the matching category folder, then creates/finds the subfolder.
-// Returns: folderPath (e.g. "HipHop/ArtistName"), folderID, folderExisted, error.
-func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitle string) (string, string, bool, error) {
+// Returns: folderPath (e.g. "HipHop/ArtistName"), folderID, folderExisted, category decision, error.
+func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitle string) (string, string, bool, CategoryDecision, error) {
 	// Step 1: Extract protagonist name from title
 	protagonist := extractProtagonist(videoTitle)
 	if protagonist == "" {
@@ -45,17 +45,43 @@ func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitl
 
 	// Step 2: Classify entity via Ollama to determine category
 	category := ch.Category
+	decision := CategoryDecision{
+		Category:   category,
+		Source:     "override",
+		Confidence: 1.0,
+	}
 	if category == "" {
-		classified, err := m.classifyEntity(ctx, videoTitle, protagonist)
+		classified, reason, err := m.classifyEntity(ctx, videoTitle, protagonist)
 		if err != nil {
 			logger.Warn("Ollama classification failed, using fallback category",
 				zap.String("title", videoTitle),
 				zap.Error(err),
 			)
 			category = fallbackCategory(videoTitle, protagonist)
+			decision = CategoryDecision{
+				Category:   category,
+				Source:     "fallback",
+				Reason:     reason,
+				Confidence: classificationConfidence(category, "fallback"),
+			}
 		} else {
 			category = classified
+			decision = CategoryDecision{
+				Category:   category,
+				Source:     "gemma",
+				Reason:     reason,
+				Confidence: classificationConfidence(category, "gemma"),
+			}
 		}
+	}
+	if category == "" {
+		category = "Various"
+	}
+	decision.Category = category
+	decision.NeedsReview = decision.Confidence < 0.60 || category == "Various"
+	if decision.Source == "override" && decision.Category != "" {
+		decision.Confidence = 1.0
+		decision.NeedsReview = false
 	}
 
 	// Step 3: Fuzzy match category to known categories
@@ -63,11 +89,13 @@ func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitl
 	if canonicalCategory == "" {
 		canonicalCategory = category // use as-is if no match
 	}
+	decision.Category = canonicalCategory
+	decision.NeedsReview = decision.NeedsReview || canonicalCategory == "Various"
 
 	// Step 4: Find or create the category folder under root
 	categoryFolderID, existed, err := m.getOrCreateCategoryFolder(ctx, canonicalCategory)
 	if err != nil {
-		return "", "", false, fmt.Errorf("failed to get/create category folder: %w", err)
+		return "", "", false, decision, fmt.Errorf("failed to get/create category folder: %w", err)
 	}
 
 	// Step 5: Reuse/create protagonist subfolder in selected category
@@ -95,7 +123,7 @@ func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitl
 	if chosenID == "" {
 		chosenID, err = m.driveClient.GetOrCreateFolder(ctx, chosenName, categoryFolderID)
 		if err != nil {
-			return "", "", false, fmt.Errorf("failed to get/create subfolder %s: %w", subfolderPath, err)
+			return "", "", false, decision, fmt.Errorf("failed to get/create subfolder %s: %w", subfolderPath, err)
 		}
 	}
 
@@ -105,11 +133,11 @@ func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitl
 		zap.Bool("category_existed", existed),
 	)
 
-	return subfolderPath, chosenID, existed, nil
+	return subfolderPath, chosenID, existed, decision, nil
 }
 
 // classifyEntity uses Ollama to classify a video title into a category
-func (m *Monitor) classifyEntity(ctx context.Context, title, protagonist string) (string, error) {
+func (m *Monitor) classifyEntity(ctx context.Context, title, protagonist string) (string, string, error) {
 	candidates := m.categoryChoices(ctx)
 	prompt := fmt.Sprintf(`You are a strict content router.
 Choose exactly ONE category from this list: %s
@@ -119,6 +147,7 @@ Definitions:
 - Wwe: WWE/wrestling shows, wrestlers, RAW/SmackDown/PPV.
 - Music: songs, albums, performances, music artists (including rappers), artist interviews.
 - HipHop: hip-hop culture/news/scene in general (not mainly one artist's music interview).
+- Various: mixed topics, uncategorized content, or content that doesn't fit the others.
 - Crime: crime stories, arrests, gangs, investigations, court crime topics.
 - Discovery: documentaries, science, education, nature, general knowledge.
 
@@ -136,19 +165,19 @@ Protagonist: "%s"`, strings.Join(candidates, ", "), title, protagonist)
 
 	reqJSON, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", m.ollamaURL+"/api/generate", bytes.NewReader(reqJSON))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ollama request failed: %w", err)
+		return "", "", fmt.Errorf("ollama request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -156,12 +185,12 @@ Protagonist: "%s"`, strings.Join(candidates, ", "), title, protagonist)
 		Response string `json:"response"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
+		return "", "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	category := parseCategoryFromGemmaResponse(ollamaResp.Response, candidates)
+	category, reason := parseCategoryFromGemmaResponse(ollamaResp.Response, candidates)
 	if category == "" {
-		return "", fmt.Errorf("invalid category from model: %q", strings.TrimSpace(ollamaResp.Response))
+		return "", "", fmt.Errorf("invalid category from model: %q", strings.TrimSpace(ollamaResp.Response))
 	}
 	category = applyCategoryGuardrails(category, title, protagonist)
 	if normalized := fuzzyMatchFolder(category); normalized != "" {
@@ -174,10 +203,10 @@ Protagonist: "%s"`, strings.Join(candidates, ", "), title, protagonist)
 		zap.String("category", category),
 	)
 
-	return category, nil
+	return category, reason, nil
 }
 
-func parseCategoryFromGemmaResponse(raw string, candidates []string) string {
+func parseCategoryFromGemmaResponse(raw string, candidates []string) (string, string) {
 	candidateSet := make(map[string]bool, len(candidates))
 	for _, c := range candidates {
 		candidateSet[c] = true
@@ -185,15 +214,16 @@ func parseCategoryFromGemmaResponse(raw string, candidates []string) string {
 
 	var payload struct {
 		Category string `json:"category"`
+		Reason   string `json:"reason"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err == nil {
 		cat := strings.TrimSpace(payload.Category)
 		if cat != "" {
 			if canonical := fuzzyMatchFolder(cat); canonical != "" && candidateSet[canonical] {
-				return canonical
+				return canonical, strings.TrimSpace(payload.Reason)
 			}
 			if candidateSet[cat] {
-				return cat
+				return cat, strings.TrimSpace(payload.Reason)
 			}
 		}
 	}
@@ -201,16 +231,35 @@ func parseCategoryFromGemmaResponse(raw string, candidates []string) string {
 	clean := strings.TrimSpace(raw)
 	clean = strings.Trim(clean, `"'.,;: `)
 	if canonical := fuzzyMatchFolder(clean); canonical != "" && candidateSet[canonical] {
-		return canonical
+		return canonical, ""
 	}
 
 	lower := strings.ToLower(raw)
 	for _, c := range candidates {
 		if strings.Contains(lower, strings.ToLower(c)) {
-			return c
+			return c, ""
 		}
 	}
-	return ""
+	return "", ""
+}
+
+func classificationConfidence(category, source string) float64 {
+	switch source {
+	case "override":
+		return 1.0
+	case "gemma":
+		if category == "Various" {
+			return 0.45
+		}
+		return 0.86
+	case "fallback":
+		if category == "Various" {
+			return 0.35
+		}
+		return 0.60
+	default:
+		return 0.50
+	}
 }
 
 func (m *Monitor) categoryChoices(ctx context.Context) []string {
@@ -218,17 +267,17 @@ func (m *Monitor) categoryChoices(ctx context.Context) []string {
 	if m.driveClient == nil {
 		return choices
 	}
-	stockRootID := strings.TrimSpace(m.config.StockRootID)
-	if stockRootID == "" {
-		if id, err := m.findStockRootNoCreate(ctx); err == nil && strings.TrimSpace(id) != "" {
-			stockRootID = id
+	clipRootID := strings.TrimSpace(m.clipRootID())
+	if clipRootID == "" {
+		if id, err := m.findClipRootNoCreate(ctx); err == nil && strings.TrimSpace(id) != "" {
+			clipRootID = id
 		}
 	}
-	if stockRootID == "" {
+	if clipRootID == "" {
 		return choices
 	}
 	folders, err := m.driveClient.ListFoldersNoRecursion(ctx, drive.ListFoldersOptions{
-		ParentID: stockRootID,
+		ParentID: clipRootID,
 		MaxItems: 100,
 	})
 	if err != nil {
@@ -277,7 +326,7 @@ func fallbackCategory(title, protagonist string) string {
 	if containsAny(titleLower, discoveryTerms) {
 		return "Discovery"
 	}
-	return "Discovery"
+	return "Various"
 }
 
 func applyCategoryGuardrails(category, title, protagonist string) string {
@@ -292,6 +341,9 @@ func applyCategoryGuardrails(category, title, protagonist string) string {
 				return "Music"
 			}
 		}
+	}
+	if canonical == "Various" {
+		return "Various"
 	}
 	return canonical
 }
@@ -347,27 +399,27 @@ func fuzzyMatchFolder(category string) string {
 
 // getOrCreateCategoryFolder finds or creates a category folder under the root
 func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string) (string, bool, error) {
-	cacheKey := "Stock/" + category
+	cacheKey := "Clips/" + category
 	if folderID, ok := m.folderCache[cacheKey]; ok {
 		return folderID, true, nil
 	}
 
-	stockRootID := m.config.StockRootID
-	if stockRootID == "" {
+	clipRootID := m.clipRootID()
+	if clipRootID == "" {
 		var err error
-		stockRootID, err = m.findStockRoot(ctx)
+		clipRootID, err = m.findClipRoot(ctx)
 		if err != nil {
-			return "", false, fmt.Errorf("Stock root folder not found: %w", err)
+			return "", false, fmt.Errorf("Clips root folder not found: %w", err)
 		}
 	}
 
 	result, err := m.driveClient.ListFolders(ctx, drive.ListFoldersOptions{
-		ParentID: stockRootID,
+		ParentID: clipRootID,
 		MaxDepth: 1,
 		MaxItems: 100,
 	})
 	if err != nil {
-		folderID, err := m.driveClient.CreateFolder(ctx, category, stockRootID)
+		folderID, err := m.driveClient.CreateFolder(ctx, category, clipRootID)
 		if err != nil {
 			return "", false, fmt.Errorf("failed to create category folder: %w", err)
 		}
@@ -382,7 +434,7 @@ func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string
 		}
 	}
 
-	folderID, err := m.driveClient.CreateFolder(ctx, category, stockRootID)
+	folderID, err := m.driveClient.CreateFolder(ctx, category, clipRootID)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to create category folder: %w", err)
 	}
@@ -391,35 +443,35 @@ func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string
 	return folderID, false, nil
 }
 
-// findStockRoot searches for the Stock root folder by name
-func (m *Monitor) findStockRoot(ctx context.Context) (string, error) {
+// findClipRoot searches for the Clips root folder by name
+func (m *Monitor) findClipRoot(ctx context.Context) (string, error) {
 	result, err := m.driveClient.ListFoldersNoRecursion(ctx, drive.ListFoldersOptions{MaxItems: 100})
 	if err != nil {
 		return "", err
 	}
 
 	for _, f := range result {
-		if strings.EqualFold(f.Name, "Stock") {
-			m.config.StockRootID = f.ID
+		if strings.EqualFold(f.Name, "Clips") {
+			m.config.ClipRootID = f.ID
 			return f.ID, nil
 		}
 	}
 
-	folderID, err := m.driveClient.CreateFolder(ctx, "Stock", "root")
+	folderID, err := m.driveClient.CreateFolder(ctx, "Clips", "root")
 	if err != nil {
-		return "", fmt.Errorf("failed to create Stock root: %w", err)
+		return "", fmt.Errorf("failed to create Clips root: %w", err)
 	}
-	m.config.StockRootID = folderID
+	m.config.ClipRootID = folderID
 	return folderID, nil
 }
 
-func (m *Monitor) findStockRootNoCreate(ctx context.Context) (string, error) {
+func (m *Monitor) findClipRootNoCreate(ctx context.Context) (string, error) {
 	result, err := m.driveClient.ListFoldersNoRecursion(ctx, drive.ListFoldersOptions{MaxItems: 100})
 	if err != nil {
 		return "", err
 	}
 	for _, f := range result {
-		if strings.EqualFold(f.Name, "Stock") {
+		if strings.EqualFold(f.Name, "Clips") {
 			return f.ID, nil
 		}
 	}

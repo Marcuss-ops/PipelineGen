@@ -48,8 +48,10 @@ func DefaultConfig() *MonitorConfig {
 	return &MonitorConfig{
 		CheckInterval:   24 * time.Hour,
 		VideoTimeframe:  "month",
-		StockRootID:     "",
+		ClipRootID:      "",
+		ClipRunDBPath:   "",
 		YtDlpPath:       "yt-dlp",
+		FFmpegPath:      "ffmpeg",
 		CookiesPath:     "",
 		MaxClipDuration: 60,
 		OllamaURL:       "http://localhost:11434",
@@ -94,6 +96,9 @@ func applyDefaults(cfg *MonitorConfig) {
 	}
 	if cfg.YtDlpPath == "" {
 		cfg.YtDlpPath = "yt-dlp"
+	}
+	if cfg.FFmpegPath == "" {
+		cfg.FFmpegPath = "ffmpeg"
 	}
 	if cfg.MaxClipDuration == 0 {
 		cfg.MaxClipDuration = 60
