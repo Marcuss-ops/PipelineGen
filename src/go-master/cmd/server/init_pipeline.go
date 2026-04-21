@@ -13,6 +13,8 @@ import (
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clipcache"
 	"velox/go-master/internal/clipsearch"
+	"velox/go-master/internal/imagesasset"
+	"velox/go-master/internal/imagesdb"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/service/asyncpipeline"
@@ -41,6 +43,7 @@ func initPipeline(
 	cfg *config.Config, log *zap.Logger, core *CoreDeps, clips *ClipDeps, drive *DriveDeps,
 ) (*PipelineDeps, []runtime.BackgroundService, CleanupFunc, error) {
 	var pipelineBgSvcs []runtime.BackgroundService
+	var cleanup CleanupFunc
 
 	driveClient := drive.DriveHandler.GetDriveClient()
 	docClient := drive.DriveHandler.GetDocClient()
@@ -169,23 +172,43 @@ func initPipeline(
 
 	// === Script Docs ===
 	var scriptDocsHandler *handlers.ScriptDocsHandler
-	if artlistIdx != nil {
-		if docClient != nil {
-			svc := scriptdocs.NewScriptDocServiceWithDynamicFolders(
-				core.ScriptGen, docClient,
-				driveClient, cfg.Drive.StockRootFolderID,
-				artlistIdx, clips.StockDB, clipSearch, clips.ArtlistSrc, artlistDB,
-			)
-			scriptDocsHandler = handlers.NewScriptDocsHandler(svc)
-			log.Info("Script Docs service initialized")
-		} else if clips.StockDB != nil {
-			stockFolders := convertConfigToStockFolders(cfg.Drive.GetStockFolderEntries())
-			svc := scriptdocs.NewScriptDocService(
-				core.ScriptGen, nil, artlistIdx, clips.StockDB, stockFolders, clipSearch, clips.ArtlistSrc, artlistDB,
-			)
-			scriptDocsHandler = handlers.NewScriptDocsHandler(svc)
-			log.Info("Script Docs service initialized (StockDB only)")
+	var imagesDB *imagesdb.ImageDB
+	if docClient != nil || clips.StockDB != nil {
+		imagesDBPath := cfg.Storage.DataDir + "/images_local.sqlite"
+		if db, err := imagesdb.Open(imagesDBPath); err == nil {
+			imagesDB = db
+			log.Info("ImagesDB opened", zap.String("path", imagesDBPath))
+			cleanup = func() {
+				_ = imagesDB.Close()
+			}
+		} else {
+			log.Warn("Failed to open ImagesDB", zap.Error(err))
 		}
+	}
+
+	if docClient != nil {
+		svc := scriptdocs.NewScriptDocServiceWithDynamicFolders(
+			core.ScriptGen, docClient,
+			driveClient, cfg.Drive.StockRootFolderID,
+			artlistIdx, clips.StockDB, clipSearch, clips.ArtlistSrc, artlistDB,
+		)
+		if imagesDB != nil {
+			svc.SetImagesDB(imagesDB)
+			svc.SetImageDownloader(imagesasset.New(filepath.Join(cfg.Storage.DataDir, "image_assets")))
+		}
+		scriptDocsHandler = handlers.NewScriptDocsHandler(svc)
+		log.Info("Script Docs service initialized")
+	} else if clips.StockDB != nil {
+		stockFolders := convertConfigToStockFolders(cfg.Drive.GetStockFolderEntries())
+		svc := scriptdocs.NewScriptDocService(
+			core.ScriptGen, nil, artlistIdx, clips.StockDB, stockFolders, clipSearch, clips.ArtlistSrc, artlistDB,
+		)
+		if imagesDB != nil {
+			svc.SetImagesDB(imagesDB)
+			svc.SetImageDownloader(imagesasset.New(filepath.Join(cfg.Storage.DataDir, "image_assets")))
+		}
+		scriptDocsHandler = handlers.NewScriptDocsHandler(svc)
+		log.Info("Script Docs service initialized (StockDB only)")
 	}
 
 	// === Artlist Pipeline ===
@@ -235,5 +258,5 @@ func initPipeline(
 		ArtlistIdx:             artlistIdx,
 		ArtlistDB:              artlistDB,
 		ClipSearch:             clipSearch,
-	}, pipelineBgSvcs, nil, nil
+	}, pipelineBgSvcs, cleanup, nil
 }

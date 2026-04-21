@@ -94,7 +94,7 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 			entitaConImmagine = limitEntityImageMap(entitaConImmagine, 5)
 
 			keywords := s.extractClipKeywords(frasiImportanti, nomiSpeciali, paroleImportant)
-			if normalizeAssociationMode(req.AssociationMode) != AssociationModeFullArtlist && len(keywords) > 0 && s.clipSearch != nil {
+			if normalizeAssociationMode(req.AssociationMode) != AssociationModeFullArtlist && normalizeAssociationMode(req.AssociationMode) != AssociationModeImagesFull && len(keywords) > 0 && s.clipSearch != nil {
 				logger.Info("Starting dynamic clip search", zap.Strings("keywords", keywords))
 				dynamicClips, err := s.clipSearch.SearchClips(ctx, keywords)
 				if err != nil {
@@ -107,10 +107,21 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 				}
 			}
 
-			associations := s.associateClips(frasiImportanti, stockFolder, req.Topic)
-			associations = filterAssociationsByMode(associations, req.AssociationMode)
-			stockAssociations, artlistAssociations := s.splitAssociationsBySource(associations)
-			timeline := s.buildArtlistTimeline(associations, req.Duration)
+			associations := []ClipAssociation(nil)
+			var stockAssociations []ClipAssociation
+			var artlistAssociations []ClipAssociation
+			var timeline []ArtlistTimeline
+			var imageAssociations []ImageAssociation
+
+			switch normalizeAssociationMode(req.AssociationMode) {
+			case AssociationModeImagesFull:
+				imageAssociations = s.buildImagesFullAssociations(ctx, req.Topic, chapters, entitaConImmagine)
+			default:
+				associations = s.associateClips(frasiImportanti, stockFolder, req.Topic)
+				associations = filterAssociationsByMode(associations, req.AssociationMode)
+				stockAssociations, artlistAssociations = s.splitAssociationsBySource(associations)
+				timeline = s.buildArtlistTimeline(associations, req.Duration)
+			}
 
 			result := LanguageResult{
 				Language:            lang,
@@ -124,6 +135,7 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 				StockAssociations:   stockAssociations,
 				ArtlistAssociations: artlistAssociations,
 				ArtlistTimeline:     timeline,
+				ImageAssociations:   imageAssociations,
 			}
 
 			mu.Lock()
@@ -148,6 +160,17 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 		return nil, fmt.Errorf("failed to create document: %w", err)
 	}
 
+	var imagePlan *ImagePlan
+	var imagePlanPath string
+	if normalizeAssociationMode(req.AssociationMode) == AssociationModeImagesFull {
+		imagePlan = s.buildImagePlan(req.Topic, req.Duration, req.AssociationMode, langResults)
+		if imagePlan != nil {
+			if path, err := saveImagePlanJSON(req.Topic, imagePlan); err == nil {
+				imagePlanPath = path
+			}
+		}
+	}
+
 	result := &ScriptDocResult{
 		DocID:          docID,
 		DocURL:         docURL,
@@ -155,6 +178,8 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 		Languages:      langResults,
 		StockFolder:    stockFolder.Name,
 		StockFolderURL: stockFolder.URL,
+		ImagePlan:      imagePlan,
+		ImagePlanPath:  imagePlanPath,
 	}
 
 	logger.Info("Script doc pipeline completed",
