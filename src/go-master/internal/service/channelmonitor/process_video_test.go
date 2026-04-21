@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -65,6 +66,7 @@ type mockDriveClient struct {
 	mu      sync.Mutex
 	nextID  int
 	folders map[string]*drive.Folder
+	uploads []string
 }
 
 func newMockDriveClient() *mockDriveClient {
@@ -91,6 +93,7 @@ func (m *mockDriveClient) UploadFile(ctx context.Context, filePath, folderID, fi
 	if _, ok := m.folders[folderID]; !ok {
 		return "", fmt.Errorf("unknown folder %s", folderID)
 	}
+	m.uploads = append(m.uploads, filename)
 	return m.next("file"), nil
 }
 
@@ -152,7 +155,10 @@ func TestProcessVideo(t *testing.T) {
 	}
 
 	driveMock := newMockDriveClient()
+	clipRunDBPath := filepath.Join(t.TempDir(), "clip_runs.sqlite")
 	monitor := NewMonitor(MonitorConfig{
+		ClipRootID:      "root",
+		ClipRunDBPath:   clipRunDBPath,
 		MaxClipDuration: 45,
 	}, yt, driveMock, "")
 
@@ -181,4 +187,87 @@ func TestProcessVideo(t *testing.T) {
 		t.Fatalf("expected folder path")
 	}
 	_ = tempProcessed
+}
+
+func TestDownloadAndUploadClips_PersistsTxtAndSkipsCompletedRun(t *testing.T) {
+	yt := &fakeYouTubeClient{
+		video: &youtube.VideoInfo{
+			Title:   "Floyd Mayweather training highlights and best moments",
+			Views:   120000,
+			Channel: "Sample Channel",
+		},
+		transcript: strings.Repeat("he said because the truth was important and never changed. ", 8),
+	}
+
+	driveMock := newMockDriveClient()
+	clipRunDBPath := filepath.Join(t.TempDir(), "clip_runs.sqlite")
+	monitor := NewMonitor(MonitorConfig{
+		ClipRootID:      "root",
+		ClipRunDBPath:   clipRunDBPath,
+		MaxClipDuration: 30,
+	}, yt, driveMock, "")
+
+	storePath := filepath.Join(t.TempDir(), "clip_runs.sqlite")
+	store, err := OpenClipRunStore(storePath)
+	if err != nil {
+		t.Fatalf("OpenClipRunStore failed: %v", err)
+	}
+	monitor.clipRunStore = store
+
+	downloadCalls := 0
+	monitor.downloadClipFn = func(ctx context.Context, videoID string, startSec, duration int, outputFile string) error {
+		downloadCalls++
+		return os.WriteFile(outputFile, []byte(strings.Repeat("x", 2048)), 0644)
+	}
+
+	decision := CategoryDecision{
+		Category:    "Boxe",
+		Confidence:  0.91,
+		NeedsReview: false,
+	}
+	highlights := []HighlightSegment{
+		{Text: "opening punch exchange", StartSec: 10, EndSec: 25, Duration: 15},
+	}
+
+	results, err := monitor.downloadAndUploadClips(context.Background(), youtube.SearchResult{
+		ID:    "video-1",
+		Title: "Floyd Mayweather training highlights and best moments",
+	}, highlights, "root", "Boxe/Floyd Mayweather", false, 30, decision)
+	if err != nil {
+		t.Fatalf("downloadAndUploadClips failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 clip, got %d", len(results))
+	}
+	if results[0].TxtFileID == "" {
+		t.Fatalf("expected shared txt file id")
+	}
+	if downloadCalls != 1 {
+		t.Fatalf("expected exactly one download, got %d", downloadCalls)
+	}
+
+	rec, ok := store.Get(clipRunKey("video-1", 10, 25))
+	if !ok {
+		t.Fatalf("expected clip run record")
+	}
+	if rec.TxtFileID == "" {
+		t.Fatalf("expected txt file id persisted in clip run store")
+	}
+	if rec.Status != ClipRunStatusUploaded {
+		t.Fatalf("expected uploaded status, got %s", rec.Status)
+	}
+
+	secondResults, err := monitor.downloadAndUploadClips(context.Background(), youtube.SearchResult{
+		ID:    "video-1",
+		Title: "Floyd Mayweather training highlights and best moments",
+	}, highlights, "root", "Boxe/Floyd Mayweather", false, 30, decision)
+	if err != nil {
+		t.Fatalf("second downloadAndUploadClips failed: %v", err)
+	}
+	if len(secondResults) != 1 {
+		t.Fatalf("expected 1 clip on rerun, got %d", len(secondResults))
+	}
+	if downloadCalls != 1 {
+		t.Fatalf("expected idempotent rerun to skip download, got %d downloads", downloadCalls)
+	}
 }

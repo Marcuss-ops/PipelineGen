@@ -128,13 +128,14 @@ func (m *Monitor) markProcessed(entry ProcessedVideoEntry) {
 
 // scanExistingFolders scans the Drive Stock folders and populates the folder cache
 func (m *Monitor) scanExistingFolders() {
-	if m.config.StockRootID == "" {
-		logger.Info("No Stock root ID configured, skipping folder scan")
+	rootID := m.clipRootID()
+	if rootID == "" {
+		logger.Info("No Clips root ID configured, skipping folder scan")
 		return
 	}
 
 	logger.Info("Scanning existing Drive folders",
-		zap.String("stock_root_id", m.config.StockRootID),
+		zap.String("clips_root_id", rootID),
 	)
 
 	ctx, cancel := contextWithTimeout(2 * time.Minute)
@@ -142,7 +143,7 @@ func (m *Monitor) scanExistingFolders() {
 
 	// List all category folders
 	folders, err := m.driveClient.ListFolders(ctx, drive.ListFoldersOptions{
-		ParentID: m.config.StockRootID,
+		ParentID: rootID,
 		MaxDepth: 2,
 		MaxItems: 200,
 	})
@@ -154,13 +155,13 @@ func (m *Monitor) scanExistingFolders() {
 	count := 0
 	for _, folder := range folders {
 		// Build cache key: category/subfolder -> folder ID
-		cacheKey := "Stock/" + folder.Name
+		cacheKey := "Clips/" + folder.Name
 		m.folderCache[cacheKey] = folder.ID
 		count++
 
 		// Cache subfolders too
 		for _, sub := range folder.Subfolders {
-			subCacheKey := "Stock/" + folder.Name + "/" + sub.Name
+			subCacheKey := "Clips/" + folder.Name + "/" + sub.Name
 			m.folderCache[subCacheKey] = sub.ID
 			count++
 		}
@@ -245,7 +246,7 @@ func (m *Monitor) CleanupOldProcessedVideos(maxAge time.Duration) int {
 	return removed
 }
 
-// FindFolderByPath searches for a folder by its full path (e.g., "Stock/HipHop/ArtistName")
+// FindFolderByPath searches for a folder by its full path (e.g., "Clips/HipHop/ArtistName")
 func (m *Monitor) FindFolderByPath(path string) (string, bool) {
 	// Check cache first
 	if folderID, ok := m.folderCache[path]; ok {
@@ -261,8 +262,8 @@ func (m *Monitor) FindFolderByPath(path string) (string, bool) {
 	// Try common path patterns
 	patterns := []string{
 		path,
-		"Stock/" + path,
-		strings.Join(parts[1:], "/"), // Skip "Stock" prefix if present
+		"Clips/" + path,
+		strings.Join(parts[1:], "/"), // Skip "Clips" prefix if present
 	}
 
 	for _, pattern := range patterns {

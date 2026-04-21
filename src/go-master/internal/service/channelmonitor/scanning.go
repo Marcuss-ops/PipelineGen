@@ -138,13 +138,13 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 		}
 
 		// Determine folder from topic
-		folderPath, folderID, folderExisted, err := m.resolveFolder(ctx, ch, v.Title)
+		folderPath, folderID, folderExisted, decision, err := m.resolveFolder(ctx, ch, v.Title)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve folder: %w", err)
 		}
 
 		// Download clips and upload to Drive (max 5 clips)
-		clips, err := m.downloadAndUploadClips(ctx, v, highlights, folderID, folderPath, folderExisted, ch.MaxClipDuration)
+		clips, err := m.downloadAndUploadClips(ctx, v, highlights, folderID, folderPath, folderExisted, ch.MaxClipDuration, decision)
 		if err != nil {
 			return nil, fmt.Errorf("failed to download/upload clips: %w", err)
 		}

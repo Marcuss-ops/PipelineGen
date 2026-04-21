@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // BuildYtDlpAuthArgs returns auth-related args from request/config/env.
@@ -100,19 +101,49 @@ func hasCommand(name string) bool {
 }
 
 func detectLocalCookiesFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	candidates := detectLocalCookiesFiles()
+	if len(candidates) == 0 {
 		return ""
 	}
+	return candidates[0]
+}
+
+func detectLocalCookiesFiles() []string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
 	candidates := []string{
+		"cookineronees.txt",
+		home + "/Downloads/cookineronees.txt",
 		home + "/Downloads/coo1kies.txt",
 		home + "/Downloads/cookies.txt",
 		home + "/cookies.txt",
 	}
+	out := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
-			return candidate
+			out = append(out, candidate)
 		}
 	}
-	return ""
+	return uniqueNonEmpty(out)
+}
+
+// collectCookiesCandidates returns ordered cookie files to try for auth rotation.
+func collectCookiesCandidates(explicitCookiesFile string, defaultCookiesFile string) []string {
+	candidates := []string{
+		strings.TrimSpace(explicitCookiesFile),
+		strings.TrimSpace(defaultCookiesFile),
+		firstNonEmptyEnv("VELOX_YTDLP_COOKIES_FILE", "YTDLP_COOKIES_FILE"),
+	}
+	candidates = append(candidates, detectLocalCookiesFiles()...)
+	return uniqueNonEmpty(candidates)
+}
+
+func cookieAge(path string) time.Duration {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return time.Since(info.ModTime())
 }

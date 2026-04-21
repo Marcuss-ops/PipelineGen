@@ -50,7 +50,7 @@ func TestNormalizeProtagonistKey(t *testing.T) {
 }
 
 func TestParseCategoryFromGemmaResponse(t *testing.T) {
-	candidates := []string{"Boxe", "Crime", "Discovery", "HipHop", "Music", "Wwe"}
+	candidates := []string{"Boxe", "Crime", "Discovery", "HipHop", "Music", "Various", "Wwe"}
 	tests := []struct {
 		name string
 		raw  string
@@ -59,9 +59,10 @@ func TestParseCategoryFromGemmaResponse(t *testing.T) {
 		{name: "json", raw: `{"category":"Music","reason":"artist interview"}`, want: "Music"},
 		{name: "plain", raw: "Boxe", want: "Boxe"},
 		{name: "text", raw: "The best category is Wwe.", want: "Wwe"},
+		{name: "various", raw: `{"category":"Various","reason":"misc content"}`, want: "Various"},
 	}
 	for _, tc := range tests {
-		got := parseCategoryFromGemmaResponse(tc.raw, candidates)
+		got, _ := parseCategoryFromGemmaResponse(tc.raw, candidates)
 		if got != tc.want {
 			t.Fatalf("%s: got %q want %q", tc.name, got, tc.want)
 		}
@@ -85,6 +86,7 @@ func TestFallbackCategory(t *testing.T) {
 		{title: "WWE Raw Roman Reigns returns", protagonist: "Roman Reigns", want: "Wwe"},
 		{title: "El Chapo court case documentary", protagonist: "El Chapo", want: "Crime"},
 		{title: "50 Cent full interview 2026", protagonist: "50 Cent", want: "Music"},
+		{title: "Random behind the scenes clip", protagonist: "Unknown", want: "Various"},
 	}
 	for _, tc := range tests {
 		if got := fallbackCategory(tc.title, tc.protagonist); got != tc.want {
