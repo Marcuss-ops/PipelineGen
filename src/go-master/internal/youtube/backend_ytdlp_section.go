@@ -14,10 +14,12 @@ type SectionDownloadOptions struct {
 	OutputFile         string
 	StartSec           int
 	Duration           int
+	Format             string
 	CookiesFile        string
 	DefaultCookiesFile string
 	Proxy              string
 	MaxFilesize        string
+	MaxHeight          int
 }
 
 // DownloadSection downloads a time-bounded section of a YouTube video using yt-dlp.
@@ -37,11 +39,19 @@ func DownloadSection(ctx context.Context, opts SectionDownloadOptions) error {
 	if opts.MaxFilesize == "" {
 		opts.MaxFilesize = "1G"
 	}
+	if opts.Format == "" {
+		maxHeight := opts.MaxHeight
+		if maxHeight <= 0 {
+			maxHeight = 1080
+		}
+		opts.Format = fmt.Sprintf("best[height<=%d][ext=mp4]/best[height<=%d]/best", maxHeight, maxHeight)
+	}
 
 	endSec := opts.StartSec + opts.Duration
 	sectionArg := fmt.Sprintf("*%d:%02d-%d:%02d", opts.StartSec/60, opts.StartSec%60, endSec/60, endSec%60)
 
 	baseArgs := []string{
+		"--format", opts.Format,
 		"--download-section", sectionArg,
 		"-o", opts.OutputFile,
 		"--no-playlist",

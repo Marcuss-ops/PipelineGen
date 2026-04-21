@@ -26,6 +26,12 @@ Genera il documento ScriptDocs con default Floyd -> Mike Tyson:
 - salva la risposta JSON in `/tmp/floyd_tyson_scriptdocs_response.json`
 - stampa `doc_id` e `doc_url`
 
+### `refresh_drive_token.sh`
+Rigenera il token OAuth di Google Drive con callback locale:
+- avvia il flow OAuth e chiede il code da incollare in terminale
+- salva `src/go-master/token.json`
+- verifica il token facendo una richiesta Drive minima
+
 ## 🔧 Utilizzo
 
 ```bash
@@ -40,6 +46,9 @@ python3 scripts/test_floyd_tyson_chapters.py
 
 # Genera documento Floyd -> Tyson
 ./scripts/generate_floyd_tyson_docs.sh
+
+# Rigenera token Drive
+./scripts/refresh_drive_token.sh
 ```
 
 ## 📝 Note

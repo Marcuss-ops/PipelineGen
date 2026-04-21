@@ -54,11 +54,17 @@ func YouTubeExtractorArgsVariants() []string {
 	if custom != "" {
 		return uniqueNonEmpty([]string{
 			custom,
+			"youtube:player_client=mweb,android,web_embedded,tv_embedded,tv",
+			"youtube:player_client=android,mweb,web_embedded,tv_embedded,tv",
+			"youtube:player_client=web,android,mweb,tv_embedded,tv",
 			"youtube:player_client=mweb,tv_embedded,web_embedded,tv",
 			"youtube:player_client=tv_embedded,web_embedded,tv",
 		})
 	}
 	return []string{
+		"youtube:player_client=mweb,android,web_embedded,tv_embedded,tv",
+		"youtube:player_client=android,mweb,web_embedded,tv_embedded,tv",
+		"youtube:player_client=web,android,mweb,tv_embedded,tv",
 		"youtube:player_client=mweb,tv_embedded,web_embedded,tv",
 		"youtube:player_client=tv_embedded,web_embedded,tv",
 		"",
@@ -101,6 +107,7 @@ func detectLocalCookiesFile() string {
 	candidates := []string{
 		home + "/Downloads/coo1kies.txt",
 		home + "/Downloads/cookies.txt",
+		home + "/cookies.txt",
 	}
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {

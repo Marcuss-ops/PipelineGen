@@ -17,11 +17,21 @@ import (
 // Compile-time check that Monitor satisfies BackgroundService.
 var _ runtime.BackgroundService = (*Monitor)(nil)
 
+// driveClientAPI is the minimal Drive surface the monitor needs.
+type driveClientAPI interface {
+	UploadFile(ctx context.Context, filePath, folderID, filename string) (string, error)
+	CreateFolder(ctx context.Context, name, parentID string) (string, error)
+	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
+	ListFolders(ctx context.Context, opts drive.ListFoldersOptions) ([]drive.Folder, error)
+	ListFoldersNoRecursion(ctx context.Context, opts drive.ListFoldersOptions) ([]drive.Folder, error)
+}
+
 // Monitor is the channel monitor service
 type Monitor struct {
 	config          MonitorConfig
 	ytClient        youtube.Client
-	driveClient     *drive.Client
+	driveClient     driveClientAPI
+	downloadClipFn  func(ctx context.Context, videoID string, startSec, duration int, outputFile string) error
 	folderCache     map[string]string               // category/protagonist -> folder ID
 	processedVideos map[string]*ProcessedVideoEntry // videoID -> entry
 	processedFile   string                          // path to processed videos JSON file
@@ -29,7 +39,7 @@ type Monitor struct {
 }
 
 // NewMonitor creates a new channel monitor
-func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient *drive.Client, ollamaURL string) *Monitor {
+func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveClientAPI, ollamaURL string) *Monitor {
 	if cfg.CheckInterval == 0 {
 		cfg.CheckInterval = 24 * time.Hour
 	}
@@ -43,11 +53,13 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient *drive.C
 		config:          cfg,
 		ytClient:        ytClient,
 		driveClient:     driveClient,
+		downloadClipFn:  nil,
 		folderCache:     make(map[string]string),
 		processedVideos: make(map[string]*ProcessedVideoEntry),
 		processedFile:   "data/channel_monitor_processed.json",
 		ollamaURL:       ollamaURL,
 	}
+	m.downloadClipFn = m.downloadClip
 
 	// Load previously processed videos
 	m.loadProcessedVideos()

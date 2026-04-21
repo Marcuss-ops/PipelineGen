@@ -45,7 +45,7 @@ func (m *Monitor) downloadAndUploadClips(ctx context.Context, video youtube.Sear
 		clipFile := filepath.Join(tmpDir, clipName+".mp4")
 
 		// Download clip using yt-dlp with time range
-		if err := m.downloadClip(ctx, video.ID, seg.StartSec, seg.Duration, clipFile); err != nil {
+		if err := m.downloadClipFn(ctx, video.ID, seg.StartSec, seg.Duration, clipFile); err != nil {
 			logger.Warn("Failed to download clip",
 				zap.String("video_id", video.ID),
 				zap.Int("segment", i),
@@ -138,6 +138,7 @@ func (m *Monitor) downloadClip(ctx context.Context, videoID string, startSec, du
 		OutputFile:         outputFile,
 		StartSec:           startSec,
 		Duration:           duration,
+		MaxHeight:          1080,
 		CookiesFile:        m.config.CookiesPath,
 		DefaultCookiesFile: "",
 		MaxFilesize:        "1G",
