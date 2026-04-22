@@ -10,49 +10,61 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
-	"velox/go-master/internal/api/handlers"
+	"velox/go-master/internal/api/handlers/admin"
 	artlistpipeline "velox/go-master/internal/api/handlers/artlist"
+	"velox/go-master/internal/api/handlers/catalog"
+	"velox/go-master/internal/api/handlers/clip"
+	"velox/go-master/internal/api/handlers/common"
+	"velox/go-master/internal/api/handlers/drive"
+	"velox/go-master/internal/api/handlers/monitoring"
+	"velox/go-master/internal/api/handlers/nlp"
+	"velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/api/handlers/stock"
+	"velox/go-master/internal/api/handlers/video"
+	"velox/go-master/internal/api/handlers/youtube"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/audio/tts"
 	"velox/go-master/internal/core/entities"
-	"velox/go-master/internal/download"
+	internaldownload "velox/go-master/internal/download"
 	"velox/go-master/internal/harvester"
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/service/pipeline"
-	"velox/go-master/internal/stock"
-	"velox/go-master/internal/video"
+	internalpipeline "velox/go-master/internal/service/pipeline"
+	internalstock "velox/go-master/internal/stock"
+	internalvideo "velox/go-master/internal/video"
 	"velox/go-master/pkg/config"
 )
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
-	Health            *handlers.HealthHandler
-	Video             *handlers.VideoHandler
-	YouTube           *handlers.YouTubeHandler
-	Script            *handlers.ScriptHandler
-	Drive             *handlers.DriveHandler
-	Voiceover         *handlers.VoiceoverHandler
-	NLP               *handlers.NLPHandler
-	StockProject      *handlers.StockProjectHandler
-	StockSearch       *handlers.StockSearchHandler
-	StockProcess      *handlers.StockProcessHandler
-	Clip              *handlers.ClipHandler
-	ClipIndex         *handlers.ClipIndexHandler
-	Catalog           *handlers.CatalogHandler
-	Download          *handlers.DownloadHandler
-	Timestamp         *handlers.TimestampHandler
-	ClipApproval      *handlers.ClipApprovalHandler
-	YouTubeV2         *handlers.YouTubeV2Handler
-	GPUTextGen        *handlers.GPUTextGenHandler
-	ScriptClips       *handlers.ScriptClipsHandler
-	ScriptFromClips   *handlers.ScriptFromClipsHandler
-	StockOrchestrator *handlers.StockOrchestratorHandler
-	ScriptDocs        *handlers.ScriptDocsHandler
-	ScriptPipeline    *handlers.ScriptPipelineHandler
-	ChannelMonitor    *handlers.ChannelMonitorHandler
+	Health            *common.HealthHandler
+	Video             *video.VideoHandler
+	YouTube           *youtube.YouTubeHandler
+	Script            *script.ScriptHandler
+	Drive             *drive.DriveHandler
+	Voiceover         *common.VoiceoverHandler
+	NLP               *nlp.NLPHandler
+	StockProject      *stock.StockProjectHandler
+	StockSearch       *stock.StockSearchHandler
+	StockProcess      *stock.StockProcessHandler
+	Clip              *clip.ClipHandler
+	ClipIndex         *clip.ClipIndexHandler
+	Catalog           *catalog.CatalogHandler
+	Download          *video.DownloadHandler
+	Timestamp         *common.TimestampHandler
+	ClipApproval      *clip.ClipApprovalHandler
+	YouTubeV2         *youtube.YouTubeV2Handler
+	GPUTextGen        *nlp.GPUTextGenHandler
+	ScriptClips       *script.ScriptClipsHandler
+	ScriptFromClips   *script.ScriptFromClipsHandler
+	StockOrchestrator *stock.StockOrchestratorHandler
+	ScriptDocs        *script.ScriptDocsHandler
+	ScriptPipeline    *script.ScriptPipelineHandler
+	ChannelMonitor    *monitoring.ChannelMonitorHandler
 	ArtlistPipeline   *artlistpipeline.Handler
 	Harvester         *harvester.Handler
-	Utility           *handlers.UtilityHandler
+	CatalogSQLite     *catalog.CatalogSQLiteHandler
+	Utility           *common.UtilityHandler
+	Admin             *admin.AdminHandler
 }
 
 // RouterDepsWithHandlers holds both handlers and raw dependencies
@@ -70,14 +82,14 @@ type Router struct {
 
 // RouterDeps contains all external dependencies for the router
 type RouterDeps struct {
-	VideoProcessor  *video.Processor
+	VideoProcessor  *internalvideo.Processor
 	ScriptGen       *ollama.Generator
 	OllamaClient    *ollama.Client
 	EdgeTTS         *tts.EdgeTTS
-	StockManager    *stock.StockManager
+	StockManager    *internalstock.StockManager
 	EntityService   *entities.EntityService
-	PipelineService *pipeline.VideoCreationService
-	Downloader      *download.Downloader
+	PipelineService *internalpipeline.VideoCreationService
+	Downloader      *internaldownload.Downloader
 }
 
 // NewRouter creates a new API router with pre-constructed handlers
@@ -224,6 +236,9 @@ func (r *Router) Setup() *gin.Engine {
 			}
 			if h.ArtlistPipeline != nil {
 				h.ArtlistPipeline.RegisterRoutes(protected)
+			}
+			if h.CatalogSQLite != nil {
+				h.CatalogSQLite.RegisterRoutes(protected)
 			}
 			if h.Harvester != nil {
 				harvesterGroup := protected.Group("/harvester")

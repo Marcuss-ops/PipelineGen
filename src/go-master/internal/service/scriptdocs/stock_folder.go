@@ -13,6 +13,7 @@ import (
 	"velox/go-master/internal/entityimages"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/stockdb"
+	"velox/go-master/internal/stockjit"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
 
@@ -87,6 +88,7 @@ func NewScriptDocService(
 	alSrc *clip.ArtlistSource,
 	alDB *artlistdb.ArtlistDB,
 ) *ScriptDocService {
+	scorer := NewSemanticScorer(gen)
 	return &ScriptDocService{
 		generator:            gen,
 		docClient:            dc,
@@ -98,7 +100,14 @@ func NewScriptDocService(
 		stockFolders:         stockFolders,
 		stockFoldersCacheTTL: 24 * time.Hour,
 		clipSearch:           cs,
+		semanticScorer:       scorer,
+		semanticRegistry:     NewSemanticRegistry(scorer),
 	}
+}
+
+// SetJITResolver attaches the just-in-time stock resolver.
+func (s *ScriptDocService) SetJITResolver(resolver *stockjit.Resolver) {
+	s.jitResolver = resolver
 }
 
 // NewScriptDocServiceWithDynamicFolders creates a service that dynamically scans Drive folders.
@@ -113,6 +122,7 @@ func NewScriptDocServiceWithDynamicFolders(
 	alSrc *clip.ArtlistSource,
 	alDB *artlistdb.ArtlistDB,
 ) *ScriptDocService {
+	scorer := NewSemanticScorer(gen)
 	svc := &ScriptDocService{
 		generator:            gen,
 		docClient:            dc,
@@ -125,6 +135,8 @@ func NewScriptDocServiceWithDynamicFolders(
 		stockRootFolderID:    stockRootFolderID,
 		stockFoldersCacheTTL: 24 * time.Hour,
 		clipSearch:           cs,
+		semanticScorer:       scorer,
+		semanticRegistry:     NewSemanticRegistry(scorer),
 	}
 
 	// Try to scan folders on startup, but don't fail if it doesn't work

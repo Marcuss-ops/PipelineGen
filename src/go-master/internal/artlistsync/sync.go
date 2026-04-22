@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -35,16 +36,21 @@ type ArtlistSync struct {
 	driveClient   *drive.Client
 	artlistRootID string
 	outputPath    string
+	statePath     string
+	changeToken   string
 	lastSync      time.Time
 	mu            sync.Mutex
 	running       bool
 }
 
-func NewArtlistSync(driveClient *drive.Client, artlistRootID, outputPath string) *ArtlistSync {
+const fullRescanInterval = 24 * time.Hour
+
+func NewArtlistSync(driveClient *drive.Client, artlistRootID, outputPath string, statePath ...string) *ArtlistSync {
 	return &ArtlistSync{
 		driveClient:   driveClient,
 		artlistRootID: artlistRootID,
 		outputPath:    outputPath,
+		statePath:     firstOrEmpty(statePath),
 	}
 }
 
@@ -67,6 +73,36 @@ func (s *ArtlistSync) Sync(ctx context.Context) error {
 	logger.Info("Starting Artlist Drive-to-Index sync",
 		zap.String("artlist_root_id", s.artlistRootID),
 	)
+
+	if s.statePath != "" {
+		loaded, err := s.loadState()
+		if err != nil {
+			logger.Warn("Failed to load Artlist sync state", zap.String("path", s.statePath), zap.Error(err))
+		} else {
+			s.changeToken = loaded.ChangeToken
+		}
+	}
+
+	forceFullRescan := s.shouldForceFullRescan()
+	if s.changeToken != "" {
+		hasChanges, newToken, err := s.hasDriveChanges(ctx, s.changeToken)
+		if err != nil {
+			logger.Warn("Artlist change check failed, falling back to full scan", zap.Error(err))
+		} else if !hasChanges && !forceFullRescan {
+			if newToken != "" {
+				s.changeToken = newToken
+				_ = s.saveState(false)
+			}
+			s.lastSync = time.Now()
+			logger.Info("Artlist Drive-to-Index sync skipped, no Drive changes detected",
+				zap.String("artlist_root_id", s.artlistRootID),
+				zap.Duration("duration", time.Since(start)),
+			)
+			return nil
+		} else if newToken != "" {
+			s.changeToken = newToken
+		}
+	}
 
 	driveFolders, err := s.driveClient.ListFolders(ctx, drive.ListFoldersOptions{
 		ParentID: s.artlistRootID,
@@ -188,6 +224,14 @@ func (s *ArtlistSync) Sync(ctx context.Context) error {
 	}
 
 	s.lastSync = time.Now()
+	if s.statePath != "" {
+		if token, err := s.driveClient.GetStartPageToken(ctx); err == nil && token != "" {
+			s.changeToken = token
+		}
+		if err := s.saveState(true); err != nil {
+			logger.Warn("Failed to persist Artlist sync state", zap.String("path", s.statePath), zap.Error(err))
+		}
+	}
 
 	logger.Info("Artlist Drive-to-Index sync completed",
 		zap.Int("clips_synced", len(allClips)),
@@ -208,6 +252,87 @@ func (s *ArtlistSync) IsRunning() bool {
 	return s.running
 }
 
+type artlistSyncState struct {
+	ChangeToken    string    `json:"change_token"`
+	LastSyncAt     time.Time `json:"last_sync_at"`
+	LastFullScanAt time.Time `json:"last_full_scan_at"`
+}
+
+func (s *ArtlistSync) hasDriveChanges(ctx context.Context, pageToken string) (bool, string, error) {
+	nextToken := pageToken
+	for {
+		changes, err := s.driveClient.ListChanges(ctx, nextToken, 100)
+		if err != nil {
+			return false, "", err
+		}
+		if len(changes.Changes) > 0 {
+			token := changes.NewStartPageToken
+			if token == "" {
+				token = nextToken
+			}
+			return true, token, nil
+		}
+		if changes.NextPageToken == "" {
+			token := changes.NewStartPageToken
+			if token == "" {
+				token = nextToken
+			}
+			return false, token, nil
+		}
+		nextToken = changes.NextPageToken
+	}
+}
+
+func (s *ArtlistSync) loadState() (artlistSyncState, error) {
+	if s.statePath == "" {
+		return artlistSyncState{}, nil
+	}
+	data, err := os.ReadFile(s.statePath)
+	if err != nil {
+		return artlistSyncState{}, err
+	}
+	var state artlistSyncState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return artlistSyncState{}, err
+	}
+	return state, nil
+}
+
+func (s *ArtlistSync) saveState(fullScan bool) error {
+	if s.statePath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.statePath), 0755); err != nil {
+		return err
+	}
+	state := artlistSyncState{
+		ChangeToken: s.changeToken,
+		LastSyncAt:  s.lastSync,
+	}
+	if fullScan {
+		state.LastFullScanAt = s.lastSync
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.statePath, data, 0644)
+}
+
+func (s *ArtlistSync) shouldForceFullRescan() bool {
+	if s.statePath == "" {
+		return true
+	}
+	state, err := s.loadState()
+	if err != nil {
+		return true
+	}
+	if state.LastFullScanAt.IsZero() {
+		return true
+	}
+	return time.Since(state.LastFullScanAt) >= fullRescanInterval
+}
+
 func normalizeTerm(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	// Also allow underscore as space
@@ -222,4 +347,11 @@ func isVideoFile(name string) bool {
 		strings.HasSuffix(lower, ".avi") ||
 		strings.HasSuffix(lower, ".mkv") ||
 		strings.HasSuffix(lower, ".webm")
+}
+
+func firstOrEmpty(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }

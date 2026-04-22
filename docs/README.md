@@ -24,6 +24,7 @@ Se sei un nuovo sviluppatore, inizia da questa guida:
 - **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** – Documentazione completa di tutti gli endpoint API.
 - **[API_ENDPOINTS.md](./API_ENDPOINTS.md)** – Elenco rapido degli endpoint principali.
 - **[API_CONTRATTO_BACKEND.md](./API_CONTRATTO_BACKEND.md)** – Contratto formale delle API per il frontend.
+- **[SCRIPT_DOCS_MODES.md](./SCRIPT_DOCS_MODES.md)** – Mode e contratto degli endpoint `script-docs`.
 - **[GOOGLE_DOCS_INSTRUCTIONS.md](./GOOGLE_DOCS_INSTRUCTIONS.md)** – Guida all'integrazione con Google Docs/Drive.
 
 ---

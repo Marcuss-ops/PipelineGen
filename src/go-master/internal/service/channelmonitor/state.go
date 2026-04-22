@@ -156,13 +156,13 @@ func (m *Monitor) scanExistingFolders() {
 	for _, folder := range folders {
 		// Build cache key: category/subfolder -> folder ID
 		cacheKey := "Clips/" + folder.Name
-		m.folderCache[cacheKey] = folder.ID
+		m.setCachedFolder(cacheKey, folder.ID)
 		count++
 
 		// Cache subfolders too
 		for _, sub := range folder.Subfolders {
 			subCacheKey := "Clips/" + folder.Name + "/" + sub.Name
-			m.folderCache[subCacheKey] = sub.ID
+			m.setCachedFolder(subCacheKey, sub.ID)
 			count++
 		}
 	}
@@ -249,7 +249,7 @@ func (m *Monitor) CleanupOldProcessedVideos(maxAge time.Duration) int {
 // FindFolderByPath searches for a folder by its full path (e.g., "Clips/HipHop/ArtistName")
 func (m *Monitor) FindFolderByPath(path string) (string, bool) {
 	// Check cache first
-	if folderID, ok := m.folderCache[path]; ok {
+	if folderID, ok := m.getCachedFolder(path); ok {
 		return folderID, true
 	}
 
@@ -267,7 +267,7 @@ func (m *Monitor) FindFolderByPath(path string) (string, bool) {
 	}
 
 	for _, pattern := range patterns {
-		if folderID, ok := m.folderCache[pattern]; ok {
+		if folderID, ok := m.getCachedFolder(pattern); ok {
 			return folderID, true
 		}
 	}
@@ -277,10 +277,11 @@ func (m *Monitor) FindFolderByPath(path string) (string, bool) {
 
 // GetFolderCache returns a copy of the folder cache
 func (m *Monitor) GetFolderCache() map[string]string {
-	clone := make(map[string]string, len(m.folderCache))
-	for k, v := range m.folderCache {
-		clone[k] = v
-	}
+	clone := make(map[string]string)
+	m.folderCache.Range(func(k, v interface{}) bool {
+		clone[k.(string)] = v.(string)
+		return true
+	})
 	return clone
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"velox/go-master/internal/runtime"
@@ -34,14 +35,38 @@ type Monitor struct {
 	driveClient     driveClientAPI
 	clipRunStore    *ClipRunStore
 	downloadClipFn  func(ctx context.Context, videoID string, startSec, duration int, outputFile string) error
-	folderCache     map[string]string               // category/protagonist -> folder ID
+	folderCache     sync.Map                  // category/protagonist -> folder ID (thread-safe)
 	processedVideos map[string]*ProcessedVideoEntry // videoID -> entry
 	processedFile   string                          // path to processed videos JSON file
 	ollamaURL       string                          // Ollama URL for AI classification
+	filterEngine    *FilterEngine                  // shared filter engine
 }
 
 func (m *Monitor) clipRootID() string {
 	return m.config.ClipRootID
+}
+
+// getCachedFolder retrieves a cached folder ID (thread-safe read)
+func (m *Monitor) getCachedFolder(key string) (string, bool) {
+	if val, ok := m.folderCache.Load(key); ok {
+		return val.(string), true
+	}
+	return "", false
+}
+
+// setCachedFolder stores a folder ID in cache (thread-safe write)
+func (m *Monitor) setCachedFolder(key, value string) {
+	m.folderCache.Store(key, value)
+}
+
+// folderCacheLen returns the number of cached entries (for metrics)
+func (m *Monitor) folderCacheLen() int {
+	count := 0
+	m.folderCache.Range(func(k, v interface{}) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 // NewMonitor creates a new channel monitor
@@ -61,10 +86,10 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 		driveClient:     driveClient,
 		clipRunStore:    nil,
 		downloadClipFn:  nil,
-		folderCache:     make(map[string]string),
 		processedVideos: make(map[string]*ProcessedVideoEntry),
 		processedFile:   "data/channel_monitor_processed.json",
 		ollamaURL:       ollamaURL,
+		filterEngine:    NewFilterEngine(),
 	}
 	clipRunDBPath := cfg.ClipRunDBPath
 	if clipRunDBPath == "" {
@@ -214,7 +239,7 @@ func (m *Monitor) ProcessVideo(ctx context.Context, videoID, categoryOverride st
 	clips, err := m.downloadAndUploadClips(ctx, youtube.SearchResult{
 		ID:    videoID,
 		Title: videoTitle,
-	}, highlights, folderID, folderPath, folderExisted, chConfig.MaxClipDuration, decision)
+	}, highlights, folderID, folderPath, folderExisted, chConfig.MaxClipDuration, decision, m.config.DefaultMaxClips)
 	if err != nil {
 		logger.Warn("Some clips failed to process", zap.Error(err))
 	}
@@ -262,8 +287,8 @@ func (m *Monitor) ResolveFolder(ctx context.Context, ch ChannelConfig, videoTitl
 }
 
 // DownloadAndUploadClips downloads highlight clips and uploads them to Drive
-func (m *Monitor) DownloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, folderExisted bool, maxDuration int, decision CategoryDecision) ([]ClipResult, error) {
-	return m.downloadAndUploadClips(ctx, video, highlights, folderID, folderPath, folderExisted, maxDuration, decision)
+func (m *Monitor) DownloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, folderExisted bool, maxDuration int, decision CategoryDecision, maxClips ...int) ([]ClipResult, error) {
+	return m.downloadAndUploadClips(ctx, video, highlights, folderID, folderPath, folderExisted, maxDuration, decision, maxClips...)
 }
 
 // ClassifyCategory resolves the best category for a video title using Gemma + guardrails.

@@ -37,8 +37,13 @@ var protagonistNoiseWords = map[string]struct{}{
 // finds or creates the matching category folder, then creates/finds the subfolder.
 // Returns: folderPath (e.g. "HipHop/ArtistName"), folderID, folderExisted, category decision, error.
 func (m *Monitor) resolveFolder(ctx context.Context, ch ChannelConfig, videoTitle string) (string, string, bool, CategoryDecision, error) {
-	// Step 1: Extract protagonist name from title
-	protagonist := extractProtagonist(videoTitle)
+	// Step 1: Determine the folder name for this channel/video.
+	// If the channel provides a stable folder name, prefer it so recurring
+	// runs keep writing into the same Drive subfolder.
+	protagonist := strings.TrimSpace(ch.FolderName)
+	if protagonist == "" {
+		protagonist = extractProtagonist(videoTitle)
+	}
 	if protagonist == "" {
 		protagonist = "Unknown"
 	}
@@ -400,7 +405,7 @@ func fuzzyMatchFolder(category string) string {
 // getOrCreateCategoryFolder finds or creates a category folder under the root
 func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string) (string, bool, error) {
 	cacheKey := "Clips/" + category
-	if folderID, ok := m.folderCache[cacheKey]; ok {
+	if folderID, ok := m.getCachedFolder(cacheKey); ok {
 		return folderID, true, nil
 	}
 
@@ -423,13 +428,13 @@ func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string
 		if err != nil {
 			return "", false, fmt.Errorf("failed to create category folder: %w", err)
 		}
-		m.folderCache[cacheKey] = folderID
+		m.setCachedFolder(cacheKey, folderID)
 		return folderID, false, nil
 	}
 
 	for _, f := range result {
 		if strings.EqualFold(f.Name, category) {
-			m.folderCache[cacheKey] = f.ID
+			m.setCachedFolder(cacheKey, f.ID)
 			return f.ID, true, nil
 		}
 	}
@@ -438,7 +443,7 @@ func (m *Monitor) getOrCreateCategoryFolder(ctx context.Context, category string
 	if err != nil {
 		return "", false, fmt.Errorf("failed to create category folder: %w", err)
 	}
-	m.folderCache[cacheKey] = folderID
+	m.setCachedFolder(cacheKey, folderID)
 
 	return folderID, false, nil
 }
