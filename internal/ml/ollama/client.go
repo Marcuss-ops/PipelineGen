@@ -53,6 +53,53 @@ type GenerateResponse struct {
 	Context  []int  `json:"context,omitempty"`
 }
 
+// EmbedRequest richiesta embedding
+type EmbedRequest struct {
+	Model   string `json:"model"`
+	Prompt  string `json:"prompt"`
+}
+
+// EmbedResponse risposta embedding
+type EmbedResponse struct {
+	Embedding []float32 `json:"embedding"`
+}
+
+// Embed genera embedding vettoriale con Ollama
+func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
+	req := EmbedRequest{
+		Model:  c.model,
+		Prompt: prompt,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/embeddings", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("ollama request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	var result EmbedResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return result.Embedding, nil
+}
+
 // Generate genera testo con Ollama
 func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 	req := GenerateRequest{

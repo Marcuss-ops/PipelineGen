@@ -69,8 +69,8 @@ func TestBuildImagesFullAssociations(t *testing.T) {
 		"Canada":    "https://example.com/canada.jpg",
 		"mountains": "https://example.com/mountains.jpg",
 	})
-	if len(assocs) != 1 {
-		t.Fatalf("buildImagesFullAssociations() len = %d, want 1", len(assocs))
+	if len(assocs) < 3 {
+		t.Fatalf("buildImagesFullAssociations() len = %d, want at least 3", len(assocs))
 	}
 	if assocs[0].ImageURL != "https://example.com/canada-mountains.jpg" {
 		t.Fatalf("buildImagesFullAssociations() image_url = %q, want %q", assocs[0].ImageURL, "https://example.com/canada-mountains.jpg")
@@ -80,5 +80,35 @@ func TestBuildImagesFullAssociations(t *testing.T) {
 	}
 	if assocs[0].Entity == "" {
 		t.Fatalf("buildImagesFullAssociations() entity is empty")
+	}
+}
+
+func TestWeakImageEntityFilter(t *testing.T) {
+	cases := map[string]bool{
+		"Above":            true,
+		"Stretching":       true,
+		"Dominating":       true,
+		"However":          true,
+		"Romanian":         true,
+		"Canadian Rockies": false,
+		"Mount Robson":     false,
+		"Alberta":          false,
+	}
+	for input, want := range cases {
+		if got := isWeakImageEntity(input); got != want {
+			t.Fatalf("isWeakImageEntity(%q) = %v, want %v", input, got, want)
+		}
+	}
+}
+
+func TestAnchorImageQuery(t *testing.T) {
+	if got := anchorImageQuery("Andrew Tate", "TikTok"); got != "Andrew Tate TikTok" {
+		t.Fatalf("anchorImageQuery() = %q, want %q", got, "Andrew Tate TikTok")
+	}
+	if got := anchorImageQuery("Andrew Tate", "Andrew Tate"); got != "Andrew Tate" {
+		t.Fatalf("anchorImageQuery() = %q, want topic unchanged", got)
+	}
+	if got := anchorImageQuery("", "TikTok"); got != "TikTok" {
+		t.Fatalf("anchorImageQuery() with empty topic = %q, want %q", got, "TikTok")
 	}
 }

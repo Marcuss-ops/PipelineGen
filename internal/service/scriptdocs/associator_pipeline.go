@@ -2,9 +2,7 @@ package scriptdocs
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
-	"slices"
 	"strings"
 	"time"
 
@@ -16,22 +14,37 @@ import (
 	"go.uber.org/zap"
 )
 
-// associateClipsWithDedup associates each important phrase with one primary clip choice.
-// Improved version with 3-level fallback and parallel-friendly logic.
-func (s *ScriptDocService) associateClipsWithDedup(frasi []string, usedClipIDs map[string]bool, stockFolder StockFolder, topic string) []ClipAssociation {
-	const minConfidence = 0.60
+// associateClipsWithDedupOptions associates each important phrase with one primary clip choice.
+func (s *ScriptDocService) associateClipsWithDedupOptions(frasi []string, usedClipIDs map[string]bool, stockFolder StockFolder, topic string, allowFreshSearch bool, allowJIT bool) []ClipAssociation {
+	const minConfidence = 0.32
 	var associations []ClipAssociation
 	translator := translation.NewClipSearchTranslator()
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	artlistRoundRobin := make(map[string]int)
+	visualHistory := make([]string, 0, 3)
 
 	// Pre-load data
 	dynamicClips := s.getDynamicClips()
 	stockClipByID, folderPathByID := s.getStockData()
-	
+
 	for _, frase := range frasi {
-		assoc := s.findBestAssociation(frase, topic, usedClipIDs, dynamicClips, stockClipByID, folderPathByID, translator, rng)
-		if assoc != nil && assoc.Confidence >= minConfidence {
+		assoc := s.findBestAssociation(frase, topic, usedClipIDs, dynamicClips, stockClipByID, folderPathByID, translator, rng, artlistRoundRobin, allowFreshSearch, allowJIT, visualHistory)
+		if assoc != nil && (assoc.Confidence >= minConfidence || assoc.Type == "STOCK") {
 			associations = append(associations, *assoc)
+			
+			// Update visual history for pacing
+			concept := ""
+			if assoc.Clip != nil {
+				concept = assoc.Clip.Term
+			} else if assoc.MatchedKeyword != "" {
+				concept = assoc.MatchedKeyword
+			}
+			if concept != "" {
+				visualHistory = append(visualHistory, concept)
+				if len(visualHistory) > 3 {
+					visualHistory = visualHistory[1:]
+				}
+			}
 		}
 	}
 
@@ -42,204 +55,110 @@ func (s *ScriptDocService) associateClipsWithDedup(frasi []string, usedClipIDs m
 	return associations
 }
 
-func (s *ScriptDocService) findBestAssociation(frase, topic string, usedClipIDs map[string]bool, dynamicClips []clipsearch.SearchResult, stockClips map[string]stockdb.StockClipEntry, folderPaths map[string]string, translator *translation.ClipSearchTranslator, rng *rand.Rand) *ClipAssociation {
+// findBestAssociation is the central brain for clip matching logic.
+func (s *ScriptDocService) findBestAssociation(frase, topic string, usedClipIDs map[string]bool, dynamicClips []clipsearch.SearchResult, stockClips map[string]stockdb.StockClipEntry, folderPaths map[string]string, translator *translation.ClipSearchTranslator, rng *rand.Rand, artlistRoundRobin map[string]int, allowFreshSearch bool, allowJIT bool, visualHistory []string) *ClipAssociation {
 	s.currentTopic = topic
-	fraseLower := strings.ToLower(frase)
-	contextLower := fraseLower + " " + strings.ToLower(topic)
+	trace := newAssetResolution(
+		"scriptdocs.clip",
+		"dynamic-cache",
+		"stockdb",
+		"artlist",
+		"semantic-tags",
+		"dynamic-search",
+		"jit-stock",
+	).addNote("modular fallback pipeline")
 
-	// 1. Exact Match & Concept Map
-	scores := s.scoreConcepts(frase, contextLower)
-	if len(scores) > 0 && scores[0].score > 0 {
-		best := scores[0]
-		// Try Cache/DB first
+	ctx := context.Background()
+
+	// 1. Semantic Tagging & Director Intent (The "Director" Logic)
+	// Extract 3 visual tags using LLM for precision
+	visualTags := s.extractSemanticVisualTags(ctx, frase, topic)
+	visualSearchTerm := ""
+	if len(visualTags) > 0 {
+		visualSearchTerm = visualTags[0] // Primary director suggestion
+	}
+
+	// 2. Exact Match & Concept Map Scoring
+	scores := s.scoreConcepts(ctx, frase, frase+" "+topic, visualHistory, visualSearchTerm)
+	
+	// Try Top 3 Concept Hits
+	for i, best := range scores {
+		if i >= 3 {
+			break
+		}
+		// Try Cache/DB first (High Confidence)
 		if assoc := s.tryExistingMatch(frase, best.bestKeyword, usedClipIDs, dynamicClips, stockClips); assoc != nil {
+			assoc.Resolution = cloneAssetResolution(trace).withOutcome("dynamic-cache-or-stockdb", "direct concept hit", false)
 			return assoc
 		}
-		// Try Artlist
-		if assoc := s.tryArtlistMatch(frase, best.cm.Term, best.cm.BaseConf, usedClipIDs, translator, rng); assoc != nil {
-			return assoc
-		}
-	}
-
-	// 2. Entity Linking / Thesaurus Fallback
-	// If no concept match, use LLM to expand keywords (Thesaurus logic)
-	expandedKeywords := s.expandKeywordsWithLLM(frase, topic)
-	for _, kw := range expandedKeywords {
-		if assoc := s.tryExistingMatch(frase, kw, usedClipIDs, dynamicClips, stockClips); assoc != nil {
-			assoc.Confidence = 0.80 // Entity-linked confidence
-			return assoc
-		}
-		if assoc := s.tryArtlistMatch(frase, kw, 0.75, usedClipIDs, translator, rng); assoc != nil {
+		// Try Artlist curated DB (Medium-High Confidence)
+		if assoc := s.tryArtlistMatch(frase, topic, best.cm.Term, best.cm.BaseConf, best.score, usedClipIDs, translator, rng, artlistRoundRobin); assoc != nil {
+			assoc.Resolution = cloneAssetResolution(trace).withOutcome("artlist", "concept hit matched curated artlist", false)
 			return assoc
 		}
 	}
 
-	// 3. Dynamic Search Fallback (Last Resort)
-	if s.clipSearch != nil && len(expandedKeywords) > 0 {
-		results, err := s.clipSearch.SearchClipsWithOptions(context.Background(), expandedKeywords, clipsearch.SearchOptions{ForceFresh: true})
+	// 3. Semantic Visual Tags Fallback (New Precision Layer)
+	for _, tag := range visualTags {
+		if assoc := s.tryExistingMatch(frase, tag, usedClipIDs, dynamicClips, stockClips); assoc != nil {
+			assoc.Confidence = 0.85
+			assoc.Resolution = cloneAssetResolution(trace).withOutcome("dynamic-cache-or-stockdb", "semantic tag matched existing clip", false)
+			return assoc
+		}
+		if assoc := s.tryArtlistMatch(frase, topic, tag, 0.78, 3, usedClipIDs, translator, rng, artlistRoundRobin); assoc != nil {
+			assoc.Resolution = cloneAssetResolution(trace).withOutcome("artlist", "semantic tag matched artlist", false)
+			return assoc
+		}
+	}
+
+	// 4. Dynamic Live Search (Top 50 Artlist)
+	if allowFreshSearch && s.clipSearch != nil && len(visualTags) > 0 {
+		// We use visualTags for dynamic search to be more precise than raw script words
+		results, err := s.clipSearch.SearchClipsWithOptions(ctx, visualTags, clipsearch.SearchOptions{
+			ForceFresh: true,
+			MaxClipsPerKeyword: 3, // Search top 50 in reality but pick best 3
+		})
 		if err == nil && len(results) > 0 {
 			dc := pickFirstArtlistDynamicResult(results, stockClips, folderPaths)
 			if dc != nil {
-				clip := buildDynamicArtlistClip(*dc, expandedKeywords[0])
+				clip := buildDynamicArtlistClip(*dc, visualTags[0])
 				usedClipIDs[clip.URL] = true
 				return &ClipAssociation{
-					Phrase: frase,
-					Type: "ARTLIST",
-					Clip: &clip,
-					Confidence: 0.70,
-					MatchedKeyword: expandedKeywords[0],
+					Phrase:         frase,
+					Type:           "ARTLIST",
+					Clip:           &clip,
+					Confidence:     0.75,
+					MatchedKeyword: visualTags[0],
+					Resolution:     cloneAssetResolution(trace).withOutcome("dynamic-search", "live artlist search produced results", false),
 				}
 			}
 		}
 	}
 
-	return nil
-}
-
-func (s *ScriptDocService) expandKeywordsWithLLM(frase, topic string) []string {
-	if s.generator == nil {
-		return nil
-	}
-	// "Thesaurus visuale" logic via Ollama
-	prompt := fmt.Sprintf("Given the phrase: \"%s\" (Topic: %s), provide 3 generic visual keywords for stock footage search. Return only keywords separated by space.", frase, topic)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	resp, err := s.generator.Generate(ctx, prompt)
-	if err != nil {
-		return nil
-	}
-	return strings.Fields(strings.ToLower(resp))
-}
-
-func (s *ScriptDocService) tryExistingMatch(frase, kw string, usedClipIDs map[string]bool, dynamicClips []clipsearch.SearchResult, stockClips map[string]stockdb.StockClipEntry) *ClipAssociation {
-	kw = strings.ToLower(kw)
-	// Check dynamic cache
-	for _, dc := range dynamicClips {
-		if strings.Contains(strings.ToLower(dc.Keyword), kw) && !usedClipIDs["dynamic_"+dc.DriveID] {
-			usedClipIDs["dynamic_"+dc.DriveID] = true
-			return &ClipAssociation{Phrase: frase, Type: "DYNAMIC", DynamicClip: &dc, Confidence: 0.95, MatchedKeyword: kw}
-		}
-	}
-	// Check StockDB (simplified for brevity)
-	return nil
-}
-
-func (s *ScriptDocService) tryArtlistMatch(frase, term string, baseConf float64, usedClipIDs map[string]bool, translator *translation.ClipSearchTranslator, rng *rand.Rand) *ClipAssociation {
-	if s.artlistIndex == nil {
-		return nil
-	}
-	clips := s.artlistClipsForTerm(term)
-	if len(clips) == 0 {
-		return nil
-	}
-	// Simple random pick for now
-	idx := rng.Intn(len(clips))
-	c := clips[idx]
-	if usedClipIDs[c.URL] {
-		return nil
-	}
-	usedClipIDs[c.URL] = true
-	return &ClipAssociation{Phrase: frase, Type: "ARTLIST", Clip: &c, Confidence: baseConf, MatchedKeyword: term}
-}
-
-type conceptScore struct {
-	cm          clipConcept
-	score       int
-	bestKeyword string
-	signalClass SignalClass
-	isMismatch bool
-	isPreferred bool
-}
-
-func (s *ScriptDocService) scoreConcepts(frase, contextLower string) []conceptScore {
-	topic := s.currentTopic
-	if topic == "" {
-		topic = s.folderTopic
-	}
-
-	fraseEntities := extractEntitiesFromPhrase(frase)
-	hasExplicitEntity := len(fraseEntities) > 0
-	visualIntent := classifyVisualIntent(frase)
-
-	lastEntity := ""
-	if len(fraseEntities) > 0 {
-		lastEntity = fraseEntities[len(fraseEntities)-1]
-	}
-	preferredByIntent := preferredConceptsForIntent(visualIntent, lastEntity)
-
-	signals := analyzeAndScore(contextLower, conceptMap, topic, fraseEntities)
-
-	var scores []conceptScore
-	for _, sig := range signals {
-		for _, cm := range conceptMap {
-			if cm.Term == sig.Concept {
-				penalty := applyEntityPenalty(cm.Term, fraseEntities)
-				adjustedScore := sig.Score + penalty
-
-				strongEntityMatch := len(fraseEntities) > 0 && sig.Class == SignalClassEntity
-				if strongEntityMatch {
-					adjustedScore += 15
-				}
-
-				isPreferredForIntent := false
-				for _, pref := range preferredByIntent {
-					if strings.Contains(cm.Term, pref) || strings.Contains(pref, cm.Term) {
-						isPreferredForIntent = true
-						adjustedScore += 10
-						break
-					}
-				}
-
-				mismatch := isEntityMismatch(cm.Term, fraseEntities)
-
-				scores = append(scores, conceptScore{
-					cm:             cm,
-					score:          adjustedScore,
-					bestKeyword:    sig.Keyword,
-					signalClass:    sig.Class,
-					isMismatch:    mismatch,
-					isPreferred:   isPreferredForIntent,
-				})
-				break
+	// 5. JIT & Stock Folder Fallback
+	if allowJIT && s.jitResolver != nil && s.allowJITFallback() {
+		if res := s.resolveJITClip(ctx, topic, frase, 0, 0); res != nil {
+			assoc := s.jitResultToAssociation(res)
+			if assoc != nil {
+				assoc.Resolution = cloneAssetResolution(trace).withOutcome(strings.TrimSpace(res.SourceKind), "jit fallback created a new asset", res.Cached)
+				return assoc
 			}
 		}
 	}
 
-	slices.SortFunc(scores, func(a, b conceptScore) int {
-		if hasExplicitEntity && visualIntent == VisualIntentCloseUp {
-			if a.signalClass == SignalClassEntity && b.signalClass == SignalClassEntity {
-				if a.isMismatch != b.isMismatch {
-					if a.isMismatch {
-						return 1
-					}
-					return -1
-				}
-			}
-		}
+	// Final generic Stock fallback
+	stockFolderObj, ok := s.stockFolders[normalizeTopicKey(topic)]
+	if !ok {
+		stockFolderObj = StockFolder{Name: "Stock", ID: "root"}
+	}
 
-		if hasExplicitEntity {
-			if a.signalClass != b.signalClass {
-				return int(a.signalClass) - int(b.signalClass)
-			}
-
-			if a.signalClass == SignalClassEntity && b.signalClass == SignalClassEntity {
-				if a.isMismatch != b.isMismatch {
-					if a.isMismatch {
-						return 1
-					}
-					return -1
-				}
-			}
-		}
-
-		if a.score != b.score {
-			return b.score - a.score
-		}
-		return int(b.cm.BaseConf*100) - int(a.cm.BaseConf*100)
-	})
-
-	return scores
+	return &ClipAssociation{
+		Phrase:      frase,
+		Type:        "STOCK",
+		StockFolder: &stockFolderObj,
+		Confidence:  0.50,
+		Resolution:  cloneAssetResolution(trace).withOutcome("stock", "generic fallback", false),
+	}
 }
 
 func (s *ScriptDocService) getDynamicClips() []clipsearch.SearchResult {

@@ -46,16 +46,18 @@ func LoadConfigWithDefaults(path string) (*MonitorConfig, error) {
 // DefaultConfig returns a MonitorConfig with sensible defaults
 func DefaultConfig() *MonitorConfig {
 	return &MonitorConfig{
-		CheckInterval:   24 * time.Hour,
-		VideoTimeframe:  "month",
-		ClipRootID:      "",
-		ClipRunDBPath:   "",
-		YtDlpPath:       "yt-dlp",
-		FFmpegPath:      "ffmpeg",
-		CookiesPath:     "",
-		MaxClipDuration: 60,
-		OllamaURL:       "http://localhost:11434",
-		Channels:        defaultChannels(),
+		CheckInterval:      24 * time.Hour,
+		VideoTimeframe:     "month",
+		ClipRootID:        "",
+		ClipRunDBPath:     "",
+		YtDlpPath:         "yt-dlp",
+		FFmpegPath:        "ffmpeg",
+		CookiesPath:       "",
+		MaxClipDuration:    60,
+		OllamaURL:         "http://localhost:11434",
+		Channels:          defaultChannels(),
+		DefaultMaxClips:   5,
+		DefaultTimeoutSec: 90,
 	}
 }
 
@@ -64,10 +66,12 @@ func defaultChannels() []ChannelConfig {
 	return []ChannelConfig{
 		{
 			URL:             "https://www.youtube.com/@VladimirTsvetov",
-			Category:        "HipHop",
-			Keywords:        []string{"hip hop", "rap", "drill"},
+			Category:        "Music",
+			Keywords:        []string{"vladtv", "interview", "music"},
 			MinViews:        10000,
 			MaxClipDuration: 60,
+			MaxVideos:       1,
+			FolderName:      "VladTV",
 		},
 		{
 			URL:             "https://www.youtube.com/@TMZ",
@@ -114,6 +118,21 @@ func applyDefaults(cfg *MonitorConfig) {
 	for i := range cfg.Channels {
 		if cfg.Channels[i].MaxClipDuration == 0 {
 			cfg.Channels[i].MaxClipDuration = cfg.MaxClipDuration
+		}
+		if cfg.Channels[i].MaxVideos == 0 {
+			cfg.Channels[i].MaxVideos = 5
+		}
+		if cfg.Channels[i].MaxClips == 0 {
+			cfg.Channels[i].MaxClips = cfg.DefaultMaxClips
+			if cfg.Channels[i].MaxClips == 0 {
+				cfg.Channels[i].MaxClips = 5
+			}
+		}
+		if cfg.Channels[i].BaseTimeoutSec == 0 {
+			cfg.Channels[i].BaseTimeoutSec = cfg.DefaultTimeoutSec
+			if cfg.Channels[i].BaseTimeoutSec == 0 {
+				cfg.Channels[i].BaseTimeoutSec = 90
+			}
 		}
 	}
 }

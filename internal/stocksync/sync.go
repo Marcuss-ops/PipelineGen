@@ -3,7 +3,10 @@ package stocksync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -22,27 +25,33 @@ type DriveSync struct {
 	stockDB     *stockdb.StockDB
 	clipDB      *clipdb.ClipDB
 	stockRootID string
+	statePath   string
+	changeToken string
 	lastSync    time.Time
 	mu          sync.Mutex
 	running     bool
 }
 
+const fullRescanInterval = 24 * time.Hour
+
 // NewDriveSync creates a new Drive sync service (backward compatible)
-func NewDriveSync(driveClient *drive.Client, stockDB *stockdb.StockDB, stockRootID string) *DriveSync {
+func NewDriveSync(driveClient *drive.Client, stockDB *stockdb.StockDB, stockRootID string, statePath ...string) *DriveSync {
 	return &DriveSync{
 		driveClient: driveClient,
 		stockDB:     stockDB,
 		stockRootID: stockRootID,
+		statePath:   firstOrEmpty(statePath),
 	}
 }
 
 // NewDriveSyncWithClips creates a new Drive sync service with separate Stock and Clip DBs
-func NewDriveSyncWithClips(driveClient *drive.Client, stockDB *stockdb.StockDB, clipDB *clipdb.ClipDB, stockRootID string) *DriveSync {
+func NewDriveSyncWithClips(driveClient *drive.Client, stockDB *stockdb.StockDB, clipDB *clipdb.ClipDB, stockRootID string, statePath ...string) *DriveSync {
 	return &DriveSync{
 		driveClient: driveClient,
 		stockDB:     stockDB,
 		clipDB:      clipDB,
 		stockRootID: stockRootID,
+		statePath:   firstOrEmpty(statePath),
 	}
 }
 
@@ -66,6 +75,36 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 	logger.Info("Starting Drive-to-DB sync",
 		zap.String("stock_root_id", s.stockRootID),
 	)
+
+	if s.statePath != "" {
+		loaded, err := s.loadState()
+		if err != nil {
+			logger.Warn("Failed to load Drive sync state", zap.String("path", s.statePath), zap.Error(err))
+		} else {
+			s.changeToken = loaded.ChangeToken
+		}
+	}
+
+	forceFullRescan := s.shouldForceFullRescan()
+	if s.changeToken != "" {
+		hasChanges, newToken, err := s.hasDriveChanges(ctx, s.changeToken)
+		if err != nil {
+			logger.Warn("Drive change check failed, falling back to full scan", zap.Error(err))
+		} else if !hasChanges && !forceFullRescan {
+			if newToken != "" {
+				s.changeToken = newToken
+				_ = s.saveState(false)
+			}
+			s.lastSync = time.Now()
+			logger.Info("Drive-to-DB sync skipped, no Drive changes detected",
+				zap.String("stock_root_id", s.stockRootID),
+				zap.Duration("duration", time.Since(start)),
+			)
+			return nil
+		} else if newToken != "" {
+			s.changeToken = newToken
+		}
+	}
 
 	// Scan all folders from Drive recursively
 	driveFolders, err := s.driveClient.ListFolders(ctx, drive.ListFoldersOptions{
@@ -241,6 +280,14 @@ func (s *DriveSync) Sync(ctx context.Context) error {
 	}
 
 	s.lastSync = time.Now()
+	if s.statePath != "" {
+		if token, err := s.driveClient.GetStartPageToken(ctx); err == nil && token != "" {
+			s.changeToken = token
+		}
+		if err := s.saveState(true); err != nil {
+			logger.Warn("Failed to persist Drive sync state", zap.String("path", s.statePath), zap.Error(err))
+		}
+	}
 
 	logger.Info("Drive-to-DB sync completed",
 		zap.Int("stock_folders", len(stockFolders)),
@@ -263,6 +310,87 @@ func (s *DriveSync) IsRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.running
+}
+
+type driveSyncState struct {
+	ChangeToken    string    `json:"change_token"`
+	LastSyncAt     time.Time `json:"last_sync_at"`
+	LastFullScanAt time.Time `json:"last_full_scan_at"`
+}
+
+func (s *DriveSync) hasDriveChanges(ctx context.Context, pageToken string) (bool, string, error) {
+	nextToken := pageToken
+	for {
+		changes, err := s.driveClient.ListChanges(ctx, nextToken, 100)
+		if err != nil {
+			return false, "", err
+		}
+		if len(changes.Changes) > 0 {
+			token := changes.NewStartPageToken
+			if token == "" {
+				token = nextToken
+			}
+			return true, token, nil
+		}
+		if changes.NextPageToken == "" {
+			token := changes.NewStartPageToken
+			if token == "" {
+				token = nextToken
+			}
+			return false, token, nil
+		}
+		nextToken = changes.NextPageToken
+	}
+}
+
+func (s *DriveSync) loadState() (driveSyncState, error) {
+	if s.statePath == "" {
+		return driveSyncState{}, nil
+	}
+	data, err := os.ReadFile(s.statePath)
+	if err != nil {
+		return driveSyncState{}, err
+	}
+	var state driveSyncState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return driveSyncState{}, err
+	}
+	return state, nil
+}
+
+func (s *DriveSync) saveState(fullScan bool) error {
+	if s.statePath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(s.statePath), 0755); err != nil {
+		return err
+	}
+	state := driveSyncState{
+		ChangeToken: s.changeToken,
+		LastSyncAt:  s.lastSync,
+	}
+	if fullScan {
+		state.LastFullScanAt = s.lastSync
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.statePath, data, 0644)
+}
+
+func (s *DriveSync) shouldForceFullRescan() bool {
+	if s.statePath == "" {
+		return true
+	}
+	state, err := s.loadState()
+	if err != nil {
+		return true
+	}
+	if state.LastFullScanAt.IsZero() {
+		return true
+	}
+	return time.Since(state.LastFullScanAt) >= fullRescanInterval
 }
 
 // Helper functions
@@ -308,4 +436,11 @@ func normalizeSlug(s string) string {
 		}
 	}
 	return result
+}
+
+func firstOrEmpty(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }

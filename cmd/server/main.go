@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
+	"velox/go-master/internal/bootstrap"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 )
@@ -21,7 +22,7 @@ func main() {
 		zap.Int("port", cfg.Server.Port),
 	)
 
-	deps, err := wireServices(cfg, log)
+	deps, err := bootstrap.WireServices(cfg, log)
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
 		os.Exit(1)

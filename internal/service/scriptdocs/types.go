@@ -12,6 +12,7 @@ import (
 	"velox/go-master/internal/imagesdb"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/stockdb"
+	"velox/go-master/internal/stockjit"
 	"velox/go-master/internal/upload/drive"
 )
 
@@ -20,6 +21,7 @@ type ArtlistClip struct {
 	Name     string `json:"name"`
 	Term     string `json:"term"`
 	URL      string `json:"url"`
+	DriveID  string `json:"drive_id"`
 	Folder   string `json:"folder"`
 	FolderID string `json:"folder_id"`
 }
@@ -39,6 +41,7 @@ type ScriptDocRequest struct {
 	Languages        []string `json:"languages"`
 	Template         string   `json:"template"`
 	AssociationMode  string   `json:"association_mode,omitempty"`
+	PreviewOnly      bool     `json:"preview_only,omitempty"`
 	BoostKeywords    []string `json:"boost_keywords"`
 	SuppressKeywords []string `json:"suppress_keywords"`
 }
@@ -83,6 +86,7 @@ type LanguageResult struct {
 	ArtlistAssociations []ClipAssociation  `json:"artlist_associations,omitempty"`
 	ArtlistTimeline     []ArtlistTimeline  `json:"artlist_timeline,omitempty"`
 	ImageAssociations   []ImageAssociation `json:"image_associations,omitempty"`
+	MixedSegments       []MixedSegment     `json:"mixed_segments,omitempty"`
 }
 
 // ArtlistTimeline groups content windows by timestamp to direct Artlist folders.
@@ -95,23 +99,24 @@ type ArtlistTimeline struct {
 
 // ImageAssociation represents a chapter-linked image selected for a script.
 type ImageAssociation struct {
-	Phrase       string  `json:"phrase"`
-	Entity       string  `json:"entity"`
-	Query        string  `json:"query,omitempty"`
-	ImageURL     string  `json:"image_url"`
-	Source       string  `json:"source,omitempty"`
-	Title        string  `json:"title,omitempty"`
-	PageURL      string  `json:"page_url,omitempty"`
-	StartTime    int     `json:"start_time,omitempty"`
-	EndTime      int     `json:"end_time,omitempty"`
-	ChapterIndex int     `json:"chapter_index,omitempty"`
-	Score        float64 `json:"score,omitempty"`
-	Cached       bool    `json:"cached,omitempty"`
-	LocalPath    string  `json:"local_path,omitempty"`
-	MimeType     string  `json:"mime_type,omitempty"`
-	FileSize     int64   `json:"file_size,omitempty"`
-	AssetHash    string  `json:"asset_hash,omitempty"`
-	DownloadedAt string  `json:"downloaded_at,omitempty"`
+	Phrase       string           `json:"phrase"`
+	Entity       string           `json:"entity"`
+	Query        string           `json:"query,omitempty"`
+	ImageURL     string           `json:"image_url"`
+	Source       string           `json:"source,omitempty"`
+	Title        string           `json:"title,omitempty"`
+	PageURL      string           `json:"page_url,omitempty"`
+	StartTime    int              `json:"start_time,omitempty"`
+	EndTime      int              `json:"end_time,omitempty"`
+	ChapterIndex int              `json:"chapter_index,omitempty"`
+	Score        float64          `json:"score,omitempty"`
+	Cached       bool             `json:"cached,omitempty"`
+	LocalPath    string           `json:"local_path,omitempty"`
+	MimeType     string           `json:"mime_type,omitempty"`
+	FileSize     int64            `json:"file_size,omitempty"`
+	AssetHash    string           `json:"asset_hash,omitempty"`
+	DownloadedAt string           `json:"downloaded_at,omitempty"`
+	Resolution   *AssetResolution `json:"resolution,omitempty"`
 }
 
 // ImagePlan aggregates the full image routing plan for a script doc request.
@@ -124,6 +129,20 @@ type ImagePlan struct {
 	TotalAssociations int             `json:"total_associations"`
 	TotalCached       int             `json:"total_cached"`
 	TotalDownloaded   int             `json:"total_downloaded"`
+}
+
+// MixedSegment represents the chosen source for a chapter in mixed mode.
+type MixedSegment struct {
+	ChapterIndex int               `json:"chapter_index"`
+	StartTime    int               `json:"start_time"`
+	EndTime      int               `json:"end_time"`
+	Phrase       string            `json:"phrase,omitempty"`
+	SourceKind   string            `json:"source_kind"`
+	Reason       string            `json:"reason,omitempty"`
+	Confidence   float64           `json:"confidence,omitempty"`
+	Clip         *ClipAssociation  `json:"clip,omitempty"`
+	Image        *ImageAssociation `json:"image,omitempty"`
+	Resolution   *AssetResolution  `json:"resolution,omitempty"`
 }
 
 // ImagePlanLang holds the image plan for a single language.
@@ -165,6 +184,8 @@ type ScriptDocResult struct {
 	StockFolderURL string           `json:"stock_folder_url"`
 	ImagePlan      *ImagePlan       `json:"image_plan,omitempty"`
 	ImagePlanPath  string           `json:"image_plan_path,omitempty"`
+	AuditPath      string           `json:"audit_path,omitempty"`
+	PreviewPath    string           `json:"preview_path,omitempty"`
 }
 
 // ClipAssociation represents a phrase-to-clip association.
@@ -177,6 +198,18 @@ type ClipAssociation struct {
 	StockFolder    *StockFolder             `json:"stock_folder,omitempty"`
 	Confidence     float64                  `json:"confidence"`
 	MatchedKeyword string                   `json:"matched_keyword,omitempty"`
+	Resolution     *AssetResolution         `json:"resolution,omitempty"`
+}
+
+// AssetResolution describes how an asset was selected.
+type AssetResolution struct {
+	Resolver       string   `json:"resolver,omitempty"`
+	RequestKey     string   `json:"request_key,omitempty"`
+	SelectionOrder []string `json:"selection_order,omitempty"`
+	SelectedFrom   string   `json:"selected_from,omitempty"`
+	Reason         string   `json:"reason,omitempty"`
+	Cached         bool     `json:"cached,omitempty"`
+	Notes          []string `json:"notes,omitempty"`
 }
 
 // StockFolder represents a Drive Stock folder.
@@ -206,10 +239,13 @@ type ScriptDocService struct {
 	currentTopic           string
 	folderTopic            string
 	clipSearch             *clipsearch.Service
+	jitResolver            *stockjit.Resolver
 	dynamicClips           []clipsearch.SearchResult
 	dynamicClipsMu         sync.Mutex
 	imageFinder            imageFinderAPI
 	imageDownloader        imageAssetDownloaderAPI
+	semanticScorer         *SemanticScorer
+	semanticRegistry       *SemanticRegistry
 }
 
 // ScriptChapter represents a semantic chapter in a generated script.

@@ -140,3 +140,103 @@ func TestBuildMultilingualDocument_UsesStockLinksAndOmitsChapterBlock(t *testing
 		t.Fatalf("document does not contain the second timestamp:\n%s", doc)
 	}
 }
+
+func TestBuildMultilingualDocument_MixedMode(t *testing.T) {
+	svc := &ScriptDocService{}
+	svc.currentAssociationMode = AssociationModeMixed
+
+	doc := svc.buildMultilingualDocument(
+		"Canada mountains",
+		60,
+		StockFolder{Name: "Stock/Clips/Canada", URL: "https://drive.google.com/drive/folders/root"},
+		[]LanguageResult{
+			{
+				Language: "en",
+				FullText: "Canada mountains full script.",
+				Chapters: []ScriptChapter{
+					{StartTime: 0, EndTime: 30, SourceText: "Canada mountains are dramatic and wide."},
+				},
+				MixedSegments: []MixedSegment{
+					{
+						ChapterIndex: 1,
+						StartTime:    0,
+						EndTime:      30,
+						Phrase:       "Canada mountains are dramatic and wide.",
+						SourceKind:   "image",
+						Reason:       "image relevance outranked clip candidates",
+						Image: &ImageAssociation{
+							Title:    "Canadian Rockies",
+							ImageURL: "https://duckduckgo.com/i/d7ae59fa7e82b8e6.jpg",
+						},
+					},
+				},
+			},
+		},
+	)
+
+	if !strings.Contains(doc, "🧩 MIXED (1)") {
+		t.Fatalf("document does not contain mixed block:\n%s", doc)
+	}
+	if !strings.Contains(doc, "Fonte: IMAGE") {
+		t.Fatalf("document does not contain image source:\n%s", doc)
+	}
+	if !strings.Contains(doc, "Canadian Rockies") {
+		t.Fatalf("document does not contain image title:\n%s", doc)
+	}
+	if !strings.Contains(doc, "🔴 CLIP DRIVE (0)") {
+		t.Fatalf("document does not contain clip drive placeholder:\n%s", doc)
+	}
+	if !strings.Contains(doc, "🟢 CLIP ARTLIST (0)") {
+		t.Fatalf("document does not contain artlist placeholder:\n%s", doc)
+	}
+}
+
+func TestBuildMultilingualDocument_ImagesFullModeKeepsStockAndArtlistBlocks(t *testing.T) {
+	svc := &ScriptDocService{}
+	svc.currentAssociationMode = AssociationModeImagesFull
+
+	doc := svc.buildMultilingualDocument(
+		"Andrew Tate",
+		45,
+		StockFolder{Name: "Stock/Boxe/Andrewtate", URL: "https://drive.google.com/drive/folders/stock"},
+		[]LanguageResult{
+			{
+				Language: "en",
+				FullText: "Andrew Tate full script for images.",
+				Chapters: []ScriptChapter{
+					{StartTime: 0, EndTime: 25, SourceText: "Andrew Tate rose to notoriety through online platforms."},
+				},
+				ImageAssociations: []ImageAssociation{
+					{
+						Phrase:    "Andrew Tate rose to notoriety through online platforms.",
+						Entity:    "Andrew Tate",
+						ImageURL:  "https://duckduckgo.com/i/884ab9a11b153c4e.png",
+						Source:    "entityimages",
+						StartTime: 0,
+						EndTime:   25,
+						Score:     1.1,
+					},
+				},
+			},
+		},
+	)
+
+	if !strings.Contains(doc, "📦 STOCK DRIVE") {
+		t.Fatalf("images_full document should contain stock drive block:\n%s", doc)
+	}
+	if !strings.Contains(doc, "🖼️ IMAGE MODE") {
+		t.Fatalf("images_full document should contain image mode block:\n%s", doc)
+	}
+	if !strings.Contains(doc, "🖼️ IMAGES FULL") {
+		t.Fatalf("images_full document should contain images full block:\n%s", doc)
+	}
+	if !strings.Contains(doc, "Andrew Tate") {
+		t.Fatalf("images_full document should contain the image association:\n%s", doc)
+	}
+	if !strings.Contains(doc, "🔴 CLIP DRIVE (0)") {
+		t.Fatalf("images_full document should contain empty clip drive block:\n%s", doc)
+	}
+	if !strings.Contains(doc, "🟢 CLIP ARTLIST (0)") {
+		t.Fatalf("images_full document should contain empty artlist block:\n%s", doc)
+	}
+}

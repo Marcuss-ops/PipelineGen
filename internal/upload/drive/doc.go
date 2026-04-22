@@ -100,26 +100,35 @@ func (d *DocClient) CreateDoc(ctx context.Context, title, content, folderID stri
 
 // AppendToDoc aggiunge contenuto a un documento esistente
 func (d *DocClient) AppendToDoc(ctx context.Context, docID, content string) error {
-	requests := []*docs.Request{
-		{
-			InsertText: &docs.InsertTextRequest{
-				EndOfSegmentLocation: &docs.EndOfSegmentLocation{
-					SegmentId: "",
+	const chunkSize = 1800
+	runes := []rune(content)
+	totalChunks := (len(runes) + chunkSize - 1) / chunkSize
+	for i := 0; i < len(runes); i += chunkSize {
+		end := i + chunkSize
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunk := string(runes[i:end])
+		requests := []*docs.Request{
+			{
+				InsertText: &docs.InsertTextRequest{
+					EndOfSegmentLocation: &docs.EndOfSegmentLocation{
+						SegmentId: "",
+					},
+					Text: chunk,
 				},
-				Text: content,
 			},
-		},
+		}
+
+		_, err := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{
+			Requests: requests,
+		}).Context(ctx).Do()
+		if err != nil {
+			return fmt.Errorf("failed to append to document chunk %d/%d: %w", i/chunkSize+1, totalChunks, err)
+		}
 	}
 
-	_, err := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{
-		Requests: requests,
-	}).Context(ctx).Do()
-
-	if err != nil {
-		return fmt.Errorf("failed to append to document: %w", err)
-	}
-
-	logger.Info("Appended content to doc", zap.String("doc_id", docID), zap.Int("chars", len(content)))
+	logger.Info("Appended content to doc", zap.String("doc_id", docID), zap.Int("chars", len(content)), zap.Int("chunks", totalChunks))
 	return nil
 }
 

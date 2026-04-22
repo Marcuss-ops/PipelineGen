@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,7 +20,10 @@ func (s *ScriptDocService) createDocWithFallback(ctx context.Context, title stri
 	if s.docClient == nil {
 		return s.saveToLocalFile(title, content)
 	}
-	doc, err := s.docClient.CreateDoc(ctx, title, content, "")
+	docCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	doc, err := s.docClient.CreateDoc(docCtx, title, content, "")
 	if err != nil {
 		logger.Warn("Google Docs creation failed, falling back to local file", zap.Error(err))
 		return s.saveToLocalFile(title, content)
@@ -39,13 +43,25 @@ func (s *ScriptDocService) saveToLocalFile(title string, content string) (string
 
 func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int, stockFolder StockFolder, langResults []LanguageResult) string {
 	var b strings.Builder
-	caser := cases.Title(language.Und)
+	mode := normalizeAssociationMode(s.currentAssociationMode)
 
 	mins := duration / 60
 	secs := duration % 60
 	b.WriteString(fmt.Sprintf("📝 %s\n", topic))
 	b.WriteString(fmt.Sprintf("Topic: %s | Durata: %d:%02d | %s\n", topic, mins, secs, time.Now().Format("02/01/2006")))
+	b.WriteString(fmt.Sprintf("Mode: %s\n", mode))
 	b.WriteString(strings.Repeat("=", 100) + "\n\n")
+
+	if mode == AssociationModeImagesFull || mode == AssociationModeImagesOnly {
+		b.WriteString("🖼️ IMAGE MODE\n\n")
+		if strings.TrimSpace(stockFolder.Name) != "" || strings.TrimSpace(stockFolder.URL) != "" {
+			b.WriteString(fmt.Sprintf("📁 %s\n", stockFolder.Name))
+			if strings.TrimSpace(stockFolder.URL) != "" {
+				b.WriteString(fmt.Sprintf("🔗 %s\n", stockFolder.URL))
+			}
+			b.WriteString("\n")
+		}
+	}
 
 	b.WriteString("📦 STOCK DRIVE\n\n")
 	stockSections := s.buildStockDriveSections(stockFolder, langResults)
@@ -124,185 +140,271 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 		b.WriteString("\n")
 		b.WriteString(strings.Repeat("-", 80) + "\n\n")
 
-		if normalizeAssociationMode(s.currentAssociationMode) == AssociationModeImagesFull {
-			b.WriteString(fmt.Sprintf("🖼️ IMAGES FULL (%d)\n", len(lr.ImageAssociations)))
+		switch mode {
+		case AssociationModeImagesFull, AssociationModeImagesOnly:
+			groups := groupImageAssociationsByWindow(lr.ImageAssociations)
+			header := "🖼️ IMAGES FULL"
+			if mode == AssociationModeImagesOnly {
+				header = "🖼️ IMAGES ONLY"
+			}
+			b.WriteString(fmt.Sprintf("%s (%d)\n", header, len(lr.ImageAssociations)))
 			b.WriteString(strings.Repeat("-", 30) + "\n")
-			if len(lr.ImageAssociations) == 0 {
+			if len(groups) == 0 {
 				b.WriteString("   - Nessuna immagine rilevante trovata\n\n")
 			} else {
-				for i, img := range lr.ImageAssociations {
-					b.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", i+1, truncate(associationLabel(ClipAssociation{Phrase: img.Phrase, MatchedKeyword: img.Entity}), 160)))
-					if img.StartTime > 0 || img.EndTime > 0 {
-						b.WriteString(fmt.Sprintf("   ⏱ %s\n", formatTimestampWindow(img.StartTime, img.EndTime)))
+				for i, group := range groups {
+					b.WriteString(fmt.Sprintf("%d. ⏱ %s\n", i+1, formatTimestampWindow(group.StartTime, group.EndTime)))
+					startPhrase, endPhrase := chapterBoundaries(group.Phrase)
+					if strings.TrimSpace(startPhrase) != "" {
+						b.WriteString(fmt.Sprintf("   Inizio: %s\n", truncate(startPhrase, 180)))
 					}
-					if img.Entity != "" {
-						b.WriteString(fmt.Sprintf("   🏷 Entity: %s\n", img.Entity))
+					if strings.TrimSpace(endPhrase) != "" && endPhrase != startPhrase {
+						b.WriteString(fmt.Sprintf("   Fine: %s\n", truncate(endPhrase, 180)))
 					}
-					if img.Title != "" {
-						b.WriteString(fmt.Sprintf("   🖼 Titolo: %s\n", img.Title))
-					}
-					if img.ImageURL != "" {
-						b.WriteString(fmt.Sprintf("   🔗 %s\n", img.ImageURL))
-					}
-					if img.PageURL != "" {
-						b.WriteString(fmt.Sprintf("   🌐 %s\n", img.PageURL))
-					}
-					if img.Source != "" {
-						b.WriteString(fmt.Sprintf("   ✅ Fonte: %s\n", img.Source))
-					}
-					b.WriteString(fmt.Sprintf("   📊 Score: %.2f\n\n", img.Score))
-				}
-			}
-			b.WriteString(strings.Repeat("=", 100) + "\n\n")
-			continue
-		}
-
-		if len(lr.Associations) >= 0 {
-			// Group 1: Drive Clips (real clips only: Dynamic + Stock DB)
-			driveCount := 0
-			var driveBuffer strings.Builder
-			for _, assoc := range lr.Associations {
-				sourceKind := s.associationSourceKind(assoc)
-				if sourceKind != "stock" && sourceKind != "dynamic" {
-					continue
-				}
-
-				hasValidClip := false
-				if assoc.DynamicClip != nil {
-					folderCheck := assoc.DynamicClip.Folder
-					if folderCheck == "" {
-						folderCheck = assoc.DynamicClip.FolderID
-					}
-					if folderCheck != "" && s.stockDB != nil {
-						if folder, err := s.stockDB.FindFolderByDriveID(folderCheck); err == nil && folder != nil {
-							if strings.Contains(strings.ToLower(folder.FullPath), "artlist") {
-								continue
+					b.WriteString("   Link:\n")
+					for _, img := range group.Images {
+						title := strings.TrimSpace(img.Title)
+						if title == "" {
+							title = img.Entity
+						}
+						line := fmt.Sprintf("   - %s", title)
+						if strings.TrimSpace(img.ImageURL) != "" {
+							line += fmt.Sprintf(" -> %s", img.ImageURL)
+						}
+						b.WriteString(line + "\n")
+						if img.Resolution != nil {
+							if strings.TrimSpace(img.Resolution.SelectedFrom) != "" {
+								b.WriteString(fmt.Sprintf("     Origine: %s\n", img.Resolution.SelectedFrom))
+							}
+							if len(img.Resolution.SelectionOrder) > 0 {
+								b.WriteString(fmt.Sprintf("     Fallback: %s\n", strings.Join(img.Resolution.SelectionOrder, " -> ")))
 							}
 						}
-					}
-					if assoc.DynamicClip.Filename != "" &&
-						!strings.HasPrefix(assoc.DynamicClip.Filename, assoc.MatchedKeyword) {
-						hasValidClip = true
-					}
-				}
-				if assoc.ClipDB != nil {
-					folderCheck := assoc.ClipDB.FolderID
-					if folderCheck != "" && s.stockDB != nil {
-						if folder, err := s.stockDB.FindFolderByDriveID(folderCheck); err == nil && folder != nil {
-							if strings.Contains(strings.ToLower(folder.FullPath), "artlist") {
-								continue
-							}
-						}
-					}
-					if assoc.ClipDB.Filename != "" {
-						hasValidClip = true
-					}
-				}
-
-				if !hasValidClip {
-					continue
-				}
-				if assoc.Type == "DYNAMIC" || assoc.Type == "STOCK_DB" || assoc.Type == "STOCK" {
-					driveCount++
-					driveBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", driveCount, truncate(associationLabel(assoc), 160)))
-					switch assoc.Type {
-					case "DYNAMIC":
-						if assoc.DynamicClip != nil {
-							driveBuffer.WriteString("   ✅ Fonte primaria: DRIVE FOLDER (da DYNAMIC SEARCH)\n")
-							driveBuffer.WriteString(fmt.Sprintf("   📛 Clip: %s\n", assoc.DynamicClip.Filename))
-							driveBuffer.WriteString(fmt.Sprintf("   📁 %s\n", assoc.DynamicClip.Folder))
-							if assoc.DynamicClip.Folder != "" && !strings.Contains(assoc.DynamicClip.Folder, "/") {
-								driveBuffer.WriteString(fmt.Sprintf("   🔗 https://drive.google.com/drive/folders/%s\n", assoc.DynamicClip.Folder))
-							}
-						}
-					case "STOCK_DB", "STOCK":
-						if assoc.ClipDB != nil {
-							driveBuffer.WriteString("   ✅ Fonte primaria: DRIVE FOLDER (da STOCK DB)\n")
-							driveBuffer.WriteString(fmt.Sprintf("   📛 Clip: %s\n", assoc.ClipDB.Filename))
-							if assoc.ClipDB.FolderID != "" {
-								folderName := assoc.ClipDB.FolderID
-								folderURL := fmt.Sprintf("https://drive.google.com/drive/folders/%s", assoc.ClipDB.FolderID)
-								if s.stockDB != nil {
-									if folder, err := s.stockDB.FindFolderByDriveID(assoc.ClipDB.FolderID); err == nil && folder != nil {
-										if strings.TrimSpace(folder.FullPath) != "" {
-											folderName = folder.FullPath
-										}
-									}
-								}
-								driveBuffer.WriteString(fmt.Sprintf("   📁 %s\n", folderName))
-								driveBuffer.WriteString(fmt.Sprintf("   🔗 %s\n", folderURL))
-							}
-							if desc := buildClipDescriptionFromTags(assoc.ClipDB.Tags); desc != "" {
-								driveBuffer.WriteString(fmt.Sprintf("   📝 Descrizione: %s\n", desc))
-							}
-						}
-					}
-					if assoc.MatchedKeyword != "" {
-						driveBuffer.WriteString(fmt.Sprintf("   🔍 Match: %s\n", assoc.MatchedKeyword))
-					}
-					driveBuffer.WriteString(fmt.Sprintf("   📊 Confidenza: %.2f\n\n", assoc.Confidence))
-				}
-			}
-
-			b.WriteString(fmt.Sprintf("🔴 CLIP DRIVE (%d)\n", driveCount))
-			b.WriteString(strings.Repeat("-", 30) + "\n")
-			if driveCount > 0 {
-				b.WriteString(driveBuffer.String())
-			} else {
-				b.WriteString("   - None\n\n")
-			}
-			b.WriteString(strings.Repeat("=", 100) + "\n\n")
-
-			// Group 2: Artlist (clip-level in default mode, timeline-folder in fullartlist mode)
-			if s.currentAssociationMode == AssociationModeFullArtlist && len(lr.ArtlistTimeline) > 0 {
-				b.WriteString(fmt.Sprintf("🟢 ARTLIST TIMELINE (%d)\n", len(lr.ArtlistTimeline)))
-				b.WriteString(strings.Repeat("-", 30) + "\n")
-				for i, tl := range lr.ArtlistTimeline {
-					b.WriteString(fmt.Sprintf("%d. ⏱ %s\n", i+1, tl.Timestamp))
-					b.WriteString(fmt.Sprintf("   🏷 Keyword: %s\n", tl.Keyword))
-					if strings.TrimSpace(tl.FolderName) != "" {
-						b.WriteString(fmt.Sprintf("   📁 %s\n", tl.FolderName))
-					}
-					if strings.TrimSpace(tl.FolderURL) != "" {
-						b.WriteString(fmt.Sprintf("   🔗 %s\n", tl.FolderURL))
 					}
 					b.WriteString("\n")
 				}
+			}
+			b.WriteString(strings.Repeat("=", 100) + "\n\n")
+		case AssociationModeMixed:
+			b.WriteString(fmt.Sprintf("🧩 MIXED (%d)\n", len(lr.MixedSegments)))
+			b.WriteString(strings.Repeat("-", 30) + "\n")
+			if len(lr.MixedSegments) == 0 {
+				b.WriteString("   - Nessun segmento misto disponibile\n\n")
 			} else {
-				artlistCount := 0
-				var artlistBuffer strings.Builder
-				for _, assoc := range lr.ArtlistAssociations {
-					if assoc.Type == "ARTLIST" {
-						artlistCount++
-						artlistBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", artlistCount, truncate(associationLabel(assoc), 160)))
-						if assoc.Clip != nil {
-							artlistBuffer.WriteString("   ✅ Fonte primaria: ARTLIST\n")
-							artlistBuffer.WriteString(fmt.Sprintf("   🟢 Artlist: %s\n", assoc.Clip.Name))
-							artlistBuffer.WriteString(fmt.Sprintf("   📁 Stock/Artlist/%s\n", caser.String(strings.ToLower(assoc.Clip.Term))))
-							artlistBuffer.WriteString(fmt.Sprintf("   🔗 %s\n", assoc.Clip.URL))
-						}
-						if assoc.MatchedKeyword != "" {
-							artlistBuffer.WriteString(fmt.Sprintf("   🔍 Match: %s\n", assoc.MatchedKeyword))
-						}
-						artlistBuffer.WriteString(fmt.Sprintf("   📊 Confidenza: %.2f\n\n", assoc.Confidence))
+				for i, segment := range lr.MixedSegments {
+					b.WriteString(fmt.Sprintf("%d. ⏱ %s\n", i+1, formatTimestampWindow(segment.StartTime, segment.EndTime)))
+					if strings.TrimSpace(segment.Phrase) != "" {
+						b.WriteString(fmt.Sprintf("   Inizio: %s\n", truncate(segment.Phrase, 180)))
 					}
-				}
-
-				b.WriteString(fmt.Sprintf("🟢 CLIP ARTLIST (%d)\n", artlistCount))
-				b.WriteString(strings.Repeat("-", 30) + "\n")
-				if artlistCount > 0 {
-					b.WriteString(artlistBuffer.String())
-				} else {
-					b.WriteString("   - None\n\n")
+					if strings.TrimSpace(segment.Reason) != "" {
+						b.WriteString(fmt.Sprintf("   Scelta: %s\n", segment.Reason))
+					}
+					if segment.Resolution != nil {
+						if strings.TrimSpace(segment.Resolution.SelectedFrom) != "" {
+							b.WriteString(fmt.Sprintf("   Origine: %s\n", segment.Resolution.SelectedFrom))
+						}
+						if len(segment.Resolution.SelectionOrder) > 0 {
+							b.WriteString(fmt.Sprintf("   Fallback: %s\n", strings.Join(segment.Resolution.SelectionOrder, " -> ")))
+						}
+						if len(segment.Resolution.Notes) > 0 {
+							b.WriteString(fmt.Sprintf("   Note: %s\n", strings.Join(segment.Resolution.Notes, " | ")))
+						}
+					}
+					switch strings.ToLower(strings.TrimSpace(segment.SourceKind)) {
+					case "image":
+						if segment.Image != nil {
+							b.WriteString(fmt.Sprintf("   Fonte: IMAGE | %s\n", segment.Image.Title))
+							if strings.TrimSpace(segment.Image.ImageURL) != "" {
+								b.WriteString(fmt.Sprintf("   Link: %s\n", segment.Image.ImageURL))
+							}
+						}
+					case "artlist":
+						if segment.Clip != nil && segment.Clip.Clip != nil {
+							b.WriteString(fmt.Sprintf("   Fonte: ARTLIST | %s\n", segment.Clip.Clip.Name))
+							b.WriteString(fmt.Sprintf("   Link: %s\n", segment.Clip.Clip.URL))
+						}
+					default:
+						if segment.Clip != nil {
+							kind := strings.ToUpper(strings.TrimSpace(segment.Clip.Type))
+							if kind == "" {
+								kind = "CLIP"
+							}
+							b.WriteString(fmt.Sprintf("   Fonte: %s\n", kind))
+							if segment.Clip.DynamicClip != nil {
+								b.WriteString(fmt.Sprintf("   Clip: %s\n", segment.Clip.DynamicClip.Filename))
+							} else if segment.Clip.ClipDB != nil {
+								b.WriteString(fmt.Sprintf("   Clip: %s\n", segment.Clip.ClipDB.Filename))
+							}
+						}
+					}
+					b.WriteString("\n")
 				}
 			}
 			b.WriteString(strings.Repeat("=", 100) + "\n\n")
 		}
 
-		b.WriteString(strings.Repeat("=", 100) + "\n\n")
+		s.writeClipAndArtlistSections(&b, lr, stockFolder)
 	}
 
 	return b.String()
+}
+
+func (s *ScriptDocService) writeClipAndArtlistSections(b *strings.Builder, lr LanguageResult, stockFolder StockFolder) {
+	caser := cases.Title(language.Und)
+
+	driveCount := 0
+	var driveBuffer strings.Builder
+	for _, assoc := range lr.Associations {
+		sourceKind := s.associationSourceKind(assoc)
+		if sourceKind != "stock" && sourceKind != "dynamic" {
+			continue
+		}
+
+		hasValidClip := false
+		if assoc.DynamicClip != nil {
+			folderCheck := assoc.DynamicClip.Folder
+			if folderCheck == "" {
+				folderCheck = assoc.DynamicClip.FolderID
+			}
+			if folderCheck != "" && s.stockDB != nil {
+				if folder, err := s.stockDB.FindFolderByDriveID(folderCheck); err == nil && folder != nil {
+					if strings.Contains(strings.ToLower(folder.FullPath), "artlist") {
+						continue
+					}
+				}
+			}
+			if assoc.DynamicClip.Filename != "" &&
+				!strings.HasPrefix(assoc.DynamicClip.Filename, assoc.MatchedKeyword) {
+				hasValidClip = true
+			}
+		}
+		if assoc.ClipDB != nil {
+			folderCheck := assoc.ClipDB.FolderID
+			if folderCheck != "" && s.stockDB != nil {
+				if folder, err := s.stockDB.FindFolderByDriveID(folderCheck); err == nil && folder != nil {
+					if strings.Contains(strings.ToLower(folder.FullPath), "artlist") {
+						continue
+					}
+				}
+			}
+			if assoc.ClipDB.Filename != "" {
+				hasValidClip = true
+			}
+		}
+
+		if !hasValidClip {
+			continue
+		}
+		if assoc.Type == "DYNAMIC" || assoc.Type == "STOCK_DB" || assoc.Type == "STOCK" {
+			driveCount++
+			driveBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", driveCount, truncate(associationLabel(assoc), 160)))
+			switch assoc.Type {
+			case "DYNAMIC":
+				if assoc.DynamicClip != nil {
+					driveBuffer.WriteString("   ✅ Fonte primaria: DRIVE FOLDER (da DYNAMIC SEARCH)\n")
+					driveBuffer.WriteString(fmt.Sprintf("   📛 Clip: %s\n", assoc.DynamicClip.Filename))
+					driveBuffer.WriteString(fmt.Sprintf("   📁 %s\n", assoc.DynamicClip.Folder))
+					if assoc.DynamicClip.Folder != "" && !strings.Contains(assoc.DynamicClip.Folder, "/") {
+						driveBuffer.WriteString(fmt.Sprintf("   🔗 https://drive.google.com/drive/folders/%s\n", assoc.DynamicClip.Folder))
+					}
+				}
+			case "STOCK_DB", "STOCK":
+				if assoc.ClipDB != nil {
+					driveBuffer.WriteString("   ✅ Fonte primaria: DRIVE FOLDER (da STOCK DB)\n")
+					driveBuffer.WriteString(fmt.Sprintf("   📛 Clip: %s\n", assoc.ClipDB.Filename))
+					if assoc.ClipDB.FolderID != "" {
+						folderName := assoc.ClipDB.FolderID
+						folderURL := fmt.Sprintf("https://drive.google.com/drive/folders/%s", assoc.ClipDB.FolderID)
+						if s.stockDB != nil {
+							if folder, err := s.stockDB.FindFolderByDriveID(assoc.ClipDB.FolderID); err == nil && folder != nil {
+								if strings.TrimSpace(folder.FullPath) != "" {
+									folderName = folder.FullPath
+								}
+							}
+						}
+						driveBuffer.WriteString(fmt.Sprintf("   📁 %s\n", folderName))
+						driveBuffer.WriteString(fmt.Sprintf("   🔗 %s\n", folderURL))
+					}
+					if desc := buildClipDescriptionFromTags(assoc.ClipDB.Tags); desc != "" {
+						driveBuffer.WriteString(fmt.Sprintf("   📝 Descrizione: %s\n", desc))
+					}
+				}
+			}
+			if assoc.MatchedKeyword != "" {
+				driveBuffer.WriteString(fmt.Sprintf("   🔍 Match: %s\n", assoc.MatchedKeyword))
+			}
+			if assoc.Resolution != nil {
+				if strings.TrimSpace(assoc.Resolution.SelectedFrom) != "" {
+					driveBuffer.WriteString(fmt.Sprintf("   🧭 Origine: %s\n", assoc.Resolution.SelectedFrom))
+				}
+				if len(assoc.Resolution.SelectionOrder) > 0 {
+					driveBuffer.WriteString(fmt.Sprintf("   ↪ Fallback: %s\n", strings.Join(assoc.Resolution.SelectionOrder, " -> ")))
+				}
+			}
+			driveBuffer.WriteString(fmt.Sprintf("   📊 Confidenza: %.2f\n\n", assoc.Confidence))
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("🔴 CLIP DRIVE (%d)\n", driveCount))
+	b.WriteString(strings.Repeat("-", 30) + "\n")
+	if driveCount > 0 {
+		b.WriteString(driveBuffer.String())
+	} else {
+		b.WriteString("   - None\n\n")
+	}
+	b.WriteString(strings.Repeat("=", 100) + "\n\n")
+
+	if normalizeAssociationMode(s.currentAssociationMode) == AssociationModeFullArtlist && len(lr.ArtlistTimeline) > 0 {
+		b.WriteString(fmt.Sprintf("🟢 ARTLIST TIMELINE (%d)\n", len(lr.ArtlistTimeline)))
+		b.WriteString(strings.Repeat("-", 30) + "\n")
+		for i, tl := range lr.ArtlistTimeline {
+			b.WriteString(fmt.Sprintf("%d. ⏱ %s\n", i+1, tl.Timestamp))
+			b.WriteString(fmt.Sprintf("   🏷 Keyword: %s\n", tl.Keyword))
+			if strings.TrimSpace(tl.FolderName) != "" {
+				b.WriteString(fmt.Sprintf("   📁 %s\n", tl.FolderName))
+			}
+			if strings.TrimSpace(tl.FolderURL) != "" {
+				b.WriteString(fmt.Sprintf("   🔗 %s\n", tl.FolderURL))
+			}
+			b.WriteString("\n")
+		}
+	} else {
+		artlistCount := 0
+		var artlistBuffer strings.Builder
+		for _, assoc := range lr.ArtlistAssociations {
+			if assoc.Type == "ARTLIST" {
+				artlistCount++
+				artlistBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", artlistCount, truncate(associationLabel(assoc), 160)))
+				if assoc.Clip != nil {
+					artlistBuffer.WriteString("   ✅ Fonte primaria: ARTLIST\n")
+					artlistBuffer.WriteString(fmt.Sprintf("   🟢 Artlist: %s\n", assoc.Clip.Name))
+					artlistBuffer.WriteString(fmt.Sprintf("   📁 Stock/Artlist/%s\n", caser.String(strings.ToLower(assoc.Clip.Term))))
+					artlistBuffer.WriteString(fmt.Sprintf("   🔗 %s\n", assoc.Clip.URL))
+				}
+				if assoc.MatchedKeyword != "" {
+					artlistBuffer.WriteString(fmt.Sprintf("   🔍 Match: %s\n", assoc.MatchedKeyword))
+				}
+				if assoc.Resolution != nil {
+					if strings.TrimSpace(assoc.Resolution.SelectedFrom) != "" {
+						artlistBuffer.WriteString(fmt.Sprintf("   🧭 Origine: %s\n", assoc.Resolution.SelectedFrom))
+					}
+					if len(assoc.Resolution.SelectionOrder) > 0 {
+						artlistBuffer.WriteString(fmt.Sprintf("   ↪ Fallback: %s\n", strings.Join(assoc.Resolution.SelectionOrder, " -> ")))
+					}
+				}
+				artlistBuffer.WriteString(fmt.Sprintf("   📊 Confidenza: %.2f\n\n", assoc.Confidence))
+			}
+		}
+
+		b.WriteString(fmt.Sprintf("🟢 CLIP ARTLIST (%d)\n", artlistCount))
+		b.WriteString(strings.Repeat("-", 30) + "\n")
+		if artlistCount > 0 {
+			b.WriteString(artlistBuffer.String())
+		} else {
+			b.WriteString("   - None\n\n")
+		}
+	}
+	b.WriteString(strings.Repeat("=", 100) + "\n\n")
 }
 
 type stockDriveLink struct {
@@ -487,6 +589,57 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+type imageWindowGroup struct {
+	StartTime int
+	EndTime   int
+	Phrase    string
+	Images    []ImageAssociation
+}
+
+func groupImageAssociationsByWindow(images []ImageAssociation) []imageWindowGroup {
+	if len(images) == 0 {
+		return nil
+	}
+	ordered := append([]ImageAssociation(nil), images...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].StartTime == ordered[j].StartTime {
+			if ordered[i].EndTime == ordered[j].EndTime {
+				return ordered[i].Score > ordered[j].Score
+			}
+			return ordered[i].EndTime < ordered[j].EndTime
+		}
+		return ordered[i].StartTime < ordered[j].StartTime
+	})
+
+	groups := make([]imageWindowGroup, 0, len(ordered))
+	for _, img := range ordered {
+		if len(groups) == 0 {
+			groups = append(groups, imageWindowGroup{
+				StartTime: img.StartTime,
+				EndTime:   img.EndTime,
+				Phrase:    img.Phrase,
+				Images:    []ImageAssociation{img},
+			})
+			continue
+		}
+		last := &groups[len(groups)-1]
+		if last.StartTime == img.StartTime && last.EndTime == img.EndTime {
+			last.Images = append(last.Images, img)
+			if last.Phrase == "" {
+				last.Phrase = img.Phrase
+			}
+			continue
+		}
+		groups = append(groups, imageWindowGroup{
+			StartTime: img.StartTime,
+			EndTime:   img.EndTime,
+			Phrase:    img.Phrase,
+			Images:    []ImageAssociation{img},
+		})
+	}
+	return groups
 }
 
 func buildClipDescriptionFromTags(tags []string) string {

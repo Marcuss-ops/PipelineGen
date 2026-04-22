@@ -50,7 +50,7 @@ func (s *ScriptDocService) extractClipKeywords(frasi []string, nomi []string, pa
 	}
 	var conceptScores []conceptScore
 	for _, cm := range conceptMap {
-		score, _ := scoreConceptForPhrase(contextLower, cm)
+		score, _ := scoreConceptForPhrase(contextLower, nil, cm)
 		if score > 0 {
 			conceptScores = append(conceptScores, conceptScore{term: cm.Term, score: score})
 		}

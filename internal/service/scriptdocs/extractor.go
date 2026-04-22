@@ -14,7 +14,15 @@ import (
 	"go.uber.org/zap"
 )
 
-var imageFinder = entityimages.New()
+var imageFinder imageFinderAPI = entityimages.New()
+
+// SetGlobalImageFinderForTests overrides the package-level finder used by
+// ExtractEntitiesWithImages so tests can avoid external lookups.
+func SetGlobalImageFinderForTests(f imageFinderAPI) {
+	if f != nil {
+		imageFinder = f
+	}
+}
 
 var sentenceSplitRE = regexp.MustCompile(`[.!?\n]+`)
 
@@ -154,7 +162,7 @@ func dedupeOrderedStrings(items []string) []string {
 
 func ExtractProperNouns(sentences []string) []string { return extractProperNounsInternal(sentences) }
 func extractProperNouns(sentences []string) []string { return extractProperNounsInternal(sentences) }
-func ExtractKeywords(text string) []string { return extractKeywords(text) }
+func ExtractKeywords(text string) []string           { return extractKeywords(text) }
 
 func extractProperNounsInternal(sentences []string) []string {
 	seen := make(map[string]bool)
@@ -191,8 +199,12 @@ func extractProperNounsInternal(sentences []string) []string {
 	return result
 }
 
-func ExtractEntitiesWithImages(sentences []string) map[string]string { return extractEntitiesWithImagesInternal(sentences) }
-func extractEntitiesWithImages(sentences []string) map[string]string { return extractEntitiesWithImagesInternal(sentences) }
+func ExtractEntitiesWithImages(sentences []string) map[string]string {
+	return extractEntitiesWithImagesInternal(sentences)
+}
+func extractEntitiesWithImages(sentences []string) map[string]string {
+	return extractEntitiesWithImagesInternal(sentences)
+}
 
 func extractEntitiesWithImagesInternal(sentences []string) map[string]string {
 	nouns := ExtractProperNouns(sentences)
@@ -228,7 +240,9 @@ func extractEntitiesWithImagesInternal(sentences []string) map[string]string {
 	return result
 }
 
-func ExtractMultiWordEntities(sentences []string) []string { return extractMultiWordEntities(sentences) }
+func ExtractMultiWordEntities(sentences []string) []string {
+	return extractMultiWordEntities(sentences)
+}
 
 func extractMultiWordEntities(sentences []string) []string {
 	seen := make(map[string]bool)
@@ -241,7 +255,10 @@ func extractMultiWordEntities(sentences []string) []string {
 			if len(clean) <= 1 {
 				if len(currentGroup) >= 2 {
 					phrase := strings.Join(currentGroup, " ")
-					if !seen[phrase] { seen[phrase] = true; result = append(result, phrase) }
+					if !seen[phrase] {
+						seen[phrase] = true
+						result = append(result, phrase)
+					}
 				}
 				currentGroup = nil
 				continue
@@ -251,14 +268,20 @@ func extractMultiWordEntities(sentences []string) []string {
 			} else {
 				if len(currentGroup) >= 2 {
 					phrase := strings.Join(currentGroup, " ")
-					if !seen[phrase] { seen[phrase] = true; result = append(result, phrase) }
+					if !seen[phrase] {
+						seen[phrase] = true
+						result = append(result, phrase)
+					}
 				}
 				currentGroup = nil
 			}
 		}
 		if len(currentGroup) >= 2 {
 			phrase := strings.Join(currentGroup, " ")
-			if !seen[phrase] { seen[phrase] = true; result = append(result, phrase) }
+			if !seen[phrase] {
+				seen[phrase] = true
+				result = append(result, phrase)
+			}
 		}
 	}
 	return result
@@ -280,13 +303,20 @@ func extractKeywords(text string) []string {
 		wordCount[clean]++
 		totalWords++
 	}
-	type kv struct{ Key string; Value int }
+	type kv struct {
+		Key   string
+		Value int
+	}
 	var sortedKV []kv
-	for k, v := range wordCount { sortedKV = append(sortedKV, kv{k, v}) }
+	for k, v := range wordCount {
+		sortedKV = append(sortedKV, kv{k, v})
+	}
 	sort.Slice(sortedKV, func(i, j int) bool { return sortedKV[j].Value < sortedKV[i].Value })
-	
+
 	limit := 8
 	result := make([]string, 0, util.Min(limit, len(sortedKV)))
-	for i := 0; i < len(sortedKV) && i < limit; i++ { result = append(result, sortedKV[i].Key) }
+	for i := 0; i < len(sortedKV) && i < limit; i++ {
+		result = append(result, sortedKV[i].Key)
+	}
 	return result
 }
