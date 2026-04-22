@@ -65,13 +65,36 @@ logs/
 
 # Sensitive credentials (never commit)
 credentials.json
-token.json
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Backups
+*.backup*
+*.bak
+*.old
 
 # Runtime data files (JSON databases regenerated at startup)
 *.db.json
+*.pid
 
 # Runtime data directories
 src/go-master/data/
+data/downloads/
+data/dynamic_test/
+data/backups/
+data/async_pipeline_jobs/
+src/go-master/velox-server
+src/go-master/server
+src/go-master/harvester
+src/go-master/downloader
+bin/server
+bin/harvester
+bin/downloader
 
 # Config backups
 config/backups/

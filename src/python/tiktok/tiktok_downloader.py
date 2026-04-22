@@ -12,19 +12,23 @@ async def search_videos(query, count=10, search_type="general"):
     """
     results = []
     async with TikTokApi() as api:
-        await api.create_sessions(ms_tokens=["ms_token_placeholder"], num_sessions=1, sleep_after=3)
+        ms_token = os.environ.get("TT_MS_TOKEN", "ms_token_default_value")
+        await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3, timeout=60000)
         
         if search_type == "hashtag":
-            tag = await api.hashtag(name=query)
-            async for video in tag.videos(count=count):
+            async for video in api.hashtag(name=query).videos(count=count):
                 results.append(format_video(video))
         elif search_type == "user":
-            user = await api.user(username=query)
-            async for video in user.videos(count=count):
+            async for video in api.user(username=query).videos(count=count):
                 results.append(format_video(video))
         else:
-            async for video in api.search.videos(query, count=count):
-                results.append(format_video(video))
+            # Prova 'videos' se 'video' fallisce (cambia tra le versioni dell'API)
+            try:
+                async for video in api.search.videos(query, count=count):
+                    results.append(format_video(video))
+            except AttributeError:
+                async for video in api.search.video(query, count=count):
+                    results.append(format_video(video))
                 
     return results
 
@@ -48,7 +52,8 @@ def format_video(video):
 async def download_video(video_url, output_path):
     """Scarica un video specifico."""
     async with TikTokApi() as api:
-        await api.create_sessions(ms_tokens=["ms_token_placeholder"], num_sessions=1, sleep_after=3)
+        ms_token = os.environ.get("TT_MS_TOKEN", "ms_token_default_value")
+        await api.create_sessions(ms_tokens=[ms_token], num_sessions=1, sleep_after=3, timeout=60000)
         video = api.video(url=video_url)
         video_data = await video.bytes()
         
@@ -63,9 +68,12 @@ async def main():
     parser.add_argument("--query", help="Query di ricerca o URL video")
     parser.add_argument("--type", choices=["general", "hashtag", "user"], default="general")
     parser.add_argument("--count", type=int, default=10)
-    parser.add_argument("--output", help="Percorso di output per il download")
+    parser.add_argument("--ms-token", help="TikTok ms_token")
     
     args = parser.parse_args()
+
+    if args.ms_token:
+        os.environ["TT_MS_TOKEN"] = args.ms_token
 
     try:
         if args.action == "search":
