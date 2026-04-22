@@ -1,40 +1,37 @@
 # VeloxEditing Backend — Production
 
-> **Automated Video Content Creation Backend**
-> **Stack:** Go + Rust + Python (Ollama)
-> **Updated:** April 16, 2026
+Automated Video Content Creation Backend Stack: Go + Rust + Python (Ollama)
+Updated: April 22, 2026
 
 ---
 
 ## 🎯 Project Structure
 
-```
+```text
 refactored/
 ├── src/                         # Source code
 │   ├── go-master/              # Go API Server (PRIMARY)
-│   │   ├── cmd/server/         # Entry point (42 lines, DI pattern)
-│   │   ├── internal/           # Core logic (50+ packages)
-│   │   │   ├── api/            # HTTP handlers + middleware + routes
-│   │   │   ├── di/             # Dependency injection container
-│   │   │   ├── core/           # Job, worker, entity services
-│   │   │   ├── service/        # Business services
-│   │   │   ├── storage/        # JSON file + SQLite storage
-│   │   │   ├── upload/         # Google Drive + YouTube upload
-│   │   │   ├── ml/ollama/      # Ollama AI integration
-│   │   │   ├── gpu/            # GPU detection
-│   │   │   ├── clip/           # Clip indexing, semantic matching
-│   │   │   ├── stock/          # Stock video management
-│   │   │   └── youtube/        # YouTube client (yt-dlp)
-│   │   ├── pkg/                # Shared models, config, logger
-│   │   ├── data/               # JSON database (runtime)
-│   │   ├── tests/              # Unit & integration tests
+│   │   ├── cmd/                # Entry points
+│   │   │   ├── server/         # API Server main
+│   │   │   ├── tools/          # CLI Utilities (Harvester, Downloader, etc.)
+│   │   │   ├── tests/          # Integration & stress tests
+│   │   │   └── tmp/            # Debug & temporary scripts
+│   │   ├── internal/           # Core logic (Domain-driven)
+│   │   │   ├── api/            # HTTP handlers (split by domain)
+│   │   │   ├── bootstrap/      # Service wiring & DI (WireServices)
+│   │   │   ├── core/           # Pure business logic (Job, Worker, Entities)
+│   │   │   ├── clip/           # Clip indexing & semantic matching
+│   │   │   ├── catalogdb/      # Unified SQLite catalog
+│   │   │   ├── storage/        # Storage adapters (JSON, Postgres)
+│   │   │   └── ...             # Other domain services
+│   │   ├── pkg/                # Shared utilities (config, logger)
 │   │   └── Makefile            # Build & test commands
-│   ├── rust/                   # Rust video processing (Cargo project)
-│   └── python/                 # Ollama text generation (script + transcript)
-├── bin/                        # Compiled binaries
-├── docs/                       # Documentation
-├── scripts/                    # Utility scripts
-└── .github/workflows/          # CI workflows
+│   ├── rust/                   # Rust video processing engine
+│   └── python/                 # AI text generation & transcription
+├── bin/                        # Compiled binaries (server, video-stock-creator)
+├── docs/                       # Project documentation & ADRs
+├── scripts/                    # Operational scripts
+└── data/                       # Databases & runtime state (unified_catalog.db)
 ```
 
 ---
@@ -43,25 +40,20 @@ refactored/
 
 ### Prerequisites
 - Go 1.21+
-- Rust toolchain (optional at startup, required for full video processing)
+- Rust toolchain (required for video processing)
 - Ollama running (`gemma3:4b` model)
-- Google OAuth credentials (Drive + YouTube)
-- yt-dlp installed
+- Google OAuth credentials (`credentials.json` + `token.json`)
+- `yt-dlp` installed globally
 
 ### Start with helper script
 ```bash
 ./start.sh
 ```
-
-If `bin/video-stock-creator.bundle` is missing, the script starts the Go Master in **API-only mode** and warns that Rust-backed video endpoints are unavailable until the bundle is compiled.
+If `bin/video-stock-creator.bundle` is missing, the server starts in **API-only mode**.
 
 ### Start Go Master manually
 ```bash
 cd src/go-master
-go build -o ../../bin/server ./cmd/server
-../../bin/server
-
-# Or directly:
 go run cmd/server/main.go
 ```
 
@@ -75,16 +67,10 @@ curl http://localhost:8080/health
 ## 📡 API Surface
 
 The public health endpoint is:
-
-```bash
-GET /health
-```
+`GET /health`
 
 Most application endpoints are mounted under:
-
-```bash
-/api/*
-```
+`/api/*`
 
 For the complete endpoint inventory, see:
 - `docs/API_ENDPOINTS.md`
@@ -96,22 +82,22 @@ For the complete endpoint inventory, see:
 ## 🏗️ Architecture
 
 ```text
-Go Master (API + orchestration)
+Go Master (API + Orchestration)
   ├─ HTTP API (Gin)
+  ├─ Bootstrap (Dependency Injection)
   ├─ Job / Worker management
   ├─ Script generation (Ollama)
-  ├─ Clip indexing and stock orchestration
-  ├─ Drive / YouTube integration
-  └─ Calls Rust bundle for video assembly when available
+  ├─ Unified Catalog (SQLite + FTS5)
+  └─ Subprocess: Rust Video Engine
 
-Rust bundle
-  ├─ FFmpeg video assembly
-  ├─ Transitions & effects
-  └─ Audio mixing
+Rust Engine (Video Assembly)
+  ├─ FFmpeg wrapper
+  ├─ Transitions & Overlays
+  └─ High-performance mixing
 
-Python helpers
-  ├─ Text generation
-  └─ Transcript-related utilities
+Python Helpers
+  ├─ LLM client
+  └─ YouTube transcript extraction
 ```
 
 ---
@@ -121,48 +107,19 @@ Python helpers
 ```bash
 cd src/go-master
 make test
-make coverage
-```
-
-Main targets:
-
-```bash
-make build
-make test
-make test-unit
-make test-integration
-make coverage
 make coverage-check
-make fmt
-make vet
-make lint
-make swagger
-make ci
 ```
 
 ---
 
-## ✅ CI
+## ✅ CI/CD
 
-GitHub Actions is configured for the Go Master and runs on push / pull request for `main`, `master`, and `develop` when files under `src/go-master/` change.
-
-The workflow performs:
-- format check
-- `go vet`
-- unit tests
-- integration tests
-- coverage threshold check
-- build verification
+GitHub Actions validates every PR on `src/go-master/` changes:
+- Format & Vet
+- Unit & Integration Tests
+- Coverage threshold (60%)
+- Build verification
 
 ---
 
-## ⚙️ Notes
-
-- **Go Master** is the main entry point.
-- **Rust bundle** is required for full video processing, but not for basic API startup.
-- **Health endpoint** is `/health`, not `/api/health`.
-- Some historical docs may list extra endpoints; treat `src/go-master/internal/api/routes.go` as the source of truth.
-
----
-
-*Production Ready — Updated April 16, 2026*
+*Production Ready — Updated April 2026*
