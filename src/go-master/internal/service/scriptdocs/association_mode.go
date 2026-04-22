@@ -10,6 +10,9 @@ const (
 	AssociationModeDefault     = "default"
 	AssociationModeFullArtlist = "fullartlist"
 	AssociationModeImagesFull  = "images_full"
+	AssociationModeImagesOnly  = "images_only"
+	AssociationModeMixed       = "mixed"
+	AssociationModeJITStock    = "jitstock"
 )
 
 func normalizeAssociationMode(raw string) string {
@@ -19,8 +22,14 @@ func normalizeAssociationMode(raw string) string {
 		return AssociationModeDefault
 	case "full_artlist", "full-artlist", AssociationModeFullArtlist:
 		return AssociationModeFullArtlist
-	case "images_full", "images-full", "full_images", "full-images", "images", "images-only", "images_only":
+	case "images_full", "images-full", "full_images", "full-images", "images":
 		return AssociationModeImagesFull
+	case "images-only", "images_only", "imagesonly", "images only":
+		return AssociationModeImagesOnly
+	case "mixed", "hybrid", "auto", "mixed_mode", "mixed mode":
+		return AssociationModeMixed
+	case "jitstock", "jit_stock", "jit-stock", "just_in_time", "just-in-time":
+		return AssociationModeJITStock
 	default:
 		return mode
 	}
@@ -28,19 +37,20 @@ func normalizeAssociationMode(raw string) string {
 
 func filterAssociationsByMode(associations []ClipAssociation, mode string) []ClipAssociation {
 	mode = normalizeAssociationMode(mode)
-	if mode != AssociationModeFullArtlist && mode != AssociationModeImagesFull {
+	if mode != AssociationModeFullArtlist {
 		return associations
 	}
 	filtered := make([]ClipAssociation, 0, len(associations))
 	for _, assoc := range associations {
-		if mode == AssociationModeImagesFull {
-			continue
-		}
 		if assoc.Type == "ARTLIST" {
 			filtered = append(filtered, assoc)
 		}
 	}
 	return filtered
+}
+
+func (s *ScriptDocService) allowJITFallback() bool {
+	return normalizeAssociationMode(s.currentAssociationMode) == AssociationModeJITStock
 }
 
 func formatTimestampWindow(startSec, endSec int) string {

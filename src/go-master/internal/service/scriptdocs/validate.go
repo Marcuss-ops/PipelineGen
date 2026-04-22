@@ -49,9 +49,12 @@ func (r *ScriptDocRequest) Validate() error {
 		AssociationModeDefault:     true,
 		AssociationModeFullArtlist: true,
 		AssociationModeImagesFull:  true,
+		AssociationModeImagesOnly:  true,
+		AssociationModeMixed:       true,
+		AssociationModeJITStock:    true,
 	}
 	if !validModes[r.AssociationMode] {
-		return fmt.Errorf("invalid association_mode: %s (valid: default, fullartlist, images_full)", r.AssociationMode)
+		return fmt.Errorf("invalid association_mode: %s (valid: default, fullartlist, images_full, images_only, mixed, jitstock)", r.AssociationMode)
 	}
 
 	return nil

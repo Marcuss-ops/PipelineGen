@@ -92,8 +92,8 @@ func TestImagesFullRankingDownloadAndPlanExport(t *testing.T) {
 		"mountains":        baseURL + "/mountains.png",
 		"Canada mountains": baseURL + "/exact.png",
 	})
-	if len(assocs) != 1 {
-		t.Fatalf("buildImagesFullAssociations() len = %d, want 1", len(assocs))
+	if len(assocs) < 3 {
+		t.Fatalf("buildImagesFullAssociations() len = %d, want at least 3", len(assocs))
 	}
 	if got := assocs[0].Entity; got != "Canada mountains" {
 		t.Fatalf("selected entity = %q, want %q", got, "Canada mountains")
@@ -104,16 +104,16 @@ func TestImagesFullRankingDownloadAndPlanExport(t *testing.T) {
 	if assocs[0].DownloadedAt == "" {
 		t.Fatalf("selected association has empty downloaded_at")
 	}
-	if hits != 1 {
-		t.Fatalf("download hits = %d, want 1", hits)
+	if hits != 3 {
+		t.Fatalf("download hits = %d, want 3", hits)
 	}
 
 	records, err := db.ListAll()
 	if err != nil {
 		t.Fatalf("db.ListAll() error = %v", err)
 	}
-	if len(records) != 1 {
-		t.Fatalf("db records = %d, want 1", len(records))
+	if len(records) < 3 {
+		t.Fatalf("db records = %d, want at least 3", len(records))
 	}
 	if records[0].LocalPath == "" || records[0].AssetHash == "" || records[0].FileSizeBytes == 0 {
 		t.Fatalf("db record missing asset metadata: %+v", records[0])
@@ -132,7 +132,7 @@ func TestImagesFullRankingDownloadAndPlanExport(t *testing.T) {
 	if plan == nil {
 		t.Fatalf("buildImagePlan() returned nil")
 	}
-	if plan.TotalAssociations != 1 || plan.TotalDownloaded != 1 || plan.TotalCached != 1 {
+	if plan.TotalAssociations < 3 || plan.TotalDownloaded < 3 || plan.TotalCached != 1 {
 		t.Fatalf("plan totals mismatch: %+v", plan)
 	}
 

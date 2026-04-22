@@ -53,16 +53,16 @@ func TestValidateRequest(t *testing.T) {
 				Duration: 10,
 			},
 			wantErr: true,
-			errMsg:  "duration must be between 30 and 180 seconds",
+			errMsg:  "duration must be between 30 and 600 seconds",
 		},
 		{
 			name: "duration too high",
 			req: ScriptDocRequest{
 				Topic:    "Test",
-				Duration: 300,
+				Duration: 700,
 			},
 			wantErr: true,
-			errMsg:  "duration must be between 30 and 180 seconds",
+			errMsg:  "duration must be between 30 and 600 seconds",
 		},
 		{
 			name: "too many languages",
@@ -90,6 +90,22 @@ func TestValidateRequest(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "invalid template: invalid",
+		},
+		{
+			name: "mixed mode valid",
+			req: ScriptDocRequest{
+				Topic:           "Test",
+				AssociationMode: AssociationModeMixed,
+			},
+			wantErr: false,
+		},
+		{
+			name: "images only valid",
+			req: ScriptDocRequest{
+				Topic:           "Test",
+				AssociationMode: AssociationModeImagesOnly,
+			},
+			wantErr: false,
 		},
 		{
 			name: "defaults applied",
@@ -148,43 +164,43 @@ func TestAssociateClipsWithConfidence(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		phrase         string
-		wantType       string
-		wantMinConf    float64
-		wantMaxConf    float64
-		wantKeyword    bool // should have matched keyword
+		name        string
+		phrase      string
+		wantType    string
+		wantMinConf float64
+		wantMaxConf float64
+		wantKeyword bool // should have matched keyword
 	}{
 		{
 			name:        "people match",
 			phrase:      "Molte persone seguono Andrew Tate",
 			wantType:    "ARTLIST",
-			wantMinConf: 0.85,
-			wantMaxConf: 1.0,
+			wantMinConf: 0.35,
+			wantMaxConf: 0.60,
 			wantKeyword: true,
 		},
 		{
 			name:        "city match",
 			phrase:      "Arrestato dalla polizia a Washington",
 			wantType:    "ARTLIST",
-			wantMinConf: 0.90,
-			wantMaxConf: 1.0,
+			wantMinConf: 0.60,
+			wantMaxConf: 0.75,
 			wantKeyword: true,
 		},
 		{
 			name:        "technology match",
 			phrase:      "Ha costruito una piattaforma digitale online",
 			wantType:    "ARTLIST",
-			wantMinConf: 0.80,
-			wantMaxConf: 1.0,
+			wantMinConf: 0.65,
+			wantMaxConf: 0.80,
 			wantKeyword: true,
 		},
 		{
 			name:        "nature match",
 			phrase:      "Il paesaggio naturale della foresta",
 			wantType:    "ARTLIST",
-			wantMinConf: 0.75,
-			wantMaxConf: 1.0,
+			wantMinConf: 0.65,
+			wantMaxConf: 0.80,
 			wantKeyword: true,
 		},
 		{

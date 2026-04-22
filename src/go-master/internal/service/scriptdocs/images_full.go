@@ -19,6 +19,24 @@ type imageCandidate struct {
 	score  float64
 }
 
+var weakImageEntityTerms = map[string]bool{
+	"above": true, "beneath": true, "below": true, "before": true, "after": true,
+	"around": true, "behind": true, "between": true, "across": true, "through": true,
+	"stretching": true, "stretch": true, "stretchs": true, "dominating": true,
+	"dominate": true, "dominated": true, "opening": true, "closing": true,
+	"visuals": true, "visual": true, "scene": true, "scenes": true,
+	"environment": true, "wilderness": true, "beautiful": true, "dramatic": true,
+	"sweeping": true, "interspersed": true, "remarkable": true, "future": true,
+	"vital": true, "component": true, "testament": true, "nature": true,
+	"landscape": true, "landscapes": true, "mystery": true, "focus": true,
+	"unparalleled": true, "majestic": true, "vibrant": true, "light": true,
+	"however": true, "therefore": true, "moreover": true, "furthermore": true,
+	"despite": true, "although": true, "meanwhile": true, "because": true,
+	"since": true, "while": true, "during": true, "afterward": true,
+	"beforehand": true, "currently": true, "ongoing": true, "thus": true,
+	"then": true, "yet": true, "romanian": true,
+}
+
 func (s *ScriptDocService) SetImagesDB(db *imagesdb.ImageDB) {
 	s.imagesDB = db
 }
@@ -41,45 +59,14 @@ func (s *ScriptDocService) buildImagesFullAssociations(ctx context.Context, topi
 	}
 
 	seenURLs := make(map[string]bool)
-	out := make([]ImageAssociation, 0, len(chapters))
+	out := make([]ImageAssociation, 0, len(chapters)*4)
 	for _, chapter := range chapters {
-		candidates := s.imageCandidatesForChapter(topic, chapter, entityImages)
-		for _, candidate := range candidates {
-			rec, cached, err := s.resolveImageForEntity(ctx, topic, candidate.entity, candidate.query, chapter, chapter.Index+1)
-			if err != nil || rec == nil || strings.TrimSpace(rec.ImageURL) == "" {
-				continue
-			}
-			urlKey := strings.ToLower(strings.TrimSpace(rec.ImageURL))
-			if urlKey == "" || seenURLs[urlKey] {
-				continue
-			}
-			seenURLs[urlKey] = true
-			out = append(out, ImageAssociation{
-				Phrase:       compactSnippet(chapter.SourceText, 140),
-				Entity:       candidate.entity,
-				Query:        candidate.query,
-				ImageURL:     rec.ImageURL,
-				Source:       rec.Source,
-				Title:        rec.Title,
-				PageURL:      rec.PageURL,
-				StartTime:    chapter.StartTime,
-				EndTime:      chapter.EndTime,
-				ChapterIndex: chapter.Index + 1,
-				Score:        candidate.score,
-				Cached:       cached,
-				LocalPath:    rec.LocalPath,
-				MimeType:     rec.MimeType,
-				FileSize:     rec.FileSizeBytes,
-				AssetHash:    rec.AssetHash,
-				DownloadedAt: formatTime(rec.DownloadedAt),
-			})
-			break
-		}
+		out = append(out, s.buildImageAssociationsForChapter(ctx, topic, chapter, entityImages, seenURLs)...)
 	}
 
 	if len(out) == 0 {
 		for _, candidate := range s.imageCandidatesForTopic(topic, entityImages) {
-			rec, cached, err := s.resolveImageForEntity(ctx, topic, candidate.entity, candidate.query, ScriptChapter{}, 0)
+			rec, cached, trace, err := s.resolveImageForEntityWithTrace(ctx, topic, candidate.entity, candidate.query, ScriptChapter{}, 0)
 			if err != nil || rec == nil || strings.TrimSpace(rec.ImageURL) == "" {
 				continue
 			}
@@ -98,6 +85,7 @@ func (s *ScriptDocService) buildImagesFullAssociations(ctx context.Context, topi
 				FileSize:     rec.FileSizeBytes,
 				AssetHash:    rec.AssetHash,
 				DownloadedAt: formatTime(rec.DownloadedAt),
+				Resolution:   trace,
 			})
 			break
 		}
@@ -106,19 +94,84 @@ func (s *ScriptDocService) buildImagesFullAssociations(ctx context.Context, topi
 	return out
 }
 
+func (s *ScriptDocService) buildImageAssociationsForChapter(ctx context.Context, topic string, chapter ScriptChapter, entityImages map[string]string, seenURLs map[string]bool) []ImageAssociation {
+	candidates := s.imageCandidatesForChapter(topic, chapter, entityImages)
+	target := imageAssociationsTargetCount(chapter)
+	if target < 1 {
+		target = 1
+	}
+	produced := 0
+	out := make([]ImageAssociation, 0, target)
+	for _, candidate := range candidates {
+		if produced >= target {
+			break
+		}
+		rec, cached, trace, err := s.resolveImageForEntityWithTrace(ctx, topic, candidate.entity, candidate.query, chapter, chapter.Index+1)
+		if err != nil || rec == nil || strings.TrimSpace(rec.ImageURL) == "" {
+			continue
+		}
+		urlKey := strings.ToLower(strings.TrimSpace(rec.ImageURL))
+		if urlKey == "" || seenURLs[urlKey] {
+			continue
+		}
+		seenURLs[urlKey] = true
+		out = append(out, ImageAssociation{
+			Phrase:       compactSnippet(chapter.SourceText, 140),
+			Entity:       candidate.entity,
+			Query:        candidate.query,
+			ImageURL:     rec.ImageURL,
+			Source:       rec.Source,
+			Title:        rec.Title,
+			PageURL:      rec.PageURL,
+			StartTime:    chapter.StartTime,
+			EndTime:      chapter.EndTime,
+			ChapterIndex: chapter.Index + 1,
+			Score:        candidate.score,
+			Cached:       cached,
+			LocalPath:    rec.LocalPath,
+			MimeType:     rec.MimeType,
+			FileSize:     rec.FileSizeBytes,
+			AssetHash:    rec.AssetHash,
+			DownloadedAt: formatTime(rec.DownloadedAt),
+			Resolution:   trace,
+		})
+		produced++
+	}
+	return out
+}
+
+func imageAssociationsTargetCount(chapter ScriptChapter) int {
+	duration := chapter.EndTime - chapter.StartTime
+	if duration <= 0 {
+		duration = int(chapter.Confidence * 10)
+	}
+	if duration <= 0 {
+		duration = 12
+	}
+	// Aim for one visual every ~6 seconds, with a minimum of 1.
+	target := (duration + 5) / 6
+	if target < 1 {
+		target = 1
+	}
+	if target > 8 {
+		target = 8
+	}
+	return target
+}
+
 func (s *ScriptDocService) imageCandidatesForTopic(topic string, entityImages map[string]string) []imageCandidate {
 	var candidates []imageCandidate
 	if strings.TrimSpace(topic) != "" {
 		candidates = append(candidates, imageCandidate{
 			entity: topic,
-			query:  topic,
+			query:  anchorImageQuery(topic, topic),
 			score:  scoreImageCandidate(topic, topic, ScriptChapter{}, 1.05),
 		})
 	}
 	for _, entity := range extractImageEntities(topic, entityImages, nil) {
 		candidates = append(candidates, imageCandidate{
 			entity: entity,
-			query:  entity,
+			query:  anchorImageQuery(topic, entity),
 			score:  scoreImageCandidate(entity, topic, ScriptChapter{}, 0.55),
 		})
 	}
@@ -138,7 +191,7 @@ func (s *ScriptDocService) imageCandidatesForChapter(topic string, chapter Scrip
 			seen[key] = true
 			candidates = append(candidates, imageCandidate{
 				entity: addTopic,
-				query:  addTopic,
+				query:  anchorImageQuery(topic, addTopic),
 				score:  scoreImageCandidate(addTopic, topic, chapter, 1.05),
 			})
 		}
@@ -146,7 +199,7 @@ func (s *ScriptDocService) imageCandidatesForChapter(topic string, chapter Scrip
 
 	add := func(entity string, query string, base float64) {
 		entity = strings.TrimSpace(entity)
-		if entity == "" {
+		if entity == "" || isWeakImageEntity(entity) {
 			return
 		}
 		key := normalizeKeyword(entity)
@@ -156,7 +209,7 @@ func (s *ScriptDocService) imageCandidatesForChapter(topic string, chapter Scrip
 		seen[key] = true
 		candidates = append(candidates, imageCandidate{
 			entity: entity,
-			query:  query,
+			query:  anchorImageQuery(topic, query),
 			score:  scoreImageCandidate(entity, topic, chapter, base),
 		})
 	}
@@ -194,6 +247,26 @@ func (s *ScriptDocService) imageCandidatesForChapter(topic string, chapter Scrip
 	return sortImageCandidates(dedupeImageCandidates(candidates))
 }
 
+func isWeakImageEntity(entity string) bool {
+	entity = strings.TrimSpace(entity)
+	if entity == "" {
+		return true
+	}
+	key := normalizeKeyword(entity)
+	if key == "" {
+		return true
+	}
+	if weakImageEntityTerms[key] {
+		return true
+	}
+	if len(strings.Fields(entity)) == 1 {
+		if !isTitleLikeEntity(entity) && len(key) < 6 {
+			return true
+		}
+	}
+	return false
+}
+
 func extractImageEntities(topic string, entityImages map[string]string, exclude []string) []string {
 	seen := make(map[string]bool)
 	for _, item := range exclude {
@@ -211,6 +284,9 @@ func extractImageEntities(topic string, entityImages map[string]string, exclude 
 		entity = strings.TrimSpace(entity)
 		key := normalizeKeyword(entity)
 		if key == "" || seen[key] {
+			return
+		}
+		if isWeakImageEntity(entity) {
 			return
 		}
 		if !allowAll && !allowed[key] {
@@ -264,13 +340,20 @@ func sortImageCandidates(items []imageCandidate) []imageCandidate {
 }
 
 func (s *ScriptDocService) resolveImageForEntity(ctx context.Context, topic, entity, query string, chapter ScriptChapter, chapterIndex int) (*imagesdb.ImageRecord, bool, error) {
+	rec, cached, _, err := s.resolveImageForEntityWithTrace(ctx, topic, entity, query, chapter, chapterIndex)
+	return rec, cached, err
+}
+
+func (s *ScriptDocService) resolveImageForEntityWithTrace(ctx context.Context, topic, entity, query string, chapter ScriptChapter, chapterIndex int) (*imagesdb.ImageRecord, bool, *AssetResolution, error) {
 	entity = strings.TrimSpace(entity)
 	if entity == "" {
-		return nil, false, nil
+		return nil, false, nil, nil
 	}
 	if strings.TrimSpace(query) == "" {
 		query = entity
 	}
+	trace := newAssetResolution("images", "imagesdb-cache", "entityimages", "download").withOutcome("", "image entity resolution", false)
+	trace.RequestKey = normalizeKeyword(entity) + "|" + normalizeKeyword(query)
 
 	if s.imagesDB != nil {
 		if rec, ok := s.imagesDB.Get(entity); ok && strings.TrimSpace(rec.ImageURL) != "" {
@@ -291,13 +374,14 @@ func (s *ScriptDocService) resolveImageForEntity(ctx context.Context, topic, ent
 				}
 			}
 			_ = s.imagesDB.Touch(*rec)
-			return rec, true, nil
+			trace.withOutcome("imagesdb-cache", "cached image record reused", true)
+			return rec, true, trace, nil
 		}
 	}
 
 	finder := s.imageFinder
 	if finder == nil {
-		return nil, false, fmt.Errorf("image finder not configured")
+		return nil, false, trace, fmt.Errorf("image finder not configured")
 	}
 
 	candidates := []string{query, entity}
@@ -331,13 +415,15 @@ func (s *ScriptDocService) resolveImageForEntity(ctx context.Context, topic, ent
 		}
 		if s.imagesDB != nil {
 			if err := s.imagesDB.Upsert(*rec); err != nil {
-				return nil, false, err
+				return nil, false, trace, err
 			}
 		}
-		return rec, false, nil
+		trace.withOutcome("entityimages", "finder resolved a new image", false)
+		return rec, false, trace, nil
 	}
 
-	return nil, false, nil
+	trace.addNote("no image match found for entity")
+	return nil, false, trace, nil
 }
 
 func scoreImageCandidate(entity, topic string, chapter ScriptChapter, base float64) float64 {
@@ -356,11 +442,21 @@ func scoreImageCandidate(entity, topic string, chapter ScriptChapter, base float
 	if nt != "" && strings.Contains(strings.ToLower(entity), nt) {
 		score += 0.25
 	}
+	if nt != "" {
+		for _, tok := range significantTokens(topic) {
+			if ne != "" && ne == tok && ne != nt {
+				score -= 0.10
+			}
+		}
+	}
 	if strings.Contains(strings.ToLower(chapter.Title), strings.ToLower(entity)) {
 		score += 0.15
 	}
 	if strings.Contains(strings.ToLower(chapter.SourceText), strings.ToLower(entity)) {
 		score += 0.2
+	}
+	if nt != "" && strings.Contains(strings.ToLower(chapter.SourceText), nt) && strings.Contains(strings.ToLower(chapter.SourceText), strings.ToLower(entity)) {
+		score += 0.12
 	}
 	if chapter.Confidence > 0 {
 		score += chapter.Confidence / 10
@@ -369,6 +465,21 @@ func scoreImageCandidate(entity, topic string, chapter ScriptChapter, base float
 		score += 0.05 * float64(wc)
 	}
 	return score
+}
+
+func anchorImageQuery(topic, entity string) string {
+	topic = strings.TrimSpace(topic)
+	entity = strings.TrimSpace(entity)
+	if entity == "" {
+		return topic
+	}
+	if topic == "" {
+		return entity
+	}
+	if strings.EqualFold(topic, entity) || strings.Contains(strings.ToLower(entity), strings.ToLower(topic)) {
+		return entity
+	}
+	return strings.TrimSpace(topic + " " + entity)
 }
 
 func isTitleLikeEntity(entity string) bool {

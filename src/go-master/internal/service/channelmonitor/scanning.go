@@ -2,6 +2,7 @@ package channelmonitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,11 +18,20 @@ import (
 func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]VideoResult, error) {
 	logger.Info("Processing channel", zap.String("url", ch.URL))
 
-	// Get more videos from channel (50 instead of 15) for better month filtering
+	cb := GetCircuitBreaker(ch.URL)
+	if !cb.Allow() {
+		logger.Warn("Circuit open, skipping channel",
+			zap.String("channel", ch.URL),
+			zap.String("state", cb.State().String()),
+		)
+		return nil, nil
+	}
+
 	videos, err := m.ytClient.GetChannelVideos(ctx, ch.URL, &youtube.ChannelOptions{
 		Limit: 50,
 	})
 	if err != nil {
+		cb.RecordFailure()
 		return nil, fmt.Errorf("failed to get channel videos: %w", err)
 	}
 
@@ -64,10 +74,14 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 		return windowVideos[i].Views > windowVideos[j].Views
 	})
 
-	// Process up to 5 top videos in the selected timeframe
+	// Process a bounded number of top videos in the selected timeframe.
 	var results []VideoResult
-	maxVideos := 5
+	maxVideos := ch.MaxVideos
+	if maxVideos <= 0 {
+		maxVideos = 5
+	}
 	processed := 0
+	filterEngine := m.filterEngine
 
 	for _, v := range windowVideos {
 		if processed >= maxVideos {
@@ -79,29 +93,27 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 			continue
 		}
 
-		// Skip minimum views check
-		if ch.MinViews > 0 && v.Views < ch.MinViews {
+		// Use FilterEngine for unified filtering
+		videoInfo := VideoInfo{
+			ID:         v.ID,
+			Title:      v.Title,
+			Channel:    v.Channel,
+			Views:      v.Views,
+			Duration:   int(v.Duration.Seconds()),
+			UploadDate: v.UploadDate,
+		}
+		filterResult := filterEngine.MatchVideo(videoInfo, ch)
+		if !filterResult.Matched {
+			logger.Debug("Video filtered out",
+				zap.String("video_id", v.ID),
+				zap.String("reason", filterResult.Reason),
+			)
 			continue
 		}
 
 		// Skip already processed
 		if m.isProcessed(v.ID) {
 			continue
-		}
-
-		// Check keyword relevance
-		if len(ch.Keywords) > 0 {
-			titleLower := strings.ToLower(v.Title)
-			matched := false
-			for _, kw := range ch.Keywords {
-				if strings.Contains(titleLower, strings.ToLower(kw)) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
 		}
 
 		logger.Info("Processing trending video",
@@ -144,7 +156,7 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 		}
 
 		// Download clips and upload to Drive (max 5 clips)
-		clips, err := m.downloadAndUploadClips(ctx, v, highlights, folderID, folderPath, folderExisted, ch.MaxClipDuration, decision)
+		clips, err := m.downloadAndUploadClips(ctx, v, highlights, folderID, folderPath, folderExisted, ch.MaxClipDuration, decision, ch.MaxClips)
 		if err != nil {
 			return nil, fmt.Errorf("failed to download/upload clips: %w", err)
 		}
@@ -191,6 +203,7 @@ func (m *Monitor) processChannel(ctx context.Context, ch ChannelConfig) ([]Video
 		zap.Int("total_timeframe_videos", len(windowVideos)),
 	)
 
+	cb.RecordSuccess()
 	return results, nil
 }
 
@@ -207,27 +220,14 @@ func normalizeVideoTimeframe(tf string) string {
 	}
 }
 
-func timeframeStart(now time.Time, tf string) time.Time {
-	switch tf {
-	case "24h":
-		return now.Add(-24 * time.Hour)
-	case "week":
-		return now.Add(-7 * 24 * time.Hour)
-	case "month":
-		return now.Add(-30 * 24 * time.Hour)
-	default:
-		return now.Add(-30 * 24 * time.Hour)
-	}
-}
-
 func isWithinTimeframe(v youtube.SearchResult, windowStart time.Time) bool {
 	if v.UploadDate == "" || v.UploadDate == "NA" {
-		return true // Keep permissive behavior if upload date is unavailable.
+		return true
 	}
 
 	uploadDate, err := parseUploadDate(v.UploadDate)
 	if err != nil {
-		return true // Keep permissive behavior on unparseable dates.
+		return true
 	}
 	return uploadDate.After(windowStart) || uploadDate.Equal(windowStart)
 }
@@ -239,9 +239,22 @@ func parseUploadDate(raw string) (time.Time, error) {
 	dateStr = strings.ReplaceAll(dateStr, "Z", "")
 
 	if len(dateStr) < 8 {
-		return time.Time{}, fmt.Errorf("invalid upload date: %q", raw)
+		return time.Time{}, errors.New("invalid upload date: " + raw)
 	}
 	return time.Parse("20060102", dateStr[:8])
+}
+
+func timeframeStart(now time.Time, tf string) time.Time {
+	switch tf {
+	case "24h":
+		return now.Add(-24 * time.Hour)
+	case "week", "7d":
+		return now.Add(-7 * 24 * time.Hour)
+	case "month", "30d":
+		return now.Add(-30 * 24 * time.Hour)
+	default:
+		return now.Add(-30 * 24 * time.Hour)
+	}
 }
 
 // isShorts checks if a video is a YouTube Short

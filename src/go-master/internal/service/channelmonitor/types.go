@@ -8,11 +8,15 @@ import (
 
 // ChannelConfig holds configuration for a monitored channel
 type ChannelConfig struct {
-	URL             string   `json:"url"`               // e.g. "https://www.youtube.com/@vladtv"
-	Category        string   `json:"category"`          // e.g. "Music", "HipHop", "Wwe"
-	Keywords        []string `json:"keywords"`          // keywords to match in titles for relevance
-	MinViews        int64    `json:"min_views"`         // minimum views to consider
-	MaxClipDuration int      `json:"max_clip_duration"` // max seconds per clip (default 60)
+	URL             string   `json:"url"`                   // e.g. "https://www.youtube.com/@vladtv"
+	Category        string   `json:"category"`              // e.g. "Music", "HipHop", "Wwe"
+	Keywords        []string `json:"keywords"`              // keywords to match in titles for relevance
+	MinViews        int64    `json:"min_views"`             // minimum views to consider
+	MaxClipDuration int      `json:"max_clip_duration"`     // max seconds per clip (default 60)
+	MaxVideos       int      `json:"max_videos,omitempty"`  // max videos to process per run (default 5)
+	MaxClips        int      `json:"max_clips,omitempty"`   // max clips to extract per video (default 5)
+	BaseTimeoutSec  int      `json:"base_timeout_sec"`     // base download timeout seconds (default 90)
+	FolderName      string   `json:"folder_name,omitempty"` // optional stable Drive subfolder name
 }
 
 // MonitorConfig holds the full monitor configuration
@@ -27,6 +31,8 @@ type MonitorConfig struct {
 	CookiesPath     string          `json:"cookies_path"`      // optional: browser cookies file
 	MaxClipDuration int             `json:"max_clip_duration"` // default 60s
 	OllamaURL       string          `json:"ollama_url"`        // Ollama server URL
+	DefaultMaxClips int             `json:"default_max_clips"`  // default clips per video
+	DefaultTimeoutSec int           `json:"default_timeout_sec"` // base download timeout
 }
 
 // ClipResult represents a downloaded and uploaded clip

@@ -18,7 +18,7 @@ import (
 
 // downloadAndUploadClips downloads highlight clips from a YouTube video
 // and uploads them to the specified Drive folder.
-func (m *Monitor) downloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, _ bool, maxDuration int, decision CategoryDecision) ([]ClipResult, error) {
+func (m *Monitor) downloadAndUploadClips(ctx context.Context, video youtube.SearchResult, highlights []HighlightSegment, folderID, folderPath string, _ bool, maxDuration int, decision CategoryDecision, maxClips ...int) ([]ClipResult, error) {
 	if m.driveClient == nil {
 		return nil, fmt.Errorf("drive client not configured")
 	}
@@ -31,13 +31,18 @@ func (m *Monitor) downloadAndUploadClips(ctx context.Context, video youtube.Sear
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Limit to 5 clips max
-	maxClips := 5
-	if len(highlights) < maxClips {
-		maxClips = len(highlights)
+	clipsLimit := m.config.DefaultMaxClips
+	if len(maxClips) > 0 && maxClips[0] > 0 {
+		clipsLimit = maxClips[0]
+	}
+	if clipsLimit <= 0 {
+		clipsLimit = 5
+	}
+	if len(highlights) < clipsLimit {
+		clipsLimit = len(highlights)
 	}
 
-	for i := 0; i < maxClips; i++ {
+	for i := 0; i < clipsLimit; i++ {
 		seg := highlights[i]
 		clipName := fmt.Sprintf("clip_%s_%d", video.ID, i)
 		clipFile := filepath.Join(tmpDir, clipName+".mp4")
@@ -385,18 +390,34 @@ func (m *Monitor) downloadClip(ctx context.Context, videoID string, startSec, du
 		duration = maxDuration
 	}
 
-	dlCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	baseTimeoutSec := m.config.DefaultTimeoutSec
+	if baseTimeoutSec <= 0 {
+		baseTimeoutSec = 90
+	}
+	timeout := time.Duration(baseTimeoutSec)*time.Second + time.Duration(duration*80/100)*time.Second
+
+	dlCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	return youtube.DownloadSection(dlCtx, youtube.SectionDownloadOptions{
-		YtDlpPath:          m.config.YtDlpPath,
-		URL:                url,
-		OutputFile:         outputFile,
-		StartSec:           startSec,
-		Duration:           duration,
-		MaxHeight:          1080,
-		CookiesFile:        m.config.CookiesPath,
-		DefaultCookiesFile: "",
-		MaxFilesize:        "1G",
+	retryCfg := DefaultRetryConfig()
+	return m.RetryDownload(ctx, RetryCtx{
+		Config:   retryCfg,
+		DLQPath:  "data/failed_clips.jsonl",
+		VideoID:  videoID,
+		VideoURL: url,
+		StartSec: startSec,
+		Duration: duration,
+	}, func() error {
+		return youtube.DownloadSection(dlCtx, youtube.SectionDownloadOptions{
+			YtDlpPath:          m.config.YtDlpPath,
+			URL:                url,
+			OutputFile:         outputFile,
+			StartSec:           startSec,
+			Duration:           duration,
+			MaxHeight:          1080,
+			CookiesFile:        m.config.CookiesPath,
+			DefaultCookiesFile: "",
+			MaxFilesize:        "1G",
+		})
 	})
 }
