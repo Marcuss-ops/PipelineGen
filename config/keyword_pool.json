@@ -1,0 +1,2388 @@
+{
+  "seeds": [
+    {
+      "keyword": "smartphone usage",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "computer coding",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "social media",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "video call",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "typing keyboard",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "server room",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "data center",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "artificial intelligence",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "robot",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "drone flying",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "virtual reality",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "augmented reality",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "3d printing",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "electric car",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "tesla charging",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "blockchain network",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "cybersecurity",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "hacker typing",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "digital interface",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "hologram",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "cloud computing",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "network cables",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "wifi signal",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "digital transformation",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "tech startup",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "app development",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "website design",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "mobile gaming",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "streaming video",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "podcast recording",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "mountain landscape",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "ocean waves",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "forest aerial",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sunset timelapse",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "city timelapse",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "rain drops",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "snow falling",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "thunderstorm",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "river flowing",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "waterfall",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "desert landscape",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "beach aerial",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "lake reflection",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "northern lights",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "stars timelapse",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "flower blooming",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "tree growing",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "autumn leaves",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "spring flowers",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "winter snow",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "cloud movement",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sunrise",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "golden hour",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "blue hour",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "moon rise",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "nature macro",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "butterfly",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "bird flying",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "fish swimming",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "wildlife",
+      "cluster": "nature_environment",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "chef cooking",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "italian pasta",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "pizza making",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "kitchen cooking",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "food plating",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "knife cutting",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "pan frying",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "oven baking",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "grilling meat",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "chopping vegetables",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "wine pouring",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "coffee making",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "espresso",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "bread baking",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "cake decorating",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sushi making",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "bbq smoking",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "flambé cooking",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "restaurant kitchen",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "food preparation",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "farmer market",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "fresh ingredients",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "spice mixing",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sauce pouring",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "garnish plating",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "tasting food",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "chef tasting",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "food closeup",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "steam rising",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sizzling pan",
+      "cluster": "food_cooking",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "punching bag",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing ring",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing gloves",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing training",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "gym workout",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "weightlifting",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "crossfit",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "running",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sweat",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "mma training",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "muay thai",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "shadow boxing",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "speed bag",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "heavy bag",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing coach",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sparring",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "rope jump",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "pushups",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "pullups",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "deadlift",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "bench press",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "squat",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "kettlebell",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "dumbbell",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "treadmill",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "battle ropes",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing footwork",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boxing stance",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "fitness motivation",
+      "cluster": "boxing_fitness",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "money counting",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "dollar bills",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "crypto trading",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "stock market",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "bitcoin",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "office meeting",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "business handshake",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "laptop working",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "presentation",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "contract signing",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury office",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "entrepreneur",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "startup pitch",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "finance charts",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "trading desk",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "gold bars",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "credit card",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "bank vault",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "cash register",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "payment terminal",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "business card exchange",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "boardroom",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "ceo office",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "wall street",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "money transfer",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "ethereum",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "nft digital",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "blockchain",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "forex trading",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "investment portfolio",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "millionaire lifestyle",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "wealth",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "success",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "business growth",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "profit",
+      "cluster": "business_money",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "ferrari driving",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "lamborghini",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury yacht",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "private jet",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury villa",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "swimming pool",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury watch",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "champagne toast",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "dubai skyline",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "miami beach",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "porsche",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "rolex watch",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "diamond jewelry",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "designer fashion",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury hotel",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "penthouse view",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sports car",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "helicopter flight",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "first class",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury restaurant",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "supercar",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "golf course",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "country club",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "luxury shopping",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "designer bags",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "casino chips",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "roulette wheel",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "high roller",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "exclusive party",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "vip lounge",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "manhattan skyline",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "sunset yacht",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "beach resort",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "spa luxury",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "premium wine",
+      "cluster": "luxury_lifestyle",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "waking up early",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "reading book",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "studying",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "discipline",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "success motivation",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "failure recovery",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "victory celebration",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "night training",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "meditation",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "focus",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "goal setting",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "journal writing",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "morning routine",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "cold shower",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "disciplined life",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "hard work",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "perseverance",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "determination",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "self improvement",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "mindset",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "vision board",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "affirmations",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "gratitude",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "positive thinking",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "mental strength",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "overcoming obstacles",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "champion mindset",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "never give up",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "push limits",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "breakthrough",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "alarm clock",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "5am morning",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "productive day",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "time management",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "efficiency",
+      "cluster": "motivation_discipline",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "business man",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "elegant woman",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "team collaboration",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "family bonding",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "father son",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "couple walking",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "friends laughing",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "anger expression",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "joy celebration",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "crying",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "hug",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "handshake",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "confident walking",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "people arguing",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "people kissing",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "crowd cheering",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "audience clapping",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "people talking",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "group discussion",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "leader speaking",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "serious expression",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "smiling person",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "nervous person",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "excited person",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "thoughtful person",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "man in suit",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "woman in dress",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "casual people",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "athletic people",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "elderly wise person",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "young entrepreneur",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "professional woman",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "street people",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "urban lifestyle",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "city crowd",
+      "cluster": "people_emotions",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    }
+  ],
+  "clusters": [
+    {
+      "name": "technology_digital",
+      "keywords": [
+        "smartphone usage",
+        "computer coding",
+        "social media",
+        "video call",
+        "typing keyboard",
+        "server room",
+        "data center",
+        "artificial intelligence",
+        "robot",
+        "drone flying",
+        "virtual reality",
+        "augmented reality",
+        "3d printing",
+        "electric car",
+        "tesla charging",
+        "blockchain network",
+        "cybersecurity",
+        "hacker typing",
+        "digital interface",
+        "hologram",
+        "cloud computing",
+        "network cables",
+        "wifi signal",
+        "digital transformation",
+        "tech startup",
+        "app development",
+        "website design",
+        "mobile gaming",
+        "streaming video",
+        "podcast recording"
+      ]
+    },
+    {
+      "name": "nature_environment",
+      "keywords": [
+        "mountain landscape",
+        "ocean waves",
+        "forest aerial",
+        "sunset timelapse",
+        "city timelapse",
+        "rain drops",
+        "snow falling",
+        "thunderstorm",
+        "river flowing",
+        "waterfall",
+        "desert landscape",
+        "beach aerial",
+        "lake reflection",
+        "northern lights",
+        "stars timelapse",
+        "flower blooming",
+        "tree growing",
+        "autumn leaves",
+        "spring flowers",
+        "winter snow",
+        "cloud movement",
+        "sunrise",
+        "golden hour",
+        "blue hour",
+        "moon rise",
+        "nature macro",
+        "butterfly",
+        "bird flying",
+        "fish swimming",
+        "wildlife"
+      ]
+    },
+    {
+      "name": "food_cooking",
+      "keywords": [
+        "chef cooking",
+        "italian pasta",
+        "pizza making",
+        "kitchen cooking",
+        "food plating",
+        "knife cutting",
+        "pan frying",
+        "oven baking",
+        "grilling meat",
+        "chopping vegetables",
+        "wine pouring",
+        "coffee making",
+        "espresso",
+        "bread baking",
+        "cake decorating",
+        "sushi making",
+        "bbq smoking",
+        "flambé cooking",
+        "restaurant kitchen",
+        "food preparation",
+        "farmer market",
+        "fresh ingredients",
+        "spice mixing",
+        "sauce pouring",
+        "garnish plating",
+        "tasting food",
+        "chef tasting",
+        "food closeup",
+        "steam rising",
+        "sizzling pan"
+      ]
+    },
+    {
+      "name": "boxing_fitness",
+      "keywords": [
+        "boxing",
+        "punching bag",
+        "boxing ring",
+        "boxing gloves",
+        "boxing training",
+        "gym workout",
+        "weightlifting",
+        "crossfit",
+        "running",
+        "sweat",
+        "mma training",
+        "muay thai",
+        "shadow boxing",
+        "speed bag",
+        "heavy bag",
+        "boxing coach",
+        "sparring",
+        "rope jump",
+        "pushups",
+        "pullups",
+        "deadlift",
+        "bench press",
+        "squat",
+        "kettlebell",
+        "dumbbell",
+        "treadmill",
+        "battle ropes",
+        "boxing footwork",
+        "boxing stance",
+        "fitness motivation"
+      ]
+    },
+    {
+      "name": "business_money",
+      "keywords": [
+        "money counting",
+        "dollar bills",
+        "crypto trading",
+        "stock market",
+        "bitcoin",
+        "office meeting",
+        "business handshake",
+        "laptop working",
+        "presentation",
+        "contract signing",
+        "luxury office",
+        "entrepreneur",
+        "startup pitch",
+        "finance charts",
+        "trading desk",
+        "gold bars",
+        "credit card",
+        "bank vault",
+        "cash register",
+        "payment terminal",
+        "business card exchange",
+        "boardroom",
+        "ceo office",
+        "wall street",
+        "money transfer",
+        "ethereum",
+        "nft digital",
+        "blockchain",
+        "forex trading",
+        "investment portfolio",
+        "millionaire lifestyle",
+        "wealth",
+        "success",
+        "business growth",
+        "profit"
+      ]
+    },
+    {
+      "name": "luxury_lifestyle",
+      "keywords": [
+        "ferrari driving",
+        "lamborghini",
+        "luxury yacht",
+        "private jet",
+        "luxury villa",
+        "swimming pool",
+        "luxury watch",
+        "champagne toast",
+        "dubai skyline",
+        "miami beach",
+        "porsche",
+        "rolex watch",
+        "diamond jewelry",
+        "designer fashion",
+        "luxury hotel",
+        "penthouse view",
+        "sports car",
+        "helicopter flight",
+        "first class",
+        "luxury restaurant",
+        "supercar",
+        "golf course",
+        "country club",
+        "luxury shopping",
+        "designer bags",
+        "casino chips",
+        "roulette wheel",
+        "high roller",
+        "exclusive party",
+        "vip lounge",
+        "manhattan skyline",
+        "sunset yacht",
+        "beach resort",
+        "spa luxury",
+        "premium wine"
+      ]
+    },
+    {
+      "name": "motivation_discipline",
+      "keywords": [
+        "waking up early",
+        "reading book",
+        "studying",
+        "discipline",
+        "success motivation",
+        "failure recovery",
+        "victory celebration",
+        "night training",
+        "meditation",
+        "focus",
+        "goal setting",
+        "journal writing",
+        "morning routine",
+        "cold shower",
+        "disciplined life",
+        "hard work",
+        "perseverance",
+        "determination",
+        "self improvement",
+        "mindset",
+        "vision board",
+        "affirmations",
+        "gratitude",
+        "positive thinking",
+        "mental strength",
+        "overcoming obstacles",
+        "champion mindset",
+        "never give up",
+        "push limits",
+        "breakthrough",
+        "alarm clock",
+        "5am morning",
+        "productive day",
+        "time management",
+        "efficiency"
+      ]
+    },
+    {
+      "name": "people_emotions",
+      "keywords": [
+        "business man",
+        "elegant woman",
+        "team collaboration",
+        "family bonding",
+        "father son",
+        "couple walking",
+        "friends laughing",
+        "anger expression",
+        "joy celebration",
+        "crying",
+        "hug",
+        "handshake",
+        "confident walking",
+        "people arguing",
+        "people kissing",
+        "crowd cheering",
+        "audience clapping",
+        "people talking",
+        "group discussion",
+        "leader speaking",
+        "serious expression",
+        "smiling person",
+        "nervous person",
+        "excited person",
+        "thoughtful person",
+        "man in suit",
+        "woman in dress",
+        "casual people",
+        "athletic people",
+        "elderly wise person",
+        "young entrepreneur",
+        "professional woman",
+        "street people",
+        "urban lifestyle",
+        "city crowd"
+      ]
+    }
+  ],
+  "expanded": {},
+  "last_warm": ""
+}
