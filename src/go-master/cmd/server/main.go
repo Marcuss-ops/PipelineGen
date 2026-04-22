@@ -11,6 +11,11 @@ import (
 	"velox/go-master/pkg/logger"
 )
 
+// @title VeloxEditing Go Master API
+// @version 1.0
+// @description The central API for video content generation and management.
+// @host localhost:8080
+// @BasePath /api
 func main() {
 	cfg := config.Get()
 	logger.Init(cfg.GetLogLevel(), cfg.GetLogFormat())
