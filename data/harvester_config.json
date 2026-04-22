@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "check_interval": "1h",
+  "search_queries": [
+    "interview",
+    "highlights",
+    "documentary"
+  ],
+  "channels": [],
+  "max_results_per_query": 20,
+  "min_views": 10000,
+  "timeframe": "month",
+  "max_concurrent_downloads": 3,
+  "download_dir": "./downloads",
+  "process_clips": true,
+  "drive_folder_id": ""
+}
