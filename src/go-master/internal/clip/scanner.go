@@ -3,11 +3,12 @@ package clip
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"time"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
-	"go.uber.org/zap"
 )
 
 func (idx *Indexer) ScanAndIndex(ctx context.Context) error {
@@ -45,14 +46,28 @@ func (idx *Indexer) ScanAndIndex(ctx context.Context) error {
 	}
 
 	idx.mu.Lock()
+	// Clear old index reference to help GC
+	idx.index = nil  // Clear reference before reassignment
+	idx.mu.Unlock()
+
+	// Force GC to collect old index if no other references exist
+	runtime.GC()
+
+	idx.mu.Lock()
 	idx.index = newIndex
 	idx.lastSync = time.Now()
 	idx.mu.Unlock()
 
+	// Log memory stats periodically
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
 	logger.Info("Clip index scan completed",
 		zap.Int("total_clips", newIndex.Stats.TotalClips),
 		zap.Int("total_folders", newIndex.Stats.TotalFolders),
-		zap.Duration("duration", time.Since(startTime)))
+		zap.Duration("duration", time.Since(startTime)),
+		zap.Uint64("heap_inuse_mb", m.HeapInuse/1024/1024),
+		zap.Uint64("heap_objects", m.HeapObjects),
+	)
 
 	return nil
 }
@@ -173,6 +188,9 @@ func (idx *Indexer) IncrementalScan(ctx context.Context) (int, int, error) {
 	oldIndex := idx.index
 	idx.mu.RUnlock()
 
+	// Clear cache to free memory
+	idx.cache.Clear()
+
 	if oldIndex == nil || lastSync.IsZero() {
 		return 0, 0, idx.ScanAndIndex(ctx)
 	}
@@ -242,13 +260,25 @@ func (idx *Indexer) IncrementalScan(ctx context.Context) (int, int, error) {
 	idx.rebuildStats(oldIndex)
 
 	idx.mu.Lock()
+	// Clear reference to help GC
+	idx.index = nil
+	idx.mu.Unlock()
+
+	// Force GC
+	runtime.GC()
+
+	idx.mu.Lock()
 	idx.index = oldIndex
 	idx.lastSync = time.Now()
 	idx.mu.Unlock()
 
-	idx.cache.Clear()
-
+	// Log memory stats
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
 	logger.Info("Incremental scan completed",
+		zap.Int("folders_updated", updatedFolders),
+		zap.Int("clips_net_change", newClips),
+		zap.Uint64("heap_inuse_mb", m.HeapInuse/1024/1024),
 		zap.Int("folders_updated", updatedFolders),
 		zap.Int("clips_net_change", newClips))
 

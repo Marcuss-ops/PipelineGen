@@ -2,13 +2,17 @@ package script
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/service/scriptdocs"
+	"velox/go-master/internal/stockdb"
 )
 
 func (h *ScriptPipelineHandler) CreateDocument(c *gin.Context) {
@@ -18,47 +22,81 @@ func (h *ScriptPipelineHandler) CreateDocument(c *gin.Context) {
 		return
 	}
 
-	if h.docClient == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "Docs client not initialized"})
-		return
-	}
-
-	topic := req.Topic
-	if topic == "" {
-		topic = req.Title
-	}
-
-	h.enrichCreateDocumentRequest(c.Request.Context(), &req, topic)
-
-	stockFolderID := normalizeDriveFolderID(req.StockFolderURL)
-	content := h.BuildDocumentContent(
-		req.Title,
-		topic,
-		req.Duration,
-		req.Language,
-		req.Script,
-		req.Segments,
-		req.ArtlistAssocs,
-		stockFolderID,
-		req.StockFolder,
-		req.DriveAssocs,
-		req.FrasiImportanti,
-		req.NomiSpeciali,
-		req.ParoleImportanti,
-		req.EntitaConImmagine,
-		req.Translations,
-	)
-
-	doc, err := h.docClient.CreateDoc(c.Request.Context(), req.Title, content, "")
+	resp, err := h.createDocumentFromRequest(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"ok":      true,
-		"doc_id":  doc.ID,
-		"doc_url": doc.URL,
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *ScriptPipelineHandler) CreateDocumentPreview(c *gin.Context) {
+	var req CreateDocumentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	req.PreviewOnly = true
+
+	resp, err := h.createDocumentFromRequest(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *ScriptPipelineHandler) CreateDocumentFromSource(c *gin.Context) {
+	var req CreateDocumentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.SourceText) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "source_text is required"})
+		return
+	}
+	if strings.TrimSpace(req.Script) == "" {
+		req.Script = req.SourceText
+	}
+
+	resp, err := h.createDocumentFromRequest(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *ScriptPipelineHandler) ReviewDraft(c *gin.Context) {
+	var req ReviewDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	draft := CreateDocumentRequest{
+		Title:       req.Title,
+		Topic:       req.Topic,
+		SourceText:  req.SourceText,
+		Script:      req.SourceText,
+		Language:    req.Language,
+		Duration:    req.Duration,
+		PreviewOnly: true,
+	}
+	topic := draft.Topic
+	if strings.TrimSpace(topic) == "" {
+		topic = draft.Title
+	}
+	h.enrichCreateDocumentRequest(c.Request.Context(), &draft, topic)
+
+	c.JSON(http.StatusOK, ReviewDraftResponse{
+		Ok:      true,
+		Draft:   draft,
+		Message: "Review the draft, edit it locally, then POST it to /script-pipeline/create-doc",
 	})
 }
 
@@ -83,12 +121,162 @@ func normalizeDriveFolderID(raw string) string {
 	return v
 }
 
+func (h *ScriptPipelineHandler) resolveStockFolderForDocument(topic string) (folderID, folderName string) {
+	if h.stockDB == nil || strings.TrimSpace(topic) == "" {
+		return "", ""
+	}
+
+	tryFolder := func(folder *stockdb.StockFolderEntry) (string, string, bool) {
+		if folder == nil || strings.TrimSpace(folder.DriveID) == "" {
+			return "", "", false
+		}
+		name := strings.TrimSpace(folder.FullPath)
+		if name == "" {
+			name = strings.TrimSpace(folder.TopicSlug)
+		}
+		return folder.DriveID, name, true
+	}
+
+	if folder, _ := h.stockDB.FindFolderByTopicInSection(topic, "stock"); folder != nil {
+		if id, name, ok := tryFolder(folder); ok {
+			return id, name
+		}
+	}
+	if folder, _ := h.stockDB.FindFolderByTopic(topic); folder != nil {
+		if id, name, ok := tryFolder(folder); ok {
+			return id, name
+		}
+	}
+
+	tokens := make([]string, 0, 4)
+	for _, raw := range strings.FieldsFunc(strings.ToLower(topic), func(r rune) bool {
+		return r == ' ' || r == '-' || r == '_' || r == '/' || r == ':' || r == ',' || r == '.'
+	}) {
+		token := strings.TrimSpace(raw)
+		if len(token) < 3 {
+			continue
+		}
+		tokens = append(tokens, token)
+	}
+
+	if len(tokens) == 0 {
+		return "", ""
+	}
+
+	if folders, err := h.stockDB.GetFoldersBySection("stock"); err == nil {
+		for _, folder := range folders {
+			candidate := strings.ToLower(folder.FullPath + " " + folder.TopicSlug)
+			for _, token := range tokens {
+				if strings.Contains(candidate, token) {
+					if id, name, ok := tryFolder(&folder); ok {
+						return id, name
+					}
+				}
+			}
+		}
+	}
+
+	return "", ""
+}
+
+func (h *ScriptPipelineHandler) createDocumentFromRequest(ctx context.Context, req *CreateDocumentRequest) (*CreateDocumentResponse, error) {
+	h.normalizeCreateDocumentRequest(req)
+
+	topic := req.Topic
+	if topic == "" {
+		topic = req.Title
+	}
+
+	h.enrichCreateDocumentRequest(ctx, req, topic)
+
+	stockFolderID := normalizeDriveFolderID(req.StockFolderURL)
+	scriptBody := req.Script
+	if strings.TrimSpace(scriptBody) == "" {
+		scriptBody = req.SourceText
+	}
+	content := h.BuildDocumentContent(
+		req.Title,
+		topic,
+		req.Duration,
+		req.Language,
+		scriptBody,
+		req.Segments,
+		req.ArtlistAssocs,
+		stockFolderID,
+		req.StockFolder,
+		req.DriveAssocs,
+		req.FrasiImportanti,
+		req.NomiSpeciali,
+		req.ParoleImportanti,
+		req.EntitaConImmagine,
+		req.Translations,
+	)
+
+	if req.PreviewOnly {
+		previewPath, err := savePreviewDocument(req.Title, content)
+		if err != nil {
+			return nil, err
+		}
+		return &CreateDocumentResponse{
+			Ok:          true,
+			DocID:       "local_file",
+			DocURL:      previewPath,
+			PreviewPath: previewPath,
+			Mode:        "preview",
+		}, nil
+	}
+
+	if h.docClient == nil {
+		return nil, fmt.Errorf("Docs client not initialized")
+	}
+
+	publishCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	doc, err := h.docClient.CreateDoc(publishCtx, req.Title, content, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return &CreateDocumentResponse{
+		Ok:     true,
+		DocID:  doc.ID,
+		DocURL: doc.URL,
+		Mode:   "publish",
+	}, nil
+}
+
+func (h *ScriptPipelineHandler) normalizeCreateDocumentRequest(req *CreateDocumentRequest) {
+	if strings.TrimSpace(req.Script) == "" && strings.TrimSpace(req.SourceText) != "" {
+		req.Script = req.SourceText
+	}
+}
+
+func savePreviewDocument(title, content string) (string, error) {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		base = "script_doc"
+	}
+	base = strings.NewReplacer(" ", "_", ":", "", "/", "_", "\\", "_", "\n", "_", "\r", "_").Replace(base)
+	if len([]rune(base)) > 50 {
+		runes := []rune(base)
+		base = string(runes[:50])
+	}
+	filename := fmt.Sprintf("/tmp/%s_%d.md", base, time.Now().Unix())
+	if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("failed to save preview file: %w", err)
+	}
+	return fmt.Sprintf("file://%s", filename), nil
+}
+
 func (h *ScriptPipelineHandler) enrichCreateDocumentRequest(ctx context.Context, req *CreateDocumentRequest, topic string) {
 	// 1) Build segments from script when caller sends only plain text.
 	if len(req.Segments) == 0 && strings.TrimSpace(req.Script) != "" {
 		semanticSegments, _, err := h.buildSemanticSegments(ctx, topic, req.Script, req.Duration, req.Language, 4)
 		if err == nil && len(semanticSegments) > 0 {
 			req.Segments = semanticSegments
+			// Enrich segments with Keywords and Entities (NO HARDCODED)
+			req.Segments = enrichSegments(req.Segments)
 		} else {
 			sentences := scriptdocs.ExtractSentences(req.Script)
 			if len(sentences) > 0 {
@@ -108,6 +296,8 @@ func (h *ScriptPipelineHandler) enrichCreateDocumentRequest(ctx context.Context,
 						EndTime:   (i + 1) * avgDuration,
 					})
 				}
+				// Enrich segments with Keywords and Entities (NO HARDCODED)
+				req.Segments = enrichSegments(req.Segments)
 			}
 		}
 	}
@@ -156,17 +346,10 @@ func (h *ScriptPipelineHandler) enrichCreateDocumentRequest(ctx context.Context,
 
 	// 3) Topic folder resolution fallback (DB only: STOCK section).
 	if strings.TrimSpace(req.StockFolderURL) == "" {
-		if h.stockDB != nil && strings.TrimSpace(topic) != "" {
-			if folder, _ := h.stockDB.FindFolderByTopicInSection(topic, "stock"); folder != nil {
-				req.StockFolderURL = folder.DriveID
-				if strings.TrimSpace(req.StockFolder) == "" {
-					req.StockFolder = folder.FullPath
-				}
-			} else if folder, _ := h.stockDB.FindFolderByTopic(topic); folder != nil {
-				req.StockFolderURL = folder.DriveID
-				if strings.TrimSpace(req.StockFolder) == "" {
-					req.StockFolder = folder.FullPath
-				}
+		if folderID, folderName := h.resolveStockFolderForDocument(topic); folderID != "" {
+			req.StockFolderURL = folderID
+			if strings.TrimSpace(req.StockFolder) == "" {
+				req.StockFolder = folderName
 			}
 		}
 	}
@@ -259,6 +442,14 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 		return
 	}
 
+	// Start progress tracking
+	tracker := GetProgressTracker()
+	operationID := GenerateOperationID("full_pipeline")
+	tracker.StartTracking(operationID)
+
+	// Send initial progress
+	tracker.SendProgress(operationID, "start", "Starting full pipeline", 0.0, gin.H{"topic": req.Topic})
+
 	reqContext := c.Request.Context()
 
 	text := req.Text
@@ -282,13 +473,20 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 	segments := []Segment{}
 	chapters := []ChapterPlan{}
 	var err error
-	segments, chapters, err = h.buildSemanticSegments(reqContext, req.Topic, text, req.Duration, req.Language, 4)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	if len(segments) == 0 {
-		sentences := scriptdocs.ExtractSentences(text)
+		segments, chapters, err = h.buildSemanticSegments(reqContext, req.Topic, text, req.Duration, req.Language, 4)
+		if err != nil {
+			tracker.SendProgress(operationID, "error", "Failed to build segments", 0.0, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+			return
+		}
+		tracker.SendProgress(operationID, "segments_built", "Built semantic segments", 0.2, gin.H{"count": len(segments)})
+
+		// Enrich segments with Keywords and Entities (NO HARDCODED)
+		segments = enrichSegments(segments)
+		tracker.SendProgress(operationID, "segments_enriched", "Enriched segments with keywords", 0.3, nil)
+
+		if len(segments) == 0 {
+			sentences := scriptdocs.ExtractSentences(text)
 		avgDuration := 20
 		for i, sentence := range sentences {
 			segments = append(segments, Segment{
@@ -300,10 +498,12 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 		}
 	}
 
-	// --- NEW: ENTITY EXTRACTION LOGIC ---
-	var allEntities []string
-	seenEntity := make(map[string]bool)
-	var frasiImportanti []string
+		// --- NEW: ENTITY EXTRACTION LOGIC ---
+		tracker.SendProgress(operationID, "extracting_entities", "Extracting entities", 0.4, nil)
+
+		var allEntities []string
+		seenEntity := make(map[string]bool)
+		var frasiImportanti []string
 	var nomiSpecialiAll []string
 	var paroleImportantiAll []string
 	var entitaConImmagine []EntityImage
@@ -352,18 +552,21 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 	frasiImportanti = uniqueAndLimit(frasiImportanti, personaLimit)
 	nomiSpecialiAll = uniqueAndLimit(nomiSpecialiAll, personaLimit)
 	paroleImportantiAll = uniqueAndLimit(paroleImportantiAll, personaLimit)
-	entitaConImmagine = uniqueEntitiesWithImage(entitaConImmagine, personaLimit)
+		entitaConImmagine = uniqueEntitiesWithImage(entitaConImmagine, personaLimit)
+		tracker.SendProgress(operationID, "entities_extracted", "Entities extracted", 0.5, gin.H{"count": len(allEntities)})
 
-	// --- END ENTITY EXTRACTION ---
+		// --- END ENTITY EXTRACTION ---
 
-	// 1. Find Topic Folder for Prioritization
-	var topicFolderID string
-	if h.stockDB != nil && req.Topic != "" {
-		folder, _ := h.stockDB.FindFolderByTopicInSection(req.Topic, "stock")
-		if folder != nil {
-			topicFolderID = folder.DriveID
+		// 1. Find Topic Folder for Prioritization
+		tracker.SendProgress(operationID, "searching_clips", "Searching for clips", 0.6, nil)
+
+		var topicFolderID string
+		if h.stockDB != nil && req.Topic != "" {
+			folder, _ := h.stockDB.FindFolderByTopicInSection(req.Topic, "stock")
+			if folder != nil {
+				topicFolderID = folder.DriveID
+			}
 		}
-	}
 
 	// --- NEW: Persona-based Negative Filters ---
 	negativeTerms := []string{}
@@ -487,6 +690,7 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 			})
 			allStockClips = append(allStockClips, segmentStockClips...)
 		}
+		tracker.SendProgress(operationID, "clips_found", "Clips found", 0.7, gin.H{"stock": len(allStockClips), "artlist": len(allArtlistClips)})
 
 		// --- B. DRIVE CLIPS (Folders) ---
 		if h.clipIndexer != nil {
@@ -620,37 +824,50 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 		}
 	}
 
-	content := h.BuildDocumentContent(
-		req.Topic,
-		req.Topic,
-		req.Duration,
-		req.Language,
-		text,
-		segments,
-		artlistAssocs,
-		topicFolderID,
-		req.Topic,
-		driveAssocs,
-		frasiImportanti,
-		nomiSpecialiAll,
-		paroleImportantiAll,
-		entitaConImmagine,
-		nil, // No translations in full pipeline yet
-	)
+		tracker.SendProgress(operationID, "building_doc", "Building document content", 0.8, nil)
 
-	doc, err := h.docClient.CreateDoc(reqContext, req.Topic, content, "")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
+		content := h.BuildDocumentContent(
+			req.Topic,
+			req.Topic,
+			req.Duration,
+			req.Language,
+			text,
+			segments,
+			artlistAssocs,
+			topicFolderID,
+			req.Topic,
+			driveAssocs,
+			frasiImportanti,
+			nomiSpecialiAll,
+			paroleImportantiAll,
+			entitaConImmagine,
+			nil, // No translations in full pipeline yet
+		)
 
-	c.JSON(http.StatusOK, gin.H{
-		"ok":                  true,
-		"doc_url":             doc.URL,
-		"segments_count":      len(segments),
-		"chapters_count":      len(chapters),
-		"stock_clips_found":   len(allStockClips),
-		"artlist_clips_found": len(allArtlistClips),
-		"entities_found":      len(allEntities),
-	})
+	publishCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+		tracker.SendProgress(operationID, "creating_doc", "Creating document", 0.9, nil)
+
+		doc, err := h.docClient.CreateDoc(publishCtx, req.Topic, content, "")
+		if err != nil {
+			tracker.SendProgress(operationID, "error", "Failed to create document", 0.0, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+			return
+		}
+
+		tracker.SendProgress(operationID, "complete", "Pipeline completed", 1.0, gin.H{"doc_url": doc.URL})
+		tracker.Complete(operationID)
+
+		c.JSON(http.StatusOK, gin.H{
+			"ok":                  true,
+			"doc_url":             doc.URL,
+			"operation_id":        operationID,
+			"progress_url":        "/api/script/progress/" + operationID,
+			"segments_count":      len(segments),
+			"chapters_count":      len(chapters),
+			"stock_clips_found":   len(allStockClips),
+			"artlist_clips_found": len(allArtlistClips),
+			"entities_found":      len(allEntities),
+		})
 }
