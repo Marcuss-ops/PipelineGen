@@ -12,13 +12,13 @@ import (
 )
 
 // generateScriptForLang generates script text in a specific language via Ollama.
-func (s *ScriptDocService) generateScriptForLang(ctx context.Context, topic string, duration int, langName string) (string, error) {
+func (s *ScriptDocService) generateScriptForLang(ctx context.Context, topic string, duration int, langName, model string) (string, error) {
 	genCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
 	prompt := s.buildPrompt(topic, duration, langName)
 
-	result, err := s.generator.GetClient().Generate(genCtx, prompt)
+	result, err := s.generator.GetClient().GenerateWithModel(genCtx, model, prompt)
 	if err != nil {
 		return "", err
 	}
@@ -28,10 +28,10 @@ func (s *ScriptDocService) generateScriptForLang(ctx context.Context, topic stri
 }
 
 // generateScriptForLangWithRetry generates script text with exponential backoff retry.
-func (s *ScriptDocService) generateScriptForLangWithRetry(ctx context.Context, topic string, duration int, langName string, maxRetries int) (string, error) {
+func (s *ScriptDocService) generateScriptForLangWithRetry(ctx context.Context, topic string, duration int, langName, model string, maxRetries int) (string, error) {
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		text, err := s.generateScriptForLang(ctx, topic, duration, langName)
+		text, err := s.generateScriptForLang(ctx, topic, duration, langName, model)
 		if err == nil {
 			return text, nil
 		}
@@ -55,6 +55,27 @@ func (s *ScriptDocService) generateScriptForLangWithRetry(ctx context.Context, t
 		}
 	}
 	return "", fmt.Errorf("after %d attempts: %w", maxRetries, lastErr)
+}
+
+// GenerateScriptText generates a single script draft using the scriptdocs prompt
+// and retry logic, without building docs or associations.
+func (s *ScriptDocService) GenerateScriptText(ctx context.Context, topic string, duration int, language, template, model string) (string, error) {
+	if strings.TrimSpace(language) == "" {
+		language = "english"
+	}
+
+	langInfo, ok := LanguageInfo[language]
+	promptLang := language
+	if ok && strings.TrimSpace(langInfo.PromptLang) != "" {
+		promptLang = langInfo.PromptLang
+	}
+
+	svc := *s
+	if strings.TrimSpace(template) != "" {
+		svc.currentTemplate = template
+	}
+
+	return svc.generateScriptForLangWithRetry(ctx, topic, duration, promptLang, model, 3)
 }
 
 // buildPrompt creates a customized prompt based on template type.
