@@ -39,7 +39,6 @@ type Handlers struct {
 	Health            *common.HealthHandler
 	Video             *video.VideoHandler
 	YouTube           *youtube.YouTubeHandler
-	Script            *script.ScriptHandler
 	Drive             *drive.DriveHandler
 	Voiceover         *common.VoiceoverHandler
 	NLP               *nlp.NLPHandler
@@ -182,8 +181,6 @@ func (r *Router) Setup() *gin.Engine {
 			h.Video.RegisterRoutes(protected)
 			// YouTube integration
 			h.YouTube.RegisterRoutes(protected)
-			// Script generation
-			h.Script.RegisterRoutes(protected)
 			// Google Drive (write operations)
 			h.Drive.RegisterRoutes(protected)
 			// Voiceover
