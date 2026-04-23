@@ -18,14 +18,14 @@ import (
 
 // ClipIndexHandler handles clip index HTTP requests
 type ClipIndexHandler struct {
-	indexer       *clip.Indexer
-	suggester     *clip.SemanticSuggester
-	indexStore    *jsondb.ClipIndexStore
-	driveClient   *drive.Client
-	rootFolderID  string
+	indexer         *clip.Indexer
+	suggester       *clip.SemanticSuggester
+	indexStore      *jsondb.ClipIndexStore
+	driveClient     *drive.Client
+	rootFolderID    string
 	credentialsFile string
-	tokenFile     string
-	scanner       *clip.IndexScanner // Periodic scanner for auto-reindexing
+	tokenFile       string
+	scanner         *clip.IndexScanner // Periodic scanner for auto-reindexing
 }
 
 // NewClipIndexHandler creates a new clip index handler
@@ -41,30 +41,32 @@ func NewClipIndexHandler(rootFolderID, credentialsFile, tokenFile string, indexS
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	// Create indexer (always, even if driveClient is nil, to allow using cached index)
+	h.indexer = clip.NewIndexer(h.driveClient, rootFolderID)
+
 	if err := h.initDriveClient(ctx); err != nil {
-		logger.Warn("Failed to initialize Drive client for indexer", zap.Error(err))
-		// Continue without Drive client - can still serve cached index
+		logger.Warn("Failed to initialize Drive client for indexer, using cached index only", zap.Error(err))
 	} else {
-		// Create indexer
+		// Update indexer with real drive client
 		h.indexer = clip.NewIndexer(h.driveClient, rootFolderID)
-
-		// Set Artlist source if available
-		if artlistSrc != nil {
-			h.indexer.SetArtlistSource(artlistSrc)
-			logger.Info("Artlist source enabled for unified clip suggestions")
-		}
-
-		// Load existing index from storage
-		if existingIndex, err := indexStore.LoadIndex(); err == nil && existingIndex != nil {
-			h.indexer.SetIndex(existingIndex)
-			logger.Info("Loaded existing clip index",
-				zap.Int("clips", len(existingIndex.Clips)),
-				zap.Int("folders", len(existingIndex.Folders)))
-		}
-
-		// Create semantic suggester
-		h.suggester = clip.NewSemanticSuggester(h.indexer)
 	}
+
+	// Set Artlist source if available
+	if artlistSrc != nil {
+		h.indexer.SetArtlistSource(artlistSrc)
+		logger.Info("Artlist source enabled for unified clip suggestions")
+	}
+
+	// Load existing index from storage
+	if existingIndex, err := indexStore.LoadIndex(); err == nil && existingIndex != nil {
+		h.indexer.SetIndex(existingIndex)
+		logger.Info("Loaded existing clip index",
+			zap.Int("clips", len(existingIndex.Clips)),
+			zap.Int("folders", len(existingIndex.Folders)))
+	}
+
+	// Create semantic suggester
+	h.suggester = clip.NewSemanticSuggester(h.indexer)
 
 	return h
 }

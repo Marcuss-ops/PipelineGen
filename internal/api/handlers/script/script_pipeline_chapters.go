@@ -12,6 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"velox/go-master/internal/service/scriptdocs"
+	"velox/go-master/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 type chapterPlannerModel struct {
@@ -128,11 +131,13 @@ func buildChapterPlannerPrompt(req ChapterPlanRequest, sentences []string, force
 	b.WriteString("- Prefer stable, cohesive chapters over sentence-by-sentence splits.\n")
 	b.WriteString("- Cap the result to the requested max chapters.\n")
 	b.WriteString("- Use sentence indexes from the provided numbered list.\n")
+	b.WriteString("- CRITICAL: If the text mentions DIFFERENT PEOPLE (e.g., Gervonta Davis, Mike Tyson, Elvis Presley), you MUST create SEPARATE chapters for each person.\n")
+	b.WriteString("- Each chapter should focus on ONE main person/topic.\n")
 	if forceSplit {
 		b.WriteString("- The previous attempt merged too much. Re-evaluate and split the text into multiple chapters if there is any real change in focus, speaker, or person.\n")
 		b.WriteString("- Return exactly the requested number of chapters unless the text truly contains fewer distinct topics.\n")
-		b.WriteString("- If the text shifts to a different person, place the boundary at the first sentence of the new focus.\n")
-		b.WriteString("- If the script contains multiple named people, separate them into distinct chapters.\n")
+		b.WriteString("- If the text contains multiple named people, separate them into distinct chapters.\n")
+		b.WriteString("- FORCE split at person changes: when a new name appears as the main subject, start a new chapter.\n")
 	}
 	b.WriteString("\n")
 	if strings.TrimSpace(req.Topic) != "" {
@@ -199,9 +204,9 @@ func extractJSONObject(text string) string {
 	return text
 }
 
-func normalizeChapters(model *chapterPlannerModel, sentences []string, totalDuration int) []ChapterPlan {
+func normalizeChapters(model *chapterPlannerModel, sentences []string, totalDuration, maxChapters int) []ChapterPlan {
 	if model == nil || len(model.Chapters) == 0 {
-		return fallbackChapters(sentences, totalDuration)
+		return fallbackChapters(sentences, totalDuration, maxChapters)
 	}
 
 	maxSentenceIndex := len(sentences) - 1
@@ -238,53 +243,47 @@ func normalizeChapters(model *chapterPlannerModel, sentences []string, totalDura
 	return mergeOverlappingChapters(chapters, sentences, totalDuration)
 }
 
-func fallbackChapters(sentences []string, totalDuration int) []ChapterPlan {
+func fallbackChapters(sentences []string, totalDuration, maxChapters int) []ChapterPlan {
 	if len(sentences) == 0 {
 		return nil
 	}
-	if len(sentences) == 1 {
-		startTime, endTime := sentenceRangeToTime(0, 0, 1, totalDuration)
-		return []ChapterPlan{{
-			Index:         0,
-			Title:         "Chapter 1",
-			StartSentence: 0,
-			EndSentence:   0,
+	if maxChapters <= 0 {
+		maxChapters = 2
+	}
+	if len(sentences) < maxChapters {
+		maxChapters = len(sentences)
+	}
+
+	chapters := make([]ChapterPlan, 0, maxChapters)
+	step := (len(sentences) + maxChapters - 1) / maxChapters
+	if step <= 0 {
+		step = 1
+	}
+
+	for i := 0; i < maxChapters; i++ {
+		start := i * step
+		if start >= len(sentences) {
+			break
+		}
+		end := (i + 1) * step - 1
+		if end >= len(sentences) || i == maxChapters-1 {
+			end = len(sentences) - 1
+		}
+
+		startTime, endTime := sentenceRangeToTime(start, end, len(sentences), totalDuration)
+		chapters = append(chapters, ChapterPlan{
+			Index:         i,
+			Title:         fmt.Sprintf("Chapter %d", i+1),
+			StartSentence: start,
+			EndSentence:   end,
 			StartTime:     startTime,
 			EndTime:       endTime,
-			SentenceCount: 1,
-			SourceText:    sentences[0],
-		}}
+			SentenceCount: end - start + 1,
+			SourceText:    strings.Join(sentences[start:end+1], " "),
+		})
 	}
 
-	mid := len(sentences) / 2
-	firstEnd := clamp(mid-1, 0, len(sentences)-1)
-	secondStart := clamp(mid, 0, len(sentences)-1)
-
-	start1, end1 := sentenceRangeToTime(0, firstEnd, len(sentences), totalDuration)
-	start2, end2 := sentenceRangeToTime(secondStart, len(sentences)-1, len(sentences), totalDuration)
-
-	return []ChapterPlan{
-		{
-			Index:         0,
-			Title:         "Chapter 1",
-			StartSentence: 0,
-			EndSentence:   firstEnd,
-			StartTime:     start1,
-			EndTime:       end1,
-			SentenceCount: firstEnd + 1,
-			SourceText:    strings.Join(sentences[:firstEnd+1], " "),
-		},
-		{
-			Index:         1,
-			Title:         "Chapter 2",
-			StartSentence: secondStart,
-			EndSentence:   len(sentences) - 1,
-			StartTime:     start2,
-			EndTime:       end2,
-			SentenceCount: len(sentences) - secondStart,
-			SourceText:    strings.Join(sentences[secondStart:], " "),
-		},
-	}
+	return chapters
 }
 
 func mergeOverlappingChapters(chapters []ChapterPlan, sentences []string, totalDuration int) []ChapterPlan {
@@ -410,25 +409,36 @@ func (h *ScriptPipelineHandler) buildSemanticSegments(ctx context.Context, topic
 
 	modelChapters, err := h.generateChapterPlan(ctx, req, sentences, false)
 	if err != nil {
-		chapters := fallbackChapters(sentences, req.Duration)
+		logger.Warn("Chapter planning failed, using fallback", zap.Error(err))
+		chapters := fallbackChapters(sentences, req.Duration, req.MaxChapters)
 		return chaptersToSegments(chapters), chapters, nil
 	}
 
-	chapters := normalizeChapters(modelChapters, sentences, req.Duration)
+	chapters := normalizeChapters(modelChapters, sentences, req.Duration, req.MaxChapters)
 	if len(chapters) > req.MaxChapters {
 		chapters = chapters[:req.MaxChapters]
 	}
-	if len(chapters) <= 1 && req.MaxChapters > 1 {
+
+	if len(chapters) <= 1 && req.MaxChapters > 1 && len(sentences) >= req.MaxChapters {
+		logger.Info("LLM provided only 1 chapter, retrying with forceSplit", zap.Int("requested", req.MaxChapters))
 		retryModelChapters, retryErr := h.generateChapterPlan(ctx, req, sentences, true)
 		if retryErr == nil {
-			retryChapters := normalizeChapters(retryModelChapters, sentences, req.Duration)
-			if len(retryChapters) > 0 {
+			retryChapters := normalizeChapters(retryModelChapters, sentences, req.Duration, req.MaxChapters)
+			if len(retryChapters) > len(chapters) {
+				logger.Info("Retry successful", zap.Int("chapters", len(retryChapters)))
 				chapters = retryChapters
+			} else {
+				logger.Warn("Retry failed to provide more chapters, using fallback", zap.Int("requested", req.MaxChapters))
+				chapters = fallbackChapters(sentences, req.Duration, req.MaxChapters)
 			}
+		} else {
+			logger.Warn("Retry failed with error, using fallback", zap.Error(retryErr))
+			chapters = fallbackChapters(sentences, req.Duration, req.MaxChapters)
 		}
 	}
+
 	if len(chapters) == 0 {
-		chapters = fallbackChapters(sentences, req.Duration)
+		chapters = fallbackChapters(sentences, req.Duration, req.MaxChapters)
 	}
 	return chaptersToSegments(chapters), chapters, nil
 }
