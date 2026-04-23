@@ -117,3 +117,58 @@ func (d *ClipDownloader) DownloadClipWithMetadata(ctx context.Context, keyword s
 	}
 	return "", nil, lastErr
 }
+
+func (s *Service) RankedYouTubeCandidates(ctx context.Context, keyword string) ([]*YouTubeClipMetadata, error) {
+	if s.downloader == nil {
+		return nil, fmt.Errorf("clip downloader not available")
+	}
+	return s.downloader.selectRankedYouTubeCandidates(ctx, keyword, ytDLPAuthArgsFromEnv())
+}
+
+func (s *Service) DownloadYouTubeCandidate(ctx context.Context, keyword string, candidate *YouTubeClipMetadata) (string, *YouTubeClipMetadata, error) {
+	if s.downloader == nil {
+		return "", nil, fmt.Errorf("clip downloader not available")
+	}
+	if candidate == nil {
+		return "", nil, fmt.Errorf("candidate cannot be nil")
+	}
+	if strings.TrimSpace(candidate.VideoURL) == "" {
+		return "", nil, fmt.Errorf("candidate url cannot be empty")
+	}
+	outputDir := filepath.Join(s.downloadDir, "jit_stock")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return "", nil, err
+	}
+	rawPath, err := s.downloader.downloadYouTubeVideoByURL(ctx, keyword, outputDir, candidate.VideoURL, candidate.VideoID, ytDLPAuthArgsFromEnv())
+	if err != nil {
+		return "", nil, err
+	}
+	meta := *candidate
+	transcript, transcriptPath, segments := s.downloader.fetchYouTubeTranscript(ctx, outputDir, candidate.VideoURL, candidate.VideoID, ytDLPAuthArgsFromEnv())
+	meta.Transcript = transcript
+	meta.TranscriptVTT = transcriptPath
+	meta.TranscriptSegments = segments
+	return rawPath, &meta, nil
+}
+
+func (s *Service) ProcessDownloadedYouTubeMomentsToFolder(ctx context.Context, keyword, rawPath string, baseMeta *YouTubeClipMetadata, folderID string) ([]SearchResult, int, error) {
+	if s.downloader == nil || s.uploader == nil {
+		return nil, 0, fmt.Errorf("clipsearch service not fully initialized")
+	}
+	s.uploadMu.Lock()
+	defer s.uploadMu.Unlock()
+
+	prevFolder := s.uploader.uploadFolderID
+	s.uploader.SetUploadFolderID(folderID)
+	defer s.uploader.SetUploadFolderID(prevFolder)
+
+	return s.processYouTubeMomentsFromDownloaded(ctx, keyword, rawPath, baseMeta)
+}
+
+func (s *Service) downloadFromArtlist(ctx context.Context, keyword string) (string, clip.IndexedClip, error) {
+	return s.downloader.DownloadFromArtlist(ctx, keyword)
+}
+
+func (s *Service) downloadClip(ctx context.Context, keyword string) (string, *YouTubeClipMetadata, error) {
+	return s.downloader.DownloadClipWithMetadata(ctx, keyword)
+}
