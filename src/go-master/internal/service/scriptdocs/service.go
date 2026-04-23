@@ -55,7 +55,7 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 
 			logger.Info("Generating script", zap.String("lang", lang), zap.String("topic", req.Topic))
 
-			fullText, err := s.generateScriptForLangWithRetry(ctx, req.Topic, req.Duration, info.PromptLang, 3)
+			fullText, err := s.generateScriptForLangWithRetry(ctx, req.Topic, req.Duration, info.PromptLang, "", 3)
 			if err != nil {
 				mu.Lock()
 				if firstErr == nil {

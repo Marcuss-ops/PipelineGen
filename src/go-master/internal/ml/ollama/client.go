@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
+	"velox/go-master/pkg/logger"
 )
 
 // Client client per Ollama API
@@ -55,8 +55,8 @@ type GenerateResponse struct {
 
 // EmbedRequest richiesta embedding
 type EmbedRequest struct {
-	Model   string `json:"model"`
-	Prompt  string `json:"prompt"`
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
 }
 
 // EmbedResponse risposta embedding
@@ -102,8 +102,17 @@ func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
 
 // Generate genera testo con Ollama
 func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
+	return c.GenerateWithModel(ctx, c.model, prompt)
+}
+
+// GenerateWithModel genera testo con un modello Ollama esplicito.
+func (c *Client) GenerateWithModel(ctx context.Context, model, prompt string) (string, error) {
+	if model == "" {
+		model = c.model
+	}
+
 	req := GenerateRequest{
-		Model:  c.model,
+		Model:  model,
 		Prompt: prompt,
 		Stream: false,
 	}
