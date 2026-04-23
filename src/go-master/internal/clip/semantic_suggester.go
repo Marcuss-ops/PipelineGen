@@ -29,6 +29,9 @@ func NewSemanticSuggester(indexer *Indexer) *SemanticSuggester {
 
 // SuggestForSentence finds clips that match a sentence from the script
 func (s *SemanticSuggester) SuggestForSentence(ctx context.Context, sentence string, maxResults int, minScore float64, mediaType string) []SuggestionResult {
+	if s.indexer == nil {
+		return nil
+	}
 	startTime := time.Now()
 
 	normalizedSentence := normalizeSentence(sentence)
@@ -38,9 +41,11 @@ func (s *SemanticSuggester) SuggestForSentence(ctx context.Context, sentence str
 		minScore = DefaultMinScore
 	}
 
-	if cached, found := s.indexer.GetCache().Get(cacheKey); found {
-		if results, ok := cached.([]SuggestionResult); ok {
-			return results
+	if cache := s.indexer.GetCache(); cache != nil {
+		if cached, found := cache.Get(cacheKey); found {
+			if results, ok := cached.([]SuggestionResult); ok {
+				return results
+			}
 		}
 	}
 
@@ -128,7 +133,9 @@ func (s *SemanticSuggester) SuggestForSentence(ctx context.Context, sentence str
 	}
 	GlobalUsageTracker.RecordMultipleUsage(clipIDs)
 
-	s.indexer.GetCache().Set(cacheKey, suggestions)
+	if cache := s.indexer.GetCache(); cache != nil {
+		cache.Set(cacheKey, suggestions)
+	}
 
 	logger.Info("Semantic suggestion completed",
 		zap.String("sentence", sentence),
