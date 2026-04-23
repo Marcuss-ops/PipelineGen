@@ -7,7 +7,9 @@ import (
 	"unicode"
 
 	"github.com/gin-gonic/gin"
+
 	"velox/go-master/internal/service/scriptdocs"
+	"velox/go-master/internal/timestamp"
 )
 
 type DivideRequest struct {
@@ -19,6 +21,47 @@ type DivideResponse struct {
 	Ok       bool      `json:"ok"`
 	Segments []Segment `json:"segments"`
 	Count    int       `json:"count"`
+}
+
+// enrichSegments adds Keywords and Entities to segments using NLP extraction (NO HARDCODED)
+func enrichSegments(segments []Segment) []Segment {
+	for i := range segments {
+		// Extract keywords from segment text
+		keywords := scriptdocs.ExtractKeywords(segments[i].Text)
+		if len(keywords) > 10 {
+			keywords = keywords[:10]
+		}
+		segments[i].Keywords = keywords
+
+		// Extract proper nouns as entities
+		entities := scriptdocs.ExtractProperNouns([]string{segments[i].Text})
+		seen := make(map[string]bool)
+		var uniqueEntities []string
+		for _, e := range entities {
+			if !seen[e] {
+				seen[e] = true
+				uniqueEntities = append(uniqueEntities, e)
+			}
+		}
+		if len(uniqueEntities) > 5 {
+			uniqueEntities = uniqueEntities[:5]
+		}
+		segments[i].Entities = uniqueEntities
+	}
+	return segments
+}
+
+// segmentToTextSegment converts a Segment to timestamp.TextSegment (NO HARDCODED)
+func segmentToTextSegment(seg Segment) timestamp.TextSegment {
+	return timestamp.TextSegment{
+		Index:     seg.Index,
+		StartTime: float64(seg.StartTime),
+		EndTime:   float64(seg.EndTime),
+		Text:      seg.Text,
+		Keywords:  seg.Keywords,
+		Entities:  seg.Entities,
+		Emotions:  []string{},
+	}
 }
 
 func (h *ScriptPipelineHandler) DivideIntoSegments(c *gin.Context) {
@@ -45,12 +88,15 @@ func (h *ScriptPipelineHandler) DivideIntoSegments(c *gin.Context) {
 	if len(segments) < req.MaxSegments {
 		sentences := scriptdocs.ExtractSentences(req.Script)
 		if len(sentences) > 1 {
-			segments = chaptersToSegments(fallbackChapters(sentences, 60))
+			segments = chaptersToSegments(fallbackChapters(sentences, 60, 4))
 			if len(segments) > req.MaxSegments {
 				segments = segments[:req.MaxSegments]
 			}
 		}
 	}
+
+	// Enrich segments with Keywords and Entities (NO HARDCODED)
+	segments = enrichSegments(segments)
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":       true,

@@ -13,6 +13,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// ChapterPlanTrace records how the chapter planner arrived at the final split.
+type ChapterPlanTrace struct {
+	SentenceCount     int    `json:"sentence_count"`
+	RequestedChapters int    `json:"requested_chapters"`
+	PlannedChapters   int    `json:"planned_chapters"`
+	PlannerPath       string `json:"planner_path,omitempty"`
+	UsedFallback      bool   `json:"used_fallback"`
+	UsedForceSplit    bool   `json:"used_force_split"`
+	FallbackReason    string `json:"fallback_reason,omitempty"`
+	Language          string `json:"language,omitempty"`
+}
+
 type semanticChapterPlannerModel struct {
 	Topic    string                      `json:"topic,omitempty"`
 	Language string                      `json:"language,omitempty"`
@@ -29,9 +41,22 @@ type semanticChapterPlannerRaw struct {
 }
 
 func (s *ScriptDocService) planSemanticChapters(ctx context.Context, topic, text string, duration, maxChapters int, language string) []ScriptChapter {
+	chapters, _ := s.planSemanticChaptersWithTrace(ctx, topic, text, duration, maxChapters, language)
+	return chapters
+}
+
+func (s *ScriptDocService) planSemanticChaptersWithTrace(ctx context.Context, topic, text string, duration, maxChapters int, language string) ([]ScriptChapter, *ChapterPlanTrace) {
 	sentences := ExtractSentences(text)
 	if len(sentences) == 0 {
-		return nil
+		return nil, &ChapterPlanTrace{
+			SentenceCount:     0,
+			RequestedChapters: maxChapters,
+			PlannedChapters:   0,
+			PlannerPath:       "empty",
+			UsedFallback:      true,
+			FallbackReason:    "no sentences available",
+			Language:          language,
+		}
 	}
 	if maxChapters <= 0 {
 		maxChapters = 4
@@ -43,14 +68,31 @@ func (s *ScriptDocService) planSemanticChapters(ctx context.Context, topic, text
 		language = "english"
 	}
 
+	trace := &ChapterPlanTrace{
+		SentenceCount:     len(sentences),
+		RequestedChapters: maxChapters,
+		Language:          language,
+	}
+
 	planned := s.generateSemanticChapters(ctx, topic, sentences, duration, maxChapters, language, false)
 	if len(planned) == 0 && maxChapters > 1 {
 		planned = s.generateSemanticChapters(ctx, topic, sentences, duration, maxChapters, language, true)
+		if len(planned) > 0 {
+			trace.PlannerPath = "llm_force_split"
+			trace.UsedFallback = false
+			trace.UsedForceSplit = true
+		}
 	}
 	if len(planned) == 0 {
-		planned = fallbackScriptChapters(sentences, duration)
+		planned = fallbackScriptChapters(sentences, duration, maxChapters)
+		trace.PlannerPath = "fallback"
+		trace.UsedFallback = true
+		trace.FallbackReason = "llm planner unavailable or invalid json"
+	} else if trace.PlannerPath == "" {
+		trace.PlannerPath = "llm"
 	}
-	return planned
+	trace.PlannedChapters = len(planned)
+	return planned, trace
 }
 
 func (s *ScriptDocService) generateSemanticChapters(ctx context.Context, topic string, sentences []string, duration, maxChapters int, language string, forceSplit bool) []ScriptChapter {
@@ -71,7 +113,7 @@ func (s *ScriptDocService) generateSemanticChapters(ctx context.Context, topic s
 		return nil
 	}
 
-	chapters := normalizeSemanticChapters(model, sentences, duration)
+	chapters := normalizeSemanticChapters(model, sentences, duration, maxChapters)
 	if len(chapters) > maxChapters {
 		chapters = chapters[:maxChapters]
 	}
@@ -92,6 +134,7 @@ func buildSemanticChapterPrompt(topic string, sentences []string, duration, maxC
 		b.WriteString("- The previous attempt merged too much. Re-evaluate and split the text into multiple chapters if there is any real change in focus, speaker, or person.\n")
 		b.WriteString("- Return exactly the requested number of chapters unless the text truly contains fewer distinct topics.\n")
 		b.WriteString("- If the script contains multiple named people, separate them into distinct chapters.\n")
+		b.WriteString("- CRITICAL: Ensure each distinct person (e.g., Mike Tyson, Elvis Presley) gets their own chapter if they appear in different parts of the text.\n")
 	}
 	b.WriteString("\n")
 	if strings.TrimSpace(topic) != "" {
@@ -133,9 +176,9 @@ func parseSemanticChapterPlanner(raw string) (*semanticChapterPlannerModel, erro
 	return &parsed, nil
 }
 
-func normalizeSemanticChapters(model *semanticChapterPlannerModel, sentences []string, totalDuration int) []ScriptChapter {
+func normalizeSemanticChapters(model *semanticChapterPlannerModel, sentences []string, totalDuration, maxChapters int) []ScriptChapter {
 	if model == nil || len(model.Chapters) == 0 {
-		return fallbackScriptChapters(sentences, totalDuration)
+		return fallbackScriptChapters(sentences, totalDuration, maxChapters)
 	}
 
 	maxSentenceIndex := len(sentences) - 1
@@ -171,53 +214,47 @@ func normalizeSemanticChapters(model *semanticChapterPlannerModel, sentences []s
 	return mergeSemanticChapters(chapters, sentences, totalDuration)
 }
 
-func fallbackScriptChapters(sentences []string, totalDuration int) []ScriptChapter {
+func fallbackScriptChapters(sentences []string, totalDuration, maxChapters int) []ScriptChapter {
 	if len(sentences) == 0 {
 		return nil
 	}
-	if len(sentences) == 1 {
-		startTime, endTime := sentenceRangeToTime(0, 0, 1, totalDuration)
-		return []ScriptChapter{{
-			Index:         0,
-			Title:         "Chapter 1",
-			StartSentence: 0,
-			EndSentence:   0,
+	if maxChapters <= 0 {
+		maxChapters = 2
+	}
+	if len(sentences) < maxChapters {
+		maxChapters = len(sentences)
+	}
+
+	chapters := make([]ScriptChapter, 0, maxChapters)
+	step := (len(sentences) + maxChapters - 1) / maxChapters
+	if step <= 0 {
+		step = 1
+	}
+
+	for i := 0; i < maxChapters; i++ {
+		start := i * step
+		if start >= len(sentences) {
+			break
+		}
+		end := (i + 1) * step - 1
+		if end >= len(sentences) || i == maxChapters-1 {
+			end = len(sentences) - 1
+		}
+
+		startTime, endTime := sentenceRangeToTime(start, end, len(sentences), totalDuration)
+		chapters = append(chapters, ScriptChapter{
+			Index:         i,
+			Title:         fmt.Sprintf("Chapter %d", i+1),
+			StartSentence: start,
+			EndSentence:   end,
 			StartTime:     startTime,
 			EndTime:       endTime,
-			SentenceCount: 1,
-			SourceText:    sentences[0],
-		}}
+			SentenceCount: end - start + 1,
+			SourceText:    strings.Join(sentences[start:end+1], " "),
+		})
 	}
 
-	mid := len(sentences) / 2
-	firstEnd := clamp(mid-1, 0, len(sentences)-1)
-	secondStart := clamp(mid, 0, len(sentences)-1)
-
-	start1, end1 := sentenceRangeToTime(0, firstEnd, len(sentences), totalDuration)
-	start2, end2 := sentenceRangeToTime(secondStart, len(sentences)-1, len(sentences), totalDuration)
-
-	return []ScriptChapter{
-		{
-			Index:         0,
-			Title:         "Chapter 1",
-			StartSentence: 0,
-			EndSentence:   firstEnd,
-			StartTime:     start1,
-			EndTime:       end1,
-			SentenceCount: firstEnd + 1,
-			SourceText:    strings.Join(sentences[:firstEnd+1], " "),
-		},
-		{
-			Index:         1,
-			Title:         "Chapter 2",
-			StartSentence: secondStart,
-			EndSentence:   len(sentences) - 1,
-			StartTime:     start2,
-			EndTime:       end2,
-			SentenceCount: len(sentences) - secondStart,
-			SourceText:    strings.Join(sentences[secondStart:], " "),
-		},
-	}
+	return chapters
 }
 
 func mergeSemanticChapters(chapters []ScriptChapter, sentences []string, totalDuration int) []ScriptChapter {
