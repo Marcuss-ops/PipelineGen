@@ -3,10 +3,8 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -50,8 +48,8 @@ func DefaultConfig() Config {
 			drive.DriveFileScope,
 			drive.DriveMetadataScope,
 		},
-		RequestTimeout: 30 * time.Second, // 30s default timeout per request
-		MaxRetries:     3,               // 3 retries for transient errors
+		RequestTimeout: 30 * time.Second,
+		MaxRetries:     3,
 	}
 }
 
@@ -73,15 +71,9 @@ func NewClient(ctx context.Context, config Config) (*Client, error) {
 		return nil, fmt.Errorf("authentication required: %w", err)
 	}
 
-	// Build OAuth config once
 	oauthConfig, _ := google.ConfigFromJSON(credentials, config.Scopes...)
-
-	// Use a background context for the token source.
-	// This is critical: the token source needs its own long-lived context
-	// so that token refresh works independently of any request context.
 	tokenSource := oauthConfig.TokenSource(context.Background(), token)
 
-	// Wrap with ReuseTokenSource to auto-save and refresh
 	tokenSource = oauth2.ReuseTokenSource(token, &refreshingTokenSource{
 		source:    tokenSource,
 		tokenFile: config.TokenFile,
@@ -108,7 +100,6 @@ func NewClient(ctx context.Context, config Config) (*Client, error) {
 // withTimeout returns a context with timeout if none is set
 func (c *Client) withTimeout(ctx context.Context) context.Context {
 	if _, ok := ctx.Deadline(); !ok {
-		// No deadline set, add our default timeout
 		newCtx, _ := context.WithTimeout(ctx, c.reqTimeout)
 		return newCtx
 	}
@@ -120,14 +111,11 @@ func (c *Client) withRetry(ctx context.Context, operation func() error) error {
 	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff
 			backoff := time.Duration(1<<uint(attempt-1)) * 100 * time.Millisecond
 			if backoff > 2*time.Second {
 				backoff = 2 * time.Second
 			}
-			logger.Warn("Retrying Drive API call",
-				zap.Int("attempt", attempt),
-				zap.Duration("backoff", backoff))
+			logger.Warn("Retrying Drive API call", zap.Int("attempt", attempt), zap.Duration("backoff", backoff))
 			time.Sleep(backoff)
 		}
 
@@ -137,26 +125,20 @@ func (c *Client) withRetry(ctx context.Context, operation func() error) error {
 		}
 		lastErr = err
 
-		// Check if error is retryable
 		if !isRetryableError(err) {
 			return err
 		}
 
-		logger.Warn("Drive API call failed, may retry",
-			zap.Int("attempt", attempt+1),
-			zap.Int("max_retries", c.maxRetries),
-			zap.Error(err))
+		logger.Warn("Drive API call failed, may retry", zap.Int("attempt", attempt+1), zap.Int("max_retries", c.maxRetries), zap.Error(err))
 	}
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
-// isRetryableError checks if an error is transient and should be retried
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
 	}
 	errStr := err.Error()
-	// Check for common transient error patterns
 	return strings.Contains(errStr, "timeout") ||
 		strings.Contains(errStr, "temporary") ||
 		strings.Contains(errStr, "rate limit") ||
@@ -165,558 +147,6 @@ func isRetryableError(err error) bool {
 		strings.Contains(errStr, "503")
 }
 
-// refreshingTokenSource wraps a token source and saves refreshed tokens to file
-type refreshingTokenSource struct {
-	source    oauth2.TokenSource
-	tokenFile string
-	mu        sync.Mutex
-}
-
-// Token returns a valid token, refreshing if necessary, and saves to file
-func (r *refreshingTokenSource) Token() (*oauth2.Token, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	token, err := r.source.Token()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token: %w", err)
-	}
-
-	// Save refreshed token to file for persistence across restarts
-	if r.tokenFile != "" {
-		if err := SaveToken(r.tokenFile, token); err != nil {
-			logger.Warn("Failed to save refreshed token", zap.Error(err))
-		} else {
-			logger.Debug("Refreshed OAuth token saved successfully")
-		}
-	}
-
-	return token, nil
-}
-
-// UploadVideo carica un video su Drive
-func (c *Client) UploadVideo(ctx context.Context, videoPath, folderID, filename string) (string, error) {
-	// Validate folderID
-	if folderID == "" {
-		return "", fmt.Errorf("folderID cannot be empty")
-	}
-
-	file, err := os.Open(videoPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open video: %w", err)
-	}
-	defer file.Close()
-
-	// Validate file exists and is readable
-	stat, err := file.Stat()
-	if err != nil {
-		return "", fmt.Errorf("failed to stat video: %w", err)
-	}
-	if stat.Size() == 0 {
-		return "", fmt.Errorf("video file is empty")
-	}
-
-	if filename == "" {
-		filename = filepath.Base(videoPath)
-	}
-
-	driveFile := &drive.File{
-		Name:    filename,
-		Parents: []string{folderID},
-	}
-
-	result, err := c.service.Files.Create(driveFile).
-		Media(file).
-		Context(ctx).
-		Do()
-	if err != nil {
-		return "", fmt.Errorf("upload failed: %w", err)
-	}
-
-	logger.Info("Uploaded to Drive", zap.String("filename", filename), zap.String("id", result.Id))
-	return result.Id, nil
-}
-
-// CreateFolder crea una cartella su Drive
-func (c *Client) CreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	folder := &drive.File{
-		Name:     name,
-		MimeType: "application/vnd.google-apps.folder",
-		Parents:  []string{parentID},
-	}
-
-	result, err := c.service.Files.Create(folder).Context(ctx).Do()
-	if err != nil {
-		return "", fmt.Errorf("failed to create folder: %w", err)
-	}
-
-	logger.Info("Created Drive folder", zap.String("name", name), zap.String("id", result.Id))
-	return result.Id, nil
-}
-
-// GetOrCreateFolder ottiene o crea una cartella
-func (c *Client) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	// Escape single quotes in the folder name to prevent query syntax errors
-	escapedName := strings.ReplaceAll(name, "'", "\\'")
-
-	query := fmt.Sprintf("name='%s' and '%s' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'", escapedName, parentID)
-
-	result, err := c.service.Files.List().
-		Q(query).
-		Fields("files(id, name)").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return "", fmt.Errorf("failed to search folder: %w", err)
-	}
-
-	if len(result.Files) > 0 {
-		logger.Info("Found existing Drive folder", zap.String("name", name), zap.String("id", result.Files[0].Id))
-		return result.Files[0].Id, nil
-	}
-
-	return c.CreateFolder(ctx, name, parentID)
-}
-
-// GetFolderByPath ottiene o crea una cartella percorso (es: "progetto/video/finali")
-func (c *Client) GetFolderByPath(ctx context.Context, path string, rootFolderID string) (string, error) {
-	if path == "" {
-		return rootFolderID, nil
-	}
-
-	// Fixed: Use strings.Split() instead of filepath.SplitList() for forward-slash separated paths
-	parts := strings.Split(path, "/")
-	currentParentID := rootFolderID
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		folderID, err := c.GetOrCreateFolder(ctx, part, currentParentID)
-		if err != nil {
-			return "", fmt.Errorf("failed to create folder %s: %w", part, err)
-		}
-		currentParentID = folderID
-	}
-
-	return currentParentID, nil
-}
-
-// ShareFile condivide un file
-func (c *Client) ShareFile(ctx context.Context, fileID, email string, role string) error {
-	permission := &drive.Permission{
-		Type:         "user",
-		Role:         role,
-		EmailAddress: email,
-	}
-
-	_, err := c.service.Permissions.Create(fileID, permission).Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("failed to share file: %w", err)
-	}
-
-	logger.Info("Shared Drive file", zap.String("file_id", fileID), zap.String("email", email))
-	return nil
-}
-
-// DeleteFile elimina un file
-func (c *Client) DeleteFile(ctx context.Context, fileID string) error {
-	err := c.service.Files.Delete(fileID).Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("failed to delete file: %w", err)
-	}
-
-	logger.Info("Deleted Drive file", zap.String("file_id", fileID))
-	return nil
-}
-
-// loadToken carica il token OAuth da file
-func loadToken(path string) (*oauth2.Token, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	// Try to parse as generic map first to handle different field names
-	var raw map[string]interface{}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-
-	// Normalize field names for Go oauth2 library
-	// Some tokens use "token" instead of "access_token"
-	if accessToken, ok := raw["token"].(string); ok {
-		raw["access_token"] = accessToken
-		delete(raw, "token")
-	}
-	if tokenType, ok := raw["token_type"].(string); !ok || tokenType == "" {
-		raw["token_type"] = "Bearer"
-	}
-
-	// Re-marshal with normalized names
-	normalized, err := json.Marshal(raw)
-	if err != nil {
-		return nil, err
-	}
-
-	var token oauth2.Token
-	if err := json.Unmarshal(normalized, &token); err != nil {
-		return nil, err
-	}
-
-	return &token, nil
-}
-
-// SaveToken salva il token OAuth su file
-func SaveToken(path string, token *oauth2.Token) error {
-	data, err := json.MarshalIndent(token, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, data, 0600)
-}
-
-// ListFolders elenca le cartelle con supporto per ricorsione
-func (c *Client) ListFolders(ctx context.Context, opts ListFoldersOptions) ([]Folder, error) {
-	if opts.MaxDepth == 0 {
-		opts.MaxDepth = 2
-	}
-	if opts.MaxItems == 0 {
-		opts.MaxItems = 50
-	}
-
-	folders, err := c.listFoldersRecursive(ctx, opts.ParentID, 0, opts.MaxDepth, opts.MaxItems)
-	if err != nil {
-		return nil, err
-	}
-
-	return folders, nil
-}
-
-// ListFoldersNoRecursion lists only immediate folders without recursion
-func (c *Client) ListFoldersNoRecursion(ctx context.Context, opts ListFoldersOptions) ([]Folder, error) {
-	if opts.MaxItems == 0 {
-		opts.MaxItems = 50
-	}
-
-	ctx = c.withTimeout(ctx)
-
-	var query string
-	if opts.ParentID != "" {
-		query = fmt.Sprintf("mimeType='application/vnd.google-apps.folder' and '%s' in parents and trashed=false", opts.ParentID)
-	} else {
-		query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
-	}
-
-	var result *drive.FileList
-	err := c.withRetry(ctx, func() error {
-		var err error
-		result, err = c.service.Files.List().
-			Q(query).
-			Fields("files(id, name, webViewLink, parents)").
-			PageSize(int64(opts.MaxItems)).
-			OrderBy("name").
-			Context(ctx).
-			Do()
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list folders: %w", err)
-	}
-
-	var folders []Folder
-	for _, f := range result.Files {
-		folders = append(folders, Folder{
-			ID:   f.Id,
-			Name: f.Name,
-			Link: f.WebViewLink,
-		})
-	}
-
-	return folders, nil
-}
-
-// listFoldersRecursive helper ricorsivo per ListFolders
-func (c *Client) listFoldersRecursive(ctx context.Context, parentID string, depth, maxDepth, maxItems int) ([]Folder, error) {
-	if depth > maxDepth {
-		return nil, nil
-	}
-
-	var query string
-	if parentID != "" {
-		query = fmt.Sprintf("mimeType='application/vnd.google-apps.folder' and '%s' in parents and trashed=false", parentID)
-	} else {
-		query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
-	}
-
-	result, err := c.service.Files.List().
-		Q(query).
-		Fields("files(id, name, webViewLink, parents)").
-		PageSize(int64(maxItems)).
-		OrderBy("name").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list folders: %w", err)
-	}
-
-	var folders []Folder
-	for _, f := range result.Files {
-		folder := Folder{
-			ID:    f.Id,
-			Name:  f.Name,
-			Link:  f.WebViewLink,
-			Depth: depth,
-		}
-
-		// Get subfolders if not at max depth
-		if depth < maxDepth {
-			subfolders, err := c.listFoldersRecursive(ctx, f.Id, depth+1, maxDepth, 10)
-			if err == nil && len(subfolders) > 0 {
-				folder.Subfolders = subfolders
-			}
-		}
-
-		folders = append(folders, folder)
-	}
-
-	return folders, nil
-}
-
-// GetFolderContent ottiene il contenuto di una cartella
-func (c *Client) GetFolderContent(ctx context.Context, folderID string) (*FolderContent, error) {
-	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
-
-	ctx = c.withTimeout(ctx)
-
-	var result *drive.FileList
-	err := c.withRetry(ctx, func() error {
-		var err error
-		result, err = c.service.Files.List().
-			Q(query).
-			Fields("files(id, name, mimeType, webViewLink, size, modifiedTime, videoMediaMetadata, createdTime)").
-			PageSize(100).
-			OrderBy("name").
-			Context(ctx).
-			Do()
-		return err
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get folder content: %w", err)
-	}
-
-	content := &FolderContent{
-		FolderID: folderID,
-	}
-
-	for _, f := range result.Files {
-		if f.MimeType == "application/vnd.google-apps.folder" {
-			content.Subfolders = append(content.Subfolders, Folder{
-				ID:   f.Id,
-				Name: f.Name,
-				Link: f.WebViewLink,
-			})
-		} else {
-			file := File{
-				ID:           f.Id,
-				Name:         f.Name,
-				MimeType:     f.MimeType,
-				Link:         f.WebViewLink,
-				Size:         f.Size,
-				ModifiedTime: parseTime(f.ModifiedTime),
-				CreatedTime:  parseTime(f.CreatedTime),
-			}
-
-			// Extract video metadata from Drive
-			if f.VideoMediaMetadata != nil {
-				file.DurationMs = f.VideoMediaMetadata.DurationMillis
-				file.Width = f.VideoMediaMetadata.Width
-				file.Height = f.VideoMediaMetadata.Height
-			}
-
-			content.Files = append(content.Files, file)
-		}
-	}
-
-	content.TotalFolders = len(content.Subfolders)
-	content.TotalFiles = len(content.Files)
-
-	return content, nil
-}
-
-// GetFolderByName cerca una cartella per nome
-func (c *Client) GetFolderByName(ctx context.Context, name, parentID string) (*Folder, error) {
-	query := fmt.Sprintf("mimeType='application/vnd.google-apps.folder' and name='%s' and trashed=false", name)
-	if parentID != "" {
-		query += fmt.Sprintf(" and '%s' in parents", parentID)
-	}
-
-	result, err := c.service.Files.List().
-		Q(query).
-		Fields("files(id, name, webViewLink)").
-		PageSize(5).
-		Context(ctx).
-		Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to search folder: %w", err)
-	}
-
-	if len(result.Files) == 0 {
-		return nil, fmt.Errorf("folder '%s' not found", name)
-	}
-
-	f := result.Files[0]
-	return &Folder{
-		ID:   f.Id,
-		Name: f.Name,
-		Link: f.WebViewLink,
-	}, nil
-}
-
-// UploadFile carica un file generico su Drive
-func (c *Client) UploadFile(ctx context.Context, filePath, folderID, filename string) (string, error) {
-	// Validate folderID
-	if folderID == "" {
-		return "", fmt.Errorf("folderID cannot be empty")
-	}
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	// Validate file exists and is readable
-	stat, err := file.Stat()
-	if err != nil {
-		return "", fmt.Errorf("failed to stat file: %w", err)
-	}
-	if stat.Size() == 0 {
-		return "", fmt.Errorf("file is empty")
-	}
-
-	if filename == "" {
-		filename = filepath.Base(filePath)
-	}
-
-	driveFile := &drive.File{
-		Name:    filename,
-		Parents: []string{folderID},
-	}
-
-	result, err := c.service.Files.Create(driveFile).
-		Media(file).
-		Context(ctx).
-		Do()
-	if err != nil {
-		return "", fmt.Errorf("upload failed: %w", err)
-	}
-
-	logger.Info("Uploaded file to Drive", zap.String("filename", filename), zap.String("id", result.Id))
-	return result.Id, nil
-}
-
-// SearchFiles cerca file per nome all'interno di una cartella
-// Supporta ricerca parziale (contains) e filtra per tipo video
-func (c *Client) SearchFiles(ctx context.Context, namePattern, folderID string, videoOnly bool) ([]File, error) {
-	// Build query: file in folder with name containing pattern
-	query := fmt.Sprintf("name contains '%s' and '%s' in parents and trashed=false", namePattern, folderID)
-	if videoOnly {
-		query += " and (mimeType contains 'video' or mimeType contains 'mp4' or mimeType contains 'quicktime')"
-	}
-
-	result, err := c.service.Files.List().
-		Q(query).
-		Fields("files(id, name, mimeType, webViewLink, size, modifiedTime, videoMediaMetadata, createdTime)").
-		PageSize(20).
-		OrderBy("modifiedTime desc").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to search files: %w", err)
-	}
-
-	var files []File
-	for _, f := range result.Files {
-		file := File{
-			ID:           f.Id,
-			Name:         f.Name,
-			MimeType:     f.MimeType,
-			Link:         f.WebViewLink,
-			Size:         f.Size,
-			ModifiedTime: parseTime(f.ModifiedTime),
-			CreatedTime:  parseTime(f.CreatedTime),
-		}
-
-		if f.VideoMediaMetadata != nil {
-			file.DurationMs = f.VideoMediaMetadata.DurationMillis
-			file.Width = f.VideoMediaMetadata.Width
-			file.Height = f.VideoMediaMetadata.Height
-		}
-
-		files = append(files, file)
-	}
-
-	return files, nil
-}
-
-// GetFile ottiene informazioni su un file
-func (c *Client) GetFile(ctx context.Context, fileID string) (*File, error) {
-	result, err := c.service.Files.Get(fileID).
-		Fields("id, name, mimeType, webViewLink, size, modifiedTime, parents").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file: %w", err)
-	}
-
-	return &File{
-		ID:           result.Id,
-		Name:         result.Name,
-		MimeType:     result.MimeType,
-		Link:         result.WebViewLink,
-		Size:         result.Size,
-		ModifiedTime: parseTime(result.ModifiedTime),
-		Parents:      result.Parents,
-	}, nil
-}
-
-// DetectGroupFromTopic rileva il gruppo dal topic
-func DetectGroupFromTopic(topic string) string {
-	t := strings.ToLower(topic)
-	switch {
-	case containsAny(t, []string{}):
-		return "tech"
-	case containsAny(t, []string{}):
-		return "business"
-	case containsAny(t, []string{}):
-		return "interviews"
-	case containsAny(t, []string{}):
-		return "highlights"
-	case containsAny(t, []string{}):
-		return "discovery"
-	case containsAny(t, []string{}):
-		return "nature"
-	case containsAny(t, []string{}):
-		return "urban"
-	default:
-		return "general"
-	}
-}
-
-// containsAny checks if string contains any of the substrings
-func containsAny(s string, subs []string) bool {
-	for _, sub := range subs {
-		if strings.Contains(s, sub) {
-			return true
-		}
-	}
-	return false
-}
-
-// parseTime parses Google Drive time format
 func parseTime(s string) time.Time {
 	if s == "" {
 		return time.Time{}
