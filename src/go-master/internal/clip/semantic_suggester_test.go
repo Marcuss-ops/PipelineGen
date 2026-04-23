@@ -8,6 +8,7 @@ import (
 
 // Helper to create a test indexer with predefined clips
 func createTestIndexer(clips []IndexedClip) *Indexer {
+	GlobalUsageTracker.Reset() // Ensure clean state for each test
 	index := &ClipIndex{
 		Version: "test",
 		Clips:   clips,

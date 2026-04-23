@@ -47,27 +47,36 @@ func loadGervontaFixture(t *testing.T) string {
 func findWorkspaceFile(t *testing.T, name string) string {
 	t.Helper()
 
-	paths := []string{
-		name,
-		filepath.Join("..", name),
-		filepath.Join("..", "..", name),
-		filepath.Join("..", "..", "..", name),
-		filepath.Join("..", "..", "..", "..", name),
-		filepath.Join("..", "..", "..", "..", "..", name),
-		filepath.Join("data", name),
-		filepath.Join("..", "data", name),
-		filepath.Join("..", "..", "data", name),
-		filepath.Join("..", "..", "..", "data", name),
-		filepath.Join("..", "..", "..", "..", "data", name),
-		filepath.Join("..", "..", "..", "..", "..", "data", name),
-		filepath.Join("src", "go-master", "data", name),
+	// Cerca nella directory corrente e nelle parenti
+	dir, err := os.Getwd()
+	t.Logf("Searching for %s starting from %s", name, dir)
+	if err != nil {
+		t.Logf("failed to get working directory: %v", err)
+		return ""
 	}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p
+
+	for i := 0; i < 6; i++ {
+		// Check directly in dir
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); err == nil {
+			t.Logf("  found: %s", path)
+			return path
 		}
+		// Check in dir/data
+		dataPath := filepath.Join(dir, "data", name)
+		if _, err := os.Stat(dataPath); err == nil {
+			t.Logf("  found: %s", dataPath)
+			return dataPath
+		}
+		
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
 	}
-	t.Fatalf("could not find %s in workspace", name)
+
+	t.Logf("could not find %s in workspace", name)
 	return ""
 }
 
@@ -357,15 +366,16 @@ func TestScriptDocsGervontaFixtureEndpoints(t *testing.T) {
 }
 
 func TestScriptDocsGervontaFixtureCreatesRealDoc(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(gin.Recovery())
+	// This test creates a real Google Doc and verifies the output.
+	// It requires a valid token.json in the workspace.
 
-	apiGroup := router.Group("/api")
-	scriptDocsGroup := apiGroup.Group("/script-docs")
-	handler := NewScriptDocsHandler(newGervontaFixtureScriptDocsServiceWithDocClient(t))
-	handler.RegisterRoutes(scriptDocsGroup)
+	// Look for token.json in workspace
+	tokenPath := findWorkspaceFile(t, "token.json")
+	if tokenPath == "" {
+		t.Skip("skipping test: token.json not found in workspace")
+	}
 
+	router := setupGervontaFixtureRouter(t)
 	body := `{"topic":"Gervonta Davis","duration":210,"languages":["en"],"template":"biography","preview_only":false,"association_mode":"images_full"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/script-docs/generate/imagesfull", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
