@@ -36,11 +36,15 @@ func enrichSegments(segments []Segment) []Segment {
 		// Extract proper nouns as entities
 		entities := scriptdocs.ExtractProperNouns([]string{segments[i].Text})
 		seen := make(map[string]bool)
-		var uniqueEntities []string
+		var uniqueEntities []Entity
 		for _, e := range entities {
 			if !seen[e] {
 				seen[e] = true
-				uniqueEntities = append(uniqueEntities, e)
+				uniqueEntities = append(uniqueEntities, Entity{
+					Type:   "person", // Default to person for proper nouns
+					Value:  e,
+					Source: "proper_noun",
+				})
 			}
 		}
 		if len(uniqueEntities) > 5 {
@@ -53,13 +57,18 @@ func enrichSegments(segments []Segment) []Segment {
 
 // segmentToTextSegment converts a Segment to timestamp.TextSegment (NO HARDCODED)
 func segmentToTextSegment(seg Segment) timestamp.TextSegment {
+	entityStrings := make([]string, len(seg.Entities))
+	for i, e := range seg.Entities {
+		entityStrings[i] = e.Value
+	}
+
 	return timestamp.TextSegment{
 		Index:     seg.Index,
 		StartTime: float64(seg.StartTime),
 		EndTime:   float64(seg.EndTime),
 		Text:      seg.Text,
 		Keywords:  seg.Keywords,
-		Entities:  seg.Entities,
+		Entities:  entityStrings,
 		Emotions:  []string{},
 	}
 }

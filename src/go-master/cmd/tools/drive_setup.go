@@ -7,7 +7,10 @@ import (
 )
 func main() {
 	ctx := context.Background()
-	client, err := drive.NewClient(ctx, "src/go-master/credentials.json", "src/go-master/token.json")
+	cfg := drive.DefaultConfig()
+	cfg.CredentialsFile = "src/go-master/credentials.json"
+	cfg.TokenFile = "src/go-master/token.json"
+	client, err := drive.NewClient(ctx, cfg)
 	if err != nil { log.Fatalf("Auth failed: %v", err) }
 	
 	parentID := "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"

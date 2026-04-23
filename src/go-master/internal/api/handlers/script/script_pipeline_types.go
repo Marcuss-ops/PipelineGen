@@ -3,10 +3,12 @@ package script
 // --- SHARED TYPES ---
 
 type Segment struct {
-	Index     int    `json:"index"`
-	Text      string `json:"text"`
-	StartTime int    `json:"start_time,omitempty"`
-	EndTime   int    `json:"end_time,omitempty"`
+	Index     int      `json:"index"`
+	Text      string   `json:"text"`
+	StartTime int      `json:"start_time,omitempty"`
+	EndTime   int      `json:"end_time,omitempty"`
+	Keywords  []string `json:"keywords,omitempty"`
+	Entities  []Entity `json:"entities,omitempty"`
 }
 
 type Entity struct {
@@ -118,6 +120,7 @@ type CreateDocumentRequest struct {
 	Duration          int                `json:"duration"`
 	Template          string             `json:"template"`
 	Script            string             `json:"script"`
+	SourceText        string             `json:"source_text"`
 	Language          string             `json:"language"`
 	Segments          []Segment          `json:"segments"`
 	Entities          []Entity           `json:"entities"`
@@ -133,12 +136,29 @@ type CreateDocumentRequest struct {
 	ParoleImportanti  []string           `json:"parole_importanti"`
 	EntitaConImmagine []EntityImage      `json:"entita_con_immagine"`
 	ArtlistAssocs     []ArtlistAssoc     `json:"artlist_assocs"`
+	PreviewOnly       bool               `json:"preview_only"`
 }
 
 type CreateDocumentResponse struct {
-	Ok     bool   `json:"ok"`
-	DocID  string `json:"doc_id"`
-	DocURL string `json:"doc_url"`
+	Ok          bool   `json:"ok"`
+	DocID       string `json:"doc_id"`
+	DocURL      string `json:"doc_url"`
+	PreviewPath string `json:"preview_path,omitempty"`
+	Mode        string `json:"mode,omitempty"`
+}
+
+type ReviewDraftRequest struct {
+	Title      string `json:"title" binding:"required"`
+	Topic      string `json:"topic"`
+	SourceText string `json:"source_text"`
+	Language   string `json:"language"`
+	Duration   int    `json:"duration"`
+}
+
+type ReviewDraftResponse struct {
+	Ok      bool                  `json:"ok"`
+	Draft   CreateDocumentRequest `json:"draft"`
+	Message string                `json:"message"`
 }
 
 // --- FULL PIPELINE TYPES ---

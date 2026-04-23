@@ -5,7 +5,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"fmt"
-	"strings"
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/clipsearch"
@@ -77,18 +76,4 @@ func (h *ScriptPipelineHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		script.POST("/create-doc", h.CreateDocument)
 		script.POST("/full", h.GenerateFullPipeline)
 	}
-}
-
-// Shared helper functions
-func extractPhrases(text string) (string, string) {
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return "", ""
-	}
-	if len(words) <= 3 {
-		return text, text
-	}
-	initial := strings.Join(words[:3], " ")
-	final := strings.Join(words[len(words)-3:], " ")
-	return initial, final
 }
