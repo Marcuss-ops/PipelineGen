@@ -1,14 +1,23 @@
 package clipsearch
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/stockdb"
+	"velox/go-master/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 var nonWordRe = regexp.MustCompile(`[^a-z0-9\s]+`)
@@ -251,4 +260,206 @@ func artlistEntryToSearchResult(keyword string, clip artlistdb.ArtlistClip) *Sea
 		Folder:   clip.Folder,
 		FolderID: clip.FolderID,
 	}
+}
+
+func (s *Service) SearchClips(ctx context.Context, keywords []string) ([]SearchResult, error) {
+	return s.SearchClipsWithOptions(ctx, keywords, SearchOptions{})
+}
+
+func (s *Service) SearchClipsWithOptions(ctx context.Context, keywords []string, opts SearchOptions) ([]SearchResult, error) {
+	normalizedKeywords := normalizeKeywords(keywords)
+	results, newUploads := s.processKeywords(ctx, normalizedKeywords, opts)
+
+	if newUploads > 0 {
+		s.runPostCycleSync(ctx, newUploads)
+	}
+
+	return results, nil
+}
+
+func (s *Service) processKeywords(ctx context.Context, keywords []string, opts SearchOptions) ([]SearchResult, int) {
+	if opts.MaxClipsPerKeyword > 1 {
+		return s.processKeywordsMulti(ctx, keywords, opts)
+	}
+
+	newUploads := int32(0)
+	g, gCtx := errgroup.WithContext(ctx)
+
+	var mu sync.Mutex
+	finalResults := make([]SearchResult, 0, len(keywords))
+
+	for _, kw := range keywords {
+		kw := kw // capture
+		g.Go(func() error {
+			// Acquire semaphore
+			select {
+			case s.workerSemaphore <- struct{}{}:
+				defer func() { <-s.workerSemaphore }()
+			case <-gCtx.Done():
+				return gCtx.Err()
+			}
+
+			jobID := s.ensureKeywordJobCheckpoint(kw)
+			res, uploaded, found := s.processKeyword(gCtx, kw, opts, jobID)
+			if found {
+				mu.Lock()
+				finalResults = append(finalResults, res)
+				if uploaded {
+					newUploads++
+				}
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+	return finalResults, int(newUploads)
+}
+
+func (s *Service) processKeyword(ctx context.Context, kw string, opts SearchOptions, jobID string) (SearchResult, bool, bool) {
+	s.markCheckpoint(jobID, ClipJobStatusSearched, "", nil)
+
+	if !opts.ForceFresh {
+		existing, err := s.finder.FindClipInDB(kw)
+		if err == nil && existing != nil {
+			logger.Info("Found clip in DB cache",
+				zap.String("keyword", kw),
+				zap.String("clip_id", existing.ClipID),
+			)
+			s.markCheckpoint(jobID, ClipJobStatusDone, "", existing)
+			return *existing, false, true
+		}
+	}
+
+	if shouldPreferYouTubeKeyword(kw) {
+		if result, uploaded, found := s.processYTDLPKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+		if result, uploaded, found := s.processArtlistKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+	} else {
+		if result, uploaded, found := s.processArtlistKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+		if result, uploaded, found := s.processYTDLPKeyword(ctx, kw, jobID); found {
+			return result, uploaded, true
+		}
+	}
+	return SearchResult{}, false, false
+}
+
+func (s *Service) processArtlistKeyword(ctx context.Context, kw string, jobID string) (SearchResult, bool, bool) {
+	artlistPath, artlistClip, err := s.downloadFromArtlist(ctx, kw)
+	if err != nil {
+		logger.Warn("Artlist direct download failed, falling back to yt-dlp search",
+			zap.String("keyword", kw),
+			zap.Error(err),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusDownloaded, "", nil)
+	defer os.Remove(artlistPath)
+
+	// Deduplicate by source clip identity + keyword: skip new upload when already present.
+	if existing := s.finder.FindDownloadedArtlistBySource(kw, artlistClip); existing != nil {
+		logger.Info("Skipping upload for already downloaded Artlist source clip",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.String("drive_id", existing.DriveID),
+		)
+		return *existing, false, true
+	}
+
+	normalizedPath, normErr := s.processor.NormalizeClipToSevenSeconds1080p(ctx, artlistPath, artlistClip.Duration)
+	if normErr != nil {
+		logger.Warn("Artlist clip normalization failed, falling back to yt-dlp search",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.Error(normErr),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusProcessed, "", nil)
+	defer os.Remove(normalizedPath)
+
+	visualHash, hashErr := s.processor.ComputeVisualHash(ctx, normalizedPath)
+	if hashErr != nil {
+		logger.Warn("Failed to compute clip visual hash",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.Error(hashErr),
+		)
+	}
+
+	if existing := s.finder.FindDownloadedArtlistByVisualAndTitle(kw, visualHash, artlistClip.Name); existing != nil {
+		logger.Info("Skipping upload for visually duplicated Artlist clip",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.String("drive_id", existing.DriveID),
+		)
+		s.markCheckpoint(jobID, ClipJobStatusDone, "", existing)
+		return *existing, false, true
+	}
+
+	driveResult, upErr := s.uploader.UploadToDrive(ctx, normalizedPath, kw)
+	if upErr != nil {
+		logger.Warn("Artlist clip upload failed, falling back to yt-dlp search",
+			zap.String("keyword", kw),
+			zap.String("clip_id", artlistClip.ID),
+			zap.Error(upErr),
+		)
+		return SearchResult{}, false, false
+	}
+	res := searchResultFromDrive(kw, driveResult)
+	s.uploadClipSidecarText(ctx, kw, driveResult, buildArtlistClipSidecarText(kw, artlistClip))
+	res.TextDriveID = driveResult.TextFileID
+	res.TextDriveURL = driveResult.TextURL
+	s.markCheckpoint(jobID, ClipJobStatusUploaded, "", &res)
+
+	s.persister.PersistClipMetadata(kw, driveResult, normalizedPath, &artlistClip, visualHash, nil)
+
+	logger.Info("Dynamic Artlist clip processed and registered",
+		zap.String("keyword", kw),
+		zap.String("clip_id", artlistClip.ID),
+		zap.String("drive_url", driveResult.DriveURL),
+	)
+	return res, true, true
+}
+
+func (s *Service) processYTDLPKeyword(ctx context.Context, kw string, jobID string) (SearchResult, bool, bool) {
+	downloadedPath, ytMeta, err := s.downloadClip(ctx, kw)
+	if err != nil {
+		if errors.Is(err, ErrYouTubeAlreadyDownloaded) {
+			if existing := s.finder.FindDownloadedYouTubeByMeta(ytMeta); existing != nil {
+				logger.Info("Skipping download for already downloaded YouTube interview hash",
+					zap.String("keyword", kw),
+					zap.String("video_id", strings.TrimSpace(ytMeta.VideoID)),
+					zap.String("drive_id", existing.DriveID),
+				)
+				s.markCheckpoint(jobID, ClipJobStatusDone, "", existing)
+				return *existing, false, true
+			}
+		}
+		logger.Warn("Failed to download clip for keyword",
+			zap.String("keyword", kw),
+			zap.Error(err),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusDownloaded, "", nil)
+	defer os.Remove(downloadedPath)
+
+	s.markCheckpoint(jobID, ClipJobStatusProcessed, "", nil)
+	results, uploads, procErr := s.processYouTubeMomentsFromDownloaded(ctx, kw, downloadedPath, ytMeta)
+	if procErr != nil || len(results) == 0 {
+		logger.Warn("Failed to process yt-dlp moments",
+			zap.String("keyword", kw),
+			zap.Error(procErr),
+		)
+		return SearchResult{}, false, false
+	}
+	s.markCheckpoint(jobID, ClipJobStatusUploaded, "", &results[0])
+	return results[0], uploads > 0, true
 }
