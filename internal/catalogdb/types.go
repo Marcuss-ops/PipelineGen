@@ -1,65 +1,75 @@
 package catalogdb
 
-import "time"
-
-const (
-	SourceArtlist   = "artlist"
-	SourceClipDrive = "clip_drive"
-	SourceStockDrive = "stock_drive"
+import (
+	"database/sql"
+	"time"
 )
 
-// Clip represents a normalized clip record stored in the unified local catalog.
+// CatalogDB provides a normalized local SQLite catalog for clips.
+type CatalogDB struct {
+	db       *sql.DB
+	path     string
+	ftsReady bool
+}
+
+// Clip represents a normalized clip entry in the catalog.
 type Clip struct {
-	ID            string
-	Source        string
-	SourceID      string
-	Provider      string
-	Title         string
-	Description   string
-	Filename      string
-	Category      string
-	FolderID      string
-	FolderPath    string
-	DriveFileID   string
-	DriveURL      string
-	ExternalPath  string
-	LocalPath     string
-	Tags          []string
-	DurationSec   int
-	Width         int
-	Height        int
-	MimeType      string
-	FileExt       string
-	FileSizeBytes int64
-	CreatedAt     time.Time
-	ModifiedAt    time.Time
-	LastSyncedAt  time.Time
-	IsActive      bool
-	MetadataJSON  string
+	ID            string    `json:"id"`
+	Source        string    `json:"source"`
+	SourceID      string    `json:"source_id"`
+	Provider      string    `json:"provider,omitempty"`
+	Title         string    `json:"title,omitempty"`
+	Description   string    `json:"description,omitempty"`
+	Filename      string    `json:"filename,omitempty"`
+	Category      string    `json:"category,omitempty"`
+	FolderID      string    `json:"folder_id,omitempty"`
+	FolderPath    string    `json:"folder_path,omitempty"`
+	DriveFileID   string    `json:"drive_file_id,omitempty"`
+	DriveURL      string    `json:"drive_url,omitempty"`
+	ExternalPath  string    `json:"external_path,omitempty"`
+	LocalPath     string    `json:"local_path,omitempty"`
+	Tags          []string  `json:"tags,omitempty"`
+	DurationSec   int       `json:"duration_sec,omitempty"`
+	Width         int       `json:"width,omitempty"`
+	Height        int       `json:"height,omitempty"`
+	MimeType      string    `json:"mime_type,omitempty"`
+	FileExt       string    `json:"file_ext,omitempty"`
+	FileSizeBytes int64     `json:"file_size_bytes,omitempty"`
+	CreatedAt     time.Time `json:"created_at,omitempty"`
+	ModifiedAt    time.Time `json:"modified_at,omitempty"`
+	LastSyncedAt  time.Time `json:"last_synced_at,omitempty"`
+	IsActive      bool      `json:"is_active"`
+	MetadataJSON  string    `json:"metadata_json,omitempty"`
 }
 
-// SearchOptions defines the local search criteria used by the suggestion layer.
-type SearchOptions struct {
-	Query        string
-	Source       string
-	FolderID     string
-	Limit        int
-	MinDuration  int
-	MaxDuration  int
-	OnlyActive   bool
-}
-
-// SearchResult is a ranked catalog search hit.
-type SearchResult struct {
-	Clip  Clip
-	Score float64
-}
-
-// SyncState tracks source-level synchronization cursors and timestamps.
+// SyncState persists the sync cursor and timestamps for a given source.
 type SyncState struct {
-	Source            string
-	Cursor            string
-	LastFullScanAt    time.Time
-	LastIncrementalAt time.Time
-	UpdatedAt         time.Time
+	Source            string    `json:"source"`
+	Cursor            string    `json:"cursor,omitempty"`
+	LastFullScanAt    time.Time `json:"last_full_scan_at,omitempty"`
+	LastIncrementalAt time.Time `json:"last_incremental_at,omitempty"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
+
+// SearchOptions defines filters for catalog searching.
+type SearchOptions struct {
+	Query       string `json:"query"`
+	Source      string `json:"source,omitempty"`
+	FolderID    string `json:"folder_id,omitempty"`
+	MinDuration int    `json:"min_duration,omitempty"`
+	MaxDuration int    `json:"max_duration,omitempty"`
+	OnlyActive  bool   `json:"only_active,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
+}
+
+// SearchResult wraps a clip with its relevance score.
+type SearchResult struct {
+	Clip  Clip    `json:"clip"`
+	Score float64 `json:"score"`
+}
+
+const (
+	SourceArtlist    = "artlist"
+	SourceClipDrive  = "clips"
+	SourceStockDrive = "stock"
+)
