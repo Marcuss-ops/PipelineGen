@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"velox/go-master/internal/clip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
 
@@ -246,4 +247,132 @@ func (u *DriveUploader) ClearCache() {
 	u.mu.Lock()
 	u.folderCache = make(map[string]string)
 	u.mu.Unlock()
+}
+
+func searchResultFromDrive(kw string, driveResult *DriveUploadResult) SearchResult {
+	folder := driveResult.FolderPath
+	if folder == "" {
+		folder = "Stock/Artlist/" + kw
+	}
+	return SearchResult{
+		Keyword:      kw,
+		ClipID:       driveResult.DriveID,
+		Filename:     driveResult.Filename,
+		DriveURL:     driveResult.DriveURL,
+		DriveID:      driveResult.DriveID,
+		Folder:       folder,
+		FolderID:     driveResult.FolderID,
+		TextDriveID:  driveResult.TextFileID,
+		TextDriveURL: driveResult.TextURL,
+	}
+}
+
+func (s *Service) uploadClipSidecarText(ctx context.Context, keyword string, driveResult *DriveUploadResult, content string) {
+	// Default behavior: avoid per-clip txt explosion in Drive.
+	// Enable only if explicitly requested.
+	if strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_ENABLE_PER_CLIP_TXT"))) != "true" {
+		return
+	}
+	if s.uploader == nil || driveResult == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	res, err := s.uploader.UploadTextSidecar(ctx, driveResult.FolderID, driveResult.Filename, keyword, content)
+	if err != nil {
+		logger.Warn("Failed to upload clip sidecar text",
+			zap.String("keyword", keyword),
+			zap.String("drive_id", driveResult.DriveID),
+			zap.Error(err),
+		)
+		return
+	}
+	driveResult.TextFileID = res.DriveID
+	driveResult.TextURL = res.DriveURL
+	driveResult.TextName = res.Filename
+}
+
+func buildArtlistClipSidecarText(keyword string, c clip.IndexedClip) string {
+	var b strings.Builder
+	b.WriteString("keyword: " + strings.TrimSpace(keyword) + "\n")
+	b.WriteString("source: artlist\n")
+	if strings.TrimSpace(c.ID) != "" {
+		b.WriteString("clip_id: " + strings.TrimSpace(c.ID) + "\n")
+	}
+	if strings.TrimSpace(c.Name) != "" {
+		b.WriteString("title: " + strings.TrimSpace(c.Name) + "\n")
+	}
+	if strings.TrimSpace(c.DownloadLink) != "" {
+		b.WriteString("source_url: " + strings.TrimSpace(c.DownloadLink) + "\n")
+	} else if strings.TrimSpace(c.DriveLink) != "" {
+		b.WriteString("source_url: " + strings.TrimSpace(c.DriveLink) + "\n")
+	}
+	if len(c.Tags) > 0 {
+		b.WriteString("tags: " + strings.Join(c.Tags, ", ") + "\n")
+	}
+	b.WriteString("\ntranscript:\n")
+	b.WriteString("Not available for Artlist source in current pipeline.\n")
+	return b.String()
+}
+
+func buildYouTubeClipSidecarText(keyword string, m *YouTubeClipMetadata) string {
+	var b strings.Builder
+	b.WriteString("keyword: " + strings.TrimSpace(keyword) + "\n")
+	b.WriteString("source: youtube\n")
+	if m == nil {
+		b.WriteString("note: metadata unavailable (fallback download path)\n")
+		return b.String()
+	}
+	if strings.TrimSpace(m.VideoID) != "" {
+		b.WriteString("video_id: " + strings.TrimSpace(m.VideoID) + "\n")
+	}
+	if strings.TrimSpace(m.VideoURL) != "" {
+		b.WriteString("video_url: " + strings.TrimSpace(m.VideoURL) + "\n")
+	}
+	if strings.TrimSpace(m.Title) != "" {
+		b.WriteString("title: " + strings.TrimSpace(m.Title) + "\n")
+	}
+	if strings.TrimSpace(m.Channel) != "" {
+		b.WriteString("channel: " + strings.TrimSpace(m.Channel) + "\n")
+	}
+	if strings.TrimSpace(m.Uploader) != "" {
+		b.WriteString("uploader: " + strings.TrimSpace(m.Uploader) + "\n")
+	}
+	if m.ViewCount > 0 {
+		b.WriteString(fmt.Sprintf("views: %d\n", m.ViewCount))
+	}
+	if m.DurationSec > 0 {
+		b.WriteString(fmt.Sprintf("duration_sec: %.1f\n", m.DurationSec))
+	}
+	if strings.TrimSpace(m.UploadDate) != "" {
+		b.WriteString("upload_date: " + strings.TrimSpace(m.UploadDate) + "\n")
+	}
+	if strings.TrimSpace(m.SearchQuery) != "" {
+		b.WriteString("search_query: " + strings.TrimSpace(m.SearchQuery) + "\n")
+	}
+	if m.Relevance != 0 {
+		b.WriteString(fmt.Sprintf("relevance_score: %d\n", m.Relevance))
+	}
+	if m.SelectedMoment != nil {
+		b.WriteString(fmt.Sprintf("selected_moment_start_sec: %.1f\n", m.SelectedMoment.StartSec))
+		b.WriteString(fmt.Sprintf("selected_moment_end_sec: %.1f\n", m.SelectedMoment.EndSec))
+		if strings.TrimSpace(m.SelectedMoment.Reason) != "" {
+			b.WriteString("selected_moment_reason: " + strings.TrimSpace(m.SelectedMoment.Reason) + "\n")
+		}
+		if strings.TrimSpace(m.SelectedMoment.Source) != "" {
+			b.WriteString("selected_moment_source: " + strings.TrimSpace(m.SelectedMoment.Source) + "\n")
+		}
+	}
+	if hash := buildYouTubeInterviewHash(m); hash != "" {
+		b.WriteString("interview_hash: " + hash + "\n")
+	}
+	if strings.TrimSpace(m.Description) != "" {
+		b.WriteString("\ndescription:\n")
+		b.WriteString(strings.TrimSpace(m.Description) + "\n")
+	}
+	b.WriteString("\ntranscript:\n")
+	if strings.TrimSpace(m.Transcript) != "" {
+		b.WriteString(strings.TrimSpace(m.Transcript) + "\n")
+	} else {
+		b.WriteString("Subtitles/transcript not available from source.\n")
+	}
+	return b.String()
 }
