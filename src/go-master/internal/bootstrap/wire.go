@@ -217,7 +217,6 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		Health:       common.NewHealthHandler(cfg, coreDeps.JobService, coreDeps.WorkerService),
 		Video:        videoHandler,
 		YouTube:      youtube.NewYouTubeHandler(cfg.GetYouTubeDir()),
-		Script:       script.NewScriptHandler(coreDeps.ScriptGen, coreDeps.OllamaClient),
 		Drive:        driveDeps.DriveHandler,
 		Voiceover:    common.NewVoiceoverHandler(coreDeps.EdgeTTS),
 		NLP:          nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),
