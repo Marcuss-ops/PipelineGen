@@ -48,47 +48,6 @@ type GenerationResult struct {
 	CreatedAt  time.Time     `json:"created_at"`
 }
 
-// ScriptType represents different types of scripts to generate
-type ScriptType string
-
-const (
-	ScriptYouTube     ScriptType = "youtube"
-	ScriptInterview   ScriptType = "interview"
-	ScriptHighlight   ScriptType = "highlight"
-	ScriptPromo       ScriptType = "promo"
-	ScriptEducational ScriptType = "educational"
-)
-
-// ScriptRequest contains parameters for script generation
-type ScriptRequest struct {
-	Type         ScriptType `json:"type"`
-	Topic        string     `json:"topic"`
-	TargetLength int        `json:"target_length"` // Target word count
-	Language     string     `json:"language"`
-	Tone         string     `json:"tone"` // professional, casual, energetic, etc.
-	Keywords     []string   `json:"keywords"`
-	Structure    []string   `json:"structure"` // intro, main, conclusion, etc.
-	UseGPU       bool       `json:"use_gpu"`
-}
-
-// ScriptResult contains the generated script
-type ScriptResult struct {
-	Script    string          `json:"script"`
-	WordCount int             `json:"word_count"`
-	Type      ScriptType      `json:"type"`
-	Sections  []ScriptSection `json:"sections"`
-	GPUUsed   bool            `json:"gpu_used"`
-	Duration  time.Duration   `json:"duration"`
-}
-
-// ScriptSection represents a section of the generated script
-type ScriptSection struct {
-	Name      string `json:"name"`
-	Content   string `json:"content"`
-	StartTime string `json:"start_time,omitempty"`
-	EndTime   string `json:"end_time,omitempty"`
-}
-
 // Generator orchestrates AI text generation with GPU support
 type Generator struct {
 	gpuManager *gpu.Manager
