@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/service/scriptdocs"
 )
 
 type GenerateTextRequest struct {
@@ -52,27 +52,31 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		req.Model = "gemma3:4b"
 	}
 
-	ollamaReq := &ollama.TextGenerationRequest{
-		SourceText: req.Topic,
-		Title:      req.Topic,
-		Language:   req.Language,
-		Duration:   req.Duration,
-		Tone:       req.Tone,
-		Model:      req.Model,
-	}
+	svc := scriptdocs.NewScriptDocService(
+		h.generator,
+		nil,
+		nil,
+		h.stockDB,
+		nil,
+		nil,
+		h.artlistSrc,
+		h.artlistDB,
+	)
 
-	result, err := h.generator.GenerateFromText(c.Request.Context(), ollamaReq)
+	script, err := svc.GenerateScriptText(c.Request.Context(), req.Topic, req.Duration, req.Language, req.Template, req.Model)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
+	wordCount := len(strings.Fields(script))
+
 	c.JSON(http.StatusOK, gin.H{
 		"ok":           true,
-		"script":       result.Script,
-		"word_count":   result.WordCount,
-		"est_duration": result.EstDuration,
-		"model":        result.Model,
+		"script":       script,
+		"word_count":   wordCount,
+		"est_duration": int(float64(wordCount) * 60 / 140),
+		"model":        req.Model,
 		"language":     req.Language,
 	})
 }
