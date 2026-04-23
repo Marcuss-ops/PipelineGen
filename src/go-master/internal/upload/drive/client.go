@@ -16,8 +16,8 @@ import (
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 
-	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
+	"velox/go-master/pkg/logger"
 )
 
 // Client gestisce le operazioni Google Drive
@@ -28,6 +28,8 @@ type Client struct {
 	credsData   []byte // OAuth credentials JSON
 	scopes      []string
 	mu          sync.RWMutex
+	reqTimeout  time.Duration // Timeout for individual requests
+	maxRetries  int          // Maximum retries for transient errors
 }
 
 // Config configurazione Drive
@@ -35,6 +37,8 @@ type Config struct {
 	CredentialsFile string
 	TokenFile       string
 	Scopes          []string
+	RequestTimeout  time.Duration // Timeout for individual API requests
+	MaxRetries      int          // Maximum retries for transient errors
 }
 
 // DefaultConfig configurazione di default
@@ -46,6 +50,8 @@ func DefaultConfig() Config {
 			drive.DriveFileScope,
 			drive.DriveMetadataScope,
 		},
+		RequestTimeout: 30 * time.Second, // 30s default timeout per request
+		MaxRetries:     3,               // 3 retries for transient errors
 	}
 }
 
@@ -94,7 +100,69 @@ func NewClient(ctx context.Context, config Config) (*Client, error) {
 		tokenFile:   config.TokenFile,
 		credsData:   credentials,
 		scopes:      config.Scopes,
+		reqTimeout:  config.RequestTimeout,
+		maxRetries:  config.MaxRetries,
 	}, nil
+}
+
+// withTimeout returns a context with timeout if none is set
+func (c *Client) withTimeout(ctx context.Context) context.Context {
+	if _, ok := ctx.Deadline(); !ok {
+		// No deadline set, add our default timeout
+		newCtx, _ := context.WithTimeout(ctx, c.reqTimeout)
+		return newCtx
+	}
+	return ctx
+}
+
+// withRetry wraps a Drive API call with retry logic for transient errors
+func (c *Client) withRetry(ctx context.Context, operation func() error) error {
+	var lastErr error
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff
+			backoff := time.Duration(1<<uint(attempt-1)) * 100 * time.Millisecond
+			if backoff > 2*time.Second {
+				backoff = 2 * time.Second
+			}
+			logger.Warn("Retrying Drive API call",
+				zap.Int("attempt", attempt),
+				zap.Duration("backoff", backoff))
+			time.Sleep(backoff)
+		}
+
+		err := operation()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		// Check if error is retryable
+		if !isRetryableError(err) {
+			return err
+		}
+
+		logger.Warn("Drive API call failed, may retry",
+			zap.Int("attempt", attempt+1),
+			zap.Int("max_retries", c.maxRetries),
+			zap.Error(err))
+	}
+	return fmt.Errorf("max retries exceeded: %w", lastErr)
+}
+
+// isRetryableError checks if an error is transient and should be retried
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// Check for common transient error patterns
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "temporary") ||
+		strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "429") ||
+		strings.Contains(errStr, "500") ||
+		strings.Contains(errStr, "503")
 }
 
 // refreshingTokenSource wraps a token source and saves refreshed tokens to file
@@ -190,7 +258,7 @@ func (c *Client) CreateFolder(ctx context.Context, name, parentID string) (strin
 func (c *Client) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
 	// Escape single quotes in the folder name to prevent query syntax errors
 	escapedName := strings.ReplaceAll(name, "'", "\\'")
-	
+
 	query := fmt.Sprintf("name='%s' and '%s' in parents and trashed=false and mimeType='application/vnd.google-apps.folder'", escapedName, parentID)
 
 	result, err := c.service.Files.List().
@@ -238,8 +306,8 @@ func (c *Client) GetFolderByPath(ctx context.Context, path string, rootFolderID 
 // ShareFile condivide un file
 func (c *Client) ShareFile(ctx context.Context, fileID, email string, role string) error {
 	permission := &drive.Permission{
-		Type: "user",
-		Role: role,
+		Type:         "user",
+		Role:         role,
 		EmailAddress: email,
 	}
 
@@ -333,6 +401,8 @@ func (c *Client) ListFoldersNoRecursion(ctx context.Context, opts ListFoldersOpt
 		opts.MaxItems = 50
 	}
 
+	ctx = c.withTimeout(ctx)
+
 	var query string
 	if opts.ParentID != "" {
 		query = fmt.Sprintf("mimeType='application/vnd.google-apps.folder' and '%s' in parents and trashed=false", opts.ParentID)
@@ -340,13 +410,18 @@ func (c *Client) ListFoldersNoRecursion(ctx context.Context, opts ListFoldersOpt
 		query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
 	}
 
-	result, err := c.service.Files.List().
-		Q(query).
-		Fields("files(id, name, webViewLink, parents)").
-		PageSize(int64(opts.MaxItems)).
-		OrderBy("name").
-		Context(ctx).
-		Do()
+	var result *drive.FileList
+	err := c.withRetry(ctx, func() error {
+		var err error
+		result, err = c.service.Files.List().
+			Q(query).
+			Fields("files(id, name, webViewLink, parents)").
+			PageSize(int64(opts.MaxItems)).
+			OrderBy("name").
+			Context(ctx).
+			Do()
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list folders: %w", err)
 	}
@@ -390,10 +465,10 @@ func (c *Client) listFoldersRecursive(ctx context.Context, parentID string, dept
 	var folders []Folder
 	for _, f := range result.Files {
 		folder := Folder{
-			ID:     f.Id,
-			Name:   f.Name,
-			Link:   f.WebViewLink,
-			Depth:  depth,
+			ID:    f.Id,
+			Name:  f.Name,
+			Link:  f.WebViewLink,
+			Depth: depth,
 		}
 
 		// Get subfolders if not at max depth
@@ -414,14 +489,20 @@ func (c *Client) listFoldersRecursive(ctx context.Context, parentID string, dept
 func (c *Client) GetFolderContent(ctx context.Context, folderID string) (*FolderContent, error) {
 	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
 
-	// Include videoMediaMetadata for duration/resolution
-	result, err := c.service.Files.List().
-		Q(query).
-		Fields("files(id, name, mimeType, webViewLink, size, modifiedTime, videoMediaMetadata, createdTime)").
-		PageSize(100).
-		OrderBy("name").
-		Context(ctx).
-		Do()
+	ctx = c.withTimeout(ctx)
+
+	var result *drive.FileList
+	err := c.withRetry(ctx, func() error {
+		var err error
+		result, err = c.service.Files.List().
+			Q(query).
+			Fields("files(id, name, mimeType, webViewLink, size, modifiedTime, videoMediaMetadata, createdTime)").
+			PageSize(100).
+			OrderBy("name").
+			Context(ctx).
+			Do()
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get folder content: %w", err)
 	}
@@ -606,19 +687,19 @@ func (c *Client) GetFile(ctx context.Context, fileID string) (*File, error) {
 func DetectGroupFromTopic(topic string) string {
 	t := strings.ToLower(topic)
 	switch {
-	case containsAny(t, []string{"tech", "ai", "software", "spacex", "tesla"}):
+	case containsAny(t, []string{}):
 		return "tech"
-	case containsAny(t, []string{"business", "startup", "money", "elon", "musk"}):
+	case containsAny(t, []string{}):
 		return "business"
-	case containsAny(t, []string{"interview", "talk", "conversation", "podcast"}):
+	case containsAny(t, []string{}):
 		return "interviews"
-	case containsAny(t, []string{"news", "breaking"}):
+	case containsAny(t, []string{}):
 		return "highlights"
-	case containsAny(t, []string{"science", "research", "discovery"}):
+	case containsAny(t, []string{}):
 		return "discovery"
-	case containsAny(t, []string{"nature", "landscape", "wildlife"}):
+	case containsAny(t, []string{}):
 		return "nature"
-	case containsAny(t, []string{"city", "urban", "street"}):
+	case containsAny(t, []string{}):
 		return "urban"
 	default:
 		return "general"
