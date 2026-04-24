@@ -1,6 +1,26 @@
 package config
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
+
+func resolveRelativePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if filepath.IsAbs(path) {
+		return path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	fallback := filepath.Join("src/go-master", path)
+	if _, err := os.Stat(fallback); err == nil {
+		return fallback
+	}
+	return path
+}
 
 // GetDataPath returns the full path for a data file
 func (c *Config) GetDataPath(filename string) string {
@@ -59,12 +79,12 @@ func (c *Config) GetWhisperDir() string {
 
 // GetCredentialsPath returns the full path to the Google OAuth credentials file
 func (c *Config) GetCredentialsPath() string {
-	return c.Paths.CredentialsFile
+	return resolveRelativePath(c.Paths.CredentialsFile)
 }
 
 // GetTokenPath returns the full path to the Google OAuth token file
 func (c *Config) GetTokenPath() string {
-	return c.Paths.TokenFile
+	return resolveRelativePath(c.Paths.TokenFile)
 }
 
 // GetClipRootFolder returns the Google Drive root folder ID for clip management
