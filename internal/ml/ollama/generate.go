@@ -81,6 +81,29 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 	}, nil
 }
 
+// GenerateStreamFromText genera uno script da testo in modalità streaming
+func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerationRequest) (<-chan string, <-chan error) {
+	// Applica defaults
+	if req.Language == "" {
+		req.Language = "italian"
+	}
+	if req.Duration == 0 {
+		req.Duration = 60
+	}
+	if req.Tone == "" {
+		req.Tone = "professional"
+	}
+	if req.Model == "" {
+		req.Model = "gemma3:4b"
+	}
+
+	// Costruisci prompt
+	prompt := buildTextPrompt(req)
+
+	// Inizia lo streaming dal client
+	return g.client.GenerateStreamWithModel(ctx, req.Model, prompt)
+}
+
 // GenerateFromYouTube genera uno script da URL YouTube
 func (g *Generator) GenerateFromYouTube(ctx context.Context, req *YouTubeGenerationRequest) (*GenerationResult, error) {
 	// Applica defaults

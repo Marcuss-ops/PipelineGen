@@ -257,19 +257,28 @@ func (m *Manager) detectGPUs(ctx context.Context) ([]GPUInfo, error) {
 		return nil, fmt.Errorf("nvidia-smi not found: %w", err)
 	}
 
-	// Add timeout to prevent hanging
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// Add shorter timeout to prevent hanging (reduced from 5s to 2s)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	// Query GPU information
+	// Query GPU information including versions in one go to be faster
 	cmd := exec.CommandContext(ctx, "nvidia-smi",
-		"--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,power.draw,utilization.gpu",
+		"--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,power.draw,utilization.gpu,driver_version,cuda_version",
 		"--format=csv,noheader,nounits",
 	)
 
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("nvidia-smi query failed: %w", err)
+		// Fallback to minimal query if extended one fails
+		logger.Debug("Extended nvidia-smi query failed, trying minimal", zap.Error(err))
+		cmd = exec.CommandContext(ctx, "nvidia-smi",
+			"--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,power.draw,utilization.gpu",
+			"--format=csv,noheader,nounits",
+		)
+		output, err = cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("nvidia-smi query failed: %w", err)
+		}
 	}
 
 	var gpus []GPUInfo
@@ -295,41 +304,13 @@ func (m *Manager) detectGPUs(ctx context.Context) ([]GPUInfo, error) {
 		fmt.Sscanf(parts[6], "%d", &gpu.PowerUsage)
 		fmt.Sscanf(parts[7], "%d", &gpu.Utilization)
 
+		// Optional fields if extended query worked
+		if len(parts) >= 10 {
+			gpu.DriverVersion = strings.TrimSpace(parts[8])
+			gpu.CUDAVersion = strings.TrimSpace(parts[9])
+		}
+
 		gpus = append(gpus, gpu)
-	}
-
-	// Get driver and CUDA version with timeout
-	ctx2, cancel2 := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel2()
-
-	cmd = exec.CommandContext(ctx2, "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader,nounits")
-	output, err = cmd.Output()
-	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		if len(lines) > 0 {
-			for i := range gpus {
-				gpus[i].DriverVersion = strings.TrimSpace(lines[i%len(lines)])
-			}
-		}
-	} else {
-		logger.Warn("Failed to get driver version", zap.Error(err))
-	}
-
-	// Get CUDA version
-	ctx3, cancel3 := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel3()
-
-	cmd = exec.CommandContext(ctx3, "nvidia-smi", "--query-gpu=cuda_version", "--format=csv,noheader,nounits")
-	output, err = cmd.Output()
-	if err == nil {
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		if len(lines) > 0 {
-			for i := range gpus {
-				gpus[i].CUDAVersion = strings.TrimSpace(lines[i%len(lines)])
-			}
-		}
-	} else {
-		logger.Warn("Failed to get CUDA version", zap.Error(err))
 	}
 
 	return gpus, nil
