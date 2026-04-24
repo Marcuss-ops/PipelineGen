@@ -1,9 +1,11 @@
 package bootstrap
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/core/job"
 	"velox/go-master/internal/core/worker"
 	"velox/go-master/internal/queue"
@@ -32,10 +34,14 @@ func selectStorageBackend(cfg *config.Config) string {
 func buildRuntimeStorage(cfg *config.Config) (runtimeStorage, error) {
 	switch selectStorageBackend(cfg) {
 	case "postgres":
-		return pgstorage.NewStorage(strings.TrimSpace(os.Getenv("VELOX_DB_DSN")))
+		dsn := strings.TrimSpace(os.Getenv("VELOX_DB_DSN"))
+		if dsn == "" {
+			return nil, fmt.Errorf("VELOX_DB_DSN is required when VELOX_STORAGE_BACKEND=postgres")
+		}
+		return pgstorage.NewStorage(dsn)
 	case "json", "":
 		fallthrough
-		default:
+	default:
 		return jsondb.NewStorage(cfg.Storage.DataDir)
 	}
 }
@@ -60,13 +66,14 @@ func selectQueueBackend() queue.Backend {
 	return queue.BackendNoop
 }
 
-func buildQueueBackend(s runtimeStorage) queue.Queue {
+func buildQueueBackend(log *zap.Logger, s runtimeStorage) queue.Queue {
 	backend := selectQueueBackend()
-	
+
 	if backend == queue.BackendPostgres {
 		if pg, ok := s.(*pgstorage.Storage); ok {
 			return queue.NewPostgresQueue(pg.GetDB())
 		}
+		log.Warn("Postgres queue backend requested but runtime storage is not Postgres; falling back to noop")
 	}
 
 	// Real transports will replace this switch incrementally.

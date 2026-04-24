@@ -25,6 +25,7 @@ func main() {
 	log.Info("Starting VeloxEditing Go Master",
 		zap.String("version", "1.0.0"),
 		zap.Int("port", cfg.Server.Port),
+		zap.String("data_dir", cfg.Storage.DataDir),
 	)
 
 	deps, err := bootstrap.WireServices(cfg, log)

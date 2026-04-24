@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -35,11 +36,11 @@ type Monitor struct {
 	driveClient     driveClientAPI
 	clipRunStore    *ClipRunStore
 	downloadClipFn  func(ctx context.Context, videoID string, startSec, duration int, outputFile string) error
-	folderCache     sync.Map                  // category/protagonist -> folder ID (thread-safe)
+	folderCache     sync.Map                        // category/protagonist -> folder ID (thread-safe)
 	processedVideos map[string]*ProcessedVideoEntry // videoID -> entry
 	processedFile   string                          // path to processed videos JSON file
 	ollamaURL       string                          // Ollama URL for AI classification
-	filterEngine    *FilterEngine                  // shared filter engine
+	filterEngine    *FilterEngine                   // shared filter engine
 }
 
 func (m *Monitor) clipRootID() string {
@@ -87,7 +88,7 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 		clipRunStore:    nil,
 		downloadClipFn:  nil,
 		processedVideos: make(map[string]*ProcessedVideoEntry),
-		processedFile:   "data/channel_monitor_processed.json",
+		processedFile:   defaultChannelMonitorPath("channel_monitor_processed.json"),
 		ollamaURL:       ollamaURL,
 		filterEngine:    NewFilterEngine(),
 	}
@@ -96,7 +97,7 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 		clipRunDBPath = os.Getenv("VELOX_CHANNELMONITOR_CLIP_RUN_DB")
 	}
 	if clipRunDBPath == "" {
-		clipRunDBPath = "data/channel_monitor_clip_runs.sqlite"
+		clipRunDBPath = defaultChannelMonitorPath("channel_monitor_clip_runs.sqlite")
 	}
 	if store, err := OpenClipRunStore(clipRunDBPath); err == nil {
 		m.clipRunStore = store
@@ -112,6 +113,13 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 	m.scanExistingFolders()
 
 	return m
+}
+
+func defaultChannelMonitorPath(filename string) string {
+	if dataDir := strings.TrimSpace(os.Getenv("VELOX_DATA_DIR")); dataDir != "" {
+		return filepath.Join(dataDir, filename)
+	}
+	return filepath.Join("data", filename)
 }
 
 // Start runs the monitor in a background goroutine until context is cancelled.
