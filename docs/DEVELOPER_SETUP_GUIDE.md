@@ -83,7 +83,7 @@ ollama run gemma3:4b
 Il sistema può funzionare in modalità **JSON** (per sviluppo veloce) o **Postgres** (per produzione/test robusti).
 
 ### Modalità Sviluppo (JSON)
-Default se non configurato diversamente. I dati vengono salvati in `data/*.json`.
+Default se non configurato diversamente. Imposta `VELOX_DATA_DIR` per usare una sola directory dati in tutto il sistema; i file JSON vengono salvati lì.
 
 ### Modalità Produzione (Postgres)
 Imposta le seguenti variabili nel tuo terminale o nel file `.env`:
@@ -99,6 +99,7 @@ export VELOX_QUEUE_BACKEND="postgres"
 | `OLLAMA_ADDR` | URL del server Ollama (default: `http://localhost:11434`) |
 | `VELOX_PORT` | Porta del Master Go (default: `8080`) |
 | `VELOX_DATA_DIR` | Directory per i file temporanei e cache (default: `./data`) |
+| `VELOX_LOG_FORCE_SYNC` | Forza flush del logger dopo ogni write in sviluppo |
 
 ---
 

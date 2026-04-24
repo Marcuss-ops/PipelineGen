@@ -34,7 +34,7 @@ src/go-master/
 │   ├── config/           # Tag-driven configuration
 │   ├── logger/           # Structured logging (Zap)
 │   └── models/           # Shared data models
-├── data/                 # JSON/SQLite database files (runtime)
+├── data/                 # JSON/SQLite database files (runtime, configurable via VELOX_DATA_DIR)
 ├── go.mod
 ├── go.sum
 └── Makefile
@@ -68,8 +68,10 @@ Configuration is **tag-driven** via environment variables or `config.yaml`.
 | `VELOX_PORT` | Server port (default: 8080) |
 | `VELOX_STORAGE_BACKEND` | `json` or `postgres` |
 | `VELOX_DB_DSN` | Postgres connection string |
+| `VELOX_DATA_DIR` | Runtime data directory for JSON/SQLite state |
 | `OLLAMA_ADDR` | Ollama server URL |
 | `VELOX_ADMIN_TOKEN` | Admin API token |
+| `VELOX_LOG_FORCE_SYNC` | Force log flush after each write in dev |
 
 ---
 

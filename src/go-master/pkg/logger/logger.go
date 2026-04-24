@@ -2,9 +2,11 @@
 package logger
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -24,7 +26,11 @@ func Init(level string, format string) {
 	defer mu.Unlock()
 
 	lvl := parseLevel(level)
-	instance = New(WithLevel(lvl), WithEncoding(format))
+	instance = New(
+		WithLevel(lvl),
+		WithEncoding(format),
+		WithForceSync(parseBoolEnv(os.Getenv("VELOX_LOG_FORCE_SYNC"))),
+	)
 }
 
 // parseLevel converts a string log level to zapcore.Level
@@ -62,9 +68,10 @@ func Get() *zap.Logger {
 // New creates a new logger with custom options
 func New(opts ...Option) *zap.Logger {
 	cfg := &config{
-		level:    zapcore.InfoLevel,
-		encoding: "json",
-		output:   os.Stdout,
+		level:     zapcore.InfoLevel,
+		encoding:  "json",
+		output:    os.Stdout,
+		forceSync: false,
 	}
 
 	for _, opt := range opts {
@@ -95,9 +102,14 @@ func New(opts ...Option) *zap.Logger {
 		encoder = zapcore.NewJSONEncoder(ec)
 	}
 
+	ws := zapcore.AddSync(cfg.output)
+	if cfg.forceSync {
+		ws = forceSyncWriteSyncer{WriteSyncer: ws}
+	}
+
 	core := zapcore.NewCore(
 		encoder,
-		zapcore.AddSync(cfg.output),
+		ws,
 		cfg.level,
 	)
 
@@ -106,9 +118,10 @@ func New(opts ...Option) *zap.Logger {
 }
 
 type config struct {
-	level    zapcore.Level
-	encoding string
-	output   *os.File
+	level     zapcore.Level
+	encoding  string
+	output    *os.File
+	forceSync bool
 }
 
 // Option is a functional option for logger configuration
@@ -135,12 +148,47 @@ func WithOutput(output *os.File) Option {
 	}
 }
 
+// WithForceSync makes the logger flush after every write when the sink supports it.
+func WithForceSync(force bool) Option {
+	return func(c *config) {
+		c.forceSync = force
+	}
+}
+
 // Sync flushes any buffered log entries
 func Sync() error {
 	if instance != nil {
 		return instance.Sync()
 	}
 	return nil
+}
+
+type forceSyncWriteSyncer struct {
+	zapcore.WriteSyncer
+}
+
+func (s forceSyncWriteSyncer) Write(p []byte) (int, error) {
+	n, err := s.WriteSyncer.Write(p)
+	if err != nil {
+		return n, err
+	}
+	if syncErr := s.WriteSyncer.Sync(); syncErr != nil && !ignoreSyncError(syncErr) {
+		return n, syncErr
+	}
+	return n, nil
+}
+
+func ignoreSyncError(err error) bool {
+	return errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTTY)
+}
+
+func parseBoolEnv(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // Named returns a named logger
