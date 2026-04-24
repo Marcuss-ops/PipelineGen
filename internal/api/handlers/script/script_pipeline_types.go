@@ -27,6 +27,56 @@ type EntityImage struct {
 	ImageURL string `json:"image_url"`
 }
 
+// ImageAssociation represents a chapter-linked image selected for a script.
+type ImageAssociation struct {
+	Phrase       string           `json:"phrase"`
+	Entity       string           `json:"entity"`
+	Query        string           `json:"query,omitempty"`
+	ImageURL     string           `json:"image_url"`
+	Source       string           `json:"source,omitempty"`
+	Title        string           `json:"title,omitempty"`
+	PageURL      string           `json:"page_url,omitempty"`
+	StartTime    int              `json:"start_time,omitempty"`
+	EndTime      int              `json:"end_time,omitempty"`
+	ChapterIndex int              `json:"chapter_index,omitempty"`
+	Score        float64          `json:"score,omitempty"`
+	Cached       bool             `json:"cached,omitempty"`
+	LocalPath    string           `json:"local_path,omitempty"`
+	MimeType     string           `json:"mime_type,omitempty"`
+	FileSize     int64            `json:"file_size,omitempty"`
+	AssetHash    string           `json:"asset_hash,omitempty"`
+	DownloadedAt string           `json:"downloaded_at,omitempty"`
+	Resolution   *AssetResolution `json:"resolution,omitempty"`
+}
+
+// MixedSegment represents the chosen source for a chapter in mixed mode.
+type MixedSegment struct {
+	ChapterIndex int               `json:"chapter_index"`
+	StartTime    int               `json:"start_time"`
+	EndTime      int               `json:"end_time"`
+	Phrase       string            `json:"phrase,omitempty"`
+	SourceKind   string            `json:"source_kind"`
+	Reason       string            `json:"reason,omitempty"`
+	Confidence   float64           `json:"confidence,omitempty"`
+	Clip         *ClipAssociation  `json:"clip,omitempty"`
+	Image        *ImageAssociation `json:"image,omitempty"`
+	Resolution   *AssetResolution  `json:"resolution,omitempty"`
+}
+
+// ClipAssociation is a minimal clip reference for mixed segments.
+type ClipAssociation struct {
+	Title  string  `json:"title,omitempty"`
+	URL    string  `json:"url,omitempty"`
+	Folder string  `json:"folder,omitempty"`
+	Score  float64 `json:"score,omitempty"`
+}
+
+// AssetResolution describes how an asset was selected.
+type AssetResolution struct {
+	SelectedFrom   string   `json:"selected_from,omitempty"`
+	SelectionOrder []string `json:"selection_order,omitempty"`
+}
+
 // --- STOCK TYPES ---
 
 type StockClip struct {
@@ -139,6 +189,8 @@ type CreateDocumentRequest struct {
 	ParoleImportanti  []string           `json:"parole_importanti"`
 	EntitaConImmagine []EntityImage      `json:"entita_con_immagine"`
 	ArtlistAssocs     []ArtlistAssoc     `json:"artlist_assocs"`
+	ImageAssociations []ImageAssociation `json:"image_associations,omitempty"`
+	MixedSegments     []MixedSegment     `json:"mixed_segments,omitempty"`
 	PreviewOnly       bool               `json:"preview_only"`
 	SkipEnrichment    bool               `json:"skip_enrichment,omitempty"`
 	MinimalDoc        bool               `json:"minimal_doc,omitempty"`
