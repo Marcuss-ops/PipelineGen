@@ -8,34 +8,21 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/service/scriptdocs"
 )
 
 type GenerateTextRequest struct {
-	Topic    string `json:"topic" binding:"required"`
-	Duration int    `json:"duration"`
-	Language string `json:"language"`
-	Tone     string `json:"tone"`
-	Template string `json:"template"`
-	Model    string `json:"model"`
+	Topic      string `json:"topic" binding:"required"`
+	SourceText string `json:"source_text"`
+	Duration   int    `json:"duration"`
+	Language   string `json:"language"`
+	Tone       string `json:"tone"`
+	Template   string `json:"template"`
+	Model      string `json:"model"`
 }
 
-type GenerateTextResponse struct {
-	Ok          bool   `json:"ok"`
-	Script      string `json:"script"`
-	WordCount   int    `json:"word_count"`
-	EstDuration int    `json:"est_duration"`
-	Model       string `json:"model"`
-	Language    string `json:"language"`
-}
-
-func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
-	var req GenerateTextRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-
+func (h *ScriptPipelineHandler) generateScriptText(ctx context.Context, req GenerateTextRequest) (string, string, error) {
 	if req.Duration == 0 {
 		req.Duration = 60
 	}
@@ -52,33 +39,174 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		req.Model = "gemma3:4b"
 	}
 
+	normalizedLang := normalizeScriptLanguage(req.Language)
+	sourceText := strings.TrimSpace(req.SourceText)
+	if sourceText != "" {
+		result, err := h.generator.GenerateFromText(ctx, &ollama.TextGenerationRequest{
+			SourceText: sourceText,
+			Title:      req.Topic,
+			Language:   normalizedLang,
+			Duration:   req.Duration,
+			Tone:       req.Tone,
+			Model:      req.Model,
+		})
+		if err != nil {
+			return "", normalizedLang, err
+		}
+		return result.Script, normalizedLang, nil
+	}
+
 	svc := scriptdocs.NewScriptDocService(
 		h.generator,
 		nil,
 		nil,
-		h.stockDB,
 		nil,
 		nil,
-		h.artlistSrc,
-		h.artlistDB,
+		nil,
+		nil,
+		nil,
 	)
+	script, err := svc.GenerateScriptText(ctx, req.Topic, req.Duration, normalizedLang, req.Template, req.Model)
+	if err != nil {
+		return "", normalizedLang, err
+	}
+	return script, normalizedLang, nil
+}
 
-	script, err := svc.GenerateScriptText(c.Request.Context(), req.Topic, req.Duration, req.Language, req.Template, req.Model)
+func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
+	var req GenerateTextRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	script, normalizedLang, err := h.generateScriptText(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
 	wordCount := len(strings.Fields(script))
+	segments, _, err := h.buildSemanticSegments(c.Request.Context(), req.Topic, script, req.Duration, normalizedLang, 4)
+	if err != nil || len(segments) == 0 {
+		sentences := scriptdocs.ExtractSentences(script)
+		if len(sentences) > 0 {
+			avgDuration := 20
+			if req.Duration > 0 {
+				avgDuration = req.Duration / len(sentences)
+				if avgDuration <= 0 {
+					avgDuration = 20
+				}
+			}
+			segments = make([]Segment, 0, len(sentences))
+			for i, sentence := range sentences {
+				segments = append(segments, Segment{
+					Index:     i,
+					Text:      sentence,
+					StartTime: i * avgDuration,
+					EndTime:   (i + 1) * avgDuration,
+				})
+			}
+		}
+	}
+	segments = enrichSegments(segments)
+	frasi, nomi, parole, images := h.extractEntitiesForPipeline(segments)
+	stockAssocs, driveAssocs, artlistAssocs, topicFolderID := h.searchClipsForPipeline(c.Request.Context(), req.Topic, segments)
+	fullContent := h.BuildDocumentContent(
+		req.Topic,
+		req.Topic,
+		req.Duration,
+		req.Language,
+		script,
+		segments,
+		artlistAssocs,
+		topicFolderID,
+		req.Topic,
+		driveAssocs,
+		frasi,
+		nomi,
+		parole,
+		images,
+		nil,
+	)
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":           true,
-		"script":       script,
-		"word_count":   wordCount,
-		"est_duration": int(float64(wordCount) * 60 / 140),
-		"model":        req.Model,
-		"language":     req.Language,
+		"ok":             true,
+		"title":          req.Topic,
+		"script":         script,
+		"full_content":   fullContent,
+		"word_count":     wordCount,
+		"est_duration":   int(float64(wordCount) * 60 / 140),
+		"model":          req.Model,
+		"language":       normalizedLang,
+		"stock_assocs":   stockAssocs,
+		"drive_assocs":   driveAssocs,
+		"artlist_assocs": artlistAssocs,
 	})
+}
+
+// GenerateDocument generates the script and publishes a Google Doc in one request.
+func (h *ScriptPipelineHandler) GenerateDocument(c *gin.Context) {
+	var req GenerateTextRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	script, normalizedLang, err := h.generateScriptText(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	docReq := CreateDocumentRequest{
+		Title:      req.Topic,
+		Topic:      req.Topic,
+		Duration:   req.Duration,
+		Template:   req.Template,
+		Script:     script,
+		SourceText: req.SourceText,
+		Language:   normalizedLang,
+	}
+
+	docResp, err := h.createDocumentFromRequest(c.Request.Context(), &docReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	wordCount := len(strings.Fields(script))
+	c.JSON(http.StatusOK, GenerateDocResponse{
+		Ok:          true,
+		DocID:       docResp.DocID,
+		DocURL:      docResp.DocURL,
+		Script:      script,
+		WordCount:   wordCount,
+		EstDuration: int(float64(wordCount) * 60 / 140),
+		Model:       req.Model,
+		Language:    normalizedLang,
+	})
+}
+
+func normalizeScriptLanguage(raw string) string {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	switch {
+	case strings.HasPrefix(raw, "it"):
+		return "it"
+	case strings.HasPrefix(raw, "en"):
+		return "en"
+	case strings.HasPrefix(raw, "es"):
+		return "es"
+	case strings.HasPrefix(raw, "fr"):
+		return "fr"
+	case strings.HasPrefix(raw, "de"):
+		return "de"
+	case strings.HasPrefix(raw, "pt"):
+		return "pt"
+	case strings.HasPrefix(raw, "ro"):
+		return "ro"
+	default:
+		return "it"
+	}
 }
 
 type TranslateRequest struct {
