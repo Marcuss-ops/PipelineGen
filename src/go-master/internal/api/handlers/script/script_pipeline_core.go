@@ -19,30 +19,37 @@ func (h *ScriptPipelineHandler) createDocumentFromRequest(ctx context.Context, r
 		topic = req.Title
 	}
 
-	h.enrichCreateDocumentRequest(ctx, req, topic)
+	if !req.SkipEnrichment {
+		h.enrichCreateDocumentRequest(ctx, req, topic)
+	}
 
 	stockFolderID := normalizeDriveFolderID(req.StockFolderURL)
 	scriptBody := req.Script
 	if strings.TrimSpace(scriptBody) == "" {
 		scriptBody = req.SourceText
 	}
-	content := h.BuildDocumentContent(
-		req.Title,
-		topic,
-		req.Duration,
-		req.Language,
-		scriptBody,
-		req.Segments,
-		req.ArtlistAssocs,
-		stockFolderID,
-		req.StockFolder,
-		req.DriveAssocs,
-		req.FrasiImportanti,
-		req.NomiSpeciali,
-		req.ParoleImportanti,
-		req.EntitaConImmagine,
-		req.Translations,
-	)
+	var content string
+	if req.MinimalDoc {
+		content = buildMinimalDocumentContent(req.Title, topic, req.Duration, req.Language, scriptBody)
+	} else {
+		content = h.BuildDocumentContent(
+			req.Title,
+			topic,
+			req.Duration,
+			req.Language,
+			scriptBody,
+			req.Segments,
+			req.ArtlistAssocs,
+			stockFolderID,
+			req.StockFolder,
+			req.DriveAssocs,
+			req.FrasiImportanti,
+			req.NomiSpeciali,
+			req.ParoleImportanti,
+			req.EntitaConImmagine,
+			req.Translations,
+		)
+	}
 
 	if req.PreviewOnly {
 		previewPath, err := savePreviewDocument(req.Title, content)
@@ -126,6 +133,19 @@ func (h *ScriptPipelineHandler) enrichCreateDocumentRequest(ctx context.Context,
 			if strings.TrimSpace(req.StockFolder) == "" {
 				req.StockFolder = folderName
 			}
+		} else if compactTopic := compactSearchTopic(topic); compactTopic != "" {
+			if folderID, folderName := h.resolveStockFolderForDocument(compactTopic); folderID != "" {
+				req.StockFolderURL = folderID
+				if strings.TrimSpace(req.StockFolder) == "" {
+					req.StockFolder = folderName
+				}
+			}
+		}
+	}
+
+	if strings.TrimSpace(req.StockFolder) == "" && strings.TrimSpace(h.stockRootFolder) != "" {
+		if rootName := h.resolveDriveFolderName(h.stockRootFolder); rootName != "" {
+			req.StockFolder = rootName
 		}
 	}
 
@@ -149,10 +169,10 @@ func (h *ScriptPipelineHandler) extractEntitiesForPipeline(segments []Segment) (
 	for _, seg := range segments {
 		allSentences = append(allSentences, seg.Text)
 		if len(seg.Text) > 20 {
-			frasi = append(frasi, seg.Text)
+			frasi = append(frasi, shortPhrase(seg.Text, 12))
 		}
-		foundNomi := scriptdocs.ExtractProperNouns([]string{seg.Text})
-		foundParole := scriptdocs.ExtractKeywords(seg.Text)
+		foundNomi := uniqueAndLimit(scriptdocs.ExtractProperNouns([]string{seg.Text}), 5)
+		foundParole := uniqueAndLimit(scriptdocs.ExtractKeywords(seg.Text), 5)
 
 		for _, n := range foundNomi {
 			lower := strings.ToLower(n)
@@ -177,19 +197,23 @@ func (h *ScriptPipelineHandler) extractEntitiesForPipeline(segments []Segment) (
 		}
 	}
 
-	const limit = 6
-	frasi = uniqueAndLimit(frasi, limit)
-	nomi = uniqueAndLimit(nomi, limit)
-	parole = uniqueAndLimit(parole, limit)
-	images = uniqueEntitiesWithImage(images, limit)
+	frasi = uniqueAndLimit(frasi, 5)
+	nomi = uniqueAndLimit(nomi, 15)
+	parole = uniqueAndLimit(parole, 15)
+	images = uniqueEntitiesWithImage(images, 5)
 	return
 }
 
 // searchClipsForPipeline performs clip searches across multiple sources.
 func (h *ScriptPipelineHandler) searchClipsForPipeline(ctx context.Context, topic string, segments []Segment) (stock []StockAssoc, drive []DriveFolderAssoc, artlist []ArtlistAssoc, topicFolderID string) {
+	searchTopic := compactSearchTopic(topic)
 	if h.stockDB != nil && topic != "" {
 		if folder, _ := h.stockDB.FindFolderByTopicInSection(topic, "stock"); folder != nil {
 			topicFolderID = folder.DriveID
+		} else if searchTopic != "" {
+			if folder, _ := h.stockDB.FindFolderByTopicInSection(searchTopic, "stock"); folder != nil {
+				topicFolderID = folder.DriveID
+			}
 		}
 	}
 
@@ -198,6 +222,10 @@ func (h *ScriptPipelineHandler) searchClipsForPipeline(ctx context.Context, topi
 
 	for _, seg := range segments {
 		initial, final := extractPhrases(seg.Text)
+		displayPhrase := shortPhrase(seg.Text, 10)
+		if displayPhrase == "" {
+			displayPhrase = initial
+		}
 		specificTerms := extractSpecificTerms(seg.Text)
 
 		// A. STOCK DRIVE
@@ -218,15 +246,18 @@ func (h *ScriptPipelineHandler) searchClipsForPipeline(ctx context.Context, topi
 			}
 		}
 		if len(segmentStockClips) > 0 {
-			stock = append(stock, StockAssoc{Phrase: seg.Text, InitialPhrase: initial, FinalPhrase: final, Clips: segmentStockClips})
+			stock = append(stock, StockAssoc{Phrase: displayPhrase, InitialPhrase: initial, FinalPhrase: final, Clips: segmentStockClips})
 		}
 
 		// B. DRIVE CLIPS (Folders)
 		if h.clipIndexer != nil {
 			folders := h.clipIndexer.SearchFolders(topic)
+			if len(folders) == 0 && searchTopic != "" {
+				folders = h.clipIndexer.SearchFolders(searchTopic)
+			}
 			if len(folders) > 0 && !usedFolderIDs[folders[0].ID] {
 				drive = append(drive, DriveFolderAssoc{
-					Phrase: seg.Text, FolderName: folders[0].Name, FolderURL: "https://drive.google.com/drive/folders/" + folders[0].ID,
+					Phrase: shortPhrase(seg.Text, 10), FolderName: folders[0].Name, FolderURL: "https://drive.google.com/drive/folders/" + folders[0].ID,
 				})
 				usedFolderIDs[folders[0].ID] = true
 			}
@@ -247,7 +278,7 @@ func (h *ScriptPipelineHandler) searchClipsForPipeline(ctx context.Context, topi
 			}
 		}
 		if len(segmentArtlistClips) > 0 {
-			artlist = append(artlist, ArtlistAssoc{Phrase: seg.Text, Clips: segmentArtlistClips})
+			artlist = append(artlist, ArtlistAssoc{Phrase: displayPhrase, Clips: segmentArtlistClips})
 		}
 	}
 	return
