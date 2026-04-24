@@ -5,25 +5,18 @@ import (
 	"context"
 	"fmt"
 
-	"velox/go-master/internal/youtube"
-	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
+	"velox/go-master/pkg/logger"
 )
 
 // Generator implementa ScriptGenerator
 type Generator struct {
-	client       *Client
-	youtubeClient youtube.Client
+	client *Client
 }
 
 // NewGenerator crea un nuovo generatore di script
 func NewGenerator(client *Client) *Generator {
 	return &Generator{client: client}
-}
-
-// SetYouTubeClient sets the YouTube client for transcript download
-func (g *Generator) SetYouTubeClient(ytClient youtube.Client) {
-	g.youtubeClient = ytClient
 }
 
 // GetClient restituisce il client Ollama sottostante
@@ -127,89 +120,6 @@ func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerat
 
 	// Inizia lo streaming dal client (GenerateStream usa internamente GenerateWithOptions)
 	return g.client.GenerateStreamWithOptions(ctx, req.Model, prompt, options)
-}
-
-// GenerateFromYouTube genera uno script da URL YouTube
-func (g *Generator) GenerateFromYouTube(ctx context.Context, req *YouTubeGenerationRequest) (*GenerationResult, error) {
-	if g.youtubeClient == nil {
-		return nil, fmt.Errorf("YouTube client not configured")
-	}
-
-	// Applica defaults
-	if req.Language == "" {
-		req.Language = "italian"
-	}
-	if req.Duration == 0 {
-		req.Duration = 60
-	}
-	if req.Model == "" {
-		req.Model = "gemma3:12b"
-	}
-
-	// Download transcript
-	transcript, err := g.youtubeClient.GetTranscript(ctx, req.YouTubeURL, req.Language)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download YouTube transcript: %w", err)
-	}
-
-	logger.Info("YouTube transcript downloaded",
-		zap.String("url", req.YouTubeURL),
-		zap.Int("transcript_len", len(transcript)),
-	)
-
-	return g.GenerateFromYouTubeTranscript(ctx, transcript, req)
-}
-
-// GenerateFromYouTubeTranscript genera uno script da trascrizione YouTube
-func (g *Generator) GenerateFromYouTubeTranscript(ctx context.Context, transcript string, req *YouTubeGenerationRequest) (*GenerationResult, error) {
-	// Applica defaults
-	if req.Language == "" {
-		req.Language = "italian"
-	}
-	if req.Duration == 0 {
-		req.Duration = 60
-	}
-	if req.Model == "" {
-		req.Model = "gemma3:12b"
-	}
-
-	// Costruisci messaggi chat
-	targetWords := (req.Duration * 150) / 60
-	messages := []Message{
-		{Role: "system", Content: "Sei un documentarista esperto. Riscrivi trascrizioni in script avvincenti."},
-		{Role: "user", Content: fmt.Sprintf("Scrivi uno script di almeno %d parole su %s basandoti su questa trascrizione: %s", targetWords, req.Title, transcript)},
-	}
-
-	// Opzioni
-	options := req.Options
-	if options == nil {
-		options = make(map[string]interface{})
-	}
-	if _, ok := options["temperature"]; !ok {
-		options["temperature"] = 0.7
-	}
-	if _, ok := options["num_predict"]; !ok {
-		options["num_predict"] = 4096
-	}
-
-	// Genera
-	response, err := g.client.Chat(ctx, messages, options)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate script from transcript: %w", err)
-	}
-
-	// Pulisci e calcola statistiche
-	script := cleanScript(response)
-	wordCount := countWords(script)
-	estDuration := estimateDuration(wordCount)
-
-	return &GenerationResult{
-		Script:      script,
-		WordCount:   wordCount,
-		EstDuration: estDuration,
-		Model:       req.Model,
-		Prompt:      fmt.Sprintf("%v", messages),
-	}, nil
 }
 
 // Regenerate rigenera uno script esistente

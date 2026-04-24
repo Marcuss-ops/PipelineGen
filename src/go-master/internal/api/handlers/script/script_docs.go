@@ -1,273 +1,181 @@
 package script
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
-
-	"velox/go-master/internal/service/scriptdocs"
-	"velox/go-master/pkg/logger"
-
 	"go.uber.org/zap"
+	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/upload/drive"
 )
 
-// ScriptDocsHandler handles script-to-Google-Docs requests
+// ScriptDocsHandler generates a script with Ollama and optionally uploads it to Google Docs.
 type ScriptDocsHandler struct {
-	service *scriptdocs.ScriptDocService
+	generator *ollama.Generator
+	docClient *drive.DocClient
+	dataDir   string
 }
 
-// NewScriptDocsHandler creates a new handler
-func NewScriptDocsHandler(svc *scriptdocs.ScriptDocService) *ScriptDocsHandler {
-	return &ScriptDocsHandler{service: svc}
+type ScriptDocsRequest struct {
+	Topic       string `json:"topic" binding:"required"`
+	Duration    int    `json:"duration"`
+	Language    string `json:"language"`
+	Template    string `json:"template"`
+	PreviewOnly bool   `json:"preview_only"`
 }
 
-// RegisterRoutes registers the handler routes
+// NewScriptDocsHandler creates a minimal script-docs handler.
+func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, dataDir string) *ScriptDocsHandler {
+	return &ScriptDocsHandler{
+		generator: gen,
+		docClient: docClient,
+		dataDir:   dataDir,
+	}
+}
+
+// RegisterRoutes registers the minimal script-docs routes.
 func (h *ScriptDocsHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.GET("/modes", h.Modes)
 	r.POST("/generate", h.Generate)
-	r.POST("/generate/stock", h.GenerateStock)
-	r.POST("/generate/preview", h.GeneratePreview)
-	r.POST("/generate/fullartlist", h.GenerateFullArtlist)
-	r.POST("/generate/imagesfull", h.GenerateImagesFull)
-	r.POST("/generate/imagesonly", h.GenerateImagesOnly)
-	r.POST("/generate/mixed", h.GenerateMixed)
-	r.POST("/generate/jitstock", h.GenerateJITStock)
+	r.POST("/preview", h.GeneratePreview)
+	r.GET("/modes", h.Modes)
 }
 
-// Generate generates a script and creates a Google Doc with entity extraction and clip associations
-// @Summary Generate script and create Google Doc
-// @Description Generates a script via Ollama, extracts entities, associates clips (Stock + Artlist), and creates a Google Doc
-// @Tags script-docs
-// @Accept json
-// @Produce json
-// @Param request body scriptdocs.ScriptDocRequest true "Generate script doc request"
-// @Success 200 {object} map[string]interface{}
-// @Router /script-docs/generate [post]
-func (h *ScriptDocsHandler) Generate(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeDefault, false, scriptdocs.AssociationModeDefault)
-}
-
-// GenerateStock generates a standard stock-first script doc.
-func (h *ScriptDocsHandler) GenerateStock(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeDefault, false, scriptdocs.AssociationModeDefault)
-}
-
-// GenerateFullArtlist generates docs using Artlist-only associations.
-// Forces association_mode=fullartlist and defaults language to English.
-func (h *ScriptDocsHandler) GenerateFullArtlist(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeFullArtlist, true, scriptdocs.AssociationModeFullArtlist)
-}
-
-// GenerateImagesFull generates image-rich docs while preserving clip and Artlist associations.
-// Forces association_mode=images_full and defaults language to English.
-func (h *ScriptDocsHandler) GenerateImagesFull(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeImagesFull, true, scriptdocs.AssociationModeImagesFull)
-}
-
-// GenerateImagesOnly generates docs using image-only associations without clip embedding.
-func (h *ScriptDocsHandler) GenerateImagesOnly(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeImagesOnly, true, scriptdocs.AssociationModeImagesOnly)
-}
-
-// GenerateMixed generates docs that can combine clips and images.
-func (h *ScriptDocsHandler) GenerateMixed(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeMixed, false, scriptdocs.AssociationModeMixed)
-}
-
-// GenerateJITStock generates docs that allow just-in-time stock creation.
-func (h *ScriptDocsHandler) GenerateJITStock(c *gin.Context) {
-	h.generateScriptDocWithMode(c, scriptdocs.AssociationModeJITStock, false, scriptdocs.AssociationModeJITStock)
-}
-
-// Modes returns the supported script-doc generation modes.
-// @Summary List script-doc generation modes
-// @Description Returns the supported modes and their intended use.
-// @Tags script-docs
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /script-docs/modes [get]
 func (h *ScriptDocsHandler) Modes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"ok": true,
-		"modes": []gin.H{
-			{
-				"mode":         scriptdocs.AssociationModeDefault,
-				"label":        "stock",
-				"description":  "Stock-first video generation with standard clip matching and Artlist fallback.",
-				"fallbacks":    []string{"dynamic-cache", "stockdb", "artlist", "llm-expansion", "dynamic-search"},
-				"allows_jit":   false,
-				"default_lang": []string{"it"},
-			},
-			{
-				"mode":         scriptdocs.AssociationModeFullArtlist,
-				"label":        "full artlist",
-				"description":  "Artlist-only generation with timeline-oriented output.",
-				"fallbacks":    []string{"artlist"},
-				"allows_jit":   false,
-				"default_lang": []string{"en"},
-			},
-			{
-				"mode":         scriptdocs.AssociationModeImagesFull,
-				"label":        "images full",
-				"description":  "Image-rich generation that keeps stock and Artlist clips, then adds chapter images.",
-				"fallbacks":    []string{"dynamic-cache", "stockdb", "artlist", "imagesdb-cache", "entityimages", "download"},
-				"allows_jit":   false,
-				"default_lang": []string{"en"},
-			},
-			{
-				"mode":         scriptdocs.AssociationModeImagesOnly,
-				"label":        "images only",
-				"description":  "Image-only generation for visual docs without clip embedding.",
-				"fallbacks":    []string{"imagesdb-cache", "entityimages", "download"},
-				"allows_jit":   false,
-				"default_lang": []string{"en"},
-			},
-			{
-				"mode":         scriptdocs.AssociationModeMixed,
-				"label":        "mixed",
-				"description":  "Mixed generation that can place either clips or images per chapter.",
-				"fallbacks":    []string{"clip", "image"},
-				"allows_jit":   false,
-				"default_lang": []string{"it"},
-			},
-			{
-				"mode":         scriptdocs.AssociationModeJITStock,
-				"label":        "jit stock",
-				"description":  "Just-in-time stock generation that can search YouTube, approve with Gemma, download, process, and upload to Drive.",
-				"fallbacks":    []string{"stockdb", "artlist", "youtube", "gemma", "download", "drive"},
-				"allows_jit":   true,
-				"default_lang": []string{"it"},
-			},
+		"modes": []string{
+			"default",
+			"preview",
 		},
 	})
 }
 
-// GeneratePreview creates a local-only preview document without uploading to Google Docs.
+func (h *ScriptDocsHandler) Generate(c *gin.Context) {
+	h.generate(c, false)
+}
+
 func (h *ScriptDocsHandler) GeneratePreview(c *gin.Context) {
-	var req scriptdocs.ScriptDocRequest
+	h.generate(c, true)
+}
+
+func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
+	if h.generator == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "script generator not initialized"})
+		return
+	}
+
+	var req ScriptDocsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
-	req.PreviewOnly = true
 
-	result, err := h.service.GenerateScriptDoc(c.Request.Context(), req)
+	if req.Duration <= 0 {
+		req.Duration = 60
+	}
+	if strings.TrimSpace(req.Language) == "" {
+		req.Language = "it"
+	}
+
+	prompt := buildPrompt(req.Topic, req.Duration, req.Language, req.Template)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+	defer cancel()
+
+	text, err := h.generator.Generate(ctx, prompt)
 	if err != nil {
-		logger.Error("Script doc preview generation failed", zap.Error(err))
-		sanitizedErr := sanitizeErrorMessage(err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": sanitizedErr})
+		zap.L().Error("script generation failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	title := fmt.Sprintf("Script: %s", req.Topic)
+	previewOnly := forcePreview || req.PreviewOnly || h.docClient == nil
+
+	if previewOnly {
+		path, err := h.savePreview(title, text)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"ok":           true,
+			"preview_only": true,
+			"title":        title,
+			"full_content": text,
+			"preview_path": path,
+		})
+		return
+	}
+
+	doc, err := h.docClient.CreateDoc(ctx, title, text, "")
+	if err != nil {
+		zap.L().Error("doc creation failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"ok":               true,
-		"preview_only":     true,
-		"doc_id":           result.DocID,
-		"doc_url":          result.DocURL,
-		"title":            result.Title,
-		"stock_folder":     result.StockFolder,
-		"stock_folder_url": result.StockFolderURL,
-		"image_plan":       result.ImagePlan,
-		"image_plan_path":  result.ImagePlanPath,
-		"audit_path":       result.AuditPath,
-		"preview_path":     result.PreviewPath,
+		"ok":           true,
+		"doc_id":       doc.ID,
+		"doc_url":      doc.URL,
+		"title":        title,
+		"full_content": text,
 	})
 }
 
-// sanitizeErrorMessage removes potentially sensitive details from error messages
-func sanitizeErrorMessage(errMsg string) string {
-	// Remove file paths
-	if idx := strings.Index(errMsg, "failed to read Artlist index"); idx != -1 {
-		return "Artlist index not found"
+func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
+	dir := h.dataDir
+	if strings.TrimSpace(dir) == "" {
+		dir = os.TempDir()
 	}
-	if idx := strings.Index(errMsg, "failed to create Google Doc"); idx != -1 {
-		return "Failed to create document in Google Docs"
+	safe := sanitizeFilename(title)
+	path := filepath.Join(dir, safe+".txt")
+	data := []byte(title + "\n\n" + content)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", err
 	}
-	if idx := strings.Index(errMsg, "script too short"); idx != -1 {
-		return "Generated script was too short. Please try a different topic."
-	}
-	// Generic fallback
-	if len(errMsg) > 200 {
-		return "An internal error occurred during script doc generation"
-	}
-	return errMsg
+	return path, nil
 }
 
-// countArtlistMatches counts how many associations are Artlist matches
-func countArtlistMatches(assocs []scriptdocs.ClipAssociation) int {
-	count := 0
-	for _, a := range assocs {
-		if a.Type == "ARTLIST" {
-			count++
+func buildPrompt(topic string, duration int, language, template string) string {
+	wordCount := duration * 3
+	style := "documentary"
+	switch strings.ToLower(strings.TrimSpace(template)) {
+	case "storytelling":
+		style = "storytelling"
+	case "top10":
+		style = "top 10"
+	case "biography":
+		style = "biography"
+	}
+
+	return fmt.Sprintf(
+		"Genera un testo %s su %s in lingua %s. Lunghezza circa %d parole. Scrivi solo il testo finale, senza introduzioni, titoli o note tecniche.",
+		style, topic, language, wordCount,
+	)
+}
+
+func sanitizeFilename(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		if r == ' ' || r == '-' || r == '_' {
+			b.WriteRune('_')
 		}
 	}
-	return count
-}
-
-// avgConfidence calculates average confidence score
-func avgConfidence(assocs []scriptdocs.ClipAssociation) float64 {
-	if len(assocs) == 0 {
-		return 0
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return "script_preview"
 	}
-	sum := 0.0
-	for _, a := range assocs {
-		sum += a.Confidence
-	}
-	return sum / float64(len(assocs))
-}
-
-func (h *ScriptDocsHandler) generateScriptDocWithMode(c *gin.Context, mode string, forceEnglish bool, responseMode string) {
-	var req scriptdocs.ScriptDocRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-	req.AssociationMode = mode
-	if forceEnglish && len(req.Languages) == 0 {
-		req.Languages = []string{"en"}
-	}
-
-	result, err := h.service.GenerateScriptDoc(c.Request.Context(), req)
-	if err != nil {
-		logger.Error("Script doc generation failed", zap.String("mode", mode), zap.Error(err))
-		sanitizedErr := sanitizeErrorMessage(err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": sanitizedErr})
-		return
-	}
-
-	c.JSON(http.StatusOK, buildScriptDocResponse(result, responseMode))
-}
-
-func buildScriptDocResponse(result *scriptdocs.ScriptDocResult, mode string) gin.H {
-	return gin.H{
-		"ok":               true,
-		"mode":             mode,
-		"doc_id":           result.DocID,
-		"doc_url":          result.DocURL,
-		"title":            result.Title,
-		"stock_folder":     result.StockFolder,
-		"stock_folder_url": result.StockFolderURL,
-		"image_plan":       result.ImagePlan,
-		"image_plan_path":  result.ImagePlanPath,
-		"audit_path":       result.AuditPath,
-		"preview_path":     result.PreviewPath,
-		"languages": func() []map[string]interface{} {
-			var out []map[string]interface{}
-			for _, lr := range result.Languages {
-				out = append(out, map[string]interface{}{
-					"language":            lr.Language,
-					"frasi_importanti":    len(lr.FrasiImportanti),
-					"nomi_speciali":       len(lr.NomiSpeciali),
-					"parole_importanti":   len(lr.ParoleImportant),
-					"entita_con_immagine": len(lr.EntitaConImmagine),
-					"associations":        len(lr.Associations),
-					"artlist_matches":     countArtlistMatches(lr.Associations),
-					"image_associations":  len(lr.ImageAssociations),
-					"avg_confidence":      avgConfidence(lr.Associations),
-				})
-			}
-			return out
-		}(),
-	}
+	return out
 }
