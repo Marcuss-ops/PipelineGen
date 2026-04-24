@@ -4,12 +4,13 @@ package drive
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/logger"
-	"go.uber.org/zap"
 )
 
 // DriveHandler handles Google Drive HTTP requests
@@ -75,9 +76,6 @@ func (h *DriveHandler) RegisterRoutes(rg *gin.RouterGroup) {
 		drive.POST("/create-folder-structure", h.CreateFolderStructure)
 		drive.POST("/create-doc", h.CreateDoc)
 		drive.POST("/append-doc", h.AppendDoc)
-		drive.POST("/upload-clip", h.UploadClip)
-		drive.POST("/upload-clip-simple", h.UploadClipSimple)
-		drive.POST("/download-and-upload-clip", h.DownloadAndUploadClip)
 	}
 }
 
@@ -90,6 +88,14 @@ func (h *DriveHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 		drive.GET("/folder-content", h.FolderContent)
 		drive.GET("/groups", h.GetGroups)
 	}
+}
+
+// GetGroups returns the predefined stock groups.
+func (h *DriveHandler) GetGroups(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"ok":     true,
+		"groups": drive.StockDriveGroups,
+	})
 }
 
 // getClient gets or initializes the Drive client
@@ -106,5 +112,3 @@ func (h *DriveHandler) getClient(c *gin.Context) (*drive.Client, error) {
 func (h *DriveHandler) GetDriveClient() *drive.Client {
 	return h.driveClient
 }
-
-
