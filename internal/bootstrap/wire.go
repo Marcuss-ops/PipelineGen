@@ -208,32 +208,20 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		Downloader:      coreDeps.Downloader,
 	}
 
-	// === Assemble Handlers ===
-	if clipDeps.ClipHandler != nil {
-		clipDeps.ClipHandler.SetClipSearch(pipelineDeps.ClipSearch)
-		clipDeps.ClipHandler.SetStockDB(clipDeps.StockDB)
-	}
 	allHandlers := &api.Handlers{
 		Health:       common.NewHealthHandler(cfg, coreDeps.JobService, coreDeps.WorkerService),
 		Video:        videoHandler,
 		YouTube:      youtube.NewYouTubeHandler(cfg.GetYouTubeDir()),
 		Drive:        driveDeps.DriveHandler,
 		Voiceover:    common.NewVoiceoverHandler(coreDeps.EdgeTTS),
-		NLP:          nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),
 		StockProject: stock.NewStockProjectHandler(coreDeps.StockMgr),
 		StockSearch:  stock.NewStockSearchHandlerWithDownloadDir(coreDeps.StockMgr, cfg.GetDownloadDir()),
 		StockProcess: stock.NewStockProcessHandler(coreDeps.StockMgr, cfg.GetVideoStockCreatorBinary(), cfg.GetEffectsDir()),
-		Clip:         clipDeps.ClipHandler,
-		ClipIndex:    clipDeps.ClipIndexHandler,
 		Catalog:      catalogHandler,
 		Download:     video.NewDownloadHandler(coreDeps.Downloader),
 		Timestamp:    common.NewTimestampHandler(timestamp.NewService(clipDeps.ClipIndexHandler.GetIndexer(), clipDeps.ArtlistSrc)),
-		ClipApproval: pipelineDeps.ClipApprovalHandler,
-
 		YouTubeV2:         youTubeV2Handler,
 		GPUTextGen:        gpuTextGenHandler,
-		ScriptClips:       pipelineDeps.ScriptClipsHandler,
-		ScriptFromClips:   pipelineDeps.ScriptFromClipsHandler,
 		StockOrchestrator: stockOrchestratorHandler,
 		ScriptDocs:        pipelineDeps.ScriptDocsHandler,
 		ScriptPipeline: script.NewScriptPipelineHandler(
@@ -252,7 +240,6 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 			cfg.Drive.ArtlistFolderID,
 		),
 		ChannelMonitor:  bgDeps.ChannelMonitorHandler,
-		ArtlistPipeline: pipelineDeps.ArtlistPipelineHandler,
 		Harvester:       bgDeps.HarvesterHandler,
 		CatalogSQLite:   clipDeps.CatalogSQLiteHandler,
 		Utility:         coreDeps.Utility,
@@ -263,9 +250,6 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	// === Aggregated Cleanup ===
 	baseCleanup := func() {
 		_ = sg.Stop()
-		if pipelineDeps.ClipCache != nil {
-			_ = pipelineDeps.ClipCache.Save()
-		}
 		runCleanups(cleanups)
 	}
 
@@ -304,7 +288,6 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 			nil, nil, "", "",
 		),
 		Drive: driveDeps.DriveHandler,
-		NLP:   nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),
 	}
 
 	deps := &api.RouterDepsWithHandlers{
@@ -344,7 +327,6 @@ func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 			coreDeps.EntityService,
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "",
 		),
-		NLP: nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),
 	}
 
 	deps := &api.RouterDeps{

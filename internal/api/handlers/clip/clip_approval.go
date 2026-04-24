@@ -409,17 +409,5 @@ func (h *ClipApprovalHandler) NvidiaHealth(c *gin.Context) {
 	})
 }
 
-// RegisterRoutes registra tutti gli endpoint per clip approval
-func (h *ClipApprovalHandler) RegisterRoutes(protected *gin.RouterGroup) {
-	clipGroup := protected.Group("/clip")
-	{
-		clipGroup.POST("/review", h.ReviewClip)
-		clipGroup.POST("/batch-review", h.BatchReviewClips)
-		clipGroup.POST("/approve", h.ApproveClip)
-		clipGroup.GET("/pending", h.GetPendingClips)
-		clipGroup.GET("/suggestions", h.GetClipSuggestions)
-	}
-
-	// NVIDIA health (public)
-	protected.GET("/nvidia/health", h.NvidiaHealth)
-}
+// RegisterRoutes is retained for compatibility but no longer mounts HTTP routes.
+func (h *ClipApprovalHandler) RegisterRoutes(_ *gin.RouterGroup) {}
