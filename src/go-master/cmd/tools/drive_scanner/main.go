@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
-	cfgconfig "velox/go-master/pkg/config"
+	appconfig "velox/go-master/pkg/config"
 )
 
 type FolderTree struct {
@@ -39,27 +40,29 @@ func main() {
 	ctx := context.Background()
 
 	// Load credentials
-	creds, err := os.ReadFile("credentials.json")
+	cfg := appconfig.Get()
+
+	creds, err := os.ReadFile(cfg.GetCredentialsPath())
 	if err != nil {
-		fmt.Printf("❌ Cannot read credentials.json: %v\n", err)
+		fmt.Printf("❌ Cannot read credentials file: %v\n", err)
 		os.Exit(1)
 	}
 
-	config, err := google.ConfigFromJSON(creds, drive.DriveReadonlyScope)
+	oauthConfig, err := google.ConfigFromJSON(creds, drive.DriveReadonlyScope)
 	if err != nil {
 		fmt.Printf("❌ Invalid credentials: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Load token
-	token, err := loadToken("token.json")
+	token, err := loadToken(cfg.GetTokenPath())
 	if err != nil {
 		fmt.Printf("❌ Cannot load token: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Create client
-	client := config.Client(context.Background(), token)
+	client := oauthConfig.Client(context.Background(), token)
 
 	srv, err := drive.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
@@ -71,26 +74,8 @@ func main() {
 	fmt.Println("📂 Google Drive Stock Scanner")
 	fmt.Println("=" + strings.Repeat("=", 59))
 
-	// Stock folder IDs
-	stockFolderIDs := []string{
-		"1ktDuzVYvA1xfpja78VAEWt9KhwsthPod", // ArtList
-		"14HWILTg8L9ST0bnorgmHzZknel9buJjb", // Boxe
-		"1KhJ6bSty9r4EP_2gVpTzz4BWdKhsI0pG", // Crimine
-		"11-O6LvlcL0Hj_ktiUOJDnpPYerSpWNiW", // Discovery
-		"16D3qvbv3Y4TlNahQ3sWq6N7ITgwWm6DD", // HipHop
-		"1_PQj7fok1UEzzQgTnUcTP3FHnZBnwv9t", // Musica
-		"1_7U8yEeQZEH7vxgDIRketFL85F96O_Ws", // Wwe
-	}
-
-	// Clips folder IDs
-	clipsFolderIDs := []string{
-		"1AGJyoOC8tXP8oplh3X2Jrf_0beNkSQzI",
-		"1Nq4xcUiloGv3OrAW0DAf5JBIe7Yi08aC",
-		"147RID7wyhWqbr7XtfWavIk0T-ozN2YAA",
-		"1ayEZ-CV18xfHQT7RLB4Xgh-TrlkGs-0X",
-		"16DiW79eGCXO5mgP1dqhE5ZKZCxRovBkq",
-		"1SJo06XvAN0uNf5s8P88lhEgE0qJMi0up",
-	}
+	stockFolderIDs := cfg.DriveScan.StockFolderIDs
+	clipsFolderIDs := cfg.DriveScan.ClipsFolderIDs
 
 	fmt.Printf("\n📋 Scanning %d Stock folders + %d Clips folders...\n",
 		len(stockFolderIDs), len(clipsFolderIDs))
@@ -167,8 +152,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	outputFile := cfgconfig.ResolveDataPath("stock_drive_structure.json")
-	os.MkdirAll("data", 0755)
+	outputFile := appconfig.ResolveDataPath("stock_drive_structure.json")
+	if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
+		fmt.Printf("❌ Cannot create output dir: %v\n", err)
+		os.Exit(1)
+	}
 	if err := os.WriteFile(outputFile, data, 0644); err != nil {
 		fmt.Printf("❌ Cannot write file: %v\n", err)
 		os.Exit(1)
@@ -282,9 +270,8 @@ func printTree(tree FolderTree, depth int) {
 
 	if len(tree.Clips) > 0 {
 		for _, clip := range tree.Clips {
-			durSec := clip.Duration / 1000
-			fmt.Printf("%s  🎬 %s (%.0fs, %dx%d)\n",
-				indent, clip.Name, float64(durSec)/1000.0, clip.Width, clip.Height)
+			fmt.Printf("%s  🎬 %s (%.1fs, %dx%d)\n",
+				indent, clip.Name, float64(clip.Duration)/1000.0, clip.Width, clip.Height)
 		}
 	}
 

@@ -8,6 +8,7 @@ import (
 
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/upload/drive"
+	appconfig "velox/go-master/pkg/config"
 )
 
 // initDriveClient initializes the Google Drive client
@@ -22,12 +23,12 @@ func (h *ClipHandler) initDriveClient(ctx context.Context) error {
 
 	credsFile := h.credentialsFile
 	if credsFile == "" {
-		credsFile = "credentials.json"
+		credsFile = appconfig.Get().GetCredentialsPath()
 	}
 
 	tokenFile := h.tokenFile
 	if tokenFile == "" {
-		tokenFile = "token.json"
+		tokenFile = appconfig.Get().GetTokenPath()
 	}
 
 	config := drive.Config{

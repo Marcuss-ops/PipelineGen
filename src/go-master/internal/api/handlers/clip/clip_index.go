@@ -9,6 +9,7 @@ import (
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/storage/jsondb"
 	"velox/go-master/internal/upload/drive"
+	appconfig "velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
@@ -85,12 +86,12 @@ func (h *ClipIndexHandler) SetScanner(scanner *clip.IndexScanner) {
 func (h *ClipIndexHandler) initDriveClient(ctx context.Context) error {
 	credsFile := h.credentialsFile
 	if credsFile == "" {
-		credsFile = "credentials.json"
+		credsFile = appconfig.Get().GetCredentialsPath()
 	}
 
 	tokenFile := h.tokenFile
 	if tokenFile == "" {
-		tokenFile = "token.json"
+		tokenFile = appconfig.Get().GetTokenPath()
 	}
 
 	driveCfg := drive.Config{
