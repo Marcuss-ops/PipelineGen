@@ -169,7 +169,7 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 	content := h.BuildDocumentContent(
 		req.Topic, req.Topic, req.Duration, req.Language, text, segments,
 		artlistAssocs, topicFolderID, req.Topic, nil, driveAssocs,
-		frasi, nomi, parole, images, nil,
+		frasi, nomi, parole, images, nil, nil, nil,
 	)
 
 	publishCtx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
