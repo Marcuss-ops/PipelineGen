@@ -3,6 +3,7 @@ package script
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ type GenerateTextRequest struct {
 	Tone       string `json:"tone"`
 	Template   string `json:"template"`
 	Model      string `json:"model"`
+	Minimal    bool   `json:"minimal"`
 }
 
 func (h *ScriptPipelineHandler) generateScriptText(ctx context.Context, req GenerateTextRequest) (string, string, error) {
@@ -86,31 +88,60 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 	}
 
 	wordCount := len(strings.Fields(script))
-	segments, _, err := h.buildSemanticSegments(c.Request.Context(), req.Topic, script, req.Duration, normalizedLang, 4)
-	if err != nil || len(segments) == 0 {
+	var segments []Segment
+	var frasi, nomi, parole []string
+	var images []EntityImage
+	var stockAssocs []StockAssoc
+	var driveAssocs []DriveFolderAssoc
+	var artlistAssocs []ArtlistAssoc
+	var topicFolderID string
+
+	if req.Minimal {
+		// Fast sentence-based segmentation for minimal mode
 		sentences := scriptdocs.ExtractSentences(script)
-		if len(sentences) > 0 {
-			avgDuration := 20
-			if req.Duration > 0 {
-				avgDuration = req.Duration / len(sentences)
-				if avgDuration <= 0 {
-					avgDuration = 20
-				}
-			}
-			segments = make([]Segment, 0, len(sentences))
-			for i, sentence := range sentences {
-				segments = append(segments, Segment{
-					Index:     i,
-					Text:      sentence,
-					StartTime: i * avgDuration,
-					EndTime:   (i + 1) * avgDuration,
-				})
+		avgDuration := 20
+		if req.Duration > 0 && len(sentences) > 0 {
+			avgDuration = req.Duration / len(sentences)
+			if avgDuration <= 0 {
+				avgDuration = 20
 			}
 		}
+		for i, sentence := range sentences {
+			segments = append(segments, Segment{
+				Index:     i,
+				Text:      sentence,
+				StartTime: i * avgDuration,
+				EndTime:   (i + 1) * avgDuration,
+			})
+		}
+	} else {
+		segments, _, err = h.buildSemanticSegments(c.Request.Context(), req.Topic, script, req.Duration, normalizedLang, 4)
+		if err != nil || len(segments) == 0 {
+			sentences := scriptdocs.ExtractSentences(script)
+			if len(sentences) > 0 {
+				avgDuration := 20
+				if req.Duration > 0 {
+					avgDuration = req.Duration / len(sentences)
+					if avgDuration <= 0 {
+						avgDuration = 20
+					}
+				}
+				segments = make([]Segment, 0, len(sentences))
+				for i, sentence := range sentences {
+					segments = append(segments, Segment{
+						Index:     i,
+						Text:      sentence,
+						StartTime: i * avgDuration,
+						EndTime:   (i + 1) * avgDuration,
+					})
+				}
+			}
+		}
+		segments = enrichSegments(segments)
+		frasi, nomi, parole, images = h.extractEntitiesForPipeline(segments)
+		stockAssocs, driveAssocs, artlistAssocs, topicFolderID = h.searchClipsForPipeline(c.Request.Context(), req.Topic, segments)
 	}
-	segments = enrichSegments(segments)
-	frasi, nomi, parole, images := h.extractEntitiesForPipeline(segments)
-	stockAssocs, driveAssocs, artlistAssocs, topicFolderID := h.searchClipsForPipeline(c.Request.Context(), req.Topic, segments)
+
 	fullContent := h.BuildDocumentContent(
 		req.Topic,
 		req.Topic,
@@ -144,6 +175,61 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		"stock_assocs":   stockAssocs,
 		"drive_assocs":   driveAssocs,
 		"artlist_assocs": artlistAssocs,
+	})
+}
+
+// GenerateStream handles script generation via Server-Sent Events (SSE).
+func (h *ScriptPipelineHandler) GenerateStream(c *gin.Context) {
+	var req GenerateTextRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	if req.Duration == 0 {
+		req.Duration = 60
+	}
+	if req.Language == "" {
+		req.Language = "italian"
+	}
+	if req.Model == "" {
+		req.Model = "gemma3:4b"
+	}
+
+	normalizedLang := normalizeScriptLanguage(req.Language)
+	genReq := &ollama.TextGenerationRequest{
+		SourceText: strings.TrimSpace(req.SourceText),
+		Title:      req.Topic,
+		Language:   normalizedLang,
+		Duration:   req.Duration,
+		Tone:       req.Tone,
+		Model:      req.Model,
+	}
+
+	textChan, errChan := h.generator.GenerateStreamFromText(c.Request.Context(), genReq)
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("Transfer-Encoding", "chunked")
+
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case text, ok := <-textChan:
+			if !ok {
+				c.SSEvent("done", gin.H{"ok": true})
+				return false
+			}
+			c.SSEvent("message", gin.H{"text": text})
+			return true
+		case err, ok := <-errChan:
+			if ok && err != nil {
+				c.SSEvent("error", gin.H{"error": err.Error()})
+			}
+			return false
+		case <-c.Request.Context().Done():
+			return false
+		}
 	})
 }
 

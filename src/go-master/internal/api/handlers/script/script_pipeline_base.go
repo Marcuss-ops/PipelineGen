@@ -69,6 +69,7 @@ func (h *ScriptPipelineHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	script := rg.Group("/script-pipeline")
 	{
 		script.POST("/generate-script", h.GenerateText)
+		script.POST("/generate-stream", h.GenerateStream)
 		script.POST("/generate-doc", h.GenerateDocument)
 		script.POST("/analyze", h.AnalyzeText)
 		script.POST("/analyze/entities", h.AnalyzeEntities)

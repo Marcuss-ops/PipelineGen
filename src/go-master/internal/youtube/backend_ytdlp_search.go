@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"velox/go-master/pkg/logger"
@@ -242,7 +243,11 @@ func (b *YtDlpBackend) GetTranscript(ctx context.Context, url string, lang strin
 
 // CheckAvailable verifies that yt-dlp is installed and working
 func (b *YtDlpBackend) CheckAvailable(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, b.config.YtDlpPath, "--version")
+	// Use a short timeout for availability check
+	shortCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(shortCtx, b.config.YtDlpPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("yt-dlp not available: %w", err)
