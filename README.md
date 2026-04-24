@@ -32,7 +32,7 @@ refactored/
 ├── bin/                        # Compiled binaries (server, video-stock-creator)
 ├── docs/                       # Project documentation & ADRs
 ├── scripts/                    # Operational scripts (Verification & E2E)
-└── data/                       # Databases & runtime state (unified_catalog.db)
+└── data/                       # Databases & runtime state (set via VELOX_DATA_DIR)
 ```
 
 ---
@@ -108,7 +108,7 @@ For the complete endpoint inventory, see:
 ```bash
 cd src/go-master
 make test
-./scripts/generate_gervonta_script.sh  # E2E Pipeline Verification
+python3 scripts/generate_script.py --topic "Gervonta Davis" --text-file /tmp/gervonta_source.txt
 ```
 
 ---

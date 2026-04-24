@@ -42,6 +42,7 @@ type ScriptDocRequest struct {
 	Template         string   `json:"template"`
 	AssociationMode  string   `json:"association_mode,omitempty"`
 	PreviewOnly      bool     `json:"preview_only,omitempty"`
+	MinimalDoc       bool     `json:"minimal_doc,omitempty"`
 	BoostKeywords    []string `json:"boost_keywords"`
 	SuppressKeywords []string `json:"suppress_keywords"`
 }

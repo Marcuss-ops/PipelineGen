@@ -159,7 +159,7 @@ type DriveConfig struct {
 // DriveScanConfig holds folder IDs used by the drive_scanner utility.
 type DriveScanConfig struct {
 	StockFolderIDs []string `yaml:"stock_folder_ids" env:"VELOX_DRIVE_SCAN_STOCK_FOLDER_IDS" default:"[\"1ktDuzVYvA1xfpja78VAEWt9KhwsthPod\",\"14HWILTg8L9ST0bnorgmHzZknel9buJjb\",\"1KhJ6bSty9r4EP_2gVpTzz4BWdKhsI0pG\",\"11-O6LvlcL0Hj_ktiUOJDnpPYerSpWNiW\",\"16D3qvbv3Y4TlNahQ3sWq6N7ITgwWm6DD\",\"1_PQj7fok1UEzzQgTnUcTP3FHnZBnwv9t\",\"1_7U8yEeQZEH7vxgDIRketFL85F96O_Ws\"]"`
-	ClipsFolderIDs []string `yaml:"clips_folder_ids" env:"VELOX_DRIVE_SCAN_CLIPS_FOLDER_IDS" default:"[\"1AGJyoOC8tXP8oplh3X2Jrf_0beNkSQzI\",\"1Nq4xcUiloGv3OrAW0DAf5JBIe7Yi08aC\",\"147RID7wyhWqbr7XtfWavIk0T-ozN2YAA\",\"1ayEZ-CV18xfHQT7RLB4Xgh-TrlkGs-0X\",\"16DiW79eGCXO5mgP1dqhE5ZKZCxRovBkq\",\"1SJo06XvAN0uNf5sP88lhEgE0qJMi0up\"]"`
+	ClipsFolderIDs []string `yaml:"clips_folder_ids" env:"VELOX_DRIVE_SCAN_CLIPS_FOLDER_IDS" default:"[\"1AGJyoOC8tXP8oplh3X2Jrf_0beNkSQzI\",\"1Nq4xcUiloGv3OrAW0DAf5JBIe7Yi08aC\",\"147RID7wyhWqbr7XtfWavIk0T-ozN2YAA\",\"1ayEZ-CV18xfHQT7RLB4Xgh-TrlkGs-0X\",\"16DiW79eGCXO5mgP1dqhE5ZKZCxRovBkq\",\"1SJo06XvAN0uNf5sP88lhEgE0qJMi0up\",\"1jckjn_cYcmpNb4Mxb6pK8J6dexeHXwlX\"]"`
 }
 
 // SchedulerConfig holds StockJob Scheduler configuration

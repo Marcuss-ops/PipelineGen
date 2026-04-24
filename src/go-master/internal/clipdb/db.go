@@ -174,6 +174,71 @@ func (s *ClipDB) GetClipsByFolder(folderID string) ([]ClipEntry, error) {
 	return results, nil
 }
 
+// SearchFolders returns folders ordered by relevance to the query.
+func (s *ClipDB) SearchFolders(query string) []ClipFolder {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.data == nil || len(s.data.Folders) == 0 {
+		return []ClipFolder{}
+	}
+
+	query = strings.TrimSpace(query)
+	queryLower := strings.ToLower(query)
+	querySlug := folderQuerySlug(query)
+
+	type scoredFolder struct {
+		folder ClipFolder
+		score  int
+		depth  int
+	}
+
+	results := make([]scoredFolder, 0, len(s.data.Folders))
+	for _, folder := range s.data.Folders {
+		path := strings.TrimSpace(folder.FullPath)
+		slug := strings.TrimSpace(folder.TopicSlug)
+		nameLower := strings.ToLower(path)
+		slugLower := strings.ToLower(slug)
+		pathSlug := folderQuerySlug(path)
+		score := 0
+
+		switch {
+		case querySlug != "" && slugLower == querySlug:
+			score = 100
+		case queryLower != "" && strings.EqualFold(path, query):
+			score = 96
+		case querySlug != "" && strings.HasSuffix(pathSlug, "/"+querySlug):
+			score = 92
+		case querySlug != "" && strings.Contains(pathSlug, querySlug):
+			score = 80
+		case queryLower != "" && strings.Contains(nameLower, queryLower):
+			score = 60
+		}
+
+		if score == 0 {
+			continue
+		}
+		depth := strings.Count(path, "/") + 1
+		results = append(results, scoredFolder{folder: folder, score: score, depth: depth})
+	}
+
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].score != results[j].score {
+			return results[i].score > results[j].score
+		}
+		if results[i].depth != results[j].depth {
+			return results[i].depth < results[j].depth
+		}
+		return strings.ToLower(results[i].folder.FullPath) < strings.ToLower(results[j].folder.FullPath)
+	})
+
+	out := make([]ClipFolder, 0, len(results))
+	for _, r := range results {
+		out = append(out, r.folder)
+	}
+	return out
+}
+
 func (s *ClipDB) GetAllClips() []ClipEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -181,6 +246,16 @@ func (s *ClipDB) GetAllClips() []ClipEntry {
 	clips := make([]ClipEntry, len(s.data.Clips))
 	copy(clips, s.data.Clips)
 	return clips
+}
+
+// GetAllFolders returns a copy of all folder records.
+func (s *ClipDB) GetAllFolders() []ClipFolder {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	folders := make([]ClipFolder, len(s.data.Folders))
+	copy(folders, s.data.Folders)
+	return folders
 }
 
 func (s *ClipDB) GetClipCount() int {
@@ -253,6 +328,16 @@ func containsTag(clipTags []string, searchTag string) bool {
 		}
 	}
 	return false
+}
+
+func folderQuerySlug(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func toLowerWords(s string) []string {

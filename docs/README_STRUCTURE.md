@@ -26,7 +26,7 @@ PipelineGen/
 │   └── node-scraper/             # 🌐 Node.js Artlist scraper
 │
 ├── scripts/                      # 🛠️ Utility scripts
-│   └── generate_script_from_text.py  # Script generation via Go API
+│   └── generate_script.py         # Thin wrapper for the Go script pipeline
 ├── docs/                          # 📚 Documentazione
 ├── data/                          # 💾 JSON database + output artifacts
 ├── assets/                        # 🎨 Audio, fonts, transizioni

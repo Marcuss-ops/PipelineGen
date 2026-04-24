@@ -243,6 +243,7 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 			pipelineDeps.ArtlistIdx,
 			pipelineDeps.ArtlistDB,
 			clipDeps.ArtlistSrc,
+			clipDeps.ClipDB,
 			driveDeps.DriveHandler.GetDriveClient(),
 			pipelineDeps.ClipSearch,
 			clipDeps.ClipIndexHandler.GetIndexer(),

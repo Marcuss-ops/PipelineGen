@@ -121,6 +121,7 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		artlistAssocs,
 		topicFolderID,
 		req.Topic,
+		nil,
 		driveAssocs,
 		frasi,
 		nomi,

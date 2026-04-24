@@ -191,7 +191,7 @@ func extractProperNounsInternal(sentences []string) []string {
 				seen[clean] = true
 				result = append(result, clean)
 			}
-			if len(result) >= 30 { // Increased from 20 to 30
+			if len(result) >= 15 {
 				return result
 			}
 		}

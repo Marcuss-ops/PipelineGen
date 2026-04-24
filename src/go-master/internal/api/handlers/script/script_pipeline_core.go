@@ -42,7 +42,8 @@ func (h *ScriptPipelineHandler) createDocumentFromRequest(ctx context.Context, r
 			req.ArtlistAssocs,
 			stockFolderID,
 			req.StockFolder,
-			req.DriveAssocs,
+			req.StockDriveAssocs,
+			req.ClipDriveAssocs,
 			req.FrasiImportanti,
 			req.NomiSpeciali,
 			req.ParoleImportanti,
@@ -150,13 +151,25 @@ func (h *ScriptPipelineHandler) enrichCreateDocumentRequest(ctx context.Context,
 	}
 
 	// 4) Clip associations fallback.
-	if len(req.DriveAssocs) == 0 || len(req.ArtlistAssocs) == 0 {
+	if len(req.StockDriveAssocs) == 0 || len(req.ClipDriveAssocs) == 0 || len(req.ArtlistAssocs) == 0 {
 		_, drive, artlist, _ := h.searchClipsForPipeline(ctx, topic, req.Segments)
-		if len(req.DriveAssocs) == 0 {
-			req.DriveAssocs = drive
+		if len(req.ClipDriveAssocs) == 0 {
+			req.ClipDriveAssocs = drive
 		}
 		if len(req.ArtlistAssocs) == 0 {
 			req.ArtlistAssocs = artlist
+		}
+	}
+
+	if len(req.StockDriveAssocs) == 0 {
+		if folderID, folderName := h.resolveStockFolderForDocument(topic); folderID != "" {
+			req.StockDriveAssocs = append(req.StockDriveAssocs, DriveFolderAssoc{
+				Phrase:        topic,
+				InitialPhrase: topic,
+				FinalPhrase:   topic,
+				FolderName:    folderName,
+				FolderURL:     "https://drive.google.com/drive/folders/" + folderID,
+			})
 		}
 	}
 }
@@ -202,6 +215,74 @@ func (h *ScriptPipelineHandler) extractEntitiesForPipeline(segments []Segment) (
 	parole = uniqueAndLimit(parole, 15)
 	images = uniqueEntitiesWithImage(images, 5)
 	return
+}
+
+// extractEntitiesForPipelineNoImages extracts phrases, nouns, and keywords without image lookup.
+// This is the fast path for analysis/publish endpoints where image enrichment would be too slow.
+func (h *ScriptPipelineHandler) extractEntitiesForPipelineNoImages(segments []Segment) (frasi []string, nomi []string, parole []string) {
+	seenEntity := make(map[string]bool)
+
+	for _, seg := range segments {
+		if len(seg.Text) > 20 {
+			frasi = append(frasi, shortPhrase(seg.Text, 12))
+		}
+		foundNomi := uniqueAndLimit(scriptdocs.ExtractProperNouns([]string{seg.Text}), 5)
+		foundParole := uniqueAndLimit(scriptdocs.ExtractKeywords(seg.Text), 5)
+
+		for _, n := range foundNomi {
+			lower := strings.ToLower(n)
+			if !seenEntity[lower] && len(n) > 2 {
+				seenEntity[lower] = true
+				nomi = append(nomi, n)
+			}
+		}
+		for _, p := range foundParole {
+			lower := strings.ToLower(p)
+			if !seenEntity[lower] && len(p) > 2 {
+				seenEntity[lower] = true
+				parole = append(parole, p)
+			}
+		}
+	}
+
+	frasi = uniqueAndLimit(frasi, 5)
+	nomi = uniqueAndLimit(nomi, 15)
+	parole = uniqueAndLimit(parole, 15)
+	return
+}
+
+// extractImagesForPipeline extracts a small set of entity-image pairs for publish docs.
+func (h *ScriptPipelineHandler) extractImagesForPipeline(topic string, title string, segments []Segment) []EntityImage {
+	if len(segments) == 0 && strings.TrimSpace(topic) == "" && strings.TrimSpace(title) == "" {
+		return nil
+	}
+	var allSentences []string
+	if strings.TrimSpace(topic) != "" {
+		allSentences = append(allSentences, topic)
+	}
+	if strings.TrimSpace(title) != "" {
+		allSentences = append(allSentences, title)
+	}
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.Text) != "" {
+			allSentences = append(allSentences, seg.Text)
+		}
+	}
+	if len(allSentences) == 0 {
+		return nil
+	}
+	imagesMap := scriptdocs.ExtractEntitiesWithImages(allSentences)
+	if len(imagesMap) == 0 {
+		return nil
+	}
+	images := make([]EntityImage, 0, len(imagesMap))
+	for entity, imageURL := range imagesMap {
+		if strings.TrimSpace(entity) == "" || strings.TrimSpace(imageURL) == "" {
+			continue
+		}
+		images = append(images, EntityImage{Entity: entity, ImageURL: imageURL})
+	}
+	return uniqueEntitiesWithImage(images, 5)
 }
 
 // searchClipsForPipeline performs clip searches across multiple sources.
@@ -251,13 +332,35 @@ func (h *ScriptPipelineHandler) searchClipsForPipeline(ctx context.Context, topi
 
 		// B. DRIVE CLIPS (Folders)
 		if h.clipIndexer != nil {
-			folders := h.clipIndexer.SearchFolders(topic)
-			if len(folders) == 0 && searchTopic != "" {
-				folders = h.clipIndexer.SearchFolders(searchTopic)
+			candidateQueries := make([]string, 0, len(specificTerms)+2)
+			candidateQueries = append(candidateQueries, specificTerms...)
+			if searchTopic != "" {
+				candidateQueries = append(candidateQueries, searchTopic)
+			}
+			if topic != "" {
+				candidateQueries = append(candidateQueries, topic)
+			}
+			seenQueries := make(map[string]bool)
+			var folders []clip.IndexedFolder
+			for _, q := range candidateQueries {
+				q = strings.TrimSpace(q)
+				if q == "" || seenQueries[strings.ToLower(q)] {
+					continue
+				}
+				seenQueries[strings.ToLower(q)] = true
+				folders = h.clipIndexer.SearchFolders(q)
+				if len(folders) > 0 {
+					break
+				}
 			}
 			if len(folders) > 0 && !usedFolderIDs[folders[0].ID] {
+				folderName := formatClipFolderDisplayPath(folders[0])
 				drive = append(drive, DriveFolderAssoc{
-					Phrase: shortPhrase(seg.Text, 10), FolderName: folders[0].Name, FolderURL: "https://drive.google.com/drive/folders/" + folders[0].ID,
+					Phrase:        shortPhrase(seg.Text, 10),
+					InitialPhrase: initial,
+					FinalPhrase:   final,
+					FolderName:    folderName,
+					FolderURL:     "https://drive.google.com/drive/folders/" + folders[0].ID,
 				})
 				usedFolderIDs[folders[0].ID] = true
 			}

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/api/option"
 
 	"go.uber.org/zap"
+	appconfig "velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 )
 
@@ -41,9 +42,10 @@ type Config struct {
 
 // DefaultConfig configurazione di default
 func DefaultConfig() Config {
+	cfg := appconfig.Get()
 	return Config{
-		CredentialsFile: "credentials.json",
-		TokenFile:       "token.json",
+		CredentialsFile: cfg.GetCredentialsPath(),
+		TokenFile:       cfg.GetTokenPath(),
 		Scopes: []string{
 			drive.DriveFileScope,
 			drive.DriveMetadataScope,

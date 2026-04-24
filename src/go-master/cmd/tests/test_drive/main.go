@@ -10,11 +10,12 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
+	appconfig "velox/go-master/pkg/config"
 )
 
 func main() {
 	// Load token
-	tokenPath := "token.json"
+	tokenPath := appconfig.Get().GetTokenPath()
 	if p := os.Getenv("VELOX_TOKEN_PATH"); p != "" {
 		tokenPath = p
 	}

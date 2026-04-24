@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"velox/go-master/internal/clip"
 	"velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/internal/stockdb"
 )
@@ -35,6 +36,7 @@ func (h *ScriptPipelineHandler) AssociateStock(c *gin.Context) {
 	var segmentData []SegmentStock
 	var allClips []StockClip
 	var driveAssocs []DriveFolderAssoc
+	searchTopic := compactSearchTopic(req.Topic)
 
 	for _, seg := range req.Segments {
 		var clips []StockClip
@@ -111,19 +113,32 @@ func (h *ScriptPipelineHandler) AssociateStock(c *gin.Context) {
 
 		// 3. Folder Search (Drive Clips)
 		if h.clipIndexer != nil {
-			folders := h.clipIndexer.SearchFolders(req.Topic)
-			if len(folders) == 0 {
-				for _, q := range searchTerms {
-					folders = h.clipIndexer.SearchFolders(q)
-					if len(folders) > 0 {
-						break
-					}
+			candidateQueries := make([]string, 0, len(searchTerms)+2)
+			candidateQueries = append(candidateQueries, searchTerms...)
+			if searchTopic != "" {
+				candidateQueries = append(candidateQueries, searchTopic)
+			}
+			if req.Topic != "" {
+				candidateQueries = append(candidateQueries, req.Topic)
+			}
+			seenQueries := make(map[string]bool)
+			var folders []clip.IndexedFolder
+			for _, q := range candidateQueries {
+				q = strings.TrimSpace(q)
+				if q == "" || seenQueries[strings.ToLower(q)] {
+					continue
+				}
+				seenQueries[strings.ToLower(q)] = true
+				folders = h.clipIndexer.SearchFolders(q)
+				if len(folders) > 0 {
+					break
 				}
 			}
 			if len(folders) > 0 {
+				folderName := formatClipFolderDisplayPath(folders[0])
 				driveAssocs = append(driveAssocs, DriveFolderAssoc{
-					Phrase:     seg.Text,
-					FolderName: folders[0].Name,
+					Phrase:     shortPhrase(seg.Text, 10),
+					FolderName: folderName,
 					FolderURL:  "https://drive.google.com/drive/folders/" + folders[0].ID,
 				})
 			}

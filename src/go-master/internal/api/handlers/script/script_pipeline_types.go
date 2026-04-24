@@ -71,9 +71,11 @@ type AssociateStockResponse struct {
 // --- DRIVE TYPES ---
 
 type DriveFolderAssoc struct {
-	Phrase     string `json:"phrase"`
-	FolderName string `json:"folder_name"`
-	FolderURL  string `json:"folder_url"`
+	Phrase        string `json:"phrase"`
+	InitialPhrase string `json:"initial_phrase,omitempty"`
+	FinalPhrase   string `json:"final_phrase,omitempty"`
+	FolderName    string `json:"folder_name"`
+	FolderURL     string `json:"folder_url"`
 }
 
 // --- ARTLIST TYPES ---
@@ -126,7 +128,8 @@ type CreateDocumentRequest struct {
 	Entities          []Entity           `json:"entities"`
 	StockClips        []StockClip        `json:"stock_clips"`
 	StockAssocs       []StockAssoc       `json:"stock_assocs"`
-	DriveAssocs       []DriveFolderAssoc `json:"drive_assocs"`
+	StockDriveAssocs  []DriveFolderAssoc `json:"stock_drive_assocs"`
+	ClipDriveAssocs   []DriveFolderAssoc `json:"clip_drive_assocs"`
 	ArtlistClips      []ArtlistClipRef   `json:"artlist_clips"`
 	Translations      []Translation      `json:"translations"`
 	StockFolder       string             `json:"stock_folder"`

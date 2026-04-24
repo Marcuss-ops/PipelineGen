@@ -66,6 +66,7 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 	var scriptMapper *script.Mapper
 	indexer := clipIndexHandler.GetIndexer()
 	if indexer != nil {
+		indexer.SetScanFolderIDs(cfg.DriveScan.ClipsFolderIDs)
 		semanticSuggester := internalclip.NewSemanticSuggester(indexer)
 		scriptMapper = script.NewMapper(semanticSuggester, core.YouTubeClientV2, &script.MapperConfig{
 			MinScore:             cfg.ClipApproval.MinScore,

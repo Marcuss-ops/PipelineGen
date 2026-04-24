@@ -127,7 +127,7 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 		b.WriteString(fmt.Sprintf("🔍 ENTITÀ ESTRATTE (%s)\n\n", info.Name))
 		b.WriteString(fmt.Sprintf("📌 FRASI IMPORTANTI (%d)\n", len(lr.FrasiImportanti)))
 		for i, f := range lr.FrasiImportanti {
-			b.WriteString(fmt.Sprintf("   %d. %s\n", i+1, f))
+			b.WriteString(fmt.Sprintf("   %d. %s\n", i+1, compactSnippet(f, 90)))
 		}
 		b.WriteString("\n")
 
@@ -248,6 +248,30 @@ func (s *ScriptDocService) buildMultilingualDocument(topic string, duration int,
 		}
 
 		s.writeClipAndArtlistSections(&b, lr, stockFolder)
+	}
+
+	return b.String()
+}
+
+func (s *ScriptDocService) buildMinimalMultilingualDocument(topic string, duration int, langResults []LanguageResult) string {
+	var b strings.Builder
+	now := time.Now().Format("02/01/2006")
+	mins := duration / 60
+	secs := duration % 60
+
+	b.WriteString(fmt.Sprintf("# %s\n\n", topic))
+	b.WriteString(fmt.Sprintf("**Topic:** %s | **Durata:** %d:%02d | %s\n", topic, mins, secs, now))
+	b.WriteString(strings.Repeat("=", 100) + "\n\n")
+
+	for _, lr := range langResults {
+		info, ok := LanguageInfo[lr.Language]
+		if !ok {
+			info.Name = lr.Language
+		}
+		b.WriteString(fmt.Sprintf("🌍 %s\n\n", info.Name))
+		b.WriteString(strings.Repeat("-", 80) + "\n\n")
+		b.WriteString(strings.TrimSpace(lr.FullText) + "\n\n")
+		b.WriteString(strings.Repeat("-", 80) + "\n\n")
 	}
 
 	return b.String()

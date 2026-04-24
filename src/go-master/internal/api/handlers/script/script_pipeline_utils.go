@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"velox/go-master/internal/clip"
 	"velox/go-master/internal/stockdb"
 )
 
@@ -72,35 +73,76 @@ func (h *ScriptPipelineHandler) resolveStockFolderForDocument(topic string) (fol
 		}
 	}
 
-	tokens := make([]string, 0, 4)
-	for _, raw := range strings.FieldsFunc(strings.ToLower(topic), func(r rune) bool {
-		return r == ' ' || r == '-' || r == '_' || r == '/' || r == ':' || r == ',' || r == '.'
-	}) {
-		token := strings.TrimSpace(raw)
-		if len(token) < 3 {
-			continue
-		}
-		tokens = append(tokens, token)
-	}
+	return "", ""
+}
 
-	if len(tokens) == 0 {
+// resolveClipFolderForDocument searches the local clip DB for a folder matching the query.
+func (h *ScriptPipelineHandler) resolveClipFolderForDocument(query string) (folderID, folderName string) {
+	if h.clipDB == nil || strings.TrimSpace(query) == "" {
 		return "", ""
 	}
 
-	if folders, err := h.stockDB.GetFoldersBySection("stock"); err == nil {
-		for _, folder := range folders {
-			candidate := strings.ToLower(folder.FullPath + " " + folder.TopicSlug)
-			for _, token := range tokens {
-				if strings.Contains(candidate, token) {
-					if id, name, ok := tryFolder(&folder); ok {
-						return id, name
-					}
-				}
+	folders := h.clipDB.SearchFolders(query)
+	if len(folders) == 0 {
+		return "", ""
+	}
+
+	folder := folders[0]
+	name := strings.TrimSpace(folder.FullPath)
+	if name == "" {
+		name = strings.TrimSpace(folder.TopicSlug)
+	}
+	if name == "" {
+		return "", ""
+	}
+	return folder.DriveID, name
+}
+
+// formatClipFolderDisplayPath renders a stable, human-readable folder path for docs.
+func formatClipFolderDisplayPath(folder clip.IndexedFolder) string {
+	parts := make([]string, 0, 4)
+	parts = append(parts, "Clip")
+
+	if group := strings.TrimSpace(folder.Group); group != "" {
+		parts = append(parts, clipGroupDisplayName(group))
+	}
+
+	path := strings.TrimSpace(folder.Path)
+	if path != "" {
+		for _, part := range strings.Split(path, "/") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				parts = append(parts, part)
 			}
 		}
 	}
 
-	return "", ""
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if len(cleaned) > 0 && strings.EqualFold(cleaned[len(cleaned)-1], part) {
+			continue
+		}
+		cleaned = append(cleaned, part)
+	}
+
+	return strings.Join(cleaned, " -> ")
+}
+
+func clipGroupDisplayName(group string) string {
+	group = strings.TrimSpace(group)
+	if group == "" {
+		return ""
+	}
+	for _, g := range clip.ClipGroups {
+		if strings.EqualFold(g.ID, group) || strings.EqualFold(g.Name, group) {
+			return g.Name
+		}
+	}
+	return strings.Title(strings.ToLower(group))
 }
 
 // normalizeCreateDocumentRequest ensures required fields are set in a CreateDocumentRequest.

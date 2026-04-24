@@ -3,6 +3,7 @@ package clip
 import (
 	"sync"
 	"time"
+	"strings"
 
 	"velox/go-master/internal/upload/drive"
 )
@@ -10,6 +11,7 @@ import (
 type Indexer struct {
 	driveClient  *drive.Client
 	rootFolderID string
+	scanFolderIDs []string
 	mu           sync.RWMutex
 	index        *ClipIndex
 	lastSync     time.Time
@@ -33,6 +35,35 @@ func NewIndexer(driveClient *drive.Client, rootFolderID string) *Indexer {
 			},
 		},
 	}
+}
+
+func (idx *Indexer) SetScanFolderIDs(folderIDs []string) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(folderIDs))
+	for _, id := range folderIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	idx.scanFolderIDs = out
+}
+
+func (idx *Indexer) getScanFolderIDs() []string {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	if len(idx.scanFolderIDs) == 0 {
+		return nil
+	}
+	out := make([]string, len(idx.scanFolderIDs))
+	copy(out, idx.scanFolderIDs)
+	return out
 }
 
 func NewTestIndexer(clips []IndexedClip) *Indexer {

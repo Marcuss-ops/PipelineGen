@@ -54,3 +54,11 @@ python3 scripts/test_floyd_tyson_chapters.py
 ## 📝 Note
 
 Script di utilità per operazioni manuali o automatizzate sul sistema.
+
+## Wrapper Go
+
+### `generate_script.py`
+Thin wrapper Python per la pipeline script Go:
+- prepara il testo da input locale o transcript YouTube
+- chiama `POST /api/script-pipeline/full`
+- non contiene la logica di segmentazione, matching o documento
