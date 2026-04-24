@@ -2,9 +2,25 @@ package script
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
+
+func buildMinimalDocumentContent(title, topic string, duration int, lang, script string) string {
+	var content strings.Builder
+	today := "15/04/2026"
+	langUpper := strings.ToUpper(strings.TrimSpace(lang))
+	if langUpper == "" {
+		langUpper = "EN"
+	}
+	content.WriteString(fmt.Sprintf("# %s\n\n", title))
+	content.WriteString(fmt.Sprintf("**Topic:** %s | **Durata:** %d:%02d | %s\n", topic, duration/60, duration%60, today))
+	content.WriteString("====================================================================================================\n\n")
+	content.WriteString(fmt.Sprintf("🌍 %s\n\n", langUpper))
+	content.WriteString("--------------------------------------------------------------------------------\n\n")
+	content.WriteString(strings.TrimSpace(script))
+	content.WriteString("\n")
+	return content.String()
+}
 
 // BuildDocumentContent generates the standardized Markdown content for the script document
 func (h *ScriptPipelineHandler) BuildDocumentContent(
@@ -36,17 +52,7 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	content.WriteString(fmt.Sprintf("**Topic:** %s | **Durata:** %d:%02d | %s\n", topic, duration/60, duration%60, today))
 	content.WriteString("====================================================================================================\n\n")
 
-	// 1. ARTLIST SECTION - mostra sempre la sezione; fallback a None quando non configurata
-	content.WriteString("🎬 ASSOCIAZIONI ARTLIST\n\n")
-	if h.artlistDriveFolderID != "" {
-		content.WriteString("   📁 Artlist Library\n")
-		content.WriteString(fmt.Sprintf("   🔗 https://drive.google.com/drive/folders/%s\n\n", h.artlistDriveFolderID))
-	} else {
-		content.WriteString("   - None\n\n")
-	}
-	content.WriteString("====================================================================================================\n\n")
-
-	// 2. STOCK DRIVE SECTION - mostra sempre la sezione; fallback a None quando non c'è alcun folder linkabile
+	// 1. STOCK DRIVE SECTION - mostra sempre la sezione; fallback a None quando non c'è alcun folder linkabile
 	if stockFolderID != "" {
 		folderName := stockFolderName
 		if folderName == "" {
@@ -58,7 +64,14 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 		content.WriteString("====================================================================================================\n\n")
 	} else if h.stockRootFolder != "" {
 		content.WriteString("📦 STOCK DRIVE (ROOT)\n\n")
-		content.WriteString("   📁 Stock Root\n")
+		folderName := stockFolderName
+		if folderName == "" {
+			folderName = h.resolveDriveFolderName(h.stockRootFolder)
+		}
+		if folderName == "" {
+			folderName = "Stock Root"
+		}
+		content.WriteString(fmt.Sprintf("   📁 %s\n", folderName))
 		content.WriteString(fmt.Sprintf("   🔗 https://drive.google.com/drive/folders/%s\n\n", h.stockRootFolder))
 		content.WriteString("====================================================================================================\n\n")
 	} else {
@@ -67,7 +80,7 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 		content.WriteString("====================================================================================================\n\n")
 	}
 
-	// 3. DRIVE CLIPS SECTION - mostra sempre la sezione; fallback a None quando non ci sono cartelle trovate
+	// 2. DRIVE CLIPS SECTION - mostra sempre la sezione; fallback a None quando non ci sono cartelle trovate
 	content.WriteString("📂 DRIVE CLIPS\n\n")
 	if len(driveAssocs) > 0 {
 		seenFolders := make(map[string]bool)
@@ -75,6 +88,13 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 			if seenFolders[assoc.FolderURL] {
 				continue
 			}
+
+			displayPhrase := strings.TrimSpace(assoc.Phrase)
+			if displayPhrase == "" {
+				displayPhrase = assoc.FolderName
+			}
+
+			content.WriteString(fmt.Sprintf("   💬 %s\n", displayPhrase))
 			content.WriteString(fmt.Sprintf("   📁 %s\n", assoc.FolderName))
 			content.WriteString(fmt.Sprintf("   🔗 %s\n\n", assoc.FolderURL))
 			seenFolders[assoc.FolderURL] = true
@@ -84,48 +104,26 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	}
 	content.WriteString("====================================================================================================\n\n")
 
-	// 4. ARTLIST CLIPS SECTION - render top 6 matched Artlist clips by score
+	// 3. ARTLIST CLIPS SECTION - mostra solo clip, senza ripetere la frase già usata per i segmenti
 	content.WriteString("🎞️ ARTLIST CLIPS\n\n")
-
-	type scoredArtlist struct {
-		Phrase string
-		Clip   ArtlistClipRef
-	}
-	var allScored []scoredArtlist
+	artlistCount := 0
 	for _, assoc := range artlistAssocs {
 		for _, c := range assoc.Clips {
 			if strings.TrimSpace(c.URL) == "" {
 				continue
 			}
-			allScored = append(allScored, scoredArtlist{Phrase: assoc.Phrase, Clip: c})
+			artlistCount++
+			content.WriteString(fmt.Sprintf("   %d. %s\n", artlistCount, c.Name))
+			content.WriteString(fmt.Sprintf("      🔗 %s\n", c.URL))
+			if c.Score > 0 {
+				content.WriteString(fmt.Sprintf("      📊 Score: %.1f\n", c.Score))
+			}
+			content.WriteString("\n")
+			if artlistCount >= 2 {
+				break
+			}
 		}
-	}
-
-	// Sort globally by score descending
-	sort.SliceStable(allScored, func(i, j int) bool {
-		return allScored[i].Clip.Score > allScored[j].Clip.Score
-	})
-
-	artlistCount := 0
-	fmt.Printf("DEBUG: Formatting ARTLIST clips. Total found: %d. Capping at 6.\n", len(allScored))
-	for _, item := range allScored {
-		c := item.Clip
-		artlistCount++
-		content.WriteString("   💬 " + item.Phrase + "\n")
-		content.WriteString(fmt.Sprintf("   🎬 %s\n", c.Name))
-
-		sourceInfo := ""
-		if c.Source != "" {
-			sourceInfo = fmt.Sprintf(" [%s]", c.Source)
-		}
-		scoreInfo := ""
-		if c.Score > 0 {
-			scoreInfo = fmt.Sprintf(" (Score: %.1f)", c.Score)
-		}
-
-		content.WriteString(fmt.Sprintf("   🔗 %s%s%s\n\n", c.URL, sourceInfo, scoreInfo))
-		if artlistCount >= 6 {
-			fmt.Printf("DEBUG: Reached cap of 6 clips. Breaking.\n")
+		if artlistCount >= 2 {
 			break
 		}
 	}
@@ -134,7 +132,7 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	}
 	content.WriteString("====================================================================================================\n\n")
 
-	// SCRIPT SECTION
+	// 4. SCRIPT SECTION
 	content.WriteString(fmt.Sprintf("🌍 %s\n\n", langUpper))
 	content.WriteString("--------------------------------------------------------------------------------\n\n")
 
@@ -149,7 +147,7 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 		content.WriteString("--------------------------------------------------------------------------------\n\n")
 	}
 
-	// ENTITIES SECTION
+	// 5. ENTITIES SECTION
 	if len(frasi) > 0 || len(nomi) > 0 || len(parole) > 0 || len(entitaImmagini) > 0 {
 		content.WriteString(fmt.Sprintf("🔍 ENTITÀ ESTRATTE (%s)\n\n", langUpper))
 
