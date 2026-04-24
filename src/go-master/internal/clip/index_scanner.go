@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/runtime"
 	"velox/go-master/pkg/logger"
-	"go.uber.org/zap"
 )
 
 // IndexScanner periodically scans and updates the clip index
@@ -26,13 +26,13 @@ type IndexScanner struct {
 
 // ScanResult holds information about a scan operation
 type ScanResult struct {
-	Success       bool          `json:"success"`
-	Duration      time.Duration `json:"duration"`
-	TotalClips    int           `json:"total_clips"`
-	TotalFolders  int           `json:"total_folders"`
-	ClipsChanged  int           `json:"clips_changed"`
-	Error         string        `json:"error,omitempty"`
-	LastScanTime  time.Time     `json:"last_scan_time"`
+	Success      bool          `json:"success"`
+	Duration     time.Duration `json:"duration"`
+	TotalClips   int           `json:"total_clips"`
+	TotalFolders int           `json:"total_folders"`
+	ClipsChanged int           `json:"clips_changed"`
+	Error        string        `json:"error,omitempty"`
+	LastScanTime time.Time     `json:"last_scan_time"`
 }
 
 // IndexStore is the interface for saving/loading clip index
@@ -55,6 +55,11 @@ func NewIndexScanner(indexer *Indexer, indexStore IndexStore, scanInterval time.
 // Start begins the periodic scanning loop in a background goroutine.
 // Returns immediately (non-blocking) to satisfy BackgroundService.
 func (s *IndexScanner) Start(ctx context.Context) error {
+	if s == nil || s.indexer == nil || !s.indexer.HasDriveClient() {
+		logger.Warn("Skipping clip index scanner start because Drive client is unavailable")
+		return nil
+	}
+
 	logger.Info("Clip index scanner started",
 		zap.Duration("scan_interval", s.scanInterval))
 
@@ -69,6 +74,10 @@ func (s *IndexScanner) Start(ctx context.Context) error {
 // scan overlaps with the next tick. The effective interval becomes
 // scanInterval + scanDuration, which is safer than unbounded concurrency.
 func (s *IndexScanner) runLoop(ctx context.Context) {
+	if s == nil || s.indexer == nil || !s.indexer.HasDriveClient() {
+		return
+	}
+
 	// Run an initial scan on startup
 	s.performScan(ctx, "startup")
 
@@ -102,11 +111,26 @@ func (s *IndexScanner) Name() string { return "ClipScanner" }
 
 // TriggerManualScan triggers an immediate scan (callable from API)
 func (s *IndexScanner) TriggerManualScan(ctx context.Context) *ScanResult {
+	if s == nil || s.indexer == nil || !s.indexer.HasDriveClient() {
+		return &ScanResult{
+			Success:      false,
+			Error:        "drive client is unavailable",
+			LastScanTime: time.Now(),
+		}
+	}
 	return s.performScan(ctx, "manual")
 }
 
 // TriggerIncrementalScan triggers an incremental scan (callable from API)
 func (s *IndexScanner) TriggerIncrementalScan(ctx context.Context) *ScanResult {
+	if s == nil || s.indexer == nil || !s.indexer.HasDriveClient() {
+		return &ScanResult{
+			Success:      false,
+			Error:        "drive client is unavailable",
+			LastScanTime: time.Now(),
+		}
+	}
+
 	startTime := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -153,6 +177,14 @@ func (s *IndexScanner) GetLastScanResult() *ScanResult {
 
 // performScan performs a full scan of the clip index
 func (s *IndexScanner) performScan(ctx context.Context, triggerType string) *ScanResult {
+	if s == nil || s.indexer == nil || !s.indexer.HasDriveClient() {
+		return &ScanResult{
+			Success:      false,
+			Error:        "drive client is unavailable",
+			LastScanTime: time.Now(),
+		}
+	}
+
 	startTime := time.Now()
 
 	s.mu.Lock()

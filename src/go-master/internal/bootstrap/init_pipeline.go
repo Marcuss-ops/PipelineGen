@@ -1,26 +1,18 @@
 package bootstrap
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
-	artlistpipeline "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/clip"
-	"velox/go-master/internal/api/handlers/pipeline"
 	"velox/go-master/internal/api/handlers/script"
 	"velox/go-master/internal/artlistdb"
-	"velox/go-master/internal/clipcache"
 	"velox/go-master/internal/clipsearch"
 	"velox/go-master/internal/imagesasset"
 	"velox/go-master/internal/imagesdb"
-	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/runtime"
-	"velox/go-master/internal/service/asyncpipeline"
-	"velox/go-master/internal/service/scriptclips"
 	"velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/internal/stockjit"
 	"velox/go-master/pkg/config"
@@ -28,13 +20,8 @@ import (
 
 // PipelineDeps holds the script generation, clip matching, and async pipeline services/handlers.
 type PipelineDeps struct {
-	ScriptClipsHandler     *script.ScriptClipsHandler
-	ScriptFromClipsHandler *script.ScriptFromClipsHandler
-	AsyncPipelineHandler   *pipeline.AsyncPipelineHandler
 	ClipApprovalHandler    *clip.ClipApprovalHandler
 	ScriptDocsHandler      *script.ScriptDocsHandler
-	ArtlistPipelineHandler *artlistpipeline.Handler
-	ClipCache              *clipcache.ClipCache
 	ArtlistIdx             *scriptdocs.ArtlistIndex
 	ArtlistDB              *artlistdb.ArtlistDB
 	ClipSearch             *clipsearch.Service
@@ -53,68 +40,6 @@ func initPipeline(
 
 	// === Clip Approval ===
 	clipApprovalHandler := clip.NewClipApprovalHandler(core.NvidiaClient, clips.StockDB, log)
-
-	// === Script + Clips ===
-	var scriptClipsHandler *script.ScriptClipsHandler
-	var scriptClipsService *scriptclips.ScriptClipsService
-	if driveClient != nil && core.StockMgr != nil {
-		ollamaC := ollama.NewClient("", "")
-		scriptClipsService = scriptclips.NewScriptClipsService(
-			core.ScriptGen, core.EntityService, core.StockMgr, driveClient,
-			cfg.GetDownloadDir(), "", "", 20, ollamaC, true, core.EdgeTTS,
-		)
-		scriptClipsHandler = script.NewScriptClipsHandler(scriptClipsService)
-		log.Info("Script+Clips service initialized")
-	}
-
-	// === Async Pipeline & Clip Cache ===
-	var asyncPipelineHandler *pipeline.AsyncPipelineHandler
-	var clipCache *clipcache.ClipCache
-	if scriptClipsService != nil {
-		var cacheErr error
-		clipCache, cacheErr = clipcache.Open(filepath.Join(cfg.Storage.DataDir, "clip_cache.json"))
-		if cacheErr != nil {
-			log.Warn("Failed to open clip cache, starting fresh", zap.Error(cacheErr))
-			clipCache, _ = clipcache.Open(filepath.Join(cfg.Storage.DataDir, "clip_cache.json"))
-		}
-		scriptClipsService.SetClipCache(clipCache)
-		asyncPipelineSvc := asyncpipeline.NewAsyncPipelineService(scriptClipsService, cfg.Storage.DataDir)
-		asyncPipelineHandler = pipeline.NewAsyncPipelineHandler(asyncPipelineSvc)
-		// Async cleanup is registered as a BackgroundService for unified lifecycle.
-		// It is NOT started here — the ServiceGroup handles that.
-		asyncPipelineSvcRef := asyncPipelineSvc
-		clipCacheRef := clipCache
-		pipelineBgSvcs = append(pipelineBgSvcs, runtime.NewServiceAdapter("AsyncCleanup",
-			func(ctx context.Context) error {
-				go func() {
-					ticker := time.NewTicker(time.Duration(cfg.Jobs.CleanupInterval) * time.Second)
-					defer ticker.Stop()
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case <-ticker.C:
-							asyncPipelineSvcRef.CleanupJobs(time.Duration(cfg.Jobs.AutoCleanupHours) * time.Hour)
-							clipCacheRef.Cleanup()
-						}
-					}
-				}()
-				return nil
-			},
-			nil, // no explicit Stop — relies on context cancellation
-		))
-	}
-
-	// === Script FROM Clips ===
-	var scriptFromClipsHandler *script.ScriptFromClipsHandler
-	if core.StockMgr != nil && clips.ClipIndexHandler != nil {
-		indexer := clips.ClipIndexHandler.GetIndexer()
-		if indexer != nil {
-			svc := scriptclips.NewScriptFromClipsService(core.ScriptGen, core.EntityService, indexer, clips.ArtlistSrc)
-			scriptFromClipsHandler = script.NewScriptFromClipsHandler(svc)
-			log.Info("Script FROM Clips service initialized", zap.Int("indexed_clips", len(indexer.GetIndex().Clips)))
-		}
-	}
 
 	// === Artlist Index & DB ===
 	var artlistIdx *scriptdocs.ArtlistIndex
@@ -213,50 +138,9 @@ func initPipeline(
 		log.Info("Script Docs service initialized (StockDB only)")
 	}
 
-	// === Artlist Pipeline ===
-	var artlistPipelineHandler *artlistpipeline.Handler
-	if artlistDB != nil && clips.ArtlistSrc != nil {
-		ffmpegPath := "ffmpeg"
-		if p := os.Getenv("FFMPEG_PATH"); p != "" {
-			ffmpegPath = p
-		}
-
-		artlistClipCachePath := cfg.GetDataPath("clip_cache.json")
-		artlistClipCache, artlistCacheErr := clipcache.Open(artlistClipCachePath)
-		if artlistCacheErr != nil {
-			log.Warn("Failed to open clip cache for artlist, starting fresh", zap.Error(artlistCacheErr))
-			artlistClipCache, _ = clipcache.Open(artlistClipCachePath)
-		}
-
-		keywordPoolPath := cfg.GetDataPath("keyword_pool.json")
-		keywordPool, kwErr := artlistpipeline.NewKeywordPool(keywordPoolPath)
-		if kwErr != nil {
-			log.Warn("Failed to initialize keyword pool", zap.Error(kwErr))
-			keywordPool, _ = artlistpipeline.NewKeywordPool(keywordPoolPath)
-		}
-
-		statsStorePath := cfg.GetDataPath("video_stats.json")
-		statsStore, statsErr := artlistpipeline.NewStatsStore(statsStorePath)
-		if statsErr != nil {
-			log.Warn("Failed to initialize stats store", zap.Error(statsErr))
-			statsStore, _ = artlistpipeline.NewStatsStore(statsStorePath)
-		}
-
-		artlistPipelineHandler = artlistpipeline.New(
-			clips.ArtlistSrc, artlistDB, driveClient, core.OllamaClient, artlistClipCache, keywordPool, statsStore,
-			cfg.GetDownloadDir(), cfg.Paths.YtDlpPath, ffmpegPath, cfg.GetOutputDir(),
-		)
-		log.Info("Artlist Pipeline handler initialized")
-	}
-
 	return &PipelineDeps{
-		ScriptClipsHandler:     scriptClipsHandler,
-		ScriptFromClipsHandler: scriptFromClipsHandler,
-		AsyncPipelineHandler:   asyncPipelineHandler,
 		ClipApprovalHandler:    clipApprovalHandler,
 		ScriptDocsHandler:      scriptDocsHandler,
-		ArtlistPipelineHandler: artlistPipelineHandler,
-		ClipCache:              clipCache,
 		ArtlistIdx:             artlistIdx,
 		ArtlistDB:              artlistDB,
 		ClipSearch:             clipSearch,

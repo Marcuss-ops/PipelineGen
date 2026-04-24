@@ -28,7 +28,6 @@ type ClipDeps struct {
 	ClipIndexStore       *jsondb.ClipIndexStore
 	ArtlistSrc           *internalclip.ArtlistSource
 	ClipIndexHandler     *clip.ClipIndexHandler
-	ClipHandler          *clip.ClipHandler
 }
 
 // initClipSystem initializes clip indexing, databases (StockDB, ClipDB, CatalogDB),
@@ -66,17 +65,19 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 		indexer.SetScanFolderIDs(cfg.DriveScan.ClipsFolderIDs)
 	}
 
-	// === Clip Handler ===
-	clipHandler := clip.NewClipHandler(cfg.GetClipRootFolder(), cfg.GetCredentialsPath(), cfg.GetTokenPath())
 	if indexer != nil {
-		clipHandler.SetIndexer(indexer)
-		log.Info("Clip indexer wired to ClipHandler", zap.Int("indexed_clips", len(indexer.GetIndex().Clips)))
+		log.Info("Clip indexer initialized", zap.Int("indexed_clips", len(indexer.GetIndex().Clips)))
 
-		// Create scanner but don't start it — register with ServiceGroup
-		scanInterval := time.Duration(cfg.ClipIndex.ScanInterval) * time.Second
-		scanner := internalclip.NewIndexScanner(indexer, clipIndexStore, scanInterval)
-		clipIndexHandler.SetScanner(scanner)
-		services = append(services, scanner)
+		// Create scanner only when Drive is available; otherwise the server
+		// should still boot and serve cached data without background scans.
+		if indexer.HasDriveClient() {
+			scanInterval := time.Duration(cfg.ClipIndex.ScanInterval) * time.Second
+			scanner := internalclip.NewIndexScanner(indexer, clipIndexStore, scanInterval)
+			clipIndexHandler.SetScanner(scanner)
+			services = append(services, scanner)
+		} else {
+			log.Warn("Clip scanner disabled because Drive client is unavailable; cached index only")
+		}
 	}
 
 	// === StockDB ===
@@ -160,7 +161,6 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 		ClipIndexStore:       clipIndexStore,
 		ArtlistSrc:           artlistSrc,
 		ClipIndexHandler:     clipIndexHandler,
-		ClipHandler:          clipHandler,
 	}, services, nil
 }
 

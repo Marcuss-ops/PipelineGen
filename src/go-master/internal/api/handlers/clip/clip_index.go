@@ -113,54 +113,9 @@ func (h *ClipIndexHandler) initDriveClient(ctx context.Context) error {
 	return nil
 }
 
-// RegisterRoutes registers clip index routes (protected — requires auth)
-func (h *ClipIndexHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	clipIndexGroup := rg.Group("/clip/index")
-	{
-		// Index management (write operations)
-		clipIndexGroup.POST("/scan", h.TriggerScan)
-		clipIndexGroup.POST("/scan/incremental", h.IncrementalScan)
-		clipIndexGroup.DELETE("/clear", h.ClearIndex)
+func (h *ClipIndexHandler) RegisterRoutes(_ *gin.RouterGroup) {}
 
-		// Write suggestions
-		clipIndexGroup.POST("/suggest/script", h.SuggestForScript)
-
-		// Cache management
-		clipIndexGroup.POST("/cache/clear", h.ClearCache)
-	}
-}
-
-// RegisterPublicRoutes registers read-only clip index routes (no auth required)
-func (h *ClipIndexHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
-	clipIndexGroup := rg.Group("/clip/index")
-	{
-		// Read-only endpoints
-		clipIndexGroup.GET("/stats", h.GetStats)
-		clipIndexGroup.GET("/status", h.GetStatus)
-		clipIndexGroup.GET("/scanner/status", h.GetScannerStatus)
-
-		// Search and list clips
-		clipIndexGroup.POST("/search", h.Search)
-		clipIndexGroup.GET("/clips", h.ListClips)
-		clipIndexGroup.GET("/clips/:id", h.GetClip)
-
-		// Semantic suggestions (read-only — sentence level)
-		clipIndexGroup.POST("/suggest/sentence", h.SuggestForSentence)
-
-		// Similar clips
-		clipIndexGroup.POST("/similar", h.SimilarClips)
-
-		// Cache status
-		clipIndexGroup.GET("/cache", h.CacheStatus)
-	}
-
-	// Public scan endpoints (separate path to avoid conflict with protected routes)
-	publicScan := rg.Group("/clip/public")
-	{
-		publicScan.POST("/scan", h.TriggerScan)
-		publicScan.POST("/scan/incremental", h.IncrementalScan)
-	}
-}
+func (h *ClipIndexHandler) RegisterPublicRoutes(_ *gin.RouterGroup) {}
 
 // GetStats returns index statistics
 func (h *ClipIndexHandler) GetStats(c *gin.Context) {

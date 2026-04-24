@@ -1,22 +1,22 @@
 package clip
 
 import (
+	"strings"
 	"sync"
 	"time"
-	"strings"
 
 	"velox/go-master/internal/upload/drive"
 )
 
 type Indexer struct {
-	driveClient  *drive.Client
-	rootFolderID string
+	driveClient   *drive.Client
+	rootFolderID  string
 	scanFolderIDs []string
-	mu           sync.RWMutex
-	index        *ClipIndex
-	lastSync     time.Time
-	cache        *SuggestionCache
-	artlistSrc   *ArtlistSource
+	mu            sync.RWMutex
+	index         *ClipIndex
+	lastSync      time.Time
+	cache         *SuggestionCache
+	artlistSrc    *ArtlistSource
 }
 
 func NewIndexer(driveClient *drive.Client, rootFolderID string) *Indexer {
@@ -64,6 +64,11 @@ func (idx *Indexer) getScanFolderIDs() []string {
 	out := make([]string, len(idx.scanFolderIDs))
 	copy(out, idx.scanFolderIDs)
 	return out
+}
+
+// HasDriveClient reports whether the indexer can talk to Google Drive.
+func (idx *Indexer) HasDriveClient() bool {
+	return idx != nil && idx.driveClient != nil
 }
 
 func NewTestIndexer(clips []IndexedClip) *Indexer {

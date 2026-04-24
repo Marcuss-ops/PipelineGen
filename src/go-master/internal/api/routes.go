@@ -11,9 +11,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"velox/go-master/internal/api/handlers/admin"
-	artlistpipeline "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/catalog"
-	"velox/go-master/internal/api/handlers/clip"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/handlers/drive"
 	"velox/go-master/internal/api/handlers/monitoring"
@@ -41,25 +39,18 @@ type Handlers struct {
 	YouTube           *youtube.YouTubeHandler
 	Drive             *drive.DriveHandler
 	Voiceover         *common.VoiceoverHandler
-	NLP               *nlp.NLPHandler
 	StockProject      *stock.StockProjectHandler
 	StockSearch       *stock.StockSearchHandler
 	StockProcess      *stock.StockProcessHandler
-	Clip              *clip.ClipHandler
-	ClipIndex         *clip.ClipIndexHandler
 	Catalog           *catalog.CatalogHandler
 	Download          *video.DownloadHandler
 	Timestamp         *common.TimestampHandler
-	ClipApproval      *clip.ClipApprovalHandler
 	YouTubeV2         *youtube.YouTubeV2Handler
 	GPUTextGen        *nlp.GPUTextGenHandler
-	ScriptClips       *script.ScriptClipsHandler
-	ScriptFromClips   *script.ScriptFromClipsHandler
 	StockOrchestrator *stock.StockOrchestratorHandler
 	ScriptDocs        *script.ScriptDocsHandler
 	ScriptPipeline    *script.ScriptPipelineHandler
 	ChannelMonitor    *monitoring.ChannelMonitorHandler
-	ArtlistPipeline   *artlistpipeline.Handler
 	Harvester         *harvester.Handler
 	CatalogSQLite     *catalog.CatalogSQLiteHandler
 	Utility           *common.UtilityHandler
@@ -156,8 +147,6 @@ func (r *Router) Setup() *gin.Engine {
 		public.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 		// Clip read endpoints (suggest, search, list, folder browsing)
-		h.Clip.RegisterPublicRoutes(public)
-		h.ClipIndex.RegisterPublicRoutes(public)
 		if h.Catalog != nil {
 			h.Catalog.RegisterPublicRoutes(public)
 		}
@@ -185,18 +174,12 @@ func (r *Router) Setup() *gin.Engine {
 			h.Drive.RegisterRoutes(protected)
 			// Voiceover
 			h.Voiceover.RegisterRoutes(protected)
-			// NLP
-			h.NLP.RegisterRoutes(protected)
 			// Stock - Projects
 			h.StockProject.RegisterRoutes(protected)
 			// Stock - Search
 			h.StockSearch.RegisterRoutes(protected)
 			// Stock - Process
 			h.StockProcess.RegisterRoutes(protected)
-			// Clip (write operations)
-			h.Clip.RegisterRoutes(protected)
-			// Clip Index (write operations)
-			h.ClipIndex.RegisterRoutes(protected)
 			if h.Catalog != nil {
 				h.Catalog.RegisterRoutes(protected)
 			}
@@ -206,20 +189,11 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Timestamp != nil {
 				h.Timestamp.RegisterRoutes(protected)
 			}
-			if h.ClipApproval != nil {
-				h.ClipApproval.RegisterRoutes(protected)
-			}
 			if h.YouTubeV2 != nil {
 				h.YouTubeV2.RegisterRoutes(protected)
 			}
 			if h.GPUTextGen != nil {
 				h.GPUTextGen.RegisterRoutes(protected)
-			}
-			if h.ScriptClips != nil {
-				h.ScriptClips.RegisterRoutes(protected)
-			}
-			if h.ScriptFromClips != nil {
-				h.ScriptFromClips.RegisterRoutes(protected)
 			}
 			if h.StockOrchestrator != nil {
 				h.StockOrchestrator.RegisterRoutes(protected)
@@ -230,9 +204,6 @@ func (r *Router) Setup() *gin.Engine {
 			}
 			if h.ChannelMonitor != nil {
 				h.ChannelMonitor.RegisterRoutes(protected)
-			}
-			if h.ArtlistPipeline != nil {
-				h.ArtlistPipeline.RegisterRoutes(protected)
 			}
 			if h.CatalogSQLite != nil {
 				h.CatalogSQLite.RegisterRoutes(protected)

@@ -2,11 +2,9 @@ package script
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/ml/ollama"
@@ -88,19 +86,11 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 	}
 
 	wordCount := len(strings.Fields(script))
-	var segments []Segment
-	var frasi, nomi, parole []string
-	var images []EntityImage
-	var stockAssocs []StockAssoc
-	var driveAssocs []DriveFolderAssoc
-	var artlistAssocs []ArtlistAssoc
-	var topicFolderID string
-
-	if req.Minimal {
-		// Fast sentence-based segmentation for minimal mode
-		sentences := scriptdocs.ExtractSentences(script)
+	sentences := scriptdocs.ExtractSentences(script)
+	segments := make([]Segment, 0, len(sentences))
+	if len(sentences) > 0 {
 		avgDuration := 20
-		if req.Duration > 0 && len(sentences) > 0 {
+		if req.Duration > 0 {
 			avgDuration = req.Duration / len(sentences)
 			if avgDuration <= 0 {
 				avgDuration = 20
@@ -114,32 +104,6 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 				EndTime:   (i + 1) * avgDuration,
 			})
 		}
-	} else {
-		segments, _, err = h.buildSemanticSegments(c.Request.Context(), req.Topic, script, req.Duration, normalizedLang, 4)
-		if err != nil || len(segments) == 0 {
-			sentences := scriptdocs.ExtractSentences(script)
-			if len(sentences) > 0 {
-				avgDuration := 20
-				if req.Duration > 0 {
-					avgDuration = req.Duration / len(sentences)
-					if avgDuration <= 0 {
-						avgDuration = 20
-					}
-				}
-				segments = make([]Segment, 0, len(sentences))
-				for i, sentence := range sentences {
-					segments = append(segments, Segment{
-						Index:     i,
-						Text:      sentence,
-						StartTime: i * avgDuration,
-						EndTime:   (i + 1) * avgDuration,
-					})
-				}
-			}
-		}
-		segments = enrichSegments(segments)
-		frasi, nomi, parole, images = h.extractEntitiesForPipeline(segments)
-		stockAssocs, driveAssocs, artlistAssocs, topicFolderID = h.searchClipsForPipeline(c.Request.Context(), req.Topic, segments)
 	}
 
 	fullContent := h.BuildDocumentContent(
@@ -149,15 +113,15 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		req.Language,
 		script,
 		segments,
-		artlistAssocs,
-		topicFolderID,
+		nil,
+		"",
 		req.Topic,
 		nil,
-		driveAssocs,
-		frasi,
-		nomi,
-		parole,
-		images,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -172,9 +136,9 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		"est_duration":   int(float64(wordCount) * 60 / 140),
 		"model":          req.Model,
 		"language":       normalizedLang,
-		"stock_assocs":   stockAssocs,
-		"drive_assocs":   driveAssocs,
-		"artlist_assocs": artlistAssocs,
+		"stock_assocs":   []StockAssoc{},
+		"drive_assocs":   []DriveFolderAssoc{},
+		"artlist_assocs": []ArtlistAssoc{},
 	})
 }
 
@@ -255,6 +219,7 @@ func (h *ScriptPipelineHandler) GenerateDocument(c *gin.Context) {
 		Script:     script,
 		SourceText: req.SourceText,
 		Language:   normalizedLang,
+		MinimalDoc: true,
 	}
 
 	docResp, err := h.createDocumentFromRequest(c.Request.Context(), &docReq)
@@ -307,63 +272,4 @@ type TranslateRequest struct {
 type TranslateResponse struct {
 	Ok           bool          `json:"ok"`
 	Translations []Translation `json:"translations"`
-}
-
-func (h *ScriptPipelineHandler) Translate(c *gin.Context) {
-	var req TranslateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
-		return
-	}
-
-	if len(req.Languages) == 0 {
-		req.Languages = []string{"en", "es", "fr", "de"}
-	}
-
-	var translations []Translation
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for _, lang := range req.Languages {
-		wg.Add(1)
-		go func(lang string) {
-			defer wg.Done()
-
-			prompt := fmt.Sprintf("Translate to %s. Output ONLY the translation, no explanations or options.\n\nText: %s", lang, req.Text)
-
-			resp, err := h.generator.GetClient().Generate(context.Background(), prompt)
-			mu.Lock()
-			if err == nil {
-				cleanText := strings.TrimSpace(resp)
-				lines := strings.Split(cleanText, "\n")
-				if len(lines) > 1 {
-					for i, line := range lines {
-						if strings.HasPrefix(line, "**") && strings.HasSuffix(line, "**") {
-							cleanText = strings.Trim(line, "*")
-							break
-						}
-						if !strings.Contains(line, ":") && len(line) > 5 {
-							cleanText = line
-							break
-						}
-						if i == len(lines)-1 {
-							cleanText = line
-						}
-					}
-				}
-				translations = append(translations, Translation{
-					Language: lang,
-					Text:     strings.TrimSpace(cleanText),
-				})
-			}
-			mu.Unlock()
-		}(lang)
-	}
-
-	wg.Wait()
-
-	c.JSON(http.StatusOK, gin.H{
-		"ok":           true,
-		"translations": translations,
-	})
 }

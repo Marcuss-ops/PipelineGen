@@ -103,21 +103,6 @@ type SegmentStock struct {
 	Clips         []StockClip `json:"clips"`
 }
 
-type AssociateStockRequest struct {
-	Segments []Segment `json:"segments"`
-	Entities []string  `json:"entities"`
-	Topic    string    `json:"topic"`
-}
-
-type AssociateStockResponse struct {
-	Ok             bool               `json:"ok"`
-	SegmentData    []SegmentStock     `json:"segment_data"`
-	AllClips       []StockClip        `json:"all_clips"`
-	DriveAssocs    []DriveFolderAssoc `json:"drive_assocs,omitempty"`
-	StockFolder    string             `json:"stock_folder,omitempty"`
-	StockFolderURL string             `json:"stock_folder_url,omitempty"`
-}
-
 // --- DRIVE TYPES ---
 
 type DriveFolderAssoc struct {
@@ -150,18 +135,6 @@ type SegmentArtlistRef struct {
 	SegmentIndex int              `json:"segment_index"`
 	Clips        []ArtlistClipRef `json:"clips"`
 	SearchTerms  []string         `json:"search_terms,omitempty"`
-}
-
-type AssociateArtlistRequest struct {
-	Segments []Segment `json:"segments"`
-	Entities []string  `json:"entities"`
-	Topic    string    `json:"topic"`
-}
-
-type AssociateArtlistResponseRef struct {
-	Ok          bool                `json:"ok"`
-	SegmentData []SegmentArtlistRef `json:"segment_data"`
-	AllClips    []ArtlistClipRef    `json:"all_clips"`
 }
 
 // --- DOCUMENT TYPES ---
