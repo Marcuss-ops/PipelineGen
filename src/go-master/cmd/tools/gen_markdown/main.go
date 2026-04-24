@@ -55,7 +55,7 @@ func main() {
 		"source_text": sourceText,
 		"duration":    *duration,
 		"language":    *language,
-		"model":       "gemma3:4b",
+		"model":       "gemma3:12b",
 		"minimal":     true,
 	}
 	body, _ := json.Marshal(payload)

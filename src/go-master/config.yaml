@@ -11,5 +11,5 @@ drive:
   clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
 
 textgen:
-  default_model: "gemma3:4b"
+  default_model: "gemma3:12b"
   timeout: 60

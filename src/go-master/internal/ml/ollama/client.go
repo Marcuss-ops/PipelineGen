@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -26,27 +27,48 @@ func NewClient(baseURL, model string) *Client {
 		baseURL = "http://localhost:11434"
 	}
 	if model == "" {
-		model = "gemma3:4b"
+		model = "gemma3:12b"
 	}
 
 	return &Client{
 		baseURL: baseURL,
 		model:   model,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Timeout aumentato per modelli grandi
 		},
 	}
 }
 
-// GenerateRequest richiesta generazione
-type GenerateRequest struct {
-	Model   string `json:"model"`
-	Prompt  string `json:"prompt"`
-	Context []int  `json:"context,omitempty"`
-	Stream  bool   `json:"stream"`
+// Message rappresenta un messaggio chat
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
-// GenerateResponse risposta generazione
+// ChatRequest richiesta chat
+type ChatRequest struct {
+	Model    string                 `json:"model"`
+	Messages []Message              `json:"messages"`
+	Stream   bool                   `json:"stream"`
+	Options  map[string]interface{} `json:"options,omitempty"`
+}
+
+// ChatResponse risposta chat
+type ChatResponse struct {
+	Message Message `json:"message"`
+	Done    bool    `json:"done"`
+}
+
+// GenerateRequest richiesta generazione (Legacy API)
+type GenerateRequest struct {
+	Model   string                 `json:"model"`
+	Prompt  string                 `json:"prompt"`
+	Context []int                  `json:"context,omitempty"`
+	Stream  bool                   `json:"stream"`
+	Options map[string]interface{} `json:"options,omitempty"`
+}
+
+// GenerateResponse risposta generazione (Legacy API)
 type GenerateResponse struct {
 	Response string `json:"response"`
 	Done     bool   `json:"done"`
@@ -62,6 +84,49 @@ type EmbedRequest struct {
 // EmbedResponse risposta embedding
 type EmbedResponse struct {
 	Embedding []float32 `json:"embedding"`
+}
+
+// Chat esegue una richiesta chat a Ollama (API Raccomandata)
+func (c *Client) Chat(ctx context.Context, messages []Message, options map[string]interface{}) (string, error) {
+	req := ChatRequest{
+		Model:    c.model,
+		Messages: messages,
+		Stream:   false,
+		Options:  options,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("ollama chat returned status %d", resp.StatusCode)
+	}
+
+	var result ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+
+	logger.Info("Ollama chat response received",
+		zap.Int("chars", len(result.Message.Content)),
+		zap.Int("words", len(strings.Fields(result.Message.Content))),
+	)
+
+	return result.Message.Content, nil
 }
 
 // Embed genera embedding vettoriale con Ollama
@@ -102,11 +167,11 @@ func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
 
 // GenerateStream genera testo con Ollama in modalità streaming
 func (c *Client) GenerateStream(ctx context.Context, prompt string) (<-chan string, <-chan error) {
-	return c.GenerateStreamWithModel(ctx, c.model, prompt)
+	return c.GenerateStreamWithOptions(ctx, c.model, prompt, nil)
 }
 
-// GenerateStreamWithModel genera testo con un modello Ollama esplicito in modalità streaming.
-func (c *Client) GenerateStreamWithModel(ctx context.Context, model, prompt string) (<-chan string, <-chan error) {
+// GenerateStreamWithOptions genera testo con opzioni esplicite in modalità streaming.
+func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt string, options map[string]interface{}) (<-chan string, <-chan error) {
 	textChan := make(chan string, 100)
 	errChan := make(chan error, 1)
 
@@ -115,9 +180,10 @@ func (c *Client) GenerateStreamWithModel(ctx context.Context, model, prompt stri
 	}
 
 	req := GenerateRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: true,
+		Model:   model,
+		Prompt:  prompt,
+		Stream:  true,
+		Options: options,
 	}
 
 	body, err := json.Marshal(req)
@@ -175,21 +241,22 @@ func (c *Client) GenerateStreamWithModel(ctx context.Context, model, prompt stri
 	return textChan, errChan
 }
 
-// Generate genera testo con Ollama
+// Generate genera testo con Ollama (Legacy API)
 func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
-	return c.GenerateWithModel(ctx, c.model, prompt)
+	return c.GenerateWithOptions(ctx, c.model, prompt, nil)
 }
 
-// GenerateWithModel genera testo con un modello Ollama esplicito.
-func (c *Client) GenerateWithModel(ctx context.Context, model, prompt string) (string, error) {
+// GenerateWithOptions genera testo con opzioni esplicite (Legacy API)
+func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, options map[string]interface{}) (string, error) {
 	if model == "" {
 		model = c.model
 	}
 
 	req := GenerateRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
+		Model:   model,
+		Prompt:  prompt,
+		Stream:  false,
+		Options: options,
 	}
 
 	body, err := json.Marshal(req)
@@ -218,49 +285,7 @@ func (c *Client) GenerateWithModel(ctx context.Context, model, prompt string) (s
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	logger.Info("Ollama generated text", zap.Int("chars", len(result.Response)))
 	return result.Response, nil
-}
-
-// GenerateScript genera uno script video completo
-func (c *Client) GenerateScript(ctx context.Context, source, title, lang string, duration int) (string, error) {
-	prompt := fmt.Sprintf(`Genera uno script narrativo per un video di %d minuti in lingua %s.
-
-TITOLO: %s
-CONTENUTO FONTE: %s
-
-ISTRUZIONI:
-- Scrivi in prima persona (stile "io" che racconta)
-- Dividi in 3 parti: Introduzione (10%%), Corpo Principale (80%%), Conclusione (10%%)
-- Usa un tono coinvolgente e naturale
-- Lunghezza appropriata per %d minuti di video
-
-SCRIPT:`, duration, lang, title, source, duration)
-
-	return c.Generate(ctx, prompt)
-}
-
-// GenerateScriptFromYouTube genera uno script da un video YouTube
-func (c *Client) GenerateScriptFromYouTube(ctx context.Context, transcript, title, lang string, duration int) (string, error) {
-	prompt := fmt.Sprintf(`Genera uno script narrativo per un video di %d minuti in lingua %s, basato sulla trascrizione fornita.
-
-TITOLO: %s
-TRASCRIZIONE YOUTUBE: %s
-
-ISTRUZIONI:
-- Usa la trascrizione come riferimento per i fatti
-- Riscrivi in stile narrativo coinvolgente
-- Dividi in: Introduzione, Corpo Principale, Conclusione
-
-SCRIPT:`, duration, lang, title, transcript)
-
-	return c.Generate(ctx, prompt)
-}
-
-// Summarize genera un riassunto del testo
-func (c *Client) Summarize(ctx context.Context, text string, maxWords int) (string, error) {
-	prompt := fmt.Sprintf("Riassumi il seguente testo in massimo %d parole:\n\n%s\n\nRIASSUNTO:", maxWords, text)
-	return c.Generate(ctx, prompt)
 }
 
 // CheckHealth verifica se Ollama è raggiungibile
@@ -313,7 +338,6 @@ func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	logger.Info("Ollama models listed", zap.Int("count", len(result.Models)))
 	return result.Models, nil
 }
 
@@ -343,7 +367,7 @@ func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req EntityExtra
 	// Build the entity extraction prompt
 	prompt := buildEntityExtractionPrompt(req.SegmentText, entityCount)
 
-	// Call Ollama
+	// Call Ollama using legacy generate for JSON tasks (often more stable for JSON)
 	response, err := c.Generate(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("entity extraction failed: %w", err)

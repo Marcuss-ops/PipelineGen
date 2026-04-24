@@ -3,6 +3,7 @@ package script
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -177,46 +178,76 @@ func (h *ScriptPipelineHandler) enrichCreateDocumentRequest(ctx context.Context,
 	}
 }
 
-// extractEntitiesForPipeline extracts and limits entities from segments.
+// isJunkEntity checks if a string is useless technical/generic text
+func isJunkEntity(s string) bool {
+	junk := map[string]bool{
+		"qui": true, "here": true, "ecco": true, "this": true, "that": true,
+		"transizione": true, "transition": true, "immagini": true, "images": true,
+		"musica": true, "music": true, "dettagli": true, "details": true,
+		"inizio": true, "start": true, "fine": true, "end": true,
+		"scena": true, "scene": true, "biografia": true, "biography": true,
+		"video": true, "clip": true, "audio": true, "montaggio": true,
+		"background": true, "sottofondo": true, "crescendo": true, "archi": true,
+		"sequenza": true, "mostrano": true, "mostra": true, "narratore": true,
+		"script": true, "testo": true, "parola": true, "frase": true,
+		"titolo": true, "topic": true, "durata": true, "lingua": true,
+		"english": true, "italiano": true, "italian": true, "versione": true,
+		"l’inizio": true, "l'inizio": true, "era": true, "full": true, "version": true,
+	}
+	lower := strings.ToLower(strings.TrimSpace(s))
+	// Rimuovi se troppo corta, se è in blacklist o se è puramente numerica
+	if len(lower) < 3 || junk[lower] {
+		return true
+	}
+	// Rimuovi se contiene caratteri tecnici o punteggiatura sospetta
+	if strings.ContainsAny(lower, "()[]{}*:#/") {
+		return true
+	}
+	return false
+}
+
+// cleanMetaFromPhrase removes (Musica: ...) or similar from a phrase
+func cleanMetaFromPhrase(s string) string {
+	re := regexp.MustCompile(`(?i)(\(|\[|\*\*)\s*(musica|immagini|scena|audio|video|clip|transizione|visual).*:.*(\)|\]|\*\*)`)
+	return strings.TrimSpace(re.ReplaceAllString(s, ""))
+}
+
+// extractEntitiesForPipeline extracts only high-quality quotes and images from segments.
 func (h *ScriptPipelineHandler) extractEntitiesForPipeline(segments []Segment) (frasi []string, nomi []string, parole []string, images []EntityImage) {
-	seenEntity := make(map[string]bool)
+	seenPhrase := make(map[string]bool)
 	allSentences := make([]string, 0, len(segments))
 
 	for _, seg := range segments {
-		allSentences = append(allSentences, seg.Text)
-		if len(seg.Text) > 20 {
-			frasi = append(frasi, shortPhrase(seg.Text, 12))
-		}
-		foundNomi := uniqueAndLimit(scriptdocs.ExtractProperNouns([]string{seg.Text}), 5)
-		foundParole := uniqueAndLimit(scriptdocs.ExtractKeywords(seg.Text), 5)
-
-		for _, n := range foundNomi {
-			lower := strings.ToLower(n)
-			if !seenEntity[lower] && len(n) > 2 {
-				seenEntity[lower] = true
-				nomi = append(nomi, n)
-			}
-		}
-		for _, p := range foundParole {
-			lower := strings.ToLower(p)
-			if !seenEntity[lower] && len(p) > 2 {
-				seenEntity[lower] = true
-				parole = append(parole, p)
+		cleanText := cleanMetaFromPhrase(seg.Text)
+		allSentences = append(allSentences, cleanText)
+		
+		// Estrai solo frasi lunghe e significative (non junk)
+		if len(cleanText) > 40 {
+			phrase := shortPhrase(cleanText, 15)
+			lowerPhrase := strings.ToLower(phrase)
+			if !seenPhrase[lowerPhrase] && !isJunkEntity(phrase) {
+				frasi = append(frasi, phrase)
+				seenPhrase[lowerPhrase] = true
 			}
 		}
 	}
 
-	entityImagesMap := scriptdocs.ExtractEntitiesWithImages(allSentences)
+	// Cerca solo immagini per i soggetti principali (estratte dai primi segmenti)
+	topSentences := allSentences
+	if len(topSentences) > 3 {
+		topSentences = topSentences[:3]
+	}
+	entityImagesMap := scriptdocs.ExtractEntitiesWithImages(topSentences)
+	
 	for entity, imageURL := range entityImagesMap {
-		if imageURL != "" {
+		if imageURL != "" && !isJunkEntity(entity) {
 			images = append(images, EntityImage{Entity: entity, ImageURL: imageURL})
 		}
 	}
 
-	frasi = uniqueAndLimit(frasi, 5)
-	nomi = uniqueAndLimit(nomi, 15)
-	parole = uniqueAndLimit(parole, 15)
-	images = uniqueEntitiesWithImage(images, 10)
+	frasi = uniqueAndLimit(frasi, 8)
+	images = uniqueEntitiesWithImage(images, 5)
+	// nomi e parole tornano vuoti apposta
 	return
 }
 
