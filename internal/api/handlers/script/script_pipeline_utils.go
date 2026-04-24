@@ -1,6 +1,7 @@
 package script
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -29,6 +30,18 @@ func normalizeDriveFolderID(raw string) string {
 		}
 	}
 	return v
+}
+
+// resolveDriveFolderName returns the folder name for a Drive folder ID when available.
+func (h *ScriptPipelineHandler) resolveDriveFolderName(folderID string) string {
+	if h.driveClient == nil || strings.TrimSpace(folderID) == "" {
+		return ""
+	}
+	f, err := h.driveClient.GetFile(context.Background(), folderID)
+	if err != nil || f == nil {
+		return ""
+	}
+	return strings.TrimSpace(f.Name)
 }
 
 // resolveStockFolderForDocument searches the stock database for a folder matching the topic.
@@ -127,4 +140,15 @@ func extractPhrases(text string) (string, string) {
 	initial := strings.Join(words[:3], " ")
 	final := strings.Join(words[len(words)-3:], " ")
 	return initial, final
+}
+
+func shortPhrase(text string, maxWords int) string {
+	words := strings.Fields(strings.TrimSpace(text))
+	if len(words) == 0 {
+		return ""
+	}
+	if maxWords <= 0 || len(words) <= maxWords {
+		return strings.Join(words, " ")
+	}
+	return strings.Join(words[:maxWords], " ")
 }
