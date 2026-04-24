@@ -21,7 +21,7 @@ func NewGemmaAnalyzer(url, model string) *GemmaAnalyzer {
 		url = "http://localhost:11434"
 	}
 	if model == "" {
-		model = "gemma3:4b"
+		model = "gemma3:12b"
 	}
 	return &GemmaAnalyzer{ollamaURL: url, model: model}
 }

@@ -115,19 +115,23 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 
 	reqContext := c.Request.Context()
 
+	// Always generate/expand text using LLM unless it's already a full script (too long)
 	text := req.Text
-	if text == "" {
+	if len(strings.Fields(text)) < 50 || req.Topic != "" {
+		tracker.SendProgress(operationID, "generating_script", "Generating full script with Gemma 12B", 0.1, nil)
 		genReq := &ollama.TextGenerationRequest{
-			SourceText: req.Topic,
+			SourceText: req.Text,
 			Title:      req.Topic,
 			Language:   req.Language,
 			Duration:   req.Duration,
 			Tone:       "professional",
-			Model:      "gemma3:4b",
+			Model:      "gemma3:12b",
 		}
 		result, err := h.generator.GenerateFromText(reqContext, genReq)
 		if err != nil {
-			text = req.Topic + " is an important character with an incredible story."
+			if text == "" {
+				text = req.Topic + " is an important character with an incredible story."
+			}
 		} else {
 			text = result.Script
 		}

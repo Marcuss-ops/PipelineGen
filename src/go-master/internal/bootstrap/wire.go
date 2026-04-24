@@ -238,6 +238,7 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		ScriptDocs:        pipelineDeps.ScriptDocsHandler,
 		ScriptPipeline: script.NewScriptPipelineHandler(
 			coreDeps.ScriptGen,
+			coreDeps.EntityService,
 			func() *driveupload.DocClient { return driveDeps.DriveHandler.GetDocClient() }(),
 			clipDeps.StockDB,
 			pipelineDeps.ArtlistIdx,
@@ -277,6 +278,58 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}, nil
 }
 
+// WireScriptDocs initializes only Ollama, Entities, and Drive (for script docs workflow).
+func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
+	// 1. Core Minimal (Ollama, Entities)
+	coreDeps, coreClean, err := initCoreMinimal(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Drive handler (Necessario per caricare su Google Docs)
+	driveDeps, driveClean, err := initDrive(cfg, log)
+	if err != nil {
+		coreClean()
+		return nil, err
+	}
+
+	// 3. Script pipeline essentials
+	allHandlers := &api.Handlers{
+		ScriptPipeline: script.NewScriptPipelineHandler(
+			coreDeps.ScriptGen,
+			coreDeps.EntityService,
+			driveDeps.DriveHandler.GetDocClient(),
+			nil, nil, nil, nil, nil, 
+			driveDeps.DriveHandler.GetDriveClient(),
+			nil, nil, "", "",
+		),
+		Drive: driveDeps.DriveHandler,
+		NLP:   nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),
+	}
+
+	deps := &api.RouterDepsWithHandlers{
+		Handlers: allHandlers,
+		Deps: &api.RouterDeps{
+			ScriptGen:     coreDeps.ScriptGen,
+			OllamaClient:  coreDeps.OllamaClient,
+			EntityService: coreDeps.EntityService,
+		},
+	}
+
+	cleanup := func() {
+		if driveClean != nil {
+			driveClean()
+		}
+		if coreClean != nil {
+			coreClean()
+		}
+	}
+
+	return &AppDeps{
+		RouterDeps: deps,
+		Cleanup:    cleanup,
+	}, nil
+}
 // WireMinimal initializes only the bare essentials for text generation.
 func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	coreDeps, coreClean, err := initCoreMinimal(cfg, log)
@@ -288,6 +341,7 @@ func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	allHandlers := &api.Handlers{
 		ScriptPipeline: script.NewScriptPipelineHandler(
 			coreDeps.ScriptGen,
+			coreDeps.EntityService,
 			nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "",
 		),
 		NLP: nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),

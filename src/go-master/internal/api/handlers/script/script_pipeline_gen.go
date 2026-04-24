@@ -38,7 +38,7 @@ func (h *ScriptPipelineHandler) generateScriptText(ctx context.Context, req Gene
 		req.Template = "biography"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
 	normalizedLang := normalizeScriptLanguage(req.Language)
@@ -193,7 +193,7 @@ func (h *ScriptPipelineHandler) GenerateStream(c *gin.Context) {
 		req.Language = "italian"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
 	normalizedLang := normalizeScriptLanguage(req.Language)

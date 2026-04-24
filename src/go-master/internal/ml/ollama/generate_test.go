@@ -61,8 +61,8 @@ func TestGenerator_GenerateFromText_Success(t *testing.T) {
 	if result.WordCount == 0 {
 		t.Error("expected word count > 0")
 	}
-	if result.Model != "gemma3:4b" {
-		t.Errorf("model = %q, want gemma3:4b", result.Model)
+	if result.Model != "gemma3:12b" {
+		t.Errorf("model = %q, want gemma3:12b", result.Model)
 	}
 }
 
@@ -89,8 +89,8 @@ func TestGenerator_GenerateFromText_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Model != "gemma3:4b" {
-		t.Errorf("expected default model gemma3:4b, got %q", result.Model)
+	if result.Model != "gemma3:12b" {
+		t.Errorf("expected default model gemma3:12b, got %q", result.Model)
 	}
 }
 

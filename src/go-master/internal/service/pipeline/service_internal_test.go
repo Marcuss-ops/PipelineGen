@@ -56,7 +56,7 @@ func TestGenerateScript_FromSourceText(t *testing.T) {
 			return &ollama.GenerationResult{
 				Script:    "Generated script from source",
 				WordCount: 50,
-				Model:     "gemma3:4b",
+				Model:     "gemma3:12b",
 			}, nil
 		},
 	}
@@ -71,7 +71,7 @@ func TestGenerateScript_FromSourceText(t *testing.T) {
 	assert.Equal(t, "Generated script from source", result.Script)
 	assert.True(t, result.Generated)
 	assert.Equal(t, 50, result.WordCount)
-	assert.Equal(t, "gemma3:4b", result.Model)
+	assert.Equal(t, "gemma3:12b", result.Model)
 }
 
 func TestGenerateScript_SourceGenerationError(t *testing.T) {

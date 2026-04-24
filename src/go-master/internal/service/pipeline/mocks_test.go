@@ -24,7 +24,7 @@ func (m *MockScriptGenerator) GenerateFromText(ctx context.Context, req *ollama.
 		Script:      "Mock generated script",
 		WordCount:   100,
 		EstDuration: 30,
-		Model:       "gemma3:4b",
+		Model:       "gemma3:12b",
 	}, nil
 }
 

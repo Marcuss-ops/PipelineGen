@@ -75,7 +75,7 @@ func normalizeScriptRequest(req *ScriptRequest) *ScriptRequest {
 		out.TargetWords = (out.Duration * 140) / 60
 	}
 	if strings.TrimSpace(out.Model) == "" {
-		out.Model = "gemma3:4b"
+		out.Model = "gemma3:12b"
 	}
 	return &out
 }

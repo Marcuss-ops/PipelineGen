@@ -47,7 +47,7 @@ func initBackgroundServices(
 	}
 
 	pipelineFetcher := fetcher.NewYtDlpFetcher(cfg.Paths.YtDlpPath)
-	pipelineAnalyzer := analyzer.NewGemmaAnalyzer("", "gemma3:4b")
+	pipelineAnalyzer := analyzer.NewGemmaAnalyzer("", "gemma3:12b")
 	pipelineDownloader := downloader.NewYtDlpDownloader(cfg.Paths.YtDlpPath, cfg.GetDownloadDir())
 
 	pipelineEngine := coordinator.NewEngine(pipelineStore, pipelineFetcher, pipelineAnalyzer, pipelineDownloader, 3)

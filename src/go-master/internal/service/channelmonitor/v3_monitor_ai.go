@@ -57,7 +57,7 @@ JSON format (MUST match exactly):
 Examples of good reasons: "shocking reveal", "peak emotional moment", "surprising plot twist", "viral trend reference"`, title, transcript)
 
 	reqBody := map[string]interface{}{
-		"model":  "gemma3:4b",
+		"model":  "gemma3:12b",
 		"prompt": prompt,
 		"stream": false,
 	}
@@ -196,7 +196,7 @@ Return ONLY valid JSON, no other text:
 {"category": "<category>", "protagonist": "<name>", "reason": "<explanation>"}`, title, description)
 
 	reqBody := map[string]interface{}{
-		"model":  "gemma3:4b",
+		"model":  "gemma3:12b",
 		"prompt": prompt,
 		"stream": false,
 	}
@@ -317,15 +317,15 @@ func (m *V3Monitor) checkOllamaHealth(ctx context.Context) error {
 	}
 
 	for _, model := range tagsResp.Models {
-		if model.Name == "gemma3:4b" {
+		if model.Name == "gemma3:12b" {
 			logger.Info("Ollama health check passed",
 				zap.String("service", m.ollamaURL),
-				zap.String("model", "gemma3:4b"))
+				zap.String("model", "gemma3:12b"))
 			return nil
 		}
 	}
 
-	return fmt.Errorf("ollama running but gemma3:4b model not found")
+	return fmt.Errorf("ollama running but gemma3:12b model not found")
 }
 
 func extractTitleAndDescription(info interface{}) (string, string, bool) {

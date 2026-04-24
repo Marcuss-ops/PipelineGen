@@ -31,12 +31,13 @@ func (g *Generator) GetClient() *Client {
 	return g.client
 }
 
-// Generate is a thin wrapper around client.Generate
+// Generate is a thin wrapper around client.Chat (preferred) or client.Generate
 func (g *Generator) Generate(ctx context.Context, prompt string) (string, error) {
+	// For raw prompt strings, we still use Generate for compatibility
 	return g.client.Generate(ctx, prompt)
 }
 
-// GenerateFromText genera uno script da testo
+// GenerateFromText genera uno script da testo usando Chat API
 func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationRequest) (*GenerationResult, error) {
 	// Applica defaults
 	if req.Language == "" {
@@ -49,16 +50,28 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 		req.Tone = "professional"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
-	// Costruisci prompt
-	prompt := buildTextPrompt(req)
+	// Costruisci messaggi chat (Molto più efficace per seguire istruzioni di lunghezza)
+	messages := buildChatMessages(req)
 
-	// Genera
-	response, err := g.client.Generate(ctx, prompt)
+	// Configura opzioni creative
+	options := req.Options
+	if options == nil {
+		options = make(map[string]interface{})
+	}
+	if _, ok := options["temperature"]; !ok {
+		options["temperature"] = 0.8
+	}
+	if _, ok := options["num_predict"]; !ok {
+		options["num_predict"] = 4096 // Permetti risposte molto lunghe
+	}
+
+	// Usa Chat API
+	response, err := g.client.Chat(ctx, messages, options)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate script: %w", err)
+		return nil, fmt.Errorf("failed to generate script via chat: %w", err)
 	}
 
 	// Pulisci e calcola statistiche
@@ -77,7 +90,7 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 		WordCount:   wordCount,
 		EstDuration: estDuration,
 		Model:       req.Model,
-		Prompt:      prompt,
+		Prompt:      fmt.Sprintf("%v", messages),
 	}, nil
 }
 
@@ -94,18 +107,34 @@ func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerat
 		req.Tone = "professional"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
 	// Costruisci prompt
 	prompt := buildTextPrompt(req)
 
-	// Inizia lo streaming dal client
-	return g.client.GenerateStreamWithModel(ctx, req.Model, prompt)
+	// Opzioni
+	options := req.Options
+	if options == nil {
+		options = make(map[string]interface{})
+	}
+	if _, ok := options["temperature"]; !ok {
+		options["temperature"] = 0.8
+	}
+	if _, ok := options["num_predict"]; !ok {
+		options["num_predict"] = 4096
+	}
+
+	// Inizia lo streaming dal client (GenerateStream usa internamente GenerateWithOptions)
+	return g.client.GenerateStreamWithOptions(ctx, req.Model, prompt, options)
 }
 
 // GenerateFromYouTube genera uno script da URL YouTube
 func (g *Generator) GenerateFromYouTube(ctx context.Context, req *YouTubeGenerationRequest) (*GenerationResult, error) {
+	if g.youtubeClient == nil {
+		return nil, fmt.Errorf("YouTube client not configured")
+	}
+
 	// Applica defaults
 	if req.Language == "" {
 		req.Language = "italian"
@@ -114,21 +143,13 @@ func (g *Generator) GenerateFromYouTube(ctx context.Context, req *YouTubeGenerat
 		req.Duration = 60
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
-	if g.youtubeClient == nil {
-		return nil, fmt.Errorf("YouTube client not configured - use GenerateFromYouTubeTranscript with pre-fetched transcript text")
-	}
-
-	// Download transcript using YouTube client
+	// Download transcript
 	transcript, err := g.youtubeClient.GetTranscript(ctx, req.YouTubeURL, req.Language)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download YouTube transcript: %w", err)
-	}
-
-	if transcript == "" {
-		return nil, fmt.Errorf("YouTube transcript is empty — the video may not have subtitles available")
 	}
 
 	logger.Info("YouTube transcript downloaded",
@@ -136,7 +157,6 @@ func (g *Generator) GenerateFromYouTube(ctx context.Context, req *YouTubeGenerat
 		zap.Int("transcript_len", len(transcript)),
 	)
 
-	// Delegate to GenerateFromYouTubeTranscript
 	return g.GenerateFromYouTubeTranscript(ctx, transcript, req)
 }
 
@@ -150,16 +170,32 @@ func (g *Generator) GenerateFromYouTubeTranscript(ctx context.Context, transcrip
 		req.Duration = 60
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
-	// Costruisci prompt
-	prompt := buildYouTubePrompt(transcript, req.Title, req.Language, "professional", req.Duration)
+	// Costruisci messaggi chat
+	targetWords := (req.Duration * 150) / 60
+	messages := []Message{
+		{Role: "system", Content: "Sei un documentarista esperto. Riscrivi trascrizioni in script avvincenti."},
+		{Role: "user", Content: fmt.Sprintf("Scrivi uno script di almeno %d parole su %s basandoti su questa trascrizione: %s", targetWords, req.Title, transcript)},
+	}
+
+	// Opzioni
+	options := req.Options
+	if options == nil {
+		options = make(map[string]interface{})
+	}
+	if _, ok := options["temperature"]; !ok {
+		options["temperature"] = 0.7
+	}
+	if _, ok := options["num_predict"]; !ok {
+		options["num_predict"] = 4096
+	}
 
 	// Genera
-	response, err := g.client.Generate(ctx, prompt)
+	response, err := g.client.Chat(ctx, messages, options)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate script from YouTube: %w", err)
+		return nil, fmt.Errorf("failed to generate script from transcript: %w", err)
 	}
 
 	// Pulisci e calcola statistiche
@@ -167,18 +203,12 @@ func (g *Generator) GenerateFromYouTubeTranscript(ctx context.Context, transcrip
 	wordCount := countWords(script)
 	estDuration := estimateDuration(wordCount)
 
-	logger.Info("Script generated from YouTube transcript",
-		zap.Int("words", wordCount),
-		zap.Int("duration_secs", estDuration),
-		zap.String("model", req.Model),
-	)
-
 	return &GenerationResult{
 		Script:      script,
 		WordCount:   wordCount,
 		EstDuration: estDuration,
 		Model:       req.Model,
-		Prompt:      prompt,
+		Prompt:      fmt.Sprintf("%v", messages),
 	}, nil
 }
 
@@ -188,18 +218,25 @@ func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*
 	if req.Language == "" {
 		req.Language = "italian"
 	}
-	if req.Tone == "" {
-		req.Tone = "professional"
-	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
-	// Costruisci prompt
-	prompt := buildRegeneratePrompt(req)
+	messages := []Message{
+		{Role: "system", Content: "Sei un copywriter senior. Migliora lo script fornito rendendolo più avvincente e lungo."},
+		{Role: "user", Content: fmt.Sprintf("Migliora e amplia questo script (Titolo: %s):\n\n%s", req.Title, req.OriginalScript)},
+	}
+
+	// Opzioni
+	options := req.Options
+	if options == nil {
+		options = make(map[string]interface{})
+	}
+	options["temperature"] = 0.8
+	options["num_predict"] = 4096
 
 	// Genera
-	response, err := g.client.Generate(ctx, prompt)
+	response, err := g.client.Chat(ctx, messages, options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to regenerate script: %w", err)
 	}
@@ -208,12 +245,6 @@ func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*
 	script := cleanScript(response)
 	wordCount := countWords(script)
 	estDuration := estimateDuration(wordCount)
-
-	logger.Info("Script regenerated",
-		zap.Int("words", wordCount),
-		zap.Int("duration_secs", estDuration),
-		zap.String("model", req.Model),
-	)
 
 	return &GenerationResult{
 		Script:      script,

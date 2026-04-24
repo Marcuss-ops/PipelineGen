@@ -42,7 +42,7 @@ type StartPipelineRequest struct {
 	Language              string `json:"language" default:"italian"`
 	Duration              int    `json:"duration" default:"60"`
 	EntityCountPerSegment int   `json:"entity_count_per_segment" default:"5"`
-	Model                 string `json:"model" default:"gemma3:4b"`
+	Model                 string `json:"model" default:"gemma3:12b"`
 }
 
 // StartPipelineResponse rappresenta la risposta per l'avvio pipeline

@@ -9,6 +9,7 @@ import (
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/clipdb"
 	"velox/go-master/internal/clipsearch"
+	"velox/go-master/internal/core/entities"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/internal/stockdb"
@@ -17,6 +18,7 @@ import (
 
 type ScriptPipelineHandler struct {
 	generator            *ollama.Generator
+	entityService        *entities.EntityService
 	docClient            *drive.DocClient
 	stockDB              *stockdb.StockDB
 	artlistDB            *artlistdb.ArtlistDB
@@ -32,6 +34,7 @@ type ScriptPipelineHandler struct {
 
 func NewScriptPipelineHandler(
 	gen *ollama.Generator,
+	es *entities.EntityService,
 	dc *drive.DocClient,
 	sdb *stockdb.StockDB,
 	ai *scriptdocs.ArtlistIndex,
@@ -51,6 +54,7 @@ func NewScriptPipelineHandler(
 	}
 	return &ScriptPipelineHandler{
 		generator:            gen,
+		entityService:        es,
 		docClient:            dc,
 		stockDB:              sdb,
 		artlistDB:            alDB,

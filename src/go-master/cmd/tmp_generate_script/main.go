@@ -46,9 +46,9 @@ func main() {
 	log := logger.Get()
 	defer logger.Sync()
 
-	deps, err := bootstrap.WireServices(cfg, log)
+	deps, err := bootstrap.WireScriptDocs(cfg, log)
 	if err != nil {
-		log.Error("wire services failed", zap.Error(err))
+		log.Error("wire scriptdocs failed", zap.Error(err))
 		os.Exit(1)
 	}
 	defer deps.Cleanup()

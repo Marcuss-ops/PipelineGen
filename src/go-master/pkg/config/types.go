@@ -191,7 +191,7 @@ type ClipIndexConfig struct {
 
 // TextGenConfig holds text generator configuration
 type TextGenConfig struct {
-	DefaultModel string `yaml:"default_model" env:"VELOX_TEXTGEN_MODEL" default:"gemma3:4b"`
+	DefaultModel string `yaml:"default_model" env:"VELOX_TEXTGEN_MODEL" default:"gemma3:12b"`
 	Timeout      int    `yaml:"timeout" env:"VELOX_TEXTGEN_TIMEOUT" default:"60"`
 }
 

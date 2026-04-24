@@ -55,7 +55,7 @@ func (h *ScriptPipelineHandler) PlanChapters(c *gin.Context) {
 		req.SourceLanguage = "english"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = "gemma3:12b"
 	}
 
 	_, chapters, err := h.buildSemanticSegments(c.Request.Context(), req.Topic, req.Text, req.Duration, req.SourceLanguage, req.MaxChapters)
@@ -389,7 +389,7 @@ func (h *ScriptPipelineHandler) buildSemanticSegments(ctx context.Context, topic
 		SourceLanguage: sourceLanguage,
 		Duration:       duration,
 		MaxChapters:    maxChapters,
-		Model:          "gemma3:4b",
+		Model:          "gemma3:12b",
 	}
 
 	if req.SourceLanguage == "" {

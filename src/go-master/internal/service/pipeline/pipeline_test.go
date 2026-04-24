@@ -192,7 +192,7 @@ func TestCreateMaster_ContextCancellation(t *testing.T) {
 			if ctx.Err() != nil {
 				return nil, fmt.Errorf("context canceled: %w", ctx.Err())
 			}
-			return &ollama.GenerationResult{Script: "script", WordCount: 10, Model: "gemma3:4b"}, nil
+			return &ollama.GenerationResult{Script: "script", WordCount: 10, Model: "gemma3:12b"}, nil
 		},
 	}
 	svc := newTestService(withScriptGen(mockGen))

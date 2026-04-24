@@ -30,7 +30,7 @@ func TestNewClient(t *testing.T) {
 			baseURL:       "",
 			model:         "",
 			expectedURL:   "http://localhost:11434",
-			expectedModel: "gemma3:4b",
+			expectedModel: "gemma3:12b",
 		},
 	}
 
