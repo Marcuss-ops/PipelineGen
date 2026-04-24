@@ -6,19 +6,17 @@ import (
 	"log"
 
 	"velox/go-master/internal/upload/drive"
+	appconfig "velox/go-master/pkg/config"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// Google Drive folder ID from the link
-	parentFolderID := "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
+	parentFolderID := appconfig.Get().Drive.ClipsRootFolderID
 	folderName := "test"
 
 	// Initialize Drive client with credentials
 	config := drive.DefaultConfig()
-	config.CredentialsFile = "credentials.json"
-	config.TokenFile = "token.json"
 
 	client, err := drive.NewClient(ctx, config)
 	if err != nil {

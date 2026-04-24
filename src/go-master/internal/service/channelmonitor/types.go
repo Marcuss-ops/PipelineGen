@@ -15,24 +15,24 @@ type ChannelConfig struct {
 	MaxClipDuration int      `json:"max_clip_duration"`     // max seconds per clip (default 60)
 	MaxVideos       int      `json:"max_videos,omitempty"`  // max videos to process per run (default 5)
 	MaxClips        int      `json:"max_clips,omitempty"`   // max clips to extract per video (default 5)
-	BaseTimeoutSec  int      `json:"base_timeout_sec"`     // base download timeout seconds (default 90)
+	BaseTimeoutSec  int      `json:"base_timeout_sec"`      // base download timeout seconds (default 90)
 	FolderName      string   `json:"folder_name,omitempty"` // optional stable Drive subfolder name
 }
 
 // MonitorConfig holds the full monitor configuration
 type MonitorConfig struct {
-	Channels        []ChannelConfig `json:"channels"`
-	CheckInterval   time.Duration   `json:"check_interval"`    // default 24h
-	VideoTimeframe  string          `json:"video_timeframe"`   // 24h, week, month (default month)
-	ClipRootID      string          `json:"clip_root_id"`      // Drive Clips root folder ID
-	ClipRunDBPath   string          `json:"clip_run_db_path"`  // local SQLite store for clip runs
-	YtDlpPath       string          `json:"ytdlp_path"`        // path to yt-dlp binary
-	FFmpegPath      string          `json:"ffmpeg_path"`       // path to ffmpeg binary
-	CookiesPath     string          `json:"cookies_path"`      // optional: browser cookies file
-	MaxClipDuration int             `json:"max_clip_duration"` // default 60s
-	OllamaURL       string          `json:"ollama_url"`        // Ollama server URL
-	DefaultMaxClips int             `json:"default_max_clips"`  // default clips per video
-	DefaultTimeoutSec int           `json:"default_timeout_sec"` // base download timeout
+	Channels          []ChannelConfig `json:"channels"`
+	CheckInterval     time.Duration   `json:"check_interval"`      // default 24h
+	VideoTimeframe    string          `json:"video_timeframe"`     // 24h, week, month (default month)
+	ClipRootID        string          `json:"clip_root_id"`        // Drive Clips root folder ID
+	ClipRunDBPath     string          `json:"clip_run_db_path"`    // local SQLite store for clip runs
+	YtDlpPath         string          `json:"ytdlp_path"`          // path to yt-dlp binary
+	FFmpegPath        string          `json:"ffmpeg_path"`         // path to ffmpeg binary
+	CookiesPath       string          `json:"cookies_path"`        // optional: browser cookies file
+	MaxClipDuration   int             `json:"max_clip_duration"`   // default 60s
+	OllamaURL         string          `json:"ollama_url"`          // Ollama server URL
+	DefaultMaxClips   int             `json:"default_max_clips"`   // default clips per video
+	DefaultTimeoutSec int             `json:"default_timeout_sec"` // base download timeout
 }
 
 // ClipResult represents a downloaded and uploaded clip
@@ -89,17 +89,6 @@ type ProcessedVideoEntry struct {
 	ProcessedAt time.Time `json:"processed_at"`
 	FolderPath  string    `json:"folder_path"`
 	ClipsCount  int       `json:"clips_count"`
-}
-
-// CategoryFolderMap maps category names to Drive folder IDs
-// These are default values — override via MonitorConfig.ClipsCategoryFolders
-var CategoryFolderMap = map[string]string{
-	"Boxe":      "1AGJyoOC8tXP8oplh3X2Jrf_0beNkSQzI",
-	"Crime":     "1Nq4xcUiloGv3OrAW0DAf5JBIe7Yi08aC",
-	"Discovery": "147RID7wyhWqbr7XtfWavIk0T-ozN2YAA",
-	"HipHop":    "1ayEZ-CV18xfHQT7RLB4Xgh-TrlkGs-0X",
-	"Music":     "16DiW79eGCXO5mgP1dqhE5ZKZCxRovBkq",
-	"Wwe":       "1SJo06XvAN0uNf5sP88lhEgE0qJMi0up",
 }
 
 // knownCategories maps normalized category names to canonical names
