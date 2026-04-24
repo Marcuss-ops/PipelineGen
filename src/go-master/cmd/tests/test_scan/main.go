@@ -8,6 +8,7 @@ import (
 
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/upload/drive"
+	appconfig "velox/go-master/pkg/config"
 )
 
 func main() {
@@ -16,8 +17,8 @@ func main() {
 	ctx := context.Background()
 
 	config := drive.Config{
-		CredentialsFile: "../../credentials.json",
-		TokenFile:       "../../token.json",
+		CredentialsFile: appconfig.Get().GetCredentialsPath(),
+		TokenFile:       appconfig.Get().GetTokenPath(),
 		Scopes: []string{
 			"https://www.googleapis.com/auth/drive",
 			"https://www.googleapis.com/auth/drive.file",

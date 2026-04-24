@@ -3,11 +3,12 @@ package script
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 func buildMinimalDocumentContent(title, topic string, duration int, lang, script string) string {
 	var content strings.Builder
-	today := "15/04/2026"
+	today := time.Now().Format("02/01/2006")
 	langUpper := strings.ToUpper(strings.TrimSpace(lang))
 	if langUpper == "" {
 		langUpper = "EN"
@@ -33,7 +34,8 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	artlistAssocs []ArtlistAssoc,
 	stockFolderID string,
 	stockFolderName string,
-	driveAssocs []DriveFolderAssoc,
+	stockDriveAssocs []DriveFolderAssoc,
+	clipDriveAssocs []DriveFolderAssoc,
 	frasi []string,
 	nomi []string,
 	parole []string,
@@ -41,7 +43,7 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	translations []Translation,
 ) string {
 	var content strings.Builder
-	today := "15/04/2026"
+	today := time.Now().Format("02/01/2006")
 	langUpper := strings.ToUpper(lang)
 	if langUpper == "" {
 		langUpper = "EN"
@@ -52,8 +54,27 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	content.WriteString(fmt.Sprintf("**Topic:** %s | **Durata:** %d:%02d | %s\n", topic, duration/60, duration%60, today))
 	content.WriteString("====================================================================================================\n\n")
 
-	// 1. STOCK DRIVE SECTION - mostra sempre la sezione; fallback a None quando non c'è alcun folder linkabile
-	if stockFolderID != "" {
+	// 1. STOCK DRIVE SECTION - prefer chapter-level associations when available.
+	if len(stockDriveAssocs) > 0 {
+		content.WriteString("📦 STOCK DRIVE (CHAPTERS)\n\n")
+		for i, assoc := range stockDriveAssocs {
+			content.WriteString(fmt.Sprintf("   %d. 💬 %s\n", i+1, assoc.Phrase))
+			if strings.TrimSpace(assoc.InitialPhrase) != "" {
+				content.WriteString(fmt.Sprintf("      • Inizio: %s\n", assoc.InitialPhrase))
+			}
+			if strings.TrimSpace(assoc.FinalPhrase) != "" && assoc.FinalPhrase != assoc.InitialPhrase {
+				content.WriteString(fmt.Sprintf("      • Fine: %s\n", assoc.FinalPhrase))
+			}
+			if strings.TrimSpace(assoc.FolderName) != "" {
+				content.WriteString(fmt.Sprintf("      📁 %s\n", assoc.FolderName))
+			}
+			if strings.TrimSpace(assoc.FolderURL) != "" {
+				content.WriteString(fmt.Sprintf("      🔗 %s\n", assoc.FolderURL))
+			}
+			content.WriteString("\n")
+		}
+		content.WriteString("====================================================================================================\n\n")
+	} else if stockFolderID != "" {
 		folderName := stockFolderName
 		if folderName == "" {
 			folderName = topic
@@ -82,9 +103,9 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 
 	// 2. DRIVE CLIPS SECTION - mostra sempre la sezione; fallback a None quando non ci sono cartelle trovate
 	content.WriteString("📂 DRIVE CLIPS\n\n")
-	if len(driveAssocs) > 0 {
+	if len(clipDriveAssocs) > 0 {
 		seenFolders := make(map[string]bool)
-		for _, assoc := range driveAssocs {
+		for _, assoc := range clipDriveAssocs {
 			if seenFolders[assoc.FolderURL] {
 				continue
 			}
