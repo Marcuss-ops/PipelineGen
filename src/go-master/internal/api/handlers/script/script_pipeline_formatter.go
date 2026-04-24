@@ -170,46 +170,45 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 		content.WriteString("--------------------------------------------------------------------------------\n\n")
 	}
 
-	// 5. ENTITIES SECTION
-	if len(frasi) > 0 || len(nomi) > 0 || len(parole) > 0 || len(entitaImmagini) > 0 {
-		content.WriteString(fmt.Sprintf("🔍 ENTITÀ ESTRATTE (%s)\n\n", langUpper))
+	// 5. SUGGESTED ASSETS & ENTITIES
+	if len(entitaImmagini) > 0 || len(frasi) > 0 || len(nomi) > 0 || len(parole) > 0 {
+		content.WriteString(fmt.Sprintf("🖼️ SUGGESTED IMAGES & RESOURCES (%s)\n\n", langUpper))
 
-		if len(frasi) > 0 {
-			content.WriteString(fmt.Sprintf("📌 FRASI IMPORTANTI (%d)\n", len(frasi)))
-			for i, fr := range frasi {
-				content.WriteString(fmt.Sprintf("   %d. %s\n", i+1, fr))
-			}
-			content.WriteString("\n")
-		}
-
-		if len(nomi) > 0 {
-			content.WriteString(fmt.Sprintf("👤 NOMI SPECIALI (%d)\n", len(nomi)))
-			content.WriteString("   ")
-			for i, n := range nomi {
-				content.WriteString(n)
-				if i < len(nomi)-1 {
-					content.WriteString(", ")
-				}
-			}
-			content.WriteString("\n\n")
-		}
-
-		if len(parole) > 0 {
-			content.WriteString(fmt.Sprintf("🔑 PAROLE IMPORTANTI (%d)\n", len(parole)))
-			content.WriteString("   ")
-			for i, p := range parole {
-				content.WriteString(p)
-				if i < len(parole)-1 {
-					content.WriteString(", ")
-				}
-			}
-			content.WriteString("\n\n")
-		}
-
+		// 5a. Visual entities first
 		if len(entitaImmagini) > 0 {
-			content.WriteString(fmt.Sprintf("🖼️ ENTITÀ CON IMMAGINE (%d)\n", len(entitaImmagini)))
 			for _, ent := range entitaImmagini {
-				content.WriteString(fmt.Sprintf("   🖼️ %s → %s\n", ent.Entity, ent.ImageURL))
+				content.WriteString(fmt.Sprintf("   • 👤 **%s**\n", ent.Entity))
+				content.WriteString(fmt.Sprintf("     🔗 %s\n\n", ent.ImageURL))
+			}
+		}
+
+		// 5b. Compact Metadata (Names and Keywords)
+		if len(nomi) > 0 || len(parole) > 0 {
+			content.WriteString("   📌 **Tags:** ")
+			allTags := append(nomi, parole...)
+			seenTags := make(map[string]bool)
+			var uniqueTags []string
+			for _, t := range allTags {
+				lower := strings.ToLower(t)
+				if !seenTags[lower] && len(t) > 2 {
+					seenTags[lower] = true
+					uniqueTags = append(uniqueTags, t)
+				}
+			}
+			for i, tag := range uniqueTags {
+				content.WriteString(tag)
+				if i < len(uniqueTags)-1 {
+					content.WriteString(", ")
+				}
+			}
+			content.WriteString("\n\n")
+		}
+
+		// 5c. Key Phrases
+		if len(frasi) > 0 {
+			content.WriteString("   💬 **Key Highlights:**\n")
+			for _, fr := range frasi {
+				content.WriteString(fmt.Sprintf("     - %s\n", fr))
 			}
 			content.WriteString("\n")
 		}

@@ -54,6 +54,37 @@ type CoreDeps struct {
 // The Maintenance service is returned as a BackgroundService for registration
 // with the ServiceGroup — it is NOT started here.
 func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.BackgroundService, CleanupFunc, error) {
+	return initCoreFull(cfg, log)
+}
+
+func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
+	// === AI: Ollama ===
+	ollamaClient := ollama.NewClient(cfg.External.OllamaURL, "")
+	scriptGen := ollama.NewGenerator(ollamaClient)
+
+	// === Entity Service ===
+	baseExtractor := entities.NewOllamaExtractor(ollamaClient)
+	extractor := entities.NewCachingExtractor(baseExtractor)
+	segmenter := entities.NewNLPSegmenter()
+	entityService := entities.NewEntityService(extractor, segmenter)
+
+	// === GPU & NVIDIA (Optional for minimal, but useful if we want GPU text gen) ===
+	gpuCfg := &gpu.GPUConfig{Enabled: true}
+	gpuMgr := gpu.NewManager(gpuCfg)
+	// We do NOT initialize GPU manager here to save time, unless strictly needed.
+	// But let's skip it for "Minimal" to be as fast as possible.
+
+	cleanup := func() {}
+
+	return &CoreDeps{
+		OllamaClient:  ollamaClient,
+		ScriptGen:     scriptGen,
+		EntityService: entityService,
+		GpuMgr:        gpuMgr,
+	}, cleanup, nil
+}
+
+func initCoreFull(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.BackgroundService, CleanupFunc, error) {
 	var services []runtime.BackgroundService
 
 	// === Storage / Queue ===
@@ -104,7 +135,14 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 	if err != nil {
 		log.Warn("Failed to create YouTube client v2", zap.Error(err))
 	} else {
-		log.Info("YouTube client v2 initialized")
+		// Verify availability with timeout
+		ytCtx, ytCancel := context.WithTimeout(ctx, 2*time.Second)
+		if err := youtubeClientV2.CheckAvailable(ytCtx); err != nil {
+			log.Warn("YouTube backend not available", zap.Error(err))
+		} else {
+			log.Info("YouTube client v2 initialized")
+		}
+		ytCancel()
 		// Inject YouTube client into script generator for transcript-based generation
 		scriptGen.SetYouTubeClient(youtubeClientV2)
 	}
@@ -117,7 +155,8 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 	}
 
 	// === Entity Service ===
-	extractor := entities.NewOllamaExtractor(ollamaClient)
+	baseExtractor := entities.NewOllamaExtractor(ollamaClient)
+	extractor := entities.NewCachingExtractor(baseExtractor)
 	segmenter := entities.NewNLPSegmenter()
 	entityService := entities.NewEntityService(extractor, segmenter)
 
@@ -134,12 +173,14 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 	// === TikTok ===
 	var tiktokClient downloader.Downloader
 	tiktokBackend := downloader.NewTikTokBackend(cfg.Paths.YtDlpPath, "", "")
-	if err := tiktokBackend.IsAvailable(context.Background()); err == nil {
+	ttCtx, ttCancel := context.WithTimeout(ctx, 2*time.Second)
+	if err := tiktokBackend.IsAvailable(ttCtx); err == nil {
 		tiktokClient = tiktokBackend
 		log.Info("TikTok client initialized")
 	} else {
 		log.Warn("TikTok client not available", zap.Error(err))
 	}
+	ttCancel()
 
 	// === GPU & NVIDIA ===
 	gpuCfg := &gpu.GPUConfig{Enabled: true}

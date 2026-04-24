@@ -277,6 +277,35 @@ func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}, nil
 }
 
+// WireMinimal initializes only the bare essentials for text generation.
+func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
+	coreDeps, coreClean, err := initCoreMinimal(cfg, log)
+	if err != nil {
+		return nil, err
+	}
+
+	// === Assemble Handlers ===
+	allHandlers := &api.Handlers{
+		ScriptPipeline: script.NewScriptPipelineHandler(
+			coreDeps.ScriptGen,
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, "", "",
+		),
+		NLP: nlp.NewNLPHandler(coreDeps.OllamaClient, coreDeps.EntityService),
+	}
+
+	deps := &api.RouterDeps{
+		ScriptGen:    coreDeps.ScriptGen,
+		OllamaClient: coreDeps.OllamaClient,
+	}
+
+	routerDeps := &api.RouterDepsWithHandlers{Handlers: allHandlers, Deps: deps}
+
+	return &AppDeps{
+		RouterDeps: routerDeps,
+		Cleanup:    coreClean,
+	}, nil
+}
+
 func runCleanups(cleanups []CleanupFunc) {
 	for i := len(cleanups) - 1; i >= 0; i-- {
 		if cleanups[i] != nil {

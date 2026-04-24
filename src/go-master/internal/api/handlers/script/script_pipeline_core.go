@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"velox/go-master/internal/clip"
@@ -215,7 +216,7 @@ func (h *ScriptPipelineHandler) extractEntitiesForPipeline(segments []Segment) (
 	frasi = uniqueAndLimit(frasi, 5)
 	nomi = uniqueAndLimit(nomi, 15)
 	parole = uniqueAndLimit(parole, 15)
-	images = uniqueEntitiesWithImage(images, 5)
+	images = uniqueEntitiesWithImage(images, 10)
 	return
 }
 
@@ -284,7 +285,7 @@ func (h *ScriptPipelineHandler) extractImagesForPipeline(topic string, title str
 		}
 		images = append(images, EntityImage{Entity: entity, ImageURL: imageURL})
 	}
-	return uniqueEntitiesWithImage(images, 5)
+	return uniqueEntitiesWithImage(images, 10)
 }
 
 // searchClipsForPipeline performs clip searches across multiple sources.
@@ -302,88 +303,134 @@ func (h *ScriptPipelineHandler) searchClipsForPipeline(ctx context.Context, topi
 
 	usedClipIDs := make(map[string]bool)
 	usedFolderIDs := make(map[string]bool)
+	var mu sync.Mutex
 
-	for _, seg := range segments {
-		initial, final := extractPhrases(seg.Text)
-		displayPhrase := shortPhrase(seg.Text, 10)
-		if displayPhrase == "" {
-			displayPhrase = initial
-		}
-		specificTerms := extractSpecificTerms(seg.Text)
+	type segmentResult struct {
+		stock   *StockAssoc
+		drive   *DriveFolderAssoc
+		artlist *ArtlistAssoc
+	}
+	results := make([]segmentResult, len(segments))
+	var wg sync.WaitGroup
 
-		// A. STOCK DRIVE
-		var segmentStockClips []StockClip
-		if h.clipIndexer != nil {
-			indexerResults := h.clipIndexer.Search(strings.Join(specificTerms, " "), clip.SearchFilters{})
-			for _, r := range indexerResults {
-				if len(segmentStockClips) >= 3 {
-					break
-				}
-				if usedClipIDs[r.ID] {
-					continue
-				}
-				segmentStockClips = append(segmentStockClips, StockClip{
-					ClipID: r.ID, Filename: r.Filename, FolderPath: r.FolderPath, DriveLink: r.DriveLink,
-				})
-				usedClipIDs[r.ID] = true
-			}
-		}
-		if len(segmentStockClips) > 0 {
-			stock = append(stock, StockAssoc{Phrase: displayPhrase, InitialPhrase: initial, FinalPhrase: final, Clips: segmentStockClips})
-		}
+	for i := range segments {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			seg := segments[idx]
 
-		// B. DRIVE CLIPS (Folders)
-		if h.clipIndexer != nil {
-			candidateQueries := make([]string, 0, len(specificTerms)+2)
-			candidateQueries = append(candidateQueries, specificTerms...)
-			if searchTopic != "" {
-				candidateQueries = append(candidateQueries, searchTopic)
+			initial, final := extractPhrases(seg.Text)
+			displayPhrase := shortPhrase(seg.Text, 10)
+			if displayPhrase == "" {
+				displayPhrase = initial
 			}
-			if topic != "" {
-				candidateQueries = append(candidateQueries, topic)
-			}
-			seenQueries := make(map[string]bool)
-			var folders []clip.IndexedFolder
-			for _, q := range candidateQueries {
-				q = strings.TrimSpace(q)
-				if q == "" || seenQueries[strings.ToLower(q)] {
-					continue
-				}
-				seenQueries[strings.ToLower(q)] = true
-				folders = h.clipIndexer.SearchFolders(q)
-				if len(folders) > 0 {
-					break
-				}
-			}
-			if len(folders) > 0 && !usedFolderIDs[folders[0].ID] {
-				folderName := formatClipFolderDisplayPath(folders[0])
-				drive = append(drive, DriveFolderAssoc{
-					Phrase:        shortPhrase(seg.Text, 10),
-					InitialPhrase: initial,
-					FinalPhrase:   final,
-					FolderName:    folderName,
-					FolderURL:     "https://drive.google.com/drive/folders/" + folders[0].ID,
-				})
-				usedFolderIDs[folders[0].ID] = true
-			}
-		}
+			specificTerms := extractSpecificTerms(seg.Text)
 
-		// C. ARTLIST
-		var segmentArtlistClips []ArtlistClipRef
-		if h.artlistDB != nil {
-			results, _ := h.artlistDB.FindDownloadedClipsWithSimilarTags(specificTerms, 1)
-			for _, r := range results {
-				if !usedClipIDs[r.URL] {
-					segmentArtlistClips = append(segmentArtlistClips, ArtlistClipRef{
-						ClipID: r.URL, Name: r.Name, Term: strings.Join(specificTerms, ", "), URL: r.DriveURL, Folder: r.FolderID, Source: "ArtlistDB", Score: 90.0,
+			// A. STOCK DRIVE
+			var segmentStockClips []StockClip
+			if h.clipIndexer != nil {
+				indexerResults := h.clipIndexer.Search(strings.Join(specificTerms, " "), clip.SearchFilters{})
+				for _, r := range indexerResults {
+					if len(segmentStockClips) >= 3 {
+						break
+					}
+
+					mu.Lock()
+					if usedClipIDs[r.ID] {
+						mu.Unlock()
+						continue
+					}
+					usedClipIDs[r.ID] = true
+					mu.Unlock()
+
+					segmentStockClips = append(segmentStockClips, StockClip{
+						ClipID: r.ID, Filename: r.Filename, FolderPath: r.FolderPath, DriveLink: r.DriveLink,
 					})
-					usedClipIDs[r.URL] = true
-					break
 				}
 			}
+			if len(segmentStockClips) > 0 {
+				results[idx].stock = &StockAssoc{Phrase: displayPhrase, InitialPhrase: initial, FinalPhrase: final, Clips: segmentStockClips}
+			}
+
+			// B. DRIVE CLIPS (Folders)
+			if h.clipIndexer != nil {
+				candidateQueries := make([]string, 0, len(specificTerms)+2)
+				candidateQueries = append(candidateQueries, specificTerms...)
+				if searchTopic != "" {
+					candidateQueries = append(candidateQueries, searchTopic)
+				}
+				if topic != "" {
+					candidateQueries = append(candidateQueries, topic)
+				}
+				seenQueries := make(map[string]bool)
+				var folders []clip.IndexedFolder
+				for _, q := range candidateQueries {
+					q = strings.TrimSpace(q)
+					if q == "" || seenQueries[strings.ToLower(q)] {
+						continue
+					}
+					seenQueries[strings.ToLower(q)] = true
+					folders = h.clipIndexer.SearchFolders(q)
+					if len(folders) > 0 {
+						break
+					}
+				}
+				if len(folders) > 0 {
+					mu.Lock()
+					if !usedFolderIDs[folders[0].ID] {
+						usedFolderIDs[folders[0].ID] = true
+						mu.Unlock()
+
+						folderName := formatClipFolderDisplayPath(folders[0])
+						results[idx].drive = &DriveFolderAssoc{
+							Phrase:        shortPhrase(seg.Text, 10),
+							InitialPhrase: initial,
+							FinalPhrase:   final,
+							FolderName:    folderName,
+							FolderURL:     "https://drive.google.com/drive/folders/" + folders[0].ID,
+						}
+					} else {
+						mu.Unlock()
+					}
+				}
+			}
+
+			// C. ARTLIST
+			var segmentArtlistClips []ArtlistClipRef
+			if h.artlistDB != nil {
+				artResults, _ := h.artlistDB.FindDownloadedClipsWithSimilarTags(specificTerms, 1)
+				for _, r := range artResults {
+					mu.Lock()
+					if !usedClipIDs[r.URL] {
+						usedClipIDs[r.URL] = true
+						mu.Unlock()
+
+						segmentArtlistClips = append(segmentArtlistClips, ArtlistClipRef{
+							ClipID: r.URL, Name: r.Name, Term: strings.Join(specificTerms, ", "), URL: r.DriveURL, Folder: r.FolderID, Source: "ArtlistDB", Score: 90.0,
+						})
+						break
+					} else {
+						mu.Unlock()
+					}
+				}
+			}
+			if len(segmentArtlistClips) > 0 {
+				results[idx].artlist = &ArtlistAssoc{Phrase: displayPhrase, Clips: segmentArtlistClips}
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Merge results in order
+	for _, res := range results {
+		if res.stock != nil {
+			stock = append(stock, *res.stock)
 		}
-		if len(segmentArtlistClips) > 0 {
-			artlist = append(artlist, ArtlistAssoc{Phrase: displayPhrase, Clips: segmentArtlistClips})
+		if res.drive != nil {
+			drive = append(drive, *res.drive)
+		}
+		if res.artlist != nil {
+			artlist = append(artlist, *res.artlist)
 		}
 	}
 	return

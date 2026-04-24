@@ -168,7 +168,7 @@ func (h *ScriptPipelineHandler) GenerateFullPipeline(c *gin.Context) {
 	tracker.SendProgress(operationID, "building_doc", "Building document content", 0.8, nil)
 	content := h.BuildDocumentContent(
 		req.Topic, req.Topic, req.Duration, req.Language, text, segments,
-		artlistAssocs, topicFolderID, req.Topic, nil, driveAssocs,
+		artlistAssocs, topicFolderID, req.Topic, driveAssocs, nil,
 		frasi, nomi, parole, images, nil, nil, nil,
 	)
 

@@ -139,18 +139,9 @@ func NewScriptDocServiceWithDynamicFolders(
 		semanticRegistry:     NewSemanticRegistry(scorer),
 	}
 
-	// Try to scan folders on startup, but don't fail if it doesn't work
-	if driveClient != nil && stockRootFolderID != "" {
-		folders, err := ScanStockFolders(context.Background(), driveClient, stockRootFolderID)
-		if err != nil {
-			logger.Warn("Failed to scan Stock folders on startup, will retry on first use",
-				zap.Error(err),
-			)
-		} else {
-			svc.stockFolders = folders
-			svc.stockFoldersCacheTime = time.Now()
-		}
-	}
+	// Initialize empty, will lazy-load on first resolveStockFolder call
+	svc.stockFolders = nil
+	svc.stockFoldersCacheTime = time.Time{}
 
 	return svc
 }

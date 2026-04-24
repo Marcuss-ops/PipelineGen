@@ -239,7 +239,11 @@ func (b *TikTokBackend) Platform() Platform {
 
 // IsAvailable verifica se yt-dlp è disponibile
 func (b *TikTokBackend) IsAvailable(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, b.ytdlpPath, "--version")
+	// Use a short timeout for availability check
+	shortCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(shortCtx, b.ytdlpPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("yt-dlp not available: %w", err)

@@ -33,7 +33,7 @@ func NewClient(baseURL, model string) *Client {
 		baseURL: baseURL,
 		model:   model,
 		httpClient: &http.Client{
-			Timeout: 3 * time.Minute,
+			Timeout: 30 * time.Second,
 		},
 	}
 }
@@ -98,6 +98,81 @@ func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
 	}
 
 	return result.Embedding, nil
+}
+
+// GenerateStream genera testo con Ollama in modalità streaming
+func (c *Client) GenerateStream(ctx context.Context, prompt string) (<-chan string, <-chan error) {
+	return c.GenerateStreamWithModel(ctx, c.model, prompt)
+}
+
+// GenerateStreamWithModel genera testo con un modello Ollama esplicito in modalità streaming.
+func (c *Client) GenerateStreamWithModel(ctx context.Context, model, prompt string) (<-chan string, <-chan error) {
+	textChan := make(chan string, 100)
+	errChan := make(chan error, 1)
+
+	if model == "" {
+		model = c.model
+	}
+
+	req := GenerateRequest{
+		Model:  model,
+		Prompt: prompt,
+		Stream: true,
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		errChan <- fmt.Errorf("failed to marshal request: %w", err)
+		close(textChan)
+		close(errChan)
+		return textChan, errChan
+	}
+
+	go func() {
+		defer close(textChan)
+		defer close(errChan)
+
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/generate", bytes.NewReader(body))
+		if err != nil {
+			errChan <- err
+			return
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			errChan <- fmt.Errorf("ollama request failed: %w", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			errChan <- fmt.Errorf("ollama returned status %d", resp.StatusCode)
+			return
+		}
+
+		decoder := json.NewDecoder(resp.Body)
+		for {
+			var result GenerateResponse
+			if err := decoder.Decode(&result); err != nil {
+				if err.Error() == "EOF" {
+					break
+				}
+				errChan <- fmt.Errorf("failed to decode streaming response: %w", err)
+				return
+			}
+
+			if result.Response != "" {
+				textChan <- result.Response
+			}
+
+			if result.Done {
+				break
+			}
+		}
+	}()
+
+	return textChan, errChan
 }
 
 // Generate genera testo con Ollama

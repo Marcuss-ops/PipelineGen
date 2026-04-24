@@ -124,7 +124,6 @@ func isSystemWord(s string) bool {
 		"azione": true, "questo": true, "quello": true, "ogni": true, "tutti": true,
 		"della": true, "delle": true, "degli": true, "dallo": true, "dalla": true,
 		"nelle": true, "nello": true, "nella": true, "sulla": true, "sulle": true,
-		"davis": true, "gervonta": true, // Anche se sono nomi propri, l'utente li trova ridondanti se ripetuti ovunque
 	}
 	return systemWords[s]
 }

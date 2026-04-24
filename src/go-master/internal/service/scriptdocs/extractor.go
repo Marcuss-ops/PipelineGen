@@ -176,7 +176,6 @@ func extractProperNounsInternal(sentences []string) []string {
 		"un": true, "una": true, "uno": true, "e": true, "o": true,
 		"di": true, "da": true, "in": true, "con": true, "su": true,
 		"per": true, "tra": true, "fra": true, "non": true, "che": true,
-		"davis": true, "tank": true, "baltimore": true, // User specific high-frequency but generic in context
 	}
 	for _, sentence := range sentences {
 		for _, word := range strings.Fields(sentence) {
@@ -252,6 +251,8 @@ func extractMultiWordEntities(sentences []string) []string {
 		var currentGroup []string
 		for _, word := range words {
 			clean := strings.TrimFunc(word, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+			isSentenceEnd := strings.ContainsAny(word, ".!?")
+
 			if len(clean) <= 1 {
 				if len(currentGroup) >= 2 {
 					phrase := strings.Join(currentGroup, " ")
@@ -265,6 +266,16 @@ func extractMultiWordEntities(sentences []string) []string {
 			}
 			if unicode.IsUpper(rune(clean[0])) {
 				currentGroup = append(currentGroup, clean)
+				if isSentenceEnd {
+					if len(currentGroup) >= 2 {
+						phrase := strings.Join(currentGroup, " ")
+						if !seen[phrase] {
+							seen[phrase] = true
+							result = append(result, phrase)
+						}
+					}
+					currentGroup = nil
+				}
 			} else {
 				if len(currentGroup) >= 2 {
 					phrase := strings.Join(currentGroup, " ")
