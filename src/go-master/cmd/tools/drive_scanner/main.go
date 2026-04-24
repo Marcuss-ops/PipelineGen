@@ -12,16 +12,17 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
+	cfgconfig "velox/go-master/pkg/config"
 )
 
 type FolderTree struct {
-	ID         string        `json:"id"`
-	Name       string        `json:"name"`
-	Path       string        `json:"path"`
-	URL        string        `json:"url"`
-	ParentID   string        `json:"parent_id"`
-	Subfolders []FolderTree  `json:"subfolders"`
-	Clips      []ClipInfo    `json:"clips"`
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	Path       string       `json:"path"`
+	URL        string       `json:"url"`
+	ParentID   string       `json:"parent_id"`
+	Subfolders []FolderTree `json:"subfolders"`
+	Clips      []ClipInfo   `json:"clips"`
 }
 
 type ClipInfo struct {
@@ -72,13 +73,13 @@ func main() {
 
 	// Stock folder IDs
 	stockFolderIDs := []string{
-		"1ktDuzVYvA1xfpja78VAEWt9KhwsthPod",  // ArtList
-		"14HWILTg8L9ST0bnorgmHzZknel9buJjb",  // Boxe
-		"1KhJ6bSty9r4EP_2gVpTzz4BWdKhsI0pG",  // Crimine
-		"11-O6LvlcL0Hj_ktiUOJDnpPYerSpWNiW",  // Discovery
-		"16D3qvbv3Y4TlNahQ3sWq6N7ITgwWm6DD",  // HipHop
-		"1_PQj7fok1UEzzQgTnUcTP3FHnZBnwv9t",  // Musica
-		"1_7U8yEeQZEH7vxgDIRketFL85F96O_Ws",  // Wwe
+		"1ktDuzVYvA1xfpja78VAEWt9KhwsthPod", // ArtList
+		"14HWILTg8L9ST0bnorgmHzZknel9buJjb", // Boxe
+		"1KhJ6bSty9r4EP_2gVpTzz4BWdKhsI0pG", // Crimine
+		"11-O6LvlcL0Hj_ktiUOJDnpPYerSpWNiW", // Discovery
+		"16D3qvbv3Y4TlNahQ3sWq6N7ITgwWm6DD", // HipHop
+		"1_PQj7fok1UEzzQgTnUcTP3FHnZBnwv9t", // Musica
+		"1_7U8yEeQZEH7vxgDIRketFL85F96O_Ws", // Wwe
 	}
 
 	// Clips folder IDs
@@ -153,11 +154,11 @@ func main() {
 
 	// Save to JSON
 	output := map[string]interface{}{
-		"stock_root":     "Multiple folders",
-		"total_folders":  totalFolders,
-		"total_clips":    totalClips,
-		"stock_folders":  allStockTrees,
-		"clips_folders":  allClipsTrees,
+		"stock_root":    "Multiple folders",
+		"total_folders": totalFolders,
+		"total_clips":   totalClips,
+		"stock_folders": allStockTrees,
+		"clips_folders": allClipsTrees,
 	}
 
 	data, err := json.MarshalIndent(output, "", "  ")
@@ -166,7 +167,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	outputFile := "data/stock_drive_structure.json"
+	outputFile := cfgconfig.ResolveDataPath("stock_drive_structure.json")
 	os.MkdirAll("data", 0755)
 	if err := os.WriteFile(outputFile, data, 0644); err != nil {
 		fmt.Printf("❌ Cannot write file: %v\n", err)
@@ -272,7 +273,7 @@ func countAll(tree FolderTree) (folders, clips int) {
 
 func printTree(tree FolderTree, depth int) {
 	indent := strings.Repeat("  ", depth)
-	
+
 	if depth == 0 {
 		fmt.Printf("\n📁 %s (ID: %s)\n", tree.Name, tree.ID)
 	} else {
@@ -282,7 +283,7 @@ func printTree(tree FolderTree, depth int) {
 	if len(tree.Clips) > 0 {
 		for _, clip := range tree.Clips {
 			durSec := clip.Duration / 1000
-			fmt.Printf("%s  🎬 %s (%.0fs, %dx%d)\n", 
+			fmt.Printf("%s  🎬 %s (%.0fs, %dx%d)\n",
 				indent, clip.Name, float64(durSec)/1000.0, clip.Width, clip.Height)
 		}
 	}
