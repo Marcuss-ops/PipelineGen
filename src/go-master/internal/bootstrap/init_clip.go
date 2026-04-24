@@ -14,7 +14,6 @@ import (
 	internalclip "velox/go-master/internal/clip"
 	"velox/go-master/internal/clipdb"
 	"velox/go-master/internal/runtime"
-	"velox/go-master/internal/script"
 	"velox/go-master/internal/stockdb"
 	"velox/go-master/internal/storage/jsondb"
 	"velox/go-master/pkg/config"
@@ -28,7 +27,6 @@ type ClipDeps struct {
 	CatalogSQLiteHandler *catalog.CatalogSQLiteHandler
 	ClipIndexStore       *jsondb.ClipIndexStore
 	ArtlistSrc           *internalclip.ArtlistSource
-	ScriptMapper         *script.Mapper
 	ClipIndexHandler     *clip.ClipIndexHandler
 	ClipHandler          *clip.ClipHandler
 }
@@ -58,24 +56,14 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 	// === Artlist Source ===
 	artlistSrc := initArtlistSource(cfg, log)
 
-	// === Clip Index Handler & Mapper ===
+	// === Clip Index Handler ===
 	clipIndexHandler := clip.NewClipIndexHandler(
 		cfg.GetClipRootFolder(), cfg.GetCredentialsPath(), cfg.GetTokenPath(), clipIndexStore, artlistSrc,
 	)
 
-	var scriptMapper *script.Mapper
 	indexer := clipIndexHandler.GetIndexer()
 	if indexer != nil {
 		indexer.SetScanFolderIDs(cfg.DriveScan.ClipsFolderIDs)
-		semanticSuggester := internalclip.NewSemanticSuggester(indexer)
-		scriptMapper = script.NewMapper(semanticSuggester, core.YouTubeClientV2, &script.MapperConfig{
-			MinScore:             cfg.ClipApproval.MinScore,
-			MaxClipsPerScene:     cfg.ClipApproval.MaxClipsPerScene,
-			AutoApproveThreshold: cfg.ClipApproval.AutoApproveThreshold,
-			EnableYouTube:        core.YouTubeClientV2 != nil,
-			EnableArtlist:        artlistSrc != nil,
-			RequiresApproval:     true,
-		})
 	}
 
 	// === Clip Handler ===
@@ -171,7 +159,6 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 		CatalogSQLiteHandler: catalogSQLiteHandler,
 		ClipIndexStore:       clipIndexStore,
 		ArtlistSrc:           artlistSrc,
-		ScriptMapper:         scriptMapper,
 		ClipIndexHandler:     clipIndexHandler,
 		ClipHandler:          clipHandler,
 	}, services, nil

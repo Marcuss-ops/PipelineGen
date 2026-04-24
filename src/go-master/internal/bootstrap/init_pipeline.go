@@ -52,10 +52,7 @@ func initPipeline(
 	docClient := drive.DriveHandler.GetDocClient()
 
 	// === Clip Approval ===
-	var clipApprovalHandler *clip.ClipApprovalHandler
-	if clips.ScriptMapper != nil {
-		clipApprovalHandler = clip.NewClipApprovalHandler(clips.ScriptMapper, core.NvidiaClient, clips.StockDB, log)
-	}
+	clipApprovalHandler := clip.NewClipApprovalHandler(core.NvidiaClient, clips.StockDB, log)
 
 	// === Script + Clips ===
 	var scriptClipsHandler *script.ScriptClipsHandler
