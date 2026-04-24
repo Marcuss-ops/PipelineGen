@@ -11,14 +11,15 @@ import (
 	"velox/go-master/internal/clipdb"
 	"velox/go-master/internal/stockdb"
 	"velox/go-master/internal/upload/drive"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
 	ctx := context.Background()
 
-	artlistPath := getenv("ARTLIST_DB_PATH", "data/artlist_local.db.json")
-	stockPath := getenv("STOCK_DB_PATH", "data/stock.db.json")
-	clipPath := getenv("CLIP_DB_PATH", "data/clip_index.json")
+	artlistPath := getenv("ARTLIST_DB_PATH", config.ResolveDataPath("artlist_local.db.json"))
+	stockPath := getenv("STOCK_DB_PATH", config.ResolveDataPath("stock.db.json"))
+	clipPath := getenv("CLIP_DB_PATH", config.ResolveDataPath("clip_index.json"))
 
 	alDB, err := artlistdb.Open(artlistPath)
 	if err != nil {

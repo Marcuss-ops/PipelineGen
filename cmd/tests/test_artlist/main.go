@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/artlistdb"
 	"velox/go-master/internal/clip"
 	"velox/go-master/internal/upload/drive"
+	"velox/go-master/pkg/config"
 )
 
 // Test keywords — 10 diverse English terms from the seed pool
@@ -45,7 +46,7 @@ func main() {
 	log.Printf("✓ Artlist SQLite connected (%s)", dbPath)
 
 	// 2. Open local ArtlistDB
-	localDBPath := "data/artlist_local.db.json"
+	localDBPath := config.ResolveDataPath("artlist_local.db.json")
 	artlistDB, err := artlistdb.Open(localDBPath)
 	if err != nil {
 		log.Fatalf("Failed to open ArtlistDB: %v", err)
@@ -98,14 +99,14 @@ func main() {
 
 	// 5. Process keywords
 	var (
-		mu            sync.Mutex
-		wg            sync.WaitGroup
-		sem           = make(chan struct{}, parallel)
-		totalSearched int
-		totalIndexed  int
+		mu              sync.Mutex
+		wg              sync.WaitGroup
+		sem             = make(chan struct{}, parallel)
+		totalSearched   int
+		totalIndexed    int
 		totalDownloaded int
-		totalUploaded int
-		results       []map[string]interface{}
+		totalUploaded   int
+		results         []map[string]interface{}
 	)
 
 	for _, keyword := range testKeywords {
@@ -299,7 +300,7 @@ func processKeyword(
 
 // downloadClip downloads a clip using yt-dlp or curl.
 func downloadClip(url, keyword, videoID string) (string, error) {
-	tempDir := filepath.Join("data/downloads", "artlist", keyword)
+	tempDir := filepath.Join(config.ResolveDataPath("downloads"), "artlist", keyword)
 	os.MkdirAll(tempDir, 0755)
 
 	rawPath := filepath.Join(tempDir, fmt.Sprintf("%s_raw.mp4", videoID))

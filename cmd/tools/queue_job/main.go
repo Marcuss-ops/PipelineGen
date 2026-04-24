@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+
 	"velox/go-master/internal/pipeline/store"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
 	videoID := flag.String("id", "", "YouTube Video ID to queue")
-	dbPath := flag.String("db", "data/pipeline.db", "Path to pipeline SQLite DB")
+	dbPath := flag.String("db", config.ResolveDataPath("pipeline.db"), "Path to pipeline SQLite DB")
 	flag.Parse()
 
 	if *videoID == "" {

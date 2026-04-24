@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+
 	_ "github.com/mattn/go-sqlite3"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
-	db, err := sql.Open("sqlite3", "data/pipeline.db")
+	db, err := sql.Open("sqlite3", config.ResolveDataPath("pipeline.db"))
 	if err != nil {
 		log.Fatal(err)
 	}

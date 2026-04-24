@@ -10,6 +10,7 @@ import (
 
 	"velox/go-master/internal/artlist"
 	"velox/go-master/internal/clipdb"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
@@ -23,8 +24,8 @@ func main() {
 	}
 
 	scraperPath := "../node-scraper/scripts/scrape_artlist_discovery.js"
-	outputDir := "data/async_pipeline_jobs"
-	dbPath := "data/clips_catalog.db"
+	outputDir := config.ResolveDataPath("async_pipeline_jobs")
+	dbPath := config.ResolveDataPath("clips_catalog.db")
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		log.Fatalf("Errore creazione cartella output: %v", err)

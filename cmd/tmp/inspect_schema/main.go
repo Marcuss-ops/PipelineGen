@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+
 	_ "modernc.org/sqlite"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
-	db, err := sql.Open("sqlite", "data/clips_catalog.db")
+	db, err := sql.Open("sqlite", config.ResolveDataPath("clips_catalog.db"))
 	if err != nil {
 		log.Fatal(err)
 	}

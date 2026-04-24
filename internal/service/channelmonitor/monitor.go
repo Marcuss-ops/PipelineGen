@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"velox/go-master/internal/runtime"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/youtube"
+	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
@@ -88,7 +88,7 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 		clipRunStore:    nil,
 		downloadClipFn:  nil,
 		processedVideos: make(map[string]*ProcessedVideoEntry),
-		processedFile:   defaultChannelMonitorPath("channel_monitor_processed.json"),
+		processedFile:   config.ResolveDataPath("channel_monitor_processed.json"),
 		ollamaURL:       ollamaURL,
 		filterEngine:    NewFilterEngine(),
 	}
@@ -97,7 +97,7 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 		clipRunDBPath = os.Getenv("VELOX_CHANNELMONITOR_CLIP_RUN_DB")
 	}
 	if clipRunDBPath == "" {
-		clipRunDBPath = defaultChannelMonitorPath("channel_monitor_clip_runs.sqlite")
+		clipRunDBPath = config.ResolveDataPath("channel_monitor_clip_runs.sqlite")
 	}
 	if store, err := OpenClipRunStore(clipRunDBPath); err == nil {
 		m.clipRunStore = store
@@ -113,13 +113,6 @@ func NewMonitor(cfg MonitorConfig, ytClient youtube.Client, driveClient driveCli
 	m.scanExistingFolders()
 
 	return m
-}
-
-func defaultChannelMonitorPath(filename string) string {
-	if dataDir := strings.TrimSpace(os.Getenv("VELOX_DATA_DIR")); dataDir != "" {
-		return filepath.Join(dataDir, filename)
-	}
-	return filepath.Join("data", filename)
 }
 
 // Start runs the monitor in a background goroutine until context is cancelled.
