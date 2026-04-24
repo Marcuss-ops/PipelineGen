@@ -212,42 +212,64 @@ func cleanMetaFromPhrase(s string) string {
 	return strings.TrimSpace(re.ReplaceAllString(s, ""))
 }
 
-// extractEntitiesForPipeline extracts only high-quality quotes and images from segments.
+// extractEntitiesForPipeline extracts high-quality quotes, names, and images from segments.
 func (h *ScriptPipelineHandler) extractEntitiesForPipeline(segments []Segment) (frasi []string, nomi []string, parole []string, images []EntityImage) {
 	seenPhrase := make(map[string]bool)
+	seenName := make(map[string]bool)
+	seenKeyword := make(map[string]bool)
 	allSentences := make([]string, 0, len(segments))
 
 	for _, seg := range segments {
 		cleanText := cleanMetaFromPhrase(seg.Text)
 		allSentences = append(allSentences, cleanText)
 		
-		// Estrai solo frasi lunghe e significative (non junk)
-		if len(cleanText) > 40 {
-			phrase := shortPhrase(cleanText, 15)
+		// 1. Frasi Potenti
+		if len(cleanText) > 45 {
+			phrase := shortPhrase(cleanText, 16)
 			lowerPhrase := strings.ToLower(phrase)
 			if !seenPhrase[lowerPhrase] && !isJunkEntity(phrase) {
 				frasi = append(frasi, phrase)
 				seenPhrase[lowerPhrase] = true
 			}
 		}
+
+		// 2. Nomi Propri (Solo reali e non duplicati)
+		foundNomi := scriptdocs.ExtractProperNouns([]string{cleanText})
+		for _, n := range foundNomi {
+			lowerN := strings.ToLower(n)
+			if !isJunkEntity(n) && !seenName[lowerN] && len(n) > 2 {
+				nomi = append(nomi, n)
+				seenName[lowerN] = true
+			}
+		}
+
+		// 3. Parole Chiave (Solo concetti forti)
+		foundParole := scriptdocs.ExtractKeywords(cleanText)
+		for _, p := range foundParole {
+			lowerP := strings.ToLower(p)
+			if !isJunkEntity(p) && !seenKeyword[lowerP] && !seenName[lowerP] && len(p) > 3 {
+				parole = append(parole, p)
+				seenKeyword[lowerP] = true
+			}
+		}
 	}
 
-	// Cerca solo immagini per i soggetti principali (estratte dai primi segmenti)
+	// 4. Immagini (Soggetti principali dai primi segmenti)
 	topSentences := allSentences
-	if len(topSentences) > 3 {
-		topSentences = topSentences[:3]
+	if len(topSentences) > 4 {
+		topSentences = topSentences[:4]
 	}
 	entityImagesMap := scriptdocs.ExtractEntitiesWithImages(topSentences)
-	
 	for entity, imageURL := range entityImagesMap {
 		if imageURL != "" && !isJunkEntity(entity) {
 			images = append(images, EntityImage{Entity: entity, ImageURL: imageURL})
 		}
 	}
 
-	frasi = uniqueAndLimit(frasi, 8)
-	images = uniqueEntitiesWithImage(images, 5)
-	// nomi e parole tornano vuoti apposta
+	frasi = uniqueAndLimit(frasi, 10)
+	nomi = uniqueAndLimit(nomi, 15)
+	parole = uniqueAndLimit(parole, 15)
+	images = uniqueEntitiesWithImage(images, 6)
 	return
 }
 

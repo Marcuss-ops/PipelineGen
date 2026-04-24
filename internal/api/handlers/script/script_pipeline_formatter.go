@@ -150,29 +150,55 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 		content.WriteString("--------------------------------------------------------------------------------\n\n")
 	}
 
-	// 5. SUGGESTED ASSETS & ENTITIES (PULITO)
-	if len(entitaImmagini) > 0 || len(frasi) > 0 {
-		content.WriteString("🖼️ SUGGESTED IMAGES & RESOURCES\n\n")
+	// 5. SUGGESTED ASSETS & ENTITIES
+	if len(entitaImmagini) > 0 || len(frasi) > 0 || len(nomi) > 0 || len(parole) > 0 {
+		content.WriteString("🖼️ SUGGESTED IMAGES & ENTITIES\n\n")
 
+		// 5a. Visual entities (Immagini)
 		if len(entitaImmagini) > 0 {
-			content.WriteString("   👤 **PERSONE E PERSONAGGI CHIAVE:**\n")
 			for _, ent := range entitaImmagini {
-				content.WriteString(fmt.Sprintf("     • %s\n", ent.Entity))
+				content.WriteString(fmt.Sprintf("   • 👤 %s", ent.Entity))
 				if ent.ImageURL != "" {
-					content.WriteString(fmt.Sprintf("       🔗 %s\n", ent.ImageURL))
+					content.WriteString(fmt.Sprintf(" -> %s", ent.ImageURL))
 				}
+				content.WriteString("\n")
 			}
 			content.WriteString("\n")
 		}
 
+		// 5b. Frasi Importanti (Numerato)
 		if len(frasi) > 0 {
-			content.WriteString("   💬 **CITAZIONI E FRASI ICONICHE:**\n")
-			for _, fr := range frasi {
-				if len(strings.Fields(fr)) > 4 {
-					content.WriteString(fmt.Sprintf("     \"%s\"\n", fr))
-				}
+			content.WriteString(fmt.Sprintf("📌 FRASI IMPORTANTI (%d)\n", len(frasi)))
+			for i, fr := range frasi {
+				content.WriteString(fmt.Sprintf("   %d. %s\n", i+1, fr))
 			}
 			content.WriteString("\n")
+		}
+
+		// 5c. Nomi Speciali (Separati da virgola)
+		if len(nomi) > 0 {
+			content.WriteString(fmt.Sprintf("👤 NOMI SPECIALI (%d)\n", len(nomi)))
+			content.WriteString("   ")
+			for i, n := range nomi {
+				content.WriteString(n)
+				if i < len(nomi)-1 {
+					content.WriteString(", ")
+				}
+			}
+			content.WriteString("\n\n")
+		}
+
+		// 5d. Parole Importanti (Separati da virgola)
+		if len(parole) > 0 {
+			content.WriteString(fmt.Sprintf("🔑 PAROLE IMPORTANTI (%d)\n", len(parole)))
+			content.WriteString("   ")
+			for i, p := range parole {
+				content.WriteString(p)
+				if i < len(parole)-1 {
+					content.WriteString(", ")
+				}
+			}
+			content.WriteString("\n\n")
 		}
 		content.WriteString("====================================================================================================\n\n")
 	}
