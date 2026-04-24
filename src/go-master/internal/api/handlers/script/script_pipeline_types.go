@@ -137,6 +137,8 @@ type CreateDocumentRequest struct {
 	EntitaConImmagine []EntityImage      `json:"entita_con_immagine"`
 	ArtlistAssocs     []ArtlistAssoc     `json:"artlist_assocs"`
 	PreviewOnly       bool               `json:"preview_only"`
+	SkipEnrichment    bool               `json:"skip_enrichment,omitempty"`
+	MinimalDoc        bool               `json:"minimal_doc,omitempty"`
 }
 
 type CreateDocumentResponse struct {
@@ -145,6 +147,17 @@ type CreateDocumentResponse struct {
 	DocURL      string `json:"doc_url"`
 	PreviewPath string `json:"preview_path,omitempty"`
 	Mode        string `json:"mode,omitempty"`
+}
+
+type GenerateDocResponse struct {
+	Ok          bool   `json:"ok"`
+	DocID       string `json:"doc_id"`
+	DocURL      string `json:"doc_url"`
+	Script      string `json:"script"`
+	WordCount   int    `json:"word_count"`
+	EstDuration int    `json:"est_duration"`
+	Model       string `json:"model,omitempty"`
+	Language    string `json:"language,omitempty"`
 }
 
 type ReviewDraftRequest struct {
