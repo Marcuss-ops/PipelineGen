@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
@@ -35,7 +36,7 @@ func (k ErrorKind) String() string {
 }
 
 type RetryableError struct {
-	Err error
+	Err  error
 	Kind ErrorKind
 }
 
@@ -115,17 +116,17 @@ func extractHTTPStatus(err error) int {
 
 type RetryConfig struct {
 	MaxRetries int
-	BaseDelay time.Duration
-	MaxDelay time.Duration
-	Jitter   bool
+	BaseDelay  time.Duration
+	MaxDelay   time.Duration
+	Jitter     bool
 }
 
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxRetries: 3,
-		BaseDelay: 2 * time.Second,
-		MaxDelay:  32 * time.Second,
-		Jitter:   true,
+		BaseDelay:  2 * time.Second,
+		MaxDelay:   32 * time.Second,
+		Jitter:     true,
 	}
 }
 
@@ -181,23 +182,23 @@ func WithRetry(ctx context.Context, cfg RetryConfig, fn func() error) error {
 }
 
 type FailedClipRecord struct {
-	VideoID      string    `json:"video_id"`
-	Title        string    `json:"title"`
-	ChannelURL   string    `json:"channel_url"`
-	Error       string    `json:"error"`
-	ErrorKind    string    `json:"error_kind"`
-	Attempts    int       `json:"attempts"`
-	FailedAt    time.Time `json:"failed_at"`
-	VideoURL     string    `json:"video_url,omitempty"`
-	StartSec    int       `json:"start_sec,omitempty"`
-	Duration    int       `json:"duration,omitempty"`
+	VideoID    string    `json:"video_id"`
+	Title      string    `json:"title"`
+	ChannelURL string    `json:"channel_url"`
+	Error      string    `json:"error"`
+	ErrorKind  string    `json:"error_kind"`
+	Attempts   int       `json:"attempts"`
+	FailedAt   time.Time `json:"failed_at"`
+	VideoURL   string    `json:"video_url,omitempty"`
+	StartSec   int       `json:"start_sec,omitempty"`
+	Duration   int       `json:"duration,omitempty"`
 }
 
 type DeadLetterQueue struct {
-	mu      sync.Mutex
-	file    *os.File
-	path   string
-	count  int
+	mu    sync.Mutex
+	file  *os.File
+	path  string
+	count int
 }
 
 func NewDeadLetterQueue(path string) (*DeadLetterQueue, error) {
@@ -329,7 +330,7 @@ func (m *Monitor) RetryDownload(ctx context.Context, r RetryCtx, fn func() error
 
 func (m *Monitor) writeDLQ(r RetryCtx, err error, attempts int) {
 	if r.DLQPath == "" {
-		r.DLQPath = "data/failed_clips.jsonl"
+		r.DLQPath = config.ResolveDataPath("failed_clips.jsonl")
 	}
 
 	record := FailedClipRecord{
@@ -338,11 +339,11 @@ func (m *Monitor) writeDLQ(r RetryCtx, err error, attempts int) {
 		ChannelURL: r.Channel,
 		VideoURL:   r.VideoURL,
 		StartSec:   r.StartSec,
-		Duration:  r.Duration,
-		Error:     err.Error(),
-		ErrorKind: ClassifyError(err).String(),
-		Attempts:  attempts,
-		FailedAt:  time.Now(),
+		Duration:   r.Duration,
+		Error:      err.Error(),
+		ErrorKind:  ClassifyError(err).String(),
+		Attempts:   attempts,
+		FailedAt:   time.Now(),
 	}
 
 	if dlqErr := WriteFailedClip(r.DLQPath, record); dlqErr != nil {

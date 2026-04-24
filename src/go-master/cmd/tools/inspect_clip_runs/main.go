@@ -8,10 +8,11 @@ import (
 	"text/tabwriter"
 
 	"velox/go-master/internal/service/channelmonitor"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
-	dbPath := flag.String("db", "data/channel_monitor_clip_runs.sqlite", "path to the clip run sqlite database")
+	dbPath := flag.String("db", config.ResolveDataPath("channel_monitor_clip_runs.sqlite"), "path to the clip run sqlite database")
 	videoID := flag.String("video", "", "optional video id filter")
 	all := flag.Bool("all", false, "show all runs instead of only failed/needs-review ones")
 	flag.Parse()

@@ -7,6 +7,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"velox/go-master/pkg/config"
 )
 
 type ArtlistClip struct {
@@ -23,7 +25,7 @@ type ArtlistIndex struct {
 }
 
 func main() {
-	path := "data/artlist_stock_index.json"
+	path := config.ResolveDataPath("artlist_stock_index.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("Errore lettura indice: %v", err)

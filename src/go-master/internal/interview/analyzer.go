@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 )
 
@@ -56,7 +57,7 @@ func DefaultConfig() Config {
 		MinDuration: 5.0,
 		MaxDuration: 30.0,
 		YTDLPPath:   "yt-dlp",
-		CacheDir:    "./data/interview_cache",
+		CacheDir:    config.ResolveDataPath("interview_cache"),
 		CacheTTL:    24 * time.Hour,
 	}
 }

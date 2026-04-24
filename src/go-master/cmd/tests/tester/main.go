@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"velox/go-master/internal/clipdb"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
-	dbPath := "data/clips_test.db"
+	dbPath := config.ResolveDataPath("clips_test.db")
 	os.Remove(dbPath)
 	defer os.Remove(dbPath)
 

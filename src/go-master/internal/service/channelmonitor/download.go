@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"velox/go-master/internal/youtube"
+	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
@@ -402,7 +403,7 @@ func (m *Monitor) downloadClip(ctx context.Context, videoID string, startSec, du
 	retryCfg := DefaultRetryConfig()
 	return m.RetryDownload(ctx, RetryCtx{
 		Config:   retryCfg,
-		DLQPath:  "data/failed_clips.jsonl",
+		DLQPath:  config.ResolveDataPath("failed_clips.jsonl"),
 		VideoID:  videoID,
 		VideoURL: url,
 		StartSec: startSec,

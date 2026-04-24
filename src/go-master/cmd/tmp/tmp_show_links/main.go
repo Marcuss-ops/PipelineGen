@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"log"
+
 	"velox/go-master/internal/clipdb"
+	"velox/go-master/pkg/config"
 )
 
 func main() {
-	db, err := clipdb.OpenSQLite("data/clips_catalog.db")
+	db, err := clipdb.OpenSQLite(config.ResolveDataPath("clips_catalog.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
