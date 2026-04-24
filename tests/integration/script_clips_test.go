@@ -38,7 +38,7 @@ func (s *ScriptClipsTestSuite) TestScriptClipsResponseStructure() {
 		Script:      "Test script content...",
 		WordCount:   140,
 		EstDuration: 60,
-		Model:       "gemma3:4b",
+		Model:       "gemma3:12b",
 		Segments: []scriptclips.SegmentClipMapping{
 			{
 				SegmentIndex: 0,

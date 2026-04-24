@@ -37,7 +37,7 @@ Title: "%s"
 Protagonist: "%s"`, strings.Join(candidates, ", "), title, protagonist)
 
 	reqBody := map[string]interface{}{
-		"model":  "gemma3:4b",
+		"model":  "gemma3:12b",
 		"prompt": prompt,
 		"stream": false,
 	}

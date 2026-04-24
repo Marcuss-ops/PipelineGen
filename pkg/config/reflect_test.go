@@ -67,8 +67,8 @@ func TestApplyDefaults(t *testing.T) {
 	}
 
 	// TextGen defaults
-	if cfg.TextGen.DefaultModel != "gemma3:4b" {
-		t.Errorf("TextGen.DefaultModel default = %q, want %q", cfg.TextGen.DefaultModel, "gemma3:4b")
+	if cfg.TextGen.DefaultModel != "gemma3:12b" {
+		t.Errorf("TextGen.DefaultModel default = %q, want %q", cfg.TextGen.DefaultModel, "gemma3:12b")
 	}
 	if cfg.TextGen.Timeout != 60 {
 		t.Errorf("TextGen.Timeout default = %d, want %d", cfg.TextGen.Timeout, 60)

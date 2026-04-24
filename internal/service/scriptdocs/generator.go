@@ -18,7 +18,7 @@ func (s *ScriptDocService) generateScriptForLang(ctx context.Context, topic stri
 
 	prompt := s.buildPrompt(topic, duration, langName)
 
-	result, err := s.generator.GetClient().GenerateWithModel(genCtx, model, prompt)
+	result, err := s.generator.GetClient().GenerateWithOptions(genCtx, model, prompt, map[string]interface{}{"num_predict": 4096, "temperature": 0.7})
 	if err != nil {
 		return "", err
 	}
