@@ -93,8 +93,6 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 	// === StockDB ===
 	stockDBPaths := []string{
 		filepath.Join(cfg.Storage.DataDir, "stock.db.json"),
-		"src/go-master/data/stock.db.json",
-		"data/stock.db.json",
 	}
 	if renamed := findRenamedStockDBPath(cfg.Storage.DataDir); renamed != "" {
 		alreadyListed := false
@@ -133,7 +131,7 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 	}
 
 	// === ClipDB ===
-	clipDBPath := cfg.Storage.DataDir + "/clip_index.json"
+	clipDBPath := filepath.Join(cfg.Storage.DataDir, "clip_index.json")
 	var clipDB *clipdb.ClipDB
 	if _, err := os.Stat(clipDBPath); err == nil {
 		clipDB, err = clipdb.Open(clipDBPath)
@@ -150,7 +148,7 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 	}
 
 	// === Unified CatalogDB ===
-	unifiedCatalogPath := cfg.Storage.DataDir + "/unified_catalog.db"
+	unifiedCatalogPath := filepath.Join(cfg.Storage.DataDir, "unified_catalog.db")
 	catalogDB, err := catalogdb.Open(unifiedCatalogPath)
 	if err != nil {
 		log.Warn("Failed to open CatalogDB", zap.String("path", unifiedCatalogPath), zap.Error(err))
@@ -159,22 +157,22 @@ func initClipSystem(cfg *config.Config, log *zap.Logger, core *CoreDeps) (*ClipD
 	}
 
 	// === CatalogSQLite Handler (New API - Legacy Catalog) ===
-	catalogPath := cfg.Storage.DataDir + "/clips_catalog.db"
+	catalogPath := filepath.Join(cfg.Storage.DataDir, "clips_catalog.db")
 	catalogSQLiteHandler, err := catalog.NewCatalogSQLiteHandler(catalogPath)
 	if err != nil {
 		log.Warn("Failed to initialize CatalogSQLiteHandler", zap.Error(err))
 	}
 
 	return &ClipDeps{
-		StockDB:             stockDB,
-		ClipDB:              clipDB,
-		CatalogDB:           catalogDB,
+		StockDB:              stockDB,
+		ClipDB:               clipDB,
+		CatalogDB:            catalogDB,
 		CatalogSQLiteHandler: catalogSQLiteHandler,
-		ClipIndexStore:      clipIndexStore,
-		ArtlistSrc:          artlistSrc,
-		ScriptMapper:        scriptMapper,
-		ClipIndexHandler:    clipIndexHandler,
-		ClipHandler:         clipHandler,
+		ClipIndexStore:       clipIndexStore,
+		ArtlistSrc:           artlistSrc,
+		ScriptMapper:         scriptMapper,
+		ClipIndexHandler:     clipIndexHandler,
+		ClipHandler:          clipHandler,
 	}, services, nil
 }
 

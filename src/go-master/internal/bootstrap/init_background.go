@@ -68,7 +68,7 @@ func initBackgroundServices(
 	// === Channel Monitor === (disabled by default, set VELOX_ENABLE_CHANNEL_MONITOR=true to enable)
 	var channelMonitorHandler *monitoring.ChannelMonitorHandler
 	if os.Getenv("VELOX_ENABLE_CHANNEL_MONITOR") == "true" && core.YouTubeClientV2 != nil && driveClient != nil {
-		configPath := "data/channel_monitor_config.json"
+		configPath := cfg.GetDataPath("channel_monitor_config.json")
 		fileCfg, err := channelmonitor.LoadConfigWithDefaults(configPath)
 		if err != nil {
 			log.Warn("Failed to load channel monitor config", zap.Error(err))
@@ -155,7 +155,7 @@ func initBackgroundServices(
 	if core.YouTubeClientV2 != nil && driveClient != nil && clips.ClipDB != nil {
 		ytAdapter := adapters.NewYouTubeSearcherAdapter(core.YouTubeClientV2)
 
-		harvesterConfig, err := harvester.LoadConfigWithDefaults("data/harvester_config.json")
+		harvesterConfig, err := harvester.LoadConfigWithDefaults(cfg.GetDataPath("harvester_config.json"))
 		if err != nil {
 			log.Warn("Failed to load harvester config, using defaults", zap.Error(err))
 			harvesterConfig = harvester.DefaultConfig()

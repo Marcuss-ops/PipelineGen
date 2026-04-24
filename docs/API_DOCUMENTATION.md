@@ -1723,7 +1723,7 @@ http://localhost:8080/api/docs/index.html
 | `VELOX_PORT` | `8080` | Server port |
 | `VELOX_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 | `VELOX_LOG_FORMAT` | `json` | Log format (json, console) |
-| `VELOX_DATA_DIR` | `./data` | Data directory for JSON DB |
+| `VELOX_DATA_DIR` | `./data` | Canonical runtime data directory for JSON/SQLite state |
 | `VELOX_ENABLE_AUTH` | `false` | Enable authentication middleware |
 | `VELOX_ADMIN_TOKEN` | `` | Admin API token |
 | `VELOX_MAX_PARALLEL_PER_PROJECT` | `2` | Max parallel jobs per project |

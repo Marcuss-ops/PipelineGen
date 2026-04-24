@@ -2,7 +2,6 @@
 package nlp
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -84,18 +83,6 @@ type TextGenHandler struct {
 	logger    *zap.Logger
 }
 
-type ScriptGenerationRequest struct {
-	Topic       string   `json:"topic" binding:"required"`
-	Duration    int      `json:"duration"`
-	Language    string   `json:"language"`
-	Tone        string   `json:"tone"`
-	Keywords    []string `json:"keywords"`
-	Structure   []string `json:"structure"`
-	UseGPU      bool     `json:"use_gpu"`
-	TargetWords int      `json:"target_words"`
-	Model       string   `json:"model"`
-}
-
 // NewTextGenHandler creates a new text generation API handler
 func NewTextGenHandler(gen *textgen.Generator, logger *zap.Logger) *TextGenHandler {
 	return &TextGenHandler{
@@ -144,7 +131,7 @@ func (h *TextGenHandler) GenerateText(c *gin.Context) {
 // @Failure 500 {object} map[string]string
 // @Router /api/script/generate-new [post]
 func (h *TextGenHandler) GenerateScript(c *gin.Context) {
-	var req ScriptGenerationRequest
+	var req textgen.ScriptRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -154,61 +141,21 @@ func (h *TextGenHandler) GenerateScript(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "topic is required"})
 		return
 	}
-	if req.Duration <= 0 {
-		req.Duration = 60
-	}
-	if req.Language == "" {
-		req.Language = "english"
-	}
-	if req.Tone == "" {
-		req.Tone = "professional"
-	}
-	if req.TargetWords <= 0 {
-		req.TargetWords = (req.Duration * 140) / 60
-	}
-	if strings.TrimSpace(req.Model) == "" {
-		req.Model = "gemma3:4b"
-	}
 
-	prompt := buildScriptPrompt(req)
-	result, err := h.generator.GenerateText(c.Request.Context(), &textgen.GenerationRequest{
-		Provider:    textgen.ProviderOllama,
-		Model:       req.Model,
-		Prompt:      prompt,
-		Temperature: 0.7,
-		MaxTokens:   req.TargetWords * 2,
-		UseGPU:      req.UseGPU,
-	})
+	result, err := h.generator.GenerateScript(c.Request.Context(), &req)
 	if err != nil {
 		h.logger.Error("Failed to generate script", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	wordCount := len(strings.Fields(result.Text))
-
 	c.JSON(http.StatusOK, gin.H{
-		"ok":           true,
-		"script":       result.Text,
-		"word_count":   wordCount,
-		"est_duration": int(float64(wordCount) * 60 / 140),
+		"ok":           result.Ok,
+		"script":       result.Script,
+		"word_count":   result.WordCount,
+		"est_duration": result.EstDuration,
 		"model":        result.Model,
 	})
-}
-
-func buildScriptPrompt(req ScriptGenerationRequest) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("You are an expert script writer. Create a %s script about: %s.\n\n", req.Tone, req.Topic))
-	b.WriteString(fmt.Sprintf("Language: %s\n", req.Language))
-	b.WriteString(fmt.Sprintf("Target length: approximately %d words\n", req.TargetWords))
-	if len(req.Keywords) > 0 {
-		b.WriteString(fmt.Sprintf("Keywords to include naturally: %s\n", strings.Join(req.Keywords, ", ")))
-	}
-	if len(req.Structure) > 0 {
-		b.WriteString(fmt.Sprintf("Structure: %s\n", strings.Join(req.Structure, ", ")))
-	}
-	b.WriteString("\nWrite only the script text. Keep it engaging, natural, and suitable for narration.")
-	return b.String()
 }
 
 // GetGPUStatusForTextGen godoc

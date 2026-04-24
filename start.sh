@@ -8,8 +8,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+export VELOX_DATA_DIR="${VELOX_DATA_DIR:-$ROOT_DIR/data}"
+mkdir -p "$VELOX_DATA_DIR"
+
 echo "🚀 Avvio VeloxEditing Backend..."
 echo ""
+echo "📦 Data dir: $VELOX_DATA_DIR"
 
 RUST_BUNDLE="$ROOT_DIR/bin/video-stock-creator.bundle"
 RUST_AVAILABLE=false

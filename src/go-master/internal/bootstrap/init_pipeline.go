@@ -224,21 +224,21 @@ func initPipeline(
 			ffmpegPath = p
 		}
 
-		artlistClipCachePath := "data/clip_cache.json"
+		artlistClipCachePath := cfg.GetDataPath("clip_cache.json")
 		artlistClipCache, artlistCacheErr := clipcache.Open(artlistClipCachePath)
 		if artlistCacheErr != nil {
 			log.Warn("Failed to open clip cache for artlist, starting fresh", zap.Error(artlistCacheErr))
 			artlistClipCache, _ = clipcache.Open(artlistClipCachePath)
 		}
 
-		keywordPoolPath := "data/keyword_pool.json"
+		keywordPoolPath := cfg.GetDataPath("keyword_pool.json")
 		keywordPool, kwErr := artlistpipeline.NewKeywordPool(keywordPoolPath)
 		if kwErr != nil {
 			log.Warn("Failed to initialize keyword pool", zap.Error(kwErr))
 			keywordPool, _ = artlistpipeline.NewKeywordPool(keywordPoolPath)
 		}
 
-		statsStorePath := "data/video_stats.json"
+		statsStorePath := cfg.GetDataPath("video_stats.json")
 		statsStore, statsErr := artlistpipeline.NewStatsStore(statsStorePath)
 		if statsErr != nil {
 			log.Warn("Failed to initialize stats store", zap.Error(statsErr))

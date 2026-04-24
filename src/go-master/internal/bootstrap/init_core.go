@@ -61,10 +61,11 @@ func initCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, []runtime.Backgro
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	q := buildQueueBackend(storage)
+	q := buildQueueBackend(log, storage)
 	log.Info("Runtime backend selected",
 		zap.String("storage_backend", selectStorageBackend(cfg)),
-		zap.String("queue_backend", string(selectQueueBackend())),
+		zap.String("queue_backend", string(q.Backend())),
+		zap.String("data_dir", cfg.Storage.DataDir),
 	)
 
 	jobService := job.NewService(storage, cfg)
