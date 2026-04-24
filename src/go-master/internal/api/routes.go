@@ -10,51 +10,21 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
-	"velox/go-master/internal/api/handlers/admin"
-	"velox/go-master/internal/api/handlers/catalog"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/handlers/drive"
-	"velox/go-master/internal/api/handlers/monitoring"
-	"velox/go-master/internal/api/handlers/nlp"
 	"velox/go-master/internal/api/handlers/script"
-	"velox/go-master/internal/api/handlers/stock"
-	"velox/go-master/internal/api/handlers/video"
-	"velox/go-master/internal/api/handlers/youtube"
 	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/audio/tts"
 	"velox/go-master/internal/core/entities"
-	internaldownload "velox/go-master/internal/download"
-	"velox/go-master/internal/harvester"
 	"velox/go-master/internal/ml/ollama"
-	internalpipeline "velox/go-master/internal/service/pipeline"
-	internalstock "velox/go-master/internal/stock"
-	internalvideo "velox/go-master/internal/video"
 	"velox/go-master/pkg/config"
 )
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
-	Health            *common.HealthHandler
-	Video             *video.VideoHandler
-	YouTube           *youtube.YouTubeHandler
-	Drive             *drive.DriveHandler
-	Voiceover         *common.VoiceoverHandler
-	StockProject      *stock.StockProjectHandler
-	StockSearch       *stock.StockSearchHandler
-	StockProcess      *stock.StockProcessHandler
-	Catalog           *catalog.CatalogHandler
-	Download          *video.DownloadHandler
-	Timestamp         *common.TimestampHandler
-	YouTubeV2         *youtube.YouTubeV2Handler
-	GPUTextGen        *nlp.GPUTextGenHandler
-	StockOrchestrator *stock.StockOrchestratorHandler
-	ScriptDocs        *script.ScriptDocsHandler
-	ScriptPipeline    *script.ScriptPipelineHandler
-	ChannelMonitor    *monitoring.ChannelMonitorHandler
-	Harvester         *harvester.Handler
-	CatalogSQLite     *catalog.CatalogSQLiteHandler
-	Utility           *common.UtilityHandler
-	Admin             *admin.AdminHandler
+	Health     *common.HealthHandler
+	Drive      *drive.DriveHandler
+	ScriptDocs *script.ScriptDocsHandler
+	Utility    *common.UtilityHandler
 }
 
 // RouterDepsWithHandlers holds both handlers and raw dependencies
@@ -72,14 +42,9 @@ type Router struct {
 
 // RouterDeps contains all external dependencies for the router
 type RouterDeps struct {
-	VideoProcessor  *internalvideo.Processor
-	ScriptGen       *ollama.Generator
-	OllamaClient    *ollama.Client
-	EdgeTTS         *tts.EdgeTTS
-	StockManager    *internalstock.StockManager
-	EntityService   *entities.EntityService
-	PipelineService *internalpipeline.VideoCreationService
-	Downloader      *internaldownload.Downloader
+	ScriptGen     *ollama.Generator
+	OllamaClient  *ollama.Client
+	EntityService *entities.EntityService
 }
 
 // NewRouter creates a new API router with pre-constructed handlers
@@ -146,16 +111,15 @@ func (r *Router) Setup() *gin.Engine {
 		// Swagger docs
 		public.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-		// Clip read endpoints (suggest, search, list, folder browsing)
-		if h.Catalog != nil {
-			h.Catalog.RegisterPublicRoutes(public)
+		// Drive read endpoints (folders, folder content)
+		if h.Drive != nil {
+			h.Drive.RegisterPublicRoutes(public)
 		}
 
-		// Drive read endpoints (folders, folder content)
-		h.Drive.RegisterPublicRoutes(public)
-
 		// Internal utilities (can be accessed by scripts without auth)
-		public.GET("/internal/slug", h.Utility.Slugify)
+		if h.Utility != nil {
+			public.GET("/internal/slug", h.Utility.Slugify)
+		}
 	}
 
 	// API routes
@@ -166,54 +130,12 @@ func (r *Router) Setup() *gin.Engine {
 		protected.Use(authMW)
 		protected.Use(rateLimitMW.Handler)
 		{
-			// Video processing
-			h.Video.RegisterRoutes(protected)
-			// YouTube integration
-			h.YouTube.RegisterRoutes(protected)
-			// Google Drive (write operations)
-			h.Drive.RegisterRoutes(protected)
-			// Voiceover
-			h.Voiceover.RegisterRoutes(protected)
-			// Stock - Projects
-			h.StockProject.RegisterRoutes(protected)
-			// Stock - Search
-			h.StockSearch.RegisterRoutes(protected)
-			// Stock - Process
-			h.StockProcess.RegisterRoutes(protected)
-			if h.Catalog != nil {
-				h.Catalog.RegisterRoutes(protected)
-			}
-			// Download
-			h.Download.RegisterRoutes(protected)
-
-			if h.Timestamp != nil {
-				h.Timestamp.RegisterRoutes(protected)
-			}
-			if h.YouTubeV2 != nil {
-				h.YouTubeV2.RegisterRoutes(protected)
-			}
-			if h.GPUTextGen != nil {
-				h.GPUTextGen.RegisterRoutes(protected)
-			}
-			if h.StockOrchestrator != nil {
-				h.StockOrchestrator.RegisterRoutes(protected)
+			if h.Drive != nil {
+				h.Drive.RegisterRoutes(protected)
 			}
 			if h.ScriptDocs != nil {
 				scriptDocsGroup := protected.Group("/script-docs")
 				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)
-			}
-			if h.ChannelMonitor != nil {
-				h.ChannelMonitor.RegisterRoutes(protected)
-			}
-			if h.CatalogSQLite != nil {
-				h.CatalogSQLite.RegisterRoutes(protected)
-			}
-			if h.Harvester != nil {
-				harvesterGroup := protected.Group("/harvester")
-				h.Harvester.RegisterRoutes(harvesterGroup)
-			}
-			if h.ScriptPipeline != nil {
-				h.ScriptPipeline.RegisterRoutes(protected)
 			}
 		}
 	}
