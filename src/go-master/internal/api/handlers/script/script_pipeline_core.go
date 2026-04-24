@@ -48,6 +48,8 @@ func (h *ScriptPipelineHandler) createDocumentFromRequest(ctx context.Context, r
 			req.NomiSpeciali,
 			req.ParoleImportanti,
 			req.EntitaConImmagine,
+			req.ImageAssociations,
+			req.MixedSegments,
 			req.Translations,
 		)
 	}

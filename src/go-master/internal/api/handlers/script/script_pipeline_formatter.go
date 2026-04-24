@@ -40,6 +40,8 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 	nomi []string,
 	parole []string,
 	entitaImmagini []EntityImage,
+	imageAssociations []ImageAssociation,
+	mixedSegments []MixedSegment,
 	translations []Translation,
 ) string {
 	var content strings.Builder
@@ -211,8 +213,142 @@ func (h *ScriptPipelineHandler) BuildDocumentContent(
 			}
 			content.WriteString("\n")
 		}
+
+		if len(imageAssociations) > 0 {
+			groups := groupImageAssocsByWindow(imageAssociations)
+			content.WriteString(fmt.Sprintf("🖼️ IMAGES FULL (%d)\n", len(imageAssociations)))
+			content.WriteString(strings.Repeat("-", 30) + "\n")
+			if len(groups) == 0 {
+				content.WriteString("   - Nessuna immagine rilevante trovata\n\n")
+			} else {
+				for i, group := range groups {
+					content.WriteString(fmt.Sprintf("%d. ⏱ %s\n", i+1, formatTimestampWindow(group.StartTime, group.EndTime)))
+					startPhrase, endPhrase := chapterBoundaries(group.Phrase)
+					if strings.TrimSpace(startPhrase) != "" {
+						content.WriteString(fmt.Sprintf("   Inizio: %s\n", truncate(startPhrase, 180)))
+					}
+					if strings.TrimSpace(endPhrase) != "" && endPhrase != startPhrase {
+						content.WriteString(fmt.Sprintf("   Fine: %s\n", truncate(endPhrase, 180)))
+					}
+					content.WriteString("   Link:\n")
+					for _, img := range group.Images {
+						title := strings.TrimSpace(img.Title)
+						if title == "" {
+							title = img.Entity
+						}
+						line := fmt.Sprintf("   - %s", title)
+						if strings.TrimSpace(img.ImageURL) != "" {
+							line += fmt.Sprintf(" -> %s", img.ImageURL)
+						}
+						content.WriteString(line + "\n")
+						if img.Resolution != nil {
+							if strings.TrimSpace(img.Resolution.SelectedFrom) != "" {
+								content.WriteString(fmt.Sprintf("     Origine: %s\n", img.Resolution.SelectedFrom))
+							}
+							if len(img.Resolution.SelectionOrder) > 0 {
+								content.WriteString(fmt.Sprintf("     Fallback: %s\n", strings.Join(img.Resolution.SelectionOrder, " -> ")))
+							}
+						}
+					}
+					content.WriteString("\n")
+				}
+			}
+			content.WriteString(strings.Repeat("=", 100) + "\n\n")
+		}
+
+		if len(mixedSegments) > 0 {
+			content.WriteString(fmt.Sprintf("🧩 MIXED SEGMENTS (%d)\n", len(mixedSegments)))
+			content.WriteString(strings.Repeat("-", 30) + "\n")
+			if len(mixedSegments) == 0 {
+				content.WriteString("   - Nessun segmento misto disponibile\n\n")
+			} else {
+				for i, seg := range mixedSegments {
+					content.WriteString(fmt.Sprintf("%d. ⏱ %s\n", i+1, formatTimestampWindow(seg.StartTime, seg.EndTime)))
+					if strings.TrimSpace(seg.Phrase) != "" {
+						content.WriteString(fmt.Sprintf("   Frase: %s\n", truncate(seg.Phrase, 180)))
+					}
+					content.WriteString(fmt.Sprintf("   Source: %s\n", seg.SourceKind))
+					if strings.TrimSpace(seg.Reason) != "" {
+						content.WriteString(fmt.Sprintf("   Motivo: %s\n", seg.Reason))
+					}
+					if seg.Image != nil && strings.TrimSpace(seg.Image.ImageURL) != "" {
+						title := strings.TrimSpace(seg.Image.Title)
+						if title == "" {
+							title = seg.Image.Entity
+						}
+						content.WriteString(fmt.Sprintf("   Immagine: %s -> %s\n", title, seg.Image.ImageURL))
+					}
+					if seg.Clip != nil && strings.TrimSpace(seg.Clip.URL) != "" {
+						content.WriteString(fmt.Sprintf("   Clip: %s -> %s\n", seg.Clip.Title, seg.Clip.URL))
+					}
+					content.WriteString("\n")
+				}
+			}
+			content.WriteString(strings.Repeat("=", 100) + "\n\n")
+		}
 		content.WriteString("====================================================================================================\n\n")
 	}
 
 	return content.String()
+}
+
+// imageAssocGroup groups image associations by time window.
+type imageAssocGroup struct {
+	StartTime int
+	EndTime   int
+	Phrase    string
+	Images    []ImageAssociation
+}
+
+// groupImageAssocsByWindow groups image associations by chapter/time window.
+func groupImageAssocsByWindow(assocs []ImageAssociation) []imageAssocGroup {
+	if len(assocs) == 0 {
+		return nil
+	}
+	groups := make(map[string]*imageAssocGroup)
+	var order []string
+	for _, a := range assocs {
+		key := fmt.Sprintf("%d-%d", a.StartTime, a.EndTime)
+		if g, ok := groups[key]; ok {
+			g.Images = append(g.Images, a)
+		} else {
+			groups[key] = &imageAssocGroup{
+				StartTime: a.StartTime,
+				EndTime:   a.EndTime,
+				Phrase:    a.Phrase,
+				Images:    []ImageAssociation{a},
+			}
+			order = append(order, key)
+		}
+	}
+	result := make([]imageAssocGroup, 0, len(order))
+	for _, k := range order {
+		result = append(result, *groups[k])
+	}
+	return result
+}
+
+// formatTimestampWindow formats start and end time as MM:SS - MM:SS.
+func formatTimestampWindow(start, end int) string {
+	return fmt.Sprintf("%02d:%02d - %02d:%02d", start/60, start%60, end/60, end%60)
+}
+
+// chapterBoundaries splits a phrase into start and end boundaries.
+func chapterBoundaries(phrase string) (start, end string) {
+	parts := strings.SplitN(phrase, "\n", 2)
+	start = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		end = strings.TrimSpace(parts[1])
+	} else {
+		end = start
+	}
+	return
+}
+
+// truncate cuts s to maxLen characters, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

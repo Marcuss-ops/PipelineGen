@@ -128,6 +128,8 @@ func (h *ScriptPipelineHandler) GenerateText(c *gin.Context) {
 		parole,
 		images,
 		nil,
+		nil,
+		nil,
 	)
 
 	c.JSON(http.StatusOK, gin.H{
