@@ -22,6 +22,27 @@ func limitStringList(values []string, limit int) []string {
 	return out
 }
 
+func compactStringList(values []string, limit int, maxLen int) []string {
+	if limit <= 0 || len(values) == 0 {
+		return []string{}
+	}
+	out := make([]string, 0, limit)
+	seen := make(map[string]bool)
+	for _, v := range values {
+		v = compactSnippet(v, maxLen)
+		k := strings.ToLower(strings.TrimSpace(v))
+		if k == "" || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, strings.TrimSpace(v))
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
 func limitEntityImageMap(values map[string]string, limit int) map[string]string {
 	out := make(map[string]string)
 	if limit <= 0 || len(values) == 0 {
@@ -42,4 +63,3 @@ func limitEntityImageMap(values map[string]string, limit int) map[string]string 
 	}
 	return out
 }
-

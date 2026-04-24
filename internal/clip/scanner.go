@@ -15,6 +15,11 @@ func (idx *Indexer) ScanAndIndex(ctx context.Context) error {
 	startTime := time.Now()
 	logger.Info("Starting clip index scan", zap.String("root_folder", idx.rootFolderID))
 
+	if idx.driveClient == nil {
+		logger.Warn("Skipping clip index scan because Drive client is nil")
+		return nil
+	}
+
 	newIndex := &ClipIndex{
 		Version:      "1.0",
 		RootFolderID: idx.rootFolderID,
@@ -27,9 +32,18 @@ func (idx *Indexer) ScanAndIndex(ctx context.Context) error {
 		},
 	}
 
-	err := idx.scanFolders(ctx, idx.rootFolderID, "", 0, 2, newIndex)
-	if err != nil {
-		return fmt.Errorf("failed to scan folders: %w", err)
+	scanRoots := idx.getScanFolderIDs()
+	if len(scanRoots) == 0 {
+		err := idx.scanFolders(ctx, idx.rootFolderID, "", 0, 2, newIndex)
+		if err != nil {
+			return fmt.Errorf("failed to scan folders: %w", err)
+		}
+	} else {
+		for _, rootID := range scanRoots {
+			if err := idx.scanFolders(ctx, rootID, "", 0, 2, newIndex); err != nil {
+				logger.Warn("Failed to scan configured clip root", zap.String("root_id", rootID), zap.Error(err))
+			}
+		}
 	}
 
 	newIndex.Stats.TotalClips = len(newIndex.Clips)
@@ -191,7 +205,11 @@ func (idx *Indexer) IncrementalScan(ctx context.Context) (int, int, error) {
 	// Clear cache to free memory
 	idx.cache.Clear()
 
-	if oldIndex == nil || lastSync.IsZero() {
+	if idx.driveClient == nil {
+		return 0, 0, fmt.Errorf("drive client is nil")
+	}
+
+	if oldIndex == nil || lastSync.IsZero() || len(idx.getScanFolderIDs()) > 0 {
 		return 0, 0, idx.ScanAndIndex(ctx)
 	}
 

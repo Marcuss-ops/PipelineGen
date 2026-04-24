@@ -137,11 +137,11 @@ func buildClipDescriptionFromTags(tags []string) string {
 }
 
 func associationLabel(assoc ClipAssociation) string {
-	if phrase := strings.TrimSpace(assoc.Phrase); phrase != "" {
-		return phrase
-	}
 	if kw := strings.TrimSpace(assoc.MatchedKeyword); kw != "" {
-		return kw
+		return compactSnippet(kw, 60)
+	}
+	if phrase := strings.TrimSpace(assoc.Phrase); phrase != "" {
+		return compactSnippet(phrase, 80)
 	}
 	return assoc.Phrase
 }

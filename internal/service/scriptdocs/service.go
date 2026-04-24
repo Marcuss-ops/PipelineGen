@@ -95,7 +95,7 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 			entitaConImmagine := extractEntitiesWithImages(sentences)
 
 			// Keep outputs compact and stable for downstream matching and docs readability.
-			frasiImportanti = limitStringList(frasiImportanti, 5)
+			frasiImportanti = compactStringList(frasiImportanti, 5, 90)
 			nomiSpeciali = limitStringList(nomiSpeciali, 5)
 			paroleImportant = limitStringList(paroleImportant, 5)
 			entitaConImmagine = limitEntityImageMap(entitaConImmagine, 5)
@@ -174,7 +174,12 @@ func (s *ScriptDocService) GenerateScriptDoc(ctx context.Context, req ScriptDocR
 		return nil, fmt.Errorf("no languages were successfully generated")
 	}
 
-	content := s.buildMultilingualDocument(req.Topic, req.Duration, stockFolder, langResults)
+	var content string
+	if req.MinimalDoc {
+		content = s.buildMinimalMultilingualDocument(req.Topic, req.Duration, langResults)
+	} else {
+		content = s.buildMultilingualDocument(req.Topic, req.Duration, stockFolder, langResults)
+	}
 	title := fmt.Sprintf("Script: %s (%s)", req.Topic, langNames(langResults))
 	docID, docURL := "", ""
 	previewPath := ""

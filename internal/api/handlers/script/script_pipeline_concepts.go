@@ -75,6 +75,35 @@ func buildGenericClipTerms(topic, text string) []string {
 	return terms
 }
 
+// compactSearchTopic reduces long titles to a stable search key for clip folders.
+func compactSearchTopic(topic string) string {
+	topic = strings.TrimSpace(topic)
+	if topic == "" {
+		return ""
+	}
+
+	parts := strings.FieldsFunc(topic, func(r rune) bool {
+		switch r {
+		case ',', ':', ';', '-', '–', '—', '|', '/', '(', ')', '[':
+			return true
+		default:
+			return false
+		}
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+
+	words := strings.Fields(parts[0])
+	if len(words) == 0 {
+		return ""
+	}
+	if len(words) > 2 {
+		words = words[:2]
+	}
+	return strings.Join(words, " ")
+}
+
 func containsAny(text string, needles []string) bool {
 	for _, n := range needles {
 		if strings.Contains(text, n) {
@@ -152,4 +181,3 @@ func uniqueEntitiesWithImage(values []EntityImage, limit int) []EntityImage {
 	})
 	return out
 }
-

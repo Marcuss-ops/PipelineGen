@@ -56,7 +56,7 @@ func (s *ScriptDocService) writeClipAndArtlistSections(b *strings.Builder, lr La
 		}
 		if assoc.Type == "DYNAMIC" || assoc.Type == "STOCK_DB" || assoc.Type == "STOCK" {
 			driveCount++
-			driveBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", driveCount, truncate(associationLabel(assoc), 160)))
+			driveBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", driveCount, truncate(associationLabel(assoc), 90)))
 			switch assoc.Type {
 			case "DYNAMIC":
 				if assoc.DynamicClip != nil {
@@ -133,7 +133,7 @@ func (s *ScriptDocService) writeClipAndArtlistSections(b *strings.Builder, lr La
 		for _, assoc := range lr.ArtlistAssociations {
 			if assoc.Type == "ARTLIST" {
 				artlistCount++
-				artlistBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", artlistCount, truncate(associationLabel(assoc), 160)))
+				artlistBuffer.WriteString(fmt.Sprintf("%d. 💬 \"%s\"\n", artlistCount, truncate(associationLabel(assoc), 90)))
 				if assoc.Clip != nil {
 					artlistBuffer.WriteString("   ✅ Fonte primaria: ARTLIST\n")
 					artlistBuffer.WriteString(fmt.Sprintf("   🟢 Artlist: %s\n", assoc.Clip.Name))

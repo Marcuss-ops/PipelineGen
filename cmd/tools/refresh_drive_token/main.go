@@ -17,12 +17,14 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	driveclient "velox/go-master/internal/upload/drive"
+	appconfig "velox/go-master/pkg/config"
 )
 
 func main() {
+	cfg := appconfig.Get()
 	var (
-		credentialsPath = flag.String("credentials", "credentials.json", "Path to OAuth client credentials JSON")
-		tokenPath       = flag.String("token", "token.json", "Path to the token JSON to write")
+		credentialsPath = flag.String("credentials", cfg.GetCredentialsPath(), "Path to OAuth client credentials JSON")
+		tokenPath       = flag.String("token", cfg.GetTokenPath(), "Path to the token JSON to write")
 		port            = flag.Int("port", 8085, "Local callback port for OAuth redirect")
 		openBrowser     = flag.Bool("open-browser", true, "Open the browser automatically")
 	)
