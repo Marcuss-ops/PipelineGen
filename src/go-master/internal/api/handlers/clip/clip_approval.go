@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"velox/go-master/internal/nvidia"
-	"velox/go-master/internal/script"
 	"velox/go-master/internal/stockdb"
 
 	"github.com/gin-gonic/gin"
@@ -16,16 +15,14 @@ import (
 
 // ClipApprovalHandler gestisce le approvazioni di clip
 type ClipApprovalHandler struct {
-	Mapper       *script.Mapper
 	NvidiaClient *nvidia.Client
 	StockDB      *stockdb.StockDB
 	Logger       *zap.Logger
 }
 
 // NewClipApprovalHandler crea un nuovo handler
-func NewClipApprovalHandler(mapper *script.Mapper, nvClient *nvidia.Client, sdb *stockdb.StockDB, logger *zap.Logger) *ClipApprovalHandler {
+func NewClipApprovalHandler(nvClient *nvidia.Client, sdb *stockdb.StockDB, logger *zap.Logger) *ClipApprovalHandler {
 	return &ClipApprovalHandler{
-		Mapper:       mapper,
 		NvidiaClient: nvClient,
 		StockDB:      sdb,
 		Logger:       logger,
