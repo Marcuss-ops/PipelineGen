@@ -62,8 +62,7 @@ func main() {
 	}
 
 	// 4. Ensure Stock/Artlist root folder exists
-	// Stock root folder: https://drive.google.com/drive/u/1/folders/1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh
-	stockRootID := "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+	stockRootID := config.Get().Drive.StockRootFolderID
 	artlistRootID := ""
 	if driveClient != nil {
 		ctx := context.Background()
@@ -371,11 +370,12 @@ func getOrCreateDriveFolder(client *drive.Client, name, parentID string) (string
 
 // initDriveClient initializes the Google Drive client.
 func initDriveClient() (*drive.Client, error) {
-	credentialsPath := "credentials.json"
-	tokenPath := "token.json"
+	cfg := config.Get()
+	credentialsPath := cfg.GetCredentialsPath()
+	tokenPath := cfg.GetTokenPath()
 
 	if _, err := os.Stat(credentialsPath); err != nil {
-		return nil, fmt.Errorf("credentials.json not found: %w", err)
+		return nil, fmt.Errorf("credentials file not found: %w", err)
 	}
 
 	ctx := context.Background()
