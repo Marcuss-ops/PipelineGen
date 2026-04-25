@@ -3,10 +3,9 @@
 set -euo pipefail
 
 if [[ -z "${VELOX_YTDLP_COOKIES_FILE:-}" ]]; then
-  if [[ -f "/home/pierone/Downloads/coo1kies.txt" ]]; then
-    export VELOX_YTDLP_COOKIES_FILE="/home/pierone/Downloads/coo1kies.txt"
-  elif [[ -f "/home/pierone/Downloads/cookies.txt" ]]; then
-    export VELOX_YTDLP_COOKIES_FILE="/home/pierone/Downloads/cookies.txt"
+  # Fallback to local cookies.txt if exists
+  if [[ -f "./cookies.txt" ]]; then
+    export VELOX_YTDLP_COOKIES_FILE="./cookies.txt"
   fi
 fi
 

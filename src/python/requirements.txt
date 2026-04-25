@@ -3,7 +3,3 @@ requests>=2.31.0
 
 # YouTube transcript extraction (used by youtube_transcript.py via subprocess)
 # yt-dlp must be installed on the system: pip install yt-dlp or apt install yt-dlp
-
-# TikTok API (unofficial wrapper)
-TikTokApi>=6.0.0
-playwright>=1.40.0

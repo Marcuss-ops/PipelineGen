@@ -2,7 +2,7 @@
 
 ## ✅ **FILE PRONTO**
 
-**File:** `/home/pierone/Pyt/VeloxEditing/refactored/data/script_docs_andrew_tate.txt`
+**File:** `./data/script_docs_example.txt`
 
 **Contenuto:**
 - ✅ Script completo (80 secondi, 4 segmenti)
@@ -22,13 +22,13 @@
 
 1. **Apri il file:**
    ```bash
-   cat /home/pierone/Pyt/VeloxEditing/refactored/data/script_docs_andrew_tate.txt
+   cat ./data/script_docs_example.txt
    ```
 
 2. **Copia tutto il contenuto:**
    ```bash
    # Oppure apri con editor visuale
-   xdg-open /home/pierone/Pyt/VeloxEditing/refactored/data/script_docs_andrew_tate.txt
+   xdg-open ./data/script_docs_example.txt
    ```
 
 3. **Vai su Google Docs:**
@@ -56,7 +56,7 @@
 pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
 # Usa lo script (richiede credentials.json e token.json)
-python3 scripts/generate_and_upload_docs.py --topic "Andrew Tate" --duration 90
+python3 scripts/generate_and_upload_docs.py --topic "AI Evolution" --duration 90
 ```
 
 ---
@@ -64,7 +64,7 @@ python3 scripts/generate_and_upload_docs.py --topic "Andrew Tate" --duration 90
 ## 📊 **STRUTTURA DEL DOCUMENTO**
 
 ```
-📝 SCRIPT: Andrew Tate: Mito, Controversie e il Fenomeno Online
+📝 SCRIPT: Evoluzione dell'Intelligenza Artificiale: Dalle origini al futuro
 ================================================================================
 
 🔍 ENTITÀ ESTRATE
@@ -106,20 +106,20 @@ python3 scripts/generate_and_upload_docs.py --topic "Andrew Tate" --duration 90
 📍 SEGMENTO 1 [0:00 - 0:20]
 ────────────────────────────────────────────────────────────────────────────────
 
-📜 Andrew Tate è diventato un nome onnipresente sul web...
+📜 L'intelligenza artificiale sta trasformando radicalmente il nostro mondo...
 
 🔴 FRASI IMPORTANTI → CLIP DRIVE (3):
-  💬 "Andrew Tate ha iniziato come trader finanziario."
-  🎬 02 Descrizione Questo segmento fornisce il contesto d
-  📁 Brazil
-  🎯 Entity: 'questo' | Match: 90%
-  🔗 https://drive.google.com/file/d/1jW-cB8gFaBi29OY...
+  💬 "Le reti neurali simulano il funzionamento del cervello umano."
+  🎬 02 Descrizione Tecnica
+  📁 Tecnologia
+  🎯 Entity: 'reti neurali' | Match: 95%
+  🔗 https://drive.google.com/file/d/example-id...
 
-  💬 "La sua filosofia è caratterizzata da affermazioni misogine."
-  🎬 02 L accusa virale Trippie pubblica una foto di 6ix9i
-  📁 6nine
-  🎯 Entity: 'virale' | Match: 90%
-  🔗 https://drive.google.com/file/d/1HXUaW0KygqdoEX...
+  💬 "Il futuro dell'automazione è già qui."
+  🎬 05 Robotica e Innovazione
+  📁 Future
+  🎯 Entity: 'automazione' | Match: 90%
+  🔗 https://drive.google.com/file/d/example-id-2...
 ```
 
 ---
@@ -127,17 +127,17 @@ python3 scripts/generate_and_upload_docs.py --topic "Andrew Tate" --duration 90
 ## 🚀 **GENERARE PER ALTRI TOPIC**
 
 ```bash
-# Elvis Presley
-python3 scripts/export_docs_for_google.py --topic "Elvis Presley" --duration 120
+# Storia dell'Antica Roma
+python3 scripts/export_docs_for_google.py --topic "Ancient Rome" --duration 120
 
-# 50cent
-python3 scripts/export_docs_for_google.py --topic "50cent music" --duration 90
+# Esplorazione Spaziale
+python3 scripts/export_docs_for_google.py --topic "Space Exploration" --duration 90
 
-# Floyd Mayweather
-python3 scripts/export_docs_for_google.py --topic "Floyd Mayweather" --duration 60
+# Cambiamento Climatico
+python3 scripts/export_docs_for_google.py --topic "Climate Change" --duration 60
 ```
 
-I file verranno salvati in: `/home/pierone/Pyt/VeloxEditing/refactored/data/`
+I file verranno salvati in: `./data/`
 
 ---
 

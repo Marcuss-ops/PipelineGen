@@ -6,10 +6,10 @@ set -euo pipefail
 #   scripts/setup_youtube_po_token_provider.sh
 #
 # Prerequisiti:
-# - Python venv con yt-dlp in /home/pierone/venv
+# - Python venv con yt-dlp
 # - Node.js + npm installabili
 
-VENV_PATH="${VENV_PATH:-/home/pierone/venv}"
+VENV_PATH="${VENV_PATH:-$HOME/venv}"
 BGUTIL_DIR="${BGUTIL_DIR:-$HOME/bgutil-ytdlp-pot-provider}"
 BGUTIL_PORT="${BGUTIL_PORT:-4416}"
 BGUTIL_REF="${BGUTIL_REF:-1.3.1}"

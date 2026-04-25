@@ -155,7 +155,7 @@ Questo nuovo endpoint genera **script video basati sulle clip che hai già su Dr
 ### **1. Quick Test**
 
 ```bash
-cd /home/pierone/Pyt/VeloxEditing/refactored
+cd .
 ./test_script_from_clips.sh
 ```
 
