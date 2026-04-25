@@ -113,47 +113,47 @@ func truncateScript(script string, maxRunes int) string {
 
 func renderEntityAnalysis(analysis *ollama.FullEntityAnalysis, timeline *TimelinePlan) string {
 	if analysis == nil {
-		return "⚠️ Nessuna analisi delle entità disponibile."
+		return "Nessuna analisi delle entità disponibile."
 	}
 
 	var b strings.Builder
-	b.WriteString("📽️ ANALISI NARRATIVA E VISUALE\n")
+	b.WriteString("ANALISI NARRATIVA E VISUALE\n")
 	b.WriteString("==========================================\n")
-	b.WriteString(fmt.Sprintf("📊 Segmenti analizzati: %d\n", analysis.TotalSegments))
-	b.WriteString(fmt.Sprintf("🔍 Asset totali rilevati: %d\n", analysis.TotalEntities))
+	b.WriteString(fmt.Sprintf("Segmenti analizzati: %d\n", analysis.TotalSegments))
+	b.WriteString(fmt.Sprintf("Asset totali rilevati: %d\n", analysis.TotalEntities))
 	b.WriteString("------------------------------------------\n")
 
 	for _, segment := range analysis.SegmentEntities {
-		b.WriteString(fmt.Sprintf("📍 SEGMENTO %d\n", segment.SegmentIndex+1))
+		b.WriteString(fmt.Sprintf("SEGMENTO %d\n", segment.SegmentIndex+1))
 
 		if len(segment.FrasiImportanti) > 0 {
-			b.WriteString("\n📢 FRASI IMPORTANTI:\n")
+			b.WriteString("\nFRASI IMPORTANTI:\n")
 			for _, item := range segment.FrasiImportanti {
-				b.WriteString("   ✨ \"" + item + "\"\n")
+				b.WriteString("   - \"" + item + "\"\n")
 			}
 		}
 
 		if len(segment.NomiSpeciali) > 0 {
-			b.WriteString("\n⭐ NOMI SPECIALI:\n")
+			b.WriteString("\nNOMI SPECIALI:\n")
 			for _, item := range segment.NomiSpeciali {
-				b.WriteString("   🆔 " + item + "\n")
+				b.WriteString("   - " + item + "\n")
 			}
 		}
 
 		if len(segment.ParoleImportanti) > 0 {
-			b.WriteString("\n🗝️ PAROLE IMPORTANTI:\n")
+			b.WriteString("\nPAROLE IMPORTANTI:\n")
 			for _, item := range segment.ParoleImportanti {
-				b.WriteString("   🔹 " + item + "\n")
+				b.WriteString("   - " + item + "\n")
 			}
 		}
 
 		if len(segment.EntitaSenzaTesto) > 0 {
-			b.WriteString("\n🖼️ IMMAGINI CORRELATE:\n")
+			b.WriteString("\nIMMAGINI CORRELATE:\n")
 			for entity, imageLink := range segment.EntitaSenzaTesto {
 				if imageLink == "" || strings.Contains(imageLink, "Nessuna immagine") || strings.Contains(imageLink, "placeholder") {
-					b.WriteString(fmt.Sprintf("   🖼️ %s: (Ricerca in corso...)\n", entity))
+					b.WriteString(fmt.Sprintf("   - %s: (Ricerca in corso...)\n", entity))
 				} else {
-					b.WriteString(fmt.Sprintf("   ✅ %s:\n      🔗 %s\n", entity, imageLink))
+					b.WriteString(fmt.Sprintf("   - %s:\n     %s\n", entity, imageLink))
 				}
 			}
 		}

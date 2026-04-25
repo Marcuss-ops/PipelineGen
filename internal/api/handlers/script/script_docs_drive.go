@@ -28,7 +28,7 @@ func buildDriveMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 	var index driveCheckpointIndex
 	if err := readJSON(path, &index); err != nil {
 		return ScriptSection{
-			Title: "📁 Drive Matching",
+			Title: "Drive Matching",
 			Body:  "Drive matching unavailable: no local checkpoint index found.",
 		}
 	}
@@ -54,13 +54,13 @@ func buildDriveMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 	matches = sortTopMatches(matches, 4)
 	if len(matches) == 0 {
 		return ScriptSection{
-			Title: "📁 Drive Matching",
+			Title: "Drive Matching",
 			Body:  "None",
 		}
 	}
 
 	return ScriptSection{
-		Title: "📁 Drive Matching",
+		Title: "Drive Matching",
 		Body:  renderMatches(matches),
 	}
 }
@@ -124,7 +124,7 @@ func buildArtlistMatchingSection(dataDir string, req ScriptDocsRequest, narrativ
 	var index artlistIndex
 	if err := readJSON(path, &index); err != nil {
 		return ScriptSection{
-			Title: "🎞️ Artlist Matching",
+			Title: "Artlist Matching",
 			Body:  "Artlist index unavailable.",
 		}
 	}
@@ -160,13 +160,13 @@ func buildArtlistMatchingSection(dataDir string, req ScriptDocsRequest, narrativ
 	matches = sortTopMatches(matches, 4)
 	if len(matches) == 0 {
 		return ScriptSection{
-			Title: "🎞️ Artlist Matching",
+			Title: "Artlist Matching",
 			Body:  "None",
 		}
 	}
 
 	return ScriptSection{
-		Title: "🎞️ Artlist Matching",
+		Title: "Artlist Matching",
 		Body:  renderMatches(matches),
 	}
 }
