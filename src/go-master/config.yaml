@@ -8,11 +8,11 @@ paths:
   credentials_file: "credentials.json"
   token_file: "token.json"
   clip_text_dir: ""
-  ytdlp_path: "/home/pierone/venv/bin/yt-dlp"
+
 
 drive:
-  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
-  clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
+  stock_root_folder: ""
+  clips_root_folder: ""
 
 textgen:
   default_model: "gemma3:12b"

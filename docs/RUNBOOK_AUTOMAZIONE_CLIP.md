@@ -12,7 +12,7 @@ Guida pratica per eseguire il flusso operativo attuale:
 ## 1) Avvio Server
 
 ```bash
-cd /home/pierone/Pyt/VeloxEditing/refactored
+cd .
 go build -o ./bin/server ./src/go-master/cmd/server
 ./bin/server
 ```
@@ -28,13 +28,13 @@ curl -sS http://127.0.0.1:8080/health
 Script smoke gia presente:
 
 ```bash
-/home/pierone/Pyt/VeloxEditing/refactored/scripts/test_clipsearch_smoke.sh
+./scripts/test_clipsearch_smoke.sh
 ```
 
 Suite rapida end-to-end:
 
 ```bash
-/home/pierone/Pyt/VeloxEditing/refactored/scripts/test_clipsearch_e2e_fast.sh
+./scripts/test_clipsearch_e2e_fast.sh
 ```
 
 ## 3) Generazione script con clip dinamiche + sync DB
@@ -112,7 +112,7 @@ Nota: senza queste env, monitor e stock scheduler non partono.
 
 File atteso:
 
-`/home/pierone/Pyt/VeloxEditing/refactored/data/channel_monitor_config.json`
+`./data/channel_monitor_config.json`
 
 Esempio minimo:
 
@@ -181,7 +181,7 @@ curl -X POST http://127.0.0.1:8080/api/monitor/run \
 ## 7) Test cron Artlist
 
 ```bash
-/home/pierone/Pyt/VeloxEditing/refactored/scripts/test_cron_artlist_populate.sh
+./scripts/test_cron_artlist_populate.sh
 ```
 
 ## 8) Gestione cron harvester via API
