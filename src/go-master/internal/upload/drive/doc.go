@@ -3,12 +3,10 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/option"
@@ -20,11 +18,10 @@ import (
 // DocClient gestisce le operazioni Google Docs
 type DocClient struct {
 	docsService *docs.Service
-	driveClient *Client
 }
 
-// NewDocClient crea un nuovo client Docs
-func NewDocClient(ctx context.Context, driveClient *Client, credentialsFile, tokenFile string) (*DocClient, error) {
+// NewDocClient crea un nuovo client Docs.
+func NewDocClient(ctx context.Context, credentialsFile, tokenFile string) (*DocClient, error) {
 	credentials, err := os.ReadFile(credentialsFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read credentials: %w", err)
@@ -52,7 +49,6 @@ func NewDocClient(ctx context.Context, driveClient *Client, credentialsFile, tok
 
 	return &DocClient{
 		docsService: docsService,
-		driveClient: driveClient,
 	}, nil
 }
 
@@ -79,24 +75,12 @@ func (d *DocClient) CreateDoc(ctx context.Context, title, content, folderID stri
 		}
 	}
 
-	// Move to folder if specified
-	if folderID != "" && d.driveClient != nil {
-		_, err := d.driveClient.service.Files.Update(docID, nil).
-			AddParents(folderID).
-			Context(ctx).
-			Do()
-		if err != nil {
-			logger.Warn("Failed to move doc to folder", zap.Error(err))
-		}
-	}
-
 	return &Doc{
 		ID:    docID,
 		Title: title,
 		URL:   docURL,
 	}, nil
 }
-
 
 // AppendToDoc aggiunge contenuto a un documento esistente
 func (d *DocClient) AppendToDoc(ctx context.Context, docID, content string) error {
@@ -176,23 +160,4 @@ func ExtractDocIDFromURL(url string) string {
 		return url[start:]
 	}
 	return url[start : start+end]
-}
-
-// loadCredentials loads OAuth credentials from file
-func loadCredentials(path string) ([]byte, error) {
-	return os.ReadFile(path)
-}
-
-// createOAuthConfig creates OAuth config from credentials
-func createOAuthConfig(credentials []byte, scopes []string) (*oauth2.Config, error) {
-	return google.ConfigFromJSON(credentials, scopes...)
-}
-
-// SaveToken saves OAuth token to file (re-export for convenience)
-func saveToken(path string, token *oauth2.Token) error {
-	data, err := json.MarshalIndent(token, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
 }
