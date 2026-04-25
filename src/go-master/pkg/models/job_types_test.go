@@ -41,10 +41,10 @@ func TestJobStatusTransitions(t *testing.T) {
 }
 
 func TestJobTypeConstants(t *testing.T) {
-	if JobTypeScriptGen == "" {
-		t.Error("JobTypeScriptGen should not be empty")
+	if JobTypeScript == "" {
+		t.Error("JobTypeScript should not be empty")
 	}
-	if JobTypeVideoRender == "" {
-		t.Error("JobTypeVideoRender should not be empty")
+	if JobTypeVideoGeneration == "" {
+		t.Error("JobTypeVideoGeneration should not be empty")
 	}
 }
