@@ -13,6 +13,13 @@ type Config struct {
 	Security SecurityConfig `yaml:"security"`
 	External ExternalConfig `yaml:"external"`
 	Paths    PathsConfig    `yaml:"paths"`
+	Drive    DriveConfig    `yaml:"drive"`
+}
+
+// DriveConfig holds Google Drive configuration.
+type DriveConfig struct {
+	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
+	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
 }
 
 // LoggingConfig holds logger-specific configuration.

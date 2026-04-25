@@ -151,8 +151,8 @@ func normalizeTimelinePlan(plan *timelineLLMPlan, req ScriptDocsRequest, narrati
 		last = plan.Segments[len(plan.Segments)-1]
 	}
 
-	opening := strings.TrimSpace(first.OpeningSentence)
-	closing := strings.TrimSpace(last.ClosingSentence)
+	// Always extract from actual narrative to be sure we get the real first/last sentences
+	opening, closing := extractOpeningAndClosingSentence(narrative)
 	if opening == "" || closing == "" {
 		plan = fallbackTimelinePlan(req, narrative, focus, segmentCount)
 		return normalizeTimelinePlan(plan, req, narrative, focus, segmentCount)
