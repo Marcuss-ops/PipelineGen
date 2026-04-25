@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 
 	"go.uber.org/zap"
@@ -34,16 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start all background services (maintenance, scanners, watchers, monitors,
-	// harvesters, schedulers, async cleanup) via the unified ServiceGroup.
-	// They receive a shared context that is cancelled on shutdown.
-	if err := deps.ServiceGroup.Start(context.Background()); err != nil {
-		log.Error("Failed to start background services", zap.Error(err))
-		deps.Cleanup()
-		os.Exit(1)
-	}
-
-	server := api.NewServerWithHandlers(cfg, deps.JobService, deps.WorkerService, deps.RouterDeps)
+	server := api.NewServerWithHandlers(cfg, deps.Handlers)
 
 	// Run server (blocks until signal or error)
 	if err := server.Start(); err != nil {

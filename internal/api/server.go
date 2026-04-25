@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/core/job"
-	"velox/go-master/internal/core/worker"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
@@ -22,31 +20,25 @@ import (
 // Background services (maintenance, watchers, etc.) are managed externally
 // by the ServiceGroup — not by the Server.
 type Server struct {
-	cfg           *config.Config
-	router        *gin.Engine
-	appRouter     *Router        // reference to the Router for cleanup
-	httpServer    *http.Server
-	jobService    *job.Service
-	workerService *worker.Service
+	cfg        *config.Config
+	router     *gin.Engine
+	appRouter  *Router // reference to the Router for cleanup
+	httpServer *http.Server
 }
 
 // NewServerWithHandlers creates a new HTTP server with pre-constructed handlers.
 // Background services are managed externally by the ServiceGroup.
 func NewServerWithHandlers(
 	cfg *config.Config,
-	jobService *job.Service,
-	workerService *worker.Service,
-	deps *RouterDepsWithHandlers,
+	handlers *Handlers,
 ) *Server {
-	router := NewRouter(cfg, deps.Handlers)
+	router := NewRouter(cfg, handlers)
 	r := router.Setup()
 
 	return &Server{
-		cfg:           cfg,
-		router:        r,
-		appRouter:     router,
-		jobService:    jobService,
-		workerService: workerService,
+		cfg:       cfg,
+		router:    r,
+		appRouter: router,
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 			Handler:      r,
