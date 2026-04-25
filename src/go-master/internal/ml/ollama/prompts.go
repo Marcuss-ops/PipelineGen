@@ -58,7 +58,7 @@ REQUISITI TASSATIVI DI QUALITÀ:
    - [00:45] Sviluppo approfondito (diviso in blocchi narrativi).
    - [01:45] Conclusione e riflessione finale.
 3. STILE: Scrivi per l'orecchio, non per l'occhio. Usa frasi che fluiscono bene.
-4. DETTAGLI: Non dire "è nato a Baltimora". Di' "Nelle strade difficili di Baltimora, dove la sopravvivenza è una sfida quotidiana, è iniziata la leggenda di...".
+4. DETTAGLI: Evita descrizioni piatte. Invece di dire semplicemente "è successo X", arricchisci la narrazione con dettagli sensoriali, contesto storico o descrizioni cinematografiche che trasportino l'ascoltatore nella scena.
 5. NO META-TESTO: Scrivi SOLO il testo parlato. Non scrivere "Introduzione:", "Musica:", ecc.
 
 NON LIMITARTI A RISPONDERE ALLA DOMANDA. SCRIVI UN RACCONTO EPICO ED ESAUSTIVO.

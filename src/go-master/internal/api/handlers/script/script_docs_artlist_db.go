@@ -3,7 +3,6 @@ package script
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -16,25 +15,11 @@ type ArtlistDBClient struct {
 }
 
 // NewArtlistDBClient creates a new ArtlistDBClient.
-func NewArtlistDBClient(projectRoot string) *ArtlistDBClient {
-	paths := []string{
-		filepath.Join(projectRoot, "src/node-scraper/artlist_videos.db"),
-		"../node-scraper/artlist_videos.db",
-		"src/node-scraper/artlist_videos.db",
-		"artlist_videos.db",
-	}
-
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return &ArtlistDBClient{dbPath: p}
-		}
-	}
-
+func NewArtlistDBClient(nodeScraperDir string) *ArtlistDBClient {
 	return &ArtlistDBClient{
-		dbPath: filepath.Join(projectRoot, "src/node-scraper/artlist_videos.db"),
+		dbPath: filepath.Join(nodeScraperDir, "artlist_videos.db"),
 	}
 }
-
 
 // SearchClipsByKeywords searches for Artlist clips matching tokens from the provided keywords.
 func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([]scoredMatch, error) {
@@ -70,7 +55,7 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 		FROM video_links v
 		LEFT JOIN search_terms s ON v.search_term_id = s.id
 		WHERE `
-	
+
 	var conditions []string
 	var args []interface{}
 	for _, token := range tokens {
@@ -96,7 +81,7 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 		if err := rows.Scan(&url, &videoID, &width, &height, &duration); err != nil {
 			continue
 		}
-		
+
 		matches = append(matches, scoredMatch{
 			Title:  videoID,
 			Link:   url,
@@ -107,4 +92,3 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 
 	return matches, nil
 }
-

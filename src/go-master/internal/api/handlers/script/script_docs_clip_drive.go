@@ -77,30 +77,26 @@ func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, r
 	}
 
 	matches := make([]clipDrivePhraseMatch, 0, len(phrases))
+	usedClipIDs := make(map[string]struct{})
 	for _, phrase := range phrases {
 		candidates := rankClipDriveCandidates(phrase, clips, sidecarTexts, 6)
 		if len(candidates) == 0 {
 			continue
 		}
 
-		selected := clipDriveCandidate{
-			Record: candidates[0].Record,
-			Score:  candidates[0].Score,
-			Reason: candidates[0].Reason,
-			Text:   candidates[0].Text,
+		selected, ok := pickUnusedClipCandidate(candidates, usedClipIDs)
+		if !ok {
+			continue
 		}
 
 		if client != nil {
 			if llmSel, ok := refineClipDriveMatchWithLLM(ctx, client, req.Topic, phrase, candidates); ok {
-				for _, cand := range candidates {
-					if cand.Record.ID == llmSel.ClipID {
-						selected = clipDriveCandidate{
-							Record: cand.Record,
-							Score:  llmSel.Score,
-							Reason: llmSel.Reason,
-							Text:   cand.Text,
-						}
-						break
+				if cand, found := findClipCandidateByID(candidates, llmSel.ClipID); found && !clipAlreadyUsed(usedClipIDs, cand.Record.ID) {
+					selected = clipDriveCandidate{
+						Record: cand.Record,
+						Score:  llmSel.Score,
+						Reason: llmSel.Reason,
+						Text:   cand.Text,
 					}
 				}
 			}
@@ -109,6 +105,10 @@ func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, r
 		if selected.Score < 70 {
 			continue
 		}
+		if clipAlreadyUsed(usedClipIDs, selected.Record.ID) {
+			continue
+		}
+		usedClipIDs[selected.Record.ID] = struct{}{}
 
 		matches = append(matches, clipDrivePhraseMatch{
 			Sentence: phrase,
@@ -128,27 +128,59 @@ func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, r
 	}
 
 	return ScriptSection{
-		Title: "Clip Drive Matching",
+		Title: "🎞️ Clip Drive Matching",
 		Body:  renderClipDriveMatches(matches),
 	}
 }
 
-func loadClipDriveCatalog(dataDir string) ([]clipDriveRecord, error) {
-	candidates := []string{
-		filepath.Join(dataDir, "clip_index.json"),
-		filepath.Join("data", "clip_index.json"),
-		filepath.Join("..", "data", "clip_index.json"),
-		filepath.Join("..", "..", "data", "clip_index.json"),
+func clipAlreadyUsed(used map[string]struct{}, clipID string) bool {
+	if clipID == "" {
+		return false
 	}
+	_, ok := used[clipID]
+	return ok
+}
 
-	var data []byte
-	var err error
-	for _, path := range candidates {
-		data, err = os.ReadFile(path)
-		if err == nil {
-			break
+func pickUnusedClipCandidate(candidates []clipDriveCandidate, used map[string]struct{}) (clipDriveCandidate, bool) {
+	for _, cand := range candidates {
+		if cand.Score < 70 {
+			continue
+		}
+		if clipAlreadyUsed(used, cand.Record.ID) {
+			continue
+		}
+		return cand, true
+	}
+	return clipDriveCandidate{}, false
+}
+
+func findClipCandidateByID(candidates []clipDriveCandidate, clipID string) (clipDriveCandidate, bool) {
+	for _, cand := range candidates {
+		if cand.Record.ID == clipID {
+			return cand, true
 		}
 	}
+	return clipDriveCandidate{}, false
+}
+
+func loadClipDriveCatalog(dataDir string) ([]clipDriveRecord, error) {
+	searchRoots := []string{}
+	if trimmed := strings.TrimSpace(dataDir); trimmed != "" {
+		searchRoots = append(searchRoots, trimmed)
+	}
+	if wd, err := os.Getwd(); err == nil {
+		searchRoots = append(searchRoots, wd)
+	}
+	if exe, err := os.Executable(); err == nil {
+		searchRoots = append(searchRoots, filepath.Dir(exe))
+	}
+
+	path, err := findClipIndexPath(searchRoots)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +190,40 @@ func loadClipDriveCatalog(dataDir string) ([]clipDriveRecord, error) {
 		return nil, err
 	}
 	return index.Clips, nil
+}
+
+func findClipIndexPath(searchRoots []string) (string, error) {
+	seen := make(map[string]struct{})
+	for _, root := range searchRoots {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" {
+			continue
+		}
+		if _, ok := seen[root]; ok {
+			continue
+		}
+		seen[root] = struct{}{}
+
+		dir := root
+		for {
+			candidates := []string{
+				filepath.Join(dir, "clip_index.json"),
+				filepath.Join(dir, "data", "clip_index.json"),
+			}
+			for _, candidate := range candidates {
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate, nil
+				}
+			}
+
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return "", os.ErrNotExist
 }
 
 func loadClipSidecarTexts(textDir string) map[string]string {
@@ -516,7 +582,7 @@ func renderClipDriveMatches(matches []clipDrivePhraseMatch) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString("- ")
+		b.WriteString("✨ ")
 		b.WriteString(match.Sentence)
 		b.WriteString("\n")
 		b.WriteString("  clip_id: ")

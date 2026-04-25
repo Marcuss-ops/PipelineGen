@@ -59,7 +59,9 @@ type ExternalConfig struct {
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.
 type PathsConfig struct {
-	CredentialsFile string `yaml:"credentials_file" env:"VELOX_CREDENTIALS_FILE" default:"credentials.json"`
-	TokenFile       string `yaml:"token_file" env:"VELOX_TOKEN_FILE" default:"token.json"`
-	ClipTextDir     string `yaml:"clip_text_dir" env:"VELOX_CLIP_TEXT_DIR" default:""`
+	CredentialsFile  string `yaml:"credentials_file" env:"VELOX_CREDENTIALS_FILE" default:"credentials.json"`
+	TokenFile        string `yaml:"token_file" env:"VELOX_TOKEN_FILE" default:"token.json"`
+	ClipTextDir      string `yaml:"clip_text_dir" env:"VELOX_CLIP_TEXT_DIR" default:""`
+	PythonScriptsDir string `yaml:"python_scripts_dir" env:"VELOX_PYTHON_SCRIPTS_DIR" default:"../../python"`
+	NodeScraperDir   string `yaml:"node_scraper_dir" env:"VELOX_NODE_SCRAPER_DIR" default:"../node-scraper"`
 }

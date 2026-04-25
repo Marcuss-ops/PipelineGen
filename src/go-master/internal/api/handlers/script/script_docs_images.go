@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ type imagePlanItem struct {
 	Reason  string
 }
 
-func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis, stockSection, artlistSection, driveSection ScriptSection) ScriptSection {
+func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis, stockSection, artlistSection, driveSection ScriptSection, pythonScriptsDir string) ScriptSection {
 	subject := pickImageSubject(req.Topic, analysis)
 	if subject == "" {
 		return ScriptSection{
@@ -29,7 +30,7 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 
 	item := imagePlanItem{
 		Subject: subject,
-		URL:     searchDDGImage(subject),
+		URL:     searchDDGImage(subject, pythonScriptsDir),
 		Reason:  "DDG search from topic/entity terms",
 	}
 
@@ -120,7 +121,7 @@ func sectionHasContent(section ScriptSection) bool {
 	return body != "" && body != "None"
 }
 
-func searchDDGImage(query string) string {
+func searchDDGImage(query string, pythonScriptsDir string) string {
 	client := &http.Client{Timeout: 10 * time.Second}
 	if img := searchWikipediaImage(client, query); img != "" {
 		return img
@@ -128,22 +129,18 @@ func searchDDGImage(query string) string {
 	if img := ddgInstantImage(client, query); img != "" {
 		return img
 	}
-	if img := searchHeadlessImage(query); img != "" {
+	if img := searchHeadlessImage(query, pythonScriptsDir); img != "" {
 		return img
 	}
 	return ""
 }
 
-func searchHeadlessImage(query string) string {
-	cmd := exec.Command("python3", "../../python/headless_image_scraper.py", query)
+func searchHeadlessImage(query string, pythonScriptsDir string) string {
+	scriptPath := filepath.Join(pythonScriptsDir, "headless_image_scraper.py")
+	cmd := exec.Command("python3", scriptPath, query)
 	out, err := cmd.Output()
 	if err != nil {
-		// try absolute path relative to project root if executed from bin
-		cmd = exec.Command("python3", "src/python/headless_image_scraper.py", query)
-		out, err = cmd.Output()
-		if err != nil {
-			return ""
-		}
+		return ""
 	}
 	res := strings.TrimSpace(string(out))
 	if res == "null" || res == "" {
