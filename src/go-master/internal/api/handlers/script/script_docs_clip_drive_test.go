@@ -72,8 +72,8 @@ func TestBuildClipDriveMatchingSection_MatchesRelevantClip(t *testing.T) {
 
 	section := buildClipDriveMatchingSection(context.Background(), nil, req, narrative, analysis, dataDir, clipTextDir)
 
-	if section.Title != "Clip Drive Matching" {
-		t.Fatalf("section title = %q, want %q", section.Title, "Clip Drive Matching")
+	if section.Title != "🎞️ Clip Drive Matching" {
+		t.Fatalf("section title = %q, want %q", section.Title, "🎞️ Clip Drive Matching")
 	}
 	if section.Body == "None" || strings.TrimSpace(section.Body) == "" {
 		t.Fatal("expected a non-empty clip drive match section")
@@ -122,5 +122,72 @@ func TestRankClipDriveCandidates_PrefersRelevantClip(t *testing.T) {
 	}
 	if candidates[0].Score < 70 {
 		t.Fatalf("top candidate score = %.1f, want >= 70", candidates[0].Score)
+	}
+}
+
+func TestBuildClipDriveMatchingSection_DeduplicatesClipIDs(t *testing.T) {
+	dataDir := t.TempDir()
+
+	indexJSON := `{
+		"clips": [
+			{
+				"id": "clip-1",
+				"name": "Andrew Tate boxing champion intro",
+				"filename": "andrew_tate_boxing_champion_intro.mp4",
+				"folder_id": "folder-1",
+				"folder_path": "Clips/Boxe/AndrewTate",
+				"group": "boxe",
+				"media_type": "clip",
+				"drive_link": "https://drive.google.com/file/d/clip-1/view",
+				"download_link": "https://drive.google.com/uc?export=download&id=clip-1",
+				"tags": ["andrew", "tate", "boxing", "champion", "training"]
+			}
+		]
+	}`
+
+	if err := os.WriteFile(filepath.Join(dataDir, "clip_index.json"), []byte(indexJSON), 0644); err != nil {
+		t.Fatalf("write clip index: %v", err)
+	}
+
+	req := ScriptDocsRequest{
+		Topic:    "Andrew Tate boxing champion",
+		Duration: 60,
+		Language: "english",
+		Template: "documentary",
+	}
+	analysis := &ollama.FullEntityAnalysis{
+		TotalSegments: 1,
+		SegmentEntities: []ollama.SegmentEntities{
+			{
+				SegmentIndex: 0,
+				FrasiImportanti: []string{
+					"Andrew Tate boxing champion intro about training and winning.",
+					"Andrew Tate boxing champion intro about discipline and training.",
+				},
+			},
+		},
+	}
+
+	section := buildClipDriveMatchingSection(context.Background(), nil, req, "", analysis, dataDir, "")
+	if strings.Count(section.Body, "clip_id: clip-1") != 1 {
+		t.Fatalf("expected clip-1 once in match block, got body: %s", section.Body)
+	}
+}
+
+func TestRenderTimelineMatches_ShowsTagSuggestions(t *testing.T) {
+	body := renderTimelineMatches("🎞️ CLIP ARTLIST", []scoredMatch{
+		{
+			Title:   "training regime",
+			Source:  "artlist_suggestion",
+			Score:   50,
+			Details: "boxing, training, discipline",
+		},
+	})
+
+	if !strings.Contains(body, "Tag suggeriti") {
+		t.Fatalf("expected suggested tags in body: %s", body)
+	}
+	if !strings.Contains(body, "boxing, training, discipline") {
+		t.Fatalf("expected tag list in body: %s", body)
 	}
 }

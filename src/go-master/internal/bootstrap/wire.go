@@ -31,6 +31,8 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.DocClient,
 		cfg.Storage.DataDir,
 		cfg.Paths.ClipTextDir,
+		cfg.Paths.PythonScriptsDir,
+		cfg.Paths.NodeScraperDir,
 		coreDeps.ScriptsRepo,
 		cfg.Drive.StockRootFolder,
 	)

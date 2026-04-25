@@ -9,7 +9,7 @@ import (
 	"velox/go-master/internal/ml/ollama"
 )
 
-func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir string) (*ollama.FullEntityAnalysis, error) {
+func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string) (*ollama.FullEntityAnalysis, error) {
 	client := gen.GetClient()
 	if client == nil {
 		return nil, fmt.Errorf("Ollama client not initialized")
@@ -31,7 +31,7 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 	// Resolve image URLs using DuckDuckGo search
 	if analysis != nil && len(analysis.EntitaSenzaTesto) > 0 {
 		for entity := range analysis.EntitaSenzaTesto {
-			imgURL := searchDDGImage(entity)
+			imgURL := searchDDGImage(entity, pythonScriptsDir)
 			if imgURL == "" {
 				imgURL = "Nessuna immagine trovata"
 			}
@@ -40,7 +40,7 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 	}
 
 	// Artlist DB Integration: search for clips based on artlist_phrases keywords
-	artlistDB := NewArtlistDBClient(".")
+	artlistDB := NewArtlistDBClient(nodeScraperDir)
 	artlistMatches := make(map[string][]string)
 
 	clean := func(s string) string {
@@ -113,47 +113,47 @@ func truncateScript(script string, maxRunes int) string {
 
 func renderEntityAnalysis(analysis *ollama.FullEntityAnalysis, timeline *TimelinePlan) string {
 	if analysis == nil {
-		return "Nessuna analisi delle entità disponibile."
+		return "⚠️ Nessuna analisi delle entità disponibile."
 	}
 
 	var b strings.Builder
-	b.WriteString("ANALISI NARRATIVA E VISUALE\n")
+	b.WriteString("📽️ ANALISI NARRATIVA E VISUALE\n")
 	b.WriteString("==========================================\n")
-	b.WriteString(fmt.Sprintf("Segmenti analizzati: %d\n", analysis.TotalSegments))
-	b.WriteString(fmt.Sprintf("Asset totali rilevati: %d\n", analysis.TotalEntities))
+	b.WriteString(fmt.Sprintf("📊 Segmenti analizzati: %d\n", analysis.TotalSegments))
+	b.WriteString(fmt.Sprintf("🔍 Asset totali rilevati: %d\n", analysis.TotalEntities))
 	b.WriteString("------------------------------------------\n")
 
 	for _, segment := range analysis.SegmentEntities {
-		b.WriteString(fmt.Sprintf("SEGMENTO %d\n", segment.SegmentIndex+1))
+		b.WriteString(fmt.Sprintf("📍 SEGMENTO %d\n", segment.SegmentIndex+1))
 
 		if len(segment.FrasiImportanti) > 0 {
-			b.WriteString("\nFRASI IMPORTANTI:\n")
+			b.WriteString("\n📢 FRASI IMPORTANTI:\n")
 			for _, item := range segment.FrasiImportanti {
-				b.WriteString("   - \"" + item + "\"\n")
+				b.WriteString("   ✨ \"" + cleanDisplayPhrase(item) + "\"\n")
 			}
 		}
 
 		if len(segment.NomiSpeciali) > 0 {
-			b.WriteString("\nNOMI SPECIALI:\n")
+			b.WriteString("\n⭐ NOMI SPECIALI:\n")
 			for _, item := range segment.NomiSpeciali {
-				b.WriteString("   - " + item + "\n")
+				b.WriteString("   🆔 " + item + "\n")
 			}
 		}
 
 		if len(segment.ParoleImportanti) > 0 {
-			b.WriteString("\nPAROLE IMPORTANTI:\n")
+			b.WriteString("\n🗝️ PAROLE IMPORTANTI:\n")
 			for _, item := range segment.ParoleImportanti {
-				b.WriteString("   - " + item + "\n")
+				b.WriteString("   🔹 " + item + "\n")
 			}
 		}
 
 		if len(segment.EntitaSenzaTesto) > 0 {
-			b.WriteString("\nIMMAGINI CORRELATE:\n")
+			b.WriteString("\n🖼️ IMMAGINI CORRELATE:\n")
 			for entity, imageLink := range segment.EntitaSenzaTesto {
 				if imageLink == "" || strings.Contains(imageLink, "Nessuna immagine") || strings.Contains(imageLink, "placeholder") {
-					b.WriteString(fmt.Sprintf("   - %s: (Ricerca in corso...)\n", entity))
+					b.WriteString(fmt.Sprintf("   🖼️ %s: (Ricerca in corso...)\n", entity))
 				} else {
-					b.WriteString(fmt.Sprintf("   - %s:\n     %s\n", entity, imageLink))
+					b.WriteString(fmt.Sprintf("   ✅ %s:\n      🔗 %s\n", entity, imageLink))
 				}
 			}
 		}
@@ -162,4 +162,8 @@ func renderEntityAnalysis(analysis *ollama.FullEntityAnalysis, timeline *Timelin
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+func cleanDisplayPhrase(text string) string {
+	return strings.TrimSpace(strings.Trim(text, "\"'“‘’”"))
 }
