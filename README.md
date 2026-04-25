@@ -12,29 +12,79 @@ The Go Master server is the central API hub for the VeloxEditing platform. It or
 
 ## 📁 Project Structure
 
-```text
+```
 src/go-master/
 ├── cmd/
 │   ├── server/           # Entry point (main.go)
-│   ├── tools/            # CLI utilities (harvester, downloader, scanner)
-│   ├── tests/            # Integration and stress testers
-│   └── tmp/              # Debug scripts and temporary tools
+│   ├── indexer/          # CLI utilities (harvester, downloader, scanner)
+│   └── tmp_publish_doc/  # Debug scripts and temporary tools
 ├── internal/
-│   ├── api/              # HTTP handlers (split by domain: clip, script, drive, etc.)
-│   ├── bootstrap/        # Service wiring and lifecycle (init_*.go, wire.go)
-│   ├── catalogdb/        # Unified SQLite catalog (FTS5 support)
-│   ├── core/             # Business logic (job, worker, entities)
-│   ├── ml/ollama/        # Ollama AI client
-│   ├── service/          # High-level business services (pipeline, scriptdocs)
-│   ├── storage/          # Persistence adapters (jsondb, postgres)
-│   ├── clip/             # Clip indexing and semantic matching
-│   ├── stock/            # Stock video management
-│   └── youtube/          # YouTube client (yt-dlp)
-├── pkg/
+│   ├── api/
+│   │   ├── handlers/
+│   │   │   ├── script/      # Script generation handlers (modularized)
+│   │   │   │   ├── handler_core.go
+│   │   │   │   ├── handler_generate.go
+│   │   │   │   ├── script_docs_builder.go
+│   │   │   │   ├── script_docs_entities.go
+│   │   │   │   ├── script_docs_render.go
+│   │   │   │   ├── clip_drive_matching.go
+│   │   │   │   ├── clip_drive_types.go
+│   │   │   │   ├── clip_drive_catalog.go
+│   │   │   │   ├── clip_drive_text.go
+│   │   │   │   ├── stock_matching.go
+│   │   │   │   ├── stock_catalog.go
+│   │   │   │   ├── timeline_source_builder.go
+│   │   │   │   ├── timeline_render.go
+│   │   │   │   ├── timeline_types.go
+│   │   │   │   └── timeline_utils.go
+│   │   │   ├── common/        # Common handlers (health, utility)
+│   │   │   ├── drive/        # Google Drive handlers
+│   │   │   └── voiceover/    # Voiceover handlers
+│   │   ├── middleware/      # HTTP middleware (auth, logging, rate limiting)
+│   │   └── routes.go         # Route definitions
+│   ├── bootstrap/        # Service wiring and lifecycle
+│   ├── ml/
+│   │   └── ollama/        # Ollama AI client (modularized)
+│   │       ├── client_core.go
+│   │       ├── client_generate.go
+│   │       ├── client_entities.go
+│   │       ├── client_health.go
+│   │       ├── client_embed.go
+│   │       ├── generate.go
+│   │       ├── system_prompt.go
+│   │       ├── prompt_builders.go
+│   │       ├── types.go
+│   │       └── utils.go
+│   ├── service/          # High-level business services
+│   │   ├── pipeline/      # Video pipeline service
+│   │   └── voiceover/     # Voiceover service
+│   ├── repository/      # Data access layer
+│   │   └── scripts/       # Script repository (modularized)
+│   │       ├── types.go
+│   │       └── scripts.go
+│   ├── models/          # Shared data models (modularized)
+│   │   ├── job_types.go
+│   │   ├── job_functions.go
+│   │   ├── worker_types.go
+│   │   └── worker_functions.go
+│   ├── storage/         # Persistence adapters
+│   │   ├── sqlite.go
+│   │   ├── postgres/
+│   │   └── sqlitecache/
+│   ├── upload/           # Upload handlers
+│   │   ├── drive/
+│   │   └── youtube/
+│   ├── core/             # Business logic
+│   ├── cron/             # Scheduled tasks
+│   └── runtime/          # Runtime utilities
+├── pkg/                  # Public packages
 │   ├── config/           # Tag-driven configuration
 │   ├── logger/           # Structured logging (Zap)
-│   └── models/           # Shared data models
-├── data/                 # JSON/SQLite database files (runtime, configurable via VELOX_DATA_DIR)
+│   ├── models/           # Public shared models
+│   ├── security/         # Input sanitization
+│   └── util/             # Utility functions
+├── data/                 # JSON/SQLite database files
+├── migrations/           # Database migrations
 ├── go.mod
 ├── go.sum
 └── Makefile
@@ -88,19 +138,37 @@ make coverage       # HTML coverage report
 
 ## 🏗️ Architecture
 
-```text
-┌──────────────────────────────────────────────────────────┐
+```
+┌──────────────────────────────────────────────────┐
 │  GO MASTER (Port 8080)                                  │
 │  ├─ HTTP API (Gin, Domain-based handlers)               │
 │  ├─ Bootstrap & DI (internal/bootstrap)                 │
 │  ├─ Job / Worker Orchestration                          │
-│  ├─ Unified Catalog (SQLite Search)                     │
-│  ├─ Script Generation (Ollama)                          │
+│  ├─ Script Generation (Ollama, Modular)                 │
 │  ├─ Clip Indexing (Drive scanning + semantic match)     │
 │  └─ External Integrations (YouTube, Drive, Rust)        │
-└──────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────┘
 ```
 
 ---
 
-*Updated April 2026 — Production Ready*
+## 📝 Modularization Summary (April 2026)
+
+The codebase has been refactored for better maintainability:
+
+### Modularized Files:
+1. **Script Handlers** - Split into 14 focused modules
+2. **Ollama Client** - Split into 9 focused modules  
+3. **Job Models** - Split into types + functions
+4. **Worker Models** - Split into types + functions
+5. **Script Repository** - Split into types + repository
+6. **API Middleware** - Split into middleware + logger
+
+### Benefits:
+- ✅ Smaller, focused files (easier to navigate)
+- ✅ Clear separation of concerns
+- ✅ Better code reuse and testing
+- ✅ Easier onboarding for new developers
+- ✅ Prepared for horizontal scaling
+
+*Updated April 2026 — Production Ready & Modular*
