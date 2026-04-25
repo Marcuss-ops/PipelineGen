@@ -1,6 +1,7 @@
-package ollama
+package client
 
 import (
+	"velox/go-master/internal/ml/ollama/types"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,7 +11,7 @@ import (
 
 // Embed genera embedding vettoriale con Ollama
 func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
-	req := EmbedRequest{
+	req := types.EmbedRequest{
 		Model:  c.model,
 		Prompt: prompt,
 	}
@@ -36,7 +37,7 @@ func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
-	var result EmbedResponse
+	var result types.EmbedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}

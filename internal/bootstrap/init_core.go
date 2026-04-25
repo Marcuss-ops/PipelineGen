@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/storage"
@@ -27,7 +28,7 @@ type CoreDeps struct {
 
 // initCoreMinimal creates only the services needed by the text/doc server.
 func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
-	ollamaClient := ollama.NewClient(cfg.External.OllamaURL, "")
+	ollamaClient := client.NewClient(cfg.External.OllamaURL, "")
 	scriptGen := ollama.NewGenerator(ollamaClient)
 
 	docClient, err := drive.NewDocClient(context.Background(), cfg.GetCredentialsPath(), cfg.GetTokenPath())
