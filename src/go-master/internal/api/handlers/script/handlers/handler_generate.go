@@ -1,6 +1,7 @@
-package script
+package handlers
 
 import (
+	"velox/go-master/internal/api/handlers/script"
 	"context"
 	"net/http"
 	"strings"
@@ -17,18 +18,18 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		return
 	}
 
-	var req ScriptDocsRequest
+	var req script.ScriptDocsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
-	req.normalize()
+	req.Normalize()
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
-	document, err := BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.clipTextDir, h.pythonScriptsDir, h.nodeScraperDir)
+	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.clipTextDir, h.pythonScriptsDir, h.nodeScraperDir)
 	if err != nil {
 		zap.L().Error("script document generation failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
@@ -117,7 +118,7 @@ func narrativeOnly(content string) string {
 }
 
 // saveScriptToDB saves the generated script to the database
-func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req ScriptDocsRequest, document *ScriptDocument) {
+func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req script.ScriptDocsRequest, document *script.ScriptDocument) {
 	// Convert sections to ScriptSectionRecord
 	sections := make([]scripts.ScriptSectionRecord, 0, len(document.Sections))
 	for i, sec := range document.Sections {
@@ -166,8 +167,8 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
-	path := buildPreviewPath(dir, title)
-	if err := writePreview(path, title, content); err != nil {
+	path := script.BuildPreviewPath(dir, title)
+	if err := script.WritePreview(path, title, content); err != nil {
 		return "", err
 	}
 	return path, nil

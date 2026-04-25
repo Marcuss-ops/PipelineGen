@@ -25,11 +25,11 @@ func buildPrompt(topic string, duration int, language, template string) string {
 	)
 }
 
-func buildPreviewPath(dir, title string) string {
-	return filepath.Join(dir, sanitizeFilename(title)+".txt")
+func BuildPreviewPath(dir, title string) string {
+	return filepath.Join(dir, SanitizeFilename(title)+".txt")
 }
 
-func sanitizeFilename(s string) string {
+func SanitizeFilename(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
 	for _, r := range s {
@@ -48,7 +48,7 @@ func sanitizeFilename(s string) string {
 	return out
 }
 
-func writePreview(path, title, content string) error {
+func WritePreview(path, title, content string) error {
 	data := []byte(title + "\n\n" + content)
 	return os.WriteFile(path, data, 0644)
 }

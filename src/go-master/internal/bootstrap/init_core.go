@@ -47,7 +47,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	if err != nil {
 		log.Warn("Stock database not initialized", zap.Error(err))
 	} else {
-		migrationsDir := filepath.Join("internal", "storage", "migrations", "sqlite")
+		migrationsDir := filepath.Join("migrations", "sqlite")
 		if err := stockDB.RunMigrations(log, migrationsDir); err != nil {
 			log.Warn("Failed to run migrations", zap.Error(err))
 		}

@@ -4,7 +4,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
 	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	"velox/go-master/pkg/config"
 )
@@ -27,7 +27,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		return nil, err
 	}
 
-	scriptDocsHandler := script.NewScriptDocsHandler(
+	scriptDocsHandler := handlers.NewScriptDocsHandler(
 		coreDeps.ScriptGen,
 		coreDeps.DocClient,
 		coreDeps.VoiceoverService,
@@ -39,14 +39,14 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		cfg.Drive.StockRootFolder,
 	)
 
-	handlers := &api.Handlers{
+	handlers_struct := &api.Handlers{
 		Health:     common.NewHealthHandler(),
 		ScriptDocs: scriptDocsHandler,
 		Voiceover:  voiceover.NewHandler(coreDeps.VoiceoverService),
 		Utility:    coreDeps.Utility,
 	}
 	if coreDeps.ScriptsRepo != nil {
-		handlers.ScriptHistory = script.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
+		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
 	}
 	cleanup := func() {
 		if coreClean != nil {
@@ -55,7 +55,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}
 
 	return &AppDeps{
-		Handlers: handlers,
+		Handlers: handlers_struct,
 		Cleanup:  cleanup,
 	}, nil
 }

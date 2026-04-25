@@ -11,7 +11,7 @@ type ScriptDocsRequest struct {
 	Voiceover   bool   `json:"voiceover"`
 }
 
-func (r *ScriptDocsRequest) normalize() {
+func (r *ScriptDocsRequest) Normalize() {
 	if r.Duration <= 0 {
 		r.Duration = 60
 	}

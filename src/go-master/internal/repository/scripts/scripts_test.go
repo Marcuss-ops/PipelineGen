@@ -4,9 +4,9 @@ import (
 	"testing"
 )
 
-func TestNewRepository(t *testing.T) {
+func TestNewScriptRepository(t *testing.T) {
 	t.Run("nil db", func(t *testing.T) {
-		repo := NewRepository(nil)
+		repo := NewScriptRepository(nil)
 		if repo == nil {
 			t.Error("Expected non-nil repository")
 		}
