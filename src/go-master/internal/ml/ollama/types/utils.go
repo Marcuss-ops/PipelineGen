@@ -1,4 +1,4 @@
-package ollama
+package types
 
 import (
 	"regexp"
@@ -6,7 +6,7 @@ import (
 )
 
 // sanitizeInput removes potential injection from prompt
-func sanitizeInput(input string) string {
+func SanitizeInput(input string) string {
 	// Limit length to prevent DoS (increased to support long scripts)
 	if len(input) > 100000 {
 		input = input[:100000]
@@ -18,7 +18,7 @@ func sanitizeInput(input string) string {
 }
 
 // cleanScript cleans the generated script removing markdown and meta-text (music, image descriptions)
-func cleanScript(script string) string {
+func CleanScript(script string) string {
 	// 1. Remove markdown code blocks
 	reCode := regexp.MustCompile("(?s)```[a-zA-Z]*\\n?(.*?)\\n?```")
 	if matches := reCode.FindStringSubmatch(script); len(matches) > 1 {
@@ -60,12 +60,12 @@ func cleanScript(script string) string {
 }
 
 // estimateDuration estimates duration in seconds based on word count
-func estimateDuration(wordCount int) int {
+func EstimateDuration(wordCount int) int {
 	// ~140 words per minute (average speech rate)
 	return (wordCount * 60) / 140
 }
 
 // countWords counts words in a string
-func countWords(text string) int {
+func CountWords(text string) int {
 	return len(strings.Fields(text))
 }

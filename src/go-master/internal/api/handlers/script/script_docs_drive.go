@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 type driveCheckpointIndex struct {
@@ -21,7 +21,7 @@ type driveCheckpointEntry struct {
 	Filename string `json:"filename"`
 }
 
-func buildDriveMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis) ScriptSection {
+func buildDriveMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
 	path := filepath.Join(dataDir, "clipsearch_checkpoints.json")
 
@@ -117,7 +117,7 @@ func (a artlistClipItem) PickLink() string {
 	return ""
 }
 
-func buildArtlistMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis) ScriptSection {
+func buildArtlistMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
 	path := filepath.Join(dataDir, "artlist_stock_index.json")
 

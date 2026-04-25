@@ -3,10 +3,10 @@ package script
 import (
 	"strings"
 
-	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
-func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis) ScriptSection {
+func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
 	clips, err := loadStockCatalog(dataDir)
 	if err != nil {

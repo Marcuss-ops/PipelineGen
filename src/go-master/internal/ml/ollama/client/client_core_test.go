@@ -1,6 +1,7 @@
-package ollama
+package client
 
 import (
+	"velox/go-master/internal/ml/ollama/types"
 	"testing"
 )
 

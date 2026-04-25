@@ -1,6 +1,7 @@
-package ollama
+package client
 
 import (
+	"velox/go-master/internal/ml/ollama/types"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -31,12 +32,12 @@ func NewClient(baseURL, model string) *Client {
 }
 
 // ChatWithRetry executes chat with retry, fallback, and circuit breaker
-func (c *Client) Chat(ctx context.Context, messages []Message, options map[string]interface{}) (string, error) {
+func (c *Client) Chat(ctx context.Context, messages []types.Message, options map[string]interface{}) (string, error) {
 	return c.chatWithRetryAndFallback(ctx, messages, options, 3)
 }
 
 // chatWithRetryAndFallback implements retry logic with model fallback
-func (c *Client) chatWithRetryAndFallback(ctx context.Context, messages []Message, options map[string]interface{}, maxRetries int) (string, error) {
+func (c *Client) chatWithRetryAndFallback(ctx context.Context, messages []types.Message, options map[string]interface{}, maxRetries int) (string, error) {
 	// Build fallback chain including current model
 	modelChain := []string{c.model}
 	if fallbacks, ok := modelFallbackChains[c.model]; ok {
@@ -93,8 +94,8 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, messages []Messag
 }
 
 // doChatRequest executes a single chat request
-func (c *Client) doChatRequest(ctx context.Context, model string, messages []Message, options map[string]interface{}) (string, error) {
-	req := ChatRequest{
+func (c *Client) doChatRequest(ctx context.Context, model string, messages []types.Message, options map[string]interface{}) (string, error) {
+	req := types.ChatRequest{
 		Model:    model,
 		Messages: messages,
 		Stream:   false,
@@ -122,7 +123,7 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []Mes
 		return "", fmt.Errorf("ollama chat returned status %d", resp.StatusCode)
 	}
 
-	var result ChatResponse
+	var result types.ChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}

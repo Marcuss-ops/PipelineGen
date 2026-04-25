@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 func clipAlreadyUsed(used map[string]struct{}, clipID string) bool {
@@ -156,7 +158,7 @@ func scoreClipDriveCandidate(phraseTokens []string, phraseNorm string, candidate
 	return score, reason
 }
 
-func refineClipDriveMatchWithLLM(ctx context.Context, client *ollama.Client, topic, phrase string, candidates []clipDriveCandidate) (*clipDriveLLMSelection, bool) {
+func refineClipDriveMatchWithLLM(ctx context.Context, client *client.Client, topic, phrase string, candidates []clipDriveCandidate) (*clipDriveLLMSelection, bool) {
 	if client == nil || len(candidates) == 0 {
 		return nil, false
 	}
@@ -269,7 +271,7 @@ func renderClipDriveMatches(matches []clipDrivePhraseMatch) string {
 	return strings.TrimSpace(b.String())
 }
 
-func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis, dataDir, clipTextDir string) ScriptSection {
+func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir, clipTextDir string) ScriptSection {
 	clips, err := loadClipDriveCatalog(dataDir)
 	if err != nil || len(clips) == 0 {
 		return ScriptSection{
@@ -287,7 +289,7 @@ func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, r
 	}
 
 	sidecarTexts := loadClipSidecarTexts(clipTextDir)
-	client := (*ollama.Client)(nil)
+	client := (*client.Client)(nil)
 	if gen != nil {
 		client = gen.GetClient()
 	}

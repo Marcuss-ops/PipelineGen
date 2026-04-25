@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 // loadClipSidecarTexts loads sidecar text files for clips
@@ -104,7 +104,7 @@ func clipDriveTokens(text string) []string {
 }
 
 // collectClipDrivePhrases collects phrases for clip matching
-func collectClipDrivePhrases(narrative string, analysis *ollama.FullEntityAnalysis) []string {
+func collectClipDrivePhrases(narrative string, analysis *types.FullEntityAnalysis) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0, 8)
 

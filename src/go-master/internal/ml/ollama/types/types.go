@@ -1,5 +1,5 @@
 // Package ollama provides types for Ollama API integration.
-package ollama
+package types
 
 import "context"
 

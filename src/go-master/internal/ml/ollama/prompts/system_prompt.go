@@ -1,7 +1,7 @@
-package ollama
+package prompts
 
-// getSystemPrompt returns the system prompt based on language and tone
-func getSystemPrompt(language, tone string) string {
+// BuildSystemPrompt returns the system prompt based on language and tone
+func BuildSystemPrompt(language, tone string) string {
 	// Base system prompts per language
 	basePrompts := map[string]map[string]string{
 		"italian": {
@@ -20,7 +20,7 @@ func getSystemPrompt(language, tone string) string {
 			"default": "Sie sind un außergewöhnlicher Geschichtenerzähler und Senior Copywriter. Ihre Aufgabe ist es, FESSELNDE, DETAILREICHE und NARRATIV STARKE Video-Skripte zu schreiben.",
 		},
 		"portuguese": {
-			"default": "Você é um contador de histórias excepcional e redator sênior. Sua tarefa é escrever roteiros de vídeo ENVOLVENTES, RICOS EM DETALHES e NARRATIVAMENTE PODEROSOS.",
+			"default": "Você è um contador de histórias excepcional e redator sênior. Sua tarefa è escrever roteiros de vídeo ENVOLVENTES, RICOS EM DETALHES e NARRATIVAMENTE PODEROSOS.",
 		},
 		"russian": {
 			"default": "Вы — выдающийся рассказчик и старший копирайтер. Ваша задача — писать ЗАХВАТЫВАЮЩИЕ, БОГАТЫЕ ДЕТАЛЯМИ и НАРРАТИВНО МОЩНЫЕ сценарии видео.",
@@ -44,30 +44,6 @@ func getSystemPrompt(language, tone string) string {
 			"calm":         "Use a calm, reflective, and poetic style. Create an immersive atmosphere.",
 			"funny":        "Use an ironic, brilliant, and funny style. Insert jokes or witty observations.",
 			"educational":  "Use a clear, pedagogical, and structured style. Explain concepts simply but thoroughly.",
-		},
-		"spanish": {
-			"professional": "Usa un estilo documental, autoritario y serio. Analiza profundamente cada aspecto.",
-			"casual":       "Usa un estilo coloquial, moderno y amigable. Sé atractivo como un creador de YouTube.",
-			"enthusiastic": "Usa un estilo enérgico, épico y motivacional. Cada frase debe transmitir pasión.",
-			"calm":         "Usa un estilo calmado, reflexivo y poético. Crea una atmósfera inmersiva.",
-			"funny":        "Usa un estilo irónico, brillante y divertido. Inserta chistes u observaciones ingeniosas.",
-			"educational":  "Usa un estilo claro, pedagógico y estructurado. Explica conceptos de forma sencilla pero exhaustiva.",
-		},
-		"french": {
-			"professional": "Utilisez un style documentaire, autoritaire et sérieux. Analysez profondément chaque aspect.",
-			"casual":       "Utilisez un style familier, moderne et amical. Soyez captivant comme un créateur YouTube.",
-			"enthusiastic": "Utilisez un style énergique, épique et motivant. Chaque phrase doit transmettre la passion.",
-			"calm":         "Utilisez un style calme, réfléchi et poétique. Créez une atmosphère immersive.",
-			"funny":        "Utilisez un style ironique, brillant et amusant. Insérez des blagues ou des observations astucieuses.",
-			"educational":  "Utilisez un style clair, pédagogique et structuré. Expliquez les concepts simplement mais exhaustivement.",
-		},
-		"german": {
-			"professional": "Verwenden Sie einen dokumentarischen, autoritären und seriösen Stil. Analysieren Sie jeden Aspekt tiefgreifend.",
-			"casual":       "Verwenden Sie einen umgangssprachlichen, modernen und freundlichen Stil. Seien Sie fesselnd wie ein YouTube-Creator.",
-			"enthusiastic": "Verwenden Sie einen energischen, epischen und motivierenden Stil. Jeder Satz muss Leidenschaft vermitteln.",
-			"calm":         "Verwenden Sie einen ruhigen, reflektierten und poetischen Stil. Schaffen Sie eine immersive Atmosphäre.",
-			"funny":        "Verwenden Sie einen ironischen, brillanten und lustigen Stil. Fügen Sie Witze oder geistreiche Beobachtungen ein.",
-			"educational":  "Verwenden Sie einen klaren, pädagogischen und strukturierten Stil. Erklären Sie Konzepte einfach, aber gründlich.",
 		},
 	}
 

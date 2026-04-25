@@ -1,6 +1,7 @@
-package ollama
+package client
 
 import (
+	"velox/go-master/internal/ml/ollama/types"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -22,7 +23,7 @@ func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, 
 		model = c.model
 	}
 
-	req := GenerateRequest{
+	req := types.GenerateRequest{
 		Model:   model,
 		Prompt:  prompt,
 		Stream:  false,
@@ -50,7 +51,7 @@ func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, 
 		return "", fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
-	var result GenerateResponse
+	var result types.GenerateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -76,7 +77,7 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 		model = c.model
 	}
 
-	req := GenerateRequest{
+	req := types.GenerateRequest{
 		Model:   model,
 		Prompt:  prompt,
 		Stream:  true,
@@ -116,7 +117,7 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 
 		decoder := json.NewDecoder(resp.Body)
 		for {
-			var result GenerateResponse
+			var result types.GenerateResponse
 			if err := decoder.Decode(&result); err != nil {
 				if err.Error() == "EOF" {
 					break

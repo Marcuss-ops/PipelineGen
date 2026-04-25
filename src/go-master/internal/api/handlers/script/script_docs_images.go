@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 type imagePlanItem struct {
@@ -19,7 +19,7 @@ type imagePlanItem struct {
 	Reason  string
 }
 
-func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *ollama.FullEntityAnalysis, stockSection, artlistSection, driveSection ScriptSection, pythonScriptsDir string) ScriptSection {
+func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, stockSection, artlistSection, driveSection ScriptSection, pythonScriptsDir string) ScriptSection {
 	subject := pickImageSubject(req.Topic, analysis)
 	if subject == "" {
 		return ScriptSection{
@@ -40,7 +40,7 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 	}
 }
 
-func pickImageSubject(topic string, analysis *ollama.FullEntityAnalysis) string {
+func pickImageSubject(topic string, analysis *types.FullEntityAnalysis) string {
 	seen := make(map[string]struct{})
 	add := func(s string) bool {
 		s = strings.TrimSpace(s)
