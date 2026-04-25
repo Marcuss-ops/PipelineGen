@@ -15,7 +15,11 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		return nil, err
 	}
 
-	entitySection, analysis := buildEntityExtractionSection(ctx, gen, narrative)
+	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir)
+	if err != nil {
+		// handle error or just pass nil analysis
+	}
+
 	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir)
 	if err != nil {
 		timelinePlan = &TimelinePlan{
@@ -23,6 +27,49 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 			SegmentCount:  0,
 			TotalDuration: req.Duration,
 		}
+	}
+
+	// Link Artlist matches from analysis back to the timeline
+	if analysis != nil && len(analysis.SegmentEntities) > 0 && timelinePlan != nil && len(timelinePlan.Segments) > 0 {
+		artlistMatches := analysis.SegmentEntities[0].ArtlistMatches
+
+		// Map to store seen links for deduplication
+		seenLinks := make(map[string]struct{})
+
+		// 1. First add phrases that HAVE matches
+		for phrase, links := range artlistMatches {
+			if len(links) > 0 {
+				for _, link := range links {
+					if _, ok := seenLinks[link]; ok {
+						continue
+					}
+					seenLinks[link] = struct{}{}
+					timelinePlan.Segments[0].ArtlistMatches = append(timelinePlan.Segments[0].ArtlistMatches, scoredMatch{
+						Title:  phrase,
+						Link:   link,
+						Source: "artlist_db",
+						Score:  100,
+					})
+				}
+			}
+		}
+
+		// 2. Then add phrases that were found but have NO matches (as suggestions)
+		for phrase, links := range artlistMatches {
+			if len(links) == 0 {
+				timelinePlan.Segments[0].ArtlistMatches = append(timelinePlan.Segments[0].ArtlistMatches, scoredMatch{
+					Title:  phrase,
+					Link:   "", // No link
+					Source: "artlist_suggestion",
+					Score:  50,
+				})
+			}
+		}
+	}
+
+	entitySection := ScriptSection{
+		Title: "🔎 Entity Extraction",
+		Body:  renderEntityAnalysis(analysis, timelinePlan),
 	}
 
 	sections := []ScriptSection{

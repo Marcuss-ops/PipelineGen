@@ -1,12 +1,81 @@
 package ollama
 
-import "net/http"
+import (
+	"net/http"
+	"sync"
+	"time"
+)
+
+// CircuitBreaker implements a simple circuit breaker for Ollama requests
+type CircuitBreaker struct {
+	mu              sync.Mutex
+	state           string // "closed", "open", "half-open"
+	failureCount    int
+	lastFailureTime time.Time
+	maxFailures     int
+	timeout         time.Duration
+}
+
+func NewCircuitBreaker(maxFailures int, timeout time.Duration) *CircuitBreaker {
+	return &CircuitBreaker{
+		state:       "closed",
+		maxFailures: maxFailures,
+		timeout:     timeout,
+	}
+}
+
+func (cb *CircuitBreaker) AllowRequest() bool {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	switch cb.state {
+	case "closed":
+		return true
+	case "open":
+		if time.Since(cb.lastFailureTime) > cb.timeout {
+			cb.state = "half-open"
+			return true
+		}
+		return false
+	case "half-open":
+		return true
+	}
+	return false
+}
+
+func (cb *CircuitBreaker) RecordSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.state = "closed"
+	cb.failureCount = 0
+}
+
+func (cb *CircuitBreaker) RecordFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.failureCount++
+	cb.lastFailureTime = time.Now()
+	if cb.failureCount >= cb.maxFailures {
+		cb.state = "open"
+	}
+}
+
+// ModelFallback defines fallback model chains
+var modelFallbackChains = map[string][]string{
+	"qwen2.5:12b":  {"qwen2.5:7b", "gemma3:4b"},
+	"llama3.2:12b": {"llama3.2:7b", "gemma3:4b"},
+	"mistral:12b":  {"mistral:7b", "gemma3:4b"},
+	"gemma3:12b":   {"gemma3:4b"},
+	"qwen2.5:7b":   {"gemma3:4b"},
+	"llama3.2:7b":  {"gemma3:4b"},
+}
 
 // Client client per Ollama API
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	model      string
+	baseURL        string
+	httpClient     *http.Client
+	model          string
+	circuitBreaker *CircuitBreaker
 }
 
 // Message rappresenta un messaggio chat
@@ -77,21 +146,24 @@ type EntityExtractionRequest struct {
 
 // EntityExtractionResult represents the result of entity extraction for a segment
 type EntityExtractionResult struct {
-	SegmentIndex     int               `json:"segment_index"`
-	FrasiImportanti  []string          `json:"frasi_importanti"`
-	EntitaSenzaTesto map[string]string `json:"entity_senza_testo"`
-	NomiSpeciali     []string          `json:"nomi_speciali"`
-	ParoleImportanti []string          `json:"parole_importanti"`
+	SegmentIndex     int                 `json:"segment_index"`
+	FrasiImportanti  []string            `json:"frasi_importanti"`
+	EntitaSenzaTesto map[string]string   `json:"entity_senza_testo"`
+	NomiSpeciali     []string            `json:"nomi_speciali"`
+	ParoleImportanti []string            `json:"parole_importanti"`
+	ArtlistPhrases   map[string][]string `json:"artlist_phrases"`
 }
 
 // SegmentEntities represents extracted entities for a single segment
 type SegmentEntities struct {
-	SegmentIndex     int               `json:"segment_index"`
-	SegmentText      string            `json:"segment_text"`
-	FrasiImportanti  []string          `json:"frasi_importanti"`
-	EntitaSenzaTesto map[string]string `json:"entity_senza_testo"`
-	NomiSpeciali     []string          `json:"nomi_speciali"`
-	ParoleImportanti []string          `json:"parole_importanti"`
+	SegmentIndex     int                 `json:"segment_index"`
+	SegmentText      string              `json:"segment_text"`
+	FrasiImportanti  []string            `json:"frasi_importanti"`
+	EntitaSenzaTesto map[string]string   `json:"entity_senza_testo"`
+	NomiSpeciali     []string            `json:"nomi_speciali"`
+	ParoleImportanti []string            `json:"parole_importanti"`
+	ArtlistPhrases   map[string][]string `json:"artlist_phrases"`
+	ArtlistMatches   map[string][]string `json:"artlist_matches"`
 }
 
 // FullEntityAnalysis represents the complete entity analysis for a script

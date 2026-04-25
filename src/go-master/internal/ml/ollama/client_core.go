@@ -23,18 +23,79 @@ func NewClient(baseURL, model string) *Client {
 	}
 
 	return &Client{
-		baseURL: baseURL,
-		model:   model,
-		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
-		},
+		baseURL:        baseURL,
+		model:          model,
+		httpClient:     &http.Client{Timeout: 120 * time.Second},
+		circuitBreaker: NewCircuitBreaker(3, 30*time.Second),
 	}
 }
 
-// Chat esegue una richiesta chat a Ollama (API Raccomandata)
+// ChatWithRetry executes chat with retry, fallback, and circuit breaker
 func (c *Client) Chat(ctx context.Context, messages []Message, options map[string]interface{}) (string, error) {
+	return c.chatWithRetryAndFallback(ctx, messages, options, 3)
+}
+
+// chatWithRetryAndFallback implements retry logic with model fallback
+func (c *Client) chatWithRetryAndFallback(ctx context.Context, messages []Message, options map[string]interface{}, maxRetries int) (string, error) {
+	// Build fallback chain including current model
+	modelChain := []string{c.model}
+	if fallbacks, ok := modelFallbackChains[c.model]; ok {
+		modelChain = append(modelChain, fallbacks...)
+	}
+
+	var lastErr error
+
+	for _, model := range modelChain {
+		if !c.circuitBreaker.AllowRequest() {
+			logger.Warn("Circuit breaker open, skipping model", zap.String("model", model))
+			continue
+		}
+
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			default:
+			}
+
+			resp, err := c.doChatRequest(ctx, model, messages, options)
+			if err == nil {
+				c.circuitBreaker.RecordSuccess()
+				return resp, nil
+			}
+
+			lastErr = err
+			logger.Warn("Chat request failed",
+				zap.String("model", model),
+				zap.Int("attempt", attempt+1),
+				zap.Error(err),
+			)
+
+			// Wait before retry with exponential backoff
+			if attempt < maxRetries-1 {
+				backoff := time.Duration(attempt+1) * 2 * time.Second
+				select {
+				case <-time.After(backoff):
+				case <-ctx.Done():
+					return "", ctx.Err()
+				}
+			}
+		}
+
+		c.circuitBreaker.RecordFailure()
+		logger.Warn("All retries failed for model, trying fallback", zap.String("model", model))
+	}
+
+	if lastErr != nil {
+		return "", fmt.Errorf("all models failed, last error: %w", lastErr)
+	}
+	return "", fmt.Errorf("all models failed without specific error")
+}
+
+// doChatRequest executes a single chat request
+func (c *Client) doChatRequest(ctx context.Context, model string, messages []Message, options map[string]interface{}) (string, error) {
 	req := ChatRequest{
-		Model:    c.model,
+		Model:    model,
 		Messages: messages,
 		Stream:   false,
 		Options:  options,
@@ -67,6 +128,7 @@ func (c *Client) Chat(ctx context.Context, messages []Message, options map[strin
 	}
 
 	logger.Info("Ollama chat response received",
+		zap.String("model", model),
 		zap.Int("chars", len(result.Message.Content)),
 		zap.Int("words", len(strings.Fields(result.Message.Content))),
 	)

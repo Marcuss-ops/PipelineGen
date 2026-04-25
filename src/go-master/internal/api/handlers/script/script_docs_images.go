@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -121,21 +122,55 @@ func sectionHasContent(section ScriptSection) bool {
 
 func searchDDGImage(query string) string {
 	client := &http.Client{Timeout: 10 * time.Second}
-	if img := ddgImageSearch(client, query); img != "" {
+	if img := searchWikipediaImage(client, query); img != "" {
 		return img
 	}
-	return ddgInstantImage(client, query)
+	if img := ddgInstantImage(client, query); img != "" {
+		return img
+	}
+	if img := searchHeadlessImage(query); img != "" {
+		return img
+	}
+	return ""
 }
 
-func ddgImageSearch(client *http.Client, query string) string {
-	apiURL := fmt.Sprintf("https://duckduckgo.com/i.js?q=%s", url.QueryEscape(query))
+func searchHeadlessImage(query string) string {
+	cmd := exec.Command("python3", "../../python/headless_image_scraper.py", query)
+	out, err := cmd.Output()
+	if err != nil {
+		// try absolute path relative to project root if executed from bin
+		cmd = exec.Command("python3", "src/python/headless_image_scraper.py", query)
+		out, err = cmd.Output()
+		if err != nil {
+			return ""
+		}
+	}
+	res := strings.TrimSpace(string(out))
+	if res == "null" || res == "" {
+		return ""
+	}
+	return res
+}
+
+func searchWikipediaImage(client *http.Client, query string) string {
+	// Try the original query first
+	if img := wikipediaAPISearch(client, query, "en"); img != "" {
+		return img
+	}
+	// Try Italian as fallback if query looks like Italian or just to be safe
+	if img := wikipediaAPISearch(client, query, "it"); img != "" {
+		return img
+	}
+	return ""
+}
+
+func wikipediaAPISearch(client *http.Client, query string, lang string) string {
+	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=500&format=json&redirects=1", lang, url.QueryEscape(query))
 	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Referer", "https://duckduckgo.com/")
+	req.Header.Set("User-Agent", "VeloxEditingBot/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -147,17 +182,25 @@ func ddgImageSearch(client *http.Client, query string) string {
 	}
 
 	var payload struct {
-		Results []struct {
-			Image string `json:"image"`
-		} `json:"results"`
+		Query struct {
+			Pages map[string]struct {
+				Thumbnail struct {
+					Source string `json:"source"`
+				} `json:"thumbnail"`
+			} `json:"pages"`
+		} `json:"query"`
 	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return ""
 	}
-	if len(payload.Results) == 0 {
-		return ""
+
+	for _, page := range payload.Query.Pages {
+		if page.Thumbnail.Source != "" {
+			return page.Thumbnail.Source
+		}
 	}
-	return strings.TrimSpace(payload.Results[0].Image)
+	return ""
 }
 
 func ddgInstantImage(client *http.Client, query string) string {

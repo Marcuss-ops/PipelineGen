@@ -9,18 +9,20 @@ import (
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/docs/v1"
+	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 
-	"velox/go-master/pkg/logger"
 	"go.uber.org/zap"
+	"velox/go-master/pkg/logger"
 )
 
-// DocClient gestisce le operazioni Google Docs
+// DocClient gestisce le operazioni Google Docs e Drive
 type DocClient struct {
-	docsService *docs.Service
+	docsService  *docs.Service
+	driveService *drive.Service
 }
 
-// NewDocClient crea un nuovo client Docs.
+// NewDocClient crea un nuovo client Docs e Drive.
 func NewDocClient(ctx context.Context, credentialsFile, tokenFile string) (*DocClient, error) {
 	credentials, err := os.ReadFile(credentialsFile)
 	if err != nil {
@@ -32,14 +34,12 @@ func NewDocClient(ctx context.Context, credentialsFile, tokenFile string) (*DocC
 		return nil, fmt.Errorf("authentication required: %w", err)
 	}
 
-	oauthConfig, err := google.ConfigFromJSON(credentials, docs.DocumentsScope)
+	// Request both Docs and Drive scopes
+	oauthConfig, err := google.ConfigFromJSON(credentials, docs.DocumentsScope, drive.DriveFileScope, drive.DriveScope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
-	// Use context.Background() for the token source.
-	// This is critical: the token source needs its own long-lived context
-	// so that token refresh works independently of any request context.
 	tokenSource := oauthConfig.TokenSource(context.Background(), token)
 
 	docsService, err := docs.NewService(ctx, option.WithTokenSource(tokenSource))
@@ -47,8 +47,14 @@ func NewDocClient(ctx context.Context, credentialsFile, tokenFile string) (*DocC
 		return nil, fmt.Errorf("failed to create Docs service: %w", err)
 	}
 
+	driveService, err := drive.NewService(ctx, option.WithTokenSource(tokenSource))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Drive service: %w", err)
+	}
+
 	return &DocClient{
-		docsService: docsService,
+		docsService:  docsService,
+		driveService: driveService,
 	}, nil
 }
 
@@ -67,6 +73,26 @@ func (d *DocClient) CreateDoc(ctx context.Context, title, content, folderID stri
 	docURL := fmt.Sprintf("https://docs.google.com/document/d/%s/edit", docID)
 
 	logger.Info("Created Google Doc", zap.String("title", title), zap.String("id", docID))
+
+	// Move to folder if specified
+	if folderID != "" {
+		// Retreive existing parents to remove them
+		file, err := d.driveService.Files.Get(docID).Fields("parents").Context(ctx).Do()
+		if err == nil && len(file.Parents) > 0 {
+			previousParents := strings.Join(file.Parents, ",")
+			_, err = d.driveService.Files.Update(docID, nil).
+				AddParents(folderID).
+				RemoveParents(previousParents).
+				Context(ctx).Do()
+			if err != nil {
+				logger.Warn("Failed to move document to target folder", zap.Error(err), zap.String("folder", folderID))
+			} else {
+				logger.Info("Moved Google Doc to folder", zap.String("doc_id", docID), zap.String("folder", folderID))
+			}
+		} else {
+			logger.Warn("Could not get parents of created doc for moving", zap.Error(err))
+		}
+	}
 
 	// Add content if provided
 	if content != "" {

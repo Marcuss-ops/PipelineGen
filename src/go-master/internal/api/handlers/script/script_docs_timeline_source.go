@@ -254,7 +254,7 @@ func mergeTimelineSegments(a, b timelineLLMSegment) timelineLLMSegment {
 		Keywords:            uniqueStrings(keywords),
 		Entities:            uniqueStrings(entities),
 		PreferredStockGroup: choosePreferredGroup(a.PreferredStockGroup, b.PreferredStockGroup),
-		PreferredStockPaths:  uniqueStrings(append(a.PreferredStockPaths, b.PreferredStockPaths...)),
+		PreferredStockPaths: uniqueStrings(append(a.PreferredStockPaths, b.PreferredStockPaths...)),
 	}
 }
 
@@ -288,12 +288,12 @@ func normalizeSemanticTimelinePlan(plan *timelineLLMPlan, req ScriptDocsRequest,
 			StartTime:           roundSeconds(start),
 			EndTime:             roundSeconds(end),
 			Timestamp:           formatTimestamp(roundSeconds(start), roundSeconds(end)),
-			OpeningSentence:     seg.OpeningSentence,
-			ClosingSentence:     seg.ClosingSentence,
+			OpeningSentence:     firstSentence(seg.OpeningSentence),
+			ClosingSentence:     lastSentence(seg.ClosingSentence),
 			Keywords:            uniqueStrings(append(seg.Keywords, collectTopicTerms(req.Topic)...)),
 			Entities:            uniqueStrings(append(seg.Entities, focus)),
 			PreferredStockGroup: seg.PreferredStockGroup,
-			PreferredStockPaths:  seg.PreferredStockPaths,
+			PreferredStockPaths: seg.PreferredStockPaths,
 		})
 	}
 

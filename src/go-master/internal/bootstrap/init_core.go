@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -14,10 +15,11 @@ import (
 
 // CoreDeps holds the minimal runtime dependencies needed by the stripped-down server.
 type CoreDeps struct {
-	ScriptGen *ollama.Generator
-	DocClient *drive.DocClient
-	Utility   *common.UtilityHandler
-	StockDB   *storage.SQLiteDB
+	ScriptGen   *ollama.Generator
+	DocClient   *drive.DocClient
+	Utility     *common.UtilityHandler
+	StockDB     *storage.SQLiteDB
+	ScriptsRepo *scripts.ScriptRepository
 }
 
 // initCoreMinimal creates only the services needed by the text/doc server.
@@ -41,18 +43,39 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		}
 	}
 
+	// Initialize scripts database with migrations
+	scriptsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "scripts.db.sqlite", log)
+	if err != nil {
+		log.Warn("Scripts database not initialized", zap.Error(err))
+	} else {
+		scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
+		if err := scriptsDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
+			log.Warn("Failed to run scripts migrations", zap.Error(err))
+		}
+	}
+	var scriptsRepo *scripts.ScriptRepository
+	if scriptsDB != nil {
+		scriptsRepo = scripts.NewScriptRepository(scriptsDB.DB)
+	}
+
 	cleanup := func() {
 		if stockDB != nil {
 			if err := stockDB.Close(); err != nil {
 				log.Error("Failed to close stock database", zap.Error(err))
 			}
 		}
+		if scriptsDB != nil {
+			if err := scriptsDB.Close(); err != nil {
+				log.Error("Failed to close scripts database", zap.Error(err))
+			}
+		}
 	}
 
 	return &CoreDeps{
-		ScriptGen: scriptGen,
-		DocClient: docClient,
-		Utility:   common.NewUtilityHandler(),
-		StockDB:   stockDB,
+		ScriptGen:   scriptGen,
+		DocClient:   docClient,
+		Utility:     common.NewUtilityHandler(),
+		StockDB:     stockDB,
+		ScriptsRepo: scriptsRepo,
 	}, cleanup, nil
 }

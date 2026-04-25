@@ -16,9 +16,10 @@ import (
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
-	Health     *common.HealthHandler
-	ScriptDocs *script.ScriptDocsHandler
-	Utility    *common.UtilityHandler
+	Health        *common.HealthHandler
+	ScriptDocs    *script.ScriptDocsHandler
+	ScriptHistory *script.ScriptHistoryHandler
+	Utility       *common.UtilityHandler
 }
 
 // Router holds all API handlers
@@ -106,6 +107,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.ScriptDocs != nil {
 				scriptDocsGroup := protected.Group("/script-docs")
 				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)
+			}
+			if h.ScriptHistory != nil {
+				scriptHistoryGroup := protected.Group("/scripts")
+				h.ScriptHistory.RegisterRoutes(scriptHistoryGroup)
 			}
 		}
 	}

@@ -46,15 +46,39 @@ func cleanTimelineSentence(text string) string {
 	return strings.TrimSpace(text)
 }
 
-// extractOpeningAndClosingSentence extracts opening and closing sentences from text.
+// extractOpeningAndClosingSentence extracts only the first and last sentences from text.
 func extractOpeningAndClosingSentence(text string) (string, string) {
-	paragraphs := semanticParagraphs(text)
-	if len(paragraphs) == 0 {
+	text = strings.TrimSpace(text)
+	if text == "" {
 		return "", ""
 	}
-	opening := cleanTimelineSentence(paragraphs[0])
-	closing := cleanTimelineSentence(paragraphs[len(paragraphs)-1])
-	return opening, closing
+	return firstSentence(text), lastSentence(text)
+}
+
+// firstSentence returns the first 30 characters of the text.
+func firstSentence(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) > 30 {
+		return string(runes[:30]) + "..."
+	}
+	return text
+}
+
+// lastSentence returns the last 30 characters of the text.
+func lastSentence(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) > 30 {
+		return "..." + string(runes[len(runes)-30:])
+	}
+	return text
 }
 
 // uniqueStrings returns unique strings from a slice.
@@ -97,8 +121,6 @@ func extractLikelyNames(text string) []string {
 	}
 	return uniqueStrings(names)
 }
-
-
 
 // buildMatches builds matches from clips and terms.
 func buildMatches(clips []stockClipRef, terms []string, seg TimelineSegment) []stockClipRef {
