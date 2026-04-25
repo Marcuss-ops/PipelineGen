@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/pkg/config"
@@ -18,8 +18,8 @@ import (
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
 	Health        *common.HealthHandler
-	ScriptDocs    *script.ScriptDocsHandler
-	ScriptHistory *script.ScriptHistoryHandler
+	ScriptDocs    *handlers.ScriptDocsHandler
+	ScriptHistory *handlers.ScriptHistoryHandler
 	Voiceover     *voiceover.Handler
 	Utility       *common.UtilityHandler
 }

@@ -38,10 +38,10 @@ func TestWorkerStatusTransitions(t *testing.T) {
 }
 
 func TestWorkerTypeConstants(t *testing.T) {
-	if WorkerTypeScript == "" {
-		t.Error("WorkerTypeScript should not be empty")
+	if WorkerCapabilityScript == "" {
+		t.Error("WorkerCapabilityScript should not be empty")
 	}
-	if WorkerTypeRender == "" {
-		t.Error("WorkerTypeRender should not be empty")
+	if WorkerCapabilityVideoGen == "" {
+		t.Error("WorkerCapabilityVideoGen should not be empty")
 	}
 }
