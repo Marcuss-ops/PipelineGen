@@ -113,13 +113,16 @@ def main() -> int:
 
     payload = {
         "topic": args.topic,
-        "title": args.title or args.topic,
-        "text": source_text,
         "duration": args.duration,
         "language": args.language,
+        "template": "documentary",
+        "preview_only": True,
+        "source_text": source_text,
     }
+    if args.title:
+        payload["title"] = args.title
 
-    response = post_json(api_url, "/api/script-pipeline/full", payload, timeout=300)
+    response = post_json(api_url, "/api/script-docs/preview", payload, timeout=300)
     if not response.get("ok"):
         print(f"Error: {json.dumps(response, ensure_ascii=False)}", file=sys.stderr)
         return 1
