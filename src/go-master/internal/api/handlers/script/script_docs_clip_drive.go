@@ -134,8 +134,21 @@ func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, r
 }
 
 func loadClipDriveCatalog(dataDir string) ([]clipDriveRecord, error) {
-	path := filepath.Join(dataDir, "clip_index.json")
-	data, err := os.ReadFile(path)
+	candidates := []string{
+		filepath.Join(dataDir, "clip_index.json"),
+		filepath.Join("data", "clip_index.json"),
+		filepath.Join("..", "data", "clip_index.json"),
+		filepath.Join("..", "..", "data", "clip_index.json"),
+	}
+
+	var data []byte
+	var err error
+	for _, path := range candidates {
+		data, err = os.ReadFile(path)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
