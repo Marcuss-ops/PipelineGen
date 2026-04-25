@@ -8,6 +8,7 @@ type ScriptDocsRequest struct {
 	Template    string `json:"template"`
 	PreviewOnly bool   `json:"preview_only"`
 	SourceText  string `json:"source_text"`
+	Voiceover   bool   `json:"voiceover"`
 }
 
 func (r *ScriptDocsRequest) normalize() {
