@@ -7,6 +7,7 @@ storage:
 paths:
   credentials_file: "credentials.json"
   token_file: "token.json"
+  clip_text_dir: ""
   ytdlp_path: "/home/pierone/venv/bin/yt-dlp"
 
 drive:

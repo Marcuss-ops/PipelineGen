@@ -5,37 +5,37 @@ import "strings"
 // renderTimelinePlan renders a timeline plan to a string.
 func renderTimelinePlan(plan *TimelinePlan) string {
 	if plan == nil || len(plan.Segments) == 0 {
-		return "⚠️ Timeline unavailable."
+		return "Timeline unavailable."
 	}
 
 	var b strings.Builder
 	for _, seg := range plan.Segments {
-		b.WriteString("\n📍 [")
+		b.WriteString("\n[")
 		b.WriteString(seg.Timestamp)
 		b.WriteString("]")
 		b.WriteString("\n")
 		if strings.TrimSpace(seg.OpeningSentence) != "" {
-			b.WriteString("   🎬 Inizio: ")
+			b.WriteString("   Inizio: ")
 			b.WriteString(seg.OpeningSentence)
 			b.WriteString("\n")
 		}
 		if strings.TrimSpace(seg.ClosingSentence) != "" {
-			b.WriteString("   🎬 Fine:   ")
+			b.WriteString("   Fine:   ")
 			b.WriteString(seg.ClosingSentence)
 			b.WriteString("\n")
 		}
 
 		// Always show labels, use "None" if empty
-		artlistContent := renderTimelineMatches("🎞️ CLIP ARTLIST", seg.ArtlistMatches)
+		artlistContent := renderTimelineMatches("CLIP ARTLIST", seg.ArtlistMatches)
 		if artlistContent == "" {
-			b.WriteString("\n   🎞️ CLIP ARTLIST:\n      • None\n")
+			b.WriteString("\n   CLIP ARTLIST:\n      - None\n")
 		} else {
 			b.WriteString(artlistContent)
 		}
 
-		driveContent := renderTimelineMatches("📦 DRIVE STOCK", seg.DriveMatches)
+		driveContent := renderTimelineMatches("DRIVE STOCK", seg.DriveMatches)
 		if driveContent == "" {
-			b.WriteString("\n   📦 DRIVE STOCK:\n      • None\n")
+			b.WriteString("\n   DRIVE STOCK:\n      - None\n")
 		} else {
 			b.WriteString(driveContent)
 		}
@@ -75,7 +75,7 @@ func renderTimelineMatches(label string, matches []scoredMatch) string {
 
 	for _, title := range order {
 		links := groups[title]
-		b.WriteString("      🎬 ")
+		b.WriteString("      - ")
 		if title != "" {
 			cleanTitle := strings.Trim(title, "\"'“‘’”")
 			b.WriteString("\"" + cleanTitle + "\"")
@@ -86,9 +86,9 @@ func renderTimelineMatches(label string, matches []scoredMatch) string {
 
 		if len(links) > 0 && links[0] != "" {
 			// ONLY ONE LINK per phrase as requested
-			b.WriteString("         🚀 " + links[0] + "\n")
+			b.WriteString("         " + links[0] + "\n")
 		} else {
-			b.WriteString("         ⚠️ (Nessun video trovato nel database locale)\n")
+			b.WriteString("         (Nessun video trovato nel database locale)\n")
 		}
 	}
 	return b.String()

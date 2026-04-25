@@ -22,7 +22,7 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 	subject := pickImageSubject(req.Topic, analysis)
 	if subject == "" {
 		return ScriptSection{
-			Title: "🖼️ Immagine DDG",
+			Title: "Immagine DDG",
 			Body:  "None",
 		}
 	}
@@ -34,7 +34,7 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 	}
 
 	return ScriptSection{
-		Title: "🖼️ Immagine DDG",
+		Title: "Immagine DDG",
 		Body:  renderImagePlans(item, stockSection, artlistSection, driveSection),
 	}
 }
@@ -89,28 +89,28 @@ func pickImageSubject(topic string, analysis *ollama.FullEntityAnalysis) string 
 
 func renderImagePlans(item imagePlanItem, stockSection, artlistSection, driveSection ScriptSection) string {
 	var b strings.Builder
-	b.WriteString("🖼️ ")
+	b.WriteString("Immagine: ")
 	b.WriteString(item.Subject)
 	b.WriteString("\n")
 	if strings.TrimSpace(item.URL) != "" {
-		b.WriteString("   🔗 ")
+		b.WriteString("   ")
 		b.WriteString(item.URL)
 		b.WriteString("\n")
 	} else {
-		b.WriteString("   ❌ None\n")
+		b.WriteString("   None\n")
 	}
-	b.WriteString("   ✨ ")
+	b.WriteString("   Note: ")
 	b.WriteString(item.Reason)
 	b.WriteString("\n")
 
 	if sectionHasContent(stockSection) {
-		b.WriteString("\n📦 Stock input available.\n")
+		b.WriteString("\nStock input available.\n")
 	}
 	if sectionHasContent(artlistSection) {
-		b.WriteString("🎞️ Artlist input available.\n")
+		b.WriteString("Artlist input available.\n")
 	}
 	if sectionHasContent(driveSection) {
-		b.WriteString("📁 Drive input available.\n")
+		b.WriteString("Drive input available.\n")
 	}
 	return strings.TrimSpace(b.String())
 }

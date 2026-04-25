@@ -9,7 +9,7 @@ import (
 )
 
 // BuildScriptDocument assembles the modular document with explicit sections.
-func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir string) (*ScriptDocument, error) {
+func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir string) (*ScriptDocument, error) {
 	narrative, err := buildNarrativeScript(ctx, gen, req)
 	if err != nil {
 		return nil, err
@@ -68,21 +68,24 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 
 	entitySection := ScriptSection{
-		Title: "🔎 Entity Extraction",
+		Title: "Entity Extraction",
 		Body:  renderEntityAnalysis(analysis, timelinePlan),
 	}
+
+	clipDriveSection := buildClipDriveMatchingSection(ctx, gen, req, narrative, analysis, dataDir, clipTextDir)
 
 	sections := []ScriptSection{
 		buildMetadataSection(req),
 		{
-			Title: "🎙️ Narrative Script",
+			Title: "Narrative Script",
 			Body:  narrative,
 		},
 		{
-			Title: "⏱️ Timeline",
+			Title: "Timeline",
 			Body:  renderTimelinePlan(timelinePlan),
 		},
 		entitySection,
+		clipDriveSection,
 	}
 
 	return &ScriptDocument{
