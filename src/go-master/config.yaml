@@ -1,6 +1,9 @@
 server:
   port: 8080
 
+storage:
+  data_dir: "./data"
+
 paths:
   credentials_file: "credentials.json"
   token_file: "token.json"

@@ -1,0 +1,107 @@
+Script: Gervonta Davis
+
+Script: Gervonta Davis
+======================
+
+🧾 Metadata
+-------------
+Topic: Gervonta Davis
+Durata: 90 secondi
+Lingua: en
+Template: documentary
+Mode: modular
+
+🎙️ Narrative Script
+------------------------
+Ecco la continuazione che hai chiesto — tengo il tono del testo originale su Davis, poi apro due parentesi separate, prima su Tyson e poi su Presley.
+
+### Gervonta "Tank" Davis — continuazione
+
+Gervonta Davis non è solo potenza, è tempismo. Nato a Baltimora, ha costruito la sua identità sul sinistro che chiude i conti e su una pressione costante che non dà respiro. Dopo l'oro ai National Golden Gloves da dilettante, è passato pro a 18 anni e ha bruciato le tappe sotto la guida di Mayweather Promotions. Le vittorie su Leo Santa Cruz, con quel montante da highlight nel 2020, e su Ryan Garcia, piegato al corpo nel 2023, hanno mostrato la sua precisione brutale: aspetta, legge, poi esplode.
+
+La domanda che hai lasciato aperta resta lì, sul filo. La grandezza nel pugilato leggero non è mai stata solo questione di KO. È gestione del peso, scelte degli avversari, vita fuori dal ring. I guai legali e i rapporti tesi con promoter e media sono parte del racconto quanto i pugni. Se Davis impara a incanalare quell'aggressività anche fuori dalle corde, ha la dinamite per entrare nella conversazione storica della categoria. Se no, rischia di diventare il classico "what if" di Baltimora.
+
+---
+
+### Prima parentesi: Mike Tyson è il modello archetipico della "forza della natura" a cui Davis viene spesso paragonato. Nato a Brownsville, Brooklyn, piccolo e compatto per un peso massimo, ha trasformato lo svantaggio in arma con il peek-a-boo di Cus D'Amato: testa in movimento, entrate fulminee, combinazioni corte che sembravano detonate.
+
+A 20 anni è diventato il più giovane campione dei massimi della storia, e per un paio d'anni è sembrato invincibile non per tecnica soltanto, ma per aura. Poi sono arrivati i demoni personali che conosciamo: la condanna del 1992, il fallimento finanziario, le squalifiche, i ritorni. Tyson ha incarnato meglio di chiunque altro la tensione tra talento puro e autodistruzione.
+
+Il parallelo con Davis è ovvio: stessa esplosività, stessa capacità di chiudere un incontro con un singolo colpo, stessa narrativa pubblica divisa tra ammirazione e preoccupazione. La differenza è che Tyson ha già vissuto l'arco completo, dalla vetta al crollo al tentativo di redenzione culturale. Per Tank, quella è ancora una strada da percorrere.
+
+### Seconda parentesi: Elvis Presley
+
+E poi c'è Elvis Presley, che con la boxe non c'entra nulla e c'entra tutto, perché anche lui era una forza della natura, solo su un palco. Nato a Tupelo, Mississippi, cresciuto a Memphis, ha preso blues, gospel e country e li ha fatti esplodere con un'energia fisica che negli anni '50 sembrava pericolosa.
+
+Come Davis e Tyson, Elvis ha costruito la fama sull'impatto immediato: le anche, la voce, il carisma che ipnotizzava il pubblico. E come loro, ha vissuto di controversie, accuse di appropriazione culturale, una relazione tormentata con la fama, manager onnipresenti, e una vita privata segnata da dipendenze e isolamento.
+
+La sua grandezza non è mai stata messa in discussione musicalmente, ma la parabola personale ha mostrato quanto velocemente il talento possa essere consumato quando non c'è struttura intorno. Se Davis è il KO in 6 round e Tyson è il campione che brucia in fretta, Elvis è la dimostrazione che anche fuori dallo sport la stessa formula, potenza grezza più vulnerabilità personale, può creare un mito o distruggerlo.
+
+Tre storie diverse, stesso nucleo: esplosività che affascina, disciplina che decide se dura.
+
+⏱️ Timeline
+---------------
+[00:00-00:30]
+  Opening: ### Gervonta "Tank" Davis — continuazione
+  Closing: Se no, rischia di diventare il classico "what if" di Baltimora
+  Stock links:
+    - Stock/Boxe/GervontaDavis
+      Folder: https://drive.google.com/drive/folders/17RvBsk7BHbZQnUznbGaNIO4tDdA6hWeX
+
+[00:30-01:00]
+  Opening: ### Prima parentesi: Mike Tyson è il modello archetipico della "forza della natura" a cui Davis viene spesso paragonato
+  Closing: Per Tank, quella è ancora una strada da percorrere
+  Stock links:
+    - Stock/Boxe/BrokeBoxer/StockBoxeBrokeBoxerMikeTyson
+      Folder: https://drive.google.com/drive/folders/1_3g7b1dmJhm33c5-wktPjYOuzZtXyZbO
+
+[01:00-01:30]
+  Opening: ### Seconda parentesi: Elvis Presley
+  Closing: Tre storie diverse, stesso nucleo: esplosività che affascina, disciplina che decide se dura
+  Stock links:
+    - Stock/Hiphop/StockHiphopElvisPresley
+      Folder: https://drive.google.com/drive/folders/1Vq2nLhEDy2a_FXCjJRTOMoKQitxuowlN
+
+🔎 Entity Extraction
+----------------------
+Segments analyzed: 1
+Total entities: 33
+
+Per-segment breakdown:
+• Segment 1
+  ✨ Important phrases:
+    • Gervonta Davis non è solo potenza, è tempismo.
+    • Se Davis impara a incanalare quell'aggressività anche fuori dalle corde, ha la dinamite...
+    • Tyson ha incarnato meglio di chiunque altro la tensione tra talento puro e autodistruzione.
+    • Elvis è la dimostrazione che anche fuori dallo sport la stessa formula... può creare un mito o distruggerlo.
+    • Tre storie diverse, stesso nucleo: esplosività che affascina, disciplina che decide se dura.
+    • Se Davis impara a incanalare quell'aggressività anche fuori dalle corde, ha la dinamite per entrare nella conversazione storica della categoria.
+  👤 Special names:
+    • Gervonta Davis
+    • Mike Tyson
+    • Elvis Presley
+    • Mayweather Promotions
+    • Calvin Ford
+    • Leo Santa Cruz
+    • Ryan Garcia
+    • Tupelo
+    • Memphis
+    • Brownsville
+    • Brooklyn
+    • Las Vegas
+  🔑 Keywords:
+    • knockout
+    • tempismo
+    • aggressività
+    • potenza
+    • dominio
+    • curva
+    • mito
+    • disciplina
+    • blues
+    • gospel
+    • country
+    • carisma
+    • dei
+    • ritorno
+    • finanziario

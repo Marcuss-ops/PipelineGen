@@ -7,30 +7,18 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/api/handlers/drive"
 	"velox/go-master/internal/api/handlers/script"
 	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/core/entities"
-	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/pkg/config"
 )
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
 	Health     *common.HealthHandler
-	Drive      *drive.DriveHandler
 	ScriptDocs *script.ScriptDocsHandler
 	Utility    *common.UtilityHandler
-}
-
-// RouterDepsWithHandlers holds both handlers and raw dependencies
-type RouterDepsWithHandlers struct {
-	Handlers *Handlers
-	Deps     *RouterDeps
 }
 
 // Router holds all API handlers
@@ -38,13 +26,6 @@ type Router struct {
 	cfg                 *config.Config
 	handlers            *Handlers
 	rateLimitMiddleware *middleware.RateLimitMiddleware
-}
-
-// RouterDeps contains all external dependencies for the router
-type RouterDeps struct {
-	ScriptGen     *ollama.Generator
-	OllamaClient  *ollama.Client
-	EntityService *entities.EntityService
 }
 
 // NewRouter creates a new API router with pre-constructed handlers
@@ -108,14 +89,6 @@ func (r *Router) Setup() *gin.Engine {
 	// Public routes (no auth, no rate limit) — accessible from any machine
 	public := engine.Group("/api")
 	{
-		// Swagger docs
-		public.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-		// Drive read endpoints (folders, folder content)
-		if h.Drive != nil {
-			h.Drive.RegisterPublicRoutes(public)
-		}
-
 		// Internal utilities (can be accessed by scripts without auth)
 		if h.Utility != nil {
 			public.GET("/internal/slug", h.Utility.Slugify)
@@ -130,9 +103,6 @@ func (r *Router) Setup() *gin.Engine {
 		protected.Use(authMW)
 		protected.Use(rateLimitMW.Handler)
 		{
-			if h.Drive != nil {
-				h.Drive.RegisterRoutes(protected)
-			}
 			if h.ScriptDocs != nil {
 				scriptDocsGroup := protected.Group("/script-docs")
 				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)

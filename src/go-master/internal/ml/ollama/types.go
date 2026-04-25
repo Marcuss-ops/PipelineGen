@@ -10,7 +10,7 @@ type TextGenerationRequest struct {
 	Language   string                 `json:"language" default:"italian"`
 	Duration   int                    `json:"duration" default:"60"` // secondi
 	Tone       string                 `json:"tone" default:"professional"`
-	Model      string                 `json:"model" default:"gemma3:12b"`
+	Model      string                 `json:"model" default:"gemma3:4b"`
 	Options    map[string]interface{} `json:"options,omitempty"`
 }
 
@@ -20,7 +20,7 @@ type YouTubeGenerationRequest struct {
 	Title      string                 `json:"title" binding:"required"`
 	Language   string                 `json:"language" default:"italian"`
 	Duration   int                    `json:"duration" default:"60"`
-	Model      string                 `json:"model" default:"gemma3:12b"`
+	Model      string                 `json:"model" default:"gemma3:4b"`
 	Options    map[string]interface{} `json:"options,omitempty"`
 }
 
@@ -30,7 +30,7 @@ type RegenerationRequest struct {
 	Title          string                 `json:"title"`
 	Language       string                 `json:"language" default:"italian"`
 	Tone           string                 `json:"tone" default:"professional"`
-	Model          string                 `json:"model" default:"gemma3:12b"`
+	Model          string                 `json:"model" default:"gemma3:4b"`
 	Options        map[string]interface{} `json:"options,omitempty"`
 }
 

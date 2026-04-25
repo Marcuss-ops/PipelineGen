@@ -43,7 +43,7 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 		req.Tone = "professional"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:12b"
+		req.Model = "gemma3:4b"
 	}
 
 	// Costruisci messaggi chat (Molto più efficace per seguire istruzioni di lunghezza)
@@ -100,7 +100,7 @@ func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerat
 		req.Tone = "professional"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:12b"
+		req.Model = "gemma3:4b"
 	}
 
 	// Costruisci prompt
@@ -129,7 +129,7 @@ func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*
 		req.Language = "italian"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:12b"
+		req.Model = "gemma3:4b"
 	}
 
 	messages := []Message{
