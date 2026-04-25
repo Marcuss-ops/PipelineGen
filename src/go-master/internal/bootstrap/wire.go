@@ -5,6 +5,7 @@ import (
 	"velox/go-master/internal/api"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/api/handlers/voiceover"
 	"velox/go-master/pkg/config"
 )
 
@@ -29,6 +30,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	scriptDocsHandler := script.NewScriptDocsHandler(
 		coreDeps.ScriptGen,
 		coreDeps.DocClient,
+		coreDeps.VoiceoverService,
 		cfg.Storage.DataDir,
 		cfg.Paths.ClipTextDir,
 		cfg.Paths.PythonScriptsDir,
@@ -40,6 +42,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	handlers := &api.Handlers{
 		Health:     common.NewHealthHandler(),
 		ScriptDocs: scriptDocsHandler,
+		Voiceover:  voiceover.NewHandler(coreDeps.VoiceoverService),
 		Utility:    coreDeps.Utility,
 	}
 	if coreDeps.ScriptsRepo != nil {

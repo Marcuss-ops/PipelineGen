@@ -2,12 +2,14 @@ package bootstrap
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -15,11 +17,12 @@ import (
 
 // CoreDeps holds the minimal runtime dependencies needed by the stripped-down server.
 type CoreDeps struct {
-	ScriptGen   *ollama.Generator
-	DocClient   *drive.DocClient
-	Utility     *common.UtilityHandler
-	StockDB     *storage.SQLiteDB
-	ScriptsRepo *scripts.ScriptRepository
+	ScriptGen        *ollama.Generator
+	DocClient        *drive.DocClient
+	Utility          *common.UtilityHandler
+	StockDB          *storage.SQLiteDB
+	ScriptsRepo      *scripts.ScriptRepository
+	VoiceoverService *voiceover.Service
 }
 
 // initCoreMinimal creates only the services needed by the text/doc server.
@@ -31,6 +34,13 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	if err != nil {
 		log.Warn("Docs client not initialized", zap.Error(err))
 	}
+
+	// Initialize voiceover service
+	voDir := filepath.Join(cfg.Storage.DataDir, "voiceovers")
+	if err := os.MkdirAll(voDir, 0755); err != nil {
+		log.Warn("Failed to create voiceovers directory", zap.Error(err))
+	}
+	voService := voiceover.NewService(cfg.Paths.PythonScriptsDir, voDir, log)
 
 	// Initialize stock database with migrations
 	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock.db.sqlite", log)
@@ -72,10 +82,11 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 
 	return &CoreDeps{
-		ScriptGen:   scriptGen,
-		DocClient:   docClient,
-		Utility:     common.NewUtilityHandler(),
-		StockDB:     stockDB,
-		ScriptsRepo: scriptsRepo,
+		ScriptGen:        scriptGen,
+		DocClient:        docClient,
+		Utility:          common.NewUtilityHandler(),
+		StockDB:          stockDB,
+		ScriptsRepo:      scriptsRepo,
+		VoiceoverService: voService,
 	}, cleanup, nil
 }

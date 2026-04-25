@@ -3,3 +3,7 @@ requests>=2.31.0
 
 # YouTube transcript extraction (used by youtube_transcript.py via subprocess)
 # yt-dlp must be installed on the system: pip install yt-dlp or apt install yt-dlp
+
+# Voiceover generation
+edge-tts>=6.1.0
+
