@@ -18,16 +18,18 @@ type ScriptDocsHandler struct {
 	generator       *ollama.Generator
 	docClient       *drive.DocClient
 	dataDir         string
+	clipTextDir     string
 	scriptsRepo     *scripts.ScriptRepository
 	stockRootFolder string
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, dataDir string, scriptsRepo *scripts.ScriptRepository, stockRootFolder string) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, dataDir, clipTextDir string, scriptsRepo *scripts.ScriptRepository, stockRootFolder string) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:       gen,
 		docClient:       docClient,
 		dataDir:         dataDir,
+		clipTextDir:     clipTextDir,
 		scriptsRepo:     scriptsRepo,
 		stockRootFolder: stockRootFolder,
 	}
@@ -78,7 +80,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
-	document, err := BuildScriptDocument(ctx, h.generator, req, h.dataDir)
+	document, err := BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.clipTextDir)
 	if err != nil {
 		zap.L().Error("script document generation failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
