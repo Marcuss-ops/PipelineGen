@@ -10,6 +10,7 @@ import (
 
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/api/handlers/voiceover"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/pkg/config"
 )
@@ -19,6 +20,7 @@ type Handlers struct {
 	Health        *common.HealthHandler
 	ScriptDocs    *script.ScriptDocsHandler
 	ScriptHistory *script.ScriptHistoryHandler
+	Voiceover     *voiceover.Handler
 	Utility       *common.UtilityHandler
 }
 
@@ -111,6 +113,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.ScriptHistory != nil {
 				scriptHistoryGroup := protected.Group("/scripts")
 				h.ScriptHistory.RegisterRoutes(scriptHistoryGroup)
+			}
+			if h.Voiceover != nil {
+				voGroup := protected.Group("/voiceover")
+				h.Voiceover.RegisterRoutes(voGroup)
 			}
 		}
 	}
