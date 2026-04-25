@@ -58,8 +58,7 @@ func isStopWord(term string) bool {
 	switch term {
 	case "the", "and", "for", "with", "that", "this", "from", "then", "into", "over",
 		"una", "uno", "del", "della", "delle", "degli", "nel", "nella", "nei",
-		"per", "con", "tra", "gli", "le", "dei", "dai", "dalle", "dagli", "sul", "sulla", "sugli",
-		"courtroom", "boxing", "documentary", "test":
+		"per", "con", "tra", "gli", "le", "dei", "dai", "dalle", "dagli", "sul", "sulla", "sugli":
 		return true
 	default:
 		return false

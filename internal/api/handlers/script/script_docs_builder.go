@@ -9,13 +9,13 @@ import (
 )
 
 // BuildScriptDocument assembles the modular document with explicit sections.
-func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir string) (*ScriptDocument, error) {
+func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string) (*ScriptDocument, error) {
 	narrative, err := buildNarrativeScript(ctx, gen, req)
 	if err != nil {
 		return nil, err
 	}
 
-	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir)
+	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir)
 	if err != nil {
 		// handle error or just pass nil analysis
 	}
@@ -57,19 +57,19 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		// 2. Then add phrases that were found but have NO matches (as suggestions)
 		for phrase, links := range artlistMatches {
 			if len(links) == 0 {
+				tags := suggestArtlistSearchTags(ctx, gen, req, phrase, narrative)
+				if len(tags) == 0 {
+					continue
+				}
 				timelinePlan.Segments[0].ArtlistMatches = append(timelinePlan.Segments[0].ArtlistMatches, scoredMatch{
-					Title:  phrase,
-					Link:   "", // No link
-					Source: "artlist_suggestion",
-					Score:  50,
+					Title:   phrase,
+					Link:    "", // No link
+					Source:  "artlist_suggestion",
+					Score:   50,
+					Details: strings.Join(tags, ", "),
 				})
 			}
 		}
-	}
-
-	entitySection := ScriptSection{
-		Title: "Entity Extraction",
-		Body:  renderEntityAnalysis(analysis, timelinePlan),
 	}
 
 	clipDriveSection := buildClipDriveMatchingSection(ctx, gen, req, narrative, analysis, dataDir, clipTextDir)
@@ -77,14 +77,17 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	sections := []ScriptSection{
 		buildMetadataSection(req),
 		{
-			Title: "Narrative Script",
+			Title: "🎙️ Narrative Script",
 			Body:  narrative,
 		},
 		{
-			Title: "Timeline",
+			Title: "⏱️ Timeline",
 			Body:  renderTimelinePlan(timelinePlan),
 		},
-		entitySection,
+		{
+			Title: "🔎 Entity Extraction",
+			Body:  renderEntityAnalysis(analysis, timelinePlan),
+		},
 		clipDriveSection,
 	}
 
