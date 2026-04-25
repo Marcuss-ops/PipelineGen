@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/client"
 )
 
 type artlistTagSuggestion struct {
@@ -14,7 +15,7 @@ type artlistTagSuggestion struct {
 }
 
 func suggestArtlistSearchTags(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, phrase, narrative string) []string {
-	client := (*ollama.Client)(nil)
+	client := (*client.Client)(nil)
 	if gen != nil {
 		client = gen.GetClient()
 	}

@@ -1,6 +1,7 @@
-package ollama
+package client
 
 import (
+	"velox/go-master/internal/ml/ollama/types"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,7 +25,7 @@ func (c *Client) CheckHealth(ctx context.Context) bool {
 }
 
 // ListModels restituisce la lista dei modelli disponibili
-func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
+func (c *Client) ListModels(ctx context.Context) ([]types.ModelInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/tags", nil)
 	if err != nil {
 		return nil, err
@@ -40,7 +41,7 @@ func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
-	var result ListModelsResponse
+	var result types.ListModelsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}

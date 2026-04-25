@@ -36,7 +36,6 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 		return
 	}
 
-	// Parse query parameters
 	limitStr := c.DefaultQuery("limit", "20")
 	offsetStr := c.DefaultQuery("offset", "0")
 	language := c.Query("language")
@@ -51,7 +50,6 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 		offset = 0
 	}
 
-	// Get scripts from repository
 	scriptRecords, total, err := h.repo.ListScripts(limit, offset, language, template)
 	if err != nil {
 		h.log.Error("Failed to list scripts", zap.Error(err))
@@ -59,10 +57,9 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 		return
 	}
 
-	// Convert to response format
-	scripts := make([]gin.H, 0, len(scriptRecords))
+	scriptsRes := make([]gin.H, 0, len(scriptRecords))
 	for _, s := range scriptRecords {
-		scripts = append(scripts, gin.H{
+		scriptsRes = append(scriptsRes, gin.H{
 			"id":         s.ID,
 			"topic":      s.Topic,
 			"duration":   s.Duration,
@@ -78,7 +75,7 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"scripts": scripts,
+		"scripts": scriptsRes,
 		"total":   total,
 		"limit":   limit,
 		"offset":  offset,
@@ -92,7 +89,6 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 		return
 	}
 
-	// Parse script ID
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -100,15 +96,13 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 		return
 	}
 
-	// Get script from repository
-	script, sections, stockMatches, err := h.repo.GetScriptByID(id)
+	scriptRec, sections, stockMatches, err := h.repo.GetScriptByID(id)
 	if err != nil {
 		h.log.Error("Failed to get script", zap.Int64("id", id), zap.Error(err))
 		c.JSON(http.StatusNotFound, gin.H{"error": "script not found"})
 		return
 	}
 
-	// Build sections response
 	sectionsResp := make([]gin.H, 0, len(sections))
 	for _, sec := range sections {
 		sectionsResp = append(sectionsResp, gin.H{
@@ -120,7 +114,6 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 		})
 	}
 
-	// Build stock matches response
 	stockResp := make([]gin.H, 0, len(stockMatches))
 	for _, m := range stockMatches {
 		stockResp = append(stockResp, gin.H{
@@ -133,24 +126,23 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 		})
 	}
 
-	// Return full script response
 	c.JSON(http.StatusOK, gin.H{
-		"id":             script.ID,
-		"topic":          script.Topic,
-		"duration":       script.Duration,
-		"language":       script.Language,
-		"template":       script.Template,
-		"mode":           script.Mode,
-		"narrative_text": script.NarrativeText,
-		"timeline_json":  script.TimelineJSON,
-		"entities_json":  script.EntitiesJSON,
-		"metadata_json":  script.MetadataJSON,
-		"full_document":  script.FullDocument,
-		"model_used":     script.ModelUsed,
-		"created_at":     script.CreatedAt,
-		"updated_at":     script.UpdatedAt,
-		"version":        script.Version,
-		"parent_id":      script.ParentScriptID,
+		"id":             scriptRec.ID,
+		"topic":          scriptRec.Topic,
+		"duration":       scriptRec.Duration,
+		"language":       scriptRec.Language,
+		"template":       scriptRec.Template,
+		"mode":           scriptRec.Mode,
+		"narrative_text": scriptRec.NarrativeText,
+		"timeline_json":  scriptRec.TimelineJSON,
+		"entities_json":  scriptRec.EntitiesJSON,
+		"metadata_json":  scriptRec.MetadataJSON,
+		"full_document":  scriptRec.FullDocument,
+		"model_used":     scriptRec.ModelUsed,
+		"created_at":     scriptRec.CreatedAt,
+		"updated_at":     scriptRec.UpdatedAt,
+		"version":        scriptRec.Version,
+		"parent_id":      scriptRec.ParentScriptID,
 		"sections":       sectionsResp,
 		"stock_matches":  stockResp,
 	})

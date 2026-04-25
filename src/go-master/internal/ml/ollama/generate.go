@@ -6,21 +6,24 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/ml/ollama/prompts"
+	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/pkg/logger"
 )
 
 // Generator implementa ScriptGenerator
 type Generator struct {
-	client *Client
+	client *client.Client
 }
 
 // NewGenerator crea un nuovo generatore di script
-func NewGenerator(client *Client) *Generator {
-	return &Generator{client: client}
+func NewGenerator(c *client.Client) *Generator {
+	return &Generator{client: c}
 }
 
 // GetClient restituisce il client Ollama sottostante
-func (g *Generator) GetClient() *Client {
+func (g *Generator) GetClient() *client.Client {
 	return g.client
 }
 
@@ -31,7 +34,7 @@ func (g *Generator) Generate(ctx context.Context, prompt string) (string, error)
 }
 
 // GenerateFromText genera uno script da testo usando Chat API
-func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationRequest) (*GenerationResult, error) {
+func (g *Generator) GenerateFromText(ctx context.Context, req *types.TextGenerationRequest) (*types.GenerationResult, error) {
 	// Applica defaults
 	if req.Language == "" {
 		req.Language = "italian"
@@ -46,8 +49,8 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 		req.Model = "gemma3:4b"
 	}
 
-	// Costruisci messaggi chat (Molto più efficace per seguire istruzioni di lunghezza)
-	messages := buildChatMessages(req)
+	// Costruisci messaggi chat
+	messages := prompts.BuildChatMessages(req)
 
 	// Configura opzioni creative
 	options := req.Options
@@ -68,9 +71,9 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 	}
 
 	// Pulisci e calcola statistiche
-	script := cleanScript(response)
-	wordCount := countWords(script)
-	estDuration := estimateDuration(wordCount)
+	script := types.CleanScript(response)
+	wordCount := types.CountWords(script)
+	estDuration := types.EstimateDuration(wordCount)
 
 	logger.Info("Script generated from text",
 		zap.Int("words", wordCount),
@@ -78,7 +81,7 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 		zap.String("model", req.Model),
 	)
 
-	return &GenerationResult{
+	return &types.GenerationResult{
 		Script:      script,
 		WordCount:   wordCount,
 		EstDuration: estDuration,
@@ -87,8 +90,9 @@ func (g *Generator) GenerateFromText(ctx context.Context, req *TextGenerationReq
 	}, nil
 }
 
+
 // GenerateStreamFromText genera uno script da testo in modalità streaming
-func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerationRequest) (<-chan string, <-chan error) {
+func (g *Generator) GenerateStreamFromText(ctx context.Context, req *types.TextGenerationRequest) (<-chan string, <-chan error) {
 	// Applica defaults
 	if req.Language == "" {
 		req.Language = "italian"
@@ -104,7 +108,7 @@ func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerat
 	}
 
 	// Costruisci prompt
-	prompt := buildTextPrompt(req)
+	prompt := prompts.BuildTextPrompt(req)
 
 	// Opzioni
 	options := req.Options
@@ -118,12 +122,12 @@ func (g *Generator) GenerateStreamFromText(ctx context.Context, req *TextGenerat
 		options["num_predict"] = 4096
 	}
 
-	// Inizia lo streaming dal client (GenerateStream usa internamente GenerateWithOptions)
+	// Inizia lo streaming dal client
 	return g.client.GenerateStreamWithOptions(ctx, req.Model, prompt, options)
 }
 
 // Regenerate rigenera uno script esistente
-func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*GenerationResult, error) {
+func (g *Generator) Regenerate(ctx context.Context, req *types.RegenerationRequest) (*types.GenerationResult, error) {
 	// Applica defaults
 	if req.Language == "" {
 		req.Language = "italian"
@@ -132,7 +136,7 @@ func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*
 		req.Model = "gemma3:4b"
 	}
 
-	messages := []Message{
+	messages := []types.Message{
 		{Role: "system", Content: "Sei un copywriter senior. Migliora lo script fornito rendendolo più avvincente e lungo."},
 		{Role: "user", Content: fmt.Sprintf("Migliora e amplia questo script (Titolo: %s):\n\n%s", req.Title, req.OriginalScript)},
 	}
@@ -152,11 +156,11 @@ func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*
 	}
 
 	// Pulisci e calcola statistiche
-	script := cleanScript(response)
-	wordCount := countWords(script)
-	estDuration := estimateDuration(wordCount)
+	script := types.CleanScript(response)
+	wordCount := types.CountWords(script)
+	estDuration := types.EstimateDuration(wordCount)
 
-	return &GenerationResult{
+	return &types.GenerationResult{
 		Script:      script,
 		WordCount:   wordCount,
 		EstDuration: estDuration,
@@ -165,16 +169,16 @@ func (g *Generator) Regenerate(ctx context.Context, req *RegenerationRequest) (*
 }
 
 // ListModels restituisce i modelli disponibili
-func (g *Generator) ListModels(ctx context.Context) ([]Model, error) {
+func (g *Generator) ListModels(ctx context.Context) ([]types.Model, error) {
 	models, err := g.client.ListModels(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Converti nel tipo Model
-	result := make([]Model, len(models))
+	result := make([]types.Model, len(models))
 	for i, m := range models {
-		result[i] = Model{
+		result[i] = types.Model{
 			Name:       m.Name,
 			ModifiedAt: m.ModifiedAt,
 			Size:       m.Size,

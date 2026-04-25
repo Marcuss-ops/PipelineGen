@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
-func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string) (*ollama.FullEntityAnalysis, error) {
+func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string) (*types.FullEntityAnalysis, error) {
 	client := gen.GetClient()
 	if client == nil {
 		return nil, fmt.Errorf("Ollama client not initialized")
@@ -19,7 +20,7 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 	extractCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
-	analysis, err := client.ExtractEntitiesFromSegment(extractCtx, ollama.EntityExtractionRequest{
+	analysis, err := client.ExtractEntitiesFromSegment(extractCtx, types.EntityExtractionRequest{
 		SegmentText:  shortScript,
 		SegmentIndex: 0,
 		EntityCount:  6,
@@ -82,11 +83,11 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 		artlistMatches[phrase] = links
 	}
 
-	fullAnalysis := &ollama.FullEntityAnalysis{
+	fullAnalysis := &types.FullEntityAnalysis{
 		TotalSegments:         1,
 		EntityCountPerSegment: 6,
 		TotalEntities:         len(analysis.FrasiImportanti) + len(analysis.EntitaSenzaTesto) + len(analysis.NomiSpeciali) + len(analysis.ParoleImportanti) + len(analysis.ArtlistPhrases),
-		SegmentEntities: []ollama.SegmentEntities{
+		SegmentEntities: []types.SegmentEntities{
 			{
 				SegmentIndex:     analysis.SegmentIndex,
 				SegmentText:      shortScript,
@@ -111,7 +112,7 @@ func truncateScript(script string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
-func renderEntityAnalysis(analysis *ollama.FullEntityAnalysis, timeline *TimelinePlan) string {
+func renderEntityAnalysis(analysis *types.FullEntityAnalysis, timeline *TimelinePlan) string {
 	if analysis == nil {
 		return "⚠️ Nessuna analisi delle entità disponibile."
 	}

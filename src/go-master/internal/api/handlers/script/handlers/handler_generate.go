@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"velox/go-master/internal/api/handlers/script"
 	"context"
 	"net/http"
 	"strings"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"velox/go-master/internal/api/handlers/script"
 	"velox/go-master/internal/repository/scripts"
 )
 
@@ -104,11 +104,9 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 }
 
 func narrativeOnly(content string) string {
-	// Simple extraction of the narrative part if possible, otherwise return as is
 	marker := "🎙️ Narrative Script"
 	if idx := strings.Index(content, marker); idx != -1 {
 		part := content[idx+len(marker):]
-		// Find next section
 		if nextIdx := strings.Index(part, "⏱️ Timeline"); nextIdx != -1 {
 			return strings.TrimSpace(part[:nextIdx])
 		}
@@ -119,11 +117,10 @@ func narrativeOnly(content string) string {
 
 // saveScriptToDB saves the generated script to the database
 func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req script.ScriptDocsRequest, document *script.ScriptDocument) {
-	// Convert sections to ScriptSectionRecord
 	sections := make([]scripts.ScriptSectionRecord, 0, len(document.Sections))
 	for i, sec := range document.Sections {
 		if sec.Title == "🧾 Metadata" {
-			continue // Skip metadata section
+			continue
 		}
 		sections = append(sections, scripts.ScriptSectionRecord{
 			SectionType:  sec.Title,
@@ -133,8 +130,7 @@ func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req script.Scrip
 		})
 	}
 
-	// Create script record
-	script := &scripts.ScriptRecord{
+	scriptRec := &scripts.ScriptRecord{
 		Topic:          req.Topic,
 		Duration:       req.Duration,
 		Language:       req.Language,
@@ -145,15 +141,14 @@ func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req script.Scrip
 		EntitiesJSON:   "",
 		MetadataJSON:   "",
 		FullDocument:   document.Content,
-		ModelUsed:      "gemma3:12b", // TODO: get from generator
+		ModelUsed:      "gemma3:12b",
 		OllamaBaseURL:  "",
 		Version:        1,
 		ParentScriptID: nil,
 		IsDeleted:      false,
 	}
 
-	// Save script with sections
-	scriptID, err := h.scriptsRepo.SaveScript(script, sections, nil)
+	scriptID, err := h.scriptsRepo.SaveScript(scriptRec, sections, nil)
 	if err != nil {
 		zap.L().Error("Failed to save script to database", zap.Error(err))
 		return

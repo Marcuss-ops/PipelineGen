@@ -1,6 +1,8 @@
-package ollama
+package client
 
 import (
+	"velox/go-master/internal/ml/ollama/prompts"
+	"velox/go-master/internal/ml/ollama/types"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,14 +10,14 @@ import (
 )
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama
-func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req EntityExtractionRequest) (*EntityExtractionResult, error) {
+func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req types.EntityExtractionRequest) (*types.EntityExtractionResult, error) {
 	entityCount := req.EntityCount
 	if entityCount <= 0 {
 		entityCount = 12
 	}
 
 	// Build the entity extraction prompt
-	prompt := buildEntityExtractionPrompt(req.SegmentText, entityCount)
+	prompt := prompts.BuildEntityExtractionPrompt(req.SegmentText, entityCount)
 
 	// Call Ollama using legacy generate for JSON tasks (often more stable for JSON)
 	response, err := c.Generate(ctx, prompt)
@@ -33,7 +35,7 @@ func (c *Client) ExtractEntitiesFromSegment(ctx context.Context, req EntityExtra
 }
 
 // ExtractEntitiesFromScript extracts entities from all segments of a script
-func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []string, entityCount int) (*FullEntityAnalysis, error) {
+func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []string, entityCount int) (*types.FullEntityAnalysis, error) {
 	if len(segments) == 0 {
 		return nil, fmt.Errorf("no segments provided")
 	}
@@ -42,15 +44,15 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 		entityCount = 12
 	}
 
-	analysis := &FullEntityAnalysis{
+	analysis := &types.FullEntityAnalysis{
 		TotalSegments:         len(segments),
-		SegmentEntities:       make([]SegmentEntities, 0, len(segments)),
+		SegmentEntities:       make([]types.SegmentEntities, 0, len(segments)),
 		EntityCountPerSegment: entityCount,
 	}
 
 	// Extract entities for each segment
 	for i, segment := range segments {
-		req := EntityExtractionRequest{
+		req := types.EntityExtractionRequest{
 			SegmentText:  segment,
 			SegmentIndex: i,
 			EntityCount:  entityCount,
@@ -59,7 +61,7 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 		result, err := c.ExtractEntitiesFromSegment(ctx, req)
 		if err != nil {
 			// Continue with empty entities for this segment
-			result = &EntityExtractionResult{
+			result = &types.EntityExtractionResult{
 				SegmentIndex:     i,
 				FrasiImportanti:  []string{},
 				EntitaSenzaTesto: make(map[string]string),
@@ -68,7 +70,7 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 			}
 		}
 
-		segmentEntities := SegmentEntities{
+		segmentEntities := types.SegmentEntities{
 			SegmentIndex:     i,
 			SegmentText:      segment,
 			FrasiImportanti:  result.FrasiImportanti,
@@ -92,9 +94,8 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 }
 
 // parseEntityExtractionResult parses the JSON response from Ollama
-func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtractionResult, error) {
+func parseEntityExtractionResult(response string, segmentIndex int) (*types.EntityExtractionResult, error) {
 	jsonStr := strings.TrimSpace(response)
-	fmt.Printf("RAW ENTITY JSON (trimmed): %s\n", jsonStr)
 
 	// Remove markdown code blocks
 	if strings.HasPrefix(jsonStr, "```") {
@@ -125,7 +126,6 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtr
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
-		fmt.Printf("JSON UNMARSHAL ERROR: %v | CONTENT: %s\n", err, jsonStr)
 		return nil, fmt.Errorf("invalid JSON response: %w", err)
 	}
 
@@ -142,9 +142,7 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtr
 
 	artlistPhrases := make(map[string][]string)
 	if len(raw.ArtlistPhrases) > 0 && string(raw.ArtlistPhrases) != "null" {
-		// Try unmarshaling as map first
 		if err := json.Unmarshal(raw.ArtlistPhrases, &artlistPhrases); err != nil {
-			// Try unmarshaling as slice of objects
 			var list []struct {
 				Frase    string   `json:"frase"`
 				Phrase   string   `json:"phrase"`
@@ -184,22 +182,11 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtr
 					}
 					entityMap[name] = strings.TrimSpace(item.URL)
 				}
-			} else {
-				var stringList []string
-				if err := json.Unmarshal(raw.EntitaSenzaTesto, &stringList); err == nil {
-					for _, name := range stringList {
-						name = strings.TrimSpace(name)
-						if name == "" {
-							continue
-						}
-						entityMap[name] = ""
-					}
-				}
 			}
 		}
 	}
 
-	return &EntityExtractionResult{
+	return &types.EntityExtractionResult{
 		SegmentIndex:     segmentIndex,
 		FrasiImportanti:  raw.FrasiImportanti,
 		EntitaSenzaTesto: entityMap,
