@@ -30,12 +30,17 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.ScriptGen,
 		coreDeps.DocClient,
 		cfg.Storage.DataDir,
+		coreDeps.ScriptsRepo,
+		cfg.Drive.StockRootFolder,
 	)
 
 	handlers := &api.Handlers{
 		Health:     common.NewHealthHandler(),
 		ScriptDocs: scriptDocsHandler,
 		Utility:    coreDeps.Utility,
+	}
+	if coreDeps.ScriptsRepo != nil {
+		handlers.ScriptHistory = script.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
 	}
 	cleanup := func() {
 		if coreClean != nil {

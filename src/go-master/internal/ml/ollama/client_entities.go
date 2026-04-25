@@ -75,6 +75,7 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 			EntitaSenzaTesto: result.EntitaSenzaTesto,
 			NomiSpeciali:     result.NomiSpeciali,
 			ParoleImportanti: result.ParoleImportanti,
+			ArtlistPhrases:   result.ArtlistPhrases,
 		}
 
 		analysis.SegmentEntities = append(analysis.SegmentEntities, segmentEntities)
@@ -83,7 +84,8 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 		analysis.TotalEntities += len(result.FrasiImportanti) +
 			len(result.EntitaSenzaTesto) +
 			len(result.NomiSpeciali) +
-			len(result.ParoleImportanti)
+			len(result.ParoleImportanti) +
+			len(result.ArtlistPhrases)
 	}
 
 	return analysis, nil
@@ -91,29 +93,39 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 
 // parseEntityExtractionResult parses the JSON response from Ollama
 func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtractionResult, error) {
-	jsonStr := response
+	jsonStr := strings.TrimSpace(response)
+	fmt.Printf("RAW ENTITY JSON (trimmed): %s\n", jsonStr)
 
-	// Remove markdown code blocks if present
-	if len(jsonStr) > 7 && jsonStr[:7] == "```json" {
-		end := len(jsonStr) - 3
-		if end > 7 {
-			jsonStr = jsonStr[7:end]
+	// Remove markdown code blocks
+	if strings.HasPrefix(jsonStr, "```") {
+		lines := strings.Split(jsonStr, "\n")
+		var contentLines []string
+		for _, line := range lines {
+			if strings.HasPrefix(line, "```") {
+				continue
+			}
+			contentLines = append(contentLines, line)
 		}
-	} else if len(jsonStr) > 3 && jsonStr[:3] == "```" {
-		end := len(jsonStr) - 3
-		if end > 3 {
-			jsonStr = jsonStr[3:end]
-		}
+		jsonStr = strings.TrimSpace(strings.Join(contentLines, "\n"))
+	}
+
+	// Ultimate fallback: find first { and last }
+	start := strings.Index(jsonStr, "{")
+	end := strings.LastIndex(jsonStr, "}")
+	if start != -1 && end != -1 && end > start {
+		jsonStr = jsonStr[start : end+1]
 	}
 
 	var raw struct {
 		FrasiImportanti  []string        `json:"frasi_importanti"`
-		EntitaSenzaTesto json.RawMessage   `json:"entity_senza_testo"`
+		EntitaSenzaTesto json.RawMessage `json:"entity_senza_testo"`
 		NomiSpeciali     []string        `json:"nomi_speciali"`
 		ParoleImportanti []string        `json:"parole_importanti"`
+		ArtlistPhrases   json.RawMessage `json:"artlist_phrases"`
 	}
 
 	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+		fmt.Printf("JSON UNMARSHAL ERROR: %v | CONTENT: %s\n", err, jsonStr)
 		return nil, fmt.Errorf("invalid JSON response: %w", err)
 	}
 
@@ -126,6 +138,35 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtr
 	}
 	if raw.ParoleImportanti == nil {
 		raw.ParoleImportanti = []string{}
+	}
+
+	artlistPhrases := make(map[string][]string)
+	if len(raw.ArtlistPhrases) > 0 && string(raw.ArtlistPhrases) != "null" {
+		// Try unmarshaling as map first
+		if err := json.Unmarshal(raw.ArtlistPhrases, &artlistPhrases); err != nil {
+			// Try unmarshaling as slice of objects
+			var list []struct {
+				Frase    string   `json:"frase"`
+				Phrase   string   `json:"phrase"`
+				Keywords []string `json:"keyword"`
+				Kwds     []string `json:"keywords"`
+			}
+			if err := json.Unmarshal(raw.ArtlistPhrases, &list); err == nil {
+				for _, item := range list {
+					f := item.Frase
+					if f == "" {
+						f = item.Phrase
+					}
+					k := item.Keywords
+					if len(k) == 0 {
+						k = item.Kwds
+					}
+					if f != "" {
+						artlistPhrases[f] = k
+					}
+				}
+			}
+		}
 	}
 
 	entityMap := make(map[string]string)
@@ -164,5 +205,6 @@ func parseEntityExtractionResult(response string, segmentIndex int) (*EntityExtr
 		EntitaSenzaTesto: entityMap,
 		NomiSpeciali:     raw.NomiSpeciali,
 		ParoleImportanti: raw.ParoleImportanti,
+		ArtlistPhrases:   artlistPhrases,
 	}, nil
 }

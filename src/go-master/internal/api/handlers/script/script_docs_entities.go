@@ -9,13 +9,10 @@ import (
 	"velox/go-master/internal/ml/ollama"
 )
 
-func buildEntityExtractionSection(ctx context.Context, gen *ollama.Generator, script string) (ScriptSection, *ollama.FullEntityAnalysis) {
+func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir string) (*ollama.FullEntityAnalysis, error) {
 	client := gen.GetClient()
 	if client == nil {
-		return ScriptSection{
-			Title: "Entity Extraction",
-			Body:  "Entity extraction unavailable: Ollama client not initialized.",
-		}, nil
+		return nil, fmt.Errorf("Ollama client not initialized")
 	}
 
 	shortScript := truncateScript(script, 6000)
@@ -28,16 +25,67 @@ func buildEntityExtractionSection(ctx context.Context, gen *ollama.Generator, sc
 		EntityCount:  6,
 	})
 	if err != nil {
-		return ScriptSection{
-			Title: "Entity Extraction",
-			Body:  fmt.Sprintf("Entity extraction unavailable: %v", err),
-		}, nil
+		return nil, fmt.Errorf("Entity extraction unavailable: %v", err)
+	}
+
+	// Resolve image URLs using DuckDuckGo search
+	if analysis != nil && len(analysis.EntitaSenzaTesto) > 0 {
+		for entity := range analysis.EntitaSenzaTesto {
+			imgURL := searchDDGImage(entity)
+			if imgURL == "" {
+				imgURL = "Nessuna immagine trovata"
+			}
+			analysis.EntitaSenzaTesto[entity] = imgURL
+		}
+	}
+
+	// Artlist DB Integration: search for clips based on artlist_phrases keywords
+	artlistDB := NewArtlistDBClient(".")
+	artlistMatches := make(map[string][]string)
+
+	clean := func(s string) string {
+		s = strings.ToLower(s)
+		// Remove all common punctuation and various quote marks
+		replacer := strings.NewReplacer(
+			".", "", ",", "", "!", "", "?", "",
+			"\"", "", "'", "", "‘", "", "’", "",
+			"“", "", "”", "", "(", "", ")", "",
+			":", "", ";", "", "-", "",
+		)
+		s = replacer.Replace(s)
+		return strings.Join(strings.Fields(s), " ") // normalize whitespace
+	}
+
+	scriptClean := clean(shortScript)
+
+	for phrase, keywords := range analysis.ArtlistPhrases {
+		pClean := clean(phrase)
+		if pClean == "" {
+			continue
+		}
+
+		// STRICT FILTER: Check if the phrase is literally in the script
+		if !strings.Contains(scriptClean, pClean) {
+			fmt.Printf("FILTERED HALLUCINATION: %s (Clean: %s)\n", phrase, pClean)
+			continue
+		}
+
+		matches, err := artlistDB.SearchClipsByKeywords(keywords, 3)
+		// Even if no matches found in DB, we want to keep the phrase
+		// so it can be rendered as a suggestion in the timeline.
+		var links []string
+		if err == nil && len(matches) > 0 {
+			for _, m := range matches {
+				links = append(links, m.Link)
+			}
+		}
+		artlistMatches[phrase] = links
 	}
 
 	fullAnalysis := &ollama.FullEntityAnalysis{
 		TotalSegments:         1,
 		EntityCountPerSegment: 6,
-		TotalEntities:         len(analysis.FrasiImportanti) + len(analysis.EntitaSenzaTesto) + len(analysis.NomiSpeciali) + len(analysis.ParoleImportanti),
+		TotalEntities:         len(analysis.FrasiImportanti) + len(analysis.EntitaSenzaTesto) + len(analysis.NomiSpeciali) + len(analysis.ParoleImportanti) + len(analysis.ArtlistPhrases),
 		SegmentEntities: []ollama.SegmentEntities{
 			{
 				SegmentIndex:     analysis.SegmentIndex,
@@ -46,14 +94,13 @@ func buildEntityExtractionSection(ctx context.Context, gen *ollama.Generator, sc
 				EntitaSenzaTesto: analysis.EntitaSenzaTesto,
 				NomiSpeciali:     analysis.NomiSpeciali,
 				ParoleImportanti: analysis.ParoleImportanti,
+				ArtlistPhrases:   analysis.ArtlistPhrases,
+				ArtlistMatches:   artlistMatches,
 			},
 		},
 	}
 
-	return ScriptSection{
-		Title: "🔎 Entity Extraction",
-		Body:  renderEntityAnalysis(fullAnalysis),
-	}, fullAnalysis
+	return fullAnalysis, nil
 }
 
 func truncateScript(script string, maxRunes int) string {
@@ -64,36 +111,54 @@ func truncateScript(script string, maxRunes int) string {
 	return string(runes[:maxRunes])
 }
 
-func renderEntityAnalysis(analysis *ollama.FullEntityAnalysis) string {
+func renderEntityAnalysis(analysis *ollama.FullEntityAnalysis, timeline *TimelinePlan) string {
 	if analysis == nil {
-		return "No entity analysis available."
+		return "⚠️ Nessuna analisi delle entità disponibile."
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Segments analyzed: %d\n", analysis.TotalSegments))
-	b.WriteString(fmt.Sprintf("Total entities: %d\n", analysis.TotalEntities))
-	b.WriteString("\nPer-segment breakdown:\n")
+	b.WriteString("📽️ ANALISI NARRATIVA E VISUALE\n")
+	b.WriteString("==========================================\n")
+	b.WriteString(fmt.Sprintf("📊 Segmenti analizzati: %d\n", analysis.TotalSegments))
+	b.WriteString(fmt.Sprintf("🔍 Asset totali rilevati: %d\n", analysis.TotalEntities))
+	b.WriteString("------------------------------------------\n")
 
 	for _, segment := range analysis.SegmentEntities {
-		b.WriteString(fmt.Sprintf("• Segment %d\n", segment.SegmentIndex+1))
+		b.WriteString(fmt.Sprintf("📍 SEGMENTO %d\n", segment.SegmentIndex+1))
+
 		if len(segment.FrasiImportanti) > 0 {
-			b.WriteString("  ✨ Important phrases:\n")
+			b.WriteString("\n📢 FRASI IMPORTANTI:\n")
 			for _, item := range segment.FrasiImportanti {
-				b.WriteString("    • " + item + "\n")
+				b.WriteString("   ✨ \"" + item + "\"\n")
 			}
 		}
+
 		if len(segment.NomiSpeciali) > 0 {
-			b.WriteString("  👤 Special names:\n")
+			b.WriteString("\n⭐ NOMI SPECIALI:\n")
 			for _, item := range segment.NomiSpeciali {
-				b.WriteString("    • " + item + "\n")
+				b.WriteString("   🆔 " + item + "\n")
 			}
 		}
+
 		if len(segment.ParoleImportanti) > 0 {
-			b.WriteString("  🔑 Keywords:\n")
+			b.WriteString("\n🗝️ PAROLE IMPORTANTI:\n")
 			for _, item := range segment.ParoleImportanti {
-				b.WriteString("    • " + item + "\n")
+				b.WriteString("   🔹 " + item + "\n")
 			}
 		}
+
+		if len(segment.EntitaSenzaTesto) > 0 {
+			b.WriteString("\n🖼️ IMMAGINI CORRELATE:\n")
+			for entity, imageLink := range segment.EntitaSenzaTesto {
+				if imageLink == "" || strings.Contains(imageLink, "Nessuna immagine") || strings.Contains(imageLink, "placeholder") {
+					b.WriteString(fmt.Sprintf("   🖼️ %s: (Ricerca in corso...)\n", entity))
+				} else {
+					b.WriteString(fmt.Sprintf("   ✅ %s:\n      🔗 %s\n", entity, imageLink))
+				}
+			}
+		}
+
+		b.WriteString("\n------------------------------------------\n")
 	}
 
 	return strings.TrimSpace(b.String())
