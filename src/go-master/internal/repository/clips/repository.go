@@ -47,22 +47,14 @@ func parseClipData(clip *models.Clip, tagsJSON string, createdAtStr, updatedAtSt
 	}
 	
 	var err error
-	if createdAtStr == "" {
-		clip.CreatedAt = time.Now()
-	} else {
-		clip.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAtStr)
-		if err != nil {
-			return fmt.Errorf("failed to parse created_at: %w", err)
-		}
+	clip.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse created_at: %w", err)
 	}
 	
-	if updatedAtStr == "" {
-		clip.UpdatedAt = time.Now()
-	} else {
-		clip.UpdatedAt, err = time.Parse("2006-01-02 15:04:05", updatedAtStr)
-		if err != nil {
-			return fmt.Errorf("failed to parse updated_at: %w", err)
-		}
+	clip.UpdatedAt, err = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse updated_at: %w", err)
 	}
 	
 	return nil
@@ -80,8 +72,8 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			id, name, filename, folder_id, folder_path, group_name, 
 			media_type, drive_link, download_link, tags, 
 			source, category, external_url, duration, metadata,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+			updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			filename = excluded.filename,
@@ -111,10 +103,7 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 
 // GetClipByFolderAndFilename retrieves a clip by folder ID and filename
 func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, 
-	                 COALESCE(created_at, datetime('now')) as created_at, 
-	                 COALESCE(updated_at, datetime('now')) as updated_at 
-	          FROM clips WHERE folder_id = ? AND filename = ?`
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips WHERE folder_id = ? AND filename = ?`
 	
 	var clip models.Clip
 	var tagsJSON string
@@ -140,10 +129,7 @@ func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, f
 
 // GetClipByID retrieves a clip by its ID
 func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, 
-	                 COALESCE(created_at, datetime('now')) as created_at, 
-	                 COALESCE(updated_at, datetime('now')) as updated_at 
-	          FROM clips WHERE id = ?`
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips WHERE id = ?`
 	
 	var clip models.Clip
 	var tagsJSON string
@@ -169,10 +155,7 @@ func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, 
 
 // ListClips lists clips with optional filtering
 func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, 
-	                 COALESCE(created_at, datetime('now')) as created_at, 
-	                 COALESCE(updated_at, datetime('now')) as updated_at 
-	          FROM clips`
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips`
 	var args []interface{}
 	
 	if group != "" {
@@ -208,9 +191,7 @@ func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Cli
 
 // SearchClips searches clips by tags or name
 func (r *Repository) SearchClips(ctx context.Context, searchTerm string) ([]*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, 
-	                 COALESCE(created_at, datetime('now')) as created_at, 
-	                 COALESCE(updated_at, datetime('now')) as updated_at 
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at 
 	          FROM clips 
 	          WHERE name LIKE ? OR tags LIKE ?`
 	
@@ -263,18 +244,16 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	}
 
 	queryBase := `
-		SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, 
-		       COALESCE(created_at, datetime('now')) as created_at, 
-		       COALESCE(updated_at, datetime('now')) as updated_at 
-		FROM clips
-		WHERE (`
+		SELECT clip_id, filename, folder_id, source, tags, duration, updated_at
+		FROM stock_clips
+		WHERE (source = 'stock' OR source = 'artlist' OR source = 'dynamic' OR source = 'dynamic_job') AND (`
 
 	var conditions []string
 	var args []interface{}
 	for _, token := range tokens {
-		conditions = append(conditions, "(name LIKE ? OR tags LIKE ? OR media_type LIKE ? OR source LIKE ?)")
+		conditions = append(conditions, "(filename LIKE ? OR tags LIKE ? OR source LIKE ?)")
 		pattern := "%" + token + "%"
-		args = append(args, pattern, pattern, pattern, pattern)
+		args = append(args, pattern, pattern, pattern)
 	}
 
 	query := queryBase + strings.Join(conditions, " OR ") + ") LIMIT ?"
@@ -289,16 +268,32 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	var clips []*models.Clip
 	for rows.Next() {
 		var clip models.Clip
-		var tagsJSON string
-		var createdAtStr, updatedAtStr string
+		var clipID, filename, folderID, source, tagsJSON string
+		var duration int
+		var updatedAtStr string
 
-		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
-			return nil, err
+		err := rows.Scan(&clipID, &filename, &folderID, &source, &tagsJSON, &duration, &updatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan stock_clip: %w", err)
 		}
 
-		if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
-			return nil, err
+		clip.ID = clipID
+		clip.Name = filename
+		clip.Filename = filename
+		clip.FolderID = folderID
+		clip.Source = source
+		clip.Duration = duration
+		clip.MediaType = source
+
+		if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
+			clip.Tags = []string{}
 		}
+
+		clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+		if clip.UpdatedAt.IsZero() {
+			clip.UpdatedAt = time.Now()
+		}
+		clip.CreatedAt = clip.UpdatedAt
 
 		clips = append(clips, &clip)
 	}
