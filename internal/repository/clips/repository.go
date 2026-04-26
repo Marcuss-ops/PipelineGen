@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -20,9 +21,51 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// BeginTx starts a new transaction
+func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return r.db.BeginTx(ctx, opts)
+}
+
+// scanClip scans a clip from a row, handling JSON and time parsing
+func scanClip(rows *sql.Rows, clip *models.Clip, tagsJSON *string, createdAtStr, updatedAtStr *string) error {
+	err := rows.Scan(
+		&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
+		&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, tagsJSON,
+		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+		createdAtStr, updatedAtStr,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to scan clip: %w", err)
+	}
+	return nil
+}
+
+// parseClipData parses tags JSON and time strings into the clip struct
+func parseClipData(clip *models.Clip, tagsJSON string, createdAtStr, updatedAtStr string) error {
+	if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
+		return fmt.Errorf("failed to unmarshal tags: %w", err)
+	}
+	
+	var err error
+	clip.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAtStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse created_at: %w", err)
+	}
+	
+	clip.UpdatedAt, err = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse updated_at: %w", err)
+	}
+	
+	return nil
+}
+
 // UpsertClip inserts or updates a clip
 func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
-	tagsJSON, _ := json.Marshal(clip.Tags)
+	tagsJSON, err := json.Marshal(clip.Tags)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tags: %w", err)
+	}
 	
 	query := `
 		INSERT INTO clips (
@@ -49,7 +92,7 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			updated_at = datetime('now')
 	`
 	
-	_, err := r.db.ExecContext(ctx, query,
+	_, err = r.db.ExecContext(ctx, query,
 		clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group,
 		clip.MediaType, clip.DriveLink, clip.DownloadLink, string(tagsJSON),
 		clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata,
@@ -77,9 +120,9 @@ func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, 
 		return nil, err
 	}
 	
-	json.Unmarshal([]byte(tagsJSON), &clip.Tags)
-	clip.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
-	clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+	if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
+		return nil, err
+	}
 	
 	return &clip, nil
 }
@@ -106,19 +149,13 @@ func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Cli
 		var tagsJSON string
 		var createdAtStr, updatedAtStr string
 		
-		err := rows.Scan(
-			&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
-			&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
-			&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-			&createdAtStr, &updatedAtStr,
-		)
-		if err != nil {
+		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, err
 		}
 		
-		json.Unmarshal([]byte(tagsJSON), &clip.Tags)
-		clip.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
-		clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+		if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
+			return nil, err
+		}
 		
 		clips = append(clips, &clip)
 	}
@@ -145,19 +182,13 @@ func (r *Repository) SearchClips(ctx context.Context, searchTerm string) ([]*mod
 		var tagsJSON string
 		var createdAtStr, updatedAtStr string
 		
-		err := rows.Scan(
-			&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
-			&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
-			&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-			&createdAtStr, &updatedAtStr,
-		)
-		if err != nil {
+		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, err
 		}
 		
-		json.Unmarshal([]byte(tagsJSON), &clip.Tags)
-		clip.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
-		clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+		if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
+			return nil, err
+		}
 		
 		clips = append(clips, &clip)
 	}
@@ -214,19 +245,13 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		var tagsJSON string
 		var createdAtStr, updatedAtStr string
 		
-		err := rows.Scan(
-			&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
-			&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
-			&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-			&createdAtStr, &updatedAtStr,
-		)
-		if err != nil {
+		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, err
 		}
 		
-		json.Unmarshal([]byte(tagsJSON), &clip.Tags)
-		clip.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
-		clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+		if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
+			return nil, err
+		}
 		
 		clips = append(clips, &clip)
 	}
@@ -272,6 +297,10 @@ func (r *Repository) GetCheckpoint(ctx context.Context, id string) (*models.Inde
 		return nil, err
 	}
 	
-	cp.LastIndexedAt, _ = time.Parse(time.RFC3339, lastIndexedStr)
+	cp.LastIndexedAt, err = time.Parse(time.RFC3339, lastIndexedStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse last_indexed_at: %w", err)
+	}
+	
 	return &cp, nil
 }

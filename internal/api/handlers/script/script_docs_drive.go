@@ -23,12 +23,12 @@ type driveCheckpointEntry struct {
 	Filename string `json:"filename"`
 }
 
-func buildDriveMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, repo *clips.Repository) ScriptSection {
+func buildDriveMatchingSection(ctx context.Context, dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, repo *clips.Repository) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
 
 	// Try DB first
 	if repo != nil {
-		dbClips, err := repo.ListClips(context.Background(), "")
+		dbClips, err := repo.ListClips(ctx, "")
 		if err == nil && len(dbClips) > 0 {
 			matches := make([]scoredMatch, 0, len(dbClips))
 			for _, clip := range dbClips {
@@ -154,12 +154,12 @@ func (a artlistClipItem) PickLink() string {
 	return ""
 }
 
-func buildArtlistMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, repo *clips.Repository) ScriptSection {
+func buildArtlistMatchingSection(ctx context.Context, dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, repo *clips.Repository) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
 
 	// Try DB first
 	if repo != nil {
-		dbClips, err := repo.ListClips(context.Background(), "") // Empty group to list all
+		dbClips, err := repo.ListClips(ctx, "") // Empty group to list all
 		if err == nil && len(dbClips) > 0 {
 			matches := make([]scoredMatch, 0, len(dbClips))
 			for _, clip := range dbClips {

@@ -73,8 +73,8 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		}
 	}
 
-	artlistSection := buildArtlistMatchingSection(dataDir, req, narrative, analysis, clipsRepo)
-	driveSection := buildDriveMatchingSection(dataDir, req, narrative, analysis, clipsRepo)
+	artlistSection := buildArtlistMatchingSection(ctx, dataDir, req, narrative, analysis, clipsRepo)
+	driveSection := buildDriveMatchingSection(ctx, dataDir, req, narrative, analysis, clipsRepo)
 	clipDriveSection := buildClipDriveMatchingSection(ctx, gen, req, narrative, analysis, dataDir, clipTextDir, clipsRepo)
 
 	sections := []ScriptSection{
