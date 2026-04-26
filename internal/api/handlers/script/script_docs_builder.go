@@ -10,13 +10,13 @@ import (
 )
 
 // BuildScriptDocument assembles the modular document with explicit sections.
-func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, clipsRepo *clips.Repository) (*ScriptDocument, error) {
+func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, clipsRepo, artlistRepo *clips.Repository) (*ScriptDocument, error) {
 	narrative, err := buildNarrativeScript(ctx, gen, req)
 	if err != nil {
 		return nil, err
 	}
 
-	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir, clipsRepo)
+	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir, clipsRepo, artlistRepo)
 	if err != nil {
 		// handle error or just pass nil analysis
 	}
