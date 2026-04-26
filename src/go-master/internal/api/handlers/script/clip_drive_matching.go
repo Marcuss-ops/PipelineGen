@@ -12,6 +12,7 @@ import (
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/service/matching"
 )
 
 func clipAlreadyUsed(used map[string]struct{}, clipID string) bool {
@@ -134,17 +135,17 @@ func scoreClipDriveCandidate(phraseTokens []string, phraseNorm string, candidate
 	boost := 0.0
 	switch {
 	case name != "" && strings.Contains(phraseNorm, name):
-		boost += 20
+		boost += matching.NameMatchBoost
 	case file != "" && strings.Contains(phraseNorm, file):
-		boost += 18
+		boost += matching.FilenameMatchBoost
 	case folder != "" && strings.Contains(candidateNorm, folder):
-		boost += 10
+		boost += matching.FolderMatchBoost
 	case topic != "" && strings.Contains(candidateNorm, topic):
-		boost += 5
+		boost += matching.TopicMatchBoost
 	}
 
 	if strings.TrimSpace(sideText) != "" {
-		boost += 5
+		boost += matching.SideTextBoost
 	}
 
 	score := base + boost
@@ -273,7 +274,7 @@ func renderClipDriveMatches(matches []clipDrivePhraseMatch) string {
 }
 
 func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir, clipTextDir string, repo *clips.Repository) ScriptSection {
-	clips, err := loadClipDriveCatalog(dataDir, repo)
+	clips, err := loadClipDriveCatalog(ctx, dataDir, repo)
 	if err != nil || len(clips) == 0 {
 		return ScriptSection{
 			Title: "Clip Drive Matching",

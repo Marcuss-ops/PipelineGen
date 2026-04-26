@@ -11,12 +11,12 @@ import (
 )
 
 // loadClipsFromDB loads the clips from the database
-func loadClipsFromDB(repo *clips.Repository) ([]clipDriveRecord, error) {
+func loadClipsFromDB(ctx context.Context, repo *clips.Repository) ([]clipDriveRecord, error) {
 	if repo == nil {
 		return nil, nil
 	}
 	
-	dbClips, err := repo.ListClips(context.Background(), "")
+	dbClips, err := repo.ListClips(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -40,10 +40,10 @@ func loadClipsFromDB(repo *clips.Repository) ([]clipDriveRecord, error) {
 }
 
 // loadClipDriveCatalog loads the clip drive catalog from JSON files (legacy) or DB
-func loadClipDriveCatalog(dataDir string, repo *clips.Repository) ([]clipDriveRecord, error) {
+func loadClipDriveCatalog(ctx context.Context, dataDir string, repo *clips.Repository) ([]clipDriveRecord, error) {
 	// Try DB first (Single Source of Truth)
 	if repo != nil {
-		records, err := loadClipsFromDB(repo)
+		records, err := loadClipsFromDB(ctx, repo)
 		if err == nil && len(records) > 0 {
 			return records, nil
 		}
