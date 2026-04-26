@@ -164,7 +164,7 @@ func buildArtlistMatchingSection(ctx context.Context, dataDir string, req Script
 			matches := make([]scoredMatch, 0, len(dbClips))
 			for _, clip := range dbClips {
 				// We only want Artlist/Stock clips here
-				if clip.MediaType != "stock" {
+				if clip.MediaType != "stock" && clip.MediaType != "artlist" {
 					continue
 				}
 
@@ -196,13 +196,23 @@ func buildArtlistMatchingSection(ctx context.Context, dataDir string, req Script
 				}
 
 				matches = append(matches, scoredMatch{
-					Title:   title,
-					Score:   score,
-					Source:  "artlist sql db",
-					Link:    link,
-					Details: strings.Join(clip.Tags, ", "),
+					Title:  title,
+					Score:  score,
+					Source: clip.Source + " sql db",
+					Link:   link,
 				})
 			}
+
+			// Deduplicate by Title
+			seenTitles := make(map[string]bool)
+			deduped := make([]scoredMatch, 0, len(matches))
+			for _, m := range matches {
+				if !seenTitles[m.Title] {
+					seenTitles[m.Title] = true
+					deduped = append(deduped, m)
+				}
+			}
+			matches = deduped
 
 			matches = sortTopMatches(matches, 4)
 			if len(matches) > 0 {

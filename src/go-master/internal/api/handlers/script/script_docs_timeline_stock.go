@@ -1,10 +1,13 @@
 package script
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"velox/go-master/internal/repository/clips"
 )
 
 // buildStockCatalogContext builds a context string from stock catalog.
@@ -103,10 +106,9 @@ func folderGroupFromPath(path string) string {
 	return ""
 }
 
-// matchStockForSegment matches stock clips for a timeline segment.
-func matchStockForSegment(dataDir, topic string, seg TimelineSegment) []scoredMatch {
-	clips, err := loadStockCatalog(dataDir)
-	if err != nil {
+// matchStockForSegment matches stock clips for a timeline segment using the clips repository.
+func matchStockForSegment(repo *clips.Repository, ctx context.Context, topic string, seg TimelineSegment) []scoredMatch {
+	if repo == nil {
 		return nil
 	}
 
@@ -116,26 +118,55 @@ func matchStockForSegment(dataDir, topic string, seg TimelineSegment) []scoredMa
 	terms = append(terms, collectBodyTerms(seg)...)
 	terms = uniqueStrings(terms)
 
-	matches := buildMatches(clips, terms, seg)
+	// Search clips from DB
+	dbClips, err := repo.SearchStockByKeywords(ctx, terms, 20)
+	if err != nil || len(dbClips) == 0 {
+		return nil
+	}
+
+	matches := make([]scoredMatch, 0, len(dbClips))
+	for _, clip := range dbClips {
+		score := scoreText(strings.ToLower(strings.Join([]string{
+			clip.Name,
+			clip.Filename,
+			clip.FolderPath,
+			clip.Group,
+			strings.Join(clip.Tags, " "),
+			clip.Source,
+			clip.Category,
+		}, " ")), terms)
+
+		if score == 0 {
+			continue
+		}
+
+		link := clip.ExternalURL
+		if link == "" {
+			link = clip.DriveLink
+		}
+
+		matches = append(matches, scoredMatch{
+			Title:  clip.Name,
+			Score:  score,
+			Source: clip.Source + " db",
+			Link:   link,
+		})
+	}
+
 	if len(matches) == 0 {
 		return nil
 	}
 
-	scored := scoreMatches(matches, terms, seg)
-	if len(scored) == 0 {
-		return nil
-	}
-
-	sort.SliceStable(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
+	sort.SliceStable(matches, func(i, j int) bool {
+		return matches[i].Score > matches[j].Score
 	})
 
 	limit := 8
-	if len(scored) > limit {
-		scored = scored[:limit]
+	if len(matches) > limit {
+		matches = matches[:limit]
 	}
 
-	return scored
+	return matches
 }
 
 // collectBodyTerms collects terms from segment body content.
@@ -148,16 +179,36 @@ func collectBodyTerms(seg TimelineSegment) []string {
 	})
 }
 
-// enrichTimelineSegments enriches timeline segments with stock matches.
-func enrichTimelineSegments(plan *TimelinePlan, dataDir string, req ScriptDocsRequest) {
+// enrichTimelineSegments enriches timeline segments with stock and artlist matches.
+func enrichTimelineSegments(plan *TimelinePlan, dataDir string, req ScriptDocsRequest, repo *clips.Repository, ctx context.Context) {
 	if plan == nil || len(plan.Segments) == 0 {
 		return
 	}
 
 	for i := range plan.Segments {
-		matches := matchStockForSegment(dataDir, req.Topic, plan.Segments[i])
-		plan.Segments[i].StockMatches = cloneScoredMatches(matches)
+		seg := &plan.Segments[i]
+		// Match stock clips from DB
+		stockMatches := matchStockForSegment(repo, ctx, req.Topic, *seg)
+		seg.StockMatches = cloneScoredMatches(stockMatches)
+
+		// Populate ArtlistMatches (artlist clips) and DriveMatches (stock drive clips)
+		seg.ArtlistMatches = filterMatchesBySource(stockMatches, "artlist")
+		seg.DriveMatches = filterMatchesBySource(stockMatches, "stock")
 	}
+}
+
+// filterMatchesBySource filters matches by clip source (artlist/stock)
+func filterMatchesBySource(matches []scoredMatch, source string) []scoredMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+	filtered := make([]scoredMatch, 0, len(matches))
+	for _, m := range matches {
+		if m.Source == source+" db" {
+			filtered = append(filtered, m)
+		}
+	}
+	return filtered
 }
 
 // cloneScoredMatches creates a copy of scored matches.
