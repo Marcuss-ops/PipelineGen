@@ -10,18 +10,18 @@ import (
 )
 
 // BuildScriptDocument assembles the modular document with explicit sections.
-func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, clipsRepo, artlistRepo *clips.Repository) (*ScriptDocument, error) {
+func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, StockDriveRepo, ArtlistRepo *clips.Repository) (*ScriptDocument, error) {
 	narrative, err := buildNarrativeScript(ctx, gen, req)
 	if err != nil {
 		return nil, err
 	}
 
-	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir, clipsRepo, artlistRepo)
+	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir, StockDriveRepo, ArtlistRepo)
 	if err != nil {
 		// handle error or just pass nil analysis
 	}
 
-	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir, clipsRepo)
+	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir, StockDriveRepo)
 	if err != nil {
 		timelinePlan = &TimelinePlan{
 			PrimaryFocus:  req.Topic,
@@ -73,7 +73,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		}
 	}
 
-	artlistSection := buildArtlistMatchingSection(ctx, dataDir, req, narrative, analysis, clipsRepo)
+	artlistSection := buildArtlistMatchingSection(ctx, dataDir, req, narrative, analysis, StockDriveRepo)
 
 	sections := []ScriptSection{
 		buildMetadataSection(req),

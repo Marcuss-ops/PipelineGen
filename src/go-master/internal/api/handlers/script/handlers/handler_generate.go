@@ -29,7 +29,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
-	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.clipTextDir, h.pythonScriptsDir, h.nodeScraperDir, h.clipsRepo, h.artlistRepo)
+	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.clipTextDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo)
 	if err != nil {
 		zap.L().Error("script document generation failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
