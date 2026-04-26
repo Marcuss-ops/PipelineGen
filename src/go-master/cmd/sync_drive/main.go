@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -23,16 +22,47 @@ import (
 
 var logger *zap.Logger
 
+type SyncConfig struct {
+	DBFile    string
+	FolderID  string
+	MediaType string
+}
+
+var syncConfigs = map[string]SyncConfig{
+	"stock_drive": {
+		DBFile:    "stock_drive.db.sqlite",
+		FolderID:  "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh",
+		MediaType: "stock_drive",
+	},
+	"artlist": {
+		DBFile:    "artlist.db.sqlite",
+		FolderID:  "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk",
+		MediaType: "artlist",
+	},
+	"clips": {
+		DBFile:    "clips.db.sqlite",
+		FolderID:  "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS",
+		MediaType: "clips",
+	},
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: sync_drive <folder_id1> [folder_id2] ...")
+		fmt.Println("Usage: sync_drive <sync_type>")
+		fmt.Println("Available sync types: stock_drive, artlist, clips")
 		os.Exit(1)
+	}
+
+	syncType := os.Args[1]
+	config, ok := syncConfigs[syncType]
+	if !ok {
+		log.Fatalf("Unknown sync type: %s", syncType)
 	}
 
 	logger, _ = zap.NewProduction()
 
 	// Open DB
-	db, err := storage.NewSQLiteDB("./data", "stock.db.sqlite", logger)
+	db, err := storage.NewSQLiteDB("./data", config.DBFile, logger)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
@@ -47,7 +77,7 @@ func main() {
 		log.Fatalf("Failed to read credentials: %v", err)
 	}
 
-	config, err := google.ConfigFromJSON(credsData, drive.DriveReadonlyScope)
+	cfg, err := google.ConfigFromJSON(credsData, drive.DriveReadonlyScope)
 	if err != nil {
 		log.Fatalf("Failed to parse credentials: %v", err)
 	}
@@ -64,26 +94,23 @@ func main() {
 	}
 
 	// Create Drive client
-	tokenSource := config.TokenSource(ctx, &token)
+	tokenSource := cfg.TokenSource(ctx, &token)
 	client := oauth2.NewClient(ctx, tokenSource)
 	driveService, err := drive.New(client)
 	if err != nil {
 		log.Fatalf("Failed to create Drive service: %v", err)
 	}
 
-	// Process each folder
-	for _, folderID := range os.Args[1:] {
-		logger.Info("Processing folder", zap.String("folder_id", folderID))
-		if err := syncFolder(ctx, driveService, repo, folderID, ""); err != nil {
-			logger.Error("Error syncing folder", zap.String("folder_id", folderID), zap.Error(err))
-		}
+	logger.Info("Starting sync", zap.String("type", syncType), zap.String("folder", config.FolderID))
+
+	if err := syncFolder(ctx, driveService, repo, config.FolderID, "", config.MediaType); err != nil {
+		logger.Error("Sync failed", zap.Error(err))
 	}
 
-	logger.Info("Sync completed!")
+	logger.Info("Sync completed!", zap.String("type", syncType))
 }
 
-func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository, folderID, parentPath string) error {
-	// Get folder info
+func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository, folderID, parentPath, mediaType string) error {
 	folder, err := svc.Files.Get(folderID).Fields("name").Do()
 	if err != nil {
 		return fmt.Errorf("failed to get folder: %w", err)
@@ -92,7 +119,6 @@ func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository,
 	currentPath := filepath.Join(parentPath, folder.Name)
 	logger.Info("Syncing folder", zap.String("path", currentPath))
 
-	// List all files recursively
 	pageToken := ""
 	for {
 		query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
@@ -112,27 +138,20 @@ func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository,
 
 		for _, file := range list.Files {
 			if file.MimeType == "application/vnd.google-apps.folder" {
-				// Recurse into subfolder
-				if err := syncFolder(ctx, svc, repo, file.Id, currentPath); err != nil {
+				if err := syncFolder(ctx, svc, repo, file.Id, currentPath, mediaType); err != nil {
 					logger.Error("Error in subfolder", zap.String("name", file.Name), zap.Error(err))
 				}
 				continue
 			}
 
-			// Check if video file
 			if !isVideoFile(file.MimeType, file.Name) {
 				continue
 			}
 
-			mediaType := determineMediaType(currentPath)
-
-			// Check for existing clip by folder + filename
 			existing, err := repo.GetClipByFolderAndFilename(ctx, folderID, file.Name)
 			clipID := uuid.New().String()
 			if err == nil && existing != nil {
 				clipID = existing.ID
-			} else if err != nil && err != sql.ErrNoRows {
-				logger.Error("Failed to check existing clip", zap.String("name", file.Name), zap.Error(err))
 			}
 
 			clip := &models.Clip{
@@ -146,6 +165,7 @@ func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository,
 				DriveLink:    file.WebViewLink,
 				DownloadLink: "https://drive.google.com/uc?id=" + file.Id,
 				Tags:         strings.Split(strings.ToLower(file.Name), " "),
+				Source:       mediaType,
 			}
 
 			if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -171,18 +191,4 @@ func isVideoFile(mimeType, filename string) bool {
 	}
 	ext := strings.ToLower(filepath.Ext(filename))
 	return ext == ".mp4" || ext == ".mkv" || ext == ".mov" || ext == ".avi"
-}
-
-func determineMediaType(path string) string {
-	lowerPath := strings.ToLower(path)
-	if strings.Contains(lowerPath, "artlist") {
-		return "artlist"
-	}
-	if strings.Contains(lowerPath, "clip") {
-		return "clip"
-	}
-	if strings.Contains(lowerPath, "drive") {
-		return "drive"
-	}
-	return "stock"
 }

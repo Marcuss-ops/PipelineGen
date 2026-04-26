@@ -22,11 +22,12 @@ type ScriptDocsHandler struct {
 	nodeScraperDir   string
 	scriptsRepo      *scripts.ScriptRepository
 	clipsRepo        *clips.Repository
+	artlistRepo      *clips.Repository
 	stockRootFolder  string
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, clipsRepo *clips.Repository, stockRootFolder string) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, clipsRepo, artlistRepo *clips.Repository, stockRootFolder string) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,
@@ -37,6 +38,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voS
 		nodeScraperDir:   nodeScraperDir,
 		scriptsRepo:      scriptsRepo,
 		clipsRepo:        clipsRepo,
+		artlistRepo:      artlistRepo,
 		stockRootFolder:  stockRootFolder,
 	}
 }

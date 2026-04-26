@@ -26,8 +26,12 @@ type CoreDeps struct {
 	DocClient        *drive.DocClient
 	Utility          *common.UtilityHandler
 	StockDB          *storage.SQLiteDB
+	ArtlistDB        *storage.SQLiteDB
+	ClipsDB          *storage.SQLiteDB
 	ScriptsRepo      *scripts.ScriptRepository
 	ClipsRepo        *clips.Repository
+	ArtlistRepo      *clips.Repository
+	ClipsOnlyRepo    *clips.Repository
 	VoiceoverService *voiceover.Service
 	IndexingService  *indexing.Service
 }
@@ -49,18 +53,30 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 	voService := voiceover.NewService(cfg.Paths.PythonScriptsDir, voDir, log)
 
-	// Initialize stock database with migrations
-	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock.db.sqlite", log)
+	// Initialize stock_drive database (for Stock Drive clips)
+	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock_drive.db.sqlite", log)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize stock database: %w", err)
-	}
-	
-	migrationsDir := filepath.Join("migrations", "sqlite")
-	if err := stockDB.RunMigrations(log, migrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run stock database migrations: %w", err)
+		return nil, nil, fmt.Errorf("failed to initialize stock_drive database: %w", err)
 	}
 
 	clipsRepo := clips.NewRepository(stockDB.DB)
+
+	// Initialize artlist database (for Artlist clips)
+	artlistDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize artlist database: %w", err)
+	}
+
+	artlistRepo := clips.NewRepository(artlistDB.DB)
+
+	// Initialize clips database (for Clips)
+	clipsOnlyDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "clips.db.sqlite", log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize clips database: %w", err)
+	}
+
+	clipsOnlyRepo := clips.NewRepository(clipsOnlyDB.DB)
+
 	indexingService := indexing.NewService(clipsRepo, log)
 
 	// Start indexing cron (e.g., every 15 minutes)
@@ -86,6 +102,16 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 				log.Error("Failed to close stock database", zap.Error(err))
 			}
 		}
+		if artlistDB != nil {
+			if err := artlistDB.Close(); err != nil {
+				log.Error("Failed to close artlist database", zap.Error(err))
+			}
+		}
+		if clipsOnlyDB != nil {
+			if err := clipsOnlyDB.Close(); err != nil {
+				log.Error("Failed to close clips database", zap.Error(err))
+			}
+		}
 		if scriptsDB != nil {
 			if err := scriptsDB.Close(); err != nil {
 				log.Error("Failed to close scripts database", zap.Error(err))
@@ -98,8 +124,12 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		DocClient:        docClient,
 		Utility:          common.NewUtilityHandler(),
 		StockDB:          stockDB,
+		ArtlistDB:        artlistDB,
+		ClipsDB:          clipsOnlyDB,
 		ScriptsRepo:      scriptsRepo,
 		ClipsRepo:        clipsRepo,
+		ArtlistRepo:      artlistRepo,
+		ClipsOnlyRepo:    clipsOnlyRepo,
 		VoiceoverService: voService,
 		IndexingService:  indexingService,
 	}, cleanup, nil
