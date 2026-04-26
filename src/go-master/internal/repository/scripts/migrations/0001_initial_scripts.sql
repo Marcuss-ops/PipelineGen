@@ -28,6 +28,8 @@ CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON scripts (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scripts_language ON scripts (language);
 CREATE INDEX IF NOT EXISTS idx_scripts_template ON scripts (template);
 CREATE INDEX IF NOT EXISTS idx_scripts_parent ON scripts (parent_script_id);
+CREATE INDEX IF NOT EXISTS idx_scripts_deleted_created ON scripts (is_deleted, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scripts_topic_language ON scripts (topic, language);
 
 CREATE TABLE IF NOT EXISTS script_sections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

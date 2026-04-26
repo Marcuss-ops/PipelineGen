@@ -23,20 +23,19 @@ import (
 var logger *zap.Logger
 
 func main() {
-	if len(os.Args) < 4 {
-		fmt.Println("Usage: sync_drive <db_file> <folder_id> <media_type>")
-		fmt.Println("Example: sync_drive stock_drive.db.sqlite 1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh stock_drive")
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: sync_drive <folder_id> <media_type>")
+		fmt.Println("Example: sync_drive 1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh stock_drive")
 		os.Exit(1)
 	}
 
-	dbFile := os.Args[1]
-	folderID := os.Args[2]
-	mediaType := os.Args[3]
+	folderID := os.Args[1]
+	mediaType := os.Args[2]
 
 	logger, _ = zap.NewProduction()
 
-	// Open DB
-	db, err := storage.NewSQLiteDB("./data", dbFile, logger)
+	// Open unified database
+	db, err := storage.NewSQLiteDB("./data", "velox.db.sqlite", logger)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
