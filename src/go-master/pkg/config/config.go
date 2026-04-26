@@ -83,3 +83,34 @@ func (c *Config) Save(path string) error {
 
 	return nil
 }
+
+// Validate checks the configuration for common issues and returns an error if invalid
+func (c *Config) Validate() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Check auth configuration
+	if c.Security.EnableAuth && c.Security.AdminToken == "" {
+		return fmt.Errorf("security.admin_token must be set when security.enable_auth is true")
+	}
+
+	// Check server configuration
+	if c.Server.Port <= 0 || c.Server.Port > 65535 {
+		return fmt.Errorf("server.port must be between 1 and 65535")
+	}
+
+	// Check timeouts
+	if c.Server.ReadTimeout <= 0 {
+		return fmt.Errorf("server.read_timeout must be positive")
+	}
+	if c.Server.WriteTimeout <= 0 {
+		return fmt.Errorf("server.write_timeout must be positive")
+	}
+
+	// Check Ollama URL
+	if c.External.OllamaURL == "" {
+		return fmt.Errorf("external.ollama_url must be set")
+	}
+
+	return nil
+}

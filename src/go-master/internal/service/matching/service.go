@@ -23,6 +23,15 @@ func NewMatcher() *Matcher {
 	return &Matcher{}
 }
 
+const (
+	// Boost values for different match types (exported for use across packages)
+	NameMatchBoost    = 20.0
+	FilenameMatchBoost = 18.0
+	FolderMatchBoost   = 10.0
+	TopicMatchBoost    = 5.0
+	SideTextBoost      = 5.0
+)
+
 // ScoreAsset calculates a match score (0-100) between a search phrase and an asset
 func (m *Matcher) ScoreAsset(phrase string, name, filename, folder, tags string) (float64, string) {
 	phraseNorm := m.normalize(phrase)
@@ -66,9 +75,9 @@ func (m *Matcher) ScoreAsset(phrase string, name, filename, folder, tags string)
 	fileNorm := m.normalize(strings.TrimSuffix(filename, filepath.Ext(filename)))
 	
 	if nameNorm != "" && strings.Contains(phraseNorm, nameNorm) {
-		boost += 20
+		boost += NameMatchBoost
 	} else if fileNorm != "" && strings.Contains(phraseNorm, fileNorm) {
-		boost += 18
+		boost += FilenameMatchBoost
 	}
 
 	score := base + boost
