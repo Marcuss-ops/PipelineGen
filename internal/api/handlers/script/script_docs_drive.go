@@ -61,7 +61,46 @@ func buildDriveMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 
 	// Fallback to legacy JSON
 	path := filepath.Join(dataDir, "clipsearch_checkpoints.json")
-...
+
+	var index driveCheckpointIndex
+	if err := readJSON(path, &index); err != nil {
+		return ScriptSection{
+			Title: "Drive Matching",
+			Body:  "Drive matching unavailable: no local checkpoint index found.",
+		}
+	}
+
+	matches := make([]scoredMatch, 0, len(index.Jobs))
+	for _, job := range index.Jobs {
+		if strings.TrimSpace(job.Filename) == "" && strings.TrimSpace(job.DriveURL) == "" {
+			continue
+		}
+		score := scoreText(strings.ToLower(job.Keyword+" "+job.Filename+" "+job.Status), terms)
+		if score == 0 {
+			continue
+		}
+		matches = append(matches, scoredMatch{
+			Title:   job.Filename,
+			Score:   score,
+			Source:  "local checkpoint index",
+			Link:    job.DriveURL,
+			Details: "keyword: " + job.Keyword,
+		})
+	}
+
+	matches = sortTopMatches(matches, 4)
+	if len(matches) == 0 {
+		return ScriptSection{
+			Title: "Drive Matching",
+			Body:  "None",
+		}
+	}
+
+	return ScriptSection{
+		Title: "Drive Matching",
+		Body:  renderMatches(matches),
+	}
+}
 
 type artlistIndex struct {
 	FolderID string            `json:"folder_id"`
