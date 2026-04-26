@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"velox/go-master/pkg/models"
@@ -125,6 +126,44 @@ func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Cli
 	return clips, nil
 }
 
+// SearchClips searches clips by tags or name
+func (r *Repository) SearchClips(ctx context.Context, searchTerm string) ([]*models.Clip, error) {
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at 
+	          FROM clips 
+	          WHERE name LIKE ? OR tags LIKE ?`
+	
+	pattern := "%" + searchTerm + "%"
+	rows, err := r.db.QueryContext(ctx, query, pattern, pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var clips []*models.Clip
+	for rows.Next() {
+		var clip models.Clip
+		var tagsJSON string
+		var createdAtStr, updatedAtStr string
+		
+		err := rows.Scan(
+			&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
+			&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
+			&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+			&createdAtStr, &updatedAtStr,
+		)
+		if err != nil {
+			return nil, err
+		}
+		
+		json.Unmarshal([]byte(tagsJSON), &clip.Tags)
+		clip.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAtStr)
+		clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+		
+		clips = append(clips, &clip)
+	}
+	
+	return clips, nil
+}
 
 // SearchStockByKeywords searches for stock assets matching multiple keyword tokens
 func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.Clip, error) {

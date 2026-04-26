@@ -2,6 +2,7 @@
 package config
 
 import "sync"
+
 // Config holds all configuration for the application.
 type Config struct {
 	mu sync.RWMutex
@@ -31,7 +32,6 @@ type HarvesterConfig struct {
 }
 
 // DriveConfig holds Google Drive configuration.
-...
 type DriveConfig struct {
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`

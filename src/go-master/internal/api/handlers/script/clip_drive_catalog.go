@@ -1,4 +1,5 @@
 package script
+
 import (
 	"context"
 	"encoding/json"
@@ -14,12 +15,12 @@ func loadClipsFromDB(repo *clips.Repository) ([]clipDriveRecord, error) {
 	if repo == nil {
 		return nil, nil
 	}
-
+	
 	dbClips, err := repo.ListClips(context.Background(), "")
 	if err != nil {
 		return nil, err
 	}
-
+	
 	records := make([]clipDriveRecord, 0, len(dbClips))
 	for _, c := range dbClips {
 		records = append(records, clipDriveRecord{
@@ -50,8 +51,6 @@ func loadClipDriveCatalog(dataDir string, repo *clips.Repository) ([]clipDriveRe
 
 	// Fallback to JSON
 	searchRoots := []string{}
-...
-
 	if trimmed := strings.TrimSpace(dataDir); trimmed != "" {
 		searchRoots = append(searchRoots, trimmed)
 	}
