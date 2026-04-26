@@ -22,47 +22,21 @@ import (
 
 var logger *zap.Logger
 
-type SyncConfig struct {
-	DBFile    string
-	FolderID  string
-	MediaType string
-}
-
-var syncConfigs = map[string]SyncConfig{
-	"stock_drive": {
-		DBFile:    "stock_drive.db.sqlite",
-		FolderID:  "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh",
-		MediaType: "stock_drive",
-	},
-	"artlist": {
-		DBFile:    "artlist.db.sqlite",
-		FolderID:  "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk",
-		MediaType: "artlist",
-	},
-	"clips": {
-		DBFile:    "clips.db.sqlite",
-		FolderID:  "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS",
-		MediaType: "clips",
-	},
-}
-
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: sync_drive <sync_type>")
-		fmt.Println("Available sync types: stock_drive, artlist, clips")
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: sync_drive <db_file> <folder_id> <media_type>")
+		fmt.Println("Example: sync_drive stock_drive.db.sqlite 1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh stock_drive")
 		os.Exit(1)
 	}
 
-	syncType := os.Args[1]
-	config, ok := syncConfigs[syncType]
-	if !ok {
-		log.Fatalf("Unknown sync type: %s", syncType)
-	}
+	dbFile := os.Args[1]
+	folderID := os.Args[2]
+	mediaType := os.Args[3]
 
 	logger, _ = zap.NewProduction()
 
 	// Open DB
-	db, err := storage.NewSQLiteDB("./data", config.DBFile, logger)
+	db, err := storage.NewSQLiteDB("./data", dbFile, logger)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
@@ -101,25 +75,34 @@ func main() {
 		log.Fatalf("Failed to create Drive service: %v", err)
 	}
 
-	logger.Info("Starting sync", zap.String("type", syncType), zap.String("folder", config.FolderID))
+	logger.Info("Starting sync", zap.String("type", mediaType), zap.String("folder", folderID))
 
-	if err := syncFolder(ctx, driveService, repo, config.FolderID, "", config.MediaType); err != nil {
+	// Store folder links in a map
+	folderLinks := make(map[string]string)
+
+	if err := syncFolder(ctx, driveService, repo, folderID, "", mediaType, folderLinks); err != nil {
 		logger.Error("Sync failed", zap.Error(err))
 	}
 
-	logger.Info("Sync completed!", zap.String("type", syncType))
+	logger.Info("Sync completed!", zap.String("type", mediaType))
 }
 
-func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository, folderID, parentPath, mediaType string) error {
-	folder, err := svc.Files.Get(folderID).Fields("name").Do()
+func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository, folderID, parentPath, mediaType string, folderLinks map[string]string) error {
+	folder, err := svc.Files.Get(folderID).Fields("name,webViewLink").Do()
 	if err != nil {
 		return fmt.Errorf("failed to get folder: %w", err)
 	}
 
 	currentPath := filepath.Join(parentPath, folder.Name)
-	logger.Info("Syncing folder", zap.String("path", currentPath))
+	folderLink := folder.WebViewLink
+	folderLinks[folderID] = folderLink
+
+	logger.Info("Syncing folder", zap.String("path", currentPath), zap.String("folder_link", folderLink))
 
 	pageToken := ""
+	totalFiles := 0
+	totalFolders := 0
+
 	for {
 		query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
 		call := svc.Files.List().
@@ -138,12 +121,15 @@ func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository,
 
 		for _, file := range list.Files {
 			if file.MimeType == "application/vnd.google-apps.folder" {
-				if err := syncFolder(ctx, svc, repo, file.Id, currentPath, mediaType); err != nil {
+				totalFolders++
+				logger.Info("Found subfolder", zap.String("name", file.Name), zap.String("id", file.Id))
+				if err := syncFolder(ctx, svc, repo, file.Id, currentPath, mediaType, folderLinks); err != nil {
 					logger.Error("Error in subfolder", zap.String("name", file.Name), zap.Error(err))
 				}
 				continue
 			}
 
+			totalFiles++
 			if !isVideoFile(file.MimeType, file.Name) {
 				continue
 			}
@@ -181,6 +167,11 @@ func syncFolder(ctx context.Context, svc *drive.Service, repo *clips.Repository,
 		}
 		pageToken = list.NextPageToken
 	}
+
+	logger.Info("Folder sync complete",
+		zap.String("path", currentPath),
+		zap.Int("files", totalFiles),
+		zap.Int("subfolders", totalFolders))
 
 	return nil
 }
