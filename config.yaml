@@ -1,5 +1,6 @@
 server:
   port: 8080
+  public_base_url: "https://veloxmanager.duckdns.org"
 
 storage:
   data_dir: "./data"
@@ -8,7 +9,6 @@ paths:
   credentials_file: "credentials.json"
   token_file: "token.json"
   clip_text_dir: ""
-
 
 drive:
   stock_root_folder: ""

@@ -11,6 +11,7 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/repository/clips"
 )
 
 func clipAlreadyUsed(used map[string]struct{}, clipID string) bool {
@@ -271,8 +272,8 @@ func renderClipDriveMatches(matches []clipDrivePhraseMatch) string {
 	return strings.TrimSpace(b.String())
 }
 
-func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir, clipTextDir string) ScriptSection {
-	clips, err := loadClipDriveCatalog(dataDir)
+func buildClipDriveMatchingSection(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir, clipTextDir string, repo *clips.Repository) ScriptSection {
+	clips, err := loadClipDriveCatalog(dataDir, repo)
 	if err != nil || len(clips) == 0 {
 		return ScriptSection{
 			Title: "Clip Drive Matching",

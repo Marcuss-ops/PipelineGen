@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/upload/drive"
@@ -20,11 +21,12 @@ type ScriptDocsHandler struct {
 	pythonScriptsDir string
 	nodeScraperDir   string
 	scriptsRepo      *scripts.ScriptRepository
+	clipsRepo        *clips.Repository
 	stockRootFolder  string
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, stockRootFolder string) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, clipsRepo *clips.Repository, stockRootFolder string) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,
@@ -34,6 +36,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voS
 		pythonScriptsDir: pythonScriptsDir,
 		nodeScraperDir:   nodeScraperDir,
 		scriptsRepo:      scriptsRepo,
+		clipsRepo:        clipsRepo,
 		stockRootFolder:  stockRootFolder,
 	}
 }
