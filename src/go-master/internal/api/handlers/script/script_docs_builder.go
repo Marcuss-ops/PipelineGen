@@ -21,7 +21,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		// handle error or just pass nil analysis
 	}
 
-	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir)
+	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir, clipsRepo)
 	if err != nil {
 		timelinePlan = &TimelinePlan{
 			PrimaryFocus:  req.Topic,
@@ -74,8 +74,6 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 
 	artlistSection := buildArtlistMatchingSection(ctx, dataDir, req, narrative, analysis, clipsRepo)
-	driveSection := buildDriveMatchingSection(ctx, dataDir, req, narrative, analysis, clipsRepo)
-	clipDriveSection := buildClipDriveMatchingSection(ctx, gen, req, narrative, analysis, dataDir, clipTextDir, clipsRepo)
 
 	sections := []ScriptSection{
 		buildMetadataSection(req),
@@ -92,13 +90,11 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 			Body:  renderEntityAnalysis(analysis, timelinePlan),
 		},
 		artlistSection,
-		driveSection,
-		clipDriveSection,
 	}
 
 	return &ScriptDocument{
-		Title:    fmt.Sprintf("Script: %s", req.Topic),
-		Content:  renderScriptDocument(fmt.Sprintf("Script: %s", req.Topic), sections),
+		Title:    fmt.Sprintf("SCRIPT TEST: %s", req.Topic),
+		Content:  renderScriptDocument(fmt.Sprintf("SCRIPT TEST: %s", req.Topic), sections),
 		Sections: sections,
 		Timeline: timelinePlan,
 	}, nil
