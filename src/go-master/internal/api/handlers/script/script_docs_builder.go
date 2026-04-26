@@ -6,16 +6,17 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/repository/clips"
 )
 
 // BuildScriptDocument assembles the modular document with explicit sections.
-func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string) (*ScriptDocument, error) {
+func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, clipsRepo *clips.Repository) (*ScriptDocument, error) {
 	narrative, err := buildNarrativeScript(ctx, gen, req)
 	if err != nil {
 		return nil, err
 	}
 
-	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir)
+	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir, clipsRepo)
 	if err != nil {
 		// handle error or just pass nil analysis
 	}
@@ -72,7 +73,9 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		}
 	}
 
-	clipDriveSection := buildClipDriveMatchingSection(ctx, gen, req, narrative, analysis, dataDir, clipTextDir)
+	artlistSection := buildArtlistMatchingSection(dataDir, req, narrative, analysis, clipsRepo)
+	driveSection := buildDriveMatchingSection(dataDir, req, narrative, analysis, clipsRepo)
+	clipDriveSection := buildClipDriveMatchingSection(ctx, gen, req, narrative, analysis, dataDir, clipTextDir, clipsRepo)
 
 	sections := []ScriptSection{
 		buildMetadataSection(req),
@@ -88,6 +91,8 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 			Title: "🔎 Entity Extraction",
 			Body:  renderEntityAnalysis(analysis, timelinePlan),
 		},
+		artlistSection,
+		driveSection,
 		clipDriveSection,
 	}
 

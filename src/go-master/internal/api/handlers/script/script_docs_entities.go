@@ -8,9 +8,10 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/repository/clips"
 )
 
-func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string) (*types.FullEntityAnalysis, error) {
+func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string, clipsRepo *clips.Repository) (*types.FullEntityAnalysis, error) {
 	client := gen.GetClient()
 	if client == nil {
 		return nil, fmt.Errorf("Ollama client not initialized")
@@ -41,7 +42,6 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 	}
 
 	// Artlist DB Integration: search for clips based on artlist_phrases keywords
-	artlistDB := NewArtlistDBClient(nodeScraperDir)
 	artlistMatches := make(map[string][]string)
 
 	clean := func(s string) string {
@@ -71,13 +71,19 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 			continue
 		}
 
-		matches, err := artlistDB.SearchClipsByKeywords(keywords, 3)
-		// Even if no matches found in DB, we want to keep the phrase
-		// so it can be rendered as a suggestion in the timeline.
 		var links []string
-		if err == nil && len(matches) > 0 {
-			for _, m := range matches {
-				links = append(links, m.Link)
+		if clipsRepo != nil {
+			matches, err := clipsRepo.SearchStockByKeywords(ctx, keywords, 3)
+			if err == nil && len(matches) > 0 {
+				for _, m := range matches {
+					link := m.ExternalURL
+					if link == "" {
+						link = m.DriveLink
+					}
+					if link != "" {
+						links = append(links, link)
+					}
+				}
 			}
 		}
 		artlistMatches[phrase] = links

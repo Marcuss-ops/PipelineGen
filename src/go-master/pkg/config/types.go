@@ -2,21 +2,36 @@
 package config
 
 import "sync"
-
 // Config holds all configuration for the application.
 type Config struct {
 	mu sync.RWMutex
 
-	Server   ServerConfig   `yaml:"server"`
-	Logging  LoggingConfig  `yaml:"logging"`
-	Storage  StorageConfig  `yaml:"storage"`
-	Security SecurityConfig `yaml:"security"`
-	External ExternalConfig `yaml:"external"`
-	Paths    PathsConfig    `yaml:"paths"`
-	Drive    DriveConfig    `yaml:"drive"`
+	Server    ServerConfig    `yaml:"server"`
+	Logging   LoggingConfig   `yaml:"logging"`
+	Storage   StorageConfig   `yaml:"storage"`
+	Security  SecurityConfig  `yaml:"security"`
+	External  ExternalConfig  `yaml:"external"`
+	Paths     PathsConfig     `yaml:"paths"`
+	Drive     DriveConfig     `yaml:"drive"`
+	Harvester HarvesterConfig `yaml:"harvester"`
+}
+
+// HarvesterConfig holds settings for the content harvester.
+type HarvesterConfig struct {
+	Enabled                bool     `yaml:"enabled" default:"true"`
+	CheckInterval          string   `yaml:"check_interval" default:"1h"`
+	SearchQueries          []string `yaml:"search_queries" default:"[]"`
+	MaxResultsPerQuery     int      `yaml:"max_results_per_query" default:"20"`
+	MinViews               int      `yaml:"min_views" default:"10000"`
+	Timeframe              string   `yaml:"timeframe" default:"month"`
+	MaxConcurrentDownloads int      `yaml:"max_concurrent_downloads" default:"3"`
+	DownloadDir            string   `yaml:"download_dir" default:"./downloads"`
+	ProcessClips           bool     `yaml:"process_clips" default:"true"`
+	DriveFolderID          string   `yaml:"drive_folder_id" default:""`
 }
 
 // DriveConfig holds Google Drive configuration.
+...
 type DriveConfig struct {
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
