@@ -8,10 +8,11 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/repository/clips"
 )
 
 // buildTimelinePlan creates a timeline plan based on the request and narrative.
-func buildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir string) (*TimelinePlan, error) {
+func buildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir string, repo *clips.Repository) (*TimelinePlan, error) {
 	focus := pickTimelineFocus(req.Topic, analysis)
 
 	var plan *TimelinePlan
@@ -26,7 +27,7 @@ func buildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		plan = normalizeTimelinePlan(rawPlan, req, narrative, focus, segmentCount)
 	}
 
-	enrichTimelineSegments(plan, dataDir, req)
+	enrichTimelineSegments(plan, dataDir, req, repo, ctx)
 	return plan, nil
 }
 

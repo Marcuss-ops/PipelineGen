@@ -101,6 +101,32 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 	return err
 }
 
+// GetClipByFolderAndFilename retrieves a clip by folder ID and filename
+func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.Clip, error) {
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips WHERE folder_id = ? AND filename = ?`
+	
+	var clip models.Clip
+	var tagsJSON string
+	var createdAtStr, updatedAtStr string
+	
+	err := r.db.QueryRowContext(ctx, query, folderID, filename).Scan(
+		&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
+		&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
+		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+		&createdAtStr, &updatedAtStr,
+	)
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
+		return nil, err
+	}
+	
+	return &clip, nil
+}
+
 // GetClipByID retrieves a clip by its ID
 func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, error) {
 	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips WHERE id = ?`
@@ -218,14 +244,14 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	}
 
 	queryBase := `
-		SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at 
-		FROM clips
-		WHERE media_type = 'stock' AND (`
+		SELECT clip_id, filename, folder_id, source, tags, duration, updated_at
+		FROM stock_clips
+		WHERE (source = 'stock' OR source = 'artlist' OR source = 'dynamic' OR source = 'dynamic_job') AND (`
 
 	var conditions []string
 	var args []interface{}
 	for _, token := range tokens {
-		conditions = append(conditions, "(name LIKE ? OR tags LIKE ? OR group_name LIKE ?)")
+		conditions = append(conditions, "(filename LIKE ? OR tags LIKE ? OR source LIKE ?)")
 		pattern := "%" + token + "%"
 		args = append(args, pattern, pattern, pattern)
 	}
@@ -242,20 +268,36 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	var clips []*models.Clip
 	for rows.Next() {
 		var clip models.Clip
-		var tagsJSON string
-		var createdAtStr, updatedAtStr string
-		
-		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
-			return nil, err
+		var clipID, filename, folderID, source, tagsJSON string
+		var duration int
+		var updatedAtStr string
+
+		err := rows.Scan(&clipID, &filename, &folderID, &source, &tagsJSON, &duration, &updatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan stock_clip: %w", err)
 		}
-		
-		if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
-			return nil, err
+
+		clip.ID = clipID
+		clip.Name = filename
+		clip.Filename = filename
+		clip.FolderID = folderID
+		clip.Source = source
+		clip.Duration = duration
+		clip.MediaType = source
+
+		if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
+			clip.Tags = []string{}
 		}
-		
+
+		clip.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAtStr)
+		if clip.UpdatedAt.IsZero() {
+			clip.UpdatedAt = time.Now()
+		}
+		clip.CreatedAt = clip.UpdatedAt
+
 		clips = append(clips, &clip)
 	}
-	
+
 	return clips, nil
 }
 
