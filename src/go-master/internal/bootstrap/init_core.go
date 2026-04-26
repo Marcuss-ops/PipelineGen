@@ -29,9 +29,9 @@ type CoreDeps struct {
 	ArtlistDB        *storage.SQLiteDB
 	ClipsDB          *storage.SQLiteDB
 	ScriptsRepo      *scripts.ScriptRepository
-	ClipsRepo        *clips.Repository
+	StockDriveRepo   *clips.Repository
 	ArtlistRepo      *clips.Repository
-	ClipsOnlyRepo    *clips.Repository
+	ClipsOnlyRepo   *clips.Repository
 	VoiceoverService *voiceover.Service
 	IndexingService  *indexing.Service
 }
@@ -127,7 +127,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		ArtlistDB:        artlistDB,
 		ClipsDB:          clipsOnlyDB,
 		ScriptsRepo:      scriptsRepo,
-		ClipsRepo:        clipsRepo,
+		StockDriveRepo:   clipsRepo,
 		ArtlistRepo:      artlistRepo,
 		ClipsOnlyRepo:    clipsOnlyRepo,
 		VoiceoverService: voService,
