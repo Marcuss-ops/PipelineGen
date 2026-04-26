@@ -25,13 +25,11 @@ type CoreDeps struct {
 	ScriptGen        *ollama.Generator
 	DocClient        *drive.DocClient
 	Utility          *common.UtilityHandler
-	StockDB          *storage.SQLiteDB
-	ArtlistDB        *storage.SQLiteDB
-	ClipsDB          *storage.SQLiteDB
+	DB               *storage.SQLiteDB // Unified database
 	ScriptsRepo      *scripts.ScriptRepository
 	StockDriveRepo   *clips.Repository
 	ArtlistRepo      *clips.Repository
-	ClipsOnlyRepo   *clips.Repository
+	ClipsOnlyRepo    *clips.Repository
 	VoiceoverService *voiceover.Service
 	IndexingService  *indexing.Service
 }
@@ -53,29 +51,31 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 	voService := voiceover.NewService(cfg.Paths.PythonScriptsDir, voDir, log)
 
-	// Initialize stock_drive database (for Stock Drive clips)
-	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock_drive.db.sqlite", log)
+	// Initialize unified database with WAL mode
+	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "velox.db.sqlite", log)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize stock_drive database: %w", err)
+		return nil, nil, fmt.Errorf("failed to initialize main database: %w", err)
 	}
 
-	clipsRepo := clips.NewRepository(stockDB.DB)
-
-	// Initialize artlist database (for Artlist clips)
-	artlistDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize artlist database: %w", err)
+	// Run all migrations on the unified database
+	// 1. Orchestration tables (jobs, workers, etc.)
+	orchestrationMigrationsDir := filepath.Join("migrations", "sqlite")
+	if err := mainDB.RunMigrations(log, orchestrationMigrationsDir); err != nil {
+		return nil, nil, fmt.Errorf("failed to run orchestration migrations: %w", err)
 	}
 
-	artlistRepo := clips.NewRepository(artlistDB.DB)
-
-	// Initialize clips database (for Clips)
-	clipsOnlyDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "clips.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize clips database: %w", err)
+	// 2. Scripts tables
+	scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
+	if err := mainDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
+		return nil, nil, fmt.Errorf("failed to run scripts migrations: %w", err)
 	}
 
-	clipsOnlyRepo := clips.NewRepository(clipsOnlyDB.DB)
+	// Create repositories sharing the same database
+	clipsRepo := clips.NewRepository(mainDB.DB)
+	artlistRepo := clips.NewRepository(mainDB.DB)
+	clipsOnlyRepo := clips.NewRepository(mainDB.DB)
+
+	scriptsRepo := scripts.NewScriptRepository(mainDB.DB)
 
 	indexingService := indexing.NewService(clipsRepo, log)
 
@@ -83,38 +83,14 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	downloadDir := filepath.Join(cfg.Storage.DataDir, "downloads")
 	indexingService.StartCron(context.Background(), downloadDir, 15*time.Minute)
 
-	// Initialize scripts database with migrations
-	scriptsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "scripts.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize scripts database: %w", err)
-	}
-	
-	scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
-	if err := scriptsDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run scripts database migrations: %w", err)
-	}
-
-	scriptsRepo := scripts.NewScriptRepository(scriptsDB.DB)
-
 	cleanup := func() {
-		if stockDB != nil {
-			if err := stockDB.Close(); err != nil {
-				log.Error("Failed to close stock database", zap.Error(err))
+		if mainDB != nil {
+			// Create a backup before closing
+			if err := mainDB.Backup(); err != nil {
+				log.Warn("Failed to create backup on shutdown", zap.Error(err))
 			}
-		}
-		if artlistDB != nil {
-			if err := artlistDB.Close(); err != nil {
-				log.Error("Failed to close artlist database", zap.Error(err))
-			}
-		}
-		if clipsOnlyDB != nil {
-			if err := clipsOnlyDB.Close(); err != nil {
-				log.Error("Failed to close clips database", zap.Error(err))
-			}
-		}
-		if scriptsDB != nil {
-			if err := scriptsDB.Close(); err != nil {
-				log.Error("Failed to close scripts database", zap.Error(err))
+			if err := mainDB.Close(); err != nil {
+				log.Error("Failed to close main database", zap.Error(err))
 			}
 		}
 	}
@@ -123,9 +99,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		ScriptGen:        scriptGen,
 		DocClient:        docClient,
 		Utility:          common.NewUtilityHandler(),
-		StockDB:          stockDB,
-		ArtlistDB:        artlistDB,
-		ClipsDB:          clipsOnlyDB,
+		DB:               mainDB,
 		ScriptsRepo:      scriptsRepo,
 		StockDriveRepo:   clipsRepo,
 		ArtlistRepo:      artlistRepo,
