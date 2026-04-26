@@ -1,15 +1,57 @@
 package script
-
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"velox/go-master/internal/repository/clips"
 )
 
-// loadClipDriveCatalog loads the clip drive catalog from JSON files
-func loadClipDriveCatalog(dataDir string) ([]clipDriveRecord, error) {
+// loadClipsFromDB loads the clips from the database
+func loadClipsFromDB(repo *clips.Repository) ([]clipDriveRecord, error) {
+	if repo == nil {
+		return nil, nil
+	}
+
+	dbClips, err := repo.ListClips(context.Background(), "")
+	if err != nil {
+		return nil, err
+	}
+
+	records := make([]clipDriveRecord, 0, len(dbClips))
+	for _, c := range dbClips {
+		records = append(records, clipDriveRecord{
+			ID:           c.ID,
+			Name:         c.Name,
+			Filename:     c.Filename,
+			FolderID:     c.FolderID,
+			FolderPath:   c.FolderPath,
+			Group:        c.Group,
+			MediaType:    c.MediaType,
+			DriveLink:    c.DriveLink,
+			DownloadLink: c.DownloadLink,
+			Tags:         c.Tags,
+		})
+	}
+	return records, nil
+}
+
+// loadClipDriveCatalog loads the clip drive catalog from JSON files (legacy) or DB
+func loadClipDriveCatalog(dataDir string, repo *clips.Repository) ([]clipDriveRecord, error) {
+	// Try DB first (Single Source of Truth)
+	if repo != nil {
+		records, err := loadClipsFromDB(repo)
+		if err == nil && len(records) > 0 {
+			return records, nil
+		}
+	}
+
+	// Fallback to JSON
 	searchRoots := []string{}
+...
+
 	if trimmed := strings.TrimSpace(dataDir); trimmed != "" {
 		searchRoots = append(searchRoots, trimmed)
 	}

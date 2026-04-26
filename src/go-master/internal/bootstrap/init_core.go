@@ -2,14 +2,18 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/service/indexing"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
@@ -23,7 +27,9 @@ type CoreDeps struct {
 	Utility          *common.UtilityHandler
 	StockDB          *storage.SQLiteDB
 	ScriptsRepo      *scripts.ScriptRepository
+	ClipsRepo        *clips.Repository
 	VoiceoverService *voiceover.Service
+	IndexingService  *indexing.Service
 }
 
 // initCoreMinimal creates only the services needed by the text/doc server.
@@ -46,28 +52,33 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	// Initialize stock database with migrations
 	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock.db.sqlite", log)
 	if err != nil {
-		log.Warn("Stock database not initialized", zap.Error(err))
-	} else {
-		migrationsDir := filepath.Join("migrations", "sqlite")
-		if err := stockDB.RunMigrations(log, migrationsDir); err != nil {
-			log.Warn("Failed to run migrations", zap.Error(err))
-		}
+		return nil, nil, fmt.Errorf("failed to initialize stock database: %w", err)
 	}
+	
+	migrationsDir := filepath.Join("migrations", "sqlite")
+	if err := stockDB.RunMigrations(log, migrationsDir); err != nil {
+		return nil, nil, fmt.Errorf("failed to run stock database migrations: %w", err)
+	}
+
+	clipsRepo := clips.NewRepository(stockDB.DB)
+	indexingService := indexing.NewService(clipsRepo, log)
+
+	// Start indexing cron (e.g., every 15 minutes)
+	downloadDir := filepath.Join(cfg.Storage.DataDir, "downloads")
+	indexingService.StartCron(context.Background(), downloadDir, 15*time.Minute)
 
 	// Initialize scripts database with migrations
 	scriptsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "scripts.db.sqlite", log)
 	if err != nil {
-		log.Warn("Scripts database not initialized", zap.Error(err))
-	} else {
-		scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
-		if err := scriptsDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
-			log.Warn("Failed to run scripts migrations", zap.Error(err))
-		}
+		return nil, nil, fmt.Errorf("failed to initialize scripts database: %w", err)
 	}
-	var scriptsRepo *scripts.ScriptRepository
-	if scriptsDB != nil {
-		scriptsRepo = scripts.NewScriptRepository(scriptsDB.DB)
+	
+	scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
+	if err := scriptsDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
+		return nil, nil, fmt.Errorf("failed to run scripts database migrations: %w", err)
 	}
+
+	scriptsRepo := scripts.NewScriptRepository(scriptsDB.DB)
 
 	cleanup := func() {
 		if stockDB != nil {
@@ -88,6 +99,9 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		Utility:          common.NewUtilityHandler(),
 		StockDB:          stockDB,
 		ScriptsRepo:      scriptsRepo,
+		ClipsRepo:        clipsRepo,
 		VoiceoverService: voService,
+		IndexingService:  indexingService,
 	}, cleanup, nil
 }
+
