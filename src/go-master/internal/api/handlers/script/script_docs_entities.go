@@ -11,7 +11,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 )
 
-func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string, clipsRepo *clips.Repository) (*types.FullEntityAnalysis, error) {
+func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string, clipsRepo, artlistRepo *clips.Repository) (*types.FullEntityAnalysis, error) {
 	client := gen.GetClient()
 	if client == nil {
 		return nil, fmt.Errorf("Ollama client not initialized")
@@ -72,8 +72,8 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 		}
 
 		var links []string
-		if clipsRepo != nil {
-			matches, err := clipsRepo.SearchStockByKeywords(ctx, keywords, 3)
+		if artlistRepo != nil {
+			matches, err := artlistRepo.SearchStockByKeywords(ctx, keywords, 3)
 			if err == nil && len(matches) > 0 {
 				for _, m := range matches {
 					link := m.ExternalURL
