@@ -3,6 +3,8 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -92,16 +94,31 @@ func (s *SQLiteDB) Backup() error {
 	}
 
 	backupPath := s.dbPath + time.Now().Format(".20060102_150405.bak")
-	backupDB, err := sql.Open("sqlite3", backupPath)
-	if err != nil {
-		return fmt.Errorf("failed to create backup database: %w", err)
-	}
-	defer backupDB.Close()
+	return s.BackupTo(backupPath)
+}
 
-	// Use SQLite backup API
-	_, err = s.DB.Exec(fmt.Sprintf("BACKUP TO '%s'", backupPath))
+// BackupTo creates a backup of the database file to the specified path.
+func (s *SQLiteDB) BackupTo(backupPath string) error {
+	if s.dbPath == "" {
+		return fmt.Errorf("database path not set")
+	}
+
+	// Use file copy for backup (simple and reliable)
+	src, err := os.Open(s.dbPath)
 	if err != nil {
-		return fmt.Errorf("failed to backup database: %w", err)
+		return fmt.Errorf("failed to open source database: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to create backup file: %w", err)
+	}
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	if err != nil {
+		return fmt.Errorf("failed to copy database: %w", err)
 	}
 
 	return nil

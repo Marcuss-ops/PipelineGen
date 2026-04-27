@@ -1,6 +1,7 @@
 package scripts
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -157,9 +158,44 @@ func (r *ScriptRepository) CreateNewVersion(parentID int64, script *ScriptRecord
 
 func (r *ScriptRepository) getNextVersion(parentID int64) int {
 	var maxVersion int
-	err := r.db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM scripts WHERE id = ? OR parent_script_id = ?", parentID, parentID).Scan(&maxVersion)
+	err := r.db.QueryRow("SELECT COALESCE(MAX(version),0) FROM scripts WHERE id = ? OR parent_script_id = ?", parentID, parentID).Scan(&maxVersion)
 	if err != nil {
 		return 1
 	}
 	return maxVersion + 1
+}
+
+// HardDeleteOldDeletedScripts permanently removes scripts marked as deleted more than daysOld days ago
+func (r *ScriptRepository) HardDeleteOldDeletedScripts(ctx context.Context, daysOld int) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		DELETE FROM scripts
+		WHERE is_deleted = 1
+		AND updated_at < datetime('now', ?)
+	`, fmt.Sprintf("-%d days", daysOld))
+	if err != nil {
+		return 0, fmt.Errorf("failed to hard delete old scripts: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	return count, nil
+}
+
+// VacuumDatabase runs VACUUM on the scripts database to reclaim space
+func (r *ScriptRepository) VacuumDatabase(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, "VACUUM")
+	if err != nil {
+		return fmt.Errorf("failed to vacuum database: %w", err)
+	}
+	return nil
+}
+
+// AnalyzeDatabase runs ANALYZE to update query planner statistics
+func (r *ScriptRepository) AnalyzeDatabase(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, "ANALYZE")
+	if err != nil {
+		return fmt.Errorf("failed to analyze database: %w", err)
+	}
+	return nil
 }

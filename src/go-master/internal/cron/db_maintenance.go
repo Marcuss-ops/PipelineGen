@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -54,9 +55,18 @@ func (j *DBMaintenanceJob) Run(ctx context.Context) error {
 
 // cleanupDeletedScripts removes soft-deleted scripts older than 30 days
 func (j *DBMaintenanceJob) cleanupDeletedScripts(ctx context.Context) error {
-	// This would require adding a hard delete method to the repository
-	// For now, we just log the intent
-	j.log.Info("Cleanup deleted scripts task - placeholder for hard delete implementation")
+	if j.scriptsRepo == nil {
+		j.log.Info("Scripts repository not available, skipping cleanup")
+		return nil
+	}
+
+	// Hard delete scripts marked as deleted more than 30 days ago
+	result, err := j.scriptsRepo.HardDeleteOldDeletedScripts(ctx, 30)
+	if err != nil {
+		return fmt.Errorf("failed to cleanup deleted scripts: %w", err)
+	}
+
+	j.log.Info("Cleaned up old deleted scripts", zap.Int64("deleted_count", result))
 	return nil
 }
 
@@ -65,13 +75,19 @@ func (j *DBMaintenanceJob) vacuumDatabases(ctx context.Context) error {
 	j.log.Info("Vacuuming databases")
 
 	if j.scriptsRepo != nil {
-		// Note: To implement VACUUM, we would need access to the underlying *sql.DB
-		// This is a placeholder for the actual implementation
-		j.log.Info("Vacuum scripts database - placeholder")
+		if err := j.scriptsRepo.VacuumDatabase(ctx); err != nil {
+			j.log.Error("Failed to vacuum scripts database", zap.Error(err))
+		} else {
+			j.log.Info("Vacuumed scripts database")
+		}
 	}
 
 	if j.stockDB != nil && j.stockDB.DB != nil {
-		j.log.Info("Vacuum stock database - placeholder")
+		if _, err := j.stockDB.DB.ExecContext(ctx, "VACUUM"); err != nil {
+			j.log.Error("Failed to vacuum stock database", zap.Error(err))
+		} else {
+			j.log.Info("Vacuumed stock database")
+		}
 	}
 
 	return nil
@@ -81,8 +97,21 @@ func (j *DBMaintenanceJob) vacuumDatabases(ctx context.Context) error {
 func (j *DBMaintenanceJob) updateStats(ctx context.Context) error {
 	j.log.Info("Updating database statistics")
 
-	// ANALYZE command could be run here to update statistics
-	// This is a placeholder for the actual implementation
+	if j.scriptsRepo != nil {
+		if err := j.scriptsRepo.AnalyzeDatabase(ctx); err != nil {
+			j.log.Error("Failed to analyze scripts database", zap.Error(err))
+		} else {
+			j.log.Info("Updated scripts database statistics")
+		}
+	}
+
+	if j.stockDB != nil && j.stockDB.DB != nil {
+		if _, err := j.stockDB.DB.ExecContext(ctx, "ANALYZE"); err != nil {
+			j.log.Error("Failed to analyze stock database", zap.Error(err))
+		} else {
+			j.log.Info("Updated stock database statistics")
+		}
+	}
 
 	return nil
 }

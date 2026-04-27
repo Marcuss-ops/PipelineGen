@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -230,32 +231,44 @@ func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Cli
 		args = append(args, group)
 	}
 
+	log.Printf("[DEBUG] ListClips: query=%s, args=%v", query, args)
+
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		log.Printf("[DEBUG] ListClips: query error=%v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
 	var clips []*models.Clip
+	rowCount := 0
 	for rows.Next() {
+		rowCount++
 		var clip models.Clip
 		var tagsJSON string
 		var createdAtStr, updatedAtStr string
 
 		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
+			log.Printf("[DEBUG] ListClips: scan error=%v", err)
 			return nil, err
 		}
 
 		if err := parseClipData(&clip, tagsJSON, createdAtStr, updatedAtStr); err != nil {
+			log.Printf("[DEBUG] ListClips: parseClipData error=%v", err)
 			return nil, err
 		}
 
 		// Load tags from normalized table
 		if err := r.loadClipTags(ctx, &clip); err != nil {
+			log.Printf("[DEBUG] ListClips: loadClipTags error=%v", err)
 			return nil, err
 		}
 
 		clips = append(clips, &clip)
+	}
+	log.Printf("[DEBUG] ListClips: rowCount=%d, returned clips=%d", rowCount, len(clips))
+	if err := rows.Err(); err != nil {
+		log.Printf("[DEBUG] ListClips: rows.Err()=%v", err)
 	}
 
 	return clips, nil
@@ -326,39 +339,49 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		return nil, nil
 	}
 
+	log.Printf("[DEBUG] SearchStockByKeywords: tokens=%v", tokens)
+
 	// Build query with normalized tags table
 	queryBase := `
-		SELECT DISTINCT c.id, c.name, c.filename, c.folder_id, c.source, c.tags, c.duration, c.updated_at
+		SELECT DISTINCT c.id, c.name, c.filename, c.folder_id, c.folder_path, c.group_name, c.source, c.tags, c.duration, c.updated_at
 		FROM clips c
 		LEFT JOIN clip_tags ct ON c.id = ct.clip_id
-		WHERE (c.source = 'stock' OR c.source = 'artlist' OR c.source = 'dynamic' OR c.source = 'dynamic_job') AND (`
+		WHERE (c.source = 'stock' OR c.source = 'artlist' OR c.source = 'dynamic' OR c.source = 'dynamic_job' OR c.source = 'clips' OR c.source = 'stock_drive') AND (`
 
 	var conditions []string
 	var args []interface{}
 	for _, token := range tokens {
-		conditions = append(conditions, "(c.filename LIKE ? OR c.tags LIKE ? OR c.source LIKE ? OR ct.tag LIKE ?)")
+		conditions = append(conditions, "(c.filename LIKE ? OR c.folder_path LIKE ? OR c.group_name LIKE ? OR c.tags LIKE ? OR c.source LIKE ? OR ct.tag LIKE ?)")
 		pattern := "%" + token + "%"
-		args = append(args, pattern, pattern, pattern, pattern)
+		args = append(args, pattern, pattern, pattern, pattern, pattern, pattern)
 	}
 
 	query := queryBase + strings.Join(conditions, " OR ") + ") LIMIT ?"
 	args = append(args, limit)
 
+	log.Printf("[DEBUG] SearchStockByKeywords: query=%s (single line)", strings.ReplaceAll(query, "\n", " "))
+	log.Printf("[DEBUG] SearchStockByKeywords: args=%v", args)
+	log.Printf("[DEBUG] SearchStockByKeywords: number of args=%d, number of placeholders=%d", len(args), strings.Count(query, "?"))
+
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		log.Printf("[DEBUG] SearchStockByKeywords: query error=%v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
 	var clips []*models.Clip
+	rowCount := 0
 	for rows.Next() {
+		rowCount++
 		var clip models.Clip
-		var clipID, name, filename, folderID, source, tagsJSON string
+		var clipID, name, filename, folderID, folderPath, groupName, source, tagsJSON string
 		var duration int
 		var updatedAtStr string
 
-		err := rows.Scan(&clipID, &name, &filename, &folderID, &source, &tagsJSON, &duration, &updatedAtStr)
+		err := rows.Scan(&clipID, &name, &filename, &folderID, &folderPath, &groupName, &source, &tagsJSON, &duration, &updatedAtStr)
 		if err != nil {
+			log.Printf("[DEBUG] SearchStockByKeywords: scan error=%v", err)
 			return nil, fmt.Errorf("failed to scan clip: %w", err)
 		}
 
@@ -366,12 +389,15 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		clip.Name = name
 		clip.Filename = filename
 		clip.FolderID = folderID
+		clip.FolderPath = folderPath
+		clip.Group = groupName
 		clip.Source = source
 		clip.Duration = duration
 		clip.MediaType = source
 
 		// Load tags from normalized table
 		if err := r.loadClipTags(ctx, &clip); err != nil {
+			log.Printf("[DEBUG] SearchStockByKeywords: loadClipTags error=%v", err)
 			return nil, err
 		}
 
@@ -390,6 +416,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 
 		clips = append(clips, &clip)
 	}
+	log.Printf("[DEBUG] SearchStockByKeywords: rowCount=%d, clips returned=%d", rowCount, len(clips))
 
 	return clips, nil
 }
