@@ -55,13 +55,23 @@ func (s *Service) IndexDirectory(ctx context.Context, rootDir string) error {
 		filename := d.Name()
 		name := strings.TrimSuffix(filename, filepath.Ext(filename))
 
-		// Check if clip already exists (by name and path for now, as ID is generated)
-		// Optimization: search by filename and folder_path
-		
+		// Check if clip already exists by folder_path + filename to avoid duplicates
+		existingClip, err := s.repo.GetClipByFolderAndFilename(ctx, folderPath, filename)
+		if err != nil {
+			s.log.Warn("Failed to check existing clip", zap.String("name", name), zap.Error(err))
+		}
+
+		clipID := uuid.New().String()
+		if existingClip != nil {
+			clipID = existingClip.ID // Reuse existing ID to prevent duplicates
+			s.log.Debug("Reusing existing clip ID", zap.String("name", name), zap.String("id", clipID))
+		}
+
 		clip := &models.Clip{
-			ID:           uuid.New().String(), // In a real scenario, we might want a stable ID based on path
+			ID:           clipID,
 			Name:         name,
 			Filename:     filename,
+			FolderID:     folderPath,
 			FolderPath:   folderPath,
 			Group:        folderPath,
 			MediaType:    "clip",
