@@ -2,12 +2,15 @@ package script
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/matching"
+	"velox/go-master/pkg/models"
 )
 
 // ChapterClipMatch represents clip matches for a chapter/segment
@@ -19,9 +22,9 @@ type ChapterClipMatch struct {
 
 // clipMatchResult represents a clip match with metadata
 type clipMatchResult struct {
-	Clip     clips.Clip
-	Score    float64
-	Reason   string
+	Clip        models.Clip
+	Score       int
+	Reason      string
 	MatchedTags []string
 }
 
@@ -68,9 +71,9 @@ func MatchChapterClips(
 			if strings.Contains(strings.ToLower(seg.OpeningSentence), strings.ToLower(phrase)) ||
 				strings.Contains(strings.ToLower(phrase), strings.ToLower(seg.OpeningSentence)) {
 				result.OpeningSentenceMatches = append(result.OpeningSentenceMatches, clipMatchResult{
-					Clip:       matchToClip(match),
-					Score:      match.Score,
-					Reason:     match.Reason,
+					Clip:        matchToClip(match),
+					Score:       match.Score,
+					Reason:      "",
 					MatchedTags: tags,
 				})
 			}
@@ -78,9 +81,9 @@ func MatchChapterClips(
 			if strings.Contains(strings.ToLower(seg.ClosingSentence), strings.ToLower(phrase)) ||
 				strings.Contains(strings.ToLower(phrase), strings.ToLower(seg.ClosingSentence)) {
 				result.ClosingSentenceMatches = append(result.ClosingSentenceMatches, clipMatchResult{
-					Clip:       matchToClip(match),
-					Score:      match.Score,
-					Reason:     match.Reason,
+					Clip:        matchToClip(match),
+					Score:       match.Score,
+					Reason:      "",
 					MatchedTags: tags,
 				})
 			}
@@ -235,7 +238,7 @@ func searchClipsInDB(ctx context.Context, repo *clips.Repository, terms []string
 
 		matches = append(matches, scoredMatch{
 			Title:  clip.Name,
-			Score:  score,
+			Score:  int(score),
 			Source: clip.Source + " db",
 			Link:   clip.DriveLink,
 			Details: strings.Join(clip.Tags, ", "),
@@ -250,7 +253,7 @@ func searchClipsInDB(ctx context.Context, repo *clips.Repository, terms []string
 }
 
 // scoreClipForPhrase scores a clip's relevance to a phrase
-func scoreClipForPhrase(clip clips.Clip, phrase string, terms []string) float64 {
+func scoreClipForPhrase(clip *models.Clip, phrase string, terms []string) float64 {
 	clipText := strings.ToLower(strings.Join([]string{
 		clip.Name,
 		clip.Filename,
@@ -261,7 +264,6 @@ func scoreClipForPhrase(clip clips.Clip, phrase string, terms []string) float64 
 	}, " "))
 
 	phraseNorm := strings.ToLower(phrase)
-	phraseTokens := strings.Fields(phraseNorm)
 
 	// Count matching terms
 	hitCount := 0
@@ -313,9 +315,9 @@ func searchArtlistAndSave(
 	return nil
 }
 
-// matchToClip converts a scoredMatch to a clips.Clip
-func matchToClip(match scoredMatch) clips.Clip {
-	return clips.Clip{
+// matchToClip converts a scoredMatch to a models.Clip
+func matchToClip(match scoredMatch) models.Clip {
+	return models.Clip{
 		Name:       match.Title,
 		DriveLink:  match.Link,
 		Source:     strings.TrimSuffix(match.Source, " db"),
