@@ -92,3 +92,34 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 
 	return matches, nil
 }
+
+// LookupClipURLByVideoID returns the best known URL for a given Artlist video ID.
+func (c *ArtlistDBClient) LookupClipURLByVideoID(videoID string) (string, error) {
+	videoID = strings.TrimSpace(videoID)
+	if videoID == "" {
+		return "", nil
+	}
+
+	db, err := sql.Open("sqlite3", c.dbPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open artlist db: %v", err)
+	}
+	defer db.Close()
+
+	var url string
+	err = db.QueryRow(`
+		SELECT url
+		FROM video_links
+		WHERE video_id = ?
+		ORDER BY id ASC
+		LIMIT 1
+	`, videoID).Scan(&url)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to lookup artlist url: %v", err)
+	}
+
+	return strings.TrimSpace(url), nil
+}

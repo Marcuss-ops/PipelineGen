@@ -10,6 +10,7 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/models"
 )
 
 // buildStockCatalogContext builds a context string from stock catalog.
@@ -127,11 +128,11 @@ func matchStockForSegment(repo *clips.Repository, ctx context.Context, topic str
 	}
 
 	type folderMatch struct {
-		FolderID  string
+		FolderID   string
 		FolderPath string
-		MaxScore  int
-		BestTitle string
-		Source    string
+		MaxScore   int
+		BestTitle  string
+		Source     string
 	}
 	folderMatches := make(map[string]*folderMatch)
 
@@ -146,7 +147,7 @@ func matchStockForSegment(repo *clips.Repository, ctx context.Context, topic str
 			clip.Source,
 			clip.Category,
 		}, " ")), terms)
-		
+
 		if score == 0 {
 			continue
 		}
@@ -176,7 +177,7 @@ func matchStockForSegment(repo *clips.Repository, ctx context.Context, topic str
 		if fm.FolderID != "" {
 			link = "https://drive.google.com/drive/folders/" + fm.FolderID
 		}
-		
+
 		// The title must be the folder name for clarity, not the clip name
 		title := fm.FolderPath
 		if idx := strings.LastIndex(title, "/"); idx != -1 {
@@ -198,8 +199,8 @@ func matchStockForSegment(repo *clips.Repository, ctx context.Context, topic str
 	sort.SliceStable(scored, func(i, j int) bool {
 		return scored[i].Score > scored[j].Score
 	})
-	if len(scored) > 8 {
-		scored = scored[:8]
+	if len(scored) > 1 {
+		scored = scored[:1] // Limit to exactly ONE drive folder link per timestamp
 	}
 	return scored
 }
@@ -215,7 +216,7 @@ func collectBodyTerms(seg TimelineSegment) []string {
 }
 
 // enrichTimelineSegments enriches timeline segments with stock and artlist matches.
-func enrichTimelineSegments(plan *TimelinePlan, dataDir string, req ScriptDocsRequest, repo *clips.Repository, ctx context.Context, gen *ollama.Generator, analysis *types.FullEntityAnalysis) {
+func enrichTimelineSegments(plan *TimelinePlan, dataDir string, req ScriptDocsRequest, repo *clips.Repository, ctx context.Context, gen *ollama.Generator, analysis *types.FullEntityAnalysis, nodeScraperDir string) {
 	if plan == nil || len(plan.Segments) == 0 {
 		return
 	}
@@ -223,58 +224,16 @@ func enrichTimelineSegments(plan *TimelinePlan, dataDir string, req ScriptDocsRe
 	for i := range plan.Segments {
 		seg := &plan.Segments[i]
 
-		// Use new chapter-based matching
-		chapterMatches := MatchChapterClips(ctx, gen, repo, *seg, req.Topic)
+		// Always use folder-level matching for StockMatches
+		stockMatches := matchStockForSegment(repo, ctx, req.Topic, *seg)
+		seg.StockMatches = cloneScoredMatches(stockMatches)
 
-		// Set stock matches from chapter matching
-		if len(chapterMatches.AllMatches) > 0 {
-			seg.StockMatches = cloneScoredMatches(chapterMatches.AllMatches)
-		} else {
-			// Fallback to old method
-			stockMatches := matchStockForSegment(repo, ctx, req.Topic, *seg)
-			seg.StockMatches = cloneScoredMatches(stockMatches)
-		}
+		// Compute a single Artlist match per segment using the Artlist DB first,
+		// then falling back to the live scraper and local persistence.
+		seg.ArtlistMatches = matchArtlistForSegment(ctx, repo, *seg, analysis, nodeScraperDir)
 
-		// Populate ArtlistMatches and DriveMatches
-		artlistFromDB := filterMatchesBySource(seg.StockMatches, "artlist")
-		if len(artlistFromDB) == 0 {
-			seg.ArtlistMatches = loadArtlistFromLegacyJSON(dataDir, req.Topic, *seg)
-		} else {
-			seg.ArtlistMatches = artlistFromDB
-		}
-
-		// If still no matches, add suggestions from analysis if available
-		if len(seg.ArtlistMatches) == 0 && gen != nil && analysis != nil {
-			for _, segEnt := range analysis.SegmentEntities {
-				for phrase, keywords := range segEnt.ArtlistPhrases {
-					match := false
-					for _, k := range keywords {
-						for _, sk := range seg.Keywords {
-							if strings.Contains(strings.ToLower(sk), strings.ToLower(k)) {
-								match = true
-								break
-							}
-						}
-						if match {
-							break
-						}
-					}
-					if match {
-						tags := suggestArtlistSearchTags(ctx, gen, req, phrase, segEnt.SegmentText)
-						if len(tags) > 0 {
-							seg.ArtlistMatches = append(seg.ArtlistMatches, scoredMatch{
-								Title:   phrase,
-								Source:  "artlist_suggestion",
-								Score:   50,
-								Details: strings.Join(tags, ", "),
-							})
-						}
-					}
-				}
-			}
-		}
-
-		seg.DriveMatches = filterMatchesBySource(seg.StockMatches, "stock", "clips", "stock_drive")
+		// Set DriveMatches to a single best folder-level match only
+		seg.DriveMatches = pickTopScoredMatches(filterMatchesBySource(seg.StockMatches, "stock", "clips", "stock_drive"), 1)
 	}
 }
 
@@ -296,58 +255,29 @@ func filterMatchesBySource(matches []scoredMatch, sources ...string) []scoredMat
 	return filtered
 }
 
-func loadArtlistFromLegacyJSON(dataDir string, topic string, seg TimelineSegment) []scoredMatch {
-	path := filepath.Join(dataDir, "artlist_stock_index.json")
-	var index artlistIndex
-	if err := readJSON(path, &index); err != nil {
+// pickTopScoredMatches sorts matches by score and returns the top N items.
+func pickTopScoredMatches(matches []scoredMatch, limit int) []scoredMatch {
+	if len(matches) == 0 || limit <= 0 {
 		return nil
 	}
 
-	terms := collectTopicTerms(topic)
-	terms = append(terms, seg.Keywords...)
-	terms = append(terms, seg.Entities...)
-	terms = uniqueStrings(terms)
-
-	matches := make([]scoredMatch, 0, 8)
-	seen := make(map[string]bool)
-
-	for _, clip := range index.Clips {
-		title := clip.DisplayName()
-		if seen[title] {
-			continue
+	cloned := make([]scoredMatch, len(matches))
+	copy(cloned, matches)
+	sort.SliceStable(cloned, func(i, j int) bool {
+		if cloned[i].Score == cloned[j].Score {
+			return strings.ToLower(cloned[i].Title) < strings.ToLower(cloned[j].Title)
 		}
-
-		score := scoreText(strings.ToLower(strings.Join([]string{
-			title,
-			clip.Filename,
-			clip.Folder,
-			clip.Category,
-			strings.Join(clip.Tags, " "),
-			clip.Source,
-		}, " ")), terms)
-
-		if score == 0 {
-			continue
-		}
-
-		seen[title] = true
-		matches = append(matches, scoredMatch{
-			Title:   title,
-			Source:  "artlist local index",
-			Link:    clip.PickLink(),
-			Score:   score,
-			Details: strings.Join(clip.Tags, ", "),
-		})
-	}
-
-	sort.SliceStable(matches, func(i, j int) bool {
-		return matches[i].Score > matches[j].Score
+		return cloned[i].Score > cloned[j].Score
 	})
-
-	if len(matches) > 4 {
-		matches = matches[:4]
+	if len(cloned) > limit {
+		cloned = cloned[:limit]
 	}
-	return matches
+	return cloned
+}
+
+func loadArtlistFromLegacyJSON(dataDir string, topic string, seg TimelineSegment) []scoredMatch {
+	// Legacy JSON loading disabled - use DB only
+	return nil
 }
 
 // cloneScoredMatches creates a copy of scored matches.
@@ -358,4 +288,207 @@ func cloneScoredMatches(matches []scoredMatch) []scoredMatch {
 	cloned := make([]scoredMatch, len(matches))
 	copy(cloned, matches)
 	return cloned
+}
+
+func matchArtlistForSegment(ctx context.Context, repo *clips.Repository, seg TimelineSegment, analysis *types.FullEntityAnalysis, nodeScraperDir string) []scoredMatch {
+	terms := uniqueStrings(append([]string{}, seg.Keywords...))
+	terms = append(terms, seg.Entities...)
+	terms = append(terms, collectTopicTerms(seg.OpeningSentence)...)
+	terms = append(terms, collectTopicTerms(seg.ClosingSentence)...)
+
+	candidatePhrases := collectArtlistCandidatePhrases(analysis, seg)
+
+	if analysis != nil {
+		for _, extracted := range analysis.SegmentEntities {
+			for phrase, keywords := range extracted.ArtlistPhrases {
+				if artlistPhraseMatchesSegment(phrase, seg) {
+					terms = append(terms, keywords...)
+					terms = append(terms, collectTopicTerms(phrase)...)
+				}
+			}
+		}
+	}
+
+	terms = uniqueStrings(terms)
+	if len(terms) == 0 && len(candidatePhrases) == 0 {
+		return nil
+	}
+
+	if len(candidatePhrases) == 0 {
+		candidatePhrases = []string{seg.OpeningSentence, seg.ClosingSentence}
+	}
+	candidatePhrases = uniqueStrings(candidatePhrases)
+
+	if strings.TrimSpace(nodeScraperDir) != "" {
+		artlistDBClient := NewArtlistDBClient(nodeScraperDir)
+		if artlistDBClient != nil {
+			if len(candidatePhrases) > 0 {
+				for _, phrase := range candidatePhrases {
+					phraseKeywords := collectTopicTerms(phrase)
+					if len(phraseKeywords) == 0 {
+						phraseKeywords = terms
+					}
+					if matches, err := artlistDBClient.SearchClipsByKeywords(phraseKeywords, 5); err == nil && len(matches) > 0 {
+						best := pickTopScoredMatches(matches, 1)
+						if len(best) > 0 && strings.TrimSpace(best[0].Link) != "" {
+							best[0].Title = phrase
+							best[0].Details = best[0].Source
+							return best
+						}
+					}
+				}
+			}
+			if matches, err := artlistDBClient.SearchClipsByKeywords(terms, 5); err == nil && len(matches) > 0 {
+				best := pickTopScoredMatches(matches, 1)
+				if len(best) > 0 && strings.TrimSpace(best[0].Link) != "" {
+					best[0].Title = firstNonEmptyString(candidatePhrases)
+					best[0].Details = best[0].Source
+					return best
+				}
+			}
+		}
+	}
+
+	if repo != nil {
+		if clips, err := repo.SearchStockByKeywords(ctx, terms, 8); err == nil && len(clips) > 0 {
+			artlistOnly := filterMatchesBySource(clipMatchesToScored(clips, nodeScraperDir), "artlist")
+			best := pickTopScoredMatches(artlistOnly, 1)
+			if len(best) > 0 && strings.TrimSpace(best[0].Link) != "" {
+				best[0].Title = firstNonEmptyString(candidatePhrases)
+				return best
+			}
+		}
+	}
+
+	if strings.TrimSpace(nodeScraperDir) == "" {
+		return nil
+	}
+
+	searchTerm := strings.Join(terms, " ")
+	if len(terms) > 2 {
+		searchTerm = strings.Join(terms[:2], " ")
+	}
+
+	scrapedClips, err := fetchFromArtlistScraper(ctx, searchTerm, nodeScraperDir)
+	if err != nil || len(scrapedClips) == 0 {
+		return nil
+	}
+
+	matches := make([]scoredMatch, 0, len(scrapedClips))
+	for _, clip := range scrapedClips {
+		for _, term := range terms {
+			if term != "" {
+				clip.Tags = append(clip.Tags, term)
+			}
+		}
+		if repo != nil {
+			_ = repo.UpsertClip(ctx, &clip)
+		}
+
+		link := resolveArtlistClipLink(clip, nodeScraperDir)
+		if strings.TrimSpace(link) == "" {
+			continue
+		}
+
+		matches = append(matches, scoredMatch{
+			Title:   firstNonEmptyString(candidatePhrases),
+			Score:   90,
+			Source:  "artlist live scrape",
+			Link:    link,
+			Details: clip.Name,
+		})
+	}
+
+	return pickTopScoredMatches(matches, 1)
+}
+
+func collectArtlistCandidatePhrases(analysis *types.FullEntityAnalysis, seg TimelineSegment) []string {
+	if analysis == nil {
+		return nil
+	}
+
+	var phrases []string
+	for _, extracted := range analysis.SegmentEntities {
+		for phrase, keywords := range extracted.ArtlistPhrases {
+			phrase = strings.TrimSpace(phrase)
+			if phrase == "" {
+				continue
+			}
+			if len(keywords) == 0 {
+				phrases = append(phrases, phrase)
+				continue
+			}
+			phrases = append(phrases, phrase)
+		}
+		if len(phrases) == 0 {
+			for _, phrase := range extracted.FrasiImportanti {
+				phrase = strings.TrimSpace(phrase)
+				if phrase != "" {
+					phrases = append(phrases, phrase)
+				}
+			}
+		}
+	}
+
+	return uniqueStrings(phrases)
+}
+
+func resolveArtlistClipLink(clip models.Clip, nodeScraperDir string) string {
+	if strings.TrimSpace(clip.ExternalURL) != "" {
+		return strings.TrimSpace(clip.ExternalURL)
+	}
+	if strings.TrimSpace(clip.DriveLink) != "" {
+		return strings.TrimSpace(clip.DriveLink)
+	}
+
+	if strings.TrimSpace(nodeScraperDir) == "" || strings.TrimSpace(clip.ID) == "" {
+		return ""
+	}
+
+	client := NewArtlistDBClient(nodeScraperDir)
+	if client == nil {
+		return ""
+	}
+
+	if link, err := client.LookupClipURLByVideoID(clip.ID); err == nil && strings.TrimSpace(link) != "" {
+		return link
+	}
+
+	keywords := collectTopicTerms(strings.Join([]string{
+		clip.Name,
+		clip.Filename,
+		clip.Metadata,
+	}, " "))
+	if len(keywords) > 0 {
+		if matches, err := client.SearchClipsByKeywords(keywords, 1); err == nil {
+			if best := selectBestMatchLink(matches); strings.TrimSpace(best) != "" {
+				return best
+			}
+		}
+	}
+
+	return ""
+}
+
+func artlistPhraseMatchesSegment(phrase string, seg TimelineSegment) bool {
+	phrase = strings.ToLower(strings.TrimSpace(phrase))
+	if phrase == "" {
+		return false
+	}
+
+	haystack := strings.ToLower(strings.Join([]string{
+		seg.OpeningSentence,
+		seg.ClosingSentence,
+		strings.Join(seg.Keywords, " "),
+		strings.Join(seg.Entities, " "),
+	}, " "))
+	if strings.Contains(haystack, phrase) {
+		return true
+	}
+
+	if len(seg.Keywords) == 0 && len(seg.Entities) == 0 && strings.TrimSpace(seg.OpeningSentence) == "" && strings.TrimSpace(seg.ClosingSentence) == "" {
+		return true
+	}
+
+	return false
 }
