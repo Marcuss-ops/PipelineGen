@@ -92,6 +92,28 @@ func sortTopMatches(matches []scoredMatch, limit int) []scoredMatch {
 	return matches
 }
 
+func selectBestMatchLink(matches []scoredMatch) string {
+	if len(matches) == 0 {
+		return ""
+	}
+
+	cloned := make([]scoredMatch, len(matches))
+	copy(cloned, matches)
+	sort.SliceStable(cloned, func(i, j int) bool {
+		if cloned[i].Score == cloned[j].Score {
+			return strings.ToLower(cloned[i].Title) < strings.ToLower(cloned[j].Title)
+		}
+		return cloned[i].Score > cloned[j].Score
+	})
+
+	for _, match := range cloned {
+		if strings.TrimSpace(match.Link) != "" {
+			return strings.TrimSpace(match.Link)
+		}
+	}
+	return ""
+}
+
 func renderMatches(matches []scoredMatch) string {
 	var b strings.Builder
 	for i, match := range matches {

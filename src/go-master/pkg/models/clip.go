@@ -19,6 +19,8 @@ type Clip struct {
 	ExternalURL  string    `json:"external_url"`
 	Duration     int       `json:"duration"`
 	Metadata     string    `json:"metadata"`
+	FileHash     string    `json:"file_hash"`
+	LocalPath    string    `json:"local_path"` // Path to downloaded local file
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

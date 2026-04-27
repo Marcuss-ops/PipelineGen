@@ -77,3 +77,13 @@ type Client struct {
 	model          string
 	circuitBreaker *CircuitBreaker
 }
+
+// BaseURL returns the configured Ollama base URL.
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
+// Model returns the configured primary model.
+func (c *Client) Model() string {
+	return c.model
+}

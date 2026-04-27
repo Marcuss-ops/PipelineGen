@@ -133,6 +133,11 @@ func (mr *MigrationRunner) applyMigration(version, sqlContent string) error {
 			continue
 		}
 		if _, err := tx.Exec(stmt); err != nil {
+			// Ignore "duplicate column name" errors for ALTER TABLE statements
+			if strings.Contains(err.Error(), "duplicate column name") {
+				mr.log.Warn("Skipping duplicate column", zap.String("statement", stmt))
+				continue
+			}
 			return fmt.Errorf("failed to execute statement: %w\nStatement: %s", err, stmt)
 		}
 	}

@@ -17,7 +17,7 @@ import (
 type ChapterClipMatch struct {
 	OpeningSentenceMatches []clipMatchResult
 	ClosingSentenceMatches []clipMatchResult
-	AllMatches            []scoredMatch
+	AllMatches             []scoredMatch
 }
 
 // clipMatchResult represents a clip match with metadata
@@ -35,12 +35,13 @@ func MatchChapterClips(
 	repo *clips.Repository,
 	seg TimelineSegment,
 	topic string,
+	nodeScraperDir string,
 ) ChapterClipMatch {
 
 	result := ChapterClipMatch{
 		OpeningSentenceMatches: make([]clipMatchResult, 0),
 		ClosingSentenceMatches: make([]clipMatchResult, 0),
-		AllMatches:            make([]scoredMatch, 0),
+		AllMatches:             make([]scoredMatch, 0),
 	}
 
 	// Collect all phrases to match
@@ -61,7 +62,7 @@ func MatchChapterClips(
 	// For each phrase, find matching clips
 	for _, phrase := range phrases {
 		tags := phraseTags[phrase]
-		matches := findClipsForPhrase(ctx, repo, phrase, tags, seg)
+		matches := findClipsForPhrase(ctx, repo, phrase, tags, seg, nodeScraperDir)
 
 		// Categorize matches
 		for _, match := range matches {
@@ -194,6 +195,7 @@ func findClipsForPhrase(
 	phrase string,
 	tags []string,
 	seg TimelineSegment,
+	nodeScraperDir string,
 ) []scoredMatch {
 
 	allTerms := make([]string, 0)
@@ -209,7 +211,7 @@ func findClipsForPhrase(
 	}
 
 	// Second: If no DB matches, search Artlist and save to DB
-	artlistMatches := searchArtlistAndSave(ctx, repo, phrase, tags, seg)
+	artlistMatches := searchArtlistAndSave(ctx, repo, phrase, tags, seg, nodeScraperDir)
 	if len(artlistMatches) > 0 {
 		return artlistMatches
 	}
@@ -237,10 +239,10 @@ func searchClipsInDB(ctx context.Context, repo *clips.Repository, terms []string
 		}
 
 		matches = append(matches, scoredMatch{
-			Title:  clip.Name,
-			Score:  int(score),
-			Source: clip.Source + " db",
-			Link:   clip.DriveLink,
+			Title:   clip.Name,
+			Score:   int(score),
+			Source:  clip.Source + " db",
+		Link:    clip.DriveLink,
 			Details: strings.Join(clip.Tags, ", "),
 		})
 
@@ -306,21 +308,57 @@ func searchArtlistAndSave(
 	phrase string,
 	tags []string,
 	seg TimelineSegment,
+	nodeScraperDir string,
 ) []scoredMatch {
 
-	// This would call the Artlist search endpoint
-	// For now, return nil - actual implementation would call fetchFromArtlistScraper
-	// and save results via repo.UpsertClip()
+	if repo == nil || nodeScraperDir == "" {
+		return nil
+	}
 
-	return nil
+	// Use first tag as search term, or fallback to phrase
+	searchTerm := phrase
+	if len(tags) > 0 {
+		searchTerm = tags[0]
+	}
+	if len(tags) > 1 {
+		searchTerm = tags[0] + " " + tags[1]
+	}
+
+	// Call Artlist scraper
+	scrapedClips, err := fetchFromArtlistScraper(ctx, searchTerm, nodeScraperDir)
+	if err != nil || len(scrapedClips) == 0 {
+		return nil
+	}
+
+	// Save to DB and build matches
+	matches := make([]scoredMatch, 0, len(scrapedClips))
+	for _, clip := range scrapedClips {
+		// Add tags from phrase analysis
+		if len(tags) > 0 {
+			clip.Tags = append(clip.Tags, tags...)
+		}
+
+		// Save to DB
+		if err := repo.UpsertClip(ctx, &clip); err == nil {
+			matches = append(matches, scoredMatch{
+				Title:   clip.Name,
+				Score:   80, // High score for Artlist matches
+				Source:  clip.Source + " live scrape",
+				Link:    resolveArtlistClipLink(clip, nodeScraperDir),
+				Details: strings.Join(clip.Tags, ", "),
+			})
+		}
+	}
+
+	return matches
 }
 
 // matchToClip converts a scoredMatch to a models.Clip
 func matchToClip(match scoredMatch) models.Clip {
 	return models.Clip{
-		Name:       match.Title,
-		DriveLink:  match.Link,
-		Source:     strings.TrimSuffix(match.Source, " db"),
-		Tags:       strings.Split(match.Details, ", "),
+		Name:      match.Title,
+		DriveLink: match.Link,
+		Source:    strings.TrimSuffix(match.Source, " db"),
+		Tags:      strings.Split(match.Details, ", "),
 	}
 }

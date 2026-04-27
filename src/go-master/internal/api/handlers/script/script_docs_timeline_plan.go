@@ -12,14 +12,18 @@ import (
 )
 
 // buildTimelinePlan creates a timeline plan based on the request and narrative.
-func buildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir string, repo *clips.Repository) (*TimelinePlan, error) {
+func buildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir string, repo *clips.Repository, nodeScraperDir string) (*TimelinePlan, error) {
 	focus := pickTimelineFocus(req.Topic, analysis)
 
 	var plan *TimelinePlan
 	if strings.TrimSpace(req.SourceText) != "" {
 		plan = buildTimelinePlanFromSourceText(ctx, gen, req, narrative, focus, dataDir)
 	} else {
-		segmentCount := 1
+		words := len(strings.Fields(narrative))
+		segmentCount := words / 800
+		if segmentCount < 1 {
+			segmentCount = 1
+		}
 		rawPlan, err := requestTimelinePlan(ctx, gen, req, narrative, focus, segmentCount)
 		if err != nil {
 			rawPlan = fallbackTimelinePlan(req, narrative, focus, segmentCount)
@@ -27,7 +31,7 @@ func buildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		plan = normalizeTimelinePlan(rawPlan, req, narrative, focus, segmentCount)
 	}
 
-	enrichTimelineSegments(plan, dataDir, req, repo, ctx)
+	enrichTimelineSegments(plan, dataDir, req, repo, ctx, gen, analysis, nodeScraperDir)
 	return plan, nil
 }
 
@@ -72,28 +76,28 @@ DISCOVERY STOCK DISPONIBILE:
 `, discovery)
 	}
 
-	return fmt.Sprintf(`Sei un editor video molto veloce.
+	return fmt.Sprintf(`Sei un editor video molto veloce e un documentarista esperto.
 
-Dividi lo script in un solo segmento consecutivo.
-Durata totale: %d secondi.
-Argomento/protagonista: %s.
+Dividi lo script in circa %d capitoli logici (in base al cambio di argomento, di situazione o di personaggio). Se ritieni necessario crearne di più o di meno per seguire al meglio la narrazione, sei libero di farlo.
+Durata totale stimata del video: %d secondi.
+Argomento/protagonista principale: %s.
 
 SCRIPT:
 %s
 
 REGOLE:
-- Restituisci SOLO JSON puro.
-- Ci deve essere un solo segmento con index, start_time, end_time, opening_sentence, closing_sentence, keywords, entities.
-- start_time deve essere 0 e end_time deve arrivare alla durata totale.
-- opening_sentence deve essere la frase iniziale dello script.
-- closing_sentence deve essere la frase finale dello script.
-- keywords e entities devono essere utili per cercare stock e drive.
-- preferred_stock_group deve indicare il group della cartella dove andrà il voiceover.
-- preferred_stock_paths deve usare solo cartelle presenti nel discovery.
+- Restituisci SOLO JSON puro strutturato come un array di segmenti ("segments": [ ... ]).
+- Per OGNI segmento devi fornire: index, start_time, end_time, opening_sentence, closing_sentence, keywords, entities.
+- start_time del primo segmento deve essere 0. end_time dell'ultimo segmento deve arrivare alla durata totale stimata. I tempi devono essere sequenziali.
+- opening_sentence deve essere la vera frase iniziale del capitolo estratta testualmente dallo script.
+- closing_sentence deve essere la vera frase finale del capitolo estratta testualmente dallo script.
+- keywords e entities devono essere estremamente specifici per quel preciso capitolo (es. se si parla di Mike Tyson in questo capitolo, metti "Mike Tyson" nelle entities) e utili per cercare stock video in Drive.
+- preferred_stock_group deve indicare il group della cartella dove andrà il voiceover per questo capitolo.
 - Non includere immagini o immagini-soggetto.
 %s
 
 JSON:`,
+		segmentCount,
 		req.Duration,
 		focus,
 		narrative,
@@ -142,40 +146,43 @@ func fallbackTimelinePlan(req ScriptDocsRequest, narrative, focus string, segmen
 
 // normalizeTimelinePlan normalizes the LLM timeline plan to a TimelinePlan.
 func normalizeTimelinePlan(plan *timelineLLMPlan, req ScriptDocsRequest, narrative, focus string, segmentCount int) *TimelinePlan {
-	if plan == nil {
+	if plan == nil || len(plan.Segments) == 0 {
 		plan = fallbackTimelinePlan(req, narrative, focus, segmentCount)
 	}
 
-	var first timelineLLMSegment
-	var last timelineLLMSegment
-	if len(plan.Segments) > 0 {
-		first = plan.Segments[0]
-		last = plan.Segments[len(plan.Segments)-1]
-	}
+	totalDuration := float64(req.Duration)
+	segments := make([]TimelineSegment, 0, len(plan.Segments))
 
-	// Always extract from actual narrative to be sure we get the real first/last sentences
-	opening, closing := extractOpeningAndClosingSentence(narrative)
-	if opening == "" || closing == "" {
-		plan = fallbackTimelinePlan(req, narrative, focus, segmentCount)
-		return normalizeTimelinePlan(plan, req, narrative, focus, segmentCount)
-	}
+	for i, llmSeg := range plan.Segments {
+		startTime := llmSeg.StartTime
+		endTime := llmSeg.EndTime
 
-	segments := []TimelineSegment{
-		{
-			Index:           0,
-			StartTime:       0,
-			EndTime:         roundSeconds(float64(req.Duration)),
-			Timestamp:       formatTimestamp(0, float64(req.Duration)),
-			OpeningSentence: opening,
-			ClosingSentence: closing,
-			Keywords:        uniqueStrings(append(append(first.Keywords, last.Keywords...), collectTopicTerms(req.Topic)...)),
-			Entities:        uniqueStrings(append(append(first.Entities, last.Entities...), focus)),
-		},
+		if i == 0 {
+			startTime = 0
+		}
+		if i == len(plan.Segments)-1 {
+			endTime = totalDuration
+		}
+		
+		if endTime <= startTime {
+			endTime = startTime + (totalDuration / float64(len(plan.Segments)))
+		}
+
+		segments = append(segments, TimelineSegment{
+			Index:           llmSeg.Index,
+			StartTime:       roundSeconds(startTime),
+			EndTime:         roundSeconds(endTime),
+			Timestamp:       formatTimestamp(startTime, endTime),
+			OpeningSentence: llmSeg.OpeningSentence,
+			ClosingSentence: llmSeg.ClosingSentence,
+			Keywords:        uniqueStrings(append(llmSeg.Keywords, collectTopicTerms(req.Topic)...)),
+			Entities:        uniqueStrings(append(llmSeg.Entities, focus)),
+		})
 	}
 
 	return &TimelinePlan{
 		PrimaryFocus:  focus,
-		SegmentCount:  1,
+		SegmentCount:  len(segments),
 		TotalDuration: req.Duration,
 		Segments:      segments,
 	}
