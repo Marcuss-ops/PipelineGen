@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -141,11 +144,15 @@ func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req script.Scrip
 		EntitiesJSON:   "",
 		MetadataJSON:   "",
 		FullDocument:   document.Content,
-		ModelUsed:      "gemma3:12b",
+		ModelUsed:      "",
 		OllamaBaseURL:  "",
 		Version:        1,
 		ParentScriptID: nil,
 		IsDeleted:      false,
+	}
+	if client := h.generator.GetClient(); client != nil {
+		scriptRec.ModelUsed = client.Model()
+		scriptRec.OllamaBaseURL = client.BaseURL()
 	}
 
 	scriptID, err := h.scriptsRepo.SaveScript(scriptRec, sections, nil)
@@ -162,7 +169,13 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
-	path := script.BuildPreviewPath(dir, title)
+	scriptsDir := filepath.Join(dir, "scripts")
+	// Ensure the scripts directory exists
+	if err := os.MkdirAll(scriptsDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create scripts directory: %w", err)
+	}
+	
+	path := script.BuildPreviewPath(scriptsDir, title)
 	if err := script.WritePreview(path, title, content); err != nil {
 		return "", err
 	}

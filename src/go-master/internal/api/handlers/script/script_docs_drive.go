@@ -2,6 +2,7 @@ package script
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -30,25 +31,68 @@ func buildDriveMatchingSection(ctx context.Context, dataDir string, req ScriptDo
 	if repo != nil {
 		dbClips, err := repo.ListClips(ctx, "")
 		if err == nil && len(dbClips) > 0 {
-			matches := make([]scoredMatch, 0, len(dbClips))
+			type folderMatch struct {
+				FolderID   string
+				FolderPath string
+				MaxScore   int
+				BestTitle  string
+				Source     string
+			}
+			folderMatches := make(map[string]*folderMatch)
+
 			for _, clip := range dbClips {
-				if clip.MediaType != "drive" {
+				// Normalize media type for comparison
+				mt := strings.ToLower(strings.TrimSpace(clip.MediaType))
+				if mt != "drive" && mt != "stock_drive" && mt != "clips" {
 					continue
 				}
-				
+
 				score := scoreText(strings.ToLower(clip.Name+" "+clip.Filename+" "+clip.Metadata), terms)
 				if score == 0 {
 					continue
 				}
+
+				// Group strictly by Path
+				groupKey := clip.FolderPath
+				if groupKey == "" {
+					groupKey = "root_" + clip.Source
+				}
+
+				if existing, ok := folderMatches[groupKey]; !ok || score > existing.MaxScore {
+					folderMatches[groupKey] = &folderMatch{
+						FolderID:   clip.FolderID,
+						FolderPath: clip.FolderPath,
+						MaxScore:   score,
+						BestTitle:  clip.Name,
+						Source:     clip.Source,
+					}
+				}
+			}
+
+			matches := make([]scoredMatch, 0, len(folderMatches))
+			for _, fm := range folderMatches {
+				link := ""
+				if fm.FolderID != "" {
+					link = "https://drive.google.com/drive/folders/" + fm.FolderID
+				}
+
+				title := fm.FolderPath
+				if idx := strings.LastIndex(title, "/"); idx != -1 {
+					title = title[idx+1:]
+				}
+				if title == "" {
+					title = fm.BestTitle
+				}
+
 				matches = append(matches, scoredMatch{
-					Title:   clip.Filename,
-					Score:   score,
-					Source:  "drive sql db",
-					Link:    clip.DriveLink,
-					Details: "keyword: " + clip.Name,
+					Title:  title,
+					Path:   fm.FolderPath,
+					Score:  fm.MaxScore,
+					Source: "drive sql db",
+					Link:   link,
 				})
 			}
-			
+
 			matches = sortTopMatches(matches, 4)
 			if len(matches) > 0 {
 				return ScriptSection{
@@ -102,69 +146,42 @@ func buildDriveMatchingSection(ctx context.Context, dataDir string, req ScriptDo
 	}
 }
 
-type artlistIndex struct {
-	FolderID string            `json:"folder_id"`
-	Clips    []artlistClipItem `json:"clips"`
-}
-
-type artlistClipItem struct {
-	ClipID     string   `json:"clip_id"`
-	FolderID   string   `json:"folder_id"`
-	Filename   string   `json:"filename"`
-	Title      string   `json:"title"`
-	Name       string   `json:"name"`
-	URL        string   `json:"url"`
-	DriveURL   string   `json:"drive_url"`
-	Folder     string   `json:"folder"`
-	Category   string   `json:"category"`
-	Source     string   `json:"source"`
-	Tags       []string `json:"tags"`
-	Duration   int      `json:"duration"`
-	Downloaded bool     `json:"downloaded"`
-}
-
-// DisplayName returns a human readable name for Artlist entries.
-func (a artlistClipItem) DisplayName() string {
-	if strings.TrimSpace(a.Title) != "" {
-		return a.Title
-	}
-	if strings.TrimSpace(a.Filename) != "" {
-		return a.Filename
-	}
-	if strings.TrimSpace(a.Name) != "" {
-		return a.Name
-	}
-	if strings.TrimSpace(a.URL) != "" {
-		return a.URL
-	}
-	return a.ClipID
-}
-
-// PickLink returns the best available link for Artlist entries.
-func (a artlistClipItem) PickLink() string {
-	if strings.TrimSpace(a.URL) != "" {
-		return a.URL
-	}
-	if strings.TrimSpace(a.DriveURL) != "" {
-		return a.DriveURL
-	}
-	if strings.TrimSpace(a.FolderID) != "" {
-		return "https://drive.google.com/drive/folders/" + a.FolderID
+func firstNonEmptyString(values []string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
 	}
 	return ""
 }
 
-func buildArtlistMatchingSection(ctx context.Context, dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, repo *clips.Repository) ScriptSection {
-	terms := collectTopicTerms(req.Topic)
+func buildArtlistMatchingSection(ctx context.Context, dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, plan *TimelinePlan, repo *clips.Repository) ScriptSection {
+	if plan != nil {
+		matches := collectArtlistPhraseMatchesFromPlan(plan)
+		if len(matches) > 0 {
+			return ScriptSection{
+				Title: "🎞️ Artlist Matching",
+				Body:  renderArtlistPhraseMatches(matches),
+			}
+		}
+	}
 
-	// Try DB first
+	terms := collectTopicTerms(req.Topic)
 	if repo != nil {
-		dbClips, err := repo.ListClips(ctx, "") // Empty group to list all
+		dbClips, err := repo.ListClips(ctx, "")
 		if err == nil && len(dbClips) > 0 {
-			matches := make([]scoredMatch, 0, len(dbClips))
+			type folderMatch struct {
+				FolderID   string
+				FolderPath string
+				MaxScore   int
+				BestTitle  string
+				Source     string
+			}
+			folderMatches := make(map[string]*folderMatch)
+
 			for _, clip := range dbClips {
-				// We only want Artlist/Stock clips here
-				if clip.MediaType != "stock" && clip.MediaType != "artlist" {
+				mt := strings.ToLower(strings.TrimSpace(clip.MediaType))
+				if mt != "stock" && mt != "artlist" {
 					continue
 				}
 
@@ -185,94 +202,224 @@ func buildArtlistMatchingSection(ctx context.Context, dataDir string, req Script
 					clip.Source,
 					clip.Category,
 				}, " ")), terms)
-
 				if score == 0 {
 					continue
 				}
 
-				link := clip.ExternalURL
-				if link == "" {
-					link = clip.DriveLink
+				fID := clip.FolderID
+				if fID == "" {
+					fID = "path_" + clip.FolderPath
 				}
+				if existing, ok := folderMatches[fID]; !ok || score > existing.MaxScore {
+					folderMatches[fID] = &folderMatch{
+						FolderID:   clip.FolderID,
+						FolderPath: clip.FolderPath,
+						MaxScore:   score,
+						BestTitle:  title,
+						Source:     clip.Source,
+					}
+				}
+			}
 
+			matches := make([]scoredMatch, 0, len(folderMatches))
+			for _, fm := range folderMatches {
+				link := ""
+				if fm.FolderID != "" {
+					link = "https://drive.google.com/drive/folders/" + fm.FolderID
+				}
 				matches = append(matches, scoredMatch{
-					Title:  title,
-					Score:  score,
-					Source: clip.Source + " sql db",
+					Title:  fm.BestTitle,
+					Path:   fm.FolderPath,
+					Score:  fm.MaxScore,
+					Source: "artlist sql db",
 					Link:   link,
 				})
 			}
-
-			// Deduplicate by Title
-			seenTitles := make(map[string]bool)
-			deduped := make([]scoredMatch, 0, len(matches))
-			for _, m := range matches {
-				if !seenTitles[m.Title] {
-					seenTitles[m.Title] = true
-					deduped = append(deduped, m)
-				}
-			}
-			matches = deduped
 
 			matches = sortTopMatches(matches, 4)
 			if len(matches) > 0 {
 				return ScriptSection{
 					Title: "🎞️ Artlist Matching",
-					Body:  renderMatches(matches),
+					Body:  renderArtlistPhraseMatches(matches),
 				}
 			}
 		}
 	}
 
-	// Fallback to legacy JSON
-	path := filepath.Join(dataDir, "artlist_stock_index.json")
+	return ScriptSection{
+		Title: "🎞️ Artlist Matching",
+		Body:  "None",
+	}
+}
 
-	var index artlistIndex
-	if err := readJSON(path, &index); err != nil {
-		return ScriptSection{
-			Title: "Artlist Matching",
-			Body:  "Artlist index unavailable.",
+func collectArtlistPhraseMatchesFromPlan(plan *TimelinePlan) []scoredMatch {
+	if plan == nil {
+		return nil
+	}
+
+	matches := make([]scoredMatch, 0, 16)
+	seen := make(map[string]struct{})
+	for _, seg := range plan.Segments {
+		segmentMatches := collectArtlistPhraseMatchesFromSegment(seg.ArtlistMatches, 5)
+		for _, match := range segmentMatches {
+			phrase := strings.TrimSpace(match.Title)
+			if phrase == "" {
+				continue
+			}
+			key := strings.ToLower(phrase)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			matches = append(matches, match)
 		}
 	}
 
-	matches := make([]scoredMatch, 0, len(index.Clips))
-	for _, clip := range index.Clips {
-		title := strings.TrimSpace(clip.DisplayName())
-		if title == "" {
+	return sortTopMatches(matches, 20)
+}
+
+func collectArtlistPhraseMatchesFromSegment(matches []scoredMatch, limit int) []scoredMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+
+	segmentMatches := make([]scoredMatch, 0, len(matches))
+	seen := make(map[string]struct{})
+	for _, match := range matches {
+		phrase := strings.TrimSpace(match.Title)
+		if phrase == "" {
 			continue
 		}
-		score := scoreText(strings.ToLower(strings.Join([]string{
-			title,
-			clip.Filename,
-			clip.Title,
-			clip.Name,
-			clip.Folder,
-			clip.Category,
-			strings.Join(clip.Tags, " "),
-			clip.Source,
-		}, " ")), terms)
-		if score == 0 {
+		key := strings.ToLower(phrase)
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		matches = append(matches, scoredMatch{
-			Title:   title,
-			Score:   score,
-			Source:  "artlist local index",
-			Link:    clip.PickLink(),
-			Details: strings.Join(clip.Tags, ", "),
+		link := strings.TrimSpace(match.Link)
+		if link == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+		segmentMatches = append(segmentMatches, scoredMatch{
+			Title:   phrase,
+			Score:   match.Score,
+			Source:  match.Source,
+			Link:    link,
+			Details: match.Details,
 		})
 	}
 
-	matches = sortTopMatches(matches, 4)
+	return sortTopMatches(segmentMatches, limit)
+}
+
+func renderArtlistPhraseMatches(matches []scoredMatch) string {
 	if len(matches) == 0 {
-		return ScriptSection{
-			Title: "Artlist Matching",
-			Body:  "None",
+		return "None"
+	}
+
+	var b strings.Builder
+	for i, match := range matches {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+
+		phrase := strings.TrimSpace(match.Title)
+		if phrase == "" {
+			phrase = "Artlist phrase"
+		}
+
+		b.WriteString("✨ \"")
+		b.WriteString(phrase)
+		b.WriteString("\"\n")
+		b.WriteString("  Source: ")
+		b.WriteString(match.Source)
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf("  Score: %d\n", match.Score))
+		if strings.TrimSpace(match.Link) != "" {
+			b.WriteString("  Link: ")
+			b.WriteString(match.Link)
+			b.WriteString("\n")
+		}
+		if strings.TrimSpace(match.Details) != "" {
+			b.WriteString("  Details: ")
+			b.WriteString(match.Details)
+			b.WriteString("\n")
 		}
 	}
 
-	return ScriptSection{
-		Title: "Artlist Matching",
-		Body:  renderMatches(matches),
+	return strings.TrimSpace(b.String())
+}
+
+func buildArtlistPhraseBlock(analysis *types.FullEntityAnalysis) string {
+	if analysis == nil {
+		return ""
 	}
+
+	var b strings.Builder
+	seen := make(map[string]struct{})
+	for _, segment := range analysis.SegmentEntities {
+		for phrase := range segment.ArtlistPhrases {
+			phrase = strings.TrimSpace(phrase)
+			if phrase == "" {
+				continue
+			}
+			key := strings.ToLower(phrase)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			b.WriteString("Frase Artlist: ")
+			b.WriteString(phrase)
+			b.WriteString("\n")
+		}
+	}
+
+	return strings.TrimSpace(b.String())
+}
+
+func pickFirstMatchWithLink(matches []scoredMatch) *scoredMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+
+	for i := range matches {
+		if strings.TrimSpace(matches[i].Link) != "" {
+			return &matches[i]
+		}
+	}
+	return nil
+}
+
+func collectArtlistPhraseMatches(analysis *types.FullEntityAnalysis) []scoredMatch {
+	if analysis == nil {
+		return nil
+	}
+
+	matches := make([]scoredMatch, 0, 8)
+	seen := make(map[string]struct{})
+	for _, segment := range analysis.SegmentEntities {
+		for phrase, links := range segment.ArtlistMatches {
+			phrase = strings.TrimSpace(phrase)
+			if phrase == "" {
+				continue
+			}
+			key := strings.ToLower(phrase)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			link := firstNonEmptyString(links)
+			if link == "" {
+				continue
+			}
+			seen[key] = struct{}{}
+			matches = append(matches, scoredMatch{
+				Title:   phrase,
+				Score:   100,
+				Source:  "artlist phrase match",
+				Link:    link,
+				Details: strings.Join(uniqueStrings(links), ", "),
+			})
+		}
+	}
+
+	return sortTopMatches(matches, 4)
 }

@@ -95,3 +95,20 @@ aerial drone
 timelapse city
 minimalist
 futuristic
+
+# ANIMALS & WILDLIFE
+tiger in jungle
+lion hunting
+elephant family
+wolf howling
+eagle flying
+deer forest
+bear fishing
+shark underwater
+penguin snow
+snake desert
+zebra savanna
+giraffe drinking
+monkey climbing
+panda bamboo
+whale ocean

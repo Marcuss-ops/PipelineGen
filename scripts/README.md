@@ -60,5 +60,5 @@ Script di utilità per operazioni manuali o automatizzate sul sistema.
 ### `generate_script.py`
 Thin wrapper Python per la pipeline script Go:
 - prepara il testo da input locale o transcript YouTube
-- chiama `POST /api/script-pipeline/full`
+- chiama `POST /api/script-docs/preview`
 - non contiene la logica di segmentazione, matching o documento

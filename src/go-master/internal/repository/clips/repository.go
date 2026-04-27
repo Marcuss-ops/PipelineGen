@@ -32,11 +32,25 @@ func scanClip(rows *sql.Rows, clip *models.Clip, tagsJSON *string, createdAtStr,
 	err := rows.Scan(
 		&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
 		&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, tagsJSON,
-		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata, &clip.LocalPath,
 		createdAtStr, updatedAtStr,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to scan clip: %w", err)
+	}
+	return nil
+}
+
+// scanClipWithHash scans a clip from a row including file_hash and local_path
+func scanClipWithHash(rows *sql.Rows, clip *models.Clip, tagsJSON *string, createdAtStr, updatedAtStr *string) error {
+	err := rows.Scan(
+		&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
+		&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, tagsJSON,
+		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata, &clip.LocalPath, &clip.FileHash,
+		createdAtStr, updatedAtStr,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to scan clip with hash: %w", err)
 	}
 	return nil
 }
@@ -106,9 +120,9 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 		INSERT INTO clips (
 			id, name, filename, folder_id, folder_path, group_name,
 			media_type, drive_link, download_link, tags,
-			source, category, external_url, duration, metadata,
+			source, category, external_url, duration, metadata, local_path, file_hash,
 			updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			filename = excluded.filename,
@@ -116,7 +130,11 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			folder_path = excluded.folder_path,
 			group_name = excluded.group_name,
 			media_type = excluded.media_type,
-			drive_link = excluded.drive_link,
+			drive_link = CASE
+				WHEN excluded.drive_link LIKE 'https://drive.google.com%' THEN excluded.drive_link
+				WHEN clips.drive_link LIKE 'https://drive.google.com%' THEN clips.drive_link
+				ELSE excluded.drive_link
+			END,
 			download_link = excluded.download_link,
 			tags = excluded.tags,
 			source = excluded.source,
@@ -124,13 +142,21 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			external_url = excluded.external_url,
 			duration = excluded.duration,
 			metadata = excluded.metadata,
+			local_path = CASE
+				WHEN excluded.local_path != '' THEN excluded.local_path
+				ELSE clips.local_path
+			END,
+			file_hash = CASE
+				WHEN excluded.file_hash != '' THEN excluded.file_hash
+				ELSE clips.file_hash
+			END,
 			updated_at = datetime('now')
 	`
 
 	_, err = tx.ExecContext(ctx, query,
 		clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group,
 		clip.MediaType, clip.DriveLink, clip.DownloadLink, string(tagsJSON),
-		clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata,
+		clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.LocalPath, clip.FileHash,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert clip: %w", err)
@@ -161,7 +187,7 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 
 // GetClipByFolderAndFilename retrieves a clip by folder ID and filename
 func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips WHERE folder_id = ? AND filename = ?`
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, COALESCE(local_path, '') as local_path, COALESCE(file_hash, '') as file_hash, created_at, updated_at FROM clips WHERE folder_id = ? AND filename = ?`
 
 	var clip models.Clip
 	var tagsJSON string
@@ -170,7 +196,7 @@ func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, f
 	err := r.db.QueryRowContext(ctx, query, folderID, filename).Scan(
 		&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
 		&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
-		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata, &clip.LocalPath, &clip.FileHash,
 		&createdAtStr, &updatedAtStr,
 	)
 
@@ -192,7 +218,7 @@ func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, f
 
 // GetClipByID retrieves a clip by its ID
 func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips WHERE id = ?`
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, COALESCE(local_path, '') as local_path, COALESCE(file_hash, '') as file_hash, created_at, updated_at FROM clips WHERE id = ?`
 
 	var clip models.Clip
 	var tagsJSON string
@@ -201,7 +227,7 @@ func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath, &clip.Group,
 		&clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
-		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata, &clip.LocalPath, &clip.FileHash,
 		&createdAtStr, &updatedAtStr,
 	)
 
@@ -223,7 +249,7 @@ func (r *Repository) GetClipByID(ctx context.Context, id string) (*models.Clip, 
 
 // ListClips lists clips with optional filtering
 func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Clip, error) {
-	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips`
+	query := `SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, COALESCE(local_path, '') as local_path, COALESCE(file_hash, '') as file_hash, created_at, updated_at FROM clips`
 	var args []interface{}
 
 	if group != "" {
@@ -248,7 +274,7 @@ func (r *Repository) ListClips(ctx context.Context, group string) ([]*models.Cli
 		var tagsJSON string
 		var createdAtStr, updatedAtStr string
 
-		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
+		if err := scanClipWithHash(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
 			log.Printf("[DEBUG] ListClips: scan error=%v", err)
 			return nil, err
 		}
@@ -280,7 +306,7 @@ func (r *Repository) SearchClips(ctx context.Context, searchTerm string) ([]*mod
 	query := `
 		SELECT DISTINCT c.id, c.name, c.filename, c.folder_id, c.folder_path, c.group_name,
 		       c.media_type, c.drive_link, c.download_link, c.tags, c.source, c.category,
-		       c.external_url, c.duration, c.metadata, c.created_at, c.updated_at
+		       c.external_url, c.duration, c.metadata, COALESCE(c.local_path, '') as local_path, COALESCE(c.file_hash, '') as file_hash, c.created_at, c.updated_at
 		FROM clips c
 		LEFT JOIN clip_tags ct ON c.id = ct.clip_id
 		WHERE c.name LIKE ? OR c.tags LIKE ? OR ct.tag LIKE ?
@@ -299,7 +325,7 @@ func (r *Repository) SearchClips(ctx context.Context, searchTerm string) ([]*mod
 		var tagsJSON string
 		var createdAtStr, updatedAtStr string
 
-		if err := scanClip(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
+		if err := scanClipWithHash(rows, &clip, &tagsJSON, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, err
 		}
 
@@ -343,7 +369,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 
 	// Build query with normalized tags table
 	queryBase := `
-		SELECT DISTINCT c.id, c.name, c.filename, c.folder_id, c.folder_path, c.group_name, c.source, c.tags, c.duration, c.updated_at
+		SELECT DISTINCT c.id, c.name, c.filename, c.folder_id, c.folder_path, c.group_name, c.source, c.tags, c.duration, COALESCE(c.file_hash, '') as file_hash, c.updated_at
 		FROM clips c
 		LEFT JOIN clip_tags ct ON c.id = ct.clip_id
 		WHERE (c.source = 'stock' OR c.source = 'artlist' OR c.source = 'dynamic' OR c.source = 'dynamic_job' OR c.source = 'clips' OR c.source = 'stock_drive') AND (`
@@ -377,9 +403,10 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		var clip models.Clip
 		var clipID, name, filename, folderID, folderPath, groupName, source, tagsJSON string
 		var duration int
+		var fileHash string
 		var updatedAtStr string
 
-		err := rows.Scan(&clipID, &name, &filename, &folderID, &folderPath, &groupName, &source, &tagsJSON, &duration, &updatedAtStr)
+		err := rows.Scan(&clipID, &name, &filename, &folderID, &folderPath, &groupName, &source, &tagsJSON, &duration, &fileHash, &updatedAtStr)
 		if err != nil {
 			log.Printf("[DEBUG] SearchStockByKeywords: scan error=%v", err)
 			return nil, fmt.Errorf("failed to scan clip: %w", err)
@@ -394,6 +421,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		clip.Source = source
 		clip.Duration = duration
 		clip.MediaType = source
+		clip.FileHash = fileHash
 
 		// Load tags from normalized table
 		if err := r.loadClipTags(ctx, &clip); err != nil {

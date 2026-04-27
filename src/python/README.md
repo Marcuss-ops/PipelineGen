@@ -40,5 +40,5 @@ script = generate_script_from_youtube("https://youtube.com/watch?v=...", "Titolo
 
 ## Nota
 
-Esiste anche `scripts/generate_script_from_text.py` che usa l'API Go (porta 8080)
+Esiste anche `scripts/generate_script.py` che usa l'API Go (porta 8080)
 invece di chiamare Ollama direttamente. I due percorsi sono indipendenti.

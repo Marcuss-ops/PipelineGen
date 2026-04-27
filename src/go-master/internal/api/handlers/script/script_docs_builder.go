@@ -16,12 +16,12 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		return nil, err
 	}
 
-	analysis, err := buildEntityExtractionAnalysis(ctx, gen, narrative, dataDir, nodeScraperDir, pythonScriptsDir, StockDriveRepo, ArtlistRepo)
+	analysis, err := buildEntityExtractionAnalysis(ctx, gen, req.Topic, narrative, dataDir, nodeScraperDir, pythonScriptsDir, StockDriveRepo, ArtlistRepo)
 	if err != nil {
 		// handle error or just pass nil analysis
 	}
 
-	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir, StockDriveRepo)
+	timelinePlan, err := buildTimelinePlan(ctx, gen, req, narrative, analysis, dataDir, StockDriveRepo, nodeScraperDir)
 	if err != nil {
 		timelinePlan = &TimelinePlan{
 			PrimaryFocus:  req.Topic,
@@ -30,50 +30,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		}
 	}
 
-	// Link Artlist matches from analysis back to the timeline
-	if analysis != nil && len(analysis.SegmentEntities) > 0 && timelinePlan != nil && len(timelinePlan.Segments) > 0 {
-		artlistMatches := analysis.SegmentEntities[0].ArtlistMatches
-
-		// Map to store seen links for deduplication
-		seenLinks := make(map[string]struct{})
-
-		// 1. First add phrases that HAVE matches
-		for phrase, links := range artlistMatches {
-			if len(links) > 0 {
-				for _, link := range links {
-					if _, ok := seenLinks[link]; ok {
-						continue
-					}
-					seenLinks[link] = struct{}{}
-					timelinePlan.Segments[0].ArtlistMatches = append(timelinePlan.Segments[0].ArtlistMatches, scoredMatch{
-						Title:  phrase,
-						Link:   link,
-						Source: "artlist_db",
-						Score:  100,
-					})
-				}
-			}
-		}
-
-		// 2. Then add phrases that were found but have NO matches (as suggestions)
-		for phrase, links := range artlistMatches {
-			if len(links) == 0 {
-				tags := suggestArtlistSearchTags(ctx, gen, req, phrase, narrative)
-				if len(tags) == 0 {
-					continue
-				}
-				timelinePlan.Segments[0].ArtlistMatches = append(timelinePlan.Segments[0].ArtlistMatches, scoredMatch{
-					Title:   phrase,
-					Link:    "", // No link
-					Source:  "artlist_suggestion",
-					Score:   50,
-					Details: strings.Join(tags, ", "),
-				})
-			}
-		}
-	}
-
-	artlistSection := buildArtlistMatchingSection(ctx, dataDir, req, narrative, analysis, StockDriveRepo)
+	artlistSection := buildArtlistMatchingSection(ctx, dataDir, req, narrative, analysis, timelinePlan, ArtlistRepo)
 
 	sections := []ScriptSection{
 		buildMetadataSection(req),

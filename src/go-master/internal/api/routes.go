@@ -8,7 +8,9 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 
+	"velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	"velox/go-master/internal/api/middleware"
@@ -18,6 +20,8 @@ import (
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
 	Health        *common.HealthHandler
+	Artlist       *artlist.Handler
+	Scraper       *scraperhandler.Handler
 	ScriptDocs    *handlers.ScriptDocsHandler
 	ScriptHistory *handlers.ScriptHistoryHandler
 	Voiceover     *voiceover.Handler
@@ -106,6 +110,14 @@ func (r *Router) Setup() *gin.Engine {
 		protected.Use(authMW)
 		protected.Use(rateLimitMW.Handler)
 		{
+			if h.Artlist != nil {
+				artlistGroup := protected.Group("/artlist")
+				h.Artlist.RegisterRoutes(artlistGroup)
+			}
+			if h.Scraper != nil {
+				scraperGroup := protected.Group("/scraper")
+				h.Scraper.RegisterRoutes(scraperGroup)
+			}
 			if h.ScriptDocs != nil {
 				scriptDocsGroup := protected.Group("/script-docs")
 				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)

@@ -1,11 +1,16 @@
 package bootstrap
 
 import (
+	"path/filepath"
+
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
+	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
+	"velox/go-master/internal/service/artlist"
 	"velox/go-master/pkg/config"
 )
 
@@ -42,8 +47,33 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		cfg.Drive.StockRootFolder,
 	)
 
+	// Create Artlist service
+	artlistDBPath := filepath.Join(cfg.Paths.NodeScraperDir, "artlist_videos.db")
+	artlistService, err := artlist.NewService(
+		coreDeps.DB.DB,
+		artlistDBPath,
+		cfg.Paths.NodeScraperDir,
+		coreDeps.ArtlistRepo,
+		log,
+	)
+	if err != nil {
+		log.Warn("Failed to create Artlist service", zap.Error(err))
+	}
+
+	// Create Artlist handler
+	var artlistHandlerVar *artlistHandler.Handler
+	if artlistService != nil {
+		artlistHandlerVar = artlistHandler.NewHandler(
+			artlistService,
+			cfg.Paths.NodeScraperDir,
+			log,
+		)
+	}
+
 	handlers_struct := &api.Handlers{
 		Health:     common.NewHealthHandler(),
+		Artlist:    artlistHandlerVar,
+		Scraper:    scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
 		ScriptDocs: scriptDocsHandler,
 		Voiceover:  voiceover.NewHandler(coreDeps.VoiceoverService),
 		Utility:    coreDeps.Utility,
@@ -52,6 +82,9 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
 	}
 	cleanup := func() {
+		if artlistService != nil {
+			artlistService.Close()
+		}
 		if coreClean != nil {
 			coreClean()
 		}

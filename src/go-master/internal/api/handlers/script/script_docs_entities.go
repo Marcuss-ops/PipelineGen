@@ -1,20 +1,68 @@
 package script
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/models"
 )
 
-func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, script string, dataDir, nodeScraperDir, pythonScriptsDir string, StockDriveRepo, ArtlistRepo *clips.Repository) (*types.FullEntityAnalysis, error) {
+type nodeScraperResponse struct {
+	OK    bool `json:"ok"`
+	Clips []struct {
+		Title       string `json:"title"`
+		ClipPageURL string `json:"clip_page_url"`
+		PrimaryURL  string `json:"primary_url"`
+		ClipID      string `json:"clip_id"`
+	} `json:"clips"`
+}
+
+func fetchFromArtlistScraper(ctx context.Context, keyword, nodeScraperDir string) ([]models.Clip, error) {
+	scriptPath := filepath.Join(nodeScraperDir, "artlist_search.js")
+	cmd := exec.CommandContext(ctx, "node", scriptPath, "--term", keyword, "--limit", "3", "--save-db")
+	cmd.Dir = nodeScraperDir
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	var payload nodeScraperResponse
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		return nil, err
+	}
+
+	var results []models.Clip
+	for _, c := range payload.Clips {
+		results = append(results, models.Clip{
+			ID:          c.ClipID,
+			Name:        c.Title,
+			ExternalURL: c.PrimaryURL,
+			DriveLink:   c.ClipPageURL, // Used as fallback for preview
+			Source:      "artlist",
+			Category:    "dynamic",
+			Tags:        []string{keyword},
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		})
+	}
+	return results, nil
+}
+
+func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, topic, script string, dataDir, nodeScraperDir, pythonScriptsDir string, StockDriveRepo, ArtlistRepo *clips.Repository) (*types.FullEntityAnalysis, error) {
 	client := gen.GetClient()
 	if client == nil {
-		return nil, fmt.Errorf("Ollama client not initialized")
+		return fallbackEntityExtractionAnalysis(topic, script), fmt.Errorf("Ollama client not initialized")
 	}
 
 	shortScript := truncateScript(script, 6000)
@@ -27,7 +75,7 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 		EntityCount:  6,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Entity extraction unavailable: %v", err)
+		return fallbackEntityExtractionAnalysis(topic, script), fmt.Errorf("Entity extraction unavailable: %v", err)
 	}
 
 	// Resolve image URLs using DuckDuckGo search
@@ -43,6 +91,10 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 
 	// Artlist DB Integration: search for clips based on artlist_phrases keywords
 	artlistMatches := make(map[string][]string)
+	var artlistDBClient *ArtlistDBClient
+	if strings.TrimSpace(nodeScraperDir) != "" {
+		artlistDBClient = NewArtlistDBClient(nodeScraperDir)
+	}
 
 	clean := func(s string) string {
 		s = strings.ToLower(s)
@@ -71,22 +123,55 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 			continue
 		}
 
-		var links []string
-		if ArtlistRepo != nil {
+		link := ""
+
+		if artlistDBClient != nil && len(keywords) > 0 {
+			matches, err := artlistDBClient.SearchClipsByKeywords(keywords, 3)
+			if err == nil && len(matches) > 0 {
+				link = selectBestMatchLink(matches)
+			}
+		}
+
+		if link == "" && ArtlistRepo != nil && len(keywords) > 0 {
 			matches, err := ArtlistRepo.SearchStockByKeywords(ctx, keywords, 3)
 			if err == nil && len(matches) > 0 {
-				for _, m := range matches {
-					link := m.ExternalURL
-					if link == "" {
-						link = m.DriveLink
+				artlistOnly := filterMatchesBySource(clipMatchesToScored(matches, nodeScraperDir), "artlist")
+				link = selectBestMatchLink(artlistOnly)
+			}
+		}
+
+		if link == "" && nodeScraperDir != "" {
+			bestKeyword := phrase
+			if len(keywords) > 0 {
+				bestKeyword = keywords[0]
+				if len(keywords) > 1 {
+					bestKeyword = strings.Join(keywords[:2], " ")
+				}
+			}
+
+			fmt.Printf("Scraping Artlist for keyword: %s\n", bestKeyword)
+			scrapedClips, scrapeErr := fetchFromArtlistScraper(ctx, bestKeyword, nodeScraperDir)
+			if scrapeErr == nil && len(scrapedClips) > 0 {
+				for _, sc := range scrapedClips {
+					sc.Tags = append(sc.Tags, keywords...)
+					if ArtlistRepo != nil {
+						_ = ArtlistRepo.UpsertClip(ctx, &sc)
 					}
-					if link != "" {
-						links = append(links, link)
+					candidateLink := sc.ExternalURL
+					if candidateLink == "" {
+						candidateLink = sc.DriveLink
+					}
+					if candidateLink != "" {
+						link = candidateLink
+						break
 					}
 				}
 			}
 		}
-		artlistMatches[phrase] = links
+
+		if link != "" {
+			artlistMatches[phrase] = []string{link}
+		}
 	}
 
 	fullAnalysis := &types.FullEntityAnalysis{
@@ -108,6 +193,66 @@ func buildEntityExtractionAnalysis(ctx context.Context, gen *ollama.Generator, s
 	}
 
 	return fullAnalysis, nil
+}
+
+func clipMatchesToScored(clips []*models.Clip, nodeScraperDir string) []scoredMatch {
+	if len(clips) == 0 {
+		return nil
+	}
+	matches := make([]scoredMatch, 0, len(clips))
+	for _, clip := range clips {
+		if clip == nil {
+			continue
+		}
+		link := resolveArtlistClipLink(*clip, nodeScraperDir)
+		matches = append(matches, scoredMatch{
+			Title:   clip.Name,
+			Score:   100,
+			Source:  clip.Source + " db",
+			Link:    link,
+			Details: strings.Join(clip.Tags, ", "),
+		})
+	}
+	return matches
+}
+
+func fallbackEntityExtractionAnalysis(topic, script string) *types.FullEntityAnalysis {
+	firstSentence, lastSentence := extractOpeningAndClosingSentence(script)
+	topTerms := collectTopicTerms(topic)
+
+	segment := types.SegmentEntities{
+		SegmentIndex:     0,
+		SegmentText:      truncateScript(script, 6000),
+		FrasiImportanti:  []string{},
+		EntitaSenzaTesto: map[string]string{},
+		NomiSpeciali:     []string{},
+		ParoleImportanti: []string{},
+		ArtlistPhrases:   map[string][]string{},
+	}
+
+	if strings.TrimSpace(firstSentence) != "" {
+		segment.FrasiImportanti = append(segment.FrasiImportanti, firstSentence)
+	}
+	if strings.TrimSpace(lastSentence) != "" && lastSentence != firstSentence {
+		segment.FrasiImportanti = append(segment.FrasiImportanti, lastSentence)
+	}
+	if len(topTerms) > 0 {
+		segment.ParoleImportanti = append(segment.ParoleImportanti, topTerms...)
+		segment.ArtlistPhrases[topic] = topTerms
+		segment.NomiSpeciali = append(segment.NomiSpeciali, topTerms[0])
+	}
+
+	segment.FrasiImportanti = uniqueStrings(segment.FrasiImportanti)
+	segment.NomiSpeciali = uniqueStrings(segment.NomiSpeciali)
+	segment.ParoleImportanti = uniqueStrings(segment.ParoleImportanti)
+
+	analysis := &types.FullEntityAnalysis{
+		TotalSegments:         1,
+		EntityCountPerSegment: 6,
+		SegmentEntities:       []types.SegmentEntities{segment},
+	}
+	analysis.TotalEntities = len(segment.FrasiImportanti) + len(segment.EntitaSenzaTesto) + len(segment.NomiSpeciali) + len(segment.ParoleImportanti) + len(segment.ArtlistPhrases)
+	return analysis
 }
 
 func truncateScript(script string, maxRunes int) string {

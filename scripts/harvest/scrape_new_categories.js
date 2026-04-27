@@ -4,11 +4,13 @@
  * Usage: node scripts/scrape_new_categories.js
  */
 
-import { getDB, categories, searchTerms, videoLinks, closeDB } from '../src/node-scraper/src/db.js';
+import { getDB, categories, searchTerms, videoLinks, closeDB } from '../../src/node-scraper/src/db.js';
 import puppeteer from 'puppeteer-core';
 
-const LIGHTPANDA_WS = 'ws://127.0.0.1:9222';
+const LIGHTPANDA_WS = process.env.BROWSER_WS || process.env.LIGHTPANDA_WS || 'ws://127.0.0.1:9222';
 const ARTLIST_BASE = 'https://artlist.io/stock-footage/search?terms=';
+const MAX_CATEGORIES = Number.parseInt(process.env.MAX_CATEGORIES || '0', 10);
+const MAX_TERMS_PER_CATEGORY = Number.parseInt(process.env.MAX_TERMS_PER_CATEGORY || '0', 10);
 
 // NUOVE CATEGORIE da aggiungere
 const NEW_CATEGORIES = [
@@ -115,7 +117,9 @@ async function main() {
   let totalTerms = 0;
   let totalVideos = 0;
 
-  for (const cat of NEW_CATEGORIES) {
+  const categoriesToRun = MAX_CATEGORIES > 0 ? NEW_CATEGORIES.slice(0, MAX_CATEGORIES) : NEW_CATEGORIES;
+
+  for (const cat of categoriesToRun) {
     console.log(`\n{'='.repeat(70)}`);
     console.log(`📁 Category: ${cat.name}`);
     console.log(`{'='.repeat(70)}`);
@@ -134,8 +138,10 @@ async function main() {
     // Add search terms
     searchTerms.addMultiple(cat.name, cat.terms);
 
+    const termsToRun = MAX_TERMS_PER_CATEGORY > 0 ? cat.terms.slice(0, MAX_TERMS_PER_CATEGORY) : cat.terms;
+
     // Scrape each term
-    for (const term of cat.terms) {
+    for (const term of termsToRun) {
       const urls = await scrapeCategory(cat.name, term, page);
 
       if (urls.length > 0) {
@@ -173,7 +179,7 @@ async function main() {
   console.log(`\n{'='.repeat(70)}`);
   console.log('✅ COMPLETE');
   console.log(`{'='.repeat(70)}`);
-  console.log(`   Categories: ${NEW_CATEGORIES.length}`);
+    console.log(`   Categories: ${categoriesToRun.length}`);
   console.log(`   Terms: ${totalTerms}`);
   console.log(`   Videos: ${totalVideos}`);
 
