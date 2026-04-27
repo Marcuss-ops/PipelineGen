@@ -15,12 +15,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
 )
 
@@ -29,6 +31,8 @@ type Service struct {
 	artlistDB      *sql.DB
 	nodeScraperDir string
 	clipsRepo      *clips.Repository
+	driveClient    *drive.DocClient
+	driveFolderID  string
 	log            *zap.Logger
 }
 
@@ -47,6 +51,8 @@ func NewService(
 	artlistDBPath string,
 	nodeScraperDir string,
 	clipsRepo *clips.Repository,
+	driveClient *drive.DocClient,
+	driveFolderID string,
 	log *zap.Logger,
 ) (*Service, error) {
 	var artlistDB *sql.DB
@@ -64,6 +70,8 @@ func NewService(
 		artlistDB:      artlistDB,
 		nodeScraperDir: nodeScraperDir,
 		clipsRepo:      clipsRepo,
+		driveClient:    driveClient,
+		driveFolderID:  driveFolderID,
 		log:            log,
 	}, nil
 }
@@ -430,6 +438,10 @@ type UploadClipToDriveResponse struct {
 
 // UploadClipToDrive uploads a clip to Google Drive
 func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *UploadClipToDriveRequest) (*UploadClipToDriveResponse, error) {
+	if s.driveClient == nil {
+		return nil, fmt.Errorf("drive client not initialized")
+	}
+
 	clip, err := s.clipsRepo.GetClipByID(ctx, clipID)
 	if err != nil {
 		return nil, fmt.Errorf("clip not found: %w", err)
@@ -443,12 +455,49 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 		return nil, fmt.Errorf("local file not found: %w", err)
 	}
 
-	// TODO: Implement actual Drive upload using Drive API
-	// For now, return a placeholder
+	// Determine target folder
+	targetFolderID := ""
+	if req != nil && req.FolderID != "" {
+		targetFolderID = req.FolderID
+	} else if s.driveFolderID != "" {
+		targetFolderID = s.driveFolderID
+		// Create subfolder based on first tag if available
+		if len(clip.Tags) > 0 {
+			tagName := clip.Tags[0]
+			folderID, err := s.driveClient.GetOrCreateFolder(ctx, tagName, targetFolderID)
+			if err == nil {
+				targetFolderID = folderID
+			} else {
+				s.log.Warn("Failed to create/get tag folder on drive, using root", zap.Error(err), zap.String("tag", tagName))
+			}
+		}
+	}
+
+	if targetFolderID == "" {
+		return nil, fmt.Errorf("no drive folder ID configured or provided")
+	}
+
+	// Upload file
+	fileName := fmt.Sprintf("%s.mp4", clip.Name)
+	driveFile, err := s.driveClient.UploadFile(ctx, fileName, clip.LocalPath, "video/mp4", targetFolderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload to drive: %w", err)
+	}
+
+	// Update DB with Drive info
+	clip.DriveLink = driveFile.WebViewLink
+	// Construct a direct download link (standard Google Drive pattern)
+	downloadLink := fmt.Sprintf("https://drive.google.com/uc?id=%s&export=download", driveFile.Id)
+	
+	if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
+		s.log.Error("Failed to update clip with drive link", zap.Error(err), zap.String("clip_id", clipID))
+	}
+
 	return &UploadClipToDriveResponse{
-		OK:     false,
-		ClipID: clipID,
-		Error:  "Drive upload not yet implemented - need to integrate Drive API",
+		OK:           true,
+		ClipID:       clipID,
+		DriveLink:    driveFile.WebViewLink,
+		DownloadLink: downloadLink,
 	}, nil
 }
 
@@ -639,29 +688,56 @@ func (s *Service) Sync(ctx context.Context, req *SyncRequest) (*SyncResponse, er
 	}
 
 	resp.Requested = len(terms)
-	for _, term := range terms {
-		clips, err := s.searchLive(ctx, term, req.Limit, req.SaveDB)
-		if err != nil {
-			resp.Failed++
-			continue
-		}
-		
-		// Save to main clips repository
-		if s.clipsRepo != nil {
-			for _, clip := range clips {
-				// We create a local copy to avoid pointer issues if needed
-				c := clip 
-				if err := s.clipsRepo.UpsertClip(ctx, &c); err != nil {
-					s.log.Warn("Failed to upsert clip to main DB", zap.String("clip_id", c.ID), zap.Error(err))
-				}
-			}
-		}
-
-		resp.Synced++
-		resp.SavedClips += len(clips)
-		_ = s.markSearchTermScraped(ctx, term, len(clips))
+	
+	// Parallel execution with worker pool
+	numWorkers := 3
+	if len(terms) < numWorkers {
+		numWorkers = len(terms)
 	}
 
+	termsChan := make(chan string, len(terms))
+	for _, t := range terms {
+		termsChan <- t
+	}
+	close(termsChan)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for term := range termsChan {
+				clips, err := s.searchLive(ctx, term, req.Limit, req.SaveDB)
+				
+				mu.Lock()
+				if err != nil {
+					resp.Failed++
+					s.log.Error("Sync failed for term", zap.String("term", term), zap.Error(err))
+				} else {
+					// Save to main clips repository
+					if s.clipsRepo != nil {
+						for _, clip := range clips {
+							c := clip
+							if err := s.clipsRepo.UpsertClip(ctx, &c); err != nil {
+								s.log.Warn("Failed to upsert clip to main DB", zap.String("clip_id", c.ID), zap.Error(err))
+							}
+						}
+					}
+					resp.Synced++
+					resp.SavedClips += len(clips)
+					_ = s.markSearchTermScraped(ctx, term, len(clips))
+				}
+				mu.Unlock()
+
+				// Small delay between searches to be nice to Artlist
+				time.Sleep(1 * time.Second)
+			}
+		}()
+	}
+
+	wg.Wait()
 	return resp, nil
 }
 

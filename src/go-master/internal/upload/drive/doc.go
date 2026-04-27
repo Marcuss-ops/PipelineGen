@@ -108,6 +108,58 @@ func (d *DocClient) CreateDoc(ctx context.Context, title, content, folderID stri
 	}, nil
 }
 
+// UploadFile carica un file su Google Drive
+func (d *DocClient) UploadFile(ctx context.Context, name, filePath, mimeType, folderID string) (*drive.File, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	driveFile := &drive.File{
+		Name: name,
+	}
+	if folderID != "" {
+		driveFile.Parents = []string{folderID}
+	}
+	if mimeType != "" {
+		driveFile.MimeType = mimeType
+	}
+
+	result, err := d.driveService.Files.Create(driveFile).
+		Media(f).
+		Fields("id, name, webViewLink, webContentLink").
+		Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file to drive: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetOrCreateFolder cerca o crea una cartella su Google Drive
+func (d *DocClient) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
+	query := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", name, parentID)
+	list, err := d.driveService.Files.List().Q(query).Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("failed to list drive folders: %w", err)
+	}
+
+	if len(list.Files) > 0 {
+		return list.Files[0].Id, nil
+	}
+
+	f, err := d.driveService.Files.Create(&drive.File{
+		Name:     name,
+		MimeType: "application/vnd.google-apps.folder",
+		Parents:  []string{parentID},
+	}).Context(ctx).Do()
+	if err != nil {
+		return "", fmt.Errorf("failed to create drive folder: %w", err)
+	}
+	return f.Id, nil
+}
+
 // AppendToDoc aggiunge contenuto a un documento esistente
 func (d *DocClient) AppendToDoc(ctx context.Context, docID, content string) error {
 	const chunkSize = 1800
