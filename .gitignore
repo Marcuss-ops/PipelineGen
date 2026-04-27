@@ -113,6 +113,13 @@ config/assets/
 # Go compiled test binaries
 src/go-master/test_artlist
 src/go-master/test_harvester
+src/go-master/artlist_uploader
+src/go-master/velox-new
+sync_drive
+
+# Temporary and credential files
+test_script.txt
+token.json
 
 # Media files (use Git LFS instead)
 effects/overlays/*.mp4
