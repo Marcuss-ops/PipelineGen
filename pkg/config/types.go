@@ -15,6 +15,8 @@ type Config struct {
 	Paths     PathsConfig     `yaml:"paths"`
 	Drive     DriveConfig     `yaml:"drive"`
 	Harvester HarvesterConfig `yaml:"harvester"`
+	Jobs      JobsConfig      `yaml:"jobs"`
+	Workers   WorkersConfig   `yaml:"workers"`
 }
 
 // HarvesterConfig holds settings for the content harvester.
@@ -79,4 +81,20 @@ type PathsConfig struct {
 	ClipTextDir      string `yaml:"clip_text_dir" env:"VELOX_CLIP_TEXT_DIR" default:""`
 	PythonScriptsDir string `yaml:"python_scripts_dir" env:"VELOX_PYTHON_SCRIPTS_DIR" default:"../../python"`
 	NodeScraperDir   string `yaml:"node_scraper_dir" env:"VELOX_NODE_SCRAPER_DIR" default:"../node-scraper"`
+}
+
+// JobsConfig holds job-related configuration.
+type JobsConfig struct {
+	NewJobsPaused      bool `yaml:"new_jobs_paused" default:"false"`
+	LeaseTTLSeconds    int  `yaml:"lease_ttl_seconds" default:"300"`
+	MaxParallelPerProject int `yaml:"max_parallel_per_project" default:"2"`
+	AutoCleanupHours   int  `yaml:"auto_cleanup_hours" default:"24"`
+}
+
+// WorkersConfig holds worker-related configuration.
+type WorkersConfig struct {
+	AllowedIPs            []string `yaml:"allowed_ips" default:"[]"`
+	HeartbeatTimeout      int      `yaml:"heartbeat_timeout" default:"30"`
+	WorkerFailWindowSeconds int     `yaml:"worker_fail_window_seconds" default:"300"`
+	WorkerFailThreshold  int      `yaml:"worker_fail_threshold" default:"3"`
 }

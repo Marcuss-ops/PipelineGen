@@ -4,24 +4,25 @@ package entities
 import (
 	"context"
 
-	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 // OllamaExtractor implements entities.Extractor using Ollama
 type OllamaExtractor struct {
-	client *ollama.Client
+	client *client.Client
 }
 
 // NewOllamaExtractor creates a new Ollama-based entity extractor
-func NewOllamaExtractor(client *ollama.Client) *OllamaExtractor {
+func NewOllamaExtractor(c *client.Client) *OllamaExtractor {
 	return &OllamaExtractor{
-		client: client,
+		client: c,
 	}
 }
 
 // ExtractFromSegment extracts entities from a single text segment
 func (e *OllamaExtractor) ExtractFromSegment(text string, segmentIndex int, entityCount int) (*SegmentEntityResult, error) {
-	req := ollama.EntityExtractionRequest{
+	req := types.EntityExtractionRequest{
 		SegmentText:  text,
 		SegmentIndex: segmentIndex,
 		EntityCount:  entityCount,

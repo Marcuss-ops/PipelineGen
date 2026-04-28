@@ -192,17 +192,17 @@ func (s *Service) UpdateJobStatus(ctx context.Context, jobID string, status mode
 	}
 
 	switch status {
-	case models.JobStatusRunning:
+	case models.StatusRunning:
 		jobClone.StartedAt = &now
 		s.logEvent(ctx, jobID, "JOB_STARTED", "Job started execution")
-	case models.JobStatusCompleted:
+	case models.StatusCompleted:
 		jobClone.CompletedAt = &now
 		s.logEvent(ctx, jobID, "JOB_COMPLETED", "Job completed successfully")
-	case models.JobStatusFailed:
+	case models.StatusFailed:
 		jobClone.CompletedAt = &now
 		jobClone.RetryCount++
 		s.logEvent(ctx, jobID, "JOB_FAILED", fmt.Sprintf("Job failed: %s", errorMsg))
-	case models.JobStatusCancelled:
+	case models.StatusCancelled:
 		jobClone.CompletedAt = &now
 		s.logEvent(ctx, jobID, "JOB_CANCELLED", "Job cancelled")
 	}
@@ -253,7 +253,7 @@ func (s *Service) AssignJobToWorker(ctx context.Context, jobID string, workerID 
 		return ErrJobNotFound
 	}
 
-	if job.Status != models.JobStatusPending && job.Status != models.JobStatusQueued {
+	if job.Status != models.StatusPending && job.Status != models.StatusQueued {
 		return fmt.Errorf("job is not in assignable state: %s", job.Status)
 	}
 
@@ -262,7 +262,7 @@ func (s *Service) AssignJobToWorker(ctx context.Context, jobID string, workerID 
 
 	// Clone and modify
 	jobClone := job.Clone()
-	jobClone.Status = models.JobStatusRunning
+	jobClone.Status = models.StatusRunning
 	jobClone.WorkerID = workerID
 	jobClone.StartedAt = &now
 	jobClone.LeaseExpiry = &leaseExpiry
@@ -307,7 +307,7 @@ func (s *Service) RenewJobLease(ctx context.Context, jobID string) error {
 		return ErrJobNotFound
 	}
 
-	if job.Status != models.JobStatusRunning {
+	if job.Status != models.StatusRunning {
 		return fmt.Errorf("job is not running: %s", job.Status)
 	}
 
@@ -364,13 +364,13 @@ func (s *Service) GetNextPendingJob(workerCapabilities []models.WorkerCapability
 	// Count running jobs per project
 	runningPerProject := make(map[string]int)
 	for _, job := range s.queue.Jobs {
-		if job.Status == models.JobStatusRunning {
+		if job.Status == models.StatusRunning {
 			runningPerProject[job.Project]++
 		}
 	}
 
 	for _, job := range s.queue.Jobs {
-		if job.Status != models.JobStatusPending && job.Status != models.JobStatusQueued {
+		if job.Status != models.StatusPending && job.Status != models.StatusQueued {
 			continue
 		}
 
@@ -397,12 +397,12 @@ func (s *Service) CheckAndKillZombieJobs(ctx context.Context) []string {
 	var zombies []string
 
 	for _, job := range s.queue.Jobs {
-		if job.Status != models.JobStatusRunning {
+		if job.Status != models.StatusRunning {
 			continue
 		}
 
 		if job.LeaseExpiry != nil && job.LeaseExpiry.Before(now) {
-			job.Status = models.JobStatusZombie
+			job.Status = models.StatusZombie
 			job.Error = "Job lease expired - worker likely died"
 			job.UpdatedAt = now
 			zombies = append(zombies, job.ID)
@@ -430,7 +430,7 @@ func (s *Service) AutoCleanupJobs(ctx context.Context) int {
 	var toDelete []int
 
 	for i, job := range s.queue.Jobs {
-		if job.Status != models.JobStatusCompleted && job.Status != models.JobStatusFailed && job.Status != models.JobStatusCancelled {
+		if job.Status != models.StatusCompleted && job.Status != models.StatusFailed && job.Status != models.StatusCancelled {
 			continue
 		}
 
@@ -489,16 +489,16 @@ func (s *Service) workerCanHandleJob(capabilities []models.WorkerCapability, job
 // getRequiredCapability returns the required capability for a job type
 func (s *Service) getRequiredCapability(jobType models.JobType) models.WorkerCapability {
 	switch jobType {
-	case models.JobTypeVideoGeneration:
-		return models.WorkerCapabilityVideoGen
-	case models.JobTypeVoiceover:
-		return models.WorkerCapabilityVoiceover
-	case models.JobTypeScript:
-		return models.WorkerCapabilityScript
-	case models.JobTypeStockClip:
-		return models.WorkerCapabilityStockClip
-	case models.JobTypeUpload:
-		return models.WorkerCapabilityUpload
+	case models.TypeVideoGeneration:
+		return models.CapVideoGeneration
+	case models.TypeVoiceover:
+		return models.CapTTS
+	case models.TypeScriptGen:
+		return models.CapVideoGeneration
+	case models.TypeStockDownload:
+		return models.CapStockDownload
+	case models.TypeUpload:
+		return models.CapUpload
 	default:
 		return ""
 	}
@@ -508,14 +508,14 @@ func (s *Service) getRequiredCapability(jobType models.JobType) models.WorkerCap
 func (s *Service) isValidStatusTransition(from, to models.JobStatus) bool {
 	// Define valid transitions
 	validTransitions := map[models.JobStatus][]models.JobStatus{
-		models.JobStatusPending:   {models.JobStatusQueued, models.JobStatusCancelled},
-		models.JobStatusQueued:    {models.JobStatusRunning, models.JobStatusCancelled},
-		models.JobStatusRunning:   {models.JobStatusCompleted, models.JobStatusFailed, models.JobStatusZombie, models.JobStatusCancelled},
-		models.JobStatusZombie:    {models.JobStatusQueued, models.JobStatusFailed, models.JobStatusCancelled},
-		models.JobStatusFailed:    {models.JobStatusQueued, models.JobStatusCancelled},
-		models.JobStatusCompleted: {},
-		models.JobStatusCancelled: {},
-		models.JobStatusRetrying:  {models.JobStatusQueued, models.JobStatusCancelled},
+		models.StatusPending:   {models.StatusQueued, models.StatusCancelled},
+		models.StatusQueued:    {models.StatusRunning, models.StatusCancelled},
+		models.StatusRunning:   {models.StatusCompleted, models.StatusFailed, models.StatusZombie, models.StatusCancelled},
+		models.StatusZombie:    {models.StatusQueued, models.StatusFailed, models.StatusCancelled},
+		models.StatusFailed:    {models.StatusQueued, models.StatusCancelled},
+		models.StatusCompleted: {},
+		models.StatusCancelled: {},
+		models.StatusRetrying:  {models.StatusQueued, models.StatusCancelled},
 	}
 
 	allowed, exists := validTransitions[from]
