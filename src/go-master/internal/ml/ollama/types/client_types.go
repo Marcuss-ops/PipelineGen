@@ -49,14 +49,7 @@ type EmbedResponse struct {
 
 // ListModelsResponse risposta lista modelli
 type ListModelsResponse struct {
-	Models []ModelInfo `json:"models"`
-}
-
-// ModelInfo info su un modello
-type ModelInfo struct {
-	Name       string `json:"name"`
-	ModifiedAt string `json:"modified_at"`
-	Size       int64  `json:"size"`
+	Models []Model `json:"models"`
 }
 
 // EntityExtractionRequest represents a request to extract entities from a segment

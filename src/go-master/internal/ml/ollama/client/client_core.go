@@ -14,7 +14,7 @@ import (
 	"velox/go-master/pkg/logger"
 )
 
-// NewClient crea un nuovo client Ollama
+// NewClient creates a new Ollama client
 func NewClient(baseURL, model string) *Client {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
@@ -31,7 +31,7 @@ func NewClient(baseURL, model string) *Client {
 	}
 }
 
-// ChatWithRetry executes chat with retry, fallback, and circuit breaker
+// Chat executes chat with retry, fallback, and circuit breaker
 func (c *Client) Chat(ctx context.Context, messages []types.Message, options map[string]interface{}) (string, error) {
 	return c.chatWithRetryAndFallback(ctx, messages, options, 3)
 }

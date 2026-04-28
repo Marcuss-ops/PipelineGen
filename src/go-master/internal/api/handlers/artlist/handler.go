@@ -37,11 +37,16 @@ func NewHandler(
 }
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
+	h.log.Info("Registering Artlist routes")
 	r.GET("/stats", h.Stats)
 	r.POST("/search", h.Search)
 	r.POST("/sync", h.Sync)
+	r.POST("/sync-drive-folder", h.SyncDriveFolder)
 	r.POST("/reindex", h.Reindex)
 	r.POST("/purge-stale", h.PurgeStale)
+	r.GET("/test", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ok": true, "message": "test endpoint works"})
+	})
 
 	// Clip lifecycle endpoints
 	r.GET("/clips/:id/status", h.GetClipStatus)
@@ -98,6 +103,30 @@ func (h *Handler) Search(c *gin.Context) {
 			"ok":    false,
 			"error": fmt.Sprintf("search failed: %v", err),
 		})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// SyncDriveFolder syncs a Google Drive folder to the database
+func (h *Handler) SyncDriveFolder(c *gin.Context) {
+	var req struct {
+		FolderID  string `json:"folder_id" binding:"required"`
+		MediaType string `json:"media_type" default:"stock"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid request: " + err.Error()})
+		return
+	}
+
+	if req.MediaType == "" {
+		req.MediaType = "stock"
+	}
+
+	resp, err := h.service.SyncDriveFolder(c.Request.Context(), req.FolderID, req.MediaType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
