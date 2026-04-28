@@ -10,18 +10,18 @@ func TestWorkerStatusTransitions(t *testing.T) {
 		status WorkerStatus
 		valid  bool
 	}{
-		{"idle", WorkerStatusIdle, true},
-		{"busy", WorkerStatusBusy, true},
-		{"offline", WorkerStatusOffline, true},
+		{"idle", WorkerIdle, true},
+		{"busy", WorkerBusy, true},
+		{"offline", WorkerOffline, true},
 		{"invalid", WorkerStatus("invalid"), false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validStatuses := []WorkerStatus{
-				WorkerStatusIdle,
-				WorkerStatusBusy,
-				WorkerStatusOffline,
+				WorkerIdle,
+				WorkerBusy,
+				WorkerOffline,
 			}
 			found := false
 			for _, s := range validStatuses {

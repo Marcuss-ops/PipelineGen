@@ -10,10 +10,10 @@ func TestJobStatusTransitions(t *testing.T) {
 		status JobStatus
 		valid  bool
 	}{
-		{"pending", JobStatusPending, true},
-		{"running", JobStatusRunning, true},
-		{"completed", JobStatusCompleted, true},
-		{"failed", JobStatusFailed, true},
+		{"pending", StatusPending, true},
+		{"running", StatusRunning, true},
+		{"completed", StatusCompleted, true},
+		{"failed", StatusFailed, true},
 		{"invalid", JobStatus("invalid"), false},
 	}
 
@@ -21,10 +21,10 @@ func TestJobStatusTransitions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Basic validation that status is recognized
 			validStatuses := []JobStatus{
-				JobStatusPending,
-				JobStatusRunning,
-				JobStatusCompleted,
-				JobStatusFailed,
+				StatusPending,
+				StatusRunning,
+				StatusCompleted,
+				StatusFailed,
 			}
 			found := false
 			for _, s := range validStatuses {
