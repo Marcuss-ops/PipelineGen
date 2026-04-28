@@ -20,17 +20,14 @@ const (
 	StatusRetrying   JobStatus = "retrying"
 )
 
-// Alias per compatibilità
 const (
-	JobStatusPending   = StatusPending
-	JobStatusQueued    = StatusQueued
-	JobStatusRunning   = StatusRunning
-	JobStatusCompleted = StatusCompleted
-	JobStatusFailed    = StatusFailed
-	JobStatusCancelled = StatusCancelled
-	JobStatusZombie    = StatusZombie
-	JobStatusRetrying  = StatusRetrying
-	JobStatusPaused    = StatusPaused
+	JobTypeVideoGeneration   = TypeVideoGeneration
+	JobTypeAudioProcessing   = TypeAudioProcessing
+	JobTypeUpload            = TypeUpload
+	JobTypeVoiceover         = TypeVoiceover
+	JobTypeScript            = TypeScriptGen
+	JobTypeStockDownload     = TypeStockDownload
+	JobTypeStockClip         = TypeStockClip
 )
 
 // JobType rappresenta il tipo di job
@@ -43,16 +40,7 @@ const (
 	TypeScriptGen       JobType = "script_generation"
 	TypeVoiceover       JobType = "voiceover"
 	TypeStockDownload   JobType = "stock_download"
-)
-
-// Alias per compatibilità
-const (
-	JobTypeVideoGeneration = TypeVideoGeneration
-	JobTypeAudioProcessing = TypeAudioProcessing
-	JobTypeUpload          = TypeUpload
-	JobTypeScript          = TypeScriptGen
-	JobTypeVoiceover       = TypeVoiceover
-	JobTypeStockClip       = TypeStockDownload
+	TypeStockClip       JobType = "stock_clip"
 )
 
 // Job rappresenta un job nel sistema

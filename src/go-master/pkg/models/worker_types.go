@@ -16,38 +16,36 @@ const (
 	WorkerShuttingDown WorkerStatus = "shutting_down"
 )
 
-// Alias per compatibilità
+// Aliases for compatibility with core package
 const (
-	WorkerStatusOnline  = WorkerIdle
-	WorkerStatusIdle    = WorkerIdle
-	WorkerStatusBusy    = WorkerBusy
-	WorkerStatusOffline = WorkerOffline
+	WorkerStatusOnline   = WorkerIdle
+	WorkerStatusBusy     = WorkerBusy
+	WorkerStatusOffline  = WorkerOffline
+	WorkerStatusError    = WorkerError
+	WorkerStatusUpdating = WorkerUpdating
 )
 
 // WorkerCapability rappresenta una capability del worker
 type WorkerCapability string
 
 const (
-	CapVideoGeneration WorkerCapability = "video_generation"
-	CapAudioProcessing WorkerCapability = "audio_processing"
-	CapRemotion        WorkerCapability = "remotion"
-	CapFFmpeg          WorkerCapability = "ffmpeg"
-	CapUpload          WorkerCapability = "upload"
-	CapTTS             WorkerCapability = "tts"
-	CapStockDownload   WorkerCapability = "stock_download"
+	CapVideoGeneration   WorkerCapability = "video_generation"
+	CapAudioProcessing   WorkerCapability = "audio_processing"
+	CapRemotion          WorkerCapability = "remotion"
+	CapFFmpeg            WorkerCapability = "ffmpeg"
+	CapUpload            WorkerCapability = "upload"
+	CapTTS               WorkerCapability = "tts"
+	CapStockDownload     WorkerCapability = "stock_download"
+	CapScript            WorkerCapability = "script"
+	CapStockClip         WorkerCapability = "stock_clip"
 )
 
-// Alias per compatibilità
 const (
-	WorkerCapabilityVideoGen  = CapVideoGeneration
-	WorkerCapabilityAudio     = CapAudioProcessing
-	WorkerCapabilityRemotion  = CapRemotion
-	WorkerCapabilityFFmpeg    = CapFFmpeg
-	WorkerCapabilityUpload    = CapUpload
-	WorkerCapabilityTTS       = CapTTS
-	WorkerCapabilityStockClip = CapStockDownload
-	WorkerCapabilityVoiceover = CapTTS
-	WorkerCapabilityScript    = CapAudioProcessing
+	WorkerCapabilityVideoGen    = CapVideoGeneration
+	WorkerCapabilityVoiceover   = CapTTS
+	WorkerCapabilityScript      = CapScript
+	WorkerCapabilityStockClip   = CapStockClip
+	WorkerCapabilityUpload      = CapUpload
 )
 
 // Worker rappresenta un worker nel sistema
@@ -196,6 +194,30 @@ type WorkerRegistry struct {
 	Workers   map[string]*Worker `json:"workers"`
 	UpdatedAt time.Time          `json:"updated_at"`
 	Version   int                `json:"version"`
+}
+
+// Clone returns a deep copy of the Worker
+func (w *Worker) Clone() *Worker {
+	if w == nil {
+		return nil
+	}
+	clone := *w
+	// Copy slices and maps
+	if w.Capabilities != nil {
+		clone.Capabilities = make([]WorkerCapability, len(w.Capabilities))
+		copy(clone.Capabilities, w.Capabilities)
+	}
+	if w.Tags != nil {
+		clone.Tags = make([]string, len(w.Tags))
+		copy(clone.Tags, w.Tags)
+	}
+	if w.Metadata != nil {
+		clone.Metadata = make(map[string]string, len(w.Metadata))
+		for k, v := range w.Metadata {
+			clone.Metadata[k] = v
+		}
+	}
+	return &clone
 }
 
 // QuarantineInfo info su worker in quarantena

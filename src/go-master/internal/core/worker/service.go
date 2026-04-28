@@ -131,7 +131,7 @@ func (s *Service) RegisterWorker(ctx context.Context, req models.WorkerRegistrat
 		Hostname:          req.Hostname,
 		IP:                req.IP,
 		Port:              req.Port,
-		Status:            models.WorkerStatusOnline,
+		Status:            models.WorkerIdle,
 		Capabilities:      req.Capabilities,
 		Version:           req.Version,
 		CodeHash:          req.CodeHash,
@@ -210,7 +210,7 @@ func (s *Service) ListActiveWorkers() []*models.Worker {
 
 	workers := make([]*models.Worker, 0)
 	for _, worker := range s.workers {
-		if worker.Status == models.WorkerStatusOnline || worker.Status == models.WorkerStatusBusy {
+		if worker.Status == models.WorkerIdle || worker.Status == models.WorkerBusy {
 			workers = append(workers, worker.Clone())
 		}
 	}
@@ -389,14 +389,14 @@ func (s *Service) CheckOfflineWorkers() []string {
 	var offline []string
 
 	for id, worker := range s.workers {
-		if worker.Status == models.WorkerStatusOffline {
+		if worker.Status == models.WorkerOffline {
 			continue
 		}
 
 		if now.Sub(worker.LastHeartbeat) > timeout {
 			// Clone and update
 			workerClone := worker.Clone()
-			workerClone.Status = models.WorkerStatusOffline
+			workerClone.Status = models.WorkerOffline
 			s.workers[id] = workerClone
 			offline = append(offline, id)
 			logger.Warn("Worker marked offline",
@@ -426,7 +426,7 @@ func (s *Service) IsWorkerQuarantined(workerID string) bool {
 
 // IsWorkerSchedulable checks if a worker can be scheduled for jobs
 func (s *Service) IsWorkerSchedulable(worker *models.Worker) bool {
-	if worker.Status != models.WorkerStatusOnline {
+	if worker.Status != models.WorkerIdle {
 		return false
 	}
 	if s.IsWorkerRevoked(worker.ID) {
@@ -449,11 +449,11 @@ func (s *Service) GetWorkerStats() map[string]interface{} {
 	var online, offline, busy, errorCount int
 	for _, worker := range s.workers {
 		switch worker.Status {
-		case models.WorkerStatusOnline:
+		case models.WorkerIdle:
 			online++
-		case models.WorkerStatusOffline:
+		case models.WorkerOffline:
 			offline++
-		case models.WorkerStatusBusy:
+		case models.WorkerBusy:
 			busy++
 		case models.WorkerError:
 			errorCount++

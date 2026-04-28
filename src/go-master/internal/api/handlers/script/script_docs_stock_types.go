@@ -1,6 +1,9 @@
 package script
 
-import "sync"
+import (
+	"math"
+	"sync"
+)
 
 type stockIndex struct {
 	Version    string         `json:"version"`
@@ -36,6 +39,17 @@ type stockFolderMatchIndex struct {
 	Records []stockFolderMatchRecord
 	DF      map[string]int
 	AvgLen  float64
+}
+
+func (idx *stockFolderMatchIndex) IDF(term string) float64 {
+	if idx == nil || idx.DF == nil {
+		return 0
+	}
+	df := idx.DF[term]
+	if df == 0 {
+		return 0
+	}
+	return math.Log(float64(len(idx.Records)) / float64(df))
 }
 
 var stockFolderIndexCache = struct {

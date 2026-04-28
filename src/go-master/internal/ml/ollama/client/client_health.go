@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-// CheckHealth verifica se Ollama è raggiungibile
+// CheckHealth checks if Ollama is reachable
 func (c *Client) CheckHealth(ctx context.Context) bool {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/tags", nil)
 	if err != nil {
@@ -24,8 +24,8 @@ func (c *Client) CheckHealth(ctx context.Context) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-// ListModels restituisce la lista dei modelli disponibili
-func (c *Client) ListModels(ctx context.Context) ([]types.ModelInfo, error) {
+// ListModels returns the list of available models
+func (c *Client) ListModels(ctx context.Context) ([]types.Model, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/tags", nil)
 	if err != nil {
 		return nil, err

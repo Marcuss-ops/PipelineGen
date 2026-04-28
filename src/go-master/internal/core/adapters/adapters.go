@@ -6,6 +6,7 @@ import (
 
 	"velox/go-master/internal/clipcache"
 	"velox/go-master/internal/core/interfaces"
+	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/stockdb"
 	"velox/go-master/internal/upload/drive"
@@ -21,7 +22,7 @@ type ScriptGeneratorAdapter struct {
 }
 
 // GetClient returns the underlying Ollama client.
-func (a *ScriptGeneratorAdapter) GetClient() *ollama.Client {
+func (a *ScriptGeneratorAdapter) GetClient() *client.Client {
 	return a.Generator.GetClient()
 }
 
@@ -216,36 +217,21 @@ func (a *DocServiceAdapter) GetDocContent(ctx context.Context, docID string) (st
 // DriveUploader Adapter
 // ============================================================================
 
-// DriveUploaderAdapter wraps drive.Client to satisfy DriveUploader interface.
+// DriveUploaderAdapter wraps drive.DocClient to satisfy DriveUploader interface.
 type DriveUploaderAdapter struct {
-	*drive.Client
+	*drive.DocClient
 }
 
 // UploadFile delegates to the underlying Drive client.
 func (a *DriveUploaderAdapter) UploadFile(ctx context.Context, filePath, folderID, filename string) (string, error) {
-	return a.Client.UploadFile(ctx, filePath, folderID, filename)
+	result, err := a.DocClient.UploadFile(ctx, filename, filePath, "", folderID)
+	if err != nil {
+		return "", err
+	}
+	return result.Id, nil
 }
 
 // CreateFolder delegates to the underlying Drive client.
 func (a *DriveUploaderAdapter) CreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	return a.Client.CreateFolder(ctx, name, parentID)
-}
-
-// GetOrCreateFolder delegates to the underlying Drive client.
-func (a *DriveUploaderAdapter) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
-	return a.Client.GetOrCreateFolder(ctx, name, parentID)
-}
-
-// ============================================================================
-// DriveFolderScanner Adapter
-// ============================================================================
-
-// DriveFolderScannerAdapter wraps drive.Client to satisfy DriveFolderScanner interface.
-type DriveFolderScannerAdapter struct {
-	*drive.Client
-}
-
-// ListFolders delegates to the underlying Drive client.
-func (a *DriveFolderScannerAdapter) ListFolders(ctx context.Context, opts drive.ListFoldersOptions) ([]drive.Folder, error) {
-	return a.Client.ListFolders(ctx, opts)
+	return a.DocClient.GetOrCreateFolder(ctx, name, parentID)
 }

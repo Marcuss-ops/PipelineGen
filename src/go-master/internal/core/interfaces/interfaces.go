@@ -5,8 +5,8 @@ package interfaces
 import (
 	"context"
 
-	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 // ============================================================================
@@ -16,9 +16,9 @@ import (
 // ScriptGenerator generates text scripts via AI.
 type ScriptGenerator interface {
 	// GenerateFromText generates a script from source text and request params
-	GenerateFromText(ctx context.Context, req *ollama.TextGenerationRequest) (*ollama.GenerationResult, error)
+	GenerateFromText(ctx context.Context, req *types.TextGenerationRequest) (*types.GenerationResult, error)
 	// GetClient returns the underlying Ollama client for direct access
-	GetClient() *ollama.Client
+	GetClient() *client.Client
 }
 
 // ============================================================================
@@ -143,10 +143,4 @@ type DriveUploader interface {
 	CreateFolder(ctx context.Context, name, parentID string) (string, error)
 	// GetOrCreateFolder gets an existing folder or creates it
 	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
-}
-
-// DriveFolderScanner scans Drive for folder structure.
-type DriveFolderScanner interface {
-	// ListFolders returns folders matching the options
-	ListFolders(ctx context.Context, opts drive.ListFoldersOptions) ([]drive.Folder, error)
 }

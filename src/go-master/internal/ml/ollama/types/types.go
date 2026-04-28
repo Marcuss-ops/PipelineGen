@@ -1,8 +1,6 @@
 // Package ollama provides types for Ollama API integration.
 package types
 
-import "context"
-
 // TextGenerationRequest request per generazione script da testo
 type TextGenerationRequest struct {
 	SourceText string                 `json:"source_text" binding:"required"`
@@ -48,12 +46,4 @@ type Model struct {
 	Name       string `json:"name"`
 	ModifiedAt string `json:"modified_at"`
 	Size       int64  `json:"size"`
-}
-
-// ScriptGenerator interfaccia per generazione script
-type ScriptGenerator interface {
-	GenerateFromText(ctx context.Context, req *TextGenerationRequest) (*GenerationResult, error)
-	GenerateFromYouTube(ctx context.Context, req *YouTubeGenerationRequest) (*GenerationResult, error)
-	Regenerate(ctx context.Context, req *RegenerationRequest) (*GenerationResult, error)
-	ListModels(ctx context.Context) ([]Model, error)
 }
