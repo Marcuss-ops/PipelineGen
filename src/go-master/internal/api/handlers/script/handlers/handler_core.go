@@ -14,7 +14,7 @@ import (
 // ScriptDocsHandler generates modular script docs with Ollama and optionally uploads them to Google Docs.
 type ScriptDocsHandler struct {
 	generator        *ollama.Generator
-	docClient        *drive.DocClient
+	docClient        drive.DocClient
 	voService        *voiceover.Service
 	dataDir          string
 	clipTextDir      string
@@ -28,7 +28,7 @@ type ScriptDocsHandler struct {
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient *drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,

@@ -290,10 +290,10 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 
 	var req artlist.DownloadClipRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		req.OutputDir = "" // default
+		req = artlist.DownloadClipRequest{}
 	}
 
-	resp, err := h.service.DownloadClip(c.Request.Context(), clipID, req.OutputDir)
+	resp, err := h.service.DownloadClip(c.Request.Context(), clipID, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return

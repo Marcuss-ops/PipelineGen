@@ -7,8 +7,8 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
+	"google.golang.org/api/drive/v3"
 )
 
 type Service struct {
@@ -16,12 +16,12 @@ type Service struct {
 	artlistDB      *sql.DB
 	nodeScraperDir string
 	clipsRepo      *clips.Repository
-	driveClient    *drive.DocClient
+	driveClient    *drive.Service
 	driveFolderID  string
 	log            *zap.Logger
 }
 
-func NewService(mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *drive.DocClient, driveFolderID string, log *zap.Logger) (*Service, error) {
+func NewService(mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *drive.Service, driveFolderID string, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
