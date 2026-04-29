@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/cron"
 	"velox/go-master/internal/ml/ollama"
@@ -27,7 +28,8 @@ import (
 // CoreDeps holds the minimal runtime dependencies needed by the stripped-down server.
 type CoreDeps struct {
 	ScriptGen           *ollama.Generator
-	DocClient           *drive.DocClient
+	DocClient           drive.DocClient
+	DriveClient         *gdrive.Service
 	Utility             *common.UtilityHandler
 	DB                  *storage.SQLiteDB // Unified database
 	ScriptsRepo         *scripts.ScriptRepository
@@ -49,6 +51,12 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	docClient, err := drive.NewDocClient(context.Background(), cfg.GetCredentialsPath(), cfg.GetTokenPath())
 	if err != nil {
 		log.Warn("Docs client not initialized", zap.Error(err))
+	}
+
+	// Initialize Google Drive client for Artlist service
+	driveClient, err := gdrive.NewService(context.Background())
+	if err != nil {
+		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
 
 	// Initialize voiceover service
@@ -158,6 +166,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	return &CoreDeps{
 		ScriptGen:           scriptGen,
 		DocClient:           docClient,
+		DriveClient:         driveClient,
 		Utility:             common.NewUtilityHandler(),
 		DB:                  mainDB,
 		ScriptsRepo:         scriptsRepo,

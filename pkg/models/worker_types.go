@@ -23,6 +23,7 @@ const (
 	WorkerStatusOffline  = WorkerOffline
 	WorkerStatusError    = WorkerError
 	WorkerStatusUpdating = WorkerUpdating
+	WorkerStatusIdle     = WorkerIdle
 )
 
 // WorkerCapability rappresenta una capability del worker
