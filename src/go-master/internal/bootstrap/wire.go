@@ -54,7 +54,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
-		coreDeps.DocClient,
+		coreDeps.DriveClient,
 		cfg.Harvester.DriveFolderID,
 		log,
 	)

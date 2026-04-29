@@ -27,6 +27,27 @@ type stockClipRef struct {
 	Duration   int      `json:"duration"`
 }
 
+func (c stockClipRef) DisplayName() string {
+	if c.Name != "" {
+		return c.Name
+	}
+	return c.Filename
+}
+
+func (c stockClipRef) StockPath() string {
+	if c.FullPath != "" {
+		return c.FullPath
+	}
+	return c.FolderPath
+}
+
+func (c stockClipRef) PickLink() string {
+	if c.DriveLink != "" {
+		return c.DriveLink
+	}
+	return ""
+}
+
 type stockFolderMatchRecord struct {
 	Folder  stockClipRef
 	NormKey string

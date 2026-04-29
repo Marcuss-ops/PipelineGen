@@ -91,6 +91,10 @@ func loadStockCatalogFromSQLite(path string) ([]stockClipRef, error) {
 	return clips, nil
 }
 
+func loadStockCatalog(dataDir string) ([]stockClipRef, error) {
+	return loadStockCatalogFromSQLite(filepath.Join(dataDir, "stock.db.sqlite"))
+}
+
 func splitCSV(text string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
