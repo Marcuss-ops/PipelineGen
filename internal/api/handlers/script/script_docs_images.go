@@ -1,6 +1,7 @@
 package script
 
 import (
+	"velox/go-master/internal/matching"
 	"fmt"
 	"strings"
 
@@ -68,8 +69,8 @@ func pickImageSubject(topic string, analysis *types.FullEntityAnalysis) string {
 		return true
 	}
 
-	for _, term := range tokenize(topic) {
-		if isStopWord(term) || len(term) < 4 {
+	for _, term := range matching.Tokenize(topic) {
+		if matching.IsStopWord(term) || len(term) < 4 {
 			continue
 		}
 		if add(strings.ToLower(term)) {
