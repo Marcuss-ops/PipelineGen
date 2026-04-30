@@ -1,0 +1,20 @@
+server:
+  port: 8080
+  gin_mode: "debug"
+
+storage:
+  data_dir: "./data"
+
+external:
+  ollama_url: "http://localhost:11434"
+
+paths:
+  node_scraper_dir: "../node-scraper"
+  python_scripts_dir: "../../python"
+
+harvester:
+  drive_folder_id: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
+
+logging:
+  level: "debug"
+  format: "json"

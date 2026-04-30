@@ -1,14 +1,16 @@
 package client
 
 import (
-	"velox/go-master/internal/ml/ollama/types"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/pkg/logger"
 )
 
@@ -70,7 +72,7 @@ func (c *Client) GenerateStream(ctx context.Context, prompt string) (<-chan stri
 
 // GenerateStreamWithOptions genera testo con opzioni esplicite in modalità streaming.
 func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt string, options map[string]interface{}) (<-chan string, <-chan error) {
-	textChan := make(chan string, 100)
+	textChan := make(chan string, types.StreamBufferSize)
 	errChan := make(chan error, 1)
 
 	if model == "" {
@@ -119,7 +121,7 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 		for {
 			var result types.GenerateResponse
 			if err := decoder.Decode(&result); err != nil {
-				if err.Error() == "EOF" {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 				errChan <- fmt.Errorf("failed to decode streaming response: %w", err)

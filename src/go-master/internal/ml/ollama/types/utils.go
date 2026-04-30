@@ -25,35 +25,51 @@ func CleanScript(script string) string {
 		script = matches[1]
 	}
 
-	// 2. Remove meta-text like (Musica: ...), [Immagini: ...], **Musica:**
-	// Handles round brackets, square brackets and bold tags
-	reMeta := regexp.MustCompile(`(?i)(\(|\[|\*\*)\s*(musica|immagini|scena|inquadratura|audio|video|clip|montaggio|sottofondo|background|visual|transition|transizione)\s*:.*(\)|\]|\*\*)`)
+	// 2. Remove meta-text like (Music: ...), [Images: ...], **Music:**
+	metaPattern := `(?i)(\(|\[|\*\*)\s*(` + strings.Join(MetaContentTypes, "|") + `)\s*:?.*(\)|\]|\*\*)`
+	reMeta := regexp.MustCompile(metaPattern)
 	script = reMeta.ReplaceAllString(script, "")
 
-	// 3. Remove timestamps like [00:00] or (01:30)
-	reTime := regexp.MustCompile(`(\[|\()\d{1,2}:\d{2}(\]|\))`)
+	// 3. Remove timestamps like [00:00], (01:30), [0:00 - 0:15], (0:15-0:45)
+	reTime := regexp.MustCompile(`(?i)(\[|\()(\d{1,2}:\d{2})(\s*-\s*\d{1,2}:\d{2})?(\s*inizio)?(\s*fine)?(\s*start)?(\s*end)?(\s*duration:?\s*\d+s?)?(\s*\d{1,2}:\d{2})?(\s*\)|\])`)
 	script = reTime.ReplaceAllString(script, "")
 
-	// 4. Clean backticks and spaces
+	// 4. Remove Speaker Labels like "Narratore:", "Narrator:", "Voice:", "Voce:" at the beginning of lines
+	speakerPattern := `(?im)^\s*(` + strings.Join(SpeakerLabels, "|") + `)\s*:\s*(\(.*\))?\s*`
+	reSpeaker := regexp.MustCompile(speakerPattern)
+	script = reSpeaker.ReplaceAllString(script, "")
+
+	// 5. Clean backticks and spaces
 	script = strings.TrimPrefix(script, "```")
 	script = strings.TrimSuffix(script, "```")
 	script = strings.TrimSpace(script)
 
-	// 5. Remove lines that are purely descriptive
+	// 6. Remove lines that are purely descriptive or artifacts
 	lines := strings.Split(script, "\n")
 	var cleanLines []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		lower := strings.ToLower(trimmed)
-		// Skip lines that look like LLM instructions or section headers
-		if trimmed == "" ||
-			strings.HasPrefix(lower, "introduzione:") ||
-			strings.HasPrefix(lower, "conclusione:") ||
-			strings.HasPrefix(lower, "scena ") ||
-			(strings.HasPrefix(trimmed, "#") && !strings.Contains(trimmed, " ")) { // Skip empty H1 titles or single tags
+
+		if trimmed == "" {
 			continue
 		}
-		cleanLines = append(cleanLines, trimmed)
+
+		shouldSkip := false
+		for _, stop := range StopPhrases {
+			if strings.HasPrefix(lower, stop) {
+				shouldSkip = true
+				break
+			}
+		}
+
+		if !shouldSkip && (strings.HasPrefix(trimmed, "#") && !strings.Contains(trimmed, " ")) {
+			shouldSkip = true
+		}
+
+		if !shouldSkip {
+			cleanLines = append(cleanLines, trimmed)
+		}
 	}
 
 	return strings.Join(cleanLines, "\n\n")
@@ -61,8 +77,10 @@ func CleanScript(script string) string {
 
 // estimateDuration estimates duration in seconds based on word count
 func EstimateDuration(wordCount int) int {
-	// ~140 words per minute (average speech rate)
-	return (wordCount * 60) / 140
+	if wordCount <= 0 {
+		return 0
+	}
+	return (wordCount * 60) / WordsPerMinute
 }
 
 // countWords counts words in a string

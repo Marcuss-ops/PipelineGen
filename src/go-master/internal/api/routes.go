@@ -2,6 +2,7 @@
 package api
 
 import (
+	"path/filepath"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -10,6 +11,7 @@ import (
 
 	"velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	img_handler "velox/go-master/internal/api/handlers/images"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
@@ -22,10 +24,12 @@ type Handlers struct {
 	Health        *common.HealthHandler
 	Artlist       *artlist.Handler
 	Scraper       *scraperhandler.Handler
+	ImageAssets   *img_handler.Handler
 	ScriptDocs    *handlers.ScriptDocsHandler
 	ScriptHistory *handlers.ScriptHistoryHandler
 	Voiceover     *voiceover.Handler
 	Utility       *common.UtilityHandler
+	Catalog       *common.CatalogHandler
 }
 
 // Router holds all API handlers
@@ -93,12 +97,21 @@ func (r *Router) Setup() *gin.Engine {
 	engine.GET("/health", h.Health.Health)
 	engine.GET("/api/health", h.Health.Health)
 
+	// Serve static assets (images, etc.)
+	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")
+	engine.Static("/assets", assetsDir)
+
 	// Public routes (no auth, no rate limit) — accessible from any machine
+
 	public := engine.Group("/api")
 	{
 		// Internal utilities (can be accessed by scripts without auth)
 		if h.Utility != nil {
 			public.GET("/internal/slug", h.Utility.Slugify)
+		}
+		// Catalog API - public search endpoint for folders
+		if h.Catalog != nil {
+			public.GET("/catalog/folders", h.Catalog.SearchFolders)
 		}
 	}
 
@@ -113,6 +126,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Artlist != nil {
 				artlistGroup := protected.Group("/artlist")
 				h.Artlist.RegisterRoutes(artlistGroup)
+			}
+			if h.ImageAssets != nil {
+				imgGroup := protected.Group("/images")
+				h.ImageAssets.RegisterRoutes(imgGroup)
 			}
 			if h.Scraper != nil {
 				scraperGroup := protected.Group("/scraper")

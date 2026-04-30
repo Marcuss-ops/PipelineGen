@@ -2,11 +2,13 @@ package bootstrap
 
 import (
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	imghandler "velox/go-master/internal/api/handlers/images"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
@@ -32,10 +34,27 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		return nil, err
 	}
 
+	// Create Artlist service
+	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
+	driveFolderID := resolveArtlistRootFolderID(cfg)
+	artlistService, err := artlist.NewService(
+		coreDeps.DB.DB,
+		artlistDBPath,
+		cfg.Paths.NodeScraperDir,
+		coreDeps.ArtlistRepo,
+		coreDeps.DriveClient,
+		driveFolderID,
+		log,
+	)
+	if err != nil {
+		log.Warn("Failed to create Artlist service", zap.Error(err))
+	}
+
 	scriptDocsHandler := handlers.NewScriptDocsHandler(
 		coreDeps.ScriptGen,
 		coreDeps.DocClient,
 		coreDeps.VoiceoverService,
+		coreDeps.ImageService,
 		cfg.Storage.DataDir,
 		cfg.Paths.ClipTextDir,
 		cfg.Paths.PythonScriptsDir,
@@ -45,22 +64,8 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.ArtlistRepo,
 		coreDeps.ClipsOnlyRepo,
 		cfg.Drive.StockRootFolder,
+		artlistService,
 	)
-
-	// Create Artlist service
-	artlistDBPath := filepath.Join(cfg.Paths.NodeScraperDir, "artlist_videos.db")
-	artlistService, err := artlist.NewService(
-		coreDeps.DB.DB,
-		artlistDBPath,
-		cfg.Paths.NodeScraperDir,
-		coreDeps.ArtlistRepo,
-		coreDeps.DriveClient,
-		cfg.Harvester.DriveFolderID,
-		log,
-	)
-	if err != nil {
-		log.Warn("Failed to create Artlist service", zap.Error(err))
-	}
 
 	// Create Artlist handler
 	var artlistHandlerVar *artlistHandler.Handler
@@ -73,12 +78,14 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	}
 
 	handlers_struct := &api.Handlers{
-		Health:     common.NewHealthHandler(),
-		Artlist:    artlistHandlerVar,
-		Scraper:    scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
-		ScriptDocs: scriptDocsHandler,
-		Voiceover:  voiceover.NewHandler(coreDeps.VoiceoverService),
-		Utility:    coreDeps.Utility,
+		Health:      common.NewHealthHandler(),
+		Artlist:     artlistHandlerVar,
+		Scraper:     scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
+		ImageAssets: imghandler.NewHandler(coreDeps.ImageService),
+		ScriptDocs:  scriptDocsHandler,
+		Voiceover:   voiceover.NewHandler(coreDeps.VoiceoverService),
+		Utility:     coreDeps.Utility,
+		Catalog:     common.NewCatalogHandler(cfg.Storage.DataDir),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
@@ -101,4 +108,20 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 // WireMinimal is kept for compatibility with local tools.
 func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	return WireScriptDocs(cfg, log)
+}
+
+func resolveArtlistRootFolderID(cfg *config.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	if folderID := strings.TrimSpace(cfg.Harvester.DriveFolderID); folderID != "" {
+		return folderID
+	}
+	if folderID := strings.TrimSpace(cfg.Drive.ClipsRootFolder); folderID != "" {
+		return folderID
+	}
+	if folderID := strings.TrimSpace(cfg.Drive.StockRootFolder); folderID != "" {
+		return folderID
+	}
+	return ""
 }

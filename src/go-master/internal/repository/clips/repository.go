@@ -55,11 +55,12 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 
 // ListClips returns all clips, optionally filtered by source
 func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Clip, error) {
-	query := "SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at FROM clips"
+	query, extended, err := r.clipSelectQuery(ctx, source)
+	if err != nil {
+		return nil, err
+	}
 	args := []interface{}{}
-
 	if source != "" {
-		query += " WHERE source = ?"
 		args = append(args, source)
 	}
 
@@ -71,7 +72,7 @@ func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Cl
 
 	var clips []*models.Clip
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanClipRows(rows, extended)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +83,11 @@ func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Cl
 
 // SearchClips searches clips by tag (searches in tags JSON field)
 func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Clip, error) {
-	query := "SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at FROM clips WHERE tags LIKE ?"
+	query, extended, err := r.clipSelectQuery(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	query += " WHERE tags LIKE ?"
 	rows, err := r.db.QueryContext(ctx, query, "%"+tag+"%")
 	if err != nil {
 		return nil, err
@@ -91,7 +96,7 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 
 	var clips []*models.Clip
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanClipRows(rows, extended)
 		if err != nil {
 			return nil, err
 		}
@@ -113,10 +118,16 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		args = append(args, "%"+kw+"%", "%"+kw+"%")
 	}
 
-	query := fmt.Sprintf(
-		"SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at FROM clips WHERE source = 'stock' AND (%s) LIMIT ?",
+	query, extended, err := r.clipSelectQuery(ctx, "stock")
+	if err != nil {
+		return nil, err
+	}
+	query = fmt.Sprintf(
+		"%s AND (%s) LIMIT ?",
+		query,
 		strings.Join(conditions, " OR "),
 	)
+	args = append([]interface{}{"stock"}, args...)
 	args = append(args, limit)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -127,7 +138,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 
 	var clips []*models.Clip
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanClipRows(rows, extended)
 		if err != nil {
 			return nil, err
 		}
@@ -136,18 +147,80 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	return clips, rows.Err()
 }
 
-func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
+func (r *Repository) clipSelectQuery(ctx context.Context, source string) (string, bool, error) {
+	extended := true
+	if ok, err := r.hasClipCompatColumns(ctx); err != nil {
+		return "", false, err
+	} else if !ok {
+		extended = false
+	}
+
+	if extended {
+		query := "SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at FROM clips"
+		if source != "" {
+			query += " WHERE source = ?"
+		}
+		return query, true, nil
+	}
+
+	query := "SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, created_at, updated_at FROM clips"
+	if source != "" {
+		query += " WHERE source = ?"
+	}
+	return query, false, nil
+}
+
+func (r *Repository) hasClipCompatColumns(ctx context.Context) (bool, error) {
+	rows, err := r.db.QueryContext(ctx, "PRAGMA table_info(clips)")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	hasFileHash := false
+	hasLocalPath := false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		switch name {
+		case "file_hash":
+			hasFileHash = true
+		case "local_path":
+			hasLocalPath = true
+		}
+	}
+	return hasFileHash && hasLocalPath, rows.Err()
+}
+
+func scanClipRows(rows *sql.Rows, extended bool) (*models.Clip, error) {
 	var clip models.Clip
 	var tagsJSON string
 	var createdAt, updatedAt string
 
-	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
-		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
-		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&clip.FileHash, &clip.LocalPath, &createdAt, &updatedAt)
-
-	if err != nil {
-		return nil, err
+	if extended {
+		var fileHash, localPath string
+		err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
+			&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
+			&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+			&fileHash, &localPath, &createdAt, &updatedAt)
+		if err != nil {
+			return nil, err
+		}
+		clip.FileHash = fileHash
+		clip.LocalPath = localPath
+	} else {
+		err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
+			&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
+			&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
+			&createdAt, &updatedAt)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	json.Unmarshal([]byte(tagsJSON), &clip.Tags)

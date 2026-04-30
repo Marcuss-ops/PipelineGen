@@ -4,9 +4,28 @@ import (
 	"context"
 	"strings"
 
+	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/models"
 )
+
+func modelClipsToScoredMatches(clips []models.Clip, reason, source, link string) []scoredMatch {
+	matches := make([]scoredMatch, 0, len(clips))
+	for _, clip := range clips {
+		path := clip.LocalPath
+		if path == "" {
+			path = clip.FolderPath
+		}
+		matches = append(matches, scoredMatch{
+			Title:   clip.Name,
+			Path:    path,
+			Source:  source,
+			Link:    link,
+			Details: reason,
+		})
+	}
+	return matches
+}
 
 func buildClipDriveMatchingSection(ctx context.Context, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, dataDir string, repo *clips.Repository) ScriptSection {
 	catalog, err := loadClipDriveCatalog(ctx, dataDir, repo)

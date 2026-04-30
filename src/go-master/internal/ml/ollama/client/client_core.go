@@ -20,20 +20,20 @@ func NewClient(baseURL, model string) *Client {
 		baseURL = "http://localhost:11434"
 	}
 	if model == "" {
-		model = "gemma3:4b"
+		model = types.DefaultModel
 	}
 
 	return &Client{
 		baseURL:        baseURL,
 		model:          model,
-		httpClient:     &http.Client{Timeout: 120 * time.Second},
-		circuitBreaker: NewCircuitBreaker(3, 30*time.Second),
+		httpClient:     &http.Client{Timeout: types.DefaultTimeoutSeconds * time.Second},
+		circuitBreaker: NewCircuitBreaker(types.CircuitBreakerFailures, types.CircuitBreakerTimeout*time.Second),
 	}
 }
 
 // Chat executes chat with retry, fallback, and circuit breaker
 func (c *Client) Chat(ctx context.Context, messages []types.Message, options map[string]interface{}) (string, error) {
-	return c.chatWithRetryAndFallback(ctx, messages, options, 3)
+	return c.chatWithRetryAndFallback(ctx, messages, options, types.MaxRetries)
 }
 
 // chatWithRetryAndFallback implements retry logic with model fallback

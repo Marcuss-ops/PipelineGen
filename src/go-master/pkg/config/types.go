@@ -30,7 +30,7 @@ type HarvesterConfig struct {
 	MaxConcurrentDownloads int      `yaml:"max_concurrent_downloads" default:"3"`
 	DownloadDir            string   `yaml:"download_dir" default:"./downloads"`
 	ProcessClips           bool     `yaml:"process_clips" default:"true"`
-	DriveFolderID          string   `yaml:"drive_folder_id" default:""`
+	DriveFolderID          string   `yaml:"drive_folder_id" env:"VELOX_ARTLIST_ROOT_FOLDER" default:""`
 }
 
 // DriveConfig holds Google Drive configuration.
@@ -85,16 +85,16 @@ type PathsConfig struct {
 
 // JobsConfig holds job-related configuration.
 type JobsConfig struct {
-	NewJobsPaused      bool `yaml:"new_jobs_paused" default:"false"`
-	LeaseTTLSeconds    int  `yaml:"lease_ttl_seconds" default:"300"`
-	MaxParallelPerProject int `yaml:"max_parallel_per_project" default:"2"`
-	AutoCleanupHours   int  `yaml:"auto_cleanup_hours" default:"24"`
+	NewJobsPaused         bool `yaml:"new_jobs_paused" default:"false"`
+	LeaseTTLSeconds       int  `yaml:"lease_ttl_seconds" default:"300"`
+	MaxParallelPerProject int  `yaml:"max_parallel_per_project" default:"2"`
+	AutoCleanupHours      int  `yaml:"auto_cleanup_hours" default:"24"`
 }
 
 // WorkersConfig holds worker-related configuration.
 type WorkersConfig struct {
-	AllowedIPs            []string `yaml:"allowed_ips" default:"[]"`
-	HeartbeatTimeout      int      `yaml:"heartbeat_timeout" default:"30"`
-	WorkerFailWindowSeconds int     `yaml:"worker_fail_window_seconds" default:"300"`
-	WorkerFailThreshold  int      `yaml:"worker_fail_threshold" default:"3"`
+	AllowedIPs              []string `yaml:"allowed_ips" default:"[]"`
+	HeartbeatTimeout        int      `yaml:"heartbeat_timeout" default:"30"`
+	WorkerFailWindowSeconds int      `yaml:"worker_fail_window_seconds" default:"300"`
+	WorkerFailThreshold     int      `yaml:"worker_fail_threshold" default:"3"`
 }

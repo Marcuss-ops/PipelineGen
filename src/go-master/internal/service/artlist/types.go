@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"google.golang.org/api/drive/v3"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/models"
-	"google.golang.org/api/drive/v3"
 )
 
 type Service struct {
@@ -104,6 +104,74 @@ type SyncResponse struct {
 	Failed     int    `json:"failed"`
 	SavedClips int    `json:"saved_clips"`
 	Error      string `json:"error,omitempty"`
+}
+
+// RunTagRequest represents the full Artlist tag pipeline request.
+type RunTagRequest struct {
+	Term         string `json:"term"`
+	Limit        int    `json:"limit"`
+	RootFolderID string `json:"root_folder_id,omitempty"`
+	Strategy     string `json:"strategy,omitempty"`
+	DryRun       bool   `json:"dry_run,omitempty"`
+	// Deprecated: kept for backward compatibility with older clients.
+	ForceReupload bool `json:"force_reupload,omitempty"`
+}
+
+// RunTagItem represents the result for a single clip in the full pipeline.
+type RunTagItem struct {
+	ClipID       string `json:"clip_id"`
+	Name         string `json:"name"`
+	Filename     string `json:"filename"`
+	Status       string `json:"status"`
+	DownloadURL  string `json:"download_url,omitempty"`
+	DriveLink    string `json:"drive_link,omitempty"`
+	DownloadLink string `json:"download_link,omitempty"`
+	LocalPath    string `json:"local_path,omitempty"`
+	FileHash     string `json:"file_hash,omitempty"`
+	Error        string `json:"error,omitempty"`
+}
+
+// RunTagResponse represents the result of the full tag pipeline.
+type RunTagResponse struct {
+	OK             bool         `json:"ok"`
+	RunID          string       `json:"run_id,omitempty"`
+	Status         string       `json:"status,omitempty"`
+	Term           string       `json:"term"`
+	Strategy       string       `json:"strategy,omitempty"`
+	DryRun         bool         `json:"dry_run,omitempty"`
+	RootFolderID   string       `json:"root_folder_id,omitempty"`
+	TagFolderID    string       `json:"tag_folder_id,omitempty"`
+	Requested      int          `json:"requested"`
+	Found          int          `json:"found"`
+	Processed      int          `json:"processed"`
+	Skipped        int          `json:"skipped"`
+	Failed         int          `json:"failed"`
+	WouldProcess   int          `json:"would_process,omitempty"`
+	WouldSkip      int          `json:"would_skip,omitempty"`
+	EstimatedSize  int          `json:"estimated_size,omitempty"`
+	LastProcessedAt *string      `json:"last_processed_at,omitempty"`
+	StartedAt      *string      `json:"started_at,omitempty"`
+	EndedAt        *string      `json:"ended_at,omitempty"`
+	Items          []RunTagItem `json:"items,omitempty"`
+	Error          string       `json:"error,omitempty"`
+}
+
+// DiagnosticsResponse reports the current Artlist wiring and database readiness.
+type DiagnosticsResponse struct {
+	OK                bool    `json:"ok"`
+	RootFolderID      string  `json:"root_folder_id,omitempty"`
+	DriveFolderID     string  `json:"drive_folder_id,omitempty"`
+	NodeScraperDir    string  `json:"node_scraper_dir,omitempty"`
+	HasDriveClient    bool    `json:"has_drive_client"`
+	HasArtlistDB      bool    `json:"has_artlist_db"`
+	MainDBReady       bool    `json:"main_db_ready"`
+	ClipsTotal        int     `json:"clips_total"`
+	ArtlistClipsTotal int     `json:"artlist_clips_total"`
+	SearchTerm        string  `json:"search_term,omitempty"`
+	MatchingClips     int     `json:"matching_clips,omitempty"`
+	EstimatedSize     int     `json:"estimated_size,omitempty"`
+	LastProcessedAt   *string `json:"last_processed_at,omitempty"`
+	Error             string  `json:"error,omitempty"`
 }
 
 // ClipStatusResponse represents the status of a clip

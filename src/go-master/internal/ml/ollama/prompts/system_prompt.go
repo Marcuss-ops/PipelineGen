@@ -2,10 +2,27 @@ package prompts
 
 // BuildSystemPrompt returns the system prompt based on language and tone
 func BuildSystemPrompt(language, tone string) string {
+	switch language {
+	case "it":
+		language = "italian"
+	case "en":
+		language = "english"
+	case "es":
+		language = "spanish"
+	case "fr":
+		language = "french"
+	case "de":
+		language = "german"
+	case "pt":
+		language = "portuguese"
+	case "ru":
+		language = "russian"
+	}
+
 	// Base system prompts per language
 	basePrompts := map[string]map[string]string{
 		"italian": {
-			"default": "Sei un narratore eccezionale e un copywriter senior. Il tuo compito è scrivere script video AVVINCENTI, RICCHI DI DETTAGLI e NARRATIVAMENTE POTENTI.",
+			"default": "You are an exceptional storyteller and senior copywriter. Your task is to write COMPELLING, DETAIL-RICH, and NARRATIVELY POWERFUL video scripts.",
 		},
 		"english": {
 			"default": "You are an exceptional storyteller and senior copywriter. Your task is to write COMPELLING, DETAIL-RICH, and NARRATIVELY POWERFUL video scripts.",
@@ -30,12 +47,12 @@ func BuildSystemPrompt(language, tone string) string {
 	// Tone instructions per language
 	toneInstructions := map[string]map[string]string{
 		"italian": {
-			"professional": "Usa uno stile documentaristico, autorevole e serio. Analizza profondamente ogni aspetto.",
-			"casual":       "Usa uno stile colloquiale, moderno e amichevole. Sii coinvolgente come un creator di YouTube.",
-			"enthusiastic": "Usa uno stile energico, epico e motivazionale. Ogni frase deve trasmettere passione.",
-			"calm":         "Usa uno stile pacato, riflessivo e poetico. Crea un'atmosfera immersiva.",
-			"funny":        "Usa uno stile ironico, brillante e divertente. Inserisci battute o osservazioni sagaci.",
-			"educational":  "Usa uno stile chiaro, pedagogico e strutturato. Spiega i concetti in modo semplice ma esaustivo.",
+			"professional": "Use a documentary, authoritative, and serious style. Deeply analyze every aspect.",
+			"casual":       "Use a colloquial, modern, and friendly style. Be engaging like a YouTube creator.",
+			"enthusiastic": "Use an energetic, epic, and motivational style. Every sentence must convey passion.",
+			"calm":         "Use a calm, reflective, and poetic style. Create an immersive atmosphere.",
+			"funny":        "Use an ironic, brilliant, and funny style. Insert jokes or witty observations.",
+			"educational":  "Use a clear, pedagogical, and structured style. Explain concepts simply but thoroughly.",
 		},
 		"english": {
 			"professional": "Use a documentary, authoritative, and serious style. Deeply analyze every aspect.",

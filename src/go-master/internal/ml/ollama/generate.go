@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/ml/ollama/prompts"
 	"velox/go-master/internal/ml/ollama/types"
 )
 
@@ -25,7 +26,8 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		return nil, fmt.Errorf("ollama client not initialized")
 	}
 	setTextDefaults(&req)
-	result, err := g.client.GenerateWithOptions(ctx, req.Model, req.SourceText, req.Options)
+	messages := prompts.BuildChatMessages(&req)
+	result, err := g.client.Chat(ctx, messages, req.Options)
 	if err != nil {
 		return nil, fmt.Errorf("script generation failed: %w", err)
 	}
@@ -34,7 +36,7 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		WordCount:   len(result),
 		EstDuration: len(result) * 3, // rough estimate: 3 seconds per word
 		Model:       req.Model,
-		Prompt:      req.SourceText,
+		Prompt:      prompts.BuildTextPrompt(&req),
 	}, nil
 }
 
@@ -49,7 +51,7 @@ func setTextDefaults(req *types.TextGenerationRequest) {
 		req.Tone = "professional"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = types.DefaultModel
 	}
 }
 
@@ -58,14 +60,15 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 		return nil, fmt.Errorf("ollama client not initialized")
 	}
 	setRegenerationDefaults(&req)
-	result, err := g.client.GenerateWithOptions(ctx, req.Model, req.OriginalScript, req.Options)
+	messages := prompts.BuildRegenerationChatMessages(&req)
+	result, err := g.client.Chat(ctx, messages, req.Options)
 	if err != nil {
 		return nil, fmt.Errorf("script regeneration failed: %w", err)
 	}
 	return &types.GenerationResult{
 		Script:      result,
 		WordCount:   len(result),
-		EstDuration: len(result) * 3,
+		EstDuration: len(result) * types.SecondsPerWord,
 		Model:       req.Model,
 		Prompt:      req.OriginalScript,
 	}, nil
@@ -76,6 +79,6 @@ func setRegenerationDefaults(req *types.RegenerationRequest) {
 		req.Language = "english"
 	}
 	if req.Model == "" {
-		req.Model = "gemma3:4b"
+		req.Model = types.DefaultModel
 	}
 }
