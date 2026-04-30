@@ -6,12 +6,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/api/drive/v3"
-
-	"velox/go-master/internal/core/interfaces"
 )
-
-// Ensure Service implements interfaces.DriveUploader
-var _ interfaces.DriveUploader = (*Service)(nil)
 
 // UploadFile uploads a file to the specified Drive folder
 func (s *Service) UploadFile(ctx context.Context, filePath, folderID, filename string) (string, error) {

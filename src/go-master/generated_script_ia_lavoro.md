@@ -1,6 +1,0 @@
-Il futuro del lavoro nell'era dell'intelligenza artificiale
-===========================================================
-
-Il rumore delle macchine non è più quello delle fabbriche di un tempo. Oggi vibra nei server, nei magazzini automatizzati, negli algoritmi che selezionano candidati, prevedono i consumi e guidano processi che fino a ieri sembravano esclusivamente umani. L'intelligenza artificiale sta cambiando il lavoro alla radice: non solo sostituisce alcune mansioni ripetitive, ma riscrive il modo stesso in cui pensiamo competenze, produttività e valore. In questo passaggio, il timore è reale. Molti ruoli spariscono, altri si trasformano, e milioni di persone devono affrontare una domanda decisiva: come restare necessari in un mondo che cambia così in fretta?
-
-Ma ogni rivoluzione apre anche uno spazio nuovo. Accanto ai mestieri che si riducono, nascono professioni che prima non esistevano: tecnici della robotica, progettisti di sistemi intelligenti, analisti dei dati, specialisti della supervisione etica. Il punto non è resistere al cambiamento, ma governarlo. Servono scuole capaci di aggiornarsi, aziende disposte a formare, istituzioni che investano sulla transizione. Il futuro del lavoro non sarà una sfida tra uomo e macchina, ma una prova di equilibrio: usare la tecnologia per liberare talento umano, non per renderlo invisibile.
