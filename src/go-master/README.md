@@ -10,6 +10,17 @@
 
 The Go Master server is the central API hub for the VeloxEditing platform. It orchestrates video creation, script generation, clip indexing, and stock management.
 
+## 📚 Technical Documentation
+
+For deeper dives into specific components, refer to the following documentation:
+
+- **[Job Lifecycle & State Machine](./docs/architecture/job_lifecycle.md)**: Details on how asynchronous tasks are managed, worker leases, and state transitions.
+- **[Matching & Scoring System](./internal/matching/README.md)**: Deep dive into the algorithm used to rank and select assets (clips, images) for scripts.
+- **[CLI Utilities Guide](./cmd/README.md)**: Catalog of maintenance, ingestion, and migration tools available in the `cmd/` directory.
+- **[Google Docs Generation Flow](./SCRIPT_DOCS_GUIDE.md)**: Details on how scripts are formatted and published to Google Docs.
+
+---
+
 ## 📁 Project Structure
 
 ```

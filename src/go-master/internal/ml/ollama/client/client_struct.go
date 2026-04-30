@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 // CircuitBreaker implements a simple circuit breaker for Ollama requests
@@ -62,12 +64,12 @@ func (cb *CircuitBreaker) RecordFailure() {
 
 // modelFallbackChains defines fallback model chains
 var modelFallbackChains = map[string][]string{
-	"qwen2.5:12b":  {"qwen2.5:7b", "gemma3:4b"},
-	"llama3.2:12b": {"llama3.2:7b", "gemma3:4b"},
-	"mistral:12b":  {"mistral:7b", "gemma3:4b"},
-	"gemma3:12b":   {"gemma3:4b"},
-	"qwen2.5:7b":   {"gemma3:4b"},
-	"llama3.2:7b":  {"gemma3:4b"},
+	"qwen2.5:12b":  {"qwen2.5:7b", types.DefaultModel},
+	"llama3.2:12b": {"llama3.2:7b", types.DefaultModel},
+	"mistral:12b":  {"mistral:7b", types.DefaultModel},
+	"gemma3:12b":   {types.DefaultModel},
+	"qwen2.5:7b":   {types.DefaultModel},
+	"llama3.2:7b":  {types.DefaultModel},
 }
 
 // Client client per Ollama API

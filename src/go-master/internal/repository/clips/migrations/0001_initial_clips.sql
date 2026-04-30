@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS clips (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    filename TEXT,
+    folder_id TEXT,
+    folder_path TEXT,
+    group_name TEXT,
+    media_type TEXT DEFAULT 'clip',
+    drive_link TEXT,
+    download_link TEXT,
+    tags TEXT,
+    source TEXT DEFAULT 'drive',
+    category TEXT,
+    external_url TEXT,
+    duration INTEGER DEFAULT 0,
+    metadata TEXT,
+    file_hash TEXT DEFAULT '',
+    local_path TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

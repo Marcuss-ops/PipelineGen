@@ -5,10 +5,10 @@ package types
 type TextGenerationRequest struct {
 	SourceText string                 `json:"source_text" binding:"required"`
 	Title      string                 `json:"title" binding:"required"`
-	Language   string                 `json:"language" default:"italian"`
-	Duration   int                    `json:"duration" default:"60"` // secondi
-	Tone       string                 `json:"tone" default:"professional"`
-	Model      string                 `json:"model" default:"gemma3:4b"`
+	Language   string                 `json:"language"`
+	Duration   int                    `json:"duration"` // secondi
+	Tone       string                 `json:"tone"`
+	Model      string                 `json:"model"`
 	Options    map[string]interface{} `json:"options,omitempty"`
 }
 
@@ -16,9 +16,9 @@ type TextGenerationRequest struct {
 type YouTubeGenerationRequest struct {
 	YouTubeURL string                 `json:"youtube_url" binding:"required"`
 	Title      string                 `json:"title" binding:"required"`
-	Language   string                 `json:"language" default:"italian"`
-	Duration   int                    `json:"duration" default:"60"`
-	Model      string                 `json:"model" default:"gemma3:4b"`
+	Language   string                 `json:"language"`
+	Duration   int                    `json:"duration"`
+	Model      string                 `json:"model"`
 	Options    map[string]interface{} `json:"options,omitempty"`
 }
 
@@ -26,9 +26,9 @@ type YouTubeGenerationRequest struct {
 type RegenerationRequest struct {
 	OriginalScript string                 `json:"original_script" binding:"required"`
 	Title          string                 `json:"title"`
-	Language       string                 `json:"language" default:"italian"`
-	Tone           string                 `json:"tone" default:"professional"`
-	Model          string                 `json:"model" default:"gemma3:4b"`
+	Language       string                 `json:"language"`
+	Tone           string                 `json:"tone"`
+	Model          string                 `json:"model"`
 	Options        map[string]interface{} `json:"options,omitempty"`
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/ml/ollama"
 	artlist "velox/go-master/internal/service/artlist"
 )
 
@@ -39,7 +38,7 @@ func attemptLiveSearchDecision(ctx context.Context, req ScriptDocsRequest, segme
 	}, true
 }
 
-func buildLiveSearchReason(searchTerm string, runResp *RunTagResponse) string {
+func buildLiveSearchReason(searchTerm string, runResp *artlist.RunTagResponse) string {
 	reason := fmt.Sprintf("Live search for '%s' found clips", searchTerm)
 	if runResp != nil && runResp.RunID != "" {
 		reason += " while queuing run " + runResp.RunID
@@ -47,7 +46,7 @@ func buildLiveSearchReason(searchTerm string, runResp *RunTagResponse) string {
 	return reason
 }
 
-func extractFolderLink(runResp *RunTagResponse) string {
+func extractFolderLink(runResp *artlist.RunTagResponse) string {
 	if runResp == nil {
 		return ""
 	}
