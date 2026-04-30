@@ -39,31 +39,6 @@ type ScriptDocument struct {
 	Timeline *TimelinePlan
 }
 
-// TimelinePlan is the structured timestamp/action breakdown for a generated script.
-type TimelinePlan struct {
-	PrimaryFocus  string            `json:"primary_focus"`
-	SegmentCount  int               `json:"segment_count"`
-	TotalDuration int               `json:"total_duration"`
-	Segments      []TimelineSegment `json:"segments"`
-}
-
-// TimelineSegment is one timestamp/action block in the generated script.
-type TimelineSegment struct {
-	Index               int           `json:"index"`
-	StartTime           float64       `json:"start_time"`
-	EndTime             float64       `json:"end_time"`
-	Timestamp           string        `json:"timestamp"`
-	OpeningSentence     string        `json:"opening_sentence"`
-	ClosingSentence     string        `json:"closing_sentence"`
-	Keywords            []string      `json:"keywords,omitempty"`
-	Entities            []string      `json:"entities,omitempty"`
-	PreferredStockGroup string        `json:"preferred_stock_group,omitempty"`
-	PreferredStockPaths []string      `json:"preferred_stock_paths,omitempty"`
-	StockMatches        []scoredMatch `json:"stock_matches,omitempty"`
-	DriveMatches        []scoredMatch `json:"drive_matches,omitempty"`
-	ArtlistMatches      []scoredMatch `json:"artlist_matches,omitempty"`
-}
-
 type artlistIndex struct {
 	FolderID string            `json:"folder_id"`
 	Clips    []artlistClipItem `json:"clips"`
