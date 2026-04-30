@@ -7,20 +7,23 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
 )
 
 // loadClipsFromDB loads the clips from the database
-func loadClipsFromDB(ctx context.Context, repo *clips.Repository) ([]clipDriveRecord, error) {
+func loadClipsFromDB(ctx context.Context, repo *clips.Repository, source string) ([]clipDriveRecord, error) {
 	if repo == nil {
 		return nil, nil
 	}
-	
-	dbClips, err := repo.ListClips(ctx, "")
+
+	dbClips, err := repo.ListClips(ctx, source)
 	if err != nil {
 		return nil, err
 	}
-	
+
+	zap.L().Info("loadClipsFromDB called", zap.String("source", source), zap.Int("count", len(dbClips)))
+
 	records := make([]clipDriveRecord, 0, len(dbClips))
 	for _, c := range dbClips {
 		records = append(records, clipDriveRecord{
@@ -34,6 +37,7 @@ func loadClipsFromDB(ctx context.Context, repo *clips.Repository) ([]clipDriveRe
 			DriveLink:    c.DriveLink,
 			DownloadLink: c.DownloadLink,
 			Tags:         c.Tags,
+			Source:       c.Source,
 		})
 	}
 	return records, nil
@@ -43,7 +47,7 @@ func loadClipsFromDB(ctx context.Context, repo *clips.Repository) ([]clipDriveRe
 func loadClipDriveCatalog(ctx context.Context, dataDir string, repo *clips.Repository) ([]clipDriveRecord, error) {
 	// Try DB first (Single Source of Truth)
 	if repo != nil {
-		records, err := loadClipsFromDB(ctx, repo)
+		records, err := loadClipsFromDB(ctx, repo, "")
 		if err == nil && len(records) > 0 {
 			return records, nil
 		}
