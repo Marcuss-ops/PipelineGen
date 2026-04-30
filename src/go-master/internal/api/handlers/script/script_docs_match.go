@@ -9,15 +9,6 @@ import (
 	"unicode"
 )
 
-type scoredMatch struct {
-	Title   string
-	Path    string
-	Score   int
-	Source  string
-	Link    string
-	Details string
-}
-
 func readJSON(path string, dst any) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

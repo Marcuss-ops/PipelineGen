@@ -17,6 +17,7 @@ type clipDriveRecord struct {
 	DriveLink    string   `json:"drive_link"`
 	DownloadLink string   `json:"download_link"`
 	Tags         []string `json:"tags"`
+	Source       string   `json:"source"`
 }
 
 // clipDriveCandidate represents a candidate clip for matching

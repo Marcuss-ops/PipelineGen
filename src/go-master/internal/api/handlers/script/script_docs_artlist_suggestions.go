@@ -8,6 +8,7 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 type artlistTagSuggestion struct {
@@ -22,21 +23,25 @@ func suggestArtlistSearchTags(ctx context.Context, gen *ollama.Generator, req Sc
 	if client == nil {
 		return nil
 	}
+	model := client.Model()
+	if strings.TrimSpace(model) == "" {
+		model = types.DefaultModel
+	}
 
-	prompt := fmt.Sprintf(`Sei un assistente per la ricerca di clip Artlist.
-Devi suggerire SOLO tag di ricerca in inglese, brevi e concreti.
-Non inventare clip, non descrivere la frase, non restituire spiegazioni.
+	prompt := fmt.Sprintf(`You are an assistant for Artlist clip search.
+Suggest ONLY search tags in English, short and concrete.
+Do not invent clips, do not describe the phrase, do not return explanations.
 
 TOPIC: %s
-FRASE: %s
-TESTO COMPLETO:
+PHRASE: %s
+FULL TEXT:
 %s
 
-Restituisci solo JSON puro nel formato {"tags":["tag1","tag2","tag3"]}.`, req.Topic, phrase, narrative)
+Return only pure JSON in the format {"tags":["tag1","tag2","tag3"]}.`, req.Topic, phrase, narrative)
 
-	raw, err := client.GenerateWithOptions(ctx, "gemma3:4b", prompt, map[string]interface{}{
-		"temperature": 0.2,
-		"num_predict": 128,
+	raw, err := client.GenerateWithOptions(ctx, model, prompt, map[string]interface{}{
+		"temperature": types.SuggestionTemperature,
+		"num_predict": types.SuggestionNumPredict,
 	})
 	if err != nil {
 		return nil
@@ -56,8 +61,8 @@ Restituisci solo JSON puro nel formato {"tags":["tag1","tag2","tag3"]}.`, req.To
 	if len(tags) == 0 {
 		return nil
 	}
-	if len(tags) > 5 {
-		tags = tags[:5]
+	if len(tags) > types.MaxArtlistTags {
+		tags = tags[:types.MaxArtlistTags]
 	}
 	return tags
 }

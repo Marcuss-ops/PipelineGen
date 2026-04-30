@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/scripts"
 )
 
@@ -32,12 +33,32 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
 	defer cancel()
 
-	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.clipTextDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo)
+	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.artlistService, h.imgService)
+
 	if err != nil {
 		zap.L().Error("script document generation failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
+
+	var docID, docURL string
+	if h.docClient == nil {
+		zap.L().Error("doc creation requested but google docs client is not initialized")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"ok":    false,
+			"error": "google docs client not initialized; cannot publish document",
+		})
+		return
+	}
+
+	doc, err := h.docClient.CreateDoc(ctx, document.Title, document.Content, h.stockRootFolder)
+	if err != nil {
+		zap.L().Error("doc creation failed during generation", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": fmt.Sprintf("failed to create Google Doc: %v", err)})
+		return
+	}
+	docID = doc.ID
+	docURL = doc.URL
 
 	// Save script to database if repository is available
 	if h.scriptsRepo != nil {
@@ -56,20 +77,6 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		}
 	}
 
-	var docID, docURL string
-	if h.docClient != nil {
-		doc, err := h.docClient.CreateDoc(ctx, document.Title, document.Content, h.stockRootFolder)
-		if err != nil {
-			zap.L().Warn("doc creation failed during generation", zap.Error(err))
-		} else {
-			docID = doc.ID
-			docURL = doc.URL
-		}
-	} else if !forcePreview {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "Google Docs client is not initialized. Cannot create document."})
-		return
-	}
-
 	if forcePreview {
 		path, err := h.savePreview(document.Title, document.Content)
 		if err != nil {
@@ -77,21 +84,17 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"ok":            true,
-			"preview_only":  true,
-			"title":         document.Title,
-			"full_content":  document.Content,
-			"preview_path":  path,
-			"timeline":      document.Timeline,
-			"doc_id":        docID,
-			"doc_url":       docURL,
-			"voiceover":     voResult,
+			"ok":           true,
+			"preview_only": true,
+			"title":        document.Title,
+			"full_content": document.Content,
+			"preview_path": path,
+			"timeline":     document.Timeline,
+			"doc_id":       docID,
+			"doc_url":      docURL,
+			"docs_url":     docURL,
+			"voiceover":    voResult,
 		})
-		return
-	}
-
-	if docID == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "Failed to create Google Doc"})
 		return
 	}
 
@@ -99,6 +102,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		"ok":           true,
 		"doc_id":       docID,
 		"doc_url":      docURL,
+		"docs_url":     docURL,
 		"title":        document.Title,
 		"full_content": document.Content,
 		"timeline":     document.Timeline,
@@ -107,10 +111,10 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 }
 
 func narrativeOnly(content string) string {
-	marker := "🎙️ Narrative Script"
+	marker := types.MarkerNarrator
 	if idx := strings.Index(content, marker); idx != -1 {
 		part := content[idx+len(marker):]
-		if nextIdx := strings.Index(part, "⏱️ Timeline"); nextIdx != -1 {
+		if nextIdx := strings.Index(part, types.MarkerTimeline); nextIdx != -1 {
 			return strings.TrimSpace(part[:nextIdx])
 		}
 		return strings.TrimSpace(part)
@@ -174,7 +178,7 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 	if err := os.MkdirAll(scriptsDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create scripts directory: %w", err)
 	}
-	
+
 	path := script.BuildPreviewPath(scriptsDir, title)
 	if err := script.WritePreview(path, title, content); err != nil {
 		return "", err

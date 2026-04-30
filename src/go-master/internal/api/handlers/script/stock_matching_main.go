@@ -76,20 +76,6 @@ func rankStockFoldersForSegment(idx *stockFolderMatchIndex, seg TimelineSegment)
 	})
 
 	best := candidates[0]
-	second := candidate{}
-	if len(candidates) > 1 {
-		second = candidates[1]
-	}
-
-	if best.cosine < 0.72 && best.preferred < 0.75 && best.group < 0.75 {
-		return nil, false
-	}
-	if len(candidates) > 1 && second.score > 0 && best.score < second.score*1.3 && best.preferred < 0.75 && best.group < 0.75 {
-		return nil, false
-	}
-	if best.score < 0.72 && best.preferred < 0.75 && best.group < 0.75 {
-		return nil, false
-	}
 
 	return []scoredMatch{best.match}, true
 }

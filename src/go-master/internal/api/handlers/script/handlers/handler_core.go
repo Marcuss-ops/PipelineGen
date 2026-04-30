@@ -7,6 +7,8 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
+	artlistSvc "velox/go-master/internal/service/artlist"
+	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/upload/drive"
 )
@@ -16,6 +18,7 @@ type ScriptDocsHandler struct {
 	generator        *ollama.Generator
 	docClient        drive.DocClient
 	voService        *voiceover.Service
+	imgService       *imgservice.Service
 	dataDir          string
 	clipTextDir      string
 	pythonScriptsDir string
@@ -25,14 +28,16 @@ type ScriptDocsHandler struct {
 	ArtlistRepo      *clips.Repository
 	clipsOnlyRepo    *clips.Repository
 	stockRootFolder  string
+	artlistService   *artlistSvc.Service
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,
 		voService:        voService,
+		imgService:       imgService,
 		dataDir:          dataDir,
 		clipTextDir:      clipTextDir,
 		pythonScriptsDir: pythonScriptsDir,
@@ -42,6 +47,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voSe
 		ArtlistRepo:      ArtlistRepo,
 		clipsOnlyRepo:    clipsOnlyRepo,
 		stockRootFolder:  stockRootFolder,
+		artlistService:   artlistService,
 	}
 }
 

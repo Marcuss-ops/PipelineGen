@@ -4,9 +4,13 @@ import "strings"
 
 func renderScriptDocument(title string, sections []ScriptSection) string {
 	var b strings.Builder
-	b.WriteString(title)
+	if strings.TrimSpace(title) == "" {
+		title = "Untitled script"
+	}
+	header := title
+	b.WriteString(header)
 	b.WriteString("\n")
-	b.WriteString(strings.Repeat("=", len(title)))
+	b.WriteString(strings.Repeat("=", len(header)))
 	b.WriteString("\n\n")
 
 	for _, section := range sections {

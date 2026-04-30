@@ -11,7 +11,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 	clips, err := loadStockCatalog(dataDir)
 	if err != nil {
 		return ScriptSection{
-			Title: " Stock Matching",
+			Title: "Stock Matching",
 			Body:  "Stock catalog unavailable.",
 		}
 	}
@@ -52,13 +52,13 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 	matches = sortTopMatches(matches, 4)
 	if len(matches) == 0 {
 		return ScriptSection{
-			Title: " Stock Matching",
+			Title: "Stock Matching",
 			Body:  "None",
 		}
 	}
 
 	return ScriptSection{
-		Title: " Stock Matching",
+		Title: "Stock Matching",
 		Body:  renderMatches(matches),
 	}
 }
