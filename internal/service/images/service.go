@@ -50,7 +50,7 @@ func Slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// SearchAndDownload prova a cercare un'immagine su Wikidata/Wikipedia (main) o DDG (fallback) e la scarica
+// SearchAndDownload prova a cercare un\'immagine nel DB locale, e se non trovata procede con Wikidata/Wikipedia (main) o DDG (fallback) e la scarica
 func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*models.ImageAsset, error) {
 	// Normalizziamo lo slug
 	slug := Slugify(subjectSlug)
@@ -58,7 +58,15 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*mo
 		slug = Slugify(query)
 	}
 
-	// 0. Gestione concorrenza
+	// 0. Controlla se abbiamo già il soggetto e almeno un\'immagine nel DB
+	if subject, err := s.repo.GetSubjectBySlugOrAlias(slug); err == nil && subject != nil {
+		if images, err := s.repo.ListImagesBySubject(subject.ID); err == nil && len(images) > 0 {
+			s.log.Info("Image found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
+			return &images[0], nil
+		}
+	}
+
+	// 1. Gestione concorrenza per evitare doppi download contemporanei
 	s.mu.Lock()
 	if wg, exists := s.activeSearch[slug]; exists {
 		s.mu.Unlock()
