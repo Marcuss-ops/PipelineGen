@@ -1,6 +1,7 @@
 package script
 
 import (
+	"velox/go-master/internal/matching"
 	"context"
 	"fmt"
 	"strings"
@@ -10,12 +11,12 @@ import (
 )
 
 func buildSegmentKeywords(topic string, chunk string, entities []string) []string {
-	terms := tokenize(chunk)
+	terms := matching.Tokenize(chunk)
 	terms = append(terms, entities...)
 	filtered := make([]string, 0, len(terms))
 	for _, term := range terms {
 		term = strings.TrimSpace(strings.ToLower(term))
-		if term == "" || len(term) < 3 || isStopWord(term) {
+		if term == "" || len(term) < 3 || matching.IsStopWord(term) {
 			continue
 		}
 		filtered = append(filtered, term)
@@ -37,7 +38,7 @@ func mergeTimelineSearchTerms(ctx context.Context, gen *ollama.Generator, req Sc
 	filtered := make([]string, 0, len(terms))
 	for _, term := range terms {
 		term = strings.TrimSpace(strings.ToLower(term))
-		if term == "" || len(term) < 3 || isStopWord(term) {
+		if term == "" || len(term) < 3 || matching.IsStopWord(term) {
 			continue
 		}
 		filtered = append(filtered, term)
