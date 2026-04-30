@@ -63,3 +63,16 @@ const (
 	timelineAssetSourceArtlistFolder  timelineAssetSource = "artlist_folder"
 	timelineAssetSourceArtlistDynamic timelineAssetSource = "artlist_dynamic"
 )
+
+type timelineFolderCandidate struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	Link string `json:"link"`
+}
+
+type timelineAssetDecision struct {
+	Source  string        `json:"source"`
+	Folder  string        `json:"folder"`
+	Reason  string        `json:"reason"`
+	Matches []scoredMatch `json:"matches,omitempty"`
+}

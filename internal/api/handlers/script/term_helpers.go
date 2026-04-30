@@ -2,6 +2,7 @@ package script
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"

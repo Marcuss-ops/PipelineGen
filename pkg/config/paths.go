@@ -12,12 +12,25 @@ func resolveRelativePath(path string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
-	if _, err := os.Stat(path); err == nil {
-		return path
+	candidates := []string{
+		path,
+		filepath.Join("src/go-master", path),
+		filepath.Join("..", path),
+		filepath.Join("..", "..", path),
+		filepath.Join("..", "..", "..", path),
 	}
-	fallback := filepath.Join("src/go-master", path)
-	if _, err := os.Stat(fallback); err == nil {
-		return fallback
+
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates,
+			filepath.Join(home, path),
+			filepath.Join(home, "Downloads", path),
+		)
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
 	}
 	return path
 }
