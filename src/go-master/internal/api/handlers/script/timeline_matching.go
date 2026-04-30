@@ -1,6 +1,7 @@
 package script
 
 import (
+	"velox/go-master/internal/matching"
 	"fmt"
 	"sort"
 	"strings"
@@ -98,8 +99,8 @@ func isStrongTimelineFolderCandidate(candidate timelineFolderCandidate, terms []
 	}
 
 	candidateTokens := make(map[string]struct{})
-	for _, token := range tokenize(name + " " + path) {
-		if len(token) >= 3 && !isStopWord(token) {
+	for _, token := range matching.Tokenize(name + " " + path) {
+		if len(token) >= 3 && !matching.IsStopWord(token) {
 			candidateTokens[token] = struct{}{}
 		}
 	}
@@ -118,7 +119,7 @@ func isStrongTimelineFolderCandidate(candidate timelineFolderCandidate, terms []
 			return true
 		}
 
-		for _, token := range tokenize(normalizedTerm) {
+		for _, token := range matching.Tokenize(normalizedTerm) {
 			if _, ok := candidateTokens[token]; ok {
 				return true
 			}
@@ -191,7 +192,7 @@ func prioritizeFoldersByTopic(folders []timelineFolderCandidate, topic string, m
 		return folders
 	}
 
-	topicTerms := tokenize(topic)
+	topicTerms := matching.Tokenize(topic)
 
 	matching := make([]timelineFolderCandidate, 0)
 	nonMatching := make([]timelineFolderCandidate, 0)

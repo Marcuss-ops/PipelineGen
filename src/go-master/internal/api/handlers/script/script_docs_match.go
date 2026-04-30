@@ -6,7 +6,8 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"unicode"
+
+	"velox/go-master/internal/matching"
 )
 
 func readJSON(path string, dst any) error {
@@ -20,8 +21,8 @@ func readJSON(path string, dst any) error {
 func collectTopicTerms(topic string) []string {
 	seen := make(map[string]struct{})
 	add := func(text string) {
-		for _, term := range tokenize(text) {
-			if len(term) < 3 || isStopWord(term) {
+		for _, term := range matching.Tokenize(text) {
+			if len(term) < 3 || matching.IsStopWord(term) {
 				continue
 			}
 			seen[term] = struct{}{}
@@ -36,24 +37,6 @@ func collectTopicTerms(topic string) []string {
 	}
 	sort.Strings(terms)
 	return terms
-}
-
-func tokenize(text string) []string {
-	text = strings.ToLower(text)
-	return strings.FieldsFunc(text, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
-}
-
-func isStopWord(term string) bool {
-	switch term {
-	case "the", "and", "for", "with", "that", "this", "from", "then", "into", "over",
-		"una", "uno", "del", "della", "delle", "degli", "nel", "nella", "nei",
-		"per", "con", "tra", "gli", "le", "dei", "dai", "dalle", "dagli", "sul", "sulla", "sugli":
-		return true
-	default:
-		return false
-	}
 }
 
 func scoreText(candidate string, terms []string) int {
