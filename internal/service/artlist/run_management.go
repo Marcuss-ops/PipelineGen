@@ -32,13 +32,38 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 	activeKey := runDedupKey(normalized.Term, normalized.RootFolderID, normalized.Strategy, normalized.DryRun)
 	existingJob, err := s.FindActiveJob(ctx, activeKey)
 	if err == nil && existingJob != nil && !existingJob.Status.IsTerminal() {
-		resp := s.jobToResponse(existingJob)
-		s.log.Info("artlist run reused",
-			zap.String("run_id", resp.RunID),
-			zap.String("term", resp.Term),
-			zap.String("status", resp.Status),
-		)
-		return resp, nil
+		// Anti-zombie logic: if job is running/queued for more than 15 minutes, mark it failed
+		isStale := false
+		if existingJob.StartedAt != nil && time.Since(*existingJob.StartedAt) > 15*time.Minute {
+			isStale = true
+		} else if time.Since(existingJob.CreatedAt) > 20*time.Minute {
+			isStale = true
+		}
+
+		if isStale {
+			// Get term from payload
+			term := ""
+			if t, ok := existingJob.Payload["term"].(string); ok {
+				term = t
+			}
+			s.log.Warn("marking stale artlist job as failed",
+				zap.String("job_id", existingJob.ID),
+				zap.String("term", term),
+				zap.Time("created_at", existingJob.CreatedAt),
+			)
+			existingJob.Status = models.StatusFailed
+			existingJob.Error = "stale job timeout (zombie)"
+			_ = s.persistJob(ctx, existingJob)
+			// Proceed to create a new job
+		} else {
+			resp := s.jobToResponse(existingJob)
+			s.log.Info("artlist run reused",
+				zap.String("run_id", resp.RunID),
+				zap.String("term", resp.Term),
+				zap.String("status", resp.Status),
+			)
+			return resp, nil
+		}
 	}
 
 	job, err := s.CreateJobRun(ctx, normalized)
@@ -60,6 +85,23 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 }
 
 func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID string) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.log.Error("FATAL PANIC in executeRunTag",
+				zap.Any("panic", r),
+				zap.String("job_id", jobID),
+				zap.String("term", req.Term),
+			)
+			// Update job status to failed on panic
+			job, _ := s.GetJobByRunID(context.Background(), jobID)
+			if job != nil {
+				job.Status = models.StatusFailed
+				job.Error = fmt.Sprintf("internal panic: %v", r)
+				_ = s.persistJob(context.Background(), job)
+			}
+		}
+	}()
+
 	maxRetries := 3
 	retryDelay := time.Second * 5
 

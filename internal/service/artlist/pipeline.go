@@ -55,9 +55,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	resp.RootFolderID = rootFolderID
 
 	if s.driveClient == nil && !req.DryRun {
-		resp.OK = false
-		resp.Error = "drive client not configured"
-		return resp, fmt.Errorf("drive client not configured")
+		s.log.Warn("drive client not configured, proceeding with local harvesting only")
 	}
 
 	tagFolderName := sanitizeDriveFolderName(resp.Term)
@@ -70,11 +68,34 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		zap.String("tag_folder_name", tagFolderName),
 	)
 
+	// Step 0: Ensure we have clips in the DB via live search if none found
 	clipsList, err := s.clipsRepo.SearchClips(ctx, resp.Term)
 	if err != nil {
-		resp.OK = false
-		resp.Error = err.Error()
-		return resp, err
+		s.log.Error("failed to search clips in DB", zap.String("term", resp.Term), zap.Error(err))
+	}
+
+	if len(clipsList) == 0 {
+		s.log.Info("no clips found in DB for term, performing live search discovery", zap.String("term", resp.Term))
+		searchResp, err := s.SearchLiveAndSave(ctx, resp.Term, req.Limit*2)
+		if err != nil {
+			s.log.Error("live search discovery failed", zap.String("term", resp.Term), zap.Error(err))
+		} else if searchResp != nil {
+			s.log.Info("live search discovery completed", zap.String("term", resp.Term), zap.Int("found", len(searchResp.Clips)))
+		}
+		// Reload from DB after search
+		clipsList, err = s.clipsRepo.SearchClips(ctx, resp.Term)
+		if err != nil {
+			s.log.Error("failed to reload clips from DB after discovery", zap.String("term", resp.Term), zap.Error(err))
+		}
+	}
+
+	s.log.Info("clips available for processing", zap.String("term", resp.Term), zap.Int("count", len(clipsList)))
+
+	if len(clipsList) == 0 {
+		s.log.Warn("no clips found even after live search, terminating pipeline", zap.String("term", resp.Term))
+		resp.Status = "completed"
+		resp.OK = true
+		return resp, nil
 	}
 
 	resp.Found = len(clipsList)
@@ -83,15 +104,21 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.LastProcessedAt = lastProcessedAt
 	}
 
-	var tagFolderID string
-	if !req.DryRun && rootFolderID != "" {
-		tagFolderID, err = getOrCreateFolder(s.driveClient, tagFolderName, rootFolderID)
+	tagFolderID := rootFolderID
+	if !req.DryRun && s.driveClient != nil && rootFolderID != "" {
+		s.log.Info("ensuring tag folder exists on drive", zap.String("folder_name", tagFolderName), zap.String("parent_id", rootFolderID))
+		createdFolderID, err := getOrCreateFolder(s.driveClient, tagFolderName, rootFolderID)
 		if err != nil {
-			resp.OK = false
-			resp.Error = err.Error()
-			return resp, err
+			s.log.Error("failed to get or create tag folder on drive, falling back to root folder", zap.Error(err))
+		} else {
+			tagFolderID = createdFolderID
 		}
 	}
+
+	s.log.Info("using drive folder for uploads",
+		zap.String("folder_id", tagFolderID),
+		zap.String("folder_link", "https://drive.google.com/drive/folders/"+tagFolderID),
+	)
 	resp.TagFolderID = tagFolderID
 
 	candidateClips := clipsList
@@ -99,63 +126,39 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		candidateClips = candidateClips[:req.Limit]
 	}
 
-	if req.DryRun {
-		for _, clip := range candidateClips {
-			if clip == nil || clip.Source != "artlist" {
-				resp.Skipped++
-				continue
-			}
-			skip, _ := s.shouldSkipClip(ctx, strategy, clip)
-			if skip {
-				resp.WouldSkip++
-			} else {
-				resp.WouldProcess++
-			}
-		}
-		s.log.Info("artlist dry run complete",
-			zap.String("term", resp.Term),
-			zap.Int("would_process", resp.WouldProcess),
-			zap.Int("would_skip", resp.WouldSkip),
-			zap.String("tag_folder_id", tagFolderID),
-		)
-		return resp, nil
-	}
-
 	processed := 0
 	for _, clip := range candidateClips {
 		if clip == nil {
 			continue
 		}
-		if clip.Source != "artlist" {
-			resp.Skipped++
-			continue
+		
+		url := strings.TrimSpace(clip.ExternalURL)
+		if url == "" {
+			url = strings.TrimSpace(clip.DownloadLink)
 		}
+
+		s.log.Info("processing clip", 
+			zap.String("clip_id", clip.ID), 
+			zap.String("name", clip.Name),
+			zap.String("url", url),
+		)
 
 		skip, _ := s.shouldSkipClip(ctx, strategy, clip)
 		if skip {
-			s.log.Info("artlist pipeline skip existing drive clip",
-				zap.String("clip_id", clip.ID),
-				zap.String("name", clip.Name),
-				zap.String("drive_link", clip.DriveLink),
-			)
+			s.log.Info("skipping existing clip", zap.String("clip_id", clip.ID), zap.String("drive_link", clip.DriveLink))
 			resp.Skipped++
 			resp.Items = append(resp.Items, RunTagItem{
 				ClipID:       clip.ID,
 				Name:         clip.Name,
 				Filename:     clip.Filename,
-				Status:       "skipped_existing_drive_link",
+				Status:       "skipped_existing",
 				DriveLink:    clip.DriveLink,
 				DownloadLink: clip.DownloadLink,
-				FileHash:     clip.FileHash,
 				LocalPath:    clip.LocalPath,
 			})
 			continue
 		}
 
-		url := strings.TrimSpace(clip.ExternalURL)
-		if url == "" {
-			url = strings.TrimSpace(clip.DownloadLink)
-		}
 		if url == "" {
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
@@ -205,8 +208,9 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		finalFilename := fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID)
 		processedPath := filepath.Join(saveDir, finalFilename)
 
+		s.log.Info("downloading clip", zap.String("clip_id", clip.ID), zap.String("url", url))
 		if err := s.downloadClip(url, rawPath); err != nil {
-			s.log.Error("artlist download failed", zap.String("clip_id", clip.ID), zap.Error(err))
+			s.log.Error("download failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
 				ClipID:   clip.ID,
@@ -218,8 +222,9 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
+		s.log.Info("processing video (ffmpeg)", zap.String("clip_id", clip.ID), zap.String("output", processedPath))
 		if err := s.processVideo(rawPath, processedPath); err != nil {
-			s.log.Error("artlist processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
+			s.log.Error("ffmpeg processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			_ = os.Remove(rawPath)
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
@@ -232,9 +237,10 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
+		s.log.Info("calculating file hash", zap.String("clip_id", clip.ID), zap.String("path", processedPath))
 		fileHash, err := calculateFileHash(processedPath)
 		if err != nil {
-			s.log.Error("artlist hash failed", zap.String("clip_id", clip.ID), zap.Error(err))
+			s.log.Error("hashing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			_ = os.Remove(rawPath)
 			_ = os.Remove(processedPath)
 			resp.Failed++
@@ -248,50 +254,48 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
-		f, err := os.Open(processedPath)
-		if err != nil {
-			_ = os.Remove(rawPath)
-			_ = os.Remove(processedPath)
-			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:   clip.ID,
-				Name:     clip.Name,
-				Filename: clip.Filename,
-				Status:   "open_failed",
-				Error:    err.Error(),
-			})
-			continue
+		var driveFile *drive.File
+		if s.driveClient != nil {
+			s.log.Info("uploading to Google Drive", zap.String("clip_id", clip.ID), zap.String("filename", finalFilename))
+			f, err := os.Open(processedPath)
+			if err == nil {
+				driveFileReq := &drive.File{Name: finalFilename}
+				if tagFolderID != "" {
+					driveFileReq.Parents = []string{tagFolderID}
+				}
+				driveFile, err = s.driveClient.Files.Create(driveFileReq).Fields("id,webViewLink,md5Checksum").Media(f).Do()
+				_ = f.Close()
+				if err != nil {
+					s.log.Error("drive upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
+				} else {
+					s.log.Info("drive upload success", zap.String("clip_id", clip.ID), zap.String("file_id", driveFile.Id))
+				}
+			} else {
+				s.log.Error("failed to open processed file for upload", zap.String("clip_id", clip.ID), zap.Error(err))
+			}
+		} else {
+			s.log.Warn("driveClient is nil, skipping upload for clip", zap.String("clip_id", clip.ID))
 		}
 
-		driveFileReq := &drive.File{Name: finalFilename}
-		if tagFolderID != "" {
-			driveFileReq.Parents = []string{tagFolderID}
-		}
-		driveFile, err := s.driveClient.Files.Create(driveFileReq).Fields("id,webViewLink,md5Checksum").Media(f).Do()
-		_ = f.Close()
 		_ = os.Remove(rawPath)
 		// We DO NOT remove processedPath so it stays on disk
-		if err != nil {
-			s.log.Error("artlist upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
-			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:   clip.ID,
-				Name:     clip.Name,
-				Filename: clip.Filename,
-				Status:   "upload_failed",
-				Error:    err.Error(),
-			})
-			continue
-		}
 
-		clip.DriveLink = driveFile.WebViewLink
-		clip.DownloadLink = "https://drive.google.com/uc?id=" + driveFile.Id
+		if driveFile != nil {
+			clip.DriveLink = driveFile.WebViewLink
+			clip.DownloadLink = "https://drive.google.com/uc?id=" + driveFile.Id
+		}
 		clip.FileHash = fileHash
-		clip.Metadata = composeArtlistMetadata(clip.Metadata, fileHash, driveFile.Md5Checksum)
+		if driveFile != nil {
+			clip.Metadata = composeArtlistMetadata(clip.Metadata, fileHash, driveFile.Md5Checksum)
+		} else {
+			clip.Metadata = composeArtlistMetadata(clip.Metadata, fileHash, "")
+		}
 		clip.UpdatedAt = time.Now().UTC()
 		clip.LocalPath = processedPath
+		
+		s.log.Info("updating database record", zap.String("clip_id", clip.ID), zap.String("local_path", processedPath))
 		if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
-			s.log.Error("artlist db update failed", zap.String("clip_id", clip.ID), zap.Error(err))
+			s.log.Error("db update failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
 				ClipID:       clip.ID,
@@ -321,13 +325,9 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			FileHash:     clip.FileHash,
 		})
 
-		s.log.Info("artlist pipeline success",
+		s.log.Info("clip pipeline item completed",
 			zap.String("clip_id", clip.ID),
-			zap.String("name", clip.Name),
 			zap.String("drive_link", clip.DriveLink),
-			zap.String("download_link", clip.DownloadLink),
-			zap.String("file_hash", clip.FileHash),
-			zap.String("drive_md5_checksum", driveFile.Md5Checksum),
 			zap.String("local_path", processedPath),
 		)
 	}

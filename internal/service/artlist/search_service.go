@@ -74,14 +74,19 @@ func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]map
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	s.log.Info("Running live Artlist search", zap.String("term", term), zap.Int("limit", limit))
+	s.log.Info("Running live Artlist search", zap.String("term", term), zap.Int("limit", limit), zap.String("script_path", scriptPath))
 
 	if err := cmd.Run(); err != nil {
+		s.log.Error("Artlist scraper failed", zap.Error(err), zap.String("stderr", stderr.String()))
 		return nil, fmt.Errorf("scraper failed: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
 	}
 
+	stdoutStr := stdout.String()
+	s.log.Info("Scraper raw output received", zap.Int("bytes", len(stdoutStr)))
+
 	var payload map[string]interface{}
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		s.log.Error("failed to decode scraper response", zap.Error(err), zap.String("output", stdoutStr))
 		return nil, fmt.Errorf("failed to decode scraper response: %w", err)
 	}
 
