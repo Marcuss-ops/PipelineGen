@@ -1,12 +1,10 @@
 package script
 
 import (
-	"fmt"
 	"strings"
 
 	"velox/go-master/internal/ml/ollama/types"
 	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/pkg/textutil"
 )
 
 type imagePlanItem struct {
@@ -27,25 +25,25 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 
 	var items []imagePlanItem
 	for _, subject := range subjects {
-		item := imagePlanItem{
-			Subject: subject,
-			Reason:  "Ricerca automatica per entità rilevata",
-		}
-
 		if imgService != nil {
 			slug := strings.ReplaceAll(strings.ToLower(subject), " ", "-")
-			// SearchAndDownload cerca già nel DB (tramite GetSubjectBySlugOrAlias e GetImageByHash)
-			// e fa fallback su Wikipedia/DDG se non trova nulla.
 			asset, err := imgService.SearchAndDownload(slug, subject, subject)
 			if err == nil && asset != nil {
-				item.URL = asset.SourceURL
-				item.Path = asset.PathRel
-				item.Reason = "Trovata e scaricata (Wikipedia/DDG)"
-			} else {
-				item.Reason = fmt.Sprintf("Ricerca fallita: %v", err)
+				items = append(items, imagePlanItem{
+					Subject: subject,
+					URL:     asset.SourceURL,
+					Path:    asset.PathRel,
+					Reason:  "Trovata e salvata come link diretto (Wikipedia/DDG)",
+				})
 			}
 		}
-		items = append(items, item)
+	}
+
+	if len(items) == 0 {
+		return ScriptSection{
+			Title: "📸 Entità con Immagine",
+			Body:  "Nessuna immagine trovata per le entità rilevate.",
+		}
 	}
 
 	return ScriptSection{
@@ -86,27 +84,26 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
 			for _, name := range segment.NomiSpeciali {
-				add(name)
+				if strings.Contains(name, " ") {
+					add(name)
+				}
 			}
 		}
 	}
 
-	// 2. Parole importanti dal topic
-	for _, term := range textutil.Tokenize(topic) {
-		if textutil.IsStopWord(term) || len(term) < 4 {
-			continue
-		}
-		add(term)
-	}
-
-	// 3. Entità senza testo (keyword estratte)
+	// 2. Entità senza testo (keyword estratte)
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
 			for name := range segment.EntitaSenzaTesto {
-				add(name)
+				if strings.Contains(name, " ") {
+					add(name)
+				}
 			}
 		}
 	}
+
+	// 3. Topic completo come fallback, così "Mike Tyson" non si spezza in token singoli.
+	add(topic)
 
 	return result
 }

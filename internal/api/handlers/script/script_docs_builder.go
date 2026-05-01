@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
+	"golang.org/x/text/unicode/norm"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
@@ -12,6 +14,7 @@ import (
 	"velox/go-master/internal/service/association"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -53,6 +56,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService, assocService)
 
 	analysis := extractNarrativeAnalysis(ctx, gen, req, narrative, timeline)
+	analysis = filterAnalysisByNarrative(narrative, analysis)
 
 	// Build image section if service is available
 	var imageSection ScriptSection
@@ -86,7 +90,10 @@ func extractNarrativeAnalysis(ctx context.Context, gen *ollama.Generator, req Sc
 		return nil
 	}
 
-	chunks := timelinePlanSegmentTextsFromPlan(timeline)
+	chunks := narrativeAnalysisChunks(narrative)
+	if len(chunks) == 0 {
+		chunks = timelinePlanSegmentTextsFromPlan(timeline)
+	}
 	if len(chunks) == 0 {
 		if trimmed := strings.TrimSpace(narrative); trimmed != "" {
 			chunks = []string{trimmed}
@@ -101,6 +108,50 @@ func extractNarrativeAnalysis(ctx context.Context, gen *ollama.Generator, req Sc
 		return nil
 	}
 	return analysis
+}
+
+func narrativeAnalysisChunks(narrative string) []string {
+	sentences := textutil.ExtractSentences(narrative)
+	if len(sentences) == 0 {
+		return nil
+	}
+
+	chunks := make([]string, 0, len(sentences))
+	var current []string
+	currentLen := 0
+
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		chunk := strings.TrimSpace(strings.Join(current, ". "))
+		if chunk != "" {
+			if !strings.HasSuffix(chunk, ".") {
+				chunk += "."
+			}
+			chunks = append(chunks, chunk)
+		}
+		current = current[:0]
+		currentLen = 0
+	}
+
+	for _, sentence := range sentences {
+		sentence = strings.TrimSpace(sentence)
+		if sentence == "" {
+			continue
+		}
+		if len(current) > 0 && (len(current) >= 2 || currentLen+len(sentence) > 420) {
+			flush()
+		}
+		current = append(current, sentence)
+		currentLen += len(sentence)
+	}
+	flush()
+
+	if len(chunks) == 0 && strings.TrimSpace(narrative) != "" {
+		return []string{strings.TrimSpace(narrative)}
+	}
+	return chunks
 }
 
 func timelineSegmentCount(plan *TimelinePlan) int {
@@ -202,4 +253,96 @@ func limitStrings(items []string, limit int) []string {
 		return items
 	}
 	return items[:limit]
+}
+
+func filterAnalysisByNarrative(narrative string, analysis *types.FullEntityAnalysis) *types.FullEntityAnalysis {
+	if analysis == nil {
+		return nil
+	}
+
+	filtered := *analysis
+	filtered.SegmentEntities = make([]types.SegmentEntities, 0, len(analysis.SegmentEntities))
+	total := 0
+
+	for _, seg := range analysis.SegmentEntities {
+		seg.FrasiImportanti = filterStringsByMatch(narrative, seg.FrasiImportanti)
+		seg.NomiSpeciali = filterStringsByMatch(narrative, seg.NomiSpeciali)
+		seg.ParoleImportanti = filterStringsByMatch(narrative, seg.ParoleImportanti)
+		seg.EntitaSenzaTesto = filterMapByMatch(narrative, seg.EntitaSenzaTesto)
+
+		if len(seg.FrasiImportanti) == 0 && len(seg.NomiSpeciali) == 0 && len(seg.ParoleImportanti) == 0 && len(seg.EntitaSenzaTesto) == 0 {
+			continue
+		}
+
+		total += len(seg.FrasiImportanti) + len(seg.NomiSpeciali) + len(seg.ParoleImportanti) + len(seg.EntitaSenzaTesto)
+		filtered.SegmentEntities = append(filtered.SegmentEntities, seg)
+	}
+
+	filtered.TotalSegments = len(filtered.SegmentEntities)
+	filtered.TotalEntities = total
+	return &filtered
+}
+
+func filterStringsByMatch(narrative string, items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if matchesExactPhrase(narrative, item) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterMapByMatch(narrative string, items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(items))
+	for key, value := range items {
+		if matchesExactPhrase(narrative, key) {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+func matchesExactPhrase(narrative, candidate string) bool {
+	left := normalizeMatchText(narrative)
+	right := normalizeMatchText(candidate)
+	if left == "" || right == "" {
+		return false
+	}
+	return strings.Contains(" "+left+" ", " "+right+" ")
+}
+
+func normalizeMatchText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	replacer := strings.NewReplacer(
+		"’", "'",
+		"‘", "'",
+		"ʼ", "'",
+		"`", "'",
+		"´", "'",
+	)
+	s = replacer.Replace(s)
+	s = norm.NFD.String(strings.ToLower(s))
+
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteRune(' ')
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }

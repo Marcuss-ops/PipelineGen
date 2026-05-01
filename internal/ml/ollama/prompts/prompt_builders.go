@@ -125,7 +125,10 @@ Return ONLY valid JSON with exactly this shape:
 
 Rules:
 - Extract up to %d items per array.
-- Prefer meaningful names, places, organizations, concepts, and visual cues.
+- Only extract exact spans that appear verbatim in the TEXT below.
+- Do not paraphrase, infer, summarize, or invent names, phrases, or keywords.
+- Prefer meaningful names, places, organizations, concepts, and visual cues that are explicitly present in the text.
+- If a candidate is not literally present in the text, omit it.
 - If a category has no items, return an empty array or empty object.
 - Do not add markdown, commentary, code fences, or extra keys.
 

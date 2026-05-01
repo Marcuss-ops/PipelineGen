@@ -2,6 +2,7 @@ package script
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"velox/go-master/pkg/textutil"
 )
@@ -171,13 +172,38 @@ func renderOnlyPhrases(seg TimelineSegment, budget int) (string, int) {
 		return "", 0
 	}
 
+	type scoredSentence struct {
+		Text  string
+		Score int
+		Index int
+	}
+
+	scored := make([]scoredSentence, 0, len(sentences))
+	for i, phrase := range sentences {
+		score := scoreArtlistPhrase(phrase)
+		if score <= 0 {
+			continue
+		}
+		scored = append(scored, scoredSentence{Text: strings.TrimSpace(phrase), Score: score, Index: i})
+	}
+	if len(scored) == 0 {
+		return "", 0
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].Score == scored[j].Score {
+			return scored[i].Index < scored[j].Index
+		}
+		return scored[i].Score > scored[j].Score
+	})
+
 	// Limitiamo a 2 frasi per segmento
 	limit := 2
 	if limit > budget {
 		limit = budget
 	}
-	if len(sentences) > limit {
-		sentences = sentences[:limit]
+	if len(scored) > limit {
+		scored = scored[:limit]
 	}
 
 	var b strings.Builder
@@ -187,11 +213,46 @@ func renderOnlyPhrases(seg TimelineSegment, budget int) (string, int) {
 		b.WriteString("]\n")
 	}
 	b.WriteString("\n   🎵 ARTLIST PHRASES:\n")
-	for _, phrase := range sentences {
+	for _, phrase := range scored {
 		b.WriteString("      - \"")
-		b.WriteString(phrase)
+		b.WriteString(phrase.Text)
 		b.WriteString("\"\n")
 	}
 
-	return b.String(), len(sentences)
+	return b.String(), len(scored)
+}
+
+func scoreArtlistPhrase(phrase string) int {
+	phrase = strings.TrimSpace(phrase)
+	if phrase == "" {
+		return 0
+	}
+
+	tokens := textutil.Tokenize(phrase)
+	contentTokens := textutil.TokenizeWithStopWords(phrase)
+	if len(tokens) < 6 {
+		return 0
+	}
+	if len(contentTokens) < 3 {
+		return 0
+	}
+	if len(tokens) < 8 && strings.Count(phrase, ",") == 0 && strings.Count(phrase, " - ") == 0 {
+		return 0
+	}
+
+	score := len(contentTokens) * 3
+	score += len(tokens)
+	if len(tokens) >= 8 {
+		score += 4
+	}
+	if len(tokens) >= 12 {
+		score += 4
+	}
+	if strings.Contains(phrase, ",") {
+		score += 2
+	}
+	if strings.Contains(phrase, " - ") {
+		score += 1
+	}
+	return score
 }

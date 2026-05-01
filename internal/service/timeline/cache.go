@@ -13,7 +13,7 @@ import (
 	"velox/go-master/pkg/sliceutil"
 )
 
-const cacheVersion = "v12"
+const cacheVersion = "v13"
 
 type Cache struct {
 	repo *clips.Repository
@@ -27,13 +27,14 @@ func NewCache(repo *clips.Repository, gen *ollama.Generator) *Cache {
 	}
 }
 
-func (c *Cache) BuildKey(topic, template, sourceText string, duration int) string {
+func (c *Cache) BuildKey(topic, template, sourceText, narrative string, duration int) string {
 	payload, _ := json.Marshal([]string{
 		cacheVersion,
 		strings.ToLower(strings.TrimSpace(topic)),
 		strings.ToLower(strings.TrimSpace(template)),
 		fmt.Sprintf("%d", duration),
 		strings.ToLower(strings.TrimSpace(sourceText)),
+		strings.ToLower(strings.TrimSpace(narrative)),
 	})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])

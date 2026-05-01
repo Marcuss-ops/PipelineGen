@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -65,8 +66,10 @@ func (c *Client) ExtractEntitiesFromScript(ctx context.Context, segments []strin
 		if err != nil {
 			result = fallbackEntityExtractionResult(segment, i, entityCount)
 		}
+		result = sanitizeEntityExtractionResult(segment, result, entityCount)
 		if resultIsEmpty(result) {
 			result = fallbackEntityExtractionResult(segment, i, entityCount)
+			result = sanitizeEntityExtractionResult(segment, result, entityCount)
 		}
 		result = capEntityExtractionResult(result, entityCount)
 
@@ -267,9 +270,22 @@ func fallbackSpecialNames(segment string, limit int) []string {
 		return nil
 	}
 
-	words := strings.Fields(segment)
+	// First try contiguous capitalized phrases like "Mike Tyson" or "New York".
+	multiWord := regexp.MustCompile(`\b(?:[A-Z][\p{L}'’\-]*\s+){1,4}[A-Z][\p{L}'’\-]*\b`).FindAllString(segment, -1)
 	names := make([]string, 0, limit)
-	for _, raw := range words {
+	for _, candidate := range multiWord {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || isNoisyExtractionCandidate(candidate) {
+			continue
+		}
+		names = append(names, candidate)
+		if len(names) >= limit {
+			return uniqueLocalStrings(names)
+		}
+	}
+
+	// Then fall back to single capitalized words that are actually present in the segment.
+	for _, raw := range strings.Fields(segment) {
 		word := strings.Trim(raw, `"'“”‘’,.:;!?()[]{}<>`)
 		if len([]rune(word)) < 3 {
 			continue
@@ -278,7 +294,7 @@ func fallbackSpecialNames(segment string, limit int) []string {
 		if len(runes) == 0 || !unicode.IsUpper(runes[0]) {
 			continue
 		}
-		if textutil.IsStopWord(strings.ToLower(word)) {
+		if isNoisyExtractionCandidate(word) || textutil.IsStopWord(strings.ToLower(word)) {
 			continue
 		}
 		names = append(names, word)
@@ -305,7 +321,7 @@ func fallbackImportantWords(segment string, limit int) []string {
 	for _, raw := range strings.FieldsFunc(strings.ToLower(segment), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
 	}) {
-		if len(raw) < 4 || textutil.IsStopWord(raw) {
+		if len(raw) < 4 || textutil.IsStopWord(raw) || isGenericImportantWord(raw) {
 			continue
 		}
 		if _, ok := seen[raw]; ok {
@@ -318,6 +334,150 @@ func fallbackImportantWords(segment string, limit int) []string {
 		}
 	}
 	return out
+}
+
+func sanitizeEntityExtractionResult(segment string, result *types.EntityExtractionResult, limit int) *types.EntityExtractionResult {
+	if result == nil {
+		return nil
+	}
+
+	result.FrasiImportanti = filterExactPhrases(segment, result.FrasiImportanti)
+	result.NomiSpeciali = filterExactNames(segment, result.NomiSpeciali)
+	result.ParoleImportanti = filterExactWords(segment, result.ParoleImportanti)
+	result.EntitaSenzaTesto = filterExactEntityMap(segment, result.EntitaSenzaTesto)
+
+	if len(result.FrasiImportanti) == 0 {
+		result.FrasiImportanti = fallbackImportantPhrases(segment, limit)
+	}
+	if len(result.NomiSpeciali) == 0 {
+		result.NomiSpeciali = fallbackSpecialNames(segment, limit)
+	}
+	if len(result.ParoleImportanti) == 0 {
+		result.ParoleImportanti = fallbackImportantWords(segment, limit)
+	}
+	if len(result.EntitaSenzaTesto) == 0 && len(result.NomiSpeciali) > 0 {
+		result.EntitaSenzaTesto = make(map[string]string, len(result.NomiSpeciali))
+		for _, name := range result.NomiSpeciali {
+			result.EntitaSenzaTesto[name] = ""
+		}
+	}
+	return result
+}
+
+func filterExactPhrases(segment string, items []string) []string {
+	return filterExactStrings(segment, items, false)
+}
+
+func filterExactNames(segment string, items []string) []string {
+	return filterExactStrings(segment, items, true)
+}
+
+func filterExactWords(segment string, items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	segmentTokens := tokenSet(segment)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if isNoisyExtractionCandidate(item) || textutil.IsStopWord(strings.ToLower(item)) {
+			continue
+		}
+		tokens := textutil.Tokenize(item)
+		if len(tokens) == 0 {
+			continue
+		}
+		ok := true
+		for _, tok := range tokens {
+			if _, exists := segmentTokens[tok]; !exists {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			out = append(out, item)
+		}
+	}
+	return uniqueLocalStrings(out)
+}
+
+func filterExactEntityMap(segment string, items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(items))
+	for name, url := range items {
+		name = strings.TrimSpace(name)
+		if name == "" || isNoisyExtractionCandidate(name) {
+			continue
+		}
+		if strings.Contains(strings.ToLower(segment), strings.ToLower(name)) {
+			out[name] = strings.TrimSpace(url)
+		}
+	}
+	return out
+}
+
+func filterExactStrings(segment string, items []string, names bool) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	segNorm := strings.ToLower(segment)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || isNoisyExtractionCandidate(item) {
+			continue
+		}
+		if names && len(strings.Fields(item)) == 1 && (isGenericImportantWord(strings.ToLower(item)) || textutil.IsStopWord(strings.ToLower(item))) {
+			continue
+		}
+		if strings.Contains(segNorm, strings.ToLower(item)) {
+			out = append(out, item)
+		}
+	}
+	return uniqueLocalStrings(out)
+}
+
+func tokenSet(text string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, tok := range textutil.Tokenize(text) {
+		set[tok] = struct{}{}
+	}
+	return set
+}
+
+var noisyExtractionCandidates = map[string]struct{}{
+	"he": {}, "her": {}, "him": {}, "his": {}, "i": {}, "it": {}, "its": {}, "me": {}, "my": {},
+	"our": {}, "ours": {}, "she": {}, "their": {}, "them": {}, "they": {}, "this": {}, "that": {},
+	"these": {}, "those": {}, "we": {}, "you": {}, "the": {}, "a": {}, "an": {}, "of": {}, "in": {},
+	"on": {}, "at": {}, "to": {}, "and": {}, "name": {}, "names": {}, "trainer": {}, "trainers": {},
+	"fighter": {}, "fighters": {}, "boxer": {}, "boxing": {}, "man": {}, "men": {}, "woman": {},
+	"women": {}, "person": {}, "people": {}, "subject": {}, "subjects": {},
+}
+
+var genericImportantWords = map[string]struct{}{
+	"will": {}, "would": {}, "could": {}, "should": {}, "might": {}, "must": {}, "just": {}, "very": {},
+	"also": {}, "then": {}, "into": {}, "over": {}, "from": {}, "with": {}, "that": {}, "this": {},
+}
+
+func isNoisyExtractionCandidate(text string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	if normalized == "" {
+		return true
+	}
+	if _, ok := noisyExtractionCandidates[normalized]; ok {
+		return true
+	}
+	return false
+}
+
+func isGenericImportantWord(word string) bool {
+	_, ok := genericImportantWords[strings.ToLower(strings.TrimSpace(word))]
+	return ok
 }
 
 func splitSentences(text string) []string {
