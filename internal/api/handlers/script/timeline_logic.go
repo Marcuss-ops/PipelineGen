@@ -14,6 +14,9 @@ import (
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
 	segmentnorm "velox/go-master/internal/service/catalognormalizer"
+	"velox/go-master/internal/service/timeline"
+	"velox/go-master/pkg/textutil"
+	"velox/go-master/pkg/sliceutil"
 )
 
 const timelineCacheVersion = "v12"
@@ -23,14 +26,16 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	startedAt := time.Now()
 	zap.L().Info("Building timeline plan", zap.String("topic", req.Topic))
 
-	cacheKey := buildTimelineCacheKey(req, sourceText)
-	if cached, err := loadCachedTimelinePlan(ctx, clipsRepo, cacheKey); err == nil && cached != nil {
+	cache := timeline.NewCache(clipsRepo, gen)
+	cacheKey := cache.BuildKey(req.Topic, req.Template, sourceText, req.Duration)
+
+	if rows, err := cache.LoadPlan(ctx, cacheKey); err == nil && len(rows) > 0 {
 		zap.L().Info("timeline plan cache hit",
 			zap.String("topic", req.Topic),
 			zap.String("cache_key", cacheKey),
-			zap.Int("segments", len(cached.Segments)),
+			zap.Int("segments", len(rows)),
 		)
-		return cached, nil
+		return convertCacheRowsToPlan(rows), nil
 	}
 
 	// 1. LLM SEGMENTATION
@@ -68,7 +73,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		Segments:      make([]TimelineSegment, 0, len(rawPlan.Segments)),
 	}
 	if clipsRepo != nil {
-		if err := clipsRepo.DeleteSegmentEmbeddingsByScriptKey(ctx, cacheKey); err != nil {
+		if err := cache.ClearKey(ctx, cacheKey); err != nil {
 			zap.L().Warn("failed to clear timeline cache key", zap.String("cache_key", cacheKey), zap.Error(err))
 		}
 	}
@@ -110,8 +115,8 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			Entities:      seg.Entities,
 		}); err == nil && normalized != nil {
 			seg.CanonicalSubject = normalized.CanonicalSubject
-			seg.CanonicalKeywords = uniqueStrings(normalized.CanonicalKeywords)
-			seg.CanonicalEntities = uniqueStrings(normalized.CanonicalEntities)
+			seg.CanonicalKeywords = sliceutil.UniqueStrings(normalized.CanonicalKeywords)
+			seg.CanonicalEntities = sliceutil.UniqueStrings(normalized.CanonicalEntities)
 			seg.NormalizationSource = normalized.NormalizationSource
 			}
 			if strings.TrimSpace(seg.CanonicalSubject) == "" {
@@ -187,7 +192,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 				seg.PreferredStockReason = ""
 			}
 		}
-		if err := storeTimelineSegmentCache(ctx, gen, clipsRepo, cacheKey, req, seg, narrative); err != nil {
+		if err := storeSegmentInCache(ctx, cache, cacheKey, req, seg, narrative); err != nil {
 			zap.L().Warn("timeline segment cache write failed",
 				zap.Error(err),
 				zap.String("topic", req.Topic),
@@ -217,52 +222,15 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	return plan, nil
 }
 
-func buildTimelineCacheKey(req ScriptDocsRequest, sourceText string) string {
-	payload, _ := json.Marshal([]string{
-		timelineCacheVersion,
-		strings.ToLower(strings.TrimSpace(req.Topic)),
-		strings.ToLower(strings.TrimSpace(req.Template)),
-		fmt.Sprintf("%d", req.Duration),
-		strings.ToLower(strings.TrimSpace(sourceText)),
-	})
-	sum := sha256.Sum256(payload)
-	return hex.EncodeToString(sum[:])
-}
-
-func hashSegmentPayload(req ScriptDocsRequest, seg TimelineSegment) string {
-	payload, _ := json.Marshal([]any{
-		timelineCacheVersion,
-		strings.ToLower(strings.TrimSpace(req.Topic)),
-		req.Duration,
-		strings.ToLower(strings.TrimSpace(req.Template)),
-		strings.TrimSpace(seg.NarrativeText),
-		uniqueStrings(seg.Keywords),
-		uniqueStrings(seg.Entities),
-	})
-	sum := sha256.Sum256(payload)
-	return hex.EncodeToString(sum[:])
-}
-
-func loadCachedTimelinePlan(ctx context.Context, repo *clips.Repository, cacheKey string) (*TimelinePlan, error) {
-	if repo == nil || strings.TrimSpace(cacheKey) == "" {
-		return nil, nil
+func convertCacheRowsToPlan(rows []clips.SegmentEmbeddingRecord) *TimelinePlan {
+	if len(rows) == 0 {
+		return nil
 	}
-	if err := repo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
-		return nil, err
-	}
-	rows, err := repo.GetSegmentEmbeddingsByScriptKey(ctx, cacheKey)
-	if err != nil || len(rows) == 0 {
-		return nil, err
-	}
-
 	plan := &TimelinePlan{
-		PrimaryFocus:  "",
+		PrimaryFocus:  rows[0].Topic,
 		SegmentCount:  len(rows),
 		TotalDuration: rows[0].Duration,
 		Segments:      make([]TimelineSegment, 0, len(rows)),
-	}
-	if len(rows) > 0 {
-		plan.PrimaryFocus = rows[0].Topic
 	}
 	for _, row := range rows {
 		var seg TimelineSegment
@@ -271,64 +239,40 @@ func loadCachedTimelinePlan(ctx context.Context, repo *clips.Repository, cacheKe
 				Index:            row.SegmentIndex,
 				Subject:          row.RawSubject,
 				CanonicalSubject: row.CanonicalSubject,
-				Keywords:         mustUnmarshalStringSlice(row.RawKeywordsJSON),
-				Entities:         mustUnmarshalStringSlice(row.RawEntitiesJSON),
+				Keywords:         textutil.SplitCSV(row.RawKeywordsJSON),
+				Entities:         textutil.SplitCSV(row.RawEntitiesJSON),
 			}
 		}
 		if seg.Index == 0 {
 			seg.Index = row.SegmentIndex
 		}
-		if seg.CanonicalSubject == "" {
-			seg.CanonicalSubject = row.CanonicalSubject
-		}
-		if len(seg.CanonicalKeywords) == 0 {
-			seg.CanonicalKeywords = mustUnmarshalStringSlice(row.CanonicalKeywordsJSON)
-		}
-		if len(seg.CanonicalEntities) == 0 {
-			seg.CanonicalEntities = mustUnmarshalStringSlice(row.CanonicalEntitiesJSON)
-		}
 		plan.Segments = append(plan.Segments, seg)
 	}
-	return plan, nil
+	return plan
 }
 
-func storeTimelineSegmentCache(ctx context.Context, gen *ollama.Generator, repo *clips.Repository, cacheKey string, req ScriptDocsRequest, seg TimelineSegment, narrative string) error {
-	if repo == nil || strings.TrimSpace(cacheKey) == "" {
-		return nil
-	}
-	if err := repo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
-		return err
-	}
-
+func storeSegmentInCache(ctx context.Context, c *timeline.Cache, cacheKey string, req ScriptDocsRequest, seg TimelineSegment, narrative string) error {
 	bestSource, bestPath, bestLink, bestScore := bestMatchFromSegment(seg)
 	payload, err := json.Marshal(seg)
 	if err != nil {
 		return err
 	}
 
-	embeddingJSON := "[]"
-	if gen != nil && gen.GetClient() != nil {
-		embeddingText := strings.TrimSpace(strings.Join([]string{
-			seg.CanonicalSubject,
-			strings.Join(seg.CanonicalKeywords, " "),
-			strings.Join(seg.CanonicalEntities, " "),
-			seg.NarrativeText,
-		}, " | "))
-		if embeddingText == "" {
-			embeddingText = strings.TrimSpace(narrative)
-		}
-		if embeddingText != "" {
-			if embedding, err := gen.GetClient().Embed(ctx, embeddingText); err == nil && len(embedding) > 0 {
-				if embeddingData, err := json.Marshal(embedding); err == nil {
-					embeddingJSON = string(embeddingData)
-				}
-			}
-		}
+	embeddingText := strings.TrimSpace(strings.Join([]string{
+		seg.CanonicalSubject,
+		strings.Join(seg.CanonicalKeywords, " "),
+		strings.Join(seg.CanonicalEntities, " "),
+		seg.NarrativeText,
+	}, " | "))
+	if embeddingText == "" {
+		embeddingText = strings.TrimSpace(narrative)
 	}
 
-	return repo.UpsertSegmentEmbedding(ctx, &clips.SegmentEmbeddingRecord{
+	embeddingJSON, _ := c.GenerateEmbedding(ctx, embeddingText)
+
+	return c.StoreSegment(ctx, cacheKey, &clips.SegmentEmbeddingRecord{
 		ScriptKey:             cacheKey,
-		SourceHash:            hashSegmentPayload(req, seg),
+		SourceHash:            c.HashSegment(req.Topic, req.Template, req.Duration, seg.NarrativeText, seg.Keywords, seg.Entities),
 		Topic:                 req.Topic,
 		Language:              req.Language,
 		Template:              req.Template,
@@ -368,31 +312,12 @@ func bestMatchFromSegment(seg TimelineSegment) (string, string, string, int) {
 	return bestSource, bestPath, bestLink, bestScore
 }
 
-func mustUnmarshalStringSlice(raw string) []string {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var out []string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil
-	}
-	return out
-}
-
 func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
+	return textutil.FirstNonEmpty(values...)
 }
 
 func firstNonEmptySlice(primary, fallback []string) []string {
-	if len(primary) > 0 {
-		return primary
-	}
-	return fallback
+	return sliceutil.FirstNonEmpty(primary, fallback)
 }
 
 func resolveTimelineSegmentSubject(ctx context.Context, req ScriptDocsRequest, seg TimelineSegment, dataDir string, stockRepo *clips.Repository) string {
@@ -595,7 +520,7 @@ func preferredStockPathsFromMatches(matches []scoredMatch) []string {
 		strings.TrimSpace(best.Path),
 		strings.TrimSpace(best.Link),
 	}
-	return uniqueStrings(trimStrings(preferred))
+	return sliceutil.UniqueStrings(sliceutil.TrimStrings(preferred))
 }
 
 func filterArtlistMatchesBySubject(matches []scoredMatch, subject string) []scoredMatch {
@@ -644,7 +569,7 @@ func associationSubjectKeys(subject string) []string {
 			break
 		}
 	}
-	return uniqueStrings(keys)
+	return sliceutil.UniqueStrings(keys)
 }
 
 func normalizedKeyMatchesAny(key string, subjectKeys []string) bool {

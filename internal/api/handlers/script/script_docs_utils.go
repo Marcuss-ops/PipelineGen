@@ -3,6 +3,7 @@ package script
 import (
 	"strings"
 	"unicode"
+	"velox/go-master/pkg/textutil"
 )
 
 func extractLikelyNames(text string) []string {
@@ -18,27 +19,9 @@ func extractLikelyNames(text string) []string {
 }
 
 func extractJSONArray(s string) string {
-	s = strings.TrimSpace(s)
-	start := strings.Index(s, "[")
-	end := strings.LastIndex(s, "]")
-	if start != -1 && end != -1 && end > start {
-		return s[start : end+1]
-	}
-	return s
+	return textutil.ExtractJSONArray(s)
 }
 
 func splitCSV(text string) []string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil
-	}
-	parts := strings.Split(text, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
+	return textutil.SplitCSV(text)
 }

@@ -7,6 +7,7 @@ import (
 
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/sliceutil"
 )
 
 type AssociationCandidatesRequest struct {
@@ -51,19 +52,12 @@ func (r *AssociationCandidatesRequest) Normalize() {
 	r.Timestamp = strings.TrimSpace(r.Timestamp)
 	r.Subject = strings.TrimSpace(r.Subject)
 	r.Narrative = strings.TrimSpace(r.Narrative)
-	r.Keywords = uniqueStrings(trimStrings(r.Keywords))
-	r.Entities = uniqueStrings(trimStrings(r.Entities))
+	r.Keywords = sliceutil.UniqueStrings(sliceutil.TrimStrings(r.Keywords))
+	r.Entities = sliceutil.UniqueStrings(sliceutil.TrimStrings(r.Entities))
 }
 
 func trimStrings(items []string) []string {
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		item = strings.TrimSpace(item)
-		if item != "" {
-			out = append(out, item)
-		}
-	}
-	return out
+	return sliceutil.TrimStrings(items)
 }
 
 func BuildAssociationCandidates(ctx context.Context, req AssociationCandidatesRequest, dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository) (*AssociationCandidatesResponse, error) {
@@ -136,7 +130,7 @@ func applyAssociationHints(seg *TimelineSegment, resp *AssociationCandidatesResp
 	seg.PreferredStockReason = best.Reason
 	seg.PreferredStockGroup = best.Source
 	preferredLink := normalizeDriveFolderLink(best.Link, best.FolderID)
-	seg.PreferredStockPaths = uniqueStrings(trimStrings([]string{best.Path, preferredLink}))
+	seg.PreferredStockPaths = sliceutil.UniqueStrings(sliceutil.TrimStrings([]string{best.Path, preferredLink}))
 }
 
 func collectAssociationTerms(req AssociationCandidatesRequest) []string {
