@@ -35,8 +35,7 @@ type TimelineSegment struct {
 	SearchSuggestions    []string                  `json:"search_suggestions,omitempty"`
 }
 
-// scoredMatch legacy alias for backward compatibility within this package
-type scoredMatch = association.ScoredMatch
+
 
 // internal LLM structures
 type timelineLLMPlan struct {
@@ -56,7 +55,7 @@ type timelineLLMSegment struct {
 	Entities        []string `json:"entities"`
 }
 
-type timelineAssetSource = association.AssetSource
+
 
 const (
 	timelineAssetSourceStockDrive     = association.AssetSourceStockDrive
@@ -64,7 +63,7 @@ const (
 	timelineAssetSourceArtlistDynamic = association.AssetSourceArtlistDynamic
 )
 
-type timelineFolderCandidate = association.FolderCandidate
+
 
 type timelineAssetDecision struct {
 	Source  string                    `json:"source"`

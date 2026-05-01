@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/internal/service/association"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -23,7 +24,7 @@ func NewArtlistDBClient(nodeScraperDir string) *ArtlistDBClient {
 }
 
 // SearchClipsByKeywords searches for Artlist clips matching tokens from the provided keywords.
-func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([]scoredMatch, error) {
+func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([]association.ScoredMatch, error) {
 	if len(keywords) == 0 {
 		return nil, nil
 	}
@@ -75,7 +76,7 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 	}
 	defer rows.Close()
 
-	var matches []scoredMatch
+	var matches []association.ScoredMatch
 	for rows.Next() {
 		var url, videoID string
 		var width, height, duration int
@@ -83,7 +84,7 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 			continue
 		}
 
-		matches = append(matches, scoredMatch{
+		matches = append(matches, association.ScoredMatch{
 			Title:  videoID,
 			Link:   url,
 			Source: "artlist_db",

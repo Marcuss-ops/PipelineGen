@@ -9,6 +9,7 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/service/association"
 )
 
 func buildSegmentKeywords(topic string, chunk string, entities []string) []string {
@@ -70,7 +71,7 @@ func segmentEntitiesForIndex(analysis *types.FullEntityAnalysis, idx int) []stri
 	return sliceutil.UniqueStrings(out)
 }
 
-func buildTimelineChoiceReason(source string, seg TimelineSegment, match scoredMatch) string {
+func buildTimelineChoiceReason(source string, seg TimelineSegment, match association.ScoredMatch) string {
 	terms := sliceutil.UniqueStrings(append([]string{}, seg.Keywords...))
 	if len(terms) == 0 {
 		terms = sliceutil.UniqueStrings(append(extractLikelyNames(seg.OpeningSentence), extractLikelyNames(seg.ClosingSentence)...))

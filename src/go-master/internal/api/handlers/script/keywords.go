@@ -11,21 +11,21 @@ import (
 	"velox/go-master/pkg/textutil"
 )
 
-// extractDynamicKeywords chiede all'LLM di generare esattamente 2 keyword di ricerca efficaci
+// extractDynamicKeywords chiede all'LLM di generare esattamente 3 keyword di ricerca efficaci
 func extractDynamicKeywords(ctx context.Context, gen *ollama.Generator, subject, narrative string) []string {
 	if gen == nil || gen.GetClient() == nil {
 		return extractSearchKeywords(subject, narrative)
 	}
 
-	prompt := fmt.Sprintf(`Given this video segment, provide exactly 2 short and effective search keywords for stock footage.
+	prompt := fmt.Sprintf(`Given this video segment, provide exactly 3 short and effective search keywords for stock footage.
 Subject: %s
 Narrative: %s
 
-Return ONLY the two keywords separated by a comma. Example: boxing match, mike tyson training`, subject, narrative)
+Return ONLY the three keywords separated by a comma. Example: wood fired pizza, italian chef cooking, pizza dough kneading`, subject, narrative)
 
 	res, err := gen.GetClient().GenerateWithOptions(ctx, types.DefaultModel, prompt, map[string]interface{}{
 		"temperature": 0.0,
-		"num_predict": 30,
+		"num_predict": 45,
 	})
 	if err != nil {
 		return extractSearchKeywords(subject, narrative)
@@ -40,8 +40,8 @@ Return ONLY the two keywords separated by a comma. Example: boxing match, mike t
 		}
 	}
 
-	if len(result) > 2 {
-		result = result[:2]
+	if len(result) > 3 {
+		result = result[:3]
 	}
 	if len(result) == 0 {
 		return extractSearchKeywords(subject, narrative)
@@ -53,8 +53,8 @@ Return ONLY the two keywords separated by a comma. Example: boxing match, mike t
 func extractSearchKeywords(subject, narrative string) []string {
 	tokens := textutil.Tokenize(subject)
 	if len(tokens) > 0 {
-		if len(tokens) > 2 {
-			return tokens[:2]
+		if len(tokens) > 3 {
+			return tokens[:3]
 		}
 		return tokens
 	}
@@ -64,7 +64,7 @@ func extractSearchKeywords(subject, narrative string) []string {
 		if len(t) > 3 {
 			filtered = append(filtered, t)
 		}
-		if len(filtered) >= 2 {
+		if len(filtered) >= 3 {
 			break
 		}
 	}
