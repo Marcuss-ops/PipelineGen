@@ -112,28 +112,13 @@ func renderImagePlans(items []imagePlanItem) string {
 	var b strings.Builder
 	for i, item := range items {
 		if i > 0 {
-			b.WriteString("\n\n")
+			b.WriteString("\n")
 		}
-		b.WriteString("Soggetto: ")
+		b.WriteString("\"")
 		b.WriteString(item.Subject)
-		b.WriteString("\n")
-
-		if item.URL != "" {
-			b.WriteString("   URL:      ")
-			b.WriteString(item.URL)
-			b.WriteString("\n")
-		} else {
-			b.WriteString("   URL:      None\n")
-		}
-
-		if item.Path != "" {
-			b.WriteString("   Path:     ")
-			b.WriteString(item.Path)
-			b.WriteString("\n")
-		}
-
-		b.WriteString("   Stato:    ")
-		b.WriteString(item.Reason)
+		b.WriteString("\": \"")
+		b.WriteString(item.URL)
+		b.WriteString("\"")
 	}
 	return b.String()
 }
