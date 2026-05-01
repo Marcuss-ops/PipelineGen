@@ -187,8 +187,15 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			zap.String("folder_id", tagFolderID),
 		)
 
-		rawPath := filepath.Join(os.TempDir(), fmt.Sprintf("raw_%s.mp4", clip.ID))
-		processedPath := filepath.Join(os.TempDir(), fmt.Sprintf("proc_%s.mp4", clip.ID))
+		tmpDir := filepath.Join(s.cfg.Storage.DataDir, s.cfg.Storage.TempDir)
+		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+			s.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))
+			// Fallback to os.TempDir if configured one fails
+			tmpDir = os.TempDir()
+		}
+
+		rawPath := filepath.Join(tmpDir, fmt.Sprintf("raw_%s.mp4", clip.ID))
+		processedPath := filepath.Join(tmpDir, fmt.Sprintf("proc_%s.mp4", clip.ID))
 
 		if err := s.downloadClip(url, rawPath); err != nil {
 			s.log.Error("artlist download failed", zap.String("clip_id", clip.ID), zap.Error(err))
@@ -248,7 +255,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
-		driveFileReq := &drive.File{Name: fmt.Sprintf("%s_7s.mp4", clip.Name)}
+		driveFileReq := &drive.File{Name: fmt.Sprintf("%s_%ds.mp4", clip.Name, s.cfg.Video.Duration)}
 		if tagFolderID != "" {
 			driveFileReq.Parents = []string{tagFolderID}
 		}

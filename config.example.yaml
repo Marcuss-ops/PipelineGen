@@ -1,24 +1,62 @@
 server:
+  host: "127.0.0.1"
   port: 8080
   gin_mode: "release"
 
+logging:
+  level: "info"
+  format: "json"
+
 storage:
   data_dir: "./data"
+  voiceovers_dir: "voiceovers"
+  assets_dir: "assets/subjects"
+  downloads_dir: "downloads"
+  backups_dir: "backups"
+  temp_dir: "tmp"
+
+security:
+  enable_auth: true
+  admin_token: ""
+  worker_token: ""
+  cors_origins: []
+  rate_limit_enabled: true
+  rate_limit_requests: 100
+  allowed_download_hosts: []
 
 external:
   ollama_url: "http://localhost:11434"
+  ollama_model: "gemma3:4b"
+  ollama_timeout_seconds: 120
+  ytdlp_path: "yt-dlp"
+  ffmpeg_path: "ffmpeg"
 
 paths:
   node_scraper_dir: "../node-scraper"
   python_scripts_dir: "../../python"
+  credentials_file: "credentials.json"
+  token_file: "token.json"
 
 drive:
   stock_root_folder: ""
   clips_root_folder: ""
 
 harvester:
+  enabled: true
   drive_folder_id: ""
+  check_interval: "1h"
 
-logging:
-  level: "info"
-  format: "json"
+video:
+  width: 1920
+  height: 1080
+  fps: 30
+  codec: "libx264"
+  preset: "fast"
+  crf: 23
+  duration: 7
+
+jobs:
+  catalog_sync_interval: "6h"
+  maintenance_interval: "24h"
+  backup_interval: "6h"
+  indexing_interval: "15m"
