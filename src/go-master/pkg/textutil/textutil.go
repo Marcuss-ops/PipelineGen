@@ -146,3 +146,71 @@ func AlphanumOnly(text string) string {
 func SimpleNormalize(text string) string {
 	return strings.ToLower(strings.TrimSpace(text))
 }
+
+// StripCodeFence removes Markdown code fences (e.g. ```json ... ```).
+func StripCodeFence(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		lines := strings.Split(s, "\n")
+		if len(lines) >= 2 && strings.HasPrefix(lines[0], "```") && strings.HasSuffix(lines[len(lines)-1], "```") {
+			return strings.Join(lines[1:len(lines)-1], "\n")
+		}
+	}
+	return s
+}
+
+// ExtractJSONObject attempts to find and extract the first JSON object from a string.
+func ExtractJSONObject(s string) string {
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	if start == -1 || end == -1 || end < start {
+		return s
+	}
+	return s[start : end+1]
+}
+
+// ExtractJSONArray attempts to find and extract the first JSON array from a string.
+func ExtractJSONArray(s string) string {
+	start := strings.Index(s, "[")
+	end := strings.LastIndex(s, "]")
+	if start == -1 || end == -1 || end < start {
+		return s
+	}
+	return s[start : end+1]
+}
+
+// Truncate returns a truncated string with '...' if it exceeds length n.
+func Truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	if n < 3 {
+		return s[:n]
+	}
+	return s[:n-3] + "..."
+}
+
+// SplitCSV splits a comma-separated string into a trimmed slice.
+func SplitCSV(text string) []string {
+	if text == "" {
+		return nil
+	}
+	parts := strings.Split(text, ",")
+	var result []string
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// FirstNonEmpty returns the first non-empty string among the arguments.
+func FirstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}

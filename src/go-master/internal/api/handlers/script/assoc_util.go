@@ -11,6 +11,8 @@ import (
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/matching"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/textutil"
+	"velox/go-master/pkg/sliceutil"
 	)
 
 	// normalizeMatchText pulisce e normalizza il testo per il matching
@@ -90,43 +92,19 @@ func extractSearchKeywords(subject, narrative string) []string {
 }
 
 func uniqueStrings(input []string) []string {
-	u := make([]string, 0, len(input))
-	m := make(map[string]bool)
-	for _, val := range input {
-		if _, ok := m[val]; !ok {
-			m[val] = true
-			u = append(u, val)
-		}
-	}
-	return u
+	return sliceutil.UniqueStrings(input)
 }
 
 func truncateString(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
+	return textutil.Truncate(s, n)
 }
 
 func stripCodeFence(s string) string {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```") {
-		s = strings.TrimPrefix(s, "```")
-		if strings.HasPrefix(s, "json") {
-			s = strings.TrimPrefix(s, "json")
-		}
-		s = strings.TrimSuffix(s, "```")
-	}
-	return strings.TrimSpace(s)
+	return textutil.StripCodeFence(s)
 }
 
 func extractJSONObject(s string) string {
-	start := strings.Index(s, "{")
-	end := strings.LastIndex(s, "}")
-	if start == -1 || end == -1 || end < start {
-		return ""
-	}
-	return s[start : end+1]
+	return textutil.ExtractJSONObject(s)
 }
 
 func roundSeconds(f float64) float64 {
