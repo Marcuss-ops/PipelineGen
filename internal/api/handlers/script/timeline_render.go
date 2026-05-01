@@ -17,6 +17,7 @@ func RenderTimeline(plan *TimelinePlan) string {
 
 	globalArtlistCount := 0
 	const maxGlobalArtlist = 6
+	const minAssetScore = 25 // Minimum score to accept a local asset match
 
 	for _, seg := range plan.Segments {
 		b.WriteString("[")
@@ -42,7 +43,7 @@ func RenderTimeline(plan *TimelinePlan) string {
 		assetRendered := false
 
 		// Priority 1: Drive Stock Association (Cartelle locali)
-		if len(seg.StockMatches) > 0 {
+		if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, minAssetScore) {
 			if hasRenderableStockMatch(seg.StockMatches) {
 				b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
 				assetRendered = true
@@ -56,13 +57,13 @@ func RenderTimeline(plan *TimelinePlan) string {
 		}
 
 		// Priority 2: Artlist Stock Association (Database Artlist)
-		if !assetRendered && len(seg.ArtlistMatches) > 0 {
+		if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, minAssetScore) {
 			b.WriteString(renderSpecificMatch("📦 Artlist Stock Association", seg.ArtlistMatches))
 			assetRendered = true
 		}
 
 		// Priority 3: Clip Drive Association (Clip specifiche scaricate)
-		if !assetRendered && len(seg.DriveMatches) > 0 {
+		if !assetRendered && len(seg.DriveMatches) > 0 && hasStrongMatch(seg.DriveMatches, minAssetScore) {
 			b.WriteString(renderSpecificMatch("📦 Clip Drive Association", seg.DriveMatches))
 			assetRendered = true
 		}
@@ -103,6 +104,15 @@ func RenderTimeline(plan *TimelinePlan) string {
 func hasRenderableStockMatch(matches []scoredMatch) bool {
 	for _, match := range matches {
 		if strings.TrimSpace(match.Link) != "" || strings.TrimSpace(match.Path) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasStrongMatch(matches []scoredMatch, minScore int) bool {
+	for _, match := range matches {
+		if match.Score >= minScore {
 			return true
 		}
 	}
