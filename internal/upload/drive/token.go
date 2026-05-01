@@ -8,8 +8,9 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"go.uber.org/zap"
 	"velox/go-master/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 // refreshingTokenSource wraps a token source and saves refreshed tokens to file

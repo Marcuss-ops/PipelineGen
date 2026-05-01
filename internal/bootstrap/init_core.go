@@ -2,20 +2,12 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
-	"time"
 
-	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/cron"
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/catalog"
-	"velox/go-master/internal/repository/harvester"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/catalogsync"
@@ -28,6 +20,9 @@ import (
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/security"
+
+	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 )
 
 // CoreDeps holds the minimal runtime dependencies needed by the stripped-down server.
@@ -60,309 +55,57 @@ func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, Clea
 
 // initCoreMinimal creates only the services needed by the text/doc server.
 func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
-	// Initialize security allowed hosts
+	ctx := context.Background()
+
+	// 1. Security & Infrastructure
 	for _, host := range cfg.Security.AllowedDownloadHosts {
 		security.AddAllowedHost(host)
 		log.Debug("Added allowed download host from config", zap.String("host", host))
 	}
 
-	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
-	scriptGen := ollama.NewGenerator(ollamaClient)
-
-	docClient, err := drive.NewDocClient(context.Background(), cfg.GetCredentialsPath(), cfg.GetTokenPath())
+	// 2. Databases
+	dbs, err := initDatabases(cfg, log)
 	if err != nil {
-		log.Warn("Docs client not initialized", zap.Error(err))
+		return nil, nil, err
 	}
 
-	// Initialize Google Drive client for Artlist service using the same OAuth files
-	driveClient, err := drive.NewDriveServiceFromFiles(context.Background(), cfg)
+	// 3. Migrations
+	if err := runAllMigrations(dbs, log); err != nil {
+		return nil, nil, err
+	}
+
+	// 4. Services
+	svcs, err := initServices(ctx, cfg, dbs, log)
 	if err != nil {
-		log.Warn("Google Drive client not initialized", zap.Error(err))
+		return nil, nil, err
 	}
 
-	// Initialize voiceover service
-	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
-	if err := os.MkdirAll(voDir, 0755); err != nil {
-		log.Warn("Failed to create voiceovers directory", zap.Error(err))
-	}
-	voService := voiceover.NewService(cfg.Paths.PythonScriptsDir, voDir, log)
+	// 5. Background Jobs
+	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log)
 
-	// Initialize unified database with WAL mode
-	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "velox.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize main database: %w", err)
-	}
-
-	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize stock database: %w", err)
-	}
-
-	clipsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "clips.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize clips database: %w", err)
-	}
-
-	artlistDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize artlist database: %w", err)
-	}
-
-	// Initialize images database
-	imagesDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "images.db.sqlite", log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize images database: %w", err)
-	}
-
-	// Run all migrations on the unified database
-	// 1. Orchestration tables (jobs, workers, etc.)
-	orchestrationMigrationsDir := filepath.Join("migrations", "sqlite")
-	if err := mainDB.RunMigrations(log, orchestrationMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run orchestration migrations: %w", err)
-	}
-
-	if err := stockDB.RunMigrations(log, orchestrationMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run stock orchestration migrations: %w", err)
-	}
-
-	// 2. Scripts tables
-	scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
-	if err := mainDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run scripts migrations: %w", err)
-	}
-
-	if err := stockDB.RunMigrations(log, scriptsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run stock scripts migrations: %w", err)
-	}
-
-	clipsMigrationsDir := filepath.Join("internal", "repository", "clips", "migrations")
-	if err := mainDB.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run clips migrations: %w", err)
-	}
-	if err := stockDB.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run stock clips migrations: %w", err)
-	}
-	if err := clipsDB.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run clips database migrations: %w", err)
-	}
-	if err := artlistDB.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run artlist database migrations: %w", err)
-	}
-
-	// 3. Harvester jobs table
-	harvesterMigrationsDir := filepath.Join("internal", "repository", "harvester", "migrations")
-	// Create dir if not exists and run migrations
-	if err := os.MkdirAll(harvesterMigrationsDir, 0755); err == nil {
-		if err := mainDB.RunMigrations(log, harvesterMigrationsDir); err != nil {
-			log.Warn("Failed to run harvester migrations", zap.Error(err))
-		}
-		if err := stockDB.RunMigrations(log, harvesterMigrationsDir); err != nil {
-			log.Warn("Failed to run stock harvester migrations", zap.Error(err))
-		}
-	}
-
-	// 4. Images tables
-	imagesMigrationsDir := filepath.Join("internal", "repository", "images", "migrations")
-	if err := imagesDB.RunMigrations(log, imagesMigrationsDir); err != nil {
-		return nil, nil, fmt.Errorf("failed to run images migrations: %w", err)
-	}
-
-	// Create repositories sharing the same database
-	clipsRepo := clips.NewRepository(stockDB.DB)
-	artlistRepo := clips.NewRepository(artlistDB.DB)
-	clipsOnlyRepo := clips.NewRepository(clipsDB.DB)
-
-	if err := clipsOnlyRepo.EnsureSegmentEmbeddingsSchema(context.Background()); err != nil {
-		log.Warn("Failed to ensure segment embeddings cache schema", zap.Error(err))
-	}
-
-	scriptsRepo := scripts.NewScriptRepository(mainDB.DB)
-	imageRepo := images.NewRepository(imagesDB.DB)
-
-	// Initialize images service
-	imgAssetsDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.AssetsDir)
-	if err := os.MkdirAll(imgAssetsDir, 0755); err != nil {
-		log.Warn("Failed to create image assets directory", zap.Error(err))
-	}
-	imageService := imgservice.NewService(imageRepo, imgAssetsDir, log)
-
-	// Initialize harvester repository and cron service
-	harvesterRepo := harvester.NewRepository(mainDB.DB, log)
-	
-	// Use 127.0.0.1 for internal API URL if host is set to bind all interfaces
-	host := cfg.Server.Host
-	if host == "0.0.0.0" {
-		host = "127.0.0.1"
-	}
-	apiURL := fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
-	harvesterCronSvc := cron.NewHarvesterCronService(harvesterRepo, log, apiURL, cfg.Storage.DataDir)
-	go harvesterCronSvc.Start(context.Background())
-	log.Info("Harvester cron service started", zap.String("api_url", apiURL))
-
-	catalogSyncService := catalogsync.NewService(driveClient, []catalogsync.Target{
-		{
-			Name:         "stock",
-			RootFolderID: cfg.Drive.StockRootFolder,
-			Source:       "stock",
-			MediaType:    "stock",
-			Repo:         clipsRepo,
-		},
-		{
-			Name:         "clips",
-			RootFolderID: cfg.Drive.ClipsRootFolder,
-			Source:       "clips",
-			MediaType:    "clip",
-			Repo:         clipsOnlyRepo,
-		},
-		{
-			Name:         "artlist",
-			RootFolderID: cfg.Harvester.DriveFolderID,
-			Source:       "artlist",
-			MediaType:    "artlist",
-			Repo:         artlistRepo,
-		},
-	}, log)
-
-	catalogSyncJob := cron.NewCatalogSyncJob(catalogSyncService, log)
-	catalogSyncInterval := 6 * time.Hour
-	if cfg.Jobs.CatalogSyncInterval != "" {
-		if parsed, err := time.ParseDuration(cfg.Jobs.CatalogSyncInterval); err == nil {
-			catalogSyncInterval = parsed
-		}
-	}
-	go catalogSyncJob.Start(context.Background(), catalogSyncInterval)
-	log.Info("Catalog sync job started", zap.Duration("interval", catalogSyncInterval))
-
-	// Initialize channel monitor if enabled
-	var channelMon *monitor.ChannelMonitor
-	if os.Getenv("VELOX_ENABLE_CHANNEL_MONITOR") == "true" {
-		channelMon = monitor.NewChannelMonitor(cfg, clipsRepo, log)
-		go channelMon.Start(context.Background())
-		log.Info("Channel monitor started")
-	}
-
-	// Initialize stock scheduler if enabled
-	var stockSched *scheduler.StockScheduler
-	if os.Getenv("VELOX_ENABLE_STOCK_SCHEDULER") == "true" {
-		stockSched = scheduler.NewStockScheduler(cfg, log)
-		go stockSched.Start(context.Background())
-		log.Info("Stock scheduler started")
-	}
-
-	indexingService := indexing.NewService(clipsRepo, log)
-	catalogRepo := catalog.NewRepository(cfg.Storage.DataDir)
-
-	// Initialize and start DB maintenance cron
-	maintenanceInterval := 24 * time.Hour
-	if cfg.Jobs.MaintenanceInterval != "" {
-		if parsed, err := time.ParseDuration(cfg.Jobs.MaintenanceInterval); err == nil {
-			maintenanceInterval = parsed
-		}
-	}
-	dbMaintenanceJob := cron.NewDBMaintenanceJob(scriptsRepo, mainDB, log)
-	go dbMaintenanceJob.StartCron(context.Background(), maintenanceInterval)
-	log.Info("DB maintenance cron started", zap.Duration("interval", maintenanceInterval))
-
-	// Initialize and start DB backup cron
-	backupInterval := 6 * time.Hour
-	if cfg.Jobs.BackupInterval != "" {
-		if parsed, err := time.ParseDuration(cfg.Jobs.BackupInterval); err == nil {
-			backupInterval = parsed
-		}
-	}
-	backupDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.BackupsDir)
-	dbBackupJob := cron.NewDBBackupJob(mainDB, log, backupDir)
-	go dbBackupJob.StartCron(context.Background(), backupInterval)
-	log.Info("DB backup cron started", zap.String("backup_dir", backupDir), zap.Duration("interval", backupInterval))
-
-	// Start indexing cron
-	indexingInterval := 15 * time.Minute
-	if cfg.Jobs.IndexingInterval != "" {
-		if parsed, err := time.ParseDuration(cfg.Jobs.IndexingInterval); err == nil {
-			indexingInterval = parsed
-		}
-	}
-	downloadDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.DownloadsDir)
-	indexingService.StartCron(context.Background(), downloadDir, indexingInterval)
-	log.Info("Indexing cron started", zap.Duration("interval", indexingInterval))
-
-	cleanup := func() {
-		// Stop services
-		if channelMon != nil {
-			channelMon.Stop()
-		}
-		if stockSched != nil {
-			stockSched.Stop()
-		}
-		if harvesterCronSvc != nil {
-			harvesterCronSvc.Stop()
-		}
-		if catalogSyncJob != nil {
-			catalogSyncJob.Stop()
-		}
-		if imagesDB != nil {
-			if err := imagesDB.Backup(); err != nil {
-				log.Warn("Failed to create images backup on shutdown", zap.Error(err))
-			}
-			if err := imagesDB.Close(); err != nil {
-				log.Error("Failed to close images database", zap.Error(err))
-			}
-		}
-		if mainDB != nil {
-			// Create a backup before closing
-			if err := mainDB.Backup(); err != nil {
-				log.Warn("Failed to create backup on shutdown", zap.Error(err))
-			}
-			if err := mainDB.Close(); err != nil {
-				log.Error("Failed to close main database", zap.Error(err))
-			}
-		}
-		if stockDB != nil {
-			if err := stockDB.Backup(); err != nil {
-				log.Warn("Failed to create stock backup on shutdown", zap.Error(err))
-			}
-			if err := stockDB.Close(); err != nil {
-				log.Error("Failed to close stock database", zap.Error(err))
-			}
-		}
-		if clipsDB != nil {
-			if err := clipsDB.Backup(); err != nil {
-				log.Warn("Failed to create clips backup on shutdown", zap.Error(err))
-			}
-			if err := clipsDB.Close(); err != nil {
-				log.Error("Failed to close clips database", zap.Error(err))
-			}
-		}
-		if artlistDB != nil {
-			if err := artlistDB.Backup(); err != nil {
-				log.Warn("Failed to create artlist backup on shutdown", zap.Error(err))
-			}
-			if err := artlistDB.Close(); err != nil {
-				log.Error("Failed to close artlist database", zap.Error(err))
-			}
-		}
-	}
+	// 6. Cleanup
+	cleanup := buildCleanup(dbs, jobs, log)
 
 	return &CoreDeps{
-		ScriptGen:            scriptGen,
-		DocClient:            docClient,
-		DriveClient:          driveClient,
-		Utility:              common.NewUtilityHandler(),
-		DB:                   mainDB,
-		StockDriveRepo:       clipsRepo,
-		ImagesDB:             imagesDB,
-		ScriptsRepo:          scriptsRepo,
-		ImageRepo:            imageRepo,
-		ImageService:         imageService,
-		ArtlistRepo:          artlistRepo,
-		ClipsOnlyRepo:        clipsOnlyRepo,
-		VoiceoverService:     voService,
-		IndexingService:      indexingService,
-		HarvesterCronService: harvesterCronSvc,
-		CatalogSyncService:   catalogSyncService,
-		CatalogSyncJob:       catalogSyncJob,
-		ChannelMonitor:       channelMon,
-		StockScheduler:       stockSched,
-		CatalogRepo:          catalogRepo,
+		ScriptGen:            svcs.scriptGen,
+		DocClient:            svcs.docClient,
+		DriveClient:          svcs.driveClient,
+		Utility:              svcs.utility,
+		DB:                   dbs.main,
+		ImagesDB:             dbs.images,
+		ScriptsRepo:          svcs.scriptsRepo,
+		ImageRepo:            svcs.imageRepo,
+		ImageService:         svcs.imageService,
+		StockDriveRepo:       svcs.stockDriveRepo,
+		ArtlistRepo:          svcs.artlistRepo,
+		ClipsOnlyRepo:        svcs.clipsOnlyRepo,
+		VoiceoverService:     svcs.voiceoverService,
+		IndexingService:      svcs.indexingService,
+		HarvesterCronService: jobs.harvesterCronSvc,
+		CatalogSyncService:   svcs.catalogSync,
+		CatalogSyncJob:       jobs.catalogSyncJob,
+		ChannelMonitor:       jobs.channelMonitor,
+		StockScheduler:       jobs.stockScheduler,
+		CatalogRepo:          svcs.catalogRepo,
 	}, cleanup, nil
 }

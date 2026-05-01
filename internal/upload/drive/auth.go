@@ -2,25 +2,24 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+
+	"velox/go-master/pkg/config"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
-	"velox/go-master/pkg/config"
 )
 
-// NewDriveServiceFromFiles creates a Google Drive service using credentials and token files from config.
-func NewDriveServiceFromFiles(ctx context.Context, cfg *config.Config) (*drive.Service, error) {
-	credentialsPath := cfg.Paths.CredentialsFile
-	tokenPath := cfg.Paths.TokenFile
-
+// NewGoogleHTTPClient creates an OAuth2 HTTP client using credentials and token paths.
+// It uses a refreshing token source that saves the token to disk upon refresh.
+func NewGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string, scopes ...string) (*http.Client, error) {
 	if credentialsPath == "" || tokenPath == "" {
-		return nil, fmt.Errorf("google drive credentials/token paths are required")
+		return nil, fmt.Errorf("google credentials/token paths are required")
 	}
 	if _, err := os.Stat(credentialsPath); err != nil {
 		return nil, fmt.Errorf("google credentials file not found: %w", err)
@@ -33,21 +32,41 @@ func NewDriveServiceFromFiles(ctx context.Context, cfg *config.Config) (*drive.S
 	if err != nil {
 		return nil, fmt.Errorf("failed to read google credentials: %w", err)
 	}
-	oauthCfg, err := google.ConfigFromJSON(credentials, drive.DriveScope)
+
+	if len(scopes) == 0 {
+		scopes = []string{drive.DriveScope}
+	}
+
+	oauthCfg, err := google.ConfigFromJSON(credentials, scopes...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse google credentials: %w", err)
 	}
 
-	tokenData, err := os.ReadFile(tokenPath)
+	token, err := loadToken(tokenPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read google token: %w", err)
-	}
-	var token oauth2.Token
-	if err := json.Unmarshal(tokenData, &token); err != nil {
 		return nil, fmt.Errorf("failed to parse google token: %w", err)
 	}
 
-	httpClient := oauth2.NewClient(ctx, oauthCfg.TokenSource(ctx, &token))
+	// Use refreshing token source to persist refreshed tokens
+	tokenSource := oauthCfg.TokenSource(ctx, token)
+	persistentSource := &refreshingTokenSource{
+		source:    tokenSource,
+		tokenFile: tokenPath,
+	}
+
+	httpClient := oauth2.NewClient(ctx, persistentSource)
+	if httpClient == nil {
+		return nil, fmt.Errorf("failed to create google oauth client")
+	}
+	return httpClient, nil
+}
+
+// NewDriveServiceFromFiles creates a Google Drive service using credentials and token files from config.
+func NewDriveServiceFromFiles(ctx context.Context, cfg *config.Config) (*drive.Service, error) {
+	httpClient, err := NewGoogleHTTPClient(ctx, cfg.Paths.CredentialsFile, cfg.Paths.TokenFile, drive.DriveScope)
+	if err != nil {
+		return nil, err
+	}
 	return drive.NewService(ctx, option.WithHTTPClient(httpClient))
 }
 
