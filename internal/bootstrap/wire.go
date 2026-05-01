@@ -38,6 +38,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
 	driveFolderID := resolveArtlistRootFolderID(cfg)
 	artlistService, err := artlist.NewService(
+		cfg,
 		coreDeps.DB.DB,
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,

@@ -15,18 +15,15 @@ import (
 )
 
 // NewClient creates a new Ollama client
-func NewClient(baseURL, model string) *Client {
-	if baseURL == "" {
-		baseURL = "http://localhost:11434"
-	}
-	if model == "" {
-		model = types.DefaultModel
+func NewClient(baseURL, model string, timeoutSeconds int) *Client {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = types.DefaultTimeoutSeconds
 	}
 
 	return &Client{
 		baseURL:        baseURL,
 		model:          model,
-		httpClient:     &http.Client{Timeout: types.DefaultTimeoutSeconds * time.Second},
+		httpClient:     &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
 		circuitBreaker: NewCircuitBreaker(types.CircuitBreakerFailures, types.CircuitBreakerTimeout*time.Second),
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -194,7 +195,7 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, chann
 func (m *ChannelMonitor) loadConfig() (*MonitorConfig, error) {
 	configPath := filepath.Join(m.cfg.Storage.DataDir, "channel_monitor_config.json")
 
-	data, err := exec.Command("cat", configPath).Output()
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
@@ -206,7 +207,10 @@ func (m *ChannelMonitor) loadConfig() (*MonitorConfig, error) {
 
 	// Set defaults
 	if cfg.YtdlpPath == "" {
-		cfg.YtdlpPath = "yt-dlp"
+		cfg.YtdlpPath = m.cfg.External.YtdlpPath
+		if cfg.YtdlpPath == "" {
+			cfg.YtdlpPath = "yt-dlp"
+		}
 	}
 	if cfg.MaxClipDuration == 0 {
 		cfg.MaxClipDuration = 60

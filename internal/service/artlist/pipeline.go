@@ -190,7 +190,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		rawPath := filepath.Join(os.TempDir(), fmt.Sprintf("raw_%s.mp4", clip.ID))
 		processedPath := filepath.Join(os.TempDir(), fmt.Sprintf("proc_%s.mp4", clip.ID))
 
-		if err := downloadClip(url, rawPath); err != nil {
+		if err := s.downloadClip(url, rawPath); err != nil {
 			s.log.Error("artlist download failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
@@ -203,7 +203,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
-		if err := processVideo(rawPath, processedPath); err != nil {
+		if err := s.processVideo(rawPath, processedPath); err != nil {
 			s.log.Error("artlist processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			_ = os.Remove(rawPath)
 			resp.Failed++
@@ -354,28 +354,61 @@ func getOrCreateFolder(svc *drive.Service, name, parentID string) (string, error
 	return f.Id, nil
 }
 
-func downloadClip(sourceURL, rawPath string) error {
-	cmdDl := exec.Command("yt-dlp", "-o", rawPath, sourceURL)
+func (s *Service) downloadClip(sourceURL, rawPath string) error {
+	ytdlp := s.cfg.External.YtdlpPath
+	if ytdlp == "" {
+		ytdlp = "yt-dlp"
+	}
+	cmdDl := exec.Command(ytdlp, "-o", rawPath, sourceURL)
 	if out, err := cmdDl.CombinedOutput(); err != nil {
 		return fmt.Errorf("yt-dlp failed: %v (output: %s)", err, string(out))
 	}
 	return nil
 }
 
-func processVideo(input, output string) error {
+func (s *Service) processVideo(input, output string) error {
+	ffmpeg := s.cfg.External.FfmpegPath
+	if ffmpeg == "" {
+		ffmpeg = "ffmpeg"
+	}
+
+	video := s.cfg.Video
+	if video.Width <= 0 {
+		video.Width = 1920
+	}
+	if video.Height <= 0 {
+		video.Height = 1080
+	}
+	if video.FPS <= 0 {
+		video.FPS = 30
+	}
+	if video.Duration <= 0 {
+		video.Duration = 7
+	}
+	if video.Codec == "" {
+		video.Codec = "libx264"
+	}
+	if video.Preset == "" {
+		video.Preset = "fast"
+	}
+	if video.CRF <= 0 {
+		video.CRF = 23
+	}
+
 	args := []string{
 		"-y",
-		"-t", "7",
+		"-t", fmt.Sprintf("%d", video.Duration),
 		"-i", input,
-		"-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30",
+		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d", 
+			video.Width, video.Height, video.Width, video.Height, video.FPS),
 		"-an",
-		"-c:v", "libx264",
-		"-preset", "fast",
-		"-crf", "23",
+		"-c:v", video.Codec,
+		"-preset", video.Preset,
+		"-crf", fmt.Sprintf("%d", video.CRF),
 		output,
 	}
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpeg, args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg failed: %v (output: %s)", err, string(out))
 	}

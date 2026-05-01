@@ -1,6 +1,6 @@
 server:
   port: 8080
-  gin_mode: "debug"
+  gin_mode: "release"
 
 storage:
   data_dir: "./data"
@@ -13,12 +13,12 @@ paths:
   python_scripts_dir: "../../python"
 
 drive:
-  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
-  clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
+  stock_root_folder: ""
+  clips_root_folder: ""
 
 harvester:
-  drive_folder_id: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
+  drive_folder_id: ""
 
 logging:
-  level: "debug"
+  level: "info"
   format: "json"
