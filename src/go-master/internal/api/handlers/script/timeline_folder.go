@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.uber.org/zap"
+	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
+
+	"go.uber.org/zap"
 )
 
 // clipDriveRecord is a legacy struct for catalog compatibility
@@ -184,7 +186,8 @@ func getLink(rec clipDriveRecord) string {
 }
 
 func loadCandidatesFromCatalog(dataDir string) ([]timelineFolderCandidate, error) {
-	folders, err := loadStockFolderCatalog(dataDir)
+	repo := catalog.NewRepository(dataDir)
+	folders, err := repo.LoadStockFolders()
 	if err != nil {
 		return nil, err
 	}

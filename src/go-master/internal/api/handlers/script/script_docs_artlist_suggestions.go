@@ -9,6 +9,8 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 )
 
 type artlistTagSuggestion struct {
@@ -48,8 +50,8 @@ Return only pure JSON in the format {"tags":["tag1","tag2","tag3"]}.`, req.Topic
 	}
 
 	var suggestion artlistTagSuggestion
-	cleaned := stripCodeFence(raw)
-	jsonPayload := extractJSONObject(cleaned)
+	cleaned := textutil.StripCodeFence(raw)
+	jsonPayload := textutil.ExtractJSONObject(cleaned)
 	if jsonPayload == "" {
 		return nil
 	}
@@ -57,7 +59,7 @@ Return only pure JSON in the format {"tags":["tag1","tag2","tag3"]}.`, req.Topic
 		return nil
 	}
 
-	tags := uniqueStrings(normalizeTagList(suggestion.Tags))
+	tags := sliceutil.UniqueStrings(normalizeTagList(suggestion.Tags))
 	if len(tags) == 0 {
 		return nil
 	}

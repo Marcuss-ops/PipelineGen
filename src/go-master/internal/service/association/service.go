@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/textutil"
 )
 
 type Service struct {
@@ -31,7 +31,7 @@ func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*
 	req.Normalize()
 
 	// 1. Direct match logic (simplified for now, ideally moved to a provider)
-	
+
 	_ = s.collectTerms(req)
 	rawCandidates := make([]Candidate, 0)
 
@@ -64,9 +64,9 @@ func (s *Service) collectTerms(req CandidatesRequest) []string {
 	terms := make([]string, 0)
 	seen := make(map[string]struct{})
 	add := func(text string) {
-		for _, term := range matching.Tokenize(text) {
+		for _, term := range textutil.Tokenize(text) {
 			term = strings.TrimSpace(term)
-			if term == "" || len(term) < 3 || matching.IsStopWord(term) {
+			if term == "" || len(term) < 3 || textutil.IsStopWord(term) {
 				continue
 			}
 			key := strings.ToLower(term)

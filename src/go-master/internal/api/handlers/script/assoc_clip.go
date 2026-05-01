@@ -3,7 +3,10 @@ package script
 import (
 	"context"
 
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 )
 
 // ClipDriveAssociation cerca clip specifiche nel database delle clip scaricate
@@ -21,7 +24,7 @@ func (a *ClipDriveAssociation) Associate(ctx context.Context, segment *TimelineS
 	}
 
 	// Usiamo sia il subject che le keywords per una ricerca più ampia
-	keywords := uniqueStrings(append(matchTokens(segmentAssociationSubject(segment)), segmentAssociationKeywords(segment)...))
+	keywords := sliceutil.UniqueStrings(append(textutil.Tokenize(segmentAssociationSubject(segment)), segmentAssociationKeywords(segment)...))
 	if len(keywords) == 0 {
 		return nil, nil
 	}
@@ -32,11 +35,11 @@ func (a *ClipDriveAssociation) Associate(ctx context.Context, segment *TimelineS
 		clipsList, _ = a.repo.SearchClips(ctx, segment.Subject)
 	}
 
-	queryTokens := matchTokens(segmentAssociationSubject(segment))
+	queryTokens := textutil.Tokenize(segmentAssociationSubject(segment))
 	var matches []scoredMatch
 	for _, c := range clipsList {
-		targetTokens := matchTokens(c.Name)
-		score := calculateTokenScore(queryTokens, targetTokens)
+		targetTokens := textutil.Tokenize(c.Name)
+		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 		score += preferredCandidateBoost(segment, c.FolderPath, c.ExternalURL, c.Name)
 
 		if score > 30 {

@@ -1,29 +1,30 @@
 package matching
 
 import (
-	"strings"
 	"path/filepath"
+	"strings"
+	"velox/go-master/pkg/textutil"
 )
 
 // ScoreAsset calculates a match score (0-100) between a search phrase and an asset
 func ScoreAsset(phrase string, name, filename, folder, tags string, cfg ScoringConfig) (float64, string) {
-	phraseNorm := Normalize(phrase)
+	phraseNorm := textutil.Normalize(phrase)
 	if phraseNorm == "" {
 		return 0, ""
 	}
 
-	phraseTokens := Tokenize(phraseNorm)
+	phraseTokens := textutil.Tokenize(phraseNorm)
 	if len(phraseTokens) == 0 {
 		return 0, ""
 	}
 
 	candidateText := strings.Join([]string{name, filename, folder, tags}, " ")
-	candidateNorm := Normalize(candidateText)
+	candidateNorm := textutil.Normalize(candidateText)
 	if candidateNorm == "" {
 		return 0, ""
 	}
 
-	candidateTokens := Tokenize(candidateNorm)
+	candidateTokens := textutil.Tokenize(candidateNorm)
 	candidateSet := make(map[string]struct{}, len(candidateTokens))
 	for _, tok := range candidateTokens {
 		candidateSet[tok] = struct{}{}
@@ -42,8 +43,8 @@ func ScoreAsset(phrase string, name, filename, folder, tags string, cfg ScoringC
 	}
 
 	boost := 0.0
-	nameNorm := Normalize(name)
-	fileNorm := Normalize(strings.TrimSuffix(filename, filepath.Ext(filename)))
+	nameNorm := textutil.Normalize(name)
+	fileNorm := textutil.Normalize(strings.TrimSuffix(filename, filepath.Ext(filename)))
 
 	if nameNorm != "" && strings.Contains(phraseNorm, nameNorm) {
 		boost += cfg.NameMatchBoost

@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/pkg/textutil"
 )
 
 // ArtlistStockAssociation cerca nel database delle clip di Artlist
@@ -42,11 +44,11 @@ func (a *ArtlistStockAssociation) Associate(ctx context.Context, segment *Timeli
 		return nil, nil
 	}
 
-	queryTokens := matchTokens(searchTerm)
+	queryTokens := textutil.Tokenize(searchTerm)
 	var matches []scoredMatch
 	for _, clip := range resp.Clips {
-		targetTokens := matchTokens(clip.Name + " " + strings.Join(clip.Tags, " "))
-		score := calculateTokenScore(queryTokens, targetTokens)
+		targetTokens := textutil.Tokenize(clip.Name + " " + strings.Join(clip.Tags, " "))
+		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 		score += preferredCandidateBoost(segment, clip.FolderPath, clip.ExternalURL, clip.Name)
 
 		if score > 30 {

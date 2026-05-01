@@ -6,29 +6,27 @@ import (
 	"math"
 	"strings"
 
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/internal/matching"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
-	"velox/go-master/pkg/sliceutil"
-	)
+)
 
-	// normalizeMatchText pulisce e normalizza il testo per il matching
-	func normalizeMatchText(text string) string {
-	return matching.Normalize(text)
-	}
+// normalizeMatchText pulisce e normalizza il testo per il matching
+func normalizeMatchText(text string) string {
+	return textutil.Normalize(text)
+}
 
-	// matchTokens divide il testo in token significativi
-	func matchTokens(text string) []string {
-	return matching.Tokenize(text)
-	}
+// matchTokens divide il testo in token significativi
+func matchTokens(text string) []string {
+	return textutil.Tokenize(text)
+}
 
-	// calcola lo score di similarità tra due insiemi di token
-	func calculateTokenScore(queryTokens, targetTokens []string) int {
+// calcola lo score di similarità tra due insiemi di token
+func calculateTokenScore(queryTokens, targetTokens []string) int {
 	return matching.CalculateTokenScore(queryTokens, targetTokens)
-	}
-
+}
 
 // extractDynamicKeywords chiede all'LLM di generare esattamente 2 keyword di ricerca efficaci
 func extractDynamicKeywords(ctx context.Context, gen *ollama.Generator, subject, narrative string) []string {
@@ -50,7 +48,7 @@ Return ONLY the two keywords separated by a comma. Example: boxing match, mike t
 		return extractSearchKeywords(subject, narrative)
 	}
 
-	parts := strings.Split(stripCodeFence(res), ",")
+	parts := strings.Split(textutil.StripCodeFence(res), ",")
 	var result []string
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
@@ -70,14 +68,14 @@ Return ONLY the two keywords separated by a comma. Example: boxing match, mike t
 
 // extractSearchKeywords (euristica fallback)
 func extractSearchKeywords(subject, narrative string) []string {
-	tokens := matchTokens(subject)
+	tokens := textutil.Tokenize(subject)
 	if len(tokens) > 0 {
 		if len(tokens) > 2 {
 			return tokens[:2]
 		}
 		return tokens
 	}
-	allTokens := matchTokens(narrative)
+	allTokens := textutil.Tokenize(narrative)
 	var filtered []string
 	for _, t := range allTokens {
 		if len(t) > 3 {
@@ -88,22 +86,6 @@ func extractSearchKeywords(subject, narrative string) []string {
 		}
 	}
 	return filtered
-}
-
-func uniqueStrings(input []string) []string {
-	return sliceutil.UniqueStrings(input)
-}
-
-func truncateString(s string, n int) string {
-	return textutil.Truncate(s, n)
-}
-
-func stripCodeFence(s string) string {
-	return textutil.StripCodeFence(s)
-}
-
-func extractJSONObject(s string) string {
-	return textutil.ExtractJSONObject(s)
 }
 
 func roundSeconds(f float64) float64 {
@@ -187,19 +169,4 @@ func modelClipsToScoredMatches(clips []models.Clip, details string, source strin
 		})
 	}
 	return matches
-}
-
-func extractNarrativeSentences(text string) []string {
-	if text == "" {
-		return nil
-	}
-	parts := strings.Split(text, ".")
-	var res []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			res = append(res, p)
-		}
-	}
-	return res
 }

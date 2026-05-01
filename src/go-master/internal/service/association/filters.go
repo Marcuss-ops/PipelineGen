@@ -3,8 +3,8 @@ package association
 import (
 	"path/filepath"
 	"strings"
-	"velox/go-master/internal/matching"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 )
 
 // FilterStockMatchesBySubject filters matches based on their relevance to the segment subject.
@@ -20,10 +20,10 @@ func FilterStockMatchesBySubject(matches []ScoredMatch, subject string) []Scored
 	exact := make([]ScoredMatch, 0, len(matches))
 	loose := make([]ScoredMatch, 0, len(matches))
 	for _, match := range matches {
-		titleKey := matching.Normalize(match.Title)
-		pathKey := matching.Normalize(match.Path)
-		leafKey := matching.Normalize(filepath.Base(strings.TrimSpace(match.Path)))
-		
+		titleKey := textutil.Normalize(match.Title)
+		pathKey := textutil.Normalize(match.Path)
+		leafKey := textutil.Normalize(filepath.Base(strings.TrimSpace(match.Path)))
+
 		if NormalizedKeyMatchesAny(titleKey, subjectKeys) || NormalizedKeyMatchesAny(pathKey, subjectKeys) || NormalizedKeyMatchesAny(leafKey, subjectKeys) {
 			exact = append(exact, match)
 			continue
@@ -48,7 +48,7 @@ func FilterArtlistMatchesBySubject(matches []ScoredMatch, subject string) []Scor
 
 // AssociationSubjectKeys generates normalized keys for a subject (including stripped prefixes).
 func AssociationSubjectKeys(subject string) []string {
-	subjectKey := matching.Normalize(subject)
+	subjectKey := textutil.Normalize(subject)
 	if subjectKey == "" {
 		return nil
 	}
@@ -66,7 +66,7 @@ func AssociationSubjectKeys(subject string) []string {
 
 // NormalizedKeyMatchesAny checks if a key matches any of the subject keys.
 func NormalizedKeyMatchesAny(key string, subjectKeys []string) bool {
-	key = matching.Normalize(key)
+	key = textutil.Normalize(key)
 	if key == "" {
 		return false
 	}

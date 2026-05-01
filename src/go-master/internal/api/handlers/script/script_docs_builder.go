@@ -10,6 +10,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/pkg/sliceutil"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -156,9 +157,9 @@ func renderEntityExtractionSection(analysis *types.FullEntityAnalysis) string {
 			names = append(names, name)
 		}
 	}
-	phrases = limitStrings(uniqueStrings(phrases), 2)
-	names = limitStrings(uniqueStrings(names), 2)
-	words = limitStrings(uniqueStrings(words), 2)
+	phrases = limitStrings(sliceutil.UniqueStrings(phrases), 2)
+	names = limitStrings(sliceutil.UniqueStrings(names), 2)
+	words = limitStrings(sliceutil.UniqueStrings(words), 2)
 
 	var b strings.Builder
 	b.WriteString("📽️ NARRATIVE AND VISUAL ANALYSIS\n")

@@ -3,6 +3,8 @@ package script
 import (
 	"regexp"
 	"strings"
+	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 )
 
 type structuredTimelineBlock struct {
@@ -270,12 +272,12 @@ func structuredBlockKeywords(heading, body string) []string {
 			keywords = append(keywords, tokens[:minInt(len(tokens), 4)]...)
 		}
 	}
-	return uniqueStrings(keywords)
+	return sliceutil.UniqueStrings(keywords)
 }
 
 func structuredBlockEntities(heading, body string) []string {
 	entities := extractLikelyNames(heading + " " + body)
-	return uniqueStrings(entities)
+	return sliceutil.UniqueStrings(entities)
 }
 
 func firstStructuredSentence(text string) string {
@@ -287,19 +289,19 @@ func lastStructuredSentence(text string) string {
 }
 
 func firstSentence(text string) string {
-	sentences := extractNarrativeSentences(text)
+	sentences := textutil.ExtractSentences(text)
 	if len(sentences) > 0 {
 		return sentences[0]
 	}
-	return truncateString(text, 120)
+	return textutil.Truncate(text, 120)
 }
 
 func lastSentence(text string) string {
-	sentences := extractNarrativeSentences(text)
+	sentences := textutil.ExtractSentences(text)
 	if len(sentences) > 0 {
 		return sentences[len(sentences)-1]
 	}
-	return truncateString(text, 120)
+	return textutil.Truncate(text, 120)
 }
 
 func wordCount(text string) int {

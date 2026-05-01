@@ -1,13 +1,12 @@
 package script
 
 import (
-	"fmt"
-	"strings"
-	"sort"
-	"os"
 	"encoding/json"
-
-	"velox/go-master/internal/matching"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+	"velox/go-master/pkg/textutil"
 )
 
 func readJSON(path string, dst any) error {
@@ -21,8 +20,8 @@ func readJSON(path string, dst any) error {
 func collectTopicTerms(topic string) []string {
 	seen := make(map[string]struct{})
 	add := func(text string) {
-		for _, term := range matching.Tokenize(text) {
-			if len(term) < 3 || matching.IsStopWord(term) {
+		for _, term := range textutil.Tokenize(text) {
+			if len(term) < 3 || textutil.IsStopWord(term) {
 				continue
 			}
 			seen[term] = struct{}{}
@@ -55,7 +54,7 @@ func renderMatches(matches []scoredMatch) string {
 	if len(matches) == 0 {
 		return "Nessun asset trovato."
 	}
-	
+
 	// Sort by score
 	sort.SliceStable(matches, func(i, j int) bool {
 		return matches[i].Score > matches[j].Score
@@ -73,19 +72,19 @@ func renderMatches(matches []scoredMatch) string {
 		b.WriteString("- ")
 		b.WriteString(headline)
 		b.WriteString("\n")
-		
+
 		b.WriteString("  Source: ")
 		b.WriteString(match.Source)
 		b.WriteString("\n")
-		
+
 		b.WriteString(fmt.Sprintf("  Score: %d\n", match.Score))
-		
+
 		if strings.TrimSpace(match.Link) != "" {
 			b.WriteString("  Link: ")
 			b.WriteString(match.Link)
 			b.WriteString("\n")
 		}
-		
+
 		if strings.TrimSpace(match.Details) != "" {
 			b.WriteString("  Details: ")
 			b.WriteString(match.Details)

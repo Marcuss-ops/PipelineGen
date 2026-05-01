@@ -7,10 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"go.uber.org/zap"
-	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
+
+	"go.uber.org/zap"
 )
 
 func chooseTimelinePlanWithLLM(ctx context.Context, gen *ollama.Generator, topic string, duration int, sourceText, narrative string) (*timelineLLMPlan, error) {
@@ -70,7 +72,7 @@ SCRIPT:
 SOURCE MATERIAL:
 %s
 
-JSON:`, truncateString(topic, 200), duration, duration, truncateString(narrative, 6000), truncateString(sourceText, 6000))
+JSON:`, textutil.Truncate(topic, 200), duration, duration, textutil.Truncate(narrative, 6000), textutil.Truncate(sourceText, 6000))
 
 	raw, err := client.GenerateWithOptions(ctx, model, prompt, map[string]interface{}{
 		"temperature": 0.0,
@@ -82,8 +84,8 @@ JSON:`, truncateString(topic, 200), duration, duration, truncateString(narrative
 
 	zap.L().Info("Raw LLM timeline response", zap.String("raw", raw))
 
-	cleaned := stripCodeFence(raw)
-	jsonPayload := extractJSONObject(cleaned)
+	cleaned := textutil.StripCodeFence(raw)
+	jsonPayload := textutil.ExtractJSONObject(cleaned)
 	if jsonPayload == "" {
 		return nil, fmt.Errorf("timeline planning returned empty payload")
 	}
@@ -182,7 +184,7 @@ func preferredEntitySubject(seg *timelineLLMSegment, topicTokens []string) strin
 	if seg == nil {
 		return ""
 	}
-	candidates := uniqueStrings(append([]string{}, seg.Entities...))
+	candidates := sliceutil.UniqueStrings(append([]string{}, seg.Entities...))
 	candidates = append(candidates, seg.Subject)
 
 	best := ""
@@ -248,7 +250,7 @@ func topicTokens(topic string) []string {
 }
 
 func topicTokensFromText(text string) []string {
-	tokens := matching.Tokenize(text)
+	tokens := textutil.Tokenize(text)
 	out := make([]string, 0, len(tokens))
 	for _, tok := range tokens {
 		tok = strings.TrimSpace(tok)

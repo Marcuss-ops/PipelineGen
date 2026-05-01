@@ -1,7 +1,6 @@
 package client
 
 import (
-	"velox/go-master/internal/ml/ollama/types"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,9 +8,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"velox/go-master/internal/ml/ollama/types"
+
+	"velox/go-master/pkg/logger"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/logger"
 )
 
 // NewClient creates a new Ollama client

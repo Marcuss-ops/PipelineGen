@@ -214,3 +214,19 @@ func FirstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+// ExtractSentences splits a text block into sentences by splitting on periods.
+func ExtractSentences(text string) []string {
+        if text == "" {
+                return nil
+        }
+        parts := strings.Split(text, ".")
+        var res []string
+        for _, p := range parts {
+                p = strings.TrimSpace(p)
+                if p != "" {
+                        res = append(res, p)
+                }
+        }
+        return res
+}

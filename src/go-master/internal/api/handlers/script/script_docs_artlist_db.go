@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"velox/go-master/pkg/sliceutil"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -43,7 +44,7 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 			}
 		}
 	}
-	tokens = uniqueStrings(tokens)
+	tokens = sliceutil.UniqueStrings(tokens)
 
 	if len(tokens) == 0 {
 		return nil, nil

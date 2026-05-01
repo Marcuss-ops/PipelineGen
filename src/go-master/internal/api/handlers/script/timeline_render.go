@@ -3,6 +3,7 @@ package script
 import (
 	"fmt"
 	"strings"
+	"velox/go-master/pkg/textutil"
 )
 
 // RenderTimeline converts a TimelinePlan into the final formatted text section.
@@ -27,7 +28,7 @@ func RenderTimeline(plan *TimelinePlan) string {
 
 		if strings.TrimSpace(seg.OpeningSentence) != "" {
 			b.WriteString("   Start: ")
-			b.WriteString(truncateString(seg.OpeningSentence, 80))
+			b.WriteString(textutil.Truncate(seg.OpeningSentence, 80))
 			b.WriteString("\n")
 		}
 
@@ -165,7 +166,7 @@ func renderOnlyPhrases(seg TimelineSegment, budget int) (string, int) {
 		return "", 0
 	}
 
-	sentences := extractNarrativeSentences(seg.NarrativeText)
+	sentences := textutil.ExtractSentences(seg.NarrativeText)
 	if len(sentences) == 0 {
 		return "", 0
 	}

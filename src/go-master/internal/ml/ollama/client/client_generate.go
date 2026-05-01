@@ -9,9 +9,10 @@ import (
 	"io"
 	"net/http"
 
-	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/pkg/logger"
+
+	"go.uber.org/zap"
 )
 
 // Generate genera testo con Ollama (Legacy API)
