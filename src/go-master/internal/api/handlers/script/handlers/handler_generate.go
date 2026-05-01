@@ -115,6 +115,9 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		}
 	}
 
+	// Trigger background harvest for search suggestions
+	h.triggerBackgroundHarvest(document)
+
 	if forcePreview {
 		path, err := h.savePreview(document.Title, document.Content)
 		if err != nil {
@@ -228,4 +231,40 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// triggerBackgroundHarvest starts background harvesting for search suggestions
+func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocument) {
+	if h.artlistService == nil || document == nil || document.Timeline == nil {
+		return
+	}
+
+	uniqueTags := make(map[string]struct{})
+	for _, seg := range document.Timeline.Segments {
+		for _, tag := range seg.SearchSuggestions {
+			tag = strings.TrimSpace(tag)
+			if tag != "" {
+				uniqueTags[tag] = struct{}{}
+			}
+		}
+	}
+
+	if len(uniqueTags) == 0 {
+		return
+	}
+
+	zap.L().Info("triggering background harvest for suggestions", zap.Int("tag_count", len(uniqueTags)))
+
+	for tag := range uniqueTags {
+		go func(t string) {
+			zap.L().Info("starting background artlist pipeline for suggestion", zap.String("tag", t))
+			// Limit to 5 clips per tag to avoid massive downloads
+			err := h.artlistService.RunPipeline(context.Background(), t, 5, true, true)
+			if err != nil {
+				zap.L().Error("background artlist pipeline failed", zap.String("tag", t), zap.Error(err))
+			} else {
+				zap.L().Info("background artlist pipeline completed", zap.String("tag", t))
+			}
+		}(tag)
+	}
 }
