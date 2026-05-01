@@ -68,7 +68,11 @@ type ServerConfig struct {
 
 // StorageConfig holds storage configuration.
 type StorageConfig struct {
-	DataDir string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	DataDir       string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	VoiceoversDir string `yaml:"voiceovers_dir" default:"voiceovers"`
+	AssetsDir     string `yaml:"assets_dir" default:"assets/subjects"`
+	DownloadsDir  string `yaml:"downloads_dir" default:"downloads"`
+	BackupsDir    string `yaml:"backups_dir" default:"backups"`
 }
 
 // SecurityConfig holds security-related configuration.
