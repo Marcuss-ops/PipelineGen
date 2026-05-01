@@ -48,6 +48,8 @@ Rules:
 - The first segment must start at 0.
 - The last segment must end exactly at %d.
 - Segments must not overlap.
+- The 'narrative_text' of all segments combined MUST exactly match the provided SCRIPT. Do not omit or truncate any part of the script.
+- Even for short videos (e.g. 30s), if the script is long, you must include the full script text across the segments.
 - Return ONLY valid JSON with this shape:
 {
   "primary_focus": "short title of the main subject",
