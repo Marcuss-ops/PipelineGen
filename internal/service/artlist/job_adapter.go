@@ -113,19 +113,11 @@ func JobToRunRecord(job *models.Job) *artlistRunRecord {
 
 // CreateJobRun creates a new job-based run record
 func (s *Service) CreateJobRun(ctx context.Context, req *RunTagRequest) (*models.Job, error) {
-	job := models.NewJob(models.JobTypeStockClip, map[string]interface{}{
-		"term":           req.Term,
-		"root_folder_id": req.RootFolderID,
-		"strategy":       req.Strategy,
-		"dry_run":        req.DryRun,
-		"active_key":     runDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
-	})
-
-	job.Status = models.StatusRunning
-	now := time.Now()
-	job.StartedAt = &now
-
-	return job, nil
+	rec, _, err := s.ensureRunRecord(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return RunRecordToJob(rec), nil
 }
 
 // UpdateJobRun updates an existing job with run results

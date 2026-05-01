@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/api/handlers/script"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/service/artlist"
 )
 
 func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
@@ -259,7 +260,13 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocu
 		go func(t string) {
 			zap.L().Info("starting background artlist pipeline for suggestion", zap.String("tag", t))
 			// Limit to 5 clips per tag to avoid massive downloads
-			err := h.artlistService.RunPipeline(context.Background(), t, 5, true, true)
+			// Strategy "verify" performs both download and upload if missing
+			req := &artlist.RunTagRequest{
+				Term:     t,
+				Limit:    5,
+				Strategy: "verify",
+			}
+			_, err := h.artlistService.RunTag(context.Background(), req)
 			if err != nil {
 				zap.L().Error("background artlist pipeline failed", zap.String("tag", t), zap.Error(err))
 			} else {

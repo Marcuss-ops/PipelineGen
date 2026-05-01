@@ -194,8 +194,16 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			tmpDir = os.TempDir()
 		}
 
+		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", tagFolderName)
+		if err := os.MkdirAll(saveDir, 0755); err != nil {
+			s.log.Error("failed to create save directory", zap.String("dir", saveDir), zap.Error(err))
+			saveDir = tmpDir
+		}
+
 		rawPath := filepath.Join(tmpDir, fmt.Sprintf("raw_%s.mp4", clip.ID))
-		processedPath := filepath.Join(tmpDir, fmt.Sprintf("proc_%s.mp4", clip.ID))
+		safeName := sanitizeDriveFolderName(clip.Name)
+		finalFilename := fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID)
+		processedPath := filepath.Join(saveDir, finalFilename)
 
 		if err := s.downloadClip(url, rawPath); err != nil {
 			s.log.Error("artlist download failed", zap.String("clip_id", clip.ID), zap.Error(err))
@@ -255,14 +263,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
-		driveFileReq := &drive.File{Name: fmt.Sprintf("%s_%ds.mp4", clip.Name, s.cfg.Video.Duration)}
+		driveFileReq := &drive.File{Name: finalFilename}
 		if tagFolderID != "" {
 			driveFileReq.Parents = []string{tagFolderID}
 		}
 		driveFile, err := s.driveClient.Files.Create(driveFileReq).Fields("id,webViewLink,md5Checksum").Media(f).Do()
 		_ = f.Close()
 		_ = os.Remove(rawPath)
-		_ = os.Remove(processedPath)
+		// We DO NOT remove processedPath so it stays on disk
 		if err != nil {
 			s.log.Error("artlist upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
@@ -281,7 +289,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		clip.FileHash = fileHash
 		clip.Metadata = composeArtlistMetadata(clip.Metadata, fileHash, driveFile.Md5Checksum)
 		clip.UpdatedAt = time.Now().UTC()
-		clip.LocalPath = ""
+		clip.LocalPath = processedPath
 		if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
 			s.log.Error("artlist db update failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++

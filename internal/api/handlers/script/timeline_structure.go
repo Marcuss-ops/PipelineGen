@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strings"
 	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/textutil"
 )
 
 type structuredTimelineBlock struct {
@@ -286,22 +285,6 @@ func firstStructuredSentence(text string) string {
 
 func lastStructuredSentence(text string) string {
 	return lastSentence(strings.TrimSpace(text))
-}
-
-func firstSentence(text string) string {
-	sentences := textutil.ExtractSentences(text)
-	if len(sentences) > 0 {
-		return sentences[0]
-	}
-	return textutil.Truncate(text, 120)
-}
-
-func lastSentence(text string) string {
-	sentences := textutil.ExtractSentences(text)
-	if len(sentences) > 0 {
-		return sentences[len(sentences)-1]
-	}
-	return textutil.Truncate(text, 120)
 }
 
 func wordCount(text string) int {
