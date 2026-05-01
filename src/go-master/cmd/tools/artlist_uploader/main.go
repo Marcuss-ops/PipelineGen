@@ -47,6 +47,7 @@ func main() {
 	}
 	repo := clips.NewRepository(db.DB)
 	artlistSvc, err := artlistservice.NewService(
+		cfg,
 		db.DB,
 		"",
 		cfg.Paths.NodeScraperDir,

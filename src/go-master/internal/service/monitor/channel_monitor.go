@@ -32,6 +32,8 @@ type MonitorConfig struct {
 	YtdlpPath       string        `json:"ytdlp_path"`
 	CookiesPath     string        `json:"cookies_path"`
 	MaxClipDuration int           `json:"max_clip_duration"`
+	PlaylistEnd     int           `json:"playlist_end"`
+	MaxFilesize     string        `json:"max_filesize"`
 	OllamaURL       string        `json:"ollama_url"`
 	Channels        []ChannelConfig `json:"channels"`
 }
@@ -117,7 +119,7 @@ func (m *ChannelMonitor) checkChannel(ctx context.Context, channel ChannelConfig
 	args := []string{
 		"--flat-playlist",
 		"--print", "%(id)s %(title)s %(view_count)s %(duration)s",
-		"--playlist-end", "20",
+		"--playlist-end", fmt.Sprintf("%d", cfg.PlaylistEnd),
 	}
 
 	if channel.MinViews > 0 {
@@ -168,11 +170,11 @@ func (m *ChannelMonitor) processVideoLine(ctx context.Context, line string, chan
 
 // downloadClip downloads a clip from YouTube
 func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, channel ChannelConfig, cfg *MonitorConfig) {
-	downloadDir := filepath.Join(m.cfg.Storage.DataDir, "downloads", channel.Category)
+	downloadDir := filepath.Join(m.cfg.Storage.DataDir, m.cfg.Storage.DownloadsDir, channel.Category)
 
 	args := []string{
 		"--output", filepath.Join(downloadDir, "%(title)s.%(ext)s"),
-		"--max-filesize", "100M",
+		"--max-filesize", cfg.MaxFilesize,
 	}
 
 	if cfg.CookiesPath != "" {
@@ -214,6 +216,12 @@ func (m *ChannelMonitor) loadConfig() (*MonitorConfig, error) {
 	}
 	if cfg.MaxClipDuration == 0 {
 		cfg.MaxClipDuration = 60
+	}
+	if cfg.PlaylistEnd == 0 {
+		cfg.PlaylistEnd = 20
+	}
+	if cfg.MaxFilesize == "" {
+		cfg.MaxFilesize = "100M"
 	}
 
 	return &cfg, nil
