@@ -8,6 +8,7 @@ import (
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 )
 
 type AssociationCandidatesRequest struct {
@@ -137,9 +138,9 @@ func collectAssociationTerms(req AssociationCandidatesRequest) []string {
 	terms := make([]string, 0)
 	seen := make(map[string]struct{})
 	add := func(text string) {
-		for _, term := range matching.Tokenize(text) {
+		for _, term := range textutil.Tokenize(text) {
 			term = strings.TrimSpace(term)
-			if term == "" || len(term) < 3 || matching.IsStopWord(term) {
+			if term == "" || len(term) < 3 || textutil.IsStopWord(term) {
 				continue
 			}
 			key := strings.ToLower(term)
@@ -196,7 +197,7 @@ func scoreTimelineFolderCandidates(database, source string, folders []timelineFo
 			pathKey := normalizeAssociationKey(path)
 			focusTokenCount := 0
 			for _, focusKey := range focusKeys {
-				if count := len(matchTokens(focusKey)); count > 0 && (focusTokenCount == 0 || count < focusTokenCount) {
+				if count := len(textutil.Tokenize(focusKey)); count > 0 && (focusTokenCount == 0 || count < focusTokenCount) {
 					focusTokenCount = count
 				}
 			}
@@ -214,7 +215,7 @@ func scoreTimelineFolderCandidates(database, source string, folders []timelineFo
 				}
 			}
 			if focusTokenCount > 0 {
-				candidateTokenCount := len(matchTokens(name + " " + path))
+				candidateTokenCount := len(textutil.Tokenize(name + " " + path))
 				if candidateTokenCount >= focusTokenCount+4 {
 					continue
 				}

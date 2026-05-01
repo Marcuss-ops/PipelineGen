@@ -4,17 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"strings"
 	"time"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/association"
 	segmentnorm "velox/go-master/internal/service/catalognormalizer"
 	"velox/go-master/internal/service/timeline"
-	"velox/go-master/internal/service/association"
-	"velox/go-master/pkg/textutil"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
+
+	"go.uber.org/zap"
 )
 
 const timelineCacheVersion = "v12"
@@ -116,13 +117,13 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			seg.CanonicalKeywords = sliceutil.UniqueStrings(normalized.CanonicalKeywords)
 			seg.CanonicalEntities = sliceutil.UniqueStrings(normalized.CanonicalEntities)
 			seg.NormalizationSource = normalized.NormalizationSource
-			}
-			if strings.TrimSpace(seg.CanonicalSubject) == "" {
-				seg.CanonicalSubject = seg.Subject
-			}
-			if preserveStructuredSubjects {
-				seg.CanonicalSubject = seg.Subject
-			}
+		}
+		if strings.TrimSpace(seg.CanonicalSubject) == "" {
+			seg.CanonicalSubject = seg.Subject
+		}
+		if preserveStructuredSubjects {
+			seg.CanonicalSubject = seg.Subject
+		}
 
 		associationSubject := firstNonEmpty(seg.CanonicalSubject, seg.Subject)
 		if preserveStructuredSubjects {
@@ -471,4 +472,3 @@ func fallbackTimelinePlan(topic string, duration int, narrative string) *timelin
 		},
 	}
 }
-

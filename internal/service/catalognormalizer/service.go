@@ -11,9 +11,10 @@ import (
 	"strings"
 	"sync"
 
-	"go.uber.org/zap"
-	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/textutil"
+
+	"go.uber.org/zap"
 )
 
 type Service struct {
@@ -366,11 +367,11 @@ func tokenOverlapScore(queryTokens, targetTokens []string) int {
 }
 
 func tokenizeForCanonical(text string) []string {
-	tokens := matching.Tokenize(text)
+	tokens := textutil.Tokenize(text)
 	out := make([]string, 0, len(tokens))
 	for _, tok := range tokens {
 		tok = strings.TrimSpace(tok)
-		if tok == "" || len(tok) < 2 || matching.IsStopWord(tok) {
+		if tok == "" || len(tok) < 2 || textutil.IsStopWord(tok) {
 			continue
 		}
 		out = append(out, tok)

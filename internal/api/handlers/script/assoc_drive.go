@@ -3,6 +3,9 @@ package script
 import (
 	"context"
 	"strings"
+	"velox/go-master/internal/matching"
+	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/repository/catalog"
 )
 
 // DriveStockAssociation cerca cartelle nel catalogo locale dello stock
@@ -40,19 +43,20 @@ func (a *DriveStockAssociation) Associate(ctx context.Context, segment *Timeline
 		}}, nil
 	}
 
-	queryTokens := matchTokens(searchTerm)
+	queryTokens := textutil.Tokenize(searchTerm)
 	slug := strings.ReplaceAll(strings.ToLower(searchTerm), " ", "-")
 
 	// Carichiamo il catalogo cartelle
-	folders, err := loadStockFolderCatalog(a.dataDir)
+	repo := catalog.NewRepository(a.dataDir)
+	folders, err := repo.LoadStockFolders()
 	if err != nil {
 		return nil, err
 	}
 
 	var matches []scoredMatch
 	for _, f := range folders {
-		targetTokens := matchTokens(f.TopicSlug)
-		score := calculateTokenScore(queryTokens, targetTokens)
+		targetTokens := textutil.Tokenize(f.TopicSlug)
+		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 
 		if strings.Contains(f.TopicSlug, slug) || strings.Contains(slug, f.TopicSlug) {
 			score += 20

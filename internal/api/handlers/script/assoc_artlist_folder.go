@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/textutil"
 )
 
 // ArtlistFolderAssociation matches a segment against known Artlist folders.
@@ -38,13 +40,13 @@ func (a *ArtlistFolderAssociation) Associate(ctx context.Context, segment *Timel
 		return nil, err
 	}
 
-	queryTokens := matchTokens(searchTerm)
+	queryTokens := textutil.Tokenize(searchTerm)
 	slug := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(searchTerm)), " ", "-")
 
 	matches := make([]scoredMatch, 0, len(candidates))
 	for _, candidate := range candidates {
-		targetTokens := matchTokens(candidate.Name + " " + candidate.Path)
-		score := calculateTokenScore(queryTokens, targetTokens)
+		targetTokens := textutil.Tokenize(candidate.Name + " " + candidate.Path)
+		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 
 		candidateSlug := strings.ReplaceAll(strings.ToLower(candidate.Name), " ", "-")
 		if strings.Contains(candidateSlug, slug) || strings.Contains(slug, candidateSlug) {

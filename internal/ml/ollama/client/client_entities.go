@@ -7,9 +7,9 @@ import (
 	"strings"
 	"unicode"
 
-	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama/prompts"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/pkg/textutil"
 )
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama
@@ -278,7 +278,7 @@ func fallbackSpecialNames(segment string, limit int) []string {
 		if len(runes) == 0 || !unicode.IsUpper(runes[0]) {
 			continue
 		}
-		if matching.IsStopWord(strings.ToLower(word)) {
+		if textutil.IsStopWord(strings.ToLower(word)) {
 			continue
 		}
 		names = append(names, word)
@@ -305,7 +305,7 @@ func fallbackImportantWords(segment string, limit int) []string {
 	for _, raw := range strings.FieldsFunc(strings.ToLower(segment), func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
 	}) {
-		if len(raw) < 4 || matching.IsStopWord(raw) {
+		if len(raw) < 4 || textutil.IsStopWord(raw) {
 			continue
 		}
 		if _, ok := seen[raw]; ok {

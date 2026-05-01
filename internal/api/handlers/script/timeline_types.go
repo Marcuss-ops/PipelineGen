@@ -12,22 +12,22 @@ type TimelinePlan struct {
 
 // TimelineSegment is one timestamp/action block in the generated script.
 type TimelineSegment struct {
-	Index                int           `json:"index"`
-	StartTime            float64       `json:"start_time"`
-	EndTime              float64       `json:"end_time"`
-	Timestamp            string        `json:"timestamp"`
-	Subject              string        `json:"subject,omitempty"`
-	CanonicalSubject     string        `json:"canonical_subject,omitempty"`
-	NarrativeText        string        `json:"narrative_text,omitempty"`
-	OpeningSentence      string        `json:"opening_sentence"`
-	ClosingSentence      string        `json:"closing_sentence"`
-	Keywords             []string      `json:"keywords,omitempty"`
-	Entities             []string      `json:"entities,omitempty"`
-	CanonicalKeywords    []string      `json:"canonical_keywords,omitempty"`
-	CanonicalEntities    []string      `json:"canonical_entities,omitempty"`
-	NormalizationSource  string        `json:"normalization_source,omitempty"`
-	PreferredStockGroup  string        `json:"preferred_stock_group,omitempty"`
-	PreferredStockPaths  []string      `json:"preferred_stock_paths,omitempty"`
+	Index                int                       `json:"index"`
+	StartTime            float64                   `json:"start_time"`
+	EndTime              float64                   `json:"end_time"`
+	Timestamp            string                    `json:"timestamp"`
+	Subject              string                    `json:"subject,omitempty"`
+	CanonicalSubject     string                    `json:"canonical_subject,omitempty"`
+	NarrativeText        string                    `json:"narrative_text,omitempty"`
+	OpeningSentence      string                    `json:"opening_sentence"`
+	ClosingSentence      string                    `json:"closing_sentence"`
+	Keywords             []string                  `json:"keywords,omitempty"`
+	Entities             []string                  `json:"entities,omitempty"`
+	CanonicalKeywords    []string                  `json:"canonical_keywords,omitempty"`
+	CanonicalEntities    []string                  `json:"canonical_entities,omitempty"`
+	NormalizationSource  string                    `json:"normalization_source,omitempty"`
+	PreferredStockGroup  string                    `json:"preferred_stock_group,omitempty"`
+	PreferredStockPaths  []string                  `json:"preferred_stock_paths,omitempty"`
 	PreferredStockReason string                    `json:"preferred_stock_reason,omitempty"`
 	StockMatches         []association.ScoredMatch `json:"stock_matches,omitempty"`
 	DriveMatches         []association.ScoredMatch `json:"drive_matches,omitempty"`

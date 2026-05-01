@@ -3,6 +3,7 @@ package script
 import (
 	"strings"
 	"unicode"
+	"velox/go-master/pkg/sliceutil"
 	"velox/go-master/pkg/textutil"
 )
 
@@ -15,7 +16,7 @@ func extractLikelyNames(text string) []string {
 			names = append(names, w)
 		}
 	}
-	return uniqueStrings(names)
+	return sliceutil.UniqueStrings(names)
 }
 
 func extractJSONArray(s string) string {

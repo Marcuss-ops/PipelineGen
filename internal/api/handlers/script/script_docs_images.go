@@ -3,10 +3,10 @@ package script
 import (
 	"fmt"
 	"strings"
-	"velox/go-master/internal/matching"
 
 	"velox/go-master/internal/ml/ollama/types"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/pkg/textutil"
 )
 
 type imagePlanItem struct {
@@ -92,8 +92,8 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 	}
 
 	// 2. Parole importanti dal topic
-	for _, term := range matching.Tokenize(topic) {
-		if matching.IsStopWord(term) || len(term) < 4 {
+	for _, term := range textutil.Tokenize(topic) {
+		if textutil.IsStopWord(term) || len(term) < 4 {
 			continue
 		}
 		add(term)
@@ -120,7 +120,7 @@ func renderImagePlans(items []imagePlanItem) string {
 		b.WriteString("Soggetto: ")
 		b.WriteString(item.Subject)
 		b.WriteString("\n")
-		
+
 		if item.URL != "" {
 			b.WriteString("   URL:      ")
 			b.WriteString(item.URL)
@@ -128,13 +128,13 @@ func renderImagePlans(items []imagePlanItem) string {
 		} else {
 			b.WriteString("   URL:      None\n")
 		}
-		
+
 		if item.Path != "" {
 			b.WriteString("   Path:     ")
 			b.WriteString(item.Path)
 			b.WriteString("\n")
 		}
-		
+
 		b.WriteString("   Stato:    ")
 		b.WriteString(item.Reason)
 	}

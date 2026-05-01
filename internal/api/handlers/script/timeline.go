@@ -13,7 +13,7 @@ func attemptLiveSearchDecision(ctx context.Context, req ScriptDocsRequest, segme
 	if artlistSvc == nil {
 		return timelineAssetDecision{}, false
 	}
-	
+
 	searchTerm := segment.Subject
 	if searchTerm == "" && len(segment.Keywords) > 0 {
 		searchTerm = segment.Keywords[0]
@@ -29,7 +29,7 @@ func attemptLiveSearchDecision(ctx context.Context, req ScriptDocsRequest, segme
 
 	reason := buildLiveSearchReason(searchTerm, runResp)
 	folderLink := extractFolderLink(runResp)
-	
+
 	return timelineAssetDecision{
 		Source:  string(timelineAssetSourceArtlistDynamic),
 		Folder:  "live:" + searchTerm,

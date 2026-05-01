@@ -3,12 +3,15 @@ package script
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/pkg/textutil"
 )
 
 // DynamicArtlistAssociation gestisce il fallback dinamico tramite ricerca live
@@ -118,11 +121,11 @@ func (a *DynamicArtlistAssociation) Associate(ctx context.Context, segment *Time
 		return nil, nil
 	}
 
-	queryTokens := matchTokens(segmentAssociationSubject(segment))
+	queryTokens := textutil.Tokenize(segmentAssociationSubject(segment))
 	var matches []scoredMatch
 	for _, clip := range liveResp.Clips {
-		targetTokens := matchTokens(clip.Name + " " + clip.FolderPath + " " + clip.Group + " " + strings.Join(clip.Tags, " "))
-		score := calculateTokenScore(queryTokens, targetTokens)
+		targetTokens := textutil.Tokenize(clip.Name + " " + clip.FolderPath + " " + clip.Group + " " + strings.Join(clip.Tags, " "))
+		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 
 		// Boost per match dinamico
 		score += 10

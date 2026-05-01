@@ -1,12 +1,12 @@
 package client
 
 import (
-	"velox/go-master/internal/ml/ollama/types"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 // Embed genera embedding vettoriale con Ollama

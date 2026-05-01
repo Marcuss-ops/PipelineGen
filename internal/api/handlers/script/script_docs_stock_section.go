@@ -3,12 +3,15 @@ package script
 import (
 	"strings"
 
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/repository/catalog"
 )
 
 func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
-	clips, err := loadStockCatalog(dataDir)
+	repo := catalog.NewRepository(dataDir)
+	clips, err := repo.LoadStockCatalog()
 	if err != nil {
 		return ScriptSection{
 			Title: "Stock Matching",

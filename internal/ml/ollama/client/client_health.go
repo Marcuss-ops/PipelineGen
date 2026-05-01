@@ -1,11 +1,11 @@
 package client
 
 import (
-	"velox/go-master/internal/ml/ollama/types"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 // CheckHealth checks if Ollama is reachable

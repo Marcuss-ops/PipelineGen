@@ -1,27 +1,28 @@
 package script
 
 import (
-	"velox/go-master/internal/matching"
 	"context"
 	"fmt"
 	"strings"
+	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/textutil"
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 )
 
 func buildSegmentKeywords(topic string, chunk string, entities []string) []string {
-	terms := matching.Tokenize(chunk)
+	terms := textutil.Tokenize(chunk)
 	terms = append(terms, entities...)
 	filtered := make([]string, 0, len(terms))
 	for _, term := range terms {
 		term = strings.TrimSpace(strings.ToLower(term))
-		if term == "" || len(term) < 3 || matching.IsStopWord(term) {
+		if term == "" || len(term) < 3 || textutil.IsStopWord(term) {
 			continue
 		}
 		filtered = append(filtered, term)
 	}
-	return uniqueStrings(filtered)
+	return sliceutil.UniqueStrings(filtered)
 }
 
 func mergeTimelineSearchTerms(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, segment TimelineSegment, narrative string, baseTerms []string) []string {
@@ -38,13 +39,13 @@ func mergeTimelineSearchTerms(ctx context.Context, gen *ollama.Generator, req Sc
 	filtered := make([]string, 0, len(terms))
 	for _, term := range terms {
 		term = strings.TrimSpace(strings.ToLower(term))
-		if term == "" || len(term) < 3 || matching.IsStopWord(term) {
+		if term == "" || len(term) < 3 || textutil.IsStopWord(term) {
 			continue
 		}
 		filtered = append(filtered, term)
 	}
 
-	out := uniqueStrings(filtered)
+	out := sliceutil.UniqueStrings(filtered)
 	if len(out) > 12 {
 		out = out[:12]
 	}
@@ -66,13 +67,13 @@ func segmentEntitiesForIndex(analysis *types.FullEntityAnalysis, idx int) []stri
 	for name := range seg.EntitaSenzaTesto {
 		out = append(out, name)
 	}
-	return uniqueStrings(out)
+	return sliceutil.UniqueStrings(out)
 }
 
 func buildTimelineChoiceReason(source string, seg TimelineSegment, match scoredMatch) string {
-	terms := uniqueStrings(append([]string{}, seg.Keywords...))
+	terms := sliceutil.UniqueStrings(append([]string{}, seg.Keywords...))
 	if len(terms) == 0 {
-		terms = uniqueStrings(append(extractLikelyNames(seg.OpeningSentence), extractLikelyNames(seg.ClosingSentence)...))
+		terms = sliceutil.UniqueStrings(append(extractLikelyNames(seg.OpeningSentence), extractLikelyNames(seg.ClosingSentence)...))
 	}
 	if len(terms) == 0 {
 		terms = []string{strings.TrimSpace(seg.OpeningSentence)}
