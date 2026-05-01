@@ -30,6 +30,7 @@ import (
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/security"
 )
 
 // CoreDeps holds the minimal runtime dependencies needed by the stripped-down server.
@@ -61,7 +62,13 @@ func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, Clea
 
 // initCoreMinimal creates only the services needed by the text/doc server.
 func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
-	ollamaClient := client.NewClient(cfg.External.OllamaURL, "")
+	// Initialize security allowed hosts
+	for _, host := range cfg.Security.AllowedDownloadHosts {
+		security.AddAllowedHost(host)
+		log.Debug("Added allowed download host from config", zap.String("host", host))
+	}
+
+	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	scriptGen := ollama.NewGenerator(ollamaClient)
 
 	docClient, err := drive.NewDocClient(context.Background(), cfg.GetCredentialsPath(), cfg.GetTokenPath())
@@ -183,7 +190,13 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 
 	// Initialize harvester repository and cron service
 	harvesterRepo := harvester.NewRepository(mainDB.DB, log)
-	apiURL := fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)
+	
+	// Use 127.0.0.1 for internal API URL if host is set to bind all interfaces
+	host := cfg.Server.Host
+	if host == "0.0.0.0" {
+		host = "127.0.0.1"
+	}
+	apiURL := fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
 	harvesterCronSvc := cron.NewHarvesterCronService(harvesterRepo, log, apiURL, cfg.Storage.DataDir)
 	go harvesterCronSvc.Start(context.Background())
 	log.Info("Harvester cron service started", zap.String("api_url", apiURL))
@@ -240,20 +253,39 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 
 	indexingService := indexing.NewService(clipsRepo, log)
 
-	// Initialize and start DB maintenance cron (runs every 24 hours)
+	// Initialize and start DB maintenance cron
+	maintenanceInterval := 24 * time.Hour
+	if cfg.Jobs.MaintenanceInterval != "" {
+		if parsed, err := time.ParseDuration(cfg.Jobs.MaintenanceInterval); err == nil {
+			maintenanceInterval = parsed
+		}
+	}
 	dbMaintenanceJob := cron.NewDBMaintenanceJob(scriptsRepo, mainDB, log)
-	go dbMaintenanceJob.StartCron(context.Background(), 24*time.Hour)
-	log.Info("DB maintenance cron started", zap.Duration("interval", 24*time.Hour))
+	go dbMaintenanceJob.StartCron(context.Background(), maintenanceInterval)
+	log.Info("DB maintenance cron started", zap.Duration("interval", maintenanceInterval))
 
-	// Initialize and start DB backup cron (runs every 6 hours)
+	// Initialize and start DB backup cron
+	backupInterval := 6 * time.Hour
+	if cfg.Jobs.BackupInterval != "" {
+		if parsed, err := time.ParseDuration(cfg.Jobs.BackupInterval); err == nil {
+			backupInterval = parsed
+		}
+	}
 	backupDir := filepath.Join(cfg.Storage.DataDir, "backups")
 	dbBackupJob := cron.NewDBBackupJob(mainDB, log, backupDir)
-	go dbBackupJob.StartCron(context.Background(), 6*time.Hour)
-	log.Info("DB backup cron started", zap.String("backup_dir", backupDir), zap.Duration("interval", 6*time.Hour))
+	go dbBackupJob.StartCron(context.Background(), backupInterval)
+	log.Info("DB backup cron started", zap.String("backup_dir", backupDir), zap.Duration("interval", backupInterval))
 
-	// Start indexing cron (e.g., every 15 minutes)
+	// Start indexing cron
+	indexingInterval := 15 * time.Minute
+	if cfg.Jobs.IndexingInterval != "" {
+		if parsed, err := time.ParseDuration(cfg.Jobs.IndexingInterval); err == nil {
+			indexingInterval = parsed
+		}
+	}
 	downloadDir := filepath.Join(cfg.Storage.DataDir, "downloads")
-	indexingService.StartCron(context.Background(), downloadDir, 15*time.Minute)
+	indexingService.StartCron(context.Background(), downloadDir, indexingInterval)
+	log.Info("Indexing cron started", zap.Duration("interval", indexingInterval))
 
 	cleanup := func() {
 		// Stop services

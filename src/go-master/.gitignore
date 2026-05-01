@@ -1,0 +1,22 @@
+# Config
+config.yaml
+config.local.yaml
+credentials.json
+token.json
+
+# Binaries
+bin/
+server
+
+# Databases & Backups
+data/*.db.sqlite*
+data/*.bak
+data/voiceovers/
+data/downloads/
+data/backups/
+
+# Logs
+*.log
+
+# OS
+.DS_Store

@@ -17,6 +17,18 @@ type Config struct {
 	Harvester HarvesterConfig `yaml:"harvester"`
 	Jobs      JobsConfig      `yaml:"jobs"`
 	Workers   WorkersConfig   `yaml:"workers"`
+	Video     VideoConfig     `yaml:"video"`
+}
+
+// VideoConfig holds video processing configuration.
+type VideoConfig struct {
+	Width    int    `yaml:"width" default:"1920"`
+	Height   int    `yaml:"height" default:"1080"`
+	FPS      int    `yaml:"fps" default:"30"`
+	Codec    string `yaml:"codec" default:"libx264"`
+	Preset   string `yaml:"preset" default:"fast"`
+	CRF      int    `yaml:"crf" default:"23"`
+	Duration int    `yaml:"duration" default:"7"`
 }
 
 // HarvesterConfig holds settings for the content harvester.
@@ -47,7 +59,7 @@ type LoggingConfig struct {
 
 // ServerConfig holds server-specific configuration.
 type ServerConfig struct {
-	Host         string `yaml:"host" env:"VELOX_HOST" default:"0.0.0.0"`
+	Host         string `yaml:"host" env:"VELOX_HOST" default:"127.0.0.1"`
 	Port         int    `yaml:"port" env:"VELOX_PORT" default:"8080"`
 	ReadTimeout  int    `yaml:"read_timeout" env:"VELOX_READ_TIMEOUT" default:"600"`
 	WriteTimeout int    `yaml:"write_timeout" env:"VELOX_WRITE_TIMEOUT" default:"600"`
@@ -61,17 +73,22 @@ type StorageConfig struct {
 
 // SecurityConfig holds security-related configuration.
 type SecurityConfig struct {
-	AdminToken        string   `yaml:"admin_token" env:"VELOX_ADMIN_TOKEN" default:""`
-	WorkerToken       string   `yaml:"worker_token" env:"VELOX_WORKER_TOKEN" default:""`
-	EnableAuth        bool     `yaml:"enable_auth" env:"VELOX_ENABLE_AUTH" default:"false"`
-	CORSOrigins       []string `yaml:"cors_origins" env:"VELOX_CORS_ORIGINS" default:"[\"*\"]"`
-	RateLimitEnabled  bool     `yaml:"rate_limit_enabled" env:"VELOX_RATE_LIMIT_ENABLED" default:"true"`
-	RateLimitRequests int      `yaml:"rate_limit_requests" env:"VELOX_RATE_LIMIT_REQUESTS" default:"100"`
+	AdminToken           string   `yaml:"admin_token" env:"VELOX_ADMIN_TOKEN" default:""`
+	WorkerToken          string   `yaml:"worker_token" env:"VELOX_WORKER_TOKEN" default:""`
+	EnableAuth           bool     `yaml:"enable_auth" env:"VELOX_ENABLE_AUTH" default:"true"`
+	CORSOrigins          []string `yaml:"cors_origins" env:"VELOX_CORS_ORIGINS" default:"[]"`
+	RateLimitEnabled     bool     `yaml:"rate_limit_enabled" env:"VELOX_RATE_LIMIT_ENABLED" default:"true"`
+	RateLimitRequests    int      `yaml:"rate_limit_requests" env:"VELOX_RATE_LIMIT_REQUESTS" default:"100"`
+	AllowedDownloadHosts []string `yaml:"allowed_download_hosts" env:"VELOX_ALLOWED_DOWNLOAD_HOSTS" default:"[]"`
 }
 
 // ExternalConfig holds external service configuration.
 type ExternalConfig struct {
-	OllamaURL string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaURL             string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaModel           string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
+	OllamaTimeoutSeconds  int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
+	YtdlpPath             string `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
+	FfmpegPath            string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 }
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.
@@ -90,6 +107,9 @@ type JobsConfig struct {
 	MaxParallelPerProject int    `yaml:"max_parallel_per_project" default:"2"`
 	AutoCleanupHours      int    `yaml:"auto_cleanup_hours" default:"24"`
 	CatalogSyncInterval   string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
+	MaintenanceInterval   string `yaml:"maintenance_interval" default:"24h"`
+	BackupInterval        string `yaml:"backup_interval" default:"6h"`
+	IndexingInterval      string `yaml:"indexing_interval" default:"15m"`
 }
 
 // WorkersConfig holds worker-related configuration.
