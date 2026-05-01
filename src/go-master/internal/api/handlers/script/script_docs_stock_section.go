@@ -35,7 +35,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 			strings.Join(clip.Tags, " "),
 			clip.DriveLink,
 		}, " "))
-		score := scoreText(candidate, terms)
+		score := matching.ScoreText(candidate, terms)
 		if score == 0 {
 			continue
 		}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"unicode"
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"

@@ -177,7 +177,7 @@ func scoreTimelineFolderCandidates(database, source string, folders []timelineFo
 		}
 
 		candidateText := strings.ToLower(strings.Join([]string{name, path, link}, " "))
-		score := scoreText(candidateText, terms)
+		score := matching.ScoreText(candidateText, terms)
 		if score == 0 {
 			continue
 		}
