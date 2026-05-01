@@ -164,14 +164,65 @@ func (s *Service) ProcessClip(ctx context.Context, req *ProcessClipRequest) (*Pr
 
 func (s *Service) SyncDriveFolder(ctx context.Context, folderID, mediaType string) (*SyncResponse, error) {
 	resp := &SyncResponse{OK: true}
+	if strings.TrimSpace(mediaType) == "" {
+		mediaType = "clip"
+	}
 
 	if s.driveClient == nil {
 		resp.Error = "drive client not configured"
 		return resp, fmt.Errorf("drive client not configured")
 	}
 
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" {
+		resp.Error = "folder_id is required"
+		return resp, fmt.Errorf("folder_id is required")
+	}
+
+	folderMeta, err := s.driveClient.Files.Get(folderID).Fields("id, name, webViewLink").Context(ctx).Do()
+	if err != nil {
+		resp.Error = err.Error()
+		return resp, err
+	}
+
+	now := time.Now().UTC()
+	folderName := folderID
+	folderLink := ""
+	if folderMeta != nil {
+		if strings.TrimSpace(folderMeta.Name) != "" {
+			folderName = folderMeta.Name
+		}
+		folderLink = strings.TrimSpace(folderMeta.WebViewLink)
+	}
+	if folderLink == "" {
+		folderLink = "https://drive.google.com/drive/folders/" + folderID
+	}
+
+	folderClip := &models.Clip{
+		ID:           folderID,
+		Name:         folderName,
+		Filename:     folderName,
+		FolderID:     folderID,
+		FolderPath:   folderName,
+		Group:        "Clips",
+		MediaType:    mediaType,
+		DriveLink:    folderLink,
+		DownloadLink: folderLink,
+		Source:       "drive",
+		Category:     "folder",
+		ExternalURL:  folderLink,
+		Tags:         []string{},
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.clipsRepo.UpsertClip(ctx, folderClip); err == nil {
+		resp.Synced++
+	} else {
+		resp.Failed++
+	}
+
 	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
-	fileList, err := s.driveClient.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
+	fileList, err := s.driveClient.Files.List().Q(query).Fields("files(id, name, mimeType, webViewLink, webContentLink)").Context(ctx).Do()
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -179,9 +230,41 @@ func (s *Service) SyncDriveFolder(ctx context.Context, folderID, mediaType strin
 
 	resp.Requested = len(fileList.Files)
 	for _, file := range fileList.Files {
-		if _, err := s.clipsRepo.GetClipByFolderAndFilename(ctx, folderID, file.Name); err != nil {
-			resp.Synced++
+		if file == nil {
+			continue
 		}
+
+		clipLink := strings.TrimSpace(file.WebViewLink)
+		if clipLink == "" {
+			clipLink = strings.TrimSpace(file.WebContentLink)
+		}
+		if clipLink == "" {
+			clipLink = "https://drive.google.com/file/d/" + file.Id
+		}
+
+		clip := &models.Clip{
+			ID:           file.Id,
+			Name:         file.Name,
+			Filename:     file.Name,
+			FolderID:     folderID,
+			FolderPath:   folderName,
+			Group:        "Clips",
+			MediaType:    mediaType,
+			DriveLink:    clipLink,
+			DownloadLink: clipLink,
+			Source:       "drive",
+			Category:     "file",
+			ExternalURL:  clipLink,
+			Tags:         []string{},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		}
+
+		if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
+			resp.Failed++
+			continue
+		}
+		resp.Synced++
 	}
 
 	return resp, nil

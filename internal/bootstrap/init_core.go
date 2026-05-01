@@ -21,6 +21,7 @@ import (
 	"velox/go-master/internal/repository/harvester"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	"velox/go-master/internal/service/monitor"
@@ -48,6 +49,8 @@ type CoreDeps struct {
 	VoiceoverService     *voiceover.Service
 	IndexingService      *indexing.Service
 	HarvesterCronService *cron.HarvesterCronService
+	CatalogSyncService   *catalogsync.Service
+	CatalogSyncJob       *cron.CatalogSyncJob
 	ChannelMonitor       *monitor.ChannelMonitor
 	StockScheduler       *scheduler.StockScheduler
 }
@@ -90,6 +93,16 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		return nil, nil, fmt.Errorf("failed to initialize stock database: %w", err)
 	}
 
+	clipsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "clips.db.sqlite", log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize clips database: %w", err)
+	}
+
+	artlistDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize artlist database: %w", err)
+	}
+
 	// Initialize images database
 	imagesDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "images.db.sqlite", log)
 	if err != nil {
@@ -124,6 +137,12 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	if err := stockDB.RunMigrations(log, clipsMigrationsDir); err != nil {
 		return nil, nil, fmt.Errorf("failed to run stock clips migrations: %w", err)
 	}
+	if err := clipsDB.RunMigrations(log, clipsMigrationsDir); err != nil {
+		return nil, nil, fmt.Errorf("failed to run clips database migrations: %w", err)
+	}
+	if err := artlistDB.RunMigrations(log, clipsMigrationsDir); err != nil {
+		return nil, nil, fmt.Errorf("failed to run artlist database migrations: %w", err)
+	}
 
 	// 3. Harvester jobs table
 	harvesterMigrationsDir := filepath.Join("internal", "repository", "harvester", "migrations")
@@ -145,8 +164,12 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 
 	// Create repositories sharing the same database
 	clipsRepo := clips.NewRepository(stockDB.DB)
-	artlistRepo := clips.NewRepository(mainDB.DB)
-	clipsOnlyRepo := clips.NewRepository(mainDB.DB)
+	artlistRepo := clips.NewRepository(artlistDB.DB)
+	clipsOnlyRepo := clips.NewRepository(clipsDB.DB)
+
+	if err := clipsOnlyRepo.EnsureSegmentEmbeddingsSchema(context.Background()); err != nil {
+		log.Warn("Failed to ensure segment embeddings cache schema", zap.Error(err))
+	}
 
 	scriptsRepo := scripts.NewScriptRepository(mainDB.DB)
 	imageRepo := images.NewRepository(imagesDB.DB)
@@ -164,6 +187,40 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	harvesterCronSvc := cron.NewHarvesterCronService(harvesterRepo, log, apiURL, cfg.Storage.DataDir)
 	go harvesterCronSvc.Start(context.Background())
 	log.Info("Harvester cron service started", zap.String("api_url", apiURL))
+
+	catalogSyncService := catalogsync.NewService(driveClient, []catalogsync.Target{
+		{
+			Name:         "stock",
+			RootFolderID: cfg.Drive.StockRootFolder,
+			Source:       "stock",
+			MediaType:    "stock",
+			Repo:         clipsRepo,
+		},
+		{
+			Name:         "clips",
+			RootFolderID: cfg.Drive.ClipsRootFolder,
+			Source:       "clips",
+			MediaType:    "clip",
+			Repo:         clipsOnlyRepo,
+		},
+		{
+			Name:         "artlist",
+			RootFolderID: cfg.Harvester.DriveFolderID,
+			Source:       "artlist",
+			MediaType:    "artlist",
+			Repo:         artlistRepo,
+		},
+	}, log)
+
+	catalogSyncJob := cron.NewCatalogSyncJob(catalogSyncService, log)
+	catalogSyncInterval := 6 * time.Hour
+	if cfg.Jobs.CatalogSyncInterval != "" {
+		if parsed, err := time.ParseDuration(cfg.Jobs.CatalogSyncInterval); err == nil {
+			catalogSyncInterval = parsed
+		}
+	}
+	go catalogSyncJob.Start(context.Background(), catalogSyncInterval)
+	log.Info("Catalog sync job started", zap.Duration("interval", catalogSyncInterval))
 
 	// Initialize channel monitor if enabled
 	var channelMon *monitor.ChannelMonitor
@@ -209,6 +266,9 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		if harvesterCronSvc != nil {
 			harvesterCronSvc.Stop()
 		}
+		if catalogSyncJob != nil {
+			catalogSyncJob.Stop()
+		}
 		if imagesDB != nil {
 			if err := imagesDB.Backup(); err != nil {
 				log.Warn("Failed to create images backup on shutdown", zap.Error(err))
@@ -234,6 +294,22 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 				log.Error("Failed to close stock database", zap.Error(err))
 			}
 		}
+		if clipsDB != nil {
+			if err := clipsDB.Backup(); err != nil {
+				log.Warn("Failed to create clips backup on shutdown", zap.Error(err))
+			}
+			if err := clipsDB.Close(); err != nil {
+				log.Error("Failed to close clips database", zap.Error(err))
+			}
+		}
+		if artlistDB != nil {
+			if err := artlistDB.Backup(); err != nil {
+				log.Warn("Failed to create artlist backup on shutdown", zap.Error(err))
+			}
+			if err := artlistDB.Close(); err != nil {
+				log.Error("Failed to close artlist database", zap.Error(err))
+			}
+		}
 	}
 
 	return &CoreDeps{
@@ -252,6 +328,8 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		VoiceoverService:     voService,
 		IndexingService:      indexingService,
 		HarvesterCronService: harvesterCronSvc,
+		CatalogSyncService:   catalogSyncService,
+		CatalogSyncJob:       catalogSyncJob,
 		ChannelMonitor:       channelMon,
 		StockScheduler:       stockSched,
 	}, cleanup, nil

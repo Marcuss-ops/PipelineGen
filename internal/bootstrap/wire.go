@@ -41,7 +41,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.DB.DB,
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,
-		coreDeps.ArtlistRepo,
+		coreDeps.ClipsOnlyRepo,
 		coreDeps.DriveClient,
 		driveFolderID,
 		log,
@@ -72,6 +72,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	if artlistService != nil {
 		artlistHandlerVar = artlistHandler.NewHandler(
 			artlistService,
+			coreDeps.CatalogSyncService,
 			cfg.Paths.NodeScraperDir,
 			log,
 		)

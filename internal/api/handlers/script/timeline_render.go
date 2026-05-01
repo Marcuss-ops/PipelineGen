@@ -2,7 +2,6 @@ package script
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -21,32 +20,63 @@ func RenderTimeline(plan *TimelinePlan) string {
 		b.WriteString("[")
 		b.WriteString(seg.Timestamp)
 		b.WriteString("]\n")
-		
+
 		if seg.Subject != "" {
 			b.WriteString(fmt.Sprintf("   Subject: %s\n", seg.Subject))
 		}
 
 		if strings.TrimSpace(seg.OpeningSentence) != "" {
 			b.WriteString("   Start: ")
-			// truncateString is defined in script_docs_generation_helpers.go
 			b.WriteString(truncateString(seg.OpeningSentence, 80))
 			b.WriteString("\n")
 		}
 
-		// Show ONLY ONE primary asset source for clarity
-		stockContent := renderTimelineAssetMatches("📦 DRIVE STOCK", seg.StockMatches)
-		artlistDriveContent := renderArtlistDriveMatches(seg)
+		// 1. ASSET ASSOCIATIONS
+		assetRendered := false
 
-		if stockContent != "" {
-			b.WriteString(stockContent)
-		} else if artlistDriveContent != "" {
-			b.WriteString(artlistDriveContent)
+		// Priority 1: Drive Stock Association (Cartelle locali)
+		if len(seg.StockMatches) > 0 {
+			b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
+			assetRendered = true
 		}
 
-		// Artlist Phrases - Strict global limit of 6
+		// Priority 2: Artlist Stock Association (Database Artlist)
+		if !assetRendered && len(seg.ArtlistMatches) > 0 {
+			b.WriteString(renderSpecificMatch("📦 Artlist Stock Association", seg.ArtlistMatches))
+			assetRendered = true
+		}
+
+		// Priority 3: Clip Drive Association (Clip specifiche scaricate)
+		if !assetRendered && len(seg.DriveMatches) > 0 {
+			b.WriteString(renderSpecificMatch("📦 Clip Drive Association", seg.DriveMatches))
+			assetRendered = true
+		}
+
+		// Priority 4: Dynamic Artlist Association (Suggerimenti LLM)
+		if !assetRendered && len(seg.SearchSuggestions) > 0 {
+			if strings.TrimSpace(seg.Timestamp) != "" {
+				b.WriteString("\n   [")
+				b.WriteString(seg.Timestamp)
+				b.WriteString("]\n")
+			}
+			b.WriteString("\n   🔍 Dynamic Artlist Association:\n")
+			for _, kw := range seg.SearchSuggestions {
+				b.WriteString(fmt.Sprintf("      - \"%s\"\n", kw))
+				b.WriteString("        -> Search suggestion (Pending download)\n")
+			}
+		} else if !assetRendered {
+			if strings.TrimSpace(seg.Timestamp) != "" {
+				b.WriteString("\n   [")
+				b.WriteString(seg.Timestamp)
+				b.WriteString("]\n")
+			}
+			b.WriteString("\n   ⚠️ No Association Found\n")
+		}
+
+		// 2. ARTLIST PHRASES (Separate support section)
 		remainingBudget := maxGlobalArtlist - globalArtlistCount
 		if remainingBudget > 0 {
-			artlistContent, count := renderPhrasesWithLimit(seg, remainingBudget)
+			artlistContent, count := renderOnlyPhrases(seg, remainingBudget)
 			if artlistContent != "" {
 				b.WriteString(artlistContent)
 				globalArtlistCount += count
@@ -61,117 +91,87 @@ func RenderTimeline(plan *TimelinePlan) string {
 	return strings.TrimSpace(b.String())
 }
 
-func renderPhrasesWithLimit(seg TimelineSegment, budget int) (string, int) {
-	if budget <= 0 {
-		return "", 0
-	}
-	var b strings.Builder
-	
-	phrases := getPhraseCandidates(seg, 2)
-	if len(phrases) == 0 {
-		return "", 0
-	}
-	if budget < len(phrases) {
-		phrases = phrases[:budget]
-	}
-
-	var allMatches []scoredMatch
-	allMatches = append(allMatches, seg.ArtlistMatches...)
-	allMatches = append(allMatches, seg.DriveMatches...)
-
-	count := 0
-	displayLimit := len(phrases)
-	
-	b.WriteString("\n   🎵 ARTLIST PHRASES:\n")
-	for i := 0; i < displayLimit; i++ {
-		phrase := phrases[i]
-		b.WriteString("      - \"")
-		b.WriteString(phrase)
-		b.WriteString("\"\n")
-		
-		if i < len(allMatches) {
-			match := allMatches[i]
-			title := match.Title
-			if title == "" { title = "Asset" }
-			b.WriteString("        -> ")
-			b.WriteString(title)
-			b.WriteString("\n")
-			if match.Link != "" {
-				b.WriteString("           Link: ")
-				b.WriteString(match.Link)
-				b.WriteString("\n")
-			}
-		} else {
-			b.WriteString("        -> Search suggestion\n")
-		}
-		count++
-	}
-	return b.String(), count
-}
-
-func renderArtlistDriveMatches(seg TimelineSegment) string {
-	if len(seg.ArtlistMatches) == 0 {
-		return ""
-	}
-	var best scoredMatch
-	for _, m := range seg.ArtlistMatches {
-		if m.Link != "" {
-			best = m
-			break
-		}
-	}
-	if best.Link == "" && len(seg.ArtlistMatches) > 0 {
-		best = seg.ArtlistMatches[0]
-	}
-	if best.Title == "" && best.Link == "" {
-		return ""
-	}
-
-	var b strings.Builder
-	b.WriteString("\n   📦 ARTLIST DRIVE:\n")
-	title := best.Title
-	if title == "" { title = "Artlist Clip" }
-	b.WriteString("      - ")
-	b.WriteString(title)
-	b.WriteString("\n")
-	if best.Link != "" {
-		b.WriteString("         Link: ")
-		b.WriteString(best.Link)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func renderTimelineAssetMatches(label string, matches []scoredMatch) string {
+func renderSpecificMatch(label string, matches []scoredMatch) string {
 	if len(matches) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString("\n   ")
-	b.WriteString(label)
-	b.WriteString(":\n")
-
-	for _, match := range matches {
-		title := strings.Trim(match.Title, "\"'“‘’”")
-		if title == "" { title = "Stock Folder" }
-		b.WriteString("      - " + title + "\n")
-		if match.Link != "" {
-			b.WriteString("         Link: " + match.Link + "\n")
+	// Prendiamo il migliore per score
+	best := matches[0]
+	for _, m := range matches {
+		if m.Score > best.Score {
+			best = m
 		}
 	}
+
+	displayLabel := label
+	switch best.Source {
+	case string(timelineAssetSourceArtlistFolder):
+		displayLabel = "📦 Artlist Folder Association"
+	case string(timelineAssetSourceArtlistDynamic):
+		displayLabel = "📦 Dynamic Artlist Association"
+	case "clip_drive":
+		displayLabel = "📦 Clip Drive Association"
+	case "drive_stock":
+		displayLabel = "📦 Drive Stock Association"
+	}
+
+	var b strings.Builder
+	b.WriteString("\n   ")
+	b.WriteString(displayLabel)
+	b.WriteString(":\n")
+
+	title := best.Title
+	if title == "" {
+		title = "Asset"
+	}
+	b.WriteString("      - ")
+	b.WriteString(title)
+	b.WriteString("\n")
+
+	if best.Link != "" {
+		b.WriteString("        Link: ")
+		b.WriteString(best.Link)
+		b.WriteString("\n")
+	} else if best.Path != "" {
+		b.WriteString("        Path: ")
+		b.WriteString(best.Path)
+		b.WriteString("\n")
+	}
+
 	return b.String()
 }
 
-func getPhraseCandidates(seg TimelineSegment, limit int) []string {
+func renderOnlyPhrases(seg TimelineSegment, budget int) (string, int) {
+	if budget <= 0 {
+		return "", 0
+	}
+
 	sentences := extractNarrativeSentences(seg.NarrativeText)
-	if len(sentences) == 0 { return nil }
-	
-	sort.Slice(sentences, func(i, j int) bool {
-		return len(sentences[i]) > len(sentences[j])
-	})
-	
+	if len(sentences) == 0 {
+		return "", 0
+	}
+
+	// Limitiamo a 2 frasi per segmento
+	limit := 2
+	if limit > budget {
+		limit = budget
+	}
 	if len(sentences) > limit {
 		sentences = sentences[:limit]
 	}
-	return sentences
+
+	var b strings.Builder
+	if strings.TrimSpace(seg.Timestamp) != "" {
+		b.WriteString("\n   [")
+		b.WriteString(seg.Timestamp)
+		b.WriteString("]\n")
+	}
+	b.WriteString("\n   🎵 ARTLIST PHRASES:\n")
+	for _, phrase := range sentences {
+		b.WriteString("      - \"")
+		b.WriteString(phrase)
+		b.WriteString("\"\n")
+	}
+
+	return b.String(), len(sentences)
 }

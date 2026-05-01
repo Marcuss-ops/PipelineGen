@@ -12,6 +12,10 @@ paths:
   node_scraper_dir: "../node-scraper"
   python_scripts_dir: "../../python"
 
+drive:
+  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+  clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
+
 harvester:
   drive_folder_id: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
 

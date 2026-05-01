@@ -85,10 +85,11 @@ type PathsConfig struct {
 
 // JobsConfig holds job-related configuration.
 type JobsConfig struct {
-	NewJobsPaused         bool `yaml:"new_jobs_paused" default:"false"`
-	LeaseTTLSeconds       int  `yaml:"lease_ttl_seconds" default:"300"`
-	MaxParallelPerProject int  `yaml:"max_parallel_per_project" default:"2"`
-	AutoCleanupHours      int  `yaml:"auto_cleanup_hours" default:"24"`
+	NewJobsPaused         bool   `yaml:"new_jobs_paused" default:"false"`
+	LeaseTTLSeconds       int    `yaml:"lease_ttl_seconds" default:"300"`
+	MaxParallelPerProject int    `yaml:"max_parallel_per_project" default:"2"`
+	AutoCleanupHours      int    `yaml:"auto_cleanup_hours" default:"24"`
+	CatalogSyncInterval   string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
 }
 
 // WorkersConfig holds worker-related configuration.

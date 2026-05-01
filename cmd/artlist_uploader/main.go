@@ -41,7 +41,7 @@ func main() {
 
 	// 2. Open DB and create the service used by the full pipeline
 	logger, _ := zap.NewProduction()
-	db, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "velox.db.sqlite", logger)
+	db, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", logger)
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}

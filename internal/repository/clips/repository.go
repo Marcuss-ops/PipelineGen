@@ -105,7 +105,48 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 	return clips, rows.Err()
 }
 
-// SearchStockByKeywords searches clips by keywords in name or tags
+// SearchClipsByKeywords searches clips by keywords in name, tags, folder path, or group.
+func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.Clip, error) {
+	if len(keywords) == 0 {
+		return []*models.Clip{}, nil
+	}
+
+	var conditions []string
+	var args []interface{}
+	for _, kw := range keywords {
+		conditions = append(conditions, "(name LIKE ? OR tags LIKE ? OR folder_path LIKE ? OR group_name LIKE ? OR category LIKE ?)")
+		args = append(args, "%"+kw+"%", "%"+kw+"%", "%"+kw+"%", "%"+kw+"%", "%"+kw+"%")
+	}
+
+	query, extended, err := r.clipSelectQuery(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	query = fmt.Sprintf(
+		"%s WHERE (%s) LIMIT ?",
+		query,
+		strings.Join(conditions, " OR "),
+	)
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows, extended)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
+// SearchStockByKeywords searches stock clips by keywords in name or tags.
 func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.Clip, error) {
 	if len(keywords) == 0 {
 		return []*models.Clip{}, nil
@@ -271,4 +312,22 @@ func (r *Repository) CountClips(ctx context.Context) (int, error) {
 	var count int
 	err := row.Scan(&count)
 	return count, err
+}
+
+// LastUpdatedAtForTerm returns the most recent updated_at value for clips matching a term.
+func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT MAX(updated_at)
+		FROM clips
+		WHERE source = 'artlist' AND tags LIKE ?
+	`, "%"+strings.TrimSpace(term)+"%")
+
+	var lastUpdated sql.NullString
+	if err := row.Scan(&lastUpdated); err != nil {
+		return nil, err
+	}
+	if !lastUpdated.Valid || strings.TrimSpace(lastUpdated.String) == "" {
+		return nil, nil
+	}
+	return &lastUpdated.String, nil
 }

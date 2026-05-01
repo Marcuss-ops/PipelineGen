@@ -51,7 +51,7 @@ func (h *CatalogHandler) SearchFolders(c *gin.Context) {
 		results = append(results, artlistResults...)
 	}
 
-	clipsDBPath := filepath.Join(h.dataDir, "velox.db.sqlite")
+	clipsDBPath := filepath.Join(h.dataDir, "clips.db.sqlite")
 	if clipsResults, err := h.searchClipsDB(clipsDBPath, q); err == nil {
 		results = append(results, clipsResults...)
 	}

@@ -15,17 +15,22 @@ type TimelineSegment struct {
 	EndTime              float64       `json:"end_time"`
 	Timestamp            string        `json:"timestamp"`
 	Subject              string        `json:"subject,omitempty"`
+	CanonicalSubject     string        `json:"canonical_subject,omitempty"`
 	NarrativeText        string        `json:"narrative_text,omitempty"`
 	OpeningSentence      string        `json:"opening_sentence"`
 	ClosingSentence      string        `json:"closing_sentence"`
 	Keywords             []string      `json:"keywords,omitempty"`
 	Entities             []string      `json:"entities,omitempty"`
+	CanonicalKeywords    []string      `json:"canonical_keywords,omitempty"`
+	CanonicalEntities    []string      `json:"canonical_entities,omitempty"`
+	NormalizationSource  string        `json:"normalization_source,omitempty"`
 	PreferredStockGroup  string        `json:"preferred_stock_group,omitempty"`
 	PreferredStockPaths  []string      `json:"preferred_stock_paths,omitempty"`
 	PreferredStockReason string        `json:"preferred_stock_reason,omitempty"`
 	StockMatches         []scoredMatch `json:"stock_matches,omitempty"`
 	DriveMatches         []scoredMatch `json:"drive_matches,omitempty"`
 	ArtlistMatches       []scoredMatch `json:"artlist_matches,omitempty"`
+	SearchSuggestions    []string      `json:"search_suggestions,omitempty"`
 }
 
 // scoredMatch represents a potential media match with metadata.
@@ -45,15 +50,15 @@ type timelineLLMPlan struct {
 }
 
 type timelineLLMSegment struct {
-	Index                int      `json:"index"`
-	StartTime            float64  `json:"start_time"`
-	EndTime              float64  `json:"end_time"`
-	Subject              string   `json:"subject"`
-	NarrativeText        string   `json:"narrative_text"`
-	OpeningSentence      string   `json:"opening_sentence"`
-	ClosingSentence      string   `json:"closing_sentence"`
-	Keywords             []string `json:"keywords"`
-	Entities             []string `json:"entities"`
+	Index           int      `json:"index"`
+	StartTime       float64  `json:"start_time"`
+	EndTime         float64  `json:"end_time"`
+	Subject         string   `json:"subject"`
+	NarrativeText   string   `json:"narrative_text"`
+	OpeningSentence string   `json:"opening_sentence"`
+	ClosingSentence string   `json:"closing_sentence"`
+	Keywords        []string `json:"keywords"`
+	Entities        []string `json:"entities"`
 }
 
 type timelineAssetSource string
@@ -65,9 +70,10 @@ const (
 )
 
 type timelineFolderCandidate struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Link string `json:"link"`
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Link     string `json:"link"`
+	FolderID string `json:"folder_id,omitempty"`
 }
 
 type timelineAssetDecision struct {

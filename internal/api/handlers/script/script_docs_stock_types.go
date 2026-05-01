@@ -42,10 +42,7 @@ func (c stockClipRef) StockPath() string {
 }
 
 func (c stockClipRef) PickLink() string {
-	if c.DriveLink != "" {
-		return c.DriveLink
-	}
-	return ""
+	return normalizeDriveFolderLink(c.DriveLink, c.FolderID)
 }
 
 type stockFolderMatchRecord struct {
