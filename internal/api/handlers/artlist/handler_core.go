@@ -47,9 +47,6 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		internal.POST("/sync-drive-folder", h.SyncDriveFolder)
 		internal.POST("/sync-catalogs", h.SyncCatalogs)
 		internal.POST("/import-scraper-db", h.ImportScraperDB)
-		internal.GET("/test", func(c *gin.Context) {
-			c.JSON(200, gin.H{"ok": true, "message": "test endpoint works"})
-		})
 
 		// Clip lifecycle endpoints
 		internal.GET("/clips/:id/status", h.GetClipStatus)

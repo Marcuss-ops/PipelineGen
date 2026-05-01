@@ -29,7 +29,6 @@ func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRep
 	// Default engine with standard sources
 	s.engine = NewEngine(
 		NewDriveStockAssociation(dataDir),
-		NewClipDriveAssociation(clipsRepo),
 		NewArtlistFolderAssociation(s),
 	)
 
@@ -79,10 +78,6 @@ func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*
 
 	if folders, err := s.buildStockFolderCandidates(ctx); err == nil {
 		rawCandidates = append(rawCandidates, scoreFolderCandidates("stock.db.sqlite", "stock_folder", folders, terms, req.Subject, req.Topic)...)
-	}
-
-	if folders, err := s.buildClipFolderCandidates(ctx); err == nil {
-		rawCandidates = append(rawCandidates, scoreFolderCandidates("clips.db.sqlite", "clip_folder", folders, terms, req.Subject, req.Topic)...)
 	}
 
 	if folders, err := s.buildArtlistFolderCandidates(ctx); err == nil {

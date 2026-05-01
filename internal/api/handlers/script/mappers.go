@@ -1,15 +1,18 @@
 package script
 
-import "velox/go-master/pkg/models"
+import (
+	"velox/go-master/pkg/models"
+	"velox/go-master/internal/service/association"
+)
 
-func modelClipsToScoredMatches(clips []models.Clip, details string, source string, link string) []scoredMatch {
-	matches := make([]scoredMatch, 0, len(clips))
+func modelClipsToScoredMatches(clips []models.Clip, details string, source string, link string) []association.ScoredMatch {
+	matches := make([]association.ScoredMatch, 0, len(clips))
 	for _, c := range clips {
 		l := link
 		if l == "" {
 			l = c.ExternalURL
 		}
-		matches = append(matches, scoredMatch{
+		matches = append(matches, association.ScoredMatch{
 			Title:   c.Name,
 			Path:    c.LocalPath,
 			Score:   100,

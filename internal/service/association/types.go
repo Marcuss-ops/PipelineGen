@@ -11,8 +11,7 @@ type ScoredMatch struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-// ScoredMatch legacy alias
-type scoredMatch = ScoredMatch
+
 
 // AssetSource definisce le origini degli asset.
 type AssetSource string

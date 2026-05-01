@@ -49,6 +49,7 @@ Rules:
 - The last segment must end exactly at %d.
 - Segments must not overlap.
 - The 'narrative_text' of all segments combined MUST exactly match the provided SCRIPT. Do not omit or truncate any part of the script.
+- The 'search_suggestions' field MUST contain at least 3 specific, descriptive keywords or short phrases (e.g., "pizza dough kneading", "wood fired oven", "italian chef cooking") that would be perfect to search on Artlist for this segment.
 - Even for short videos (e.g. 30s), if the script is long, you must include the full script text across the segments.
 - Return ONLY valid JSON with this shape:
 {

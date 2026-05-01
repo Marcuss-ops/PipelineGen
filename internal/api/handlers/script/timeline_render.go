@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/service/association"
 )
 
 // RenderTimeline converts a TimelinePlan into the final formatted text section.
@@ -42,36 +43,27 @@ func RenderTimeline(plan *TimelinePlan) string {
 		// 1. ASSET ASSOCIATIONS
 		assetRendered := false
 
-		// Priority 1: Drive Stock Association (Cartelle locali)
+		// Priority 1: Stock Drive Association (Cartelle stock locali)
 		if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, minAssetScore) {
-			if hasRenderableStockMatch(seg.StockMatches) {
-				b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
-				assetRendered = true
-			} else if len(seg.ArtlistMatches) > 0 {
-				b.WriteString(renderSpecificMatch("📦 Artlist Folder Association", seg.ArtlistMatches))
-				assetRendered = true
-			} else {
-				b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
-				assetRendered = true
-			}
+			b.WriteString(renderSpecificMatch("📦 Stock Drive Association", seg.StockMatches))
+			assetRendered = true
 		}
 
-		// Priority 2: Artlist Stock Association (Database Artlist)
+		// Priority 2: Artlist Drive Association (Database Artlist sincronizzato)
 		if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, minAssetScore) {
-			b.WriteString(renderSpecificMatch("📦 Artlist Stock Association", seg.ArtlistMatches))
+			b.WriteString(renderSpecificMatch("📦 Artlist Drive Association", seg.ArtlistMatches))
 			assetRendered = true
 		}
 
-		// Priority 3: Clip Drive Association (Clip specifiche scaricate)
-		if !assetRendered && len(seg.DriveMatches) > 0 && hasStrongMatch(seg.DriveMatches, minAssetScore) {
-			b.WriteString(renderSpecificMatch("📦 Clip Drive Association", seg.DriveMatches))
-			assetRendered = true
-		}
-
-		// Priority 4: Dynamic Artlist Association (Suggerimenti LLM)
+		// Priority 3: Dynamic Artlist Association (Suggerimenti LLM per download)
 		if !assetRendered && len(seg.SearchSuggestions) > 0 {
 			b.WriteString("\n   🔍 Dynamic Artlist Association:\n")
 			for _, kw := range seg.SearchSuggestions {
+				// Clean and format keywords (fuzzy-friendly)
+				kw = strings.TrimSpace(kw)
+				if kw == "" {
+					continue
+				}
 				b.WriteString(fmt.Sprintf("      - \"%s\"\n", kw))
 				searchURL := "https://artlist.io/stock-video/s/" + strings.ReplaceAll(strings.ToLower(kw), " ", "-")
 				b.WriteString("        Link: ")
@@ -79,6 +71,7 @@ func RenderTimeline(plan *TimelinePlan) string {
 				b.WriteString("\n")
 				b.WriteString("        -> Search suggestion (Pending download)\n")
 			}
+			assetRendered = true
 		} else if !assetRendered {
 			b.WriteString("\n   ⚠️ No Association Found\n")
 		}
@@ -101,7 +94,7 @@ func RenderTimeline(plan *TimelinePlan) string {
 	return strings.TrimSpace(b.String())
 }
 
-func hasRenderableStockMatch(matches []scoredMatch) bool {
+func hasRenderableStockMatch(matches []association.ScoredMatch) bool {
 	for _, match := range matches {
 		if strings.TrimSpace(match.Link) != "" || strings.TrimSpace(match.Path) != "" {
 			return true
@@ -110,7 +103,7 @@ func hasRenderableStockMatch(matches []scoredMatch) bool {
 	return false
 }
 
-func hasStrongMatch(matches []scoredMatch, minScore int) bool {
+func hasStrongMatch(matches []association.ScoredMatch, minScore int) bool {
 	for _, match := range matches {
 		if match.Score >= minScore {
 			return true
@@ -119,7 +112,7 @@ func hasStrongMatch(matches []scoredMatch, minScore int) bool {
 	return false
 }
 
-func renderSpecificMatch(label string, matches []scoredMatch) string {
+func renderSpecificMatch(label string, matches []association.ScoredMatch) string {
 	if len(matches) == 0 {
 		return ""
 	}
@@ -134,13 +127,11 @@ func renderSpecificMatch(label string, matches []scoredMatch) string {
 	displayLabel := label
 	switch best.Source {
 	case string(timelineAssetSourceArtlistFolder):
-		displayLabel = "📦 Artlist Folder Association"
+		displayLabel = "📦 Artlist Drive Association"
 	case string(timelineAssetSourceArtlistDynamic):
-		displayLabel = "📦 Dynamic Artlist Association"
-	case "clip_drive":
-		displayLabel = "📦 Clip Drive Association"
-	case "drive_stock":
-		displayLabel = "📦 Drive Stock Association"
+		displayLabel = "🔍 Dynamic Artlist Association"
+	case "drive_stock", "stock_folder", "stock_drive":
+		displayLabel = "📦 Stock Drive Association"
 	}
 
 	var b strings.Builder

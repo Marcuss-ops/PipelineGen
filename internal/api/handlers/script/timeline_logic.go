@@ -318,7 +318,8 @@ func bestMatchFromSegment(seg TimelineSegment) (string, string, string, int) {
 	bestLink := ""
 	bestScore := 0
 
-	for _, matches := range [][]scoredMatch{seg.StockMatches, seg.ArtlistMatches, seg.DriveMatches} {
+	// Use only Stock and Artlist matches
+	for _, matches := range [][]association.ScoredMatch{seg.StockMatches, seg.ArtlistMatches} {
 		for _, m := range matches {
 			if m.Score > bestScore {
 				bestScore = m.Score
@@ -381,7 +382,8 @@ func injectPreferredAssociation(seg *TimelineSegment) {
 	if seg == nil {
 		return
 	}
-	if len(seg.StockMatches) > 0 || len(seg.ArtlistMatches) > 0 || len(seg.DriveMatches) > 0 {
+	// If we already have strong matches, don't inject from preferred
+	if len(seg.StockMatches) > 0 || len(seg.ArtlistMatches) > 0 {
 		return
 	}
 	if strings.TrimSpace(seg.PreferredStockGroup) == "" || len(seg.PreferredStockPaths) == 0 {
@@ -402,7 +404,7 @@ func injectPreferredAssociation(seg *TimelineSegment) {
 		path = ""
 	}
 
-	match := scoredMatch{
+	match := association.ScoredMatch{
 		Title:   title,
 		Path:    path,
 		Score:   80,
@@ -411,12 +413,9 @@ func injectPreferredAssociation(seg *TimelineSegment) {
 	}
 
 	switch strings.ToLower(strings.TrimSpace(seg.PreferredStockGroup)) {
-	case "stock_folder":
+	case "stock_folder", "stock_drive":
 		match.Source = "drive_stock"
 		seg.StockMatches = append(seg.StockMatches, match)
-	case "clip_folder":
-		match.Source = "clip_drive"
-		seg.DriveMatches = append(seg.DriveMatches, match)
 	case "artlist_folder":
 		match.Source = string(timelineAssetSourceArtlistFolder)
 		seg.ArtlistMatches = append(seg.ArtlistMatches, match)
@@ -453,11 +452,8 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 			seg.StockMatches = append(seg.StockMatches, m)
 		case "artlist_folder", "artlist_stock", "artlist_dynamic":
 			seg.ArtlistMatches = append(seg.ArtlistMatches, m)
-		case "clip_drive", "clip_folder":
-			seg.DriveMatches = append(seg.DriveMatches, m)
-			seg.StockMatches = append(seg.StockMatches, m)
 		default:
-			seg.StockMatches = append(seg.StockMatches, m)
+			// Ignore any other source like clip_drive/clip_folder
 		}
 	}
 }

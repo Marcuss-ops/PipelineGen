@@ -27,7 +27,7 @@ func collectTerms(req CandidatesRequest) []string {
 
 	add(req.Topic)
 	add(req.Subject)
-	add(req.Narrative)
+	// add(req.Narrative) -- Removed: too broad for direct asset matching
 	add(strings.Join(req.Keywords, " "))
 	add(strings.Join(req.Entities, " "))
 

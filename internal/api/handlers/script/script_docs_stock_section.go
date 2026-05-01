@@ -6,6 +6,7 @@ import (
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/catalog"
+	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/match"
 )
 
@@ -20,7 +21,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 		}
 	}
 
-	matches := make([]scoredMatch, 0, len(clips))
+	matches := make([]association.ScoredMatch, 0, len(clips))
 	for _, clip := range clips {
 		if strings.TrimSpace(clip.MediaType) != "stock" {
 			continue
@@ -43,7 +44,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 		if score == 0 {
 			continue
 		}
-		matches = append(matches, scoredMatch{
+		matches = append(matches, association.ScoredMatch{
 			Title:   title,
 			Path:    clip.StockPath(),
 			Score:   score,
