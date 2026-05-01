@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"google.golang.org/api/drive/v3"
 	"velox/go-master/pkg/models"
 )
@@ -20,16 +21,36 @@ func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatus
 		return nil, err
 	}
 
-	return &ClipStatusResponse{
-		ClipID:       clip.ID,
-		Name:         clip.Name,
-		HasLocalFile: false,
+	resp := &ClipStatusResponse{
+		ClipID:      clip.ID,
+		Name:        clip.Name,
 		HasDriveLink: clip.DriveLink != "",
-		DriveLink:    clip.DriveLink,
-		FileHash:     clip.FileHash,
-		Source:       clip.Source,
-		ExternalURL:  clip.ExternalURL,
-	}, nil
+		DriveLink:   clip.DriveLink,
+		FileHash:    clip.FileHash,
+		Source:      clip.Source,
+		ExternalURL: clip.ExternalURL,
+	}
+
+	// Check if local file exists
+	localPath := strings.TrimSpace(clip.LocalPath)
+	if localPath == "" {
+		// Try to construct local path from clip metadata
+		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", sanitizeDriveFolderName(clip.Name))
+		safeName := sanitizeDriveFolderName(clip.Name)
+		localPath = filepath.Join(saveDir, fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID))
+	}
+
+	if localPath != "" {
+		if _, err := os.Stat(localPath); err == nil {
+			resp.HasLocalFile = true
+			resp.LocalPath = localPath
+		} else {
+			resp.HasLocalFile = false
+			resp.LocalPath = localPath
+		}
+	}
+
+	return resp, nil
 }
 
 func (s *Service) DownloadClip(ctx context.Context, clipID string, req *DownloadClipRequest) (*DownloadClipResponse, error) {
@@ -40,34 +61,71 @@ func (s *Service) DownloadClip(ctx context.Context, clipID string, req *Download
 
 	outputDir := req.OutputDir
 	if outputDir == "" {
-		outputDir = s.nodeScraperDir
+		outputDir = filepath.Join(s.cfg.Storage.DataDir, "artlist", sanitizeDriveFolderName(clip.Name))
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			outputDir = s.nodeScraperDir
+		}
 	}
 
-	localPath := filepath.Join(outputDir, clip.Filename)
+	localPath := filepath.Join(outputDir, fmt.Sprintf("%s_%s.mp4", sanitizeDriveFolderName(clip.Name), clip.ID))
 	resp := &DownloadClipResponse{OK: true, ClipID: clipID, LocalPath: localPath}
 
+	// Try downloading from Drive if DriveLink exists
 	if clip.DriveLink != "" && s.driveClient != nil {
-		file, err := s.driveClient.Files.Get(clip.DriveLink).Context(ctx).Download()
-		if err != nil {
-			resp.Error = err.Error()
-			return resp, err
-		}
-		defer file.Body.Close()
+		fileID := driveFileIDFromClip(clip)
+		if fileID != "" {
+			file, err := s.driveClient.Files.Get(fileID).Context(ctx).Download()
+			if err == nil {
+				defer file.Body.Close()
 
-		out, err := os.Create(localPath)
-		if err != nil {
-			return nil, err
-		}
-		defer out.Close()
+				out, err := os.Create(localPath)
+				if err != nil {
+					return nil, err
+				}
+				defer out.Close()
 
-		if _, err = io.Copy(out, file.Body); err != nil {
-			return nil, err
-		}
+				if _, err = io.Copy(out, file.Body); err != nil {
+					return nil, err
+				}
 
-		if hash, err := calculateFileHash(localPath); err == nil {
-			resp.FileHash = hash
+				if hash, err := calculateFileHash(localPath); err == nil {
+					resp.FileHash = hash
+				}
+
+				// Update clip LocalPath
+				clip.LocalPath = localPath
+				clip.UpdatedAt = time.Now().UTC()
+				_ = s.clipsRepo.UpsertClip(ctx, clip)
+
+				return resp, nil
+			}
+			s.log.Warn("failed to download from drive, trying artlist source", zap.String("clip_id", clipID), zap.Error(err))
 		}
 	}
+
+	// Fallback: download from Artlist source URL
+	url := strings.TrimSpace(clip.ExternalURL)
+	if url == "" {
+		url = strings.TrimSpace(clip.DownloadLink)
+	}
+	if url == "" {
+		resp.Error = "no download source available"
+		return resp, fmt.Errorf("no download source available")
+	}
+
+	if err := s.downloadClip(url, localPath); err != nil {
+		resp.Error = err.Error()
+		return resp, err
+	}
+
+	if hash, err := calculateFileHash(localPath); err == nil {
+		resp.FileHash = hash
+	}
+
+	// Update clip LocalPath
+	clip.LocalPath = localPath
+	clip.UpdatedAt = time.Now().UTC()
+	_ = s.clipsRepo.UpsertClip(ctx, clip)
 
 	return resp, nil
 }
@@ -90,12 +148,29 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 		folderID = s.driveFolderID
 	}
 
+	// Determine file path: use LocalPath if available, otherwise construct from name
+	localPath := strings.TrimSpace(clip.LocalPath)
+	if localPath == "" {
+		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", sanitizeDriveFolderName(clip.Name))
+		safeName := sanitizeDriveFolderName(clip.Name)
+		localPath = filepath.Join(saveDir, fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID))
+	}
+
+	// Open the local file for upload
+	f, err := os.Open(localPath)
+	if err != nil {
+		resp.Error = fmt.Sprintf("failed to open local file: %v", err)
+		s.log.Error("failed to open file for drive upload", zap.String("clip_id", clipID), zap.String("path", localPath), zap.Error(err))
+		return resp, err
+	}
+	defer f.Close()
+
 	file := &drive.File{Name: clip.Filename}
 	if folderID != "" {
 		file.Parents = []string{folderID}
 	}
 
-	created, err := s.driveClient.Files.Create(file).Context(ctx).Do()
+	created, err := s.driveClient.Files.Create(file).Context(ctx).Media(f).Fields("id,webViewLink,md5Checksum").Do()
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -104,6 +179,17 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 	if created != nil {
 		resp.DriveLink = created.WebViewLink
 		resp.DownloadLink = "https://drive.google.com/uc?id=" + created.Id
+
+		// Update clip with drive info
+		clip.DriveLink = created.WebViewLink
+		clip.DownloadLink = resp.DownloadLink
+		if created.Md5Checksum != "" {
+			clip.FileHash = created.Md5Checksum
+		}
+		clip.UpdatedAt = time.Now().UTC()
+		if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
+			s.log.Warn("failed to update clip after drive upload", zap.String("clip_id", clipID), zap.Error(err))
+		}
 	}
 
 	return resp, nil

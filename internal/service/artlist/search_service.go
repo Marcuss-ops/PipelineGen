@@ -28,6 +28,18 @@ func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchRespon
 		return resp, err
 	}
 
+	// Apply limit
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	if len(clipsList) > limit {
+		clipsList = clipsList[:limit]
+	}
+
 	resp.Clips = make([]models.Clip, 0, len(clipsList))
 	for _, c := range clipsList {
 		resp.Clips = append(resp.Clips, *c)

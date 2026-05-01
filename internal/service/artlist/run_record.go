@@ -82,6 +82,12 @@ func (s *Service) ensureRunRecord(ctx context.Context, req *RunTagRequest) (*art
 }
 
 func (s *Service) finishRunRecord(ctx context.Context, runID, status string, resp *RunTagResponse) error {
+	return s.finishRunRecordWithActiveKey(ctx, runID, status, resp, true)
+}
+
+// finishRunRecordWithActiveKey updates the run record. If clearActiveKey is true,
+// it clears the active_key (for final states). If false, it preserves active_key (for retries).
+func (s *Service) finishRunRecordWithActiveKey(ctx context.Context, runID, status string, resp *RunTagResponse, clearActiveKey bool) error {
 	if s.mainDB == nil || strings.TrimSpace(runID) == "" {
 		return nil
 	}
@@ -93,6 +99,11 @@ func (s *Service) finishRunRecord(ctx context.Context, runID, status string, res
 	lastProcessedAt := ""
 	if resp != nil && resp.LastProcessedAt != nil {
 		lastProcessedAt = *resp.LastProcessedAt
+	}
+
+	activeKeySQL := "active_key = ''"
+	if !clearActiveKey {
+		activeKeySQL = "active_key = active_key"
 	}
 
 	_, err := s.mainDB.ExecContext(ctx, `
@@ -107,9 +118,9 @@ func (s *Service) finishRunRecord(ctx context.Context, runID, status string, res
 			error = ?,
 			tag_folder_id = ?,
 			ended_at = ?,
-			active_key = ''
+			`+activeKeySQL+`
 		WHERE run_id = ?
-	`, status, resp.Found, resp.Processed, resp.Skipped, resp.Failed, resp.EstimatedSize, nullString(lastProcessedAt), resp.Error, resp.TagFolderID, endedAt, runID)
+		`, status, resp.Found, resp.Processed, resp.Skipped, resp.Failed, resp.EstimatedSize, nullString(lastProcessedAt), resp.Error, resp.TagFolderID, endedAt, runID)
 	return err
 }
 

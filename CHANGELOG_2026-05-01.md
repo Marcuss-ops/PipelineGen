@@ -2,7 +2,53 @@
 
 ## Summary
 
-Sessione dedicata alla risoluzione dei problemi del pipeline Artlist: gestione job zombie, logging granulare, automazione discovery+save, e fix upload Drive.
+Sessione dedicata alla risoluzione dei problemi del pipeline Artlist: gestione job zombie, logging granulare, automazione discovery+save, fix upload Drive, e fix critici post-review.
+
+## Bug Fixes (2026-05-01 19:30)
+
+### 1. Fix `dry_run` rotto (Bug #1)
+- `dry_run: true` ora simula correttamente senza scaricare, processare o caricare
+- Aggiunto blocco anticipato che restituisce `WouldProcess` e `WouldSkip` senza effetti reali
+- Prima il codice ignorava `dry_run` dopo la creazione cartella, processando comunque i clip
+
+### 2. Fix `UploadClipToDrive` non carica file reale (Bug #2)
+- Ora apre il file locale (`clip.LocalPath` o path costruito) e usa `.Media(f)` per il upload
+- Aggiorna `clip.DriveLink`, `clip.DownloadLink`, `clip.FileHash` e salva nel DB
+- Prima creava solo i metadata su Drive senza caricare il contenuto video
+
+### 3. Fix `DownloadClip` usa DriveLink come file ID (Bug #3)
+- Ora usa `driveFileIDFromClip()` per estrarre correttamente il file ID da DriveLink/DownloadLink
+- Fallback: se non c'è DriveLink o download fallisce, scarica da Artlist usando `downloadClip()`
+- Prima falliva perché `Files.Get()` vuole un file ID, non un URL completo
+
+### 4. Fix retry job cancella `active_key` troppo presto (Bug #4)
+- Creato `finishRunRecordWithActiveKey()` con parametro `clearActiveKey`
+- Durante i retry, `active_key` viene preservato per evitare duplicati
+- Solo al tentativo finale o completamento viene cancellato `active_key`
+- Prima: `finishRunRecord` cancellava sempre `active_key = ''`, permettendo race conditions
+
+### 5. Allineamento cartella principale vs sottocartelle (Bug #5)
+- Rimosso `getOrCreateFolder()` per tag in `pipeline.go`
+- Le clip vengono caricate direttamente nel folder principale (`rootFolderID`)
+- Allineato il codice con la documentazione nel changelog
+
+### 6. Fix `Search` ignora `limit` (Bug #6)
+- Applica `req.Limit` dopo aver ottenuto i risultati dal DB
+- Default 8, massimo 50 (coerente con l'handler)
+- Prima restituiva tutti i risultati ignorando il parametro limit
+
+### 7. Fix `GetClipStatus` non controlla file locale (Bug #7)
+- Ora controlla `clip.LocalPath` e usa `os.Stat()` per verificare esistenza file
+- Imposta correttamente `HasLocalFile` e `LocalPath` nella response
+- Prova a costruire il path locale se `clip.LocalPath` è vuoto
+
+### 8. Fix `RunTag` maschera errori DB (Bug #8)
+- Distingue tra "nessun risultato" e "errore DB"
+- Se `SearchClips` fallisce, tenta live search come fallback
+- Se entrambi falliscono, ritorna errore invece di completare silenziosamente
+- Previene falsi positivi "completed" quando il DB non risponde
+
+## What Changed
 
 ## What Changed
 
