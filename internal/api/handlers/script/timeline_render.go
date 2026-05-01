@@ -32,6 +32,11 @@ func RenderTimeline(plan *TimelinePlan) string {
 			b.WriteString(textutil.Truncate(seg.OpeningSentence, 80))
 			b.WriteString("\n")
 		}
+		if strings.TrimSpace(seg.ClosingSentence) != "" {
+			b.WriteString("   End:   ")
+			b.WriteString(textutil.Truncate(seg.ClosingSentence, 80))
+			b.WriteString("\n")
+		}
 
 		// 1. ASSET ASSOCIATIONS
 		assetRendered := false
