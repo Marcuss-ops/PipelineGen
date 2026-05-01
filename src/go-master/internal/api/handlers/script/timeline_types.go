@@ -1,5 +1,7 @@
 package script
 
+import "velox/go-master/internal/service/association"
+
 // TimelinePlan is the structured timestamp/action breakdown for a generated script.
 type TimelinePlan struct {
 	PrimaryFocus  string            `json:"primary_focus"`
@@ -26,22 +28,15 @@ type TimelineSegment struct {
 	NormalizationSource  string        `json:"normalization_source,omitempty"`
 	PreferredStockGroup  string        `json:"preferred_stock_group,omitempty"`
 	PreferredStockPaths  []string      `json:"preferred_stock_paths,omitempty"`
-	PreferredStockReason string        `json:"preferred_stock_reason,omitempty"`
-	StockMatches         []scoredMatch `json:"stock_matches,omitempty"`
-	DriveMatches         []scoredMatch `json:"drive_matches,omitempty"`
-	ArtlistMatches       []scoredMatch `json:"artlist_matches,omitempty"`
-	SearchSuggestions    []string      `json:"search_suggestions,omitempty"`
+	PreferredStockReason string                    `json:"preferred_stock_reason,omitempty"`
+	StockMatches         []association.ScoredMatch `json:"stock_matches,omitempty"`
+	DriveMatches         []association.ScoredMatch `json:"drive_matches,omitempty"`
+	ArtlistMatches       []association.ScoredMatch `json:"artlist_matches,omitempty"`
+	SearchSuggestions    []string                  `json:"search_suggestions,omitempty"`
 }
 
-// scoredMatch represents a potential media match with metadata.
-type scoredMatch struct {
-	Title   string `json:"title"`
-	Path    string `json:"path"`
-	Score   int    `json:"score"`
-	Source  string `json:"source"`
-	Link    string `json:"link"`
-	Details string `json:"details"`
-}
+// scoredMatch legacy alias for backward compatibility within this package
+type scoredMatch = association.ScoredMatch
 
 // internal LLM structures
 type timelineLLMPlan struct {
@@ -61,24 +56,19 @@ type timelineLLMSegment struct {
 	Entities        []string `json:"entities"`
 }
 
-type timelineAssetSource string
+type timelineAssetSource = association.AssetSource
 
 const (
-	timelineAssetSourceStockDrive     timelineAssetSource = "stock_drive"
-	timelineAssetSourceArtlistFolder  timelineAssetSource = "artlist_folder"
-	timelineAssetSourceArtlistDynamic timelineAssetSource = "artlist_dynamic"
+	timelineAssetSourceStockDrive     = association.AssetSourceStockDrive
+	timelineAssetSourceArtlistFolder  = association.AssetSourceArtlistFolder
+	timelineAssetSourceArtlistDynamic = association.AssetSourceArtlistDynamic
 )
 
-type timelineFolderCandidate struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Link     string `json:"link"`
-	FolderID string `json:"folder_id,omitempty"`
-}
+type timelineFolderCandidate = association.FolderCandidate
 
 type timelineAssetDecision struct {
-	Source  string        `json:"source"`
-	Folder  string        `json:"folder"`
-	Reason  string        `json:"reason"`
-	Matches []scoredMatch `json:"matches,omitempty"`
+	Source  string                    `json:"source"`
+	Folder  string                    `json:"folder"`
+	Reason  string                    `json:"reason"`
+	Matches []association.ScoredMatch `json:"matches,omitempty"`
 }

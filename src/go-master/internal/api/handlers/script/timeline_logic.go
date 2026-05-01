@@ -15,6 +15,7 @@ import (
 	artlistSvc "velox/go-master/internal/service/artlist"
 	segmentnorm "velox/go-master/internal/service/catalognormalizer"
 	"velox/go-master/internal/service/timeline"
+	"velox/go-master/internal/service/association"
 	"velox/go-master/pkg/textutil"
 	"velox/go-master/pkg/sliceutil"
 )
@@ -155,24 +156,24 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		segStarted := time.Now()
 		associateSegment(ctx, &seg, driveAssoc, artlistFolderAssoc, clipAssoc, artlistAssoc, dynamicAssoc)
 		if preserveStructuredSubjects {
-			stockFiltered := filterStockMatchesBySubject(seg.StockMatches, seg.Subject)
-			artlistFiltered := filterArtlistMatchesBySubject(seg.ArtlistMatches, seg.Subject)
+			stockFiltered := association.FilterStockMatchesBySubject(seg.StockMatches, seg.Subject)
+			artlistFiltered := association.FilterArtlistMatchesBySubject(seg.ArtlistMatches, seg.Subject)
 
-			if len(artlistFiltered) > 0 && !hasUsefulStockMatch(stockFiltered) {
+			if len(artlistFiltered) > 0 && !association.HasUsefulStockMatch(stockFiltered) {
 				seg.StockMatches = nil
 				seg.ArtlistMatches = artlistFiltered
 				seg.PreferredStockGroup = "artlist_folder"
-				seg.PreferredStockPaths = preferredStockPathsFromMatches(artlistFiltered)
+				seg.PreferredStockPaths = association.PreferredPathsFromMatches(artlistFiltered)
 				seg.PreferredStockReason = "exact artlist subject match"
 			} else if len(stockFiltered) > 0 {
 				for i := range stockFiltered {
-					if strings.EqualFold(strings.TrimSpace(stockFiltered[i].Source), "drive_stock") && looksBroadStockContainer(stockFiltered[i].Path) {
+					if strings.EqualFold(strings.TrimSpace(stockFiltered[i].Source), "drive_stock") && association.LooksBroadStockContainer(stockFiltered[i].Path) {
 						stockFiltered[i].Path = ""
 						stockFiltered[i].Link = ""
 					}
 				}
 				seg.StockMatches = stockFiltered
-				seg.PreferredStockPaths = preferredStockPathsFromMatches(stockFiltered)
+				seg.PreferredStockPaths = association.PreferredPathsFromMatches(stockFiltered)
 				seg.PreferredStockReason = "subject-specific stock match"
 				if len(seg.PreferredStockPaths) > 0 {
 					seg.PreferredStockGroup = "drive_stock"
@@ -183,7 +184,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 				seg.StockMatches = nil
 				seg.ArtlistMatches = artlistFiltered
 				seg.PreferredStockGroup = "artlist_folder"
-				seg.PreferredStockPaths = preferredStockPathsFromMatches(artlistFiltered)
+				seg.PreferredStockPaths = association.PreferredPathsFromMatches(artlistFiltered)
 				seg.PreferredStockReason = "artlist subject match"
 			} else {
 				seg.StockMatches = nil
@@ -474,133 +475,3 @@ func fallbackTimelinePlan(topic string, duration int, narrative string) *timelin
 	}
 }
 
-func filterStockMatchesBySubject(matches []scoredMatch, subject string) []scoredMatch {
-	if len(matches) == 0 {
-		return nil
-	}
-	subjectKeys := associationSubjectKeys(subject)
-	if len(subjectKeys) == 0 {
-		return matches
-	}
-
-	exact := make([]scoredMatch, 0, len(matches))
-	loose := make([]scoredMatch, 0, len(matches))
-	for _, match := range matches {
-		titleKey := normalizeAssociationKey(match.Title)
-		pathKey := normalizeAssociationKey(match.Path)
-		leafKey := normalizeAssociationKey(filepath.Base(strings.TrimSpace(match.Path)))
-		if normalizedKeyMatchesAny(titleKey, subjectKeys) || normalizedKeyMatchesAny(pathKey, subjectKeys) || normalizedKeyMatchesAny(leafKey, subjectKeys) {
-			exact = append(exact, match)
-			continue
-		}
-		for _, subjectKey := range subjectKeys {
-			if strings.HasSuffix(pathKey, "/"+subjectKey) || strings.HasSuffix(titleKey, subjectKey) {
-				loose = append(loose, match)
-				break
-			}
-		}
-	}
-	if len(exact) > 0 {
-		return exact
-	}
-	return loose
-}
-
-func preferredStockPathsFromMatches(matches []scoredMatch) []string {
-	if len(matches) == 0 {
-		return nil
-	}
-	best := matches[0]
-	for _, match := range matches[1:] {
-		if match.Score > best.Score {
-			best = match
-		}
-	}
-	preferred := []string{
-		strings.TrimSpace(best.Path),
-		strings.TrimSpace(best.Link),
-	}
-	return sliceutil.UniqueStrings(sliceutil.TrimStrings(preferred))
-}
-
-func filterArtlistMatchesBySubject(matches []scoredMatch, subject string) []scoredMatch {
-	if len(matches) == 0 {
-		return nil
-	}
-	subjectKeys := associationSubjectKeys(subject)
-	if len(subjectKeys) == 0 {
-		return matches
-	}
-
-	exact := make([]scoredMatch, 0, len(matches))
-	loose := make([]scoredMatch, 0, len(matches))
-	for _, match := range matches {
-		titleKey := normalizeAssociationKey(match.Title)
-		pathKey := normalizeAssociationKey(match.Path)
-		leafKey := normalizeAssociationKey(filepath.Base(strings.TrimSpace(match.Path)))
-		if normalizedKeyMatchesAny(titleKey, subjectKeys) || normalizedKeyMatchesAny(pathKey, subjectKeys) || normalizedKeyMatchesAny(leafKey, subjectKeys) {
-			exact = append(exact, match)
-			continue
-		}
-		for _, subjectKey := range subjectKeys {
-			if strings.HasSuffix(pathKey, "/"+subjectKey) || strings.HasSuffix(titleKey, subjectKey) {
-				loose = append(loose, match)
-				break
-			}
-		}
-	}
-	if len(exact) > 0 {
-		return exact
-	}
-	return loose
-}
-
-func associationSubjectKeys(subject string) []string {
-	subjectKey := normalizeAssociationKey(subject)
-	if subjectKey == "" {
-		return nil
-	}
-	keys := []string{subjectKey}
-	for _, prefix := range []string{"the ", "a ", "an "} {
-		if strings.HasPrefix(subjectKey, prefix) {
-			if stripped := strings.TrimSpace(strings.TrimPrefix(subjectKey, prefix)); stripped != "" {
-				keys = append(keys, stripped)
-			}
-			break
-		}
-	}
-	return sliceutil.UniqueStrings(keys)
-}
-
-func normalizedKeyMatchesAny(key string, subjectKeys []string) bool {
-	key = normalizeAssociationKey(key)
-	if key == "" {
-		return false
-	}
-	for _, subjectKey := range subjectKeys {
-		if key == subjectKey {
-			return true
-		}
-	}
-	return false
-}
-
-func hasUsefulStockMatch(matches []scoredMatch) bool {
-	for _, match := range matches {
-		if strings.TrimSpace(match.Path) == "" {
-			continue
-		}
-		if !looksBroadStockContainer(match.Path) {
-			return true
-		}
-	}
-	return false
-}
-
-func looksBroadStockContainer(path string) bool {
-	path = strings.ToLower(strings.TrimSpace(path))
-	if path == "" {
-		return false
-	}
-	return strings.Contains(path, ",") || strings.Contains(path, " and ")
-}
