@@ -32,12 +32,48 @@ func NewService(pythonScriptsDir, outputDir string, log *zap.Logger) *Service {
 	}
 }
 
+// sanitizeFilename ensures the filename is safe and within the output directory
+func sanitizeFilename(outputDir, filename string) (string, error) {
+	// Only keep the base filename to prevent path traversal
+	cleanName := filepath.Base(filename)
+
+	// Validate .mp3 extension
+	if !strings.HasSuffix(cleanName, ".mp3") {
+		cleanName += ".mp3"
+	}
+
+	// Additional slugify: remove any path separators that might have passed through
+	cleanName = strings.ReplaceAll(cleanName, "/", "")
+	cleanName = strings.ReplaceAll(cleanName, "\\", "")
+
+	outputPath := filepath.Join(outputDir, cleanName)
+
+	// Verify the result is within outputDir
+	absOutputDir, err := filepath.Abs(outputDir)
+	if err != nil {
+		return "", err
+	}
+	absOutputPath, err := filepath.Abs(outputPath)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(absOutputDir, absOutputPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid filename: path traversal detected")
+	}
+
+	return outputPath, nil
+}
+
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, fmt.Errorf("text is empty")
 	}
 
-	outputPath := filepath.Join(s.outputDir, filename)
+	outputPath, err := sanitizeFilename(s.outputDir, filename)
+	if err != nil {
+		return nil, fmt.Errorf("invalid filename: %w", err)
+	}
 	scriptPath := filepath.Join(s.pythonScriptsDir, "tts_edge.py")
 
 	s.log.Info("Generating voiceover",

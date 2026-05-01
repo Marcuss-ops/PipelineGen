@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"velox/go-master/internal/cron"
+	"velox/go-master/internal/service/indexing"
 	"velox/go-master/internal/service/monitor"
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/pkg/config"
@@ -20,6 +21,9 @@ type backgroundJobs struct {
 	catalogSyncJob   *cron.CatalogSyncJob
 	channelMonitor   *monitor.ChannelMonitor
 	stockScheduler   *scheduler.StockScheduler
+	dbMaintenanceJob *cron.DBMaintenanceJob
+	dbBackupJob      *cron.DBBackupJob
+	indexingService  *indexing.Service
 }
 
 func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, svcs *services, log *zap.Logger) *backgroundJobs {
@@ -92,5 +96,8 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		catalogSyncJob:   catalogSyncJob,
 		channelMonitor:   channelMon,
 		stockScheduler:   stockSched,
+		dbMaintenanceJob: dbMaintenanceJob,
+		dbBackupJob:      dbBackupJob,
+		indexingService:  svcs.indexingService,
 	}
 }

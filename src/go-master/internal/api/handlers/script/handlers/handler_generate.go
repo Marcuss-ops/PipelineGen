@@ -256,8 +256,12 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocu
 
 	zap.L().Info("triggering background harvest for suggestions", zap.Int("tag_count", len(uniqueTags)))
 
+	// Limit concurrency to avoid spawning too many goroutines
+	semaphore := make(chan struct{}, 3)
 	for tag := range uniqueTags {
+		semaphore <- struct{}{}
 		go func(t string) {
+			defer func() { <-semaphore }()
 			zap.L().Info("starting background artlist pipeline for suggestion", zap.String("tag", t))
 			// Limit to 5 clips per tag to avoid massive downloads
 			// Strategy "verify" performs both download and upload if missing

@@ -1,6 +1,6 @@
 module velox/go-master
 
-go 1.25.0
+go 1.25.9
 
 require (
 	github.com/gin-contrib/cors v1.4.0

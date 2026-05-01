@@ -2,6 +2,7 @@
 package security
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -17,8 +18,9 @@ func SanitizePath(baseDir, requestedPath string) (string, error) {
 	// Join and clean the requested path
 	absRequested := filepath.Clean(filepath.Join(absBase, requestedPath))
 
-	// Verify the result is within the base directory
-	if !strings.HasPrefix(absRequested, absBase) {
+	// Verify the result is within the base directory using filepath.Rel
+	rel, err := filepath.Rel(absBase, absRequested)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", filepath.ErrBadPattern
 	}
 
