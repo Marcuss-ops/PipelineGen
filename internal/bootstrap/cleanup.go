@@ -1,23 +1,66 @@
 package bootstrap
 
 import (
+	"context"
+	"sync"
+	"time"
+
 	"go.uber.org/zap"
 )
 
-func buildCleanup(dbs *databases, jobs *backgroundJobs, log *zap.Logger) CleanupFunc {
+func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFunc, log *zap.Logger) CleanupFunc {
 	return func() {
+		// Cancel context to signal all background jobs to stop
+		if cancel != nil {
+			cancel()
+		}
+
+		// Give jobs a moment to stop
+		time.Sleep(100 * time.Millisecond)
+
 		// Stop services
+		var wg sync.WaitGroup
+
 		if jobs.channelMonitor != nil {
-			jobs.channelMonitor.Stop()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				jobs.channelMonitor.Stop()
+			}()
 		}
 		if jobs.stockScheduler != nil {
-			jobs.stockScheduler.Stop()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				jobs.stockScheduler.Stop()
+			}()
 		}
 		if jobs.harvesterCronSvc != nil {
-			jobs.harvesterCronSvc.Stop()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				jobs.harvesterCronSvc.Stop()
+			}()
 		}
 		if jobs.catalogSyncJob != nil {
-			jobs.catalogSyncJob.Stop()
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				jobs.catalogSyncJob.Stop()
+			}()
+		}
+
+		// Wait for all stop operations with timeout
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+			log.Info("All background jobs stopped")
+		case <-time.After(5 * time.Second):
+			log.Warn("Timeout waiting for background jobs to stop")
 		}
 
 		if dbs.images != nil {

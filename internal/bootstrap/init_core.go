@@ -58,7 +58,7 @@ func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, Clea
 
 // initCoreMinimal creates only the services needed by the text/doc server.
 func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	// 1. Security & Infrastructure
 	for _, host := range cfg.Security.AllowedDownloadHosts {
@@ -69,17 +69,20 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	// 2. Databases
 	dbs, err := initDatabases(cfg, log)
 	if err != nil {
+		cancel()
 		return nil, nil, err
 	}
 
 	// 3. Migrations
 	if err := runAllMigrations(dbs, log); err != nil {
+		cancel()
 		return nil, nil, err
 	}
 
 	// 4. Services
 	svcs, err := initServices(ctx, cfg, dbs, log)
 	if err != nil {
+		cancel()
 		return nil, nil, err
 	}
 
@@ -87,7 +90,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log)
 
 	// 6. Cleanup
-	cleanup := buildCleanup(dbs, jobs, log)
+	cleanup := buildCleanup(dbs, jobs, cancel, log)
 
 	return &CoreDeps{
 		ScriptGen:            svcs.scriptGen,

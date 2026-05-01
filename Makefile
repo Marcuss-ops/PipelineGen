@@ -64,10 +64,14 @@ run: build
 dev:
 	air
 
-# Install dependencies
+# Install dependencies (download only, no go.mod modification)
 deps:
 	go mod download
+
+# Check if go.mod is tidy (useful in CI)
+tidy-check:
 	go mod tidy
+	git diff --exit-code -- go.mod go.sum
 
 # Check for vulnerabilities
 vuln:

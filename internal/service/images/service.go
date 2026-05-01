@@ -50,7 +50,7 @@ func Slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-// SearchAndDownload prova a cercare un\'immagine nel DB locale, e se non trovata procede con Wikidata/Wikipedia (main) o DDG (fallback) e la scarica
+// SearchAndDownload prova a cercare un'immagine nel DB locale, e se non trovata procede con Wikidata/Wikipedia (main) o DDG (fallback) e la scarica
 func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*models.ImageAsset, error) {
 	// Normalizziamo lo slug
 	slug := Slugify(subjectSlug)
@@ -58,7 +58,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*mo
 		slug = Slugify(query)
 	}
 
-	// 0. Controlla se abbiamo già il soggetto e almeno un\'immagine nel DB
+	// 0. Controlla se abbiamo già il soggetto e almeno un'immagine nel DB
 	if subject, err := s.repo.GetSubjectBySlugOrAlias(slug); err == nil && subject != nil {
 		if images, err := s.repo.ListImagesBySubject(subject.ID); err == nil && len(images) > 0 {
 			s.log.Info("Image found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
@@ -71,21 +71,31 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*mo
 	if wg, exists := s.activeSearch[slug]; exists {
 		s.mu.Unlock()
 		wg.Wait()
-		// Recupero post-attesa semplificato per brevità
-	} else {
-		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		s.activeSearch[slug] = wg
+		s.mu.Lock()
+		delete(s.activeSearch, slug)
 		s.mu.Unlock()
-		defer func() {
-			s.mu.Lock()
-			delete(s.activeSearch, slug)
-			s.mu.Unlock()
-			wg.Done()
-		}()
+		// After waiting, re-check the database
+		if subject, err := s.repo.GetSubjectBySlugOrAlias(slug); err == nil && subject != nil {
+			if images, err := s.repo.ListImagesBySubject(subject.ID); err == nil && len(images) > 0 {
+				s.log.Info("Image found in local database after waiting for concurrent download", zap.String("subject", subject.Slug))
+				return &images[0], nil
+			}
+		}
+		return nil, fmt.Errorf("image download already in progress or failed")
 	}
 
-	// 1. Disambiguazione con Wikidata
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	s.activeSearch[slug] = wg
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.activeSearch, slug)
+		s.mu.Unlock()
+		wg.Done()
+	}()
+
+	// 2. Disambiguazione con Wikidata
 	s.log.Info("Disambiguating with Wikidata", zap.String("query", query))
 	wikiTitle, qid, wikiDesc := s.searchWikidata(query)
 
@@ -94,7 +104,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*mo
 		finalQuery = wikiTitle
 	}
 
-	// 2. Cerca URL Immagine
+	// 3. Cerca URL Immagine
 	s.log.Info("Searching for image", zap.String("query", finalQuery), zap.String("slug", slug))
 	imgURL := s.searchWikipedia(finalQuery)
 	source := "wikipedia"
@@ -108,7 +118,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*mo
 		return nil, fmt.Errorf("no image found for query: %s", query)
 	}
 
-	// 3. Scarica e ingesta
+	// 4. Scarica e ingesta
 	description := wikiDesc
 	if description == "" {
 		description = fmt.Sprintf("Auto-downloaded from %s for query: %s", source, query)
