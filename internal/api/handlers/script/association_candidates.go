@@ -200,6 +200,12 @@ func scoreTimelineFolderCandidates(database, source string, folders []timelineFo
 		if source == "stock_folder" {
 			folderKey := normalizeAssociationKey(name)
 			pathKey := normalizeAssociationKey(path)
+			focusTokenCount := 0
+			for _, focusKey := range focusKeys {
+				if count := len(matchTokens(focusKey)); count > 0 && (focusTokenCount == 0 || count < focusTokenCount) {
+					focusTokenCount = count
+				}
+			}
 			for _, focusKey := range focusKeys {
 				if focusKey == "" {
 					continue
@@ -208,9 +214,18 @@ func scoreTimelineFolderCandidates(database, source string, folders []timelineFo
 					score += 60
 					break
 				}
-				if strings.Contains(pathKey, focusKey) || strings.Contains(focusKey, pathKey) {
+				if strings.HasSuffix(pathKey, "/"+focusKey) {
 					score += 35
 					break
+				}
+			}
+			if focusTokenCount > 0 {
+				candidateTokenCount := len(matchTokens(name + " " + path))
+				if candidateTokenCount >= focusTokenCount+4 {
+					continue
+				}
+				if candidateTokenCount > focusTokenCount {
+					score -= (candidateTokenCount - focusTokenCount) / 2
 				}
 			}
 		}
