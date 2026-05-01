@@ -92,7 +92,7 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 				zap.String("job_id", jobID),
 				zap.String("term", req.Term),
 			)
-			// Update job status to failed on panic
+			// Update job status to failed on panic - clear active_key on fatal error
 			job, _ := s.GetJobByRunID(context.Background(), jobID)
 			if job != nil {
 				job.Status = models.StatusFailed
@@ -143,14 +143,26 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 			job.Error = resp.Error
 		}
 
-		if err := s.persistJob(ctx, job); err != nil {
-			s.log.Warn("failed to update job record",
-				zap.String("job_id", jobID),
-				zap.Error(err),
-			)
-		}
-
-		if job.CanRetry() && status == models.StatusFailed {
+		// During retries, don't clear active_key (use finishRunRecordWithActiveKey with clearActiveKey=false)
+		// On final attempt or success, clear active_key
+		isLastAttempt := attempt >= maxRetries || status == models.StatusCompleted
+		if isLastAttempt {
+			// Final state: clear active_key
+			if err := s.persistJob(ctx, job); err != nil {
+				s.log.Warn("failed to update job record",
+					zap.String("job_id", jobID),
+					zap.Error(err),
+				)
+			}
+		} else if job.CanRetry() && status == models.StatusFailed {
+			// Retry state: preserve active_key
+			rec := JobToRunRecord(job)
+			if finishErr := s.finishRunRecordWithActiveKey(ctx, rec.RunID, string(job.Status), s.runRecordToResponse(rec), false); finishErr != nil {
+				s.log.Warn("failed to update job record during retry",
+					zap.String("job_id", jobID),
+					zap.Error(finishErr),
+				)
+			}
 			continue
 		}
 		return

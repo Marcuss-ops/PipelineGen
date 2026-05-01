@@ -72,20 +72,40 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	clipsList, err := s.clipsRepo.SearchClips(ctx, resp.Term)
 	if err != nil {
 		s.log.Error("failed to search clips in DB", zap.String("term", resp.Term), zap.Error(err))
+		// DB error - try live search as fallback, but track the error
+		resp.Error = "db_search_error: " + err.Error()
 	}
 
 	if len(clipsList) == 0 {
-		s.log.Info("no clips found in DB for term, performing live search discovery", zap.String("term", resp.Term))
+		if resp.Error != "" {
+			s.log.Warn("DB error occurred, attempting live search fallback", zap.String("term", resp.Term))
+		} else {
+			s.log.Info("no clips found in DB for term, performing live search discovery", zap.String("term", resp.Term))
+		}
 		searchResp, err := s.SearchLiveAndSave(ctx, resp.Term, req.Limit*2)
 		if err != nil {
 			s.log.Error("live search discovery failed", zap.String("term", resp.Term), zap.Error(err))
+			if resp.Error != "" {
+				resp.Error = "db_error_and_live_search_failed: " + err.Error()
+			}
+			// If DB failed and live search failed, return error
+			if strings.HasPrefix(resp.Error, "db_search_error") {
+				resp.OK = false
+				resp.Status = "failed"
+				return resp, fmt.Errorf("failed to get clips: %s", resp.Error)
+			}
 		} else if searchResp != nil {
 			s.log.Info("live search discovery completed", zap.String("term", resp.Term), zap.Int("found", len(searchResp.Clips)))
+			resp.Error = "" // Clear DB error if live search succeeded
 		}
 		// Reload from DB after search
 		clipsList, err = s.clipsRepo.SearchClips(ctx, resp.Term)
 		if err != nil {
 			s.log.Error("failed to reload clips from DB after discovery", zap.String("term", resp.Term), zap.Error(err))
+			resp.OK = false
+			resp.Status = "failed"
+			resp.Error = "failed to reload clips after discovery: " + err.Error()
+			return resp, err
 		}
 	}
 
@@ -104,26 +124,45 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.LastProcessedAt = lastProcessedAt
 	}
 
+	// Use main folder directly (no subfolder per tag)
 	tagFolderID := rootFolderID
 	if !req.DryRun && s.driveClient != nil && rootFolderID != "" {
-		s.log.Info("ensuring tag folder exists on drive", zap.String("folder_name", tagFolderName), zap.String("parent_id", rootFolderID))
-		createdFolderID, err := getOrCreateFolder(s.driveClient, tagFolderName, rootFolderID)
-		if err != nil {
-			s.log.Error("failed to get or create tag folder on drive, falling back to root folder", zap.Error(err))
-		} else {
-			tagFolderID = createdFolderID
-		}
+		s.log.Info("using main artlist folder for uploads",
+			zap.String("folder_id", tagFolderID),
+			zap.String("folder_link", "https://drive.google.com/drive/folders/"+tagFolderID),
+		)
 	}
-
-	s.log.Info("using drive folder for uploads",
-		zap.String("folder_id", tagFolderID),
-		zap.String("folder_link", "https://drive.google.com/drive/folders/"+tagFolderID),
-	)
 	resp.TagFolderID = tagFolderID
 
 	candidateClips := clipsList
 	if len(candidateClips) > req.Limit {
 		candidateClips = candidateClips[:req.Limit]
+	}
+
+	// Dry-run: simulate without real processing
+	if req.DryRun {
+		s.log.Info("dry-run mode, simulating pipeline", zap.String("term", resp.Term), zap.Int("candidates", len(candidateClips)))
+		for _, clip := range candidateClips {
+			if clip == nil {
+				continue
+			}
+			skip, _ := s.shouldSkipClip(ctx, strategy, clip)
+			status := "would_process"
+			if skip {
+				status = "would_skip"
+				resp.WouldSkip++
+			} else {
+				resp.WouldProcess++
+			}
+			resp.Items = append(resp.Items, RunTagItem{
+				ClipID: clip.ID,
+				Name:   clip.Name,
+				Status: status,
+			})
+		}
+		resp.Status = "completed_dry_run"
+		resp.OK = true
+		return resp, nil
 	}
 
 	processed := 0
