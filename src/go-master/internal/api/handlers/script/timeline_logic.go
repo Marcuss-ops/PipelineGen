@@ -26,7 +26,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	zap.L().Info("Building timeline plan", zap.String("topic", req.Topic))
 
 	cache := timeline.NewCache(clipsRepo, gen)
-	cacheKey := cache.BuildKey(req.Topic, req.Template, sourceText, req.Duration)
+	cacheKey := cache.BuildKey(req.Topic, req.Template, sourceText, narrative, req.Duration)
 
 	if rows, err := cache.LoadPlan(ctx, cacheKey); err == nil && len(rows) > 0 {
 		zap.L().Info("timeline plan cache hit",
