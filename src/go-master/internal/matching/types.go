@@ -14,11 +14,11 @@ type MatchResult struct {
 
 // ScoringConfig holds boost values for different match types
 type ScoringConfig struct {
-	NameMatchBoost       float64
-	FilenameMatchBoost   float64
-	FolderMatchBoost     float64
-	TopicMatchBoost      float64
-	SideTextBoost        float64
+	NameMatchBoost     float64
+	FilenameMatchBoost float64
+	FolderMatchBoost   float64
+	TopicMatchBoost    float64
+	SideTextBoost      float64
 }
 
 // DefaultScoringConfig returns the default scoring configuration

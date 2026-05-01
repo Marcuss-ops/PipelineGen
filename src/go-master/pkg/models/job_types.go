@@ -21,13 +21,13 @@ const (
 )
 
 const (
-	JobTypeVideoGeneration   = TypeVideoGeneration
-	JobTypeAudioProcessing   = TypeAudioProcessing
-	JobTypeUpload            = TypeUpload
-	JobTypeVoiceover         = TypeVoiceover
-	JobTypeScript            = TypeScriptGen
-	JobTypeStockDownload     = TypeStockDownload
-	JobTypeStockClip         = TypeStockClip
+	JobTypeVideoGeneration = TypeVideoGeneration
+	JobTypeAudioProcessing = TypeAudioProcessing
+	JobTypeUpload          = TypeUpload
+	JobTypeVoiceover       = TypeVoiceover
+	JobTypeScript          = TypeScriptGen
+	JobTypeStockDownload   = TypeStockDownload
+	JobTypeStockClip       = TypeStockClip
 )
 
 // JobType rappresenta il tipo di job
@@ -45,25 +45,25 @@ const (
 
 // Job rappresenta un job nel sistema
 type Job struct {
-	ID           string                 `json:"id"`
-	Type         JobType                `json:"type"`
-	Status       JobStatus              `json:"status"`
-	Priority     int                    `json:"priority"`
-	Project      string                 `json:"project,omitempty"`
-	VideoName    string                 `json:"video_name,omitempty"`
-	CreatedAt    time.Time              `json:"created_at"`
-	UpdatedAt    time.Time              `json:"updated_at"`
-	StartedAt    *time.Time             `json:"started_at,omitempty"`
-	CompletedAt  *time.Time             `json:"completed_at,omitempty"`
-	WorkerID     string                 `json:"worker_id,omitempty"`
-	Payload      map[string]interface{} `json:"payload"`
-	Result       map[string]interface{} `json:"result,omitempty"`
-	Error        string                 `json:"error,omitempty"`
-	Retries      int                    `json:"retries"`
-	RetryCount   int                    `json:"retry_count"`
-	MaxRetries   int                    `json:"max_retries"`
-	Progress     int                    `json:"progress"`
-	LeaseExpiry  *time.Time             `json:"lease_expiry,omitempty"`
+	ID          string                 `json:"id"`
+	Type        JobType                `json:"type"`
+	Status      JobStatus              `json:"status"`
+	Priority    int                    `json:"priority"`
+	Project     string                 `json:"project,omitempty"`
+	VideoName   string                 `json:"video_name,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	StartedAt   *time.Time             `json:"started_at,omitempty"`
+	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	WorkerID    string                 `json:"worker_id,omitempty"`
+	Payload     map[string]interface{} `json:"payload"`
+	Result      map[string]interface{} `json:"result,omitempty"`
+	Error       string                 `json:"error,omitempty"`
+	Retries     int                    `json:"retries"`
+	RetryCount  int                    `json:"retry_count"`
+	MaxRetries  int                    `json:"max_retries"`
+	Progress    int                    `json:"progress"`
+	LeaseExpiry *time.Time             `json:"lease_expiry,omitempty"`
 }
 
 // CreateJobRequest richiesta per creare un nuovo job
@@ -87,13 +87,13 @@ type JobEvent struct {
 
 // JobResult contiene il risultato di un job completato
 type JobResult struct {
-	Success      bool                   `json:"success"`
-	OutputPath   string                 `json:"output_path,omitempty"`
-	VideoURL     string                 `json:"video_url,omitempty"`
-	DriveFileID  string                 `json:"drive_file_id,omitempty"`
-	YouTubeID    string                 `json:"youtube_id,omitempty"`
-	Metadata     map[string]interface{} `json:"metadata,omitempty"`
-	CompletedAt  time.Time              `json:"completed_at"`
+	Success     bool                   `json:"success"`
+	OutputPath  string                 `json:"output_path,omitempty"`
+	VideoURL    string                 `json:"video_url,omitempty"`
+	DriveFileID string                 `json:"drive_file_id,omitempty"`
+	YouTubeID   string                 `json:"youtube_id,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	CompletedAt time.Time              `json:"completed_at"`
 }
 
 // Queue rappresenta la coda dei job

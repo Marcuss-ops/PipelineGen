@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"log"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/storage"
-	"go.uber.org/zap"
 )
 
 func main() {

@@ -40,19 +40,19 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 	outputPath := filepath.Join(s.outputDir, filename)
 	scriptPath := filepath.Join(s.pythonScriptsDir, "tts_edge.py")
 
-	s.log.Info("Generating voiceover", 
-		zap.String("language", language), 
+	s.log.Info("Generating voiceover",
+		zap.String("language", language),
 		zap.String("output", outputPath))
 
-	cmd := exec.CommandContext(ctx, "python3", scriptPath, 
-		"--text", text, 
-		"--lang", language, 
+	cmd := exec.CommandContext(ctx, "python3", scriptPath,
+		"--text", text,
+		"--lang", language,
 		"--out", outputPath)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		s.log.Error("Voiceover generation failed", 
-			zap.Error(err), 
+		s.log.Error("Voiceover generation failed",
+			zap.Error(err),
 			zap.String("output", string(out)))
 		return nil, fmt.Errorf("voiceover script failed: %w (output: %s)", err, string(out))
 	}

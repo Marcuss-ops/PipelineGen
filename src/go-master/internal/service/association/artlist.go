@@ -1,4 +1,4 @@
-package script
+package association
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"velox/go-master/pkg/textutil"
 )
 
-// ArtlistStockAssociation cerca nel database delle clip di Artlist
+// ArtlistStockAssociation cerca nel database delle clip di Artlist.
 type ArtlistStockAssociation struct {
 	svc *artlist.Service
 }
@@ -18,21 +18,20 @@ func NewArtlistStockAssociation(svc *artlist.Service) *ArtlistStockAssociation {
 	return &ArtlistStockAssociation{svc: svc}
 }
 
-func (a *ArtlistStockAssociation) Associate(ctx context.Context, segment *TimelineSegment) ([]scoredMatch, error) {
+func (a *ArtlistStockAssociation) Associate(ctx context.Context, input SegmentInput) ([]ScoredMatch, error) {
 	if a.svc == nil {
 		return nil, nil
 	}
 
-	searchTerm := segment.Subject
+	searchTerm := input.Subject
 	if searchTerm == "" {
-		if len(segment.Keywords) > 0 {
-			searchTerm = segment.Keywords[0]
+		if len(input.Keywords) > 0 {
+			searchTerm = input.Keywords[0]
 		} else {
 			return nil, nil
 		}
 	}
 
-	// Chiamiamo il service di ricerca Artlist (che cerca nel repo clips)
 	resp, err := a.svc.Search(ctx, &artlist.SearchRequest{
 		Term: searchTerm,
 	})
@@ -45,14 +44,13 @@ func (a *ArtlistStockAssociation) Associate(ctx context.Context, segment *Timeli
 	}
 
 	queryTokens := textutil.Tokenize(searchTerm)
-	var matches []scoredMatch
+	var matches []ScoredMatch
 	for _, clip := range resp.Clips {
 		targetTokens := textutil.Tokenize(clip.Name + " " + strings.Join(clip.Tags, " "))
 		score := matching.CalculateTokenScore(queryTokens, targetTokens)
-		score += preferredCandidateBoost(segment, clip.FolderPath, clip.ExternalURL, clip.Name)
 
 		if score > 30 {
-			matches = append(matches, scoredMatch{
+			matches = append(matches, ScoredMatch{
 				Title:   clip.Name,
 				Path:    clip.LocalPath,
 				Score:   score,

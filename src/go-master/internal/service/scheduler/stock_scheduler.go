@@ -13,10 +13,10 @@ import (
 
 // StockScheduler handles periodic stock clip searches
 type StockScheduler struct {
-	cfg     *config.Config
-	log     *zap.Logger
-	apiURL  string
-	stopCh  chan struct{}
+	cfg    *config.Config
+	log    *zap.Logger
+	apiURL string
+	stopCh chan struct{}
 }
 
 // NewStockScheduler creates a new stock scheduler

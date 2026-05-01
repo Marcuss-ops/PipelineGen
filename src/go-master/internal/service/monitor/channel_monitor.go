@@ -17,24 +17,24 @@ import (
 
 // ChannelConfig represents a monitored YouTube channel
 type ChannelConfig struct {
-	URL            string   `json:"url"`
-	Category       string   `json:"category"`
-	Keywords       []string `json:"keywords"`
-	MinViews       int      `json:"min_views"`
-	MaxClipDuration int     `json:"max_clip_duration"`
+	URL             string   `json:"url"`
+	Category        string   `json:"category"`
+	Keywords        []string `json:"keywords"`
+	MinViews        int      `json:"min_views"`
+	MaxClipDuration int      `json:"max_clip_duration"`
 }
 
 // MonitorConfig holds the full monitor configuration
 type MonitorConfig struct {
-	CheckInterval    time.Duration `json:"check_interval"`
-	VideoTimeframe  string        `json:"video_timeframe"`
-	StockRootID     string        `json:"stock_root_id"`
-	YtdlpPath       string        `json:"ytdlp_path"`
-	CookiesPath     string        `json:"cookies_path"`
-	MaxClipDuration int           `json:"max_clip_duration"`
-	PlaylistEnd     int           `json:"playlist_end"`
-	MaxFilesize     string        `json:"max_filesize"`
-	OllamaURL       string        `json:"ollama_url"`
+	CheckInterval   time.Duration   `json:"check_interval"`
+	VideoTimeframe  string          `json:"video_timeframe"`
+	StockRootID     string          `json:"stock_root_id"`
+	YtdlpPath       string          `json:"ytdlp_path"`
+	CookiesPath     string          `json:"cookies_path"`
+	MaxClipDuration int             `json:"max_clip_duration"`
+	PlaylistEnd     int             `json:"playlist_end"`
+	MaxFilesize     string          `json:"max_filesize"`
+	OllamaURL       string          `json:"ollama_url"`
 	Channels        []ChannelConfig `json:"channels"`
 }
 

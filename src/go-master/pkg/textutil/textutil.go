@@ -7,7 +7,6 @@ import (
 )
 
 // Tokenize splits text into tokens using unicode-aware word boundaries.
-// Delegates to internal/matching for consistency.
 func Tokenize(text string) []string {
 	text = strings.ToLower(text)
 	return strings.FieldsFunc(text, func(r rune) bool {
@@ -215,18 +214,28 @@ func FirstNonEmpty(values ...string) string {
 	return ""
 }
 
+// FirstNonEmptySlice returns the first non-empty slice among the arguments.
+func FirstNonEmptySlice(primary, fallback []string) []string {
+	if len(primary) > 0 {
+		return primary
+	}
+	return fallback
+}
+
+
 // ExtractSentences splits a text block into sentences by splitting on periods.
 func ExtractSentences(text string) []string {
-        if text == "" {
-                return nil
-        }
-        parts := strings.Split(text, ".")
-        var res []string
-        for _, p := range parts {
-                p = strings.TrimSpace(p)
-                if p != "" {
-                        res = append(res, p)
-                }
-        }
-        return res
+	if text == "" {
+		return nil
+	}
+	parts := strings.Split(text, ".")
+	var res []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			res = append(res, p)
+		}
+	}
+	return res
 }
+

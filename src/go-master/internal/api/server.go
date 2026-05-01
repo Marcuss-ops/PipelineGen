@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
-	"go.uber.org/zap"
 )
 
 // Server represents the HTTP server.

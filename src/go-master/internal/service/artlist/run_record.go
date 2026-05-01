@@ -194,22 +194,22 @@ func (s *Service) runRecordToResponse(rec *artlistRunRecord) *RunTagResponse {
 		return &RunTagResponse{OK: false, Status: "not_found", Error: "run not found"}
 	}
 	return &RunTagResponse{
-		OK:             rec.Status != "failed",
-		RunID:          rec.RunID,
-		Status:         rec.Status,
-		Term:           rec.Term,
-		Strategy:       rec.Strategy,
-		DryRun:         rec.DryRun,
-		RootFolderID:   rec.RootFolderID,
-		TagFolderID:    rec.TagFolderID,
-		Found:          rec.Found,
-		Processed:      rec.Processed,
-		Skipped:        rec.Skipped,
-		Failed:         rec.Failed,
-		EstimatedSize:  rec.EstimatedSize,
+		OK:              rec.Status != "failed",
+		RunID:           rec.RunID,
+		Status:          rec.Status,
+		Term:            rec.Term,
+		Strategy:        rec.Strategy,
+		DryRun:          rec.DryRun,
+		RootFolderID:    rec.RootFolderID,
+		TagFolderID:     rec.TagFolderID,
+		Found:           rec.Found,
+		Processed:       rec.Processed,
+		Skipped:         rec.Skipped,
+		Failed:          rec.Failed,
+		EstimatedSize:   rec.EstimatedSize,
 		LastProcessedAt: rec.LastProcessedAt,
-		StartedAt:      rec.StartedAt,
-		EndedAt:        rec.EndedAt,
+		StartedAt:       rec.StartedAt,
+		EndedAt:         rec.EndedAt,
 	}
 }
 

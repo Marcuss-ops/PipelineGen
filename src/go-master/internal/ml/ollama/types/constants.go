@@ -13,16 +13,16 @@ const (
 	MarkerTimeline = "⏱️ Timeline"
 
 	// Technical limits and defaults
-	DefaultTimeoutSeconds   = 120
-	CircuitBreakerFailures  = 3
-	CircuitBreakerTimeout   = 30
-	MaxRetries              = 3
-	StreamBufferSize        = 100
-	MaxArtlistTags          = 5
-	DefaultDesiredSegments  = 4
-	DefaultEntityCount      = 2
-	SuggestionTemperature   = 0.2
-	SuggestionNumPredict    = 128
+	DefaultTimeoutSeconds  = 120
+	CircuitBreakerFailures = 3
+	CircuitBreakerTimeout  = 30
+	MaxRetries             = 3
+	StreamBufferSize       = 100
+	MaxArtlistTags         = 5
+	DefaultDesiredSegments = 4
+	DefaultEntityCount     = 2
+	SuggestionTemperature  = 0.2
+	SuggestionNumPredict   = 128
 )
 
 // List of words/phrases to filter out from LLM output across different languages
@@ -58,8 +58,8 @@ var SpeakerLabels = []string{
 
 // List of meta-content types to remove between brackets
 var MetaContentTypes = []string{
-	"musica", "immagini", "scena", "inquadratura", "audio", "video", 
-	"clip", "montaggio", "sottofondo", "background", "visual", 
-	"transition", "transizione", "voce", "voice", "sound", "fx", 
+	"musica", "immagini", "scena", "inquadratura", "audio", "video",
+	"clip", "montaggio", "sottofondo", "background", "visual",
+	"transition", "transizione", "voce", "voice", "sound", "fx",
 	"inizio", "fine", "end", "start", "music", "shot",
 }

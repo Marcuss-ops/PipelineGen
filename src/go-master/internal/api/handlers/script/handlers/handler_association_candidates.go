@@ -5,21 +5,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	scriptpkg "velox/go-master/internal/api/handlers/script"
+	"velox/go-master/internal/service/association"
 )
 
 func (h *ScriptDocsHandler) AssociationCandidates(c *gin.Context) {
-	var req scriptpkg.AssociationCandidatesRequest
+	var req association.CandidatesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, scriptpkg.AssociationCandidatesResponse{OK: false, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, association.CandidatesResponse{OK: false, Error: err.Error()})
 		return
 	}
 	req.Normalize()
 
-	resp, err := scriptpkg.BuildAssociationCandidates(c.Request.Context(), req, h.dataDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.clipsOnlyRepo)
+	resp, err := h.assocService.BuildCandidates(c.Request.Context(), req)
 	if err != nil {
 		zap.L().Error("association candidates failed", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, scriptpkg.AssociationCandidatesResponse{OK: false, Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, association.CandidatesResponse{OK: false, Error: err.Error()})
 		return
 	}
 

@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"path/filepath"
 
-	"velox/go-master/pkg/textutil"
 	_ "github.com/mattn/go-sqlite3"
+	"velox/go-master/pkg/textutil"
 )
 
 // SearchClips queries the clips database for matching media.

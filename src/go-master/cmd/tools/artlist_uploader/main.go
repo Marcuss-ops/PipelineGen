@@ -14,7 +14,6 @@ import (
 	"velox/go-master/pkg/config"
 )
 
-
 func main() {
 	tag := flag.String("tag", "", "Tag to process")
 	limit := flag.Int("limit", 5, "Number of clips to download/upload")

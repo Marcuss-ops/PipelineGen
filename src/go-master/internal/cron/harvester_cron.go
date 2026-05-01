@@ -14,12 +14,12 @@ import (
 
 // HarvesterCronService manages persistent harvester cron jobs
 type HarvesterCronService struct {
-	repo       *harvester.Repository
-	log        *zap.Logger
-	apiURL     string
-	termsFile  string
-	stopCh     chan struct{}
-	jobs       map[string]*harvester.Job
+	repo      *harvester.Repository
+	log       *zap.Logger
+	apiURL    string
+	termsFile string
+	stopCh    chan struct{}
+	jobs      map[string]*harvester.Job
 }
 
 // NewHarvesterCronService creates a new harvester cron service

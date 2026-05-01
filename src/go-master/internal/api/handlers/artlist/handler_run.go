@@ -6,8 +6,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 
-	"velox/go-master/internal/service/artlist"
 	"go.uber.org/zap"
+	"velox/go-master/internal/service/artlist"
 )
 
 // RunTagPipeline executes the full Artlist flow for a tag

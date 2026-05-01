@@ -136,27 +136,27 @@ type RunTagItem struct {
 
 // RunTagResponse represents the result of the full tag pipeline.
 type RunTagResponse struct {
-	OK             bool         `json:"ok"`
-	RunID          string       `json:"run_id,omitempty"`
-	Status         string       `json:"status,omitempty"`
-	Term           string       `json:"term"`
-	Strategy       string       `json:"strategy,omitempty"`
-	DryRun         bool         `json:"dry_run,omitempty"`
-	RootFolderID   string       `json:"root_folder_id,omitempty"`
-	TagFolderID    string       `json:"tag_folder_id,omitempty"`
-	Requested      int          `json:"requested"`
-	Found          int          `json:"found"`
-	Processed      int          `json:"processed"`
-	Skipped        int          `json:"skipped"`
-	Failed         int          `json:"failed"`
-	WouldProcess   int          `json:"would_process,omitempty"`
-	WouldSkip      int          `json:"would_skip,omitempty"`
-	EstimatedSize  int          `json:"estimated_size,omitempty"`
+	OK              bool         `json:"ok"`
+	RunID           string       `json:"run_id,omitempty"`
+	Status          string       `json:"status,omitempty"`
+	Term            string       `json:"term"`
+	Strategy        string       `json:"strategy,omitempty"`
+	DryRun          bool         `json:"dry_run,omitempty"`
+	RootFolderID    string       `json:"root_folder_id,omitempty"`
+	TagFolderID     string       `json:"tag_folder_id,omitempty"`
+	Requested       int          `json:"requested"`
+	Found           int          `json:"found"`
+	Processed       int          `json:"processed"`
+	Skipped         int          `json:"skipped"`
+	Failed          int          `json:"failed"`
+	WouldProcess    int          `json:"would_process,omitempty"`
+	WouldSkip       int          `json:"would_skip,omitempty"`
+	EstimatedSize   int          `json:"estimated_size,omitempty"`
 	LastProcessedAt *string      `json:"last_processed_at,omitempty"`
-	StartedAt      *string      `json:"started_at,omitempty"`
-	EndedAt        *string      `json:"ended_at,omitempty"`
-	Items          []RunTagItem `json:"items,omitempty"`
-	Error          string       `json:"error,omitempty"`
+	StartedAt       *string      `json:"started_at,omitempty"`
+	EndedAt         *string      `json:"ended_at,omitempty"`
+	Items           []RunTagItem `json:"items,omitempty"`
+	Error           string       `json:"error,omitempty"`
 }
 
 // DiagnosticsResponse reports the current Artlist wiring and database readiness.
