@@ -81,15 +81,25 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	normalizer := segmentnorm.NewService(stockRepo, clipsRepo, artlistRepo, zap.L())
 
 	for i, rawSeg := range rawPlan.Segments {
+		blockText := strings.TrimSpace(rawSeg.NarrativeText)
+		opening := strings.TrimSpace(rawSeg.OpeningSentence)
+		closing := strings.TrimSpace(rawSeg.ClosingSentence)
+
+		// Always derive from narrative text if it's available and valid to ensure alignment
+		if blockText != "" {
+			opening = firstSentence(blockText)
+			closing = lastSentence(blockText)
+		}
+
 		seg := TimelineSegment{
 			Index:           i + 1,
 			StartTime:       rawSeg.StartTime,
 			EndTime:         rawSeg.EndTime,
 			Timestamp:       fmt.Sprintf("%.0f-%.0f", rawSeg.StartTime, rawSeg.EndTime),
 			Subject:         strings.TrimSpace(rawSeg.Subject),
-			NarrativeText:   rawSeg.NarrativeText,
-			OpeningSentence: rawSeg.OpeningSentence,
-			ClosingSentence: rawSeg.ClosingSentence,
+			NarrativeText:   blockText,
+			OpeningSentence: opening,
+			ClosingSentence: closing,
 			Keywords:        rawSeg.Keywords,
 			Entities:        rawSeg.Entities,
 		}
@@ -451,10 +461,27 @@ func fallbackTimelinePlan(topic string, duration int, narrative string) *timelin
 				EndTime:         float64(duration),
 				Subject:         topic,
 				NarrativeText:   narrative,
-				OpeningSentence: "Inizio del video su " + topic,
+				OpeningSentence: firstSentence(narrative),
+				ClosingSentence: lastSentence(narrative),
 			},
 		},
 	}
+}
+
+func firstSentence(text string) string {
+	sentences := textutil.ExtractSentences(text)
+	if len(sentences) > 0 {
+		return sentences[0]
+	}
+	return textutil.Truncate(text, 120)
+}
+
+func lastSentence(text string) string {
+	sentences := textutil.ExtractSentences(text)
+	if len(sentences) > 0 {
+		return sentences[len(sentences)-1]
+	}
+	return textutil.Truncate(text, 120)
 }
 
 func applyAssociationHints(seg *TimelineSegment, resp *association.CandidatesResponse) {
