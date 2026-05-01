@@ -65,6 +65,14 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 
 	preserveStructuredSubjects := structuredOverrideApplied
 
+	if len(rawPlan.Segments) == 1 {
+		rawPlan.Segments[0].NarrativeText = narrative
+		rawPlan.Segments[0].OpeningSentence = firstSentence(narrative)
+		rawPlan.Segments[0].ClosingSentence = lastSentence(narrative)
+		rawPlan.Segments[0].StartTime = 0
+		rawPlan.Segments[0].EndTime = float64(req.Duration)
+	}
+
 	plan := &TimelinePlan{
 		PrimaryFocus:  req.Topic,
 		SegmentCount:  len(rawPlan.Segments),
@@ -85,10 +93,14 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		opening := strings.TrimSpace(rawSeg.OpeningSentence)
 		closing := strings.TrimSpace(rawSeg.ClosingSentence)
 
-		// Always derive from narrative text if it's available and valid to ensure alignment
+		// Fallback to extraction if LLM didn't provide them, but don't force override if they are already there
 		if blockText != "" {
-			opening = firstSentence(blockText)
-			closing = lastSentence(blockText)
+			if opening == "" {
+				opening = firstSentence(blockText)
+			}
+			if closing == "" {
+				closing = lastSentence(blockText)
+			}
 		}
 
 		seg := TimelineSegment{
