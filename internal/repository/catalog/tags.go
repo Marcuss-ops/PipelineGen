@@ -13,7 +13,7 @@ func ParseTags(raw string) []string {
 	if raw == "" {
 		return nil
 	}
-	
+
 	// If it looks like a JSON array, extract and parse it
 	if strings.HasPrefix(raw, "[") {
 		jsonStr := textutil.ExtractJSONArray(raw)
@@ -24,7 +24,7 @@ func ParseTags(raw string) []string {
 			}
 		}
 	}
-	
+
 	// Fallback to CSV
 	tags := textutil.SplitCSV(raw)
 	return textutil.NormalizeStringSlice(tags)

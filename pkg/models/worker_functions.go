@@ -1,7 +1,5 @@
 package models
 
-
-
 // IsOnline returns true if the worker is online
 func (w *Worker) IsOnline() bool {
 	return w.Status == WorkerStatusOnline || w.Status == WorkerStatusIdle || w.Status == WorkerBusy

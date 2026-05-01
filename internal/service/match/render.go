@@ -1,36 +1,15 @@
-package script
+package match
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
+
+	"velox/go-master/internal/service/association"
 )
 
-func readJSON(path string, dst any) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, dst)
-}
-
-func sortTopMatches(matches []scoredMatch, limit int) []scoredMatch {
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].Score == matches[j].Score {
-			return matches[i].Title < matches[j].Title
-		}
-		return matches[i].Score > matches[j].Score
-	})
-	if limit > 0 && len(matches) > limit {
-		return matches[:limit]
-	}
-	return matches
-}
-
-// renderMatches formatta i match per la visualizzazione nel documento
-func renderMatches(matches []scoredMatch) string {
+// RenderMatches formatta i match per la visualizzazione nel documento.
+func RenderMatches(matches []association.ScoredMatch) string {
 	if len(matches) == 0 {
 		return "Nessun asset trovato."
 	}
@@ -72,21 +51,4 @@ func renderMatches(matches []scoredMatch) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
-}
-
-func selectBestMatchLink(matches []scoredMatch) string {
-	if len(matches) == 0 {
-		return ""
-	}
-
-	bestScore := -1
-	bestLink := ""
-
-	for _, m := range matches {
-		if m.Score > bestScore && m.Link != "" {
-			bestScore = m.Score
-			bestLink = m.Link
-		}
-	}
-	return bestLink
 }

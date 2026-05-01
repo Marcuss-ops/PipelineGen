@@ -67,6 +67,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.ClipsOnlyRepo,
 		cfg.Drive.StockRootFolder,
 		artlistService,
+		coreDeps.AssocService,
 	)
 
 	// Create Artlist handler

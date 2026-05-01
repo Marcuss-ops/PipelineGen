@@ -37,10 +37,10 @@ type ImageAsset struct {
 
 // ImageUsage traccia l'utilizzo di un'immagine in un video
 type ImageUsage struct {
-	ID        int64     `json:"id"`
-	ImageID   int64     `json:"image_id"`
-	VideoID   string    `json:"video_id"`
-	UsedAt    time.Time `json:"used_at"`
+	ID      int64     `json:"id"`
+	ImageID int64     `json:"image_id"`
+	VideoID string    `json:"video_id"`
+	UsedAt  time.Time `json:"used_at"`
 }
 
 // ImageTag rappresenta un tag associato a un'immagine

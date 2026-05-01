@@ -13,6 +13,7 @@ import (
 	"velox/go-master/internal/repository/harvester"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
@@ -40,6 +41,7 @@ type services struct {
 	harvesterRepo    *harvester.Repository
 	catalogRepo      *catalog.Repository
 	catalogSync      *catalogsync.Service
+	assocService     *association.Service
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -83,6 +85,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	indexingService := indexing.NewService(clipsRepo, log)
 	catalogRepo := catalog.NewRepository(cfg.Storage.DataDir)
 
+	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo)
+
 	catalogSync := catalogsync.NewService(driveClient, []catalogsync.Target{
 		{
 			Name:         "stock",
@@ -123,5 +127,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		harvesterRepo:    harvesterRepo,
 		catalogRepo:      catalogRepo,
 		catalogSync:      catalogSync,
+		assocService:     assocService,
 	}, nil
 }

@@ -9,12 +9,13 @@ import (
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/association"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/pkg/sliceutil"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
-func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, pythonScriptsDir, nodeScraperDir string, StockDriveRepo, ArtlistRepo, ClipsRepo *clips.Repository, artlistService *artlistSvc.Service, imgService *imgservice.Service) (*ScriptDocument, error) {
+func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, pythonScriptsDir, nodeScraperDir string, StockDriveRepo, ArtlistRepo, ClipsRepo *clips.Repository, artlistService *artlistSvc.Service, imgService *imgservice.Service, assocService *association.Service) (*ScriptDocument, error) {
 	req.Normalize()
 
 	if gen == nil || gen.GetClient() == nil {
@@ -49,7 +50,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	// cleanNarrativeBody now relies on the general CleanScript logic but we can add document-specific cleaning here
 	narrative = types.CleanScript(narrative)
 
-	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService)
+	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService, assocService)
 
 	analysis := extractNarrativeAnalysis(ctx, gen, req, narrative, timeline)
 

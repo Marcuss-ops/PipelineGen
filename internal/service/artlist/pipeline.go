@@ -385,7 +385,7 @@ func (s *Service) processVideo(input, output string) error {
 		"-y",
 		"-t", fmt.Sprintf("%d", video.Duration),
 		"-i", input,
-		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d", 
+		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d",
 			video.Width, video.Height, video.Width, video.Height, video.FPS),
 		"-an",
 		"-c:v", video.Codec,

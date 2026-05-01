@@ -6,6 +6,7 @@ import (
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/catalog"
+	"velox/go-master/internal/service/match"
 )
 
 func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
@@ -52,7 +53,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 		})
 	}
 
-	matches = sortTopMatches(matches, 4)
+	matches = match.SortTopMatches(matches, 4)
 	if len(matches) == 0 {
 		return ScriptSection{
 			Title: "Stock Matching",
@@ -62,6 +63,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 
 	return ScriptSection{
 		Title: "Stock Matching",
-		Body:  renderMatches(matches),
+		Body:  match.RenderMatches(matches),
 	}
 }
+

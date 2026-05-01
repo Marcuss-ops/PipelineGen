@@ -115,11 +115,11 @@ type SecurityConfig struct {
 
 // ExternalConfig holds external service configuration.
 type ExternalConfig struct {
-	OllamaURL             string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
-	OllamaModel           string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
-	OllamaTimeoutSeconds  int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
-	YtdlpPath             string `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
-	FfmpegPath            string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
+	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
+	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
+	YtdlpPath            string `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
+	FfmpegPath           string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 }
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.

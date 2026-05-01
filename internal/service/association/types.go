@@ -8,6 +8,7 @@ type ScoredMatch struct {
 	Source  string `json:"source"`
 	Link    string `json:"link"`
 	Details string `json:"details"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // ScoredMatch legacy alias

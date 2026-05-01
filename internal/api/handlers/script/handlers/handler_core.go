@@ -3,14 +3,16 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
 	artlistSvc "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/association"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/upload/drive"
+
+	"github.com/gin-gonic/gin"
 )
 
 // ScriptDocsHandler generates modular script docs with Ollama and optionally uploads them to Google Docs.
@@ -29,10 +31,11 @@ type ScriptDocsHandler struct {
 	clipsOnlyRepo    *clips.Repository
 	stockRootFolder  string
 	artlistService   *artlistSvc.Service
+	assocService     *association.Service
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service, assocService *association.Service) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,
@@ -48,6 +51,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voSe
 		clipsOnlyRepo:    clipsOnlyRepo,
 		stockRootFolder:  stockRootFolder,
 		artlistService:   artlistService,
+		assocService:     assocService,
 	}
 }
 

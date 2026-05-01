@@ -14,9 +14,9 @@ import (
 
 // MigrationRunner handles SQLite database migrations.
 type MigrationRunner struct {
-	db             *sql.DB
-	log            *zap.Logger
-	migrationsDir  string
+	db            *sql.DB
+	log           *zap.Logger
+	migrationsDir string
 }
 
 // NewMigrationRunner creates a new migration runner.

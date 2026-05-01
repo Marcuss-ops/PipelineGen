@@ -17,7 +17,7 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 	defer db.Close()
 
 	var results []CatalogRecord
-	
+
 	// 1. Try stock_folders table
 	rows, err := db.Query(`
 		SELECT drive_id, full_path, topic_slug, drive_link 

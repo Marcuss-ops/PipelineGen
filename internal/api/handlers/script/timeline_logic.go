@@ -21,7 +21,7 @@ import (
 const timelineCacheVersion = "v12"
 
 // BuildTimelinePlan coordinates the LLM planning and asset matching.
-func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service) (*TimelinePlan, error) {
+func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service) (*TimelinePlan, error) {
 	startedAt := time.Now()
 	zap.L().Info("Building timeline plan", zap.String("topic", req.Topic))
 
@@ -79,11 +79,6 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 
 	// 2. ASSET MATCHING STRATEGY (MODULAR)
 	normalizer := segmentnorm.NewService(stockRepo, clipsRepo, artlistRepo, zap.L())
-	driveAssoc := NewDriveStockAssociation(dataDir)
-	artlistFolderAssoc := NewArtlistFolderAssociation(artlistRepo, nodeScraperDir, req.Topic)
-	artlistAssoc := NewArtlistStockAssociation(artlistService)
-	clipAssoc := NewClipDriveAssociation(clipsRepo)
-	dynamicAssoc := NewDynamicArtlistAssociation(artlistService, gen, req, narrative)
 
 	for i, rawSeg := range rawPlan.Segments {
 		seg := TimelineSegment{
@@ -101,10 +96,11 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		if preserveStructuredSubjects {
 			seg.Subject = firstNonEmpty(seg.Subject, req.Topic)
 		} else {
-			seg.Subject = resolveTimelineSegmentSubject(ctx, req, seg, dataDir, stockRepo)
+			seg.Subject = resolveTimelineSegmentSubject(ctx, req, seg, dataDir, stockRepo, assocService)
 		}
 
 		if normalized, err := normalizer.NormalizeSegment(ctx, segmentnorm.SegmentInput{
+
 			Topic:         req.Topic,
 			Duration:      req.Duration,
 			Template:      req.Template,
@@ -134,25 +130,27 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			associationTopic = associationSubject
 		}
 
-		associationReq := AssociationCandidatesRequest{
+		associationReq := association.CandidatesRequest{
 			Topic:      associationTopic,
 			SegmentKey: seg.Timestamp,
 			Timestamp:  seg.Timestamp,
 			Subject:    associationSubject,
 			Narrative:  seg.NarrativeText,
-			Keywords:   firstNonEmptySlice(seg.CanonicalKeywords, seg.Keywords),
-			Entities:   firstNonEmptySlice(seg.CanonicalEntities, seg.Entities),
+			Keywords:   textutil.FirstNonEmptySlice(seg.CanonicalKeywords, seg.Keywords),
+			Entities:   textutil.FirstNonEmptySlice(seg.CanonicalEntities, seg.Entities),
 			TopK:       3,
 		}
 
-		if candidates, err := BuildAssociationCandidates(ctx, associationReq, dataDir, nodeScraperDir, stockRepo, artlistRepo, clipsRepo); err == nil {
-			applyAssociationHints(&seg, candidates)
-			injectPreferredAssociation(&seg)
+		if assocService != nil {
+			if candidates, err := assocService.BuildCandidates(ctx, associationReq); err == nil {
+				applyAssociationHints(&seg, candidates)
+				injectPreferredAssociation(&seg)
+			}
 		}
 
 		// Eseguiamo l'associazione stratificata
 		segStarted := time.Now()
-		associateSegment(ctx, &seg, driveAssoc, artlistFolderAssoc, clipAssoc, artlistAssoc, dynamicAssoc)
+		associateSegment(ctx, &seg, assocService)
 		if preserveStructuredSubjects {
 			stockFiltered := association.FilterStockMatchesBySubject(seg.StockMatches, seg.Subject)
 			artlistFiltered := association.FilterArtlistMatchesBySubject(seg.ArtlistMatches, seg.Subject)
@@ -319,20 +317,23 @@ func firstNonEmptySlice(primary, fallback []string) []string {
 	return sliceutil.FirstNonEmpty(primary, fallback)
 }
 
-func resolveTimelineSegmentSubject(ctx context.Context, req ScriptDocsRequest, seg TimelineSegment, dataDir string, stockRepo *clips.Repository) string {
+func resolveTimelineSegmentSubject(ctx context.Context, req ScriptDocsRequest, seg TimelineSegment, dataDir string, stockRepo *clips.Repository, assocService *association.Service) string {
 	topic := strings.TrimSpace(req.Topic)
 	rawSubject := strings.TrimSpace(seg.Subject)
 
-	if direct, ok, err := findDirectStockFolderCandidate(ctx, stockRepo, dataDir, topic, rawSubject); err == nil && ok && direct != nil {
-		if topic != "" && looksLikePersonName(topic) {
-			return topic
-		}
-		if name := strings.TrimSpace(direct.Name); name != "" {
-			return name
+	if assocService != nil {
+		if direct, ok, err := assocService.FindDirectStockFolderCandidate(ctx, topic, rawSubject); err == nil && ok && direct != nil {
+			if topic != "" && looksLikePersonName(topic) {
+				return topic
+			}
+			if name := strings.TrimSpace(direct.Name); name != "" {
+				return name
+			}
 		}
 	}
 
 	if entitySubject := preferredEntitySubject(&timelineLLMSegment{
+
 		Subject:  rawSubject,
 		Entities: seg.Entities,
 	}, topicTokens(topic)); entitySubject != "" {
@@ -411,47 +412,30 @@ func marshalStringSliceJSON(values []string) string {
 	return string(data)
 }
 
-func associateSegment(ctx context.Context, seg *TimelineSegment, driveAssoc *DriveStockAssociation, artlistFolderAssoc *ArtlistFolderAssociation, clipAssoc *ClipDriveAssociation, artlistAssoc *ArtlistStockAssociation, dynamicAssoc *DynamicArtlistAssociation) {
-	// 1. Cerca in Drive Stock (Cartelle locali)
-	if driveAssoc != nil {
-		matches, _ := driveAssoc.Associate(ctx, seg)
-		if len(matches) > 0 {
-			seg.StockMatches = append(seg.StockMatches, matches...)
-		}
+func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *association.Service) {
+	if assocService == nil {
+		return
 	}
 
-	// 2. Cerca in cartelle Artlist
-	if artlistFolderAssoc != nil {
-		matches, _ := artlistFolderAssoc.Associate(ctx, seg)
-		if len(matches) > 0 {
-			seg.ArtlistMatches = append(seg.ArtlistMatches, matches...)
-		}
+	input := association.SegmentInput{
+		Subject:   segmentAssociationSubject(seg),
+		Keywords:  segmentAssociationKeywords(seg),
+		Entities:  segmentAssociationEntities(seg),
+		Narrative: seg.NarrativeText,
 	}
 
-	// 3. Cerca in Clip Drive (Clip già scaricate)
-	if clipAssoc != nil {
-		matches, _ := clipAssoc.Associate(ctx, seg)
-		if len(matches) > 0 {
-			seg.DriveMatches = matches
-			seg.StockMatches = append(seg.StockMatches, matches...)
-		}
-	}
-
-	// 4. Cerca in Artlist Stock (Database Artlist)
-	if artlistAssoc != nil {
-		matches, _ := artlistAssoc.Associate(ctx, seg)
-		if len(matches) > 0 {
-			seg.ArtlistMatches = append(seg.ArtlistMatches, matches...)
-			seg.StockMatches = append(seg.StockMatches, matches...)
-		}
-	}
-
-	// 5. Fallback Dinamico (Estrae keyword e tenta ricerca live)
-	if dynamicAssoc != nil {
-		matches, _ := dynamicAssoc.Associate(ctx, seg)
-		if len(matches) > 0 {
-			seg.ArtlistMatches = append(seg.ArtlistMatches, matches...)
-			seg.StockMatches = append(seg.StockMatches, matches...)
+	matches := assocService.Associate(ctx, input)
+	for _, m := range matches {
+		switch m.Source {
+		case "drive_stock", "stock_folder":
+			seg.StockMatches = append(seg.StockMatches, m)
+		case "artlist_folder", "artlist_stock", "artlist_dynamic":
+			seg.ArtlistMatches = append(seg.ArtlistMatches, m)
+		case "clip_drive", "clip_folder":
+			seg.DriveMatches = append(seg.DriveMatches, m)
+			seg.StockMatches = append(seg.StockMatches, m)
+		default:
+			seg.StockMatches = append(seg.StockMatches, m)
 		}
 	}
 }
@@ -471,4 +455,15 @@ func fallbackTimelinePlan(topic string, duration int, narrative string) *timelin
 			},
 		},
 	}
+}
+
+func applyAssociationHints(seg *TimelineSegment, resp *association.CandidatesResponse) {
+	if seg == nil || resp == nil || len(resp.Candidates) == 0 {
+		return
+	}
+	best := resp.Candidates[0]
+	seg.PreferredStockReason = best.Reason
+	seg.PreferredStockGroup = best.Source
+	preferredLink := association.NormalizeDriveFolderLink(best.Link, best.FolderID)
+	seg.PreferredStockPaths = sliceutil.UniqueStrings(sliceutil.TrimStrings([]string{best.Path, preferredLink}))
 }

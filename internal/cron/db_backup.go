@@ -13,16 +13,16 @@ import (
 
 // DBBackupJob handles periodic database backups
 type DBBackupJob struct {
-	db     *storage.SQLiteDB
-	log    *zap.Logger
+	db        *storage.SQLiteDB
+	log       *zap.Logger
 	backupDir string
 }
 
 // NewDBBackupJob creates a new database backup job
 func NewDBBackupJob(db *storage.SQLiteDB, log *zap.Logger, backupDir string) *DBBackupJob {
 	return &DBBackupJob{
-		db:       db,
-		log:      log,
+		db:        db,
+		log:       log,
 		backupDir: backupDir,
 	}
 }

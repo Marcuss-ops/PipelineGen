@@ -21,11 +21,11 @@ func NewJobAdapter(db *sql.DB) *JobAdapter {
 // RunRecordToJob converts an artlistRunRecord to a models.Job
 func RunRecordToJob(rec *artlistRunRecord) *models.Job {
 	job := models.NewJob(models.JobTypeStockClip, map[string]interface{}{
-		"term":            rec.Term,
-		"root_folder_id":  rec.RootFolderID,
-		"strategy":        rec.Strategy,
-		"dry_run":         rec.DryRun,
-		"active_key":      rec.ActiveKey,
+		"term":           rec.Term,
+		"root_folder_id": rec.RootFolderID,
+		"strategy":       rec.Strategy,
+		"dry_run":        rec.DryRun,
+		"active_key":     rec.ActiveKey,
 	})
 
 	job.ID = rec.RunID

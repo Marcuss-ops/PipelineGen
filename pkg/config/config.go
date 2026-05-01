@@ -38,9 +38,9 @@ func Reload() *Config {
 }
 
 // load loads configuration in three layers:
-//   1. Defaults from struct tags (applied to zero-value fields)
-//   2. YAML config file overrides (if present)
-//   3. Environment variable overrides (always win)
+//  1. Defaults from struct tags (applied to zero-value fields)
+//  2. YAML config file overrides (if present)
+//  3. Environment variable overrides (always win)
 func load() *Config {
 	cfg := &Config{}
 

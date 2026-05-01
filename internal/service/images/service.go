@@ -26,7 +26,7 @@ type Service struct {
 	baseDir string
 	log     *zap.Logger
 	client  *http.Client
-	
+
 	// Gestione concorrenza per evitare doppi download
 	mu           sync.Mutex
 	activeSearch map[string]*sync.WaitGroup
@@ -88,7 +88,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*mo
 	// 1. Disambiguazione con Wikidata
 	s.log.Info("Disambiguating with Wikidata", zap.String("query", query))
 	wikiTitle, qid, wikiDesc := s.searchWikidata(query)
-	
+
 	finalQuery := query
 	if wikiTitle != "" {
 		finalQuery = wikiTitle
@@ -247,7 +247,7 @@ func (s *Service) SyncAssets() error {
 
 			// L'hash è il nome del file senza estensione
 			hash := strings.TrimSuffix(imgEntry.Name(), filepath.Ext(imgEntry.Name()))
-			
+
 			// Verifica se l'immagine è nel DB
 			exists, _ := s.repo.GetImageByHash(hash)
 			if exists != nil {
@@ -266,7 +266,7 @@ func (s *Service) SyncAssets() error {
 func (s *Service) indexExistingFile(subject *models.Subject, dir, filename, hash string) {
 	fullPath := filepath.Join(dir, filename)
 	sidecarPath := fullPath + ".json"
-	
+
 	asset := &models.ImageAsset{
 		Hash:      hash,
 		SubjectID: subject.ID,
@@ -342,10 +342,10 @@ func (s *Service) IngestImage(subjectSlug string, reader io.Reader, filename str
 	if ext == "" {
 		ext = ".jpg" // Default
 	}
-	
+
 	relPath := filepath.Join(subjectSlug, "raw", hashStr+ext)
 	fullPath := filepath.Join(s.baseDir, relPath)
-	
+
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directories: %w", err)
 	}

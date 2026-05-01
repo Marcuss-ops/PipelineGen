@@ -30,23 +30,23 @@ const (
 type WorkerCapability string
 
 const (
-	CapVideoGeneration   WorkerCapability = "video_generation"
-	CapAudioProcessing   WorkerCapability = "audio_processing"
-	CapRemotion          WorkerCapability = "remotion"
-	CapFFmpeg            WorkerCapability = "ffmpeg"
-	CapUpload            WorkerCapability = "upload"
-	CapTTS               WorkerCapability = "tts"
-	CapStockDownload     WorkerCapability = "stock_download"
-	CapScript            WorkerCapability = "script"
-	CapStockClip         WorkerCapability = "stock_clip"
+	CapVideoGeneration WorkerCapability = "video_generation"
+	CapAudioProcessing WorkerCapability = "audio_processing"
+	CapRemotion        WorkerCapability = "remotion"
+	CapFFmpeg          WorkerCapability = "ffmpeg"
+	CapUpload          WorkerCapability = "upload"
+	CapTTS             WorkerCapability = "tts"
+	CapStockDownload   WorkerCapability = "stock_download"
+	CapScript          WorkerCapability = "script"
+	CapStockClip       WorkerCapability = "stock_clip"
 )
 
 const (
-	WorkerCapabilityVideoGen    = CapVideoGeneration
-	WorkerCapabilityVoiceover   = CapTTS
-	WorkerCapabilityScript      = CapScript
-	WorkerCapabilityStockClip   = CapStockClip
-	WorkerCapabilityUpload      = CapUpload
+	WorkerCapabilityVideoGen  = CapVideoGeneration
+	WorkerCapabilityVoiceover = CapTTS
+	WorkerCapabilityScript    = CapScript
+	WorkerCapabilityStockClip = CapStockClip
+	WorkerCapabilityUpload    = CapUpload
 )
 
 // Worker rappresenta un worker nel sistema
@@ -83,32 +83,32 @@ type Worker struct {
 
 // WorkerRegistrationRequest richiesta di registrazione worker
 type WorkerRegistrationRequest struct {
-	Name           string             `json:"name" binding:"required,min=1"`
-	Token          string             `json:"token"`
-	Host           string             `json:"host" binding:"required,min=1"`
-	Port           int                `json:"port" binding:"required"`
-	Capabilities   []WorkerCapability `json:"capabilities"`
-	Version        string             `json:"version"`
-	Hostname       string             `json:"hostname,omitempty"`
-	IP             string             `json:"ip,omitempty"`
-	CodeHash       string             `json:"code_hash,omitempty"`
-	DiskTotalGB    float64            `json:"disk_total_gb,omitempty"`
-	MemoryTotalMB  int                `json:"memory_total_mb,omitempty"`
+	Name          string             `json:"name" binding:"required,min=1"`
+	Token         string             `json:"token"`
+	Host          string             `json:"host" binding:"required,min=1"`
+	Port          int                `json:"port" binding:"required"`
+	Capabilities  []WorkerCapability `json:"capabilities"`
+	Version       string             `json:"version"`
+	Hostname      string             `json:"hostname,omitempty"`
+	IP            string             `json:"ip,omitempty"`
+	CodeHash      string             `json:"code_hash,omitempty"`
+	DiskTotalGB   float64            `json:"disk_total_gb,omitempty"`
+	MemoryTotalMB int                `json:"memory_total_mb,omitempty"`
 }
 
 // WorkerHeartbeat heartbeat dal worker
 type WorkerHeartbeat struct {
-	WorkerID     string            `json:"worker_id" binding:"required,min=1"`
-	Status       WorkerStatus      `json:"status"`
-	CurrentJobID string            `json:"current_job_id,omitempty"`
-	Stats        WorkerStats       `json:"stats"`
-	Logs         []WorkerLogEntry  `json:"logs,omitempty"`
+	WorkerID     string             `json:"worker_id" binding:"required,min=1"`
+	Status       WorkerStatus       `json:"status"`
+	CurrentJobID string             `json:"current_job_id,omitempty"`
+	Stats        WorkerStats        `json:"stats"`
+	Logs         []WorkerLogEntry   `json:"logs,omitempty"`
 	Errors       []WorkerErrorEntry `json:"errors,omitempty"`
-	DiskFreeGB   float64           `json:"disk_free_gb,omitempty"`
-	MemoryFreeMB int               `json:"memory_free_mb,omitempty"`
-	CPUUsage     float64           `json:"cpu_usage,omitempty"`
-	Version      string            `json:"version,omitempty"`
-	CodeHash     string            `json:"code_hash,omitempty"`
+	DiskFreeGB   float64            `json:"disk_free_gb,omitempty"`
+	MemoryFreeMB int                `json:"memory_free_mb,omitempty"`
+	CPUUsage     float64            `json:"cpu_usage,omitempty"`
+	Version      string             `json:"version,omitempty"`
+	CodeHash     string             `json:"code_hash,omitempty"`
 	Capabilities []WorkerCapability `json:"capabilities,omitempty"`
 }
 
@@ -143,12 +143,12 @@ type WorkerStats struct {
 
 // Heartbeat rappresenta un heartbeat inviato dal worker
 type Heartbeat struct {
-	WorkerID     string            `json:"worker_id"`
-	Status       WorkerStatus      `json:"status"`
-	CurrentJobID string            `json:"current_job_id,omitempty"`
-	Timestamp    time.Time         `json:"timestamp"`
-	Stats        WorkerStats       `json:"stats"`
-	Logs         []WorkerLogEntry  `json:"logs,omitempty"`
+	WorkerID     string             `json:"worker_id"`
+	Status       WorkerStatus       `json:"status"`
+	CurrentJobID string             `json:"current_job_id,omitempty"`
+	Timestamp    time.Time          `json:"timestamp"`
+	Stats        WorkerStats        `json:"stats"`
+	Logs         []WorkerLogEntry   `json:"logs,omitempty"`
 	Errors       []WorkerErrorEntry `json:"errors,omitempty"`
 }
 

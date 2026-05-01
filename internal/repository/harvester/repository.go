@@ -12,16 +12,16 @@ import (
 
 // Job represents a harvester cron job
 type Job struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Query     string    `json:"query"`
-	Channel   string    `json:"channel,omitempty"`
-	Interval  string    `json:"interval"` // e.g., "hourly", "daily", "weekly"
-	Enabled   bool      `json:"enabled"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Query     string     `json:"query"`
+	Channel   string     `json:"channel,omitempty"`
+	Interval  string     `json:"interval"` // e.g., "hourly", "daily", "weekly"
+	Enabled   bool       `json:"enabled"`
 	LastRunAt *time.Time `json:"last_run_at,omitempty"`
 	NextRunAt *time.Time `json:"next_run_at,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // Repository handles persistence for harvester jobs
