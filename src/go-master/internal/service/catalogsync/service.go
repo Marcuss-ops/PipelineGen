@@ -1,0 +1,304 @@
+package catalogsync
+
+import (
+	"context"
+	"fmt"
+	"path"
+	"strings"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+	"google.golang.org/api/drive/v3"
+
+	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/models"
+)
+
+const folderMimeType = "application/vnd.google-apps.folder"
+
+type Target struct {
+	Name         string
+	RootFolderID string
+	Source       string
+	MediaType    string
+	Repo         *clips.Repository
+}
+
+type RootSummary struct {
+	Name         string `json:"name"`
+	RootFolderID string `json:"root_folder_id"`
+	Source       string `json:"source"`
+	MediaType    string `json:"media_type"`
+	Requested    int    `json:"requested"`
+	Synced       int    `json:"synced"`
+	Failed       int    `json:"failed"`
+	Error        string `json:"error,omitempty"`
+}
+
+type Summary struct {
+	OK        bool          `json:"ok"`
+	Roots     []RootSummary `json:"roots,omitempty"`
+	Synced    int           `json:"synced"`
+	Failed    int           `json:"failed"`
+	StartedAt time.Time     `json:"started_at"`
+	EndedAt   time.Time     `json:"ended_at"`
+	Error     string        `json:"error,omitempty"`
+}
+
+type Service struct {
+	driveClient *drive.Service
+	log         *zap.Logger
+	targets     []Target
+	mu          sync.Mutex
+}
+
+func NewService(driveClient *drive.Service, targets []Target, log *zap.Logger) *Service {
+	return &Service{
+		driveClient: driveClient,
+		log:         log,
+		targets:     targets,
+	}
+}
+
+func (s *Service) SyncAll(ctx context.Context) (*Summary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	summary := &Summary{
+		OK:        true,
+		StartedAt: time.Now().UTC(),
+		Roots:     make([]RootSummary, 0, len(s.targets)),
+	}
+
+	if s.driveClient == nil {
+		summary.OK = false
+		summary.Error = "drive client not configured"
+		return summary, fmt.Errorf("drive client not configured")
+	}
+
+	for _, target := range s.targets {
+		if strings.TrimSpace(target.RootFolderID) == "" || target.Repo == nil {
+			continue
+		}
+
+		rootSummary, err := s.syncTarget(ctx, target)
+		if err != nil {
+			rootSummary.Error = err.Error()
+			summary.OK = false
+			summary.Error = err.Error()
+		}
+		summary.Roots = append(summary.Roots, rootSummary)
+		summary.Synced += rootSummary.Synced
+		summary.Failed += rootSummary.Failed
+	}
+
+	summary.EndedAt = time.Now().UTC()
+	return summary, nil
+}
+
+func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, error) {
+	rootSummary := RootSummary{
+		Name:         target.Name,
+		RootFolderID: target.RootFolderID,
+		Source:       target.Source,
+		MediaType:    target.MediaType,
+	}
+
+	rootMeta, err := s.driveClient.Files.Get(target.RootFolderID).Fields("id, name, webViewLink").Context(ctx).Do()
+	if err != nil {
+		rootSummary.Failed++
+		return rootSummary, err
+	}
+
+	rootName := strings.TrimSpace(target.Name)
+	if rootName == "" && rootMeta != nil {
+		rootName = strings.TrimSpace(rootMeta.Name)
+	}
+	if rootName == "" {
+		rootName = target.RootFolderID
+	}
+
+	rootLink := ""
+	if rootMeta != nil {
+		rootLink = strings.TrimSpace(rootMeta.WebViewLink)
+	}
+	if rootLink == "" {
+		rootLink = "https://drive.google.com/drive/folders/" + target.RootFolderID
+	}
+
+	now := time.Now().UTC()
+	rootClip := &models.Clip{
+		ID:           target.RootFolderID,
+		Name:         rootName,
+		Filename:     rootName,
+		FolderID:     target.RootFolderID,
+		FolderPath:   rootName,
+		Group:        target.Source,
+		MediaType:    target.MediaType,
+		DriveLink:    rootLink,
+		DownloadLink: rootLink,
+		Source:       target.Source,
+		Category:     "folder",
+		ExternalURL:  rootLink,
+		Tags:         []string{},
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.upsertPreservingExisting(ctx, target.Repo, rootClip); err != nil {
+		rootSummary.Failed++
+		return rootSummary, err
+	}
+	rootSummary.Synced++
+
+	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.RootFolderID, rootName, target)
+	rootSummary.Requested = requested
+	rootSummary.Synced += synced
+	rootSummary.Failed += failed
+	return rootSummary, err
+}
+
+func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repository, folderID, folderPath string, target Target) (int, int, int, error) {
+	children, err := s.listChildren(ctx, folderID)
+	if err != nil {
+		return 0, 0, 1, err
+	}
+
+	requested := len(children)
+	synced := 0
+	failed := 0
+
+	for _, child := range children {
+		if child == nil {
+			continue
+		}
+
+		childName := strings.TrimSpace(child.Name)
+		if childName == "" {
+			childName = child.Id
+		}
+
+		childPath := path.Join(folderPath, childName)
+		link := strings.TrimSpace(child.WebViewLink)
+		if link == "" {
+			link = strings.TrimSpace(child.WebContentLink)
+		}
+		if link == "" {
+			if child.MimeType == folderMimeType {
+				link = "https://drive.google.com/drive/folders/" + child.Id
+			} else {
+				link = "https://drive.google.com/file/d/" + child.Id
+			}
+		}
+
+		category := "file"
+		if child.MimeType == folderMimeType {
+			category = "folder"
+		}
+
+		record := &models.Clip{
+			ID:           child.Id,
+			Name:         childName,
+			Filename:     childName,
+			FolderID:     folderID,
+			FolderPath:   childPath,
+			Group:        target.Source,
+			MediaType:    target.MediaType,
+			DriveLink:    link,
+			DownloadLink: link,
+			Source:       target.Source,
+			Category:     category,
+			ExternalURL:  link,
+			Tags:         []string{},
+			CreatedAt:    time.Now().UTC(),
+			UpdatedAt:    time.Now().UTC(),
+		}
+
+		if err := s.upsertPreservingExisting(ctx, repo, record); err != nil {
+			failed++
+			continue
+		}
+		synced++
+
+		if child.MimeType == folderMimeType {
+			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.Id, childPath, target)
+			requested += subRequested
+			synced += subSynced
+			failed += subFailed
+			if err != nil {
+				s.log.Warn("recursive sync folder failed",
+					zap.String("folder_id", child.Id),
+					zap.String("path", childPath),
+					zap.Error(err),
+				)
+			}
+		}
+	}
+
+	return requested, synced, failed, nil
+}
+
+func (s *Service) listChildren(ctx context.Context, folderID string) ([]*drive.File, error) {
+	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
+	call := s.driveClient.Files.List().
+		Q(query).
+		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
+		PageSize(1000).
+		Context(ctx)
+
+	var files []*drive.File
+	err := call.Pages(ctx, func(fl *drive.FileList) error {
+		files = append(files, fl.Files...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *models.Clip) error {
+	if repo == nil || clip == nil {
+		return nil
+	}
+
+	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
+		if existing.FileHash != "" {
+			clip.FileHash = existing.FileHash
+		}
+		if existing.LocalPath != "" {
+			clip.LocalPath = existing.LocalPath
+		}
+		if existing.Metadata != "" {
+			clip.Metadata = existing.Metadata
+		}
+		if !existing.CreatedAt.IsZero() {
+			clip.CreatedAt = existing.CreatedAt
+		}
+		clip.Tags = mergeTags(clip.Tags, existing.Tags)
+	}
+
+	return repo.UpsertClip(ctx, clip)
+}
+
+func mergeTags(base, extra []string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(base)+len(extra))
+	add := func(items []string) {
+		for _, item := range items {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			key := strings.ToLower(item)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	add(base)
+	add(extra)
+	return out
+}

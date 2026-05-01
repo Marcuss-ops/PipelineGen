@@ -1,11 +1,11 @@
 package script
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"sort"
 	"strings"
+	"sort"
+	"os"
+	"encoding/json"
 
 	"velox/go-master/internal/matching"
 )
@@ -28,9 +28,7 @@ func collectTopicTerms(topic string) []string {
 			seen[term] = struct{}{}
 		}
 	}
-
 	add(topic)
-
 	terms := make([]string, 0, len(seen))
 	for term := range seen {
 		terms = append(terms, term)
@@ -66,29 +64,17 @@ func sortTopMatches(matches []scoredMatch, limit int) []scoredMatch {
 	return matches
 }
 
-func selectBestMatchLink(matches []scoredMatch) string {
+// renderMatches formatta i match per la visualizzazione nel documento
+func renderMatches(matches []scoredMatch) string {
 	if len(matches) == 0 {
-		return ""
+		return "Nessun asset trovato."
 	}
-
-	cloned := make([]scoredMatch, len(matches))
-	copy(cloned, matches)
-	sort.SliceStable(cloned, func(i, j int) bool {
-		if cloned[i].Score == cloned[j].Score {
-			return strings.ToLower(cloned[i].Title) < strings.ToLower(cloned[j].Title)
-		}
-		return cloned[i].Score > cloned[j].Score
+	
+	// Sort by score
+	sort.SliceStable(matches, func(i, j int) bool {
+		return matches[i].Score > matches[j].Score
 	})
 
-	for _, match := range cloned {
-		if strings.TrimSpace(match.Link) != "" {
-			return strings.TrimSpace(match.Link)
-		}
-	}
-	return ""
-}
-
-func renderMatches(matches []scoredMatch) string {
 	var b strings.Builder
 	for i, match := range matches {
 		if i > 0 {
@@ -101,20 +87,19 @@ func renderMatches(matches []scoredMatch) string {
 		b.WriteString("- ")
 		b.WriteString(headline)
 		b.WriteString("\n")
-		if strings.TrimSpace(match.Path) != "" && strings.TrimSpace(match.Title) != strings.TrimSpace(match.Path) {
-			b.WriteString("  Name: ")
-			b.WriteString(match.Title)
-			b.WriteString("\n")
-		}
+		
 		b.WriteString("  Source: ")
 		b.WriteString(match.Source)
 		b.WriteString("\n")
+		
 		b.WriteString(fmt.Sprintf("  Score: %d\n", match.Score))
+		
 		if strings.TrimSpace(match.Link) != "" {
 			b.WriteString("  Link: ")
 			b.WriteString(match.Link)
 			b.WriteString("\n")
 		}
+		
 		if strings.TrimSpace(match.Details) != "" {
 			b.WriteString("  Details: ")
 			b.WriteString(match.Details)
@@ -122,4 +107,21 @@ func renderMatches(matches []scoredMatch) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func selectBestMatchLink(matches []scoredMatch) string {
+	if len(matches) == 0 {
+		return ""
+	}
+
+	bestScore := -1
+	bestLink := ""
+
+	for _, m := range matches {
+		if m.Score > bestScore && m.Link != "" {
+			bestScore = m.Score
+			bestLink = m.Link
+		}
+	}
+	return bestLink
 }

@@ -17,6 +17,12 @@ import (
 )
 
 func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
+	startedAt := time.Now()
+	zap.L().Info("script-docs generate started",
+		zap.String("topic", c.GetString("topic")),
+		zap.Bool("preview", forcePreview),
+	)
+
 	if h.generator == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "script generator not initialized"})
 		return
@@ -29,17 +35,32 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	}
 
 	req.Normalize()
+	zap.L().Info("script-docs request normalized",
+		zap.String("topic", req.Topic),
+		zap.Int("duration", req.Duration),
+		zap.String("language", req.Language),
+		zap.String("template", req.Template),
+	)
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
 	defer cancel()
 
-	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.artlistService, h.imgService)
-
+	generateStarted := time.Now()
+	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.clipsOnlyRepo, h.artlistService, h.imgService)
 	if err != nil {
-		zap.L().Error("script document generation failed", zap.Error(err))
+		zap.L().Error("script document generation failed",
+			zap.Error(err),
+			zap.Duration("elapsed", time.Since(generateStarted)),
+			zap.String("topic", req.Topic),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
+	zap.L().Info("script document generated",
+		zap.Duration("elapsed", time.Since(generateStarted)),
+		zap.Int("timeline_segments", len(document.Timeline.Segments)),
+		zap.String("topic", req.Topic),
+	)
 
 	var docID, docURL string
 	if h.docClient == nil {
@@ -51,12 +72,27 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		return
 	}
 
+	docStarted := time.Now()
+	zap.L().Info("google doc creation started",
+		zap.String("title", document.Title),
+		zap.String("folder_id", h.stockRootFolder),
+	)
 	doc, err := h.docClient.CreateDoc(ctx, document.Title, document.Content, h.stockRootFolder)
 	if err != nil {
-		zap.L().Error("doc creation failed during generation", zap.Error(err))
+		zap.L().Error("doc creation failed during generation",
+			zap.Error(err),
+			zap.Duration("elapsed", time.Since(docStarted)),
+			zap.Duration("total_elapsed", time.Since(startedAt)),
+			zap.String("title", document.Title),
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": fmt.Sprintf("failed to create Google Doc: %v", err)})
 		return
 	}
+	zap.L().Info("google doc created",
+		zap.Duration("elapsed", time.Since(docStarted)),
+		zap.Duration("total_elapsed", time.Since(startedAt)),
+		zap.String("doc_id", doc.ID),
+	)
 	docID = doc.ID
 	docURL = doc.URL
 
@@ -68,11 +104,13 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	// Generate voiceover if requested
 	var voResult interface{}
 	if req.Voiceover && h.voService != nil {
+		voiceoverStarted := time.Now()
 		filename := strings.ReplaceAll(req.Topic, " ", "_") + ".mp3"
 		res, err := h.voService.Generate(ctx, narrativeOnly(document.Content), req.Language, filename)
 		if err != nil {
-			zap.L().Warn("voiceover generation failed", zap.Error(err))
+			zap.L().Warn("voiceover generation failed", zap.Error(err), zap.Duration("elapsed", time.Since(voiceoverStarted)))
 		} else {
+			zap.L().Info("voiceover generation completed", zap.Duration("elapsed", time.Since(voiceoverStarted)))
 			voResult = res
 		}
 	}
@@ -108,6 +146,12 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		"timeline":     document.Timeline,
 		"voiceover":    voResult,
 	})
+
+	zap.L().Info("script-docs generate completed",
+		zap.Duration("total_elapsed", time.Since(startedAt)),
+		zap.String("topic", req.Topic),
+		zap.String("doc_id", docID),
+	)
 }
 
 func narrativeOnly(content string) string {

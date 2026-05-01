@@ -32,7 +32,7 @@ func main() {
 	defer artlistDB.Close()
 
 	// 2. Open Main DB and run migrations
-	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "velox.db.sqlite", logger)
+	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", logger)
 	if err != nil {
 		log.Fatalf("Failed to open main db: %v", err)
 	}

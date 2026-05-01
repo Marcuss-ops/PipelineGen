@@ -8,21 +8,25 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/catalogsync"
 )
 
 type Handler struct {
 	service        *artlist.Service
+	catalogSync    *catalogsync.Service
 	nodeScraperDir string
 	log            *zap.Logger
 }
 
 func NewHandler(
 	service *artlist.Service,
+	catalogSync *catalogsync.Service,
 	nodeScraperDir string,
 	log *zap.Logger,
 ) *Handler {
 	return &Handler{
 		service:        service,
+		catalogSync:    catalogSync,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
 	}
@@ -41,6 +45,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 		internal.GET("/stats", h.Stats)
 		internal.POST("/search", h.Search)
 		internal.POST("/sync-drive-folder", h.SyncDriveFolder)
+		internal.POST("/sync-catalogs", h.SyncCatalogs)
 		internal.POST("/import-scraper-db", h.ImportScraperDB)
 		internal.GET("/test", func(c *gin.Context) {
 			c.JSON(200, gin.H{"ok": true, "message": "test endpoint works"})

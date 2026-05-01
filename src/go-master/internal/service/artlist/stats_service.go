@@ -66,7 +66,7 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 		MainDBReady:    s.mainDB != nil,
 	}
 
-	if s.mainDB != nil {
+	if s.clipsRepo != nil {
 		if total, err := s.clipsRepo.CountClips(ctx); err == nil {
 			resp.ClipsTotal = total
 		}
@@ -127,21 +127,9 @@ func (s *Service) StaleTerms(ctx context.Context) ([]TermInfo, error) {
 }
 
 func (s *Service) lastProcessedAtForTerm(ctx context.Context, term string) (*string, error) {
-	if s.mainDB == nil {
+	if s.clipsRepo == nil {
 		return nil, nil
 	}
 
-	var lastProcessed sql.NullString
-	row := s.mainDB.QueryRowContext(ctx, `
-		SELECT MAX(updated_at)
-		FROM clips
-		WHERE source = 'artlist' AND tags LIKE ?
-	`, "%"+strings.TrimSpace(term)+"%")
-	if err := row.Scan(&lastProcessed); err != nil {
-		return nil, err
-	}
-	if !lastProcessed.Valid || strings.TrimSpace(lastProcessed.String) == "" {
-		return nil, nil
-	}
-	return &lastProcessed.String, nil
+	return s.clipsRepo.LastUpdatedAtForTerm(ctx, term)
 }

@@ -55,6 +55,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voSe
 func (h *ScriptDocsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 	r.POST("/preview", h.GeneratePreview)
+	r.POST("/association-candidates", h.AssociationCandidates)
 	r.GET("/modes", h.Modes)
 }
 

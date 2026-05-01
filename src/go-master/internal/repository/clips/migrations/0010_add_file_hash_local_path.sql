@@ -1,0 +1,2 @@
+ALTER TABLE clips ADD COLUMN file_hash TEXT DEFAULT '';
+ALTER TABLE clips ADD COLUMN local_path TEXT DEFAULT '';

@@ -22,25 +22,16 @@ func Normalize(text string) string {
 	return strings.TrimSpace(t)
 }
 
-// IsStopWord checks if a term is a common stop word
+// IsStopWord intentionally returns false here so matching logic can stay free
+// of hardcoded stop-word lists. Callers still keep their existing guard rails
+// around token length and structural noise.
 func IsStopWord(term string) bool {
-	switch term {
-	case "the", "and", "for", "with", "that", "this", "from", "then", "into", "over",
-		"una", "uno", "del", "della", "delle", "degli", "nel", "nella", "nei",
-		"per", "con", "tra", "gli", "le", "dei", "dai", "dalle", "dagli", "sul", "sulla", "sugli":
-		return true
-	}
+	_ = term
 	return false
 }
 
-// TokenizeWithStopWords removes stop words from tokenization
+// TokenizeWithStopWords currently reuses the shared tokenizer without
+// introducing any hardcoded stop-word policy in this layer.
 func TokenizeWithStopWords(text string) []string {
-	tokens := Tokenize(text)
-	result := make([]string, 0, len(tokens))
-	for _, tok := range tokens {
-		if len(tok) >= 3 && !IsStopWord(tok) {
-			result = append(result, tok)
-		}
-	}
-	return result
+	return Tokenize(text)
 }

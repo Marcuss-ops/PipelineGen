@@ -8,11 +8,12 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 )
 
-func chooseTimelinePlanWithLLM(ctx context.Context, gen *ollama.Generator, duration int, sourceText, narrative string) (*timelineLLMPlan, error) {
+func chooseTimelinePlanWithLLM(ctx context.Context, gen *ollama.Generator, topic string, duration int, sourceText, narrative string) (*timelineLLMPlan, error) {
 	if gen == nil || gen.GetClient() == nil {
 		return nil, fmt.Errorf("ollama client not initialized")
 	}
@@ -31,6 +32,10 @@ func chooseTimelinePlanWithLLM(ctx context.Context, gen *ollama.Generator, durat
 Split the script into the most natural topical segments.
 
 Rules:
+- The overall topic is: %s
+- Every segment subject must stay close to the topic and its immediate subtopic.
+- Never output file names, path fragments, or unrelated people/places.
+- Keep each subject short and human-readable, ideally 2 to 6 words.
 - Divide by argument or topic shifts, not by a fixed number of segments.
 - Create as many segments as the narrative needs.
 - Keep segments in the same order as the script.
@@ -65,7 +70,7 @@ SCRIPT:
 SOURCE MATERIAL:
 %s
 
-JSON:`, duration, duration, truncateString(narrative, 6000), truncateString(sourceText, 6000))
+JSON:`, truncateString(topic, 200), duration, duration, truncateString(narrative, 6000), truncateString(sourceText, 6000))
 
 	raw, err := client.GenerateWithOptions(ctx, model, prompt, map[string]interface{}{
 		"temperature": 0.0,
@@ -89,10 +94,170 @@ JSON:`, duration, duration, truncateString(narrative, 6000), truncateString(sour
 	}
 
 	if normalized := normalizeTimelineLLMPlan(&plan, duration); normalized != nil {
+		sanitizeTimelineLLMPlan(normalized, topic)
 		return normalized, nil
 	}
 
 	return nil, fmt.Errorf("timeline planning returned unusable segments")
+}
+
+func sanitizeTimelineLLMPlan(plan *timelineLLMPlan, topic string) {
+	if plan == nil {
+		return
+	}
+	topicTokens := topicTokens(topic)
+	for i := range plan.Segments {
+		seg := &plan.Segments[i]
+		if shouldReplaceLLMSubject(seg.Subject) || !subjectMatchesTopic(seg.Subject, topicTokens) {
+			seg.Subject = deriveFallbackSubject(seg, topic, topicTokens)
+		}
+		if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
+			seg.Subject = entitySubject
+		}
+		if seg.Subject == "" {
+			seg.Subject = topic
+		}
+	}
+	if strings.TrimSpace(plan.PrimaryFocus) == "" || !subjectMatchesTopic(plan.PrimaryFocus, topicTokens) {
+		plan.PrimaryFocus = topic
+	}
+}
+
+func shouldReplaceLLMSubject(subject string) bool {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return true
+	}
+	lower := strings.ToLower(subject)
+	if strings.Contains(lower, ".mp4") || strings.Contains(lower, ".mov") || strings.Contains(lower, ".m3u8") {
+		return true
+	}
+	if strings.Contains(lower, "/") || strings.Contains(lower, "\\") || strings.Contains(lower, "|") {
+		return true
+	}
+	if len(strings.Fields(subject)) > 8 {
+		return true
+	}
+	return false
+}
+
+func subjectMatchesTopic(subject string, topicTokens []string) bool {
+	if len(topicTokens) == 0 {
+		return true
+	}
+	subjectTokens := topicTokensFromText(subject)
+	if len(subjectTokens) == 0 {
+		return false
+	}
+	matches := 0
+	for _, tok := range subjectTokens {
+		for _, tt := range topicTokens {
+			if strings.EqualFold(tok, tt) {
+				matches++
+				break
+			}
+		}
+	}
+	return matches > 0
+}
+
+func deriveFallbackSubject(seg *timelineLLMSegment, topic string, topicTokens []string) string {
+	if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
+		return entitySubject
+	}
+	candidates := []string{
+		seg.Subject,
+		seg.OpeningSentence,
+		seg.ClosingSentence,
+	}
+	for _, candidate := range candidates {
+		if s := conciseSubject(candidate); s != "" {
+			return s
+		}
+	}
+	return topic
+}
+
+func preferredEntitySubject(seg *timelineLLMSegment, topicTokens []string) string {
+	if seg == nil {
+		return ""
+	}
+	candidates := uniqueStrings(append([]string{}, seg.Entities...))
+	candidates = append(candidates, seg.Subject)
+
+	best := ""
+	bestScore := 0
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		score := 0
+		if subjectMatchesTopic(candidate, topicTokens) {
+			score += 50
+		}
+		if looksLikePersonName(candidate) {
+			score += 20
+		}
+		words := strings.Fields(candidate)
+		if len(words) >= 2 && len(words) <= 4 {
+			score += 15
+		}
+		if score > bestScore {
+			bestScore = score
+			best = candidate
+		}
+	}
+	if bestScore < 50 {
+		return ""
+	}
+	return best
+}
+
+func looksLikePersonName(text string) bool {
+	parts := strings.Fields(strings.TrimSpace(text))
+	if len(parts) == 0 || len(parts) > 5 {
+		return false
+	}
+	score := 0
+	for _, part := range parts {
+		if len(part) == 0 {
+			continue
+		}
+		first := []rune(part)[0]
+		if first >= 'A' && first <= 'Z' {
+			score++
+		}
+	}
+	return score >= 1 && len(parts) <= 4
+}
+
+func conciseSubject(text string) string {
+	tokens := topicTokensFromText(text)
+	if len(tokens) == 0 {
+		return ""
+	}
+	if len(tokens) > 5 {
+		tokens = tokens[:5]
+	}
+	return strings.Join(tokens, " ")
+}
+
+func topicTokens(topic string) []string {
+	return topicTokensFromText(topic)
+}
+
+func topicTokensFromText(text string) []string {
+	tokens := matching.Tokenize(text)
+	out := make([]string, 0, len(tokens))
+	for _, tok := range tokens {
+		tok = strings.TrimSpace(tok)
+		if tok == "" {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
 }
 
 func normalizeTimelineLLMPlan(plan *timelineLLMPlan, duration int) *timelineLLMPlan {
@@ -174,5 +339,3 @@ func normalizeTimelineLLMPlan(plan *timelineLLMPlan, duration int) *timelineLLMP
 	}
 	return plan
 }
-
-
