@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"velox/go-master/internal/matching"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -134,7 +135,7 @@ func buildStockFolderMatchIndexFromCatalog(folders []stockClipRef) stockFolderMa
 
 	totalLen := 0
 	for _, folder := range folders {
-		normKey := normalizeMatchText(strings.Join([]string{
+		normKey := matching.Normalize(strings.Join([]string{
 			folder.StockPath(),
 			folder.TopicSlug,
 			folder.Group,
@@ -142,7 +143,7 @@ func buildStockFolderMatchIndexFromCatalog(folders []stockClipRef) stockFolderMa
 			folder.FolderID,
 			folder.DriveLink,
 		}, " "))
-		tokens := uniqueStrings(matchTokens(normKey))
+		tokens := uniqueStrings(matching.Tokenize(normKey))
 		counts := make(map[string]int, len(tokens))
 		for _, token := range tokens {
 			counts[token]++

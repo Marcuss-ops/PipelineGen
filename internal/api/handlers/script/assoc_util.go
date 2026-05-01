@@ -9,60 +9,25 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/matching"
 	"velox/go-master/pkg/models"
-)
+	)
 
-// normalizeMatchText pulisce e normalizza il testo per il matching
-func normalizeMatchText(text string) string {
-	text = strings.ToLower(strings.TrimSpace(text))
-	text = strings.ReplaceAll(text, "_", " ")
-	text = strings.ReplaceAll(text, "-", " ")
-	return text
-}
-
-// matchTokens divide il testo in token significativi
-func matchTokens(text string) []string {
-	text = normalizeMatchText(text)
-	words := strings.FieldsFunc(text, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
-	})
-	return words
-}
-
-// calcola lo score di similarità tra due insiemi di token
-func calculateTokenScore(queryTokens, targetTokens []string) int {
-	if len(queryTokens) == 0 || len(targetTokens) == 0 {
-		return 0
+	// normalizeMatchText pulisce e normalizza il testo per il matching
+	func normalizeMatchText(text string) string {
+	return matching.Normalize(text)
 	}
 
-	matches := 0
-	targetMap := make(map[string]bool)
-	for _, t := range targetTokens {
-		targetMap[t] = true
+	// matchTokens divide il testo in token significativi
+	func matchTokens(text string) []string {
+	return matching.Tokenize(text)
 	}
 
-	for _, q := range queryTokens {
-		if targetMap[q] {
-			matches++
-		}
+	// calcola lo score di similarità tra due insiemi di token
+	func calculateTokenScore(queryTokens, targetTokens []string) int {
+	return matching.CalculateTokenScore(queryTokens, targetTokens)
 	}
 
-	if matches == 0 {
-		return 0
-	}
-
-	score := (matches * 100) / len(queryTokens)
-	queryJoined := strings.Join(queryTokens, " ")
-	targetJoined := strings.Join(targetTokens, " ")
-	if strings.Contains(queryJoined, targetJoined) {
-		score += 30
-	}
-
-	if score > 100 {
-		score = 100
-	}
-	return score
-}
 
 // extractDynamicKeywords chiede all'LLM di generare esattamente 2 keyword di ricerca efficaci
 func extractDynamicKeywords(ctx context.Context, gen *ollama.Generator, subject, narrative string) []string {

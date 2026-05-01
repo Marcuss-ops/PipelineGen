@@ -379,28 +379,7 @@ func (s *Service) processVideo(input, output string) error {
 		ffmpeg = "ffmpeg"
 	}
 
-	video := s.cfg.Video
-	if video.Width <= 0 {
-		video.Width = 1920
-	}
-	if video.Height <= 0 {
-		video.Height = 1080
-	}
-	if video.FPS <= 0 {
-		video.FPS = 30
-	}
-	if video.Duration <= 0 {
-		video.Duration = 7
-	}
-	if video.Codec == "" {
-		video.Codec = "libx264"
-	}
-	if video.Preset == "" {
-		video.Preset = "fast"
-	}
-	if video.CRF <= 0 {
-		video.CRF = 23
-	}
+	video := s.cfg.Video.WithDefaults()
 
 	args := []string{
 		"-y",
