@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
@@ -16,6 +19,9 @@ import (
 // @description The central API for video content generation and management.
 // @BasePath /api
 func main() {
+	// Ignore SIGHUP to prevent shutdown when parent shell exits
+	signal.Ignore(syscall.SIGHUP)
+
 	cfg := config.Get()
 	if err := cfg.Validate(); err != nil {
 		fmt.Printf("Invalid configuration: %v\n", err)
@@ -26,8 +32,15 @@ func main() {
 	log := logger.Get()
 	defer logger.Sync()
 
+	buildVersion := "1.1.0"
+	commitHash := "unknown"
+	if data, err := os.ReadFile("VERSION.txt"); err == nil {
+		commitHash = strings.TrimSpace(string(data))
+	}
+
 	log.Info("Starting VeloxEditing Go Master",
-		zap.String("version", "1.0.0"),
+		zap.String("version", buildVersion),
+		zap.String("commit", commitHash),
 		zap.Int("port", cfg.Server.Port),
 		zap.String("data_dir", cfg.Storage.DataDir),
 	)
