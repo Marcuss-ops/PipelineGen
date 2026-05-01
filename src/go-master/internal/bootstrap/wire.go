@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"path/filepath"
 
-	"go.uber.org/zap"
 	"velox/go-master/internal/api"
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
@@ -14,6 +13,8 @@ import (
 	"velox/go-master/internal/service/artlist"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
+
+	"go.uber.org/zap"
 )
 
 // AppDeps holds the minimal initialized dependencies for the server.

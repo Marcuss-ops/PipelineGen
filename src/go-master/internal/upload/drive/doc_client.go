@@ -3,12 +3,9 @@ package drive
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
-	"golang.org/x/oauth2"
-	googleoauth "golang.org/x/oauth2/google"
 	"google.golang.org/api/docs/v1"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
@@ -127,7 +124,7 @@ func NewDocClient(ctx context.Context, credentialsPath, tokenPath string) (DocCl
 		return nil, fmt.Errorf("google token file not found: %w", err)
 	}
 
-	httpClient, err := newGoogleHTTPClient(ctx, credentialsPath, tokenPath)
+	httpClient, err := NewGoogleHTTPClient(ctx, credentialsPath, tokenPath, docs.DocumentsScope, drive.DriveScope)
 	if err != nil {
 		return nil, err
 	}
@@ -148,28 +145,4 @@ func NewDocClient(ctx context.Context, credentialsPath, tokenPath string) (DocCl
 		docsService:     docsService,
 		driveService:    driveService,
 	}, nil
-}
-
-func newGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string) (*http.Client, error) {
-	credentials, err := os.ReadFile(credentialsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read google credentials: %w", err)
-	}
-
-	cfg, err := googleoauth.ConfigFromJSON(credentials, docs.DocumentsScope, drive.DriveScope)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse google credentials: %w", err)
-	}
-
-	token, err := loadToken(tokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load google token: %w", err)
-	}
-
-	client := oauth2.NewClient(ctx, cfg.TokenSource(ctx, token))
-	if client == nil {
-		return nil, fmt.Errorf("failed to create google oauth client")
-	}
-
-	return client, nil
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"velox/go-master/pkg/textutil"
 )
 
 func readJSON(path string, dst any) error {
@@ -15,25 +14,6 @@ func readJSON(path string, dst any) error {
 		return err
 	}
 	return json.Unmarshal(data, dst)
-}
-
-func collectTopicTerms(topic string) []string {
-	seen := make(map[string]struct{})
-	add := func(text string) {
-		for _, term := range textutil.Tokenize(text) {
-			if len(term) < 3 || textutil.IsStopWord(term) {
-				continue
-			}
-			seen[term] = struct{}{}
-		}
-	}
-	add(topic)
-	terms := make([]string, 0, len(seen))
-	for term := range seen {
-		terms = append(terms, term)
-	}
-	sort.Strings(terms)
-	return terms
 }
 
 func sortTopMatches(matches []scoredMatch, limit int) []scoredMatch {
