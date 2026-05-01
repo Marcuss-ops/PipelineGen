@@ -69,22 +69,16 @@ func RenderTimeline(plan *TimelinePlan) string {
 
 		// Priority 4: Dynamic Artlist Association (Suggerimenti LLM)
 		if !assetRendered && len(seg.SearchSuggestions) > 0 {
-			if strings.TrimSpace(seg.Timestamp) != "" {
-				b.WriteString("\n   [")
-				b.WriteString(seg.Timestamp)
-				b.WriteString("]\n")
-			}
 			b.WriteString("\n   🔍 Dynamic Artlist Association:\n")
 			for _, kw := range seg.SearchSuggestions {
 				b.WriteString(fmt.Sprintf("      - \"%s\"\n", kw))
+				searchURL := "https://artlist.io/stock-video/s/" + strings.ReplaceAll(strings.ToLower(kw), " ", "-")
+				b.WriteString("        Link: ")
+				b.WriteString(searchURL)
+				b.WriteString("\n")
 				b.WriteString("        -> Search suggestion (Pending download)\n")
 			}
 		} else if !assetRendered {
-			if strings.TrimSpace(seg.Timestamp) != "" {
-				b.WriteString("\n   [")
-				b.WriteString(seg.Timestamp)
-				b.WriteString("]\n")
-			}
 			b.WriteString("\n   ⚠️ No Association Found\n")
 		}
 
@@ -212,11 +206,6 @@ func renderOnlyPhrases(seg TimelineSegment, budget int) (string, int) {
 	}
 
 	var b strings.Builder
-	if strings.TrimSpace(seg.Timestamp) != "" {
-		b.WriteString("\n   [")
-		b.WriteString(seg.Timestamp)
-		b.WriteString("]\n")
-	}
 	b.WriteString("\n   🎵 ARTLIST PHRASES:\n")
 	for _, phrase := range scored {
 		b.WriteString("      - \"")
