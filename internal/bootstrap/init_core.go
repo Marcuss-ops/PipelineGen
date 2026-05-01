@@ -2,17 +2,13 @@ package bootstrap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 	gdrive "google.golang.org/api/drive/v3"
-	"google.golang.org/api/option"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/cron"
 	"velox/go-master/internal/ml/ollama"

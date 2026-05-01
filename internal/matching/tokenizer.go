@@ -1,37 +1,27 @@
 package matching
 
-import (
-	"strings"
-	"unicode"
-)
+import "velox/go-master/pkg/textutil"
 
-// Tokenize splits text into tokens using unicode-aware word boundaries
+// Tokenize splits text into tokens using unicode-aware word boundaries.
+// Delegated to pkg/textutil.
 func Tokenize(text string) []string {
-	text = strings.ToLower(text)
-	return strings.FieldsFunc(text, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
+	return textutil.Tokenize(text)
 }
 
-// Normalize cleans and normalizes text for matching
+// Normalize cleans and normalizes text for matching.
+// Delegated to pkg/textutil.
 func Normalize(text string) string {
-	t := strings.ToLower(text)
-	t = strings.ReplaceAll(t, "_", " ")
-	t = strings.ReplaceAll(t, "-", " ")
-	t = strings.ReplaceAll(t, ".", " ")
-	return strings.TrimSpace(t)
+	return textutil.Normalize(text)
 }
 
-// IsStopWord intentionally returns false here so matching logic can stay free
-// of hardcoded stop-word lists. Callers still keep their existing guard rails
-// around token length and structural noise.
+// IsStopWord checks if a term is a common stop word.
+// Delegated to pkg/textutil.
 func IsStopWord(term string) bool {
-	_ = term
-	return false
+	return textutil.IsStopWord(term)
 }
 
-// TokenizeWithStopWords currently reuses the shared tokenizer without
-// introducing any hardcoded stop-word policy in this layer.
+// TokenizeWithStopWords removes stop words from tokenization.
+// Delegated to pkg/textutil.
 func TokenizeWithStopWords(text string) []string {
-	return Tokenize(text)
+	return textutil.TokenizeWithStopWords(text)
 }

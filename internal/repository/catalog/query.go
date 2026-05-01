@@ -3,7 +3,6 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 

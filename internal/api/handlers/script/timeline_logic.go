@@ -2,12 +2,9 @@ package script
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"go.uber.org/zap"
-	"path/filepath"
 	"strings"
 	"time"
 	"velox/go-master/internal/ml/ollama"

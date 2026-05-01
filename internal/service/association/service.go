@@ -7,7 +7,6 @@ import (
 
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/sliceutil"
 )
 
 type Service struct {
@@ -33,7 +32,7 @@ func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*
 
 	// 1. Direct match logic (simplified for now, ideally moved to a provider)
 	
-	terms := s.collectTerms(req)
+	_ = s.collectTerms(req)
 	rawCandidates := make([]Candidate, 0)
 
 	// Here we would call the different providers.

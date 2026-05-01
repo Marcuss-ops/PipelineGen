@@ -37,20 +37,6 @@ func collectTopicTerms(topic string) []string {
 	return terms
 }
 
-func scoreText(candidate string, terms []string) int {
-	candidate = strings.ToLower(candidate)
-	score := 0
-	for _, term := range terms {
-		if term == "" {
-			continue
-		}
-		if strings.Contains(candidate, term) {
-			score++
-		}
-	}
-	return score
-}
-
 func sortTopMatches(matches []scoredMatch, limit int) []scoredMatch {
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Score == matches[j].Score {

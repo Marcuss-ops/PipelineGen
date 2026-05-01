@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"path/filepath"
-	"strings"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
@@ -13,6 +12,7 @@ import (
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	"velox/go-master/internal/service/artlist"
+	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 )
 
