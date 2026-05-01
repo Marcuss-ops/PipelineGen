@@ -18,6 +18,7 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/harvester"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/scripts"
@@ -54,6 +55,7 @@ type CoreDeps struct {
 	CatalogSyncJob       *cron.CatalogSyncJob
 	ChannelMonitor       *monitor.ChannelMonitor
 	StockScheduler       *scheduler.StockScheduler
+	CatalogRepo          *catalog.Repository
 }
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
@@ -77,7 +79,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 
 	// Initialize Google Drive client for Artlist service using the same OAuth files
-	driveClient, err := newGoogleDriveService(context.Background(), cfg.GetCredentialsPath(), cfg.GetTokenPath())
+	driveClient, err := drive.NewDriveServiceFromFiles(context.Background(), cfg)
 	if err != nil {
 		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
@@ -252,6 +254,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 
 	indexingService := indexing.NewService(clipsRepo, log)
+	catalogRepo := catalog.NewRepository(cfg.Storage.DataDir)
 
 	// Initialize and start DB maintenance cron
 	maintenanceInterval := 24 * time.Hour
@@ -364,42 +367,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		CatalogSyncJob:       catalogSyncJob,
 		ChannelMonitor:       channelMon,
 		StockScheduler:       stockSched,
+		CatalogRepo:          catalogRepo,
 	}, cleanup, nil
-}
-
-func newGoogleDriveService(ctx context.Context, credentialsPath, tokenPath string) (*gdrive.Service, error) {
-	if credentialsPath == "" || tokenPath == "" {
-		return nil, fmt.Errorf("google drive credentials/token paths are required")
-	}
-	if _, err := os.Stat(credentialsPath); err != nil {
-		return nil, fmt.Errorf("google credentials file not found: %w", err)
-	}
-	if _, err := os.Stat(tokenPath); err != nil {
-		return nil, fmt.Errorf("google token file not found: %w", err)
-	}
-
-	credentials, err := os.ReadFile(credentialsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read google credentials: %w", err)
-	}
-	cfg, err := google.ConfigFromJSON(credentials, gdrive.DriveScope)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse google credentials: %w", err)
-	}
-
-	tokenData, err := os.ReadFile(tokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read google token: %w", err)
-	}
-	var token oauth2.Token
-	if err := json.Unmarshal(tokenData, &token); err != nil {
-		return nil, fmt.Errorf("failed to parse google token: %w", err)
-	}
-
-	httpClient := oauth2.NewClient(ctx, cfg.TokenSource(ctx, &token))
-	if httpClient == nil {
-		return nil, fmt.Errorf("failed to create google oauth client")
-	}
-
-	return gdrive.NewService(ctx, option.WithHTTPClient(httpClient))
 }

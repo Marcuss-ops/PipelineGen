@@ -16,6 +16,11 @@ import (
 // @BasePath /api
 func main() {
 	cfg := config.Get()
+	if err := cfg.Validate(); err != nil {
+		fmt.Printf("Invalid configuration: %v\n", err)
+		os.Exit(1)
+	}
+
 	logger.Init(cfg.GetLogLevel(), cfg.GetLogFormat())
 	log := logger.Get()
 	defer logger.Sync()

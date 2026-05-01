@@ -36,7 +36,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 
 	// Create Artlist service
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
-	driveFolderID := resolveArtlistRootFolderID(cfg)
+	driveFolderID := drive.ResolveArtlistRootFolderID(cfg)
 	artlistService, err := artlist.NewService(
 		cfg,
 		coreDeps.DB.DB,
@@ -87,7 +87,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		ScriptDocs:  scriptDocsHandler,
 		Voiceover:   voiceover.NewHandler(coreDeps.VoiceoverService),
 		Utility:     coreDeps.Utility,
-		Catalog:     common.NewCatalogHandler(cfg.Storage.DataDir),
+		Catalog:     common.NewCatalogHandler(coreDeps.CatalogRepo),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
@@ -110,20 +110,4 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 // WireMinimal is kept for compatibility with local tools.
 func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 	return WireScriptDocs(cfg, log)
-}
-
-func resolveArtlistRootFolderID(cfg *config.Config) string {
-	if cfg == nil {
-		return ""
-	}
-	if folderID := strings.TrimSpace(cfg.Harvester.DriveFolderID); folderID != "" {
-		return folderID
-	}
-	if folderID := strings.TrimSpace(cfg.Drive.ClipsRootFolder); folderID != "" {
-		return folderID
-	}
-	if folderID := strings.TrimSpace(cfg.Drive.StockRootFolder); folderID != "" {
-		return folderID
-	}
-	return ""
 }

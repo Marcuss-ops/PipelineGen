@@ -16,6 +16,7 @@ import (
 	"google.golang.org/api/option"
 	"velox/go-master/internal/repository/clips"
 	artlistservice "velox/go-master/internal/service/artlist"
+	artdrive "velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/config"
 )
@@ -34,7 +35,7 @@ func main() {
 	ctx := context.Background()
 
 	// 1. Initialize Drive Client
-	driveSvc, err := initDriveService(ctx, cfg)
+	driveSvc, err := artdrive.NewDriveServiceFromFiles(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to init Drive service: %v", err)
 	}
@@ -53,7 +54,7 @@ func main() {
 		cfg.Paths.NodeScraperDir,
 		repo,
 		driveSvc,
-		resolveDriveFolderID(cfg),
+		artdrive.ResolveArtlistRootFolderID(cfg),
 		logger,
 	)
 	if err != nil {
@@ -71,42 +72,4 @@ func main() {
 
 	fmt.Printf("🏁 Completed: term=%s processed=%d found=%d skipped=%d failed=%d folder=%s root=%s\n",
 		resp.Term, resp.Processed, resp.Found, resp.Skipped, resp.Failed, resp.TagFolderID, resp.RootFolderID)
-}
-
-func resolveDriveFolderID(cfg *config.Config) string {
-	if cfg == nil {
-		return ""
-	}
-	folderID := strings.TrimSpace(cfg.Harvester.DriveFolderID)
-	if folderID == "" {
-		folderID = strings.TrimSpace(cfg.Drive.ClipsRootFolder)
-	}
-	if folderID == "" {
-		folderID = strings.TrimSpace(cfg.Drive.StockRootFolder)
-	}
-	return folderID
-}
-
-func initDriveService(ctx context.Context, cfg *config.Config) (*drive.Service, error) {
-	credsData, err := ioutil.ReadFile(cfg.Paths.CredentialsFile)
-	if err != nil {
-		return nil, err
-	}
-	tokenData, err := ioutil.ReadFile(cfg.Paths.TokenFile)
-	if err != nil {
-		return nil, err
-	}
-
-	var token oauth2.Token
-	if err := json.Unmarshal(tokenData, &token); err != nil {
-		return nil, err
-	}
-
-	oauthCfg, err := google.ConfigFromJSON(credsData, drive.DriveScope)
-	if err != nil {
-		return nil, err
-	}
-
-	ts := oauthCfg.TokenSource(ctx, &token)
-	return drive.NewService(ctx, option.WithTokenSource(ts))
 }

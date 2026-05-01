@@ -31,6 +31,32 @@ type VideoConfig struct {
 	Duration int    `yaml:"duration" default:"7"`
 }
 
+// WithDefaults returns a copy of VideoConfig with zero-values replaced by defaults.
+func (v VideoConfig) WithDefaults() VideoConfig {
+	if v.Width <= 0 {
+		v.Width = 1920
+	}
+	if v.Height <= 0 {
+		v.Height = 1080
+	}
+	if v.FPS <= 0 {
+		v.FPS = 30
+	}
+	if v.Duration <= 0 {
+		v.Duration = 7
+	}
+	if v.Codec == "" {
+		v.Codec = "libx264"
+	}
+	if v.Preset == "" {
+		v.Preset = "fast"
+	}
+	if v.CRF <= 0 {
+		v.CRF = 23
+	}
+	return v
+}
+
 // HarvesterConfig holds settings for the content harvester.
 type HarvesterConfig struct {
 	Enabled                bool     `yaml:"enabled" default:"true"`
