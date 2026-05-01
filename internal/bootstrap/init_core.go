@@ -83,7 +83,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 
 	// Initialize voiceover service
-	voDir := filepath.Join(cfg.Storage.DataDir, "voiceovers")
+	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
 	if err := os.MkdirAll(voDir, 0755); err != nil {
 		log.Warn("Failed to create voiceovers directory", zap.Error(err))
 	}
@@ -182,7 +182,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	imageRepo := images.NewRepository(imagesDB.DB)
 
 	// Initialize images service
-	imgAssetsDir := filepath.Join(cfg.Storage.DataDir, "assets", "subjects")
+	imgAssetsDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.AssetsDir)
 	if err := os.MkdirAll(imgAssetsDir, 0755); err != nil {
 		log.Warn("Failed to create image assets directory", zap.Error(err))
 	}
@@ -271,7 +271,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 			backupInterval = parsed
 		}
 	}
-	backupDir := filepath.Join(cfg.Storage.DataDir, "backups")
+	backupDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.BackupsDir)
 	dbBackupJob := cron.NewDBBackupJob(mainDB, log, backupDir)
 	go dbBackupJob.StartCron(context.Background(), backupInterval)
 	log.Info("DB backup cron started", zap.String("backup_dir", backupDir), zap.Duration("interval", backupInterval))
@@ -283,7 +283,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 			indexingInterval = parsed
 		}
 	}
-	downloadDir := filepath.Join(cfg.Storage.DataDir, "downloads")
+	downloadDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.DownloadsDir)
 	indexingService.StartCron(context.Background(), downloadDir, indexingInterval)
 	log.Info("Indexing cron started", zap.Duration("interval", indexingInterval))
 
