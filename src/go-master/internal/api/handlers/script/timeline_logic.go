@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.uber.org/zap"
+	"path/filepath"
 	"strings"
 	"time"
 	"velox/go-master/internal/ml/ollama"
@@ -15,7 +16,7 @@ import (
 	segmentnorm "velox/go-master/internal/service/catalognormalizer"
 )
 
-const timelineCacheVersion = "v8"
+const timelineCacheVersion = "v12"
 
 // BuildTimelinePlan coordinates the LLM planning and asset matching.
 func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service) (*TimelinePlan, error) {
@@ -41,6 +42,24 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	} else {
 		zap.L().Info("LLM timeline planning successful", zap.Int("segments", len(rawPlan.Segments)), zap.Duration("elapsed", time.Since(llmStarted)))
 	}
+
+	structuredOverrideApplied := false
+	if structuredPlan, ok := buildStructuredTimelinePlan(req.Topic, req.Duration, sourceText); ok {
+		if len(structuredPlan.Segments) > 1 {
+			zap.L().Info("structured timeline override applied",
+				zap.String("topic", req.Topic),
+				zap.Int("structured_segments", len(structuredPlan.Segments)),
+				zap.Int("llm_segments", len(rawPlan.Segments)),
+			)
+			rawPlan = structuredPlan
+			structuredOverrideApplied = true
+			for i := range rawPlan.Segments {
+				rawPlan.Segments[i].Subject = strings.TrimSpace(rawPlan.Segments[i].Subject)
+			}
+		}
+	}
+
+	preserveStructuredSubjects := structuredOverrideApplied
 
 	plan := &TimelinePlan{
 		PrimaryFocus:  req.Topic,
@@ -75,7 +94,11 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			Keywords:        rawSeg.Keywords,
 			Entities:        rawSeg.Entities,
 		}
-		seg.Subject = resolveTimelineSegmentSubject(ctx, req, seg, dataDir, stockRepo)
+		if preserveStructuredSubjects {
+			seg.Subject = firstNonEmpty(seg.Subject, req.Topic)
+		} else {
+			seg.Subject = resolveTimelineSegmentSubject(ctx, req, seg, dataDir, stockRepo)
+		}
 
 		if normalized, err := normalizer.NormalizeSegment(ctx, segmentnorm.SegmentInput{
 			Topic:         req.Topic,
@@ -90,16 +113,28 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			seg.CanonicalKeywords = uniqueStrings(normalized.CanonicalKeywords)
 			seg.CanonicalEntities = uniqueStrings(normalized.CanonicalEntities)
 			seg.NormalizationSource = normalized.NormalizationSource
+			}
+			if strings.TrimSpace(seg.CanonicalSubject) == "" {
+				seg.CanonicalSubject = seg.Subject
+			}
+			if preserveStructuredSubjects {
+				seg.CanonicalSubject = seg.Subject
+			}
+
+		associationSubject := firstNonEmpty(seg.CanonicalSubject, seg.Subject)
+		if preserveStructuredSubjects {
+			associationSubject = firstNonEmpty(seg.Subject, seg.CanonicalSubject)
 		}
-		if strings.TrimSpace(seg.CanonicalSubject) == "" {
-			seg.CanonicalSubject = seg.Subject
+		associationTopic := req.Topic
+		if preserveStructuredSubjects {
+			associationTopic = associationSubject
 		}
 
 		associationReq := AssociationCandidatesRequest{
-			Topic:      req.Topic,
+			Topic:      associationTopic,
 			SegmentKey: seg.Timestamp,
 			Timestamp:  seg.Timestamp,
-			Subject:    firstNonEmpty(seg.CanonicalSubject, seg.Subject),
+			Subject:    associationSubject,
 			Narrative:  seg.NarrativeText,
 			Keywords:   firstNonEmptySlice(seg.CanonicalKeywords, seg.Keywords),
 			Entities:   firstNonEmptySlice(seg.CanonicalEntities, seg.Entities),
@@ -114,6 +149,44 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		// Eseguiamo l'associazione stratificata
 		segStarted := time.Now()
 		associateSegment(ctx, &seg, driveAssoc, artlistFolderAssoc, clipAssoc, artlistAssoc, dynamicAssoc)
+		if preserveStructuredSubjects {
+			stockFiltered := filterStockMatchesBySubject(seg.StockMatches, seg.Subject)
+			artlistFiltered := filterArtlistMatchesBySubject(seg.ArtlistMatches, seg.Subject)
+
+			if len(artlistFiltered) > 0 && !hasUsefulStockMatch(stockFiltered) {
+				seg.StockMatches = nil
+				seg.ArtlistMatches = artlistFiltered
+				seg.PreferredStockGroup = "artlist_folder"
+				seg.PreferredStockPaths = preferredStockPathsFromMatches(artlistFiltered)
+				seg.PreferredStockReason = "exact artlist subject match"
+			} else if len(stockFiltered) > 0 {
+				for i := range stockFiltered {
+					if strings.EqualFold(strings.TrimSpace(stockFiltered[i].Source), "drive_stock") && looksBroadStockContainer(stockFiltered[i].Path) {
+						stockFiltered[i].Path = ""
+						stockFiltered[i].Link = ""
+					}
+				}
+				seg.StockMatches = stockFiltered
+				seg.PreferredStockPaths = preferredStockPathsFromMatches(stockFiltered)
+				seg.PreferredStockReason = "subject-specific stock match"
+				if len(seg.PreferredStockPaths) > 0 {
+					seg.PreferredStockGroup = "drive_stock"
+				} else {
+					seg.PreferredStockGroup = ""
+				}
+			} else if len(artlistFiltered) > 0 {
+				seg.StockMatches = nil
+				seg.ArtlistMatches = artlistFiltered
+				seg.PreferredStockGroup = "artlist_folder"
+				seg.PreferredStockPaths = preferredStockPathsFromMatches(artlistFiltered)
+				seg.PreferredStockReason = "artlist subject match"
+			} else {
+				seg.StockMatches = nil
+				seg.PreferredStockGroup = ""
+				seg.PreferredStockPaths = nil
+				seg.PreferredStockReason = ""
+			}
+		}
 		if err := storeTimelineSegmentCache(ctx, gen, clipsRepo, cacheKey, req, seg, narrative); err != nil {
 			zap.L().Warn("timeline segment cache write failed",
 				zap.Error(err),
@@ -474,4 +547,135 @@ func fallbackTimelinePlan(topic string, duration int, narrative string) *timelin
 			},
 		},
 	}
+}
+
+func filterStockMatchesBySubject(matches []scoredMatch, subject string) []scoredMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+	subjectKeys := associationSubjectKeys(subject)
+	if len(subjectKeys) == 0 {
+		return matches
+	}
+
+	exact := make([]scoredMatch, 0, len(matches))
+	loose := make([]scoredMatch, 0, len(matches))
+	for _, match := range matches {
+		titleKey := normalizeAssociationKey(match.Title)
+		pathKey := normalizeAssociationKey(match.Path)
+		leafKey := normalizeAssociationKey(filepath.Base(strings.TrimSpace(match.Path)))
+		if normalizedKeyMatchesAny(titleKey, subjectKeys) || normalizedKeyMatchesAny(pathKey, subjectKeys) || normalizedKeyMatchesAny(leafKey, subjectKeys) {
+			exact = append(exact, match)
+			continue
+		}
+		for _, subjectKey := range subjectKeys {
+			if strings.HasSuffix(pathKey, "/"+subjectKey) || strings.HasSuffix(titleKey, subjectKey) {
+				loose = append(loose, match)
+				break
+			}
+		}
+	}
+	if len(exact) > 0 {
+		return exact
+	}
+	return loose
+}
+
+func preferredStockPathsFromMatches(matches []scoredMatch) []string {
+	if len(matches) == 0 {
+		return nil
+	}
+	best := matches[0]
+	for _, match := range matches[1:] {
+		if match.Score > best.Score {
+			best = match
+		}
+	}
+	preferred := []string{
+		strings.TrimSpace(best.Path),
+		strings.TrimSpace(best.Link),
+	}
+	return uniqueStrings(trimStrings(preferred))
+}
+
+func filterArtlistMatchesBySubject(matches []scoredMatch, subject string) []scoredMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+	subjectKeys := associationSubjectKeys(subject)
+	if len(subjectKeys) == 0 {
+		return matches
+	}
+
+	exact := make([]scoredMatch, 0, len(matches))
+	loose := make([]scoredMatch, 0, len(matches))
+	for _, match := range matches {
+		titleKey := normalizeAssociationKey(match.Title)
+		pathKey := normalizeAssociationKey(match.Path)
+		leafKey := normalizeAssociationKey(filepath.Base(strings.TrimSpace(match.Path)))
+		if normalizedKeyMatchesAny(titleKey, subjectKeys) || normalizedKeyMatchesAny(pathKey, subjectKeys) || normalizedKeyMatchesAny(leafKey, subjectKeys) {
+			exact = append(exact, match)
+			continue
+		}
+		for _, subjectKey := range subjectKeys {
+			if strings.HasSuffix(pathKey, "/"+subjectKey) || strings.HasSuffix(titleKey, subjectKey) {
+				loose = append(loose, match)
+				break
+			}
+		}
+	}
+	if len(exact) > 0 {
+		return exact
+	}
+	return loose
+}
+
+func associationSubjectKeys(subject string) []string {
+	subjectKey := normalizeAssociationKey(subject)
+	if subjectKey == "" {
+		return nil
+	}
+	keys := []string{subjectKey}
+	for _, prefix := range []string{"the ", "a ", "an "} {
+		if strings.HasPrefix(subjectKey, prefix) {
+			if stripped := strings.TrimSpace(strings.TrimPrefix(subjectKey, prefix)); stripped != "" {
+				keys = append(keys, stripped)
+			}
+			break
+		}
+	}
+	return uniqueStrings(keys)
+}
+
+func normalizedKeyMatchesAny(key string, subjectKeys []string) bool {
+	key = normalizeAssociationKey(key)
+	if key == "" {
+		return false
+	}
+	for _, subjectKey := range subjectKeys {
+		if key == subjectKey {
+			return true
+		}
+	}
+	return false
+}
+
+func hasUsefulStockMatch(matches []scoredMatch) bool {
+	for _, match := range matches {
+		if strings.TrimSpace(match.Path) == "" {
+			continue
+		}
+		if !looksBroadStockContainer(match.Path) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksBroadStockContainer(path string) bool {
+	path = strings.ToLower(strings.TrimSpace(path))
+	if path == "" {
+		return false
+	}
+	return strings.Contains(path, ",") || strings.Contains(path, " and ")
 }

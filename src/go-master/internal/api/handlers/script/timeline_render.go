@@ -36,8 +36,16 @@ func RenderTimeline(plan *TimelinePlan) string {
 
 		// Priority 1: Drive Stock Association (Cartelle locali)
 		if len(seg.StockMatches) > 0 {
-			b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
-			assetRendered = true
+			if hasRenderableStockMatch(seg.StockMatches) {
+				b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
+				assetRendered = true
+			} else if len(seg.ArtlistMatches) > 0 {
+				b.WriteString(renderSpecificMatch("📦 Artlist Folder Association", seg.ArtlistMatches))
+				assetRendered = true
+			} else {
+				b.WriteString(renderSpecificMatch("📦 Drive Stock Association", seg.StockMatches))
+				assetRendered = true
+			}
 		}
 
 		// Priority 2: Artlist Stock Association (Database Artlist)
@@ -91,6 +99,15 @@ func RenderTimeline(plan *TimelinePlan) string {
 	return strings.TrimSpace(b.String())
 }
 
+func hasRenderableStockMatch(matches []scoredMatch) bool {
+	for _, match := range matches {
+		if strings.TrimSpace(match.Link) != "" || strings.TrimSpace(match.Path) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func renderSpecificMatch(label string, matches []scoredMatch) string {
 	if len(matches) == 0 {
 		return ""
@@ -136,6 +153,8 @@ func renderSpecificMatch(label string, matches []scoredMatch) string {
 		b.WriteString("        Path: ")
 		b.WriteString(best.Path)
 		b.WriteString("\n")
+	} else {
+		b.WriteString("        Path: None\n")
 	}
 
 	return b.String()

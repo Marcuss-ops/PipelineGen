@@ -79,7 +79,14 @@ func findDirectStockFolderCandidate(ctx context.Context, repo *clips.Repository,
 }
 
 func directFolderMatch(folders []timelineFolderCandidate, topic, subject string) (timelineFolderCandidate, bool) {
-	focuses := []string{topic, subject}
+	focuses := []string{}
+	subject = strings.TrimSpace(subject)
+	topic = strings.TrimSpace(topic)
+	if subject != "" {
+		focuses = append(focuses, subject)
+	} else if topic != "" {
+		focuses = append(focuses, topic)
+	}
 	bestScore := 0
 	bestDepth := -1
 	var best timelineFolderCandidate
