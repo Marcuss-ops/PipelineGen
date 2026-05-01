@@ -1,0 +1,84 @@
+{
+  "seeds": [
+    {
+      "keyword": "smartphone usage",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "computer coding",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "social media",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "video call",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "typing keyboard",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "server room",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "data center",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "artificial intelligence",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "robot",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    },
+    {
+      "keyword": "drone flying",
+      "cluster": "technology_digital",
+      "language": "en",
+      "priority": 5,
+      "last_warmed": "",
+      "warm_count": 0
+    }
+  ]
+}

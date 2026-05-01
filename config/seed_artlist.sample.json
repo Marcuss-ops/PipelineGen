@@ -1,0 +1,145 @@
+{
+  "searches": {
+    "antonio": {
+      "term": "antonio",
+      "clips": [
+        {
+          "id": "dynamic_1g2iMQrOhTrlYdvACWKL8DYmZVUVBhRtW",
+          "video_id": "1g2iMQrOhTrlYdvACWKL8DYmZVUVBhRtW",
+          "title": "antonio_dynamic_antonio_JWXzt6b_id0_7s_1080p.mp4",
+          "name": "antonio_dynamic_antonio_JWXzt6b_id0_7s_1080p.mp4",
+          "term": "antonio",
+          "folder": "Stock/Artlist/antonio",
+          "folder_id": "1aLyKiGkZ-XUt81HET0r4hXGpLmXzfxKb",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1g2iMQrOhTrlYdvACWKL8DYmZVUVBhRtW",
+          "drive_url": "https://drive.google.com/file/d/1g2iMQrOhTrlYdvACWKL8DYmZVUVBhRtW/view",
+          "local_path_drive": "Stock/Artlist/antonio/antonio_dynamic_antonio_JWXzt6b_id0_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_antonio_JWXzt6b_id0_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "antonio",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-19T07:43:32Z",
+          "downloaded_at": "2026-04-19T07:43:32Z"
+        }
+      ],
+      "searched_at": "2026-04-19T07:43:32Z",
+      "downloaded_clip_ids": [
+        "dynamic_1g2iMQrOhTrlYdvACWKL8DYmZVUVBhRtW"
+      ],
+      "drive_folder_id": "1aLyKiGkZ-XUt81HET0r4hXGpLmXzfxKb"
+    },
+    "boxing": {
+      "term": "boxing",
+      "clips": [
+        {
+          "id": "dynamic_16CyNJXiHhUUl2FMwf72Ib9IdzTDq1Sfl",
+          "video_id": "16CyNJXiHhUUl2FMwf72Ib9IdzTDq1Sfl",
+          "title": "boxing_dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "name": "boxing_dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "term": "boxing",
+          "folder": "Stock/Artlist/boxing",
+          "folder_id": "1Hn_cr4aMOR3pYUxMV--BZ_FA8YGr57AF",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "16CyNJXiHhUUl2FMwf72Ib9IdzTDq1Sfl",
+          "drive_url": "https://drive.google.com/file/d/16CyNJXiHhUUl2FMwf72Ib9IdzTDq1Sfl/view",
+          "local_path_drive": "Stock/Artlist/boxing/boxing_dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "boxing",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:02:50Z",
+          "downloaded_at": "2026-04-18T16:02:50Z"
+        },
+        {
+          "id": "dynamic_1pxB7BpzgzTo30V35DmW1XsXzziUCo6sS",
+          "video_id": "1pxB7BpzgzTo30V35DmW1XsXzziUCo6sS",
+          "title": "boxing_dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "name": "boxing_dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "term": "boxing",
+          "folder": "Stock/Artlist/boxing",
+          "folder_id": "1Hn_cr4aMOR3pYUxMV--BZ_FA8YGr57AF",
+          "original_url": "",
+          "url": "",
+          "drive_file_id": "1pxB7BpzgzTo30V35DmW1XsXzziUCo6sS",
+          "drive_url": "https://drive.google.com/file/d/1pxB7BpzgzTo30V35DmW1XsXzziUCo6sS/view",
+          "local_path_drive": "Stock/Artlist/boxing/boxing_dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/dynamic_boxing_RkYu4NNA7jI_7s_1080p.mp4",
+          "duration": 0,
+          "width": 0,
+          "height": 0,
+          "category": "Dynamic Search",
+          "tags": [
+            "boxing",
+            "dynamic",
+            "auto-registered"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T16:04:16Z",
+          "downloaded_at": "2026-04-18T16:04:16Z"
+        }
+      ],
+      "searched_at": "2026-04-18T16:02:50Z",
+      "downloaded_clip_ids": [
+        "dynamic_16CyNJXiHhUUl2FMwf72Ib9IdzTDq1Sfl",
+        "dynamic_1pxB7BpzgzTo30V35DmW1XsXzziUCo6sS"
+      ],
+      "drive_folder_id": "1Hn_cr4aMOR3pYUxMV--BZ_FA8YGr57AF"
+    },
+    "business": {
+      "term": "business",
+      "clips": [
+        {
+          "id": "artlist_494181_3000",
+          "video_id": "artlist_494181_3000",
+          "title": "business",
+          "name": "business_artlist_business_artlist_494181_3000_7s_1080p.mp4",
+          "term": "business",
+          "folder": "Stock/Artlist/business",
+          "folder_id": "1yvmQLAFxK09l6XFMzncNZ5I4UaIGHWxM",
+          "original_url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-494181_playlist_1657510081.m3u8",
+          "url": "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-494181_playlist_1657510081.m3u8",
+          "drive_file_id": "1bcRU-MF-Waep6klhNsuxLRz9LjfGdUBc",
+          "drive_url": "https://drive.google.com/file/d/1bcRU-MF-Waep6klhNsuxLRz9LjfGdUBc/view",
+          "local_path_drive": "Stock/Artlist/business/business_artlist_business_artlist_494181_3000_7s_1080p.mp4",
+          "download_path": "/tmp/velox/downloads/dynamic_clips/artlist/artlist_business_artlist_494181_3000_7s_1080p.mp4",
+          "duration": 7,
+          "width": 1920,
+          "height": 1080,
+          "category": "Dynamic Artlist",
+          "tags": [
+            "business",
+            "artlist",
+            "artlist",
+            "business",
+            "artlist"
+          ],
+          "downloaded": true,
+          "added_at": "2026-04-18T07:53:35Z",
+          "downloaded_at": "2026-04-18T07:53:35Z"
+        }
+      ],
+      "searched_at": "2026-04-18T07:53:35Z",
+      "downloaded_clip_ids": [
+        "artlist_494181_3000"
+      ],
+      "drive_folder_id": "1yvmQLAFxK09l6XFMzncNZ5I4UaIGHWxM"
+    }
+  }
+}

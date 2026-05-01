@@ -24,15 +24,25 @@ wheels/
 
 # Go
 src/go-master/server
-bin/server
+src/go-master/velox-server
+src/go-master/harvester
+src/go-master/downloader
+src/go-master/sync_drive
 src/go-master/token.json
 src/go-master/credentials.json
+src/go-master/test_artlist
+src/go-master/test_harvester
+src/go-master/artlist_uploader
+src/go-master/velox-new
+bin/server
+bin/harvester
+bin/downloader
+bin/indexer
 
 # Rust
 src/rust/target/
 bin/video-stock-creator.bundle
 *.bundle
-Cargo.lock
 
 # Node
 node_modules/
@@ -55,16 +65,6 @@ Thumbs.db
 *.log
 logs/
 
-# Backups
-*.backup*
-*.bak
-*.old
-
-# Database
-*.db
-
-# Sensitive credentials (never commit)
-credentials.json
 # Database
 *.db
 *.db-shm
@@ -72,15 +72,14 @@ credentials.json
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db.json
+*.pid
 
 # Backups
 *.backup*
 *.bak
 *.old
-
-# Runtime data files (JSON databases regenerated at startup)
-*.db.json
-*.pid
+config/backups/
 
 # Runtime data directories
 src/go-master/data/
@@ -88,38 +87,22 @@ data/downloads/
 data/dynamic_test/
 data/backups/
 data/async_pipeline_jobs/
-src/go-master/velox-server
-src/go-master/server
-src/go-master/harvester
-src/go-master/downloader
-bin/server
-bin/harvester
-bin/downloader
-
-# Config backups
-config/backups/
-
-# Test data
 data/stock-links/
 data/lightpanda/
 data/examples/
+
+# Config samples (large files tracked as samples)
+config/seed_artlist.json
+config/keyword_pool.json
+
+# Test data
+tests/stock-links/browserDataTest/examples/package-lock.json
 
 # Effects test directory
 effects/Test/
 
 # Duplicate assets
 config/assets/
-
-# Go compiled test binaries
-src/go-master/test_artlist
-src/go-master/test_harvester
-src/go-master/artlist_uploader
-src/go-master/velox-new
-sync_drive
-
-# Temporary and credential files
-test_script.txt
-token.json
 
 # Media files (use Git LFS instead)
 effects/overlays/*.mp4
@@ -130,5 +113,11 @@ assets/fonts/*.ttf
 # Python legacy (fully removed from repo)
 src/python-legacy/
 
+# Temporary and credential files
+test_script.txt
+token.json
+credentials.json
+
+# Go compiled test binaries and tools
 tests/lightpanda/lightpanda
-.github/workflows/
+src/go-master/cmd/tools/sync_drive/
