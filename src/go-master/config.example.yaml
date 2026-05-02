@@ -62,3 +62,12 @@ jobs:
   maintenance_interval: "24h"
   backup_interval: "6h"
   indexing_interval: "15m"
+
+features:
+  artlist_enabled: true
+  youtube_enabled: true
+  drive_enabled: true
+  harvester_enabled: true
+  script_docs_enabled: true
+  script_clips_enabled: true
+  stock_enabled: true
