@@ -17,11 +17,9 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
-	"velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/media/ffmpeg"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
@@ -34,7 +32,7 @@ type Service struct {
 	monitoredRepo    *monitors.Repository
 	driveClient      *driveapi.Service
 	driveDestination *drivedestination.Service
-	ffmpeg           *ffmpeg.Processor
+	mediaProcessor   *mediaasset.Processor
 	folderMemory     *foldermemory.Service
 }
 
@@ -45,7 +43,7 @@ func NewService(
 	monitoredRepo *monitors.Repository,
 	driveClient *driveapi.Service,
 	driveDestination *drivedestination.Service,
-	ffmpegProc *ffmpeg.Processor,
+	mediaProcessor *mediaasset.Processor,
 ) *Service {
 	return &Service{
 		cfg:              cfg,
@@ -54,7 +52,7 @@ func NewService(
 		monitoredRepo:    monitoredRepo,
 		driveClient:      driveClient,
 		driveDestination: driveDestination,
-		ffmpeg:           ffmpegProc,
+		mediaProcessor:   mediaProcessor,
 		folderMemory:     foldermemory.NewService(log, clipsRepo),
 	}
 }
@@ -123,8 +121,6 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		resp.Error = "too many segments, max 20"
 		return resp, fmt.Errorf("too many segments")
 	}
-
-	dl := downloader.NewYTDLP(s.cfg)
 
 	// Create stable folder path using video ID instead of timestamp
 	folderSlug := "yt_" + videoID
@@ -421,104 +417,52 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			}
 		}
 
-		outputTemplate := filepath.Join(outDir, fmt.Sprintf("%03d_%s", i+1, item.Name))
+		// Build section for download
 		section := fmt.Sprintf("*%s-%s", item.Start, item.End)
-
-		var dlErr error
-		dlErr = dl.Download(ctx, &downloader.DownloadRequest{
-			URL:             resp.SourceURL,
-			OutputPath:      outputTemplate,
-			Format:          "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080]",
-			MergeFormat:     "mp4",
-			NoPlaylist:      true,
-			DownloadSections: []string{section},
-			ForceKeyframes:  req.ForceKeyframes,
-			Timeout:         10 * time.Minute,
-		})
-
-		if dlErr != nil {
-			item.Status = "failed"
-			item.Error = fmt.Sprintf("yt-dlp failed: %v", dlErr)
-			resp.Items = append(resp.Items, item)
-			resp.Stats.Failed++
-			resp.OK = false
-			continue
-		}
-
-		localPath := findFirstOutput(outDir, fmt.Sprintf("%03d_%s", i+1, item.Name))
-		item.LocalPath = localPath
-		item.Status = "processed"
-
-		if localPath == "" {
-			item.Status = "failed"
-			item.Error = "output file not found after yt-dlp"
-			resp.Items = append(resp.Items, item)
-			resp.Stats.Failed++
-			resp.OK = false
-			continue
-		}
-
-		// Normalize video with FFmpeg if processor is available and requested
+		
+		// Determine normalize flag
 		shouldNormalize := req.Normalize == nil || *req.Normalize
-		if s.ffmpeg != nil && shouldNormalize {
-			normalizedPath := localPath + ".normalized.mp4"
-			opts := ffmpeg.DefaultNormalizeOptions(s.cfg)
-			opts.KeepAudio = req.KeepAudio
-			opts.DisableDuration = true // Don't truncate YouTube clips to the global default duration
-
-			s.log.Info("normalizing video",
-				zap.String("input", localPath),
-				zap.String("output", normalizedPath),
-				zap.Int("width", opts.Width),
-				zap.Int("height", opts.Height),
-				zap.Bool("keep_audio", opts.KeepAudio),
-			)
-			ffmpegErr := s.ffmpeg.Normalize(ctx, localPath, normalizedPath, opts)
-			if ffmpegErr != nil {
-				s.log.Warn("failed to normalize video, using original", zap.Error(ffmpegErr))
-			} else {
-				// Replace original with normalized version
-				if err := os.Remove(localPath); err != nil {
-					s.log.Warn("failed to remove original file", zap.Error(err))
-				}
-				if err := os.Rename(normalizedPath, localPath); err != nil {
-					s.log.Warn("failed to rename normalized file", zap.Error(err))
-					item.LocalPath = normalizedPath
-					localPath = normalizedPath
-				}
-			}
+		
+		// Use mediaasset processor for download/process/hash/upload
+		normalize := shouldNormalize
+		assetInput := mediaasset.AssetInput{
+			ID:               clipID,
+			Name:              item.Name,
+			SourceURL:         resp.SourceURL,
+			OutputDir:         outDir,
+			FolderID:          driveFolderID,
+			DownloadSections:  []string{section},
+			ForceKeyframes:    req.ForceKeyframes,
+			Normalize:         &normalize,
+			KeepAudio:         req.KeepAudio,
+			DisableDuration:   true, // Don't truncate YouTube clips to the global default duration
+			Metadata: map[string]interface{}{
+				"video_id":         videoID,
+				"start":            item.Start,
+				"end":              item.End,
+				"start_seconds":    startSec,
+				"end_seconds":      endSec,
+				"duration_seconds": duration,
+			},
 		}
 
-		// Calculate file hash
-		var fileHash string
-		if hash, hashErr := hashutil.MD5File(localPath); hashErr == nil {
-			fileHash = hash
+		result, err := s.mediaProcessor.DownloadProcessUpload(ctx, assetInput)
+		if err != nil {
+			item.Status = "failed"
+			item.Error = fmt.Sprintf("media processing failed: %v", err)
+			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
+			resp.OK = false
+			continue
 		}
 
-		// Upload to Drive if client is available, folder resolved, and upload_drive is true
-		var driveLink string
-		uploadDrive := boolDefault(req.UploadDrive, true)
-		shouldUpload := uploadDrive && localPath != "" && s.driveClient != nil && driveFolderID != ""
-		if shouldUpload {
-			uploader := &drive.Uploader{Service: s.driveClient, Log: s.log}
-			filename := filepath.Base(localPath)
-			result, uploadErr := uploader.UploadFile(ctx, localPath, driveFolderID, filename)
-			if uploadErr != nil {
-				s.log.Warn("failed to upload to drive", zap.Error(uploadErr))
-				// If user requested upload but it failed, mark as upload_failed
-				if uploadDrive {
-					item.Status = "upload_failed"
-					item.Error = fmt.Sprintf("drive upload failed: %v", uploadErr)
-					resp.Items = append(resp.Items, item)
-					resp.Stats.Failed++
-					resp.OK = false
-					continue
-				}
-			} else {
-				driveLink = result.WebViewLink
-				item.DriveLink = result.WebViewLink
-			}
-		}
+		localPath := result.LocalPath
+		fileHash := result.FileHash
+		driveLink := result.DriveLink
+		
+		item.LocalPath = localPath
+		item.DriveLink = driveLink
+		item.Status = "processed"
 
 		// Save clip to database
 		if saveDB && s.clipsRepo != nil {

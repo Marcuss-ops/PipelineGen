@@ -11,12 +11,30 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/pipeline"
+	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
 )
+
+type artlistChecksumChecker struct {
+	driveClient *driveapi.Service
+}
+
+func (c *artlistChecksumChecker) GetMD5Checksum(ctx context.Context, driveLink string) (string, error) {
+	fileID := drive.FileIDFromLink(driveLink)
+	if fileID == "" {
+		return "", fmt.Errorf("could not extract file ID from link: %s", driveLink)
+	}
+	file, err := c.driveClient.Files.Get(fileID).Fields("id,md5Checksum").Context(ctx).Do()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(file.Md5Checksum), nil
+}
 
 // RunTag executes the full Artlist pipeline for one search term:
 // search locally, download the source asset, process it, upload it to Drive,
@@ -159,11 +177,19 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			if clip == nil {
 				continue
 			}
-			skip, _ := s.shouldSkipClip(ctx, strategy, clip)
+			asset := assetstore.ExistingAsset{
+				ID:        clip.ID,
+				DriveLink: clip.DriveLink,
+				FileHash:  clip.FileHash,
+				Metadata:  clip.Metadata,
+				LocalPath: clip.LocalPath,
+			}
+			skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), nil)
 			status := "would_process"
 			if skip {
 				status = "would_skip"
 				resp.WouldSkip++
+				s.log.Info("would skip clip", zap.String("clip_id", clip.ID), zap.String("reason", reason))
 			} else {
 				resp.WouldProcess++
 			}
@@ -195,9 +221,22 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			zap.String("url", url),
 		)
 
-		skip, _ := s.shouldSkipClip(ctx, strategy, clip)
+		// Check if clip should be skipped using assetstore
+		asset := assetstore.ExistingAsset{
+			ID:        clip.ID,
+			DriveLink: clip.DriveLink,
+			FileHash:  clip.FileHash,
+			Metadata:  clip.Metadata,
+			LocalPath: clip.LocalPath,
+		}
+		var checker assetstore.ChecksumChecker
+		if s.driveClient != nil {
+			checker = &artlistChecksumChecker{driveClient: s.driveClient}
+		}
+		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), checker)
+		
 		if skip {
-			s.log.Info("skipping existing clip", zap.String("clip_id", clip.ID), zap.String("drive_link", clip.DriveLink))
+			s.log.Info("skipping existing clip", zap.String("clip_id", clip.ID), zap.String("reason", reason))
 			resp.Skipped++
 			resp.Items = append(resp.Items, RunTagItem{
 				ClipID:       clip.ID,

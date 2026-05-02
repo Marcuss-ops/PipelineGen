@@ -133,7 +133,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		coreDeps.MonitorsRepo,
 		coreDeps.DriveClient,
 		driveDestinationService,
-		ffmpegProc,
+		mediaProcessor,
 	)
 	youtubeClipHandler := youtubecliphandler.NewHandler(youtubeClipService, log)
 

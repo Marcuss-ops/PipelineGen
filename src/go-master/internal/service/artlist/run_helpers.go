@@ -1,9 +1,7 @@
 package artlist
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -31,58 +29,7 @@ func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
 }
 
 func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
-	return strings.ToLower(strings.TrimSpace(term)) + "|" + strings.ToLower(strings.TrimSpace(rootFolderID)) + "|" + strings.ToLower(strings.TrimSpace(strategy)) + "|" + fmt.Sprintf("%t", dryRun)
-}
-
-
-func (s *Service) shouldSkipClip(ctx context.Context, strategy string, clip *models.Clip) (bool, error) {
-	if clip == nil {
-		return false, nil
-	}
-
-	switch strategy {
-	case "replace":
-		return false, nil
-	case "skip":
-		return strings.TrimSpace(clip.DriveLink) != "", nil
-	case "verify":
-		if strings.TrimSpace(clip.DriveLink) == "" {
-			return false, nil
-		}
-		if strings.TrimSpace(clip.FileHash) == "" {
-			return true, nil
-		}
-		if md5Checksum := extractDriveMD5FromMetadata(clip.Metadata); md5Checksum != "" && strings.EqualFold(md5Checksum, strings.TrimSpace(clip.FileHash)) {
-			return true, nil
-		}
-		remoteChecksum, err := s.remoteDriveChecksum(ctx, clip)
-		if err != nil {
-			return true, nil
-		}
-		if remoteChecksum == "" {
-			return true, nil
-		}
-		return strings.EqualFold(remoteChecksum, strings.TrimSpace(clip.FileHash)), nil
-	default:
-		return strings.TrimSpace(clip.DriveLink) != "", nil
-	}
-}
-
-func (s *Service) remoteDriveChecksum(ctx context.Context, clip *models.Clip) (string, error) {
-	if s.driveClient == nil {
-		return "", fmt.Errorf("drive client not configured")
-	}
-
-	fileID := driveFileIDFromClip(clip)
-	if fileID == "" {
-		return "", fmt.Errorf("drive file id unavailable")
-	}
-
-	file, err := s.driveClient.Files.Get(fileID).Fields("id,md5Checksum").Context(ctx).Do()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(file.Md5Checksum), nil
+	return strings.ToLower(strings.TrimSpace(term)) + "|" + strings.ToLower(strings.TrimSpace(rootFolderID)) + "|" + strings.ToLower(strings.TrimSpace(strategy)) + "|" + formatBool(dryRun)
 }
 
 func driveFileIDFromClip(clip *models.Clip) string {
@@ -93,10 +40,6 @@ func driveFileIDFromClip(clip *models.Clip) string {
 		return id
 	}
 	return drive.FileIDFromLink(clip.DriveLink)
-}
-
-func extractDriveMD5FromMetadata(raw string) string {
-	return drive.MD5FromMetadata(raw)
 }
 
 func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
@@ -117,4 +60,9 @@ func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
 	return string(raw)
 }
 
-
+func formatBool(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
