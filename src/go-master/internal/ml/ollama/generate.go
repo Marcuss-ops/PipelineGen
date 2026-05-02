@@ -6,7 +6,6 @@ import (
 
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/prompts"
-	"velox/go-master/internal/ml/ollama/types"
 )
 
 type Generator struct {
@@ -50,9 +49,6 @@ func setTextDefaults(req *types.TextGenerationRequest) {
 	if req.Tone == "" {
 		req.Tone = "professional"
 	}
-	if req.Model == "" {
-		req.Model = types.DefaultModel
-	}
 }
 
 func (g *Generator) RegenerateScript(ctx context.Context, req types.RegenerationRequest) (*types.GenerationResult, error) {
@@ -77,8 +73,5 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 func setRegenerationDefaults(req *types.RegenerationRequest) {
 	if req.Language == "" {
 		req.Language = "english"
-	}
-	if req.Model == "" {
-		req.Model = types.DefaultModel
 	}
 }

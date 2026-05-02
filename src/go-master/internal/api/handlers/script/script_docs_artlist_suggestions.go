@@ -8,7 +8,6 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/pkg/sliceutil"
 	"velox/go-master/pkg/textutil"
 )
@@ -27,7 +26,7 @@ func suggestArtlistSearchTags(ctx context.Context, gen *ollama.Generator, req Sc
 	}
 	model := client.Model()
 	if strings.TrimSpace(model) == "" {
-		model = types.DefaultModel
+		return nil
 	}
 
 	prompt := fmt.Sprintf(`You are an assistant for Artlist clip search.

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/pkg/sliceutil"
 	"velox/go-master/pkg/textutil"
 
@@ -26,7 +25,7 @@ func chooseTimelinePlanWithLLM(ctx context.Context, gen *ollama.Generator, topic
 	client := gen.GetClient()
 	model := client.Model()
 	if strings.TrimSpace(model) == "" {
-		model = types.DefaultModel
+		return nil, fmt.Errorf("ollama model not configured")
 	}
 
 	prompt := fmt.Sprintf(`You are a documentary timeline editor.
