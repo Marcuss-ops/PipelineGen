@@ -24,18 +24,19 @@ import (
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
-	Health        *common.HealthHandler
-	Artlist       *artlist.Handler
-	Scraper       *scraperhandler.Handler
-	ImageAssets   *imghandler.Handler
-	Media         *mediahandler.Handler
-	ScriptDocs    *handlers.ScriptDocsHandler
-	ScriptHistory *handlers.ScriptHistoryHandler
-	Voiceover     *voiceover.Handler
-	Utility       *common.UtilityHandler
-	Catalog       *common.CatalogHandler
-	YouTubeClip   *youtubecliphandler.Handler
-	Jobs          *jobs.Handler
+	Health         *common.HealthHandler
+	Artlist        *artlist.Handler
+	Scraper        *scraperhandler.Handler
+	ImageAssets    *imghandler.Handler
+	Media          *mediahandler.Handler
+	ScriptDocs     *handlers.ScriptDocsHandler
+	ScriptHistory  *handlers.ScriptHistoryHandler
+	Voiceover      *voiceover.Handler
+	VoiceoverSync  *voiceover.SyncHandler
+	Utility        *common.UtilityHandler
+	Catalog        *common.CatalogHandler
+	YouTubeClip    *youtubecliphandler.Handler
+	Jobs           *jobs.Handler
 }
 
 // Router holds all API handlers
@@ -156,6 +157,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Voiceover != nil {
 				voGroup := protected.Group("/voiceover")
 				h.Voiceover.RegisterRoutes(voGroup)
+			}
+			if h.VoiceoverSync != nil {
+				voSyncGroup := protected.Group("/voiceover")
+				h.VoiceoverSync.RegisterRoutes(voSyncGroup)
 			}
 			if h.YouTubeClip != nil {
 				youtubeGroup := protected.Group("/youtube-clips")

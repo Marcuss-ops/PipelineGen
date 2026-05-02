@@ -90,11 +90,16 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 		zap.Bool("dry_run", resp.DryRun),
 	)
 
-	go s.executeRunTag(ctx, normalized, job.ID)
+	go func() {
+		jobCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		s.executeRunTag(jobCtx, normalized, job.ID)
+	}()
 	return resp, nil
 }
 
 func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID string) {
+	s.log.Info("executeRunTag started", zap.String("job_id", jobID), zap.String("term", req.Term), zap.Bool("ctx_canceled", ctx.Err() != nil))
 	defer func() {
 		if r := recover(); r != nil {
 			s.log.Error("FATAL PANIC in executeRunTag",

@@ -1,0 +1,115 @@
+package mediaasset
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"go.uber.org/zap"
+	driveapi "google.golang.org/api/drive/v3"
+	"velox/go-master/internal/upload/drive"
+	"velox/go-master/pkg/hashutil"
+	"velox/go-master/pkg/media/downloader"
+	"velox/go-master/pkg/media/ffmpeg"
+)
+
+type Processor struct {
+	dl        *downloader.YTDLPDownloader
+	ffmpeg    *ffmpeg.Processor
+	driveSvc  *driveapi.Service
+	log       *zap.Logger
+	dataDir   string
+	tempDir   string
+	videoCfg  ffmpeg.NormalizeOptions
+}
+
+type ProcessorConfig struct {
+	DataDir  string
+	TempDir  string
+	VideoCfg ffmpeg.NormalizeOptions
+}
+
+func NewProcessor(
+	dl *downloader.YTDLPDownloader,
+	ff *ffmpeg.Processor,
+	driveSvc *driveapi.Service,
+	log *zap.Logger,
+	cfg ProcessorConfig,
+) *Processor {
+	return &Processor{
+		dl:       dl,
+		ffmpeg:   ff,
+		driveSvc: driveSvc,
+		log:      log,
+		dataDir:  cfg.DataDir,
+		tempDir:  cfg.TempDir,
+		videoCfg: cfg.VideoCfg,
+	}
+}
+
+func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error) {
+	result := &AssetResult{
+		ID:     input.ID,
+		Status: "failed",
+	}
+
+	tmpDir := filepath.Join(p.dataDir, p.tempDir)
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		p.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))
+		tmpDir = os.TempDir()
+	}
+
+	saveDir := filepath.Join(p.dataDir, "mediaassets", SafeName(input.Term))
+	if err := os.MkdirAll(saveDir, 0755); err != nil {
+		p.log.Error("failed to create save directory", zap.String("dir", saveDir), zap.Error(err))
+		saveDir = tmpDir
+	}
+
+	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s.mp4", input.ID))
+	finalFilename := SafeName(input.Name) + "_" + input.ID + ".mp4"
+	processedPath := OutputPath(saveDir, finalFilename)
+
+	p.log.Info("downloading asset", zap.String("id", input.ID), zap.String("url", input.SourceURL))
+	if err := p.dl.Download(ctx, &downloader.DownloadRequest{URL: input.SourceURL, OutputPath: rawPath}); err != nil {
+		result.Error = fmt.Sprintf("download failed: %v", err)
+		return result, err
+	}
+
+	p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath))
+	if err := p.ffmpeg.Normalize(ctx, rawPath, processedPath, p.videoCfg); err != nil {
+		_ = os.Remove(rawPath)
+		result.Error = fmt.Sprintf("process failed: %v", err)
+		return result, err
+	}
+
+	p.log.Info("calculating file hash", zap.String("id", input.ID), zap.String("path", processedPath))
+	fileHash, err := hashutil.MD5File(processedPath)
+	if err != nil {
+		_ = os.Remove(rawPath)
+		_ = os.Remove(processedPath)
+		result.Error = fmt.Sprintf("hash failed: %v", err)
+		return result, err
+	}
+	result.FileHash = fileHash
+	result.LocalPath = processedPath
+	result.Filename = finalFilename
+
+	_ = os.Remove(rawPath)
+
+	if p.driveSvc != nil && input.FolderID != "" {
+		p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", finalFilename))
+		uploader := &drive.Uploader{Service: p.driveSvc, Log: p.log}
+		uploadResult, err := uploader.UploadFile(ctx, processedPath, input.FolderID, finalFilename)
+		if err != nil {
+			result.Error = fmt.Sprintf("upload failed: %v", err)
+			return result, err
+		}
+		result.DriveLink = uploadResult.WebViewLink
+		result.DownloadLink = "https://drive.google.com/uc?id=" + uploadResult.FileID
+		p.log.Info("drive upload success", zap.String("id", input.ID), zap.String("file_id", uploadResult.FileID))
+	}
+
+	result.Status = "processed"
+	return result, nil
+}

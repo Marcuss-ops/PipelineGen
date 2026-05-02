@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"velox/go-master/internal/service/pipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
 )
@@ -25,24 +26,8 @@ func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
 		copyReq.Limit = 500
 	}
 	copyReq.RootFolderID = strings.TrimSpace(copyReq.RootFolderID)
-	copyReq.Strategy = normalizeRunStrategy(&copyReq)
+	copyReq.Strategy = string(pipeline.NormalizeStrategy(req.Strategy, req.ForceReupload))
 	return &copyReq
-}
-
-func normalizeRunStrategy(req *RunTagRequest) string {
-	if req == nil {
-		return "verify"
-	}
-
-	strategy := strings.ToLower(strings.TrimSpace(req.Strategy))
-	switch strategy {
-	case "skip", "verify", "replace":
-		return strategy
-	}
-	if req.ForceReupload {
-		return "replace"
-	}
-	return "verify"
 }
 
 func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
