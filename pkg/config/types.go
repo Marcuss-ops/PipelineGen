@@ -18,6 +18,7 @@ type Config struct {
 	Jobs      JobsConfig      `yaml:"jobs"`
 	Workers   WorkersConfig   `yaml:"workers"`
 	Video     VideoConfig     `yaml:"video"`
+	Features  FeaturesConfig  `yaml:"features"`
 }
 
 // VideoConfig holds video processing configuration.
@@ -152,4 +153,15 @@ type WorkersConfig struct {
 	HeartbeatTimeout        int      `yaml:"heartbeat_timeout" default:"30"`
 	WorkerFailWindowSeconds int      `yaml:"worker_fail_window_seconds" default:"300"`
 	WorkerFailThreshold     int      `yaml:"worker_fail_threshold" default:"3"`
+}
+
+// FeaturesConfig controls optional modules.
+type FeaturesConfig struct {
+	ArtlistEnabled     bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"true"`
+	YouTubeEnabled     bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"true"`
+	DriveEnabled       bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"true"`
+	HarvesterEnabled   bool `yaml:"harvester_enabled" env:"VELOX_FEATURE_HARVESTER_ENABLED" default:"true"`
+	ScriptDocsEnabled  bool `yaml:"script_docs_enabled" env:"VELOX_FEATURE_SCRIPT_DOCS_ENABLED" default:"true"`
+	ScriptClipsEnabled bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"true"`
+	StockEnabled       bool `yaml:"stock_enabled" env:"VELOX_FEATURE_STOCK_ENABLED" default:"true"`
 }

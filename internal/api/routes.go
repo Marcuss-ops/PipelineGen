@@ -132,6 +132,7 @@ func (r *Router) Setup() *gin.Engine {
 		{
 			if h.Artlist != nil {
 				artlistGroup := protected.Group("/artlist")
+				artlistGroup.Use(middleware.ArtlistEnabled(r.cfg))
 				h.Artlist.RegisterRoutes(artlistGroup)
 			}
 			if h.ImageAssets != nil {
@@ -144,10 +145,12 @@ func (r *Router) Setup() *gin.Engine {
 			}
 			if h.ScriptDocs != nil {
 				scriptDocsGroup := protected.Group("/script-docs")
+				scriptDocsGroup.Use(middleware.ScriptDocsEnabled(r.cfg))
 				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)
 			}
 			if h.ScriptHistory != nil {
 				scriptHistoryGroup := protected.Group("/scripts")
+				scriptHistoryGroup.Use(middleware.ScriptClipsEnabled(r.cfg))
 				h.ScriptHistory.RegisterRoutes(scriptHistoryGroup)
 			}
 			if h.Voiceover != nil {
@@ -156,6 +159,7 @@ func (r *Router) Setup() *gin.Engine {
 			}
 			if h.YouTubeClip != nil {
 				youtubeGroup := protected.Group("/youtube-clips")
+				youtubeGroup.Use(middleware.YouTubeEnabled(r.cfg))
 				h.YouTubeClip.RegisterRoutes(youtubeGroup)
 			}
 			if h.Jobs != nil {
