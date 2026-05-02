@@ -80,7 +80,7 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 		zap.Bool("dry_run", resp.DryRun),
 	)
 
-	go s.executeRunTag(context.Background(), normalized, job.ID)
+	go s.executeRunTag(ctx, normalized, job.ID)
 	return resp, nil
 }
 
@@ -93,11 +93,11 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 				zap.String("term", req.Term),
 			)
 			// Update job status to failed on panic - clear active_key on fatal error
-			job, _ := s.GetJobByRunID(context.Background(), jobID)
+			job, _ := s.GetJobByRunID(ctx, jobID)
 			if job != nil {
 				job.Status = models.StatusFailed
 				job.Error = fmt.Sprintf("internal panic: %v", r)
-				_ = s.persistJob(context.Background(), job)
+				_ = s.persistJob(ctx, job)
 			}
 		}
 	}()

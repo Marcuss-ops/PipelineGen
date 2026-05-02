@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -57,9 +58,9 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 		Text:             text,
 		Languages:        []string{language},
 		FilenameTemplate: filename,
-		RemoveSilence:    false,
-		UploadDrive:      false,
-		SaveDB:           false,
+		RemoveSilence:    boolPtr(false),
+		UploadDrive:      boolPtr(false),
+		SaveDB:           boolPtr(false),
 		Strategy:         "replace",
 	})
 	if err != nil {
@@ -93,7 +94,7 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	textHash := textToHash(req.Text)
 
 	var dest *ResolvedDestination
-	if req.UploadDrive && req.Destination != nil {
+	if boolDefault(req.UploadDrive, false) && req.Destination != nil {
 		var err error
 		dest, err = s.resolveDestination(ctx, req.Destination)
 		if err != nil {
@@ -155,7 +156,7 @@ func (s *Service) processLanguage(
 	item.Voice = genResult.Voice
 
 	finalPath := rawPath
-	if req.RemoveSilence {
+	if boolDefault(req.RemoveSilence, false) {
 		cleanedPath, err := s.removeSilence(ctx, rawPath)
 		if err != nil {
 			return item.fail("silence_remove_failed", err)
@@ -164,13 +165,13 @@ func (s *Service) processLanguage(
 		item.CleanedPath = cleanedPath
 	}
 
-	fileHash, err := s.hashFile(finalPath)
+	fileHash, err := hashutil.MD5File(finalPath)
 	if err != nil {
 		return item.fail("hash_failed", err)
 	}
 	item.FileHash = fileHash
 
-	if req.UploadDrive && dest != nil {
+	if boolDefault(req.UploadDrive, false) && dest != nil {
 		upload, err := s.uploadToDrive(ctx, finalPath, dest.FolderID, filepath.Base(finalPath))
 		if err != nil {
 			return item.fail("upload_failed", err)
@@ -181,7 +182,7 @@ func (s *Service) processLanguage(
 
 	item.Status = "processed"
 
-	if req.SaveDB {
+	if boolDefault(req.SaveDB, false) {
 		if err := s.saveRecord(ctx, req, item, requestID, textHash, dest); err != nil {
 			return item.fail("db_save_failed", err)
 		}
@@ -230,12 +231,56 @@ func shouldSkipExisting(existing *voiceovers.Record, strategy string) bool {
 	case "replace":
 		return false
 	case "skip":
-		return existing.DriveLink != "" || existing.LocalPath != ""
+		// Check if any output exists
+		if existing.DriveLink != "" {
+			return true
+		}
+		if existing.CleanedPath != "" {
+			if _, err := os.Stat(existing.CleanedPath); err == nil {
+				return true
+			}
+		}
+		if existing.LocalPath != "" {
+			if _, err := os.Stat(existing.LocalPath); err == nil {
+				return true
+			}
+		}
+		return false
 	case "verify", "":
-		return existing.Status == "processed" && (existing.DriveLink != "" || existing.CleanedPath != "" || existing.LocalPath != "")
+		if existing.Status != "processed" {
+			return false
+		}
+		// Verify at least one output exists
+		if existing.DriveLink != "" {
+			return true
+		}
+		if existing.CleanedPath != "" {
+			if _, err := os.Stat(existing.CleanedPath); err == nil {
+				return true
+			}
+		}
+		if existing.LocalPath != "" {
+			if _, err := os.Stat(existing.LocalPath); err == nil {
+				return true
+			}
+		}
+		return false
 	default:
 		return existing.Status == "processed"
 	}
+}
+
+// boolDefault returns the value of the bool pointer, or the default value if nil
+func boolDefault(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+// boolPtr returns a pointer to the bool value
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 func existingToItem(existing *voiceovers.Record, status string) BatchItem {
@@ -251,10 +296,6 @@ func existingToItem(existing *voiceovers.Record, status string) BatchItem {
 		FileHash:     existing.FileHash,
 		Status:       status,
 	}
-}
-
-func (s *Service) hashFile(path string) (string, error) {
-	return hashutil.MD5File(path)
 }
 
 func (s *Service) saveRecord(ctx context.Context, req *BatchRequest, item BatchItem, requestID string, textHash string, dest *ResolvedDestination) error {
