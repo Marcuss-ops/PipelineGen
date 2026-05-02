@@ -73,7 +73,6 @@ type Job struct {
 	Payload     map[string]interface{} `json:"payload"`
 	Result      map[string]interface{} `json:"result,omitempty"`
 	Error       string                 `json:"error,omitempty"`
-	Retries     int                    `json:"retries"`
 	RetryCount  int                    `json:"retry_count"`
 	MaxRetries  int                    `json:"max_retries"`
 	Progress    int                    `json:"progress"`

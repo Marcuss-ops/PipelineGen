@@ -111,5 +111,13 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				log.Error("Failed to close voiceover database", zap.Error(err))
 			}
 		}
+		if dbs.jobs != nil {
+			if err := dbs.jobs.Backup(); err != nil {
+				log.Warn("Failed to create jobs backup on shutdown", zap.Error(err))
+			}
+			if err := dbs.jobs.Close(); err != nil {
+				log.Error("Failed to close jobs database", zap.Error(err))
+			}
+		}
 	}
 }

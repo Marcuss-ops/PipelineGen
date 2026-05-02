@@ -76,6 +76,10 @@ func (w *Worker) runJob(parent context.Context, job *models.Job) {
 
 	w.log.Info("running job", zap.String("job_id", job.ID), zap.String("type", string(job.Type)))
 
+	// Start lease renewal goroutine
+	stopLease := make(chan struct{})
+	go w.renewLeaseLoop(ctx, job.ID, stopLease)
+
 	tools := &JobTools{
 		Progress: func(progress int, message string) {
 			_ = w.repo.SetProgress(ctx, job.ID, progress, message)
@@ -93,18 +97,20 @@ func (w *Worker) runJob(parent context.Context, job *models.Job) {
 	}
 
 	result, err := w.dispatcher.Dispatch(ctx, job, tools)
+
+	// Stop lease renewal
+	close(stopLease)
 	if err != nil {
 		w.log.Error("job failed", zap.String("job_id", job.ID), zap.Error(err))
 
-		job.Retries++
-		if job.CanRetry() {
+		if job.RetryCount < job.MaxRetries {
 			w.log.Info("marking job for retry", zap.String("job_id", job.ID))
-		_ = w.repo.Fail(ctx, job.ID, err.Error())
-		_, retryErr := w.repo.Retry(ctx, job.ID)
-		if retryErr != nil {
-			w.log.Warn("failed to retry job", zap.String("job_id", job.ID), zap.Error(retryErr))
-		}
-		return
+			_ = w.repo.Fail(ctx, job.ID, err.Error())
+			_, retryErr := w.repo.Retry(ctx, job.ID)
+			if retryErr != nil {
+				w.log.Warn("failed to retry job", zap.String("job_id", job.ID), zap.Error(retryErr))
+			}
+			return
 		}
 
 		_ = w.repo.Fail(ctx, job.ID, err.Error())
@@ -113,4 +119,22 @@ func (w *Worker) runJob(parent context.Context, job *models.Job) {
 
 	_ = w.repo.Complete(ctx, job.ID, result)
 	w.log.Info("job completed", zap.String("job_id", job.ID))
+}
+
+func (w *Worker) renewLeaseLoop(ctx context.Context, jobID string, stop <-chan struct{}) {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := w.repo.RenewLease(ctx, jobID, w.id, w.leaseTTL); err != nil {
+				w.log.Warn("failed to renew lease", zap.String("job_id", jobID), zap.Error(err))
+			}
+		}
+	}
 }
