@@ -4,10 +4,12 @@ type ExtractRequest struct {
 	URL            string             `json:"url"`
 	Segments       []Segment          `json:"segments"`
 	ForceKeyframes bool               `json:"force_keyframes"`
-	SaveDB         bool               `json:"save_db"`
-	UploadDrive    bool               `json:"upload_drive"`
+	SaveDB         *bool              `json:"save_db,omitempty"`
+	UploadDrive    *bool              `json:"upload_drive,omitempty"`
 	Normalize      *bool              `json:"normalize,omitempty"` // Use pointer to distinguish between missing and false
 	KeepAudio      bool               `json:"keep_audio"`
+	WriteSummary   *bool              `json:"write_summary,omitempty"`
+	Strategy       string             `json:"strategy,omitempty"` // verify, skip, replace
 	Destination    *DestinationRequest `json:"destination,omitempty"`
 }
 
@@ -27,15 +29,35 @@ type Segment struct {
 }
 
 type ExtractResponse struct {
-	OK              bool           `json:"ok"`
-	SourceURL       string         `json:"source_url"`
-	Items           []ExtractItem `json:"items"`
-	Error           string         `json:"error,omitempty"`
-	DriveFolderID   string         `json:"drive_folder_id,omitempty"`
-	DriveFolderPath string         `json:"drive_folder_path,omitempty"`
+	OK              bool               `json:"ok"`
+	SourceURL       string             `json:"source_url"`
+	VideoID         string             `json:"video_id,omitempty"`
+	Folder          *FolderInfo        `json:"folder,omitempty"`
+	Stats           *ExtractStats      `json:"stats,omitempty"`
+	Items           []ExtractItem      `json:"items"`
+	Error           string             `json:"error,omitempty"`
+	DriveFolderID   string             `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string             `json:"drive_folder_path,omitempty"`
+}
+
+type FolderInfo struct {
+	ID              string `json:"id"`
+	LocalFolderPath string `json:"local_folder_path"`
+	DriveFolderID   string `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string `json:"drive_folder_path,omitempty"`
+	ManifestTXTPath string `json:"manifest_txt_path,omitempty"`
+	ManifestJSONPath string `json:"manifest_json_path,omitempty"`
+}
+
+type ExtractStats struct {
+	Requested int `json:"requested"`
+	Processed int `json:"processed"`
+	Skipped   int `json:"skipped"`
+	Failed    int `json:"failed"`
 }
 
 type ExtractItem struct {
+	ID             string `json:"id,omitempty"`
 	Name           string `json:"name"`
 	Start          string `json:"start"`
 	End            string `json:"end"`

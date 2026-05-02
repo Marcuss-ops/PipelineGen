@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -55,9 +54,19 @@ func NewService(
 
 func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractResponse, error) {
 	s.log.Info("YouTube Extract service called", zap.String("url", req.URL))
+	
+	videoID := extractVideoID(req.URL)
+	if videoID == "" {
+		videoID = hashutil.MD5String(req.URL)[:12]
+	}
+
 	resp := &ExtractResponse{
 		OK:        true,
 		SourceURL: strings.TrimSpace(req.URL),
+		VideoID:   videoID,
+		Stats: &ExtractStats{
+			Requested: len(req.Segments),
+		},
 	}
 
 	if resp.SourceURL == "" {
@@ -86,12 +95,19 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 	dl := downloader.NewYTDLP(s.cfg)
 
-	outDir := filepath.Join(s.cfg.Storage.DataDir, "youtube-clips", time.Now().UTC().Format("20060102_150405"))
+	// Create stable folder path using video ID instead of timestamp
+	folderSlug := "yt_" + videoID
+	if req.Destination != nil && req.Destination.SubfolderName != "" {
+		folderSlug = pathutil.Slug(req.Destination.SubfolderName)
+	}
+	
+	outDir := filepath.Join(s.cfg.Storage.DataDir, "youtube-clips", folderSlug)
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		resp.OK = false
 		resp.Error = err.Error()
 		return resp, err
 	}
+	s.log.Info("using stable folder for video", zap.String("folder", outDir), zap.String("video_id", videoID))
 
 	// Resolve Drive destination if drivedestination service is available
 	var driveFolderID string
@@ -106,14 +122,10 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 
 		// If no subfolder provided, automatically create one based on the video ID
-		// to avoid "floating clips" in the main group folder.
 		if destReq.SubfolderName == "" {
-			videoID := extractVideoID(resp.SourceURL)
-			if videoID != "" {
-				destReq.SubfolderName = "yt_" + videoID
-				destReq.CreateSubfolder = true
-				s.log.Info("auto-assigning video subfolder", zap.String("subfolder", destReq.SubfolderName))
-			}
+			destReq.SubfolderName = "yt_" + videoID
+			destReq.CreateSubfolder = true
+			s.log.Info("auto-assigning video subfolder", zap.String("subfolder", destReq.SubfolderName))
 		}
 
 		resolved, err := s.driveDestination.Resolve(ctx, destReq)
@@ -124,9 +136,87 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			resolvedPath = resolved.FolderPath
 		}
 	}
+	
 	// Set folder info on response
+	resp.Folder = &FolderInfo{
+		ID:               fmt.Sprintf("clipfolder_youtube_%s", videoID),
+		LocalFolderPath:  outDir,
+		DriveFolderID:    driveFolderID,
+		DriveFolderPath:  resolvedPath,
+		ManifestTXTPath:  filepath.Join(outDir, "clip_manifest.txt"),
+		ManifestJSONPath: filepath.Join(outDir, "clip_manifest.json"),
+	}
 	resp.DriveFolderID = driveFolderID
 	resp.DriveFolderPath = resolvedPath
+
+	// Initialize or load clip folder from DB
+	folderID := fmt.Sprintf("clipfolder_youtube_%s", videoID)
+	var clipFolder *models.ClipFolder
+	if s.clipsRepo != nil {
+		existingFolder, err := s.clipsRepo.GetClipFolder(ctx, folderID)
+		if err == nil && existingFolder != nil {
+			clipFolder = existingFolder
+			s.log.Info("loaded existing clip folder", zap.String("folder_id", folderID))
+
+			// Update drive info if it was missing but we have it now
+			if clipFolder.FolderID == "" && driveFolderID != "" {
+				clipFolder.FolderID = driveFolderID
+				clipFolder.FolderPath = resolvedPath
+				clipFolder.Group = getGroupFromDestination(req.Destination)
+			}
+			
+			// Update local path if it changed (e.g. user provided a specific subfolder_name)
+			if clipFolder.LocalFolderPath != outDir {
+				clipFolder.LocalFolderPath = outDir
+				clipFolder.ManifestTXTPath = filepath.Join(outDir, "clip_manifest.txt")
+				clipFolder.ManifestJSONPath = filepath.Join(outDir, "clip_manifest.json")
+			}
+		} else {
+			clipFolder = &models.ClipFolder{
+				ID:              folderID,
+				Source:          "youtube",
+				SourceURL:       resp.SourceURL,
+				VideoID:         videoID,
+				FolderID:        driveFolderID,
+				FolderPath:      resolvedPath,
+				LocalFolderPath: outDir,
+				Group:           getGroupFromDestination(req.Destination),
+				ManifestTXTPath: filepath.Join(outDir, "clip_manifest.txt"),
+				ManifestJSONPath: filepath.Join(outDir, "clip_manifest.json"),
+				CreatedAt:       time.Now().UTC(),
+				UpdatedAt:       time.Now().UTC(),
+			}
+			s.log.Info("created new clip folder", zap.String("folder_id", folderID))
+		}
+	}
+
+	// Load existing manifest if available
+	manifest := &models.ClipManifest{
+		ID:              folderID,
+		FolderID:        driveFolderID,
+		FolderPath:      resolvedPath,
+		Source:          "youtube",
+		SourceURL:       resp.SourceURL,
+		VideoID:         videoID,
+		LocalFolderPath: outDir,
+		Clips:           []models.ClipManifestItem{},
+	}
+	if clipFolder != nil && clipFolder.ManifestJSONPath != "" {
+		if data, err := os.ReadFile(clipFolder.ManifestJSONPath); err == nil {
+			if err := json.Unmarshal(data, manifest); err == nil {
+				s.log.Info("loaded existing manifest", zap.Int("clip_count", len(manifest.Clips)))
+
+				// Restore/Update drive info if missing in file but present in current request
+				if manifest.FolderID == "" && driveFolderID != "" {
+					manifest.FolderID = driveFolderID
+					manifest.FolderPath = resolvedPath
+				}
+				if manifest.ID == "" {
+					manifest.ID = folderID
+				}
+			}
+		}
+	}
 
 	for i, seg := range req.Segments {
 		item := ExtractItem{
@@ -145,6 +235,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = "invalid start timestamp: " + err.Error()
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -153,6 +244,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = "invalid end timestamp: " + err.Error()
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -163,6 +255,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = "invalid start timestamp format: " + err.Error()
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -171,6 +264,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = "invalid end timestamp format: " + err.Error()
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -178,6 +272,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = fmt.Sprintf("start time (%s) must be before end time (%s)", item.Start, item.End)
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -186,43 +281,112 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = fmt.Sprintf("segment duration (%d seconds) exceeds maximum allowed (%d seconds)", duration, MaxSegmentDuration)
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
 
-		// Extract video ID for stable clip ID
-		videoID := extractVideoID(resp.SourceURL)
-
-		// Create stable ID: yt_videoID_start_end (sanitized)
-		safeStart := strings.ReplaceAll(item.Start, ":", "")
-		safeEnd := strings.ReplaceAll(item.End, ":", "")
-		clipID := fmt.Sprintf("yt_%s_%s_%s", videoID, safeStart, safeEnd)
-
-		// If we can't get video ID, fallback to timestamp
-		if videoID == "" {
-			clipID = fmt.Sprintf("yt_%s_%03d", time.Now().UTC().Format("20060102_150405"), i+1)
-		}
+		// Create stable ID: yt_videoID_startSec_endSec
+		clipID := fmt.Sprintf("yt_%s_%d_%d", videoID, startSec, endSec)
+		item.ID = clipID
 
 		// Check if clip already exists (deduplication)
-		if s.clipsRepo != nil && req.SaveDB {
-			existingClip, clipErr := s.clipsRepo.GetClip(ctx, clipID)
-			if clipErr == nil && existingClip != nil {
-				// Check if existing clip has valid local file
-				if existingClip.LocalPath != "" {
-					if _, statErr := os.Stat(existingClip.LocalPath); statErr == nil {
-						s.log.Info("clip already exists with valid local file, skipping processing",
-							zap.String("clip_id", clipID),
-							zap.String("local_path", existingClip.LocalPath),
-						)
-						item.LocalPath = existingClip.LocalPath
-						item.Status = "skipped_existing"
-						item.DriveLink = existingClip.DriveLink
+		strategy := req.Strategy
+		if strategy == "" {
+			strategy = "verify"
+		}
 
-						// Still add to response items
-						resp.Items = append(resp.Items, item)
-						continue
+		saveDB := boolDefault(req.SaveDB, true)
+		if s.clipsRepo != nil && saveDB && strategy != "replace" {
+			existingClip, clipErr := s.clipsRepo.GetClip(ctx, clipID)
+			
+			shouldSkip := false
+			skipReason := ""
+
+			// 1. Check DB record
+			if clipErr == nil && existingClip != nil {
+				if strategy == "skip" {
+					shouldSkip = true
+					skipReason = "existing DB record (skip strategy)"
+				} else {
+					// verify strategy
+					if existingClip.LocalPath != "" {
+						if _, statErr := os.Stat(existingClip.LocalPath); statErr == nil {
+							shouldSkip = true
+							skipReason = "valid local file"
+						}
+					}
+					if !shouldSkip && existingClip.DriveLink != "" {
+						shouldSkip = true
+						skipReason = "valid drive link"
 					}
 				}
+			}
+
+			// 2. Check manifest
+			if !shouldSkip && manifest != nil {
+				for _, mItem := range manifest.Clips {
+					if mItem.ID == clipID {
+						if strategy == "skip" {
+							shouldSkip = true
+							skipReason = "found in manifest (skip strategy)"
+						} else if mItem.Status == "processed" {
+							if mItem.LocalPath != "" {
+								if _, statErr := os.Stat(mItem.LocalPath); statErr == nil {
+									shouldSkip = true
+									skipReason = "processed in manifest (local file exists)"
+								}
+							}
+							if !shouldSkip && mItem.DriveLink != "" {
+								shouldSkip = true
+								skipReason = "processed in manifest (drive link exists)"
+							}
+						}
+						break
+					}
+				}
+			}
+
+			if shouldSkip {
+				s.log.Info("clip already exists, skipping processing",
+					zap.String("clip_id", clipID),
+					zap.String("reason", skipReason),
+				)
+				if existingClip != nil {
+					item.LocalPath = existingClip.LocalPath
+					item.DriveLink = existingClip.DriveLink
+				}
+				item.Status = "skipped_existing"
+
+				// Update manifest even if skipped
+				if manifest != nil {
+					found := false
+					for _, mItem := range manifest.Clips {
+						if mItem.ID == clipID {
+							found = true
+							break
+						}
+					}
+					if !found {
+						manifest.Clips = append(manifest.Clips, models.ClipManifestItem{
+							ID:              clipID,
+							Name:            item.Name,
+							Start:           item.Start,
+							End:             item.End,
+							StartSeconds:    startSec,
+							EndSeconds:      endSec,
+							DurationSeconds: duration,
+							LocalPath:       item.LocalPath,
+							DriveLink:       item.DriveLink,
+							Status:          item.Status,
+							Tags:            fmt.Sprintf("%v", seg.Tags),
+						})
+					}
+				}
+
+				resp.Items = append(resp.Items, item)
+				resp.Stats.Skipped++
+				continue
 			}
 		}
 
@@ -245,6 +409,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			item.Status = "failed"
 			item.Error = fmt.Sprintf("yt-dlp failed: %v", dlErr)
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -252,11 +417,13 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		localPath := findFirstOutput(outDir, fmt.Sprintf("%03d_%s", i+1, item.Name))
 		item.LocalPath = localPath
 		item.Status = "processed"
+		resp.Stats.Processed++
 
 		if localPath == "" {
 			item.Status = "failed"
 			item.Error = "output file not found after yt-dlp"
 			resp.Items = append(resp.Items, item)
+			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
@@ -300,13 +467,23 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 		// Upload to Drive if client is available, folder resolved, and upload_drive is true
 		var driveLink string
-		shouldUpload := req.UploadDrive && localPath != "" && s.driveClient != nil && driveFolderID != ""
+		uploadDrive := boolDefault(req.UploadDrive, true)
+		shouldUpload := uploadDrive && localPath != "" && s.driveClient != nil && driveFolderID != ""
 		if shouldUpload {
 			uploader := &drive.Uploader{Service: s.driveClient, Log: s.log}
 			filename := filepath.Base(localPath)
 			result, uploadErr := uploader.UploadFile(ctx, localPath, driveFolderID, filename)
 			if uploadErr != nil {
 				s.log.Warn("failed to upload to drive", zap.Error(uploadErr))
+				// If user requested upload but it failed, mark as upload_failed
+				if uploadDrive {
+					item.Status = "upload_failed"
+					item.Error = fmt.Sprintf("drive upload failed: %v", uploadErr)
+					resp.Items = append(resp.Items, item)
+					resp.Stats.Failed++
+					resp.OK = false
+					continue
+				}
 			} else {
 				driveLink = result.WebViewLink
 				item.DriveLink = result.WebViewLink
@@ -314,23 +491,22 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 
 		// Save clip to database
-		if req.SaveDB && s.clipsRepo != nil {
+		if saveDB && s.clipsRepo != nil {
 			// Build metadata using json.Marshal for proper escaping
-			metadataMap := map[string]string{
-				"start":     item.Start,
-				"end":       item.End,
-				"group":     getGroupFromDestination(req.Destination),
-				"subfolder": getSubfolderFromDestination(req.Destination),
+			metadataMap := map[string]interface{}{
+				"video_id":         videoID,
+				"start":            item.Start,
+				"end":              item.End,
+				"start_seconds":    startSec,
+				"end_seconds":      endSec,
+				"duration_seconds": duration,
+				"folder_slug":      folderSlug,
+				"strategy":         strategy,
+				"normalized":       shouldNormalize,
+				"keep_audio":       req.KeepAudio,
 			}
-			metadataBytes, err := json.Marshal(metadataMap)
+			metadataBytes, _ := json.Marshal(metadataMap)
 			metadata := string(metadataBytes)
-			if err != nil {
-				s.log.Warn("failed to marshal metadata", zap.Error(err))
-				metadata = fmt.Sprintf(`{"start":"%s","end":"%s","group":"%s","subfolder":"%s"}`,
-					item.Start, item.End,
-					getGroupFromDestination(req.Destination),
-					getSubfolderFromDestination(req.Destination))
-			}
 
 			// Use resolved path or fallback to request path
 			folderPath := resolvedPath
@@ -351,7 +527,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				Source:      "youtube",
 				Category:    "manual_extract",
 				ExternalURL: resp.SourceURL,
-				Duration:    0,
+				Duration:    duration,
 				Metadata:    metadata,
 				FileHash:    fileHash,
 				LocalPath:   localPath,
@@ -363,19 +539,143 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			}
 		}
 
+		// Update manifest with this clip
+		if manifest != nil {
+			newMItem := models.ClipManifestItem{
+				ID:              clipID,
+				Name:            item.Name,
+				Start:           item.Start,
+				End:             item.End,
+				StartSeconds:    startSec,
+				EndSeconds:      endSec,
+				DurationSeconds: duration,
+				Filename:        filepath.Base(localPath),
+				LocalPath:       item.LocalPath,
+				DriveLink:       item.DriveLink,
+				FileHash:        fileHash,
+				Status:          item.Status,
+				Tags:            fmt.Sprintf("%v", seg.Tags),
+			}
+			
+			// Replace existing or append new
+			found := false
+			for j, mItem := range manifest.Clips {
+				if mItem.ID == clipID {
+					manifest.Clips[j] = newMItem
+					found = true
+					break
+				}
+			}
+			if !found {
+				manifest.Clips = append(manifest.Clips, newMItem)
+			}
+		}
+
 		resp.Items = append(resp.Items, item)
+		resp.Stats.Processed++
 	}
 
-	// Generate or update summary TXT file
-	summaryPath := filepath.Join(s.cfg.Storage.DataDir, "riepilogo_clip.txt")
-	s.log.Info("updating summary file", zap.String("path", summaryPath), zap.Int("items", len(resp.Items)))
-	if err := s.updateSummaryFile(ctx, resp, summaryPath); err != nil {
-		s.log.Warn("failed to update summary file", zap.Error(err))
-	} else {
-		s.log.Info("summary file updated successfully", zap.String("path", summaryPath))
+	// Update folder manifest (TXT + JSON)
+	if clipFolder != nil {
+		// Count processed, failed, skipped from manifest
+		processedCount := 0
+		failedCount := 0
+		skippedCount := 0
+		for _, mItem := range manifest.Clips {
+			if mItem.Status == "processed" || mItem.Status == "skipped_existing" {
+				processedCount++
+			} else if mItem.Status == "failed" || mItem.Status == "upload_failed" {
+				failedCount++
+			} else {
+				skippedCount++
+			}
+		}
+
+		// Update manifest stats
+		manifest.Stats = models.ClipFolderStats{
+			ClipCount:      len(manifest.Clips),
+			ProcessedCount: processedCount,
+			FailedCount:    failedCount,
+			SkippedCount:   skippedCount,
+		}
+
+		clipFolder.ClipCount = len(manifest.Clips)
+		clipFolder.ProcessedCount = processedCount
+		clipFolder.FailedCount = failedCount
+		clipFolder.SkippedCount = skippedCount
+		clipFolder.UpdatedAt = time.Now().UTC()
+
+		// Save manifest JSON
+		if manifest != nil {
+			manifest.UpdatedAt = time.Now().UTC()
+			manifestData, err := json.MarshalIndent(manifest, "", "  ")
+			if err == nil {
+				if err := os.WriteFile(clipFolder.ManifestJSONPath, manifestData, 0644); err != nil {
+					s.log.Warn("failed to write manifest JSON", zap.Error(err))
+				} else {
+					s.log.Info("manifest JSON updated", zap.String("path", clipFolder.ManifestJSONPath))
+				}
+			}
+		}
+
+		// Save manifest TXT
+		if clipFolder.ManifestTXTPath != "" {
+			if err := s.updateFolderManifestTXT(clipFolder, manifest); err != nil {
+				s.log.Warn("failed to write manifest TXT", zap.Error(err))
+			} else {
+				s.log.Info("manifest TXT updated", zap.String("path", clipFolder.ManifestTXTPath))
+			}
+		}
+
+		// Upsert clip folder to DB
+		if s.clipsRepo != nil {
+			if err := s.clipsRepo.UpsertClipFolder(ctx, clipFolder); err != nil {
+				s.log.Warn("failed to upsert clip folder", zap.Error(err))
+			}
+		}
 	}
 
 	return resp, nil
+}
+
+// GetFolder returns a clip folder by ID
+func (s *Service) GetFolder(ctx context.Context, folderID string) (*models.ClipFolder, error) {
+	if s.clipsRepo == nil {
+		return nil, fmt.Errorf("clips repository not available")
+	}
+	return s.clipsRepo.GetClipFolder(ctx, folderID)
+}
+
+// GetFolderByVideoID returns a clip folder by video ID
+func (s *Service) GetFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
+	if s.clipsRepo == nil {
+		return nil, fmt.Errorf("clips repository not available")
+	}
+	return s.clipsRepo.GetClipFolderByVideoID(ctx, videoID)
+}
+
+// ListFolders returns all clip folders
+func (s *Service) ListFolders(ctx context.Context, source string) ([]*models.ClipFolder, error) {
+	if s.clipsRepo == nil {
+		return nil, fmt.Errorf("clips repository not available")
+	}
+	return s.clipsRepo.ListClipFolders(ctx, source)
+}
+
+// SearchFolders searches clip folders by keyword
+func (s *Service) SearchFolders(ctx context.Context, keyword string) ([]*models.ClipFolder, error) {
+	if s.clipsRepo == nil {
+		return nil, fmt.Errorf("clips repository not available")
+	}
+	return s.clipsRepo.SearchClipFolders(ctx, keyword)
+}
+
+// ListFolderClips returns all clips in a folder by folder ID
+func (s *Service) ListFolderClips(ctx context.Context, folderID string) ([]*models.Clip, error) {
+	if s.clipsRepo == nil {
+		return nil, fmt.Errorf("clips repository not available")
+	}
+	return s.clipsRepo.ListClipsByFolderID(ctx, folderID)
 }
 
 // getGroupFromDestination extracts group name from destination request
@@ -404,6 +704,14 @@ func findFirstOutput(dir, prefix string) string {
 
 // MaxSegmentDuration is the maximum allowed duration for a single clip segment (120 seconds)
 const MaxSegmentDuration = 120
+
+// boolDefault returns the value of the bool pointer, or the default value if nil
+func boolDefault(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+	return *v
+}
 
 // parseTimestamp parses a timestamp string (e.g., "10:31", "1:23:45", "45") to seconds
 func parseTimestamp(ts string) (int, error) {
@@ -493,123 +801,47 @@ func extractVideoID(inputURL string) string {
 	return ""
 }
 
-// updateSummaryFile creates or updates the summary TXT file with clip information
-func (s *Service) updateSummaryFile(ctx context.Context, resp *ExtractResponse, filePath string) error {
-	// Read existing file if it exists
-	existingContent := ""
-	fileExists := false
-	if data, err := os.ReadFile(filePath); err == nil {
-		existingContent = string(data)
-		fileExists = true
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read summary file: %w", err)
+// updateFolderManifestTXT creates or updates the per-folder manifest TXT file
+func (s *Service) updateFolderManifestTXT(folder *models.ClipFolder, manifest *models.ClipManifest) error {
+	if folder == nil || folder.ManifestTXTPath == "" || manifest == nil {
+		return fmt.Errorf("folder, manifest or manifest path is nil")
 	}
 
 	var sb strings.Builder
-
-	if !fileExists {
-		// New file: add header
-		sb.WriteString("📋 RIEPILOGO CLIP\n")
-		sb.WriteString(strings.Repeat("=", 80) + "\n\n")
+	sb.WriteString("📋 CLIP FOLDER MANIFEST\n")
+	sb.WriteString(strings.Repeat("=", 80) + "\n")
+	sb.WriteString(fmt.Sprintf("Folder ID:  %s\n", folder.ID))
+	sb.WriteString(fmt.Sprintf("Local:      %s\n", folder.LocalFolderPath))
+	sb.WriteString(fmt.Sprintf("Source:     %s\n", folder.SourceURL))
+	if folder.VideoID != "" {
+		sb.WriteString(fmt.Sprintf("Video ID:   %s\n", folder.VideoID))
 	}
-
-	// Count existing clips to determine starting number for new clips
-	existingClipCount := 0
-	if fileExists {
-		lines := strings.Split(existingContent, "\n")
-		for _, line := range lines {
-			if isClipLine(line) {
-				existingClipCount++
-			}
-		}
+	if folder.FolderPath != "" {
+		sb.WriteString(fmt.Sprintf("Drive:      %s\n", folder.FolderPath))
 	}
-
-	// Build content: existing content + new clips
-	if fileExists {
-		sb.WriteString(existingContent)
-		// Ensure trailing newline before appending
-		if !strings.HasSuffix(existingContent, "\n") {
-			sb.WriteString("\n")
-		}
-		sb.WriteString("\n")
+	if folder.FolderID != "" {
+		sb.WriteString(fmt.Sprintf("Drive ID:   %s\n", folder.FolderID))
 	}
+	sb.WriteString(fmt.Sprintf("📊 Totale clip: %d (Processate: %d, Fallite: %d)\n", 
+		manifest.Stats.ClipCount, manifest.Stats.ProcessedCount, manifest.Stats.FailedCount))
+	sb.WriteString(fmt.Sprintf("Aggiornato: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	sb.WriteString("\n")
 
-	// Add new clips from current response
-	newClipCount := 0
-	for _, item := range resp.Items {
-		if item.Status == "failed" || item.Status == "skipped_existing" {
-			continue
-		}
-		existingClipCount++
-		newClipCount++
-
-		sb.WriteString(fmt.Sprintf("%d. [%s]\n", existingClipCount, item.Name))
+	for i, item := range manifest.Clips {
+		sb.WriteString(fmt.Sprintf("%d. [%s]\n", i+1, item.Name))
+		sb.WriteString(fmt.Sprintf("   ⏱️  Tempo:  %s - %s (%ds)\n", item.Start, item.End, item.DurationSeconds))
+		sb.WriteString(fmt.Sprintf("   📊 Stato:  %s\n", item.Status))
 		if item.DriveLink != "" {
-			sb.WriteString(fmt.Sprintf("   🔗 Link: %s\n", item.DriveLink))
+			sb.WriteString(fmt.Sprintf("   🔗 Drive:  %s\n", item.DriveLink))
 		}
 		if item.LocalPath != "" {
-			sb.WriteString(fmt.Sprintf("   📁 File: %s\n", filepath.Base(item.LocalPath)))
+			sb.WriteString(fmt.Sprintf("   📁 File:   %s\n", filepath.Base(item.LocalPath)))
 		}
-		sb.WriteString(fmt.Sprintf("   📊 Stato: %s\n", item.Status))
-		if item.DriveFolderPath != "" {
-			sb.WriteString(fmt.Sprintf("   📂 Cartella: %s\n", item.DriveFolderPath))
-		}
-		if item.DriveFolderID != "" {
-			sb.WriteString(fmt.Sprintf("   🆔 Folder ID: %s\n", item.DriveFolderID))
+		if item.FileHash != "" {
+			sb.WriteString(fmt.Sprintf("   #  Hash:   %s\n", item.FileHash))
 		}
 		sb.WriteString("\n")
 	}
 
-	// Only write if we have new clips
-	if newClipCount == 0 {
-		return nil
-	}
-
-	// Update total count in header
-	content := sb.String()
-	totalClips := countClipsInContent(content)
-
-	if fileExists {
-		// Replace the old total line
-		lines := strings.Split(content, "\n")
-		for i, line := range lines {
-			if strings.Contains(line, "Totale clip:") {
-				lines[i] = fmt.Sprintf("📊 Totale clip: %d", totalClips)
-				break
-			}
-		}
-		content = strings.Join(lines, "\n")
-	} else {
-		// Insert total line after the separator line
-		lines := strings.Split(content, "\n")
-		for i, line := range lines {
-			if strings.Contains(line, "===") {
-				newLines := append(lines[:i+1],
-					append([]string{"", fmt.Sprintf("📊 Totale clip: %d", totalClips), ""},
-						lines[i+1:]...)...)
-				content = strings.Join(newLines, "\n")
-				break
-			}
-		}
-	}
-
-	return os.WriteFile(filePath, []byte(content), 0644)
-}
-
-// isClipLine checks if a line is a clip entry (starts with a number followed by ". [")
-func isClipLine(line string) bool {
-	matched, _ := regexp.MatchString(`^\d+\.\s*\[`, line)
-	return matched
-}
-
-// countClipsInContent counts the number of clip entries in the content
-func countClipsInContent(content string) int {
-	count := 0
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		if isClipLine(line) {
-			count++
-		}
-	}
-	return count
+	return os.WriteFile(folder.ManifestTXTPath, []byte(sb.String()), 0644)
 }
