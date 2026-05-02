@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
+	"velox/go-master/pkg/hashutil"
+	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/models"
 )
 
@@ -88,9 +90,9 @@ func (s *Service) DownloadClip(ctx context.Context, clipID string, req *Download
 					return nil, err
 				}
 
-				if hash, err := calculateFileHash(localPath); err == nil {
-					resp.FileHash = hash
-				}
+			if hash, err := hashutil.MD5File(localPath); err == nil {
+				resp.FileHash = hash
+			}
 
 				// Update clip LocalPath
 				clip.LocalPath = localPath
@@ -113,12 +115,13 @@ func (s *Service) DownloadClip(ctx context.Context, clipID string, req *Download
 		return resp, fmt.Errorf("no download source available")
 	}
 
-	if err := s.downloadClip(url, localPath); err != nil {
+	dl := downloader.NewYTDLP(s.cfg)
+	if err := dl.Download(ctx, &downloader.DownloadRequest{URL: url, OutputPath: localPath}); err != nil {
 		resp.Error = err.Error()
 		return resp, err
 	}
 
-	if hash, err := calculateFileHash(localPath); err == nil {
+	if hash, err := hashutil.MD5File(localPath); err == nil {
 		resp.FileHash = hash
 	}
 
@@ -165,7 +168,7 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 	}
 	defer f.Close()
 
-	file := &drive.File{Name: clip.Filename}
+	file := &driveapi.File{Name: clip.Filename}
 	if folderID != "" {
 		file.Parents = []string{folderID}
 	}

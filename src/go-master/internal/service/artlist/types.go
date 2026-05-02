@@ -269,34 +269,6 @@ type KeywordBatchResponse struct {
 	Results          []KeywordBatchItem `json:"results"`
 }
 
-// ReindexRequest represents a reindex request
-type ReindexRequest struct {
-	Mode         string `json:"mode"`
-	SourceFilter string `json:"source_filter"`
-}
-
-// ReindexResponse represents a reindex response
-type ReindexResponse struct {
-	OK      bool   `json:"ok"`
-	Message string `json:"message"`
-	Error   string `json:"error,omitempty"`
-}
-
-// PurgeStaleRequest represents a purge stale request
-type PurgeStaleRequest struct {
-	OlderThanDays  int  `json:"older_than_days"`
-	OnlyDownloaded bool `json:"only_downloaded"`
-	DryRun         bool `json:"dry_run"`
-}
-
-// PurgeStaleResponse represents a purge stale response
-type PurgeStaleResponse struct {
-	OK          bool   `json:"ok"`
-	WouldRemove int    `json:"would_remove,omitempty"`
-	Removed     int    `json:"removed,omitempty"`
-	Error       string `json:"error,omitempty"`
-}
-
 // SyncDriveStatusRequest represents a sync drive status request
 type SyncDriveStatusRequest struct {
 	FixBroken bool `json:"fix_broken"`
