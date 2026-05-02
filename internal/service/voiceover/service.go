@@ -72,7 +72,7 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 
 	item := resp.Items[0]
 	if item.Status == "failed" {
-		return nil, fmt.Errorf(item.Error)
+		return nil, fmt.Errorf("%s", item.Error)
 	}
 
 	return &VoiceoverResult{
@@ -141,7 +141,7 @@ func (s *Service) processLanguage(
 		Status:   "processing",
 	}
 
-	existing, _ := s.findExisting(ctx, textHash, language, "", folderID)
+	existing, _ := s.findExisting(ctx, textHash, language, folderID)
 	if shouldSkipExisting(existing, req.Strategy) {
 		return existingToItem(existing, "skipped_existing")
 	}
@@ -179,13 +179,14 @@ func (s *Service) processLanguage(
 		item.DownloadLink = upload.DownloadLink
 	}
 
+	item.Status = "processed"
+
 	if req.SaveDB {
 		if err := s.saveRecord(ctx, req, item, requestID, textHash, dest); err != nil {
 			return item.fail("db_save_failed", err)
 		}
 	}
 
-	item.Status = "processed"
 	return item
 }
 
@@ -213,11 +214,11 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 	}, nil
 }
 
-func (s *Service) findExisting(ctx context.Context, textHash, language, voice, folderID string) (*voiceovers.Record, error) {
+func (s *Service) findExisting(ctx context.Context, textHash, language, folderID string) (*voiceovers.Record, error) {
 	if s.repo == nil {
 		return nil, nil
 	}
-	return s.repo.FindExisting(ctx, textHash, language, voice, folderID)
+	return s.repo.FindExisting(ctx, textHash, language, folderID)
 }
 
 func shouldSkipExisting(existing *voiceovers.Record, strategy string) bool {

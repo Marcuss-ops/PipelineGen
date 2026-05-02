@@ -23,7 +23,7 @@ func (s JobStatus) IsTerminal() bool {
 
 // CanRetry restituisce true se il job può essere riprovato
 func (j *Job) CanRetry() bool {
-	return j.Retries < j.MaxRetries && (j.Status == StatusFailed || j.Status == StatusCancelled)
+	return j.RetryCount < j.MaxRetries && (j.Status == StatusFailed || j.Status == StatusCancelled)
 }
 
 // NewJob crea un nuovo job con valori di default
@@ -37,7 +37,7 @@ func NewJob(jobType JobType, payload map[string]interface{}) *Job {
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		Payload:    payload,
-		Retries:    0,
+		RetryCount: 0,
 		MaxRetries: 3,
 	}
 }
