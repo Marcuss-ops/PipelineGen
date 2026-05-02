@@ -47,6 +47,11 @@ type EmbedResponse struct {
 	Embedding []float32 `json:"embedding"`
 }
 
+// Model rappresenta un modello Ollama
+type Model struct {
+	Name string `json:"name"`
+}
+
 // ListModelsResponse risposta lista modelli
 type ListModelsResponse struct {
 	Models []Model `json:"models"`

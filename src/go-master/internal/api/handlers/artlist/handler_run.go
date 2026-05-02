@@ -8,18 +8,18 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/pkg/apiutil"
 )
 
 // RunTagPipeline executes the full Artlist flow for a tag
 func (h *Handler) RunTagPipeline(c *gin.Context) {
-	var req artlist.RunTagRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid request: " + err.Error()})
+	req, ok := apiutil.BindJSON[artlist.RunTagRequest](c)
+	if !ok {
 		return
 	}
 
 	if strings.TrimSpace(req.Term) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "term is required"})
+		apiutil.BadRequest(c, "term is required")
 		return
 	}
 	if req.Limit <= 0 {
@@ -48,15 +48,15 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 func (h *Handler) RunStatus(c *gin.Context) {
 	runID := strings.TrimSpace(c.Param("run_id"))
 	if runID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "run_id is required"})
+		apiutil.BadRequest(c, "run_id is required")
 		return
 	}
 
 	resp, err := h.service.GetRunTag(c.Request.Context(), runID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": err.Error()})
+		apiutil.NotFound(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	apiutil.OK(c, resp)
 }

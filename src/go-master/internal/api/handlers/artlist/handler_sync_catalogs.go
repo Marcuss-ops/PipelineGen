@@ -4,11 +4,12 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"velox/go-master/pkg/apiutil"
 )
 
 func (h *Handler) SyncCatalogs(c *gin.Context) {
 	if h.catalogSync == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "catalog sync service not configured"})
+		apiutil.Error(c, http.StatusServiceUnavailable, "catalog sync service not configured")
 		return
 	}
 
@@ -18,5 +19,5 @@ func (h *Handler) SyncCatalogs(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, summary)
+	apiutil.OK(c, summary)
 }

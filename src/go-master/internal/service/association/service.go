@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
 )
 
@@ -14,16 +15,18 @@ type Service struct {
 	stockRepo      *clips.Repository
 	artlistRepo    *clips.Repository
 	clipsRepo      *clips.Repository
+	catalogRepo    *catalog.Repository
 	engine         *Engine
 }
 
-func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository) *Service {
+func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository, catalogRepo *catalog.Repository) *Service {
 	s := &Service{
 		dataDir:        dataDir,
 		nodeScraperDir: nodeScraperDir,
 		stockRepo:      stockRepo,
 		artlistRepo:    artlistRepo,
 		clipsRepo:      clipsRepo,
+		catalogRepo:    catalogRepo,
 	}
 
 	// Default engine with standard sources

@@ -21,7 +21,7 @@ func main() {
 	log := logger.Get()
 	defer logger.Sync()
 
-	deps, err := bootstrap.WireServices(cfg, log)
+	deps, err := bootstrap.WireServices(cfg, log, "")
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
 		os.Exit(1)

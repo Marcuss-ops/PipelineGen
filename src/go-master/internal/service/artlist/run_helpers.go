@@ -9,7 +9,6 @@ import (
 
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
-	"velox/go-master/pkg/pathutil"
 )
 
 func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
@@ -131,10 +130,6 @@ func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
 		return strings.TrimSpace(existing)
 	}
 	return string(raw)
-}
-
-func sanitizeDriveFolderName(name string) string {
-	return pathutil.SafeFolderName(name)
 }
 
 

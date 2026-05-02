@@ -47,32 +47,9 @@ func TokenizeWithStopWords(text string) []string {
 	return result
 }
 
-// DedupeStrings returns a deduplicated copy of the input slice (case-sensitive).
-func DedupeStrings(input []string) []string {
-	seen := make(map[string]struct{}, len(input))
-	result := make([]string, 0, len(input))
-	for _, s := range input {
-		if _, ok := seen[s]; !ok {
-			seen[s] = struct{}{}
-			result = append(result, s)
-		}
-	}
-	return result
-}
 
-// DedupeStringsCI returns a deduplicated copy of the input slice (case-insensitive).
-func DedupeStringsCI(input []string) []string {
-	seen := make(map[string]struct{}, len(input))
-	result := make([]string, 0, len(input))
-	for _, s := range input {
-		key := strings.ToLower(s)
-		if _, ok := seen[key]; !ok {
-			seen[key] = struct{}{}
-			result = append(result, s)
-		}
-	}
-	return result
-}
+
+
 
 // SanitizeFilename removes potentially dangerous characters from a filename.
 func SanitizeFilename(name string) string {
@@ -214,13 +191,7 @@ func FirstNonEmpty(values ...string) string {
 	return ""
 }
 
-// FirstNonEmptySlice returns the first non-empty slice among the arguments.
-func FirstNonEmptySlice(primary, fallback []string) []string {
-	if len(primary) > 0 {
-		return primary
-	}
-	return fallback
-}
+
 
 
 // ExtractSentences splits a text block into sentences by splitting on periods.

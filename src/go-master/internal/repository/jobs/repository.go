@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/timeutil"
 )
 
 type Repository struct {
@@ -43,9 +44,9 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 	_, err := r.db.ExecContext(ctx, query,
 		job.ID, job.Type, job.Status, job.Priority, job.Project, job.VideoName, job.ActiveKey,
 		string(payloadJSON), string(resultJSON), job.Progress, job.Error,
-		job.RetryCount, job.MaxRetries, job.WorkerID, formatTimePtr(job.LeaseExpiry),
-		formatTime(job.CreatedAt), formatTime(job.UpdatedAt),
-		formatTimePtr(job.StartedAt), formatTimePtr(job.CompletedAt), nil)
+		job.RetryCount, job.MaxRetries, job.WorkerID, timeutil.FormatPtrRFC3339(job.LeaseExpiry),
+		timeutil.FormatRFC3339(job.CreatedAt), timeutil.FormatRFC3339(job.UpdatedAt),
+		timeutil.FormatPtrRFC3339(job.StartedAt), timeutil.FormatPtrRFC3339(job.CompletedAt), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
@@ -74,12 +75,12 @@ func (r *Repository) Get(ctx context.Context, id string) (*models.Job, error) {
 
 	json.Unmarshal([]byte(payloadJSON), &job.Payload)
 	json.Unmarshal([]byte(resultJSON), &job.Result)
-	job.LeaseExpiry = parseTimePtr(leaseExpiry)
-	job.CreatedAt = parseTimeToTime(createdAt)
-	job.UpdatedAt = parseTimeToTime(updatedAt)
-	job.StartedAt = parseTimePtr(startedAt)
-	job.CompletedAt = parseTimePtr(completedAt)
-	job.CancelledAt = parseTimePtr(cancelledAt)
+	job.LeaseExpiry = timeutil.ParseRFC3339PtrString(leaseExpiry)
+	job.CreatedAt = timeutil.ParseRFC3339String(createdAt)
+	job.UpdatedAt = timeutil.ParseRFC3339String(updatedAt)
+	job.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
+	job.CompletedAt = timeutil.ParseRFC3339PtrString(completedAt)
+	job.CancelledAt = timeutil.ParseRFC3339PtrString(cancelledAt)
 
 	return &job, nil
 }
@@ -137,12 +138,12 @@ func (r *Repository) List(ctx context.Context, filter models.JobFilter) ([]*mode
 
 		json.Unmarshal([]byte(payloadJSON), &job.Payload)
 		json.Unmarshal([]byte(resultJSON), &job.Result)
-		job.LeaseExpiry = parseTimePtr(leaseExpiry)
-		job.CreatedAt = parseTimeToTime(createdAt)
-		job.UpdatedAt = parseTimeToTime(updatedAt)
-		job.StartedAt = parseTimePtr(startedAt)
-		job.CompletedAt = parseTimePtr(completedAt)
-		job.CancelledAt = parseTimePtr(cancelledAt)
+		job.LeaseExpiry = timeutil.ParseRFC3339PtrString(leaseExpiry)
+		job.CreatedAt = timeutil.ParseRFC3339String(createdAt)
+		job.UpdatedAt = timeutil.ParseRFC3339String(updatedAt)
+		job.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
+		job.CompletedAt = timeutil.ParseRFC3339PtrString(completedAt)
+		job.CancelledAt = timeutil.ParseRFC3339PtrString(cancelledAt)
 
 		jobs = append(jobs, &job)
 	}
@@ -174,12 +175,12 @@ func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*mo
 
 	json.Unmarshal([]byte(payloadJSON), &job.Payload)
 	json.Unmarshal([]byte(resultJSON), &job.Result)
-	job.LeaseExpiry = parseTimePtr(leaseExpiry)
-	job.CreatedAt = parseTimeToTime(createdAt)
-	job.UpdatedAt = parseTimeToTime(updatedAt)
-	job.StartedAt = parseTimePtr(startedAt)
-	job.CompletedAt = parseTimePtr(completedAt)
-	job.CancelledAt = parseTimePtr(cancelledAt)
+	job.LeaseExpiry = timeutil.ParseRFC3339PtrString(leaseExpiry)
+	job.CreatedAt = timeutil.ParseRFC3339String(createdAt)
+	job.UpdatedAt = timeutil.ParseRFC3339String(updatedAt)
+	job.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
+	job.CompletedAt = timeutil.ParseRFC3339PtrString(completedAt)
+	job.CancelledAt = timeutil.ParseRFC3339PtrString(cancelledAt)
 
 	return &job, nil
 }
@@ -228,12 +229,12 @@ func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL ti
 
 	json.Unmarshal([]byte(payloadJSON), &job.Payload)
 	json.Unmarshal([]byte(resultJSON), &job.Result)
-	job.LeaseExpiry = parseTimePtr(leaseExpiry)
-	job.CreatedAt = parseTimeToTime(createdAt)
-	job.UpdatedAt = parseTimeToTime(updatedAt)
-	job.StartedAt = parseTimePtr(startedAt)
-	job.CompletedAt = parseTimePtr(completedAt)
-	job.CancelledAt = parseTimePtr(cancelledAt)
+	job.LeaseExpiry = timeutil.ParseRFC3339PtrString(leaseExpiry)
+	job.CreatedAt = timeutil.ParseRFC3339String(createdAt)
+	job.UpdatedAt = timeutil.ParseRFC3339String(updatedAt)
+	job.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
+	job.CompletedAt = timeutil.ParseRFC3339PtrString(completedAt)
+	job.CancelledAt = timeutil.ParseRFC3339PtrString(cancelledAt)
 
 	leaseExpiryTime := time.Now().Add(leaseTTL)
 	now := time.Now()
@@ -402,45 +403,13 @@ func (r *Repository) RequeueExpiredLeases(ctx context.Context) error {
 		SET status = 'queued', worker_id = '', lease_expiry = NULL, updated_at = ?
 		WHERE status = 'running' AND lease_expiry < ?`
 
-	_, err := r.db.ExecContext(ctx, query, now.Format(time.RFC3339), now.Format(time.RFC3339))
+	_, err := r.db.ExecContext(ctx, query, timeutil.FormatRFC3339(now), timeutil.FormatRFC3339(now))
 	if err != nil {
 		return fmt.Errorf("failed to requeue expired leases: %w", err)
 	}
 	return nil
 }
 
-func formatTime(t time.Time) string {
-	return t.Format(time.RFC3339)
-}
-
-func formatTimePtr(t *time.Time) interface{} {
-	if t == nil {
-		return nil
-	}
-	return t.Format(time.RFC3339)
-}
-
-func parseTimePtr(s *string) *time.Time {
-	if s == nil || *s == "" {
-		return nil
-	}
-	t, err := time.Parse(time.RFC3339, *s)
-	if err != nil {
-		return nil
-	}
-	return &t
-}
-
-func parseTimeToTime(s *string) time.Time {
-	if s == nil || *s == "" {
-		return time.Time{}
-	}
-	t, err := time.Parse(time.RFC3339, *s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
 
 func randomString(n int) string {
 	b := make([]byte, n)

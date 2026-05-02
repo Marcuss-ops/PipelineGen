@@ -9,6 +9,7 @@ import (
 
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/catalogsync"
+	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
@@ -62,10 +63,7 @@ func requireInternalHeader() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		c.JSON(http.StatusForbidden, gin.H{
-			"ok":    false,
-			"error": "internal endpoint",
-		})
+		apiutil.Error(c, http.StatusForbidden, "internal endpoint")
 		c.Abort()
 	}
 }

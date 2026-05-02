@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -45,6 +46,16 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 	}
 
 	now := time.Now()
+	
+	var payload json.RawMessage
+	if req.Payload != nil {
+		payloadBytes, err := json.Marshal(req.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
+		payload = payloadBytes
+	}
+
 	job := &models.Job{
 		ID:          generateJobID(),
 		Type:        req.Type,
@@ -52,7 +63,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 		Priority:    req.Priority,
 		Project:     req.Project,
 		VideoName:   req.VideoName,
-		Payload:     req.Payload,
+		Payload:     payload,
 		RetryCount:  0,
 		MaxRetries:  req.MaxRetries,
 		Progress:    0,
@@ -66,7 +77,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 	}
 
 	if job.Payload == nil {
-		job.Payload = make(map[string]interface{})
+		job.Payload = json.RawMessage("{}")
 	}
 
 	if err := s.repo.Create(ctx, job); err != nil {

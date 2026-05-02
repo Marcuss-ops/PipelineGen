@@ -1,12 +1,11 @@
 package voiceover
 
 import (
-	"net/http"
-
-	"github.com/gin-gonic/gin"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/service/voiceover"
+	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
@@ -29,9 +28,8 @@ type GenerateRequest struct {
 }
 
 func (h *Handler) Generate(c *gin.Context) {
-	var req GenerateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+	req, ok := apiutil.BindJSON[GenerateRequest](c)
+	if !ok {
 		return
 	}
 
@@ -44,34 +42,24 @@ func (h *Handler) Generate(c *gin.Context) {
 
 	result, err := h.service.Generate(c.Request.Context(), req.Text, req.Language, req.Filename)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"ok":     true,
-		"result": result,
-	})
+	apiutil.OK(c, gin.H{"result": result})
 }
 
 func (h *Handler) Batch(c *gin.Context) {
-	var req voiceover.BatchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "invalid request: " + err.Error(),
-		})
+	req, ok := apiutil.BindJSON[voiceover.BatchRequest](c)
+	if !ok {
 		return
 	}
 
 	resp, err := h.service.GenerateBatch(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	apiutil.OK(c, resp)
 }

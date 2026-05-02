@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"net/http"
-
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
@@ -13,6 +11,7 @@ import (
 	"velox/go-master/internal/upload/drive"
 
 	"github.com/gin-gonic/gin"
+	"velox/go-master/pkg/apiutil"
 )
 
 // ScriptDocsHandler generates modular script docs with Ollama and optionally uploads them to Google Docs.
@@ -65,12 +64,9 @@ func (h *ScriptDocsHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // Modes returns the available output modes.
 func (h *ScriptDocsHandler) Modes(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"ok": true,
-		"modes": []string{
-			"default",
-			"preview",
-		},
+	apiutil.OK(c, gin.H{
+		"ok":    true,
+		"modes": []string{"default", "preview"},
 	})
 }
 
