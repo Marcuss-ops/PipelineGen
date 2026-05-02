@@ -9,6 +9,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 )
@@ -22,10 +23,11 @@ type Service struct {
 	driveClient      *driveapi.Service
 	driveFolderID    string
 	driveDestination *drivedestination.Service
+	mediaProcessor   *mediaasset.Processor
 	log              *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, mediaProcessor *mediaasset.Processor, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -43,6 +45,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDi
 		driveClient:      driveClient,
 		driveFolderID:    driveFolderID,
 		driveDestination: driveDestination,
+		mediaProcessor:   mediaProcessor,
 		log:              log,
 	}, nil
 }
