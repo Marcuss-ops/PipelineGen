@@ -1,6 +1,8 @@
 package artlist
 
 import (
+	"io"
+
 	"github.com/gin-gonic/gin"
 
 	"velox/go-master/internal/service/artlist"
@@ -65,8 +67,9 @@ func (h *Handler) UploadClipToDrive(c *gin.Context) {
 	}
 
 	var req artlist.UploadClipToDriveRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		// Ignore bind error, use empty request
+	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+		apiutil.BadRequest(c, "invalid json body")
+		return
 	}
 
 	resp, err := h.service.UploadClipToDrive(c.Request.Context(), clipID, &req)

@@ -14,12 +14,12 @@ import (
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
 	jobservice "velox/go-master/internal/service/jobs"
-
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	"velox/go-master/internal/service/monitor"
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
+	"velox/go-master/internal/service/voiceoversync"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -45,6 +45,7 @@ type CoreDeps struct {
 	ClipsOnlyRepo        *clips.Repository
 	MonitorsRepo         *monitors.Repository
 	VoiceoverService     *voiceover.Service
+	VoiceoverSync        *voiceoversync.Service
 	IndexingService      *indexing.Service
 	HarvesterCronService *cron.HarvesterCronService
 	CatalogSyncService   *catalogsync.Service
@@ -111,6 +112,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		ClipsOnlyRepo:        svcs.clipsOnlyRepo,
 		MonitorsRepo:         svcs.monitorsRepo,
 		VoiceoverService:     svcs.voiceoverService,
+		VoiceoverSync:        svcs.voiceoverSync,
 		IndexingService:      svcs.indexingService,
 		HarvesterCronService: jobs.harvesterCronSvc,
 		CatalogSyncService:   svcs.catalogSync,

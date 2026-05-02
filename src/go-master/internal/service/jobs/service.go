@@ -33,6 +33,10 @@ func (s *Service) SetLeaseTTL(ttl time.Duration) {
 	s.leaseTTL = ttl
 }
 
+func (s *Service) RegisterHandler(jobType models.JobType, handler HandlerFunc) {
+	s.dispatcher.Register(jobType, handler)
+}
+
 func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job, error) {
 	if req.ActiveKey != "" {
 		existing, err := s.repo.FindActiveByKey(ctx, req.ActiveKey)

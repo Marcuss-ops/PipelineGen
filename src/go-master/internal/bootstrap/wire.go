@@ -20,6 +20,7 @@ import (
 	"velox/go-master/pkg/media/ffmpeg"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/models"
 
 	"go.uber.org/zap"
 )
@@ -63,6 +64,12 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		artlistService = nil
+	}
+
+	// Register artlist job handler
+	if artlistService != nil && coreDeps.JobsService != nil {
+		coreDeps.JobsService.RegisterHandler(models.JobTypeArtlistRun, artlistService.HandleJob)
+		log.Info("registered artlist job handler")
 	}
 
 	scriptDocsHandler := handlers.NewScriptDocsHandler(
@@ -125,17 +132,18 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	}
 
 	handlers_struct := &api.Handlers{
-		Health:      common.NewHealthHandler(),
-		Artlist:     artlistHandlerVar,
-		Scraper:     scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
-		ImageAssets: imghandler.NewHandler(coreDeps.ImageService),
-		Media:       mediaHandler,
-		ScriptDocs:  scriptDocsHandler,
-		Voiceover:   voiceover.NewHandler(coreDeps.VoiceoverService),
-		Utility:     coreDeps.Utility,
-		Catalog:     common.NewCatalogHandler(coreDeps.CatalogRepo),
-		YouTubeClip: youtubeClipHandler,
-		Jobs:        jobsHandler,
+		Health:         common.NewHealthHandler(),
+		Artlist:        artlistHandlerVar,
+		Scraper:        scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
+		ImageAssets:    imghandler.NewHandler(coreDeps.ImageService),
+		Media:          mediaHandler,
+		ScriptDocs:     scriptDocsHandler,
+		Voiceover:      voiceover.NewHandler(coreDeps.VoiceoverService),
+		VoiceoverSync:  voiceover.NewSyncHandler(coreDeps.VoiceoverSync, log),
+		Utility:        coreDeps.Utility,
+		Catalog:        common.NewCatalogHandler(coreDeps.CatalogRepo),
+		YouTubeClip:    youtubeClipHandler,
+		Jobs:           jobsHandler,
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
