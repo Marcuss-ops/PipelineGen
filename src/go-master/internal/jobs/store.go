@@ -26,7 +26,10 @@ type Store interface {
 	MarkSucceeded(ctx context.Context, id string, result any) error
 	MarkFailed(ctx context.Context, id string, err error) error
 	MarkCancelled(ctx context.Context, id string) error
+	MarkRetrying(ctx context.Context, id string) error
+	IncrementAttempts(ctx context.Context, id string) error
 	LeaseNext(ctx context.Context) (*Job, error)
+	RecoverZombieJobs(ctx context.Context, timeout time.Duration) (int64, error)
 }
 
 type SQLiteStore struct {
@@ -231,6 +234,36 @@ func (s *SQLiteStore) LeaseNext(ctx context.Context) (*Job, error) {
 	}
 	defer tx.Rollback()
 
+	now := time.Now()
+	zombieTimeout := now.Add(-15 * time.Minute)
+	recoveryTimeStr := timeutil.FormatRFC3339(now)
+
+	recoverQuery := `
+		UPDATE jobs_new
+		SET status = CASE
+			WHEN attempts < max_attempts THEN ?
+			ELSE ?
+		END,
+		started_at = NULL,
+		updated_at = ?,
+		error = CASE
+			WHEN attempts < max_attempts THEN 'Job recovered from zombie state, retrying'
+			ELSE 'Job failed: zombie timeout exceeded max attempts'
+		END
+		WHERE status = ?
+		AND started_at IS NOT NULL
+		AND datetime(started_at) < datetime(?)
+	`
+	_, err = tx.ExecContext(ctx, recoverQuery,
+		JobStatusQueued, JobStatusFailed,
+		recoveryTimeStr,
+		JobStatusRunning,
+		timeutil.FormatRFC3339(zombieTimeout),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recover zombie jobs: %w", err)
+	}
+
 	query := `
 		SELECT id, type, status, payload_json, result_json, error, attempts, max_attempts, created_at, started_at, finished_at, updated_at
 		FROM jobs_new
@@ -245,7 +278,7 @@ func (s *SQLiteStore) LeaseNext(ctx context.Context) (*Job, error) {
 	var startedAt, finishedAt *string
 	var attempts, maxAttempts int
 
-	err = tx.QueryRowContext(ctx, query, JobStatusQueued).Scan(
+	err = tx.QueryRowContext(ctx, query, JobStatusQueued, recoveryTimeStr).Scan(
 		&job.ID, &job.Type, &status,
 		&payloadJSON, &resultJSON, &errorMsg,
 		&attempts, &maxAttempts,
@@ -269,7 +302,7 @@ func (s *SQLiteStore) LeaseNext(ctx context.Context) (*Job, error) {
 	job.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
 	job.FinishedAt = timeutil.ParseRFC3339PtrString(finishedAt)
 
-	now := time.Now()
+	now = time.Now()
 	updateQuery := `UPDATE jobs_new SET status = ?, started_at = ?, updated_at = ? WHERE id = ?`
 	_, err = tx.ExecContext(ctx, updateQuery, JobStatusRunning, timeutil.FormatRFC3339(now), timeutil.FormatRFC3339(now), job.ID)
 	if err != nil {
@@ -285,4 +318,61 @@ func (s *SQLiteStore) LeaseNext(ctx context.Context) (*Job, error) {
 	job.UpdatedAt = now
 
 	return &job, nil
+}
+
+func (s *SQLiteStore) MarkRetrying(ctx context.Context, id string) error {
+	now := time.Now()
+	query := `UPDATE jobs_new SET status = ?, started_at = NULL, updated_at = ? WHERE id = ?`
+	_, err := s.db.ExecContext(ctx, query, JobStatusRetrying, timeutil.FormatRFC3339(now), id)
+	if err != nil {
+		return fmt.Errorf("failed to mark job retrying: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) IncrementAttempts(ctx context.Context, id string) error {
+	query := `UPDATE jobs_new SET attempts = attempts + 1, updated_at = ? WHERE id = ?`
+	_, err := s.db.ExecContext(ctx, query, timeutil.FormatRFC3339(time.Now()), id)
+	if err != nil {
+		return fmt.Errorf("failed to increment attempts: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) RecoverZombieJobs(ctx context.Context, timeout time.Duration) (int64, error) {
+	now := time.Now()
+	zombieThreshold := now.Add(-timeout)
+
+	recoverQuery := `
+		UPDATE jobs_new
+		SET status = CASE
+			WHEN attempts < max_attempts THEN ?
+			ELSE ?
+		END,
+		started_at = NULL,
+		updated_at = ?,
+		error = CASE
+			WHEN attempts < max_attempts THEN 'Job recovered from zombie state, retrying'
+			ELSE 'Job failed: zombie timeout exceeded max attempts'
+		END
+		WHERE status = ?
+		AND started_at IS NOT NULL
+		AND datetime(started_at) < datetime(?)
+	`
+	result, err := s.db.ExecContext(ctx, recoverQuery,
+		JobStatusQueued, JobStatusFailed,
+		timeutil.FormatRFC3339(now),
+		JobStatusRunning,
+		timeutil.FormatRFC3339(zombieThreshold),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to recover zombie jobs: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	return rowsAffected, nil
 }
