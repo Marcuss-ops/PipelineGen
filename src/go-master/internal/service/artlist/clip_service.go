@@ -15,6 +15,7 @@ import (
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/pathutil"
 )
 
 func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatusResponse, error) {
@@ -37,8 +38,8 @@ func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatus
 	localPath := strings.TrimSpace(clip.LocalPath)
 	if localPath == "" {
 		// Try to construct local path from clip metadata
-		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", sanitizeDriveFolderName(clip.Name))
-		safeName := sanitizeDriveFolderName(clip.Name)
+		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", pathutil.SafeFolderName(clip.Name))
+		safeName := pathutil.SafeFolderName(clip.Name)
 		localPath = filepath.Join(saveDir, fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID))
 	}
 
@@ -63,13 +64,13 @@ func (s *Service) DownloadClip(ctx context.Context, clipID string, req *Download
 
 	outputDir := req.OutputDir
 	if outputDir == "" {
-		outputDir = filepath.Join(s.cfg.Storage.DataDir, "artlist", sanitizeDriveFolderName(clip.Name))
+		outputDir = filepath.Join(s.cfg.Storage.DataDir, "artlist", pathutil.SafeFolderName(clip.Name))
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			outputDir = s.nodeScraperDir
 		}
 	}
 
-	localPath := filepath.Join(outputDir, fmt.Sprintf("%s_%s.mp4", sanitizeDriveFolderName(clip.Name), clip.ID))
+	localPath := filepath.Join(outputDir, fmt.Sprintf("%s_%s.mp4", pathutil.SafeFolderName(clip.Name), clip.ID))
 	resp := &DownloadClipResponse{OK: true, ClipID: clipID, LocalPath: localPath}
 
 	// Try downloading from Drive if DriveLink exists
@@ -154,8 +155,8 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 	// Determine file path: use LocalPath if available, otherwise construct from name
 	localPath := strings.TrimSpace(clip.LocalPath)
 	if localPath == "" {
-		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", sanitizeDriveFolderName(clip.Name))
-		safeName := sanitizeDriveFolderName(clip.Name)
+		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", pathutil.SafeFolderName(clip.Name))
+		safeName := pathutil.SafeFolderName(clip.Name)
 		localPath = filepath.Join(saveDir, fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID))
 	}
 
