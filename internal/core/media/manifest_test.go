@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -26,7 +27,22 @@ func (f *FakeMediaRepository) GetAsset(ctx context.Context, workspaceID, assetID
 }
 
 func (f *FakeMediaRepository) SearchAssets(ctx context.Context, query SearchQuery) ([]MediaAsset, error) {
-	return f.assets, nil
+	var results []MediaAsset
+	for _, a := range f.assets {
+		if query.WorkspaceID != "" && a.WorkspaceID != query.WorkspaceID {
+			continue
+		}
+		if query.ProjectID != "" && a.ProjectID != query.ProjectID {
+			continue
+		}
+		if query.Query != "" {
+			if !strings.Contains(strings.ToLower(a.Title), strings.ToLower(query.Query)) {
+				continue
+			}
+		}
+		results = append(results, a)
+	}
+	return results, nil
 }
 
 func (f *FakeMediaRepository) ListAssets(ctx context.Context, workspaceID, projectID string, limit, offset int) ([]MediaAsset, error) {
@@ -119,5 +135,67 @@ func TestManifestGeneratedAt(t *testing.T) {
 
 	if manifest.GeneratedAt.Before(before) || manifest.GeneratedAt.After(after) {
 		t.Errorf("GeneratedAt should be around now, got %v", manifest.GeneratedAt)
+	}
+}
+
+func TestMediaRepositoryDoesNotLeakAcrossWorkspaces(t *testing.T) {
+	repo := &FakeMediaRepository{
+		assets: []MediaAsset{},
+	}
+
+	// Add asset in workspace w1
+	repo.UpsertAsset(context.Background(), MediaAsset{
+		ID:          "same-title-1",
+		WorkspaceID: "w1",
+		ProjectID:   "p1",
+		Title:       "Clip",
+		SourceKind:  SourceKindArtlist,
+		MediaType:   MediaTypeVideo,
+	})
+
+	// Add asset in workspace w2 with same title
+	repo.UpsertAsset(context.Background(), MediaAsset{
+		ID:          "same-title-2",
+		WorkspaceID: "w2",
+		ProjectID:   "p1",
+		Title:       "Clip",
+		SourceKind:  SourceKindArtlist,
+		MediaType:   MediaTypeVideo,
+	})
+
+	// Search in w1 only
+	results, err := repo.SearchAssets(context.Background(), SearchQuery{
+		WorkspaceID: "w1",
+		ProjectID:   "p1",
+		Query:       "Clip",
+	})
+
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result for w1, got %d", len(results))
+	}
+	if results[0].WorkspaceID != "w1" {
+		t.Errorf("Expected workspace w1, got %q", results[0].WorkspaceID)
+	}
+
+	// Search in w2 only
+	results2, err := repo.SearchAssets(context.Background(), SearchQuery{
+		WorkspaceID: "w2",
+		ProjectID:   "p1",
+		Query:       "Clip",
+	})
+
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+
+	if len(results2) != 1 {
+		t.Errorf("Expected 1 result for w2, got %d", len(results2))
+	}
+	if results2[0].WorkspaceID != "w2" {
+		t.Errorf("Expected workspace w2, got %q", results2[0].WorkspaceID)
 	}
 }
