@@ -139,7 +139,7 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 		s.UpdateJobRun(ctx, job, resp)
 		job.Status = status
 		if status == models.StatusFailed {
-			job.Retries = attempt + 1
+			job.RetryCount = attempt + 1
 			job.Error = resp.Error
 		}
 

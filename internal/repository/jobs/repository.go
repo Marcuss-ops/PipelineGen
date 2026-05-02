@@ -41,7 +41,7 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 	}
 
 	_, err := r.db.ExecContext(ctx, query,
-		job.ID, job.Type, job.Status, job.Priority, job.Project, job.VideoName, "",
+		job.ID, job.Type, job.Status, job.Priority, job.Project, job.VideoName, job.ActiveKey,
 		string(payloadJSON), string(resultJSON), job.Progress, job.Error,
 		job.RetryCount, job.MaxRetries, job.WorkerID, formatTimePtr(job.LeaseExpiry),
 		formatTime(job.CreatedAt), formatTime(job.UpdatedAt),

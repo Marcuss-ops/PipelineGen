@@ -48,7 +48,17 @@ func (s *Service) sanitizeFilename(outputDir, filename string) (string, error) {
 	if filepath.Ext(filename) == "" {
 		filename += ".mp3"
 	}
-	return filepath.Join(outputDir, filename), nil
+
+	// Prevent path traversal
+	filename = filepath.Base(filename)
+	finalPath := filepath.Join(outputDir, filename)
+
+	// Verify the final path is inside outputDir
+	if !strings.HasPrefix(finalPath, outputDir+string(filepath.Separator)) && finalPath != outputDir {
+		return "", fmt.Errorf("invalid filename: path traversal detected")
+	}
+
+	return finalPath, nil
 }
 
 func textToHash(text string) string {

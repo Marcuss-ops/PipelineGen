@@ -86,43 +86,68 @@ func (r *Repository) Upsert(ctx context.Context, rec *Record) error {
 }
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Record, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT * FROM voiceovers WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		FROM voiceovers WHERE id = ?`, id)
 
 	var rec Record
+	var createdAt, updatedAt string
 	err := row.Scan(
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
 		&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-		&rec.Metadata, &rec.CreatedAt, &rec.UpdatedAt,
+		&rec.Metadata, &createdAt, &updatedAt,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &rec, err
+	if err != nil {
+		return nil, err
+	}
+
+	rec.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	return &rec, nil
 }
 
-func (r *Repository) FindExisting(ctx context.Context, textHash, language, voice, folderID string) (*Record, error) {
+func (r *Repository) FindExisting(ctx context.Context, textHash, language, folderID string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT * FROM voiceovers 
-		WHERE text_hash = ? AND language = ? AND voice = ? AND folder_id = ?
+		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		FROM voiceovers
+		WHERE text_hash = ? AND language = ? AND folder_id = ?
 		ORDER BY created_at DESC LIMIT 1
-	`, textHash, language, voice, folderID)
+	`, textHash, language, folderID)
 
 	var rec Record
+	var createdAt, updatedAt string
 	err := row.Scan(
 		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
 		&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-		&rec.Metadata, &rec.CreatedAt, &rec.UpdatedAt,
+		&rec.Metadata, &createdAt, &updatedAt,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
-	return &rec, err
+	if err != nil {
+		return nil, err
+	}
+
+	rec.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	return &rec, nil
 }
 
 func (r *Repository) MarkStatus(ctx context.Context, id, status, errMsg string) error {
@@ -134,7 +159,12 @@ func (r *Repository) MarkStatus(ctx context.Context, id, status, errMsg string) 
 }
 
 func (r *Repository) ListByRequestID(ctx context.Context, requestID string) ([]*Record, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT * FROM voiceovers WHERE request_id = ? ORDER BY created_at`, requestID)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		FROM voiceovers WHERE request_id = ? ORDER BY created_at`, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,16 +173,19 @@ func (r *Repository) ListByRequestID(ctx context.Context, requestID string) ([]*
 	var records []*Record
 	for rows.Next() {
 		var rec Record
+		var createdAt, updatedAt string
 		err := rows.Scan(
 			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
 			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
 			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
 			&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
-			&rec.Metadata, &rec.CreatedAt, &rec.UpdatedAt,
+			&rec.Metadata, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+		rec.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 		records = append(records, &rec)
 	}
 	return records, rows.Err()
