@@ -107,6 +107,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		cfg,
 		log,
 		coreDeps.ClipsOnlyRepo,
+		coreDeps.MonitorsRepo,
 		coreDeps.DriveClient,
 		driveDestinationService,
 		ffmpegProc,
@@ -117,7 +118,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 
 	// Create media handler with ManifestExporter
 	var mediaHandler *mediahandler.Handler
-	mediaRepo := media.NewClipsRepositoryAdapter(coreDeps.clipsOnlyRepo)
+	mediaRepo := media.NewClipsRepositoryAdapter(coreDeps.ClipsOnlyRepo)
 	if mediaRepo != nil {
 		exporter := media.NewManifestExporter(mediaRepo)
 		mediaHandler = mediahandler.NewHandler(exporter)

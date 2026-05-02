@@ -6,6 +6,7 @@ import (
 
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/prompts"
+	"velox/go-master/internal/ml/ollama/types"
 )
 
 type Generator struct {

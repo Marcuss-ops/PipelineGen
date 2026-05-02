@@ -9,6 +9,7 @@ import (
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
+	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
@@ -42,6 +43,7 @@ type CoreDeps struct {
 	StockDriveRepo       *clips.Repository
 	ArtlistRepo          *clips.Repository
 	ClipsOnlyRepo        *clips.Repository
+	MonitorsRepo         *monitors.Repository
 	VoiceoverService     *voiceover.Service
 	IndexingService      *indexing.Service
 	HarvesterCronService *cron.HarvesterCronService
@@ -55,11 +57,11 @@ type CoreDeps struct {
 }
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
-	return initCoreMinimal(cfg, log)
+	return initCoreMinimal(cfg, log, "")
 }
 
 // initCoreMinimal creates only the services needed by the text/doc server.
-func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
+func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDeps, CleanupFunc, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// 1. Security & Infrastructure
@@ -89,7 +91,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 	}
 
 	// 5. Background Jobs
-	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log)
+	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
 	// 6. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
@@ -107,6 +109,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		StockDriveRepo:       svcs.stockDriveRepo,
 		ArtlistRepo:          svcs.artlistRepo,
 		ClipsOnlyRepo:        svcs.clipsOnlyRepo,
+		MonitorsRepo:         svcs.monitorsRepo,
 		VoiceoverService:     svcs.voiceoverService,
 		IndexingService:      svcs.indexingService,
 		HarvesterCronService: jobs.harvesterCronSvc,
