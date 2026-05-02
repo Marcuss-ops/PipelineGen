@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -298,5 +299,93 @@ func TestLeaseNextOnlyQueued(t *testing.T) {
 	}
 	if leased != nil {
 		t.Error("expected no job to be leased since none are queued")
+	}
+}
+
+func TestZombieRecovery(t *testing.T) {
+	ctx := context.Background()
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	zombieJob := &Job{
+		ID:         "job-zombie",
+		Type:       "test",
+		Status:     JobStatusRunning,
+		Attempts:   1,
+		MaxAttempts: 3,
+	}
+	store.Create(ctx, zombieJob)
+
+	updateQuery := `UPDATE jobs_new SET started_at = ? WHERE id = ?`
+	store.db.Exec(updateQuery, "2026-05-02T15:00:00Z", zombieJob.ID)
+
+	recovered, err := store.LeaseNext(ctx)
+	if err != nil {
+		t.Fatalf("LeaseNext failed: %v", err)
+	}
+
+	got, _ := store.Get(ctx, "job-zombie")
+
+	if recovered != nil && recovered.ID == "job-zombie" {
+		if got.Status != JobStatusRunning {
+			t.Errorf("expected zombie job to be running after lease, got %s", got.Status)
+		}
+	} else {
+		if got.Status != JobStatusQueued {
+			t.Errorf("expected zombie job to be requeued, got %s", got.Status)
+		}
+	}
+}
+
+func TestZombieRecoveryMaxAttempts(t *testing.T) {
+	ctx := context.Background()
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	zombieJob := &Job{
+		ID:         "job-zombie-max",
+		Type:       "test",
+		Status:     JobStatusRunning,
+		Attempts:   3,
+		MaxAttempts: 3,
+	}
+	store.Create(ctx, zombieJob)
+
+	updateQuery := `UPDATE jobs_new SET started_at = ? WHERE id = ?`
+	store.db.Exec(updateQuery, "2026-05-02T15:00:00Z", zombieJob.ID)
+
+	_, err := store.LeaseNext(ctx)
+	if err != nil {
+		t.Fatalf("LeaseNext failed: %v", err)
+	}
+
+	got, _ := store.Get(ctx, "job-zombie-max")
+	if got.Status != JobStatusFailed && got.Status != JobStatusRunning {
+		t.Errorf("expected zombie job with max attempts to be failed or running, got %s", got.Status)
+	}
+}
+
+func TestRecoverZombieJobs(t *testing.T) {
+	ctx := context.Background()
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	zombie1 := &Job{ID: "z1", Type: "test", Status: JobStatusRunning, Attempts: 1, MaxAttempts: 3}
+	zombie2 := &Job{ID: "z2", Type: "test", Status: JobStatusRunning, Attempts: 2, MaxAttempts: 3}
+	normal := &Job{ID: "n1", Type: "test", Status: JobStatusQueued}
+
+	for _, j := range []*Job{zombie1, zombie2, normal} {
+		store.Create(ctx, j)
+	}
+
+	store.db.Exec(`UPDATE jobs_new SET started_at = ? WHERE id IN ('z1', 'z2')`, "2026-05-02T15:00:00Z")
+
+	count, err := store.RecoverZombieJobs(ctx, 15*time.Minute)
+	if err != nil {
+		t.Fatalf("RecoverZombieJobs failed: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("expected 2 zombies recovered, got %d", count)
 	}
 }
