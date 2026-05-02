@@ -6,24 +6,26 @@ import (
 
 	"go.uber.org/zap"
 
-	"google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 )
 
 type Service struct {
-	cfg            *config.Config
-	mainDB         *sql.DB
-	artlistDB      *sql.DB
-	nodeScraperDir string
-	clipsRepo      *clips.Repository
-	driveClient    *drive.Service
-	driveFolderID  string
-	log            *zap.Logger
+	cfg              *config.Config
+	mainDB           *sql.DB
+	artlistDB        *sql.DB
+	nodeScraperDir   string
+	clipsRepo        *clips.Repository
+	driveClient      *driveapi.Service
+	driveFolderID    string
+	driveDestination *drivedestination.Service
+	log              *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *drive.Service, driveFolderID string, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -33,14 +35,15 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDi
 		}
 	}
 	return &Service{
-		cfg:            cfg,
-		mainDB:         mainDB,
-		artlistDB:      artlistDB,
-		nodeScraperDir: nodeScraperDir,
-		clipsRepo:      clipsRepo,
-		driveClient:    driveClient,
-		driveFolderID:  driveFolderID,
-		log:            log,
+		cfg:              cfg,
+		mainDB:           mainDB,
+		artlistDB:        artlistDB,
+		nodeScraperDir:   nodeScraperDir,
+		clipsRepo:        clipsRepo,
+		driveClient:      driveClient,
+		driveFolderID:    driveFolderID,
+		driveDestination: driveDestination,
+		log:              log,
 	}, nil
 }
 

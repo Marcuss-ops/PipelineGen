@@ -2,19 +2,20 @@ package artlist
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/upload/drive"
+	"velox/go-master/pkg/hashutil"
+	"velox/go-master/pkg/media/downloader"
+	"velox/go-master/pkg/media/ffmpeg"
 	"velox/go-master/pkg/security"
 )
 
@@ -124,10 +125,23 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.LastProcessedAt = lastProcessedAt
 	}
 
-	// Use main folder directly (no subfolder per tag)
+	// Resolve Drive destination using drivedestination service
 	tagFolderID := rootFolderID
-	if !req.DryRun && s.driveClient != nil && rootFolderID != "" {
-		s.log.Info("using main artlist folder for uploads",
+	if s.driveDestination != nil && rootFolderID != "" {
+		resolved, err := s.driveDestination.Resolve(ctx, &drivedestination.Request{
+			FolderID: rootFolderID,
+		})
+		if err != nil {
+			s.log.Warn("failed to resolve drive destination, using root folder ID",
+				zap.String("root_folder_id", rootFolderID),
+				zap.Error(err),
+			)
+		} else {
+			tagFolderID = resolved.FolderID
+		}
+	}
+	if !req.DryRun && s.driveClient != nil && tagFolderID != "" {
+		s.log.Info("using artlist folder for uploads",
 			zap.String("folder_id", tagFolderID),
 			zap.String("folder_link", "https://drive.google.com/drive/folders/"+tagFolderID),
 		)
@@ -293,24 +307,20 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			continue
 		}
 
-		var driveFile *drive.File
+		var driveFile *driveapi.File
 		if s.driveClient != nil {
 			s.log.Info("uploading to Google Drive", zap.String("clip_id", clip.ID), zap.String("filename", finalFilename))
-			f, err := os.Open(processedPath)
-			if err == nil {
-				driveFileReq := &drive.File{Name: finalFilename}
-				if tagFolderID != "" {
-					driveFileReq.Parents = []string{tagFolderID}
-				}
-				driveFile, err = s.driveClient.Files.Create(driveFileReq).Fields("id,webViewLink,md5Checksum").Media(f).Do()
-				_ = f.Close()
-				if err != nil {
-					s.log.Error("drive upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
-				} else {
-					s.log.Info("drive upload success", zap.String("clip_id", clip.ID), zap.String("file_id", driveFile.Id))
-				}
+			uploader := &drive.Uploader{Service: s.driveClient, Log: s.log}
+			result, err := uploader.UploadFile(context.Background(), processedPath, tagFolderID, finalFilename)
+			if err != nil {
+				s.log.Error("drive upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			} else {
-				s.log.Error("failed to open processed file for upload", zap.String("clip_id", clip.ID), zap.Error(err))
+				s.log.Info("drive upload success", zap.String("clip_id", clip.ID), zap.String("file_id", result.FileID))
+				driveFile = &driveapi.File{
+					Id:          result.FileID,
+					WebViewLink: result.WebViewLink,
+					Md5Checksum: result.MD5Checksum,
+				}
 			}
 		} else {
 			s.log.Warn("driveClient is nil, skipping upload for clip", zap.String("clip_id", clip.ID))
@@ -386,7 +396,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	return resp, nil
 }
 
-func getOrCreateFolder(svc *drive.Service, name, parentID string) (string, error) {
+func getOrCreateFolder(svc *driveapi.Service, name, parentID string) (string, error) {
 	query := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", name, parentID)
 	list, err := svc.Files.List().Q(query).Do()
 	if err != nil {
@@ -397,7 +407,7 @@ func getOrCreateFolder(svc *drive.Service, name, parentID string) (string, error
 		return list.Files[0].Id, nil
 	}
 
-	f, err := svc.Files.Create(&drive.File{
+	f, err := svc.Files.Create(&driveapi.File{
 		Name:     name,
 		MimeType: "application/vnd.google-apps.folder",
 		Parents:  []string{parentID},
@@ -409,56 +419,19 @@ func getOrCreateFolder(svc *drive.Service, name, parentID string) (string, error
 }
 
 func (s *Service) downloadClip(sourceURL, rawPath string) error {
-	ytdlp := s.cfg.External.YtdlpPath
-	if ytdlp == "" {
-		ytdlp = "yt-dlp"
-	}
-	cmdDl := exec.Command(ytdlp, "-o", rawPath, sourceURL)
-	if out, err := cmdDl.CombinedOutput(); err != nil {
-		return fmt.Errorf("yt-dlp failed: %v (output: %s)", err, string(out))
-	}
-	return nil
+	dl := downloader.NewYTDLP(s.cfg)
+	return dl.Download(context.Background(), &downloader.DownloadRequest{
+		URL:        sourceURL,
+		OutputPath: rawPath,
+	})
 }
 
 func (s *Service) processVideo(input, output string) error {
-	ffmpeg := s.cfg.External.FfmpegPath
-	if ffmpeg == "" {
-		ffmpeg = "ffmpeg"
-	}
-
-	video := s.cfg.Video.WithDefaults()
-
-	args := []string{
-		"-y",
-		"-t", fmt.Sprintf("%d", video.Duration),
-		"-i", input,
-		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d",
-			video.Width, video.Height, video.Width, video.Height, video.FPS),
-		"-an",
-		"-c:v", video.Codec,
-		"-preset", video.Preset,
-		"-crf", fmt.Sprintf("%d", video.CRF),
-		output,
-	}
-
-	cmd := exec.Command(ffmpeg, args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffmpeg failed: %v (output: %s)", err, string(out))
-	}
-	return nil
+	p := ffmpeg.New(s.cfg)
+	opts := ffmpeg.DefaultNormalizeOptions(s.cfg)
+	return p.Normalize(context.Background(), input, output, opts)
 }
 
 func calculateFileHash(filePath string) (string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	h := md5.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hashutil.MD5File(filePath)
 }

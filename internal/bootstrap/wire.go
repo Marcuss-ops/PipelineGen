@@ -10,7 +10,10 @@ import (
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
+	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/youtubeclip"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 
@@ -46,6 +49,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.ArtlistRepo,
 		coreDeps.DriveClient,
 		driveFolderID,
+		nil, // driveDestinationService will be set after creation
 		log,
 	)
 	if err != nil {
@@ -81,6 +85,38 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		)
 	}
 
+	// Create drive destination service
+	driveDestinationService := drivedestination.NewService(cfg, log, coreDeps.DriveClient)
+
+	// Update Artlist service with drive destination
+	if artlistService != nil {
+		// Re-create with proper dependency
+		artlistService, err = artlist.NewService(
+			cfg,
+			coreDeps.DB.DB,
+			artlistDBPath,
+			cfg.Paths.NodeScraperDir,
+			coreDeps.ArtlistRepo,
+			coreDeps.DriveClient,
+			driveFolderID,
+			driveDestinationService,
+			log,
+		)
+		if err != nil {
+			log.Warn("Failed to update Artlist service with drive destination", zap.Error(err))
+		}
+	}
+
+	// Create YouTube clip service and handler
+	youtubeClipService := youtubeclip.NewService(
+		cfg,
+		log,
+		coreDeps.ClipsOnlyRepo,
+		coreDeps.DriveClient,
+		driveDestinationService,
+	)
+	youtubeClipHandler := youtubecliphandler.NewHandler(youtubeClipService, log)
+
 	handlers_struct := &api.Handlers{
 		Health:      common.NewHealthHandler(),
 		Artlist:     artlistHandlerVar,
@@ -90,6 +126,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		Voiceover:   voiceover.NewHandler(coreDeps.VoiceoverService),
 		Utility:     coreDeps.Utility,
 		Catalog:     common.NewCatalogHandler(coreDeps.CatalogRepo),
+		YouTubeClip: youtubeClipHandler,
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
