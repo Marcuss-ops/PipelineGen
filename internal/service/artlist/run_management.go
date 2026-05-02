@@ -66,7 +66,7 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 			_ = s.persistJob(ctx, existingJob)
 			// Proceed to create a new job
 		} else {
-			resp := s.jobToResponse(existingJob)
+			resp := jobToResponse(existingJob)
 			s.log.Info("artlist run reused",
 				zap.String("run_id", resp.RunID),
 				zap.String("term", resp.Term),
@@ -81,7 +81,7 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 		return &RunTagResponse{OK: false, Error: err.Error()}, err
 	}
 
-	resp := s.jobToResponse(job)
+	resp := jobToResponse(job)
 	s.log.Info("artlist run queued",
 		zap.String("run_id", resp.RunID),
 		zap.String("term", resp.Term),
@@ -130,6 +130,7 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 			time.Sleep(retryDelay)
 		}
 
+		s.log.Info("calling RunTag", zap.String("job_id", jobID), zap.String("term", req.Term), zap.Bool("ctx_canceled", ctx.Err() != nil))
 		resp, err := s.RunTag(ctx, req)
 		status := models.StatusCompleted
 		if err != nil || (resp != nil && !resp.OK) {
@@ -189,10 +190,11 @@ func (s *Service) GetRunTag(ctx context.Context, runID string) (*RunTagResponse,
 	if err != nil {
 		return nil, err
 	}
-	return s.jobToResponse(job), nil
+	return jobToResponse(job), nil
 }
 
-func (s *Service) jobToResponse(job *models.Job) *RunTagResponse {
+// jobToResponse converts a models.Job to RunTagResponse.
+func jobToResponse(job *models.Job) *RunTagResponse {
 	if job == nil {
 		return &RunTagResponse{OK: false, Status: "not_found", Error: "job not found"}
 	}
@@ -262,4 +264,9 @@ func (s *Service) jobToResponse(job *models.Job) *RunTagResponse {
 	}
 
 	return resp
+}
+
+// JobToRunTagResponse converts a models.Job to RunTagResponse.
+func JobToRunTagResponse(job *models.Job) *RunTagResponse {
+	return jobToResponse(job)
 }

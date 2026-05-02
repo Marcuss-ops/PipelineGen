@@ -96,6 +96,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		artlistHandlerVar = artlistHandler.NewHandler(
 			artlistService,
 			coreDeps.CatalogSyncService,
+			coreDeps.JobsService,
 			cfg.Paths.NodeScraperDir,
 			log,
 		)

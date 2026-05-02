@@ -9,12 +9,14 @@ import (
 
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/catalogsync"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
+	jobsService    *jobservice.Service
 	nodeScraperDir string
 	log            *zap.Logger
 }
@@ -22,12 +24,14 @@ type Handler struct {
 func NewHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
+	jobsService *jobservice.Service,
 	nodeScraperDir string,
 	log *zap.Logger,
 ) *Handler {
 	return &Handler{
 		service:        service,
 		catalogSync:    catalogSync,
+		jobsService:    jobsService,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
 	}

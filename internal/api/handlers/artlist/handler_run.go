@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -8,7 +9,9 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/artlist"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/apiutil"
+	"velox/go-master/pkg/models"
 )
 
 // RunTagPipeline executes the full Artlist flow for a tag
@@ -35,6 +38,24 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 		zap.Bool("force_reupload", req.ForceReupload),
 	)
 
+	if h.jobsService != nil {
+		// Use common jobs system
+		job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+			Type:      models.JobTypeArtlistRun,
+			Payload:   req.ToMap(),
+			MaxRetries: 3,
+			ActiveKey: artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
+		})
+		if err != nil {
+			h.log.Error("failed to enqueue artlist job", zap.Error(err))
+			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+			return
+		}
+		c.JSON(http.StatusAccepted, artlist.JobToRunTagResponse(job))
+		return
+	}
+
+	// Fallback to legacy system if jobs service not available
 	resp, err := h.service.StartRunTag(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, resp)

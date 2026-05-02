@@ -123,6 +123,22 @@ type RunTagRequest struct {
 	ForceReupload bool `json:"force_reupload,omitempty"`
 }
 
+// ToMap converts RunTagRequest to a map for job payload.
+func (r *RunTagRequest) ToMap() map[string]any {
+	return map[string]any{
+		"term":          r.Term,
+		"limit":         r.Limit,
+		"root_folder_id": r.RootFolderID,
+		"strategy":      r.Strategy,
+		"dry_run":       r.DryRun,
+	}
+}
+
+// RunDedupKey creates a deduplication key for artlist jobs.
+func RunDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
+	return runDedupKey(term, rootFolderID, strategy, dryRun)
+}
+
 // RunTagItem represents the result for a single clip in the full pipeline.
 type RunTagItem struct {
 	ClipID       string `json:"clip_id"`
