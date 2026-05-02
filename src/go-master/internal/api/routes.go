@@ -11,10 +11,11 @@ import (
 
 	"velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
-	img_handler "velox/go-master/internal/api/handlers/images"
+	imghandler "velox/go-master/internal/api/handlers/images"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
+	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/pkg/config"
 )
@@ -24,12 +25,13 @@ type Handlers struct {
 	Health        *common.HealthHandler
 	Artlist       *artlist.Handler
 	Scraper       *scraperhandler.Handler
-	ImageAssets   *img_handler.Handler
+	ImageAssets   *imghandler.Handler
 	ScriptDocs    *handlers.ScriptDocsHandler
 	ScriptHistory *handlers.ScriptHistoryHandler
 	Voiceover     *voiceover.Handler
 	Utility       *common.UtilityHandler
 	Catalog       *common.CatalogHandler
+	YouTubeClip   *youtubecliphandler.Handler
 }
 
 // Router holds all API handlers
@@ -146,6 +148,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Voiceover != nil {
 				voGroup := protected.Group("/voiceover")
 				h.Voiceover.RegisterRoutes(voGroup)
+			}
+			if h.YouTubeClip != nil {
+				youtubeGroup := protected.Group("/youtube-clips")
+				h.YouTubeClip.RegisterRoutes(youtubeGroup)
 			}
 		}
 	}

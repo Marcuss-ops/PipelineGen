@@ -22,3 +22,4 @@ data/assets/
 
 # OS
 .DS_Store
+server_bin

@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
+	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/pathutil"
 )
 
 func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
@@ -50,33 +51,7 @@ func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
 }
 
 func sanitizeDriveFolderName(term string) string {
-	term = strings.ToLower(strings.TrimSpace(term))
-	var b strings.Builder
-	lastUnderscore := false
-	for _, r := range term {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-			lastUnderscore = false
-		case r == ' ' || r == '-' || r == '_' || r == '.':
-			if b.Len() > 0 && !lastUnderscore {
-				b.WriteByte('_')
-				lastUnderscore = true
-			}
-		default:
-			if r < 128 {
-				if b.Len() > 0 && !lastUnderscore {
-					b.WriteByte('_')
-					lastUnderscore = true
-				}
-			}
-		}
-	}
-	out := strings.Trim(b.String(), "_")
-	if out == "" {
-		return "artlist"
-	}
-	return out
+	return pathutil.SafeFolderName(term)
 }
 
 func boolToInt(v bool) int {
@@ -154,58 +129,14 @@ func driveFileIDFromClip(clip *models.Clip) string {
 	if clip == nil {
 		return ""
 	}
-	if id := driveFileIDFromLink(clip.DownloadLink); id != "" {
+	if id := drive.FileIDFromLink(clip.DownloadLink); id != "" {
 		return id
 	}
-	return driveFileIDFromLink(clip.DriveLink)
-}
-
-func driveFileIDFromLink(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	if u, err := url.Parse(raw); err == nil {
-		if id := strings.TrimSpace(u.Query().Get("id")); id != "" {
-			return id
-		}
-		path := strings.Trim(u.Path, "/")
-		parts := strings.Split(path, "/")
-		for i := 0; i < len(parts); i++ {
-			if parts[i] == "d" && i+1 < len(parts) {
-				return parts[i+1]
-			}
-		}
-	}
-
-	if idx := strings.Index(raw, "id="); idx >= 0 {
-		id := raw[idx+3:]
-		if cut := strings.IndexAny(id, "&?#"); cut >= 0 {
-			id = id[:cut]
-		}
-		return id
-	}
-
-	return ""
+	return drive.FileIDFromLink(clip.DriveLink)
 }
 
 func extractDriveMD5FromMetadata(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return ""
-	}
-	if v, ok := payload["drive_md5_checksum"].(string); ok {
-		return strings.TrimSpace(v)
-	}
-	if v, ok := payload["md5_checksum"].(string); ok {
-		return strings.TrimSpace(v)
-	}
-	return ""
+	return drive.MD5FromMetadata(raw)
 }
 
 func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {

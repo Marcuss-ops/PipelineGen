@@ -75,6 +75,9 @@ type HarvesterConfig struct {
 type DriveConfig struct {
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
+	// ClipRootFolders maps group names to Drive folder IDs for clip organization.
+	// Example: map[string]string{"boxe": "DRIVE_ID_1", "wwe": "DRIVE_ID_2"}
+	ClipRootFolders map[string]string `yaml:"clip_root_folders" env:"VELOX_DRIVE_CLIP_ROOT_FOLDERS" default:"{}"`
 }
 
 // LoggingConfig holds logger-specific configuration.
