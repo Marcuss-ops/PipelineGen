@@ -12,6 +12,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/pipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
@@ -44,7 +45,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	resp.Requested = req.Limit
 	resp.DryRun = req.DryRun
 
-	strategy := normalizeRunStrategy(req)
+	strategy := string(pipeline.NormalizeStrategy(req.Strategy, req.ForceReupload))
 	resp.Strategy = strategy
 
 	rootFolderID := strings.TrimSpace(req.RootFolderID)

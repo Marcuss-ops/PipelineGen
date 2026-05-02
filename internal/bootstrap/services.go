@@ -18,6 +18,7 @@ import (
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
+	"velox/go-master/internal/service/voiceoversync"
 	jobservice "velox/go-master/internal/service/jobs"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
@@ -30,26 +31,27 @@ import (
 )
 
 type services struct {
-	scriptGen        *ollama.Generator
-	docClient        drive.DocClient
-	driveClient      *gdrive.Service
-	utility          *common.UtilityHandler
-	scriptsRepo      *scripts.ScriptRepository
-	imageRepo        *images.Repository
-	imageService     *imgservice.Service
-	stockDriveRepo   *clips.Repository
-	artlistRepo      *clips.Repository
-	clipsOnlyRepo    *clips.Repository
-	monitorsRepo     *monitors.Repository
-	voiceoverService *voiceover.Service
-	indexingService  *indexing.Service
-	harvesterRepo    *harvester.Repository
-	catalogRepo      *catalog.Repository
-	catalogSync      *catalogsync.Service
-	assocService     *association.Service
-	jobsRepo         *jobrepo.Repository
-	jobsService      *jobservice.Service
-	jobsDispatcher   *jobservice.Dispatcher
+	scriptGen         *ollama.Generator
+	docClient         drive.DocClient
+	driveClient       *gdrive.Service
+	utility           *common.UtilityHandler
+	scriptsRepo       *scripts.ScriptRepository
+	imageRepo         *images.Repository
+	imageService      *imgservice.Service
+	stockDriveRepo    *clips.Repository
+	artlistRepo       *clips.Repository
+	clipsOnlyRepo     *clips.Repository
+	monitorsRepo      *monitors.Repository
+	voiceoverService  *voiceover.Service
+	voiceoverSync     *voiceoversync.Service
+	indexingService   *indexing.Service
+	harvesterRepo     *harvester.Repository
+	catalogRepo       *catalog.Repository
+	catalogSync       *catalogsync.Service
+	assocService      *association.Service
+	jobsRepo          *jobrepo.Repository
+	jobsService       *jobservice.Service
+	jobsDispatcher    *jobservice.Dispatcher
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -122,6 +124,13 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		},
 	}, log)
 
+	// Voiceover sync service
+	var voiceoverSync *voiceoversync.Service
+	if cfg.Drive.VoiceoverRootFolder != "" && voRepo != nil {
+		voiceoverSync = voiceoversync.NewService(driveClient, voRepo, cfg.Drive.VoiceoverRootFolder, log)
+		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", cfg.Drive.VoiceoverRootFolder))
+	}
+
 	// Jobs system
 	jobsRepo := jobrepo.NewRepository(dbs.jobs.DB, log)
 	jobsDispatcher := jobservice.NewDispatcher()
@@ -131,25 +140,26 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
 	return &services{
-		scriptGen:        scriptGen,
-		docClient:        docClient,
-		driveClient:      driveClient,
-		utility:          common.NewUtilityHandler(),
-		scriptsRepo:      scriptsRepo,
-		imageRepo:        imageRepo,
-		imageService:     imageService,
-		stockDriveRepo:   clipsRepo,
-		artlistRepo:      artlistRepo,
-		clipsOnlyRepo:    clipsOnlyRepo,
-		monitorsRepo:     monitorsRepo,
-		voiceoverService: voService,
-		indexingService:  indexingService,
-		harvesterRepo:    harvesterRepo,
-		catalogRepo:      catalogRepo,
-		catalogSync:      catalogSync,
-		assocService:     assocService,
-		jobsRepo:         jobsRepo,
-		jobsService:      jobsService,
-		jobsDispatcher:   jobsDispatcher,
+		scriptGen:         scriptGen,
+		docClient:         docClient,
+		driveClient:       driveClient,
+		utility:           common.NewUtilityHandler(),
+		scriptsRepo:       scriptsRepo,
+		imageRepo:         imageRepo,
+		imageService:      imageService,
+		stockDriveRepo:    clipsRepo,
+		artlistRepo:       artlistRepo,
+		clipsOnlyRepo:     clipsOnlyRepo,
+		monitorsRepo:      monitorsRepo,
+		voiceoverService:  voService,
+		voiceoverSync:     voiceoverSync,
+		indexingService:   indexingService,
+		harvesterRepo:     harvesterRepo,
+		catalogRepo:       catalogRepo,
+		catalogSync:       catalogSync,
+		assocService:      assocService,
+		jobsRepo:          jobsRepo,
+		jobsService:       jobsService,
+		jobsDispatcher:    jobsDispatcher,
 	}, nil
 }
