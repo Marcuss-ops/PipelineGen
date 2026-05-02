@@ -6,6 +6,8 @@ type ExtractRequest struct {
 	ForceKeyframes bool               `json:"force_keyframes"`
 	SaveDB         bool               `json:"save_db"`
 	UploadDrive    bool               `json:"upload_drive"`
+	Normalize      *bool              `json:"normalize,omitempty"` // Use pointer to distinguish between missing and false
+	KeepAudio      bool               `json:"keep_audio"`
 	Destination    *DestinationRequest `json:"destination,omitempty"`
 }
 

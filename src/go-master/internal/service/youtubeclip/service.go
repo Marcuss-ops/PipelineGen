@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,6 +54,7 @@ func NewService(
 }
 
 func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractResponse, error) {
+	s.log.Info("YouTube Extract service called", zap.String("url", req.URL))
 	resp := &ExtractResponse{
 		OK:        true,
 		SourceURL: strings.TrimSpace(req.URL),
@@ -102,6 +104,18 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			SubfolderName:   req.Destination.SubfolderName,
 			CreateSubfolder: req.Destination.CreateSubfolder,
 		}
+
+		// If no subfolder provided, automatically create one based on the video ID
+		// to avoid "floating clips" in the main group folder.
+		if destReq.SubfolderName == "" {
+			videoID := extractVideoID(resp.SourceURL)
+			if videoID != "" {
+				destReq.SubfolderName = "yt_" + videoID
+				destReq.CreateSubfolder = true
+				s.log.Info("auto-assigning video subfolder", zap.String("subfolder", destReq.SubfolderName))
+			}
+		}
+
 		resolved, err := s.driveDestination.Resolve(ctx, destReq)
 		if err != nil {
 			s.log.Warn("failed to resolve drive destination", zap.Error(err))
@@ -247,15 +261,20 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			continue
 		}
 
-		// Normalize video with FFmpeg if processor is available
-		if s.ffmpeg != nil {
+		// Normalize video with FFmpeg if processor is available and requested
+		shouldNormalize := req.Normalize == nil || *req.Normalize
+		if s.ffmpeg != nil && shouldNormalize {
 			normalizedPath := localPath + ".normalized.mp4"
 			opts := ffmpeg.DefaultNormalizeOptions(s.cfg)
+			opts.KeepAudio = req.KeepAudio
+			opts.DisableDuration = true // Don't truncate YouTube clips to the global default duration
+
 			s.log.Info("normalizing video",
 				zap.String("input", localPath),
 				zap.String("output", normalizedPath),
 				zap.Int("width", opts.Width),
 				zap.Int("height", opts.Height),
+				zap.Bool("keep_audio", opts.KeepAudio),
 			)
 			ffmpegErr := s.ffmpeg.Normalize(ctx, localPath, normalizedPath, opts)
 			if ffmpegErr != nil {
@@ -345,6 +364,15 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 
 		resp.Items = append(resp.Items, item)
+	}
+
+	// Generate or update summary TXT file
+	summaryPath := filepath.Join(s.cfg.Storage.DataDir, "riepilogo_clip.txt")
+	s.log.Info("updating summary file", zap.String("path", summaryPath), zap.Int("items", len(resp.Items)))
+	if err := s.updateSummaryFile(ctx, resp, summaryPath); err != nil {
+		s.log.Warn("failed to update summary file", zap.Error(err))
+	} else {
+		s.log.Info("summary file updated successfully", zap.String("path", summaryPath))
 	}
 
 	return resp, nil
@@ -463,4 +491,125 @@ func extractVideoID(inputURL string) string {
 	}
 
 	return ""
+}
+
+// updateSummaryFile creates or updates the summary TXT file with clip information
+func (s *Service) updateSummaryFile(ctx context.Context, resp *ExtractResponse, filePath string) error {
+	// Read existing file if it exists
+	existingContent := ""
+	fileExists := false
+	if data, err := os.ReadFile(filePath); err == nil {
+		existingContent = string(data)
+		fileExists = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read summary file: %w", err)
+	}
+
+	var sb strings.Builder
+
+	if !fileExists {
+		// New file: add header
+		sb.WriteString("📋 RIEPILOGO CLIP\n")
+		sb.WriteString(strings.Repeat("=", 80) + "\n\n")
+	}
+
+	// Count existing clips to determine starting number for new clips
+	existingClipCount := 0
+	if fileExists {
+		lines := strings.Split(existingContent, "\n")
+		for _, line := range lines {
+			if isClipLine(line) {
+				existingClipCount++
+			}
+		}
+	}
+
+	// Build content: existing content + new clips
+	if fileExists {
+		sb.WriteString(existingContent)
+		// Ensure trailing newline before appending
+		if !strings.HasSuffix(existingContent, "\n") {
+			sb.WriteString("\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// Add new clips from current response
+	newClipCount := 0
+	for _, item := range resp.Items {
+		if item.Status == "failed" || item.Status == "skipped_existing" {
+			continue
+		}
+		existingClipCount++
+		newClipCount++
+
+		sb.WriteString(fmt.Sprintf("%d. [%s]\n", existingClipCount, item.Name))
+		if item.DriveLink != "" {
+			sb.WriteString(fmt.Sprintf("   🔗 Link: %s\n", item.DriveLink))
+		}
+		if item.LocalPath != "" {
+			sb.WriteString(fmt.Sprintf("   📁 File: %s\n", filepath.Base(item.LocalPath)))
+		}
+		sb.WriteString(fmt.Sprintf("   📊 Stato: %s\n", item.Status))
+		if item.DriveFolderPath != "" {
+			sb.WriteString(fmt.Sprintf("   📂 Cartella: %s\n", item.DriveFolderPath))
+		}
+		if item.DriveFolderID != "" {
+			sb.WriteString(fmt.Sprintf("   🆔 Folder ID: %s\n", item.DriveFolderID))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Only write if we have new clips
+	if newClipCount == 0 {
+		return nil
+	}
+
+	// Update total count in header
+	content := sb.String()
+	totalClips := countClipsInContent(content)
+
+	if fileExists {
+		// Replace the old total line
+		lines := strings.Split(content, "\n")
+		for i, line := range lines {
+			if strings.Contains(line, "Totale clip:") {
+				lines[i] = fmt.Sprintf("📊 Totale clip: %d", totalClips)
+				break
+			}
+		}
+		content = strings.Join(lines, "\n")
+	} else {
+		// Insert total line after the separator line
+		lines := strings.Split(content, "\n")
+		for i, line := range lines {
+			if strings.Contains(line, "===") {
+				newLines := append(lines[:i+1],
+					append([]string{"", fmt.Sprintf("📊 Totale clip: %d", totalClips), ""},
+						lines[i+1:]...)...)
+				content = strings.Join(newLines, "\n")
+				break
+			}
+		}
+	}
+
+	return os.WriteFile(filePath, []byte(content), 0644)
+}
+
+// isClipLine checks if a line is a clip entry (starts with a number followed by ". [")
+func isClipLine(line string) bool {
+	matched, _ := regexp.MatchString(`^\d+\.\s*\[`, line)
+	return matched
+}
+
+// countClipsInContent counts the number of clip entries in the content
+func countClipsInContent(content string) int {
+	count := 0
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		if isClipLine(line) {
+			count++
+		}
+	}
+	return count
 }

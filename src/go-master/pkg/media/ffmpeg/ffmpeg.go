@@ -26,13 +26,15 @@ func New(cfg *config.Config) *Processor {
 
 // NormalizeOptions configures video normalization.
 type NormalizeOptions struct {
-	Duration int    // Max duration in seconds (0 = no limit)
-	Width    int
-	Height   int
-	FPS      int
-	Codec    string
-	Preset   string
-	CRF      int
+	Duration        int    // Max duration in seconds (0 = no limit)
+	DisableDuration bool   // If true, ignore Duration even if > 0
+	KeepAudio       bool   // If true, do not strip audio
+	Width           int
+	Height          int
+	FPS             int
+	Codec           string
+	Preset          string
+	CRF             int
 }
 
 // DefaultNormalizeOptions returns defaults from config.
@@ -53,15 +55,25 @@ func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
 	args := []string{"-y"}
 
-	if opts.Duration > 0 {
+	if opts.Duration > 0 && !opts.DisableDuration {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
 	}
 
+	args = append(args, "-i", input)
+
+	// Filter chain
+	filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d",
+		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS)
+	args = append(args, "-vf", filter)
+
+	if !opts.KeepAudio {
+		args = append(args, "-an")
+	} else {
+		// If keeping audio, we should probably encode it to a standard codec like AAC
+		args = append(args, "-c:a", "aac", "-b:a", "128k")
+	}
+
 	args = append(args,
-		"-i", input,
-		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d",
-			opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS),
-		"-an",
 		"-c:v", opts.Codec,
 		"-preset", opts.Preset,
 		"-crf", fmt.Sprintf("%d", opts.CRF),
@@ -69,7 +81,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	)
 
 	_, err := executil.Run(ctx, p.path, args, executil.Options{
-		Timeout: 10 * time.Minute,
+		Timeout: 15 * time.Minute,
 	})
 	return err
 }

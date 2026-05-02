@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -115,7 +116,8 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 			return nil, fmt.Errorf("invalid section %d: %w", i, err)
 		}
 
-		outputTemplate := filepath.Join(outputDir, fmt.Sprintf("%03d_%s.%%(ext)s", i+1, req.URL))
+		// Use a safe name for the template based on index and a slug of the URL or a constant
+		outputTemplate := filepath.Join(outputDir, fmt.Sprintf("%03d_segment.%%(ext)s", i+1))
 		args := []string{"--no-playlist"}
 
 		if req.Format != "" {
@@ -155,7 +157,7 @@ type VideoInfo struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
 	Views    int64  `json:"view_count"`
-	Duration int    `json:"duration"`
+	Duration float64 `json:"duration"` // yt-dlp might return float
 }
 
 // ListChannel lists videos from a channel URL.
@@ -166,20 +168,19 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 
 	args := []string{
 		"--flat-playlist",
-		"--print", "%(id)s %(title)s %(view_count)s %(duration)s",
+		"--dump-json",
 		"--playlist-end", fmt.Sprintf("%d", limit),
 		channelURL,
 	}
 
 	result, err := executil.Run(ctx, d.path, args, executil.Options{
-		Timeout:        30 * time.Second,
+		Timeout:        60 * time.Second,
 		CombinedOutput: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("yt-dlp failed: %w", err)
 	}
 
-	// Parse output (simplified - assumes format: ID TITLE VIEWS DURATION)
 	var videos []VideoInfo
 	lines := strings.Split(result.Output, "\n")
 	for _, line := range lines {
@@ -187,9 +188,10 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 		if line == "" {
 			continue
 		}
-		// Parse line - this is simplified
-		// In production, use JSON output format instead
-		_ = line
+		var info VideoInfo
+		if err := json.Unmarshal([]byte(line), &info); err == nil {
+			videos = append(videos, info)
+		}
 	}
 
 	return videos, nil
