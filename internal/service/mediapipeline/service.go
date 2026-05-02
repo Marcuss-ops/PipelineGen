@@ -27,7 +27,7 @@ func NewService(
 		driveUploader:    driveUploader,
 		driveDestination: driveDestination,
 		clipsRepo:        clipsRepo,
-		idGenerator:      &defaultIDGenerator{},
+		idGenerator:      &stableIDGenerator{},
 		downloadOutputDir: "/tmp/mediapipeline/downloads",
 		processOutputDir:  "/tmp/mediapipeline/processed",
 	}

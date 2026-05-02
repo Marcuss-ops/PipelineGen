@@ -38,10 +38,15 @@ func (s *Service) process(ctx context.Context, item *WorkItem, spec ProcessingSp
 
 func (s *Service) processWithNormalize(ctx context.Context, item *WorkItem, spec ProcessingSpec, outputPath string) error {
 	opts := ffmpeg.NormalizeOptions{
-		Duration: spec.Duration,
-		Width:    spec.Width,
-		Height:   spec.Height,
-		FPS:      spec.FPS,
+		Duration:        spec.Duration,
+		DisableDuration: spec.DisableDuration,
+		KeepAudio:       spec.KeepAudio,
+		Width:           spec.Width,
+		Height:          spec.Height,
+		FPS:             spec.FPS,
+		Codec:           spec.Codec,
+		Preset:          spec.Preset,
+		CRF:             spec.CRF,
 	}
 
 	if err := s.ffmpegProcessor.Normalize(ctx, item.LocalPath, outputPath, opts); err != nil {

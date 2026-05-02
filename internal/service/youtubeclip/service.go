@@ -15,6 +15,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
@@ -32,6 +33,7 @@ type Service struct {
 	driveClient      *driveapi.Service
 	driveDestination *drivedestination.Service
 	ffmpeg           *ffmpeg.Processor
+	folderMemory     *foldermemory.Service
 }
 
 func NewService(
@@ -49,6 +51,7 @@ func NewService(
 		driveClient:      driveClient,
 		driveDestination: driveDestination,
 		ffmpeg:           ffmpegProc,
+		folderMemory:     foldermemory.NewService(log, clipsRepo),
 	}
 }
 
@@ -202,18 +205,18 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		Clips:           []models.ClipManifestItem{},
 	}
 	if clipFolder != nil && clipFolder.ManifestJSONPath != "" {
-		if data, err := os.ReadFile(clipFolder.ManifestJSONPath); err == nil {
-			if err := json.Unmarshal(data, manifest); err == nil {
-				s.log.Info("loaded existing manifest", zap.Int("clip_count", len(manifest.Clips)))
+		loadedManifest, err := s.folderMemory.LoadManifest(clipFolder.ManifestJSONPath)
+		if err == nil && loadedManifest != nil {
+			manifest = loadedManifest
+			s.log.Info("loaded existing manifest", zap.Int("clip_count", len(manifest.Clips)))
 
-				// Restore/Update drive info if missing in file but present in current request
-				if manifest.FolderID == "" && driveFolderID != "" {
-					manifest.FolderID = driveFolderID
-					manifest.FolderPath = resolvedPath
-				}
-				if manifest.ID == "" {
-					manifest.ID = folderID
-				}
+			// Restore/Update drive info if missing in file but present in current request
+			if manifest.FolderID == "" && driveFolderID != "" {
+				manifest.FolderID = driveFolderID
+				manifest.FolderPath = resolvedPath
+			}
+			if manifest.ID == "" {
+				manifest.ID = folderID
 			}
 		}
 	}
@@ -417,7 +420,6 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		localPath := findFirstOutput(outDir, fmt.Sprintf("%03d_%s", i+1, item.Name))
 		item.LocalPath = localPath
 		item.Status = "processed"
-		resp.Stats.Processed++
 
 		if localPath == "" {
 			item.Status = "failed"
@@ -577,50 +579,29 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 	// Update folder manifest (TXT + JSON)
 	if clipFolder != nil {
-		// Count processed, failed, skipped from manifest
-		processedCount := 0
-		failedCount := 0
-		skippedCount := 0
-		for _, mItem := range manifest.Clips {
-			if mItem.Status == "processed" || mItem.Status == "skipped_existing" {
-				processedCount++
-			} else if mItem.Status == "failed" || mItem.Status == "upload_failed" {
-				failedCount++
-			} else {
-				skippedCount++
-			}
-		}
+			// Compute manifest stats using foldermemory
+		stats := s.folderMemory.ComputeManifestStats(manifest)
+		manifest.Stats = stats
 
-		// Update manifest stats
-		manifest.Stats = models.ClipFolderStats{
-			ClipCount:      len(manifest.Clips),
-			ProcessedCount: processedCount,
-			FailedCount:    failedCount,
-			SkippedCount:   skippedCount,
-		}
-
-		clipFolder.ClipCount = len(manifest.Clips)
-		clipFolder.ProcessedCount = processedCount
-		clipFolder.FailedCount = failedCount
-		clipFolder.SkippedCount = skippedCount
+		clipFolder.ClipCount = stats.ClipCount
+		clipFolder.ProcessedCount = stats.ProcessedCount
+		clipFolder.FailedCount = stats.FailedCount
+		clipFolder.SkippedCount = stats.SkippedCount
 		clipFolder.UpdatedAt = time.Now().UTC()
 
 		// Save manifest JSON
 		if manifest != nil {
-			manifest.UpdatedAt = time.Now().UTC()
-			manifestData, err := json.MarshalIndent(manifest, "", "  ")
-			if err == nil {
-				if err := os.WriteFile(clipFolder.ManifestJSONPath, manifestData, 0644); err != nil {
-					s.log.Warn("failed to write manifest JSON", zap.Error(err))
-				} else {
-					s.log.Info("manifest JSON updated", zap.String("path", clipFolder.ManifestJSONPath))
-				}
+			if err := s.folderMemory.SaveManifest(clipFolder.ManifestJSONPath, manifest); err != nil {
+				s.log.Warn("failed to write manifest JSON", zap.Error(err))
+			} else {
+				s.log.Info("manifest JSON updated", zap.String("path", clipFolder.ManifestJSONPath))
 			}
 		}
 
-		// Save manifest TXT
-		if clipFolder.ManifestTXTPath != "" {
-			if err := s.updateFolderManifestTXT(clipFolder, manifest); err != nil {
+		// Save manifest TXT (respect WriteSummary flag)
+		writeSummary := boolDefault(req.WriteSummary, true)
+		if writeSummary && clipFolder.ManifestTXTPath != "" {
+			if err := s.folderMemory.UpdateManifestTXT(clipFolder, manifest); err != nil {
 				s.log.Warn("failed to write manifest TXT", zap.Error(err))
 			} else {
 				s.log.Info("manifest TXT updated", zap.String("path", clipFolder.ManifestTXTPath))
@@ -628,8 +609,8 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 
 		// Upsert clip folder to DB
-		if s.clipsRepo != nil {
-			if err := s.clipsRepo.UpsertClipFolder(ctx, clipFolder); err != nil {
+		if clipFolder != nil {
+			if err := s.folderMemory.UpsertClipFolder(ctx, clipFolder); err != nil {
 				s.log.Warn("failed to upsert clip folder", zap.Error(err))
 			}
 		}
@@ -801,47 +782,3 @@ func extractVideoID(inputURL string) string {
 	return ""
 }
 
-// updateFolderManifestTXT creates or updates the per-folder manifest TXT file
-func (s *Service) updateFolderManifestTXT(folder *models.ClipFolder, manifest *models.ClipManifest) error {
-	if folder == nil || folder.ManifestTXTPath == "" || manifest == nil {
-		return fmt.Errorf("folder, manifest or manifest path is nil")
-	}
-
-	var sb strings.Builder
-	sb.WriteString("📋 CLIP FOLDER MANIFEST\n")
-	sb.WriteString(strings.Repeat("=", 80) + "\n")
-	sb.WriteString(fmt.Sprintf("Folder ID:  %s\n", folder.ID))
-	sb.WriteString(fmt.Sprintf("Local:      %s\n", folder.LocalFolderPath))
-	sb.WriteString(fmt.Sprintf("Source:     %s\n", folder.SourceURL))
-	if folder.VideoID != "" {
-		sb.WriteString(fmt.Sprintf("Video ID:   %s\n", folder.VideoID))
-	}
-	if folder.FolderPath != "" {
-		sb.WriteString(fmt.Sprintf("Drive:      %s\n", folder.FolderPath))
-	}
-	if folder.FolderID != "" {
-		sb.WriteString(fmt.Sprintf("Drive ID:   %s\n", folder.FolderID))
-	}
-	sb.WriteString(fmt.Sprintf("📊 Totale clip: %d (Processate: %d, Fallite: %d)\n", 
-		manifest.Stats.ClipCount, manifest.Stats.ProcessedCount, manifest.Stats.FailedCount))
-	sb.WriteString(fmt.Sprintf("Aggiornato: %s\n", time.Now().Format("2006-01-02 15:04:05")))
-	sb.WriteString("\n")
-
-	for i, item := range manifest.Clips {
-		sb.WriteString(fmt.Sprintf("%d. [%s]\n", i+1, item.Name))
-		sb.WriteString(fmt.Sprintf("   ⏱️  Tempo:  %s - %s (%ds)\n", item.Start, item.End, item.DurationSeconds))
-		sb.WriteString(fmt.Sprintf("   📊 Stato:  %s\n", item.Status))
-		if item.DriveLink != "" {
-			sb.WriteString(fmt.Sprintf("   🔗 Drive:  %s\n", item.DriveLink))
-		}
-		if item.LocalPath != "" {
-			sb.WriteString(fmt.Sprintf("   📁 File:   %s\n", filepath.Base(item.LocalPath)))
-		}
-		if item.FileHash != "" {
-			sb.WriteString(fmt.Sprintf("   #  Hash:   %s\n", item.FileHash))
-		}
-		sb.WriteString("\n")
-	}
-
-	return os.WriteFile(folder.ManifestTXTPath, []byte(sb.String()), 0644)
-}
