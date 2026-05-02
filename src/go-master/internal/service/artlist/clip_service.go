@@ -122,6 +122,12 @@ func (s *Service) DownloadClip(ctx context.Context, clipID string, req *Download
 		return resp, err
 	}
 
+	actualPath := resolveDownloadedFile(localPath)
+	if actualPath != localPath {
+		s.log.Info("resolved actual download path", zap.String("expected", localPath), zap.String("actual", actualPath))
+		localPath = actualPath
+	}
+
 	if hash, err := hashutil.MD5File(localPath); err == nil {
 		resp.FileHash = hash
 	}
@@ -510,4 +516,24 @@ func dedupeStrings(input []string) []string {
 		out = append(out, item)
 	}
 	return out
+}
+
+// resolveDownloadedFile attempts to find the actual downloaded file.
+// Handles cases where yt-dlp saves with different extensions (e.g. m3u8 streams).
+func resolveDownloadedFile(expectedPath string) string {
+	if _, err := os.Stat(expectedPath); err == nil {
+		return expectedPath
+	}
+
+	pattern := strings.TrimSuffix(expectedPath, filepath.Ext(expectedPath)) + "*"
+	matches, err := filepath.Glob(pattern)
+	if err == nil && len(matches) > 0 {
+		for _, m := range matches {
+			if info, err := os.Stat(m); err == nil && !info.IsDir() {
+				return m
+			}
+		}
+	}
+
+	return expectedPath
 }
