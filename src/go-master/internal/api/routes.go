@@ -1,4 +1,4 @@
-// Package api provides HTTP API routing for the VeloxEditing system.
+// Package api provides HTTP API routing for the PipelineGen system.
 package api
 
 import (
@@ -93,7 +93,7 @@ func (r *Router) Setup() *gin.Engine {
 	h := r.handlers
 
 	// Create middleware instances
-	authMW := middleware.Auth()
+	authMW := middleware.Auth(r.cfg)
 	rateLimitMW := middleware.RateLimit()
 	r.rateLimitMiddleware = rateLimitMW
 

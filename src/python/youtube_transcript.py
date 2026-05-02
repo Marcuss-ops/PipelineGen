@@ -22,13 +22,20 @@ def extract_vtt_from_youtube(youtube_url: str, lang_code: str = "en") -> Optiona
         youtube_url,
     ], use_cookies=False)
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=35)
-    except Exception:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=35)
+        if result.returncode != 0:
+            print(f"yt-dlp failed with return code {result.returncode}")
+            print(f"stderr: {result.stderr}")
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return None
+    except Exception as e:
+        print(f"yt-dlp exception: {e}")
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return None
 
     vtts = glob.glob(f"{tmp_dir}/*.vtt")
     if not vtts:
+        print(f"yt-dlp ran but no VTT files found. stderr: {result.stderr if 'result' in locals() else 'N/A'}")
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return None
 
