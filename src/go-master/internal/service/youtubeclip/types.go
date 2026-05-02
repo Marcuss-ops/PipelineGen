@@ -25,18 +25,22 @@ type Segment struct {
 }
 
 type ExtractResponse struct {
-	OK        bool           `json:"ok"`
-	SourceURL string         `json:"source_url"`
-	Items     []ExtractItem `json:"items"`
-	Error     string         `json:"error,omitempty"`
+	OK              bool           `json:"ok"`
+	SourceURL       string         `json:"source_url"`
+	Items           []ExtractItem `json:"items"`
+	Error           string         `json:"error,omitempty"`
+	DriveFolderID   string         `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string         `json:"drive_folder_path,omitempty"`
 }
 
 type ExtractItem struct {
-	Name       string `json:"name"`
-	Start      string `json:"start"`
-	End        string `json:"end"`
-	LocalPath  string `json:"local_path,omitempty"`
-	DriveLink  string `json:"drive_link,omitempty"`
-	Status     string `json:"status"`
-	Error      string `json:"error,omitempty"`
+	Name           string `json:"name"`
+	Start          string `json:"start"`
+	End            string `json:"end"`
+	LocalPath      string `json:"local_path,omitempty"`
+	DriveLink      string `json:"drive_link,omitempty"`
+	Status         string `json:"status"`
+	Error          string `json:"error,omitempty"`
+	DriveFolderID  string `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string `json:"drive_folder_path,omitempty"`
 }

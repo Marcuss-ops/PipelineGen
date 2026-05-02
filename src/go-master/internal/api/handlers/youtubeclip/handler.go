@@ -2,6 +2,7 @@ package youtubeclip
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -36,10 +37,40 @@ func (h *Handler) Extract(c *gin.Context) {
 	}
 
 	resp, err := h.service.Extract(c.Request.Context(), &req)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, resp)
+	
+	// If there's a fatal error (not just item failures), return error
+	if err != nil && (resp == nil || len(resp.Items) == 0) {
+		// Check if it's a user error
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "required") ||
+			strings.Contains(errMsg, "invalid") ||
+			strings.Contains(errMsg, "segments") {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": errMsg})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": errMsg})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	// If resp is nil, return error
+	if resp == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "nil response"})
+		return
+	}
+
+	// If all items failed, return 500; if some failed, return 207; if all succeeded, return 200
+	failedCount := 0
+	for _, item := range resp.Items {
+		if item.Status == "failed" {
+			failedCount++
+		}
+	}
+
+	if failedCount == len(resp.Items) && len(resp.Items) > 0 {
+		c.JSON(http.StatusInternalServerError, resp)
+	} else if failedCount > 0 {
+		c.JSON(http.StatusMultiStatus, resp)
+	} else {
+		c.JSON(http.StatusOK, resp)
+	}
 }

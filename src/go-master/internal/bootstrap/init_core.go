@@ -12,6 +12,7 @@ import (
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
+	jobservice "velox/go-master/internal/service/jobs"
 
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
@@ -50,6 +51,7 @@ type CoreDeps struct {
 	StockScheduler       *scheduler.StockScheduler
 	CatalogRepo          *catalog.Repository
 	AssocService         *association.Service
+	JobsService          *jobservice.Service
 }
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
@@ -114,5 +116,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFun
 		StockScheduler:       jobs.stockScheduler,
 		CatalogRepo:          svcs.catalogRepo,
 		AssocService:         svcs.assocService,
+		JobsService:          svcs.jobsService,
 	}, cleanup, nil
 }

@@ -43,6 +43,18 @@ const (
 	TypeStockClip       JobType = "stock_clip"
 )
 
+// New job types for the unified job system
+const (
+	JobTypeMediaExtract     JobType = "media.extract"
+	JobTypeMediaStock       JobType = "media.stock"
+	JobTypeVoiceoverBatch   JobType = "voiceover.batch"
+	JobTypeSubtitleGenerate JobType = "subtitle.generate"
+	JobTypeRenderVideo      JobType = "render.video"
+	JobTypeYouTubeUpload    JobType = "youtube.upload"
+	JobTypeCatalogSync      JobType = "catalog.sync"
+	JobTypeArtlistRun       JobType = "media.artlist"
+)
+
 // Job rappresenta un job nel sistema
 type Job struct {
 	ID          string                 `json:"id"`
@@ -51,10 +63,12 @@ type Job struct {
 	Priority    int                    `json:"priority"`
 	Project     string                 `json:"project,omitempty"`
 	VideoName   string                 `json:"video_name,omitempty"`
+	ActiveKey   string                 `json:"active_key,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 	StartedAt   *time.Time             `json:"started_at,omitempty"`
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	CancelledAt *time.Time             `json:"cancelled_at,omitempty"`
 	WorkerID    string                 `json:"worker_id,omitempty"`
 	Payload     map[string]interface{} `json:"payload"`
 	Result      map[string]interface{} `json:"result,omitempty"`
@@ -102,6 +116,8 @@ type Queue struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Version   int       `json:"version"`
 }
+
+
 
 // JobFilter rappresenta i filtri per la ricerca dei job
 type JobFilter struct {

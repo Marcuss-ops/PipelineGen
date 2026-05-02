@@ -10,11 +10,13 @@ import (
 )
 
 type databases struct {
-	main    *storage.SQLiteDB
-	stock   *storage.SQLiteDB
-	clips   *storage.SQLiteDB
-	artlist *storage.SQLiteDB
-	images  *storage.SQLiteDB
+	main      *storage.SQLiteDB
+	stock     *storage.SQLiteDB
+	clips     *storage.SQLiteDB
+	artlist   *storage.SQLiteDB
+	images    *storage.SQLiteDB
+	voiceover *storage.SQLiteDB
+	jobs      *storage.SQLiteDB
 }
 
 func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
@@ -43,11 +45,26 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		return nil, fmt.Errorf("failed to initialize images database: %w", err)
 	}
 
+	voiceoverDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "voiceover.db.sqlite", log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize voiceover database: %w", err)
+	}
+
+	jobsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "jobs.db.sqlite", log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize jobs database: %w", err)
+	}
+	if err := jobsDB.RunMigrations(log, "migrations/jobs"); err != nil {
+		return nil, fmt.Errorf("failed to run jobs migrations: %w", err)
+	}
+
 	return &databases{
-		main:    mainDB,
-		stock:   stockDB,
-		clips:   clipsDB,
-		artlist: artlistDB,
-		images:  imagesDB,
+		main:      mainDB,
+		stock:     stockDB,
+		clips:     clipsDB,
+		artlist:   artlistDB,
+		images:    imagesDB,
+		voiceover: voiceoverDB,
+		jobs:      jobsDB,
 	}, nil
 }

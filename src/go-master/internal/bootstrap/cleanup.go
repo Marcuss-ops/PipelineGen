@@ -103,5 +103,13 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				log.Error("Failed to close artlist database", zap.Error(err))
 			}
 		}
+		if dbs.voiceover != nil {
+			if err := dbs.voiceover.Backup(); err != nil {
+				log.Warn("Failed to create voiceover backup on shutdown", zap.Error(err))
+			}
+			if err := dbs.voiceover.Close(); err != nil {
+				log.Error("Failed to close voiceover database", zap.Error(err))
+			}
+		}
 	}
 }
