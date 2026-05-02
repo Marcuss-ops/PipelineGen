@@ -29,21 +29,25 @@ type AppDeps struct {
 }
 
 // WireServices initializes the minimal server composition root.
-func WireServices(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
-	return WireMinimal(cfg, log)
+func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
+	return WireMinimal(cfg, log, mode)
 }
 
 // WireScriptDocs initializes the minimal text->doc server.
-func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
-	coreDeps, coreClean, err := initCoreMinimal(cfg, log)
+func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
+	coreDeps, coreClean, err := initCoreMinimal(cfg, log, mode)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create Artlist service
+	// Create drive destination service first
+	driveDestinationService := drivedestination.NewService(cfg, log, coreDeps.DriveClient)
+
+	// Create Artlist service with drive destination
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
 	driveFolderID := drive.ResolveArtlistRootFolderID(cfg)
-	artlistService, err := artlist.NewService(
+	var artlistService *artlist.Service
+	artlistService, err = artlist.NewService(
 		cfg,
 		coreDeps.DB.DB,
 		artlistDBPath,
@@ -51,11 +55,12 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.ArtlistRepo,
 		coreDeps.DriveClient,
 		driveFolderID,
-		nil, // driveDestinationService will be set after creation
+		driveDestinationService,
 		log,
 	)
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
+		artlistService = nil
 	}
 
 	scriptDocsHandler := handlers.NewScriptDocsHandler(
@@ -85,28 +90,6 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 			cfg.Paths.NodeScraperDir,
 			log,
 		)
-	}
-
-	// Create drive destination service
-	driveDestinationService := drivedestination.NewService(cfg, log, coreDeps.DriveClient)
-
-	// Update Artlist service with drive destination
-	if artlistService != nil {
-		// Re-create with proper dependency
-		artlistService, err = artlist.NewService(
-			cfg,
-			coreDeps.DB.DB,
-			artlistDBPath,
-			cfg.Paths.NodeScraperDir,
-			coreDeps.ArtlistRepo,
-			coreDeps.DriveClient,
-			driveFolderID,
-			driveDestinationService,
-			log,
-		)
-		if err != nil {
-			log.Warn("Failed to update Artlist service with drive destination", zap.Error(err))
-		}
 	}
 
 	// Update Voiceover service with drive destination
@@ -161,6 +144,6 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 }
 
 // WireMinimal is kept for compatibility with local tools.
-func WireMinimal(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
-	return WireScriptDocs(cfg, log)
+func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
+	return WireScriptDocs(cfg, log, mode)
 }

@@ -1,11 +1,17 @@
 .PHONY: all build test test-unit test-integration coverage clean lint fmt vet swagger
 
+# Version information (can be overridden via environment)
+# Use: make build VERSION=1.2.0
+VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo "dev")
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
+
 # Default target
 all: build
 
-# Build the server
+# Build the server with version info
 build:
-	go build -v ./cmd/server
+	go build -ldflags "$(LDFLAGS)" -v ./cmd/server
 
 # Run all tests
 test: test-unit test-integration
