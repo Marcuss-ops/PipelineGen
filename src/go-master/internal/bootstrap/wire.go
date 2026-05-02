@@ -8,10 +8,12 @@ import (
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
+	mediahandler "velox/go-master/internal/api/handlers/media"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
+	"velox/go-master/internal/core/media"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/youtubeclip"
@@ -113,11 +115,20 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 
 	jobsHandler := jobs.NewHandler(coreDeps.JobsService, log)
 
+	// Create media handler with ManifestExporter
+	var mediaHandler *mediahandler.Handler
+	mediaRepo := media.NewClipsRepositoryAdapter(coreDeps.clipsOnlyRepo)
+	if mediaRepo != nil {
+		exporter := media.NewManifestExporter(mediaRepo)
+		mediaHandler = mediahandler.NewHandler(exporter)
+	}
+
 	handlers_struct := &api.Handlers{
 		Health:      common.NewHealthHandler(),
 		Artlist:     artlistHandlerVar,
 		Scraper:     scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
 		ImageAssets: imghandler.NewHandler(coreDeps.ImageService),
+		Media:       mediaHandler,
 		ScriptDocs:  scriptDocsHandler,
 		Voiceover:   voiceover.NewHandler(coreDeps.VoiceoverService),
 		Utility:     coreDeps.Utility,

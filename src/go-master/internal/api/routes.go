@@ -13,6 +13,7 @@ import (
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
+	mediahandler "velox/go-master/internal/api/handlers/media"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
@@ -27,6 +28,7 @@ type Handlers struct {
 	Artlist       *artlist.Handler
 	Scraper       *scraperhandler.Handler
 	ImageAssets   *imghandler.Handler
+	Media         *mediahandler.Handler
 	ScriptDocs    *handlers.ScriptDocsHandler
 	ScriptHistory *handlers.ScriptHistoryHandler
 	Voiceover     *voiceover.Handler
@@ -122,10 +124,11 @@ func (r *Router) Setup() *gin.Engine {
 	// API routes
 	api := engine.Group("/api")
 	{
-		// Protected routes — Auth + RateLimit
+		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
 		protected.Use(authMW)
 		protected.Use(rateLimitMW.Handler)
+		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
 			if h.Artlist != nil {
 				artlistGroup := protected.Group("/artlist")
@@ -158,6 +161,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Jobs != nil {
 				jobsGroup := protected.Group("/jobs")
 				h.Jobs.RegisterRoutes(jobsGroup)
+			}
+			if h.Media != nil {
+				mediaGroup := protected.Group("/media")
+				h.Media.RegisterRoutes(mediaGroup)
 			}
 		}
 	}
