@@ -1,9 +1,6 @@
 package types
 
 const (
-	// DefaultModel is the fallback model if none is specified
-	DefaultModel = "gemma3:4b"
-
 	// Speech constants for duration estimation
 	WordsPerMinute = 140
 	SecondsPerWord = 3 // Rough estimate for non-speech tasks or very slow speech

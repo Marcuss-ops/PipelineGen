@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/pkg/textutil"
 )
 
@@ -23,7 +22,11 @@ Narrative: %s
 
 Return ONLY the three keywords separated by a comma. Example: wood fired pizza, italian chef cooking, pizza dough kneading`, subject, narrative)
 
-	res, err := gen.GetClient().GenerateWithOptions(ctx, types.DefaultModel, prompt, map[string]interface{}{
+	model := gen.GetClient().Model()
+	if strings.TrimSpace(model) == "" {
+		return extractSearchKeywords(subject, narrative)
+	}
+	res, err := gen.GetClient().GenerateWithOptions(ctx, model, prompt, map[string]interface{}{
 		"temperature": 0.0,
 		"num_predict": 45,
 	})
