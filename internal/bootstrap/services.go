@@ -91,9 +91,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	harvesterRepo := harvester.NewRepository(dbs.main.DB, log)
 	indexingService := indexing.NewService(clipsRepo, log)
-	catalogRepo := catalog.NewRepository(cfg.Storage.DataDir)
+	catalogRepo := catalog.NewRepository(dbs.stock.DB, dbs.artlist.DB, dbs.clips.DB)
 
-	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo)
+	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 
 	catalogSync := catalogsync.NewService(driveClient, []catalogsync.Target{
 		{
@@ -122,7 +122,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Jobs system
 	jobsRepo := jobrepo.NewRepository(dbs.jobs.DB, log)
 	jobsDispatcher := jobservice.NewDispatcher()
-	jobservice.RegisterTestHandlers(jobsDispatcher, log)
+	if os.Getenv("VELOX_ENABLE_TEST_JOB_HANDLERS") == "true" {
+		jobservice.RegisterTestHandlers(jobsDispatcher, log)
+	}
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
 	return &services{

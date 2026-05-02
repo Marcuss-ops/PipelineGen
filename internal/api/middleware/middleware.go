@@ -13,9 +13,7 @@ import (
 )
 
 // Auth returns a gin middleware for authentication
-func Auth() gin.HandlerFunc {
-	cfg := config.Get()
-
+func Auth(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !cfg.Security.EnableAuth {
 			c.Next()
@@ -153,7 +151,7 @@ func (rl *RateLimiter) cleanupOnce() {
 
 	// If map is still too large, remove oldest entries
 	if len(rl.requests) > rl.maxKeys {
-		// Remove the keys with the oldest timestamps
+		// Collect keys with their oldest timestamp
 		type keyTime struct {
 			key string
 			ts  time.Time
@@ -164,10 +162,21 @@ func (rl *RateLimiter) cleanupOnce() {
 				oldest = append(oldest, keyTime{k, times[0]})
 			}
 		}
-		// Simple approach: just clear the whole map if too large
-		// A more sophisticated approach would use a heap
-		if len(oldest) > rl.maxKeys*2 {
-			rl.requests = make(map[string][]time.Time)
+		// Sort by oldest timestamp and remove entries to bring count to maxKeys
+		if len(oldest) > rl.maxKeys {
+			// Sort oldest first
+			for i := 0; i < len(oldest)-1; i++ {
+				for j := i + 1; j < len(oldest); j++ {
+					if oldest[j].ts.Before(oldest[i].ts) {
+						oldest[i], oldest[j] = oldest[j], oldest[i]
+					}
+				}
+			}
+			// Remove oldest entries
+			toRemove := len(oldest) - rl.maxKeys
+			for i := 0; i < toRemove && i < len(oldest); i++ {
+				delete(rl.requests, oldest[i].key)
+			}
 		}
 	}
 }

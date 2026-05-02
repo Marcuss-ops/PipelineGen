@@ -1,4 +1,4 @@
-// Package config provides configuration management for the VeloxEditing system.
+// Package config provides configuration management for the PipelineGen system.
 package config
 
 import "sync"
@@ -109,7 +109,7 @@ type StorageConfig struct {
 type SecurityConfig struct {
 	AdminToken           string   `yaml:"admin_token" env:"VELOX_ADMIN_TOKEN" default:""`
 	WorkerToken          string   `yaml:"worker_token" env:"VELOX_WORKER_TOKEN" default:""`
-	EnableAuth           bool     `yaml:"enable_auth" env:"VELOX_ENABLE_AUTH" default:"true"`
+	EnableAuth           bool     `yaml:"enable_auth" env:"VELOX_ENABLE_AUTH" default:"false"`
 	CORSOrigins          []string `yaml:"cors_origins" env:"VELOX_CORS_ORIGINS" default:"[]"`
 	RateLimitEnabled     bool     `yaml:"rate_limit_enabled" env:"VELOX_RATE_LIMIT_ENABLED" default:"true"`
 	RateLimitRequests    int      `yaml:"rate_limit_requests" env:"VELOX_RATE_LIMIT_REQUESTS" default:"100"`
