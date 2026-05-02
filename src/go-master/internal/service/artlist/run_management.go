@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,14 @@ func (s *Service) persistJob(ctx context.Context, job *models.Job) error {
 	status := string(job.Status)
 
 	return s.finishRunRecord(ctx, rec.RunID, status, s.runRecordToResponse(rec))
+}
+
+func unmarshalPayload(payload json.RawMessage) map[string]interface{} {
+	var result map[string]interface{}
+	if len(payload) > 0 {
+		json.Unmarshal(payload, &result)
+	}
+	return result
 }
 
 func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error) {
@@ -43,7 +52,8 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 		if isStale {
 			// Get term from payload
 			term := ""
-			if t, ok := existingJob.Payload["term"].(string); ok {
+			payload := unmarshalPayload(existingJob.Payload)
+			if t, ok := payload["term"].(string); ok {
 				term = t
 			}
 			s.log.Warn("marking stale artlist job as failed",
@@ -204,16 +214,21 @@ func (s *Service) jobToResponse(job *models.Job) *RunTagResponse {
 		resp.EndedAt = &ended
 	}
 
-	if job.Payload != nil {
-		if v, ok := job.Payload["term"].(string); ok {
-			resp.Term = v
-		}
-		if v, ok := job.Payload["strategy"].(string); ok {
-			resp.Strategy = v
-		}
-		resp.DryRun = job.Payload["dry_run"] == true
-		if v, ok := job.Payload["root_folder_id"].(string); ok {
-			resp.RootFolderID = v
+	if job.Payload != nil && len(job.Payload) > 0 {
+		var payload map[string]interface{}
+		if err := json.Unmarshal(job.Payload, &payload); err == nil {
+			if v, ok := payload["term"].(string); ok {
+				resp.Term = v
+			}
+			if v, ok := payload["strategy"].(string); ok {
+				resp.Strategy = v
+			}
+			if v, ok := payload["dry_run"].(bool); ok {
+				resp.DryRun = v
+			}
+			if v, ok := payload["root_folder_id"].(string); ok {
+				resp.RootFolderID = v
+			}
 		}
 	}
 

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,7 +14,13 @@ import (
 func RegisterTestHandlers(dispatcher *Dispatcher, log *zap.Logger) {
 	// Test echo handler - just sleeps and echoes the message
 	dispatcher.Register(models.JobType("test.echo"), func(ctx context.Context, job *models.Job, tools *JobTools) (map[string]any, error) {
-		msg, _ := job.Payload["message"].(string)
+		var payload map[string]interface{}
+		if len(job.Payload) > 0 {
+			if err := json.Unmarshal(job.Payload, &payload); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+			}
+		}
+		msg, _ := payload["message"].(string)
 		if msg == "" {
 			msg = "no message"
 		}

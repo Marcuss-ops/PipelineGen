@@ -12,6 +12,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/harvester"
 	"velox/go-master/internal/repository/images"
+	"velox/go-master/internal/repository/monitors"
 	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
@@ -39,6 +40,7 @@ type services struct {
 	stockDriveRepo   *clips.Repository
 	artlistRepo      *clips.Repository
 	clipsOnlyRepo    *clips.Repository
+	monitorsRepo     *monitors.Repository
 	voiceoverService *voiceover.Service
 	indexingService  *indexing.Service
 	harvesterRepo    *harvester.Repository
@@ -75,6 +77,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	clipsRepo := clips.NewRepository(dbs.stock.DB)
 	artlistRepo := clips.NewRepository(dbs.artlist.DB)
 	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB)
+	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
 	if err := clipsOnlyRepo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
 		log.Warn("Failed to ensure segment embeddings cache schema", zap.Error(err))
@@ -91,7 +94,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	harvesterRepo := harvester.NewRepository(dbs.main.DB, log)
 	indexingService := indexing.NewService(clipsRepo, log)
-	catalogRepo := catalog.NewRepository(dbs.stock.DB, dbs.artlist.DB, dbs.clips.DB)
+	catalogRepo := catalog.NewRepository(cfg.Storage.DataDir)
 
 	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 
@@ -138,6 +141,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		stockDriveRepo:   clipsRepo,
 		artlistRepo:      artlistRepo,
 		clipsOnlyRepo:    clipsOnlyRepo,
+		monitorsRepo:     monitorsRepo,
 		voiceoverService: voService,
 		indexingService:  indexingService,
 		harvesterRepo:    harvesterRepo,

@@ -14,6 +14,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/upload/drive"
@@ -21,15 +22,16 @@ import (
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
+	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
-	"velox/go-master/pkg/models"
 )
 
 type Service struct {
 	cfg              *config.Config
 	log              *zap.Logger
 	clipsRepo        *clips.Repository
+	monitoredRepo    *monitors.Repository
 	driveClient      *driveapi.Service
 	driveDestination *drivedestination.Service
 	ffmpeg           *ffmpeg.Processor
@@ -40,6 +42,7 @@ func NewService(
 	cfg *config.Config,
 	log *zap.Logger,
 	clipsRepo *clips.Repository,
+	monitoredRepo *monitors.Repository,
 	driveClient *driveapi.Service,
 	driveDestination *drivedestination.Service,
 	ffmpegProc *ffmpeg.Processor,
@@ -48,6 +51,7 @@ func NewService(
 		cfg:              cfg,
 		log:              log,
 		clipsRepo:        clipsRepo,
+		monitoredRepo:    monitoredRepo,
 		driveClient:      driveClient,
 		driveDestination: driveDestination,
 		ffmpeg:           ffmpegProc,
@@ -61,6 +65,29 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	videoID := extractVideoID(req.URL)
 	if videoID == "" {
 		videoID = hashutil.MD5String(req.URL)[:12]
+	}
+
+	// Upsert MonitoredSource for the YouTube video
+	now := time.Now().UTC().Format(time.RFC3339)
+	monitoredSource := &models.MonitoredSource{
+		ID:             "youtube_" + videoID,
+		Source:         "youtube",
+		ExternalID:     videoID,
+		ExternalURL:    req.URL,
+		GroupName:      "",
+		Category:       "manual_extract",
+		Status:         "processing",
+		LastSeenAt:     now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		MetadataJSON:   "{}",
+	}
+	if req.Destination != nil {
+		monitoredSource.GroupName = req.Destination.Group
+	}
+	err := s.monitoredRepo.UpsertSource(ctx, monitoredSource)
+	if err != nil {
+		s.log.Error("Failed to upsert monitored source", zap.Error(err))
 	}
 
 	resp := &ExtractResponse{
@@ -614,6 +641,15 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				s.log.Warn("failed to upsert clip folder", zap.Error(err))
 			}
 		}
+	}
+
+	// Update MonitoredSource status to processed
+	monitoredSource.Status = "processed"
+	if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
+		s.log.Error("Failed to update monitored source status", zap.Error(err))
+	}
+	if err := s.monitoredRepo.IncrementProcessed(ctx, monitoredSource.ID); err != nil {
+		s.log.Error("Failed to increment processed count", zap.Error(err))
 	}
 
 	return resp, nil
