@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -60,7 +61,10 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		tmpDir = os.TempDir()
 	}
 
-	saveDir := filepath.Join(p.dataDir, "mediaassets", SafeName(input.Term))
+	saveDir := input.OutputDir
+	if saveDir == "" {
+		saveDir = filepath.Join(p.dataDir, "mediaassets", SafeName(input.Term))
+	}
 	if err := os.MkdirAll(saveDir, 0755); err != nil {
 		p.log.Error("failed to create save directory", zap.String("dir", saveDir), zap.Error(err))
 		saveDir = tmpDir
@@ -70,8 +74,22 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	finalFilename := SafeName(input.Name) + "_" + input.ID + ".mp4"
 	processedPath := OutputPath(saveDir, finalFilename)
 
-	p.log.Info("downloading asset", zap.String("id", input.ID), zap.String("url", input.SourceURL))
-	if err := p.dl.Download(ctx, &downloader.DownloadRequest{URL: input.SourceURL, OutputPath: rawPath}); err != nil {
+	// Build download request
+	dlReq := &downloader.DownloadRequest{
+		URL:             input.SourceURL,
+		OutputPath:      rawPath,
+		ForceKeyframes:  input.ForceKeyframes,
+		DownloadSections: input.DownloadSections,
+	}
+	if len(input.DownloadSections) > 0 {
+		dlReq.Format = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080]"
+		dlReq.MergeFormat = "mp4"
+		dlReq.NoPlaylist = true
+		dlReq.Timeout = 10 * time.Minute
+	}
+
+	p.log.Info("downloading asset", zap.String("id", input.ID), zap.String("url", input.SourceURL), zap.Strings("sections", input.DownloadSections))
+	if err := p.dl.Download(ctx, dlReq); err != nil {
 		result.Error = fmt.Sprintf("download failed: %v", err)
 		return result, err
 	}
@@ -81,11 +99,22 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		p.log.Info("resolved actual download path", zap.String("expected", rawPath), zap.String("actual", actualRawPath))
 	}
 
-	p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath))
-	if err := p.ffmpeg.Normalize(ctx, actualRawPath, processedPath, p.videoCfg); err != nil {
-		_ = os.Remove(actualRawPath)
-		result.Error = fmt.Sprintf("process failed: %v", err)
-		return result, err
+	// Determine normalize options
+	shouldNormalize := input.Normalize == nil || *input.Normalize
+	if shouldNormalize {
+		opts := p.videoCfg
+		opts.KeepAudio = input.KeepAudio
+		opts.DisableDuration = input.DisableDuration
+
+		p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath), zap.Bool("disable_duration", opts.DisableDuration))
+		if err := p.ffmpeg.Normalize(ctx, actualRawPath, processedPath, opts); err != nil {
+			_ = os.Remove(actualRawPath)
+			result.Error = fmt.Sprintf("process failed: %v", err)
+			return result, err
+		}
+	} else {
+		p.log.Info("skipping normalization as requested", zap.String("id", input.ID))
+		processedPath = actualRawPath
 	}
 
 	p.log.Info("calculating file hash", zap.String("id", input.ID), zap.String("path", processedPath))
@@ -98,14 +127,15 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	}
 	result.FileHash = fileHash
 	result.LocalPath = processedPath
-	result.Filename = finalFilename
+	result.Filename = filepath.Base(processedPath)
 
 	_ = os.Remove(actualRawPath)
 
 	if p.driveSvc != nil && input.FolderID != "" {
-		p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", finalFilename))
+		filename := filepath.Base(processedPath)
+		p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", filename))
 		uploader := &drive.Uploader{Service: p.driveSvc, Log: p.log}
-		uploadResult, err := uploader.UploadFile(ctx, processedPath, input.FolderID, finalFilename)
+		uploadResult, err := uploader.UploadFile(ctx, processedPath, input.FolderID, filename)
 		if err != nil {
 			result.Error = fmt.Sprintf("upload failed: %v", err)
 			return result, err
