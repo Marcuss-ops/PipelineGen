@@ -10,40 +10,33 @@ import (
 
 // Payload helpers for type-safe unmarshaling
 
-// ParseArtlistRunPayload estrae il payload tipizzato per media.artlist
-func (j *Job) ParseArtlistRunPayload() (*ArtlistRunPayload, error) {
-	var p ArtlistRunPayload
+// parsePayload is a generic helper to unmarshal job payload into a typed struct.
+func parsePayload[T any](j *Job, label string) (*T, error) {
+	var p T
 	if err := json.Unmarshal(j.Payload, &p); err != nil {
-		return nil, fmt.Errorf("invalid artlist run payload: %w", err)
+		return nil, fmt.Errorf("invalid %s payload: %w", label, err)
 	}
 	return &p, nil
+}
+
+// ParseArtlistRunPayload estrae il payload tipizzato per media.artlist
+func (j *Job) ParseArtlistRunPayload() (*ArtlistRunPayload, error) {
+	return parsePayload[ArtlistRunPayload](j, "artlist run")
 }
 
 // ParseYoutubeClipExtractPayload estrae il payload tipizzato per media.extract
 func (j *Job) ParseYoutubeClipExtractPayload() (*YoutubeClipExtractPayload, error) {
-	var p YoutubeClipExtractPayload
-	if err := json.Unmarshal(j.Payload, &p); err != nil {
-		return nil, fmt.Errorf("invalid youtube clip extract payload: %w", err)
-	}
-	return &p, nil
+	return parsePayload[YoutubeClipExtractPayload](j, "youtube clip extract")
 }
 
 // ParseVoiceoverPayload estrae il payload tipizzato per voiceover
 func (j *Job) ParseVoiceoverPayload() (*VoiceoverPayload, error) {
-	var p VoiceoverPayload
-	if err := json.Unmarshal(j.Payload, &p); err != nil {
-		return nil, fmt.Errorf("invalid voiceover payload: %w", err)
-	}
-	return &p, nil
+	return parsePayload[VoiceoverPayload](j, "voiceover")
 }
 
 // ParseScriptGenPayload estrae il payload tipizzato per script_generation
 func (j *Job) ParseScriptGenPayload() (*ScriptGenPayload, error) {
-	var p ScriptGenPayload
-	if err := json.Unmarshal(j.Payload, &p); err != nil {
-		return nil, fmt.Errorf("invalid script gen payload: %w", err)
-	}
-	return &p, nil
+	return parsePayload[ScriptGenPayload](j, "script gen")
 }
 
 // Clone crea una copia profonda del job

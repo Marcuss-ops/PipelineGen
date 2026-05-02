@@ -7,6 +7,7 @@ import (
 	"hash"
 	"io"
 	"os"
+	"strings"
 )
 
 // MD5File calculates the MD5 hash of a file.
@@ -80,4 +81,14 @@ func MD5String(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// ShortMD5 generates a truncated MD5 hash from components joined by "|".
+func ShortMD5(parts []string, length int) string {
+	joined := strings.Join(parts, "|")
+	fullHash := MD5String(joined)
+	if length > len(fullHash) {
+		return fullHash
+	}
+	return fullHash[:length]
 }
