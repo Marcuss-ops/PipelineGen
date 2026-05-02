@@ -24,6 +24,73 @@ func NewHandler(service *youtubeclip.Service, log *zap.Logger) *Handler {
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/extract", h.Extract)
+	folders := r.Group("/folders")
+	{
+		folders.GET("/:id", h.GetFolder)
+		folders.GET("/:id/clips", h.GetFolderClips)
+		folders.GET("/search", h.SearchFolders)
+		folders.GET("", h.ListFolders)
+	}
+}
+
+func (h *Handler) GetFolder(c *gin.Context) {
+	folderID := c.Param("id")
+	if folderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "folder id required"})
+		return
+	}
+
+	folder, err := h.service.GetFolder(c.Request.Context(), folderID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": "folder not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "folder": folder})
+}
+
+func (h *Handler) GetFolderClips(c *gin.Context) {
+	folderID := c.Param("id")
+	if folderID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "folder id required"})
+		return
+	}
+
+	clips, err := h.service.ListFolderClips(c.Request.Context(), folderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "folder_id": folderID, "clips": clips})
+}
+
+func (h *Handler) SearchFolders(c *gin.Context) {
+	q := c.Query("q")
+	if q == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "query parameter 'q' required"})
+		return
+	}
+
+	folders, err := h.service.SearchFolders(c.Request.Context(), q)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "query": q, "folders": folders})
+}
+
+func (h *Handler) ListFolders(c *gin.Context) {
+	source := c.Query("source")
+
+	folders, err := h.service.ListFolders(c.Request.Context(), source)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "folders": folders})
 }
 
 func (h *Handler) Extract(c *gin.Context) {

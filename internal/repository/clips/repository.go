@@ -331,3 +331,190 @@ func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*st
 	}
 	return &lastUpdated.String, nil
 }
+
+// UpsertClipFolder inserts or updates a clip folder
+func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFolder) error {
+	now := time.Now()
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO clip_folders (id, source, source_url, video_id, folder_id, folder_path,
+			local_folder_path, group_name, manifest_txt_path, manifest_json_path,
+			clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			source=excluded.source, source_url=excluded.source_url, video_id=excluded.video_id,
+			folder_id=excluded.folder_id, folder_path=excluded.folder_path,
+			local_folder_path=excluded.local_folder_path, group_name=excluded.group_name,
+			manifest_txt_path=excluded.manifest_txt_path, manifest_json_path=excluded.manifest_json_path,
+			clip_count=excluded.clip_count, processed_count=excluded.processed_count,
+			failed_count=excluded.failed_count, skipped_count=excluded.skipped_count,
+			last_error=excluded.last_error, metadata=excluded.metadata, updated_at=excluded.updated_at
+	`, folder.ID, folder.Source, folder.SourceURL, folder.VideoID, folder.FolderID, folder.FolderPath,
+		folder.LocalFolderPath, folder.Group, folder.ManifestTXTPath, folder.ManifestJSONPath,
+		folder.ClipCount, folder.ProcessedCount, folder.FailedCount, folder.SkippedCount, folder.LastError, folder.Metadata,
+		folder.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
+
+	return err
+}
+
+// GetClipFolder retrieves a clip folder by ID
+func (r *Repository) GetClipFolder(ctx context.Context, id string) (*models.ClipFolder, error) {
+	query := "SELECT id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at FROM clip_folders WHERE id = ? LIMIT 1"
+	row := r.db.QueryRowContext(ctx, query, id)
+
+	var folder models.ClipFolder
+	var createdAt, updatedAt string
+	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
+		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
+		&folder.ManifestJSONPath, &folder.ClipCount, &folder.ProcessedCount, &folder.FailedCount,
+		&folder.SkippedCount, &folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	folder.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	folder.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	return &folder, nil
+}
+
+// GetClipFolderByVideoID retrieves a clip folder by video ID
+func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
+	query := "SELECT id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at FROM clip_folders WHERE video_id = ? LIMIT 1"
+	row := r.db.QueryRowContext(ctx, query, videoID)
+
+	var folder models.ClipFolder
+	var createdAt, updatedAt string
+	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
+		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
+		&folder.ManifestJSONPath, &folder.ClipCount, &folder.ProcessedCount, &folder.FailedCount,
+		&folder.SkippedCount, &folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	folder.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	folder.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+
+	return &folder, nil
+}
+
+// ListClipsByFolderID returns all clips for a given folder ID
+func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.Clip, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link,
+			tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at
+		FROM clips WHERE folder_id = ? ORDER BY created_at ASC
+	`, folderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows, true)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
+// ListClipsByFolderPath returns all clips for a given folder path
+func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.Clip, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link,
+			tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at
+		FROM clips WHERE folder_path = ? ORDER BY created_at ASC
+	`, folderPath)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows, true)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
+// CountClipsByFolderID returns the number of clips in a folder
+func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) (int, error) {
+	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM clips WHERE folder_id = ?", folderID)
+	var count int
+	err := row.Scan(&count)
+	return count, err
+}
+
+// ListClipFolders returns all clip folders, optionally filtered by source
+func (r *Repository) ListClipFolders(ctx context.Context, source string) ([]*models.ClipFolder, error) {
+	query := "SELECT id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at FROM clip_folders"
+	args := []interface{}{}
+	if source != "" {
+		query += " WHERE source = ?"
+		args = append(args, source)
+	}
+	query += " ORDER BY updated_at DESC"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var folders []*models.ClipFolder
+	for rows.Next() {
+		var folder models.ClipFolder
+		var createdAt, updatedAt string
+		err := rows.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID,
+			&folder.FolderID, &folder.FolderPath, &folder.LocalFolderPath, &folder.Group,
+			&folder.ManifestTXTPath, &folder.ManifestJSONPath, &folder.ClipCount,
+			&folder.ProcessedCount, &folder.FailedCount, &folder.SkippedCount,
+			&folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
+		if err != nil {
+			return nil, err
+		}
+		folder.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		folder.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		folders = append(folders, &folder)
+	}
+	return folders, rows.Err()
+}
+
+// SearchClipFolders searches clip folders by keyword in source_url, video_id, group_name, or folder_path
+func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*models.ClipFolder, error) {
+	query := "SELECT id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at FROM clip_folders WHERE source_url LIKE ? OR video_id LIKE ? OR group_name LIKE ? OR folder_path LIKE ? ORDER BY updated_at DESC"
+	searchTerm := "%" + keyword + "%"
+	rows, err := r.db.QueryContext(ctx, query, searchTerm, searchTerm, searchTerm, searchTerm)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var folders []*models.ClipFolder
+	for rows.Next() {
+		var folder models.ClipFolder
+		var createdAt, updatedAt string
+		err := rows.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID,
+			&folder.FolderID, &folder.FolderPath, &folder.LocalFolderPath, &folder.Group,
+			&folder.ManifestTXTPath, &folder.ManifestJSONPath, &folder.ClipCount,
+			&folder.ProcessedCount, &folder.FailedCount, &folder.SkippedCount,
+			&folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
+		if err != nil {
+			return nil, err
+		}
+		folder.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		folder.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		folders = append(folders, &folder)
+	}
+	return folders, rows.Err()
+}

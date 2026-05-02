@@ -74,3 +74,10 @@ func HashFile(path string, h hash.Hash) (string, error) {
 
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
+
+// MD5String calculates the MD5 hash of a string.
+func MD5String(s string) string {
+	h := md5.New()
+	h.Write([]byte(s))
+	return hex.EncodeToString(h.Sum(nil))
+}
