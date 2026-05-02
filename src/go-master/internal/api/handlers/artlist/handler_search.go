@@ -86,10 +86,6 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 		return
 	}
 
-	if req.MediaType == "" {
-		req.MediaType = "stock"
-	}
-
 	resp, err := h.service.SyncDriveFolder(c.Request.Context(), req.FolderID, req.MediaType)
 	if err != nil {
 		apiutil.InternalError(c, err)
