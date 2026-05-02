@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/core/media"
+	"velox/go-master/internal/api/middleware"
 )
 
 // Handler handles media-related HTTP requests.
@@ -24,11 +25,18 @@ func (h *Handler) RegisterRoutes(group *gin.RouterGroup) {
 
 // ExportManifest handles GET /api/media/manifest/export.
 func (h *Handler) ExportManifest(c *gin.Context) {
+	// Get workspace scope from context (set by WorkspaceScopeMiddleware)
+	scope := middleware.ScopeFromContext(c)
+
+	// Allow override via query params
 	workspaceID := c.Query("workspace_id")
 	projectID := c.Query("project_id")
 
 	if workspaceID == "" {
-		workspaceID = "default"
+		workspaceID = scope.WorkspaceID
+	}
+	if projectID == "" {
+		projectID = scope.ProjectID
 	}
 
 	manifest, err := h.exporter.Export(c.Request.Context(), workspaceID, projectID)

@@ -124,10 +124,11 @@ func (r *Router) Setup() *gin.Engine {
 	// API routes
 	api := engine.Group("/api")
 	{
-		// Protected routes — Auth + RateLimit
+		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
 		protected.Use(authMW)
 		protected.Use(rateLimitMW.Handler)
+		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
 			if h.Artlist != nil {
 				artlistGroup := protected.Group("/artlist")
