@@ -60,7 +60,7 @@ func (r *Repository) GetByExternalURL(ctx context.Context, sourceType, externalU
 			keyword, group_name, category, status, last_seen_at, last_checked_at,
 			processed_count, metadata_json, created_at, updated_at
 		FROM monitored_sources
-		WHERE source = $1 AND external_url = $2
+		WHERE source = ? AND external_url = ?
 	`, sourceType, externalURL).Scan(
 		&s.ID, &s.Source, &s.ExternalID, &s.ExternalURL, &s.Title,
 		&s.ChannelID, &s.ChannelURL, &s.Keyword, &s.GroupName, &s.Category,
@@ -79,9 +79,9 @@ func (r *Repository) ListDue(ctx context.Context, sourceType string, limit int) 
 			keyword, group_name, category, status, last_seen_at, last_checked_at,
 			processed_count, metadata_json, created_at, updated_at
 		FROM monitored_sources
-		WHERE source = $1 AND (last_checked_at IS NULL OR last_checked_at < $2)
-		ORDER BY last_checked_at ASC NULLS FIRST
-		LIMIT $3
+		WHERE source = ? AND (last_checked_at IS NULL OR last_checked_at < ?)
+		ORDER BY last_checked_at IS NOT NULL, last_checked_at ASC
+		LIMIT ?
 	`, sourceType, time.Now().UTC().Add(-24*time.Hour).Format(time.RFC3339), limit)
 	if err != nil {
 		return nil, err
@@ -106,19 +106,20 @@ func (r *Repository) ListDue(ctx context.Context, sourceType string, limit int) 
 }
 
 func (r *Repository) MarkChecked(ctx context.Context, id string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE monitored_sources
-		SET last_checked_at = $1, updated_at = $1
-		WHERE id = $2
-	`, time.Now().UTC().Format(time.RFC3339), id)
+		SET last_checked_at = ?, updated_at = ?
+		WHERE id = ?
+	`, now, now, id)
 	return err
 }
 
 func (r *Repository) IncrementProcessed(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE monitored_sources
-		SET processed_count = processed_count + 1, updated_at = $1
-		WHERE id = $2
+		SET processed_count = processed_count + 1, updated_at = ?
+		WHERE id = ?
 	`, time.Now().UTC().Format(time.RFC3339), id)
 	return err
 }

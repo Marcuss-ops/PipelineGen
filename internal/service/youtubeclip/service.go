@@ -85,9 +85,10 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	if req.Destination != nil {
 		monitoredSource.GroupName = req.Destination.Group
 	}
-	err := s.monitoredRepo.UpsertSource(ctx, monitoredSource)
-	if err != nil {
-		s.log.Error("Failed to upsert monitored source", zap.Error(err))
+	if s.monitoredRepo != nil {
+		if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
+			s.log.Error("Failed to upsert monitored source", zap.Error(err))
+		}
 	}
 
 	resp := &ExtractResponse{
@@ -643,13 +644,22 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 	}
 
-	// Update MonitoredSource status to processed
-	monitoredSource.Status = "processed"
-	if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
-		s.log.Error("Failed to update monitored source status", zap.Error(err))
+	// Update MonitoredSource status
+	if resp.Stats.Failed == resp.Stats.Requested {
+		monitoredSource.Status = "failed"
+	} else {
+		monitoredSource.Status = "processed"
 	}
-	if err := s.monitoredRepo.IncrementProcessed(ctx, monitoredSource.ID); err != nil {
-		s.log.Error("Failed to increment processed count", zap.Error(err))
+	if s.monitoredRepo != nil {
+		if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
+			s.log.Error("Failed to update monitored source status", zap.Error(err))
+		}
+		// Only increment processed count if not all segments failed
+		if resp.Stats.Failed != resp.Stats.Requested {
+			if err := s.monitoredRepo.IncrementProcessed(ctx, monitoredSource.ID); err != nil {
+				s.log.Error("Failed to increment processed count", zap.Error(err))
+			}
+		}
 	}
 
 	return resp, nil

@@ -3,9 +3,7 @@ package drive
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -74,7 +72,7 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 	return &UploadResult{
 		FileID:       created.Id,
 		WebViewLink:  created.WebViewLink,
-		DownloadLink:  "https://drive.google.com/uc?id=" + created.Id,
+		DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
 		MD5Checksum:   created.Md5Checksum,
 	}, nil
 }
@@ -130,69 +128,6 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 	)
 
 	return created.Id, nil
-}
-
-// FileIDFromLink extracts a Google Drive file ID from various URL formats.
-// Supports: /file/d/ID, ?id=ID, /open?id=ID
-func FileIDFromLink(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	// Try parsing as URL
-	if u, err := url.Parse(raw); err == nil {
-		// Check for id parameter (?id=FILE_ID)
-		if id := strings.TrimSpace(u.Query().Get("id")); id != "" {
-			return id
-		}
-
-		// Check path: /file/d/FILE_ID or /open?id=FIELD_ID
-		path := strings.Trim(u.Path, "/")
-		parts := strings.Split(path, "/")
-		for i := 0; i < len(parts)-1; i++ {
-			if parts[i] == "d" || parts[i] == "file" {
-				return parts[i+1]
-			}
-		}
-	}
-
-	// Fallback: look for id= in string
-	if idx := strings.Index(raw, "id="); idx >= 0 {
-		id := raw[idx+3:]
-		if cut := strings.IndexAny(id, "&?#"); cut >= 0 {
-			id = id[:cut]
-		}
-		return id
-	}
-
-	return ""
-}
-
-// MD5FromMetadata extracts MD5 checksum from a JSON metadata string.
-func MD5FromMetadata(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	// Simple string search for common keys
-	for _, key := range []string{"drive_md5_checksum", "md5_checksum", "file_hash"} {
-		searchStr := fmt.Sprintf(`"%s":"`, key)
-		if idx := strings.Index(raw, searchStr); idx >= 0 {
-			start := idx + len(searchStr)
-			end := strings.Index(raw[start:], `"`)
-			if end >= 0 {
-				return raw[start : start+end]
-			}
-		}
-	}
-	return ""
-}
-
-// escapeQuery escapes single quotes for use in Drive API queries.
-func escapeQuery(s string) string {
-	return strings.ReplaceAll(s, "'", "\\'")
 }
 
 // openFile is a helper to open a file (easily mockable for tests).

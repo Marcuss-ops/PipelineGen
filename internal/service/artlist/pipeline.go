@@ -16,6 +16,7 @@ import (
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
+	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
 )
 
@@ -59,7 +60,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		s.log.Warn("drive client not configured, proceeding with local harvesting only")
 	}
 
-	tagFolderName := sanitizeDriveFolderName(resp.Term)
+	tagFolderName := pathutil.SafeFolderName(resp.Term)
 	s.log.Info("artlist pipeline start",
 		zap.String("term", resp.Term),
 		zap.Int("limit", req.Limit),
@@ -257,7 +258,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		}
 
 		rawPath := filepath.Join(tmpDir, fmt.Sprintf("raw_%s.mp4", clip.ID))
-		safeName := sanitizeDriveFolderName(clip.Name)
+		safeName := pathutil.SafeFolderName(clip.Name)
 		finalFilename := fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID)
 		processedPath := filepath.Join(saveDir, finalFilename)
 

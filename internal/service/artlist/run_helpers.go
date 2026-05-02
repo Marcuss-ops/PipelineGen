@@ -50,30 +50,6 @@ func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
 	return strings.ToLower(strings.TrimSpace(term)) + "|" + strings.ToLower(strings.TrimSpace(rootFolderID)) + "|" + strings.ToLower(strings.TrimSpace(strategy)) + "|" + fmt.Sprintf("%t", dryRun)
 }
 
-func sanitizeDriveFolderName(term string) string {
-	return pathutil.SafeFolderName(term)
-}
-
-func boolToInt(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
-
-func nullString(v string) interface{} {
-	if strings.TrimSpace(v) == "" {
-		return nil
-	}
-	return v
-}
-
-func isUniqueConstraintErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "unique constraint failed")
-}
 
 func (s *Service) shouldSkipClip(ctx context.Context, strategy string, clip *models.Clip) (bool, error) {
 	if clip == nil {
@@ -156,3 +132,9 @@ func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
 	}
 	return string(raw)
 }
+
+func sanitizeDriveFolderName(name string) string {
+	return pathutil.SafeFolderName(name)
+}
+
+

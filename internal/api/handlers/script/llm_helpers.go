@@ -8,8 +8,9 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/llmjson"
 	"velox/go-master/pkg/textutil"
+	"velox/go-master/pkg/termutil"
 
 	"go.uber.org/zap"
 )
@@ -86,8 +87,8 @@ JSON:`, textutil.Truncate(topic, 200), duration, duration, textutil.Truncate(nar
 
 	zap.L().Info("Raw LLM timeline response", zap.String("raw", raw))
 
-	cleaned := textutil.StripCodeFence(raw)
-	jsonPayload := textutil.ExtractJSONObject(cleaned)
+	cleaned := llmjson.StripCodeFence(raw)
+	jsonPayload := llmjson.ExtractObject(cleaned)
 	if jsonPayload == "" {
 		return nil, fmt.Errorf("timeline planning returned empty payload")
 	}
@@ -146,23 +147,7 @@ func shouldReplaceLLMSubject(subject string) bool {
 }
 
 func subjectMatchesTopic(subject string, topicTokens []string) bool {
-	if len(topicTokens) == 0 {
-		return true
-	}
-	subjectTokens := topicTokensFromText(subject)
-	if len(subjectTokens) == 0 {
-		return false
-	}
-	matches := 0
-	for _, tok := range subjectTokens {
-		for _, tt := range topicTokens {
-			if strings.EqualFold(tok, tt) {
-				matches++
-				break
-			}
-		}
-	}
-	return matches > 0
+	return termutil.SubjectMatchesTopic(subject, topicTokens)
 }
 
 func deriveFallbackSubject(seg *timelineLLMSegment, topic string, topicTokens []string) string {
@@ -186,54 +171,11 @@ func preferredEntitySubject(seg *timelineLLMSegment, topicTokens []string) strin
 	if seg == nil {
 		return ""
 	}
-	candidates := sliceutil.UniqueStrings(append([]string{}, seg.Entities...))
-	candidates = append(candidates, seg.Subject)
-
-	best := ""
-	bestScore := 0
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
-		}
-		score := 0
-		if subjectMatchesTopic(candidate, topicTokens) {
-			score += 50
-		}
-		if looksLikePersonName(candidate) {
-			score += 20
-		}
-		words := strings.Fields(candidate)
-		if len(words) >= 2 && len(words) <= 4 {
-			score += 15
-		}
-		if score > bestScore {
-			bestScore = score
-			best = candidate
-		}
-	}
-	if bestScore < 50 {
-		return ""
-	}
-	return best
+	return termutil.PreferredEntitySubject(seg.Entities, seg.Subject, topicTokens)
 }
 
 func looksLikePersonName(text string) bool {
-	parts := strings.Fields(strings.TrimSpace(text))
-	if len(parts) == 0 || len(parts) > 5 {
-		return false
-	}
-	score := 0
-	for _, part := range parts {
-		if len(part) == 0 {
-			continue
-		}
-		first := []rune(part)[0]
-		if first >= 'A' && first <= 'Z' {
-			score++
-		}
-	}
-	return score >= 1 && len(parts) <= 4
+	return termutil.LooksLikePersonName(text)
 }
 
 func conciseSubject(text string) string {
