@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"velox/go-master/pkg/sqlutil"
 )
 
 type artlistRunRecord struct {
@@ -66,11 +67,11 @@ func (s *Service) ensureRunRecord(ctx context.Context, req *RunTagRequest) (*art
 			found, processed, skipped, failed, estimated_size, request_json, error,
 			tag_folder_id, started_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, rec.RunID, rec.Term, rec.RootFolderID, rec.Strategy, boolToInt(rec.DryRun), rec.Status, rec.ActiveKey,
+	`, rec.RunID, rec.Term, rec.RootFolderID, rec.Strategy, sqlutil.BoolInt(rec.DryRun), rec.Status, rec.ActiveKey,
 		rec.Found, rec.Processed, rec.Skipped, rec.Failed, rec.EstimatedSize, rec.RequestJSON, rec.Error,
 		rec.TagFolderID, now)
 	if err != nil {
-		if isUniqueConstraintErr(err) {
+		if sqlutil.IsUniqueConstraintErr(err) {
 			if existing, findErr := s.findActiveRunRecord(ctx, activeKey); findErr == nil && existing != nil {
 				return existing, true, nil
 			}
@@ -120,7 +121,7 @@ func (s *Service) finishRunRecordWithActiveKey(ctx context.Context, runID, statu
 			ended_at = ?,
 			`+activeKeySQL+`
 		WHERE run_id = ?
-		`, status, resp.Found, resp.Processed, resp.Skipped, resp.Failed, resp.EstimatedSize, nullString(lastProcessedAt), resp.Error, resp.TagFolderID, endedAt, runID)
+		`, status, resp.Found, resp.Processed, resp.Skipped, resp.Failed, resp.EstimatedSize, sqlutil.NullString(lastProcessedAt), resp.Error, resp.TagFolderID, endedAt, runID)
 	return err
 }
 
