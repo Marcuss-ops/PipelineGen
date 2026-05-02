@@ -8,6 +8,44 @@ import (
 	"time"
 )
 
+// Payload helpers for type-safe unmarshaling
+
+// ParseArtlistRunPayload estrae il payload tipizzato per media.artlist
+func (j *Job) ParseArtlistRunPayload() (*ArtlistRunPayload, error) {
+	var p ArtlistRunPayload
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return nil, fmt.Errorf("invalid artlist run payload: %w", err)
+	}
+	return &p, nil
+}
+
+// ParseYoutubeClipExtractPayload estrae il payload tipizzato per media.extract
+func (j *Job) ParseYoutubeClipExtractPayload() (*YoutubeClipExtractPayload, error) {
+	var p YoutubeClipExtractPayload
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return nil, fmt.Errorf("invalid youtube clip extract payload: %w", err)
+	}
+	return &p, nil
+}
+
+// ParseVoiceoverPayload estrae il payload tipizzato per voiceover
+func (j *Job) ParseVoiceoverPayload() (*VoiceoverPayload, error) {
+	var p VoiceoverPayload
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return nil, fmt.Errorf("invalid voiceover payload: %w", err)
+	}
+	return &p, nil
+}
+
+// ParseScriptGenPayload estrae il payload tipizzato per script_generation
+func (j *Job) ParseScriptGenPayload() (*ScriptGenPayload, error) {
+	var p ScriptGenPayload
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return nil, fmt.Errorf("invalid script gen payload: %w", err)
+	}
+	return &p, nil
+}
+
 // Clone crea una copia profonda del job
 func (j *Job) Clone() *Job {
 	data, _ := json.Marshal(j)
@@ -27,7 +65,7 @@ func (j *Job) CanRetry() bool {
 }
 
 // NewJob crea un nuovo job con valori di default
-func NewJob(jobType JobType, payload map[string]interface{}) *Job {
+func NewJob(jobType JobType, payload json.RawMessage) *Job {
 	now := time.Now()
 	return &Job{
 		ID:         generateID(),
@@ -43,7 +81,7 @@ func NewJob(jobType JobType, payload map[string]interface{}) *Job {
 }
 
 // NewJobWithProject crea un nuovo job con project e video name
-func NewJobWithProject(jobType JobType, project, videoName string, payload map[string]interface{}) *Job {
+func NewJobWithProject(jobType JobType, project, videoName string, payload json.RawMessage) *Job {
 	job := NewJob(jobType, payload)
 	job.Project = project
 	job.VideoName = videoName

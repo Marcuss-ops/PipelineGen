@@ -10,9 +10,8 @@ import (
 	"velox/go-master/internal/service/match"
 )
 
-func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
+func buildStockMatchingSection(repo *catalog.Repository, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {
 	terms := collectTopicTerms(req.Topic)
-	repo := catalog.NewRepository(dataDir)
 	clips, err := repo.LoadStockCatalog()
 	if err != nil {
 		return ScriptSection{
@@ -23,7 +22,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 
 	matches := make([]association.ScoredMatch, 0, len(clips))
 	for _, clip := range clips {
-		if strings.TrimSpace(clip.MediaType) != "stock" {
+		if strings.TrimSpace(string(clip.MediaType)) != "stock" {
 			continue
 		}
 		title := strings.TrimSpace(clip.DisplayName())
@@ -36,7 +35,7 @@ func buildStockMatchingSection(dataDir string, req ScriptDocsRequest, narrative 
 			clip.FullPath,
 			clip.FolderPath,
 			clip.Group,
-			clip.MediaType,
+			string(clip.MediaType),
 			strings.Join(clip.Tags, " "),
 			clip.DriveLink,
 		}, " "))

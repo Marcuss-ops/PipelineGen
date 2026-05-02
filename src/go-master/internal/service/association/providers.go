@@ -9,6 +9,7 @@ import (
 
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/pkg/models"
 )
 
 
@@ -69,7 +70,7 @@ func (s *Service) loadClipsFromDB(ctx context.Context, repo *clips.Repository, s
 			FolderID:   c.FolderID,
 			FolderPath: c.FolderPath,
 			DriveLink:  c.DriveLink,
-			MediaType:  c.MediaType,
+			MediaType:  models.MediaType(c.MediaType),
 			Group:      c.Group,
 		})
 	}
@@ -80,7 +81,7 @@ func (s *Service) buildCandidatesFromRecords(records []catalog.StockClipRef, med
 	candidates := make([]FolderCandidate, 0, len(records))
 	seen := make(map[string]struct{}, len(records))
 	for _, rec := range records {
-		if mediaType == "stock" && strings.TrimSpace(rec.MediaType) != "stock" && strings.TrimSpace(rec.Group) != "stock" {
+		if mediaType == "stock" && strings.TrimSpace(string(rec.MediaType)) != "stock" && strings.TrimSpace(rec.Group) != "stock" {
 			// Also check Group as it's often used for source
 			continue
 		}
@@ -121,8 +122,7 @@ func (s *Service) buildCandidatesFromRecords(records []catalog.StockClipRef, med
 }
 
 func (s *Service) loadCandidatesFromCatalog() ([]FolderCandidate, error) {
-	repo := catalog.NewRepository(s.dataDir)
-	folders, err := repo.LoadStockFolders()
+	folders, err := s.catalogRepo.LoadStockFolders()
 	if err != nil {
 		return nil, err
 	}

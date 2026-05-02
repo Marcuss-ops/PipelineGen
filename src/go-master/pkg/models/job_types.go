@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -70,7 +71,7 @@ type Job struct {
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
 	CancelledAt *time.Time             `json:"cancelled_at,omitempty"`
 	WorkerID    string                 `json:"worker_id,omitempty"`
-	Payload     map[string]interface{} `json:"payload"`
+	Payload     json.RawMessage        `json:"payload,omitempty"`
 	Result      map[string]interface{} `json:"result,omitempty"`
 	Error       string                 `json:"error,omitempty"`
 	RetryCount  int                    `json:"retry_count"`
@@ -81,12 +82,12 @@ type Job struct {
 
 // CreateJobRequest richiesta per creare un nuovo job
 type CreateJobRequest struct {
-	Type       JobType                `json:"type"`
-	Project    string                 `json:"project"`
-	VideoName  string                 `json:"video_name,omitempty"`
-	Payload    map[string]interface{} `json:"payload"`
-	Priority   int                    `json:"priority,omitempty"`
-	MaxRetries int                    `json:"max_retries,omitempty"`
+	Type       JobType         `json:"type"`
+	Project    string          `json:"project"`
+	VideoName  string          `json:"video_name,omitempty"`
+	Payload    json.RawMessage `json:"payload,omitempty"`
+	Priority   int             `json:"priority,omitempty"`
+	MaxRetries int             `json:"max_retries,omitempty"`
 }
 
 // JobEvent rappresenta un evento del job
@@ -105,7 +106,7 @@ type JobResult struct {
 	VideoURL    string                 `json:"video_url,omitempty"`
 	DriveFileID string                 `json:"drive_file_id,omitempty"`
 	YouTubeID   string                 `json:"youtube_id,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Metadata    json.RawMessage        `json:"metadata,omitempty"`
 	CompletedAt time.Time              `json:"completed_at"`
 }
 
