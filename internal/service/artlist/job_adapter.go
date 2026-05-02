@@ -3,6 +3,7 @@ package artlist
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"velox/go-master/pkg/models"
@@ -20,13 +21,16 @@ func NewJobAdapter(db *sql.DB) *JobAdapter {
 
 // RunRecordToJob converts an artlistRunRecord to a models.Job
 func RunRecordToJob(rec *artlistRunRecord) *models.Job {
-	job := models.NewJob(models.JobTypeStockClip, map[string]interface{}{
-		"term":           rec.Term,
-		"root_folder_id": rec.RootFolderID,
-		"strategy":       rec.Strategy,
-		"dry_run":        rec.DryRun,
-		"active_key":     rec.ActiveKey,
-	})
+	payload := models.ArtlistRunPayload{
+		Term:         rec.Term,
+		RootFolderID: rec.RootFolderID,
+		Strategy:     rec.Strategy,
+		DryRun:       rec.DryRun,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	
+	job := models.NewJob(models.JobTypeStockClip, payloadBytes)
+	job.ActiveKey = rec.ActiveKey
 
 	job.ID = rec.RunID
 	job.Status = models.JobStatus(rec.Status)
@@ -61,22 +65,17 @@ func JobToRunRecord(job *models.Job) *artlistRunRecord {
 		Error:  job.Error,
 	}
 
-	if job.Payload != nil {
-		if v, ok := job.Payload["term"].(string); ok {
-			rec.Term = v
+	if len(job.Payload) > 0 {
+		var payload models.ArtlistRunPayload
+		if err := json.Unmarshal(job.Payload, &payload); err == nil {
+			rec.Term = payload.Term
+			rec.RootFolderID = payload.RootFolderID
+			rec.Strategy = payload.Strategy
+			rec.DryRun = payload.DryRun
 		}
-		if v, ok := job.Payload["root_folder_id"].(string); ok {
-			rec.RootFolderID = v
-		}
-		if v, ok := job.Payload["strategy"].(string); ok {
-			rec.Strategy = v
-		}
-		if v, ok := job.Payload["dry_run"].(bool); ok {
-			rec.DryRun = v
-		}
-		if v, ok := job.Payload["active_key"].(string); ok {
-			rec.ActiveKey = v
-		}
+	}
+	if job.ActiveKey != "" {
+		rec.ActiveKey = job.ActiveKey
 	}
 
 	if job.StartedAt != nil {
