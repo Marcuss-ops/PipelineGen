@@ -6,6 +6,7 @@ import (
 	"velox/go-master/internal/api"
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
@@ -14,6 +15,7 @@ import (
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/pkg/media/ffmpeg"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 
@@ -107,6 +109,14 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		}
 	}
 
+	// Update Voiceover service with drive destination
+	if coreDeps.VoiceoverService != nil {
+		coreDeps.VoiceoverService.SetDriveDestination(driveDestinationService)
+	}
+
+	// Create FFmpeg processor
+	ffmpegProc := ffmpeg.New(cfg)
+
 	// Create YouTube clip service and handler
 	youtubeClipService := youtubeclip.NewService(
 		cfg,
@@ -114,8 +124,11 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		coreDeps.ClipsOnlyRepo,
 		coreDeps.DriveClient,
 		driveDestinationService,
+		ffmpegProc,
 	)
 	youtubeClipHandler := youtubecliphandler.NewHandler(youtubeClipService, log)
+
+	jobsHandler := jobs.NewHandler(coreDeps.JobsService, log)
 
 	handlers_struct := &api.Handlers{
 		Health:      common.NewHealthHandler(),
@@ -127,6 +140,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger) (*AppDeps, error) {
 		Utility:     coreDeps.Utility,
 		Catalog:     common.NewCatalogHandler(coreDeps.CatalogRepo),
 		YouTubeClip: youtubeClipHandler,
+		Jobs:        jobsHandler,
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)

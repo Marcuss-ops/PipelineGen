@@ -54,5 +54,10 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 		return fmt.Errorf("failed to run images migrations: %w", err)
 	}
 
+	voiceoversMigrationsDir := filepath.Join("internal", "repository", "voiceovers", "migrations")
+	if err := dbs.voiceover.RunMigrations(log, voiceoversMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run voiceovers migrations: %w", err)
+	}
+
 	return nil
 }

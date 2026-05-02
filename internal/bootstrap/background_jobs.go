@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"velox/go-master/internal/cron"
+	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/service/indexing"
+	svcjobs "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/monitor"
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/pkg/config"
@@ -24,6 +26,8 @@ type backgroundJobs struct {
 	dbMaintenanceJob *cron.DBMaintenanceJob
 	dbBackupJob      *cron.DBBackupJob
 	indexingService  *indexing.Service
+	jobRunner        *svcjobs.Runner
+	jobScanner       *jobrepo.Scanner
 }
 
 func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, svcs *services, log *zap.Logger) *backgroundJobs {
@@ -35,6 +39,25 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	harvesterCronSvc := cron.NewHarvesterCronService(svcs.harvesterRepo, log, apiURL, cfg.Storage.DataDir)
 	go harvesterCronSvc.Start(ctx)
 	log.Info("Harvester cron service started", zap.String("api_url", apiURL))
+
+	// Jobs system - Runner and Scanner
+	var jobRunner *svcjobs.Runner
+	var jobScanner *jobrepo.Scanner
+	if svcs.jobsService != nil && svcs.jobsDispatcher != nil && svcs.jobsRepo != nil {
+		runnerConfig := svcjobs.RunnerConfig{
+			Workers:   2,
+			PollEvery: 2 * time.Second,
+			LeaseTTL:  5 * time.Minute,
+			JobTypes:  nil, // all types
+		}
+		jobRunner = svcjobs.NewRunner(svcs.jobsRepo, svcs.jobsDispatcher, log, runnerConfig)
+		go jobRunner.Start(ctx)
+		log.Info("Job runner started", zap.Int("workers", runnerConfig.Workers))
+
+		jobScanner = jobrepo.NewScanner(svcs.jobsRepo, log)
+		go jobScanner.Start(ctx, 5*time.Minute)
+		log.Info("Job scanner started")
+	}
 
 	catalogSyncJob := cron.NewCatalogSyncJob(svcs.catalogSync, log)
 	catalogSyncInterval := 6 * time.Hour
@@ -99,5 +122,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		dbMaintenanceJob: dbMaintenanceJob,
 		dbBackupJob:      dbBackupJob,
 		indexingService:  svcs.indexingService,
+		jobRunner:        jobRunner,
+		jobScanner:       jobScanner,
 	}
 }

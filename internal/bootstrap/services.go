@@ -12,9 +12,12 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/harvester"
 	"velox/go-master/internal/repository/images"
+	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
+	jobservice "velox/go-master/internal/service/jobs"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	"velox/go-master/internal/service/voiceover"
@@ -42,6 +45,9 @@ type services struct {
 	catalogRepo      *catalog.Repository
 	catalogSync      *catalogsync.Service
 	assocService     *association.Service
+	jobsRepo         *jobrepo.Repository
+	jobsService      *jobservice.Service
+	jobsDispatcher   *jobservice.Dispatcher
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -62,7 +68,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if err := os.MkdirAll(voDir, 0755); err != nil {
 		log.Warn("Failed to create voiceovers directory", zap.Error(err))
 	}
-	voService := voiceover.NewService(cfg.Paths.PythonScriptsDir, voDir, log)
+	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
+	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, nil, voRepo)
+	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	clipsRepo := clips.NewRepository(dbs.stock.DB)
 	artlistRepo := clips.NewRepository(dbs.artlist.DB)
@@ -111,6 +119,12 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		},
 	}, log)
 
+	// Jobs system
+	jobsRepo := jobrepo.NewRepository(dbs.jobs.DB, log)
+	jobsDispatcher := jobservice.NewDispatcher()
+	jobservice.RegisterTestHandlers(jobsDispatcher, log)
+	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
+
 	return &services{
 		scriptGen:        scriptGen,
 		docClient:        docClient,
@@ -128,5 +142,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		catalogRepo:      catalogRepo,
 		catalogSync:      catalogSync,
 		assocService:     assocService,
+		jobsRepo:         jobsRepo,
+		jobsService:      jobsService,
+		jobsDispatcher:   jobsDispatcher,
 	}, nil
 }

@@ -3,6 +3,7 @@ package drivedestination
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -44,8 +45,15 @@ type Resolved struct {
 }
 
 // Resolve determines the final Drive folder for a clip.
-// Priority: FolderID > Group > default
+// Priority: FolderID > Group > default.
 func (s *Service) Resolve(ctx context.Context, req *Request) (*Resolved, error) {
+	s.log.Info("Resolve called",
+		zap.String("group", req.Group),
+		zap.String("folder_id", req.FolderID),
+		zap.String("subfolder", req.SubfolderName),
+		zap.Bool("create_subfolder", req.CreateSubfolder),
+	)
+
 	if s.driveSvc == nil {
 		return nil, fmt.Errorf("drive service not configured")
 	}
@@ -94,8 +102,13 @@ func (s *Service) Resolve(ctx context.Context, req *Request) (*Resolved, error) 
 
 // resolveGroupFolder looks up the Drive folder ID for a group name.
 func (s *Service) resolveGroupFolder(ctx context.Context, group string) (string, error) {
-	// Check config for group mapping
+	// Check config for group mapping (case-insensitive)
 	if s.cfg.Drive.ClipRootFolders != nil {
+		s.log.Info("checking config for group",
+			zap.String("requested_group", group),
+			zap.Int("config_entries", len(s.cfg.Drive.ClipRootFolders)),
+		)
+		// Try exact match first
 		if folderID, ok := s.cfg.Drive.ClipRootFolders[group]; ok && folderID != "" {
 			s.log.Info("found group folder in config",
 				zap.String("group", group),
@@ -103,21 +116,49 @@ func (s *Service) resolveGroupFolder(ctx context.Context, group string) (string,
 			)
 			return folderID, nil
 		}
+		// Try case-insensitive match
+		for cfgGroup, folderID := range s.cfg.Drive.ClipRootFolders {
+			if strings.EqualFold(cfgGroup, group) && folderID != "" {
+				s.log.Info("found group folder in config (case-insensitive)",
+					zap.String("requested_group", group),
+					zap.String("config_group", cfgGroup),
+					zap.String("folder_id", folderID),
+				)
+				return folderID, nil
+			}
+		}
 	}
 
-	// Fallback: search in Drive by folder name
-	query := fmt.Sprintf("name = '%s' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", group)
-	list, err := s.driveSvc.Files.List().
-		Q(query).
-		Fields("files(id, name)").
-		Context(ctx).
-		Do()
-	if err != nil {
-		return "", fmt.Errorf("failed to search group folder: %w", err)
-	}
-
-	if len(list.Files) > 0 {
-		return list.Files[0].Id, nil
+	// Fallback: search in Drive by folder name (try multiple case variations)
+	searchNames := []string{group, strings.Title(strings.ToLower(group)), strings.ToUpper(group), strings.ToLower(group)}
+	seen := make(map[string]bool)
+	for _, name := range searchNames {
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		escapedName := strings.ReplaceAll(name, "'", "\\'")
+		query := fmt.Sprintf("name = '%s' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", escapedName)
+		list, err := s.driveSvc.Files.List().
+			Q(query).
+			Fields("files(id, name)").
+			Context(ctx).
+			Do()
+		if err != nil {
+			s.log.Warn("failed to search group folder",
+				zap.String("name", name),
+				zap.Error(err),
+			)
+			continue
+		}
+		if len(list.Files) > 0 {
+			s.log.Info("found group folder in Drive",
+				zap.String("requested", group),
+				zap.String("found_name", list.Files[0].Name),
+				zap.String("folder_id", list.Files[0].Id),
+			)
+			return list.Files[0].Id, nil
+		}
 	}
 
 	return "", fmt.Errorf("group folder not found: %s", group)

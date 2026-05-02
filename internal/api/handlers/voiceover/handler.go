@@ -1,9 +1,11 @@
 package voiceover
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 	"strings"
+
 	"velox/go-master/internal/service/voiceover"
 )
 
@@ -17,6 +19,7 @@ func NewHandler(service *voiceover.Service) *Handler {
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
+	r.POST("/batch", h.Batch)
 }
 
 type GenerateRequest struct {
@@ -49,4 +52,26 @@ func (h *Handler) Generate(c *gin.Context) {
 		"ok":     true,
 		"result": result,
 	})
+}
+
+func (h *Handler) Batch(c *gin.Context) {
+	var req voiceover.BatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":    false,
+			"error": "invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	resp, err := h.service.GenerateBatch(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }

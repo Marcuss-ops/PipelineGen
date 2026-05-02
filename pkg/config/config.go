@@ -40,7 +40,7 @@ func Reload() *Config {
 // load loads configuration in three layers:
 //  1. Defaults from struct tags (applied to zero-value fields)
 //  2. YAML config file overrides (if present)
-//  3. Environment variable overrides (always win)
+//  3. Environment variable overrides (highest priority)
 func load() *Config {
 	cfg := &Config{}
 
@@ -58,6 +58,9 @@ func load() *Config {
 
 	// 3. Override with environment variables (highest priority)
 	applyEnvVars(cfg)
+
+	// Debug log
+	fmt.Printf("Config loaded: PythonScriptsDir=%s\n", cfg.Paths.PythonScriptsDir)
 
 	return cfg
 }
