@@ -9,7 +9,6 @@ import (
 
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/models"
 )
 
 
@@ -70,7 +69,7 @@ func (s *Service) loadClipsFromDB(ctx context.Context, repo *clips.Repository, s
 			FolderID:   c.FolderID,
 			FolderPath: c.FolderPath,
 			DriveLink:  c.DriveLink,
-			MediaType:  models.MediaType(c.MediaType),
+			MediaType:  c.MediaType,
 			Group:      c.Group,
 		})
 	}

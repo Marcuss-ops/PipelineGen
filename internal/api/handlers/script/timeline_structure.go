@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/termutil"
 )
 
 type structuredTimelineBlock struct {
@@ -275,7 +276,7 @@ func structuredBlockKeywords(heading, body string) []string {
 }
 
 func structuredBlockEntities(heading, body string) []string {
-	entities := extractLikelyNames(heading + " " + body)
+	entities := termutil.ExtractLikelyNames(heading + " " + body)
 	return sliceutil.UniqueStrings(entities)
 }
 

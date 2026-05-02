@@ -1,11 +1,11 @@
 package images
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
@@ -25,7 +25,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *Handler) Search(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "missing query parameter 'q'"})
+		apiutil.BadRequest(c, "missing query parameter 'q'")
 		return
 	}
 
@@ -33,12 +33,11 @@ func (h *Handler) Search(c *gin.Context) {
 	slug := strings.ReplaceAll(strings.ToLower(query), " ", "-")
 	asset, err := h.service.SearchAndDownload(slug, query, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"ok":      true,
+	apiutil.OK(c, gin.H{
 		"subject": query,
 		"image": gin.H{
 			"hash":       asset.Hash,
@@ -53,8 +52,8 @@ func (h *Handler) Search(c *gin.Context) {
 // Sync avvia la sincronizzazione manuale del file system
 func (h *Handler) Sync(c *gin.Context) {
 	if err := h.service.SyncAssets(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "Synchronization complete"})
+	apiutil.OK(c, gin.H{"message": "Synchronization complete"})
 }

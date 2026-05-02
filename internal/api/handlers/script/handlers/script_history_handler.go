@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/pkg/apiutil"
 )
 
 // ScriptHistoryHandler handles script history endpoints
@@ -32,7 +32,7 @@ func (h *ScriptHistoryHandler) RegisterRoutes(r *gin.RouterGroup) {
 // ListScripts handles GET /scripts
 func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	if h == nil || h.repo == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "script repository is not initialized"})
+		apiutil.Error(c, 503, "script repository is not initialized")
 		return
 	}
 
@@ -45,15 +45,18 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	if err != nil || limit <= 0 {
 		limit = 20
 	}
+	limit = apiutil.ClampLimit(limit, 20, 1)
+
 	offset, err := strconv.Atoi(offsetStr)
 	if err != nil || offset < 0 {
 		offset = 0
 	}
+	offset = apiutil.ClampLimit(offset, 0, 0)
 
 	scriptRecords, total, err := h.repo.ListScripts(limit, offset, language, template)
 	if err != nil {
 		h.log.Error("Failed to list scripts", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list scripts"})
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -74,7 +77,7 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apiutil.OK(c, gin.H{
 		"scripts": scriptsRes,
 		"total":   total,
 		"limit":   limit,
@@ -85,21 +88,21 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 // GetScriptByID handles GET /scripts/:id
 func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 	if h == nil || h.repo == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "script repository is not initialized"})
+		apiutil.Error(c, 503, "script repository is not initialized")
 		return
 	}
 
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid script id"})
+		apiutil.BadRequest(c, "invalid script id")
 		return
 	}
 
 	scriptRec, sections, stockMatches, err := h.repo.GetScriptByID(id)
 	if err != nil {
 		h.log.Error("Failed to get script", zap.Int64("id", id), zap.Error(err))
-		c.JSON(http.StatusNotFound, gin.H{"error": "script not found"})
+		apiutil.NotFound(c, "script not found")
 		return
 	}
 
@@ -126,7 +129,7 @@ func (h *ScriptHistoryHandler) GetScriptByID(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	apiutil.OK(c, gin.H{
 		"id":             scriptRec.ID,
 		"topic":          scriptRec.Topic,
 		"duration":       scriptRec.Duration,

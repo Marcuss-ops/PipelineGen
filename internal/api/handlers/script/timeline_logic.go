@@ -158,8 +158,8 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			Timestamp:  seg.Timestamp,
 			Subject:    associationSubject,
 			Narrative:  seg.NarrativeText,
-			Keywords:   textutil.FirstNonEmptySlice(seg.CanonicalKeywords, seg.Keywords),
-			Entities:   textutil.FirstNonEmptySlice(seg.CanonicalEntities, seg.Entities),
+			Keywords:   sliceutil.FirstNonEmpty(seg.CanonicalKeywords, seg.Keywords),
+			Entities:   sliceutil.FirstNonEmpty(seg.CanonicalEntities, seg.Entities),
 			TopK:       3,
 		}
 

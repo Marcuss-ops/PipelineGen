@@ -88,12 +88,24 @@ src/go-master/
 │   ├── core/             # Business logic
 │   ├── cron/             # Scheduled tasks
 │   └── runtime/          # Runtime utilities
-├── pkg/                  # Public packages
+├── pkg/                  # Public utility packages
+│   ├── apiutil/          # HTTP response helpers
 │   ├── config/           # Tag-driven configuration
+│   ├── executil/         # Command execution helpers
+│   ├── hashutil/         # Hashing utilities (MD5, short hashes)
+│   ├── idutil/           # Stable ID generation (slugs, short hashes)
+│   ├── jsonutil/         # JSON reading utilities
+│   ├── llmjson/          # LLM JSON extraction/decoding
 │   ├── logger/           # Structured logging (Zap)
+│   ├── media/            # Media processing (ffmpeg, audio, downloader)
 │   ├── models/           # Public shared models
-│   ├── security/         # Input sanitization
-│   └── util/             # Utility functions
+│   ├── pathutil/         # Path/folder name sanitization
+│   ├── security/         # Input sanitization, URL validation
+│   ├── sliceutil/        # Slice utilities
+│   ├── sqlutil/          # SQL helpers (bool int, null string, unique constraint check)
+│   ├── termutil/         # Term/subject name utilities
+│   ├── textutil/         # Text processing utilities
+│   └── timeutil/         # Time formatting/parsing (RFC3339)
 ├── data/                 # JSON/SQLite database files
 ├── migrations/           # Database migrations
 ├── go.mod

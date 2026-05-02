@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
@@ -54,7 +55,7 @@ type searchResponse struct {
 
 func (h *Handler) Search(c *gin.Context) {
 	if strings.TrimSpace(h.nodeScraperDir) == "" {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "node scraper directory is not configured"})
+		apiutil.Error(c, http.StatusServiceUnavailable, "node scraper directory is not configured")
 		return
 	}
 
@@ -72,23 +73,15 @@ func (h *Handler) Search(c *gin.Context) {
 		term = strings.TrimSpace(c.Query("term"))
 	}
 	if term == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "missing search_term"})
+		apiutil.BadRequest(c, "missing search_term")
 		return
 	}
 
-	limit := req.Limit
-	if limit <= 0 {
-		if q := strings.TrimSpace(c.Query("limit")); q != "" {
-			if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
-				limit = parsed
-			}
+	limit := apiutil.ClampLimit(req.Limit, 8, 20)
+	if q := strings.TrimSpace(c.Query("limit")); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
+			limit = apiutil.ClampLimit(parsed, 8, 20)
 		}
-	}
-	if limit <= 0 {
-		limit = 8
-	}
-	if limit > 20 {
-		limit = 20
 	}
 
 	saveDB := req.SaveDB

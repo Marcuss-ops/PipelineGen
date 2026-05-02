@@ -1,6 +1,7 @@
 package youtubeclip
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
@@ -36,49 +38,49 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *Handler) GetFolder(c *gin.Context) {
 	folderID := c.Param("id")
 	if folderID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "folder id required"})
+		apiutil.BadRequest(c, "folder id required")
 		return
 	}
 
 	folder, err := h.service.GetFolder(c.Request.Context(), folderID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": "folder not found"})
+		apiutil.NotFound(c, "folder not found")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "folder": folder})
+	apiutil.OK(c, gin.H{"folder": folder})
 }
 
 func (h *Handler) GetFolderClips(c *gin.Context) {
 	folderID := c.Param("id")
 	if folderID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "folder id required"})
+		apiutil.BadRequest(c, "folder id required")
 		return
 	}
 
 	clips, err := h.service.ListFolderClips(c.Request.Context(), folderID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "folder_id": folderID, "clips": clips})
+	apiutil.OK(c, gin.H{"folder_id": folderID, "clips": clips})
 }
 
 func (h *Handler) SearchFolders(c *gin.Context) {
 	q := c.Query("q")
 	if q == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "query parameter 'q' required"})
+		apiutil.BadRequest(c, "query parameter 'q' required")
 		return
 	}
 
 	folders, err := h.service.SearchFolders(c.Request.Context(), q)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "query": q, "folders": folders})
+	apiutil.OK(c, gin.H{"query": q, "folders": folders})
 }
 
 func (h *Handler) ListFolders(c *gin.Context) {
@@ -86,20 +88,16 @@ func (h *Handler) ListFolders(c *gin.Context) {
 
 	folders, err := h.service.ListFolders(c.Request.Context(), source)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true, "folders": folders})
+	apiutil.OK(c, gin.H{"folders": folders})
 }
 
 func (h *Handler) Extract(c *gin.Context) {
-	var req youtubeclip.ExtractRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "invalid request: " + err.Error(),
-		})
+	req, ok := apiutil.BindJSON[youtubeclip.ExtractRequest](c)
+	if !ok {
 		return
 	}
 
@@ -112,16 +110,16 @@ func (h *Handler) Extract(c *gin.Context) {
 		if strings.Contains(errMsg, "required") ||
 			strings.Contains(errMsg, "invalid") ||
 			strings.Contains(errMsg, "segments") {
-			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": errMsg})
+			apiutil.BadRequest(c, errMsg)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": errMsg})
+		apiutil.InternalError(c, err)
 		return
 	}
 
 	// If resp is nil, return error
 	if resp == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "nil response"})
+		apiutil.InternalError(c, fmt.Errorf("nil response"))
 		return
 	}
 
@@ -138,6 +136,6 @@ func (h *Handler) Extract(c *gin.Context) {
 	} else if failedCount > 0 {
 		c.JSON(http.StatusMultiStatus, resp)
 	} else {
-		c.JSON(http.StatusOK, resp)
+		apiutil.OK(c, resp)
 	}
 }

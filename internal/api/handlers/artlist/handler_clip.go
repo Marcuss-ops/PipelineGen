@@ -2,9 +2,9 @@ package artlist
 
 import (
 	"github.com/gin-gonic/gin"
-	"net/http"
 
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/pkg/apiutil"
 )
 
 type ImportScraperDBRequest struct {
@@ -21,24 +21,24 @@ type ImportScraperDBResponse struct {
 func (h *Handler) GetClipStatus(c *gin.Context) {
 	clipID := c.Param("id")
 	if clipID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "clip id is required"})
+		apiutil.BadRequest(c, "clip id is required")
 		return
 	}
 
 	resp, err := h.service.GetClipStatus(c.Request.Context(), clipID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": err.Error()})
+		apiutil.NotFound(c, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	apiutil.OK(c, resp)
 }
 
 // DownloadClip downloads a clip from Artlist
 func (h *Handler) DownloadClip(c *gin.Context) {
 	clipID := c.Param("id")
 	if clipID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "clip id is required"})
+		apiutil.BadRequest(c, "clip id is required")
 		return
 	}
 
@@ -49,18 +49,18 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 
 	resp, err := h.service.DownloadClip(c.Request.Context(), clipID, &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	apiutil.OK(c, resp)
 }
 
 // UploadClipToDrive uploads a clip to Google Drive
 func (h *Handler) UploadClipToDrive(c *gin.Context) {
 	clipID := c.Param("id")
 	if clipID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "clip id is required"})
+		apiutil.BadRequest(c, "clip id is required")
 		return
 	}
 
@@ -71,55 +71,47 @@ func (h *Handler) UploadClipToDrive(c *gin.Context) {
 
 	resp, err := h.service.UploadClipToDrive(c.Request.Context(), clipID, &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	apiutil.OK(c, resp)
 }
 
 // ProcessClip processes a clip: search → download → upload to Drive → update DB
 func (h *Handler) ProcessClip(c *gin.Context) {
-	var req artlist.ProcessClipRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid request"})
+	req, ok := apiutil.BindJSON[artlist.ProcessClipRequest](c)
+	if !ok {
 		return
 	}
 
 	if req.ClipID == "" && req.Term == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "clip_id or term is required"})
+		apiutil.BadRequest(c, "clip_id or term is required")
 		return
 	}
 
 	resp, err := h.service.ProcessClip(c.Request.Context(), &req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	apiutil.OK(c, resp)
 }
 
 func (h *Handler) ImportScraperDB(c *gin.Context) {
-	var req ImportScraperDBRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "invalid request: " + err.Error(),
-		})
+	req, ok := apiutil.BindJSON[ImportScraperDBRequest](c)
+	if !ok {
 		return
 	}
 
 	imported, err := h.service.ImportScraperDB(c.Request.Context(), req.DBPath)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"ok":    false,
-			"error": err.Error(),
-		})
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, ImportScraperDBResponse{
+	apiutil.OK(c, ImportScraperDBResponse{
 		OK:       true,
 		Imported: imported,
 	})

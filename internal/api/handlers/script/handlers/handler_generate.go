@@ -15,6 +15,7 @@ import (
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/pkg/apiutil"
 )
 
 func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
@@ -25,13 +26,12 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	)
 
 	if h.generator == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "script generator not initialized"})
+		apiutil.Error(c, http.StatusServiceUnavailable, "script generator not initialized")
 		return
 	}
 
-	var req script.ScriptDocsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+	req, ok := apiutil.BindJSON[script.ScriptDocsRequest](c)
+	if !ok {
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 			zap.Duration("elapsed", time.Since(generateStarted)),
 			zap.String("topic", req.Topic),
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		apiutil.InternalError(c, err)
 		return
 	}
 	zap.L().Info("script document generated",
@@ -66,10 +66,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	var docID, docURL string
 	if h.docClient == nil {
 		zap.L().Error("doc creation requested but google docs client is not initialized")
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"ok":    false,
-			"error": "google docs client not initialized; cannot publish document",
-		})
+		apiutil.Error(c, http.StatusServiceUnavailable, "google docs client not initialized; cannot publish document")
 		return
 	}
 
@@ -86,7 +83,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 			zap.Duration("total_elapsed", time.Since(startedAt)),
 			zap.String("title", document.Title),
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": fmt.Sprintf("failed to create Google Doc: %v", err)})
+		apiutil.InternalError(c, fmt.Errorf("failed to create Google Doc: %v", err))
 		return
 	}
 	zap.L().Info("google doc created",
@@ -122,11 +119,10 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	if forcePreview {
 		path, err := h.savePreview(document.Title, document.Content)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+			apiutil.InternalError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"ok":           true,
+		apiutil.OK(c, gin.H{
 			"preview_only": true,
 			"title":        document.Title,
 			"full_content": document.Content,
@@ -140,8 +136,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"ok":           true,
+	apiutil.OK(c, gin.H{
 		"doc_id":       docID,
 		"doc_url":      docURL,
 		"docs_url":     docURL,
