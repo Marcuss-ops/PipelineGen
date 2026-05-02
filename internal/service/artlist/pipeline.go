@@ -12,11 +12,8 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/pipeline"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/media/ffmpeg"
 	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
 )
@@ -245,123 +242,58 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			zap.String("folder_id", tagFolderID),
 		)
 
-		tmpDir := filepath.Join(s.cfg.Storage.DataDir, s.cfg.Storage.TempDir)
-		if err := os.MkdirAll(tmpDir, 0755); err != nil {
-			s.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))
-			// Fallback to os.TempDir if configured one fails
-			tmpDir = os.TempDir()
+		// Use mediaasset processor for download/process/hash/upload
+		assetInput := mediaasset.AssetInput{
+			ID:        clip.ID,
+			Name:      clip.Name,
+			SourceURL: url,
+			Term:      resp.Term,
+			OutputDir: filepath.Join(s.cfg.Storage.DataDir, "artlist", tagFolderName),
+			FolderID:  tagFolderID,
+			Duration:  s.cfg.Video.Duration,
 		}
 
-		saveDir := filepath.Join(s.cfg.Storage.DataDir, "artlist", tagFolderName)
-		if err := os.MkdirAll(saveDir, 0755); err != nil {
-			s.log.Error("failed to create save directory", zap.String("dir", saveDir), zap.Error(err))
-			saveDir = tmpDir
-		}
-
-		rawPath := filepath.Join(tmpDir, fmt.Sprintf("raw_%s.mp4", clip.ID))
-		safeName := pathutil.SafeFolderName(clip.Name)
-		finalFilename := fmt.Sprintf("%s_%ds_%s.mp4", safeName, s.cfg.Video.Duration, clip.ID)
-		processedPath := filepath.Join(saveDir, finalFilename)
-
-		s.log.Info("downloading clip", zap.String("clip_id", clip.ID), zap.String("url", url))
-		dl := downloader.NewYTDLP(s.cfg)
-		if err := dl.Download(ctx, &downloader.DownloadRequest{URL: url, OutputPath: rawPath}); err != nil {
-			s.log.Error("download failed", zap.String("clip_id", clip.ID), zap.Error(err))
-			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:   clip.ID,
-				Name:     clip.Name,
-				Filename: clip.Filename,
-				Status:   "download_failed",
-				Error:    err.Error(),
-			})
-			continue
-		}
-
-		s.log.Info("processing video (ffmpeg)", zap.String("clip_id", clip.ID), zap.String("output", processedPath))
-		p := ffmpeg.New(s.cfg)
-		opts := ffmpeg.DefaultNormalizeOptions(s.cfg)
-		if err := p.Normalize(ctx, rawPath, processedPath, opts); err != nil {
-			s.log.Error("ffmpeg processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
-			_ = os.Remove(rawPath)
-			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:   clip.ID,
-				Name:     clip.Name,
-				Filename: clip.Filename,
-				Status:   "process_failed",
-				Error:    err.Error(),
-			})
-			continue
-		}
-
-		s.log.Info("calculating file hash", zap.String("clip_id", clip.ID), zap.String("path", processedPath))
-		fileHash, err := hashutil.MD5File(processedPath)
+		result, err := s.mediaProcessor.DownloadProcessUpload(ctx, assetInput)
 		if err != nil {
-			s.log.Error("hashing failed", zap.String("clip_id", clip.ID), zap.Error(err))
-			_ = os.Remove(rawPath)
-			_ = os.Remove(processedPath)
+			s.log.Error("media processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
 				ClipID:   clip.ID,
 				Name:     clip.Name,
 				Filename: clip.Filename,
-				Status:   "hash_failed",
+				Status:   "media_process_failed",
 				Error:    err.Error(),
 			})
 			continue
 		}
 
-		var driveFile *driveapi.File
-		if s.driveClient != nil {
-			s.log.Info("uploading to Google Drive", zap.String("clip_id", clip.ID), zap.String("filename", finalFilename))
-			uploader := &drive.Uploader{Service: s.driveClient, Log: s.log}
-			result, err := uploader.UploadFile(ctx, processedPath, tagFolderID, finalFilename)
-			if err != nil {
-				s.log.Error("drive upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
-			} else {
-				s.log.Info("drive upload success", zap.String("clip_id", clip.ID), zap.String("file_id", result.FileID))
-				driveFile = &driveapi.File{
-					Id:          result.FileID,
-					WebViewLink: result.WebViewLink,
-					Md5Checksum: result.MD5Checksum,
-				}
-			}
-		} else {
-			s.log.Warn("driveClient is nil, skipping upload for clip", zap.String("clip_id", clip.ID))
-		}
+		_ = os.Remove(filepath.Join(os.TempDir(), fmt.Sprintf("raw_%s.mp4", clip.ID)))
 
-		_ = os.Remove(rawPath)
-		// We DO NOT remove processedPath so it stays on disk
-
-		if driveFile != nil {
-			clip.DriveLink = driveFile.WebViewLink
-			clip.DownloadLink = "https://drive.google.com/uc?id=" + driveFile.Id
+		// Update clip with results from media processor
+		if result.DriveLink != "" {
+			clip.DriveLink = result.DriveLink
+			clip.DownloadLink = result.DownloadLink
 		}
-		clip.FileHash = fileHash
-		if driveFile != nil {
-			clip.Metadata = composeArtlistMetadata(clip.Metadata, fileHash, driveFile.Md5Checksum)
-		} else {
-			clip.Metadata = composeArtlistMetadata(clip.Metadata, fileHash, "")
-		}
+		clip.FileHash = result.FileHash
+		clip.Metadata = composeArtlistMetadata(clip.Metadata, result.FileHash, result.FileHash)
 		clip.UpdatedAt = time.Now().UTC()
-		clip.LocalPath = processedPath
+		clip.LocalPath = result.LocalPath
 		
-		s.log.Info("updating database record", zap.String("clip_id", clip.ID), zap.String("local_path", processedPath))
+		s.log.Info("updating database record", zap.String("clip_id", clip.ID), zap.String("local_path", result.LocalPath))
 		if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
 			s.log.Error("db update failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:       clip.ID,
-				Name:         clip.Name,
-				Filename:     clip.Filename,
-				Status:       "db_update_failed",
-				DriveLink:    clip.DriveLink,
-				DownloadLink: clip.DownloadLink,
-				LocalPath:    processedPath,
-				FileHash:     clip.FileHash,
-				Error:        err.Error(),
-			})
+		resp.Items = append(resp.Items, RunTagItem{
+			ClipID:       clip.ID,
+			Name:         clip.Name,
+			Filename:     clip.Filename,
+			Status:       "db_update_failed",
+			DriveLink:    clip.DriveLink,
+			DownloadLink: clip.DownloadLink,
+			LocalPath:    result.LocalPath,
+			FileHash:     clip.FileHash,
+			Error:        err.Error(),
+		})
 			continue
 		}
 
@@ -375,14 +307,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			DownloadURL:  url,
 			DriveLink:    clip.DriveLink,
 			DownloadLink: clip.DownloadLink,
-			LocalPath:    processedPath,
+			LocalPath:    result.LocalPath,
 			FileHash:     clip.FileHash,
 		})
 
 		s.log.Info("clip pipeline item completed",
 			zap.String("clip_id", clip.ID),
 			zap.String("drive_link", clip.DriveLink),
-			zap.String("local_path", processedPath),
+			zap.String("local_path", result.LocalPath),
 		)
 	}
 

@@ -76,9 +76,14 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		return result, err
 	}
 
+	actualRawPath := ResolveDownloadedFile(rawPath)
+	if actualRawPath != rawPath {
+		p.log.Info("resolved actual download path", zap.String("expected", rawPath), zap.String("actual", actualRawPath))
+	}
+
 	p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath))
-	if err := p.ffmpeg.Normalize(ctx, rawPath, processedPath, p.videoCfg); err != nil {
-		_ = os.Remove(rawPath)
+	if err := p.ffmpeg.Normalize(ctx, actualRawPath, processedPath, p.videoCfg); err != nil {
+		_ = os.Remove(actualRawPath)
 		result.Error = fmt.Sprintf("process failed: %v", err)
 		return result, err
 	}
@@ -86,7 +91,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	p.log.Info("calculating file hash", zap.String("id", input.ID), zap.String("path", processedPath))
 	fileHash, err := hashutil.MD5File(processedPath)
 	if err != nil {
-		_ = os.Remove(rawPath)
+		_ = os.Remove(actualRawPath)
 		_ = os.Remove(processedPath)
 		result.Error = fmt.Sprintf("hash failed: %v", err)
 		return result, err
@@ -95,7 +100,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	result.LocalPath = processedPath
 	result.Filename = finalFilename
 
-	_ = os.Remove(rawPath)
+	_ = os.Remove(actualRawPath)
 
 	if p.driveSvc != nil && input.FolderID != "" {
 		p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", finalFilename))

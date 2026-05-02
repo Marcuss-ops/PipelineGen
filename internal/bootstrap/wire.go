@@ -16,7 +16,9 @@ import (
 	"velox/go-master/internal/core/media"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -46,6 +48,21 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	// Create drive destination service first
 	driveDestinationService := drivedestination.NewService(cfg, log, coreDeps.DriveClient)
 
+	// Create media processor for artlist
+	ytDLPDownloader := downloader.NewYTDLP(cfg)
+	ffmpegProc := ffmpeg.New(cfg)
+	mediaProcessor := mediaasset.NewProcessor(
+		ytDLPDownloader,
+		ffmpegProc,
+		coreDeps.DriveClient,
+		log,
+		mediaasset.ProcessorConfig{
+			DataDir: cfg.Storage.DataDir,
+			TempDir: cfg.Storage.TempDir,
+			VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg),
+		},
+	)
+
 	// Create Artlist service with drive destination
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
 	driveFolderID := drive.ResolveArtlistRootFolderID(cfg)
@@ -59,6 +76,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		coreDeps.DriveClient,
 		driveFolderID,
 		driveDestinationService,
+		mediaProcessor,
 		log,
 	)
 	if err != nil {
@@ -106,9 +124,6 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	if coreDeps.VoiceoverService != nil {
 		coreDeps.VoiceoverService.SetDriveDestination(driveDestinationService)
 	}
-
-	// Create FFmpeg processor
-	ffmpegProc := ffmpeg.New(cfg)
 
 	// Create YouTube clip service and handler
 	youtubeClipService := youtubeclip.NewService(
