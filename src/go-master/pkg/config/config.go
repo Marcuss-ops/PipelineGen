@@ -1,4 +1,4 @@
-// Package config provides configuration management for the VeloxEditing system.
+// Package config provides configuration management for the PipelineGen system.
 package config
 
 import (
@@ -52,15 +52,14 @@ func load() *Config {
 	if _, err := os.Stat(configPath); err == nil {
 		data, err := os.ReadFile(configPath)
 		if err == nil {
-			yaml.Unmarshal(data, cfg)
+			if err := yaml.Unmarshal(data, cfg); err != nil {
+				fmt.Printf("Warning: failed to parse YAML config: %v\n", err)
+			}
 		}
 	}
 
 	// 3. Override with environment variables (highest priority)
 	applyEnvVars(cfg)
-
-	// Debug log
-	fmt.Printf("Config loaded: PythonScriptsDir=%s\n", cfg.Paths.PythonScriptsDir)
 
 	return cfg
 }

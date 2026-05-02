@@ -5,11 +5,23 @@ on:
     branches: [ main, master, develop ]
     paths:
       - 'src/go-master/**'
+      - 'scripts/**'
+      - 'src/python/**'
+      - 'config/**'
+      - 'docs/**'
+      - 'tests/stock-links/**'
+      - 'rust/**'
       - '.github/workflows/go-master-ci.yml'
   pull_request:
     branches: [ main, master, develop ]
     paths:
       - 'src/go-master/**'
+      - 'scripts/**'
+      - 'src/python/**'
+      - 'config/**'
+      - 'docs/**'
+      - 'tests/stock-links/**'
+      - 'rust/**'
       - '.github/workflows/go-master-ci.yml'
 
 jobs:
@@ -43,6 +55,17 @@ jobs:
       - name: Vet
         run: make vet
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: src/go-master
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
       - name: Run unit tests
         run: make test-unit
 
@@ -54,3 +77,27 @@ jobs:
 
       - name: Build
         run: make build
+
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install requests
+
+      - name: Lint Python scripts
+        run: |
+          pip install flake8
+          flake8 scripts/ src/python/ --max-line-length=120 --ignore=E402,W503
+
+      - name: Check Python import paths
+        run: |
+          python -c "import sys; sys.path.insert(0, 'src'); from python.youtube_transcript import extract_vtt_from_youtube" || exit 1
