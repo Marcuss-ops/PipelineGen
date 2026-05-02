@@ -262,7 +262,8 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		processedPath := filepath.Join(saveDir, finalFilename)
 
 		s.log.Info("downloading clip", zap.String("clip_id", clip.ID), zap.String("url", url))
-		if err := s.downloadClip(url, rawPath); err != nil {
+		dl := downloader.NewYTDLP(s.cfg)
+		if err := dl.Download(ctx, &downloader.DownloadRequest{URL: url, OutputPath: rawPath}); err != nil {
 			s.log.Error("download failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++
 			resp.Items = append(resp.Items, RunTagItem{
@@ -276,7 +277,9 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		}
 
 		s.log.Info("processing video (ffmpeg)", zap.String("clip_id", clip.ID), zap.String("output", processedPath))
-		if err := s.processVideo(rawPath, processedPath); err != nil {
+		p := ffmpeg.New(s.cfg)
+		opts := ffmpeg.DefaultNormalizeOptions(s.cfg)
+		if err := p.Normalize(ctx, rawPath, processedPath, opts); err != nil {
 			s.log.Error("ffmpeg processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			_ = os.Remove(rawPath)
 			resp.Failed++
@@ -291,7 +294,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		}
 
 		s.log.Info("calculating file hash", zap.String("clip_id", clip.ID), zap.String("path", processedPath))
-		fileHash, err := calculateFileHash(processedPath)
+		fileHash, err := hashutil.MD5File(processedPath)
 		if err != nil {
 			s.log.Error("hashing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			_ = os.Remove(rawPath)
@@ -311,7 +314,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		if s.driveClient != nil {
 			s.log.Info("uploading to Google Drive", zap.String("clip_id", clip.ID), zap.String("filename", finalFilename))
 			uploader := &drive.Uploader{Service: s.driveClient, Log: s.log}
-			result, err := uploader.UploadFile(context.Background(), processedPath, tagFolderID, finalFilename)
+			result, err := uploader.UploadFile(ctx, processedPath, tagFolderID, finalFilename)
 			if err != nil {
 				s.log.Error("drive upload failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			} else {
@@ -418,20 +421,8 @@ func getOrCreateFolder(svc *driveapi.Service, name, parentID string) (string, er
 	return f.Id, nil
 }
 
-func (s *Service) downloadClip(sourceURL, rawPath string) error {
-	dl := downloader.NewYTDLP(s.cfg)
-	return dl.Download(context.Background(), &downloader.DownloadRequest{
-		URL:        sourceURL,
-		OutputPath: rawPath,
-	})
-}
 
-func (s *Service) processVideo(input, output string) error {
-	p := ffmpeg.New(s.cfg)
-	opts := ffmpeg.DefaultNormalizeOptions(s.cfg)
-	return p.Normalize(context.Background(), input, output, opts)
-}
 
-func calculateFileHash(filePath string) (string, error) {
-	return hashutil.MD5File(filePath)
-}
+
+
+

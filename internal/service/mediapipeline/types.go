@@ -44,14 +44,19 @@ type SegmentSpec struct {
 }
 
 type ProcessingSpec struct {
-	Mode         ProcessingMode
-	Normalize    bool
-	JoinInputs   bool
-	Duration     int
-	Width        int
-	Height       int
-	FPS          int
-	OutputName   string
+	Mode            ProcessingMode
+	Normalize       bool
+	JoinInputs      bool
+	Duration        int
+	DisableDuration bool
+	KeepAudio       bool
+	Width           int
+	Height          int
+	FPS             int
+	Codec           string
+	Preset          string
+	CRF             int
+	OutputName      string
 }
 
 type DestinationSpec struct {
