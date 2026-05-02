@@ -3,6 +3,7 @@ package artlist
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"go.uber.org/zap"
@@ -42,10 +43,19 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 
 	resp, err := s.RunTag(ctx, req)
 	if err != nil || (resp != nil && !resp.OK) {
+		errMsg := ""
+		if err != nil {
+			errMsg = err.Error()
+		} else if resp != nil {
+			errMsg = resp.Error
+		}
+		if errMsg == "" {
+			errMsg = "unknown error"
+		}
 		tools.Event("error", "artlist run failed", map[string]any{
-			"error": resp.Error,
+			"error": errMsg,
 		})
-		return nil, err
+		return nil, fmt.Errorf(errMsg)
 	}
 
 	tools.Event("completed", "artlist run completed", map[string]any{
