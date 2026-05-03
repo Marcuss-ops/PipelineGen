@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/service/audioasset"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/pkg/media/audio"
 	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/hashutil"
-	driveupload "velox/go-master/internal/upload/drive"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -26,6 +23,7 @@ type Service struct {
 	log               *zap.Logger
 	driveClient       *gdrive.Service
 	assetDestResolver *assetdestination.Resolver
+	audioProcessor    *audioasset.Processor
 	repo              *voiceovers.Repository
 }
 
@@ -40,6 +38,14 @@ func NewService(
 	// Create asset destination resolver
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
 
+	// Create audio asset processor
+	audioProcessor := audioasset.NewProcessor(
+		pythonScriptsDir,
+		driveClient,
+		assetDestResolver,
+		log,
+	)
+
 	return &Service{
 		cfg:               cfg,
 		pythonScriptsDir:  pythonScriptsDir,
@@ -47,6 +53,7 @@ func NewService(
 		log:               log,
 		driveClient:       driveClient,
 		assetDestResolver: assetDestResolver,
+		audioProcessor:    audioProcessor,
 		repo:              repo,
 	}
 }
@@ -142,46 +149,52 @@ func (s *Service) processLanguage(
 		Status:   "processing",
 	}
 
+	// Check existing via repository (deduplication)
 	existing, _ := s.findExisting(ctx, textHash, language, folderID)
 	if shouldSkipExisting(existing, req.Strategy) {
 		return existingToItem(existing, "skipped_existing")
 	}
 
-	rawPath, genResult, err := s.generateAudio(ctx, req.Text, language, filename)
+	// Build audio input for processor
+	audioInput := &audioasset.AudioInput{
+		ID:            id,
+		Text:          req.Text,
+		Language:      language,
+		OutputDir:     s.outputDir,
+		Filename:      filename,
+		RemoveSilence: boolDefault(req.RemoveSilence, false),
+	}
+
+	// Set destination from original request if upload is enabled
+	if req.Destination != nil && boolDefault(req.UploadDrive, false) {
+		audioInput.Destination = &assetdestination.ResolveRequest{
+			Source:         "voiceover",
+			Group:          req.Destination.Group,
+			FolderID:       req.Destination.FolderID,
+			FolderPath:     req.Destination.FolderPath,
+			SubfolderName:  req.Destination.SubfolderName,
+			CreateSubfolder: req.Destination.CreateSubfolder,
+		}
+	}
+
+	// Generate audio via audioasset processor
+	result, err := s.audioProcessor.Generate(ctx, audioInput)
 	if err != nil {
 		return item.fail("generate_failed", err)
 	}
 
-	item.LocalPath = rawPath
-	item.Voice = genResult.Voice
+	item.LocalPath = result.LocalPath
+	item.CleanedPath = result.CleanedPath
+	item.FileHash = result.FileHash
+	item.DriveLink = result.DriveLink
+	item.Voice = language
+	item.Status = result.Status
 
-	finalPath := rawPath
-	if boolDefault(req.RemoveSilence, false) {
-		cleanedPath, err := s.removeSilence(ctx, rawPath)
-		if err != nil {
-			return item.fail("silence_remove_failed", err)
-		}
-		finalPath = cleanedPath
-		item.CleanedPath = cleanedPath
+	if result.Status == "" {
+		item.Status = "processed"
 	}
 
-	fileHash, err := hashutil.MD5File(finalPath)
-	if err != nil {
-		return item.fail("hash_failed", err)
-	}
-	item.FileHash = fileHash
-
-	if boolDefault(req.UploadDrive, false) && dest != nil {
-		upload, err := s.uploadToDrive(ctx, finalPath, dest.FolderID, filepath.Base(finalPath))
-		if err != nil {
-			return item.fail("upload_failed", err)
-		}
-		item.DriveLink = upload.WebViewLink
-		item.DownloadLink = upload.DownloadLink
-	}
-
-	item.Status = "processed"
-
+	// Save to DB if requested
 	if boolDefault(req.SaveDB, false) {
 		if err := s.saveRecord(ctx, req, item, requestID, textHash, dest); err != nil {
 			return item.fail("db_save_failed", err)
@@ -340,30 +353,10 @@ func (s *Service) saveRecord(ctx context.Context, req *BatchRequest, item BatchI
 	return s.repo.Upsert(ctx, rec)
 }
 
-func (s *Service) removeSilence(ctx context.Context, input string) (string, error) {
-	ext := filepath.Ext(input)
-	base := strings.TrimSuffix(input, ext)
-	output := base + ".cleaned.mp3"
-
-	if err := audio.RemoveSilence(ctx, s.cfg.External.FfmpegPath, input, output); err != nil {
-		return "", err
-	}
-
-	return output, nil
-}
-
-func (s *Service) uploadToDrive(ctx context.Context, path, folderID, filename string) (*driveupload.UploadResult, error) {
-	uploader := &driveupload.Uploader{
-		Service: s.driveClient,
-		Log:     s.log,
-	}
-
-	return uploader.UploadFile(ctx, path, folderID, filename)
-}
-
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen]
 }
+
