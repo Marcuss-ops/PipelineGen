@@ -29,9 +29,9 @@ func New(cfg *config.Config) *Processor {
 
 // NormalizeOptions configures video normalization.
 type NormalizeOptions struct {
-	Duration        int    // Max duration in seconds (0 = no limit)
-	DisableDuration bool   // If true, ignore Duration even if > 0
-	KeepAudio       bool   // If true, do not strip audio
+	Duration        int  // Max duration in seconds (0 = no limit)
+	DisableDuration bool // If true, ignore Duration even if > 0
+	KeepAudio       bool // If true, do not strip audio
 	Width           int
 	Height          int
 	FPS             int
@@ -52,6 +52,27 @@ func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
 		Preset:   v.Preset,
 		CRF:      v.CRF,
 	}
+}
+
+// RemuxHLS downloads an HLS playlist and remuxes it into an MP4 container
+// without re-encoding. It is intended for already-resolved .m3u8 media URLs.
+func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error {
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+		"-i", inputURL,
+		"-c", "copy",
+		"-bsf:a", "aac_adtstoasc",
+		"-movflags", "+faststart",
+		output,
+	}
+
+	_, err := executil.Run(ctx, p.path, args, executil.Options{
+		Timeout: 15 * time.Minute,
+	})
+	return err
 }
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
