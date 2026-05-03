@@ -112,9 +112,9 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		)
 	}
 
-	// Update Voiceover service with drive destination
+	// Voiceover service is already initialized with drive destination in WireMinimal
 	if coreDeps.VoiceoverService != nil {
-		coreDeps.VoiceoverService.SetDriveDestination(driveDestinationService)
+		log.Info("voiceover service initialized with unified destination resolver")
 	}
 
 	// Use YouTube clip service from core deps

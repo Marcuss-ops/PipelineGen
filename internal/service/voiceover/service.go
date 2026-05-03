@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/pkg/media/audio"
 	"velox/go-master/pkg/config"
@@ -20,13 +20,13 @@ import (
 )
 
 type Service struct {
-	cfg              *config.Config
-	pythonScriptsDir string
-	outputDir        string
-	log              *zap.Logger
-	driveClient      *gdrive.Service
-	driveDestination *drivedestination.Service
-	repo             *voiceovers.Repository
+	cfg               *config.Config
+	pythonScriptsDir  string
+	outputDir         string
+	log               *zap.Logger
+	driveClient       *gdrive.Service
+	assetDestResolver *assetdestination.Resolver
+	repo              *voiceovers.Repository
 }
 
 func NewService(
@@ -35,23 +35,23 @@ func NewService(
 	outputDir string,
 	log *zap.Logger,
 	driveClient *gdrive.Service,
-	driveDestination *drivedestination.Service,
 	repo *voiceovers.Repository,
 ) *Service {
+	// Create asset destination resolver
+	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
+
 	return &Service{
-		cfg:              cfg,
-		pythonScriptsDir: pythonScriptsDir,
-		outputDir:        outputDir,
-		log:              log,
-		driveClient:      driveClient,
-		driveDestination:  driveDestination,
-		repo:             repo,
+		cfg:               cfg,
+		pythonScriptsDir:  pythonScriptsDir,
+		outputDir:         outputDir,
+		log:               log,
+		driveClient:       driveClient,
+		assetDestResolver: assetDestResolver,
+		repo:              repo,
 	}
 }
 
-func (s *Service) SetDriveDestination(d *drivedestination.Service) {
-	s.driveDestination = d
-}
+
 
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	resp, err := s.GenerateBatch(ctx, &BatchRequest{
@@ -196,11 +196,12 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 		return &ResolvedDestination{}, nil
 	}
 
-	resolved, err := s.driveDestination.Resolve(ctx, &drivedestination.Request{
-		Group:           dest.Group,
-		FolderID:        dest.FolderID,
-		FolderPath:      dest.FolderPath,
-		SubfolderName:   dest.SubfolderName,
+	resolved, err := s.assetDestResolver.Resolve(ctx, &assetdestination.ResolveRequest{
+		Source:         "voiceover",
+		Group:          dest.Group,
+		FolderID:       dest.FolderID,
+		FolderPath:     dest.FolderPath,
+		SubfolderName:  dest.SubfolderName,
 		CreateSubfolder: dest.CreateSubfolder,
 	})
 	if err != nil {

@@ -11,8 +11,8 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/assetstore"
-	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/pipeline"
@@ -143,12 +143,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.LastProcessedAt = lastProcessedAt
 	}
 
-	// Resolve Drive destination using drivedestination service
+	// Resolve Drive destination using unified asset destination resolver
 	tagFolderID := rootFolderID
-	if s.driveService != nil && s.driveService.GetDriveDestination() != nil && rootFolderID != "" {
-		resolved, err := s.driveService.GetDriveDestination().Resolve(ctx, &drivedestination.Request{
-			FolderID:        rootFolderID,
-			SubfolderName:   tagFolderName,
+	if s.assetDestResolver != nil && rootFolderID != "" {
+		resolved, err := s.assetDestResolver.Resolve(ctx, &assetdestination.ResolveRequest{
+			Source:         "artlist",
+			Group:          req.Term,
+			FolderID:       rootFolderID,
+			SubfolderName:  tagFolderName,
 			CreateSubfolder: true,
 		})
 		if err != nil {

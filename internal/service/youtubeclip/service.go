@@ -15,6 +15,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
+	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
@@ -28,15 +29,16 @@ import (
 )
 
 type Service struct {
-	cfg              *config.Config
-	log              *zap.Logger
-	clipsRepo        *clips.Repository
-	monitoredRepo    *monitors.Repository
-	driveClient      *driveapi.Service
-	driveDestination *drivedestination.Service
-	mediaProcessor   *mediaasset.Processor
-	folderMemory     *foldermemory.Service
-	mediaFinalizer   *mediaregistry.Finalizer
+	cfg                *config.Config
+	log                *zap.Logger
+	clipsRepo          *clips.Repository
+	monitoredRepo      *monitors.Repository
+	driveClient        *driveapi.Service
+	driveDestination   *drivedestination.Service
+	assetDestResolver  *assetdestination.Resolver
+	mediaProcessor     *mediaasset.Processor
+	folderMemory       *foldermemory.Service
+	mediaFinalizer     *mediaregistry.Finalizer
 }
 
 func NewService(
@@ -48,20 +50,24 @@ func NewService(
 	driveDestination *drivedestination.Service,
 	mediaProcessor *mediaasset.Processor,
 ) *Service {
+	// Create asset destination resolver for unified destination resolution
+	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
+
 	// Create mediaregistry finalizer for consistent asset finalization
 	clipsReg := mediaregistry.NewClipsRegistry(clipsRepo)
 	mediaFinalizer := mediaregistry.NewFinalizer(clipsReg, nil, log)
 
 	return &Service{
-		cfg:              cfg,
-		log:              log,
-		clipsRepo:        clipsRepo,
-		monitoredRepo:    monitoredRepo,
-		driveClient:      driveClient,
-		driveDestination: driveDestination,
-		mediaProcessor:   mediaProcessor,
-		folderMemory:     foldermemory.NewService(log, clipsRepo),
-		mediaFinalizer:   mediaFinalizer,
+		cfg:               cfg,
+		log:               log,
+		clipsRepo:         clipsRepo,
+		monitoredRepo:     monitoredRepo,
+		driveClient:       driveClient,
+		driveDestination:  driveDestination,
+		assetDestResolver: assetDestResolver,
+		mediaProcessor:    mediaProcessor,
+		folderMemory:      foldermemory.NewService(log, clipsRepo),
+		mediaFinalizer:    mediaFinalizer,
 	}
 }
 
@@ -144,15 +150,16 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	}
 	s.log.Info("using stable folder for video", zap.String("folder", outDir), zap.String("video_id", videoID))
 
-	// Resolve Drive destination if drivedestination service is available
+	// Resolve Drive destination using unified asset destination resolver
 	var driveFolderID string
 	var resolvedPath string
-	if s.driveDestination != nil && req.Destination != nil {
-		destReq := &drivedestination.Request{
-			Group:           req.Destination.Group,
-			FolderID:        req.Destination.FolderID,
-			FolderPath:      req.Destination.FolderPath,
-			SubfolderName:   req.Destination.SubfolderName,
+	if s.assetDestResolver != nil && req.Destination != nil {
+		destReq := &assetdestination.ResolveRequest{
+			Source:         "youtube",
+			Group:          req.Destination.Group,
+			FolderID:       req.Destination.FolderID,
+			FolderPath:     req.Destination.FolderPath,
+			SubfolderName:  req.Destination.SubfolderName,
 			CreateSubfolder: req.Destination.CreateSubfolder,
 		}
 
@@ -163,7 +170,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			s.log.Info("auto-assigning video subfolder", zap.String("subfolder", destReq.SubfolderName))
 		}
 
-		resolved, err := s.driveDestination.Resolve(ctx, destReq)
+		resolved, err := s.assetDestResolver.Resolve(ctx, destReq)
 		if err != nil {
 			s.log.Warn("failed to resolve drive destination", zap.Error(err))
 		} else {
