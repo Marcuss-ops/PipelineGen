@@ -95,11 +95,24 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.Error = "db_search_error: " + err.Error()
 	}
 
-	if len(clipsList) == 0 {
+	// Force live search if clips have invalid URLs (e.g., Drive links instead of Artlist HLS)
+	hasValidURLs := false
+	for _, clip := range clipsList {
+		if clip != nil && strings.Contains(clip.ExternalURL, "artlist") && strings.Contains(clip.ExternalURL, ".m3u8") {
+			hasValidURLs = true
+			break
+		}
+	}
+
+	if len(clipsList) == 0 || !hasValidURLs {
 		if resp.Error != "" {
 			s.log.Warn("DB error occurred, attempting live search fallback", zap.String("term", resp.Term))
 		} else {
-			s.log.Info("no clips found in DB for term, performing live search discovery", zap.String("term", resp.Term))
+			if !hasValidURLs && len(clipsList) > 0 {
+				s.log.Info("found clips but with invalid URLs, forcing live search", zap.String("term", resp.Term))
+			} else {
+				s.log.Info("no clips found in DB for term, performing live search discovery", zap.String("term", resp.Term))
+			}
 		}
 		searchResp, err := s.SearchLiveAndSave(ctx, resp.Term, req.Limit*2)
 		if err != nil {
@@ -214,11 +227,48 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		if clip == nil {
 			continue
 		}
-		
-		url := strings.TrimSpace(clip.ExternalURL)
-		if url == "" {
-			url = strings.TrimSpace(clip.DownloadLink)
+
+		// Skip if clip already has Drive link (already processed and uploaded)
+		if strings.TrimSpace(clip.DriveLink) != "" {
+			s.log.Info("skipping clip with existing drive link", 
+				zap.String("clip_id", clip.ID), 
+				zap.String("drive_link", clip.DriveLink))
+			resp.Skipped++
+			resp.Items = append(resp.Items, RunTagItem{
+				ClipID:       clip.ID,
+				Name:         clip.Name,
+				Filename:     clip.Filename,
+				Status:       "skipped_existing",
+				DriveLink:    clip.DriveLink,
+				DownloadLink: clip.DownloadLink,
+				LocalPath:    clip.LocalPath,
+			})
+			continue
 		}
+
+		// Get download URL - use HLS URL from DownloadLink (set by live search)
+	url := strings.TrimSpace(clip.DownloadLink)
+	
+	// If DownloadLink is empty or not HLS, try ExternalURL
+	if url == "" || !strings.Contains(url, ".m3u8") {
+		url = strings.TrimSpace(clip.ExternalURL)
+	}
+	
+	// Skip Drive URLs - they're not valid source URLs for download
+	if strings.Contains(url, "drive.google") {
+		s.log.Warn("clip has Drive URL in source fields, skipping", 
+			zap.String("clip_id", clip.ID), 
+			zap.String("url", url))
+		resp.Skipped++
+		resp.Items = append(resp.Items, RunTagItem{
+			ClipID:       clip.ID,
+			Name:         clip.Name,
+			Filename:     clip.Filename,
+			Status:       "skipped_invalid_url",
+			Error:        "source URL is a Drive link, not a valid download URL",
+		})
+		continue
+	}
 
 		s.log.Info("processing clip", 
 			zap.String("clip_id", clip.ID), 

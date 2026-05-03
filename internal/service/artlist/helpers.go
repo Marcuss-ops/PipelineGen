@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -29,9 +30,13 @@ func mapToModelClip(data map[string]interface{}, term string) *models.Clip {
 		clip.Filename = title
 	}
 
-	if url, ok := data["clip_page_url"].(string); ok {
+	if url, ok := data["primary_url"].(string); ok && url != "" {
 		clip.ExternalURL = url
-	} else if url, ok := data["primary_url"].(string); ok {
+		// Save HLS URL in DownloadLink for later processing
+		if strings.Contains(url, ".m3u8") {
+			clip.DownloadLink = url
+		}
+	} else if url, ok := data["clip_page_url"].(string); ok && url != "" {
 		clip.ExternalURL = url
 	}
 
@@ -74,6 +79,18 @@ func mapToModelClip(data map[string]interface{}, term string) *models.Clip {
 
 // preserveExistingClipFields preserves fields from existing clip that shouldn't be overwritten
 func preserveExistingClipFields(newClip, existing *models.Clip) *models.Clip {
+	// Don't preserve ExternalURL if existing has Drive link and new has Artlist URL
+	if existing.ExternalURL != "" && strings.Contains(existing.ExternalURL, "drive.google") {
+		// Keep the new Artlist URL if it's valid
+		if newClip.ExternalURL != "" && strings.Contains(newClip.ExternalURL, "artlist") {
+			// Don't overwrite with Drive link
+		} else {
+			newClip.ExternalURL = existing.ExternalURL
+		}
+	} else if existing.ExternalURL != "" {
+		newClip.ExternalURL = existing.ExternalURL
+	}
+
 	if existing.LocalPath != "" {
 		newClip.LocalPath = existing.LocalPath
 	}
@@ -89,7 +106,14 @@ func preserveExistingClipFields(newClip, existing *models.Clip) *models.Clip {
 	if existing.FolderPath != "" {
 		newClip.FolderPath = existing.FolderPath
 	}
-	if existing.DownloadLink != "" {
+	// Don't preserve DownloadLink if existing has Drive link and new has HLS URL
+	if existing.DownloadLink != "" && strings.Contains(existing.DownloadLink, "drive.google") {
+		if newClip.DownloadLink != "" && strings.Contains(newClip.DownloadLink, ".m3u8") {
+			// Keep new HLS URL
+		} else {
+			newClip.DownloadLink = existing.DownloadLink
+		}
+	} else if existing.DownloadLink != "" {
 		newClip.DownloadLink = existing.DownloadLink
 	}
 	return newClip
