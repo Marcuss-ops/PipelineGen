@@ -55,7 +55,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		tools.Event("error", "artlist run failed", map[string]any{
 			"error": errMsg,
 		})
-		return nil, fmt.Errorf(errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	tools.Event("completed", "artlist run completed", map[string]any{
