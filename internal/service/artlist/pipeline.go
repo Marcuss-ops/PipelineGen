@@ -180,14 +180,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			if clip == nil {
 				continue
 			}
-			asset := assetstore.ExistingAsset{
-				ID:        clip.ID,
-				DriveLink: clip.DriveLink,
-				FileHash:  clip.FileHash,
-				Metadata:  clip.Metadata,
-				LocalPath: clip.LocalPath,
-			}
-			skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), nil)
+		asset := assetstore.ExistingAsset{
+			ID:        clip.ID,
+			DriveLink: clip.DriveLink,
+			FileHash:  clip.FileHash,
+			Metadata:  clip.Metadata,
+			LocalPath: clip.LocalPath,
+		}
+		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), nil, assetstore.DefaultLocalFileChecker)
 			status := "would_process"
 			if skip {
 				status = "would_skip"
@@ -236,7 +236,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		if s.driveService != nil {
 			checker = &artlistChecksumChecker{driveClient: s.driveService.GetDriveClient()}
 		}
-		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), checker)
+		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), checker, assetstore.DefaultLocalFileChecker)
 		
 		if skip {
 			s.log.Info("skipping existing clip", zap.String("clip_id", clip.ID), zap.String("reason", reason))

@@ -21,3 +21,7 @@ type ExistingAsset struct {
 type ChecksumChecker interface {
 	GetMD5Checksum(ctx context.Context, driveLink string) (string, error)
 }
+
+type LocalFileChecker interface {
+	LocalFileExists(path string) bool
+}

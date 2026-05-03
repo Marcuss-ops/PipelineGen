@@ -15,6 +15,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
+	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/mediaasset"
@@ -326,31 +327,29 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		saveDB := boolDefault(req.SaveDB, true)
 		if s.clipsRepo != nil && saveDB && strategy != "replace" {
 			existingClip, clipErr := s.clipsRepo.GetClip(ctx, clipID)
-			
-			shouldSkip := false
-			skipReason := ""
 
-			// 1. Check DB record
+			// Build asset from existing clip for assetstore check
+			var existingAsset assetstore.ExistingAsset
 			if clipErr == nil && existingClip != nil {
-				if strategy == "skip" {
-					shouldSkip = true
-					skipReason = "existing DB record (skip strategy)"
-				} else {
-					// verify strategy
-					if existingClip.LocalPath != "" {
-						if _, statErr := os.Stat(existingClip.LocalPath); statErr == nil {
-							shouldSkip = true
-							skipReason = "valid local file"
-						}
-					}
-					if !shouldSkip && existingClip.DriveLink != "" {
-						shouldSkip = true
-						skipReason = "valid drive link"
-					}
+				existingAsset = assetstore.ExistingAsset{
+					ID:        existingClip.ID,
+					DriveLink: existingClip.DriveLink,
+					FileHash:  existingClip.FileHash,
+					Metadata:  existingClip.Metadata,
+					LocalPath: existingClip.LocalPath,
 				}
 			}
 
-			// 2. Check manifest
+			// Use assetstore for standard deduplication
+			shouldSkip, skipReason, _ := assetstore.ShouldSkipExisting(
+				ctx,
+				existingAsset,
+				assetstore.ExistencePolicy(strategy),
+				nil,
+				assetstore.DefaultLocalFileChecker,
+			)
+
+			// Also check manifest (YouTube-specific)
 			if !shouldSkip && manifest != nil {
 				for _, mItem := range manifest.Clips {
 					if mItem.ID == clipID {

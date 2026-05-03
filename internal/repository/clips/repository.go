@@ -385,6 +385,12 @@ func (r *Repository) CountClips(ctx context.Context) (int, error) {
 	return count, err
 }
 
+// UpdateFileHash updates the file_hash for a clip.
+func (r *Repository) UpdateFileHash(ctx context.Context, clipID, hash string) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE clips SET file_hash=? WHERE id=?", hash, clipID)
+	return err
+}
+
 // LastUpdatedAtForTerm returns the most recent updated_at value for clips matching a term.
 // Uses FTS5 if available, falls back to LIKE.
 func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error) {
