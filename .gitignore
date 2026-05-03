@@ -1,27 +1,45 @@
-# Config
-config.yaml
-config.local.yaml
-credentials.json
-token.json
-
 # Binaries
-bin/
-server
+pipelinegen
+pipelinegen.exe
 
-# Databases & Backups
-data/*.db.sqlite*
-data/*.bak
-data/voiceovers/
-data/downloads/
-data/backups/
-data/tmp/
-data/assets/
+# Scripts with local credentials
+restart-server.sh
+
+# Runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
 
 # Logs
 *.log
+logs/
 
-# OS
-.DS_Store
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts
+bin/
+build/
+dist/
 server_bin
 velox-master
+
+# Config files with local settings
+config.yaml
+
+# Test coverage
 coverage.out
+
+# OS files
+.DS_Store
+Thumbs.db
