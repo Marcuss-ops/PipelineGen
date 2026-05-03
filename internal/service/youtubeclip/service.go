@@ -19,6 +19,7 @@ import (
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/mediaasset"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/models"
@@ -35,6 +36,7 @@ type Service struct {
 	driveDestination *drivedestination.Service
 	mediaProcessor   *mediaasset.Processor
 	folderMemory     *foldermemory.Service
+	mediaFinalizer   *mediaregistry.Finalizer
 }
 
 func NewService(
@@ -46,6 +48,10 @@ func NewService(
 	driveDestination *drivedestination.Service,
 	mediaProcessor *mediaasset.Processor,
 ) *Service {
+	// Create mediaregistry finalizer for consistent asset finalization
+	clipsReg := mediaregistry.NewClipsRegistry(clipsRepo)
+	mediaFinalizer := mediaregistry.NewFinalizer(clipsReg, nil, log)
+
 	return &Service{
 		cfg:              cfg,
 		log:              log,
@@ -55,6 +61,7 @@ func NewService(
 		driveDestination: driveDestination,
 		mediaProcessor:   mediaProcessor,
 		folderMemory:     foldermemory.NewService(log, clipsRepo),
+		mediaFinalizer:   mediaFinalizer,
 	}
 }
 
@@ -469,8 +476,8 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		item.DriveLink = driveLink
 		item.Status = "processed"
 
-		// Save clip to database
-		if saveDB && s.clipsRepo != nil {
+		// Save clip using mediaregistry finalizer for consistent asset finalization
+		if saveDB && s.mediaFinalizer != nil {
 			// Build metadata using json.Marshal for proper escaping
 			metadataMap := map[string]interface{}{
 				"video_id":         videoID,
@@ -493,28 +500,36 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				folderPath = req.Destination.FolderPath
 			}
 
-			clip := &models.Clip{
-				ID:          clipID,
-				Name:        item.Name,
-				Filename:    filepath.Base(localPath),
-				FolderID:    driveFolderID,
-				FolderPath:  folderPath,
-				Group:       getGroupFromDestination(req.Destination),
-				MediaType:   "youtube_clip",
-				DriveLink:   driveLink,
-				Tags:        seg.Tags,
-				Source:      "youtube",
-				Category:    "manual_extract",
-				ExternalURL: resp.SourceURL,
-				Duration:    duration,
-				Metadata:    metadata,
-				FileHash:    fileHash,
-				LocalPath:   localPath,
-				CreatedAt:   time.Now().UTC(),
-				UpdatedAt:   time.Now().UTC(),
+			mediaRec := &mediaregistry.MediaRecord{
+				ID:           clipID,
+				Name:         item.Name,
+				Filename:     filepath.Base(localPath),
+				FolderID:     driveFolderID,
+				FolderPath:   folderPath,
+				Group:        getGroupFromDestination(req.Destination),
+				MediaType:    "youtube_clip",
+				DriveLink:    driveLink,
+				Tags:         seg.Tags,
+				Source:       "youtube",
+				Category:     "manual_extract",
+				ExternalURL:  resp.SourceURL,
+				Duration:     duration,
+				Metadata:     metadata,
+				FileHash:     fileHash,
+				LocalPath:    localPath,
+				Status:       "processed",
 			}
-			if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
-				s.log.Warn("failed to save clip to db", zap.Error(err))
+
+			finalizeOpts := mediaregistry.FinalizeOptions{
+				RequireLocal: true,
+				RequireHash:  true,
+				RequireDrive: driveLink != "",
+				VerifyDB:     true,
+			}
+
+			finalResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, finalizeOpts)
+			if err != nil || !finalResult.OK {
+				s.log.Warn("finalize failed", zap.Error(err), zap.String("error", finalResult.Error))
 			}
 		}
 
