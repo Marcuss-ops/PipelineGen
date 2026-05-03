@@ -34,7 +34,7 @@ func ShouldSkipExisting(ctx context.Context, asset ExistingAsset, policy Existen
 		if checker != nil {
 			remoteChecksum, err := checker.GetMD5Checksum(ctx, asset.DriveLink)
 			if err != nil {
-				return true, "failed to verify remote checksum", err
+				return false, "remote file not found, will reprocess", nil
 			}
 			if strings.EqualFold(remoteChecksum, strings.TrimSpace(asset.FileHash)) {
 				return true, "remote checksum matches file hash", nil
