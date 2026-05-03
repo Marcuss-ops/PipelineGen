@@ -1,3 +1,7 @@
+// Package ffmpeg defines adapter interfaces for FFmpeg operations.
+//
+// STATUS: EXPERIMENTAL - Interface defined but not yet implemented or used.
+// TODO: Implement and migrate media processing to use this adapter.
 package ffmpeg
 
 import "context"

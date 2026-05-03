@@ -1,3 +1,6 @@
+// Package downloader provides YouTube/social media download capabilities via yt-dlp.
+//
+// STATUS: ACTIVE - This package is actively used by mediaasset.Processor, mediapipeline, and artlist service.
 package downloader
 
 import (

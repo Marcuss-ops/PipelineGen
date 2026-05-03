@@ -1,3 +1,7 @@
+// Package ollama defines adapter interfaces for Ollama LLM operations.
+//
+// STATUS: EXPERIMENTAL - Interface defined but not yet implemented or used.
+// TODO: Implement and migrate LLM operations to use this adapter.
 package ollama
 
 import (

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/pkg/drive"
 )
 
 type DriveService struct {
@@ -129,9 +129,7 @@ func (s *DriveService) GetOrCreateFolder(ctx context.Context, name, parentID str
 	}
 
 	// Search for existing folder
-	escapedParent := escapeDriveQueryValue(parentID)
-	escapedName := escapeDriveQueryValue(name)
-	query := fmt.Sprintf("mimeType='application/vnd.google-apps.folder' and '%s' in parents and name='%s' and trashed=false", escapedParent, escapedName)
+	query := drive.BuildNameQuery(parentID, name, "application/vnd.google-apps.folder")
 	fileList, err := s.driveClient.Files.List().
 		Q(query).
 		Fields("files(id, name)").
@@ -157,13 +155,6 @@ func (s *DriveService) GetOrCreateFolder(ctx context.Context, name, parentID str
 
 	// Create new folder
 	return s.CreateFolder(ctx, name, parentID)
-}
-
-// escapeDriveQueryValue escapes a string for use in Drive API query strings
-func escapeDriveQueryValue(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "'", "\\'")
-	return s
 }
 
 // DownloadFile downloads a file from Drive by file ID

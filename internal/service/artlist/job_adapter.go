@@ -96,29 +96,23 @@ func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTa
 }
 
 // GetJobByRunID retrieves a job by its run ID (which is the job ID).
-// Jobs table is the source of truth. Legacy artlist_runs is read-only for old records.
+// Jobs table is the ONLY source of truth. Legacy artlist_runs is deprecated and no longer queried.
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, fmt.Errorf("run_id is required")
 	}
 
-	// Jobs table is the source of truth
+	// Jobs table is the only source of truth
 	if s.jobsDB == nil {
 		return nil, fmt.Errorf("jobs database not configured")
 	}
 	job, err := s.loadJobFromJobsDB(ctx, runID)
-	if err == nil {
-		return job, nil
+	if err != nil {
+		// Legacy artlist_runs table is deprecated. Old records (if needed) can be accessed directly via DB.
+		return nil, fmt.Errorf("job not found in jobs table (legacy artlist_runs is deprecated): %w", err)
 	}
-
-	// Fallback: try legacy artlist_runs for backward compatibility with old UUIDs
-	rec, err2 := s.loadRunRecord(ctx, runID)
-	if err2 == nil {
-		return RunRecordToJob(rec)
-	}
-
-	return nil, err
+	return job, nil
 }
 
 // loadJobFromJobsDB loads a job directly from the jobs database.
@@ -181,7 +175,7 @@ func (s *Service) loadJobFromJobsDB(ctx context.Context, jobID string) (*models.
 }
 
 // FindActiveJob finds an active job by its active key.
-// Jobs table is the source of truth. Legacy artlist_runs is read-only.
+// Jobs table is the ONLY source of truth. Legacy artlist_runs is deprecated.
 func (s *Service) FindActiveJob(ctx context.Context, activeKey string) (*models.Job, error) {
 	if s.jobsDB == nil {
 		return nil, fmt.Errorf("jobs database not configured")
@@ -190,11 +184,7 @@ func (s *Service) FindActiveJob(ctx context.Context, activeKey string) (*models.
 	if err == nil && job != nil && !job.Status.IsTerminal() {
 		return job, nil
 	}
-	// Fallback to legacy for backward compatibility
-	rec, err2 := s.findActiveRunRecord(ctx, activeKey)
-	if err2 == nil && rec != nil {
-		return RunRecordToJob(rec)
-	}
+	// Legacy artlist_runs table is deprecated. No fallback.
 	return nil, err
 }
 

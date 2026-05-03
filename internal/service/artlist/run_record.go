@@ -9,7 +9,13 @@ import (
 	"velox/go-master/pkg/models"
 )
 
-// artlistRunRecord represents a legacy artlist_runs record (read-only).
+// DEPRECATED: artlist_runs table and related code.
+// The jobs table is now the ONLY source of truth for artlist runs.
+// This file is kept only for reference and potential manual data migration.
+// No new code should use these functions - they are not called anywhere.
+// To access legacy records: query the artlist_runs table directly via DB.
+
+// artlistRunRecord represents a legacy artlist_runs record (DEPRECATED - read-only).
 // The artlist_runs table is maintained for backward compatibility with legacy records.
 // New runs should use the jobs table directly.
 type artlistRunRecord struct {

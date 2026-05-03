@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
+
+	drivequery "velox/go-master/pkg/drive"
 )
 
 // Uploader handles Google Drive file operations.
 type Uploader struct {
-	Service *drive.Service
+	Service *driveapi.Service
 	Log     *zap.Logger
 }
 
@@ -37,7 +39,7 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 	}
 	defer f.Close()
 
-	file := &drive.File{
+	file := &driveapi.File{
 		Name: filename,
 	}
 	if folderID != "" {
@@ -84,8 +86,7 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 	}
 
 	// Search for existing folder
-	query := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-		escapeQuery(name), parentID)
+	query := drivequery.BuildNameQuery(parentID, name, "application/vnd.google-apps.folder")
 	list, err := u.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 	if err != nil {
 		u.Log.Error("failed to search for folder",
@@ -105,7 +106,7 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 	}
 
 	// Create new folder
-	folder := &drive.File{
+	folder := &driveapi.File{
 		Name:     name,
 		MimeType: "application/vnd.google-apps.folder",
 	}
