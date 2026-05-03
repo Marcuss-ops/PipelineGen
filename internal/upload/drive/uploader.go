@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -129,6 +130,49 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 	)
 
 	return created.Id, nil
+}
+
+// TrashFile moves a file to the trash in Google Drive.
+// This is safer than permanent deletion as files can be recovered.
+func (u *Uploader) TrashFile(ctx context.Context, fileID string) error {
+	if u.Service == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(fileID) == "" {
+		return fmt.Errorf("file id is required")
+	}
+
+	_, err := u.Service.Files.Update(fileID, &driveapi.File{
+		Trashed: true,
+	}).Fields("id", "trashed").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to trash drive file: %w", err)
+	}
+
+	if u.Log != nil {
+		u.Log.Info("drive file moved to trash", zap.String("file_id", fileID))
+	}
+	return nil
+}
+
+// DeleteFile permanently deletes a file from Google Drive.
+// Use TrashFile instead for safer operations.
+func (u *Uploader) DeleteFile(ctx context.Context, fileID string) error {
+	if u.Service == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(fileID) == "" {
+		return fmt.Errorf("file id is required")
+	}
+
+	if err := u.Service.Files.Delete(fileID).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to delete drive file: %w", err)
+	}
+
+	if u.Log != nil {
+		u.Log.Info("drive file deleted", zap.String("file_id", fileID))
+	}
+	return nil
 }
 
 // openFile is a helper to open a file (easily mockable for tests).

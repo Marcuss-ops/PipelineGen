@@ -6,6 +6,7 @@ import (
 	"velox/go-master/internal/api"
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	drivehandler "velox/go-master/internal/api/handlers/drive"
 	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
 	mediahandler "velox/go-master/internal/api/handlers/media"
@@ -16,6 +17,7 @@ import (
 	"velox/go-master/internal/core/media"
 	mediarepo "velox/go-master/internal/repository/media"
 	"velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaregistry"
 	drive "velox/go-master/internal/upload/drive"
@@ -74,6 +76,13 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		artlistService = nil
+	}
+
+	// Create drive cleanup service (for trash/delete sync between SQLite and Drive)
+	var driveCleanupSvc *drivecleanup.Service
+	if coreDeps.DriveClient != nil {
+		driveCleanupSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log, true)
+		log.Info("drive cleanup service initialized (trash mode)")
 	}
 
 	// Register artlist job handler
@@ -143,6 +152,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		Catalog:        common.NewCatalogHandler(coreDeps.CatalogRepo),
 		YouTubeClip:    youtubeClipHandler,
 		Jobs:           jobsHandler,
+		Drive:          drivehandler.NewHandler(driveCleanupSvc),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
