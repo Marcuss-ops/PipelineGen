@@ -11,6 +11,7 @@ import (
 
 	"velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
+	drivehandler "velox/go-master/internal/api/handlers/drive"
 	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
 	mediahandler "velox/go-master/internal/api/handlers/media"
@@ -37,6 +38,7 @@ type Handlers struct {
 	Catalog        *common.CatalogHandler
 	YouTubeClip    *youtubecliphandler.Handler
 	Jobs           *jobs.Handler
+	Drive          *drivehandler.Handler
 }
 
 // Router holds all API handlers
@@ -174,6 +176,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Media != nil {
 				mediaGroup := protected.Group("/media")
 				h.Media.RegisterRoutes(mediaGroup)
+			}
+			if h.Drive != nil {
+				driveGroup := protected.Group("/drive")
+				h.Drive.RegisterRoutes(driveGroup)
 			}
 		}
 	}

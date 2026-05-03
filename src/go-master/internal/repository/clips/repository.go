@@ -73,6 +73,28 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 	return err
 }
 
+// DeleteClip deletes a clip by its ID.
+func (r *Repository) DeleteClip(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip id is required")
+	}
+
+	_, err := r.db.ExecContext(ctx, "DELETE FROM clips WHERE id = ?", id)
+	return err
+}
+
+// DeleteClipByDriveLink deletes a clip by its Drive link (checks both drive_link and download_link).
+func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
+	driveLink = strings.TrimSpace(driveLink)
+	if driveLink == "" {
+		return fmt.Errorf("drive link is required")
+	}
+
+	_, err := r.db.ExecContext(ctx, "DELETE FROM clips WHERE drive_link = ? OR download_link = ?", driveLink, driveLink)
+	return err
+}
+
 // ListClips returns all clips, optionally filtered by source
 func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Clip, error) {
 	query := buildClipQuery(source)
