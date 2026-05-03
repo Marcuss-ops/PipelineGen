@@ -52,6 +52,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	artlistService, err = artlist.NewService(
 		cfg,
 		coreDeps.DB.DB,
+		coreDeps.JobsDB,
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
