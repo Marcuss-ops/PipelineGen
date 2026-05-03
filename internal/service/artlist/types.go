@@ -10,6 +10,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaasset"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 )
@@ -25,10 +26,11 @@ type Service struct {
 	driveFolderID    string
 	driveDestination *drivedestination.Service
 	mediaProcessor   *mediaasset.Processor
+	mediaFinalizer   *mediaregistry.Finalizer
 	log              *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, mediaProcessor *mediaasset.Processor, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, mediaProcessor *mediaasset.Processor, mediaFinalizer *mediaregistry.Finalizer, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -48,6 +50,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPat
 		driveFolderID:    driveFolderID,
 		driveDestination: driveDestination,
 		mediaProcessor:   mediaProcessor,
+		mediaFinalizer:   mediaFinalizer,
 		log:              log,
 	}, nil
 }

@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/core/media"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/youtubeclip"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -49,6 +50,12 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
 	driveFolderID := drive.ResolveArtlistRootFolderID(cfg)
 	var artlistService *artlist.Service
+
+	// Create mediaregistry components for Artlist
+	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
+	driveVerifier := mediaregistry.NewHTTPDriveVerifier()
+	mediaFinalizer := mediaregistry.NewFinalizer(clipsRegistry, driveVerifier, log)
+
 	artlistService, err = artlist.NewService(
 		cfg,
 		coreDeps.DB.DB,
@@ -60,6 +67,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		driveFolderID,
 		driveDestinationService,
 		coreDeps.MediaProcessor,
+		mediaFinalizer,
 		log,
 	)
 	if err != nil {
