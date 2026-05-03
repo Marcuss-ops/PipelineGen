@@ -1,3 +1,6 @@
+// Package audio provides audio processing utilities using FFmpeg.
+//
+// STATUS: ACTIVE - This package is actively used by voiceover service.
 package audio
 
 import (

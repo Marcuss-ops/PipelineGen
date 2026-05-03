@@ -9,6 +9,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/drive"
 )
 
 // Service handles Drive destination resolution (groups, folders, subfolders).
@@ -137,8 +138,7 @@ func (s *Service) resolveGroupFolder(ctx context.Context, group string) (string,
 			continue
 		}
 		seen[name] = true
-		escapedName := strings.ReplaceAll(name, "'", "\\'")
-		query := fmt.Sprintf("name = '%s' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", escapedName)
+		query := drive.BuildNameQuery("root", name, "application/vnd.google-apps.folder")
 		list, err := s.driveSvc.Files.List().
 			Q(query).
 			Fields("files(id, name)").
@@ -167,8 +167,7 @@ func (s *Service) resolveGroupFolder(ctx context.Context, group string) (string,
 // getOrCreateSubfolder gets or creates a subfolder within a parent folder.
 func (s *Service) getOrCreateSubfolder(ctx context.Context, parentID, name string) (string, error) {
 	// Search for existing subfolder
-	query := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-		name, parentID)
+	query := drive.BuildNameQuery(parentID, name, "application/vnd.google-apps.folder")
 	list, err := s.driveSvc.Files.List().
 		Q(query).
 		Fields("files(id, name)").

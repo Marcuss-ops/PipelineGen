@@ -49,19 +49,69 @@ func NewProcessor(
 	}
 }
 
+// DownloadProcessUpload orchestrates the full pipeline: download, process, hash, upload.
+// This is a facade method that delegates to smaller internal methods.
 func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error) {
 	result := &AssetResult{
 		ID:     input.ID,
 		Status: "failed",
 	}
 
-	tmpDir := filepath.Join(p.dataDir, p.tempDir)
+	// Setup paths
+	tmpDir, saveDir := p.setupDirectories(input)
+	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s.mp4", input.ID))
+	finalFilename := SafeName(input.Name) + "_" + input.ID + ".mp4"
+	processedPath := OutputPath(saveDir, finalFilename)
+
+	// Step 1: Download
+	actualRawPath, err := p.downloadStep(ctx, input, rawPath)
+	if err != nil {
+		result.Error = fmt.Sprintf("download failed: %v", err)
+		return result, err
+	}
+
+	// Step 2: Process/Normalize
+	processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
+	if err != nil {
+		_ = os.Remove(actualRawPath)
+		result.Error = fmt.Sprintf("process failed: %v", err)
+		return result, err
+	}
+
+	// Step 3: Hash
+	fileHash, err := p.hashStep(ctx, processedPath)
+	if err != nil {
+		_ = os.Remove(actualRawPath)
+		_ = os.Remove(processedPath)
+		result.Error = fmt.Sprintf("hash failed: %v", err)
+		return result, err
+	}
+	result.FileHash = fileHash
+	result.LocalPath = processedPath
+	result.Filename = filepath.Base(processedPath)
+
+	// Cleanup raw file after processing
+	_ = os.Remove(actualRawPath)
+
+	// Step 4: Upload to Drive
+	if err := p.uploadStep(ctx, input, processedPath, result); err != nil {
+		result.Error = fmt.Sprintf("upload failed: %v", err)
+		return result, err
+	}
+
+	result.Status = "processed"
+	return result, nil
+}
+
+// setupDirectories creates temp and save directories, returning their paths.
+func (p *Processor) setupDirectories(input AssetInput) (tmpDir, saveDir string) {
+	tmpDir = filepath.Join(p.dataDir, p.tempDir)
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		p.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))
 		tmpDir = os.TempDir()
 	}
 
-	saveDir := input.OutputDir
+	saveDir = input.OutputDir
 	if saveDir == "" {
 		saveDir = filepath.Join(p.dataDir, "mediaassets", SafeName(input.Term))
 	}
@@ -70,11 +120,11 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		saveDir = tmpDir
 	}
 
-	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s.mp4", input.ID))
-	finalFilename := SafeName(input.Name) + "_" + input.ID + ".mp4"
-	processedPath := OutputPath(saveDir, finalFilename)
+	return tmpDir, saveDir
+}
 
-	// Build download request
+// downloadStep downloads the asset from the source URL.
+func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath string) (actualPath string, err error) {
 	dlReq := &downloader.DownloadRequest{
 		URL:             input.SourceURL,
 		OutputPath:      rawPath,
@@ -90,61 +140,61 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 
 	p.log.Info("downloading asset", zap.String("id", input.ID), zap.String("url", input.SourceURL), zap.Strings("sections", input.DownloadSections))
 	if err := p.dl.Download(ctx, dlReq); err != nil {
-		result.Error = fmt.Sprintf("download failed: %v", err)
-		return result, err
+		return "", err
 	}
 
-	actualRawPath := ResolveDownloadedFile(rawPath)
-	if actualRawPath != rawPath {
-		p.log.Info("resolved actual download path", zap.String("expected", rawPath), zap.String("actual", actualRawPath))
+	actualPath = ResolveDownloadedFile(rawPath)
+	if actualPath != rawPath {
+		p.log.Info("resolved actual download path", zap.String("expected", rawPath), zap.String("actual", actualPath))
 	}
 
-	// Determine normalize options
+	return actualPath, nil
+}
+
+// processStep normalizes/processes the video if needed.
+func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, processedPath string) (string, error) {
 	shouldNormalize := input.Normalize == nil || *input.Normalize
-	if shouldNormalize {
-		opts := p.videoCfg
-		opts.KeepAudio = input.KeepAudio
-		opts.DisableDuration = input.DisableDuration
-
-		p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath), zap.Bool("disable_duration", opts.DisableDuration))
-		if err := p.ffmpeg.Normalize(ctx, actualRawPath, processedPath, opts); err != nil {
-			_ = os.Remove(actualRawPath)
-			result.Error = fmt.Sprintf("process failed: %v", err)
-			return result, err
-		}
-	} else {
+	if !shouldNormalize {
 		p.log.Info("skipping normalization as requested", zap.String("id", input.ID))
-		processedPath = actualRawPath
+		return rawPath, nil
 	}
 
-	p.log.Info("calculating file hash", zap.String("id", input.ID), zap.String("path", processedPath))
-	fileHash, err := hashutil.MD5File(processedPath)
+	opts := p.videoCfg
+	opts.KeepAudio = input.KeepAudio
+	opts.DisableDuration = input.DisableDuration
+
+	p.log.Info("processing video", zap.String("id", input.ID), zap.String("output", processedPath), zap.Bool("disable_duration", opts.DisableDuration))
+	if err := p.ffmpeg.Normalize(ctx, rawPath, processedPath, opts); err != nil {
+		return "", err
+	}
+
+	return processedPath, nil
+}
+
+// hashStep calculates the MD5 hash of the processed file.
+func (p *Processor) hashStep(ctx context.Context, path string) (string, error) {
+	p.log.Info("calculating file hash", zap.String("path", path))
+	return hashutil.MD5File(path)
+}
+
+// uploadStep uploads the processed file to Google Drive.
+func (p *Processor) uploadStep(ctx context.Context, input AssetInput, path string, result *AssetResult) error {
+	if p.driveSvc == nil || input.FolderID == "" {
+		return nil
+	}
+
+	filename := filepath.Base(path)
+	p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", filename))
+
+	uploader := &drive.Uploader{Service: p.driveSvc, Log: p.log}
+	uploadResult, err := uploader.UploadFile(ctx, path, input.FolderID, filename)
 	if err != nil {
-		_ = os.Remove(actualRawPath)
-		_ = os.Remove(processedPath)
-		result.Error = fmt.Sprintf("hash failed: %v", err)
-		return result, err
-	}
-	result.FileHash = fileHash
-	result.LocalPath = processedPath
-	result.Filename = filepath.Base(processedPath)
-
-	_ = os.Remove(actualRawPath)
-
-	if p.driveSvc != nil && input.FolderID != "" {
-		filename := filepath.Base(processedPath)
-		p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", filename))
-		uploader := &drive.Uploader{Service: p.driveSvc, Log: p.log}
-		uploadResult, err := uploader.UploadFile(ctx, processedPath, input.FolderID, filename)
-		if err != nil {
-			result.Error = fmt.Sprintf("upload failed: %v", err)
-			return result, err
-		}
-		result.DriveLink = uploadResult.WebViewLink
-		result.DownloadLink = "https://drive.google.com/uc?id=" + uploadResult.FileID
-		p.log.Info("drive upload success", zap.String("id", input.ID), zap.String("file_id", uploadResult.FileID))
+		return err
 	}
 
-	result.Status = "processed"
-	return result, nil
+	result.DriveLink = uploadResult.WebViewLink
+	result.DownloadLink = "https://drive.google.com/uc?id=" + uploadResult.FileID
+	p.log.Info("drive upload success", zap.String("id", input.ID), zap.String("file_id", uploadResult.FileID))
+
+	return nil
 }

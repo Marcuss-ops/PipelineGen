@@ -1,3 +1,6 @@
+// Package ffmpeg provides FFmpeg operations for video processing.
+//
+// STATUS: ACTIVE - This package is actively used by mediaasset.Processor and mediapipeline.
 package ffmpeg
 
 import (

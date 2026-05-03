@@ -24,24 +24,22 @@ func (a *ClipsRepositoryAdapter) UpsertAsset(ctx context.Context, asset MediaAss
 }
 
 // GetAsset retrieves a MediaAsset by workspace and asset ID.
+// Uses direct DB query - no in-memory filtering.
 func (a *ClipsRepositoryAdapter) GetAsset(ctx context.Context, workspaceID, assetID string) (MediaAsset, error) {
-	// The clips repository doesn't have a direct GetClip by ID that returns workspace
-	// For now, list all and filter
-	clipsList, err := a.repo.ListClips(ctx, "")
+	clip, err := a.repo.GetClip(ctx, assetID)
 	if err != nil {
 		return MediaAsset{}, err
 	}
-
-	for _, c := range clipsList {
-		if c.ID == assetID {
-			return ClipToMediaAsset(*c, workspaceID, ""), nil
-		}
+	if clip == nil {
+		return MediaAsset{}, nil
 	}
-
-	return MediaAsset{}, nil
+	return ClipToMediaAsset(*clip, workspaceID, ""), nil
 }
 
 // SearchAssets searches for MediaAssets matching the query.
+// TODO: This is a temporary adapter - it lists all clips and filters in memory.
+// A proper implementation should use DB-level filtering (FTS5 or WHERE clauses).
+// Also, workspace/project filtering is faked by passing values to ClipToMediaAsset.
 func (a *ClipsRepositoryAdapter) SearchAssets(ctx context.Context, query SearchQuery) ([]MediaAsset, error) {
 	source := ""
 	if len(query.SourceKinds) > 0 {
@@ -68,6 +66,9 @@ func (a *ClipsRepositoryAdapter) SearchAssets(ctx context.Context, query SearchQ
 }
 
 // ListAssets lists MediaAssets for a workspace/project.
+// TODO: This is a temporary adapter - it lists ALL clips and ignores workspace/project
+// at the DB level. Workspace/project are faked by passing values to ClipToMediaAsset.
+// A proper implementation needs a real media_items table with workspace/project columns.
 func (a *ClipsRepositoryAdapter) ListAssets(ctx context.Context, workspaceID, projectID string, limit, offset int) ([]MediaAsset, error) {
 	clipsList, err := a.repo.ListClips(ctx, "")
 	if err != nil {

@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/repository/clips"
+	drivequery "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 )
 
@@ -47,13 +48,13 @@ type Summary struct {
 }
 
 type Service struct {
-	driveClient *drive.Service
+	driveClient *driveapi.Service
 	log         *zap.Logger
 	targets     []Target
 	mu          sync.Mutex
 }
 
-func NewService(driveClient *drive.Service, targets []Target, log *zap.Logger) *Service {
+func NewService(driveClient *driveapi.Service, targets []Target, log *zap.Logger) *Service {
 	return &Service{
 		driveClient: driveClient,
 		log:         log,
@@ -124,7 +125,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 		rootLink = strings.TrimSpace(rootMeta.WebViewLink)
 	}
 	if rootLink == "" {
-		rootLink = "https://drive.google.com/drive/folders/" + target.RootFolderID
+		rootLink = "https://driveapi.google.com/drive/folders/" + target.RootFolderID
 	}
 
 	now := time.Now().UTC()
@@ -185,9 +186,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		}
 		if link == "" {
 			if child.MimeType == folderMimeType {
-				link = "https://drive.google.com/drive/folders/" + child.Id
+				link = "https://driveapi.google.com/drive/folders/" + child.Id
 			} else {
-				link = "https://drive.google.com/file/d/" + child.Id
+				link = "https://driveapi.google.com/file/d/" + child.Id
 			}
 		}
 
@@ -238,16 +239,16 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 	return requested, synced, failed, nil
 }
 
-func (s *Service) listChildren(ctx context.Context, folderID string) ([]*drive.File, error) {
-	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
+func (s *Service) listChildren(ctx context.Context, folderID string) ([]*driveapi.File, error) {
+	query := drivequery.BuildQuery(folderID)
 	call := s.driveClient.Files.List().
 		Q(query).
 		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
 		PageSize(1000).
 		Context(ctx)
 
-	var files []*drive.File
-	err := call.Pages(ctx, func(fl *drive.FileList) error {
+	var files []*driveapi.File
+	err := call.Pages(ctx, func(fl *driveapi.FileList) error {
 		files = append(files, fl.Files...)
 		return nil
 	})

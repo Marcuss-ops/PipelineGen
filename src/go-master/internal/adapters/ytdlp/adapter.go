@@ -1,3 +1,7 @@
+// Package ytdlp defines adapter interfaces for yt-dlp download operations.
+//
+// STATUS: EXPERIMENTAL - Interface defined but not yet implemented or used.
+// TODO: Implement and migrate download operations to use this adapter.
 package ytdlp
 
 import "context"

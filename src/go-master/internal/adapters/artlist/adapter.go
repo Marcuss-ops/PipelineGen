@@ -1,3 +1,7 @@
+// Package artlist defines adapter interfaces for Artlist scraper.
+//
+// STATUS: EXPERIMENTAL - Interface defined but not yet implemented or used.
+// TODO: Implement and migrate artlist service to use this adapter.
 package artlist
 
 import "context"
