@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/api/handlers/voiceover"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/core/media"
+	mediarepo "velox/go-master/internal/repository/media"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaregistry"
@@ -123,7 +124,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 
 	// Create media handler with ManifestExporter
 	var mediaHandler *mediahandler.Handler
-	mediaRepo := media.NewClipsRepositoryAdapter(coreDeps.ClipsOnlyRepo)
+	mediaRepo := mediarepo.NewRepository(coreDeps.DB.DB)
 	if mediaRepo != nil {
 		exporter := media.NewManifestExporter(mediaRepo)
 		mediaHandler = mediahandler.NewHandler(exporter)
