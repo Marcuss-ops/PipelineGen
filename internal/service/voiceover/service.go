@@ -240,7 +240,7 @@ func (s *Service) processLanguage(
 			return item.fail("finalize_failed", err)
 		}
 		if !finalizeResult.OK {
-			return item.fail("finalize_failed", fmt.Errorf(finalizeResult.Error))
+			return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
 		}
 	}
 

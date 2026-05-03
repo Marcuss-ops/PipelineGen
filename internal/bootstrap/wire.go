@@ -19,6 +19,7 @@ import (
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/drivereconcile"
 	"velox/go-master/internal/service/mediaregistry"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -83,6 +84,13 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	if coreDeps.DriveClient != nil {
 		driveCleanupSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log, true)
 		log.Info("drive cleanup service initialized (trash mode)")
+	}
+
+	// Create drive reconcile service (for detecting mismatches between SQLite and Drive)
+	var driveReconcileSvc *drivereconcile.Service
+	if coreDeps.DriveClient != nil {
+		driveReconcileSvc = drivereconcile.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log)
+		log.Info("drive reconcile service initialized")
 	}
 
 	// Register artlist job handler
@@ -152,7 +160,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		Catalog:        common.NewCatalogHandler(coreDeps.CatalogRepo),
 		YouTubeClip:    youtubeClipHandler,
 		Jobs:           jobsHandler,
-		Drive:          drivehandler.NewHandler(driveCleanupSvc),
+		Drive:          drivehandler.NewHandler(driveCleanupSvc, driveReconcileSvc),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
