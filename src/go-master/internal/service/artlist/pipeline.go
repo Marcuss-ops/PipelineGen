@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaasset"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/pipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/pathutil"
@@ -310,31 +311,64 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 		_ = os.Remove(filepath.Join(os.TempDir(), fmt.Sprintf("raw_%s.mp4", clip.ID)))
 
-		// Update clip with results from media processor
-		if result.DriveLink != "" {
-			clip.DriveLink = result.DriveLink
-			clip.DownloadLink = result.DownloadLink
-		}
-		clip.FileHash = result.FileHash
-		clip.Metadata = composeArtlistMetadata(clip.Metadata, result.FileHash, result.FileHash)
-		clip.UpdatedAt = time.Now().UTC()
-		clip.LocalPath = result.LocalPath
-		
-		s.log.Info("updating database record", zap.String("clip_id", clip.ID), zap.String("local_path", result.LocalPath))
-		if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
-			s.log.Error("db update failed", zap.String("clip_id", clip.ID), zap.Error(err))
-			resp.Failed++
-		resp.Items = append(resp.Items, RunTagItem{
-			ClipID:       clip.ID,
+		// Use mediaregistry finalizer to verify and save
+		metadata := composeArtlistMetadata(clip.Metadata, result.FileHash, result.FileHash)
+		mediaRec := &mediaregistry.MediaRecord{
+			ID:           clip.ID,
 			Name:         clip.Name,
-			Filename:     clip.Filename,
-			Status:       "db_update_failed",
-			DriveLink:    clip.DriveLink,
-			DownloadLink: clip.DownloadLink,
+			Filename:     result.Filename,
+			Source:       "artlist",
+			Category:     "stock",
+			MediaType:    "artlist",
+			ExternalURL:  url,
+			FolderID:     tagFolderID,
+			FolderPath:   tagFolderName,
 			LocalPath:    result.LocalPath,
-			FileHash:     clip.FileHash,
-			Error:        err.Error(),
+			DriveLink:    result.DriveLink,
+			DownloadLink: result.DownloadLink,
+			FileHash:     result.FileHash,
+			Metadata:     metadata,
+			Tags:         clip.Tags,
+			Status:       result.Status,
+		}
+
+		finalResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, mediaregistry.FinalizeOptions{
+			RequireLocal: true,
+			RequireHash:  true,
+			RequireDrive: result.DriveLink != "",
+			VerifyDB:     true,
 		})
+		if err != nil {
+			s.log.Error("finalize error", zap.String("clip_id", clip.ID), zap.Error(err))
+			resp.Failed++
+			resp.Items = append(resp.Items, RunTagItem{
+				ClipID:       clip.ID,
+				Name:         clip.Name,
+				Filename:     result.Filename,
+				Status:       "finalize_error",
+				DriveLink:    result.DriveLink,
+				DownloadLink: result.DownloadLink,
+				LocalPath:    result.LocalPath,
+				FileHash:     result.FileHash,
+				Error:        err.Error(),
+			})
+			continue
+		}
+
+		if !finalResult.OK {
+			s.log.Warn("finalize failed", zap.String("clip_id", clip.ID), zap.String("error", finalResult.Error))
+			resp.Failed++
+			resp.Items = append(resp.Items, RunTagItem{
+				ClipID:       clip.ID,
+				Name:         clip.Name,
+				Filename:     result.Filename,
+				Status:       finalResult.Status,
+				DriveLink:    result.DriveLink,
+				DownloadLink: result.DownloadLink,
+				LocalPath:    result.LocalPath,
+				FileHash:     result.FileHash,
+				Error:        finalResult.Error,
+			})
 			continue
 		}
 
@@ -343,19 +377,20 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.Items = append(resp.Items, RunTagItem{
 			ClipID:       clip.ID,
 			Name:         clip.Name,
-			Filename:     clip.Filename,
-			Status:       "processed",
+			Filename:     result.Filename,
+			Status:       finalResult.Status,
 			DownloadURL:  url,
-			DriveLink:    clip.DriveLink,
-			DownloadLink: clip.DownloadLink,
-			LocalPath:    result.LocalPath,
-			FileHash:     clip.FileHash,
+			DriveLink:    finalResult.Record.DriveLink,
+			DownloadLink: finalResult.Record.DownloadLink,
+			LocalPath:    finalResult.Record.LocalPath,
+			FileHash:     finalResult.Record.FileHash,
 		})
 
 		s.log.Info("clip pipeline item completed",
 			zap.String("clip_id", clip.ID),
-			zap.String("drive_link", clip.DriveLink),
-			zap.String("local_path", result.LocalPath),
+			zap.String("status", finalResult.Status),
+			zap.String("drive_link", finalResult.Record.DriveLink),
+			zap.String("local_path", finalResult.Record.LocalPath),
 		)
 	}
 

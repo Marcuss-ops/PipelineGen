@@ -138,6 +138,25 @@ func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTa
 		if resp.LastProcessedAt != nil {
 			job.Result["last_processed_at"] = *resp.LastProcessedAt
 		}
+
+		// Include items with detailed status
+		if len(resp.Items) > 0 {
+			items := make([]map[string]interface{}, 0, len(resp.Items))
+			for _, item := range resp.Items {
+				items = append(items, map[string]interface{}{
+					"clip_id":       item.ClipID,
+					"name":          item.Name,
+					"filename":      item.Filename,
+					"status":        item.Status,
+					"drive_link":    item.DriveLink,
+					"download_link": item.DownloadLink,
+					"local_path":    item.LocalPath,
+					"file_hash":     item.FileHash,
+					"error":         item.Error,
+				})
+			}
+			job.Result["items"] = items
+		}
 	}
 
 	return nil
@@ -186,12 +205,12 @@ func (s *Service) loadJobFromJobsDB(ctx context.Context, jobID string) (*models.
 	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
 
 	query := `
-		SELECT id, type, status, priority, project, video_name, active_key,
-		       payload_json, result_json, progress, error, retry_count, max_retries,
+	SELECT id, "type", status, priority, project, video_name, active_key,
+		       payload_json, result_json, progress, "error", retry_count, max_retries,
 		       worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at
-		FROM jobs
-		WHERE id = ?
-		LIMIT 1
+	FROM jobs
+	WHERE id = ?
+	LIMIT 1
 	`
 
 	err := s.jobsDB.QueryRowContext(ctx, query, jobID).Scan(
