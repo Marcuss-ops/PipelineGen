@@ -107,7 +107,7 @@ func buildClipQuery(source string) string {
 	return query
 }
 
-// SearchClips searches clips by tag using FTS5.
+// SearchClips searches clips by tag or group_name using FTS5.
 // Falls back to LIKE search if FTS5 table doesn't exist.
 func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Clip, error) {
 	// Try FTS5 search first
@@ -117,7 +117,8 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 		JOIN clips c ON c.id = fts.rowid
 		WHERE clips_fts MATCH ?
 		ORDER BY rank`
-	rows, err := r.db.QueryContext(ctx, query, "tags:\""+tag+"*\"")
+	matchExpr := "(tags:\"" + tag + "*\" OR group_name:\"" + tag + "*\")"
+	rows, err := r.db.QueryContext(ctx, query, matchExpr)
 	if err == nil {
 		defer rows.Close()
 		var clips []*models.Clip
@@ -134,9 +135,10 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 		return clips, nil
 	}
 	r.log.Warn("FTS5 search failed, falling back to LIKE", zap.Error(err))
-	// Fallback to LIKE search
-	query = buildClipQuery("") + " WHERE tags LIKE ?"
-	rows, err = r.db.QueryContext(ctx, query, "%"+tag+"%")
+	// Fallback to LIKE search on multiple fields
+	query = buildClipQuery("") + " WHERE (tags LIKE ? OR group_name LIKE ? OR name LIKE ? OR category LIKE ?)"
+	likePattern := "%" + tag + "%"
+	rows, err = r.db.QueryContext(ctx, query, likePattern, likePattern, likePattern, likePattern)
 	if err != nil {
 		return nil, err
 	}

@@ -31,9 +31,9 @@ type AppDeps struct {
 	Cleanup  func()
 }
 
-// WireServices initializes the minimal server composition root.
+// WireServices initializes the full server composition root.
 func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
-	return WireMinimal(cfg, log, mode)
+	return WireScriptDocs(cfg, log, mode)
 }
 
 // WireScriptDocs initializes the minimal text->doc server.
