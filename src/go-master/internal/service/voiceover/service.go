@@ -9,6 +9,7 @@ import (
 
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/audioasset"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/pkg/config"
 
@@ -24,6 +25,7 @@ type Service struct {
 	driveClient       *gdrive.Service
 	assetDestResolver *assetdestination.Resolver
 	audioProcessor    *audioasset.Processor
+	mediaFinalizer    *mediaregistry.Finalizer
 	repo              *voiceovers.Repository
 }
 
@@ -33,6 +35,7 @@ func NewService(
 	outputDir string,
 	log *zap.Logger,
 	driveClient *gdrive.Service,
+	mediaFinalizer *mediaregistry.Finalizer,
 	repo *voiceovers.Repository,
 ) *Service {
 	// Create asset destination resolver
@@ -54,6 +57,7 @@ func NewService(
 		driveClient:       driveClient,
 		assetDestResolver: assetDestResolver,
 		audioProcessor:    audioProcessor,
+		mediaFinalizer:    mediaFinalizer,
 		repo:              repo,
 	}
 }
@@ -196,8 +200,47 @@ func (s *Service) processLanguage(
 
 	// Save to DB if requested
 	if boolDefault(req.SaveDB, false) {
-		if err := s.saveRecord(ctx, req, item, requestID, textHash, dest); err != nil {
-			return item.fail("db_save_failed", err)
+		// Build metadata with voiceover-specific fields
+		meta := map[string]interface{}{
+			"text_hash":     textHash,
+			"text_preview":  truncateString(req.Text, 100),
+			"language":      item.Language,
+			"voice":         item.Voice,
+			"strategy":      req.Strategy,
+			"request_id":    requestID,
+			"cleaned_path":  item.CleanedPath,
+		}
+		metaJSON, _ := json.Marshal(meta)
+
+		mediaRec := &mediaregistry.MediaRecord{
+			ID:           item.ID,
+			Source:       "voiceover",
+			Name:         truncateString(req.Text, 100),
+			Filename:     item.Filename,
+			FolderID:     dest.FolderID,
+			FolderPath:   dest.FolderPath,
+			MediaType:    "audio",
+			DriveLink:    item.DriveLink,
+			DownloadLink: item.DownloadLink,
+			FileHash:     item.FileHash,
+			LocalPath:    item.CleanedPath,
+			Status:       item.Status,
+			Metadata:     string(metaJSON),
+		}
+
+		finalizeOpts := mediaregistry.FinalizeOptions{
+			RequireLocal: false,
+			RequireHash:  false,
+			RequireDrive: false,
+			VerifyDB:    true,
+		}
+
+		finalizeResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, finalizeOpts)
+		if err != nil {
+			return item.fail("finalize_failed", err)
+		}
+		if !finalizeResult.OK {
+			return item.fail("finalize_failed", fmt.Errorf(finalizeResult.Error))
 		}
 	}
 
@@ -312,46 +355,7 @@ func existingToItem(existing *voiceovers.Record, status string) BatchItem {
 	}
 }
 
-func (s *Service) saveRecord(ctx context.Context, req *BatchRequest, item BatchItem, requestID string, textHash string, dest *ResolvedDestination) error {
-	if s.repo == nil {
-		return nil
-	}
 
-	rec := &voiceovers.Record{
-		ID:          item.ID,
-		RequestID:   requestID,
-		TextHash:    textHash,
-		TextPreview: truncateString(req.Text, 100),
-		Language:    item.Language,
-		Voice:       item.Voice,
-		Filename:    item.Filename,
-		LocalPath:   item.LocalPath,
-		CleanedPath: item.CleanedPath,
-		Status:      item.Status,
-		FileHash:    item.FileHash,
-		Strategy:    req.Strategy,
-	}
-
-	if dest != nil {
-		rec.FolderID = dest.FolderID
-		rec.FolderPath = dest.FolderPath
-	}
-
-	if item.DriveLink != "" {
-		rec.DriveLink = item.DriveLink
-		rec.DownloadLink = item.DownloadLink
-		rec.Status = "processed"
-	}
-
-	metadata := ""
-	if req.Metadata != nil {
-		b, _ := json.Marshal(req.Metadata)
-		metadata = string(b)
-	}
-	rec.Metadata = metadata
-
-	return s.repo.Upsert(ctx, rec)
-}
 
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
