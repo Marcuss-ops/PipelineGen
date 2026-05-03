@@ -2,6 +2,8 @@ package artlist
 
 import (
 	"io"
+	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -106,6 +108,15 @@ func (h *Handler) ImportScraperDB(c *gin.Context) {
 	req, ok := apiutil.BindJSON[ImportScraperDBRequest](c)
 	if !ok {
 		return
+	}
+
+	// Basic validation
+	if req.DBPath != "" {
+		cleanPath := filepath.Clean(req.DBPath)
+		if strings.Contains(cleanPath, "..") {
+			apiutil.BadRequest(c, "invalid database path")
+			return
+		}
 	}
 
 	imported, err := h.service.ImportScraperDB(c.Request.Context(), req.DBPath)

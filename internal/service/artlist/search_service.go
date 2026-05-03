@@ -156,7 +156,11 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 		return liveResp, nil, nil
 	}
 
-	runResp, err := s.StartRunTag(ctx, &RunTagRequest{Term: term, Limit: limit, RootFolderID: s.driveFolderID})
+	driveFolderID := ""
+	if s.driveService != nil {
+		driveFolderID = s.driveService.GetDriveFolderID()
+	}
+	runResp, err := s.StartRunTag(ctx, &RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID})
 	if err != nil {
 		s.log.Warn("artlist discovery queued save but failed to start run", zap.String("term", term), zap.Error(err))
 		return liveResp, nil, nil

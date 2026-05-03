@@ -3,134 +3,39 @@ package artlist
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"velox/go-master/pkg/sqlutil"
+	"velox/go-master/pkg/models"
 )
 
+// artlistRunRecord represents a legacy artlist_runs record (read-only).
+// The artlist_runs table is maintained for backward compatibility with legacy records.
+// New runs should use the jobs table directly.
 type artlistRunRecord struct {
 	RunID           string
 	Term            string
 	RootFolderID    string
 	Strategy        string
 	DryRun          bool
-	Status          string
+	Status          models.JobStatus
 	Found           int
 	Processed       int
 	Skipped         int
 	Failed          int
 	EstimatedSize   int
-	LastProcessedAt *string
+	LastProcessedAt *time.Time
 	RequestJSON     string
 	Error           string
 	TagFolderID     string
-	StartedAt       *string
-	EndedAt         *string
+	StartedAt       *time.Time
+	EndedAt         *time.Time
 	ActiveKey       string
-}
-
-func (s *Service) ensureRunRecord(ctx context.Context, req *RunTagRequest) (*artlistRunRecord, bool, error) {
-	if s.mainDB == nil {
-		return nil, false, fmt.Errorf("main database not configured")
-	}
-	if err := s.ensureRunSchema(ctx); err != nil {
-		return nil, false, err
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	activeKey := runDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun)
-	if rec, err := s.findActiveRunRecord(ctx, activeKey); err == nil && rec != nil {
-		return rec, true, nil
-	}
-
-	runID := uuid.NewString()
-	requestJSON, _ := json.Marshal(req)
-	rec := &artlistRunRecord{
-		RunID:        runID,
-		Term:         req.Term,
-		RootFolderID: req.RootFolderID,
-		Strategy:     req.Strategy,
-		DryRun:       req.DryRun,
-		Status:       "running",
-		RequestJSON:  string(requestJSON),
-		StartedAt:    &now,
-		ActiveKey:    activeKey,
-	}
-
-	_, err := s.mainDB.ExecContext(ctx, `
-		INSERT INTO artlist_runs (
-			run_id, term, root_folder_id, strategy, dry_run, status, active_key,
-			found, processed, skipped, failed, estimated_size, request_json, error,
-			tag_folder_id, started_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, rec.RunID, rec.Term, rec.RootFolderID, rec.Strategy, sqlutil.BoolInt(rec.DryRun), rec.Status, rec.ActiveKey,
-		rec.Found, rec.Processed, rec.Skipped, rec.Failed, rec.EstimatedSize, rec.RequestJSON, rec.Error,
-		rec.TagFolderID, now)
-	if err != nil {
-		if sqlutil.IsUniqueConstraintErr(err) {
-			if existing, findErr := s.findActiveRunRecord(ctx, activeKey); findErr == nil && existing != nil {
-				return existing, true, nil
-			}
-		}
-		return nil, false, err
-	}
-
-	return rec, false, nil
-}
-
-func (s *Service) finishRunRecord(ctx context.Context, runID, status string, resp *RunTagResponse) error {
-	return s.finishRunRecordWithActiveKey(ctx, runID, status, resp, true)
-}
-
-// finishRunRecordWithActiveKey updates the run record. If clearActiveKey is true,
-// it clears the active_key (for final states). If false, it preserves active_key (for retries).
-func (s *Service) finishRunRecordWithActiveKey(ctx context.Context, runID, status string, resp *RunTagResponse, clearActiveKey bool) error {
-	if s.mainDB == nil || strings.TrimSpace(runID) == "" {
-		return nil
-	}
-	if err := s.ensureRunSchema(ctx); err != nil {
-		return err
-	}
-
-	endedAt := time.Now().UTC().Format(time.RFC3339)
-	lastProcessedAt := ""
-	if resp != nil && resp.LastProcessedAt != nil {
-		lastProcessedAt = *resp.LastProcessedAt
-	}
-
-	activeKeySQL := "active_key = ''"
-	if !clearActiveKey {
-		activeKeySQL = "active_key = active_key"
-	}
-
-	_, err := s.mainDB.ExecContext(ctx, `
-		UPDATE artlist_runs
-		SET status = ?,
-			found = ?,
-			processed = ?,
-			skipped = ?,
-			failed = ?,
-			estimated_size = ?,
-			last_processed_at = ?,
-			error = ?,
-			tag_folder_id = ?,
-			ended_at = ?,
-			`+activeKeySQL+`
-		WHERE run_id = ?
-		`, status, resp.Found, resp.Processed, resp.Skipped, resp.Failed, resp.EstimatedSize, sqlutil.NullString(lastProcessedAt), resp.Error, resp.TagFolderID, endedAt, runID)
-	return err
 }
 
 func (s *Service) loadRunRecord(ctx context.Context, runID string) (*artlistRunRecord, error) {
 	if s.mainDB == nil {
 		return nil, fmt.Errorf("main database not configured")
-	}
-	if err := s.ensureRunSchema(ctx); err != nil {
-		return nil, err
 	}
 	row := s.mainDB.QueryRowContext(ctx, `
 		SELECT run_id, term, root_folder_id, strategy, dry_run, status, found, processed, skipped, failed,
@@ -145,9 +50,6 @@ func (s *Service) loadRunRecord(ctx context.Context, runID string) (*artlistRunR
 func (s *Service) findActiveRunRecord(ctx context.Context, activeKey string) (*artlistRunRecord, error) {
 	if s.mainDB == nil {
 		return nil, fmt.Errorf("main database not configured")
-	}
-	if err := s.ensureRunSchema(ctx); err != nil {
-		return nil, err
 	}
 	row := s.mainDB.QueryRowContext(ctx, `
 		SELECT run_id, term, root_folder_id, strategy, dry_run, status, found, processed, skipped, failed,
@@ -164,9 +66,6 @@ func (s *Service) findRunRecordByActiveKey(ctx context.Context, activeKey string
 	if s.mainDB == nil {
 		return nil, fmt.Errorf("main database not configured")
 	}
-	if err := s.ensureRunSchema(ctx); err != nil {
-		return nil, err
-	}
 	row := s.mainDB.QueryRowContext(ctx, `
 		SELECT run_id, term, root_folder_id, strategy, dry_run, status, found, processed, skipped, failed,
 		       estimated_size, last_processed_at, request_json, error, tag_folder_id, started_at, ended_at, active_key
@@ -181,6 +80,7 @@ func (s *Service) findRunRecordByActiveKey(ctx context.Context, activeKey string
 func scanRunRecord(row *sql.Row) (*artlistRunRecord, error) {
 	var rec artlistRunRecord
 	var dryRunInt int
+	var statusStr string
 	var lastProcessedAt sql.NullString
 	var startedAt sql.NullString
 	var endedAt sql.NullString
@@ -190,7 +90,7 @@ func scanRunRecord(row *sql.Row) (*artlistRunRecord, error) {
 		&rec.RootFolderID,
 		&rec.Strategy,
 		&dryRunInt,
-		&rec.Status,
+		&statusStr,
 		&rec.Found,
 		&rec.Processed,
 		&rec.Skipped,
@@ -207,14 +107,24 @@ func scanRunRecord(row *sql.Row) (*artlistRunRecord, error) {
 		return nil, err
 	}
 	rec.DryRun = dryRunInt != 0
+	rec.Status = models.JobStatus(statusStr)
 	if lastProcessedAt.Valid {
-		rec.LastProcessedAt = &lastProcessedAt.String
+		t, err := time.Parse(time.RFC3339, lastProcessedAt.String)
+		if err == nil {
+			rec.LastProcessedAt = &t
+		}
 	}
 	if startedAt.Valid {
-		rec.StartedAt = &startedAt.String
+		t, err := time.Parse(time.RFC3339, startedAt.String)
+		if err == nil {
+			rec.StartedAt = &t
+		}
 	}
 	if endedAt.Valid {
-		rec.EndedAt = &endedAt.String
+		t, err := time.Parse(time.RFC3339, endedAt.String)
+		if err == nil {
+			rec.EndedAt = &t
+		}
 	}
 	return &rec, nil
 }
@@ -223,61 +133,32 @@ func (s *Service) runRecordToResponse(rec *artlistRunRecord) *RunTagResponse {
 	if rec == nil {
 		return &RunTagResponse{OK: false, Status: "not_found", Error: "run not found"}
 	}
-	return &RunTagResponse{
-		OK:              rec.Status != "failed",
-		RunID:           rec.RunID,
-		Status:          rec.Status,
-		Term:            rec.Term,
-		Strategy:        rec.Strategy,
-		DryRun:          rec.DryRun,
-		RootFolderID:    rec.RootFolderID,
-		TagFolderID:     rec.TagFolderID,
-		Found:           rec.Found,
-		Processed:       rec.Processed,
-		Skipped:         rec.Skipped,
-		Failed:          rec.Failed,
-		EstimatedSize:   rec.EstimatedSize,
-		LastProcessedAt: rec.LastProcessedAt,
-		StartedAt:       rec.StartedAt,
-		EndedAt:         rec.EndedAt,
+	resp := &RunTagResponse{
+		OK:            rec.Status != models.StatusFailed,
+		RunID:         rec.RunID,
+		Status:        string(rec.Status),
+		Term:          rec.Term,
+		Strategy:      rec.Strategy,
+		DryRun:        rec.DryRun,
+		RootFolderID:  rec.RootFolderID,
+		TagFolderID:   rec.TagFolderID,
+		Found:         rec.Found,
+		Processed:     rec.Processed,
+		Skipped:       rec.Skipped,
+		Failed:        rec.Failed,
+		EstimatedSize: rec.EstimatedSize,
 	}
-}
-
-func (s *Service) ensureRunSchema(ctx context.Context) error {
-	if s.mainDB == nil {
-		return fmt.Errorf("main database not configured")
+	if rec.LastProcessedAt != nil {
+		s := rec.LastProcessedAt.Format(time.RFC3339)
+		resp.LastProcessedAt = &s
 	}
-
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS artlist_runs (
-			run_id TEXT PRIMARY KEY,
-			term TEXT NOT NULL,
-			root_folder_id TEXT NOT NULL,
-			strategy TEXT NOT NULL DEFAULT 'skip',
-			dry_run INTEGER NOT NULL DEFAULT 0,
-			status TEXT NOT NULL DEFAULT 'queued',
-			active_key TEXT NOT NULL DEFAULT '',
-			found INTEGER NOT NULL DEFAULT 0,
-			processed INTEGER NOT NULL DEFAULT 0,
-			skipped INTEGER NOT NULL DEFAULT 0,
-			failed INTEGER NOT NULL DEFAULT 0,
-			estimated_size INTEGER NOT NULL DEFAULT 0,
-			last_processed_at TEXT,
-			request_json TEXT NOT NULL DEFAULT '{}',
-			error TEXT NOT NULL DEFAULT '',
-			tag_folder_id TEXT DEFAULT '',
-			started_at TEXT NOT NULL DEFAULT (datetime('now')),
-			ended_at TEXT
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_artlist_runs_term_status ON artlist_runs (term, status)`,
-		`CREATE INDEX IF NOT EXISTS idx_artlist_runs_started_at ON artlist_runs (started_at DESC)`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_artlist_runs_active_key ON artlist_runs (active_key) WHERE active_key != ''`,
+	if rec.StartedAt != nil {
+		s := rec.StartedAt.Format(time.RFC3339)
+		resp.StartedAt = &s
 	}
-
-	for _, stmt := range stmts {
-		if _, err := s.mainDB.ExecContext(ctx, stmt); err != nil {
-			return err
-		}
+	if rec.EndedAt != nil {
+		s := rec.EndedAt.Format(time.RFC3339)
+		resp.EndedAt = &s
 	}
-	return nil
+	return resp
 }

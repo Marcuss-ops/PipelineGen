@@ -74,10 +74,10 @@ func (s *Service) DownloadClip(ctx context.Context, clipID string, req *Download
 	resp := &DownloadClipResponse{OK: true, ClipID: clipID, LocalPath: localPath}
 
 	// Try downloading from Drive if DriveLink exists
-	if clip.DriveLink != "" && s.driveClient != nil {
+	if clip.DriveLink != "" && s.driveService != nil {
 		fileID := driveFileIDFromClip(clip)
 		if fileID != "" {
-			file, err := s.driveClient.Files.Get(fileID).Context(ctx).Download()
+			file, err := s.driveService.DownloadFile(ctx, fileID)
 			if err == nil {
 				defer file.Body.Close()
 
@@ -148,14 +148,14 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 
 	resp := &UploadClipToDriveResponse{OK: true, ClipID: clipID}
 
-	if s.driveClient == nil {
-		resp.Error = "drive client not configured"
-		return resp, fmt.Errorf("drive client not configured")
+	if s.driveService == nil {
+		resp.Error = "drive service not configured"
+		return resp, fmt.Errorf("drive service not configured")
 	}
 
 	folderID := req.FolderID
 	if folderID == "" {
-		folderID = s.driveFolderID
+		folderID = s.driveService.GetDriveFolderID()
 	}
 
 	// Determine file path: use LocalPath if available, otherwise construct from name
@@ -180,7 +180,12 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 		file.Parents = []string{folderID}
 	}
 
-	created, err := s.driveClient.Files.Create(file).Context(ctx).Media(f).Fields("id,webViewLink,md5Checksum").Do()
+	if s.driveService == nil {
+		err = fmt.Errorf("drive service not configured")
+		return resp, err
+	}
+	driveClient := s.driveService.GetDriveClient()
+	created, err := driveClient.Files.Create(file).Context(ctx).Media(f).Fields("id,webViewLink,md5Checksum").Do()
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -264,9 +269,9 @@ func (s *Service) SyncDriveFolder(ctx context.Context, folderID, mediaType strin
 		mediaType = "clip"
 	}
 
-	if s.driveClient == nil {
-		resp.Error = "drive client not configured"
-		return resp, fmt.Errorf("drive client not configured")
+	if s.driveService == nil {
+		resp.Error = "drive service not configured"
+		return resp, fmt.Errorf("drive service not configured")
 	}
 
 	folderID = strings.TrimSpace(folderID)
@@ -275,7 +280,8 @@ func (s *Service) SyncDriveFolder(ctx context.Context, folderID, mediaType strin
 		return resp, fmt.Errorf("folder_id is required")
 	}
 
-	folderMeta, err := s.driveClient.Files.Get(folderID).Fields("id, name, webViewLink").Context(ctx).Do()
+	driveClient := s.driveService.GetDriveClient()
+	folderMeta, err := driveClient.Files.Get(folderID).Fields("id, name, webViewLink").Context(ctx).Do()
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -318,7 +324,8 @@ func (s *Service) SyncDriveFolder(ctx context.Context, folderID, mediaType strin
 	}
 
 	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
-	fileList, err := s.driveClient.Files.List().Q(query).Fields("files(id, name, mimeType, webViewLink, webContentLink)").Context(ctx).Do()
+	driveClient = s.driveService.GetDriveClient()
+	fileList, err := driveClient.Files.List().Q(query).Fields("files(id, name, mimeType, webViewLink, webContentLink)").Context(ctx).Do()
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -399,7 +406,22 @@ func (s *Service) ImportScraperDB(ctx context.Context, dbPath string) (int, erro
 		dbPath = filepath.Join(s.nodeScraperDir, "artlist_videos.db")
 	}
 
-	artlistDB, err := sql.Open("sqlite3", dbPath)
+	// Validate dbPath to prevent path traversal
+	cleanPath := filepath.Clean(dbPath)
+	// Ensure the path is within allowed directories or is a .db file
+	if !strings.HasSuffix(cleanPath, ".db") && !strings.HasSuffix(cleanPath, ".sqlite") && !strings.HasSuffix(cleanPath, ".sqlite3") {
+		return 0, fmt.Errorf("invalid database path: must be a .db, .sqlite, or .sqlite3 file")
+	}
+	// Ensure path doesn't escape to sensitive areas
+	if strings.Contains(cleanPath, "..") {
+		return 0, fmt.Errorf("invalid database path: path traversal detected")
+	}
+	// Check if file exists (optional - file may be created by scraper)
+	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		return 0, fmt.Errorf("database file not found: %s", cleanPath)
+	}
+
+	artlistDB, err := sql.Open("sqlite3", cleanPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open scraper db: %w", err)
 	}

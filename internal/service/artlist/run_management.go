@@ -11,19 +11,89 @@ import (
 	"velox/go-master/pkg/models"
 )
 
-func (s *Service) persistJob(ctx context.Context, job *models.Job) error {
-	rec := JobToRunRecord(job)
-	status := string(job.Status)
+// CreateJobRun creates a new job and enqueues it in the jobs table.
+// Note: artlist_runs is legacy read-only. New runs use jobs table directly.
+func (s *Service) CreateJobRun(ctx context.Context, req *RunTagRequest) (*models.Job, error) {
+	if s.jobsDB == nil {
+		return nil, fmt.Errorf("jobs database not configured")
+	}
 
-	return s.finishRunRecord(ctx, rec.RunID, status, s.runRecordToResponse(rec))
+	// Build payload
+	payload := models.ArtlistRunPayload{
+		Term:         req.Term,
+		RootFolderID: req.RootFolderID,
+		Strategy:     req.Strategy,
+		DryRun:       req.DryRun,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	job := models.NewJob(models.JobTypeArtlistRun, payloadBytes)
+	job.ActiveKey = runDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun)
+
+	// Insert into jobs table
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = s.jobsDB.ExecContext(ctx, `
+		INSERT INTO jobs (id, "type", status, priority, project, video_name, active_key,
+		   payload_json, result_json, progress, "error", retry_count, max_retries,
+		   created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, job.ID, job.Type, job.Status, job.Priority, job.Project, job.VideoName, job.ActiveKey,
+		string(payloadBytes), "{}", 0, "", 0, job.MaxRetries,
+		now, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to enqueue job: %w", err)
+	}
+
+	return job, nil
 }
 
-func unmarshalPayload(payload json.RawMessage) map[string]interface{} {
-	var result map[string]interface{}
-	if len(payload) > 0 {
-		json.Unmarshal(payload, &result)
+// jobToRunTagResponse converts a job to a RunTagResponse.
+func jobToRunTagResponse(job *models.Job) *RunTagResponse {
+	resp := &RunTagResponse{
+		OK:            true,
+		RunID:         job.ID,
+		Status:        string(job.Status),
+		Term:          job.Project, // project field stores the term
+		DryRun:        strings.HasSuffix(job.ActiveKey, "true"),
 	}
-	return result
+	// Extract additional fields from payload
+	if len(job.Payload) > 0 {
+		var payload models.ArtlistRunPayload
+		if err := json.Unmarshal(job.Payload, &payload); err == nil {
+			resp.Strategy = payload.Strategy
+			resp.RootFolderID = payload.RootFolderID
+		}
+	}
+	return resp
+}
+
+func (s *Service) persistJob(ctx context.Context, job *models.Job) error {
+	if s.jobsDB == nil {
+		return fmt.Errorf("jobs database not configured")
+	}
+	// Update job directly in jobs table
+	_, err := s.jobsDB.ExecContext(ctx, `
+		UPDATE jobs
+		SET status = ?,
+			error = ?,
+			updated_at = ?
+		WHERE id = ?
+	`, job.Status, job.Error, time.Now().UTC().Format(time.RFC3339), job.ID)
+	return err
+}
+
+func unmarshalPayload(payload json.RawMessage) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	if len(payload) == 0 {
+		return result, nil
+	}
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+	}
+	return result, nil
 }
 
 func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error) {
@@ -31,8 +101,8 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 	if normalized.Term == "" {
 		return &RunTagResponse{OK: false, Error: "term is required"}, fmt.Errorf("term is required")
 	}
-	if normalized.RootFolderID == "" {
-		normalized.RootFolderID = strings.TrimSpace(s.driveFolderID)
+	if normalized.RootFolderID == "" && s.driveService != nil {
+		normalized.RootFolderID = strings.TrimSpace(s.driveService.GetDriveFolderID())
 	}
 	if normalized.RootFolderID == "" {
 		normalized.RootFolderID = "root"
@@ -52,7 +122,13 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 		if isStale {
 			// Get term from payload
 			term := ""
-			payload := unmarshalPayload(existingJob.Payload)
+			payload, err := unmarshalPayload(existingJob.Payload)
+			if err != nil {
+				s.log.Warn("failed to unmarshal payload for stale job", zap.String("job_id", existingJob.ID), zap.Error(err))
+			}
+			if t, ok := payload["term"].(string); ok {
+				term = t
+			}
 			if t, ok := payload["term"].(string); ok {
 				term = t
 			}
@@ -63,7 +139,9 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 			)
 			existingJob.Status = models.StatusFailed
 			existingJob.Error = "stale job timeout (zombie)"
-			_ = s.persistJob(ctx, existingJob)
+			if err := s.persistJob(ctx, existingJob); err != nil {
+				s.log.Error("failed to persist stale job", zap.String("job_id", existingJob.ID), zap.Error(err))
+			}
 			// Proceed to create a new job
 		} else {
 			resp := jobToResponse(existingJob)
@@ -103,11 +181,17 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 				zap.String("term", req.Term),
 			)
 			// Update job status to failed on panic - clear active_key on fatal error
-			job, _ := s.GetJobByRunID(ctx, jobID)
+			job, err := s.GetJobByRunID(ctx, jobID)
+			if err != nil {
+				s.log.Error("failed to load job after panic", zap.String("job_id", jobID), zap.Error(err))
+				return
+			}
 			if job != nil {
 				job.Status = models.StatusFailed
 				job.Error = fmt.Sprintf("internal panic: %v", r)
-				_ = s.persistJob(ctx, job)
+				if err := s.persistJob(ctx, job); err != nil {
+					s.log.Error("failed to persist job after panic", zap.String("job_id", jobID), zap.Error(err))
+				}
 			}
 		}
 	}()
@@ -154,7 +238,7 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 			job.Error = resp.Error
 		}
 
-		// During retries, don't clear active_key (use finishRunRecordWithActiveKey with clearActiveKey=false)
+		// During retries, don't clear active_key
 		// On final attempt or success, clear active_key
 		isLastAttempt := attempt >= maxRetries || status == models.StatusCompleted
 		if isLastAttempt {
@@ -167,11 +251,10 @@ func (s *Service) executeRunTag(ctx context.Context, req *RunTagRequest, jobID s
 			}
 		} else if job.CanRetry() && status == models.StatusFailed {
 			// Retry state: preserve active_key
-			rec := JobToRunRecord(job)
-			if finishErr := s.finishRunRecordWithActiveKey(ctx, rec.RunID, string(job.Status), s.runRecordToResponse(rec), false); finishErr != nil {
+			if err := s.persistJob(ctx, job); err != nil {
 				s.log.Warn("failed to update job record during retry",
 					zap.String("job_id", jobID),
-					zap.Error(finishErr),
+					zap.Error(err),
 				)
 			}
 			continue
@@ -264,6 +347,42 @@ func jobToResponse(job *models.Job) *RunTagResponse {
 		}
 		if v, ok := job.Result["last_processed_at"].(string); ok {
 			resp.LastProcessedAt = &v
+		}
+		// Extract items from result
+		if itemsRaw, ok := job.Result["items"].([]interface{}); ok {
+			for _, itemRaw := range itemsRaw {
+				if itemMap, ok := itemRaw.(map[string]interface{}); ok {
+					item := RunTagItem{}
+					if v, ok := itemMap["clip_id"].(string); ok {
+						item.ClipID = v
+					}
+					if v, ok := itemMap["name"].(string); ok {
+						item.Name = v
+					}
+					if v, ok := itemMap["filename"].(string); ok {
+						item.Filename = v
+					}
+					if v, ok := itemMap["status"].(string); ok {
+						item.Status = v
+					}
+					if v, ok := itemMap["drive_link"].(string); ok {
+						item.DriveLink = v
+					}
+					if v, ok := itemMap["download_link"].(string); ok {
+						item.DownloadLink = v
+					}
+					if v, ok := itemMap["local_path"].(string); ok {
+						item.LocalPath = v
+					}
+					if v, ok := itemMap["file_hash"].(string); ok {
+						item.FileHash = v
+					}
+					if v, ok := itemMap["error"].(string); ok {
+						item.Error = v
+					}
+					resp.Items = append(resp.Items, item)
+				}
+			}
 		}
 	}
 

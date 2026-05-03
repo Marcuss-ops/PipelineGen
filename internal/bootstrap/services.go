@@ -93,7 +93,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	driveDestinationService := drivedestination.NewService(cfg, log, driveClient)
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
-	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB)
+	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)
 
 	youtubeClipService := youtubeclip.NewService(
 		cfg,
@@ -113,8 +113,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, nil, voRepo)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	clipsRepo := clips.NewRepository(dbs.stock.DB)
-	artlistRepo := clips.NewRepository(dbs.artlist.DB)
+	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
+	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
 
 	if err := clipsOnlyRepo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
 		log.Warn("Failed to ensure segment embeddings cache schema", zap.Error(err))

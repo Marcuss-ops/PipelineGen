@@ -2,35 +2,30 @@ package artlist
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"velox/go-master/pkg/models"
 )
 
-// JobAdapter provides conversion between artlistRunRecord and models.Job
-type JobAdapter struct {
-	db *sql.DB
-}
-
-// NewJobAdapter creates a new JobAdapter
-func NewJobAdapter(db *sql.DB) *JobAdapter {
-	return &JobAdapter{db: db}
-}
-
-// RunRecordToJob converts an artlistRunRecord to a models.Job
-func RunRecordToJob(rec *artlistRunRecord) *models.Job {
+// RunRecordToJob converts an artlistRunRecord to a models.Job.
+// This is used for reading legacy artlist_runs records.
+// Returns error if JSON marshaling fails.
+func RunRecordToJob(rec *artlistRunRecord) (*models.Job, error) {
 	payload := models.ArtlistRunPayload{
 		Term:         rec.Term,
 		RootFolderID: rec.RootFolderID,
 		Strategy:     rec.Strategy,
 		DryRun:       rec.DryRun,
 	}
-	payloadBytes, _ := json.Marshal(payload)
-	
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
 	job := models.NewJob(models.JobTypeArtlistRun, payloadBytes)
 	job.ActiveKey = rec.ActiveKey
 
@@ -39,8 +34,7 @@ func RunRecordToJob(rec *artlistRunRecord) *models.Job {
 	job.Error = rec.Error
 
 	if rec.StartedAt != nil {
-		t, _ := time.Parse(time.RFC3339, *rec.StartedAt)
-		job.StartedAt = &t
+		job.StartedAt = rec.StartedAt
 	}
 
 	result := map[string]interface{}{
@@ -52,76 +46,15 @@ func RunRecordToJob(rec *artlistRunRecord) *models.Job {
 		"tag_folder_id":  rec.TagFolderID,
 	}
 	if rec.LastProcessedAt != nil {
-		result["last_processed_at"] = *rec.LastProcessedAt
+		result["last_processed_at"] = rec.LastProcessedAt.Format(time.RFC3339)
 	}
 	job.Result = result
 
-	return job
+	return job, nil
 }
 
-// JobToRunRecord converts a models.Job to an artlistRunRecord
-func JobToRunRecord(job *models.Job) *artlistRunRecord {
-	rec := &artlistRunRecord{
-		RunID:  job.ID,
-		Status: string(job.Status),
-		Error:  job.Error,
-	}
-
-	if len(job.Payload) > 0 {
-		var payload models.ArtlistRunPayload
-		if err := json.Unmarshal(job.Payload, &payload); err == nil {
-			rec.Term = payload.Term
-			rec.RootFolderID = payload.RootFolderID
-			rec.Strategy = payload.Strategy
-			rec.DryRun = payload.DryRun
-		}
-	}
-	if job.ActiveKey != "" {
-		rec.ActiveKey = job.ActiveKey
-	}
-
-	if job.StartedAt != nil {
-		t := job.StartedAt.Format(time.RFC3339)
-		rec.StartedAt = &t
-	}
-
-	if job.Result != nil {
-		if v, ok := job.Result["found"].(int); ok {
-			rec.Found = v
-		}
-		if v, ok := job.Result["processed"].(int); ok {
-			rec.Processed = v
-		}
-		if v, ok := job.Result["skipped"].(int); ok {
-			rec.Skipped = v
-		}
-		if v, ok := job.Result["failed"].(int); ok {
-			rec.Failed = v
-		}
-		if v, ok := job.Result["estimated_size"].(int); ok {
-			rec.EstimatedSize = v
-		}
-		if v, ok := job.Result["tag_folder_id"].(string); ok {
-			rec.TagFolderID = v
-		}
-		if v, ok := job.Result["last_processed_at"].(string); ok {
-			rec.LastProcessedAt = &v
-		}
-	}
-
-	return rec
-}
-
-// CreateJobRun creates a new job-based run record
-func (s *Service) CreateJobRun(ctx context.Context, req *RunTagRequest) (*models.Job, error) {
-	rec, _, err := s.ensureRunRecord(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	return RunRecordToJob(rec), nil
-}
-
-// UpdateJobRun updates an existing job with run results
+// UpdateJobRun updates an existing job with run results (in memory).
+// The caller is responsible for persisting the job.
 func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTagResponse) error {
 	job.Status = models.JobStatus(resp.Status)
 	job.Error = resp.Error
@@ -162,42 +95,33 @@ func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTa
 	return nil
 }
 
-// GetJobByRunID retrieves a job by its run ID (which is the job ID)
+// GetJobByRunID retrieves a job by its run ID (which is the job ID).
+// Jobs table is the source of truth. Legacy artlist_runs is read-only for old records.
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return nil, fmt.Errorf("run_id is required")
 	}
 
-	// New job-system IDs should be read directly from jobs.db.sqlite.
-	if strings.HasPrefix(runID, "job_") {
-		if s.jobsDB == nil {
-			return nil, fmt.Errorf("jobs database not configured")
-		}
-		job, err := s.loadJobFromJobsDB(ctx, runID)
-		if err == nil {
-			return job, nil
-		}
-		return nil, err
+	// Jobs table is the source of truth
+	if s.jobsDB == nil {
+		return nil, fmt.Errorf("jobs database not configured")
 	}
-
-	// Legacy artlist_runs UUID path.
-	rec, err := s.loadRunRecord(ctx, runID)
+	job, err := s.loadJobFromJobsDB(ctx, runID)
 	if err == nil {
-		return RunRecordToJob(rec), nil
+		return job, nil
 	}
 
-	// Final fallback: maybe caller passed a non-job ID that still exists in jobs DB.
-	if s.jobsDB != nil {
-		if job, err2 := s.loadJobFromJobsDB(ctx, runID); err2 == nil {
-			return job, nil
-		}
+	// Fallback: try legacy artlist_runs for backward compatibility with old UUIDs
+	rec, err2 := s.loadRunRecord(ctx, runID)
+	if err2 == nil {
+		return RunRecordToJob(rec)
 	}
 
 	return nil, err
 }
 
-// loadJobFromJobsDB loads a job directly from the jobs database
+// loadJobFromJobsDB loads a job directly from the jobs database.
 func (s *Service) loadJobFromJobsDB(ctx context.Context, jobID string) (*models.Job, error) {
 	var job models.Job
 	var payloadJSON string
@@ -206,8 +130,8 @@ func (s *Service) loadJobFromJobsDB(ctx context.Context, jobID string) (*models.
 
 	query := `
 	SELECT id, "type", status, priority, project, video_name, active_key,
-		       payload_json, result_json, progress, "error", retry_count, max_retries,
-		       worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at
+		   payload_json, result_json, progress, "error", retry_count, max_retries,
+		   worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at
 	FROM jobs
 	WHERE id = ?
 	LIMIT 1
@@ -239,8 +163,90 @@ func (s *Service) loadJobFromJobsDB(ctx context.Context, jobID string) (*models.
 		return nil, err
 	}
 
-	_ = json.Unmarshal([]byte(payloadJSON), &job.Payload)
-	_ = json.Unmarshal([]byte(resultJSON), &job.Result)
+	if err := json.Unmarshal([]byte(payloadJSON), &job.Payload); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal job payload: %w", err)
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &job.Result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal job result: %w", err)
+	}
+
+	job.LeaseExpiry = parseTimePtr(leaseExpiry)
+	job.CreatedAt = parseTimeValue(createdAt)
+	job.UpdatedAt = parseTimeValue(updatedAt)
+	job.StartedAt = parseTimePtr(startedAt)
+	job.CompletedAt = parseTimePtr(completedAt)
+	job.CancelledAt = parseTimePtr(cancelledAt)
+
+	return &job, nil
+}
+
+// FindActiveJob finds an active job by its active key.
+// Jobs table is the source of truth. Legacy artlist_runs is read-only.
+func (s *Service) FindActiveJob(ctx context.Context, activeKey string) (*models.Job, error) {
+	if s.jobsDB == nil {
+		return nil, fmt.Errorf("jobs database not configured")
+	}
+	job, err := s.findActiveJobInJobsDB(ctx, activeKey)
+	if err == nil && job != nil && !job.Status.IsTerminal() {
+		return job, nil
+	}
+	// Fallback to legacy for backward compatibility
+	rec, err2 := s.findActiveRunRecord(ctx, activeKey)
+	if err2 == nil && rec != nil {
+		return RunRecordToJob(rec)
+	}
+	return nil, err
+}
+
+// findActiveJobInJobsDB finds an active job in the jobs table by active_key.
+func (s *Service) findActiveJobInJobsDB(ctx context.Context, activeKey string) (*models.Job, error) {
+	query := `
+	SELECT id, "type", status, priority, project, video_name, active_key,
+		   payload_json, result_json, progress, "error", retry_count, max_retries,
+		   worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at
+	FROM jobs
+	WHERE active_key = ? AND status IN ('queued', 'running')
+	ORDER BY started_at DESC
+	LIMIT 1
+	`
+
+	var job models.Job
+	var payloadJSON string
+	var resultJSON string
+	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
+
+	err := s.jobsDB.QueryRowContext(ctx, query, activeKey).Scan(
+		&job.ID,
+		&job.Type,
+		&job.Status,
+		&job.Priority,
+		&job.Project,
+		&job.VideoName,
+		&job.ActiveKey,
+		&payloadJSON,
+		&resultJSON,
+		&job.Progress,
+		&job.Error,
+		&job.RetryCount,
+		&job.MaxRetries,
+		&job.WorkerID,
+		&leaseExpiry,
+		&createdAt,
+		&updatedAt,
+		&startedAt,
+		&completedAt,
+		&cancelledAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal([]byte(payloadJSON), &job.Payload); err != nil {
+		s.log.Error("failed to unmarshal job payload", zap.String("job_id", job.ID), zap.Error(err))
+	}
+	if err := json.Unmarshal([]byte(resultJSON), &job.Result); err != nil {
+		s.log.Error("failed to unmarshal job result", zap.String("job_id", job.ID), zap.Error(err))
+	}
 
 	job.LeaseExpiry = parseTimePtr(leaseExpiry)
 	job.CreatedAt = parseTimeValue(createdAt)
@@ -268,20 +274,4 @@ func parseTimeValue(v *string) time.Time {
 		return *parsed
 	}
 	return time.Time{}
-}
-
-// FindActiveJob finds an active job by its active key
-func (s *Service) FindActiveJob(ctx context.Context, activeKey string) (*models.Job, error) {
-	rec, err := s.findActiveRunRecord(ctx, activeKey)
-	if err != nil {
-		return nil, err
-	}
-	return RunRecordToJob(rec), nil
-}
-
-// CanRetryRun checks if a run can be retried using the Job model's CanRetry logic
-func (s *Service) CanRetryRun(runID string) bool {
-	// This would need to load the job first
-	// For now, return false as the original implementation doesn't have retry
-	return false
 }
