@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/ml/ollama"
@@ -76,11 +77,13 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
 
-	// Create media processor
+	// Create media processor with both yt-dlp and HTTP downloaders
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
+	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
 	mediaProcessor := mediaasset.NewProcessor(
 		ytDLPDownloader,
+		httpDL,
 		ffmpegProc,
 		driveClient,
 		log,
