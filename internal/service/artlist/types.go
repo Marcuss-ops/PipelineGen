@@ -2,8 +2,6 @@ package artlist
 
 import (
 	"database/sql"
-	"fmt"
-	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -30,7 +28,7 @@ type Service struct {
 	log              *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, mediaProcessor *mediaasset.Processor, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, clipsRepo *clips.Repository, driveClient *driveapi.Service, driveFolderID string, driveDestination *drivedestination.Service, mediaProcessor *mediaasset.Processor, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -38,26 +36,6 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDi
 		if err != nil {
 			return nil, err
 		}
-	}
-	// Open jobs database connection with WAL mode and busy timeout
-	jobsDBPath := filepath.Join(cfg.Storage.DataDir, "jobs.db.sqlite")
-	jobsDB, err := sql.Open("sqlite3", jobsDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
-	if err != nil {
-		if artlistDB != nil {
-			artlistDB.Close()
-		}
-		return nil, fmt.Errorf("failed to open jobs database: %w", err)
-	}
-	// Set connection pool settings for jobsDB
-	jobsDB.SetMaxOpenConns(5)
-	jobsDB.SetMaxIdleConns(2)
-	jobsDB.SetConnMaxLifetime(0)
-
-	// Set connection pool settings for artlistDB if present
-	if artlistDB != nil {
-		artlistDB.SetMaxOpenConns(5)
-		artlistDB.SetMaxIdleConns(2)
-		artlistDB.SetConnMaxLifetime(0)
 	}
 	return &Service{
 		cfg:              cfg,
