@@ -65,10 +65,17 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		"failed":    resp.Failed,
 	})
 
-	// Persist results to artlist_runs table using resp directly
+	// Persist results to artlist_runs table
+	// Need to find the correct record by active_key (since job.ID != UUID in artlist_runs)
 	if resp != nil {
-		if err := s.finishRunRecord(ctx, job.ID, string(job.Status), resp); err != nil {
-			s.log.Warn("failed to persist run record", zap.Error(err))
+		activeKey := RunDedupKey(resp.Term, resp.RootFolderID, resp.Strategy, resp.DryRun)
+		if rec, err := s.findActiveRunRecord(ctx, activeKey); err == nil && rec != nil {
+			// Update using the UUID from artlist_runs
+			if err := s.finishRunRecord(ctx, rec.RunID, string(job.Status), resp); err != nil {
+				s.log.Warn("failed to persist run record", zap.Error(err))
+			}
+		} else {
+			s.log.Warn("no active run record found for active_key", zap.String("active_key", activeKey))
 		}
 	}
 
