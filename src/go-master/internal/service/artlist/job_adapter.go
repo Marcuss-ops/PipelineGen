@@ -29,7 +29,7 @@ func RunRecordToJob(rec *artlistRunRecord) *models.Job {
 	}
 	payloadBytes, _ := json.Marshal(payload)
 	
-	job := models.NewJob(models.JobTypeStockClip, payloadBytes)
+	job := models.NewJob(models.JobTypeArtlistRun, payloadBytes)
 	job.ActiveKey = rec.ActiveKey
 
 	job.ID = rec.RunID

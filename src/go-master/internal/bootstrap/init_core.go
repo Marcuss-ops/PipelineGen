@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 
+	"database/sql"
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/cron"
 	"velox/go-master/internal/ml/ollama"
@@ -13,9 +14,10 @@ import (
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
-	jobservice "velox/go-master/internal/service/jobs"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
+	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/monitor"
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
@@ -24,8 +26,6 @@ import (
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/security"
-	"velox/go-master/internal/service/mediaasset"
-	"database/sql"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -59,7 +59,8 @@ type CoreDeps struct {
 	JobsService          *jobservice.Service
 	JobsDB               *sql.DB
 	MediaProcessor       *mediaasset.Processor
-	}
+}
+
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
 	return initCoreMinimal(cfg, log, "")
 }
