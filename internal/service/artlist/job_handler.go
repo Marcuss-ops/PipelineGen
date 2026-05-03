@@ -65,6 +65,13 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		"failed":    resp.Failed,
 	})
 
+	// Persist results to artlist_runs table using resp directly
+	if resp != nil {
+		if err := s.finishRunRecord(ctx, job.ID, string(job.Status), resp); err != nil {
+			s.log.Warn("failed to persist run record", zap.Error(err))
+		}
+	}
+
 	return map[string]any{
 		"found":         resp.Found,
 		"processed":     resp.Processed,
