@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"velox/go-master/pkg/models"
@@ -143,30 +145,110 @@ func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTa
 
 // GetJobByRunID retrieves a job by its run ID (which is the job ID)
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil, fmt.Errorf("run_id is required")
+	}
+
+	// New job-system IDs should be read directly from jobs.db.sqlite.
+	if strings.HasPrefix(runID, "job_") {
+		if s.jobsDB == nil {
+			return nil, fmt.Errorf("jobs database not configured")
+		}
+		job, err := s.loadJobFromJobsDB(ctx, runID)
+		if err == nil {
+			return job, nil
+		}
+		return nil, err
+	}
+
+	// Legacy artlist_runs UUID path.
 	rec, err := s.loadRunRecord(ctx, runID)
 	if err == nil {
 		return RunRecordToJob(rec), nil
 	}
-	// Fallback: try to load from jobs table
+
+	// Final fallback: maybe caller passed a non-job ID that still exists in jobs DB.
 	if s.jobsDB != nil {
-		var job models.Job
-		var payload []byte
-		var resultJSON []byte
-		err2 := s.jobsDB.QueryRowContext(ctx, "SELECT id, status, error, payload_json, result_json FROM jobs WHERE id = ?", runID).Scan(&job.ID, &job.Status, &job.Error, &payload, &resultJSON)
-		if err2 == nil {
-			if len(payload) > 0 {
-				job.Payload = payload
-			}
-			if len(resultJSON) > 0 {
-				var result map[string]interface{}
-				if json.Unmarshal(resultJSON, &result) == nil {
-					job.Result = result
-				}
-			}
-			return &job, nil
+		if job, err2 := s.loadJobFromJobsDB(ctx, runID); err2 == nil {
+			return job, nil
 		}
 	}
+
 	return nil, err
+}
+
+// loadJobFromJobsDB loads a job directly from the jobs database
+func (s *Service) loadJobFromJobsDB(ctx context.Context, jobID string) (*models.Job, error) {
+	var job models.Job
+	var payloadJSON string
+	var resultJSON string
+	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
+
+	query := `
+		SELECT id, type, status, priority, project, video_name, active_key,
+		       payload_json, result_json, progress, error, retry_count, max_retries,
+		       worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at
+		FROM jobs
+		WHERE id = ?
+		LIMIT 1
+	`
+
+	err := s.jobsDB.QueryRowContext(ctx, query, jobID).Scan(
+		&job.ID,
+		&job.Type,
+		&job.Status,
+		&job.Priority,
+		&job.Project,
+		&job.VideoName,
+		&job.ActiveKey,
+		&payloadJSON,
+		&resultJSON,
+		&job.Progress,
+		&job.Error,
+		&job.RetryCount,
+		&job.MaxRetries,
+		&job.WorkerID,
+		&leaseExpiry,
+		&createdAt,
+		&updatedAt,
+		&startedAt,
+		&completedAt,
+		&cancelledAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = json.Unmarshal([]byte(payloadJSON), &job.Payload)
+	_ = json.Unmarshal([]byte(resultJSON), &job.Result)
+
+	job.LeaseExpiry = parseTimePtr(leaseExpiry)
+	job.CreatedAt = parseTimeValue(createdAt)
+	job.UpdatedAt = parseTimeValue(updatedAt)
+	job.StartedAt = parseTimePtr(startedAt)
+	job.CompletedAt = parseTimePtr(completedAt)
+	job.CancelledAt = parseTimePtr(cancelledAt)
+
+	return &job, nil
+}
+
+func parseTimePtr(v *string) *time.Time {
+	if v == nil || strings.TrimSpace(*v) == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(*v))
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+func parseTimeValue(v *string) time.Time {
+	if parsed := parseTimePtr(v); parsed != nil {
+		return *parsed
+	}
+	return time.Time{}
 }
 
 // FindActiveJob finds an active job by its active key
