@@ -3,11 +3,14 @@ package api
 
 import (
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+
+	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
@@ -84,7 +87,16 @@ func buildCORSConfig(cfg *config.Config) cors.Config {
 }
 
 // Setup configures the gin router
+var setupOnce sync.Once
+var setupCount int
+
 func (r *Router) Setup() *gin.Engine {
+	setupCount++
+	zap.L().Info("Setup() called", zap.Int("count", setupCount))
+	if setupCount > 1 {
+		zap.L().Panic("Setup() called multiple times!")
+	}
+	log := zap.L().Named("router")
 	gin.SetMode(r.cfg.Server.GinMode)
 
 	engine := gin.New()
@@ -133,6 +145,16 @@ func (r *Router) Setup() *gin.Engine {
 		protected.Use(rateLimitMW.Handler)
 		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
+			log.Info("registering API routes", zap.Bool("drive_handler_nil", h.Drive == nil))
+
+			if h.Drive != nil {
+				log.Info("registering drive routes")
+				driveGroup := protected.Group("/drive")
+				h.Drive.RegisterRoutes(driveGroup)
+			} else {
+				log.Warn("drive handler is nil, skipping route registration")
+			}
+
 			if h.Artlist != nil {
 				artlistGroup := protected.Group("/artlist")
 				artlistGroup.Use(middleware.ArtlistEnabled(r.cfg))
@@ -178,8 +200,11 @@ func (r *Router) Setup() *gin.Engine {
 				h.Media.RegisterRoutes(mediaGroup)
 			}
 			if h.Drive != nil {
+				log.Info("registering drive routes")
 				driveGroup := protected.Group("/drive")
 				h.Drive.RegisterRoutes(driveGroup)
+			} else {
+				log.Warn("drive handler is nil, skipping route registration")
 			}
 		}
 	}
