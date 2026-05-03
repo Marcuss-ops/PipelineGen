@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -17,6 +18,7 @@ import (
 
 type Processor struct {
 	dl        *downloader.YTDLPDownloader
+	httpDL    *downloader.HTTPDownloader
 	ffmpeg    *ffmpeg.Processor
 	driveSvc  *driveapi.Service
 	log       *zap.Logger
@@ -33,6 +35,7 @@ type ProcessorConfig struct {
 
 func NewProcessor(
 	dl *downloader.YTDLPDownloader,
+	httpDL *downloader.HTTPDownloader,
 	ff *ffmpeg.Processor,
 	driveSvc *driveapi.Service,
 	log *zap.Logger,
@@ -40,6 +43,7 @@ func NewProcessor(
 ) *Processor {
 	return &Processor{
 		dl:       dl,
+		httpDL:   httpDL,
 		ffmpeg:   ff,
 		driveSvc: driveSvc,
 		log:      log,
@@ -125,6 +129,23 @@ func (p *Processor) setupDirectories(input AssetInput) (tmpDir, saveDir string) 
 
 // downloadStep downloads the asset from the source URL.
 func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath string) (actualPath string, err error) {
+	// Try HTTP download first for direct URLs (e.g., Artlist with direct links)
+	if p.httpDL != nil && p.isDirectURL(input.SourceURL) {
+		p.log.Info("using HTTP downloader for direct URL", zap.String("id", input.ID), zap.String("url", input.SourceURL))
+		httpReq := &downloader.HTTPDownloadRequest{
+			URL:        input.SourceURL,
+			OutputPath: rawPath,
+		}
+		if err := p.httpDL.Download(ctx, httpReq); err != nil {
+			p.log.Warn("HTTP download failed, falling back to yt-dlp", zap.Error(err))
+			// Fall through to yt-dlp
+		} else {
+			p.log.Info("HTTP download succeeded", zap.String("path", rawPath))
+			return rawPath, nil
+		}
+	}
+
+	// Use yt-dlp for complex URLs (YouTube, etc.)
 	dlReq := &downloader.DownloadRequest{
 		URL:             input.SourceURL,
 		OutputPath:      rawPath,
@@ -138,7 +159,7 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 		dlReq.Timeout = 10 * time.Minute
 	}
 
-	p.log.Info("downloading asset", zap.String("id", input.ID), zap.String("url", input.SourceURL), zap.Strings("sections", input.DownloadSections))
+	p.log.Info("downloading asset with yt-dlp", zap.String("id", input.ID), zap.String("url", input.SourceURL), zap.Strings("sections", input.DownloadSections))
 	if err := p.dl.Download(ctx, dlReq); err != nil {
 		return "", err
 	}
@@ -149,6 +170,24 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 	}
 
 	return actualPath, nil
+}
+
+// isDirectURL checks if URL is likely a direct download (not needing yt-dlp).
+func (p *Processor) isDirectURL(url string) bool {
+	// Check for known direct download patterns
+	directPatterns := []string{
+		"artlist.io/download",
+		"artlist.io/api",
+		".mp4",
+		".mov",
+		".avi",
+	}
+	for _, pattern := range directPatterns {
+		if strings.Contains(url, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // processStep normalizes/processes the video if needed.
