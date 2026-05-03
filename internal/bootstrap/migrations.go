@@ -59,5 +59,13 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 		return fmt.Errorf("failed to run voiceovers migrations: %w", err)
 	}
 
+	mediaMigrationsDir := filepath.Join("internal", "repository", "media", "migrations")
+	if err := dbs.main.RunMigrations(log, mediaMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run media migrations: %w", err)
+	}
+	if err := dbs.stock.RunMigrations(log, mediaMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run stock media migrations: %w", err)
+	}
+
 	return nil
 }
