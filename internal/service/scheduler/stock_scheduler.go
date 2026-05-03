@@ -105,7 +105,20 @@ func (s *StockScheduler) processQuery(ctx context.Context, query string) {
 
 	url := s.apiURL + "/api/script-docs/generate"
 
-	resp, err := http.Post(url, "application/json", payload)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, payload)
+	if err != nil {
+		s.log.Error("Failed to create request",
+			zap.String("query", query),
+			zap.Error(err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.Security.AdminToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.cfg.Security.AdminToken)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		s.log.Error("Failed to process query",
 			zap.String("query", query),

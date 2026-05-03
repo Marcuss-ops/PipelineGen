@@ -425,12 +425,18 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		
 		// Use mediaasset processor for download/process/hash/upload
 		normalize := shouldNormalize
+		
+		targetDriveFolderID := driveFolderID
+		if req.UploadDrive != nil && !*req.UploadDrive {
+			targetDriveFolderID = ""
+		}
+
 		assetInput := mediaasset.AssetInput{
 			ID:               clipID,
 			Name:              item.Name,
 			SourceURL:         resp.SourceURL,
 			OutputDir:         outDir,
-			FolderID:          driveFolderID,
+			FolderID:          targetDriveFolderID,
 			DownloadSections:  []string{section},
 			ForceKeyframes:    req.ForceKeyframes,
 			Normalize:         &normalize,

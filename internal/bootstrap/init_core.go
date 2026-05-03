@@ -24,6 +24,8 @@ import (
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/security"
+	"velox/go-master/internal/service/mediaasset"
+	"database/sql"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -55,8 +57,9 @@ type CoreDeps struct {
 	CatalogRepo          *catalog.Repository
 	AssocService         *association.Service
 	JobsService          *jobservice.Service
-}
-
+	JobsDB               *sql.DB
+	MediaProcessor       *mediaasset.Processor
+	}
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
 	return initCoreMinimal(cfg, log, "")
 }
@@ -122,5 +125,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		CatalogRepo:          svcs.catalogRepo,
 		AssocService:         svcs.assocService,
 		JobsService:          svcs.jobsService,
+		JobsDB:               dbs.jobs.DB,
+		MediaProcessor:       svcs.mediaProcessor,
 	}, cleanup, nil
 }

@@ -2,6 +2,8 @@ package artlist
 
 import (
 	"database/sql"
+	"fmt"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -18,6 +20,7 @@ type Service struct {
 	cfg              *config.Config
 	mainDB           *sql.DB
 	artlistDB        *sql.DB
+	jobsDB           *sql.DB
 	nodeScraperDir   string
 	clipsRepo        *clips.Repository
 	driveClient      *driveapi.Service
@@ -36,9 +39,19 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDi
 			return nil, err
 		}
 	}
+	// Open jobs database connection
+	jobsDBPath := filepath.Join(cfg.Storage.DataDir, "jobs.db.sqlite")
+	jobsDB, err := sql.Open("sqlite3", jobsDBPath)
+	if err != nil {
+		if artlistDB != nil {
+			artlistDB.Close()
+		}
+		return nil, fmt.Errorf("failed to open jobs database: %w", err)
+	}
 	return &Service{
 		cfg:              cfg,
 		mainDB:           mainDB,
+		jobsDB:           jobsDB,
 		artlistDB:        artlistDB,
 		nodeScraperDir:   nodeScraperDir,
 		clipsRepo:        clipsRepo,
@@ -51,10 +64,18 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDi
 }
 
 func (s *Service) Close() error {
+	var firstErr error
 	if s.artlistDB != nil {
-		return s.artlistDB.Close()
+		if err := s.artlistDB.Close(); err != nil {
+			firstErr = err
+		}
 	}
-	return nil
+	if s.jobsDB != nil {
+		if err := s.jobsDB.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 type nodeScraperResponse struct {

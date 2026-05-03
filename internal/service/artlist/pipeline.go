@@ -146,7 +146,9 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	tagFolderID := rootFolderID
 	if s.driveDestination != nil && rootFolderID != "" {
 		resolved, err := s.driveDestination.Resolve(ctx, &drivedestination.Request{
-			FolderID: rootFolderID,
+			FolderID:        rootFolderID,
+			SubfolderName:   tagFolderName,
+			CreateSubfolder: true,
 		})
 		if err != nil {
 			s.log.Warn("failed to resolve drive destination, using root folder ID",

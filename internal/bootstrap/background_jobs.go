@@ -92,10 +92,18 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	if runWorker {
 		// Jobs system - Runner and Scanner
 		if svcs.jobsService != nil && svcs.jobsDispatcher != nil && svcs.jobsRepo != nil {
+			workers := cfg.Jobs.MaxParallelPerProject
+			if workers <= 0 {
+				workers = 2
+			}
+			leaseTTL := time.Duration(cfg.Jobs.LeaseTTLSeconds) * time.Second
+			if leaseTTL <= 0 {
+				leaseTTL = 5 * time.Minute
+			}
 			runnerConfig := svcjobs.RunnerConfig{
-				Workers:   2,
+				Workers:   workers,
 				PollEvery: 2 * time.Second,
-				LeaseTTL:  5 * time.Minute,
+				LeaseTTL:  leaseTTL,
 				JobTypes:  nil, // all types
 			}
 			jobRunner = svcjobs.NewRunner(svcs.jobsRepo, svcs.jobsDispatcher, log, runnerConfig)
@@ -110,7 +118,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 	if runScheduler {
 		if os.Getenv("VELOX_ENABLE_CHANNEL_MONITOR") == "true" {
-			channelMon = monitor.NewChannelMonitor(cfg, svcs.stockDriveRepo, log)
+			channelMon = monitor.NewChannelMonitor(cfg, svcs.stockDriveRepo, log, svcs.youtubeClipService)
 			go channelMon.Start(ctx)
 			log.Info("Channel monitor started")
 		}

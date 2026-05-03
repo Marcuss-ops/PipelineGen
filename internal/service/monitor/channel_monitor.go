@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/config"
+	"velox/go-master/internal/service/youtubeclip"
 )
 
 // ChannelConfig represents a monitored YouTube channel
@@ -44,15 +45,17 @@ type ChannelMonitor struct {
 	clipsRepo *clips.Repository
 	log       *zap.Logger
 	stopCh    chan struct{}
+	youtubeSvc *youtubeclip.Service
 }
 
 // NewChannelMonitor creates a new channel monitor
-func NewChannelMonitor(cfg *config.Config, clipsRepo *clips.Repository, log *zap.Logger) *ChannelMonitor {
+func NewChannelMonitor(cfg *config.Config, clipsRepo *clips.Repository, log *zap.Logger, youtubeSvc *youtubeclip.Service) *ChannelMonitor {
 	return &ChannelMonitor{
 		cfg:       cfg,
 		clipsRepo: clipsRepo,
 		log:       log,
 		stopCh:    make(chan struct{}),
+		youtubeSvc: youtubeSvc,
 	}
 }
 
@@ -168,34 +171,50 @@ func (m *ChannelMonitor) processVideoLine(ctx context.Context, line string, chan
 	m.downloadClip(ctx, videoID, channel, cfg)
 }
 
-// downloadClip downloads a clip from YouTube
+// downloadClip downloads a clip from YouTube using the shared media service
 func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, channel ChannelConfig, cfg *MonitorConfig) {
-	downloadDir := filepath.Join(m.cfg.Storage.DataDir, m.cfg.Storage.DownloadsDir, channel.Category)
-
-	args := []string{
-		"--output", filepath.Join(downloadDir, "%(title)s.%(ext)s"),
-		"--max-filesize", cfg.MaxFilesize,
-	}
-
-	if cfg.CookiesPath != "" {
-		args = append(args, "--cookies", cfg.CookiesPath)
-	}
-
-	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
-	args = append(args, videoURL)
-
-	cmd := exec.Command(cfg.YtdlpPath, args...)
-	if err := cmd.Run(); err != nil {
-		m.log.Error("Failed to download clip", zap.String("video_id", videoID), zap.Error(err))
+	if m.youtubeSvc == nil {
+		m.log.Error("youtubeSvc not initialized in monitor")
 		return
 	}
 
-	m.log.Info("Downloaded clip", zap.String("video_id", videoID), zap.String("category", channel.Category))
+	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
+	
+	req := &youtubeclip.ExtractRequest{
+		URL: videoURL,
+		Segments: []youtubeclip.Segment{
+			{Name: channel.Category + " " + videoID},
+		},
+		Destination: &youtubeclip.DestinationRequest{
+			Group: channel.Category,
+		},
+	}
+	
+	// Add proper defaults to extraction request
+	saveDB := true
+	uploadDrive := true
+	normalize := true
+	req.SaveDB = &saveDB
+	req.UploadDrive = &uploadDrive
+	req.Normalize = &normalize
+
+	_, err := m.youtubeSvc.Extract(ctx, req)
+	if err != nil {
+		m.log.Error("Failed to extract clip with youtubeSvc", zap.String("video_id", videoID), zap.Error(err))
+		return
+	}
+
+	m.log.Info("Successfully extracted and uploaded channel clip", zap.String("video_id", videoID), zap.String("category", channel.Category))
 }
 
 // loadConfig loads the monitor configuration from file
 func (m *ChannelMonitor) loadConfig() (*MonitorConfig, error) {
-	configPath := filepath.Join(m.cfg.Storage.DataDir, "channel_monitor_config.json")
+	configPath := "config/channel_monitor_config.json"
+	
+	// Fallback to data dir if config file does not exist in root
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		configPath = filepath.Join(m.cfg.Storage.DataDir, "channel_monitor_config.json")
+	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
