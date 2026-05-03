@@ -17,14 +17,14 @@ import (
 )
 
 type Processor struct {
-	dl        *downloader.YTDLPDownloader
-	httpDL    *downloader.HTTPDownloader
-	ffmpeg    *ffmpeg.Processor
-	driveSvc  *driveapi.Service
-	log       *zap.Logger
-	dataDir   string
-	tempDir   string
-	videoCfg  ffmpeg.NormalizeOptions
+	dl       *downloader.YTDLPDownloader
+	httpDL   *downloader.HTTPDownloader
+	ffmpeg   *ffmpeg.Processor
+	driveSvc *driveapi.Service
+	log      *zap.Logger
+	dataDir  string
+	tempDir  string
+	videoCfg ffmpeg.NormalizeOptions
 }
 
 type ProcessorConfig struct {
@@ -145,11 +145,26 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 		}
 	}
 
+	// Use FFmpeg for HLS URLs (e.g., Artlist .m3u8 streams)
+	if p.ffmpeg != nil && p.isHLSURL(input.SourceURL) {
+		p.log.Info("using FFmpeg for HLS URL",
+			zap.String("id", input.ID),
+			zap.String("url", input.SourceURL),
+		)
+
+		if err := p.ffmpeg.RemuxHLS(ctx, input.SourceURL, rawPath); err != nil {
+			p.log.Warn("FFmpeg HLS remux failed, falling back to yt-dlp", zap.Error(err))
+		} else {
+			p.log.Info("FFmpeg HLS remux succeeded", zap.String("path", rawPath))
+			return rawPath, nil
+		}
+	}
+
 	// Use yt-dlp for complex URLs (YouTube, etc.)
 	dlReq := &downloader.DownloadRequest{
-		URL:             input.SourceURL,
-		OutputPath:      rawPath,
-		ForceKeyframes:  input.ForceKeyframes,
+		URL:              input.SourceURL,
+		OutputPath:       rawPath,
+		ForceKeyframes:   input.ForceKeyframes,
 		DownloadSections: input.DownloadSections,
 	}
 	if len(input.DownloadSections) > 0 {
@@ -188,6 +203,12 @@ func (p *Processor) isDirectURL(url string) bool {
 		}
 	}
 	return false
+}
+
+// isHLSURL checks if URL points to an HLS playlist.
+func (p *Processor) isHLSURL(url string) bool {
+	u := strings.ToLower(strings.TrimSpace(url))
+	return strings.Contains(u, ".m3u8")
 }
 
 // processStep normalizes/processes the video if needed.
