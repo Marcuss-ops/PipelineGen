@@ -34,19 +34,30 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath, nodeScraperDi
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
-		artlistDB, err = sql.Open("sqlite3", artlistDBPath)
+		artlistDB, err = sql.Open("sqlite3", artlistDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
 		if err != nil {
 			return nil, err
 		}
 	}
-	// Open jobs database connection
+	// Open jobs database connection with WAL mode and busy timeout
 	jobsDBPath := filepath.Join(cfg.Storage.DataDir, "jobs.db.sqlite")
-	jobsDB, err := sql.Open("sqlite3", jobsDBPath)
+	jobsDB, err := sql.Open("sqlite3", jobsDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		if artlistDB != nil {
 			artlistDB.Close()
 		}
 		return nil, fmt.Errorf("failed to open jobs database: %w", err)
+	}
+	// Set connection pool settings for jobsDB
+	jobsDB.SetMaxOpenConns(5)
+	jobsDB.SetMaxIdleConns(2)
+	jobsDB.SetConnMaxLifetime(0)
+
+	// Set connection pool settings for artlistDB if present
+	if artlistDB != nil {
+		artlistDB.SetMaxOpenConns(5)
+		artlistDB.SetMaxIdleConns(2)
+		artlistDB.SetConnMaxLifetime(0)
 	}
 	return &Service{
 		cfg:              cfg,

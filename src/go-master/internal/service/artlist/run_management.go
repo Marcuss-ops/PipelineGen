@@ -189,6 +189,25 @@ func (s *Service) GetRunTag(ctx context.Context, runID string) (*RunTagResponse,
 }
 
 // jobToResponse converts a models.Job to RunTagResponse.
+// getIntFromResult extracts an int from a result map, handling both int and float64 types
+func getIntFromResult(m map[string]interface{}, key string) int {
+	if m == nil {
+		return 0
+	}
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch val := v.(type) {
+	case int:
+		return val
+	case float64:
+		return int(val)
+	default:
+		return 0
+	}
+}
+
 func jobToResponse(job *models.Job) *RunTagResponse {
 	if job == nil {
 		return &RunTagResponse{OK: false, Status: "not_found", Error: "job not found"}
@@ -235,21 +254,11 @@ func jobToResponse(job *models.Job) *RunTagResponse {
 	}
 
 	if job.Result != nil {
-		if v, ok := job.Result["found"].(int); ok {
-			resp.Found = v
-		}
-		if v, ok := job.Result["processed"].(int); ok {
-			resp.Processed = v
-		}
-		if v, ok := job.Result["skipped"].(int); ok {
-			resp.Skipped = v
-		}
-		if v, ok := job.Result["failed"].(int); ok {
-			resp.Failed = v
-		}
-		if v, ok := job.Result["estimated_size"].(int); ok {
-			resp.EstimatedSize = v
-		}
+		resp.Found = getIntFromResult(job.Result, "found")
+		resp.Processed = getIntFromResult(job.Result, "processed")
+		resp.Skipped = getIntFromResult(job.Result, "skipped")
+		resp.Failed = getIntFromResult(job.Result, "failed")
+		resp.EstimatedSize = getIntFromResult(job.Result, "estimated_size")
 		if v, ok := job.Result["tag_folder_id"].(string); ok {
 			resp.TagFolderID = v
 		}

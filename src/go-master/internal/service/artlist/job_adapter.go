@@ -152,7 +152,7 @@ func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job,
 		var job models.Job
 		var payload []byte
 		var resultJSON []byte
-		err2 := s.jobsDB.QueryRowContext(ctx, "SELECT id, status, error, payload, result FROM jobs WHERE id = ?", runID).Scan(&job.ID, &job.Status, &job.Error, &payload, &resultJSON)
+		err2 := s.jobsDB.QueryRowContext(ctx, "SELECT id, status, error, payload_json, result_json FROM jobs WHERE id = ?", runID).Scan(&job.ID, &job.Status, &job.Error, &payload, &resultJSON)
 		if err2 == nil {
 			if len(payload) > 0 {
 				job.Payload = payload
