@@ -11,48 +11,6 @@ import (
 	"velox/go-master/pkg/models"
 )
 
-// RunRecordToJob converts an artlistRunRecord to a models.Job.
-// This is used for reading legacy artlist_runs records.
-// Returns error if JSON marshaling fails.
-func RunRecordToJob(rec *artlistRunRecord) (*models.Job, error) {
-	payload := models.ArtlistRunPayload{
-		Term:         rec.Term,
-		RootFolderID: rec.RootFolderID,
-		Strategy:     rec.Strategy,
-		DryRun:       rec.DryRun,
-	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	job := models.NewJob(models.JobTypeArtlistRun, payloadBytes)
-	job.ActiveKey = rec.ActiveKey
-
-	job.ID = rec.RunID
-	job.Status = models.JobStatus(rec.Status)
-	job.Error = rec.Error
-
-	if rec.StartedAt != nil {
-		job.StartedAt = rec.StartedAt
-	}
-
-	result := map[string]interface{}{
-		"found":          rec.Found,
-		"processed":      rec.Processed,
-		"skipped":        rec.Skipped,
-		"failed":         rec.Failed,
-		"estimated_size": rec.EstimatedSize,
-		"tag_folder_id":  rec.TagFolderID,
-	}
-	if rec.LastProcessedAt != nil {
-		result["last_processed_at"] = rec.LastProcessedAt.Format(time.RFC3339)
-	}
-	job.Result = result
-
-	return job, nil
-}
-
 // UpdateJobRun updates an existing job with run results (in memory).
 // The caller is responsible for persisting the job.
 func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTagResponse) error {
