@@ -3,7 +3,6 @@ package mediaregistry
 import (
 	"context"
 	"os"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -82,7 +81,6 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 	result.DBSaved = true
 
 	if opts.VerifyDB {
-		time.Sleep(100 * time.Millisecond)
 		saved, err := f.registry.GetMedia(ctx, rec.ID)
 		if err != nil {
 			result.OK = false

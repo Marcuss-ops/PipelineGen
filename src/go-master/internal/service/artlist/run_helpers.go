@@ -1,7 +1,9 @@
 package artlist
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -29,7 +31,20 @@ func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
 }
 
 func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
-	return strings.ToLower(strings.TrimSpace(term)) + "|" + strings.TrimSpace(rootFolderID) + "|" + strings.ToLower(strings.TrimSpace(strategy)) + "|" + formatBool(dryRun)
+	// Build canonical request for deduplication
+	canonical := map[string]any{
+		"term":           strings.ToLower(strings.TrimSpace(term)),
+		"root_folder_id": strings.TrimSpace(rootFolderID),
+		"strategy":       strings.ToLower(strings.TrimSpace(strategy)),
+		"dry_run":        dryRun,
+	}
+	raw, err := json.Marshal(canonical)
+	if err != nil {
+		// Fallback to simple key if JSON fails
+		return fmt.Sprintf("%s|%s|%s|%v", strings.ToLower(strings.TrimSpace(term)), strings.TrimSpace(rootFolderID), strings.ToLower(strings.TrimSpace(strategy)), dryRun)
+	}
+	hash := sha256.Sum256(raw)
+	return fmt.Sprintf("%x", hash)
 }
 
 func driveFileIDFromClip(clip *models.Clip) string {
@@ -60,9 +75,4 @@ func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
 	return string(raw)
 }
 
-func formatBool(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
+

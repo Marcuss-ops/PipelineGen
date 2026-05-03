@@ -17,7 +17,6 @@ import (
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaregistry"
-	"velox/go-master/internal/service/youtubeclip"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
@@ -53,8 +52,11 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 
 	// Create mediaregistry components for Artlist
 	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
-	driveVerifier := mediaregistry.NewHTTPDriveVerifier()
+	driveVerifier := mediaregistry.NewAPIDriveVerifier(coreDeps.DriveClient)
 	mediaFinalizer := mediaregistry.NewFinalizer(clipsRegistry, driveVerifier, log)
+
+	// Create Artlist DriveService
+	artlistDriveService := artlist.NewDriveService(coreDeps.DriveClient, driveFolderID, driveDestinationService, log)
 
 	artlistService, err = artlist.NewService(
 		cfg,
@@ -63,9 +65,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
-		coreDeps.DriveClient,
-		driveFolderID,
-		driveDestinationService,
+		artlistDriveService,
 		coreDeps.MediaProcessor,
 		mediaFinalizer,
 		log,
@@ -116,17 +116,8 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		coreDeps.VoiceoverService.SetDriveDestination(driveDestinationService)
 	}
 
-	// Create YouTube clip service and handler
-	youtubeClipService := youtubeclip.NewService(
-		cfg,
-		log,
-		coreDeps.ClipsOnlyRepo,
-		coreDeps.MonitorsRepo,
-		coreDeps.DriveClient,
-		driveDestinationService,
-		coreDeps.MediaProcessor,
-	)
-	youtubeClipHandler := youtubecliphandler.NewHandler(youtubeClipService, log)
+	// Use YouTube clip service from core deps
+	youtubeClipHandler := youtubecliphandler.NewHandler(coreDeps.YoutubeClipService, log)
 
 	jobsHandler := jobs.NewHandler(coreDeps.JobsService, log)
 
@@ -170,7 +161,15 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	}, nil
 }
 
-// WireMinimal is kept for compatibility with local tools.
+// WireMinimal creates a minimal server with core services only.
+// This is the recommended entry point for local tools and minimal deployments.
 func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
-	return WireScriptDocs(cfg, log, mode)
+	_, coreClean, err := initCoreMinimal(cfg, log, mode)
+	if err != nil {
+		return nil, err
+	}
+	return &AppDeps{
+		Handlers: nil, // Minimal mode doesn't set up handlers
+		Cleanup:  coreClean,
+	}, nil
 }

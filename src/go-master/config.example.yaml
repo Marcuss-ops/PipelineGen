@@ -18,7 +18,8 @@ storage:
 security:
   # IMPORTANT: If enable_auth is true, you MUST set an admin_token.
   # For local development, you can set enable_auth to false.
-  enable_auth: true
+  # Default is false (disabled) - matches runtime default.
+  enable_auth: false
   admin_token: ""
   worker_token: ""
   cors_origins: []

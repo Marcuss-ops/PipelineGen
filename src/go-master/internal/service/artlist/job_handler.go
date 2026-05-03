@@ -65,24 +65,10 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		"failed":    resp.Failed,
 	})
 
-	// Note: In the new job system, results are tracked in jobs.db.sqlite
-	// The artlist_runs table is only for legacy UUID-based records
-	if resp != nil {
-		activeKey := RunDedupKey(resp.Term, resp.RootFolderID, resp.Strategy, resp.DryRun)
-		if rec, err := s.findRunRecordByActiveKey(ctx, activeKey); err == nil && rec != nil {
-			// Update legacy artlist_runs record if it exists
-			if err := s.finishRunRecord(ctx, rec.RunID, string(job.Status), resp); err != nil {
-				s.log.Warn("failed to persist run record", zap.Error(err))
-			}
-		} else {
-			s.log.Debug("no legacy artlist run record found; job status is tracked in jobs table",
-				zap.String("job_id", job.ID),
-				zap.String("active_key", activeKey),
-			)
-		}
-	}
+	// Jobs table is the source of truth. Legacy artlist_runs is read-only.
 
-	return map[string]any{
+	// Build result map with items for detailed tracking
+	resultMap := map[string]any{
 		"found":         resp.Found,
 		"processed":     resp.Processed,
 		"skipped":       resp.Skipped,
@@ -90,5 +76,26 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		"tag_folder_id": resp.TagFolderID,
 		"term":          resp.Term,
 		"strategy":      resp.Strategy,
-	}, nil
+	}
+
+	// Include items with detailed status
+	if len(resp.Items) > 0 {
+		items := make([]map[string]interface{}, 0, len(resp.Items))
+		for _, item := range resp.Items {
+			items = append(items, map[string]interface{}{
+				"clip_id":       item.ClipID,
+				"name":          item.Name,
+				"filename":      item.Filename,
+				"status":        item.Status,
+				"drive_link":    item.DriveLink,
+				"download_link": item.DownloadLink,
+				"local_path":    item.LocalPath,
+				"file_hash":     item.FileHash,
+				"error":         item.Error,
+			})
+		}
+		resultMap["items"] = items
+	}
+
+	return resultMap, nil
 }

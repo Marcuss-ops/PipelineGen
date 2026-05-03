@@ -22,6 +22,7 @@ import (
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
+	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -59,6 +60,7 @@ type CoreDeps struct {
 	JobsService          *jobservice.Service
 	JobsDB               *sql.DB
 	MediaProcessor       *mediaasset.Processor
+	YoutubeClipService   *youtubeclip.Service
 }
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
@@ -128,5 +130,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		JobsService:          svcs.jobsService,
 		JobsDB:               dbs.jobs.DB,
 		MediaProcessor:       svcs.mediaProcessor,
+		YoutubeClipService:   svcs.youtubeClipService,
 	}, cleanup, nil
 }

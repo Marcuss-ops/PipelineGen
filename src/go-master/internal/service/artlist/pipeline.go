@@ -66,15 +66,15 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 	rootFolderID := strings.TrimSpace(req.RootFolderID)
 	if rootFolderID == "" {
-		rootFolderID = strings.TrimSpace(s.driveFolderID)
+		rootFolderID = strings.TrimSpace(s.driveService.GetDriveFolderID())
 	}
 	if rootFolderID == "" {
 		rootFolderID = "root"
 	}
 	resp.RootFolderID = rootFolderID
 
-	if s.driveClient == nil && !req.DryRun {
-		s.log.Warn("drive client not configured, proceeding with local harvesting only")
+	if s.driveService == nil && !req.DryRun {
+		s.log.Warn("drive service not configured, proceeding with local harvesting only")
 	}
 
 	tagFolderName := pathutil.SafeFolderName(resp.Term)
@@ -145,8 +145,8 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 	// Resolve Drive destination using drivedestination service
 	tagFolderID := rootFolderID
-	if s.driveDestination != nil && rootFolderID != "" {
-		resolved, err := s.driveDestination.Resolve(ctx, &drivedestination.Request{
+	if s.driveService != nil && s.driveService.GetDriveDestination() != nil && rootFolderID != "" {
+		resolved, err := s.driveService.GetDriveDestination().Resolve(ctx, &drivedestination.Request{
 			FolderID:        rootFolderID,
 			SubfolderName:   tagFolderName,
 			CreateSubfolder: true,
@@ -160,7 +160,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			tagFolderID = resolved.FolderID
 		}
 	}
-	if !req.DryRun && s.driveClient != nil && tagFolderID != "" {
+	if !req.DryRun && s.driveService != nil && tagFolderID != "" {
 		s.log.Info("using artlist folder for uploads",
 			zap.String("folder_id", tagFolderID),
 			zap.String("folder_link", "https://drive.google.com/drive/folders/"+tagFolderID),
@@ -233,8 +233,8 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			LocalPath: clip.LocalPath,
 		}
 		var checker assetstore.ChecksumChecker
-		if s.driveClient != nil {
-			checker = &artlistChecksumChecker{driveClient: s.driveClient}
+		if s.driveService != nil {
+			checker = &artlistChecksumChecker{driveClient: s.driveService.GetDriveClient()}
 		}
 		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), checker)
 		
@@ -408,31 +408,6 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 	return resp, nil
 }
-
-func getOrCreateFolder(svc *driveapi.Service, name, parentID string) (string, error) {
-	query := fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", name, parentID)
-	list, err := svc.Files.List().Q(query).Do()
-	if err != nil {
-		return "", err
-	}
-
-	if len(list.Files) > 0 {
-		return list.Files[0].Id, nil
-	}
-
-	f, err := svc.Files.Create(&driveapi.File{
-		Name:     name,
-		MimeType: "application/vnd.google-apps.folder",
-		Parents:  []string{parentID},
-	}).Do()
-	if err != nil {
-		return "", err
-	}
-	return f.Id, nil
-}
-
-
-
 
 
 
