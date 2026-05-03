@@ -156,7 +156,25 @@ func (s *Service) findActiveRunRecord(ctx context.Context, activeKey string) (*a
 		WHERE active_key = ? AND status IN ('queued', 'running')
 		ORDER BY started_at DESC
 		LIMIT 1
-	`, activeKey)
+		`, activeKey)
+	return scanRunRecord(row)
+}
+
+func (s *Service) findRunRecordByActiveKey(ctx context.Context, activeKey string) (*artlistRunRecord, error) {
+	if s.mainDB == nil {
+		return nil, fmt.Errorf("main database not configured")
+	}
+	if err := s.ensureRunSchema(ctx); err != nil {
+		return nil, err
+	}
+	row := s.mainDB.QueryRowContext(ctx, `
+		SELECT run_id, term, root_folder_id, strategy, dry_run, status, found, processed, skipped, failed,
+		       estimated_size, last_processed_at, request_json, error, tag_folder_id, started_at, ended_at, active_key
+		FROM artlist_runs
+		WHERE active_key = ?
+		ORDER BY started_at DESC
+		LIMIT 1
+		`, activeKey)
 	return scanRunRecord(row)
 }
 

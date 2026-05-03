@@ -29,7 +29,7 @@ func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
 }
 
 func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
-	return strings.ToLower(strings.TrimSpace(term)) + "|" + strings.ToLower(strings.TrimSpace(rootFolderID)) + "|" + strings.ToLower(strings.TrimSpace(strategy)) + "|" + formatBool(dryRun)
+	return strings.ToLower(strings.TrimSpace(term)) + "|" + strings.TrimSpace(rootFolderID) + "|" + strings.ToLower(strings.TrimSpace(strategy)) + "|" + formatBool(dryRun)
 }
 
 func driveFileIDFromClip(clip *models.Clip) string {

@@ -65,17 +65,20 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		"failed":    resp.Failed,
 	})
 
-	// Persist results to artlist_runs table
-	// Need to find the correct record by active_key (since job.ID != UUID in artlist_runs)
+	// Note: In the new job system, results are tracked in jobs.db.sqlite
+	// The artlist_runs table is only for legacy UUID-based records
 	if resp != nil {
 		activeKey := RunDedupKey(resp.Term, resp.RootFolderID, resp.Strategy, resp.DryRun)
-		if rec, err := s.findActiveRunRecord(ctx, activeKey); err == nil && rec != nil {
-			// Update using the UUID from artlist_runs
+		if rec, err := s.findRunRecordByActiveKey(ctx, activeKey); err == nil && rec != nil {
+			// Update legacy artlist_runs record if it exists
 			if err := s.finishRunRecord(ctx, rec.RunID, string(job.Status), resp); err != nil {
 				s.log.Warn("failed to persist run record", zap.Error(err))
 			}
 		} else {
-			s.log.Warn("no active run record found for active_key", zap.String("active_key", activeKey))
+			s.log.Debug("no legacy artlist run record found; job status is tracked in jobs table",
+				zap.String("job_id", job.ID),
+				zap.String("active_key", activeKey),
+			)
 		}
 	}
 
