@@ -22,6 +22,7 @@ import (
 	jobservice "velox/go-master/internal/service/jobs"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -110,7 +111,13 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		log.Warn("Failed to create voiceovers directory", zap.Error(err))
 	}
 	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
-	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voRepo)
+
+	// Create voiceover media finalizer
+	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
+	voDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
+	voMediaFinalizer := mediaregistry.NewFinalizer(voRegistryAdapter, voDriveVerifier, log)
+
+	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voMediaFinalizer, voRepo)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
