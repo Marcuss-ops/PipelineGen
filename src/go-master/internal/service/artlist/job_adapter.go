@@ -144,10 +144,29 @@ func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTa
 // GetJobByRunID retrieves a job by its run ID (which is the job ID)
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job, error) {
 	rec, err := s.loadRunRecord(ctx, runID)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return RunRecordToJob(rec), nil
 	}
-	return RunRecordToJob(rec), nil
+	// Fallback: try to load from jobs table
+	if s.jobsDB != nil {
+		var job models.Job
+		var payload []byte
+		var resultJSON []byte
+		err2 := s.jobsDB.QueryRowContext(ctx, "SELECT id, status, error, payload, result FROM jobs WHERE id = ?", runID).Scan(&job.ID, &job.Status, &job.Error, &payload, &resultJSON)
+		if err2 == nil {
+			if len(payload) > 0 {
+				job.Payload = payload
+			}
+			if len(resultJSON) > 0 {
+				var result map[string]interface{}
+				if json.Unmarshal(resultJSON, &result) == nil {
+					job.Result = result
+				}
+			}
+			return &job, nil
+		}
+	}
+	return nil, err
 }
 
 // FindActiveJob finds an active job by its active key

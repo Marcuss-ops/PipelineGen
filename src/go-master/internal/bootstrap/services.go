@@ -25,6 +25,11 @@ import (
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
+	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/mediaasset"
+	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/pkg/media/downloader"
+	"velox/go-master/pkg/media/ffmpeg"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -52,6 +57,8 @@ type services struct {
 	jobsRepo          *jobrepo.Repository
 	jobsService       *jobservice.Service
 	jobsDispatcher    *jobservice.Dispatcher
+	mediaProcessor    *mediaasset.Processor
+	youtubeClipService *youtubeclip.Service
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -68,6 +75,36 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
 
+	// Create media processor
+	ytDLPDownloader := downloader.NewYTDLP(cfg)
+	ffmpegProc := ffmpeg.New(cfg)
+	mediaProcessor := mediaasset.NewProcessor(
+		ytDLPDownloader,
+		ffmpegProc,
+		driveClient,
+		log,
+		mediaasset.ProcessorConfig{
+			DataDir: cfg.Storage.DataDir,
+			TempDir: cfg.Storage.TempDir,
+			VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg),
+		},
+	)
+
+	driveDestinationService := drivedestination.NewService(cfg, log, driveClient)
+
+	monitorsRepo := monitors.NewRepository(dbs.main.DB)
+	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB)
+
+	youtubeClipService := youtubeclip.NewService(
+		cfg,
+		log,
+		clipsOnlyRepo,
+		monitorsRepo,
+		driveClient,
+		driveDestinationService,
+		mediaProcessor,
+	)
+
 	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
 	if err := os.MkdirAll(voDir, 0755); err != nil {
 		log.Warn("Failed to create voiceovers directory", zap.Error(err))
@@ -78,8 +115,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	clipsRepo := clips.NewRepository(dbs.stock.DB)
 	artlistRepo := clips.NewRepository(dbs.artlist.DB)
-	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB)
-	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
 	if err := clipsOnlyRepo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
 		log.Warn("Failed to ensure segment embeddings cache schema", zap.Error(err))
@@ -100,7 +135,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 
-	catalogSync := catalogsync.NewService(driveClient, []catalogsync.Target{
+	syncTargets := []catalogsync.Target{
 		{
 			Name:         "stock",
 			RootFolderID: cfg.Drive.StockRootFolder,
@@ -122,7 +157,23 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 			MediaType:    "artlist",
 			Repo:         artlistRepo,
 		},
-	}, log)
+	}
+
+	if cfg.Drive.ClipRootFolders != nil {
+		for group, folderID := range cfg.Drive.ClipRootFolders {
+			if folderID != "" {
+				syncTargets = append(syncTargets, catalogsync.Target{
+					Name:         "clips_" + group,
+					RootFolderID: folderID,
+					Source:       "clips",
+					MediaType:    "clip",
+					Repo:         clipsOnlyRepo,
+				})
+			}
+		}
+	}
+
+	catalogSync := catalogsync.NewService(driveClient, syncTargets, log)
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
@@ -161,5 +212,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		jobsRepo:          jobsRepo,
 		jobsService:       jobsService,
 		jobsDispatcher:    jobsDispatcher,
+		mediaProcessor:    mediaProcessor,
+		youtubeClipService: youtubeClipService,
 	}, nil
 }

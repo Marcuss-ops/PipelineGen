@@ -90,11 +90,6 @@ func (s *Service) StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagR
 		zap.Bool("dry_run", resp.DryRun),
 	)
 
-	go func() {
-		jobCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer cancel()
-		s.executeRunTag(jobCtx, normalized, job.ID)
-	}()
 	return resp, nil
 }
 
