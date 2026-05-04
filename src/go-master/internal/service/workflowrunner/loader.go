@@ -2,8 +2,8 @@ package workflowrunner
 
 import (
 	"fmt"
-	"os"
 	"gopkg.in/yaml.v3"
+	"os"
 )
 
 // LoadFromFile loads a workflow from a YAML file

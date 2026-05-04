@@ -15,7 +15,6 @@ import (
 	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
-	"velox/go-master/internal/service/pipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
@@ -52,26 +51,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		resp.Error = "term is required"
 		return resp, fmt.Errorf("term is required")
 	}
-	if req.Limit <= 0 {
-		req.Limit = 1
-	}
-	if req.Limit > 500 {
-		req.Limit = 500
-	}
+
+	// Assume request is already normalized (handler or worker normalized before enqueue/execution)
+	rootFolderID := req.RootFolderID
+	strategy := req.Strategy
 	resp.Requested = req.Limit
 	resp.DryRun = req.DryRun
-
-	strategy := string(pipeline.NormalizeStrategy(req.Strategy, req.ForceReupload))
-	resp.Strategy = strategy
-
-	rootFolderID := strings.TrimSpace(req.RootFolderID)
-	if rootFolderID == "" {
-		rootFolderID = strings.TrimSpace(s.driveService.GetDriveFolderID())
-	}
-	if rootFolderID == "" {
-		rootFolderID = "root"
-	}
-	resp.RootFolderID = rootFolderID
+	resp.Strategy = req.Strategy
+	resp.RootFolderID = req.RootFolderID
 
 	if s.driveService == nil && !req.DryRun {
 		s.log.Warn("drive service not configured, proceeding with local harvesting only")

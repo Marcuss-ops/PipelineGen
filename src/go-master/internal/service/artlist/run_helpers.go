@@ -12,22 +12,65 @@ import (
 	"velox/go-master/pkg/models"
 )
 
+// RunDefaults holds default values for request normalization.
+type RunDefaults struct {
+	DefaultRootFolderID string
+	DefaultLimit        int
+	MaxLimit            int
+}
+
+// NormalizeRunTagRequest normalizes a RunTagRequest using the provided defaults.
+// This is the SINGLE normalization function that should be used everywhere:
+// - Before dedup key generation
+// - Before job enqueue
+// - Before job execution
+// - At the start of pipeline RunTag
+func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagRequest {
+	// Normalize term
+	req.Term = strings.TrimSpace(req.Term)
+
+	// Normalize limit
+	if req.Limit <= 0 {
+		if defaults.DefaultLimit > 0 {
+			req.Limit = defaults.DefaultLimit
+		} else {
+			req.Limit = 1
+		}
+	}
+	if defaults.MaxLimit > 0 && req.Limit > defaults.MaxLimit {
+		req.Limit = defaults.MaxLimit
+	}
+
+	// Normalize root folder ID
+	req.RootFolderID = strings.TrimSpace(req.RootFolderID)
+	if req.RootFolderID == "" && defaults.DefaultRootFolderID != "" {
+		req.RootFolderID = defaults.DefaultRootFolderID
+	}
+
+	// Handle deprecated ForceReupload once, then forget it
+	if req.ForceReupload {
+		if req.Strategy == "" {
+			req.Strategy = "replace"
+		}
+		req.ForceReupload = false
+	}
+
+	// Normalize strategy
+	req.Strategy = string(pipeline.NormalizeStrategy(req.Strategy, false))
+
+	return req
+}
+
+// Deprecated: Use NormalizeRunTagRequest instead.
 func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
 	if req == nil {
 		return &RunTagRequest{}
 	}
-
 	copyReq := *req
-	copyReq.Term = strings.TrimSpace(copyReq.Term)
-	if copyReq.Limit <= 0 {
-		copyReq.Limit = 1
-	}
-	if copyReq.Limit > 500 {
-		copyReq.Limit = 500
-	}
-	copyReq.RootFolderID = strings.TrimSpace(copyReq.RootFolderID)
-	copyReq.Strategy = string(pipeline.NormalizeStrategy(req.Strategy, req.ForceReupload))
-	return &copyReq
+	normalized := NormalizeRunTagRequest(copyReq, RunDefaults{
+		MaxLimit: 500,
+	})
+	return &normalized
 }
 
 func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {

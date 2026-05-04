@@ -75,11 +75,11 @@ func NewRunner() *Runner {
 // RunResult contains the result of a workflow run
 type RunResult struct {
 	WorkflowName string
-	WorkflowID  string
-	Status      string
-	StepResults map[string]*StepOutput
-	Error       string
-	Duration    time.Duration
+	WorkflowID   string
+	Status       string
+	StepResults  map[string]*StepOutput
+	Error        string
+	Duration     time.Duration
 }
 
 // Run executes a workflow using DAG-based execution
@@ -87,9 +87,9 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 	start := time.Now()
 	result := &RunResult{
 		WorkflowName: wf.Name,
-		WorkflowID:  fmt.Sprintf("wf_%d", time.Now().UnixNano()),
-		Status:      "running",
-		StepResults: make(map[string]*StepOutput),
+		WorkflowID:   fmt.Sprintf("wf_%d", time.Now().UnixNano()),
+		Status:       "running",
+		StepResults:  make(map[string]*StepOutput),
 	}
 
 	// Build levels for DAG execution
@@ -102,10 +102,10 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 	}
 
 	state := &WorkflowState{
-		WorkflowID:   result.WorkflowID,
-		Status:       "running",
-		StepOutputs:  make(map[string]*StepOutput),
-		CurrentStep:  0,
+		WorkflowID:  result.WorkflowID,
+		Status:      "running",
+		StepOutputs: make(map[string]*StepOutput),
+		CurrentStep: 0,
 	}
 
 	// Apply defaults to steps if not specified
@@ -128,7 +128,7 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 				payload, err := renderPayload(step.Payload, wf, state)
 				if err != nil {
 					result.StepResults[step.ID] = &StepOutput{
-						OK:    false,
+						OK:     false,
 						Status: "failed",
 						Error:  fmt.Sprintf("failed to render payload: %v", err),
 					}
@@ -160,7 +160,7 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 
 				if execErr != nil {
 					result.StepResults[step.ID] = &StepOutput{
-						OK:    false,
+						OK:     false,
 						Status: "failed",
 						Error:  execErr.Error(),
 					}

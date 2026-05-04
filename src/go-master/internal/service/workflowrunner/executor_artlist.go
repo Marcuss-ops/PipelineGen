@@ -7,24 +7,38 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/artlist"
+	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/pkg/models"
 )
 
-// artlistExecutor executes artlist.run workflow steps
+// artlistExecutor executes artlist.run workflow steps via the common jobs service
 type artlistExecutor struct {
-	svc  *artlist.Service
-	log  *zap.Logger
+	jobsSvc *jobservice.Service
+	log     *zap.Logger
 }
 
 // newArtlistExecutor creates a new artlist step executor
+// Deprecated: Use newArtlistExecutorV2 with jobs service instead
 func newArtlistExecutor(svc *artlist.Service, log *zap.Logger) StepExecutor {
 	return &artlistExecutor{
-		svc:  svc,
-		log:  log.With(zap.String("executor", "artlist.run")),
+		log: log.With(zap.String("executor", "artlist.run")),
 	}
 }
 
-// Execute runs the artlist step
+// newArtlistExecutorV2 creates a new artlist step executor using the jobs service
+func newArtlistExecutorV2(jobsSvc *jobservice.Service, log *zap.Logger) StepExecutor {
+	return &artlistExecutor{
+		jobsSvc: jobsSvc,
+		log:     log.With(zap.String("executor", "artlist.run")),
+	}
+}
+
+// Execute runs the artlist step via the common jobs service
 func (e *artlistExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutput, error) {
+	if e.jobsSvc == nil {
+		return nil, fmt.Errorf("jobs service not configured for artlist executor")
+	}
+
 	// Parse step with parameters
 	term, _ := input.Step.With["term"].(string)
 	limit := 0
@@ -47,32 +61,41 @@ func (e *artlistExecutor) Execute(ctx context.Context, input *StepInput) (*StepO
 		DryRun:   dryRun,
 	}
 
-	// Start the artlist run (creates async job)
-	resp, err := e.svc.StartRunTag(ctx, req)
+	// Enqueue through common jobs service
+	job, err := e.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+		Type:       models.JobTypeArtlistRun,
+		Payload:    req.ToMap(),
+		MaxRetries: 3,
+		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
+	})
 	if err != nil {
 		return &StepOutput{
 			OK:     false,
 			Status: "failed",
-			Error:  fmt.Sprintf("failed to start artlist run: %v", err),
+			Error:  fmt.Sprintf("failed to enqueue artlist job: %v", err),
 		}, nil
 	}
 
 	// If no wait requested, return immediately with run ID
 	if input.Step.Wait == nil {
-		return e.runTagResponseToStepOutput(resp), nil
+		return &StepOutput{
+			OK:     true,
+			Status: "queued",
+			RunID:  job.ID,
+		}, nil
 	}
 
 	// Wait for job completion
-	finalResp, err := e.waitForRun(ctx, resp.RunID, input.Step.Wait)
+	finalJob, err := e.waitForJob(ctx, job.ID, input.Step.Wait)
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for artlist run: %w", err)
 	}
 
-	return e.runTagResponseToStepOutput(finalResp), nil
+	return e.jobToStepOutput(finalJob), nil
 }
 
-// waitForRun polls the artlist run status until terminal
-func (e *artlistExecutor) waitForRun(ctx context.Context, runID string, waitCfg *WaitConfig) (*artlist.RunTagResponse, error) {
+// waitForJob polls the jobs service until terminal status
+func (e *artlistExecutor) waitForJob(ctx context.Context, jobID string, waitCfg *WaitConfig) (*models.Job, error) {
 	timeout := 900 // default 15 minutes
 	if waitCfg.TimeoutSeconds > 0 {
 		timeout = waitCfg.TimeoutSeconds
@@ -88,70 +111,88 @@ func (e *artlistExecutor) waitForRun(ctx context.Context, runID string, waitCfg 
 
 	for {
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timeout waiting for artlist run %s", runID)
+			return nil, fmt.Errorf("timeout waiting for artlist job %s", jobID)
 		}
 
-		resp, err := e.svc.GetRunTag(ctx, runID)
+		job, err := e.jobsSvc.Get(ctx, jobID)
 		if err != nil {
-			e.log.Warn("failed to get run status", zap.String("run_id", runID), zap.Error(err))
-		// Wait for interval or context cancellation
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("context cancelled while waiting for artlist run %s: %w", runID, ctx.Err())
-		case <-time.After(intervalDuration):
-			// Continue to next status check
-		}
+			e.log.Warn("failed to get job status", zap.String("job_id", jobID), zap.Error(err))
+			// Wait for interval or context cancellation
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("context cancelled while waiting for artlist job %s: %w", jobID, ctx.Err())
+			case <-time.After(intervalDuration):
+				// Continue to next status check
+			}
 			continue
 		}
 
 		// Check terminal status
-		switch resp.Status {
-		case "completed":
-			return resp, nil
-		case "failed", "cancelled", "zombie":
-			return resp, fmt.Errorf("artlist run %s ended with status: %s, error: %s", runID, resp.Status, resp.Error)
+		if job.Status.IsTerminal() {
+			if job.Status == models.StatusFailed {
+				return job, fmt.Errorf("artlist job %s failed: %s", jobID, job.Error)
+			}
+			return job, nil
 		}
 
-		time.Sleep(intervalDuration)
+		// Wait before next poll
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("context cancelled while waiting for artlist job %s: %w", jobID, ctx.Err())
+		case <-time.After(intervalDuration):
+			// Continue
+		}
 	}
 }
 
-// runTagResponseToStepOutput converts artlist RunTagResponse to standardized StepOutput
-func (e *artlistExecutor) runTagResponseToStepOutput(resp *artlist.RunTagResponse) *StepOutput {
+// jobToStepOutput converts a models.Job to standardized StepOutput
+func (e *artlistExecutor) jobToStepOutput(job *models.Job) *StepOutput {
 	output := &StepOutput{
-		OK:     resp.OK,
-		Status: resp.Status,
-		RunID:  resp.RunID,
-		Error:  resp.Error,
+		OK:     job.Status == models.StatusCompleted,
+		Status: string(job.Status),
+		RunID:  job.ID,
+		Error:  job.Error,
 	}
 
-	// Convert RunTagItem to AssetItem
-	for _, item := range resp.Items {
-		output.Items = append(output.Items, AssetItem{
-			ID:        item.ClipID,
-			Title:     item.Name,
-			Source:    "artlist",
-			DriveLink: item.DriveLink,
-			LocalPath: item.LocalPath,
-			Hash:      item.FileHash,
-			Status:    item.Status,
-			Error:     item.Error,
-		})
-	}
+	// Extract items from job result if available
+	if job.Result != nil {
+		if itemsRaw, ok := job.Result["items"].([]interface{}); ok {
+			for _, itemRaw := range itemsRaw {
+				if itemMap, ok := itemRaw.(map[string]interface{}); ok {
+					item := AssetItem{
+						Source: "artlist",
+					}
+					if v, ok := itemMap["clip_id"].(string); ok {
+						item.ID = v
+					}
+					if v, ok := itemMap["name"].(string); ok {
+						item.Title = v
+					}
+					if v, ok := itemMap["drive_link"].(string); ok {
+						item.DriveLink = v
+					}
+					if v, ok := itemMap["local_path"].(string); ok {
+						item.LocalPath = v
+					}
+					if v, ok := itemMap["file_hash"].(string); ok {
+						item.Hash = v
+					}
+					if v, ok := itemMap["status"].(string); ok {
+						item.Status = v
+					}
+					if v, ok := itemMap["error"].(string); ok {
+						item.Error = v
+					}
+					output.Items = append(output.Items, item)
+				}
+			}
+		}
 
-	// Set folder ID if available
-	if resp.TagFolderID != "" {
-		output.FolderID = resp.TagFolderID
-	}
-
-	// Add raw response for debugging
-	output.Raw = map[string]interface{}{
-		"term":      resp.Term,
-		"strategy":  resp.Strategy,
-		"found":     resp.Found,
-		"processed": resp.Processed,
-		"skipped":   resp.Skipped,
-		"failed":    resp.Failed,
+		// Add summary data from result
+		if v, ok := job.Result["tag_folder_id"].(string); ok {
+			output.FolderID = v
+		}
+		output.Raw = job.Result
 	}
 
 	return output

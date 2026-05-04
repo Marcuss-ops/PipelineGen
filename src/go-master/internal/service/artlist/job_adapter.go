@@ -11,45 +11,12 @@ import (
 	"velox/go-master/pkg/models"
 )
 
-// UpdateJobRun updates an existing job with run results (in memory).
+// UpdateJobRun updates an existing job with run results using the codec.
 // The caller is responsible for persisting the job.
 func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTagResponse) error {
 	job.Status = models.JobStatus(resp.Status)
 	job.Error = resp.Error
-
-	if resp.Found > 0 || resp.Processed > 0 || resp.Skipped > 0 || resp.Failed > 0 {
-		job.Result = map[string]interface{}{
-			"found":          resp.Found,
-			"processed":      resp.Processed,
-			"skipped":        resp.Skipped,
-			"failed":         resp.Failed,
-			"estimated_size": resp.EstimatedSize,
-			"tag_folder_id":  resp.TagFolderID,
-		}
-		if resp.LastProcessedAt != nil {
-			job.Result["last_processed_at"] = *resp.LastProcessedAt
-		}
-
-		// Include items with detailed status
-		if len(resp.Items) > 0 {
-			items := make([]map[string]interface{}, 0, len(resp.Items))
-			for _, item := range resp.Items {
-				items = append(items, map[string]interface{}{
-					"clip_id":       item.ClipID,
-					"name":          item.Name,
-					"filename":      item.Filename,
-					"status":        item.Status,
-					"drive_link":    item.DriveLink,
-					"download_link": item.DownloadLink,
-					"local_path":    item.LocalPath,
-					"file_hash":     item.FileHash,
-					"error":         item.Error,
-				})
-			}
-			job.Result["items"] = items
-		}
-	}
-
+	job.Result = jobCodec.ResultFromResponse(resp)
 	return nil
 }
 

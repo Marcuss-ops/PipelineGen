@@ -101,13 +101,13 @@ type JobEvent struct {
 
 // JobResult contiene il risultato di un job completato
 type JobResult struct {
-	Success     bool                   `json:"success"`
-	OutputPath  string                 `json:"output_path,omitempty"`
-	VideoURL    string                 `json:"video_url,omitempty"`
-	DriveFileID string                 `json:"drive_file_id,omitempty"`
-	YouTubeID   string                 `json:"youtube_id,omitempty"`
-	Metadata    json.RawMessage        `json:"metadata,omitempty"`
-	CompletedAt time.Time              `json:"completed_at"`
+	Success     bool            `json:"success"`
+	OutputPath  string          `json:"output_path,omitempty"`
+	VideoURL    string          `json:"video_url,omitempty"`
+	DriveFileID string          `json:"drive_file_id,omitempty"`
+	YouTubeID   string          `json:"youtube_id,omitempty"`
+	Metadata    json.RawMessage `json:"metadata,omitempty"`
+	CompletedAt time.Time       `json:"completed_at"`
 }
 
 // Queue rappresenta la coda dei job
@@ -116,8 +116,6 @@ type Queue struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Version   int       `json:"version"`
 }
-
-
 
 // JobFilter rappresenta i filtri per la ricerca dei job
 type JobFilter struct {

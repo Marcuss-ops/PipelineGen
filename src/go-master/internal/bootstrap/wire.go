@@ -73,6 +73,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		artlistDriveService,
 		coreDeps.MediaProcessor,
 		mediaFinalizer,
+		coreDeps.JobsService,
 		log,
 	)
 	if err != nil {
@@ -192,7 +193,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		YouTubeClip:   youtubeClipHandler,
 		Jobs:          jobsHandler,
 		Drive:         drivehandler.NewHandler(driveCleanupSvc, driveReconcileSvc),
-		Workflow:      workflowhandler.NewHandler(workflowrunner.NewService(artlistService, log), log),
+		Workflow:      workflowhandler.NewHandler(workflowrunner.NewService(coreDeps.JobsService, log), log),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
