@@ -146,6 +146,45 @@ func buildClipQuery(source string) string {
 	return query
 }
 
+// ListClipsPaged returns clips with pagination and optional search.
+// If q is non-empty, performs a search; otherwise lists all clips with pagination.
+func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q string) ([]*models.Clip, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	if strings.TrimSpace(q) != "" {
+		return r.SearchClips(ctx, q)
+	}
+
+	query := `SELECT ` + clipColumns + `
+		FROM clips
+		ORDER BY updated_at DESC
+		LIMIT ? OFFSET ?`
+
+	rows, err := r.db.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
 // SearchClips searches clips by tag or group_name using FTS5.
 // Falls back to LIKE search if FTS5 table doesn't exist.
 func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Clip, error) {
@@ -490,6 +529,17 @@ func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFo
 		folder.ClipCount, folder.ProcessedCount, folder.FailedCount, folder.SkippedCount, folder.LastError, folder.Metadata,
 		folder.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
 
+	return err
+}
+
+// DeleteClipFolder deletes a clip folder by its ID.
+func (r *Repository) DeleteClipFolder(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip folder id is required")
+	}
+
+	_, err := r.db.ExecContext(ctx, "DELETE FROM clip_folders WHERE id = ?", id)
 	return err
 }
 
