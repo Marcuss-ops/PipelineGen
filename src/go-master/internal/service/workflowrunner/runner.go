@@ -3,6 +3,7 @@ package workflowrunner
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -118,6 +119,8 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 	}
 
 	// Execute levels in order, parallel within each level
+	var mu sync.Mutex // Protects concurrent writes to result.StepResults and state.StepOutputs
+
 	for _, level := range levels {
 		errGroup, ctx := errgroup.WithContext(ctx)
 
@@ -127,12 +130,36 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 				// Render payload with templating
 				payload, err := renderPayload(step.Payload, wf, state)
 				if err != nil {
+					mu.Lock()
 					result.StepResults[step.ID] = &StepOutput{
 						OK:     false,
 						Status: "failed",
 						Error:  fmt.Sprintf("failed to render payload: %v", err),
 					}
+					mu.Unlock()
 					return fmt.Errorf("step %s: failed to render payload: %w", step.ID, err)
+				}
+
+				// For service executors (uses), also render With and merge into payload
+				if len(step.With) > 0 {
+					withPayload, err := renderPayload(step.With, wf, state)
+					if err != nil {
+						mu.Lock()
+						result.StepResults[step.ID] = &StepOutput{
+							OK:     false,
+							Status: "failed",
+							Error:  fmt.Sprintf("failed to render with: %v", err),
+						}
+						mu.Unlock()
+						return fmt.Errorf("step %s: failed to render with: %w", step.ID, err)
+					}
+					// Merge with into payload
+					if payload == nil {
+						payload = make(map[string]interface{})
+					}
+					for k, v := range withPayload {
+						payload[k] = v
+					}
 				}
 
 				input := &StepInput{
@@ -159,16 +186,20 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 				}
 
 				if execErr != nil {
+					mu.Lock()
 					result.StepResults[step.ID] = &StepOutput{
 						OK:     false,
 						Status: "failed",
 						Error:  execErr.Error(),
 					}
+					mu.Unlock()
 					return fmt.Errorf("step %s failed: %w", step.ID, execErr)
 				}
 
+				mu.Lock()
 				result.StepResults[step.ID] = output
 				state.StepOutputs[step.ID] = output
+				mu.Unlock()
 
 				if !output.OK {
 					return fmt.Errorf("step %s returned not ok: %s", step.ID, output.Error)

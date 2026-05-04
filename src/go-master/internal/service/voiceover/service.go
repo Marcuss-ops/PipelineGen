@@ -109,12 +109,17 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	textHash := textToHash(req.Text)
 
 	var dest *ResolvedDestination
-	if boolDefault(req.UploadDrive, false) && req.Destination != nil {
+	if req.Destination != nil {
 		var err error
 		dest, err = s.resolveDestination(ctx, req.Destination)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// Ensure dest is not nil to avoid panics when accessing fields
+	if dest == nil {
+		dest = &ResolvedDestination{}
 	}
 
 	resp := &BatchResponse{

@@ -39,16 +39,16 @@ func (e *artlistExecutor) Execute(ctx context.Context, input *StepInput) (*StepO
 		return nil, fmt.Errorf("jobs service not configured for artlist executor")
 	}
 
-	// Parse step with parameters
-	term, _ := input.Step.With["term"].(string)
+	// Parse step parameters from Payload (rendered from With by runner)
+	term, _ := input.Payload["term"].(string)
 	limit := 0
-	if l, ok := input.Step.With["limit"].(int); ok {
+	if l, ok := input.Payload["limit"].(int); ok {
 		limit = l
-	} else if l, ok := input.Step.With["limit"].(float64); ok {
+	} else if l, ok := input.Payload["limit"].(float64); ok {
 		limit = int(l)
 	}
-	strategy, _ := input.Step.With["strategy"].(string)
-	dryRun, _ := input.Step.With["dry_run"].(bool)
+	strategy, _ := input.Payload["strategy"].(string)
+	dryRun, _ := input.Payload["dry_run"].(bool)
 
 	if term == "" {
 		return nil, fmt.Errorf("artlist.run: term is required")
