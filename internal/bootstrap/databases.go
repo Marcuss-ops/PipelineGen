@@ -58,6 +58,9 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		return nil, fmt.Errorf("failed to run jobs migrations: %w", err)
 	}
 
+	// Log FTS5 status once (driver-dependent, not DB-dependent)
+	storage.LogFTS5Status(log, mainDB)
+
 	return &databases{
 		main:      mainDB,
 		stock:     stockDB,

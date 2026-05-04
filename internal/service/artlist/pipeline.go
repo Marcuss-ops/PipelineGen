@@ -88,7 +88,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	)
 
 	// Step 0: Ensure we have clips in the DB via live search if none found
-	clipsList, err := s.clipsRepo.SearchClips(ctx, resp.Term)
+	clipsList, err := s.artlistRepo.SearchClips(ctx, resp.Term)
 	if err != nil {
 		s.log.Error("failed to search clips in DB", zap.String("term", resp.Term), zap.Error(err))
 		// DB error - try live search as fallback, but track the error
@@ -131,7 +131,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			resp.Error = "" // Clear DB error if live search succeeded
 		}
 		// Reload from DB after search
-		clipsList, err = s.clipsRepo.SearchClips(ctx, resp.Term)
+		clipsList, err = s.artlistRepo.SearchClips(ctx, resp.Term)
 		if err != nil {
 			s.log.Error("failed to reload clips from DB after discovery", zap.String("term", resp.Term), zap.Error(err))
 			resp.OK = false

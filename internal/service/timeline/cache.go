@@ -58,18 +58,12 @@ func (c *Cache) LoadPlan(ctx context.Context, cacheKey string) ([]clips.SegmentE
 	if c.repo == nil || strings.TrimSpace(cacheKey) == "" {
 		return nil, nil
 	}
-	if err := c.repo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
-		return nil, err
-	}
 	return c.repo.GetSegmentEmbeddingsByScriptKey(ctx, cacheKey)
 }
 
 func (c *Cache) StoreSegment(ctx context.Context, cacheKey string, rec *clips.SegmentEmbeddingRecord) error {
 	if c.repo == nil || strings.TrimSpace(cacheKey) == "" {
 		return nil
-	}
-	if err := c.repo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
-		return err
 	}
 	return c.repo.UpsertSegmentEmbedding(ctx, rec)
 }

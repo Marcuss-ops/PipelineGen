@@ -2,10 +2,22 @@ package catalog
 
 import (
 	"errors"
+
+	"velox/go-master/internal/repository/clips"
 )
 
-func NewRepository(dataDir string) *Repository {
-	return &Repository{dataDir: dataDir}
+type Repository struct {
+	clipsRepo   *clips.Repository
+	stockRepo   *clips.Repository
+	artlistRepo *clips.Repository
+}
+
+func NewRepository(clipsRepo *clips.Repository, stockRepo *clips.Repository, artlistRepo *clips.Repository) *Repository {
+	return &Repository{
+		clipsRepo:   clipsRepo,
+		stockRepo:   stockRepo,
+		artlistRepo: artlistRepo,
+	}
 }
 
 // SearchAll searches across all catalog databases and returns aggregated results.

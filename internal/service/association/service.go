@@ -31,7 +31,7 @@ func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRep
 
 	// Default engine with standard sources
 	s.engine = NewEngine(
-		NewDriveStockAssociation(dataDir),
+		NewDriveStockAssociation(stockRepo, artlistRepo),
 		NewArtlistFolderAssociation(s),
 	)
 

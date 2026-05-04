@@ -29,38 +29,6 @@ type SegmentEmbeddingRecord struct {
 	BestScore             int
 }
 
-// EnsureSegmentEmbeddingsSchema creates the cache table if missing.
-func (r *Repository) EnsureSegmentEmbeddingsSchema(ctx context.Context) error {
-	_, err := r.db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS segment_embeddings (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			script_key TEXT NOT NULL,
-			source_hash TEXT NOT NULL DEFAULT '',
-			topic TEXT NOT NULL DEFAULT '',
-			language TEXT NOT NULL DEFAULT '',
-			template TEXT NOT NULL DEFAULT '',
-			duration INTEGER NOT NULL DEFAULT 0,
-			segment_index INTEGER NOT NULL,
-			raw_subject TEXT NOT NULL DEFAULT '',
-			canonical_subject TEXT NOT NULL DEFAULT '',
-			raw_keywords_json TEXT NOT NULL DEFAULT '[]',
-			canonical_keywords_json TEXT NOT NULL DEFAULT '[]',
-			raw_entities_json TEXT NOT NULL DEFAULT '[]',
-			canonical_entities_json TEXT NOT NULL DEFAULT '[]',
-			segment_json TEXT NOT NULL DEFAULT '{}',
-			embedding_json TEXT NOT NULL DEFAULT '[]',
-			best_source TEXT NOT NULL DEFAULT '',
-			best_path TEXT NOT NULL DEFAULT '',
-			best_link TEXT NOT NULL DEFAULT '',
-			best_score INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL DEFAULT (datetime('now')),
-			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-			UNIQUE(script_key, segment_index)
-		)
-	`)
-	return err
-}
-
 // DeleteSegmentEmbeddingsByScriptKey removes all cached segments for a script key.
 func (r *Repository) DeleteSegmentEmbeddingsByScriptKey(ctx context.Context, scriptKey string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM segment_embeddings WHERE script_key = ?`, scriptKey)

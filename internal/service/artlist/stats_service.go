@@ -19,7 +19,7 @@ func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
 		stats.ArtlistClipsTotal = artlistTotal
 	}
 
-	totalClips, err := s.clipsRepo.CountClips(ctx)
+	totalClips, err := s.artlistRepo.CountClips(ctx)
 	if err == nil {
 		stats.ClipsTotal = totalClips
 	}
@@ -66,8 +66,8 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 		MainDBReady:    s.mainDB != nil,
 	}
 
-	if s.clipsRepo != nil {
-		if total, err := s.clipsRepo.CountClips(ctx); err == nil {
+	if s.artlistRepo != nil {
+		if total, err := s.artlistRepo.CountClips(ctx); err == nil {
 			resp.ClipsTotal = total
 		}
 	}
@@ -81,7 +81,7 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 	term = strings.TrimSpace(term)
 	if term != "" {
 		resp.SearchTerm = term
-		if matches, err := s.clipsRepo.SearchClips(ctx, term); err == nil {
+		if matches, err := s.artlistRepo.SearchClips(ctx, term); err == nil {
 			resp.MatchingClips = len(matches)
 			resp.EstimatedSize = len(matches)
 		}
@@ -127,9 +127,9 @@ func (s *Service) StaleTerms(ctx context.Context) ([]TermInfo, error) {
 }
 
 func (s *Service) lastProcessedAtForTerm(ctx context.Context, term string) (*string, error) {
-	if s.clipsRepo == nil {
+	if s.artlistRepo == nil {
 		return nil, nil
 	}
 
-	return s.clipsRepo.LastUpdatedAtForTerm(ctx, term)
+	return s.artlistRepo.LastUpdatedAtForTerm(ctx, term)
 }

@@ -18,7 +18,7 @@ type Service struct {
 	artlistDB         *sql.DB
 	jobsDB            *sql.DB
 	nodeScraperDir    string
-	clipsRepo         *clips.Repository
+	artlistRepo       *clips.Repository
 	driveService      *DriveService
 	mediaProcessor    *mediaasset.Processor
 	mediaFinalizer    *mediaregistry.Finalizer
@@ -26,7 +26,7 @@ type Service struct {
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, clipsRepo *clips.Repository, driveService *DriveService, mediaProcessor *mediaasset.Processor, mediaFinalizer *mediaregistry.Finalizer, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor *mediaasset.Processor, mediaFinalizer *mediaregistry.Finalizer, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -48,7 +48,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPat
 		jobsDB:            jobsDB,
 		artlistDB:         artlistDB,
 		nodeScraperDir:    nodeScraperDir,
-		clipsRepo:         clipsRepo,
+		artlistRepo:       artlistRepo,
 		driveService:      driveService,
 		mediaProcessor:    mediaProcessor,
 		mediaFinalizer:    mediaFinalizer,
