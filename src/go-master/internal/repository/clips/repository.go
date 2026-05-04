@@ -459,6 +459,24 @@ func (r *Repository) GetClip(ctx context.Context, id string) (*models.Clip, erro
 	return r.scanClipRow(row)
 }
 
+// GetClipByDriveFileID finds a clip by Drive file ID (searches both drive_link and download_link).
+// Returns nil, nil if not found.
+func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*models.Clip, error) {
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return nil, fmt.Errorf("drive file id is required")
+	}
+
+	query := buildClipQuery("") + " WHERE drive_link LIKE ? OR download_link LIKE ? LIMIT 1"
+	pattern := "%" + fileID + "%"
+	row := r.db.QueryRowContext(ctx, query, pattern, pattern)
+	clip, err := r.scanClipRow(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return clip, err
+}
+
 // CountClips returns the total number of clips
 func (r *Repository) CountClips(ctx context.Context) (int, error) {
 	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM clips")
