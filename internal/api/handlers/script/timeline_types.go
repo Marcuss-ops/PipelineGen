@@ -35,8 +35,6 @@ type TimelineSegment struct {
 	SearchSuggestions    []string                  `json:"search_suggestions,omitempty"`
 }
 
-
-
 // internal LLM structures
 type timelineLLMPlan struct {
 	PrimaryFocus string               `json:"primary_focus"`
@@ -55,15 +53,11 @@ type timelineLLMSegment struct {
 	Entities        []string `json:"entities"`
 }
 
-
-
 const (
 	timelineAssetSourceStockDrive     = association.AssetSourceStockDrive
 	timelineAssetSourceArtlistFolder  = association.AssetSourceArtlistFolder
 	timelineAssetSourceArtlistDynamic = association.AssetSourceArtlistDynamic
 )
-
-
 
 type timelineAssetDecision struct {
 	Source  string                    `json:"source"`

@@ -7,22 +7,22 @@ import (
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
 	drivehandler "velox/go-master/internal/api/handlers/drive"
-	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
+	"velox/go-master/internal/api/handlers/jobs"
 	mediahandler "velox/go-master/internal/api/handlers/media"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
-	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	workflowhandler "velox/go-master/internal/api/handlers/workflow"
-	foldermemory "velox/go-master/internal/service/foldermemory"
+	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/drivecleanup"
+	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/drivereconcile"
+	foldermemory "velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/mediaregistry"
-	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/service/workflowrunner"
+	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 
@@ -179,20 +179,20 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	}
 
 	handlers_struct := &api.Handlers{
-		Health:         common.NewHealthHandler(),
-		Artlist:        artlistHandlerVar,
-		Scraper:        scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
-		ImageAssets:    imghandler.NewHandler(coreDeps.ImageService),
-		Media:          mediaHandler,
-		ScriptDocs:     scriptDocsHandler,
-		Voiceover:      voiceover.NewHandler(coreDeps.VoiceoverService),
-		VoiceoverSync:  voiceover.NewSyncHandler(coreDeps.VoiceoverSync, log),
-		Utility:        coreDeps.Utility,
-		Catalog:        common.NewCatalogHandler(coreDeps.CatalogRepo),
-		YouTubeClip:    youtubeClipHandler,
-		Jobs:           jobsHandler,
-		Drive:          drivehandler.NewHandler(driveCleanupSvc, driveReconcileSvc),
-		Workflow:       workflowhandler.NewHandler(workflowrunner.NewService(artlistService, log), log),
+		Health:        common.NewHealthHandler(),
+		Artlist:       artlistHandlerVar,
+		Scraper:       scraperhandler.NewHandler(cfg.Paths.NodeScraperDir),
+		ImageAssets:   imghandler.NewHandler(coreDeps.ImageService),
+		Media:         mediaHandler,
+		ScriptDocs:    scriptDocsHandler,
+		Voiceover:     voiceover.NewHandler(coreDeps.VoiceoverService),
+		VoiceoverSync: voiceover.NewSyncHandler(coreDeps.VoiceoverSync, log),
+		Utility:       coreDeps.Utility,
+		Catalog:       common.NewCatalogHandler(coreDeps.CatalogRepo),
+		YouTubeClip:   youtubeClipHandler,
+		Jobs:          jobsHandler,
+		Drive:         drivehandler.NewHandler(driveCleanupSvc, driveReconcileSvc),
+		Workflow:      workflowhandler.NewHandler(workflowrunner.NewService(artlistService, log), log),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)

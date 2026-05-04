@@ -15,10 +15,10 @@ type RunTagRequest struct {
 func (r *RunTagRequest) ToMap() map[string]any {
 	return map[string]any{
 		"term":           r.Term,
-		"limit":         r.Limit,
+		"limit":          r.Limit,
 		"root_folder_id": r.RootFolderID,
-		"strategy":      r.Strategy,
-		"dry_run":       r.DryRun,
+		"strategy":       r.Strategy,
+		"dry_run":        r.DryRun,
 	}
 }
 

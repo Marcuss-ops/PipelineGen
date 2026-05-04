@@ -160,10 +160,10 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	tagFolderID := rootFolderID
 	if s.assetDestResolver != nil && rootFolderID != "" {
 		resolved, err := s.assetDestResolver.Resolve(ctx, &assetdestination.ResolveRequest{
-			Source:         "artlist",
-			Group:          req.Term,
-			FolderID:       rootFolderID,
-			SubfolderName:  tagFolderName,
+			Source:          "artlist",
+			Group:           req.Term,
+			FolderID:        rootFolderID,
+			SubfolderName:   tagFolderName,
 			CreateSubfolder: true,
 		})
 		if err != nil {
@@ -195,14 +195,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			if clip == nil {
 				continue
 			}
-		asset := assetstore.ExistingAsset{
-			ID:        clip.ID,
-			DriveLink: clip.DriveLink,
-			FileHash:  clip.FileHash,
-			Metadata:  clip.Metadata,
-			LocalPath: clip.LocalPath,
-		}
-		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), nil, assetstore.DefaultLocalFileChecker)
+			asset := assetstore.ExistingAsset{
+				ID:        clip.ID,
+				DriveLink: clip.DriveLink,
+				FileHash:  clip.FileHash,
+				Metadata:  clip.Metadata,
+				LocalPath: clip.LocalPath,
+			}
+			skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), nil, assetstore.DefaultLocalFileChecker)
 			status := "would_process"
 			if skip {
 				status = "would_skip"
@@ -230,8 +230,8 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 		// Skip if clip already has Drive link (already processed and uploaded)
 		if strings.TrimSpace(clip.DriveLink) != "" {
-			s.log.Info("skipping clip with existing drive link", 
-				zap.String("clip_id", clip.ID), 
+			s.log.Info("skipping clip with existing drive link",
+				zap.String("clip_id", clip.ID),
 				zap.String("drive_link", clip.DriveLink))
 			resp.Skipped++
 			resp.Items = append(resp.Items, RunTagItem{
@@ -247,31 +247,31 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		}
 
 		// Get download URL - use HLS URL from DownloadLink (set by live search)
-	url := strings.TrimSpace(clip.DownloadLink)
-	
-	// If DownloadLink is empty or not HLS, try ExternalURL
-	if url == "" || !strings.Contains(url, ".m3u8") {
-		url = strings.TrimSpace(clip.ExternalURL)
-	}
-	
-	// Skip Drive URLs - they're not valid source URLs for download
-	if strings.Contains(url, "drive.google") {
-		s.log.Warn("clip has Drive URL in source fields, skipping", 
-			zap.String("clip_id", clip.ID), 
-			zap.String("url", url))
-		resp.Skipped++
-		resp.Items = append(resp.Items, RunTagItem{
-			ClipID:       clip.ID,
-			Name:         clip.Name,
-			Filename:     clip.Filename,
-			Status:       "skipped_invalid_url",
-			Error:        "source URL is a Drive link, not a valid download URL",
-		})
-		continue
-	}
+		url := strings.TrimSpace(clip.DownloadLink)
 
-		s.log.Info("processing clip", 
-			zap.String("clip_id", clip.ID), 
+		// If DownloadLink is empty or not HLS, try ExternalURL
+		if url == "" || !strings.Contains(url, ".m3u8") {
+			url = strings.TrimSpace(clip.ExternalURL)
+		}
+
+		// Skip Drive URLs - they're not valid source URLs for download
+		if strings.Contains(url, "drive.google") {
+			s.log.Warn("clip has Drive URL in source fields, skipping",
+				zap.String("clip_id", clip.ID),
+				zap.String("url", url))
+			resp.Skipped++
+			resp.Items = append(resp.Items, RunTagItem{
+				ClipID:   clip.ID,
+				Name:     clip.Name,
+				Filename: clip.Filename,
+				Status:   "skipped_invalid_url",
+				Error:    "source URL is a Drive link, not a valid download URL",
+			})
+			continue
+		}
+
+		s.log.Info("processing clip",
+			zap.String("clip_id", clip.ID),
 			zap.String("name", clip.Name),
 			zap.String("url", url),
 		)
@@ -289,7 +289,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			checker = &artlistChecksumChecker{driveClient: s.driveService.GetDriveClient()}
 		}
 		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), checker, assetstore.DefaultLocalFileChecker)
-		
+
 		if skip {
 			s.log.Info("skipping existing clip", zap.String("clip_id", clip.ID), zap.String("reason", reason))
 			resp.Skipped++
@@ -460,6 +460,3 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 	return resp, nil
 }
-
-
-

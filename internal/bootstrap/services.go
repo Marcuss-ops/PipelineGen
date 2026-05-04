@@ -13,25 +13,25 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/harvester"
 	"velox/go-master/internal/repository/images"
-	"velox/go-master/internal/repository/monitors"
 	jobrepo "velox/go-master/internal/repository/jobs"
+	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assetpipeline"
+	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
-	"velox/go-master/internal/service/voiceoversync"
-	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/drivedestination"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
+	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/voiceover"
+	"velox/go-master/internal/service/voiceoversync"
+	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
-	"velox/go-master/internal/service/drivedestination"
-	"velox/go-master/internal/service/mediaasset"
-	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
 
@@ -40,30 +40,30 @@ import (
 )
 
 type services struct {
-	scriptGen         *ollama.Generator
-	docClient         drive.DocClient
-	driveClient       *gdrive.Service
-	utility           *common.UtilityHandler
-	scriptsRepo       *scripts.ScriptRepository
-	imageRepo         *images.Repository
-	imageService      *imgservice.Service
-	stockDriveRepo    *clips.Repository
-	artlistRepo       *clips.Repository
-	clipsOnlyRepo     *clips.Repository
-	monitorsRepo      *monitors.Repository
-	voiceoverService  *voiceover.Service
-	voiceoverSync     *voiceoversync.Service
-	indexingService   *indexing.Service
-	harvesterRepo     *harvester.Repository
-	catalogRepo       *catalog.Repository
-	catalogSync       *catalogsync.Service
-	assocService      *association.Service
-	jobsRepo          *jobrepo.Repository
-	jobsService       *jobservice.Service
-	jobsDispatcher    *jobservice.Dispatcher
-	mediaProcessor    *mediaasset.Processor
+	scriptGen          *ollama.Generator
+	docClient          drive.DocClient
+	driveClient        *gdrive.Service
+	utility            *common.UtilityHandler
+	scriptsRepo        *scripts.ScriptRepository
+	imageRepo          *images.Repository
+	imageService       *imgservice.Service
+	stockDriveRepo     *clips.Repository
+	artlistRepo        *clips.Repository
+	clipsOnlyRepo      *clips.Repository
+	monitorsRepo       *monitors.Repository
+	voiceoverService   *voiceover.Service
+	voiceoverSync      *voiceoversync.Service
+	indexingService    *indexing.Service
+	harvesterRepo      *harvester.Repository
+	catalogRepo        *catalog.Repository
+	catalogSync        *catalogsync.Service
+	assocService       *association.Service
+	jobsRepo           *jobrepo.Repository
+	jobsService        *jobservice.Service
+	jobsDispatcher     *jobservice.Dispatcher
+	mediaProcessor     *mediaasset.Processor
 	youtubeClipService *youtubeclip.Service
-	assetIndexService *assetindex.Service
+	assetIndexService  *assetindex.Service
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -91,8 +91,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		driveClient,
 		log,
 		mediaasset.ProcessorConfig{
-			DataDir: cfg.Storage.DataDir,
-			TempDir: cfg.Storage.TempDir,
+			DataDir:  cfg.Storage.DataDir,
+			TempDir:  cfg.Storage.TempDir,
 			VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg),
 		},
 	)
@@ -212,29 +212,29 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
 	return &services{
-		scriptGen:         scriptGen,
-		docClient:         docClient,
-		driveClient:       driveClient,
-		utility:           common.NewUtilityHandler(),
-		scriptsRepo:       scriptsRepo,
-		imageRepo:         imageRepo,
-		imageService:      imageService,
-		stockDriveRepo:    clipsRepo,
-		artlistRepo:       artlistRepo,
-		clipsOnlyRepo:     clipsOnlyRepo,
-		monitorsRepo:      monitorsRepo,
-		voiceoverService:  voService,
-		voiceoverSync:     voiceoverSync,
-		indexingService:   indexingService,
-		harvesterRepo:     harvesterRepo,
-		catalogRepo:       catalogRepo,
-		catalogSync:       catalogSync,
-		assocService:      assocService,
-		jobsRepo:          jobsRepo,
-		jobsService:       jobsService,
-		jobsDispatcher:    jobsDispatcher,
-		mediaProcessor:    mediaProcessor,
+		scriptGen:          scriptGen,
+		docClient:          docClient,
+		driveClient:        driveClient,
+		utility:            common.NewUtilityHandler(),
+		scriptsRepo:        scriptsRepo,
+		imageRepo:          imageRepo,
+		imageService:       imageService,
+		stockDriveRepo:     clipsRepo,
+		artlistRepo:        artlistRepo,
+		clipsOnlyRepo:      clipsOnlyRepo,
+		monitorsRepo:       monitorsRepo,
+		voiceoverService:   voService,
+		voiceoverSync:      voiceoverSync,
+		indexingService:    indexingService,
+		harvesterRepo:      harvesterRepo,
+		catalogRepo:        catalogRepo,
+		catalogSync:        catalogSync,
+		assocService:       assocService,
+		jobsRepo:           jobsRepo,
+		jobsService:        jobsService,
+		jobsDispatcher:     jobsDispatcher,
+		mediaProcessor:     mediaProcessor,
 		youtubeClipService: youtubeClipService,
-		assetIndexService: assetIndexService,
+		assetIndexService:  assetIndexService,
 	}, nil
 }

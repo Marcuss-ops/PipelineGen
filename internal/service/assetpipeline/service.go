@@ -9,10 +9,12 @@ import (
 	"velox/go-master/internal/service/mediaregistry"
 )
 
+// Service orchestrates the asset pipeline: hash, upload, and finalize.
 type Service struct {
 	finalizer *Finalizer
 }
 
+// NewService creates a new asset pipeline service.
 func NewService(
 	uploader *Uploader,
 	mediaFinalizer *mediaregistry.Finalizer,
@@ -24,6 +26,7 @@ func NewService(
 	}
 }
 
+// NewServiceWithDrive creates a new asset pipeline service with a Drive API client.
 func NewServiceWithDrive(
 	driveSvc *gdrive.Service,
 	log *zap.Logger,
@@ -36,14 +39,17 @@ func NewServiceWithDrive(
 	}
 }
 
+// Finalize processes an asset through the pipeline: hash, upload, and register.
 func (s *Service) Finalize(ctx context.Context, in *FinalizeInput) (*FinalizeResult, error) {
 	return s.finalizer.Finalize(ctx, in)
 }
 
+// HashFile computes the file hash for an asset.
 func (s *Service) HashFile(path string) (string, error) {
 	return HashFile(path)
 }
 
+// ContentHashFile computes the content hash for an asset.
 func (s *Service) ContentHashFile(path string) (string, error) {
 	return ContentHashFile(path)
 }

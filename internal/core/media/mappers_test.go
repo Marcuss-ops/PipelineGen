@@ -69,15 +69,15 @@ func TestClipToMediaAsset(t *testing.T) {
 
 func TestMediaAssetToClip(t *testing.T) {
 	asset := MediaAsset{
-		ID:          "asset-1",
-		Title:       "Test Asset",
-		Category:    "video",
-		Tags:        []string{"tag1", "tag2"},
-		ExternalURL: "http://example.com/asset1",
+		ID:           "asset-1",
+		Title:        "Test Asset",
+		Category:     "video",
+		Tags:         []string{"tag1", "tag2"},
+		ExternalURL:  "http://example.com/asset1",
 		DurationSecs: 180,
 		MetadataJSON: `{"key":"value"}`,
-		CreatedAt:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		UpdatedAt:   time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+		CreatedAt:    time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		UpdatedAt:    time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
 		PrimaryFile: &MediaFile{
 			LocalPath:    "/tmp/asset1.mp4",
 			DriveLink:    "https://drive.google.com/file/d/456",

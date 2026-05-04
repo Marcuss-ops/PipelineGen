@@ -20,9 +20,9 @@ import (
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/models"
-	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/apiutil"
+	driveutil "velox/go-master/pkg/drive"
+	"velox/go-master/pkg/models"
 )
 
 // voiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
@@ -54,27 +54,27 @@ func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
 
 // DeleteDriveFileRequest represents a request to delete/trash a clip by Drive file ID or link.
 type DeleteDriveFileRequest struct {
-	Source     string `json:"source,omitempty"`
+	Source    string `json:"source,omitempty"`
 	DriveLink string `json:"drive_link"`
-	FileID     string `json:"file_id"`
-	DryRun     bool   `json:"dry_run"`
-	Confirm    bool   `json:"confirm"`
-	Mode       string `json:"mode"` // "trash" or "delete"
+	FileID    string `json:"file_id"`
+	DryRun    bool   `json:"dry_run"`
+	Confirm   bool   `json:"confirm"`
+	Mode      string `json:"mode"` // "trash" or "delete"
 }
 
 // DeleteDriveFileResult represents the result of a drive file delete/trash operation.
 type DeleteDriveFileResult struct {
-	OK         bool   `json:"ok"`
-	Source     string `json:"source,omitempty"`
-	ClipID     string `json:"clip_id,omitempty"`
-	FileID     string `json:"file_id"`
-	DriveLink  string `json:"drive_link,omitempty"`
-	FoundDB    bool   `json:"found_db"`
-	DryRun     bool   `json:"dry_run"`
-	Action     string `json:"action,omitempty"`
-	DriveDeleted bool `json:"drive_deleted,omitempty"`
-	DBDeleted  bool   `json:"db_deleted,omitempty"`
-	Error      string `json:"error,omitempty"`
+	OK           bool   `json:"ok"`
+	Source       string `json:"source,omitempty"`
+	ClipID       string `json:"clip_id,omitempty"`
+	FileID       string `json:"file_id"`
+	DriveLink    string `json:"drive_link,omitempty"`
+	FoundDB      bool   `json:"found_db"`
+	DryRun       bool   `json:"dry_run"`
+	Action       string `json:"action,omitempty"`
+	DriveDeleted bool   `json:"drive_deleted,omitempty"`
+	DBDeleted    bool   `json:"db_deleted,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // CommonHandler handles common media operations across different sources.
@@ -122,14 +122,14 @@ func imageAssetToClip(img *models.ImageAsset) *models.Clip {
 		name = filepath.Base(img.PathRel)
 	}
 	return &models.Clip{
-		ID:           strconv.FormatInt(img.ID, 10),
-		Name:         name,
-		Filename:     filepath.Base(img.PathRel),
-		DriveLink:    img.SourceURL,
-		FileHash:     img.Hash,
-		LocalPath:    img.PathRel,
-		Source:       "images",
-		CreatedAt:    img.CreatedAt,
+		ID:        strconv.FormatInt(img.ID, 10),
+		Name:      name,
+		Filename:  filepath.Base(img.PathRel),
+		DriveLink: img.SourceURL,
+		FileHash:  img.Hash,
+		LocalPath: img.PathRel,
+		Source:    "images",
+		CreatedAt: img.CreatedAt,
 	}
 }
 
@@ -212,20 +212,20 @@ func (h *CommonHandler) ClipStatus(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":          true,
-		"source":      source,
-		"clip_id":     clipID,
-		"exists_db":   true,
-		"name":        clip.Name,
+		"ok":             true,
+		"source":         source,
+		"clip_id":        clipID,
+		"exists_db":      true,
+		"name":           clip.Name,
 		"has_local_file": clip.LocalPath != "",
-		"local_path":  clip.LocalPath,
+		"local_path":     clip.LocalPath,
 		"has_drive_link": clip.DriveLink != "" || clip.DownloadLink != "",
-		"drive_link":  clip.DriveLink,
-		"download_link": clip.DownloadLink,
-		"file_hash":   clip.FileHash,
-		"folder_id":   clip.FolderID,
-		"folder_path": clip.FolderPath,
-		"status":      status,
+		"drive_link":     clip.DriveLink,
+		"download_link":  clip.DownloadLink,
+		"file_hash":      clip.FileHash,
+		"folder_id":      clip.FolderID,
+		"folder_path":    clip.FolderPath,
+		"status":         status,
 	})
 }
 
@@ -388,10 +388,10 @@ func (h *CommonHandler) TrashClip(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":       true,
-		"action":   "trashed",
-		"source":   source,
-		"clip_id":  clipID,
+		"ok":      true,
+		"action":  "trashed",
+		"source":  source,
+		"clip_id": clipID,
 	})
 }
 
@@ -436,10 +436,10 @@ func (h *CommonHandler) DeleteClip(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":       true,
-		"action":   "deleted",
-		"source":   source,
-		"clip_id":  clipID,
+		"ok":      true,
+		"action":  "deleted",
+		"source":  source,
+		"clip_id": clipID,
 	})
 }
 
@@ -551,9 +551,9 @@ func (h *CommonHandler) ReprocessClip(c *gin.Context) {
 	}
 
 	var req struct {
-		Force      bool `json:"force"`
-		UploadDrive bool `json:"upload_drive"`
-		Normalize  *bool `json:"normalize"`
+		Force       bool  `json:"force"`
+		UploadDrive bool  `json:"upload_drive"`
+		Normalize   *bool `json:"normalize"`
 	}
 	_ = c.ShouldBindJSON(&req)
 
@@ -601,15 +601,15 @@ func (h *CommonHandler) ReprocessClip(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":          true,
-		"source":      source,
-		"clip_id":     clipID,
-		"status":      result.Status,
-		"local_path":  result.LocalPath,
-		"file_hash":   result.FileHash,
-		"drive_link":  result.DriveLink,
+		"ok":            true,
+		"source":        source,
+		"clip_id":       clipID,
+		"status":        result.Status,
+		"local_path":    result.LocalPath,
+		"file_hash":     result.FileHash,
+		"drive_link":    result.DriveLink,
 		"download_link": result.DownloadLink,
-		"processed_at": time.Now().Format(time.RFC3339),
+		"processed_at":  time.Now().Format(time.RFC3339),
 	})
 }
 
@@ -774,14 +774,14 @@ func (h *CommonHandler) RegenerateManifest(c *gin.Context) {
 	// Add clips to manifest
 	for _, clip := range clipList {
 		item := models.ClipManifestItem{
-			ID:         clip.ID,
-			Name:       clip.Name,
-			Filename:   clip.Filename,
-			LocalPath:  clip.LocalPath,
-			DriveLink:  clip.DriveLink,
-			FileHash:   clip.FileHash,
-			Status:     "processed",
-			Tags:       strings.Join(clip.Tags, ","),
+			ID:        clip.ID,
+			Name:      clip.Name,
+			Filename:  clip.Filename,
+			LocalPath: clip.LocalPath,
+			DriveLink: clip.DriveLink,
+			FileHash:  clip.FileHash,
+			Status:    "processed",
+			Tags:      strings.Join(clip.Tags, ","),
 		}
 
 		// Try to extract start/end from metadata
@@ -939,11 +939,11 @@ func (h *CommonHandler) processDriveFileDelete(ctx context.Context, req *DeleteD
 
 	// Search for clip in all relevant repos
 	repos := map[string]interface{}{
-		"artlist": h.artlistRepo,
-		"clips":   h.clipsRepo,
-		"stock":   h.stockRepo,
+		"artlist":   h.artlistRepo,
+		"clips":     h.clipsRepo,
+		"stock":     h.stockRepo,
 		"voiceover": h.voiceoverRepo,
-		"images":   h.imagesRepo,
+		"images":    h.imagesRepo,
 	}
 
 	// If source is specified and not "all", search only that source
@@ -1009,9 +1009,9 @@ Found:
 	if foundClip == nil {
 		result := &DeleteDriveFileResult{
 			OK:      false,
-			FileID:   fileID,
-			FoundDB:  false,
-			Error:    "clip not found in database",
+			FileID:  fileID,
+			FoundDB: false,
+			Error:   "clip not found in database",
 		}
 		return result, nil
 	}
@@ -1019,14 +1019,14 @@ Found:
 	// Now handle deletion based on source
 	if req.DryRun {
 		result := &DeleteDriveFileResult{
-			OK:      true,
-			FileID:   fileID,
-			FoundDB:  true,
-			Source:   foundSource,
-			ClipID:   foundClip.ID,
+			OK:        true,
+			FileID:    fileID,
+			FoundDB:   true,
+			Source:    foundSource,
+			ClipID:    foundClip.ID,
 			DriveLink: foundClip.DriveLink,
-			DryRun:   true,
-			Action:   "would_" + req.Mode,
+			DryRun:    true,
+			Action:    "would_" + req.Mode,
 		}
 		return result, nil
 	}
@@ -1075,16 +1075,16 @@ Found:
 	}
 
 	result := &DeleteDriveFileResult{
-		OK:         true,
-		FileID:      fileID,
-		FoundDB:     true,
-		Source:      foundSource,
-		ClipID:      foundClip.ID,
-		DriveLink:   foundClip.DriveLink,
+		OK:           true,
+		FileID:       fileID,
+		FoundDB:      true,
+		Source:       foundSource,
+		ClipID:       foundClip.ID,
+		DriveLink:    foundClip.DriveLink,
 		DriveDeleted: true,
-		DBDeleted:   true,
-		Action:      req.Mode + "d",
-		DryRun:      req.DryRun,
+		DBDeleted:    true,
+		Action:       req.Mode + "d",
+		DryRun:       req.DryRun,
 	}
 	return result, nil
 }
@@ -1285,23 +1285,23 @@ func (h *CommonHandler) Reconcile(c *gin.Context) {
 
 	// Build summary
 	summary := gin.H{
-		"total_clips": len(allClips),
+		"total_clips":  len(allClips),
 		"issue_counts": issueCount,
-		"deleted":     deletedCount,
+		"deleted":      deletedCount,
 	}
 	for issue, count := range issueCount {
 		summary[issue] = count
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"source":     source,
-		"dry_run":    req.DryRun,
+		"ok":          true,
+		"source":      source,
+		"dry_run":     req.DryRun,
 		"check_drive": req.CheckDrive,
-		"checked":    len(results),
-		"deleted":    deletedCount,
-		"summary":    summary,
-		"items":      results,
+		"checked":     len(results),
+		"deleted":     deletedCount,
+		"summary":     summary,
+		"items":       results,
 	})
 }
 
@@ -1318,9 +1318,9 @@ func (h *CommonHandler) CleanupOrphans(c *gin.Context) {
 	}
 
 	var req struct {
-		Target  string `json:"target"`  // db, drive, both
-		Where   string `json:"where"`   // local_path_missing, drive_link_missing, hash_missing
-		DryRun  bool   `json:"dry_run"`
+		Target string `json:"target"` // db, drive, both
+		Where  string `json:"where"`  // local_path_missing, drive_link_missing, hash_missing
+		DryRun bool   `json:"dry_run"`
 	}
 	_ = c.ShouldBindJSON(&req)
 
@@ -1362,9 +1362,9 @@ func (h *CommonHandler) CleanupOrphans(c *gin.Context) {
 
 		if isOrphan {
 			orphans = append(orphans, gin.H{
-				"clip_id":  clip.ID,
-				"name":     clip.Name,
-				"reasons":  reasons,
+				"clip_id":   clip.ID,
+				"name":      clip.Name,
+				"reasons":   reasons,
 				"folder_id": clip.FolderID,
 			})
 		}
@@ -1385,14 +1385,14 @@ func (h *CommonHandler) CleanupOrphans(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"source":     source,
-		"dry_run":    req.DryRun,
-		"target":     req.Target,
-		"where":      req.Where,
+		"ok":            true,
+		"source":        source,
+		"dry_run":       req.DryRun,
+		"target":        req.Target,
+		"where":         req.Where,
 		"total_checked": len(clips),
-		"orphans_found":  len(orphans),
-		"deleted":    deleted,
-		"orphans":    orphans,
+		"orphans_found": len(orphans),
+		"deleted":       deleted,
+		"orphans":       orphans,
 	})
 }

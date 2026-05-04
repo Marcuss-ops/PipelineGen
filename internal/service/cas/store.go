@@ -10,14 +10,20 @@ import (
 	"velox/go-master/pkg/hashutil"
 )
 
+// Store provides content-addressable storage for media files.
+// Files are stored by hash in a directory structure (first 2 chars / next 2 chars / hash.ext).
 type Store struct {
 	Root string
 }
 
+// NewStore creates a new CAS store with the given root directory.
 func NewStore(root string) *Store {
 	return &Store{Root: root}
 }
 
+// PutFile stores a file in CAS, returning the content hash and storage path.
+// If the file already exists (same hash), it returns AlreadyExists=true.
+// After copying, it verifies file integrity by comparing hashes.
 func (s *Store) PutFile(srcPath string) (*PutResult, error) {
 	hash, err := hashutil.SHA256File(srcPath)
 	if err != nil {

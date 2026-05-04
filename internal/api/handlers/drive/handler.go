@@ -11,7 +11,7 @@ import (
 )
 
 type Handler struct {
-	cleanupSvc    *drivecleanup.Service
+	cleanupSvc   *drivecleanup.Service
 	reconcileSvc *drivereconcile.Service
 }
 

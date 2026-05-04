@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/core/media"
 	"velox/go-master/internal/api/middleware"
+	"velox/go-master/internal/core/media"
 )
 
 // Handler handles media-related HTTP requests.

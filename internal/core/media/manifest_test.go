@@ -91,14 +91,14 @@ func TestManifestExporterUsesRepository(t *testing.T) {
 func TestNewManifestFromAssets(t *testing.T) {
 	assets := []MediaAsset{
 		{
-			ID:          "asset-1",
-			Title:       "Test Asset",
-			Category:    "video",
-			Tags:        []string{"tag1", "tag2"},
-			SourceKind:  SourceKindYouTube,
-			MediaType:   MediaTypeVideo,
+			ID:           "asset-1",
+			Title:        "Test Asset",
+			Category:     "video",
+			Tags:         []string{"tag1", "tag2"},
+			SourceKind:   SourceKindYouTube,
+			MediaType:    MediaTypeVideo,
 			DurationSecs: 120,
-			PrimaryFile: &MediaFile{FileHash: "def456"},
+			PrimaryFile:  &MediaFile{FileHash: "def456"},
 		},
 	}
 

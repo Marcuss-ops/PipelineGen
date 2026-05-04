@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"velox/go-master/pkg/textutil"
 	"velox/go-master/internal/service/association"
+	"velox/go-master/pkg/textutil"
 )
 
 // RenderTimeline converts a TimelinePlan into the final formatted text section.

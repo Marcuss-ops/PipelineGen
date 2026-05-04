@@ -74,5 +74,3 @@ func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
 	}
 	return string(raw)
 }
-
-

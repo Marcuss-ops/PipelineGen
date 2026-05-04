@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/bootstrap"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
-	"go.uber.org/zap"
 )
 
 func main() {

@@ -15,35 +15,35 @@ import (
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
 	drivehandler "velox/go-master/internal/api/handlers/drive"
-	"velox/go-master/internal/api/handlers/jobs"
 	imghandler "velox/go-master/internal/api/handlers/images"
+	"velox/go-master/internal/api/handlers/jobs"
 	mediahandler "velox/go-master/internal/api/handlers/media"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
-	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	workflowhandler "velox/go-master/internal/api/handlers/workflow"
+	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/pkg/config"
 )
 
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
-	Health         *common.HealthHandler
-	Artlist        *artlistHandler.Handler
-	Scraper        *scraperhandler.Handler
-	ImageAssets    *imghandler.Handler
-	Media          *mediahandler.CommonHandler
-	ScriptDocs     *handlers.ScriptDocsHandler
-	ScriptHistory  *handlers.ScriptHistoryHandler
-	Voiceover      *voiceover.Handler
-	VoiceoverSync  *voiceover.SyncHandler
-	Utility        *common.UtilityHandler
-	Catalog        *common.CatalogHandler
-	YouTubeClip    *youtubecliphandler.Handler
-	Jobs           *jobs.Handler
-	Drive          *drivehandler.Handler
-	Workflow       *workflowhandler.Handler
+	Health        *common.HealthHandler
+	Artlist       *artlistHandler.Handler
+	Scraper       *scraperhandler.Handler
+	ImageAssets   *imghandler.Handler
+	Media         *mediahandler.CommonHandler
+	ScriptDocs    *handlers.ScriptDocsHandler
+	ScriptHistory *handlers.ScriptHistoryHandler
+	Voiceover     *voiceover.Handler
+	VoiceoverSync *voiceover.SyncHandler
+	Utility       *common.UtilityHandler
+	Catalog       *common.CatalogHandler
+	YouTubeClip   *youtubecliphandler.Handler
+	Jobs          *jobs.Handler
+	Drive         *drivehandler.Handler
+	Workflow      *workflowhandler.Handler
 }
 
 // Router holds all API handlers
@@ -208,13 +208,13 @@ func (r *Router) Setup() *gin.Engine {
 		}
 	}
 
-		// Log all registered routes
-		for _, route := range engine.Routes() {
-			log.Info("registered route", zap.String("method", route.Method), zap.String("path", route.Path))
-		}
-
-		return engine
+	// Log all registered routes
+	for _, route := range engine.Routes() {
+		log.Info("registered route", zap.String("method", route.Method), zap.String("path", route.Path))
 	}
+
+	return engine
+}
 
 // Stop cleans up resources used by the router (rate limiter goroutines)
 func (r *Router) Stop() {

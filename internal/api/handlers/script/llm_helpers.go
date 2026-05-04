@@ -9,8 +9,8 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/pkg/llmjson"
-	"velox/go-master/pkg/textutil"
 	"velox/go-master/pkg/termutil"
+	"velox/go-master/pkg/textutil"
 
 	"go.uber.org/zap"
 )
