@@ -38,6 +38,11 @@ func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
 	return &Repository{db: db, log: log}
 }
 
+// DB returns the underlying database connection
+func (r *Repository) DB() *sql.DB {
+	return r.db
+}
+
 // BeginTx starts a new transaction
 func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, opts)
@@ -136,7 +141,7 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 	query := `
 		SELECT c.` + clipColumns + `
 		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.rowid
+		JOIN clips c ON c.id = fts.clip_id
 		WHERE clips_fts MATCH ?
 		ORDER BY rank`
 	matchExpr := "(tags:\"" + tag + "*\" OR group_name:\"" + tag + "*\")"
@@ -196,7 +201,7 @@ func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []strin
 	query := fmt.Sprintf(`
 		SELECT c.%s
 		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.rowid
+		JOIN clips c ON c.id = fts.clip_id
 		WHERE clips_fts MATCH ?
 		ORDER BY rank
 		LIMIT ?`, clipColumns)
@@ -269,7 +274,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	query := fmt.Sprintf(`
 		SELECT c.%s
 		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.rowid
+		JOIN clips c ON c.id = fts.clip_id
 		WHERE c.source = 'stock' AND clips_fts MATCH ?
 		ORDER BY rank
 		LIMIT ?`, clipColumns)
@@ -299,12 +304,14 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		args = append(args, "%"+kw+"%", "%"+kw+"%")
 	}
 
-	query = fmt.Sprintf(
-		"%s AND (%s) LIMIT ?",
-		buildClipQuery("stock"),
+	query = fmt.Sprintf(`
+		SELECT %s
+		FROM clips
+		WHERE source = 'stock' AND (%s)
+		LIMIT ?`,
+		clipColumns,
 		strings.Join(conditions, " OR "),
 	)
-	args = append([]interface{}{"stock"}, args...)
 	args = append(args, limit)
 
 	rows, err = r.db.QueryContext(ctx, query, args...)
@@ -422,7 +429,7 @@ func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*st
 	query := `
 		SELECT MAX(c.updated_at)
 		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.rowid
+		JOIN clips c ON c.id = fts.clip_id
 		WHERE c.source = 'artlist' AND clips_fts MATCH ?
 	`
 	term = strings.TrimSpace(term)
@@ -626,7 +633,7 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 		       f.clip_count, f.processed_count, f.failed_count, f.skipped_count,
 		       f.last_error, f.metadata, f.created_at, f.updated_at
 		FROM clip_folders_fts fts
-		JOIN clip_folders f ON f.id = fts.rowid
+		JOIN clip_folders f ON f.id = fts.folder_id
 		WHERE clip_folders_fts MATCH ?
 		ORDER BY rank`
 	rows, err := r.db.QueryContext(ctx, query, keyword+"*")

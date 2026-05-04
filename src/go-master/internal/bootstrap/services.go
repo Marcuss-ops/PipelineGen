@@ -126,10 +126,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
 	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
 
-	if err := clipsOnlyRepo.EnsureSegmentEmbeddingsSchema(ctx); err != nil {
-		log.Warn("Failed to ensure segment embeddings cache schema", zap.Error(err))
-	}
-
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.images.DB)
 
@@ -141,7 +137,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	harvesterRepo := harvester.NewRepository(dbs.main.DB, log)
 	indexingService := indexing.NewService(clipsRepo, log)
-	catalogRepo := catalog.NewRepository(cfg.Storage.DataDir)
+	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)
 
 	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 

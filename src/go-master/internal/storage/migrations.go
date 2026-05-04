@@ -80,7 +80,13 @@ func (mr *MigrationRunner) RunMigrations() error {
 	sort.Strings(migrationFiles)
 
 	for _, file := range migrationFiles {
-		version := strings.TrimSuffix(filepath.Base(file), ".sql")
+		// Use relative path from migrations directory as version to avoid collisions
+		// e.g., "clips/clips_001_create_core_tables.sql"
+		relPath, err := filepath.Rel(mr.migrationsDir, file)
+		if err != nil {
+			relPath = filepath.Base(file)
+		}
+		version := filepath.ToSlash(relPath)
 
 		if applied[version] {
 			mr.log.Debug("Migration already applied, skipping", zap.String("version", version))
@@ -102,18 +108,20 @@ func (mr *MigrationRunner) RunMigrations() error {
 	return nil
 }
 
-// getMigrationFiles returns all SQL migration files in the migrations directory.
+// getMigrationFiles returns all SQL migration files in the migrations directory and subdirectories.
 func (mr *MigrationRunner) getMigrationFiles() ([]string, error) {
-	entries, err := os.ReadDir(mr.migrationsDir)
+	var files []string
+	err := filepath.Walk(mr.migrationsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".sql") {
+			files = append(files, path)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
-	}
-
-	var files []string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
-			files = append(files, filepath.Join(mr.migrationsDir, entry.Name()))
-		}
 	}
 	return files, nil
 }
@@ -136,6 +144,11 @@ func (mr *MigrationRunner) applyMigration(version, sqlContent string) error {
 			// Ignore "duplicate column name" errors for ALTER TABLE statements
 			if strings.Contains(err.Error(), "duplicate column name") {
 				mr.log.Warn("Skipping duplicate column", zap.String("statement", stmt))
+				continue
+			}
+			// Ignore FTS5 errors - not all SQLite builds have FTS5
+			if strings.Contains(err.Error(), "no such module") && strings.Contains(stmt, "fts5") {
+				mr.log.Warn("FTS5 not available, skipping", zap.String("statement", stmt))
 				continue
 			}
 			return fmt.Errorf("failed to execute statement: %w\nStatement: %s", err, stmt)

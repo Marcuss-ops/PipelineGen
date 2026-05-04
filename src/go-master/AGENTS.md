@@ -3,6 +3,22 @@
 ## Overview
 PipelineGen is a Go-based backend service that manages media processing pipelines for YouTube clips and Artlist assets. It runs as a systemd service on port 8080.
 
+## Instructions
+
+- **Non cambiare driver SQLite** (rimanere su `mattn/go-sqlite3`)
+- **Non lavorare su FTS5** (il supporto dipende dal driver compilato, usare fallback LIKE)
+- **Concentrarsi solo su schema boundaries, diagnostics e test**
+- **Ogni database deve avere solo le tabelle necessarie** al servizio che lo usa
+- **Non applicare migration generiche a più database se creano tabelle non usate da quel database.**
+- Schema desiderato:
+  - `velox.db.sqlite`: scripts, monitored_sources, harvester_jobs, media_items, media_files, media_tags, video_metadata, script_stock_matches, video_stats_history, artlist_runs
+  - `stock.db.sqlite`: clips (stock), clip_folders (stock)
+  - `clips.db.sqlite`: clips (YouTube), clip_folders, segment_embeddings
+  - `artlist.db.sqlite`: clips (Artlist), clip_folders, artlist_runs
+  - `images.db.sqlite`: (vuoto o image tables)
+  - `voiceover.db.sqlite`: (vuoto o voiceover tables)
+  - `jobs.db.sqlite`: jobs, job_events
+
 ## Architecture
 
 ### Core Components

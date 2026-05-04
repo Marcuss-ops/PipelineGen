@@ -16,7 +16,7 @@ import (
 )
 
 func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *UploadClipToDriveRequest) (*UploadClipToDriveResponse, error) {
-	clip, err := s.clipsRepo.GetClip(ctx, clipID)
+	clip, err := s.artlistRepo.GetClip(ctx, clipID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s *Service) UploadClipToDrive(ctx context.Context, clipID string, req *Upl
 		if created.Md5Checksum != "" {
 			clip.FileHash = created.Md5Checksum
 		}
-		_ = s.clipsRepo.UpsertClip(ctx, clip)
+		_ = s.artlistRepo.UpsertClip(ctx, clip)
 	}
 
 	return resp, nil

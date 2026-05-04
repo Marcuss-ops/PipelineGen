@@ -54,7 +54,3 @@ func (c StockClipRef) PickLink() string {
 	}
 	return link
 }
-
-type Repository struct {
-	dataDir string
-}

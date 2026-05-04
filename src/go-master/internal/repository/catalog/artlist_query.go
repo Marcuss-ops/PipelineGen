@@ -1,22 +1,16 @@
 package catalog
 
 import (
-	"database/sql"
-	"path/filepath"
 	"strings"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // SearchArtlist queries the artlist database for matching folders.
 func (r *Repository) SearchArtlist(q string) ([]CatalogRecord, error) {
-	dbPath := filepath.Join(r.dataDir, "artlist.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
+	if r.artlistRepo == nil {
+		return nil, nil
 	}
-	defer db.Close()
 
+	db := r.artlistRepo.DB()
 	rows, err := db.Query(`
 		SELECT drive_id, name, full_path, drive_link 
 		FROM artlist_folders 

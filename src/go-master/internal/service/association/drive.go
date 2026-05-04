@@ -6,16 +6,21 @@ import (
 
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/catalog"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/textutil"
 )
 
 // DriveStockAssociation cerca cartelle nel catalogo locale dello stock.
 type DriveStockAssociation struct {
-	dataDir string
+	stockRepo   *clips.Repository
+	artlistRepo *clips.Repository
 }
 
-func NewDriveStockAssociation(dataDir string) *DriveStockAssociation {
-	return &DriveStockAssociation{dataDir: dataDir}
+func NewDriveStockAssociation(stockRepo, artlistRepo *clips.Repository) *DriveStockAssociation {
+	return &DriveStockAssociation{
+		stockRepo:   stockRepo,
+		artlistRepo: artlistRepo,
+	}
 }
 
 func (a *DriveStockAssociation) Associate(ctx context.Context, input SegmentInput) ([]ScoredMatch, error) {
@@ -30,7 +35,7 @@ func (a *DriveStockAssociation) Associate(ctx context.Context, input SegmentInpu
 	queryTokens := textutil.Tokenize(searchTerm)
 	slug := strings.ReplaceAll(strings.ToLower(searchTerm), " ", "-")
 
-	repo := catalog.NewRepository(a.dataDir)
+	repo := catalog.NewRepository(nil, a.stockRepo, a.artlistRepo)
 	folders, err := repo.LoadStockFolders()
 	if err != nil {
 		return nil, err

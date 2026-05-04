@@ -1,0 +1,75 @@
+-- clips_002_create_fts.sql
+-- Full-Text Search (FTS5) per clips e clip_folders
+-- NOTA: Poiché clips.id è TEXT (non INTEGER PRIMARY KEY),
+-- usiamo FTS5 con una colonna clip_id per il join esplicito.
+
+-- FTS5 per clips con colonna clip_id per join con tabella principale
+CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(
+    clip_id,
+    name,
+    filename,
+    folder_path,
+    group_name,
+    category,
+    tags,
+    source
+);
+
+-- FTS5 per clip_folders con colonna folder_id per join
+CREATE VIRTUAL TABLE IF NOT EXISTS clip_folders_fts USING fts5(
+    folder_id,
+    id,
+    source,
+    source_url,
+    video_id,
+    folder_path,
+    group_name
+);
+
+-- Trigger per sincronizzare clips con clips_fts
+CREATE TRIGGER IF NOT EXISTS clips_ai AFTER INSERT ON clips BEGIN
+    INSERT INTO clips_fts(clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES (NEW.id, NEW.name, NEW.filename, NEW.folder_path, NEW.group_name, NEW.category, NEW.tags, NEW.source);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clips_au AFTER UPDATE ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES ('delete', OLD.id, OLD.name, OLD.filename, OLD.folder_path, OLD.group_name, OLD.category, OLD.tags, OLD.source);
+    INSERT INTO clips_fts(clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES (NEW.id, NEW.name, NEW.filename, NEW.folder_path, NEW.group_name, NEW.category, NEW.tags, NEW.source);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clips_ad AFTER DELETE ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES ('delete', OLD.id, OLD.name, OLD.filename, OLD.folder_path, OLD.group_name, OLD.category, OLD.tags, OLD.source);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clips_au AFTER UPDATE ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES ('delete', OLD.id, OLD.name, OLD.filename, OLD.folder_path, OLD.group_name, OLD.category, OLD.tags, OLD.source);
+    INSERT INTO clips_fts(clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES (NEW.id, NEW.name, NEW.filename, NEW.folder_path, NEW.group_name, NEW.category, NEW.tags, NEW.source);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clips_ad AFTER DELETE ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, clip_id, name, filename, folder_path, group_name, category, tags, source)
+    VALUES ('delete', OLD.id, OLD.name, OLD.filename, OLD.folder_path, OLD.group_name, OLD.category, OLD.tags, OLD.source);
+END;
+
+-- Trigger per sincronizzare clip_folders con clip_folders_fts
+CREATE TRIGGER IF NOT EXISTS clip_folders_ai AFTER INSERT ON clip_folders BEGIN
+    INSERT INTO clip_folders_fts(folder_id, id, source, source_url, video_id, folder_path, group_name)
+    VALUES (NEW.id, NEW.id, NEW.source, NEW.source_url, NEW.video_id, NEW.folder_path, NEW.group_name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clip_folders_au AFTER UPDATE ON clip_folders BEGIN
+    INSERT INTO clip_folders_fts(clip_folders_fts, folder_id, id, source, source_url, video_id, folder_path, group_name)
+    VALUES ('delete', OLD.id, OLD.id, OLD.source, OLD.source_url, OLD.video_id, OLD.folder_path, OLD.group_name);
+    INSERT INTO clip_folders_fts(folder_id, id, source, source_url, video_id, folder_path, group_name)
+    VALUES (NEW.id, NEW.id, NEW.source, NEW.source_url, NEW.video_id, NEW.folder_path, NEW.group_name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clip_folders_ad AFTER DELETE ON clip_folders BEGIN
+    INSERT INTO clip_folders_fts(clip_folders_fts, folder_id, id, source, source_url, video_id, folder_path, group_name)
+    VALUES ('delete', OLD.id, OLD.id, OLD.source, OLD.source_url, OLD.video_id, OLD.folder_path, OLD.group_name);
+END;

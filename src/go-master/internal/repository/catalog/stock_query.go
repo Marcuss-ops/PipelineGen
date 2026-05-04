@@ -1,21 +1,17 @@
 package catalog
 
 import (
-	"database/sql"
+	"context"
 	"path/filepath"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // SearchStock queries the stock database (and clips as fallback) for matching folders/assets.
 func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
-	dbPath := filepath.Join(r.dataDir, "stock.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
-	if err != nil {
-		return nil, err
+	if r.stockRepo == nil {
+		return nil, nil
 	}
-	defer db.Close()
 
+	db := r.stockRepo.DB()
 	var results []CatalogRecord
 
 	// 1. Try stock_folders table
@@ -37,28 +33,22 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 		}
 	}
 
-	// 2. Fallback to clips table
+	// 2. Fallback to clips table using repository
 	if len(results) == 0 {
-		clipRows, err := db.Query(`
-			SELECT id, name, folder_path, drive_link, media_type, tags, source, duration
-			FROM clips
-			WHERE (source = 'stock' OR media_type = 'stock')
-			  AND (LOWER(REPLACE(folder_path, ' ', '')) LIKE ?
-			   OR LOWER(REPLACE(name, ' ', '')) LIKE ?)
-			LIMIT 100
-		`, "%"+q+"%", "%"+q+"%")
+		clips, err := r.stockRepo.SearchClipsByKeywords(context.Background(), []string{q}, 100)
 		if err == nil {
-			defer clipRows.Close()
-			for clipRows.Next() {
-				var rec CatalogRecord
-				var mediaType, tagsRaw sql.NullString
-				if err := clipRows.Scan(&rec.ID, &rec.Name, &rec.Path, &rec.Link, &mediaType, &tagsRaw, &rec.Source, &rec.Duration); err == nil {
-					rec.DriveID = rec.ID
-					if mediaType.Valid {
-						rec.MediaType = mediaType.String
-					}
-					if tagsRaw.Valid {
-						rec.Tags = ParseTags(tagsRaw.String)
+			for _, clip := range clips {
+				if clip.Source == "stock" || clip.MediaType == "stock" {
+					rec := CatalogRecord{
+						ID:        clip.ID,
+						Name:       clip.Name,
+						Path:       clip.FolderPath,
+						Link:       clip.DriveLink,
+						Source:     clip.Source,
+						DriveID:    clip.ID,
+						MediaType:  clip.MediaType,
+						Tags:       clip.Tags,
+						Duration:   clip.Duration,
 					}
 					results = append(results, rec)
 				}
@@ -71,13 +61,11 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 
 // LoadStockFolders loads all stock folders. Fallback to clips if needed.
 func (r *Repository) LoadStockFolders() ([]StockClipRef, error) {
-	dbPath := filepath.Join(r.dataDir, "stock.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
+	if r.stockRepo == nil {
+		return nil, nil
 	}
-	defer db.Close()
 
+	db := r.stockRepo.DB()
 	rows, err := db.Query(`
 		SELECT
 			COALESCE(drive_id, ''),
@@ -104,13 +92,11 @@ func (r *Repository) LoadStockFolders() ([]StockClipRef, error) {
 }
 
 func (r *Repository) loadStockFolderCatalogFromClipsTable() ([]StockClipRef, error) {
-	dbPath := filepath.Join(r.dataDir, "stock.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
+	if r.stockRepo == nil {
+		return nil, nil
 	}
-	defer db.Close()
 
+	db := r.stockRepo.DB()
 	rows, err := db.Query(`
 		SELECT
 			COALESCE(id, ''),
@@ -165,13 +151,11 @@ func (r *Repository) loadStockFolderCatalogFromClipsTable() ([]StockClipRef, err
 
 // LoadStockCatalog loads individual stock clips.
 func (r *Repository) LoadStockCatalog() ([]StockClipRef, error) {
-	dbPath := filepath.Join(r.dataDir, "stock.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
+	if r.stockRepo == nil {
+		return nil, nil
 	}
-	defer db.Close()
 
+	db := r.stockRepo.DB()
 	rows, err := db.Query(`
 		SELECT
 			COALESCE(clip_id, ''),
@@ -200,13 +184,11 @@ func (r *Repository) LoadStockCatalog() ([]StockClipRef, error) {
 }
 
 func (r *Repository) loadStockCatalogFromClipsTable() ([]StockClipRef, error) {
-	dbPath := filepath.Join(r.dataDir, "stock.db.sqlite")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
+	if r.stockRepo == nil {
+		return nil, nil
 	}
-	defer db.Close()
 
+	db := r.stockRepo.DB()
 	rows, err := db.Query(`
 		SELECT
 			COALESCE(id, ''),

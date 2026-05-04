@@ -22,7 +22,7 @@ func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchRespon
 		return resp, nil
 	}
 
-	clipsList, err := s.clipsRepo.SearchClips(ctx, req.Term)
+	clipsList, err := s.artlistRepo.SearchClips(ctx, req.Term)
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -135,10 +135,10 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 		if clip == nil {
 			continue
 		}
-		if existing, err := s.clipsRepo.GetClip(ctx, clip.ID); err == nil && existing != nil {
+		if existing, err := s.artlistRepo.GetClip(ctx, clip.ID); err == nil && existing != nil {
 			clip = preserveExistingClipFields(clip, existing)
 		}
-		if err := s.clipsRepo.UpsertClip(ctx, clip); err == nil {
+		if err := s.artlistRepo.UpsertClip(ctx, clip); err == nil {
 			resp.Clips = append(resp.Clips, *clip)
 		}
 	}

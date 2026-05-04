@@ -121,7 +121,7 @@ func preserveExistingClipFields(newClip, existing *models.Clip) *models.Clip {
 
 // GetClipStatus returns the status of a clip
 func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatusResponse, error) {
-	clip, err := s.clipsRepo.GetClip(ctx, clipID)
+	clip, err := s.artlistRepo.GetClip(ctx, clipID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatus
 
 // DownloadClip downloads a clip from Artlist
 func (s *Service) DownloadClip(ctx context.Context, clipID string, req *DownloadClipRequest) (*DownloadClipResponse, error) {
-	clip, err := s.clipsRepo.GetClip(ctx, clipID)
+	clip, err := s.artlistRepo.GetClip(ctx, clipID)
 	if err != nil {
 		return nil, err
 	}
