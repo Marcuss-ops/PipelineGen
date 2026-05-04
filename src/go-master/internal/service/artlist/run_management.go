@@ -53,11 +53,11 @@ func (s *Service) CreateJobRun(ctx context.Context, req *RunTagRequest) (*models
 // jobToRunTagResponse converts a job to a RunTagResponse.
 func jobToRunTagResponse(job *models.Job) *RunTagResponse {
 	resp := &RunTagResponse{
-		OK:            true,
-		RunID:         job.ID,
-		Status:        string(job.Status),
-		Term:          job.Project, // project field stores the term
-		DryRun:        strings.HasSuffix(job.ActiveKey, "true"),
+		OK:     true,
+		RunID:  job.ID,
+		Status: string(job.Status),
+		Term:   job.Project, // project field stores the term
+		DryRun: strings.HasSuffix(job.ActiveKey, "true"),
 	}
 	// Extract additional fields from payload
 	if len(job.Payload) > 0 {

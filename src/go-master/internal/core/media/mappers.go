@@ -61,7 +61,7 @@ func MediaAssetToClip(a MediaAsset) models.Clip {
 // ItemToMediaAsset converts an Item to a MediaAsset.
 func ItemToMediaAsset(item Item, primaryFile *MediaFile, files []MediaFile) MediaAsset {
 	asset := MediaAsset{
-		ID:          item.ID,
+		ID:           item.ID,
 		WorkspaceID:  item.WorkspaceID,
 		ProjectID:    item.ProjectID,
 		SourceID:     item.SourceID,
@@ -131,8 +131,8 @@ func MediaAssetToItem(a MediaAsset) (Item, []File) {
 func MediaFileToItemFile(mf MediaFile, mediaAssetID string) File {
 	return File{
 		ID:            mf.ID,
-		MediaItemID:    mediaAssetID,
-		LocationKind:   mf.LocationKind,
+		MediaItemID:   mediaAssetID,
+		LocationKind:  mf.LocationKind,
 		URI:           mf.URI,
 		MimeType:      mf.MimeType,
 		Width:         mf.Width,
@@ -149,18 +149,18 @@ func MediaFileToItemFile(mf MediaFile, mediaAssetID string) File {
 // ItemFileToMediaFile converts a File (from models.go) to a MediaFile.
 func ItemFileToMediaFile(f File) MediaFile {
 	return MediaFile{
-		ID:           f.ID,
-		MediaAssetID: f.MediaItemID,
-		LocationKind: f.LocationKind,
-		URI:          f.URI,
-		MimeType:     f.MimeType,
-		Width:        f.Width,
-		Height:       f.Height,
-		DurationSecs: f.DurationSecs,
+		ID:            f.ID,
+		MediaAssetID:  f.MediaItemID,
+		LocationKind:  f.LocationKind,
+		URI:           f.URI,
+		MimeType:      f.MimeType,
+		Width:         f.Width,
+		Height:        f.Height,
+		DurationSecs:  f.DurationSecs,
 		FileSizeBytes: f.FileSizeBytes,
-		FileHash:     f.FileHash,
-		Status:       f.Status,
-		CreatedAt:    f.CreatedAt,
-		UpdatedAt:    f.UpdatedAt,
+		FileHash:      f.FileHash,
+		Status:        f.Status,
+		CreatedAt:     f.CreatedAt,
+		UpdatedAt:     f.UpdatedAt,
 	}
 }

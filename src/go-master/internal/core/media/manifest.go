@@ -15,15 +15,15 @@ type Manifest struct {
 
 // AssetEntry represents a media asset in the manifest export.
 type AssetEntry struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Category    string   `json:"category,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-	SourceKind  string   `json:"source_kind"`
-	MediaType   string   `json:"media_type"`
-	ExternalURL string   `json:"external_url,omitempty"`
-	DurationSecs int    `json:"duration_secs"`
-	FileHash    string   `json:"file_hash,omitempty"`
+	ID           string   `json:"id"`
+	Title        string   `json:"title"`
+	Category     string   `json:"category,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	SourceKind   string   `json:"source_kind"`
+	MediaType    string   `json:"media_type"`
+	ExternalURL  string   `json:"external_url,omitempty"`
+	DurationSecs int      `json:"duration_secs"`
+	FileHash     string   `json:"file_hash,omitempty"`
 }
 
 // ManifestExporter exports manifests from a MediaRepository.
@@ -59,13 +59,13 @@ func NewManifestFromAssets(workspaceID, projectID string, assets []MediaAsset) *
 	entries := make([]AssetEntry, 0, len(assets))
 	for _, a := range assets {
 		entry := AssetEntry{
-			ID:          a.ID,
-			Title:       a.Title,
-			Category:    a.Category,
-			Tags:        a.Tags,
-			SourceKind:  string(a.SourceKind),
-			MediaType:   string(a.MediaType),
-			ExternalURL: a.ExternalURL,
+			ID:           a.ID,
+			Title:        a.Title,
+			Category:     a.Category,
+			Tags:         a.Tags,
+			SourceKind:   string(a.SourceKind),
+			MediaType:    string(a.MediaType),
+			ExternalURL:  a.ExternalURL,
 			DurationSecs: a.DurationSecs,
 		}
 		if a.PrimaryFile != nil {

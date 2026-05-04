@@ -22,19 +22,19 @@ type Item struct {
 }
 
 type File struct {
-	ID             string
-	MediaItemID    string
-	LocationKind   LocationKind
-	URI            string
-	MimeType       string
-	Width          int
-	Height         int
-	DurationSecs   int
-	FileSizeBytes  int64
-	FileHash       string
-	Status         MediaStatus
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID            string
+	MediaItemID   string
+	LocationKind  LocationKind
+	URI           string
+	MimeType      string
+	Width         int
+	Height        int
+	DurationSecs  int
+	FileSizeBytes int64
+	FileHash      string
+	Status        MediaStatus
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type Source struct {
@@ -67,13 +67,13 @@ type Usage struct {
 }
 
 type SearchQuery struct {
-	WorkspaceID  string
-	ProjectID    string
-	SourceKinds  []SourceKind
-	MediaTypes   []MediaType
-	Statuses     []MediaStatus
-	Query        string
-	Tags         []string
-	Limit        int
-	Offset       int
+	WorkspaceID string
+	ProjectID   string
+	SourceKinds []SourceKind
+	MediaTypes  []MediaType
+	Statuses    []MediaStatus
+	Query       string
+	Tags        []string
+	Limit       int
+	Offset      int
 }

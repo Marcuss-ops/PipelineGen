@@ -41,10 +41,10 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 	if h.jobsService != nil {
 		// Use common jobs system
 		job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:      models.JobTypeArtlistRun,
-			Payload:   req.ToMap(),
+			Type:       models.JobTypeArtlistRun,
+			Payload:    req.ToMap(),
 			MaxRetries: 3,
-			ActiveKey: artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
+			ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
 		})
 		if err != nil {
 			h.log.Error("failed to enqueue artlist job", zap.Error(err))

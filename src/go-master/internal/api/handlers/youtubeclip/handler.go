@@ -102,7 +102,7 @@ func (h *Handler) Extract(c *gin.Context) {
 	}
 
 	resp, err := h.service.Extract(c.Request.Context(), &req)
-	
+
 	// If there's a fatal error (not just item failures), return error
 	if err != nil && (resp == nil || len(resp.Items) == 0) {
 		// Check if it's a user error

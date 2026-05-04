@@ -100,11 +100,11 @@ func (p *VoiceoverGeneratePayload) Validate() error {
 }
 
 type MediaMatchPayload struct {
-	WorkspaceID  string   `json:"workspace_id"`
-	ProjectID    string   `json:"project_id"`
-	ScriptID     string   `json:"script_id"`
-	MaxPerSegment int     `json:"max_per_segment"`
-	Sources      []string `json:"sources"`
+	WorkspaceID   string   `json:"workspace_id"`
+	ProjectID     string   `json:"project_id"`
+	ScriptID      string   `json:"script_id"`
+	MaxPerSegment int      `json:"max_per_segment"`
+	Sources       []string `json:"sources"`
 }
 
 func (p *MediaMatchPayload) Validate() error {

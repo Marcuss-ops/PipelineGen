@@ -28,11 +28,11 @@ type ScraperClip struct {
 
 // ScraperResponse represents the full response from the node scraper
 type ScraperResponse struct {
-	Ok        bool            `json:"ok"`
-	Term      string          `json:"term"`
-	Clips     []ScraperClip   `json:"clips"`
-	SearchURL string          `json:"search_url"`
-	Saved     int             `json:"saved"`
+	Ok        bool          `json:"ok"`
+	Term      string        `json:"term"`
+	Clips     []ScraperClip `json:"clips"`
+	SearchURL string        `json:"search_url"`
+	Saved     int           `json:"saved"`
 }
 
 func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
@@ -155,10 +155,10 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 		}
 
 		clip := &models.Clip{
-			ID:          id,
-			Name:        name,
-			Tags:        []string{term},
-			ExternalURL: c.PrimaryURL,
+			ID:           id,
+			Name:         name,
+			Tags:         []string{term},
+			ExternalURL:  c.PrimaryURL,
 			DownloadLink: c.PrimaryURL,
 		}
 

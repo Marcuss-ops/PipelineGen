@@ -9,8 +9,8 @@ import (
 	"os"
 
 	_ "github.com/mattn/go-sqlite3"
-   "velox/go-master/internal/repository/media"
-   "velox/go-master/internal/usecase/mediaimport"
+	"velox/go-master/internal/repository/media"
+	"velox/go-master/internal/usecase/mediaimport"
 )
 
 func main() {

@@ -26,7 +26,7 @@ import (
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at`
+	clipColumns       = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at`
 	clipFolderColumns = `id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at`
 )
 
@@ -41,7 +41,7 @@ func buildClipFolderQuery(source string) string {
 
 // Repository handles persistence for clips
 type Repository struct {
-	db *sql.DB
+	db  *sql.DB
 	log *zap.Logger
 }
 

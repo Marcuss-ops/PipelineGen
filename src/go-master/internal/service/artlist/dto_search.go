@@ -15,7 +15,7 @@ type SearchResponse struct {
 	OK     bool          `json:"ok"`
 	Term   string        `json:"term"`
 	Source string        `json:"source"`
-	Clips []models.Clip `json:"clips"`
+	Clips  []models.Clip `json:"clips"`
 	Error  string        `json:"error,omitempty"`
 }
 

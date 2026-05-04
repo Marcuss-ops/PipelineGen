@@ -63,11 +63,11 @@ func (s MediaStatus) Valid() bool {
 type LocationKind string
 
 const (
-	LocationKindURL      LocationKind = "url"
-	LocationKindLocal    LocationKind = "local"
-	LocationKindDrive    LocationKind = "drive"
-	LocationKindS3       LocationKind = "s3"
-	LocationKindOther    LocationKind = "other"
+	LocationKindURL   LocationKind = "url"
+	LocationKindLocal LocationKind = "local"
+	LocationKindDrive LocationKind = "drive"
+	LocationKindS3    LocationKind = "s3"
+	LocationKindOther LocationKind = "other"
 )
 
 func (l LocationKind) Valid() bool {

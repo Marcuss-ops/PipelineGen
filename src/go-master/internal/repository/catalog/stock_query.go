@@ -41,14 +41,14 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 				if clip.Source == "stock" || clip.MediaType == "stock" {
 					rec := CatalogRecord{
 						ID:        clip.ID,
-						Name:       clip.Name,
-						Path:       clip.FolderPath,
-						Link:       clip.DriveLink,
-						Source:     clip.Source,
-						DriveID:    clip.ID,
-						MediaType:  clip.MediaType,
-						Tags:       clip.Tags,
-						Duration:   clip.Duration,
+						Name:      clip.Name,
+						Path:      clip.FolderPath,
+						Link:      clip.DriveLink,
+						Source:    clip.Source,
+						DriveID:   clip.ID,
+						MediaType: clip.MediaType,
+						Tags:      clip.Tags,
+						Duration:  clip.Duration,
 					}
 					results = append(results, rec)
 				}

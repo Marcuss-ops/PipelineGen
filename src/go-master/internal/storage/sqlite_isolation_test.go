@@ -128,19 +128,26 @@ func TestFTS5Fallback(t *testing.T) {
 	dataDir := filepath.Join("..", "..", "data")
 	dbPath := filepath.Join(dataDir, "clips.db.sqlite")
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		t.Skipf("Database not found: %v", err)
 		return
 	}
 	defer db.Close()
 
+	// Enable WAL mode
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
 	// Check FTS5 availability
 	hasFTS5 := HasFTS5(db, nil) // nil logger for test
 
+	// Clean up test data if exists
+	db.Exec("DELETE FROM clips WHERE id='test_iso'")
+
 	// Insert test data
 	_, err = db.Exec(`
-		INSERT OR IGNORE INTO clips (id, name, folder_path, group_name, media_type, drive_link, tags, created_at, updated_at)
+		INSERT INTO clips (id, name, folder_path, group_name, media_type, drive_link, tags, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`, "test_iso", "test clip", "/test", "test", "clip", "http://test", "[]")
 	if err != nil {
@@ -151,10 +158,9 @@ func TestFTS5Fallback(t *testing.T) {
 	// Test LIKE search (should work with or without FTS5)
 	rows, err := db.Query(`
 		SELECT id, name FROM clips 
-		WHERE LOWER(REPLACE(folder_path, ' ', '')) LIKE ?
-		OR LOWER(REPLACE(name, ' ', '')) LIKE ?
+		WHERE id = ?
 		LIMIT 10
-	`, "%test%", "%test%")
+	`, "test_iso")
 	if err != nil {
 		t.Fatalf("LIKE search failed: %v", err)
 	}

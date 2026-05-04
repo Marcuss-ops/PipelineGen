@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"velox/go-master/pkg/sliceutil"
 	"velox/go-master/internal/service/association"
+	"velox/go-master/pkg/sliceutil"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -29,11 +29,15 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 		return nil, nil
 	}
 
-	db, err := sql.Open("sqlite3", c.dbPath)
+	db, err := sql.Open("sqlite3", c.dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open artlist db: %v", err)
 	}
 	defer db.Close()
+
+	// Enable WAL mode
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	// Tokenize all keywords for maximum reach
 	var tokens []string

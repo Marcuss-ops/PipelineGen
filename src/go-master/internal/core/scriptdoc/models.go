@@ -6,19 +6,19 @@ import (
 )
 
 type Script struct {
-	ID          string
-	WorkspaceID string
-	ProjectID   string
-	Title       string
-	Content     string
-	Style       string
-	Language    string
-	Status      string
-	DocURL      string
-	VoiceoverID string
+	ID           string
+	WorkspaceID  string
+	ProjectID    string
+	Title        string
+	Content      string
+	Style        string
+	Language     string
+	Status       string
+	DocURL       string
+	VoiceoverID  string
 	MetadataJSON string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type GeneratedScript struct {
@@ -27,11 +27,11 @@ type GeneratedScript struct {
 }
 
 type TimelineSegment struct {
-	Name      string
-	Start     string
-	End       string
-	Tags      []string
-	Assets    []AssetSuggestion
+	Name   string
+	Start  string
+	End    string
+	Tags   []string
+	Assets []AssetSuggestion
 }
 
 type AssetSuggestion struct {

@@ -66,4 +66,3 @@ func buildStockMatchingSection(repo *catalog.Repository, req ScriptDocsRequest, 
 		Body:  match.RenderMatches(matches),
 	}
 }
-

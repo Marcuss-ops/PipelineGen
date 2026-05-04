@@ -65,7 +65,7 @@ var defaultFallbackChain = []string{}
 
 // modelFallbackChains defines fallback model chains
 var modelFallbackChains = map[string][]string{
-	"qwen2.5:12b": {"qwen2.5:7b"},
+	"qwen2.5:12b":  {"qwen2.5:7b"},
 	"llama3.2:12b": {"llama3.2:7b"},
 	"mistral:12b":  {"mistral:7b"},
 }

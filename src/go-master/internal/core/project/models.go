@@ -6,14 +6,14 @@ import (
 )
 
 type Project struct {
-	ID        string
+	ID          string
 	WorkspaceID string
-	Name      string
-	Slug      string
-	Kind      string
-	Status    string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Name        string
+	Slug        string
+	Kind        string
+	Status      string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type Repository interface {

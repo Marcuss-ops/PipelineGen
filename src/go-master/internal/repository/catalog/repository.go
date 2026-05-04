@@ -53,4 +53,3 @@ func (r *Repository) SearchAll(q string) ([]CatalogRecord, error) {
 
 	return results, nil
 }
-

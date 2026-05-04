@@ -43,12 +43,12 @@ type MediaFile struct {
 	DriveLink    string
 	DownloadLink string
 
-	MimeType     string
-	Width        int
-	Height       int
-	DurationSecs int
+	MimeType      string
+	Width         int
+	Height        int
+	DurationSecs  int
 	FileSizeBytes int64
-	FileHash     string
+	FileHash      string
 
 	Status MediaStatus
 
