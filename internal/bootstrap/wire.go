@@ -58,7 +58,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	// Create mediaregistry components for Artlist
 	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
 	driveVerifier := mediaregistry.NewAPIDriveVerifier(coreDeps.DriveClient)
-	mediaFinalizer := mediaregistry.NewFinalizer(clipsRegistry, driveVerifier, log)
+	mediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, driveVerifier, coreDeps.AssetIndexService, log)
 
 	// Create Artlist DriveService
 	artlistDriveService := artlist.NewDriveService(coreDeps.DriveClient, driveFolderID, driveDestinationService, log)

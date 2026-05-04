@@ -4,10 +4,12 @@
 //   - Main migrations (migrations/sqlite/) → velox.db.sqlite only
 //   - Scripts migrations → velox.db.sqlite only
 //   - Clips migrations (internal/repository/clips/migrations/) → stock.db, clips.db, artlist.db
+//   - Clips timeline migrations (internal/repository/clips/migrations_timeline/) → clips.db only
 //   - Jobs migrations (migrations/jobs/) → jobs.db.sqlite only
 //   - Harvester migrations → velox.db.sqlite only
 //
 // Critical: Never apply clips migrations to velox.db.sqlite.
+// segment_embeddings is ONLY for clips.db.sqlite (timeline cache).
 // See docs/sqlite-databases.md for schema boundaries.
 package bootstrap
 
@@ -39,11 +41,16 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 	if err := dbs.stock.RunMigrations(log, clipsMigrationsDir); err != nil {
 		return fmt.Errorf("failed to run stock clips migrations: %w", err)
 	}
-	// clips.db needs clips tables (YouTube clips)
+	// clips.db needs clips tables (YouTube clips) + segment_embeddings
 	if err := dbs.clips.RunMigrations(log, clipsMigrationsDir); err != nil {
 		return fmt.Errorf("failed to run clips database migrations: %w", err)
 	}
-	// artlist.db needs clips tables (Artlist clips)
+	// Apply segment_embeddings migration ONLY to clips.db.sqlite (timeline cache)
+	clipsTimelineMigrationsDir := filepath.Join("internal", "repository", "clips", "migrations_timeline")
+	if err := dbs.clips.RunMigrations(log, clipsTimelineMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run clips timeline migrations: %w", err)
+	}
+	// artlist.db needs clips tables (Artlist clips) but NOT segment_embeddings
 	if err := dbs.artlist.RunMigrations(log, clipsMigrationsDir); err != nil {
 		return fmt.Errorf("failed to run artlist database migrations: %w", err)
 	}

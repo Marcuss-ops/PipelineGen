@@ -140,9 +140,9 @@ func TestFTS5Fallback(t *testing.T) {
 
 	// Insert test data
 	_, err = db.Exec(`
-		INSERT OR IGNORE INTO clips (id, name, folder_path, group_name, media_type, drive_link, tags, source, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-	`, "test_iso", "test clip", "/test", "test", "clip", "http://test", "[]", "test")
+		INSERT OR IGNORE INTO clips (id, name, folder_path, group_name, media_type, drive_link, tags, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+	`, "test_iso", "test clip", "/test", "test", "clip", "http://test", "[]")
 	if err != nil {
 		t.Fatalf("Failed to insert test data: %v", err)
 	}

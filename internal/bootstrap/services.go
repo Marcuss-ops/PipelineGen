@@ -18,6 +18,8 @@ import (
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/association"
+	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/catalogsync"
 	"velox/go-master/internal/service/voiceoversync"
 	jobservice "velox/go-master/internal/service/jobs"
@@ -61,6 +63,7 @@ type services struct {
 	jobsDispatcher    *jobservice.Dispatcher
 	mediaProcessor    *mediaasset.Processor
 	youtubeClipService *youtubeclip.Service
+	assetIndexService *assetindex.Service
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -96,8 +99,19 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	driveDestinationService := drivedestination.NewService(cfg, log, driveClient)
 
+	// Asset index service (disabled: no dedicated DB in schema)
+	var assetIndexService *assetindex.Service
+
+	// Asset pipeline service
+	assetPipeline := assetpipeline.NewServiceWithDrive(driveClient, log, nil, assetIndexService)
+
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)
+
+	// Create YouTube clip finalizer
+	clipsRegistry := mediaregistry.NewClipsRegistry(clipsOnlyRepo)
+	youtubeDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
+	youtubeMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, youtubeDriveVerifier, assetIndexService, log)
 
 	youtubeClipService := youtubeclip.NewService(
 		cfg,
@@ -107,6 +121,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		driveClient,
 		driveDestinationService,
 		mediaProcessor,
+		youtubeMediaFinalizer,
 	)
 
 	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
@@ -118,9 +133,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Create voiceover media finalizer
 	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
 	voDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
-	voMediaFinalizer := mediaregistry.NewFinalizer(voRegistryAdapter, voDriveVerifier, log)
+	voMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(voRegistryAdapter, voDriveVerifier, assetIndexService, log)
 
-	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voMediaFinalizer, voRepo)
+	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voMediaFinalizer, assetPipeline, voRepo)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
@@ -220,5 +235,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		jobsDispatcher:    jobsDispatcher,
 		mediaProcessor:    mediaProcessor,
 		youtubeClipService: youtubeClipService,
+		assetIndexService: assetIndexService,
 	}, nil
 }

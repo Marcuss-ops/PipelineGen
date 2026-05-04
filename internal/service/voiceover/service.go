@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/audioasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/repository/voiceovers"
@@ -26,6 +27,7 @@ type Service struct {
 	assetDestResolver *assetdestination.Resolver
 	audioProcessor    *audioasset.Processor
 	mediaFinalizer    *mediaregistry.Finalizer
+	assetPipeline     *assetpipeline.Service
 	repo              *voiceovers.Repository
 }
 
@@ -36,6 +38,7 @@ func NewService(
 	log *zap.Logger,
 	driveClient *gdrive.Service,
 	mediaFinalizer *mediaregistry.Finalizer,
+	assetPipeline *assetpipeline.Service,
 	repo *voiceovers.Repository,
 ) *Service {
 	// Create asset destination resolver
@@ -58,6 +61,7 @@ func NewService(
 		assetDestResolver: assetDestResolver,
 		audioProcessor:    audioProcessor,
 		mediaFinalizer:    mediaFinalizer,
+		assetPipeline:     assetPipeline,
 		repo:              repo,
 	}
 }
@@ -212,35 +216,67 @@ func (s *Service) processLanguage(
 		}
 		metaJSON, _ := json.Marshal(meta)
 
-		mediaRec := &mediaregistry.MediaRecord{
-			ID:           item.ID,
-			Source:       "voiceover",
-			Name:         truncateString(req.Text, 100),
-			Filename:     item.Filename,
-			FolderID:     dest.FolderID,
-			FolderPath:   dest.FolderPath,
-			MediaType:    "audio",
-			DriveLink:    item.DriveLink,
-			DownloadLink: item.DownloadLink,
-			FileHash:     item.FileHash,
-			LocalPath:    item.CleanedPath,
-			Status:       item.Status,
-			Metadata:     string(metaJSON),
-		}
+		// Use assetpipeline.Finalize if available
+		if s.assetPipeline != nil {
+			finalizeInput := &assetpipeline.FinalizeInput{
+				ID:          item.ID,
+				Name:        truncateString(req.Text, 100),
+				Filename:    item.Filename,
+				Kind:        assetpipeline.AssetKindAudio,
+				Source:      "voiceover",
+				Group:       dest.Group,
+				Subfolder:   "",
+				LocalPath:   item.CleanedPath,
+				FolderID:    dest.FolderID,
+				FolderPath:  dest.FolderPath,
+				DriveLink:   item.DriveLink,
+				DownloadLink: item.DownloadLink,
+				Metadata:    string(metaJSON),
+				RequireLocal: false,
+				RequireHash:  false,
+				RequireDrive: false,
+				VerifyDB:    true,
+			}
 
-		finalizeOpts := mediaregistry.FinalizeOptions{
-			RequireLocal: false,
-			RequireHash:  false,
-			RequireDrive: false,
-			VerifyDB:    true,
-		}
+			finalizeResult, err := s.assetPipeline.Finalize(ctx, finalizeInput)
+			if err != nil {
+				return item.fail("finalize_failed", err)
+			}
+			if !finalizeResult.OK {
+				return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
+			}
+		} else {
+			// Fallback to old method
+			mediaRec := &mediaregistry.MediaRecord{
+				ID:           item.ID,
+				Source:       "voiceover",
+				Name:         truncateString(req.Text, 100),
+				Filename:     item.Filename,
+				FolderID:     dest.FolderID,
+				FolderPath:   dest.FolderPath,
+				MediaType:    "audio",
+				DriveLink:    item.DriveLink,
+				DownloadLink: item.DownloadLink,
+				FileHash:     item.FileHash,
+				LocalPath:    item.CleanedPath,
+				Status:       item.Status,
+				Metadata:     string(metaJSON),
+			}
 
-		finalizeResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, finalizeOpts)
-		if err != nil {
-			return item.fail("finalize_failed", err)
-		}
-		if !finalizeResult.OK {
-			return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
+			finalizeOpts := mediaregistry.FinalizeOptions{
+				RequireLocal: false,
+				RequireHash:  false,
+				RequireDrive: false,
+				VerifyDB:    true,
+			}
+
+			finalizeResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, finalizeOpts)
+			if err != nil {
+				return item.fail("finalize_failed", err)
+			}
+			if !finalizeResult.OK {
+				return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
+			}
 		}
 	}
 

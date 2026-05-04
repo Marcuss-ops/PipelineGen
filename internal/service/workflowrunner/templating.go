@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -39,7 +38,8 @@ func renderPayload(payload map[string]interface{}, wf *Workflow, state *Workflow
 		// Convert value to JSON representation
 		switch v := value.(type) {
 		case string:
-			return strconv.Quote(v)
+			// Don't quote - the placeholder is inside a JSON string
+			return v
 		case int, int64, float64, bool:
 			return fmt.Sprintf("%v", v)
 		default:
@@ -183,4 +183,27 @@ func getNestedValue(m map[string]interface{}, keys []string) (interface{}, error
 		}
 	}
 	return current, nil
+}
+
+// renderTemplate renders a single string template with workflow and state context
+func renderTemplate(template string, wf *Workflow, state *WorkflowState) string {
+	return placeholderRegex.ReplaceAllStringFunc(template, func(match string) string {
+		expr := strings.TrimSpace(match[2 : len(match)-2])
+		value, err := evaluateExpression(expr, wf, state)
+		if err != nil {
+			return match
+		}
+		switch v := value.(type) {
+		case string:
+			return v
+		case int, int64, float64, bool:
+			return fmt.Sprintf("%v", v)
+		default:
+			b, err := json.Marshal(v)
+			if err != nil {
+				return match
+			}
+			return string(b)
+		}
+	})
 }

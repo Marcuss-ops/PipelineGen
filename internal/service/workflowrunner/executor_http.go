@@ -30,12 +30,31 @@ func (e *httpExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutp
 		return nil, fmt.Errorf("step is nil in http executor")
 	}
 
-	// Build URL - support template rendering
-	url := step.Endpoint
-	// TODO: render URL with templating if needed
+	// Parse endpoint - support "METHOD URL" format or just URL (defaults to POST)
+	endpoint := step.Endpoint
+	method := "POST"
+	url := endpoint
+
+	// Check if endpoint starts with HTTP method
+	if strings.HasPrefix(endpoint, "GET ") {
+		method = "GET"
+		url = strings.TrimPrefix(endpoint, "GET ")
+	} else if strings.HasPrefix(endpoint, "POST ") {
+		method = "POST"
+		url = strings.TrimPrefix(endpoint, "POST ")
+	} else if strings.HasPrefix(endpoint, "PUT ") {
+		method = "PUT"
+		url = strings.TrimPrefix(endpoint, "PUT ")
+	} else if strings.HasPrefix(endpoint, "DELETE ") {
+		method = "DELETE"
+		url = strings.TrimPrefix(endpoint, "DELETE ")
+	}
+
+	// Render URL with templating
+	url = renderTemplate(url, input.Workflow, input.State)
 
 	var reqBody io.Reader
-	if len(input.Payload) > 0 {
+	if len(input.Payload) > 0 && method != "GET" {
 		jsonBytes, err := json.Marshal(input.Payload)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal payload: %w", err)
@@ -43,8 +62,6 @@ func (e *httpExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutp
 		reqBody = bytes.NewBuffer(jsonBytes)
 	}
 
-	method := "POST"
-	// Could also support GET based on step config
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

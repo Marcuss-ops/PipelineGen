@@ -13,6 +13,7 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
@@ -63,6 +64,7 @@ type CoreDeps struct {
 	JobsDB               *sql.DB
 	MediaProcessor       *mediaasset.Processor
 	YoutubeClipService   *youtubeclip.Service
+	AssetIndexService    *assetindex.Service
 }
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
@@ -137,5 +139,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		JobsDB:               dbs.jobs.DB,
 		MediaProcessor:       svcs.mediaProcessor,
 		YoutubeClipService:   svcs.youtubeClipService,
+		AssetIndexService:    svcs.assetIndexService,
 	}, cleanup, nil
 }
