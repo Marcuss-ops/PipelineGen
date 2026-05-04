@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/foldermemory"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
 	driveutil "velox/go-master/pkg/drive"
@@ -24,25 +25,27 @@ import (
 
 // CommonHandler handles common media operations across different sources.
 type CommonHandler struct {
-	artlistRepo   *clips.Repository
-	clipsRepo     *clips.Repository
-	stockRepo     *clips.Repository
-	cleanupSvc    *drivecleanup.Service
-	folderMemSvc  *foldermemory.Service
-	driveUploader *drive.Uploader
-	log           *zap.Logger
+	artlistRepo    *clips.Repository
+	clipsRepo      *clips.Repository
+	stockRepo      *clips.Repository
+	cleanupSvc     *drivecleanup.Service
+	folderMemSvc   *foldermemory.Service
+	driveUploader  *drive.Uploader
+	mediaProcessor *mediaasset.Processor
+	log            *zap.Logger
 }
 
 // NewCommonHandler creates a new common media handler.
-func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, folderMemSvc *foldermemory.Service, driveUploader *drive.Uploader, log *zap.Logger) *CommonHandler {
+func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, folderMemSvc *foldermemory.Service, driveUploader *drive.Uploader, mediaProcessor *mediaasset.Processor, log *zap.Logger) *CommonHandler {
 	return &CommonHandler{
-		artlistRepo:   artlistRepo,
-		clipsRepo:     clipsRepo,
-		stockRepo:     stockRepo,
-		cleanupSvc:    cleanupSvc,
-		folderMemSvc:  folderMemSvc,
-		driveUploader: driveUploader,
-		log:           log,
+		artlistRepo:    artlistRepo,
+		clipsRepo:      clipsRepo,
+		stockRepo:      stockRepo,
+		cleanupSvc:     cleanupSvc,
+		folderMemSvc:   folderMemSvc,
+		driveUploader:  driveUploader,
+		mediaProcessor: mediaProcessor,
+		log:            log,
 	}
 }
 
@@ -417,20 +420,71 @@ func (h *CommonHandler) ReprocessClip(c *gin.Context) {
 		return
 	}
 
-	// ReprocessClip requires media processor service
-	// This is a placeholder - full implementation needs mediaasset.Processor
-	// For now, return what would be needed
-	apiutil.OK(c, gin.H{
-		"ok":      false,
-		"source":  source,
-		"clip_id": clipID,
-		"message": "reprocess requires media processor service - to be implemented in next PR",
-		"needed": gin.H{
-			"source_url":  clip.ExternalURL,
-			"local_path":  clip.LocalPath,
-			"folder_id":  clip.FolderID,
-			"has_drive":   h.driveUploader != nil,
+	if h.mediaProcessor == nil {
+		apiutil.InternalError(c, fmt.Errorf("media processor not configured"))
+		return
+	}
+
+	var req struct {
+		Force      bool `json:"force"`
+		UploadDrive bool `json:"upload_drive"`
+		Normalize  *bool `json:"normalize"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	// Build AssetInput from clip data
+	input := mediaasset.AssetInput{
+		ID:        clip.ID,
+		Name:      clip.Name,
+		SourceURL: clip.ExternalURL,
+		FolderID:  clip.FolderID,
+		Duration:  clip.Duration,
+		Metadata: map[string]interface{}{
+			"source": source,
+			"tags":   clip.Tags,
 		},
+	}
+
+	// Add download sections if metadata has start/end
+	if clip.Metadata != "" {
+		// Parse metadata for sections (simplified)
+		input.Metadata["raw_metadata"] = clip.Metadata
+	}
+
+	// Process the asset
+	result, err := h.mediaProcessor.DownloadProcessUpload(ctx, input)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("reprocess failed: %w", err))
+		return
+	}
+
+	// Update clip with result
+	clip.LocalPath = result.LocalPath
+	clip.FileHash = result.FileHash
+	if result.DriveLink != "" {
+		clip.DriveLink = result.DriveLink
+	}
+	if result.DownloadLink != "" {
+		clip.DownloadLink = result.DownloadLink
+	}
+	clip.UpdatedAt = time.Now()
+
+	// Save to DB
+	if err := repo.UpsertClip(ctx, clip); err != nil {
+		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":          true,
+		"source":      source,
+		"clip_id":     clipID,
+		"status":      result.Status,
+		"local_path":  result.LocalPath,
+		"file_hash":   result.FileHash,
+		"drive_link":  result.DriveLink,
+		"download_link": result.DownloadLink,
+		"processed_at": time.Now().Format(time.RFC3339),
 	})
 }
 

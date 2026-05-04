@@ -131,12 +131,25 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 	resp := &SearchResponse{OK: true, Term: term, Source: "live", Clips: make([]models.Clip, 0, len(clips))}
 
 	for _, c := range clips {
-		clip := mapToModelClip(c, term)
-		if clip == nil {
-			continue
+		clip := &models.Clip{
+			ID:       c["id"].(string),
+			Name:     c["name"].(string),
+			Tags:     []string{term},
 		}
 		if existing, err := s.artlistRepo.GetClip(ctx, clip.ID); err == nil && existing != nil {
-			clip = preserveExistingClipFields(clip, existing)
+			// Preserve existing fields
+			if existing.LocalPath != "" {
+				clip.LocalPath = existing.LocalPath
+			}
+			if existing.FileHash != "" {
+				clip.FileHash = existing.FileHash
+			}
+			if existing.DriveLink != "" {
+				clip.DriveLink = existing.DriveLink
+			}
+			if existing.DownloadLink != "" {
+				clip.DownloadLink = existing.DownloadLink
+			}
 		}
 		if err := s.artlistRepo.UpsertClip(ctx, clip); err == nil {
 			resp.Clips = append(resp.Clips, *clip)

@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api/handlers/artlist"
+	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	"velox/go-master/internal/api/handlers/common"
 	drivehandler "velox/go-master/internal/api/handlers/drive"
 	"velox/go-master/internal/api/handlers/jobs"
@@ -29,10 +29,10 @@ import (
 // Handlers holds all pre-constructed HTTP handlers
 type Handlers struct {
 	Health         *common.HealthHandler
-	Artlist        *artlist.Handler
+	Artlist        *artlistHandler.Handler
 	Scraper        *scraperhandler.Handler
 	ImageAssets    *imghandler.Handler
-	Media          *mediahandler.Handler
+	Media          *mediahandler.CommonHandler
 	ScriptDocs     *handlers.ScriptDocsHandler
 	ScriptHistory  *handlers.ScriptHistoryHandler
 	Voiceover      *voiceover.Handler

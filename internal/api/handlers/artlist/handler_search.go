@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -33,8 +34,6 @@ func (h *Handler) Search(c *gin.Context) {
 		return
 	}
 
-	req.Limit = apiutil.ClampLimit(req.Limit, 8, 50)
-
 	resp, err := h.service.Search(c.Request.Context(), &req)
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("search failed: %v", err))
@@ -46,51 +45,26 @@ func (h *Handler) Search(c *gin.Context) {
 
 // SearchLive performs a live search using the Node.js scraper
 func (h *Handler) SearchLive(c *gin.Context) {
-	req, ok := apiutil.BindJSON[struct {
-		Term  string `json:"term" binding:"required"`
-		Limit int    `json:"limit"`
-	}](c)
-	if !ok {
+	term := strings.TrimSpace(c.Query("term"))
+	limitStr := c.DefaultQuery("limit", "20")
+	limit := 8
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	if term == "" {
+		apiutil.BadRequest(c, "term is required")
 		return
 	}
 
-	req.Limit = apiutil.ClampLimit(req.Limit, 8, 50)
-
-	clips, err := h.service.SearchLive(c.Request.Context(), req.Term, req.Limit)
+	clips, err := h.service.SearchLive(c.Request.Context(), term, limit)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		apiutil.InternalError(c, fmt.Errorf("live search failed: %v", err))
 		return
 	}
 
 	apiutil.OK(c, gin.H{"clips": clips})
-}
-
-// Diagnostics returns a lightweight snapshot of Artlist wiring and counts
-func (h *Handler) Diagnostics(c *gin.Context) {
-	term := strings.TrimSpace(c.Query("term"))
-	resp, err := h.service.Diagnostics(c.Request.Context(), term)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-	apiutil.OK(c, resp)
-}
-
-// SyncDriveFolder syncs a Google Drive folder to the database
-func (h *Handler) SyncDriveFolder(c *gin.Context) {
-	req, ok := apiutil.BindJSON[struct {
-		FolderID  string `json:"folder_id" binding:"required"`
-		MediaType string `json:"media_type" default:"stock"`
-	}](c)
-	if !ok {
-		return
-	}
-
-	resp, err := h.service.SyncDriveFolder(c.Request.Context(), req.FolderID, req.MediaType)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, resp)
 }
