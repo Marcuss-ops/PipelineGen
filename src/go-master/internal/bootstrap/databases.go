@@ -1,3 +1,15 @@
+// Package bootstrap initializes the application: databases, migrations, and service wiring.
+//
+// Database Architecture:
+//   - velox.db.sqlite  → mainDB: scripts, media_items, monitored_sources, harvester_jobs
+//   - stock.db.sqlite  → stockDB: stock footage clips
+//   - clips.db.sqlite  → clipsDB: YouTube clips + segment_embeddings
+//   - artlist.db.sqlite → artlistDB: Artlist assets
+//   - images.db.sqlite → imagesDB: placeholder for image tables
+//   - voiceover.db.sqlite → voiceoverDB: placeholder for voiceover tables
+//   - jobs.db.sqlite   → jobsDB: job queue
+//
+// See docs/sqlite-databases.md for schema boundaries and migration strategy.
 package bootstrap
 
 import (

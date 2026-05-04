@@ -2,168 +2,227 @@
 
 ## Overview
 
-The system uses multiple SQLite databases to separate concerns and improve maintainability.
+The system uses multiple SQLite databases to separate concerns and improve maintainability. Each database has a specific purpose and should only contain tables relevant to that purpose.
 
-## Database Inventory
+## Critical Rules for Future Agents
+
+1. **Never change SQLite driver** - Stay with `mattn/go-sqlite3`
+2. **Never implement FTS5** - Driver doesn't support it; use `LIKE` fallback queries
+3. **Focus on schema boundaries, diagnostics, and tests**
+4. **Each database must have only the tables necessary for its purpose**
+5. **Never apply generic migrations to multiple databases if they create tables not used by that database**
+
+## Database Inventory (Current Clean State)
 
 ### velox.db.sqlite (Main)
 **Purpose**: Core application data, scripts, monitoring, media items.
 
-**Current Tables**:
+**Tables**:
 - `scripts` - Script definitions
 - `monitored_sources` - Sources to monitor
 - `harvester_jobs` - Harvester job tracking
 - `media_items` - Media items catalog
 - `media_files` - Media files
 - `media_tags` - Media tags
-- `clip_folders` - Clip folders (legacy?)
-- `clip_tags` - Clip tags (legacy?)
-- `clips` - Clips (legacy?)
-- `artlist_runs` - Artlist pipeline runs
-- `segment_embeddings` - Timeline cache (should be evaluated)
 - `video_metadata` - Video metadata
 - `script_stock_matches` - Script-stock matches
 - `video_stats_history` - Video stats history
+- `artlist_runs` - Artlist pipeline runs
+- `schema_migrations` - Migration tracking
 
-**Target Tables** (desired state):
-- `scripts`
-- `monitored_sources`
-- `harvester_jobs`
-- `media_items`
-- `media_files`
-- `media_tags`
-- `video_metadata`
-- `script_stock_matches`
-- `video_stats_history`
-- `artlist_runs` (if Artlist-specific)
+**Must NOT contain**: `clips`, `clip_folders`, `clip_tags`, `segment_embeddings`, `indexing_checkpoints`, `script_sections`
 
 ---
 
 ### stock.db.sqlite (Stock Media)
 **Purpose**: Stock footage and clips from stock providers.
 
-**Current Tables**:
-- `clips` - Stock clips
+**Tables**:
+- `clips` - Stock clips (stock-specific schema)
 - `clip_folders` - Stock folders
-- `media_files` - Media files (from main migrations)
-- `media_items` - Media items (from main migrations)
-- `media_tags` - Media tags (from main migrations)
-- `segment_embeddings` - Timeline cache (likely unnecessary)
+- `schema_migrations` - Migration tracking
 
-**Target Tables** (desired state):
-- `clips` (stock-specific)
-- `clip_folders` (stock-specific)
-- `stock_folders` (if exists)
-- `stock_clips` (if exists)
+**Must NOT contain**: `media_files`, `media_items`, `media_tags`, `segment_embeddings`
 
 ---
 
 ### clips.db.sqlite (YouTube Clips)
 **Purpose**: YouTube clips extracted via youtubeclip service.
 
-**Current Tables**:
-- `clips` - YouTube clips
+**Tables**:
+- `clips` - YouTube clips (YouTube-specific schema)
 - `clip_folders` - YouTube clip folders
 - `segment_embeddings` - Timeline cache (appropriate here)
+- `schema_migrations` - Migration tracking
 
-**Target Tables** (desired state):
-- `clips` (YouTube-specific)
-- `clip_folders` (YouTube-specific)
-- `segment_embeddings` (for timeline cache)
+**Migrations location**: `internal/repository/clips/migrations/`
 
 ---
 
 ### artlist.db.sqlite (Artlist Media)
 **Purpose**: Artlist assets downloaded via artlist service.
 
-**Current Tables**:
-- `clips` - Artlist clips
+**Tables**:
+- `clips` - Artlist clips (Artlist-specific schema)
 - `clip_folders` - Artlist folders
-- `segment_embeddings` - Timeline cache (likely unnecessary)
-
-**Target Tables** (desired state):
-- `clips` (Artlist-specific)
-- `clip_folders` (Artlist-specific)
 - `artlist_runs` - Pipeline run tracking
+- `schema_migrations` - Migration tracking
+
+**Must NOT contain**: `segment_embeddings`
 
 ---
 
 ### images.db.sqlite (Images)
-**Purpose**: Image assets.
+**Purpose**: Image assets (placeholder for future use).
 
-**Current Tables**:
-- Only `schema_migrations`
+**Tables**:
+- `schema_migrations` - Migration tracking
 
-**Target Tables** (desired state):
-- Image-specific tables (TBD - feature incomplete or legacy)
+**Target**: Add image-specific tables when feature is implemented.
 
 ---
 
 ### voiceover.db.sqlite (Voiceovers)
-**Purpose**: Voiceover audio files.
+**Purpose**: Voiceover audio files (placeholder for future use).
 
-**Current Tables**:
-- Only `schema_migrations`
+**Tables**:
+- `schema_migrations` - Migration tracking
 
-**Target Tables** (desired state):
-- Voiceover-specific tables (TBD - feature incomplete or legacy)
+**Target**: Add voiceover-specific tables when feature is implemented.
 
 ---
 
 ### jobs.db.sqlite (Job Queue)
 **Purpose**: Background job processing.
 
-**Current Tables**:
+**Tables**:
 - `jobs` - Job definitions
 - `job_events` - Job event log
-
-**Target Tables** (desired state):
-- `jobs`
-- `job_events`
+- `schema_migrations` - Migration tracking
 
 ---
 
-## Migration Strategy
+## Migration Architecture
 
-### Current Issue
-The `clips/` migrations are applied to multiple databases:
-- `main` (velox.db.sqlite) - unnecessary tables
-- `stock` (stock.db.sqlite) - OK (has clips)
-- `clips` (clips.db.sqlite) - OK (primary)
-- `artlist` (artlist.db.sqlite) - OK (has clips)
+### Migration Directory Structure
+```
+internal/repository/
+├── clips/migrations/          # For clips.db.sqlite
+│   ├── clips_001_create_core_tables.sql
+│   ├── clips_002_create_fts.sql.disabled  # FTS5 disabled (driver lacks support)
+│   └── clips_003_create_segment_embeddings.sql
+├── catalog/                   # No migrations (uses other repos)
+└── ...
 
-### Recommendations
+migrations/                    # For velox.db.sqlite and jobs.db.sqlite
+├── sqlite/
+│   ├── 001_create_scripts.sql
+│   ├── 002_create_monitored_sources.sql
+│   └── ...
+└── jobs/
+    ├── 001_create_jobs.sql
+    └── ...
+```
 
-1. **Stop applying `clips/migrations` to `main`** unless tables like `segment_embeddings` are needed there.
+### Migration Runner Behavior
+- Uses **relative paths** as version identifiers (e.g., `clips/clips_001_create_core_tables`)
+- Prevents collisions between migrations in different directories
+- FTS5 migrations are disabled (`.sql.disabled` extension) when driver doesn't support FTS5
+- Check FTS5 support with `internal/storage/sqlite_fts5.go:HasFTS5()`
 
-2. **Remove `segment_embeddings` from `stock` and `artlist`** if only used by timeline service (which uses `clips.db.sqlite`).
-
-3. **Clarify `images.db` and `voiceover.db`** - either add proper migrations or document as placeholder.
-
-4. **Add DB isolation tests** to verify each database has only expected tables.
+### Adding New Migrations
+1. Create SQL file in appropriate directory
+2. For `clips.db.sqlite`: `internal/repository/clips/migrations/`
+3. For `velox.db.sqlite`: `migrations/sqlite/`
+4. For `jobs.db.sqlite`: `migrations/jobs/`
+5. Never apply migrations from one domain to another database
 
 ---
 
 ## FTS5 Support
 
-FTS5 is **not currently available** in the `mattn/go-sqlite3` driver build.
+FTS5 is **NOT available** in the current `mattn/go-sqlite3` driver build.
 
+**Current behavior**:
 - Clips search falls back to `LIKE` queries
-- Full-Text Search can be enabled by:
-  - Building custom `mattn/go-sqlite3` with FTS5 enabled
-  - Migrating to `modernc.org/sqlite` (pure Go, FTS5 support)
-- **Not a priority now** - focus on schema boundaries first
+- FTS5 migration files are renamed to `.sql.disabled`
+
+**Future options** (not recommended now):
+- Build custom `mattn/go-sqlite3` with FTS5 enabled
+- Migrate to `modernc.org/sqlite` (pure Go, has FTS5 support)
+
+**Priority**: Focus on schema boundaries first, FTS5 is not a priority.
+
+---
+
+## Repository Injection Pattern
+
+The `catalog.Repository` uses dependency injection for database access:
+
+```go
+type Repository struct {
+    stockRepo   *stock.Repository    // → stock.db.sqlite
+    clipsRepo   *clips.Repository    // → clips.db.sqlite
+    artlistRepo *clips.Repository    // → artlist.db.sqlite (named artlistRepo for clarity)
+}
+```
+
+**Key points**:
+- No direct `sql.Open()` calls in catalog repository
+- Each service gets its own repository instance
+- Clear separation of database access
+
+---
+
+## Diagnostics and Testing
+
+### DB Isolation Test
+Run `internal/storage/sqlite_isolation_test.go:TestDBIsolation` to verify each database has only expected tables.
+
+```bash
+go test ./internal/storage/... -v -run TestDBIsolation
+```
+
+### FTS5 Status
+Check FTS5 support:
+```go
+if storage.HasFTS5(db) {
+    // Use FTS5 queries
+} else {
+    // Use LIKE fallback
+}
+```
+
+### Schema Verification
+To check tables in each database:
+```bash
+sqlite3 data/velox.db.sqlite ".tables"
+sqlite3 data/stock.db.sqlite ".tables"
+sqlite3 data/clips.db.sqlite ".tables"
+sqlite3 data/artlist.db.sqlite ".tables"
+```
 
 ---
 
 ## Schema Boundaries Summary
 
-| Database | Should Have | Should NOT Have |
-|-----------|-------------|------------------|
-| velox.db | scripts, monitored_sources, harvester, media_items, etc. | clips, clip_folders (legacy) |
-| stock.db | clips (stock), clip_folders (stock) | segment_embeddings (if unused) |
+| Database | Contains | Must NOT Contain |
+|----------|----------|------------------|
+| velox.db | scripts, monitored_sources, harvester_jobs, media_items, media_files, media_tags, video_metadata, script_stock_matches, video_stats_history, artlist_runs | clips, clip_folders, segment_embeddings |
+| stock.db | clips (stock), clip_folders (stock) | media_files, media_items, media_tags, segment_embeddings |
 | clips.db | clips (YouTube), clip_folders, segment_embeddings | (clean) |
-| artlist.db | clips (Artlist), clip_folders, artlist_runs | segment_embeddings (if unused) |
+| artlist.db | clips (Artlist), clip_folders, artlist_runs | segment_embeddings |
 | images.db | (empty or image tables) | clips, segment_embeddings |
 | voiceover.db | (empty or voiceover tables) | clips, segment_embeddings |
 | jobs.db | jobs, job_events | everything else |
+
+---
+
+## Cleanup History
+
+**2026-05-04**: Removed legacy tables from databases:
+- `velox.db.sqlite`: Dropped `clips`, `clip_folders`, `clip_tags`, `segment_embeddings`, `indexing_checkpoints`, `script_sections`
+- `stock.db.sqlite`: Dropped `media_files`, `media_items`, `media_tags`, `segment_embeddings`
+- `artlist.db.sqlite`: Dropped `segment_embeddings`
+
+All databases now conform to their intended schema boundaries.

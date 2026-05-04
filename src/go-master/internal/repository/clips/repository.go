@@ -1,3 +1,15 @@
+// Package clips provides the repository for YouTube clips (clips.db.sqlite).
+//
+// This repository manages:
+//   - YouTube clips and their metadata
+//   - Clip folders for organization
+//   - Segment embeddings for timeline generation
+//
+// Database: clips.db.sqlite
+// Migrations: internal/repository/clips/migrations/
+//
+// Note: Stock and Artlist clips use separate databases (stock.db, artlist.db)
+// but share the same clips.Repository structure with different instances.
 package clips
 
 import (

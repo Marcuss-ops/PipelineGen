@@ -53,5 +53,12 @@ To prevent multiple workers from executing the same job, Velox uses an atomic "L
 - If a worker crashes, the lease will eventually expire, and another worker will pick up the job.
 
 ## Database Implementation
-Jobs are stored in the `jobs` table within `velox.db.sqlite`.
-Persistence is managed by `internal/core/job/service.go` using the `StorageInterface`.
+Jobs are stored in `jobs.db.sqlite` (separate from the main `velox.db.sqlite`).
+
+**Tables**:
+- `jobs` - Job definitions and state
+- `job_events` - Job event log
+- `schema_migrations` - Migration tracking
+
+Persistence is managed by `internal/service/jobs/` using the repository pattern.
+See `docs/sqlite-databases.md` for full database architecture.

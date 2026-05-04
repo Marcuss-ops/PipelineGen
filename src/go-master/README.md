@@ -33,85 +33,66 @@ src/go-master/
 │   ├── api/
 │   │   ├── handlers/
 │   │   │   ├── script/      # Script generation handlers (modularized)
-│   │   │   │   ├── handler_core.go
-│   │   │   │   ├── handler_generate.go
-│   │   │   │   ├── script_docs_builder.go
-│   │   │   │   ├── script_docs_entities.go
-│   │   │   │   ├── script_docs_render.go
-│   │   │   │   ├── clip_drive_matching.go
-│   │   │   │   ├── clip_drive_types.go
-│   │   │   │   ├── clip_drive_catalog.go
-│   │   │   │   ├── clip_drive_text.go
-│   │   │   │   ├── stock_matching.go
-│   │   │   │   ├── stock_catalog.go
-│   │   │   │   ├── timeline_source_builder.go
-│   │   │   │   ├── timeline_render.go
-│   │   │   │   ├── timeline_types.go
-│   │   │   │   └── timeline_utils.go
-│   │   │   ├── common/        # Common handlers (health, utility)
-│   │   │   ├── drive/        # Google Drive handlers
-│   │   │   └── voiceover/    # Voiceover handlers
+│   │   │   ├── artlist/     # Artlist API handlers
+│   │   │   ├── youtubeclip/ # YouTube clip handlers
+│   │   │   ├── common/      # Common handlers (health, utility)
+│   │   │   ├── drive/       # Google Drive handlers
+│   │   │   └── voiceover/   # Voiceover handlers
 │   │   ├── middleware/      # HTTP middleware (auth, logging, rate limiting)
-│   │   └── routes.go         # Route definitions
-│   ├── bootstrap/        # Service wiring and lifecycle
+│   │   └── routes.go        # Route definitions
+│   ├── bootstrap/        # Service wiring, DB init, migrations
+│   ├── service/          # Business logic services
+│   │   ├── artlist/      # Artlist pipeline service
+│   │   ├── youtubeclip/  # YouTube clip extraction
+│   │   ├── jobs/         # Job queue system
+│   │   ├── catalog/      # Unified catalog (uses injected repos)
+│   │   ├── association/  # Drive association service
+│   │   ├── pipeline/     # Video pipeline service
+│   │   └── voiceover/    # Voiceover service
+│   ├── repository/       # Data access layer
+│   │   ├── clips/        # YouTube clips repo + migrations
+│   │   ├── catalog/      # Catalog repo (aggregates other repos)
+│   │   └── scripts/      # Script repository
+│   ├── storage/          # SQLite utilities, migrations, FTS5 diagnostics
 │   ├── ml/
-│   │   └── ollama/        # Ollama AI client (modularized)
-│   │       ├── client_core.go
-│   │       ├── client_generate.go
-│   │       ├── client_entities.go
-│   │       ├── client_health.go
-│   │       ├── client_embed.go
-│   │       ├── generate.go
-│   │       ├── system_prompt.go
-│   │       ├── prompt_builders.go
-│   │       ├── types.go
-│   │       └── utils.go
-│   ├── service/          # High-level business services
-│   │   ├── pipeline/      # Video pipeline service
-│   │   └── voiceover/     # Voiceover service
-│   ├── repository/      # Data access layer
-│   │   └── scripts/       # Script repository (modularized)
-│   │       ├── types.go
-│   │       └── scripts.go
-│   ├── models/          # Shared data models (modularized)
-│   │   ├── job_types.go
-│   │   ├── job_functions.go
-│   │   ├── worker_types.go
-│   │   └── worker_functions.go
-│   ├── storage/         # Persistence adapters
-│   │   ├── sqlite.go
-│   │   ├── postgres/
-│   │   └── sqlitecache/
-│   ├── upload/           # Upload handlers
-│   │   ├── drive/
-│   │   └── youtube/
+│   │   └── ollama/       # Ollama AI client (modularized)
+│   ├── matching/         # Asset matching algorithms
+│   ├── models/           # Shared data models
+│   ├── upload/           # Upload handlers (drive, youtube)
 │   ├── core/             # Business logic
 │   ├── cron/             # Scheduled tasks
 │   └── runtime/          # Runtime utilities
 ├── pkg/                  # Public utility packages
-│   ├── apiutil/          # HTTP response helpers
-│   ├── config/           # Tag-driven configuration
-│   ├── executil/         # Command execution helpers
-│   ├── hashutil/         # Hashing utilities (MD5, short hashes)
-│   ├── idutil/           # Stable ID generation (slugs, short hashes)
-│   ├── jsonutil/         # JSON reading utilities
-│   ├── llmjson/          # LLM JSON extraction/decoding
+│   ├── media/            # Media processing (ffmpeg, downloader)
 │   ├── logger/           # Structured logging (Zap)
-│   ├── media/            # Media processing (ffmpeg, audio, downloader)
-│   ├── models/           # Public shared models
-│   ├── pathutil/         # Path/folder name sanitization
-│   ├── security/         # Input sanitization, URL validation
-│   ├── sliceutil/        # Slice utilities
-│   ├── sqlutil/          # SQL helpers (bool int, null string, unique constraint check)
-│   ├── termutil/         # Term/subject name utilities
-│   ├── textutil/         # Text processing utilities
-│   └── timeutil/         # Time formatting/parsing (RFC3339)
-├── data/                 # JSON/SQLite database files
-├── migrations/           # Database migrations
+│   └── ...               # Other utilities
+├── migrations/           # Main DB migrations (velox.db, jobs.db)
+│   ├── sqlite/
+│   └── jobs/
+├── data/                 # SQLite databases (gitignored)
+│   ├── velox.db.sqlite      # Main DB (scripts, media, monitoring)
+│   ├── stock.db.sqlite      # Stock footage clips
+│   ├── clips.db.sqlite      # YouTube clips + embeddings
+│   ├── artlist.db.sqlite    # Artlist assets
+│   ├── images.db.sqlite     # Images (placeholder)
+│   ├── voiceover.db.sqlite  # Voiceovers (placeholder)
+│   └── jobs.db.sqlite       # Job queue
+├── docs/                 # Documentation
+│   ├── sqlite-databases.md  # Database architecture (MUST READ)
+│   ├── api/
+│   ├── architecture/
+│   └── workflows/
 ├── go.mod
 ├── go.sum
+├── AGENTS.md             # Instructions for AI agents
 └── Makefile
 ```
+
+### Key Files for Agents
+- **AGENTS.md** - Critical rules and instructions
+- **docs/sqlite-databases.md** - Database schema boundaries and migration strategy
+- **internal/storage/migrations.go** - Migration runner with FTS5 handling
+- **internal/bootstrap/** - Database initialization and service wiring
 
 ---
 
@@ -163,15 +144,26 @@ make coverage       # HTML coverage report
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  GO MASTER (Port 8080)                                  │
-│  ├─ HTTP API (Gin, Domain-based handlers)               │
-│  ├─ Bootstrap & DI (internal/bootstrap)                 │
-│  ├─ Job / Worker Orchestration                          │
-│  ├─ Script Generation (Ollama, Modular)                 │
-│  ├─ Clip Indexing (Drive scanning + semantic match)     │
-│  └─ External Integrations (YouTube, Drive, Rust)        │
+│  GO MASTER (Port 8080)                          │
+│  ├─ HTTP API (Gin, Domain-based handlers)       │
+│  ├─ Bootstrap & DI (internal/bootstrap)          │
+│  ├─ Job / Worker Orchestration (internal/service/jobs) │
+│  ├─ Script Generation (Ollama, Modular)         │
+│  ├─ Multi-DB Repository Layer                    │
+│  │   ├─ velox.db ← scripts, media, monitoring   │
+│  │   ├─ stock.db ← stock footage clips          │
+│  │   ├─ clips.db ← YouTube clips + embeddings   │
+│  │   ├─ artlist.db ← Artlist assets             │
+│  │   └─ jobs.db ← job queue                     │
+│  ├─ Clip Indexing (Drive scanning + matching)    │
+│  └─ External Integrations (YouTube, Drive, Ollama) │
 └──────────────────────────────────────────────────┘
 ```
+
+### Database Architecture
+The system uses **7 separate SQLite databases** for separation of concerns:
+- See `docs/sqlite-databases.md` for full schema documentation
+- See `AGENTS.md` for critical rules on database boundaries
 
 ---
 
