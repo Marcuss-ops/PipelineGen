@@ -1,6 +1,7 @@
 package images
 
 import (
+	"context"
 	"database/sql"
 	"velox/go-master/pkg/models"
 )
@@ -127,4 +128,47 @@ func (r *Repository) ListImagesBySubject(subjectID int64) ([]models.ImageAsset, 
 		images = append(images, img)
 	}
 	return images, nil
+}
+
+// ListAll lists all image assets
+func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json, created_at
+		FROM images ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var images []*models.ImageAsset
+	for rows.Next() {
+		var img models.ImageAsset
+		if err := rows.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.MetadataJSON, &img.CreatedAt); err != nil {
+			return nil, err
+		}
+		images = append(images, &img)
+	}
+	return images, rows.Err()
+}
+
+// Delete deletes an image by ID
+func (r *Repository) Delete(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM images WHERE id = ?`, id)
+	return err
+}
+
+// GetByDriveFileID retrieves an image by Drive file ID (checks source_url)
+func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json, created_at
+		FROM images WHERE source_url LIKE ? OR source_url LIKE ?
+	`, "%"+fileID+"%", "%drive.google.com%"+fileID+"%")
+
+	var img models.ImageAsset
+	err := row.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.MetadataJSON, &img.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &img, nil
 }
