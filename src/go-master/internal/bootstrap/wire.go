@@ -158,6 +158,19 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 			coreDeps.MediaProcessor,
 			log,
 		)
+
+		// Add voiceover repo if available
+		if coreDeps.VoiceoverRepo != nil {
+			mediaHandler.SetVoiceoverRepo(coreDeps.VoiceoverRepo)
+			log.Info("voiceover repo added to media handler")
+		}
+
+		// Add images repo if available
+		if coreDeps.ImageRepo != nil {
+			mediaHandler.SetImagesRepo(coreDeps.ImageRepo)
+			log.Info("images repo added to media handler")
+		}
+
 		log.Info("common media handler initialized")
 	} else {
 		log.Warn("common media handler not initialized - missing dependencies")

@@ -12,6 +12,7 @@ import (
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
@@ -47,6 +48,7 @@ type CoreDeps struct {
 	ArtlistRepo          *clips.Repository
 	ClipsOnlyRepo        *clips.Repository
 	MonitorsRepo         *monitors.Repository
+	VoiceoverRepo        *voiceovers.Repository
 	VoiceoverService     *voiceover.Service
 	VoiceoverSync        *voiceoversync.Service
 	IndexingService      *indexing.Service
@@ -100,7 +102,10 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	// 5. Background Jobs
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
-	// 6. Cleanup
+	// 6. Create VoiceoverRepo
+	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
+
+	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
 
 	return &CoreDeps{
@@ -117,6 +122,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		ArtlistRepo:          svcs.artlistRepo,
 		ClipsOnlyRepo:        svcs.clipsOnlyRepo,
 		MonitorsRepo:         svcs.monitorsRepo,
+		VoiceoverRepo:        voRepo,
 		VoiceoverService:     svcs.voiceoverService,
 		VoiceoverSync:        svcs.voiceoverSync,
 		IndexingService:      svcs.indexingService,

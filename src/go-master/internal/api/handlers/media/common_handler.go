@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/repository/images"
+	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/mediaasset"
@@ -22,6 +24,33 @@ import (
 	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/apiutil"
 )
+
+// voiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
+func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
+	name := rec.Filename
+	if name == "" {
+		// Truncate text preview to 50 chars for name
+		name = rec.TextPreview
+		if len(name) > 50 {
+			name = name[:50]
+		}
+	}
+	return &models.Clip{
+		ID:           rec.ID,
+		Name:         name,
+		Filename:     rec.Filename,
+		FolderID:     rec.FolderID,
+		FolderPath:   rec.FolderPath,
+		DriveLink:    rec.DriveLink,
+		DownloadLink: rec.DownloadLink,
+		FileHash:     rec.FileHash,
+		LocalPath:    rec.LocalPath,
+		Source:       "voiceover",
+		Metadata:     rec.Metadata,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
+	}
+}
 
 // DeleteDriveFileRequest represents a request to delete/trash a clip by Drive file ID or link.
 type DeleteDriveFileRequest struct {
@@ -53,6 +82,8 @@ type CommonHandler struct {
 	artlistRepo    *clips.Repository
 	clipsRepo      *clips.Repository
 	stockRepo      *clips.Repository
+	voiceoverRepo  *voiceovers.Repository
+	imagesRepo     *images.Repository
 	cleanupSvc     *drivecleanup.Service
 	folderMemSvc   *foldermemory.Service
 	driveUploader  *drive.Uploader
@@ -74,6 +105,34 @@ func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, clean
 	}
 }
 
+// SetVoiceoverRepo sets the voiceover repository.
+func (h *CommonHandler) SetVoiceoverRepo(repo *voiceovers.Repository) {
+	h.voiceoverRepo = repo
+}
+
+// SetImagesRepo sets the images repository.
+func (h *CommonHandler) SetImagesRepo(repo *images.Repository) {
+	h.imagesRepo = repo
+}
+
+// imageAssetToClip converts a models.ImageAsset to models.Clip for unified handling.
+func imageAssetToClip(img *models.ImageAsset) *models.Clip {
+	name := img.Description
+	if name == "" {
+		name = filepath.Base(img.PathRel)
+	}
+	return &models.Clip{
+		ID:           strconv.FormatInt(img.ID, 10),
+		Name:         name,
+		Filename:     filepath.Base(img.PathRel),
+		DriveLink:    img.SourceURL,
+		FileHash:     img.Hash,
+		LocalPath:    img.PathRel,
+		Source:       "images",
+		CreatedAt:    img.CreatedAt,
+	}
+}
+
 // resolveRepo returns the appropriate repository based on source.
 func (h *CommonHandler) resolveRepo(source string) *clips.Repository {
 	switch strings.ToLower(source) {
@@ -86,6 +145,14 @@ func (h *CommonHandler) resolveRepo(source string) *clips.Repository {
 	default:
 		return nil
 	}
+}
+
+// resolveVoiceoverRepo returns the voiceover repository if source matches.
+func (h *CommonHandler) resolveVoiceoverRepo(source string) *voiceovers.Repository {
+	if strings.ToLower(source) == "voiceover" {
+		return h.voiceoverRepo
+	}
+	return nil
 }
 
 // RegisterRoutes registers media routes with source parameter.
@@ -871,60 +938,96 @@ func (h *CommonHandler) processDriveFileDelete(ctx context.Context, req *DeleteD
 	}
 
 	// Search for clip in all relevant repos
-	repos := map[string]*clips.Repository{
+	repos := map[string]interface{}{
 		"artlist": h.artlistRepo,
 		"clips":   h.clipsRepo,
 		"stock":   h.stockRepo,
+		"voiceover": h.voiceoverRepo,
+		"images":   h.imagesRepo,
 	}
 
+	// If source is specified and not "all", search only that source
 	if req.Source != "" && req.Source != "all" {
-		// Search only in specified source
-		repo := h.resolveRepo(req.Source)
-		if repo == nil {
-			return nil, fmt.Errorf("invalid source: %s", req.Source)
-		}
-		repos = map[string]*clips.Repository{req.Source: repo}
+		repos = map[string]interface{}{req.Source: repos[req.Source]}
 	}
 
 	var foundSource string
-	var foundRepo *clips.Repository
 	var foundClip *models.Clip
 
 	for source, repo := range repos {
 		if repo == nil {
 			continue
 		}
-		clip, err := repo.GetClipByDriveFileID(ctx, fileID)
-		if err != nil {
-			return nil, fmt.Errorf("failed searching %s repo: %w", source, err)
-		}
-		if clip != nil {
-			foundSource = source
-			foundRepo = repo
-			foundClip = clip
-			break
-		}
-	}
 
-	result := &DeleteDriveFileResult{
-		OK:      true,
-		FileID:   fileID,
-		FoundDB:  foundClip != nil,
-		DryRun:   req.DryRun,
+		switch source {
+		case "artlist", "clips", "stock":
+			clipRepo, ok := repo.(*clips.Repository)
+			if !ok {
+				continue
+			}
+			clip, err := clipRepo.GetClipByDriveFileID(ctx, fileID)
+			if err != nil {
+				return nil, fmt.Errorf("failed searching %s repo: %w", source, err)
+			}
+			if clip != nil {
+				foundSource = source
+				foundClip = clip
+				goto Found
+			}
+		case "voiceover":
+			voRepo, ok := repo.(*voiceovers.Repository)
+			if !ok {
+				continue
+			}
+			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
+			if err != nil {
+				return nil, fmt.Errorf("failed searching %s repo: %w", source, err)
+			}
+			if rec != nil {
+				foundSource = source
+				foundClip = voiceoverRecordToClip(rec)
+				goto Found
+			}
+		case "images":
+			imgRepo, ok := repo.(*images.Repository)
+			if !ok {
+				continue
+			}
+			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
+			if err != nil {
+				return nil, fmt.Errorf("failed searching %s repo: %w", source, err)
+			}
+			if img != nil {
+				foundSource = source
+				foundClip = imageAssetToClip(img)
+				goto Found
+			}
+		}
 	}
+Found:
 
 	if foundClip == nil {
-		result.OK = false
-		result.Error = "clip not found in database"
+		result := &DeleteDriveFileResult{
+			OK:      false,
+			FileID:   fileID,
+			FoundDB:  false,
+			Error:    "clip not found in database",
+		}
 		return result, nil
 	}
 
-	result.Source = foundSource
-	result.ClipID = foundClip.ID
-	result.DriveLink = foundClip.DriveLink
-
+	// Now handle deletion based on source
 	if req.DryRun {
-		result.Action = "would_" + req.Mode
+		result := &DeleteDriveFileResult{
+			OK:      true,
+			FileID:   fileID,
+			FoundDB:  true,
+			Source:   foundSource,
+			ClipID:   foundClip.ID,
+			DriveLink: foundClip.DriveLink,
+			DryRun:   true,
+			Action:   "would_" + req.Mode,
+		}
 		return result, nil
 	}
 
@@ -943,16 +1046,46 @@ func (h *CommonHandler) processDriveFileDelete(ctx context.Context, req *DeleteD
 		if driveErr != nil {
 			return nil, fmt.Errorf("failed to %s drive file: %w", req.Mode, driveErr)
 		}
-		result.DriveDeleted = true
-		result.Action = req.Mode + "d"
 	}
 
 	// Step 2: Delete from DB (only after Drive operation succeeds)
-	if err := foundRepo.DeleteClip(ctx, foundClip.ID); err != nil {
-		return nil, fmt.Errorf("drive file %sd but failed to delete db record: %w", req.Mode, err)
+	switch foundSource {
+	case "artlist", "clips", "stock":
+		clipRepo, ok := repos[foundSource].(*clips.Repository)
+		if ok {
+			if err := clipRepo.DeleteClip(ctx, foundClip.ID); err != nil {
+				return nil, fmt.Errorf("drive file %sd but failed to delete db record: %w", req.Mode, err)
+			}
+		}
+	case "voiceover":
+		voRepo, ok := repos[foundSource].(*voiceovers.Repository)
+		if ok {
+			if err := voRepo.Delete(ctx, foundClip.ID); err != nil {
+				return nil, fmt.Errorf("drive file %sd but failed to delete db record: %w", req.Mode, err)
+			}
+		}
+	case "images":
+		imgRepo, ok := repos[foundSource].(*images.Repository)
+		if ok {
+			id, _ := strconv.ParseInt(foundClip.ID, 10, 64)
+			if err := imgRepo.Delete(ctx, id); err != nil {
+				return nil, fmt.Errorf("drive file %sd but failed to delete db record: %w", req.Mode, err)
+			}
+		}
 	}
-	result.DBDeleted = true
 
+	result := &DeleteDriveFileResult{
+		OK:         true,
+		FileID:      fileID,
+		FoundDB:     true,
+		Source:      foundSource,
+		ClipID:      foundClip.ID,
+		DriveLink:   foundClip.DriveLink,
+		DriveDeleted: true,
+		DBDeleted:   true,
+		Action:      req.Mode + "d",
+		DryRun:      req.DryRun,
+	}
 	return result, nil
 }
 
@@ -960,28 +1093,74 @@ func (h *CommonHandler) processDriveFileDelete(ctx context.Context, req *DeleteD
 // Query params: limit (default 50, max 500), offset (default 0), q (search term)
 func (h *CommonHandler) ListClips(c *gin.Context) {
 	source := c.Param("source")
-
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
+	sourceLower := strings.ToLower(source)
 
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	q := c.Query("q")
 
-	clips, err := repo.ListClipsPaged(c.Request.Context(), limit, offset, q)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
+	ctx := c.Request.Context()
+	var allClips []*models.Clip
+
+	// Handle voiceover and images separately
+	if sourceLower == "voiceover" {
+		if h.voiceoverRepo == nil {
+			apiutil.BadRequest(c, "voiceover repo not available")
+			return
+		}
+		records, err := h.voiceoverRepo.ListAll(ctx)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		for _, rec := range records {
+			allClips = append(allClips, voiceoverRecordToClip(rec))
+		}
+	} else if sourceLower == "images" {
+		if h.imagesRepo == nil {
+			apiutil.BadRequest(c, "images repo not available")
+			return
+		}
+		assets, err := h.imagesRepo.ListAll(ctx)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		for _, asset := range assets {
+			allClips = append(allClips, imageAssetToClip(asset))
+		}
+	} else {
+		repo := h.resolveRepo(source)
+		if repo == nil {
+			apiutil.BadRequest(c, "invalid source: "+source)
+			return
+		}
+		clips, err := repo.ListClipsPaged(ctx, limit, offset, q)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		allClips = clips
+	}
+
+	// Apply offset/limit manually if paged method not used (voiceover/images case)
+	if sourceLower == "voiceover" || sourceLower == "images" {
+		if offset >= len(allClips) {
+			allClips = []*models.Clip{}
+		} else {
+			end := offset + limit
+			if end > len(allClips) {
+				end = len(allClips)
+			}
+			allClips = allClips[offset:end]
+		}
 	}
 
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
-		"count":  len(clips),
-		"clips":  clips,
+		"count":  len(allClips),
+		"clips":  allClips,
 	})
 }
 
@@ -990,57 +1169,139 @@ func (h *CommonHandler) ListClips(c *gin.Context) {
 // Body: {"root_folder_id": "...", "dry_run": true}
 func (h *CommonHandler) Reconcile(c *gin.Context) {
 	source := c.Param("source")
-
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
+	sourceLower := strings.ToLower(source)
 
 	var req struct {
 		RootFolderID string `json:"root_folder_id"`
 		DryRun       bool   `json:"dry_run"`
+		CheckDrive   bool   `json:"check_drive"` // If true, check if Drive files exist
 	}
 	_ = c.ShouldBindJSON(&req)
 
 	ctx := c.Request.Context()
-	clips, err := repo.ListClips(ctx, "")
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
+	var allClips []*models.Clip
+	var deletedCount int
+
+	// Handle voiceover and images separately
+	if sourceLower == "voiceover" {
+		if h.voiceoverRepo == nil {
+			apiutil.BadRequest(c, "voiceover repo not available")
+			return
+		}
+		records, err := h.voiceoverRepo.ListAll(ctx)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		for _, rec := range records {
+			allClips = append(allClips, voiceoverRecordToClip(rec))
+		}
+	} else if sourceLower == "images" {
+		if h.imagesRepo == nil {
+			apiutil.BadRequest(c, "images repo not available")
+			return
+		}
+		assets, err := h.imagesRepo.ListAll(ctx)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		for _, asset := range assets {
+			allClips = append(allClips, imageAssetToClip(asset))
+		}
+	} else {
+		repo := h.resolveRepo(source)
+		if repo == nil {
+			apiutil.BadRequest(c, "invalid source: "+source)
+			return
+		}
+		clips, err := repo.ListClips(ctx, "")
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		allClips = clips
 	}
 
 	var results []gin.H
 	issueCount := make(map[string]int)
 
-	for _, clip := range clips {
-		result := h.verifyClip(ctx, source, repo, clip)
-		results = append(results, result)
-
-		// Count issues
-		if issues, ok := result["issues"].([]string); ok {
-			for _, issue := range issues {
-				issueCount[issue]++
+	for _, clip := range allClips {
+		// Use verifyClip for non-voiceover clips (uses *clips.Repository)
+		var result gin.H
+		repo := h.resolveRepo(source)
+		if repo != nil {
+			result = h.verifyClip(ctx, source, repo, clip)
+		} else {
+			// Voiceover: basic verification
+			result = gin.H{
+				"ok":      true,
+				"source":  source,
+				"clip_id": clip.ID,
+				"issues":  []string{},
 			}
+			if clip.DriveLink != "" {
+				result["has_drive_link"] = true
+			} else {
+				result["has_drive_link"] = false
+				result["issues"] = append(result["issues"].([]string), "drive_link_missing")
+			}
+		}
+
+		// Check if Drive file exists (vice versa functionality)
+		if req.CheckDrive && clip.DriveLink != "" {
+			fileID := driveutil.FileIDFromLink(clip.DriveLink)
+			if fileID != "" && h.driveUploader != nil && h.driveUploader.Service != nil {
+				_, err := h.driveUploader.Service.Files.Get(fileID).Fields("id").Do()
+				if err != nil {
+					result["drive_file_missing"] = true
+					result["issues"] = append(result["issues"].([]string), "drive_file_missing")
+
+					if !req.DryRun {
+						// Delete DB record
+						var delErr error
+						if sourceLower == "voiceover" {
+							delErr = h.voiceoverRepo.Delete(ctx, clip.ID)
+						} else {
+							repo := h.resolveRepo(source)
+							if repo != nil {
+								delErr = repo.DeleteClip(ctx, clip.ID)
+							}
+						}
+						if delErr == nil {
+							result["db_deleted"] = true
+							deletedCount++
+						}
+					}
+				}
+			}
+		}
+
+		results = append(results, result)
+		for _, issue := range result["issues"].([]string) {
+			issueCount[issue]++
 		}
 	}
 
 	// Build summary
 	summary := gin.H{
-		"total_clips": len(clips),
+		"total_clips": len(allClips),
 		"issue_counts": issueCount,
+		"deleted":     deletedCount,
 	}
 	for issue, count := range issueCount {
 		summary[issue] = count
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":       true,
-		"source":   source,
-		"dry_run":  req.DryRun,
-		"checked":  len(results),
-		"summary":  summary,
-		"items":    results,
+		"ok":         true,
+		"source":     source,
+		"dry_run":    req.DryRun,
+		"check_drive": req.CheckDrive,
+		"checked":    len(results),
+		"deleted":    deletedCount,
+		"summary":    summary,
+		"items":      results,
 	})
 }
 

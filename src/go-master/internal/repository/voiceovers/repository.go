@@ -190,3 +190,101 @@ func (r *Repository) ListByRequestID(ctx context.Context, requestID string) ([]*
 	}
 	return records, rows.Err()
 }
+
+func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*Record, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		FROM voiceovers WHERE folder_id = ? ORDER BY created_at`, folderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*Record
+	for rows.Next() {
+		var rec Record
+		var createdAt, updatedAt string
+		err := rows.Scan(
+			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
+			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
+			&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.Metadata, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rec.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		records = append(records, &rec)
+	}
+	return records, rows.Err()
+}
+
+func (r *Repository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, id)
+	return err
+}
+
+func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*Record, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		FROM voiceovers
+		WHERE drive_file_id = ? OR drive_link LIKE ? OR download_link LIKE ?`,
+		fileID, "%"+fileID+"%", "%"+fileID+"%")
+
+	var rec Record
+	var createdAt, updatedAt string
+	err := row.Scan(
+		&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+		&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
+		&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
+		&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+		&rec.Metadata, &createdAt, &updatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	rec.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return &rec, nil
+}
+
+func (r *Repository) ListAll(ctx context.Context) ([]*Record, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
+			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
+			drive_link, download_link, file_hash, duration_seconds, status,
+			error, strategy, metadata, created_at, updated_at
+		FROM voiceovers ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*Record
+	for rows.Next() {
+		var rec Record
+		var createdAt, updatedAt string
+		err := rows.Scan(
+			&rec.ID, &rec.RequestID, &rec.TextHash, &rec.TextPreview, &rec.Language,
+			&rec.Voice, &rec.Filename, &rec.LocalPath, &rec.CleanedPath, &rec.FolderID,
+			&rec.FolderPath, &rec.DriveFileID, &rec.DriveLink, &rec.DownloadLink,
+			&rec.FileHash, &rec.DurationSeconds, &rec.Status, &rec.Error, &rec.Strategy,
+			&rec.Metadata, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rec.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		rec.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+		records = append(records, &rec)
+	}
+	return records, rows.Err()
+}
