@@ -199,13 +199,6 @@ func (r *Router) Setup() *gin.Engine {
 				mediaGroup := protected.Group("/media")
 				h.Media.RegisterRoutes(mediaGroup)
 			}
-			if h.Drive != nil {
-				log.Info("registering drive routes")
-				driveGroup := protected.Group("/drive")
-				h.Drive.RegisterRoutes(driveGroup)
-			} else {
-				log.Warn("drive handler is nil, skipping route registration")
-			}
 		}
 	}
 
