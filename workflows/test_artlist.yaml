@@ -1,23 +1,17 @@
 name: test_artlist_pipeline
+
 defaults:
   strategy: verify
-  dry_run: false
 
 steps:
   - id: artlist_search
-    type: http
-    endpoint: "http://localhost:8080/api/artlist/run"
-    payload:
-      term: "ocean-waves"
+    uses: artlist.run
+    with:
+      term: ocean-waves
       limit: 2
-      strategy: "{{ defaults.strategy }}"
-      dry_run: false
-      root_folder_id: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
-
-  - id: check_status
-    type: http
-    endpoint: "http://localhost:8080/api/artlist/runs/{{ steps.artlist_search.data.run_id }}"
+      strategy: "{{ workflow.defaults.strategy }}"
     wait:
-      status_endpoint: "http://localhost:8080/api/artlist/runs/{{ steps.artlist_search.data.run_id }}"
-      terminal: ["completed", "failed"]
-      timeout_seconds: 300
+      interval_ms: 2000
+      timeout_seconds: 900
+      success: ["completed"]
+      failure: ["failed", "cancelled", "zombie"]

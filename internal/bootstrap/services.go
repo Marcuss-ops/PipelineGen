@@ -32,7 +32,6 @@ import (
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
-	"velox/go-master/internal/service/workflowrunner"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -62,7 +61,6 @@ type services struct {
 	jobsDispatcher    *jobservice.Dispatcher
 	mediaProcessor    *mediaasset.Processor
 	youtubeClipService *youtubeclip.Service
-	workflowService   *workflowrunner.Service
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -110,11 +108,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		driveDestinationService,
 		mediaProcessor,
 	)
-
-	workflowService := workflowrunner.NewService()
-	// Load workflows from workflows directory if exists
-	// TODO: configure workflows directory path
-	// For now, manual loading via API
 
 	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
 	if err := os.MkdirAll(voDir, 0755); err != nil {
@@ -227,6 +220,5 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		jobsDispatcher:    jobsDispatcher,
 		mediaProcessor:    mediaProcessor,
 		youtubeClipService: youtubeClipService,
-		workflowService:   workflowService,
 	}, nil
 }
