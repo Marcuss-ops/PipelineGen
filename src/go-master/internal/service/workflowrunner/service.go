@@ -44,16 +44,16 @@ func (s *Service) LoadWorkflow(path string) (*Workflow, error) {
 	return wf, nil
 }
 
-// RunWorkflow runs a loaded workflow by name
+// RunWorkflow runs a loaded workflow by name and stores the result
 func (s *Service) RunWorkflow(ctx context.Context, name string) (*RunResult, error) {
 	wf, ok := s.workflows[name]
 	if !ok {
 		return nil, fmt.Errorf("workflow not found: %s", name)
 	}
-	return s.runner.Run(ctx, wf)
+	return s.RunAndStore(ctx, wf)
 }
 
-// RunWorkflowFromFile runs a workflow directly from a file
+// RunWorkflowFromFile runs a workflow directly from a file and stores the result
 func (s *Service) RunWorkflowFromFile(ctx context.Context, path string) (*RunResult, error) {
 	wf, err := LoadFromFile(path)
 	if err != nil {
@@ -62,7 +62,7 @@ func (s *Service) RunWorkflowFromFile(ctx context.Context, path string) (*RunRes
 	if err := wf.Validate(); err != nil {
 		return nil, err
 	}
-	return s.runner.Run(ctx, wf)
+	return s.RunAndStore(ctx, wf)
 }
 
 // GetResult returns a stored result by workflow ID

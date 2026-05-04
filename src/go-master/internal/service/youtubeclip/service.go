@@ -49,13 +49,10 @@ func NewService(
 	driveClient *driveapi.Service,
 	driveDestination *drivedestination.Service,
 	mediaProcessor *mediaasset.Processor,
+	mediaFinalizer *mediaregistry.Finalizer,
 ) *Service {
 	// Create asset destination resolver for unified destination resolution
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
-
-	// Create mediaregistry finalizer for consistent asset finalization
-	clipsReg := mediaregistry.NewClipsRegistry(clipsRepo)
-	mediaFinalizer := mediaregistry.NewFinalizer(clipsReg, nil, log)
 
 	return &Service{
 		cfg:               cfg,

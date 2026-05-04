@@ -3,20 +3,33 @@ package mediaregistry
 import (
 	"context"
 	"os"
+	"time"
+
+	"velox/go-master/internal/service/assetindex"
 
 	"go.uber.org/zap"
 )
 
 type Finalizer struct {
-	registry      Registry
-	driveVerifier DriveVerifier
-	log           *zap.Logger
+	registry       Registry
+	driveVerifier  DriveVerifier
+	assetIndex     *assetindex.Service
+	log            *zap.Logger
 }
 
 func NewFinalizer(registry Registry, driveVerifier DriveVerifier, log *zap.Logger) *Finalizer {
 	return &Finalizer{
 		registry:      registry,
 		driveVerifier: driveVerifier,
+		log:           log,
+	}
+}
+
+func NewFinalizerWithAssetIndex(registry Registry, driveVerifier DriveVerifier, assetIndex *assetindex.Service, log *zap.Logger) *Finalizer {
+	return &Finalizer{
+		registry:      registry,
+		driveVerifier: driveVerifier,
+		assetIndex:    assetIndex,
 		log:           log,
 	}
 }
@@ -79,6 +92,30 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 		return result, nil
 	}
 	result.DBSaved = true
+
+	// Write to asset_index if enabled
+	if f.assetIndex != nil {
+		assetRec := &assetindex.AssetRecord{
+			AssetID:      rec.ID,
+			AssetType:    rec.MediaType,
+			Source:       rec.Source,
+			SourceID:     rec.SourceID,
+			GroupName:    rec.Group,
+			Subfolder:    rec.Subfolder,
+			LocalPath:    rec.LocalPath,
+			DriveLink:    rec.DriveLink,
+			DownloadLink: rec.DownloadLink,
+			FileHash:     rec.FileHash,
+			ContentHash:  rec.ContentHash,
+			Status:       "ready",
+			Metadata:     rec.Metadata,
+			CreatedAt:    time.Now().UTC(),
+			UpdatedAt:    time.Now().UTC(),
+		}
+		if err := f.assetIndex.Upsert(ctx, assetRec); err != nil {
+			f.log.Warn("failed to write to asset_index", zap.String("id", rec.ID), zap.Error(err))
+		}
+	}
 
 	if opts.VerifyDB {
 		saved, err := f.registry.GetMedia(ctx, rec.ID)

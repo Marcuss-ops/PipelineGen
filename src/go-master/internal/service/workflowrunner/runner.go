@@ -4,11 +4,60 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // Runner executes a workflow
 type Runner struct {
 	registry *Registry
+}
+
+// buildLevels performs topological sort and groups steps into levels
+func buildLevels(steps []Step) ([][]Step, error) {
+	byID := make(map[string]Step)
+	indegree := make(map[string]int)
+	children := make(map[string][]string)
+
+	for _, step := range steps {
+		if step.ID == "" {
+			return nil, fmt.Errorf("step id is required")
+		}
+		byID[step.ID] = step
+		indegree[step.ID] = len(step.Needs)
+
+		for _, dep := range step.Needs {
+			children[dep] = append(children[dep], step.ID)
+		}
+	}
+
+	var levels [][]Step
+
+	for len(indegree) > 0 {
+		var level []Step
+
+		for id, deg := range indegree {
+			if deg == 0 {
+				level = append(level, byID[id])
+			}
+		}
+
+		if len(level) == 0 {
+			return nil, fmt.Errorf("cycle detected in workflow")
+		}
+
+		for _, step := range level {
+			delete(indegree, step.ID)
+
+			for _, child := range children[step.ID] {
+				indegree[child]--
+			}
+		}
+
+		levels = append(levels, level)
+	}
+
+	return levels, nil
 }
 
 // NewRunner creates a new workflow runner
@@ -33,7 +82,7 @@ type RunResult struct {
 	Duration    time.Duration
 }
 
-// Run executes a workflow sequentially
+// Run executes a workflow using DAG-based execution
 func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 	start := time.Now()
 	result := &RunResult{
@@ -41,6 +90,15 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 		WorkflowID:  fmt.Sprintf("wf_%d", time.Now().UnixNano()),
 		Status:      "running",
 		StepResults: make(map[string]*StepOutput),
+	}
+
+	// Build levels for DAG execution
+	levels, err := buildLevels(wf.Steps)
+	if err != nil {
+		result.Status = "failed"
+		result.Error = err.Error()
+		result.Duration = time.Since(start)
+		return result, err
 	}
 
 	state := &WorkflowState{
@@ -59,62 +117,73 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 		// TODO: implement default merging
 	}
 
-	for i, step := range wf.Steps {
-		state.CurrentStep = i
-		stepCtx := ctx
+	// Execute levels in order, parallel within each level
+	for _, level := range levels {
+		errGroup, ctx := errgroup.WithContext(ctx)
 
-		// Render payload with templating
-		payload, err := renderPayload(step.Payload, wf, state)
-		if err != nil {
+		for _, step := range level {
+			step := step // capture loop variable
+			errGroup.Go(func() error {
+				// Render payload with templating
+				payload, err := renderPayload(step.Payload, wf, state)
+				if err != nil {
+					result.StepResults[step.ID] = &StepOutput{
+						OK:    false,
+						Status: "failed",
+						Error:  fmt.Sprintf("failed to render payload: %v", err),
+					}
+					return fmt.Errorf("step %s: failed to render payload: %w", step.ID, err)
+				}
+
+				input := &StepInput{
+					Workflow: wf,
+					Step:     &step,
+					Payload:  payload,
+					State:    state,
+				}
+
+				// Execute step: try uses first, then type
+				var output *StepOutput
+				var execErr error
+
+				executorName := step.Uses
+				if executorName == "" {
+					executorName = step.Type
+				}
+
+				executor, ok := defaultRegistry.executors[executorName]
+				if !ok {
+					execErr = fmt.Errorf("no executor registered for step %s (uses=%s, type=%s)", step.ID, step.Uses, step.Type)
+				} else {
+					output, execErr = executor.Execute(ctx, input)
+				}
+
+				if execErr != nil {
+					result.StepResults[step.ID] = &StepOutput{
+						OK:    false,
+						Status: "failed",
+						Error:  execErr.Error(),
+					}
+					return fmt.Errorf("step %s failed: %w", step.ID, execErr)
+				}
+
+				result.StepResults[step.ID] = output
+				state.StepOutputs[step.ID] = output
+
+				if !output.OK {
+					return fmt.Errorf("step %s returned not ok: %s", step.ID, output.Error)
+				}
+
+				return nil
+			})
+		}
+
+		// Wait for all steps in this level to complete
+		if err := errGroup.Wait(); err != nil {
 			result.Status = "failed"
-			result.Error = fmt.Sprintf("step %s: failed to render payload: %v", step.ID, err)
+			result.Error = err.Error()
 			result.Duration = time.Since(start)
-			return result, fmt.Errorf(result.Error)
-		}
-
-		input := &StepInput{
-			Workflow: wf,
-			Step:     &step,
-			Payload:  payload,
-			State:    state,
-		}
-
-		// Execute step: try uses first, then type
-		var output *StepOutput
-		var execErr error
-
-		executorName := step.Uses
-		if executorName == "" {
-			executorName = step.Type
-		}
-
-		executor, ok := defaultRegistry.executors[executorName]
-		if !ok {
-			execErr = fmt.Errorf("no executor registered for step %s (uses=%s, type=%s)", step.ID, step.Uses, step.Type)
-		} else {
-			output, execErr = executor.Execute(stepCtx, input)
-		}
-
-		if execErr != nil {
-			result.Status = "failed"
-			result.Error = fmt.Sprintf("step %s failed: %v", step.ID, execErr)
-			result.Duration = time.Since(start)
-			return result, fmt.Errorf(result.Error)
-		}
-
-		result.StepResults[step.ID] = output
-		state.StepOutputs[step.ID] = output
-
-		// Handle async wait if configured
-		if step.Wait != nil && output.Status == "running" {
-			// TODO: implement wait logic for async jobs
-		}
-
-		if !output.OK {
-			result.Status = "failed"
-			result.Error = fmt.Sprintf("step %s returned not ok", step.ID)
-			result.Duration = time.Since(start)
-			return result, fmt.Errorf(result.Error)
+			return result, err
 		}
 	}
 

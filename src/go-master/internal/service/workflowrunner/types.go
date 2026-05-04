@@ -18,6 +18,7 @@ type Step struct {
 	Payload  map[string]interface{} `yaml:"payload"`
 	Wait     *WaitConfig            `yaml:"wait"`
 	With     map[string]interface{} `yaml:"with"`
+	Needs    []string               `yaml:"needs"`
 }
 
 // WaitConfig defines how to wait for async operations

@@ -1,0 +1,6 @@
+name: test_health
+
+steps:
+  - id: health
+    type: http
+    endpoint: "GET http://localhost:8080/api/health"

@@ -63,7 +63,7 @@ func (h *Handler) runWorkflow(c *gin.Context) {
 		h.log.Info("workflow completed", zap.String("workflow_id", result.WorkflowID), zap.String("status", result.Status))
 	}()
 
-	c.JSON(http.StatusAccepted, gin.H{"ok": true, "message": "workflow started"})
+	c.JSON(http.StatusAccepted, gin.H{"ok": true, "message": "workflow started", "workflow_id": req.Workflow})
 }
 
 // runWorkflowFileRequest is the request body for running a workflow from file
@@ -90,18 +90,17 @@ func (h *Handler) runWorkflowFile(c *gin.Context) {
 		// Try relative to working directory
 	}
 
-	// Run workflow asynchronously with background context
-	go func() {
-		ctx := context.Background()
-		result, err := h.service.RunWorkflowFromFile(ctx, path)
-		if err != nil {
-			h.log.Error("workflow file run failed", zap.String("path", path), zap.Error(err))
-			return
-		}
-		h.log.Info("workflow file completed", zap.String("workflow_id", result.WorkflowID), zap.String("status", result.Status))
-	}()
+	// Run workflow synchronously to return result
+	ctx := context.Background()
+	result, err := h.service.RunWorkflowFromFile(ctx, path)
+	if err != nil {
+		h.log.Error("workflow file run failed", zap.String("path", path), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
 
-	c.JSON(http.StatusAccepted, gin.H{"ok": true, "message": "workflow file started"})
+	h.log.Info("workflow file completed", zap.String("workflow_id", result.WorkflowID), zap.String("status", result.Status))
+	c.JSON(http.StatusOK, result)
 }
 
 // getRunStatus returns the status of a workflow run

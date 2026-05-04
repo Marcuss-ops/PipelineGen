@@ -15,11 +15,15 @@ type MediaRecord struct {
 	DriveLink     string
 	DownloadLink  string
 	FileHash      string
+	ContentHash   string
 	Metadata      string
 	Duration      int
 	Tags          []string
 	Status        string
 	Error         string
+	// Asset index fields
+	SourceID      string
+	Subfolder     string
 }
 
 type FinalizeOptions struct {
