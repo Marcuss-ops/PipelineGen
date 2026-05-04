@@ -23,6 +23,31 @@ import (
 	"velox/go-master/pkg/apiutil"
 )
 
+// DeleteDriveFileRequest represents a request to delete/trash a clip by Drive file ID or link.
+type DeleteDriveFileRequest struct {
+	Source     string `json:"source,omitempty"`
+	DriveLink string `json:"drive_link"`
+	FileID     string `json:"file_id"`
+	DryRun     bool   `json:"dry_run"`
+	Confirm    bool   `json:"confirm"`
+	Mode       string `json:"mode"` // "trash" or "delete"
+}
+
+// DeleteDriveFileResult represents the result of a drive file delete/trash operation.
+type DeleteDriveFileResult struct {
+	OK         bool   `json:"ok"`
+	Source     string `json:"source,omitempty"`
+	ClipID     string `json:"clip_id,omitempty"`
+	FileID     string `json:"file_id"`
+	DriveLink  string `json:"drive_link,omitempty"`
+	FoundDB    bool   `json:"found_db"`
+	DryRun     bool   `json:"dry_run"`
+	Action     string `json:"action,omitempty"`
+	DriveDeleted bool `json:"drive_deleted,omitempty"`
+	DBDeleted  bool   `json:"db_deleted,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
 // CommonHandler handles common media operations across different sources.
 type CommonHandler struct {
 	artlistRepo    *clips.Repository
@@ -65,34 +90,31 @@ func (h *CommonHandler) resolveRepo(source string) *clips.Repository {
 
 // RegisterRoutes registers media routes with source parameter.
 func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
+	h.log.Info("Registering common media routes")
+	r.GET("/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 	// Clip-level endpoints
-	clips := r.Group("/:source/clips")
-	{
-		clips.GET("/:id/status", h.ClipStatus)
-		clips.POST("/:id/verify", h.VerifyClip)
-		clips.POST("/:id/trash", h.TrashClip)
-		clips.POST("/:id/delete", h.DeleteClip)
-		clips.POST("/:id/reupload", h.ReuploadClip)
-		clips.POST("/:id/reprocess", h.ReprocessClip)
-	}
+	r.POST("/:source/clips/:id/status", h.ClipStatus)
+	r.POST("/:source/clips/:id/verify", h.VerifyClip)
+	r.POST("/:source/clips/:id/trash", h.TrashClip)
+	r.POST("/:source/clips/:id/delete", h.DeleteClip)
+	r.POST("/:source/clips/:id/reupload", h.ReuploadClip)
+	r.POST("/:source/clips/:id/reprocess", h.ReprocessClip)
 
 	// Folder-level endpoints
-	folders := r.Group("/:source/folders")
-	{
-		folders.GET("", h.ListFolders)
-		folders.GET("/:id/status", h.FolderStatus)
-		folders.POST("/:id/regenerate-manifest", h.RegenerateManifest)
-		folders.POST("/:id/trash", h.TrashFolder)
-		folders.POST("/:id/delete", h.DeleteFolder)
-	}
+	r.GET("/:source/folders", h.ListFolders)
+	r.GET("/:source/folders/:id/status", h.FolderStatus)
+	r.POST("/:source/folders/:id/regenerate-manifest", h.RegenerateManifest)
+	r.POST("/:source/folders/:id/trash", h.TrashFolder)
+	r.POST("/:source/folders/:id/delete", h.DeleteFolder)
 
 	// Source-level endpoints
-	sourceGroup := r.Group("/:source")
-	{
-		sourceGroup.GET("/clips", h.ListClips)
-		sourceGroup.POST("/reconcile", h.Reconcile)
-		sourceGroup.POST("/cleanup-orphans", h.CleanupOrphans)
-	}
+	r.GET("/:source/clips", h.ListClips)
+	r.POST("/:source/reconcile", h.Reconcile)
+	r.POST("/:source/cleanup-orphans", h.CleanupOrphans)
+
+	// Drive file endpoints (operate by Drive file ID or link)
+	r.POST("/:source/drive-file/trash", h.TrashByDriveFile)
+	r.POST("/:source/drive-file/delete", h.DeleteByDriveFile)
 }
 
 // ClipStatus returns the status of a clip.
@@ -270,12 +292,30 @@ func (h *CommonHandler) TrashClip(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	if h.cleanupSvc == nil {
-		apiutil.InternalError(c, fmt.Errorf("cleanup service not configured"))
+
+	// Get clip to find Drive file ID
+	clip, err := repo.GetClip(ctx, clipID)
+	if err != nil {
+		apiutil.NotFound(c, "clip not found")
 		return
 	}
 
-	if err := h.cleanupSvc.TrashClip(ctx, clipID); err != nil {
+	// Trash file in Drive if driveUploader is available
+	if h.driveUploader != nil {
+		fileID := driveutil.FileIDFromLink(clip.DriveLink)
+		if fileID == "" {
+			fileID = driveutil.FileIDFromLink(clip.DownloadLink)
+		}
+		if fileID != "" {
+			if err := h.driveUploader.TrashFile(ctx, fileID); err != nil {
+				h.log.Warn("failed to trash drive file", zap.String("file_id", fileID), zap.Error(err))
+				// Continue to delete from DB even if Drive operation fails
+			}
+		}
+	}
+
+	// Delete from DB using resolved repo
+	if err := repo.DeleteClip(ctx, clipID); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
@@ -300,12 +340,30 @@ func (h *CommonHandler) DeleteClip(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	if h.cleanupSvc == nil {
-		apiutil.InternalError(c, fmt.Errorf("cleanup service not configured"))
+
+	// Get clip to find Drive file ID
+	clip, err := repo.GetClip(ctx, clipID)
+	if err != nil {
+		apiutil.NotFound(c, "clip not found")
 		return
 	}
 
-	if err := h.cleanupSvc.DeleteClipPermanently(ctx, clipID); err != nil {
+	// Delete file from Drive permanently if driveUploader is available
+	if h.driveUploader != nil {
+		fileID := driveutil.FileIDFromLink(clip.DriveLink)
+		if fileID == "" {
+			fileID = driveutil.FileIDFromLink(clip.DownloadLink)
+		}
+		if fileID != "" {
+			if err := h.driveUploader.DeleteFile(ctx, fileID); err != nil {
+				h.log.Warn("failed to delete drive file", zap.String("file_id", fileID), zap.Error(err))
+				// Continue to delete from DB even if Drive operation fails
+			}
+		}
+	}
+
+	// Delete from DB using resolved repo
+	if err := repo.DeleteClip(ctx, clipID); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
@@ -757,6 +815,145 @@ func (h *CommonHandler) DeleteFolder(c *gin.Context) {
 		"source":    source,
 		"folder_id": folderID,
 	})
+}
+
+// TrashByDriveFile trashes a clip by Drive file ID or link.
+// POST /api/media/:source/drive-file/trash
+func (h *CommonHandler) TrashByDriveFile(c *gin.Context) {
+	h.log.Info("TrashByDriveFile called", zap.String("source", c.Param("source")))
+	source := c.Param("source")
+
+	var req DeleteDriveFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, "invalid request body")
+		return
+	}
+	req.Source = source
+	req.Mode = "trash"
+
+	result, err := h.processDriveFileDelete(c.Request.Context(), &req)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, result)
+}
+
+// DeleteByDriveFile permanently deletes a clip by Drive file ID or link.
+// POST /api/media/:source/drive-file/delete
+func (h *CommonHandler) DeleteByDriveFile(c *gin.Context) {
+	source := c.Param("source")
+
+	var req DeleteDriveFileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, "invalid request body")
+		return
+	}
+	req.Source = source
+	req.Mode = "delete"
+
+	result, err := h.processDriveFileDelete(c.Request.Context(), &req)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, result)
+}
+
+// processDriveFileDelete handles the common logic for trash/delete by drive file.
+func (h *CommonHandler) processDriveFileDelete(ctx context.Context, req *DeleteDriveFileRequest) (*DeleteDriveFileResult, error) {
+	fileID := strings.TrimSpace(req.FileID)
+	if fileID == "" && req.DriveLink != "" {
+		fileID = driveutil.FileIDFromLink(req.DriveLink)
+	}
+	if fileID == "" {
+		return nil, fmt.Errorf("drive file id or drive_link is required")
+	}
+
+	// Search for clip in all relevant repos
+	repos := map[string]*clips.Repository{
+		"artlist": h.artlistRepo,
+		"clips":   h.clipsRepo,
+		"stock":   h.stockRepo,
+	}
+
+	if req.Source != "" && req.Source != "all" {
+		// Search only in specified source
+		repo := h.resolveRepo(req.Source)
+		if repo == nil {
+			return nil, fmt.Errorf("invalid source: %s", req.Source)
+		}
+		repos = map[string]*clips.Repository{req.Source: repo}
+	}
+
+	var foundSource string
+	var foundRepo *clips.Repository
+	var foundClip *models.Clip
+
+	for source, repo := range repos {
+		if repo == nil {
+			continue
+		}
+		clip, err := repo.GetClipByDriveFileID(ctx, fileID)
+		if err != nil {
+			return nil, fmt.Errorf("failed searching %s repo: %w", source, err)
+		}
+		if clip != nil {
+			foundSource = source
+			foundRepo = repo
+			foundClip = clip
+			break
+		}
+	}
+
+	result := &DeleteDriveFileResult{
+		OK:      true,
+		FileID:   fileID,
+		FoundDB:  foundClip != nil,
+		DryRun:   req.DryRun,
+	}
+
+	if foundClip == nil {
+		result.OK = false
+		result.Error = "clip not found in database"
+		return result, nil
+	}
+
+	result.Source = foundSource
+	result.ClipID = foundClip.ID
+	result.DriveLink = foundClip.DriveLink
+
+	if req.DryRun {
+		result.Action = "would_" + req.Mode
+		return result, nil
+	}
+
+	if !req.Confirm {
+		return nil, fmt.Errorf("confirm=true is required for real deletion")
+	}
+
+	// Step 1: Trash/Delete from Drive
+	if h.driveUploader != nil {
+		var driveErr error
+		if req.Mode == "delete" {
+			driveErr = h.driveUploader.DeleteFile(ctx, fileID)
+		} else {
+			driveErr = h.driveUploader.TrashFile(ctx, fileID)
+		}
+		if driveErr != nil {
+			return nil, fmt.Errorf("failed to %s drive file: %w", req.Mode, driveErr)
+		}
+		result.DriveDeleted = true
+		result.Action = req.Mode + "d"
+	}
+
+	// Step 2: Delete from DB (only after Drive operation succeeds)
+	if err := foundRepo.DeleteClip(ctx, foundClip.ID); err != nil {
+		return nil, fmt.Errorf("drive file %sd but failed to delete db record: %w", req.Mode, err)
+	}
+	result.DBDeleted = true
+
+	return result, nil
 }
 
 // ListClips lists all clips for a source with pagination and search.

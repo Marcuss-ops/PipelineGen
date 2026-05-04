@@ -202,8 +202,13 @@ func (r *Router) Setup() *gin.Engine {
 		}
 	}
 
-	return engine
-}
+		// Log all registered routes
+		for _, route := range engine.Routes() {
+			log.Info("registered route", zap.String("method", route.Method), zap.String("path", route.Path))
+		}
+
+		return engine
+	}
 
 // Stop cleans up resources used by the router (rate limiter goroutines)
 func (r *Router) Stop() {
