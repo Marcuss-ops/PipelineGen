@@ -23,13 +23,14 @@ type Config struct {
 
 // VideoConfig holds video processing configuration.
 type VideoConfig struct {
-	Width    int    `yaml:"width" default:"1920"`
-	Height   int    `yaml:"height" default:"1080"`
-	FPS      int    `yaml:"fps" default:"30"`
-	Codec    string `yaml:"codec" default:"libx264"`
-	Preset   string `yaml:"preset" default:"fast"`
-	CRF      int    `yaml:"crf" default:"23"`
-	Duration int    `yaml:"duration" default:"7"`
+	Width            int    `yaml:"width" default:"1920"`
+	Height           int    `yaml:"height" default:"1080"`
+	FPS             int    `yaml:"fps" default:"30"`
+	Codec           string `yaml:"codec" default:"libx264"`
+	Preset          string `yaml:"preset" default:"fast"`
+	CRF             int    `yaml:"crf" default:"23"`
+	Duration        int    `yaml:"duration" default:"7"`
+	KeyframeInterval int    `yaml:"keyframe_interval" default:"60"`
 }
 
 // WithDefaults returns a copy of VideoConfig with zero-values replaced by defaults.
@@ -54,6 +55,9 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	}
 	if v.CRF <= 0 {
 		v.CRF = 23
+	}
+	if v.KeyframeInterval <= 0 {
+		v.KeyframeInterval = 60
 	}
 	return v
 }

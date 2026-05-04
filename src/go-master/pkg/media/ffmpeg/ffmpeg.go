@@ -38,19 +38,21 @@ type NormalizeOptions struct {
 	Codec           string
 	Preset          string
 	CRF             int
+	KeyframeInterval int  // GOP size (keyframe interval, 0 = default)
 }
 
 // DefaultNormalizeOptions returns defaults from config.
 func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
 	v := cfg.Video.WithDefaults()
 	return NormalizeOptions{
-		Duration: v.Duration,
-		Width:    v.Width,
-		Height:   v.Height,
-		FPS:      v.FPS,
-		Codec:    v.Codec,
-		Preset:   v.Preset,
-		CRF:      v.CRF,
+		Duration:        v.Duration,
+		Width:           v.Width,
+		Height:          v.Height,
+		FPS:             v.FPS,
+		Codec:           v.Codec,
+		Preset:          v.Preset,
+		CRF:             v.CRF,
+		KeyframeInterval: v.KeyframeInterval,
 	}
 }
 
@@ -79,14 +81,20 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
 	args := []string{"-y"}
 
+	// Generate new PTS to fix timestamp issues
+	args = append(args, "-fflags", "+genpts")
+	
+	// Avoid negative timestamps
+	args = append(args, "-avoid_negative_ts", "make_zero")
+
 	if opts.Duration > 0 && !opts.DisableDuration {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
 	}
 
 	args = append(args, "-i", input)
 
-	// Filter chain
-	filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d",
+	// Filter chain with PTS reset to ensure monotonic timestamps
+	filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d,setpts=PTS-STARTPTS",
 		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS)
 	args = append(args, "-vf", filter)
 
@@ -95,14 +103,33 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	} else {
 		// If keeping audio, we should probably encode it to a standard codec like AAC
 		args = append(args, "-c:a", "aac", "-b:a", "128k")
+		// Also reset audio timestamps
+		args = append(args, "-af", "asetpts=PTS-STARTPTS")
 	}
 
-	args = append(args,
-		"-c:v", opts.Codec,
-		"-preset", opts.Preset,
-		"-crf", fmt.Sprintf("%d", opts.CRF),
-		output,
-	)
+	// Video codec settings
+	args = append(args, "-c:v", opts.Codec)
+	
+	// Keyframe settings to prevent frame issues
+	keyframeInterval := opts.KeyframeInterval
+	if keyframeInterval <= 0 {
+		keyframeInterval = opts.FPS * 2 // Default: 2 seconds GOP
+	}
+	args = append(args, "-g", fmt.Sprintf("%d", keyframeInterval))
+	args = append(args, "-keyint_min", fmt.Sprintf("%d", keyframeInterval/2))
+	args = append(args, "-sc_threshold", "0") // Disable scene change detection
+	args = append(args, "-bf", "0")      // Disable B-frames for simpler decoding
+	args = append(args, "-refs", "1")     // Single reference frame
+	
+	// Rate control
+	args = append(args, "-preset", opts.Preset)
+	args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+	
+	// Output flags for better compatibility
+	args = append(args, "-pix_fmt", "yuv420p") // Standard pixel format
+	args = append(args, "-movflags", "+faststart")
+	args = append(args, "-vsync", "cfr") // Constant frame rate
+	args = append(args, output)
 
 	_, err := executil.Run(ctx, p.path, args, executil.Options{
 		Timeout: 15 * time.Minute,

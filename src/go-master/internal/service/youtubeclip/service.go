@@ -507,25 +507,26 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				folderPath = req.Destination.FolderPath
 			}
 
-			mediaRec := &mediaregistry.MediaRecord{
-				ID:           clipID,
-				Name:         item.Name,
-				Filename:     filepath.Base(localPath),
-				FolderID:     driveFolderID,
-				FolderPath:   folderPath,
-				Group:        getGroupFromDestination(req.Destination),
-				MediaType:    "youtube_clip",
-				DriveLink:    driveLink,
-				Tags:         seg.Tags,
-				Source:       "youtube",
-				Category:     "manual_extract",
-				ExternalURL:  resp.SourceURL,
-				Duration:     duration,
-				Metadata:     metadata,
-				FileHash:     fileHash,
-				LocalPath:    localPath,
-				Status:       "processed",
-			}
+		mediaRec := &mediaregistry.MediaRecord{
+			ID:           clipID,
+			Name:         item.Name,
+			Filename:     filepath.Base(localPath),
+			FolderID:     driveFolderID,
+			FolderPath:   folderPath,
+			Group:        getGroupFromDestination(req.Destination),
+			MediaType:    "youtube_clip",
+			DriveLink:    driveLink,
+			DownloadLink:  result.DownloadLink,
+			Tags:         seg.Tags,
+			Source:       "youtube",
+			Category:     "manual_extract",
+			ExternalURL:  resp.SourceURL,
+			Duration:     duration,
+			Metadata:     metadata,
+			FileHash:     fileHash,
+			LocalPath:    localPath,
+			Status:       "processed",
+		}
 
 			finalizeOpts := mediaregistry.FinalizeOptions{
 				RequireLocal: true,

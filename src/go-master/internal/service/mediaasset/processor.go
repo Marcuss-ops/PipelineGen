@@ -63,11 +63,11 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 
 	// Setup paths
 	tmpDir, saveDir := p.setupDirectories(input)
-	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s.mp4", input.ID))
 	finalFilename := SafeName(input.Name) + "_" + input.ID + ".mp4"
 	processedPath := OutputPath(saveDir, finalFilename)
 
-	// Step 1: Download
+	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly)
+	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
 	actualRawPath, err := p.downloadStep(ctx, input, rawPath)
 	if err != nil {
 		result.Error = fmt.Sprintf("download failed: %v", err)
@@ -215,8 +215,16 @@ func (p *Processor) isHLSURL(url string) bool {
 func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, processedPath string) (string, error) {
 	shouldNormalize := input.Normalize == nil || *input.Normalize
 	if !shouldNormalize {
-		p.log.Info("skipping normalization as requested", zap.String("id", input.ID))
-		return rawPath, nil
+		p.log.Info("skipping normalization as requested, moving raw to processed path", zap.String("id", input.ID))
+		// Move raw file to processed path
+		if err := os.Rename(rawPath, processedPath); err != nil {
+			// If rename fails (cross-device), try copy
+			p.log.Warn("rename failed, attempting copy", zap.Error(err))
+			if err := copyFile(rawPath, processedPath); err != nil {
+				return "", fmt.Errorf("failed to move raw file to processed path: %w", err)
+			}
+		}
+		return processedPath, nil
 	}
 
 	opts := p.videoCfg
@@ -257,4 +265,13 @@ func (p *Processor) uploadStep(ctx context.Context, input AssetInput, path strin
 	p.log.Info("drive upload success", zap.String("id", input.ID), zap.String("file_id", uploadResult.FileID))
 
 	return nil
+}
+
+// copyFile copies a file from src to dst.
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
 }
