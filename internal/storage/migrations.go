@@ -1,3 +1,15 @@
+// Package storage provides SQLite database utilities, migration runners, and FTS5 diagnostics.
+//
+// MigrationRunner uses relative paths as version identifiers to prevent collisions
+// between migrations in different directories (e.g., clips/ vs main migrations).
+//
+// FTS5 Support:
+//   - The current mattn/go-sqlite3 driver does NOT have FTS5 compiled.
+//   - FTS5 migrations should use .sql.disabled extension to prevent errors.
+//   - Use HasFTS5() to check support at runtime.
+//   - Fallback to LIKE queries when FTS5 is unavailable.
+//
+// See docs/sqlite-databases.md for full database architecture.
 package storage
 
 import (
@@ -13,6 +25,8 @@ import (
 )
 
 // MigrationRunner handles SQLite database migrations.
+// Version format: "dirname/filename" (e.g., "clips/clips_001_create_core_tables")
+// This prevents version collisions between different migration directories.
 type MigrationRunner struct {
 	db            *sql.DB
 	log           *zap.Logger

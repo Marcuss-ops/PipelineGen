@@ -110,11 +110,20 @@ curl -X POST http://localhost:8080/api/artlist/run \
 ### 2. Harvester & Downloader
 Servizi (spesso eseguiti tramite cron o via API) che si occupano di recuperare contenuti dal web.
 
-### 3. Database (SQLite)
-Usiamo tre database principali in `data/`:
-- `velox.db.sqlite`: Il database principale (script, job, configurazioni).
-- `stock.db.sqlite`: Indice dei video disponibili.
-- `images.db.sqlite`: Indice delle immagini.
+### 3. Database (SQLite Multi-DB Architecture)
+Usiamo **sette database SQLite** separati in `data/` per isolare le responsabilità:
+
+- `velox.db.sqlite`: Database principale (script, media items, monitored sources, harvester jobs).
+- `stock.db.sqlite`: Clip di stock footage.
+- `clips.db.sqlite`: YouTube clips + segment embeddings per timeline.
+- `artlist.db.sqlite`: Asset Artlist + artlist_runs.
+- `images.db.sqlite`: Immagini (placeholder per futuro).
+- `voiceover.db.sqlite`: Voiceover audio (placeholder per futuro).
+- `jobs.db.sqlite`: Coda job per elaborazioni asincrone.
+
+**Documentazione dettagliata**: Leggi `docs/sqlite-databases.md` e `AGENTS.md` per regole critiche sulle migration e sui confini tra database.
+
+**Regola d'oro**: Ogni database deve contenere solo le tabelle necessarie al servizio che lo usa.
 
 ---
 

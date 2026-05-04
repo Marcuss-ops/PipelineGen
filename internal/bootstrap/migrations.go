@@ -1,3 +1,14 @@
+// Package bootstrap initializes the application: databases, migrations, and service wiring.
+//
+// Migration Strategy:
+//   - Main migrations (migrations/sqlite/) → velox.db.sqlite only
+//   - Scripts migrations → velox.db.sqlite only
+//   - Clips migrations (internal/repository/clips/migrations/) → stock.db, clips.db, artlist.db
+//   - Jobs migrations (migrations/jobs/) → jobs.db.sqlite only
+//   - Harvester migrations → velox.db.sqlite only
+//
+// Critical: Never apply clips migrations to velox.db.sqlite.
+// See docs/sqlite-databases.md for schema boundaries.
 package bootstrap
 
 import (
@@ -8,6 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// runAllMigrations applies database migrations to each database.
+// Each database gets only the migrations relevant to its purpose.
 func runAllMigrations(dbs *databases, log *zap.Logger) error {
 	// Apply main migrations only to main DB (velox.db)
 	orchestrationMigrationsDir := filepath.Join("migrations", "sqlite")
