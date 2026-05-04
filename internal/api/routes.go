@@ -22,6 +22,7 @@ import (
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
+	workflowhandler "velox/go-master/internal/api/handlers/workflow"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/pkg/config"
 )
@@ -42,6 +43,7 @@ type Handlers struct {
 	YouTubeClip    *youtubecliphandler.Handler
 	Jobs           *jobs.Handler
 	Drive          *drivehandler.Handler
+	Workflow       *workflowhandler.Handler
 }
 
 // Router holds all API handlers
@@ -198,6 +200,10 @@ func (r *Router) Setup() *gin.Engine {
 			if h.Media != nil {
 				mediaGroup := protected.Group("/media")
 				h.Media.RegisterRoutes(mediaGroup)
+			}
+			if h.Workflow != nil {
+				workflowGroup := protected.Group("/workflows")
+				h.Workflow.RegisterRoutes(workflowGroup)
 			}
 		}
 	}

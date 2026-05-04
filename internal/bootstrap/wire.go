@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
+	workflowhandler "velox/go-master/internal/api/handlers/workflow"
 	foldermemory "velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivedestination"
@@ -21,6 +22,7 @@ import (
 	"velox/go-master/internal/service/drivereconcile"
 	"velox/go-master/internal/service/mediaregistry"
 	drive "velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/service/workflowrunner"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 
@@ -190,6 +192,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		YouTubeClip:    youtubeClipHandler,
 		Jobs:           jobsHandler,
 		Drive:          drivehandler.NewHandler(driveCleanupSvc, driveReconcileSvc),
+		Workflow:       workflowhandler.NewHandler(workflowrunner.NewService(), log),
 	}
 	if coreDeps.ScriptsRepo != nil {
 		handlers_struct.ScriptHistory = handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
