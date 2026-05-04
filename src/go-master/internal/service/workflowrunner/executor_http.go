@@ -65,8 +65,8 @@ func (e *httpExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutp
 	// Parse response as StepOutput
 	var output StepOutput
 	if err := json.Unmarshal(body, &output); err != nil {
-		// If not in expected format, wrap in data
-		output.Data = map[string]interface{}{
+		// If not in expected format, wrap in raw
+		output.Raw = map[string]interface{}{
 			"status_code": resp.StatusCode,
 			"body":        string(body),
 		}
@@ -84,7 +84,7 @@ func (e *httpExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutp
 
 func (e *httpExecutor) waitForCompletion(ctx context.Context, initial *StepOutput, step *Step) (*StepOutput, error) {
 	// Extract run ID from initial response
-	runID, ok := initial.Data["run_id"].(string)
+	runID, ok := initial.Raw["run_id"].(string)
 	if !ok {
 		return initial, nil // Can't wait without run_id
 	}
@@ -93,6 +93,10 @@ func (e *httpExecutor) waitForCompletion(ctx context.Context, initial *StepOutpu
 	statusURL := step.Wait.StatusEndpoint
 	statusURL = strings.ReplaceAll(statusURL, "{{ run_id }}", runID)
 
+	interval := time.Duration(step.Wait.IntervalMS) * time.Millisecond
+	if interval == 0 {
+		interval = 2 * time.Second
+	}
 	timeout := time.Duration(step.Wait.TimeoutSeconds) * time.Second
 	if timeout == 0 {
 		timeout = 5 * time.Minute
@@ -121,15 +125,21 @@ func (e *httpExecutor) waitForCompletion(ctx context.Context, initial *StepOutpu
 
 		var statusResp StepOutput
 		if err := json.Unmarshal(body, &statusResp); err == nil {
-			// Check if terminal state reached
-			for _, terminal := range step.Wait.Terminal {
-				if statusResp.Status == terminal {
+			// Check if success state reached
+			for _, s := range step.Wait.Success {
+				if statusResp.Status == s {
 					return &statusResp, nil
+				}
+			}
+			// Check if failure state reached
+			for _, f := range step.Wait.Failure {
+				if statusResp.Status == f {
+					return nil, fmt.Errorf("step %s failed with status %s", step.ID, f)
 				}
 			}
 		}
 
-		time.Sleep(5 * time.Second)
+		time.Sleep(interval)
 	}
 
 	return nil, fmt.Errorf("timeout waiting for step %s to complete", step.ID)
@@ -137,7 +147,7 @@ func (e *httpExecutor) waitForCompletion(ctx context.Context, initial *StepOutpu
 
 // Helper to get run ID from output - defined but not used yet
 var _ = func(output *StepOutput) string {
-	if id, ok := output.Data["run_id"].(string); ok {
+	if id, ok := output.Raw["run_id"].(string); ok {
 		return id
 	}
 	return ""

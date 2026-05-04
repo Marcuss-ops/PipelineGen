@@ -138,14 +138,14 @@ func evaluateStepsAccess(parts []string, state *WorkflowState) (interface{}, err
 		return output.FileHashes, nil
 	case "status":
 		return output.Status, nil
-	case "data":
+	case "raw":
 		if len(parts) > 2 {
-			if output.Data == nil {
-				return nil, fmt.Errorf("step %s data is nil", stepID)
+			if output.Raw == nil {
+				return nil, fmt.Errorf("step %s raw is nil", stepID)
 			}
-			return getNestedValue(output.Data, parts[2:])
+			return getNestedValue(output.Raw, parts[2:])
 		}
-		return output.Data, nil
+		return output.Raw, nil
 	default:
 		return nil, fmt.Errorf("unknown step output field: %s", parts[1])
 	}

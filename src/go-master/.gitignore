@@ -1,6 +1,7 @@
 # Binaries
 pipelinegen
 pipelinegen.exe
+pipelinegen_*
 
 # Scripts with local credentials
 restart-server.sh
