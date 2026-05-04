@@ -14,11 +14,10 @@ import (
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
-	"velox/go-master/internal/core/media"
-	mediarepo "velox/go-master/internal/repository/media"
+	foldermemory "velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/drivedestination"
+	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/drivereconcile"
 	"velox/go-master/internal/service/mediaregistry"
 	drive "velox/go-master/internal/upload/drive"
@@ -140,11 +139,28 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	jobsHandler := jobs.NewHandler(coreDeps.JobsService, log)
 
 	// Create media handler with ManifestExporter
-	var mediaHandler *mediahandler.Handler
-	mediaRepo := mediarepo.NewRepository(coreDeps.DB.DB)
-	if mediaRepo != nil {
-		exporter := media.NewManifestExporter(mediaRepo)
-		mediaHandler = mediahandler.NewHandler(exporter)
+	var mediaHandler *mediahandler.CommonHandler
+	if coreDeps.StockDriveRepo != nil && coreDeps.ArtlistRepo != nil && coreDeps.ClipsOnlyRepo != nil && driveCleanupSvc != nil {
+		// Create folder memory service
+		folderMemSvc := foldermemory.NewService(log, coreDeps.ArtlistRepo)
+		// Create drive uploader
+		var driveUploader *drive.Uploader
+		if coreDeps.DriveClient != nil {
+			driveUploader = &drive.Uploader{Service: coreDeps.DriveClient, Log: log}
+		}
+		mediaHandler = mediahandler.NewCommonHandler(
+			coreDeps.ArtlistRepo,
+			coreDeps.ClipsOnlyRepo,
+			coreDeps.StockDriveRepo,
+			driveCleanupSvc,
+			folderMemSvc,
+			driveUploader,
+			coreDeps.MediaProcessor,
+			log,
+		)
+		log.Info("common media handler initialized")
+	} else {
+		log.Warn("common media handler not initialized - missing dependencies")
 	}
 
 	handlers_struct := &api.Handlers{

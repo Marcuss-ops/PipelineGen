@@ -164,13 +164,53 @@ func (u *Uploader) DeleteFile(ctx context.Context, fileID string) error {
 	if strings.TrimSpace(fileID) == "" {
 		return fmt.Errorf("file id is required")
 	}
-
 	if err := u.Service.Files.Delete(fileID).Context(ctx).Do(); err != nil {
 		return fmt.Errorf("failed to delete drive file: %w", err)
 	}
 
 	if u.Log != nil {
 		u.Log.Info("drive file deleted", zap.String("file_id", fileID))
+	}
+	return nil
+}
+
+// TrashFolder moves a folder to trash in Google Drive.
+func (u *Uploader) TrashFolder(ctx context.Context, folderID string) error {
+	if u.Service == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(folderID) == "" {
+		return fmt.Errorf("folder id is required")
+	}
+
+	_, err := u.Service.Files.Update(folderID, &driveapi.File{
+		Trashed: true,
+	}).Fields("id", "trashed").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to trash drive folder: %w", err)
+	}
+
+	if u.Log != nil {
+		u.Log.Info("drive folder moved to trash", zap.String("folder_id", folderID))
+	}
+	return nil
+}
+
+// DeleteFolder permanently deletes a folder from Google Drive.
+func (u *Uploader) DeleteFolder(ctx context.Context, folderID string) error {
+	if u.Service == nil {
+		return fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(folderID) == "" {
+		return fmt.Errorf("folder id is required")
+	}
+
+	if err := u.Service.Files.Delete(folderID).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to delete drive folder: %w", err)
+	}
+
+	if u.Log != nil {
+		u.Log.Info("drive folder deleted", zap.String("folder_id", folderID))
 	}
 	return nil
 }

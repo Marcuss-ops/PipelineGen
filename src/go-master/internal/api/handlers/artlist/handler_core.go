@@ -41,24 +41,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering Artlist routes")
 	r.POST("/run", h.RunTagPipeline)
 	r.GET("/runs/:run_id", h.RunStatus)
-	r.GET("/diagnostics", h.Diagnostics)
+	r.GET("/stats", h.Stats)
 	r.POST("/search/live", h.SearchLive)
-
-	internal := r.Group("")
-	internal.Use(requireInternalHeader())
-	{
-		internal.GET("/stats", h.Stats)
-		internal.POST("/search", h.Search)
-		internal.POST("/sync-drive-folder", h.SyncDriveFolder)
-		internal.POST("/sync-catalogs", h.SyncCatalogs)
-		internal.POST("/import-scraper-db", h.ImportScraperDB)
-
-		// Clip lifecycle endpoints
-		internal.GET("/clips/:id/status", h.GetClipStatus)
-		internal.POST("/clips/:id/download", h.DownloadClip)
-		internal.POST("/clips/:id/upload-drive", h.UploadClipToDrive)
-		internal.POST("/clips/process", h.ProcessClip)
-	}
 }
 
 func requireInternalHeader() gin.HandlerFunc {
