@@ -99,8 +99,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	driveDestinationService := drivedestination.NewService(cfg, log, driveClient)
 
-	// Asset index service (disabled: no dedicated DB in schema)
-	var assetIndexService *assetindex.Service
+	// Asset index service
+	assetIndexRepo := assetindex.NewRepository(dbs.assets.DB)
+	assetIndexService := assetindex.NewService(assetIndexRepo)
+	log.Info("asset index service initialized", zap.String("db", "assets.db.sqlite"))
 
 	// Asset pipeline service
 	assetPipeline := assetpipeline.NewServiceWithDrive(driveClient, log, nil, assetIndexService)

@@ -91,3 +91,36 @@ func (s *Store) PutFile(srcPath string) (*PutResult, error) {
 		Timestamp:   time.Now().UTC(),
 	}, nil
 }
+
+// Verify checks if a file with the given hash exists in CAS and validates its integrity.
+// Returns true if the file exists and its hash matches.
+func (s *Store) Verify(contentHash string) (bool, error) {
+	ext := "" // We don't know the extension, so we need to check for the file
+	dir := filepath.Join(s.Root, contentHash[0:2], contentHash[2:4])
+	
+	// Try to find the file with any extension
+	pattern := filepath.Join(dir, contentHash + ".*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return false, err
+	}
+	
+	if len(matches) == 0 {
+		return false, nil
+	}
+	
+	// Verify the hash of the first match
+	actualHash, err := hashutil.SHA256File(matches[0])
+	if err != nil {
+		return false, err
+	}
+	
+	return actualHash == contentHash, nil
+}
+
+// PathForHash returns the expected canonical path for a given content hash.
+// This is useful for looking up where a file should be stored without actually storing it.
+func (s *Store) PathForHash(contentHash string, ext string) string {
+	dir := filepath.Join(s.Root, contentHash[0:2], contentHash[2:4])
+	return filepath.Join(dir, contentHash+ext)
+}

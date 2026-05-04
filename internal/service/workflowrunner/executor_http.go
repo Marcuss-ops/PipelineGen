@@ -91,8 +91,8 @@ func (e *httpExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutp
 		output.Status = "completed"
 	}
 
-	// If step type is http_job, we might need to wait for async completion
-	if step.Wait != nil && output.Status == "running" {
+	// If wait is configured, wait for async completion regardless of initial status
+	if step.Wait != nil {
 		return e.waitForCompletion(ctx, &output, step)
 	}
 
@@ -100,10 +100,15 @@ func (e *httpExecutor) Execute(ctx context.Context, input *StepInput) (*StepOutp
 }
 
 func (e *httpExecutor) waitForCompletion(ctx context.Context, initial *StepOutput, step *Step) (*StepOutput, error) {
-	// Extract run ID from initial response
-	runID, ok := initial.Raw["run_id"].(string)
-	if !ok {
-		return initial, nil // Can't wait without run_id
+	// Extract run ID from initial response (check RunID field first, then Raw)
+	runID := initial.RunID
+	if runID == "" && initial.Raw != nil {
+		if v, ok := initial.Raw["run_id"].(string); ok {
+			runID = v
+		}
+	}
+	if runID == "" {
+		return nil, fmt.Errorf("wait requested but run_id missing from step response")
 	}
 
 	// Build status URL

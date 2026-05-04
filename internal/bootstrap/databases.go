@@ -28,6 +28,7 @@ type databases struct {
 	artlist   *storage.SQLiteDB
 	images    *storage.SQLiteDB
 	voiceover *storage.SQLiteDB
+	assets    *storage.SQLiteDB
 	jobs      *storage.SQLiteDB
 }
 
@@ -70,6 +71,14 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		return nil, fmt.Errorf("failed to run jobs migrations: %w", err)
 	}
 
+	assetsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "assets.db.sqlite", log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize assets database: %w", err)
+	}
+	if err := assetsDB.RunMigrations(log, "migrations/asset_index"); err != nil {
+		return nil, fmt.Errorf("failed to run asset index migrations: %w", err)
+	}
+
 	// Log FTS5 status once (driver-dependent, not DB-dependent)
 	storage.LogFTS5Status(log, mainDB)
 
@@ -80,6 +89,7 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		artlist:   artlistDB,
 		images:    imagesDB,
 		voiceover: voiceoverDB,
+		assets:    assetsDB,
 		jobs:      jobsDB,
 	}, nil
 }
