@@ -7,6 +7,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetdestination"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
@@ -23,10 +24,11 @@ type Service struct {
 	mediaProcessor    *mediaasset.Processor
 	mediaFinalizer    *mediaregistry.Finalizer
 	assetDestResolver *assetdestination.Resolver
+	jobsSvc           *jobservice.Service
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor *mediaasset.Processor, mediaFinalizer *mediaregistry.Finalizer, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor *mediaasset.Processor, mediaFinalizer *mediaregistry.Finalizer, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -53,6 +55,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPat
 		mediaProcessor:    mediaProcessor,
 		mediaFinalizer:    mediaFinalizer,
 		assetDestResolver: assetDestResolver,
+		jobsSvc:           jobsSvc,
 		log:               log,
 	}, nil
 }
@@ -62,4 +65,13 @@ func (s *Service) Close() error {
 		return s.artlistDB.Close()
 	}
 	return nil
+}
+
+// GetDriveFolderID returns the configured root Drive folder ID from the drive service.
+// This is a convenience method for use by handlers and job handlers.
+func (s *Service) GetDriveFolderID() string {
+	if s.driveService == nil {
+		return ""
+	}
+	return s.driveService.GetDriveFolderID()
 }

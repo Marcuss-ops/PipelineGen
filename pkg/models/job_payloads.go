@@ -11,12 +11,12 @@ type ArtlistRunPayload struct {
 
 // YoutubeClipExtractPayload rappresenta il payload per media.extract
 type YoutubeClipExtractPayload struct {
-	URL          string `json:"url"`
-	FolderID     string `json:"folder_id,omitempty"`
-	Download     bool   `json:"download,omitempty"`
-	UploadDrive  bool   `json:"upload_drive,omitempty"`
-	StartTime    string `json:"start_time,omitempty"`
-	EndTime      string `json:"end_time,omitempty"`
+	URL         string `json:"url"`
+	FolderID    string `json:"folder_id,omitempty"`
+	Download    bool   `json:"download,omitempty"`
+	UploadDrive bool   `json:"upload_drive,omitempty"`
+	StartTime   string `json:"start_time,omitempty"`
+	EndTime     string `json:"end_time,omitempty"`
 }
 
 // VoiceoverPayload rappresenta il payload per voiceover
@@ -33,7 +33,7 @@ type VoiceoverBatchPayload struct {
 
 // ScriptGenPayload rappresenta il payload per script_generation
 type ScriptGenPayload struct {
-	Topic      string `json:"topic"`
+	Topic       string `json:"topic"`
 	Text        string `json:"text,omitempty"`
 	Language    string `json:"language,omitempty"`
 	Template    string `json:"template,omitempty"`
@@ -43,11 +43,11 @@ type ScriptGenPayload struct {
 
 // RenderVideoPayload rappresenta il payload per render.video
 type RenderVideoPayload struct {
-	ScriptID    string   `json:"script_id,omitempty"`
-	OutputPath  string   `json:"output_path,omitempty"`
-	Resolution  string   `json:"resolution,omitempty"`
-	FrameRate   int      `json:"frame_rate,omitempty"`
-	Assets      []string `json:"assets,omitempty"`
+	ScriptID   string   `json:"script_id,omitempty"`
+	OutputPath string   `json:"output_path,omitempty"`
+	Resolution string   `json:"resolution,omitempty"`
+	FrameRate  int      `json:"frame_rate,omitempty"`
+	Assets     []string `json:"assets,omitempty"`
 }
 
 // YouTubeUploadPayload rappresenta il payload per youtube.upload

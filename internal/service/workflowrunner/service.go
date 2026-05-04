@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/artlist"
+	jobservice "velox/go-master/internal/service/jobs"
 )
 
 // Service manages workflow execution
@@ -17,16 +17,16 @@ type Service struct {
 }
 
 // NewService creates a new workflow service
-// If artlistSvc is provided, registers the artlist.run executor
-func NewService(artlistSvc *artlist.Service, log *zap.Logger) *Service {
+// If jobsSvc is provided, registers the artlist.run executor
+func NewService(jobsSvc *jobservice.Service, log *zap.Logger) *Service {
 	s := &Service{
 		runner:    NewRunner(),
 		workflows: make(map[string]*Workflow),
 		results:   make(map[string]*RunResult),
 	}
-	// Register artlist.run executor if service is available
-	if artlistSvc != nil && log != nil {
-		Register("artlist.run", newArtlistExecutor(artlistSvc, log))
+	// Register artlist.run executor if jobs service is available
+	if jobsSvc != nil && log != nil {
+		Register("artlist.run", newArtlistExecutorV2(jobsSvc, log))
 	}
 	return s
 }

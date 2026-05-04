@@ -9,7 +9,6 @@ type CandidateSearcher interface {
 
 // RunOrchestrator defines the interface for orchestrating run execution
 type RunOrchestrator interface {
-	StartRunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error)
 	GetRunTag(ctx context.Context, runID string) (*RunTagResponse, error)
 	RunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error)
 }

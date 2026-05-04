@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/models"
 )
 
@@ -196,15 +197,25 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 		return liveResp, nil, nil
 	}
 
-	driveFolderID := ""
-	if s.driveService != nil {
-		driveFolderID = s.driveService.GetDriveFolderID()
-	}
-	runResp, err := s.StartRunTag(ctx, &RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID})
-	if err != nil {
-		s.log.Warn("artlist discovery queued save but failed to start run", zap.String("term", term), zap.Error(err))
-		return liveResp, nil, nil
+	// Enqueue processing job through common jobs service
+	if s.jobsSvc != nil {
+		driveFolderID := ""
+		if s.driveService != nil {
+			driveFolderID = s.driveService.GetDriveFolderID()
+		}
+		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+			Type:       models.JobTypeArtlistRun,
+			Payload:    (&RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID}).ToMap(),
+			MaxRetries: 3,
+			ActiveKey:  RunDedupKey(term, driveFolderID, "", false),
+		})
+		if err != nil {
+			s.log.Warn("artlist discovery queued save but failed to enqueue job", zap.String("term", term), zap.Error(err))
+			return liveResp, nil, nil
+		}
+		// Return job info - caller can poll for completion if needed
+		return liveResp, JobToRunTagResponse(job), nil
 	}
 
-	return liveResp, runResp, nil
+	return liveResp, nil, nil
 }

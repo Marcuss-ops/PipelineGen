@@ -25,9 +25,12 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 		apiutil.BadRequest(c, "term is required")
 		return
 	}
-	if req.Limit <= 0 {
-		req.Limit = 1
-	}
+
+	// Normalize request before enqueue
+	req = artlist.NormalizeRunTagRequest(req, artlist.RunDefaults{
+		DefaultRootFolderID: h.service.GetDriveFolderID(),
+		MaxLimit:           500,
+	})
 
 	h.log.Info("artlist run requested",
 		zap.String("term", req.Term),
@@ -35,34 +38,26 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 		zap.String("root_folder_id", req.RootFolderID),
 		zap.String("strategy", req.Strategy),
 		zap.Bool("dry_run", req.DryRun),
-		zap.Bool("force_reupload", req.ForceReupload),
 	)
 
-	if h.jobsService != nil {
-		// Use common jobs system
-		job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:       models.JobTypeArtlistRun,
-			Payload:    req.ToMap(),
-			MaxRetries: 3,
-			ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
-		})
-		if err != nil {
-			h.log.Error("failed to enqueue artlist job", zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
-			return
-		}
-		c.JSON(http.StatusAccepted, artlist.JobToRunTagResponse(job))
+	if h.jobsService == nil {
+		apiutil.InternalError(c, fmt.Errorf("jobs service not configured"))
 		return
 	}
 
-	// Fallback to legacy system if jobs service not available
-	resp, err := h.service.StartRunTag(c.Request.Context(), &req)
+	// Use common jobs system exclusively
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+		Type:       models.JobTypeArtlistRun,
+		Payload:    req.ToMap(),
+		MaxRetries: 3,
+		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
+	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, resp)
+		h.log.Error("failed to enqueue artlist job", zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 		return
 	}
-
-	c.JSON(http.StatusAccepted, resp)
+	c.JSON(http.StatusAccepted, artlist.JobToRunTagResponse(job))
 }
 
 // RunStatus returns the tracked status for a background artlist run
