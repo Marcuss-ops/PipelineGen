@@ -27,6 +27,7 @@ type AssetResult struct {
 	LocalPath    string
 	FileHash     string
 	DriveLink    string
+	DriveFileID  string
 	DownloadLink string
 	Status       string
 	Error        string

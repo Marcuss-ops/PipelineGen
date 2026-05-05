@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
@@ -32,6 +33,7 @@ type Processor struct {
 	dataDir  string
 	tempDir  string
 	videoCfg ffmpeg.NormalizeOptions
+	registry mediaregistry.Registry
 }
 
 type ProcessorConfig struct {
@@ -47,6 +49,7 @@ func NewProcessor(
 	driveSvc *driveapi.Service,
 	log *zap.Logger,
 	cfg ProcessorConfig,
+	registry mediaregistry.Registry,
 ) *Processor {
 	return &Processor{
 		dl:       dl,
@@ -57,6 +60,7 @@ func NewProcessor(
 		dataDir:  cfg.DataDir,
 		tempDir:  cfg.TempDir,
 		videoCfg: cfg.VideoCfg,
+		registry: registry,
 	}
 }
 
@@ -114,6 +118,24 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	result.FileHash = fileHash
 	result.LocalPath = processedPath
 	result.Filename = filepath.Base(processedPath)
+
+	// Pre-upload duplicate check: if media already exists with DriveFileID, skip upload
+	if p.registry != nil {
+		existing, err := p.registry.GetMedia(ctx, input.ID)
+		if err != nil {
+			p.log.Warn("failed to check existing media", zap.Error(err))
+		} else if existing != nil && existing.DriveFileID != "" {
+			// Already uploaded, reuse existing Drive info
+			result.DriveLink = existing.DriveLink
+			result.DriveFileID = existing.DriveFileID
+			result.DownloadLink = existing.DownloadLink
+			result.Status = "already_exists"
+			p.log.Info("skipping upload, media already exists with DriveFileID",
+				zap.String("id", input.ID),
+				zap.String("drive_file_id", existing.DriveFileID))
+			return result, nil
+		}
+	}
 
 	// Cleanup raw file after processing
 	_ = os.Remove(actualRawPath)
@@ -295,6 +317,7 @@ func (p *Processor) uploadStep(ctx context.Context, input AssetInput, path strin
 	}
 
 	result.DriveLink = uploadResult.WebViewLink
+	result.DriveFileID = uploadResult.FileID
 	result.DownloadLink = "https://drive.google.com/uc?id=" + uploadResult.FileID
 	p.log.Info("drive upload success", zap.String("id", input.ID), zap.String("file_id", uploadResult.FileID))
 
