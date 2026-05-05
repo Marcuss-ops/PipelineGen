@@ -114,8 +114,8 @@ func TestExperimentalModulesDisabled(t *testing.T) {
 	assert.False(t, cfg.Features.ArtlistEnabled, "Artlist should be disabled by default")
 	assert.False(t, cfg.Features.YouTubeEnabled, "YouTube should be disabled by default")
 	assert.False(t, cfg.Features.DriveEnabled, "Drive should be disabled by default")
-	assert.False(t, cfg.Features.HarvesterEnabled, "Harvester should be disabled by default")
 	assert.False(t, cfg.Features.ScriptDocsEnabled, "Script docs should be disabled by default")
+	assert.False(t, cfg.Features.ImagesEnabled, "Images should be disabled by default")
 }
 
 // TestBootstrapMinimal verifies server starts without external dependencies
@@ -124,7 +124,6 @@ func TestBootstrapMinimal(t *testing.T) {
 	cfg.Features.ArtlistEnabled = false
 	cfg.Features.YouTubeEnabled = false
 	cfg.Features.DriveEnabled = false
-	cfg.Features.HarvesterEnabled = false
 	cfg.Features.ScriptDocsEnabled = false
 
 	// This test verifies that the server can start without:

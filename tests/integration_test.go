@@ -138,7 +138,7 @@ func TestServerShutdownClean(t *testing.T) {
 			ArtlistEnabled:   false,
 			YouTubeEnabled:   false,
 			DriveEnabled:     false,
-			HarvesterEnabled: false,
+			ImagesEnabled:    false,
 		},
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),

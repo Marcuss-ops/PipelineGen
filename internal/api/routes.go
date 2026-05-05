@@ -180,6 +180,7 @@ func (r *Router) registerHandlersLegacy(protected *gin.RouterGroup) {
 	if h.Drive != nil {
 		log.Info("registering drive routes")
 		driveGroup := protected.Group("/drive")
+		driveGroup.Use(middleware.DriveEnabled(r.cfg))
 		h.Drive.RegisterRoutes(driveGroup)
 	} else {
 		log.Warn("drive handler is nil, skipping route registration")
@@ -192,6 +193,7 @@ func (r *Router) registerHandlersLegacy(protected *gin.RouterGroup) {
 	}
 	if h.ImageAssets != nil {
 		imgGroup := protected.Group("/images")
+		imgGroup.Use(middleware.ImagesEnabled(r.cfg))
 		h.ImageAssets.RegisterRoutes(imgGroup)
 	}
 	if h.Scraper != nil {

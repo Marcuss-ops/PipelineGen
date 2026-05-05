@@ -38,7 +38,7 @@ func (m *ImagesModule) Name() string {
 
 // Enabled checks if this module is enabled
 func (m *ImagesModule) Enabled(cfg *config.Config) bool {
-	return m.handler != nil
+	return cfg.Features.ImagesEnabled
 }
 
 // RegisterRoutes registers the module's routes

@@ -43,19 +43,18 @@ func TestConfig() *config.Config {
 			ArtlistEnabled:    false,
 			YouTubeEnabled:    false,
 			DriveEnabled:      false,
-			HarvesterEnabled:  false,
 			ScriptDocsEnabled: false,
+			ImagesEnabled:     false,
 		},
 	}
 }
 
 // TestConfigWithFeatures creates a test config with specific features enabled
-func TestConfigWithFeatures(artlist, youtube, drive, harvester, scriptDocs bool) *config.Config {
+func TestConfigWithFeatures(artlist, youtube, drive, scriptDocs bool) *config.Config {
 	cfg := TestConfig()
 	cfg.Features.ArtlistEnabled = artlist
 	cfg.Features.YouTubeEnabled = youtube
 	cfg.Features.DriveEnabled = drive
-	cfg.Features.HarvesterEnabled = harvester
 	cfg.Features.ScriptDocsEnabled = scriptDocs
 	return cfg
 }
