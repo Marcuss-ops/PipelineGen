@@ -59,9 +59,30 @@ type RunTagResponse struct {
 	WouldProcess    int          `json:"would_process,omitempty"`
 	WouldSkip       int          `json:"would_skip,omitempty"`
 	EstimatedSize   int          `json:"estimated_size,omitempty"`
-	LastProcessedAt *string      `json:"last_processed_at,omitempty"`
-	StartedAt       *string      `json:"started_at,omitempty"`
-	EndedAt         *string      `json:"ended_at,omitempty"`
+	LastProcessedAt *string     `json:"last_processed_at,omitempty"`
+	StartedAt       *string     `json:"started_at,omitempty"`
+	EndedAt         *string     `json:"ended_at,omitempty"`
 	Items           []RunTagItem `json:"items,omitempty"`
 	Error           string       `json:"error,omitempty"`
+}
+
+// EvaluateRunOutcome evaluates whether a RunTagResponse represents a failed run.
+// This centralizes the policy logic that was previously scattered in job handlers and endpoints.
+// Returns (isFailed bool, errorMsg string).
+func EvaluateRunOutcome(resp *RunTagResponse) (bool, string) {
+	if resp == nil {
+		return true, "nil response"
+	}
+	if !resp.OK {
+		errMsg := resp.Error
+		if errMsg == "" {
+			errMsg = "run was not successful"
+		}
+		return true, errMsg
+	}
+	// Policy: if all items failed (Failed > 0, Processed == 0, Skipped == 0), mark as failed
+	if resp.Failed > 0 && resp.Processed == 0 && resp.Skipped == 0 {
+		return true, "all artlist items failed"
+	}
+	return false, ""
 }
