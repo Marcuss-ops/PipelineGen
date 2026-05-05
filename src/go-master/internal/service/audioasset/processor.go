@@ -100,11 +100,12 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		if err != nil {
 			p.log.Warn("destination resolution failed", zap.Error(err))
 		} else if resolved.FolderID != "" {
-			driveLink, err := p.uploadToDrive(ctx, result.LocalPath, resolved.FolderID, filepath.Base(result.LocalPath))
+			driveLink, fileID, err := p.uploadToDrive(ctx, result.LocalPath, resolved.FolderID, filepath.Base(result.LocalPath))
 			if err != nil {
 				p.log.Warn("drive upload failed", zap.Error(err))
 			} else {
 				result.DriveLink = driveLink
+				result.DriveFileID = fileID
 				result.Status = "uploaded"
 			}
 		}
@@ -117,9 +118,9 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 	return result, nil
 }
 
-func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filename string) (string, error) {
+func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filename string) (string, string, error) {
 	if p.driveClient == nil {
-		return "", fmt.Errorf("drive client not configured")
+		return "", "", fmt.Errorf("drive client not configured")
 	}
 
 	file := &driveapi.File{
@@ -129,7 +130,7 @@ func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filen
 
 	f, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %w", err)
+		return "", "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
@@ -140,7 +141,7 @@ func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filen
 		Context(ctx).
 		Do()
 	if err != nil {
-		return "", fmt.Errorf("drive upload failed: %w", err)
+		return "", "", fmt.Errorf("drive upload failed: %w", err)
 	}
 
 	p.log.Info("audio file uploaded to drive",
@@ -148,5 +149,5 @@ func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filen
 		zap.Duration("duration", time.Since(start)),
 	)
 
-	return created.WebViewLink, nil
+	return created.WebViewLink, created.Id, nil
 }

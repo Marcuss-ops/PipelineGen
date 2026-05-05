@@ -18,6 +18,7 @@ type AudioResult struct {
 	CleanedPath  string
 	FileHash     string
 	DriveLink    string
+	DriveFileID  string
 	Status       string
 	Error        string
 }

@@ -54,6 +54,27 @@ func (m *mockRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, e
 	return rec, nil
 }
 
+func (m *mockRegistry) DeleteMedia(ctx context.Context, id string) error {
+	if m.shouldErr {
+		return sql.ErrConnDone
+	}
+	delete(m.savedRecords, id)
+	return nil
+}
+
+func (m *mockRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error) {
+	if m.shouldErr {
+		return nil, sql.ErrConnDone
+	}
+	var result []*MediaRecord
+	for _, rec := range m.savedRecords {
+		if rec.DriveFileID != "" {
+			result = append(result, rec)
+		}
+	}
+	return result, nil
+}
+
 func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {
 	ctx := context.Background()
 	logger, _ := zap.NewDevelopment()

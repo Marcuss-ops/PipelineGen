@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -43,6 +44,7 @@ func createTestDB(t *testing.T) *sql.DB {
 		group_name TEXT,
 		media_type TEXT,
 		drive_link TEXT,
+		drive_file_id TEXT DEFAULT '',
 		download_link TEXT,
 		tags TEXT,
 		source TEXT,
@@ -52,6 +54,8 @@ func createTestDB(t *testing.T) *sql.DB {
 		metadata TEXT,
 		file_hash TEXT,
 		local_path TEXT,
+		status TEXT DEFAULT '',
+		error TEXT DEFAULT '',
 		created_at TEXT,
 		updated_at TEXT
 	);
@@ -71,9 +75,9 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *models.Clip) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.Exec(`
 		INSERT OR REPLACE INTO clips 
-		(id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, now, now)
+		(id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, clip.Status, clip.Error, now, now)
 	
 	if err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
@@ -118,18 +122,27 @@ func TestAssetStoreReplaceStrategy(t *testing.T) {
 }
 
 func TestAssetStoreVerifyStrategyWithDriveLink(t *testing.T) {
-	// Test verify strategy with existing drive link and file hash
+	// Test assetstore.ShouldSkipExisting with verify strategy
+	// Create a temp file that exists
+	tmpFile := filepath.Join(t.TempDir(), "test.mp4")
+	if err := os.WriteFile(tmpFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
 	asset := assetstore.ExistingAsset{
 		ID:        "test_clip_003",
 		DriveLink: "https://drive.google.com/file/d/abc123/view",
 		FileHash:  "hash123",
-		LocalPath: "/tmp/test.mp4",
+		LocalPath: tmpFile,
 	}
 	
-	// Verify strategy with file hash should skip
+	// Test verify strategy - should skip because drive link exists and local file exists
 	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicyVerify, nil, assetstore.DefaultLocalFileChecker)
 	if !skip {
 		t.Error("expected skip=true with verify strategy and valid file hash")
+	}
+	if reason == "" {
+		t.Error("expected non-empty reason")
 	}
 	t.Logf("Verify strategy result: skip=%v, reason=%s", skip, reason)
 }

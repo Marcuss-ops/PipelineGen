@@ -30,6 +30,7 @@ func TestDeleteClip(t *testing.T) {
 			group_name TEXT,
 			media_type TEXT,
 			drive_link TEXT,
+			drive_file_id TEXT DEFAULT '',
 			download_link TEXT,
 			tags TEXT,
 			source TEXT,
@@ -39,6 +40,8 @@ func TestDeleteClip(t *testing.T) {
 			metadata TEXT,
 			file_hash TEXT,
 			local_path TEXT,
+			status TEXT DEFAULT '',
+			error TEXT DEFAULT '',
 			created_at TEXT,
 			updated_at TEXT
 		)
@@ -93,6 +96,7 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 			group_name TEXT,
 			media_type TEXT,
 			drive_link TEXT,
+			drive_file_id TEXT DEFAULT '',
 			download_link TEXT,
 			tags TEXT,
 			source TEXT,
@@ -102,6 +106,8 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 			metadata TEXT,
 			file_hash TEXT,
 			local_path TEXT,
+			status TEXT DEFAULT '',
+			error TEXT DEFAULT '',
 			created_at TEXT,
 			updated_at TEXT
 		)

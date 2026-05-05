@@ -21,9 +21,9 @@ func NewUploader(driveSvc *gdrive.Service, log *zap.Logger) *Uploader {
 	}
 }
 
-func (u *Uploader) Upload(ctx context.Context, localPath, folderID string) (driveLink string, downloadLink string, err error) {
+func (u *Uploader) Upload(ctx context.Context, localPath, folderID string) (driveLink string, downloadLink string, fileID string, err error) {
 	if u.driveSvc == nil || folderID == "" {
-		return "", "", nil
+		return "", "", "", nil
 	}
 
 	filename := filepath.Base(localPath)
@@ -35,8 +35,8 @@ func (u *Uploader) Upload(ctx context.Context, localPath, folderID string) (driv
 
 	result, err := uploader.UploadFile(ctx, localPath, folderID, filename)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
-	return result.WebViewLink, "https://drive.google.com/uc?id=" + result.FileID, nil
+	return result.WebViewLink, "https://drive.google.com/uc?id=" + result.FileID, result.FileID, nil
 }
