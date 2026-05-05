@@ -183,3 +183,165 @@ func TestAssetIndexPreventsDuplicateFinalization(t *testing.T) {
 		t.Errorf("expected status 'updated', got %s", found.Status)
 	}
 }
+
+func TestAssetIndexFindsBySource(t *testing.T) {
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// Insert a record
+	rec := &AssetRecord{
+		AssetID:     "asset-src-1",
+		AssetType:   "clip",
+		Source:      "artlist",
+		SourceID:    "clip-123",
+		ContentHash: "srchash123",
+		Status:      "ready",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	err := svc.Upsert(ctx, rec)
+	if err != nil {
+		t.Fatalf("failed to upsert: %v", err)
+	}
+
+	// Find by source and source_id
+	found, err := svc.FindBySource(ctx, "artlist", "clip-123")
+	if err != nil {
+		t.Fatalf("failed to find by source: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected to find asset by source")
+	}
+	assertEqual(t, "asset-src-1", found.AssetID)
+	assertEqual(t, "artlist", found.Source)
+	assertEqual(t, "clip-123", found.SourceID)
+}
+
+func TestAssetIndexFindReadyByGroup(t *testing.T) {
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// Insert multiple records in different groups
+	records := []*AssetRecord{
+		{
+			AssetID:   "asset-g1-1",
+			AssetType: "clip",
+			Source:    "artlist",
+			GroupName: "news",
+			Subfolder: "politics",
+			Status:    "ready",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			AssetID:   "asset-g1-2",
+			AssetType: "clip",
+			Source:    "artlist",
+			GroupName: "news",
+			Subfolder: "sports",
+			Status:    "ready",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			AssetID:   "asset-g2-1",
+			AssetType: "clip",
+			Source:    "youtube",
+			GroupName: "entertainment",
+			Status:    "ready",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+		{
+			AssetID:   "asset-pending",
+			AssetType: "clip",
+			Source:    "artlist",
+			GroupName: "news",
+			Status:    "pending",
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+
+	for _, rec := range records {
+		err := svc.Upsert(ctx, rec)
+		if err != nil {
+			t.Fatalf("failed to upsert: %v", err)
+		}
+	}
+
+	// Find ready assets by group "news"
+	found, err := svc.FindReadyByGroup(ctx, "news", "")
+	if err != nil {
+		t.Fatalf("failed to find by group: %v", err)
+	}
+	assertEqual(t, 2, len(found))
+
+	// Find ready assets by group "news" and subfolder "politics"
+	found, err = svc.FindReadyByGroup(ctx, "news", "politics")
+	if err != nil {
+		t.Fatalf("failed to find by group/subfolder: %v", err)
+	}
+	assertEqual(t, 1, len(found))
+	assertEqual(t, "asset-g1-1", found[0].AssetID)
+
+	// Find ready assets by group "entertainment"
+	found, err = svc.FindReadyByGroup(ctx, "entertainment", "")
+	if err != nil {
+		t.Fatalf("failed to find by group: %v", err)
+	}
+	assertEqual(t, 1, len(found))
+	assertEqual(t, "asset-g2-1", found[0].AssetID)
+}
+
+func TestAssetIndexUpdateStatus(t *testing.T) {
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// Insert a record
+	rec := &AssetRecord{
+		AssetID:   "asset-status-1",
+		AssetType: "clip",
+		Source:    "artlist",
+		SourceID:  "test-123",
+		Status:    "pending",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	err := svc.Upsert(ctx, rec)
+	if err != nil {
+		t.Fatalf("failed to upsert: %v", err)
+	}
+
+	// Update status to ready using UpdateStatus
+	err = svc.UpdateStatus(ctx, "asset-status-1", "ready")
+	if err != nil {
+		t.Fatalf("failed to update status: %v", err)
+	}
+
+	// Verify status was updated by fetching the record
+	found, err := svc.FindBySource(ctx, "artlist", "test-123")
+	if err != nil {
+		t.Fatalf("failed to find by source: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected to find asset")
+	}
+	assertEqual(t, "ready", found.Status)
+}
+
+func assertEqual(t *testing.T, expected, actual interface{}) {
+	t.Helper()
+	if expected != actual {
+		t.Errorf("expected %v, got %v", expected, actual)
+	}
+}

@@ -52,8 +52,8 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 	args := []string{
 		scriptPath,
 		"--text", input.Text,
-		"--language", input.Language,
-		"--output", outputPath,
+		"--lang", input.Language,
+		"--out", outputPath,
 	}
 
 	cmd := exec.CommandContext(ctx, "python3", args...)

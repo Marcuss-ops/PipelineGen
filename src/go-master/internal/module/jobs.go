@@ -52,7 +52,9 @@ func (m *JobsModule) RegisterRoutes(rg *gin.RouterGroup) {
 		m.log.Warn("jobs handler is nil, skipping route registration")
 		return
 	}
-	m.handler.RegisterRoutes(rg)
+
+	group := rg.Group("/jobs")
+	m.handler.RegisterRoutes(group)
 }
 
 // Start performs startup tasks

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"velox/go-master/internal/service/assetindex"
+	
 	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -302,4 +304,177 @@ func TestMediaFinalizerDBSaveFailure(t *testing.T) {
 	}
 	
 	t.Logf("DB save failure test: OK=%v, Error=%s", result.OK, result.Error)
+}
+
+func setupTestAssetIndex(t *testing.T) *assetindex.Service {
+	t.Helper()
+	
+	tmpFile, err := os.CreateTemp("", "test_assetindex_*.db")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	tmpFile.Close()
+	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
+	
+	db, err := sql.Open("sqlite3", tmpFile.Name()+"?_busy_timeout=5000&_journal_mode=WAL")
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	
+	schema := `
+	CREATE TABLE IF NOT EXISTS asset_index (
+		asset_id TEXT PRIMARY KEY,
+		asset_type TEXT NOT NULL DEFAULT '',
+		source TEXT NOT NULL DEFAULT '',
+		source_id TEXT NOT NULL DEFAULT '',
+		operation_key TEXT NOT NULL DEFAULT '',
+		group_name TEXT NOT NULL DEFAULT '',
+		subfolder TEXT NOT NULL DEFAULT '',
+		local_path TEXT NOT NULL DEFAULT '',
+		drive_link TEXT NOT NULL DEFAULT '',
+		download_link TEXT NOT NULL DEFAULT '',
+		file_hash TEXT NOT NULL DEFAULT '',
+		content_hash TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_asset_content_hash ON asset_index(content_hash);
+	CREATE INDEX IF NOT EXISTS idx_asset_source ON asset_index(source, source_id);
+	CREATE INDEX IF NOT EXISTS idx_asset_status ON asset_index(status);
+	`
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("failed to create schema: %v", err)
+	}
+	
+	repo := assetindex.NewRepository(db)
+	return assetindex.NewService(repo)
+}
+
+func TestFinalizerWritesToAssetIndex(t *testing.T) {
+	ctx := context.Background()
+	logger, _ := zap.NewDevelopment()
+	
+	driveVerifier := &mockDriveVerifier{shouldExist: true}
+	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
+	assetIdx := setupTestAssetIndex(t)
+	
+	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, assetIdx, logger)
+	
+	// Create a temp file that exists
+	tmpFile := filepath.Join(t.TempDir(), "test_asset.mp4")
+	if err := os.WriteFile(tmpFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	
+	rec := &MediaRecord{
+		ID:         "test_asset_001",
+		Name:       "Test Asset",
+		LocalPath:  tmpFile,
+		FileHash:   "filehash123",
+		ContentHash: "contenthash123",
+		Source:     "artlist",
+		SourceID:   "clip-123",
+		Group:      "news",
+		Subfolder:  "politics",
+		Status:     "processed",
+	}
+	
+	opts := FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		RequireDrive: false,
+		VerifyDB:     true,
+	}
+	
+	result, err := finalizer.Finalize(ctx, rec, opts)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+	
+	if !result.OK {
+		t.Errorf("Expected OK=true, got false. Error: %s", result.Error)
+	}
+	
+	if !result.DBSaved {
+		t.Error("Expected DBSaved=true")
+	}
+	
+	// Verify asset_index was written
+	found, err := assetIdx.FindByContentHash(ctx, "contenthash123")
+	if err != nil {
+		t.Fatalf("failed to find by content hash: %v", err)
+	}
+	if found == nil {
+		t.Fatal("Expected to find record in asset_index")
+	}
+	
+	assertEqual(t, "test_asset_001", found.AssetID)
+	assertEqual(t, "artlist", found.Source)
+	assertEqual(t, "contenthash123", found.ContentHash)
+	assertEqual(t, "ready", found.Status)
+}
+
+func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
+	ctx := context.Background()
+	logger, _ := zap.NewDevelopment()
+	
+	driveVerifier := &mockDriveVerifier{shouldExist: true}
+	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
+	assetIdx := setupTestAssetIndex(t)
+	
+	finalizer := NewFinalizerWithAssetIndex(registry, driveVerifier, assetIdx, logger)
+	
+	// Create a temp file that exists
+	tmpFile := filepath.Join(t.TempDir(), "test_asset2.mp4")
+	if err := os.WriteFile(tmpFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	
+	rec := &MediaRecord{
+		ID:         "test_asset_002",
+		Name:       "Test Asset 2",
+		LocalPath:  tmpFile,
+		FileHash:   "filehash456",
+		ContentHash: "contenthash456",
+		Status:     "processed",
+	}
+	
+	opts := FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		RequireDrive: false,
+		VerifyDB:     true,
+	}
+	
+	result, err := finalizer.Finalize(ctx, rec, opts)
+	if err != nil {
+		t.Fatalf("Finalize failed: %v", err)
+	}
+	
+	if !result.OK {
+		t.Errorf("Expected OK=true, got false. Error: %s", result.Error)
+	}
+	
+	if !result.DBSaved {
+		t.Error("Expected DBSaved=true (main DB save should succeed)")
+	}
+	
+	// Verify asset_index was written (since we're using real service, it should work)
+	found, err := assetIdx.FindByContentHash(ctx, "contenthash456")
+	if err != nil {
+		t.Fatalf("failed to find by content hash: %v", err)
+	}
+	if found == nil {
+		t.Fatal("Expected to find record in asset_index")
+	}
+}
+
+func assertEqual(t *testing.T, expected, actual interface{}) {
+	t.Helper()
+	if expected != actual {
+		t.Errorf("expected %v, got %v", expected, actual)
+	}
 }

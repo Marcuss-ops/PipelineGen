@@ -48,7 +48,9 @@ func (m *MediaModule) RegisterRoutes(rg *gin.RouterGroup) {
 		m.log.Warn("media handler is nil, skipping route registration")
 		return
 	}
-	m.handler.RegisterRoutes(rg)
+
+	group := rg.Group("/media")
+	m.handler.RegisterRoutes(group)
 }
 
 // Start performs startup tasks
