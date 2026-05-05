@@ -26,6 +26,7 @@ type ProcessInput struct {
 	DisableDuration   bool
 	Width            int
 	Height           int
+	DriveFileID       string
 	Metadata         map[string]interface{}
 }
 
@@ -37,6 +38,7 @@ type ProcessResult struct {
 	FileHash     string
 	ContentHash  string
 	DriveLink    string
+	DriveFileID  string
 	DownloadLink string
 	Status       string
 	Error        string

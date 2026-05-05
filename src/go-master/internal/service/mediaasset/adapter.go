@@ -45,6 +45,7 @@ func (a *coreAdapter) Process(ctx context.Context, input *processor.ProcessInput
 		LocalPath:    result.LocalPath,
 		FileHash:     result.FileHash,
 		DriveLink:    result.DriveLink,
+		DriveFileID:  result.DriveFileID,
 		DownloadLink: result.DownloadLink,
 		Status:       result.Status,
 		Error:        result.Error,

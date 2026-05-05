@@ -85,9 +85,9 @@ func (r *Repository) CreateSubject(s *models.Subject) (int64, error) {
 // AddImage aggiunge un record immagine
 func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 	result, err := r.db.Exec(`
-		INSERT INTO images (hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, img.Hash, img.SubjectID, img.PathRel, img.SourceURL, img.License, img.Width, img.Height, img.SizeBytes, img.QualityScore, img.Description, img.MetadataJSON)
+		INSERT INTO images (hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, img.Hash, img.SubjectID, img.PathRel, img.SourceURL, img.License, img.Width, img.Height, img.SizeBytes, img.QualityScore, img.Description, img.DriveFileID, img.Status, img.Error, img.MetadataJSON)
 	if err != nil {
 		return 0, err
 	}
@@ -98,9 +98,9 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRow(`
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json, created_at
+		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
 		FROM images WHERE hash = ?
-	`, hash).Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.MetadataJSON, &img.CreatedAt)
+	`, hash).Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.DriveFileID, &img.Status, &img.Error, &img.MetadataJSON, &img.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 // ListImagesBySubject elenca le immagini di un soggetto
 func (r *Repository) ListImagesBySubject(subjectID int64) ([]models.ImageAsset, error) {
 	rows, err := r.db.Query(`
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json, created_at
+		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
 		FROM images WHERE subject_id = ?
 		ORDER BY quality_score DESC, created_at DESC
 	`, subjectID)
@@ -122,7 +122,7 @@ func (r *Repository) ListImagesBySubject(subjectID int64) ([]models.ImageAsset, 
 	var images []models.ImageAsset
 	for rows.Next() {
 		var img models.ImageAsset
-		if err := rows.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.MetadataJSON, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.DriveFileID, &img.Status, &img.Error, &img.MetadataJSON, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		images = append(images, img)
@@ -133,7 +133,7 @@ func (r *Repository) ListImagesBySubject(subjectID int64) ([]models.ImageAsset, 
 // ListAll lists all image assets
 func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json, created_at
+		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
 		FROM images ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -144,7 +144,7 @@ func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) 
 	var images []*models.ImageAsset
 	for rows.Next() {
 		var img models.ImageAsset
-		if err := rows.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.MetadataJSON, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.DriveFileID, &img.Status, &img.Error, &img.MetadataJSON, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		images = append(images, &img)
@@ -161,12 +161,12 @@ func (r *Repository) Delete(ctx context.Context, id int64) error {
 // GetByDriveFileID retrieves an image by Drive file ID (checks source_url)
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, metadata_json, created_at
+		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
 		FROM images WHERE source_url LIKE ? OR source_url LIKE ?
 	`, "%"+fileID+"%", "%drive.google.com%"+fileID+"%")
 
 	var img models.ImageAsset
-	err := row.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.MetadataJSON, &img.CreatedAt)
+	err := row.Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.DriveFileID, &img.Status, &img.Error, &img.MetadataJSON, &img.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

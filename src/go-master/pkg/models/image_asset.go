@@ -30,6 +30,9 @@ type ImageAsset struct {
 	SizeBytes    int64     `json:"size_bytes"`
 	QualityScore int       `json:"quality_score"`
 	Description  string    `json:"description"`
+	DriveFileID  string    `json:"drive_file_id,omitempty"`
+	Status       string    `json:"status,omitempty"`
+	Error        string    `json:"error,omitempty"`
 	MetadataJSON string    `json:"metadata_json"`
 	CreatedAt    time.Time `json:"created_at"`
 	Tags         []string  `json:"tags,omitempty"`
