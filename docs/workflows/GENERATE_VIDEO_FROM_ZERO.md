@@ -1,5 +1,7 @@
 # Generate a Video From Zero
 
+**Status:** ACTIVE - Workflow documentation
+
 This workflow explains how to generate a complete video package using PipelineGen.
 
 ## Overview

@@ -1,5 +1,7 @@
 # YouTube Clip Extraction Service
 
+**Status:** ACTIVE - Service documentation
+
 The `youtubeclip` service provides a robust and flexible solution for extracting, processing, and storing video segments from YouTube. This service is designed to be highly configurable, allowing for precise control over the output format, destination, and metadata of the extracted clips.
 
 ## Key Features

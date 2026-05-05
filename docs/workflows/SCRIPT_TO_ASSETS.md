@@ -1,5 +1,7 @@
 # Script to Assets Workflow
 
+**Status:** ACTIVE - Workflow documentation
+
 This workflow covers generating a script and converting it into video assets (voiceover + clips).
 
 ## Overview

@@ -1,5 +1,7 @@
 # Job Lifecycle & State Machine
 
+**Status:** ACTIVE - Job system documentation
+
 Velox uses a distributed job queue system to manage asynchronous tasks such as script generation, video rendering, and uploads.
 
 ## Job Types

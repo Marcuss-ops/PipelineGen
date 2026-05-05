@@ -41,7 +41,7 @@ func (m *VoiceoverModule) Name() string {
 
 // Enabled checks if this module is enabled
 func (m *VoiceoverModule) Enabled(cfg *config.Config) bool {
-	return m.handler != nil || m.syncHandler != nil
+	return cfg.Features.VoiceoverEnabled
 }
 
 // RegisterRoutes registers the module's routes
