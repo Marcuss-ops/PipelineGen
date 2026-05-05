@@ -48,9 +48,8 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 
-	// Policy: if all items failed, mark job as failed
-	if resp != nil && resp.Failed > 0 && resp.Processed == 0 && resp.Skipped == 0 {
-		errMsg := "all artlist items failed"
+	// Use centralized policy evaluation
+	if failed, errMsg := EvaluateRunOutcome(resp); failed {
 		tools.Event("error", errMsg, map[string]any{
 			"failed": resp.Failed,
 		})
