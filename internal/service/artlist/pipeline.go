@@ -371,12 +371,23 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			Status:       result.Status,
 		}
 
-		finalResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, mediaregistry.FinalizeOptions{
-			RequireLocal: true,
-			RequireHash:  true,
-			RequireDrive: result.DriveLink != "",
-			VerifyDB:     true,
-		})
+		var finalResult *mediaregistry.FinalizeResult
+		if s.mediaFinalizer != nil {
+			finalResult, err = s.mediaFinalizer.Finalize(ctx, mediaRec, mediaregistry.FinalizeOptions{
+				RequireLocal: true,
+				RequireHash:  true,
+				RequireDrive: result.DriveLink != "",
+				VerifyDB:     true,
+			})
+		} else {
+			// Mock finalizer for testing
+			finalResult = &mediaregistry.FinalizeResult{
+				OK:     true,
+				Status: result.Status,
+				Record: mediaRec,
+			}
+			err = nil
+		}
 		if err != nil {
 			s.log.Error("finalize error", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++

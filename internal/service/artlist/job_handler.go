@@ -21,8 +21,12 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 	req := jobCodec.RequestFromJob(job)
 
 	// Normalize the request (worker path)
+	rootFolderID := ""
+	if s.driveService != nil {
+		rootFolderID = s.driveService.GetDriveFolderID()
+	}
 	normalized := NormalizeRunTagRequest(*req, RunDefaults{
-		DefaultRootFolderID: s.driveService.GetDriveFolderID(),
+		DefaultRootFolderID: rootFolderID,
 		MaxLimit:           500,
 	})
 	req = &normalized
@@ -40,6 +44,15 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 		}
 		tools.Event("error", "artlist run failed", map[string]any{
 			"error": errMsg,
+		})
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	// Policy: if all items failed, mark job as failed
+	if resp != nil && resp.Failed > 0 && resp.Processed == 0 && resp.Skipped == 0 {
+		errMsg := "all artlist items failed"
+		tools.Event("error", errMsg, map[string]any{
+			"failed": resp.Failed,
 		})
 		return nil, fmt.Errorf("%s", errMsg)
 	}

@@ -36,7 +36,7 @@ type Service struct {
 	driveClient        *driveapi.Service
 	driveDestination   *drivedestination.Service
 	assetDestResolver  *assetdestination.Resolver
-	mediaProcessor     *mediaasset.Processor
+	mediaProcessor     MediaProcessor
 	folderMemory       *foldermemory.Service
 	mediaFinalizer     *mediaregistry.Finalizer
 }
@@ -48,7 +48,7 @@ func NewService(
 	monitoredRepo *monitors.Repository,
 	driveClient *driveapi.Service,
 	driveDestination *drivedestination.Service,
-	mediaProcessor *mediaasset.Processor,
+	mediaProcessor MediaProcessor,
 	mediaFinalizer *mediaregistry.Finalizer,
 ) *Service {
 	// Create asset destination resolver for unified destination resolution

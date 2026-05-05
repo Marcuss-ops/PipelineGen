@@ -132,6 +132,11 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
 	return s.repo.RequeueExpiredLeases(ctx)
 }
 
+func (s *Service) MarkStaleRunningJobsFailed(ctx context.Context, olderThan time.Duration) (int, error) {
+	cutoff := time.Now().UTC().Add(-olderThan)
+	return s.repo.MarkRunningJobsOlderThanFailed(ctx, cutoff, "stale job timeout")
+}
+
 func generateJobID() string {
 	return fmt.Sprintf("job_%d_%s", time.Now().UnixNano(), randomString(8))
 }

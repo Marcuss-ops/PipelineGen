@@ -1,7 +1,16 @@
 package youtubeclip
 
 import (
+	"context"
+	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"velox/go-master/internal/service/mediaasset"
+	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/security"
 )
 
 func TestYouTubeClipRequestValidation(t *testing.T) {
@@ -155,16 +164,95 @@ func TestExtractVideoID(t *testing.T) {
 	}
 }
 
-func TestYouTubeClipHandlesYtDlpFailure(t *testing.T) {
-	// Test that yt-dlp failure is handled gracefully
-	// This would require mocking the media processor
-	t.Log("yt-dlp failure handling test - requires media processor mock")
+func TestYouTubeClipHandlesMediaProcessorFailure(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	// Add test hosts to security allowlist
+	security.AddAllowedHost("www.youtube.com")
+	security.AddAllowedHost("youtu.be")
+
+	cfg := testConfig(tmp)
+	log := zap.NewNop()
+
+	processor := &fakeMediaProcessor{
+		err: errors.New("yt-dlp failed"),
+	}
+
+	svc := NewService(
+		cfg,
+		log,
+		nil, // clips repo
+		nil, // monitors repo
+		nil, // drive client
+		nil, // drive destination
+		processor,
+		nil, // finalizer
+	)
+
+	resp, err := svc.Extract(ctx, &ExtractRequest{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		Segments: []Segment{
+			{
+				Name:  "intro",
+				Start: "0",
+				End:   "5",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.False(t, resp.OK)
+	require.Equal(t, 1, resp.Stats.Failed)
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, "failed", resp.Items[0].Status)
+	require.Contains(t, resp.Items[0].Error, "media processing failed")
+	require.True(t, processor.called)
 }
 
-func TestYouTubeClipHandlesFFmpegFailure(t *testing.T) {
-	// Test that ffmpeg failure is handled gracefully
-	// This would require mocking the media processor
-	t.Log("ffmpeg failure handling test - requires media processor mock")
+func TestYouTubeClipPassesExpectedAssetInputToProcessor(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	// Add test hosts to security allowlist
+	security.AddAllowedHost("www.youtube.com")
+	security.AddAllowedHost("youtu.be")
+
+	cfg := testConfig(tmp)
+	log := zap.NewNop()
+
+	processor := &fakeMediaProcessor{}
+
+	svc := NewService(
+		cfg,
+		log,
+		nil,
+		nil,
+		nil,
+		nil,
+		processor,
+		nil,
+	)
+
+	resp, err := svc.Extract(ctx, &ExtractRequest{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		Segments: []Segment{
+			{Name: "clip one", Start: "10", End: "20"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.OK)
+	require.True(t, processor.called)
+	require.Len(t, processor.inputs, 1)
+
+	input := processor.inputs[0]
+	assert.Contains(t, input.ID, "yt_")
+	assert.Equal(t, "clip_one", input.Name)
+	assert.Equal(t, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", input.SourceURL)
+	assert.Equal(t, []string{"*10-20"}, input.DownloadSections)
+	assert.True(t, input.DisableDuration)
 }
 
 func TestYouTubeClipValidSegmentCount(t *testing.T) {
@@ -218,4 +306,47 @@ func TestBoolDefault(t *testing.T) {
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+type fakeMediaProcessor struct {
+	called bool
+	err    error
+	result *mediaasset.AssetResult
+	inputs []mediaasset.AssetInput
+}
+
+func (f *fakeMediaProcessor) DownloadProcessUpload(ctx context.Context, input mediaasset.AssetInput) (*mediaasset.AssetResult, error) {
+	f.called = true
+	f.inputs = append(f.inputs, input)
+
+	if f.err != nil {
+		return &mediaasset.AssetResult{
+			ID:     input.ID,
+			Status: "failed",
+			Error:  f.err.Error(),
+		}, f.err
+	}
+
+	if f.result != nil {
+		return f.result, nil
+	}
+
+	return &mediaasset.AssetResult{
+		ID:        input.ID,
+		Filename:  input.Name + ".mp4",
+		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",
+		FileHash:  "hash-test",
+		Status:    "processed",
+	}, nil
+}
+
+func testConfig(tmp string) *config.Config {
+	return &config.Config{
+		Storage: config.StorageConfig{
+			DataDir: tmp,
+		},
+		Video: config.VideoConfig{
+			Duration: 30,
+		},
+	}
 }
