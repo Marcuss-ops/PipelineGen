@@ -42,3 +42,13 @@ func ScriptDocsEnabled(cfg *config.Config) gin.HandlerFunc {
 func ScriptClipsEnabled(cfg *config.Config) gin.HandlerFunc {
 	return FeatureFlagChecker(cfg, "ScriptClips", cfg.Features.ScriptClipsEnabled)
 }
+
+// WorkflowEnabled checks if the Workflow feature is enabled
+func WorkflowEnabled(cfg *config.Config) gin.HandlerFunc {
+	return FeatureFlagChecker(cfg, "Workflow", cfg.Features.WorkflowEnabled)
+}
+
+// VoiceoverEnabled checks if the Voiceover feature is enabled
+func VoiceoverEnabled(cfg *config.Config) gin.HandlerFunc {
+	return FeatureFlagChecker(cfg, "Voiceover", cfg.Features.VoiceoverEnabled)
+}

@@ -1,5 +1,7 @@
 # Artlist Pipeline Workflow
 
+**Status:** ACTIVE - Workflow documentation
+
 This document explains the complete Artlist pipeline for searching, downloading, processing, and uploading stock footage.
 
 ## Overview

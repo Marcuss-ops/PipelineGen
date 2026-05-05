@@ -1,5 +1,7 @@
 # SQLite Databases Architecture
 
+**Status:** ACTIVE - Complete database schema reference
+
 ## Overview
 
 The system uses multiple SQLite databases to separate concerns and improve maintainability. Each database has a specific purpose and should only contain tables relevant to that purpose.

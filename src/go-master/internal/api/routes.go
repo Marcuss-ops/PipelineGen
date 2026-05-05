@@ -210,10 +210,12 @@ func (r *Router) registerHandlersLegacy(protected *gin.RouterGroup) {
 	}
 	if h.Voiceover != nil {
 		voGroup := protected.Group("/voiceover")
+		voGroup.Use(middleware.VoiceoverEnabled(r.cfg))
 		h.Voiceover.RegisterRoutes(voGroup)
 	}
 	if h.VoiceoverSync != nil {
 		voSyncGroup := protected.Group("/voiceover")
+		voSyncGroup.Use(middleware.VoiceoverEnabled(r.cfg))
 		h.VoiceoverSync.RegisterRoutes(voSyncGroup)
 	}
 	if h.YouTubeClip != nil {

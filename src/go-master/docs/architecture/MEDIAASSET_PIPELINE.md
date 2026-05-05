@@ -1,5 +1,7 @@
 # Media Asset Pipeline Architecture
 
+**Status:** ACTIVE - Media pipeline documentation
+
 ## Overview
 
 The media asset pipeline provides a common, reusable pipeline for downloading, processing, and uploading media assets across different services (Artlist, YouTube Clips, Stock, etc.).

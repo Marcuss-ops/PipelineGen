@@ -172,4 +172,6 @@ type FeaturesConfig struct {
 	ScriptDocsEnabled  bool `yaml:"script_docs_enabled" env:"VELOX_FEATURE_SCRIPT_DOCS_ENABLED" default:"false"`
 	ScriptClipsEnabled bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
 	StockEnabled       bool `yaml:"stock_enabled" env:"VELOX_FEATURE_STOCK_ENABLED" default:"false"`
+	VoiceoverEnabled   bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
+	WorkflowEnabled    bool `yaml:"workflow_enabled" env:"VELOX_FEATURE_WORKFLOW_ENABLED" default:"false"`
 }

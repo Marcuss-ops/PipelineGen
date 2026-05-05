@@ -6,7 +6,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 ## Documentation Map
 
 - **This file (AGENTS.md)**: Critical rules and instructions for all agents
-- **docs/sqlite-databases.md**: Complete database schema, boundaries, and migration strategy
+- **docs/archive/sqlite-databases.md**: Complete database schema, boundaries, and migration strategy
 - **README.md**: Project structure and architecture overview
 - **PROJECT_GUIDE.md**: Italian language getting started guide
 

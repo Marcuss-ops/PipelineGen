@@ -30,6 +30,9 @@ func TestFeaturesConfigDefaults(t *testing.T) {
 	if cfg.Features.StockEnabled {
 		t.Error("StockEnabled should default to false")
 	}
+	if cfg.Features.VoiceoverEnabled {
+		t.Error("VoiceoverEnabled should default to false")
+	}
 }
 
 func TestFeaturesConfigDisabled(t *testing.T) {
@@ -42,6 +45,7 @@ func TestFeaturesConfigDisabled(t *testing.T) {
 			ScriptDocsEnabled: false,
 			ScriptClipsEnabled: false,
 			StockEnabled:      false,
+			VoiceoverEnabled:  false,
 		},
 	}
 
