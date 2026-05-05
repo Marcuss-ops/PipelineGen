@@ -7,27 +7,28 @@ import (
 func TestFeaturesConfigDefaults(t *testing.T) {
 	cfg := &Config{}
 	applyDefaults(cfg)
-	
-	if !cfg.Features.ArtlistEnabled {
-		t.Error("ArtlistEnabled should default to true")
+
+	// Features default to false (must be explicitly enabled)
+	if cfg.Features.ArtlistEnabled {
+		t.Error("ArtlistEnabled should default to false")
 	}
-	if !cfg.Features.YouTubeEnabled {
-		t.Error("YouTubeEnabled should default to true")
+	if cfg.Features.YouTubeEnabled {
+		t.Error("YouTubeEnabled should default to false")
 	}
-	if !cfg.Features.DriveEnabled {
-		t.Error("DriveEnabled should default to true")
+	if cfg.Features.DriveEnabled {
+		t.Error("DriveEnabled should default to false")
 	}
-	if !cfg.Features.HarvesterEnabled {
-		t.Error("HarvesterEnabled should default to true")
+	if cfg.Features.HarvesterEnabled {
+		t.Error("HarvesterEnabled should default to false")
 	}
-	if !cfg.Features.ScriptDocsEnabled {
-		t.Error("ScriptDocsEnabled should default to true")
+	if cfg.Features.ScriptDocsEnabled {
+		t.Error("ScriptDocsEnabled should default to false")
 	}
-	if !cfg.Features.ScriptClipsEnabled {
-		t.Error("ScriptClipsEnabled should default to true")
+	if cfg.Features.ScriptClipsEnabled {
+		t.Error("ScriptClipsEnabled should default to false")
 	}
-	if !cfg.Features.StockEnabled {
-		t.Error("StockEnabled should default to true")
+	if cfg.Features.StockEnabled {
+		t.Error("StockEnabled should default to false")
 	}
 }
 

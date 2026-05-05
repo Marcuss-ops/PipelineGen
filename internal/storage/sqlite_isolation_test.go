@@ -22,6 +22,7 @@ var expectedTables = map[string][]string{
 		"script_stock_matches",
 		"video_stats_history",
 		"artlist_runs", // Currently in main DB (per user's schema)
+		"script_sections", // Part of scripts feature
 		"schema_migrations",
 		// Should NOT have: clip_folders, clip_tags, clips, indexing_checkpoints, script_sections, segment_embeddings
 	},
@@ -46,9 +47,12 @@ var expectedTables = map[string][]string{
 		// Should NOT have: segment_embeddings
 	},
 	"images.db.sqlite": {
+		"images",
+		"subjects",
 		"schema_migrations",
 	},
 	"voiceover.db.sqlite": {
+		"voiceovers",
 		"schema_migrations",
 	},
 	"jobs.db.sqlite": {
