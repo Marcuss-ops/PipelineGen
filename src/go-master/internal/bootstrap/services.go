@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"velox/go-master/internal/api/handlers/common"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/catalog"
@@ -61,7 +62,7 @@ type services struct {
 	jobsRepo           *jobrepo.Repository
 	jobsService        *jobservice.Service
 	jobsDispatcher     *jobservice.Dispatcher
-	mediaProcessor     *mediaasset.Processor
+	mediaProcessor     processor.Processor
 	youtubeClipService *youtubeclip.Service
 	assetIndexService  *assetindex.Service
 }
@@ -84,7 +85,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
-	mediaProcessor := mediaasset.NewProcessor(
+	mediaProcessorInternal := mediaasset.NewProcessor(
 		ytDLPDownloader,
 		httpDL,
 		ffmpegProc,
@@ -96,6 +97,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 			VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg),
 		},
 	)
+	mediaProcessor := mediaasset.ToCoreProcessor(mediaProcessorInternal)
 
 	driveDestinationService := drivedestination.NewService(cfg, log, driveClient)
 
@@ -104,8 +106,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	assetIndexService := assetindex.NewService(assetIndexRepo)
 	log.Info("asset index service initialized", zap.String("db", "assets.db.sqlite"))
 
-	// Asset pipeline service
-	assetPipeline := assetpipeline.NewServiceWithDrive(driveClient, log, nil, assetIndexService)
+	// Asset pipeline finalizer
+	assetPipeline := assetpipeline.NewFinalizerWithDrive(driveClient, log, nil, assetIndexService)
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)

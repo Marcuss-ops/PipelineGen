@@ -13,13 +13,14 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
-	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
@@ -35,8 +36,8 @@ type Service struct {
 	monitoredRepo      *monitors.Repository
 	driveClient        *driveapi.Service
 	driveDestination   *drivedestination.Service
-	assetDestResolver  *assetdestination.Resolver
-	mediaProcessor     mediaasset.MediaProcessor
+	assetDestResolver  destination.Resolver
+	mediaProcessor     processor.Processor
 	folderMemory       *foldermemory.Service
 	mediaFinalizer     *mediaregistry.Finalizer
 }
@@ -48,7 +49,7 @@ func NewService(
 	monitoredRepo *monitors.Repository,
 	driveClient *driveapi.Service,
 	driveDestination *drivedestination.Service,
-	mediaProcessor mediaasset.MediaProcessor,
+	mediaProcessor processor.Processor,
 	mediaFinalizer *mediaregistry.Finalizer,
 ) *Service {
 	// Create asset destination resolver for unified destination resolution
@@ -61,7 +62,7 @@ func NewService(
 		monitoredRepo:     monitoredRepo,
 		driveClient:       driveClient,
 		driveDestination:  driveDestination,
-		assetDestResolver: assetDestResolver,
+		assetDestResolver: assetdestination.ToCoreResolver(assetDestResolver),
 		mediaProcessor:    mediaProcessor,
 		folderMemory:      foldermemory.NewService(log, clipsRepo),
 		mediaFinalizer:    mediaFinalizer,
@@ -151,7 +152,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	var driveFolderID string
 	var resolvedPath string
 	if s.assetDestResolver != nil && req.Destination != nil {
-		destReq := &assetdestination.ResolveRequest{
+		destReq := &destination.ResolveRequest{
 			Source:         "youtube",
 			Group:          req.Destination.Group,
 			FolderID:       req.Destination.FolderID,
@@ -435,20 +436,23 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		
 		// Use mediaasset processor for download/process/hash/upload
 		normalize := shouldNormalize
-		
+
 		targetDriveFolderID := driveFolderID
 		if req.UploadDrive != nil && !*req.UploadDrive {
 			targetDriveFolderID = ""
 		}
 
-		assetInput := mediaasset.AssetInput{
+		processInput := &processor.ProcessInput{
 			ID:               clipID,
-			Name:              item.Name,
+			Name:             item.Name,
 			SourceURL:         resp.SourceURL,
+			Term:             "",
 			OutputDir:         outDir,
-			FolderID:          targetDriveFolderID,
-			DownloadSections:  []string{section},
+			Filename:         "",
+			FolderID:         targetDriveFolderID,
+			Duration:         duration,
 			ForceKeyframes:    req.ForceKeyframes,
+			DownloadSections:  []string{section},
 			Normalize:         &normalize,
 			KeepAudio:         req.KeepAudio,
 			DisableDuration:   true, // Don't truncate YouTube clips to the global default duration
@@ -462,7 +466,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			},
 		}
 
-		result, err := s.mediaProcessor.DownloadProcessUpload(ctx, assetInput)
+		result, err := s.mediaProcessor.Process(ctx, processInput)
 		if err != nil {
 			item.Status = "failed"
 			item.Error = fmt.Sprintf("media processing failed: %v", err)

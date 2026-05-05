@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/core/destination"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/audio"
 )
@@ -20,14 +20,14 @@ import (
 type Processor struct {
 	pythonScriptsDir string
 	driveClient      *driveapi.Service
-	assetDestResolver *assetdestination.Resolver
+	assetDestResolver destination.Resolver
 	log               *zap.Logger
 }
 
 func NewProcessor(
 	pythonScriptsDir string,
 	driveClient *driveapi.Service,
-	assetDestResolver *assetdestination.Resolver,
+	assetDestResolver destination.Resolver,
 	log *zap.Logger,
 ) *Processor {
 	return &Processor{

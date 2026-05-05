@@ -17,7 +17,6 @@ import (
 type Service struct {
 	runner    *Runner
 	workflows map[string]*Workflow
-	results   map[string]*RunResult
 	mu        sync.RWMutex
 	log       *zap.Logger
 }
@@ -28,7 +27,6 @@ func NewService(jobsSvc *jobservice.Service, log *zap.Logger) *Service {
 	s := &Service{
 		runner:    NewRunner(),
 		workflows: make(map[string]*Workflow),
-		results:   make(map[string]*RunResult),
 		log:       log,
 	}
 	// Register artlist.run executor if jobs service is available
@@ -76,33 +74,20 @@ func (s *Service) RunWorkflowFromFile(ctx context.Context, path string) (*RunRes
 	return s.RunAndStore(ctx, wf)
 }
 
-// GetResult returns a stored result by workflow ID
-func (s *Service) GetResult(workflowID string) (*RunResult, bool) {
-	s.mu.RLock()
-	result, ok := s.results[workflowID]
-	s.mu.RUnlock()
-	return result, ok
-}
-
-// RunResult is already defined in runner.go, but we might want to store it.
-// We'll modify runner.Run to store results if needed.
-
+// RegisterExecutor registers a step executor by name
 func (s *Service) RegisterExecutor(name string, executor StepExecutor) {
 	Register(name, executor)
 }
 
 // Removed duplicate ListWorkflows - defined later in the file
 
-// RunAndStore runs a workflow and stores the result
+// RunAndStore runs a workflow and returns the result
 func (s *Service) RunAndStore(ctx context.Context, wf *Workflow) (*RunResult, error) {
 	result, err := s.runner.Run(ctx, wf)
 	if err != nil {
 		return result, err
 	}
 	result.CompletedAt = time.Now()
-	s.mu.Lock()
-	s.results[result.WorkflowID] = result
-	s.mu.Unlock()
 	return result, nil
 }
 
@@ -115,18 +100,6 @@ func (s *Service) ListWorkflows() []string {
 		names = append(names, name)
 	}
 	return names
-}
-
-// CleanupOldResults removes results older than maxAge
-func (s *Service) CleanupOldResults(maxAge time.Duration) {
-	cutoff := time.Now().Add(-maxAge)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for id, result := range s.results {
-		if result.CompletedAt.Before(cutoff) {
-			delete(s.results, id)
-		}
-	}
 }
 
 // HandleJob handles a workflow job from the job system.

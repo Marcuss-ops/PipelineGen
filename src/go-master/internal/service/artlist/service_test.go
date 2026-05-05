@@ -14,10 +14,10 @@ import (
 	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
 	
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/security"
@@ -308,16 +308,16 @@ func TestSearchRequestValidation(t *testing.T) {
 type fakeMediaProcessor struct {
 	called bool
 	err    error
-	result *mediaasset.AssetResult
-	inputs []mediaasset.AssetInput
+	result *processor.ProcessResult
+	inputs []*processor.ProcessInput
 }
 
-func (f *fakeMediaProcessor) DownloadProcessUpload(ctx context.Context, input mediaasset.AssetInput) (*mediaasset.AssetResult, error) {
+func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.ProcessInput) (*processor.ProcessResult, error) {
 	f.called = true
 	f.inputs = append(f.inputs, input)
 
 	if f.err != nil {
-		return &mediaasset.AssetResult{
+		return &processor.ProcessResult{
 			ID:     input.ID,
 			Status: "failed",
 			Error:  f.err.Error(),
@@ -328,7 +328,7 @@ func (f *fakeMediaProcessor) DownloadProcessUpload(ctx context.Context, input me
 		return f.result, nil
 	}
 
-	return &mediaasset.AssetResult{
+	return &processor.ProcessResult{
 		ID:        input.ID,
 		Filename:  input.Name + ".mp4",
 		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",

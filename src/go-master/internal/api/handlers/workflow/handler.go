@@ -142,19 +142,30 @@ func (h *Handler) runWorkflowFile(c *gin.Context) {
 
 // getRunStatus returns the status of a workflow run
 func (h *Handler) getRunStatus(c *gin.Context) {
-	workflowID := c.Param("id")
-	if workflowID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "workflow id required"})
+	jobID := c.Param("id")
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "job id required"})
 		return
 	}
 
-	result, ok := h.service.GetResult(workflowID)
-	if !ok {
+	job, err := h.jobsService.Get(c.Request.Context(), jobID)
+	if err != nil {
+		h.log.Error("failed to get job", zap.String("job_id", jobID), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	if job == nil {
 		c.JSON(http.StatusNotFound, gin.H{"ok": false, "error": "workflow run not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{
+		"job_id": job.ID,
+		"type":   job.Type,
+		"status": job.Status,
+		"result": job.Result,
+		"error":  job.Error,
+	})
 }
 
 // listWorkflows lists loaded workflows

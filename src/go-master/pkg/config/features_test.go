@@ -47,14 +47,6 @@ func TestFeaturesConfigDisabled(t *testing.T) {
 			WorkflowEnabled:   false,
 			ImagesEnabled:     false,
 		},
-	}
-
-	if cfg.Features.ArtlistEnabled {
-		t.Error("ArtlistEnabled should be false")
-	}
-	if cfg.Features.YouTubeEnabled {
-		t.Error("YouTubeEnabled should be false")
-	}
 }
 
 	if cfg.Features.ArtlistEnabled {
