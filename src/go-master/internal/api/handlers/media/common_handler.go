@@ -158,7 +158,6 @@ func (h *CommonHandler) resolveVoiceoverRepo(source string) *voiceovers.Reposito
 // RegisterRoutes registers media routes with source parameter.
 func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering common media routes")
-	r.GET("/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 	// Clip-level endpoints
 	r.POST("/:source/clips/:id/status", h.ClipStatus)
 	r.POST("/:source/clips/:id/verify", h.VerifyClip)

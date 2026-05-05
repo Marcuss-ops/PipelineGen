@@ -35,20 +35,8 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				jobs.stockScheduler.Stop()
 			}()
 		}
-		if jobs.harvesterCronSvc != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				jobs.harvesterCronSvc.Stop()
-			}()
-		}
-		if jobs.catalogSyncJob != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				jobs.catalogSyncJob.Stop()
-			}()
-		}
+	// NOTE: harvesterCronSvc and catalogSyncJob removed (cron system eliminated)
+	// These should be migrated to the job system
 
 		// Wait for all stop operations with timeout
 		done := make(chan struct{})
