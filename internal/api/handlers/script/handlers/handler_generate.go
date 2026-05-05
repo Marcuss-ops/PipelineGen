@@ -116,7 +116,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	}
 
 	// Trigger background harvest for search suggestions
-	h.triggerBackgroundHarvest(document)
+	h.triggerBackgroundHarvest(ctx, document)
 
 	if forcePreview {
 		path, err := h.savePreview(document.Title, document.Content)
@@ -232,7 +232,7 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 }
 
 // triggerBackgroundHarvest enqueues jobs for background harvesting based on search suggestions
-func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocument) {
+func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, document *script.ScriptDocument) {
 	if h.artlistService == nil || h.jobsService == nil || document == nil || document.Timeline == nil {
 		return
 	}
@@ -262,7 +262,7 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocu
 		}
 		payload := jobCodec.PayloadFromRequest(req)
 
-		job, err := h.jobsService.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+		job, err := h.jobsService.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:     models.JobTypeArtlistRun,
 			Payload:  payload,
 			Priority: 5, // Lower priority for background tasks

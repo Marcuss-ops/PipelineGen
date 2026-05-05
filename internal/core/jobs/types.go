@@ -12,6 +12,7 @@ const (
 	JobTypeVoiceoverGenerate  JobType = "voiceover.generate"
 	JobTypeMediaMatch         JobType = "media.match"
 	JobTypeMediaImport        JobType = "media.import"
+	JobTypeWorkflowRun        JobType = "workflow.run"
 )
 
 type JobStatus string

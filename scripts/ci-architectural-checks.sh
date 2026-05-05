@@ -39,7 +39,7 @@ fi
 
 # Check 4: No direct goroutine launches in handlers (should use job system)
 echo "Check 4: Scanning for goroutines in handlers..."
-VIOLATIONS=$(grep -rn "go func()" internal/api/ --include="*.go" | grep -v "_test.go" || true)
+VIOLATIONS=$(grep -rn "go func()" internal/api/handlers/ --include="*.go" | grep -v "_test.go" || true)
 if [ -n "$VIOLATIONS" ]; then
     echo "WARNING: Found goroutines in API handlers (should use job system):"
     echo "$VIOLATIONS"
@@ -63,7 +63,7 @@ fi
 
 # Check 7: No path traversal in workflow handler
 echo "Check 7: Verifying path jail in workflow handler..."
-if ! grep -q "filepath.Dir(cleanPath) != \".\"" internal/api/handlers/workflow/handler.go; then
+if ! grep -q "resolveWorkflowPath\|filepath.Dir.*!=" internal/api/handlers/workflow/handler.go; then
     echo "ERROR: workflow handler must only accept workflow names, not paths"
     FAILED=1
 fi

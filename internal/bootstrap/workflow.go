@@ -21,7 +21,10 @@ func WireWorkflow(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*WorkflowWiring, error) {
-	handler := workflowhandler.NewHandler(workflowrunner.NewService(coreDeps.JobsService, log), log)
+	svc := workflowrunner.NewService(coreDeps.JobsService, log)
+	// Register workflow job handler with the job service
+	svc.RegisterJobHandler(coreDeps.JobsService)
+	handler := workflowhandler.NewHandler(svc, log, cfg.Paths.WorkflowsDir, coreDeps.JobsService)
 	mod := module.NewWorkflowModule(cfg, log, handler)
 	log.Info("created Workflow module")
 
