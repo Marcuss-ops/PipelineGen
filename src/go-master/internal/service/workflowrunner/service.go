@@ -2,12 +2,15 @@ package workflowrunner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/core/jobs"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/pkg/models"
 )
 
 // Service manages workflow execution
@@ -16,6 +19,7 @@ type Service struct {
 	workflows map[string]*Workflow
 	results   map[string]*RunResult
 	mu        sync.RWMutex
+	log       *zap.Logger
 }
 
 // NewService creates a new workflow service
@@ -25,6 +29,7 @@ func NewService(jobsSvc *jobservice.Service, log *zap.Logger) *Service {
 		runner:    NewRunner(),
 		workflows: make(map[string]*Workflow),
 		results:   make(map[string]*RunResult),
+		log:       log,
 	}
 	// Register artlist.run executor if jobs service is available
 	if jobsSvc != nil && log != nil {
@@ -121,5 +126,60 @@ func (s *Service) CleanupOldResults(maxAge time.Duration) {
 		if result.CompletedAt.Before(cutoff) {
 			delete(s.results, id)
 		}
+	}
+}
+
+// HandleJob handles a workflow job from the job system.
+// This is the integration point between workflow runner and the job system.
+func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+	s.log.Info("handling workflow job",
+		zap.String("job_id", job.ID),
+		zap.String("type", string(job.Type)),
+	)
+
+	// Extract workflow name from payload (json.RawMessage)
+	var payload map[string]any
+	if len(job.Payload) > 0 {
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+		}
+	}
+
+	workflowName := ""
+	if v, ok := payload["workflow"].(string); ok {
+		workflowName = v
+	}
+	if workflowName == "" {
+		return nil, fmt.Errorf("workflow name is required in payload")
+	}
+
+	// Get the workflow by name
+	s.mu.RLock()
+	wf, ok := s.workflows[workflowName]
+	s.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("workflow not found: %s", workflowName)
+	}
+
+	// Run the workflow
+	result, err := s.RunAndStore(ctx, wf)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return result as map
+	return map[string]any{
+		"workflow_id": result.WorkflowID,
+		"status":      result.Status,
+		"duration":    result.Duration.String(),
+	}, nil
+}
+
+// RegisterJobHandler registers the workflow job handler with the dispatcher.
+func (s *Service) RegisterJobHandler(jobsSvc *jobservice.Service) {
+	if jobsSvc != nil {
+		// Convert core/jobs.JobType to models.JobType (both are string underlying)
+		jobType := models.JobType(jobs.JobTypeWorkflowRun)
+		jobsSvc.RegisterHandler(jobType, s.HandleJob)
 	}
 }

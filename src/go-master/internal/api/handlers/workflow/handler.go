@@ -1,27 +1,62 @@
 package workflow
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/core/jobs"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/workflowrunner"
+	"velox/go-master/pkg/models"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Handler handles workflow API requests
 type Handler struct {
-	service *workflowrunner.Service
-	log     *zap.Logger
+	service      *workflowrunner.Service
+	log          *zap.Logger
+	workflowsDir string
+	jobsService *jobservice.Service
 }
 
 // NewHandler creates a new workflow handler
-func NewHandler(svc *workflowrunner.Service, log *zap.Logger) *Handler {
+func NewHandler(svc *workflowrunner.Service, log *zap.Logger, workflowsDir string, jobsService *jobservice.Service) *Handler {
 	return &Handler{
-		service: svc,
-		log:     log,
+		service:      svc,
+		log:          log,
+		workflowsDir: workflowsDir,
+		jobsService: jobsService,
 	}
+}
+
+// resolveWorkflowPath resolves a workflow name to a file path within workflowsDir.
+// Only allows names with .yaml or .yml extension, or adds .yaml.
+func (h *Handler) resolveWorkflowPath(name string) (string, error) {
+	// Clean the name to prevent path traversal
+	cleanName := filepath.Clean(name)
+	// Ensure the name does not contain directory separators
+	if strings.ContainsAny(cleanName, `/\`) {
+		return "", fmt.Errorf("workflow name must not contain path separators")
+	}
+	// Check extension
+	ext := filepath.Ext(cleanName)
+	if ext == "" {
+		cleanName += ".yaml"
+	} else if ext != ".yaml" && ext != ".yml" {
+		return "", fmt.Errorf("workflow file must have .yaml or .yml extension")
+	}
+	// Join with workflowsDir
+	fullPath := filepath.Join(h.workflowsDir, cleanName)
+	// Ensure the full path is within workflowsDir (double-check)
+	if !strings.HasPrefix(fullPath, filepath.Clean(h.workflowsDir)) {
+		return "", fmt.Errorf("workflow path is outside allowed directory")
+	}
+	return fullPath, nil
 }
 
 // RegisterRoutes registers workflow routes
@@ -39,7 +74,7 @@ type runWorkflowRequest struct {
 }
 
 // runWorkflow runs a loaded workflow by name
-// WARNING: This spawns a goroutine without job tracking - to be refactored to job system
+// This enqueues a job in the job system for async execution.
 func (h *Handler) runWorkflow(c *gin.Context) {
 	var req runWorkflowRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,18 +87,20 @@ func (h *Handler) runWorkflow(c *gin.Context) {
 		return
 	}
 
-	// WARNING: Goroutine without job system - temporary until workflow moves to job system
-	// TODO: Refactor to create a job in internal/service/jobs/
-	go func() {
-		result, err := h.service.RunWorkflow(c.Request.Context(), req.Workflow)
-		if err != nil {
-			h.log.Error("workflow run failed", zap.String("workflow", req.Workflow), zap.Error(err))
-			return
-		}
-		h.log.Info("workflow completed", zap.String("workflow_id", result.WorkflowID), zap.String("status", result.Status))
-	}()
+	// Enqueue a job in the job system
+	payload := map[string]any{"workflow": req.Workflow}
+	job, err := h.jobsService.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+		Type:    models.JobType(jobs.JobTypeWorkflowRun),
+		Payload: payload,
+	})
+	if err != nil {
+		h.log.Error("failed to enqueue workflow job", zap.String("workflow", req.Workflow), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
 
-	c.JSON(http.StatusAccepted, gin.H{"ok": true, "message": "workflow started", "workflow_id": req.Workflow})
+	h.log.Info("enqueued workflow job", zap.String("job_id", job.ID), zap.String("workflow", req.Workflow))
+	c.JSON(http.StatusAccepted, gin.H{"ok": true, "message": "workflow job enqueued", "job_id": job.ID})
 }
 
 // runWorkflowFileRequest is the request body for running a workflow from file
@@ -80,22 +117,21 @@ func (h *Handler) runWorkflowFile(c *gin.Context) {
 	}
 
 	if req.Path == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "path required"})
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "workflow name required"})
 		return
 	}
 
-	// Path jail: only allow filenames, not paths
-	// This prevents path traversal attacks
-	cleanPath := filepath.Clean(req.Path)
-	if filepath.IsAbs(cleanPath) || filepath.Dir(cleanPath) != "." {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "only workflow names allowed, not paths"})
+	// Resolve the workflow name to a file path within the configured directory
+	path, err := h.resolveWorkflowPath(req.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
 	// Run workflow synchronously to return result using request context
-	result, err := h.service.RunWorkflowFromFile(c.Request.Context(), cleanPath)
+	result, err := h.service.RunWorkflowFromFile(c.Request.Context(), path)
 	if err != nil {
-		h.log.Error("workflow file run failed", zap.String("path", cleanPath), zap.Error(err))
+		h.log.Error("workflow file run failed", zap.String("path", path), zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}

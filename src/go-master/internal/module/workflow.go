@@ -4,6 +4,7 @@ import (
 	"context"
 
 	workflowhandler "velox/go-master/internal/api/handlers/workflow"
+	"velox/go-master/internal/api/middleware"
 	"velox/go-master/pkg/config"
 
 	"github.com/gin-gonic/gin"
@@ -41,7 +42,7 @@ func (m *WorkflowModule) Enabled(cfg *config.Config) bool {
 	return m.handler != nil && cfg.Features.WorkflowEnabled
 }
 
-// RegisterRoutes registers the module's routes
+// RegisterRoutes registers the module's routes with feature flag middleware
 func (m *WorkflowModule) RegisterRoutes(rg *gin.RouterGroup) {
 	if m.handler == nil {
 		m.log.Warn("workflow handler is nil, skipping route registration")
@@ -49,6 +50,8 @@ func (m *WorkflowModule) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 
 	group := rg.Group("/workflows")
+	// Apply feature flag middleware to protect all workflow routes
+	group.Use(middleware.WorkflowEnabled(m.cfg))
 	m.handler.RegisterRoutes(group)
 }
 
