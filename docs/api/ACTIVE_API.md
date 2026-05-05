@@ -107,7 +107,8 @@ Internal endpoints require additional header: `X-Internal: true` or `X-Velox-Int
 | POST | `/api/voiceover/generate` | Generate voiceover |
 | POST | `/api/voiceover/batch` | Batch generate voiceovers |
 | POST | `/api/voiceover/sync` | Sync voiceovers from Drive |
-| GET | `/api/voiceover/sync/status` | Get sync status |
+
+Note: `/api/voiceover/sync/status` was removed - was returning fake status (debt).
 
 ## Script Docs Endpoints
 

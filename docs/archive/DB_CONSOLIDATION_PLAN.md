@@ -1,5 +1,11 @@
 # Database Consolidation Plan
 
+**Status:** OBSOLETE - Plan was not implemented. Current system uses 8 databases as documented in AGENTS.md.
+
+**Archived:** 2026-05-05
+
+---
+
 ## Current State
 The system uses 8 separate SQLite databases:
 - `velox.db.sqlite` - Main DB (scripts, media, monitoring)
