@@ -8,14 +8,14 @@ import (
 	"velox/go-master/internal/api/handlers/common"
 	drivehandler "velox/go-master/internal/api/handlers/drive"
 	imghandler "velox/go-master/internal/api/handlers/images"
-	"velox/go-master/internal/api/handlers/jobs"
+	jobshandler "velox/go-master/internal/api/handlers/jobs"
 	mediahandler "velox/go-master/internal/api/handlers/media"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/handlers/voiceover"
 	workflowhandler "velox/go-master/internal/api/handlers/workflow"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
-	"velox/go-master/internal/service/artlist"
+	artlistPkg "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/drivereconcile"
@@ -23,6 +23,7 @@ import (
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/workflowrunner"
 	drive "velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 
@@ -32,6 +33,7 @@ import (
 // AppDeps holds the minimal initialized dependencies for the server.
 type AppDeps struct {
 	Handlers *api.Handlers
+	Registry  *module.Registry
 	Cleanup  func()
 }
 
@@ -47,13 +49,17 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		return nil, err
 	}
 
+	// Create module registry
+	registry := module.NewRegistry()
+	log.Info("module registry created")
+
 	// Create drive destination service first
 	driveDestinationService := drivedestination.NewService(cfg, log, coreDeps.DriveClient)
 
 	// Create Artlist service with drive destination
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
 	driveFolderID := drive.ResolveArtlistRootFolderID(cfg)
-	var artlistService *artlist.Service
+	var artlistService *artlistPkg.Service
 
 	// Create mediaregistry components for Artlist
 	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
@@ -61,9 +67,9 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	mediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, driveVerifier, coreDeps.AssetIndexService, log)
 
 	// Create Artlist DriveService
-	artlistDriveService := artlist.NewDriveService(coreDeps.DriveClient, driveFolderID, driveDestinationService, log)
+	artlistDriveService := artlistPkg.NewDriveService(coreDeps.DriveClient, driveFolderID, driveDestinationService, log)
 
-	artlistService, err = artlist.NewService(
+	artlistSvc, err := artlistPkg.NewService(
 		cfg,
 		coreDeps.DB.DB,
 		coreDeps.JobsDB,
@@ -76,6 +82,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		coreDeps.JobsService,
 		log,
 	)
+	artlistService = artlistSvc
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		artlistService = nil
@@ -96,8 +103,8 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	}
 
 	// Register artlist job handler
-	if artlistService != nil && coreDeps.JobsService != nil {
-		coreDeps.JobsService.RegisterHandler(models.JobTypeArtlistRun, artlistService.HandleJob)
+	if artlistSvc != nil && coreDeps.JobsService != nil {
+		coreDeps.JobsService.RegisterHandler(models.JobTypeArtlistRun, artlistSvc.HandleJob)
 		log.Info("registered artlist job handler")
 	}
 
@@ -115,20 +122,24 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		coreDeps.ArtlistRepo,
 		coreDeps.ClipsOnlyRepo,
 		cfg.Drive.StockRootFolder,
-		artlistService,
+		artlistSvc,
 		coreDeps.AssocService,
 	)
 
-	// Create Artlist handler
+	// Create Artlist handler and register module
 	var artlistHandlerVar *artlistHandler.Handler
-	if artlistService != nil {
+	if artlistSvc != nil {
 		artlistHandlerVar = artlistHandler.NewHandler(
-			artlistService,
+			artlistSvc,
 			coreDeps.CatalogSyncService,
 			coreDeps.JobsService,
 			cfg.Paths.NodeScraperDir,
 			log,
 		)
+		// Register Artlist module
+		artlistModule := module.NewArtlistModule(cfg, log, artlistSvc, artlistHandlerVar)
+		registry.Register(artlistModule)
+		log.Info("registered Artlist module")
 	}
 
 	// Voiceover service is already initialized with drive destination in WireMinimal
@@ -136,12 +147,21 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 		log.Info("voiceover service initialized with unified destination resolver")
 	}
 
-	// Use YouTube clip service from core deps
+	// Use YouTube clip service from core deps and register module
 	youtubeClipHandler := youtubecliphandler.NewHandler(coreDeps.YoutubeClipService, log)
+	if coreDeps.YoutubeClipService != nil {
+		youtubeClipModule := module.NewYouTubeClipModule(cfg, log, coreDeps.YoutubeClipService, youtubeClipHandler)
+		registry.Register(youtubeClipModule)
+		log.Info("registered YouTube Clips module")
+	}
 
-	jobsHandler := jobs.NewHandler(coreDeps.JobsService, log)
+	jobsHandler := jobshandler.NewHandler(coreDeps.JobsService, log)
+	// Register Jobs module
+	jobsModule := module.NewJobsModule(cfg, log, coreDeps.JobsService, jobsHandler)
+	registry.Register(jobsModule)
+	log.Info("registered Jobs module")
 
-	// Create media handler with ManifestExporter
+	// Create media handler with ManifestExporter and register module
 	var mediaHandler *mediahandler.CommonHandler
 	if coreDeps.StockDriveRepo != nil && coreDeps.ArtlistRepo != nil && coreDeps.ClipsOnlyRepo != nil && driveCleanupSvc != nil {
 		// Create folder memory service
@@ -178,6 +198,11 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 	} else {
 		log.Warn("common media handler not initialized - missing dependencies")
 	}
+	
+	// Register Media module
+	mediaModule := module.NewMediaModule(cfg, log, mediaHandler)
+	registry.Register(mediaModule)
+	log.Info("registered Media module")
 
 	handlers_struct := &api.Handlers{
 		Health:        common.NewHealthHandler(),
@@ -209,6 +234,7 @@ func WireScriptDocs(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps,
 
 	return &AppDeps{
 		Handlers: handlers_struct,
+		Registry:  registry,
 		Cleanup:  cleanup,
 	}, nil
 }

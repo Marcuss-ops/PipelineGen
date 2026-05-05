@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 )
@@ -33,6 +34,30 @@ func NewServerWithHandlers(
 	handlers *Handlers,
 ) *Server {
 	router := NewRouter(cfg, handlers)
+	r := router.Setup()
+
+	return &Server{
+		cfg:       cfg,
+		router:    r,
+		appRouter: router,
+		httpServer: &http.Server{
+			Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+			Handler:      r,
+			ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
+			WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
+		},
+	}
+}
+
+// NewServerWithRegistry creates a new HTTP server with module registry support.
+// This is the preferred way to create a server as it supports modular route registration.
+func NewServerWithRegistry(
+	cfg *config.Config,
+	handlers *Handlers,
+	registry *module.Registry,
+) *Server {
+	router := NewRouter(cfg, handlers)
+	router.SetRegistry(registry)
 	r := router.Setup()
 
 	return &Server{
