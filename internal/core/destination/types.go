@@ -11,16 +11,25 @@ type Resolver interface {
 
 // ResolveRequest contains the information needed to resolve a destination.
 type ResolveRequest struct {
-	AssetID   string
-	AssetType string // "clip", "stock", "artlist", "image", "voiceover"
-	ProjectID  string
-	FolderName string
-	Metadata  map[string]interface{}
+	Source         string // e.g. "youtube", "artlist", "voiceover"
+	Group          string // e.g. "boxe", "wwe", "wnba"
+	FolderID       string // explicit folder ID (overrides group)
+	FolderPath     string // optional path info
+	SubfolderName  string // e.g. "Mike Tyson" or video ID
+	CreateSubfolder bool  // whether to create subfolder if not exists
+	AssetID        string
+	AssetType      string // "clip", "stock", "artlist", "image", "voiceover"
+	ProjectID      string
+	FolderName     string
+	Metadata       map[string]interface{}
 }
 
 // ResolveResult contains the resolved destination information.
 type ResolveResult struct {
 	LocationKind string // "drive", "local", "s3", etc.
 	URI          string // Drive folder ID, local path, etc.
+	FolderID     string // Drive folder ID
+	FolderPath   string // Full folder path
+	DriveLink    string // Drive web link
 	Extra        map[string]interface{}
 }

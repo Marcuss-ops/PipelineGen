@@ -27,7 +27,7 @@ var (
 // @BasePath /api
 func main() {
 	// Parse command-line flags
-	mode := flag.String("mode", "", "Server mode: api, api-cron, worker, scheduler, maintenance (default: all)")
+	mode := flag.String("mode", "", "Server mode: api, worker, scheduler, maintenance (default: all)")
 	flag.Parse()
 
 	if *mode == "" {

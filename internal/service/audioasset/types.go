@@ -1,15 +1,16 @@
 package audioasset
 
-import "velox/go-master/internal/service/assetdestination"
+import "velox/go-master/internal/core/destination"
 
 type AudioInput struct {
-	ID            string
 	Text          string
 	Language      string
-	OutputDir     string
+	Voice         string
 	Filename      string
+	OutputDir     string
+	Destination   *destination.ResolveRequest
+	Strategy      string // "replace", "skip", "fail"
 	RemoveSilence bool
-	Destination   *assetdestination.ResolveRequest
 }
 
 type AudioResult struct {

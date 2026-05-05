@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/audioasset"
@@ -25,10 +26,10 @@ type Service struct {
 	outputDir         string
 	log               *zap.Logger
 	driveClient       *gdrive.Service
-	assetDestResolver *assetdestination.Resolver
+	assetDestResolver destination.Resolver
 	audioProcessor    *audioasset.Processor
 	mediaFinalizer    *mediaregistry.Finalizer
-	assetPipeline     *assetpipeline.Service
+	assetPipeline     *assetpipeline.Finalizer
 	repo              *voiceovers.Repository
 }
 
@@ -39,7 +40,7 @@ func NewService(
 	log *zap.Logger,
 	driveClient *gdrive.Service,
 	mediaFinalizer *mediaregistry.Finalizer,
-	assetPipeline *assetpipeline.Service,
+	assetPipeline *assetpipeline.Finalizer,
 	repo *voiceovers.Repository,
 ) *Service {
 	// Create asset destination resolver
@@ -49,7 +50,7 @@ func NewService(
 	audioProcessor := audioasset.NewProcessor(
 		pythonScriptsDir,
 		driveClient,
-		assetDestResolver,
+		assetdestination.ToCoreResolver(assetDestResolver),
 		log,
 	)
 
@@ -59,7 +60,7 @@ func NewService(
 		outputDir:         outputDir,
 		log:               log,
 		driveClient:       driveClient,
-		assetDestResolver: assetDestResolver,
+		assetDestResolver: assetdestination.ToCoreResolver(assetDestResolver),
 		audioProcessor:    audioProcessor,
 		mediaFinalizer:    mediaFinalizer,
 		assetPipeline:     assetPipeline,
@@ -171,7 +172,6 @@ func (s *Service) processLanguage(
 
 	// Build audio input for processor
 	audioInput := &audioasset.AudioInput{
-		ID:            id,
 		Text:          req.Text,
 		Language:      language,
 		OutputDir:     s.outputDir,
@@ -181,7 +181,7 @@ func (s *Service) processLanguage(
 
 	// Set destination from original request if upload is enabled
 	if req.Destination != nil && boolDefault(req.UploadDrive, false) {
-		audioInput.Destination = &assetdestination.ResolveRequest{
+		audioInput.Destination = &destination.ResolveRequest{
 			Source:         "voiceover",
 			Group:          req.Destination.Group,
 			FolderID:       req.Destination.FolderID,
@@ -317,7 +317,7 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 		return &ResolvedDestination{}, nil
 	}
 
-	resolved, err := s.assetDestResolver.Resolve(ctx, &assetdestination.ResolveRequest{
+	resolved, err := s.assetDestResolver.Resolve(ctx, &destination.ResolveRequest{
 		Source:         "voiceover",
 		Group:          dest.Group,
 		FolderID:       dest.FolderID,
@@ -330,7 +330,6 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 	}
 
 	return &ResolvedDestination{
-		Group:      resolved.Group,
 		FolderID:   resolved.FolderID,
 		FolderPath: resolved.FolderPath,
 		DriveLink:  resolved.DriveLink,

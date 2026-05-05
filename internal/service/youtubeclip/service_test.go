@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/mediaasset"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/security"
 )
@@ -311,16 +311,16 @@ func boolPtr(b bool) *bool {
 type fakeMediaProcessor struct {
 	called bool
 	err    error
-	result *mediaasset.AssetResult
-	inputs []mediaasset.AssetInput
+	result *processor.ProcessResult
+	inputs []*processor.ProcessInput
 }
 
-func (f *fakeMediaProcessor) DownloadProcessUpload(ctx context.Context, input mediaasset.AssetInput) (*mediaasset.AssetResult, error) {
+func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.ProcessInput) (*processor.ProcessResult, error) {
 	f.called = true
 	f.inputs = append(f.inputs, input)
 
 	if f.err != nil {
-		return &mediaasset.AssetResult{
+		return &processor.ProcessResult{
 			ID:     input.ID,
 			Status: "failed",
 			Error:  f.err.Error(),
@@ -331,7 +331,7 @@ func (f *fakeMediaProcessor) DownloadProcessUpload(ctx context.Context, input me
 		return f.result, nil
 	}
 
-	return &mediaasset.AssetResult{
+	return &processor.ProcessResult{
 		ID:        input.ID,
 		Filename:  input.Name + ".mp4",
 		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",

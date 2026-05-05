@@ -5,6 +5,7 @@ import (
 
 	"database/sql"
 	"velox/go-master/internal/api/handlers/common"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
@@ -18,7 +19,6 @@ import (
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/monitor"
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
@@ -61,7 +61,7 @@ type CoreDeps struct {
 	AssocService         *association.Service
 	JobsService          *jobservice.Service
 	JobsDB               *sql.DB
-	MediaProcessor       *mediaasset.Processor
+	MediaProcessor       processor.Processor
 	YoutubeClipService   *youtubeclip.Service
 	AssetIndexService    *assetindex.Service
 }

@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/service/assetstore"
-	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/pathutil"
@@ -146,7 +146,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	// Resolve Drive destination using unified asset destination resolver
 	tagFolderID := rootFolderID
 	if s.assetDestResolver != nil && rootFolderID != "" {
-		resolved, err := s.assetDestResolver.Resolve(ctx, &assetdestination.ResolveRequest{
+		resolved, err := s.assetDestResolver.Resolve(ctx, &destination.ResolveRequest{
 			Source:          "artlist",
 			Group:           req.Term,
 			FolderID:        rootFolderID,
@@ -324,7 +324,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		)
 
 		// Use mediaasset processor for download/process/hash/upload
-		assetInput := mediaasset.AssetInput{
+		processInput := &processor.ProcessInput{
 			ID:        clip.ID,
 			Name:      clip.Name,
 			SourceURL: url,
@@ -334,7 +334,7 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			Duration:  s.cfg.Video.Duration,
 		}
 
-		result, err := s.mediaProcessor.DownloadProcessUpload(ctx, assetInput)
+		result, err := s.mediaProcessor.Process(ctx, processInput)
 		if err != nil {
 			s.log.Error("media processing failed", zap.String("clip_id", clip.ID), zap.Error(err))
 			resp.Failed++

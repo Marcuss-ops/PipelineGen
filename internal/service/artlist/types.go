@@ -5,10 +5,11 @@ import (
 
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetdestination"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
 )
@@ -21,14 +22,14 @@ type Service struct {
 	nodeScraperDir    string
 	artlistRepo       *clips.Repository
 	driveService      *DriveService
-	mediaProcessor    mediaasset.MediaProcessor
+	mediaProcessor    processor.Processor
 	mediaFinalizer    *mediaregistry.Finalizer
-	assetDestResolver *assetdestination.Resolver
+	assetDestResolver destination.Resolver
 	jobsSvc           *jobservice.Service
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor mediaasset.MediaProcessor, mediaFinalizer *mediaregistry.Finalizer, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor processor.Processor, mediaFinalizer *mediaregistry.Finalizer, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -39,9 +40,10 @@ func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPat
 	}
 
 	// Create asset destination resolver if drive client is available
-	var assetDestResolver *assetdestination.Resolver
+	var assetDestResolver destination.Resolver
 	if driveService != nil && driveService.GetDriveClient() != nil {
-		assetDestResolver = assetdestination.NewResolver(cfg, log, driveService.GetDriveClient())
+		innerResolver := assetdestination.NewResolver(cfg, log, driveService.GetDriveClient())
+		assetDestResolver = assetdestination.ToCoreResolver(innerResolver)
 	}
 
 	return &Service{
