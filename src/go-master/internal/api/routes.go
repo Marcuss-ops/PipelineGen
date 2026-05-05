@@ -132,11 +132,16 @@ func (r *Router) Setup() *gin.Engine {
 	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")
 	engine.Static("/assets", assetsDir)
 
-	// API routes - all protected by default
-	api := engine.Group("/api")
-	{
-		// Protected routes — Auth + RateLimit + WorkspaceScope
-		protected := api.Group("")
+// API routes
+api := engine.Group("/api")
+{
+	// Public catalog route (no auth required)
+	if r.handlers.Catalog != nil {
+		api.GET("/catalog/folders", r.handlers.Catalog.SearchFolders)
+	}
+
+	// Protected routes — Auth + RateLimit + WorkspaceScope
+	protected := api.Group("")
 		protected.Use(middleware.Auth(r.cfg))
 		protected.Use(middleware.RateLimit().Handler)
 		protected.Use(middleware.WorkspaceScopeMiddleware())
@@ -170,10 +175,6 @@ func (r *Router) registerHandlersLegacy(protected *gin.RouterGroup) {
 	// Internal utilities (now protected)
 	if h.Utility != nil {
 		protected.GET("/internal/slug", h.Utility.Slugify)
-	}
-	// Catalog API - protected search endpoint for folders
-	if h.Catalog != nil {
-		protected.GET("/catalog/folders", h.Catalog.SearchFolders)
 	}
 
 	if h.Drive != nil {
