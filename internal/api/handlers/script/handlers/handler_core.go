@@ -5,6 +5,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
 	artlistSvc "velox/go-master/internal/service/artlist"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/association"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/voiceover"
@@ -31,10 +32,11 @@ type ScriptDocsHandler struct {
 	stockRootFolder  string
 	artlistService   *artlistSvc.Service
 	assocService     *association.Service
+	jobsService      *jobservice.Service
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service, assocService *association.Service) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service, assocService *association.Service, jobsService *jobservice.Service) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,
@@ -51,6 +53,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voSe
 		stockRootFolder:  stockRootFolder,
 		artlistService:   artlistService,
 		assocService:     assocService,
+		jobsService:      jobsService,
 	}
 }
 

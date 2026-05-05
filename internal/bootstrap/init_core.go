@@ -5,7 +5,6 @@ import (
 
 	"database/sql"
 	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/cron"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
@@ -53,9 +52,9 @@ type CoreDeps struct {
 	VoiceoverService     *voiceover.Service
 	VoiceoverSync        *voiceoversync.Service
 	IndexingService      *indexing.Service
-	HarvesterCronService *cron.HarvesterCronService
+	// NOTE: HarvesterCronService eliminated - migrate to job system
+	// CatalogSyncService kept for now - should be migrated to job system
 	CatalogSyncService   *catalogsync.Service
-	CatalogSyncJob       *cron.CatalogSyncJob
 	ChannelMonitor       *monitor.ChannelMonitor
 	StockScheduler       *scheduler.StockScheduler
 	CatalogRepo          *catalog.Repository
@@ -126,9 +125,9 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		VoiceoverService:     svcs.voiceoverService,
 		VoiceoverSync:        svcs.voiceoverSync,
 		IndexingService:      svcs.indexingService,
-		HarvesterCronService: jobs.harvesterCronSvc,
+		// NOTE: HarvesterCronService removed (cron system eliminated)
 		CatalogSyncService:   svcs.catalogSync,
-		CatalogSyncJob:       jobs.catalogSyncJob,
+		// NOTE: CatalogSyncJob removed (cron system eliminated)
 		ChannelMonitor:       jobs.channelMonitor,
 		StockScheduler:       jobs.stockScheduler,
 		CatalogRepo:          svcs.catalogRepo,

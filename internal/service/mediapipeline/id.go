@@ -1,14 +1,16 @@
 package mediapipeline
 
 import (
-	"velox/go-master/pkg/idutil"
+	"fmt"
+
+	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/pathutil"
 )
 
 type stableIDGenerator struct{}
 
 func (g *stableIDGenerator) GenerateID(sourceURL string, req *PipelineRequest) string {
-	return idutil.StableSlugID(pathutil.Slug(req.Source), req.Source, req.MediaType, sourceURL)
+	return stableSlugID(pathutil.Slug(req.Source), req.Source, req.MediaType, sourceURL)
 }
 
 func (s *Service) StableClipID(item *WorkItem, req *PipelineRequest) string {
@@ -20,5 +22,11 @@ func (s *Service) StableClipID(item *WorkItem, req *PipelineRequest) string {
 	if item.SegmentSpec != nil {
 		parts = append(parts, item.SegmentSpec.Start, item.SegmentSpec.End)
 	}
-	return idutil.StableSlugID(pathutil.Slug(req.Source), parts...)
+	return stableSlugID(pathutil.Slug(req.Source), parts...)
+}
+
+// stableSlugID generates a stable ID with a slug prefix and truncated MD5 hash of parts.
+func stableSlugID(prefix string, parts ...string) string {
+	shortHash := hashutil.ShortMD5(parts, 12)
+	return fmt.Sprintf("%s_%s", prefix, shortHash)
 }

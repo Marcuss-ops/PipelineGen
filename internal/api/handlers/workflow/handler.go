@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"context"
 	"net/http"
 	"path/filepath"
 
@@ -40,6 +39,7 @@ type runWorkflowRequest struct {
 }
 
 // runWorkflow runs a loaded workflow by name
+// WARNING: This spawns a goroutine without job tracking - to be refactored to job system
 func (h *Handler) runWorkflow(c *gin.Context) {
 	var req runWorkflowRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,10 +52,10 @@ func (h *Handler) runWorkflow(c *gin.Context) {
 		return
 	}
 
-	// Run workflow asynchronously with background context
+	// WARNING: Goroutine without job system - temporary until workflow moves to job system
+	// TODO: Refactor to create a job in internal/service/jobs/
 	go func() {
-		ctx := context.Background()
-		result, err := h.service.RunWorkflow(ctx, req.Workflow)
+		result, err := h.service.RunWorkflow(c.Request.Context(), req.Workflow)
 		if err != nil {
 			h.log.Error("workflow run failed", zap.String("workflow", req.Workflow), zap.Error(err))
 			return
@@ -84,17 +84,18 @@ func (h *Handler) runWorkflowFile(c *gin.Context) {
 		return
 	}
 
-	// Resolve path
-	path := req.Path
-	if !filepath.IsAbs(path) {
-		// Try relative to working directory
+	// Path jail: only allow filenames, not paths
+	// This prevents path traversal attacks
+	cleanPath := filepath.Clean(req.Path)
+	if filepath.IsAbs(cleanPath) || filepath.Dir(cleanPath) != "." {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "only workflow names allowed, not paths"})
+		return
 	}
 
-	// Run workflow synchronously to return result
-	ctx := context.Background()
-	result, err := h.service.RunWorkflowFromFile(ctx, path)
+	// Run workflow synchronously to return result using request context
+	result, err := h.service.RunWorkflowFromFile(c.Request.Context(), cleanPath)
 	if err != nil {
-		h.log.Error("workflow file run failed", zap.String("path", path), zap.Error(err))
+		h.log.Error("workflow file run failed", zap.String("path", cleanPath), zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}

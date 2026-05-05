@@ -81,6 +81,8 @@ type RunResult struct {
 	StepResults  map[string]*StepOutput
 	Error        string
 	Duration     time.Duration
+	CreatedAt    time.Time
+	CompletedAt  time.Time
 }
 
 // Run executes a workflow using DAG-based execution
@@ -91,6 +93,7 @@ func (r *Runner) Run(ctx context.Context, wf *Workflow) (*RunResult, error) {
 		WorkflowID:   fmt.Sprintf("wf_%d", time.Now().UnixNano()),
 		Status:       "running",
 		StepResults:  make(map[string]*StepOutput),
+		CreatedAt:    time.Now(),
 	}
 
 	// Build levels for DAG execution

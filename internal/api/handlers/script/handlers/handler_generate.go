@@ -15,7 +15,9 @@ import (
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/artlist"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/apiutil"
+	"velox/go-master/pkg/models"
 )
 
 func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
@@ -229,9 +231,9 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 	return path, nil
 }
 
-// triggerBackgroundHarvest starts background harvesting for search suggestions
+// triggerBackgroundHarvest enqueues jobs for background harvesting based on search suggestions
 func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocument) {
-	if h.artlistService == nil || document == nil || document.Timeline == nil {
+	if h.artlistService == nil || h.jobsService == nil || document == nil || document.Timeline == nil {
 		return
 	}
 
@@ -249,28 +251,26 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(document *script.ScriptDocu
 		return
 	}
 
-	zap.L().Info("triggering background harvest for suggestions", zap.Int("tag_count", len(uniqueTags)))
+	zap.L().Info("enqueueing background harvest jobs for suggestions", zap.Int("tag_count", len(uniqueTags)))
 
-	// Limit concurrency to avoid spawning too many goroutines
-	semaphore := make(chan struct{}, 3)
+	jobCodec := artlist.JobCodec{}
 	for tag := range uniqueTags {
-		semaphore <- struct{}{}
-		go func(t string) {
-			defer func() { <-semaphore }()
-			zap.L().Info("starting background artlist pipeline for suggestion", zap.String("tag", t))
-			// Limit to 5 clips per tag to avoid massive downloads
-			// Strategy "verify" performs both download and upload if missing
-			req := &artlist.RunTagRequest{
-				Term:     t,
-				Limit:    5,
-				Strategy: "verify",
-			}
-			_, err := h.artlistService.RunTag(context.Background(), req)
-			if err != nil {
-				zap.L().Error("background artlist pipeline failed", zap.String("tag", t), zap.Error(err))
-			} else {
-				zap.L().Info("background artlist pipeline completed", zap.String("tag", t))
-			}
-		}(tag)
+		req := &artlist.RunTagRequest{
+			Term:     tag,
+			Limit:    5,
+			Strategy: "verify",
+		}
+		payload := jobCodec.PayloadFromRequest(req)
+
+		job, err := h.jobsService.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+			Type:     models.JobTypeArtlistRun,
+			Payload:  payload,
+			Priority: 5, // Lower priority for background tasks
+		})
+		if err != nil {
+			zap.L().Error("failed to enqueue background harvest job", zap.String("tag", tag), zap.Error(err))
+		} else {
+			zap.L().Info("enqueued background harvest job", zap.String("tag", tag), zap.String("job_id", job.ID))
+		}
 	}
 }

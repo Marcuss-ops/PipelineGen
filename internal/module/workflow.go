@@ -38,7 +38,7 @@ func (m *WorkflowModule) Name() string {
 
 // Enabled checks if this module is enabled
 func (m *WorkflowModule) Enabled(cfg *config.Config) bool {
-	return m.handler != nil
+	return m.handler != nil && cfg.Features.WorkflowEnabled
 }
 
 // RegisterRoutes registers the module's routes

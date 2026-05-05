@@ -36,6 +36,7 @@ func WireScriptDocs(
 		cfg.Drive.StockRootFolder,
 		nil, // artlistSvc - will be set later if available
 		coreDeps.AssocService,
+		coreDeps.JobsService,
 	)
 
 	var mod module.Module
