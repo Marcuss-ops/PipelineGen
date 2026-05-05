@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/assetpipeline"
@@ -209,7 +210,32 @@ func (s *Service) processLanguage(
 
 	// Save to DB if requested
 	if boolDefault(req.SaveDB, false) {
-		// Build metadata with voiceover-specific fields
+		now := time.Now().UTC()
+		rec := &voiceovers.Record{
+			ID:           item.ID,
+			RequestID:     requestID,
+			TextHash:      textHash,
+			TextPreview:   truncateString(req.Text, 100),
+			Language:      item.Language,
+			Voice:         item.Voice,
+			Filename:      item.Filename,
+			LocalPath:     item.LocalPath,
+			CleanedPath:   item.CleanedPath,
+			FolderID:      dest.FolderID,
+			FolderPath:    dest.FolderPath,
+			DriveLink:     item.DriveLink,
+			DownloadLink:  item.DownloadLink,
+			FileHash:      item.FileHash,
+			Status:        item.Status,
+			Strategy:      req.Strategy,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+		if err := s.repo.Upsert(ctx, rec); err != nil {
+			return item.fail("db_save_failed", err)
+		}
+
+		// Also save to generic media table for unified view
 		meta := map[string]interface{}{
 			"text_hash":     textHash,
 			"text_preview":  truncateString(req.Text, 100),
@@ -221,26 +247,25 @@ func (s *Service) processLanguage(
 		}
 		metaJSON, _ := json.Marshal(meta)
 
-		// Use assetpipeline.Finalize if available
 		if s.assetPipeline != nil {
 			finalizeInput := &assetpipeline.FinalizeInput{
-				ID:          item.ID,
-				Name:        truncateString(req.Text, 100),
-				Filename:    item.Filename,
-				Kind:        assetpipeline.AssetKindAudio,
-				Source:      "voiceover",
-				Group:       dest.Group,
-				Subfolder:   "",
-				LocalPath:   item.CleanedPath,
-				FolderID:    dest.FolderID,
-				FolderPath:  dest.FolderPath,
-				DriveLink:   item.DriveLink,
+				ID:           item.ID,
+				Name:         truncateString(req.Text, 100),
+				Filename:     item.Filename,
+				Kind:         assetpipeline.AssetKindAudio,
+				Source:       "voiceover",
+				Group:        dest.Group,
+				Subfolder:    "",
+				LocalPath:    item.CleanedPath,
+				FolderID:     dest.FolderID,
+				FolderPath:   dest.FolderPath,
+				DriveLink:    item.DriveLink,
 				DownloadLink: item.DownloadLink,
-				Metadata:    string(metaJSON),
+				Metadata:     string(metaJSON),
 				RequireLocal: false,
 				RequireHash:  false,
 				RequireDrive: false,
-				VerifyDB:    true,
+				VerifyDB:     true,
 			}
 
 			finalizeResult, err := s.assetPipeline.Finalize(ctx, finalizeInput)
@@ -250,8 +275,7 @@ func (s *Service) processLanguage(
 			if !finalizeResult.OK {
 				return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
 			}
-		} else {
-			// Fallback to old method
+		} else if s.mediaFinalizer != nil {
 			mediaRec := &mediaregistry.MediaRecord{
 				ID:           item.ID,
 				Source:       "voiceover",

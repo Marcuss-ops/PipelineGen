@@ -136,6 +136,7 @@ func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filen
 	start := time.Now()
 	created, err := p.driveClient.Files.Create(file).
 		Media(f).
+		Fields("id", "webViewLink", "webContentLink").
 		Context(ctx).
 		Do()
 	if err != nil {

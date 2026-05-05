@@ -3,6 +3,7 @@ package mediaasset
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,12 @@ import (
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
 )
+
+// MediaProcessor defines the contract for downloading, processing, and uploading media assets.
+// This interface is used across domains (artlist, youtubeclip, etc.) to avoid duplicate contracts.
+type MediaProcessor interface {
+	DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error)
+}
 
 type Processor struct {
 	dl       YTDLP
@@ -59,6 +66,20 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	result := &AssetResult{
 		ID:     input.ID,
 		Status: "failed",
+	}
+
+	// Validate required inputs
+	if input.ID == "" {
+		return result, fmt.Errorf("AssetInput.ID is required")
+	}
+	if input.Name == "" {
+		return result, fmt.Errorf("AssetInput.Name is required")
+	}
+	if input.SourceURL == "" {
+		return result, fmt.Errorf("AssetInput.SourceURL is required")
+	}
+	if p.dl == nil {
+		return result, fmt.Errorf("Processor.dl (YTDLP) is nil - cannot download")
 	}
 
 	// Setup paths
@@ -152,11 +173,13 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 			zap.String("url", input.SourceURL),
 		)
 
-		if err := p.ffmpeg.RemuxHLS(ctx, input.SourceURL, rawPath); err != nil {
+		// HLS remux should output to a proper .mp4 file
+		hlsOutputPath := rawPath + ".mp4"
+		if err := p.ffmpeg.RemuxHLS(ctx, input.SourceURL, hlsOutputPath); err != nil {
 			p.log.Warn("FFmpeg HLS remux failed, falling back to yt-dlp", zap.Error(err))
 		} else {
-			p.log.Info("FFmpeg HLS remux succeeded", zap.String("path", rawPath))
-			return rawPath, nil
+			p.log.Info("FFmpeg HLS remux succeeded", zap.String("path", hlsOutputPath))
+			return hlsOutputPath, nil
 		}
 	}
 
@@ -227,6 +250,17 @@ func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, 
 		return processedPath, nil
 	}
 
+	// Nil guard for ffmpeg
+	if p.ffmpeg == nil {
+		p.log.Warn("ffmpeg is nil, skipping normalization, moving raw to processed path", zap.String("id", input.ID))
+		if err := os.Rename(rawPath, processedPath); err != nil {
+			if err := copyFile(rawPath, processedPath); err != nil {
+				return "", fmt.Errorf("failed to move raw file to processed path: %w", err)
+			}
+		}
+		return processedPath, nil
+	}
+
 	opts := p.videoCfg
 	opts.KeepAudio = input.KeepAudio
 	opts.DisableDuration = input.DisableDuration
@@ -267,11 +301,21 @@ func (p *Processor) uploadStep(ctx context.Context, input AssetInput, path strin
 	return nil
 }
 
-// copyFile copies a file from src to dst.
+// copyFile copies a file from src to dst using streaming (io.Copy).
+// This avoids loading large files entirely into memory.
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
+	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
