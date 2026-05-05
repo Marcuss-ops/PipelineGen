@@ -10,21 +10,22 @@ const (
 )
 
 type FinalizeInput struct {
-	ID          string
-	Name        string
-	Filename    string
-	Kind        AssetKind
-	Source      string
-	SourceID    string
-	Group       string
-	Subfolder   string
+	ID           string
+	Name         string
+	Filename     string
+	Kind         AssetKind
+	Source       string
+	SourceID     string
+	Group        string
+	Subfolder    string
 
-	LocalPath   string
-	FolderID    string
-	FolderPath  string
+	LocalPath    string
+	FolderID     string
+	FolderPath   string
 
-	DriveLink    string
+	DriveLink     string
 	DownloadLink string
+	DriveFileID   string
 
 	Metadata string
 
@@ -35,12 +36,13 @@ type FinalizeInput struct {
 }
 
 type FinalizeResult struct {
-	OK           bool
-	Status       string
-	FileHash     string
-	ContentHash  string
-	DriveLink    string
-	DownloadLink string
-	LocalPath    string
-	Error        string
+	OK            bool
+	Status        string
+	FileHash      string
+	ContentHash   string
+	DriveLink     string
+	DriveFileID   string
+	DownloadLink  string
+	LocalPath     string
+	Error         string
 }

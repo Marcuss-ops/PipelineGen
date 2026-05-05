@@ -14,9 +14,12 @@ type Finalizer struct {
 	uploader   *Uploader
 	finalizer  *mediaregistry.Finalizer
 	assetIndex *assetindex.Service
+	dedupe     *DedupeService
+	lifecycle  *LifecycleService
 	log        *zap.Logger
 }
 
+// NewFinalizer creates a new Finalizer with uploader, media finalizer, and asset index.
 func NewFinalizer(uploader *Uploader, finalizer *mediaregistry.Finalizer, assetIndex *assetindex.Service, log *zap.Logger) *Finalizer {
 	return &Finalizer{
 		uploader:   uploader,
@@ -26,11 +29,45 @@ func NewFinalizer(uploader *Uploader, finalizer *mediaregistry.Finalizer, assetI
 	}
 }
 
+// NewFinalizerWithLifecycle creates a new Finalizer with lifecycle policies.
+func NewFinalizerWithLifecycle(
+	uploader *Uploader,
+	finalizer *mediaregistry.Finalizer,
+	assetIndex *assetindex.Service,
+	lifecycle *LifecycleService,
+	log *zap.Logger,
+) *Finalizer {
+	return &Finalizer{
+		uploader:   uploader,
+		finalizer:  finalizer,
+		assetIndex: assetIndex,
+		lifecycle:  lifecycle,
+		log:        log,
+	}
+}
+
 func (f *Finalizer) Finalize(ctx context.Context, in *FinalizeInput) (*FinalizeResult, error) {
 	out := &FinalizeResult{
 		OK:        false,
 		Status:    "failed",
 		LocalPath: in.LocalPath,
+	}
+
+	// Use lifecycle service for duplicate checking if available
+	if f.lifecycle != nil {
+		lifecycleResult, err := f.lifecycle.ProcessAsset(ctx, in, "")
+		if err != nil {
+			return out, err
+		}
+		if lifecycleResult.OK && lifecycleResult.Status == "skipped_duplicate" {
+			out.OK = true
+			out.Status = lifecycleResult.Status
+			out.DriveLink = lifecycleResult.DriveLink
+			out.DriveFileID = lifecycleResult.DriveFileID
+			out.DownloadLink = lifecycleResult.DownloadLink
+			out.FileHash = lifecycleResult.FileHash
+			return out, nil
+		}
 	}
 
 	if in.RequireLocal && in.LocalPath == "" {
@@ -56,23 +93,29 @@ func (f *Finalizer) Finalize(ctx context.Context, in *FinalizeInput) (*FinalizeR
 		}
 	}
 
-	if in.RequireDrive && in.DriveLink == "" {
+	// Use DriveFileID from input if available
+	driveFileID := in.DriveFileID
+	driveLink := in.DriveLink
+	downloadLink := in.DownloadLink
+
+	if in.RequireDrive && driveLink == "" {
 		if f.uploader != nil {
-			driveLink, downloadLink, err := f.uploader.Upload(ctx, in.LocalPath, in.FolderID)
+			var err error
+			driveLink, downloadLink, err = f.uploader.Upload(ctx, in.LocalPath, in.FolderID)
 			if err != nil {
 				out.Error = "upload failed: " + err.Error()
 				return out, err
 			}
-			out.DriveLink = driveLink
-			out.DownloadLink = downloadLink
+			driveFileID = "" // Uploader doesn't return FileID yet
 		} else {
 			out.Error = "upload required but no uploader configured"
 			return out, nil
 		}
-	} else {
-		out.DriveLink = in.DriveLink
-		out.DownloadLink = in.DownloadLink
 	}
+
+	out.DriveLink = driveLink
+	out.DriveFileID = driveFileID
+	out.DownloadLink = downloadLink
 
 	if f.finalizer != nil {
 		rec := &mediaregistry.MediaRecord{
@@ -85,8 +128,9 @@ func (f *Finalizer) Finalize(ctx context.Context, in *FinalizeInput) (*FinalizeR
 			FolderPath:   in.FolderPath,
 			Group:        in.Group,
 			LocalPath:    in.LocalPath,
-			DriveLink:    out.DriveLink,
-			DownloadLink: out.DownloadLink,
+			DriveLink:    driveLink,
+			DriveFileID:  driveFileID,
+			DownloadLink: downloadLink,
 			FileHash:     out.FileHash,
 			ContentHash:  out.ContentHash,
 			Metadata:     in.Metadata,
@@ -121,8 +165,8 @@ func (f *Finalizer) Finalize(ctx context.Context, in *FinalizeInput) (*FinalizeR
 			GroupName:    in.Group,
 			Subfolder:    in.Subfolder,
 			LocalPath:    in.LocalPath,
-			DriveLink:    out.DriveLink,
-			DownloadLink: out.DownloadLink,
+			DriveLink:    driveLink,
+			DownloadLink: downloadLink,
 			FileHash:     out.FileHash,
 			ContentHash:  out.ContentHash,
 			Status:       "ready",
