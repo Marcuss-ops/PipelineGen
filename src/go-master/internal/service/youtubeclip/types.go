@@ -4,8 +4,6 @@ type ExtractRequest struct {
 	URL            string             `json:"url"`
 	Segments       []Segment          `json:"segments"`
 	ForceKeyframes bool               `json:"force_keyframes"`
-	SaveDB         *bool              `json:"save_db,omitempty"`
-	UploadDrive    *bool              `json:"upload_drive,omitempty"`
 	Normalize      *bool              `json:"normalize,omitempty"` // Use pointer to distinguish between missing and false
 	KeepAudio      bool               `json:"keep_audio"`
 	WriteSummary   *bool              `json:"write_summary,omitempty"`
@@ -63,6 +61,8 @@ type ExtractItem struct {
 	End            string `json:"end"`
 	LocalPath      string `json:"local_path,omitempty"`
 	DriveLink      string `json:"drive_link,omitempty"`
+	DriveFileID    string `json:"drive_file_id,omitempty"`
+	DownloadLink   string `json:"download_link,omitempty"`
 	Status         string `json:"status"`
 	Error          string `json:"error,omitempty"`
 	DriveFolderID  string `json:"drive_folder_id,omitempty"`

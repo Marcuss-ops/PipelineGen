@@ -191,11 +191,7 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, chann
 	}
 	
 	// Add proper defaults to extraction request
-	saveDB := true
-	uploadDrive := true
 	normalize := true
-	req.SaveDB = &saveDB
-	req.UploadDrive = &uploadDrive
 	req.Normalize = &normalize
 
 	_, err := m.youtubeSvc.Extract(ctx, req)

@@ -115,6 +115,18 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	youtubeDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
 	youtubeMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, youtubeDriveVerifier, assetIndexService, log)
 
+	// Create LifecycleService for youtubeclip
+	ytStore := assetpipeline.NewRegistryStoreAdapter(clipsRegistry)
+	ytLifecycle := assetpipeline.NewLifecycleService(
+		ytStore,
+		driveClient,
+		clipsRegistry,
+		assetIndexService,
+		youtubeMediaFinalizer,
+		assetpipeline.DefaultLifecycleConfig(),
+		log,
+	)
+
 	youtubeClipService := youtubeclip.NewService(
 		cfg,
 		log,
@@ -123,7 +135,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		driveClient,
 		driveDestinationService,
 		mediaProcessor,
-		youtubeMediaFinalizer,
+		ytLifecycle,
 	)
 
 	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
