@@ -99,7 +99,7 @@ src/go-master/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Go 1.21+
+- Go 1.25.9
 - Ollama running with `gemma3:4b` model
 - Google OAuth credentials (`credentials.json` + `token.json`)
 - `yt-dlp` installed

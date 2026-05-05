@@ -3,8 +3,6 @@ package storage
 import (
 	"database/sql"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -97,28 +95,17 @@ func (s *SQLiteDB) Backup() error {
 	return s.BackupTo(backupPath)
 }
 
-// BackupTo creates a backup of the database file to the specified path.
+// BackupTo creates a backup of the database using VACUUM INTO (safe with WAL mode).
 func (s *SQLiteDB) BackupTo(backupPath string) error {
 	if s.dbPath == "" {
 		return fmt.Errorf("database path not set")
 	}
 
-	// Use file copy for backup (simple and reliable)
-	src, err := os.Open(s.dbPath)
+	// Use VACUUM INTO for safe backup even with WAL mode
+	// This creates a consistent snapshot without copying WAL files
+	_, err := s.DB.Exec(fmt.Sprintf("VACUUM INTO '%s'", backupPath))
 	if err != nil {
-		return fmt.Errorf("failed to open source database: %w", err)
-	}
-	defer src.Close()
-
-	dst, err := os.Create(backupPath)
-	if err != nil {
-		return fmt.Errorf("failed to create backup file: %w", err)
-	}
-	defer dst.Close()
-
-	_, err = io.Copy(dst, src)
-	if err != nil {
-		return fmt.Errorf("failed to copy database: %w", err)
+		return fmt.Errorf("failed to backup database using VACUUM INTO: %w", err)
 	}
 
 	return nil

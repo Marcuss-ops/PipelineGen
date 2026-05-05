@@ -75,11 +75,9 @@ func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, Clea
 func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDeps, CleanupFunc, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// 1. Security & Infrastructure
-	for _, host := range cfg.Security.AllowedDownloadHosts {
-		security.AddAllowedHost(host)
-		log.Debug("Added allowed download host from config", zap.String("host", host))
-	}
+	// 1. Security & Infrastructure - Set download host whitelist from config
+	security.SetAllowedHosts(cfg.Security.AllowedDownloadHosts)
+	log.Info("Configured download host whitelist", zap.Int("hosts_count", len(cfg.Security.AllowedDownloadHosts)))
 
 	// 2. Databases
 	dbs, err := initDatabases(cfg, log)
