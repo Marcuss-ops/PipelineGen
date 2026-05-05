@@ -139,15 +139,43 @@ When adding new tables to `velox.db.sqlite`, ensure:
 - Subfolders are created per term/tag
 - Dry-run mode simulates uploads without actual Drive operations
 
+## Migration Status (Brutal Care Plan)
+
+### Completed
+- ✅ Eliminated `internal/service/assetpipeline/` thin wrapper (Service struct removed, using Finalizer directly)
+- ✅ Migrated `workflowrunner.results` from in-memory maps to job system
+- ✅ Migrated `assetdestination.Resolver` to `internal/core/destination.Resolver`
+- ✅ Migrated `mediaasset.Processor` to `internal/core/processor.Processor` (adapters created)
+- ✅ Fixed Go toolchain corruption (Go 1.25.9 installed to `/usr/local/go`)
+- ✅ Merged `internal/core/media/models.go` into `model.go`
+- ✅ Removed deprecated `api-cron` mode from server
+- ✅ Fixed import paths (`internal/pkg/` → `pkg/`)
+
+### Pending
+- Consolidate `internal/core/media/` - verify unified models work
+- Migrate harvester/catalog sync/db backup from cron to job system (cron already removed, verify)
+- Remove duplicates and adapt all modules to canonical contracts
+- CI checks: `scripts/ci-architectural-checks.sh` must block violations
+
+## Core Contracts
+
+All modules must use canonical contracts in `internal/core/`:
+- `core/destination.Resolver` - adapter in `service/assetdestination/adapter.go`
+- `core/processor.Processor` - adapter in `service/mediaasset/adapter.go`
+- All long-running operations must use `internal/service/jobs/` system
+
 ## File Structure
 ```
 src/go-master/
 ├── cmd/server/main.go          # Main entry point
 ├── internal/
+│   ├── core/                  # Canonical contracts (destination, processor, media, jobs)
 │   ├── api/handlers/          # HTTP handlers
 │   ├── service/               # Business logic
 │   │   ├── artlist/          # Artlist pipeline
 │   │   ├── jobs/             # Job queue system
+│   │   ├── mediaasset/       # Media processing (adapter pattern)
+│   │   ├── assetdestination/ # Destination resolver (adapter pattern)
 │   │   └── youtubeclip/      # YouTube processing
 │   └── storage/              # Database connections
 ├── data/                      # SQLite databases (gitignored)
