@@ -18,10 +18,9 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/assetdestination"
-	"velox/go-master/internal/service/assetstore"
+	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
-	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/models"
@@ -39,7 +38,7 @@ type Service struct {
 	assetDestResolver  destination.Resolver
 	mediaProcessor     processor.Processor
 	folderMemory       *foldermemory.Service
-	mediaFinalizer     *mediaregistry.Finalizer
+	lifecycleService   *assetpipeline.LifecycleService
 }
 
 func NewService(
@@ -50,7 +49,7 @@ func NewService(
 	driveClient *driveapi.Service,
 	driveDestination *drivedestination.Service,
 	mediaProcessor processor.Processor,
-	mediaFinalizer *mediaregistry.Finalizer,
+	lifecycleService *assetpipeline.LifecycleService,
 ) *Service {
 	// Create asset destination resolver for unified destination resolution
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
@@ -65,7 +64,7 @@ func NewService(
 		assetDestResolver: assetdestination.ToCoreResolver(assetDestResolver),
 		mediaProcessor:    mediaProcessor,
 		folderMemory:      foldermemory.NewService(log, clipsRepo),
-		mediaFinalizer:    mediaFinalizer,
+		lifecycleService:  lifecycleService,
 	}
 }
 
@@ -330,117 +329,14 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		clipID := fmt.Sprintf("yt_%s_%d_%d", videoID, startSec, endSec)
 		item.ID = clipID
 
-		// Check if clip already exists (deduplication)
-		strategy := req.Strategy
-		if strategy == "" {
-			strategy = "verify"
-		}
-
-		saveDB := boolDefault(req.SaveDB, true)
-		if s.clipsRepo != nil && saveDB && strategy != "replace" {
-			existingClip, clipErr := s.clipsRepo.GetClip(ctx, clipID)
-
-			// Build asset from existing clip for assetstore check
-			var existingAsset assetstore.ExistingAsset
-			if clipErr == nil && existingClip != nil {
-				existingAsset = assetstore.ExistingAsset{
-					ID:        existingClip.ID,
-					DriveLink: existingClip.DriveLink,
-					FileHash:  existingClip.FileHash,
-					Metadata:  existingClip.Metadata,
-					LocalPath: existingClip.LocalPath,
-				}
-			}
-
-			// Use assetstore for standard deduplication
-			shouldSkip, skipReason, _ := assetstore.ShouldSkipExisting(
-				ctx,
-				existingAsset,
-				assetstore.ExistencePolicy(strategy),
-				nil,
-				assetstore.DefaultLocalFileChecker,
-			)
-
-			// Also check manifest (YouTube-specific)
-			if !shouldSkip && manifest != nil {
-				for _, mItem := range manifest.Clips {
-					if mItem.ID == clipID {
-						if strategy == "skip" {
-							shouldSkip = true
-							skipReason = "found in manifest (skip strategy)"
-						} else if mItem.Status == "processed" {
-							if mItem.LocalPath != "" {
-								if _, statErr := os.Stat(mItem.LocalPath); statErr == nil {
-									shouldSkip = true
-									skipReason = "processed in manifest (local file exists)"
-								}
-							}
-							if !shouldSkip && mItem.DriveLink != "" {
-								shouldSkip = true
-								skipReason = "processed in manifest (drive link exists)"
-							}
-						}
-						break
-					}
-				}
-			}
-
-			if shouldSkip {
-				s.log.Info("clip already exists, skipping processing",
-					zap.String("clip_id", clipID),
-					zap.String("reason", skipReason),
-				)
-				if existingClip != nil {
-					item.LocalPath = existingClip.LocalPath
-					item.DriveLink = existingClip.DriveLink
-				}
-				item.Status = "skipped_existing"
-
-				// Update manifest even if skipped
-				if manifest != nil {
-					found := false
-					for _, mItem := range manifest.Clips {
-						if mItem.ID == clipID {
-							found = true
-							break
-						}
-					}
-					if !found {
-						manifest.Clips = append(manifest.Clips, models.ClipManifestItem{
-							ID:              clipID,
-							Name:            item.Name,
-							Start:           item.Start,
-							End:             item.End,
-							StartSeconds:    startSec,
-							EndSeconds:      endSec,
-							DurationSeconds: duration,
-							LocalPath:       item.LocalPath,
-							DriveLink:       item.DriveLink,
-							Status:          item.Status,
-							Tags:            fmt.Sprintf("%v", seg.Tags),
-						})
-					}
-				}
-
-				resp.Items = append(resp.Items, item)
-				resp.Stats.Skipped++
-				continue
-			}
-		}
-
 		// Build section for download
 		section := fmt.Sprintf("*%s-%s", item.Start, item.End)
-		
+
 		// Determine normalize flag
 		shouldNormalize := req.Normalize == nil || *req.Normalize
-		
-		// Use mediaasset processor for download/process/hash/upload
-		normalize := shouldNormalize
 
-		targetDriveFolderID := driveFolderID
-		if req.UploadDrive != nil && !*req.UploadDrive {
-			targetDriveFolderID = ""
-		}
+		// Use mediaasset processor for download/process/hash
+		normalize := shouldNormalize
 
 		processInput := &processor.ProcessInput{
 			ID:               clipID,
@@ -449,7 +345,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			Term:             "",
 			OutputDir:         outDir,
 			Filename:         "",
-			FolderID:         targetDriveFolderID,
+			FolderID:         driveFolderID,
 			Duration:         duration,
 			ForceKeyframes:    req.ForceKeyframes,
 			DownloadSections:  []string{section},
@@ -478,69 +374,81 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 		localPath := result.LocalPath
 		fileHash := result.FileHash
-		driveLink := result.DriveLink
-		
-		item.LocalPath = localPath
-		item.DriveLink = driveLink
-		item.Status = "processed"
 
-		// Save clip using mediaregistry finalizer for consistent asset finalization
-		if saveDB && s.mediaFinalizer != nil {
-			// Build metadata using json.Marshal for proper escaping
-			metadataMap := map[string]interface{}{
-				"video_id":         videoID,
-				"start":            item.Start,
-				"end":              item.End,
-				"start_seconds":    startSec,
-				"end_seconds":      endSec,
-				"duration_seconds": duration,
-				"folder_slug":      folderSlug,
-				"strategy":         strategy,
-				"normalized":       shouldNormalize,
-				"keep_audio":       req.KeepAudio,
+		// Use LifecycleService for dedupe + upload + persist
+		metadataMap := map[string]interface{}{
+			"video_id":         videoID,
+			"start":            item.Start,
+			"end":              item.End,
+			"start_seconds":    startSec,
+			"end_seconds":      endSec,
+			"duration_seconds": duration,
+			"folder_slug":      folderSlug,
+			"normalized":       shouldNormalize,
+			"keep_audio":       req.KeepAudio,
+		}
+		metadataBytes, _ := json.Marshal(metadataMap)
+		metadata := string(metadataBytes)
+
+		folderPath := resolvedPath
+		if folderPath == "" && req.Destination != nil {
+			folderPath = req.Destination.FolderPath
+		}
+
+		input := &assetpipeline.FinalizeInput{
+			ID:           clipID,
+			Name:         item.Name,
+			Filename:     filepath.Base(localPath),
+			Kind:         assetpipeline.AssetKindVideo,
+			Source:       "youtube",
+			Group:        getGroupFromDestination(req.Destination),
+			Subfolder:    "",
+			LocalPath:    localPath,
+			FolderID:     driveFolderID,
+			FolderPath:   folderPath,
+			DriveLink:    result.DriveLink,
+			DriveFileID:  result.DriveFileID,
+			DownloadLink: result.DownloadLink,
+			FileHash:     fileHash,
+			Metadata:     metadata,
+			RequireLocal: true,
+			RequireHash:  true,
+			RequireDrive: result.DriveLink != "",
+			VerifyDB:     true,
+		}
+
+		// Use LifecycleService for dedupe + upload + persist if available
+		if s.lifecycleService != nil {
+			lifecycleResult, err := s.lifecycleService.ProcessAsset(ctx, input, fileHash)
+			if err != nil {
+				item.Status = "failed"
+				item.Error = fmt.Sprintf("lifecycle failed: %v", err)
+				resp.Items = append(resp.Items, item)
+				resp.Stats.Failed++
+				resp.OK = false
+				continue
 			}
-			metadataBytes, _ := json.Marshal(metadataMap)
-			metadata := string(metadataBytes)
-
-			// Use resolved path or fallback to request path
-			folderPath := resolvedPath
-			if folderPath == "" && req.Destination != nil {
-				folderPath = req.Destination.FolderPath
+			if !lifecycleResult.OK {
+				item.Status = "failed"
+				item.Error = lifecycleResult.Error
+				resp.Items = append(resp.Items, item)
+				resp.Stats.Failed++
+				resp.OK = false
+				continue
 			}
 
-	mediaRec := &mediaregistry.MediaRecord{
-		ID:           clipID,
-		Name:         item.Name,
-		Filename:     filepath.Base(localPath),
-		FolderID:     driveFolderID,
-		FolderPath:   folderPath,
-		Group:        getGroupFromDestination(req.Destination),
-		MediaType:    "youtube_clip",
-		DriveLink:    driveLink,
-		DriveFileID:  result.DriveFileID,
-		DownloadLink:  result.DownloadLink,
-		Tags:         seg.Tags,
-		Source:       "youtube",
-		Category:     "manual_extract",
-		ExternalURL:  resp.SourceURL,
-		Duration:     duration,
-		Metadata:     metadata,
-		FileHash:     fileHash,
-		LocalPath:    localPath,
-		Status:       "processed",
-	}
-
-			finalizeOpts := mediaregistry.FinalizeOptions{
-				RequireLocal: true,
-				RequireHash:  true,
-				RequireDrive: driveLink != "",
-				VerifyDB:     true,
-			}
-
-			finalResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, finalizeOpts)
-			if err != nil || !finalResult.OK {
-				s.log.Warn("finalize failed", zap.Error(err), zap.String("error", finalResult.Error))
-			}
+			item.LocalPath = localPath
+			item.DriveLink = lifecycleResult.DriveLink
+			item.DriveFileID = lifecycleResult.DriveFileID
+			item.DownloadLink = lifecycleResult.DownloadLink
+			item.Status = "processed"
+		} else {
+			// Fallback if LifecycleService not available (tests)
+			item.LocalPath = localPath
+			item.DriveLink = result.DriveLink
+			item.DriveFileID = result.DriveFileID
+			item.DownloadLink = result.DownloadLink
+			item.Status = "processed"
 		}
 
 		// Update manifest with this clip
