@@ -1,10 +1,12 @@
 package assetindex
 
 import (
-    "context"
-    "database/sql"
-    "strings"
-    "time"
+	"context"
+	"database/sql"
+	"strings"
+	"time"
+
+	"velox/go-master/pkg/timeutil"
 )
 
 type Repository struct {
@@ -69,7 +71,7 @@ func (r *Repository) Upsert(ctx context.Context, rec *AssetRecord) error {
 }
 
 func (r *Repository) FindByContentHash(ctx context.Context, hash string) (*AssetRecord, error) {
-    query := `
+	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
                file_hash, content_hash, status, metadata_json, created_at, updated_at
@@ -78,34 +80,38 @@ func (r *Repository) FindByContentHash(ctx context.Context, hash string) (*Asset
         LIMIT 1
     `
 
-    rec := &AssetRecord{}
-    err := r.db.QueryRowContext(ctx, query, hash).Scan(
-        &rec.AssetID,
-        &rec.AssetType,
-        &rec.Source,
-        &rec.SourceID,
-        &rec.OperationKey,
-        &rec.GroupName,
-        &rec.Subfolder,
-        &rec.LocalPath,
-        &rec.DriveLink,
-        &rec.DownloadLink,
-        &rec.FileHash,
-        &rec.ContentHash,
-        &rec.Status,
-        &rec.Metadata,
-        &rec.CreatedAt,
-        &rec.UpdatedAt,
-    )
+	rec := &AssetRecord{}
+	var createdAtStr, updatedAtStr string
+	err := r.db.QueryRowContext(ctx, query, hash).Scan(
+		&rec.AssetID,
+		&rec.AssetType,
+		&rec.Source,
+		&rec.SourceID,
+		&rec.OperationKey,
+		&rec.GroupName,
+		&rec.Subfolder,
+		&rec.LocalPath,
+		&rec.DriveLink,
+		&rec.DownloadLink,
+		&rec.FileHash,
+		&rec.ContentHash,
+		&rec.Status,
+		&rec.Metadata,
+		&createdAtStr,
+		&updatedAtStr,
+	)
 
-    if err == sql.ErrNoRows {
-        return nil, nil
-    }
-    if err != nil {
-        return nil, err
-    }
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 
-    return rec, nil
+	rec.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
+	rec.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
+
+	return rec, nil
 }
 
 func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder string) ([]*AssetRecord, error) {
@@ -141,37 +147,40 @@ func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder stri
     defer rows.Close()
 
     var results []*AssetRecord
-    for rows.Next() {
-        rec := &AssetRecord{}
-        err := rows.Scan(
-            &rec.AssetID,
-            &rec.AssetType,
-            &rec.Source,
-            &rec.SourceID,
-            &rec.OperationKey,
-            &rec.GroupName,
-            &rec.Subfolder,
-            &rec.LocalPath,
-            &rec.DriveLink,
-            &rec.DownloadLink,
-            &rec.FileHash,
-            &rec.ContentHash,
-            &rec.Status,
-            &rec.Metadata,
-            &rec.CreatedAt,
-            &rec.UpdatedAt,
-        )
-        if err != nil {
-            return nil, err
-        }
-        results = append(results, rec)
-    }
+	for rows.Next() {
+		rec := &AssetRecord{}
+		var createdAtStr, updatedAtStr string
+		err := rows.Scan(
+			&rec.AssetID,
+			&rec.AssetType,
+			&rec.Source,
+			&rec.SourceID,
+			&rec.OperationKey,
+			&rec.GroupName,
+			&rec.Subfolder,
+			&rec.LocalPath,
+			&rec.DriveLink,
+			&rec.DownloadLink,
+			&rec.FileHash,
+			&rec.ContentHash,
+			&rec.Status,
+			&rec.Metadata,
+			&createdAtStr,
+			&updatedAtStr,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rec.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
+		rec.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
+		results = append(results, rec)
+	}
 
-    return results, nil
+	return results, nil
 }
 
 func (r *Repository) FindBySource(ctx context.Context, source, sourceID string) (*AssetRecord, error) {
-    query := `
+	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
                file_hash, content_hash, status, metadata_json, created_at, updated_at
@@ -179,35 +188,38 @@ func (r *Repository) FindBySource(ctx context.Context, source, sourceID string) 
         WHERE source = ? AND source_id = ?
         LIMIT 1
     `
+	rec := &AssetRecord{}
+	var createdAtStr, updatedAtStr string
+	err := r.db.QueryRowContext(ctx, query, source, sourceID).Scan(
+		&rec.AssetID,
+		&rec.AssetType,
+		&rec.Source,
+		&rec.SourceID,
+		&rec.OperationKey,
+		&rec.GroupName,
+		&rec.Subfolder,
+		&rec.LocalPath,
+		&rec.DriveLink,
+		&rec.DownloadLink,
+		&rec.FileHash,
+		&rec.ContentHash,
+		&rec.Status,
+		&rec.Metadata,
+		&createdAtStr,
+		&updatedAtStr,
+	)
 
-    rec := &AssetRecord{}
-    err := r.db.QueryRowContext(ctx, query, source, sourceID).Scan(
-        &rec.AssetID,
-        &rec.AssetType,
-        &rec.Source,
-        &rec.SourceID,
-        &rec.OperationKey,
-        &rec.GroupName,
-        &rec.Subfolder,
-        &rec.LocalPath,
-        &rec.DriveLink,
-        &rec.DownloadLink,
-        &rec.FileHash,
-        &rec.ContentHash,
-        &rec.Status,
-        &rec.Metadata,
-        &rec.CreatedAt,
-        &rec.UpdatedAt,
-    )
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 
-    if err == sql.ErrNoRows {
-        return nil, nil
-    }
-    if err != nil {
-        return nil, err
-    }
+	rec.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
+	rec.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
 
-    return rec, nil
+	return rec, nil
 }
 
 func (r *Repository) UpdateStatus(ctx context.Context, assetID, status string) error {
