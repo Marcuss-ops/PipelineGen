@@ -2,7 +2,6 @@ package voiceover
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -24,8 +23,14 @@ func NewSyncHandler(syncService *voiceoversync.Service, log *zap.Logger) *SyncHa
 }
 
 func (h *SyncHandler) RegisterRoutes(r *gin.RouterGroup) {
+	// Don't register routes if service is nil
+	if h.syncService == nil {
+		h.log.Warn("voiceover sync service is nil, skipping route registration")
+		return
+	}
 	r.POST("/sync", h.Sync)
-	r.GET("/sync/status", h.Status)
+	// Note: /sync/status removed - was returning fake status (debt)
+	// To re-add, implement real status with: last sync time, running state, etc.
 }
 
 func (h *SyncHandler) Sync(c *gin.Context) {
@@ -44,18 +49,4 @@ func (h *SyncHandler) Sync(c *gin.Context) {
 	}
 
 	apiutil.OK(c, summary)
-}
-
-func (h *SyncHandler) Status(c *gin.Context) {
-	rootID := strings.TrimSpace(c.Query("root_id"))
-	if rootID == "" {
-		apiutil.BadRequest(c, "root_id query parameter is required")
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"root_id": rootID,
-		"message": "Voiceover sync status endpoint - use POST /sync to trigger sync",
-	})
 }
