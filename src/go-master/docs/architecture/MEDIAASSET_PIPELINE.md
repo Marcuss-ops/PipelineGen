@@ -20,8 +20,8 @@ The media asset pipeline provides a common, reusable pipeline for downloading, p
 │                  │                                          │
 │                  ▼                                          │
 │      ┌───────────────────────────┐                          │
-│      │  mediaasset.Processor     │                          │
-│      │  DownloadProcessUpload()  │                          │
+│      │  core/processor.Processor │                          │
+│      │  Process()                │                          │
 │      └──────────────┬────────────┘                          │
 │                     │                                       │
 │      ┌──────────────┴────────────┐                         │

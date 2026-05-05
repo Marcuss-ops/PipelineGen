@@ -7,12 +7,12 @@ Tutti i moduli devono adattarsi a questi contratti, non creare i propri mini-mon
 
 ### 1. Asset (Media)
 **Package**: `internal/core/media/`
-**File**: `model.go`, `models.go`
+**File**: `model.go`
 
 Il modello canonico per asset video/audio/image.
 - `MediaAsset` - asset principale
 - `MediaFile` - file associati
-- `Item`, `File` - modelli alternativi/search
+- `Item`, `File`, `Source`, `Tag`, `Usage`, `SearchQuery` - modelli alternativi/search
 
 ### 2. Job
 **Package**: `internal/core/jobs/`
@@ -65,9 +65,13 @@ Se un modulo ha bisogno di un nuovo contratto, deve essere discusso e aggiunto q
 | Processor | `internal/core/processor/` | `internal/service/mediaasset.Processor` |
 | Module | `internal/module/` | `internal/module/`, `internal/bootstrap/` |
 
+## Completato
+
+- ✅ Consolidato `internal/core/media/` - unito `models.go` in `model.go`
+- ✅ Migrato `assetdestination.Resolver` a `internal/core/destination.Resolver`
+- ✅ Migrato `mediaasset.Processor` a `internal/core/processor.Processor`
+
 ## Da Fare
 
-1. Consolidare `internal/core/media/` - unificare `model.go` e `models.go`
-2. Migrare `assetdestination.Resolver` a `internal/core/destination.Resolver`
-3. Migrare `mediaasset.Processor` a `internal/core/processor.Processor`
-4. Rimuovere duplicati e adattare tutti i moduli ai contratti canonici
+1. Rimuovere duplicati e adattare tutti i moduli ai contratti canonici
+2. CI checks: `scripts/ci-architectural-checks.sh` deve bloccare violazioni

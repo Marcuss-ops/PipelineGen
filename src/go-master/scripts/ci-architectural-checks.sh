@@ -68,6 +68,24 @@ if ! grep -q "resolveWorkflowPath\|filepath.Dir.*!=" internal/api/handlers/workf
     FAILED=1
 fi
 
+# Check 8: Verify core contracts are used (not internal/pkg/ paths)
+echo "Check 8: Verifying core contracts usage..."
+VIOLATIONS=$(grep -rn "internal/pkg/" internal/ --include="*.go" | grep -v "_test.go" || true)
+if [ -n "$VIOLATIONS" ]; then
+    echo "ERROR: Found references to internal/pkg/ (should use pkg/):"
+    echo "$VIOLATIONS"
+    FAILED=1
+fi
+
+# Check 9: Verify no assetpipeline.Service usage (thin wrapper eliminated)
+echo "Check 9: Checking for eliminated thin wrappers..."
+VIOLATIONS=$(grep -rn "assetpipeline\.Service\|assetpipeline\.New" internal/ --include="*.go" | grep -v "_test.go" || true)
+if [ -n "$VIOLATIONS" ]; then
+    echo "ERROR: Found references to eliminated assetpipeline.Service:"
+    echo "$VIOLATIONS"
+    FAILED=1
+fi
+
 # Final result
 echo "=== Architectural Checks Complete ==="
 if [ $FAILED -eq 1 ]; then
