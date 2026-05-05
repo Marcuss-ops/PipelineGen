@@ -4,6 +4,7 @@ import (
 	"context"
 	
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
+	"velox/go-master/internal/api/middleware"
 	artlistService "velox/go-master/internal/service/artlist"
 	"velox/go-master/pkg/config"
 	
@@ -51,7 +52,10 @@ func (m *ArtlistModule) RegisterRoutes(rg *gin.RouterGroup) {
 		m.log.Warn("artlist handler is nil, skipping route registration")
 		return
 	}
-	m.handler.RegisterRoutes(rg)
+
+	group := rg.Group("/artlist")
+	group.Use(middleware.ArtlistEnabled(m.cfg))
+	m.handler.RegisterRoutes(group)
 }
 
 // Start performs startup tasks

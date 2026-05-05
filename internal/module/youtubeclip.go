@@ -4,6 +4,7 @@ import (
 	"context"
 	
 	youtubeclipHandler "velox/go-master/internal/api/handlers/youtubeclip"
+	"velox/go-master/internal/api/middleware"
 	youtubeclipService "velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/config"
 	
@@ -51,7 +52,10 @@ func (m *YouTubeClipModule) RegisterRoutes(rg *gin.RouterGroup) {
 		m.log.Warn("youtube clip handler is nil, skipping route registration")
 		return
 	}
-	m.handler.RegisterRoutes(rg)
+
+	group := rg.Group("/youtube-clips")
+	group.Use(middleware.YouTubeEnabled(m.cfg))
+	m.handler.RegisterRoutes(group)
 }
 
 // Start performs startup tasks
