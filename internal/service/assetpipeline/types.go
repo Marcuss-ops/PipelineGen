@@ -23,11 +23,11 @@ type FinalizeInput struct {
 	FolderID     string
 	FolderPath   string
 
-	DriveLink     string
+	DriveLink    string
+	DriveFileID  string
 	DownloadLink string
-	DriveFileID   string
-
-	Metadata string
+	FileHash     string
+	Metadata     string
 
 	RequireLocal bool
 	RequireHash  bool

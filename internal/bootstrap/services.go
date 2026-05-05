@@ -109,9 +109,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	assetIndexService := assetindex.NewService(assetIndexRepo)
 	log.Info("asset index service initialized", zap.String("db", "assets.db.sqlite"))
 
-	// Asset pipeline finalizer
-	assetPipeline := assetpipeline.NewFinalizerWithDrive(driveClient, log, nil, assetIndexService)
-
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
 	// Create YouTube clip finalizer
@@ -135,12 +132,24 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
 
-	// Create voiceover media finalizer
+	// Create voiceover registry adapter and AssetRecordStore for LifecycleService
 	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
+	voStore := assetpipeline.NewRegistryStoreAdapter(voRegistryAdapter)
 	voDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
 	voMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(voRegistryAdapter, voDriveVerifier, assetIndexService, log)
 
-	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voMediaFinalizer, assetPipeline, voRepo)
+	// Create LifecycleService for voiceover
+	voLifecycle := assetpipeline.NewLifecycleService(
+		voStore,
+		driveClient,
+		voRegistryAdapter,
+		assetIndexService,
+		voMediaFinalizer,
+		assetpipeline.DefaultLifecycleConfig(),
+		log,
+	)
+
+	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	clipsRepo := clips.NewRepository(dbs.stock.DB, log)

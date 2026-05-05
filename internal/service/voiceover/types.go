@@ -7,8 +7,6 @@ type BatchRequest struct {
 	Languages        []string            `json:"languages"`
 	FilenameTemplate string              `json:"filename_template"`
 	RemoveSilence    *bool               `json:"remove_silence,omitempty"`
-	UploadDrive      *bool               `json:"upload_drive,omitempty"`
-	SaveDB           *bool               `json:"save_db,omitempty"`
 	Strategy         string              `json:"strategy"`
 	Destination      *DestinationRequest `json:"destination,omitempty"`
 	Metadata         map[string]any      `json:"metadata,omitempty"`

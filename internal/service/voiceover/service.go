@@ -4,16 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
-	"time"
 
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/audioasset"
-	"velox/go-master/internal/service/mediaregistry"
-	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
@@ -28,9 +24,7 @@ type Service struct {
 	driveClient       *gdrive.Service
 	assetDestResolver destination.Resolver
 	audioProcessor    *audioasset.Processor
-	mediaFinalizer    *mediaregistry.Finalizer
-	assetPipeline     *assetpipeline.Finalizer
-	repo              *voiceovers.Repository
+	lifecycleService  *assetpipeline.LifecycleService
 }
 
 func NewService(
@@ -39,9 +33,7 @@ func NewService(
 	outputDir string,
 	log *zap.Logger,
 	driveClient *gdrive.Service,
-	mediaFinalizer *mediaregistry.Finalizer,
-	assetPipeline *assetpipeline.Finalizer,
-	repo *voiceovers.Repository,
+	lifecycleService *assetpipeline.LifecycleService,
 ) *Service {
 	// Create asset destination resolver
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
@@ -62,9 +54,7 @@ func NewService(
 		driveClient:       driveClient,
 		assetDestResolver: assetdestination.ToCoreResolver(assetDestResolver),
 		audioProcessor:    audioProcessor,
-		mediaFinalizer:    mediaFinalizer,
-		assetPipeline:     assetPipeline,
-		repo:              repo,
+		lifecycleService:  lifecycleService,
 	}
 }
 
@@ -76,8 +66,6 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 		Languages:        []string{language},
 		FilenameTemplate: filename,
 		RemoveSilence:    boolPtr(false),
-		UploadDrive:      boolPtr(false),
-		SaveDB:           boolPtr(false),
 		Strategy:         "replace",
 	})
 	if err != nil {
@@ -164,12 +152,6 @@ func (s *Service) processLanguage(
 		Status:   "processing",
 	}
 
-	// Check existing via repository (deduplication)
-	existing, _ := s.findExisting(ctx, textHash, language, folderID)
-	if shouldSkipExisting(existing, req.Strategy) {
-		return existingToItem(existing, "skipped_existing")
-	}
-
 	// Build audio input for processor
 	audioInput := &audioasset.AudioInput{
 		Text:          req.Text,
@@ -177,18 +159,6 @@ func (s *Service) processLanguage(
 		OutputDir:     s.outputDir,
 		Filename:      filename,
 		RemoveSilence: boolDefault(req.RemoveSilence, false),
-	}
-
-	// Set destination from original request if upload is enabled
-	if req.Destination != nil && boolDefault(req.UploadDrive, false) {
-		audioInput.Destination = &destination.ResolveRequest{
-			Source:         "voiceover",
-			Group:          req.Destination.Group,
-			FolderID:       req.Destination.FolderID,
-			FolderPath:     req.Destination.FolderPath,
-			SubfolderName:  req.Destination.SubfolderName,
-			CreateSubfolder: req.Destination.CreateSubfolder,
-		}
 	}
 
 	// Generate audio via audioasset processor
@@ -209,110 +179,55 @@ func (s *Service) processLanguage(
 		item.Status = "processed"
 	}
 
-	// Save to DB if requested
-	if boolDefault(req.SaveDB, false) {
-		now := time.Now().UTC()
-		rec := &voiceovers.Record{
-			ID:           item.ID,
-			RequestID:     requestID,
-			TextHash:      textHash,
-			TextPreview:   truncateString(req.Text, 100),
-			Language:      item.Language,
-			Voice:         item.Voice,
-			Filename:      item.Filename,
-			LocalPath:     item.LocalPath,
-			CleanedPath:   item.CleanedPath,
-			FolderID:      dest.FolderID,
-			FolderPath:    dest.FolderPath,
-			DriveFileID:   item.DriveFileID,
-			DriveLink:     item.DriveLink,
-			DownloadLink:  item.DownloadLink,
-			FileHash:      item.FileHash,
-			Status:        item.Status,
-			Strategy:      req.Strategy,
-			CreatedAt:     now,
-			UpdatedAt:     now,
-		}
-		if err := s.repo.Upsert(ctx, rec); err != nil {
-			return item.fail("db_save_failed", err)
-		}
+	// Process through LifecycleService (dedupe + upload + persist)
+	meta := map[string]interface{}{
+		"text_hash":     textHash,
+		"text_preview":  truncateString(req.Text, 100),
+		"language":      item.Language,
+		"voice":         item.Voice,
+		"strategy":      req.Strategy,
+		"request_id":    requestID,
+		"cleaned_path":  item.CleanedPath,
+	}
+	metaJSON, _ := json.Marshal(meta)
 
-		// Also save to generic media table for unified view
-		meta := map[string]interface{}{
-			"text_hash":     textHash,
-			"text_preview":  truncateString(req.Text, 100),
-			"language":      item.Language,
-			"voice":         item.Voice,
-			"strategy":      req.Strategy,
-			"request_id":    requestID,
-			"cleaned_path":  item.CleanedPath,
-		}
-		metaJSON, _ := json.Marshal(meta)
-
-		if s.assetPipeline != nil {
-			finalizeInput := &assetpipeline.FinalizeInput{
-				ID:           item.ID,
-				Name:         truncateString(req.Text, 100),
-				Filename:     item.Filename,
-				Kind:         assetpipeline.AssetKindAudio,
-				Source:       "voiceover",
-				Group:        dest.Group,
-				Subfolder:    "",
-				LocalPath:    item.CleanedPath,
-				FolderID:     dest.FolderID,
-				FolderPath:   dest.FolderPath,
-				DriveLink:    item.DriveLink,
-				DriveFileID:  item.DriveFileID,
-				DownloadLink: item.DownloadLink,
-				Metadata:     string(metaJSON),
-				RequireLocal: false,
-				RequireHash:  false,
-				RequireDrive: false,
-				VerifyDB:     true,
-			}
-
-			finalizeResult, err := s.assetPipeline.Finalize(ctx, finalizeInput)
-			if err != nil {
-				return item.fail("finalize_failed", err)
-			}
-			if !finalizeResult.OK {
-				return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
-			}
-		} else if s.mediaFinalizer != nil {
-			mediaRec := &mediaregistry.MediaRecord{
-				ID:           item.ID,
-				Source:       "voiceover",
-				Name:         truncateString(req.Text, 100),
-				Filename:     item.Filename,
-				FolderID:     dest.FolderID,
-				FolderPath:   dest.FolderPath,
-				MediaType:    "audio",
-				DriveLink:    item.DriveLink,
-				DriveFileID:  item.DriveFileID,
-				DownloadLink: item.DownloadLink,
-				FileHash:     item.FileHash,
-				LocalPath:    item.CleanedPath,
-				Status:       item.Status,
-				Metadata:     string(metaJSON),
-			}
-
-			finalizeOpts := mediaregistry.FinalizeOptions{
-				RequireLocal: false,
-				RequireHash:  false,
-				RequireDrive: false,
-				VerifyDB:    true,
-			}
-
-			finalizeResult, err := s.mediaFinalizer.Finalize(ctx, mediaRec, finalizeOpts)
-			if err != nil {
-				return item.fail("finalize_failed", err)
-			}
-			if !finalizeResult.OK {
-				return item.fail("finalize_failed", fmt.Errorf("%s", finalizeResult.Error))
-			}
-		}
+	// Create FinalizeInput for LifecycleService
+	input := &assetpipeline.FinalizeInput{
+		ID:           item.ID,
+		Name:         truncateString(req.Text, 100),
+		Filename:     item.Filename,
+		Kind:         assetpipeline.AssetKindAudio,
+		Source:       "voiceover",
+		Group:        dest.Group,
+		Subfolder:    "",
+		LocalPath:    item.CleanedPath,
+		FolderID:     dest.FolderID,
+		FolderPath:   dest.FolderPath,
+		DriveLink:    item.DriveLink,
+		DriveFileID:  item.DriveFileID,
+		DownloadLink: item.DownloadLink,
+		FileHash:     item.FileHash,
+		Metadata:     string(metaJSON),
+		RequireLocal: false,
+		RequireHash:  false,
+		RequireDrive: item.DriveLink != "",
+		VerifyDB:     true,
 	}
 
+	// Process through lifecycle (dedupe + upload + persist)
+	lifecycleResult, err := s.lifecycleService.ProcessAsset(ctx, input, item.FileHash)
+	if err != nil {
+		return item.fail("lifecycle_failed", err)
+	}
+	if !lifecycleResult.OK {
+		return item.fail("lifecycle_failed", fmt.Errorf("%s", lifecycleResult.Error))
+	}
+
+	// Update item with results
+	item.DriveLink = lifecycleResult.DriveLink
+	item.DriveFileID = lifecycleResult.DriveFileID
+	item.DownloadLink = lifecycleResult.DownloadLink
+	item.Status = "processed"
 	return item
 }
 
@@ -340,61 +255,6 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 	}, nil
 }
 
-func (s *Service) findExisting(ctx context.Context, textHash, language, folderID string) (*voiceovers.Record, error) {
-	if s.repo == nil {
-		return nil, nil
-	}
-	return s.repo.FindExisting(ctx, textHash, language, folderID)
-}
-
-func shouldSkipExisting(existing *voiceovers.Record, strategy string) bool {
-	if existing == nil {
-		return false
-	}
-
-	switch strings.ToLower(strategy) {
-	case "replace":
-		return false
-	case "skip":
-		// Check if any output exists
-		if existing.DriveLink != "" {
-			return true
-		}
-		if existing.CleanedPath != "" {
-			if _, err := os.Stat(existing.CleanedPath); err == nil {
-				return true
-			}
-		}
-		if existing.LocalPath != "" {
-			if _, err := os.Stat(existing.LocalPath); err == nil {
-				return true
-			}
-		}
-		return false
-	case "verify", "":
-		if existing.Status != "processed" {
-			return false
-		}
-		// Verify at least one output exists
-		if existing.DriveLink != "" {
-			return true
-		}
-		if existing.CleanedPath != "" {
-			if _, err := os.Stat(existing.CleanedPath); err == nil {
-				return true
-			}
-		}
-		if existing.LocalPath != "" {
-			if _, err := os.Stat(existing.LocalPath); err == nil {
-				return true
-			}
-		}
-		return false
-	default:
-		return existing.Status == "processed"
-	}
-}
-
 // boolDefault returns the value of the bool pointer, or the default value if nil
 func boolDefault(v *bool, def bool) bool {
 	if v == nil {
@@ -408,27 +268,11 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-func existingToItem(existing *voiceovers.Record, status string) BatchItem {
-	return BatchItem{
-		ID:           existing.ID,
-		Language:     existing.Language,
-		Voice:        existing.Voice,
-		Filename:     existing.Filename,
-		LocalPath:    existing.LocalPath,
-		CleanedPath:  existing.CleanedPath,
-		DriveLink:    existing.DriveLink,
-		DownloadLink: existing.DownloadLink,
-		FileHash:     existing.FileHash,
-		Status:       status,
-	}
-}
-
-
-
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
 	return s[:maxLen]
 }
+
 
