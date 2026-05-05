@@ -90,7 +90,7 @@ src/go-master/
 
 ### Key Files for Agents
 - **AGENTS.md** - Critical rules and instructions
-- **docs/sqlite-databases.md** - Database schema boundaries and migration strategy
+- **docs/archive/sqlite-databases.md** - Database schema boundaries and migration strategy
 - **internal/storage/migrations.go** - Migration runner with FTS5 handling
 - **internal/bootstrap/** - Database initialization and service wiring
 
@@ -162,7 +162,7 @@ make coverage       # HTML coverage report
 
 ### Database Architecture
 The system uses **7 separate SQLite databases** for separation of concerns:
-- See `docs/sqlite-databases.md` for full schema documentation
+- See `docs/archive/sqlite-databases.md` for full schema documentation
 - See `AGENTS.md` for critical rules on database boundaries
 
 ---

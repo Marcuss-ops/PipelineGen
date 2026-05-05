@@ -95,7 +95,6 @@ func (s *Store) PutFile(srcPath string) (*PutResult, error) {
 // Verify checks if a file with the given hash exists in CAS and validates its integrity.
 // Returns true if the file exists and its hash matches.
 func (s *Store) Verify(contentHash string) (bool, error) {
-	ext := "" // We don't know the extension, so we need to check for the file
 	dir := filepath.Join(s.Root, contentHash[0:2], contentHash[2:4])
 	
 	// Try to find the file with any extension
