@@ -69,7 +69,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	server := api.NewServerWithHandlers(cfg, deps.Handlers)
+	// Use registry-aware server if registry is available
+	var server *api.Server
+	if deps.Registry != nil {
+		server = api.NewServerWithRegistry(cfg, deps.Handlers, deps.Registry)
+		log.Info("using module registry for route registration")
+	} else {
+		server = api.NewServerWithHandlers(cfg, deps.Handlers)
+		log.Info("using legacy handler registration")
+	}
 
 	// Run server (blocks until signal or error)
 	if err := server.Start(); err != nil {
