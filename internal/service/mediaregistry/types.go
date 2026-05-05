@@ -13,6 +13,7 @@ type MediaRecord struct {
 	Group         string
 	LocalPath     string
 	DriveLink     string
+	DriveFileID   string
 	DownloadLink  string
 	FileHash      string
 	ContentHash   string

@@ -26,7 +26,7 @@ import (
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns       = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, created_at, updated_at`
+	clipColumns       = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, created_at, updated_at`
 	clipFolderColumns = `id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at`
 )
 
@@ -70,22 +70,23 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO clips (id, name, filename, folder_id, folder_path, group_name, media_type,
-			drive_link, download_link, tags, source, category, external_url, duration, metadata,
-			file_hash, local_path, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata,
+			file_hash, local_path, status, error, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, filename=excluded.filename, folder_id=excluded.folder_id,
 			folder_path=excluded.folder_path, group_name=excluded.group_name,
 			media_type=excluded.media_type, drive_link=excluded.drive_link,
-			download_link=excluded.download_link, tags=excluded.tags,
+			drive_file_id=excluded.drive_file_id, download_link=excluded.download_link, tags=excluded.tags,
 			source=excluded.source, category=excluded.category,
 			external_url=excluded.external_url, duration=excluded.duration,
 			metadata=excluded.metadata, file_hash=excluded.file_hash,
-			local_path=excluded.local_path, updated_at=excluded.updated_at
+			local_path=excluded.local_path, status=excluded.status, error=excluded.error,
+			updated_at=excluded.updated_at
 		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group,
-		clip.MediaType, clip.DriveLink, clip.DownloadLink, string(tagsJSON), clip.Source,
+		clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, string(tagsJSON), clip.Source,
 		clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash,
-		clip.LocalPath, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		clip.LocalPath, clip.Status, clip.Error, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
 
 	return err
 }
@@ -388,11 +389,12 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var tagsJSON string
 	var fileHash, localPath string
 	var createdAt, updatedAt string
+	var status, errMsg string
 
 	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
-		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
+		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &createdAt, &updatedAt)
+		&fileHash, &localPath, &status, &errMsg, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -410,6 +412,8 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 
 	clip.FileHash = fileHash
 	clip.LocalPath = localPath
+	clip.Status = status
+	clip.Error = errMsg
 
 	return &clip, nil
 }
@@ -419,11 +423,12 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var tagsJSON string
 	var fileHash, localPath string
 	var createdAt, updatedAt string
+	var status, errMsg string
 
 	err := row.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
-		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DownloadLink, &tagsJSON,
+		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &createdAt, &updatedAt)
+		&fileHash, &localPath, &status, &errMsg, &createdAt, &updatedAt)
 
 	if err != nil {
 		return nil, err
@@ -441,6 +446,8 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 
 	clip.FileHash = fileHash
 	clip.LocalPath = localPath
+	clip.Status = status
+	clip.Error = errMsg
 
 	return &clip, nil
 }
@@ -475,6 +482,38 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 		return nil, nil
 	}
 	return clip, err
+}
+
+// GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id
+func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Clip, error) {
+	query := buildClipQuery("") + " WHERE drive_file_id IS NOT NULL AND drive_file_id != ''"
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
+// UpdateDriveFileID updates the drive_file_id for a clip
+func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
+	clipID = strings.TrimSpace(clipID)
+	fileID = strings.TrimSpace(fileID)
+	if clipID == "" {
+		return fmt.Errorf("clip id is required")
+	}
+
+	_, err := r.db.ExecContext(ctx, "UPDATE clips SET drive_file_id=?, updated_at=? WHERE id=?", fileID, time.Now().Format(time.RFC3339), clipID)
+	return err
 }
 
 // CountClips returns the total number of clips

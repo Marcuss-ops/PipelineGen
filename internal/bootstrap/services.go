@@ -85,6 +85,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
+	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)
+	clipsRegistry := mediaregistry.NewClipsRegistry(clipsOnlyRepo)
 	mediaProcessorInternal := mediaasset.NewProcessor(
 		ytDLPDownloader,
 		httpDL,
@@ -96,6 +98,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 			TempDir:  cfg.Storage.TempDir,
 			VideoCfg: ffmpeg.DefaultNormalizeOptions(cfg),
 		},
+		clipsRegistry,
 	)
 	mediaProcessor := mediaasset.ToCoreProcessor(mediaProcessorInternal)
 
@@ -110,10 +113,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	assetPipeline := assetpipeline.NewFinalizerWithDrive(driveClient, log, nil, assetIndexService)
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
-	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)
 
 	// Create YouTube clip finalizer
-	clipsRegistry := mediaregistry.NewClipsRegistry(clipsOnlyRepo)
 	youtubeDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
 	youtubeMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, youtubeDriveVerifier, assetIndexService, log)
 

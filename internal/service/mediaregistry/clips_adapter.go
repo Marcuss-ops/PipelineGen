@@ -26,6 +26,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		Group:        rec.Group,
 		MediaType:    rec.MediaType,
 		DriveLink:    rec.DriveLink,
+		DriveFileID:  rec.DriveFileID,
 		DownloadLink: rec.DownloadLink,
 		Tags:         rec.Tags,
 		Source:       rec.Source,
@@ -35,6 +36,8 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		Metadata:     rec.Metadata,
 		FileHash:     rec.FileHash,
 		LocalPath:    rec.LocalPath,
+		Status:       rec.Status,
+		Error:        rec.Error,
 		UpdatedAt:    time.Now(),
 	}
 	return r.repo.UpsertClip(ctx, clip)
@@ -51,6 +54,22 @@ func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, 
 	return clipToMediaRecord(clip), nil
 }
 
+func (r *ClipsRegistry) DeleteMedia(ctx context.Context, id string) error {
+	return r.repo.DeleteClip(ctx, id)
+}
+
+func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error) {
+	clips, err := r.repo.GetAllWithDriveFileID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]*MediaRecord, 0, len(clips))
+	for _, clip := range clips {
+		records = append(records, clipToMediaRecord(clip))
+	}
+	return records, nil
+}
+
 func clipToMediaRecord(clip *models.Clip) *MediaRecord {
 	return &MediaRecord{
 		ID:           clip.ID,
@@ -61,6 +80,7 @@ func clipToMediaRecord(clip *models.Clip) *MediaRecord {
 		Group:        clip.Group,
 		MediaType:    clip.MediaType,
 		DriveLink:    clip.DriveLink,
+		DriveFileID:  clip.DriveFileID,
 		DownloadLink: clip.DownloadLink,
 		Tags:         clip.Tags,
 		Source:       clip.Source,
@@ -70,6 +90,7 @@ func clipToMediaRecord(clip *models.Clip) *MediaRecord {
 		Metadata:     clip.Metadata,
 		FileHash:     clip.FileHash,
 		LocalPath:    clip.LocalPath,
-		Status:       "",
+		Status:       clip.Status,
+		Error:        clip.Error,
 	}
 }

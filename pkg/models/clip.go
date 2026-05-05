@@ -13,6 +13,7 @@ type Clip struct {
 	MediaType    string    `json:"media_type"`
 	DriveLink    string    `json:"drive_link"`
 	DownloadLink string    `json:"download_link"`
+	DriveFileID  string    `json:"drive_file_id"` // Google Drive file ID
 	Tags         []string  `json:"tags"`
 	Source       string    `json:"source"`
 	Category     string    `json:"category"`
@@ -21,6 +22,8 @@ type Clip struct {
 	Metadata     string    `json:"metadata"`
 	FileHash     string    `json:"file_hash"`
 	LocalPath    string    `json:"local_path"` // Path to downloaded local file
+	Status       string    `json:"status"`
+	Error        string    `json:"error"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

@@ -33,6 +33,24 @@ func (a *voiceoverRegistryAdapter) GetMedia(ctx context.Context, id string) (*me
 	return voiceoverToMediaRecord(vRec), nil
 }
 
+func (a *voiceoverRegistryAdapter) DeleteMedia(ctx context.Context, id string) error {
+	return a.repo.Delete(ctx, id)
+}
+
+func (a *voiceoverRegistryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*mediaregistry.MediaRecord, error) {
+	records, err := a.repo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var result []*mediaregistry.MediaRecord
+	for _, rec := range records {
+		if rec.DriveFileID != "" {
+			result = append(result, voiceoverToMediaRecord(rec))
+		}
+	}
+	return result, nil
+}
+
 func mediaRecordToVoiceover(mediaRec *mediaregistry.MediaRecord) *voiceovers.Record {
 	var meta struct {
 		TextHash    string `json:"text_hash"`
@@ -59,10 +77,12 @@ func mediaRecordToVoiceover(mediaRec *mediaregistry.MediaRecord) *voiceovers.Rec
 		CleanedPath:  meta.CleanedPath,
 		FolderID:     mediaRec.FolderID,
 		FolderPath:   mediaRec.FolderPath,
+		DriveFileID:  mediaRec.DriveFileID,
 		DriveLink:    mediaRec.DriveLink,
 		DownloadLink: mediaRec.DownloadLink,
 		FileHash:     mediaRec.FileHash,
 		Status:       mediaRec.Status,
+		Error:        mediaRec.Error,
 		Strategy:     meta.Strategy,
 		Metadata:     mediaRec.Metadata,
 	}
@@ -99,11 +119,13 @@ func voiceoverToMediaRecord(rec *voiceovers.Record) *mediaregistry.MediaRecord {
 		FolderID:     rec.FolderID,
 		FolderPath:   rec.FolderPath,
 		MediaType:    "audio",
+		DriveFileID:  rec.DriveFileID,
 		DriveLink:    rec.DriveLink,
 		DownloadLink: rec.DownloadLink,
 		FileHash:     rec.FileHash,
 		LocalPath:    rec.LocalPath,
 		Status:       rec.Status,
+		Error:        rec.Error,
 		Metadata:     string(metaJSON),
 	}
 }
