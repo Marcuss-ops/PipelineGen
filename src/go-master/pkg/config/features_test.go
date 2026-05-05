@@ -18,20 +18,20 @@ func TestFeaturesConfigDefaults(t *testing.T) {
 	if cfg.Features.DriveEnabled {
 		t.Error("DriveEnabled should default to false")
 	}
-	if cfg.Features.HarvesterEnabled {
-		t.Error("HarvesterEnabled should default to false")
-	}
 	if cfg.Features.ScriptDocsEnabled {
 		t.Error("ScriptDocsEnabled should default to false")
 	}
 	if cfg.Features.ScriptClipsEnabled {
 		t.Error("ScriptClipsEnabled should default to false")
 	}
-	if cfg.Features.StockEnabled {
-		t.Error("StockEnabled should default to false")
-	}
 	if cfg.Features.VoiceoverEnabled {
 		t.Error("VoiceoverEnabled should default to false")
+	}
+	if cfg.Features.WorkflowEnabled {
+		t.Error("WorkflowEnabled should default to false")
+	}
+	if cfg.Features.ImagesEnabled {
+		t.Error("ImagesEnabled should default to false")
 	}
 }
 
@@ -41,13 +41,21 @@ func TestFeaturesConfigDisabled(t *testing.T) {
 			ArtlistEnabled:    false,
 			YouTubeEnabled:    false,
 			DriveEnabled:      false,
-			HarvesterEnabled:  false,
 			ScriptDocsEnabled: false,
 			ScriptClipsEnabled: false,
-			StockEnabled:      false,
 			VoiceoverEnabled:  false,
+			WorkflowEnabled:   false,
+			ImagesEnabled:     false,
 		},
 	}
+
+	if cfg.Features.ArtlistEnabled {
+		t.Error("ArtlistEnabled should be false")
+	}
+	if cfg.Features.YouTubeEnabled {
+		t.Error("YouTubeEnabled should be false")
+	}
+}
 
 	if cfg.Features.ArtlistEnabled {
 		t.Error("ArtlistEnabled should be false")

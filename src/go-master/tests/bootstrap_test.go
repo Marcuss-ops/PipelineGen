@@ -29,7 +29,6 @@ func TestBootstrapWithoutExternalDeps(t *testing.T) {
 	cfg.Features.ArtlistEnabled = false
 	cfg.Features.YouTubeEnabled = false
 	cfg.Features.DriveEnabled = false
-	cfg.Features.HarvesterEnabled = false
 	cfg.Features.ScriptDocsEnabled = false
 	cfg.Storage.DataDir = t.TempDir()
 
@@ -60,8 +59,8 @@ func TestBootstrapWithMinimalConfig(t *testing.T) {
 			ArtlistEnabled:    false,
 			YouTubeEnabled:    false,
 			DriveEnabled:      false,
-			HarvesterEnabled:  false,
 			ScriptDocsEnabled: false,
+			ImagesEnabled:     false,
 		},
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),

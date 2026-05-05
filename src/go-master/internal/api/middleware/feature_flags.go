@@ -52,3 +52,13 @@ func WorkflowEnabled(cfg *config.Config) gin.HandlerFunc {
 func VoiceoverEnabled(cfg *config.Config) gin.HandlerFunc {
 	return FeatureFlagChecker(cfg, "Voiceover", cfg.Features.VoiceoverEnabled)
 }
+
+// DriveEnabled checks if the Drive feature is enabled
+func DriveEnabled(cfg *config.Config) gin.HandlerFunc {
+	return FeatureFlagChecker(cfg, "Drive", cfg.Features.DriveEnabled)
+}
+
+// ImagesEnabled checks if the Images feature is enabled
+func ImagesEnabled(cfg *config.Config) gin.HandlerFunc {
+	return FeatureFlagChecker(cfg, "Images", cfg.Features.ImagesEnabled)
+}
