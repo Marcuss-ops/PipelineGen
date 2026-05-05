@@ -16,16 +16,25 @@ storage:
   temp_dir: "tmp"
 
 security:
-  # IMPORTANT: If enable_auth is true, you MUST set an admin_token.
-  # For local development, you can set enable_auth to false.
-  # Default is false (disabled) - matches runtime default.
-  enable_auth: false
-  admin_token: ""
-  worker_token: ""
+  # IMPORTANT: Enable auth and set admin_token for production use.
+  # Default is true - you MUST set an admin_token.
+  enable_auth: true
+  admin_token: "YOUR_SECURE_TOKEN_HERE"
+  worker_token: "YOUR_WORKER_TOKEN_HERE"
+  # CORS origins - leave empty to block all cross-origin requests
   cors_origins: []
   rate_limit_enabled: true
   rate_limit_requests: 100
-  allowed_download_hosts: []
+  # Download host whitelist - REQUIRED for security
+  # Only hosts in this list can be used for downloads
+  allowed_download_hosts:
+    - "youtube.com"
+    - "www.youtube.com"
+    - "youtu.be"
+    - "artlist.com"
+    - "www.artlist.com"
+    - "artlist.io"
+    - "cdn.artlist.io"
 
 external:
   ollama_url: "http://localhost:11434"
@@ -65,10 +74,12 @@ jobs:
   indexing_interval: "15m"
 
 features:
-  artlist_enabled: true
-  youtube_enabled: true
-  drive_enabled: true
-  harvester_enabled: true
-  script_docs_enabled: true
-  script_clips_enabled: true
-  stock_enabled: true
+  # Stable modules - enable as needed
+  artlist_enabled: false
+  youtube_enabled: false
+  drive_enabled: false
+  # Experimental modules - default to false
+  harvester_enabled: false
+  script_docs_enabled: false
+  script_clips_enabled: false
+  stock_enabled: false

@@ -2,6 +2,12 @@
 pipelinegen
 pipelinegen.exe
 pipelinegen_*
+backfill_hash
+backfill_hash_v2
+server
+server_bin
+velox-master
+velox-server
 
 # Scripts with local credentials
 restart-server.sh
@@ -11,6 +17,7 @@ data/
 *.db
 *.db-shm
 *.db-wal
+*.bak
 
 # Logs
 *.log

@@ -4,42 +4,15 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 )
 
-// allowedHosts defines domains permitted for yt-dlp downloads.
-var allowedHosts = map[string]bool{
-	// Video platforms (yt-dlp)
-	"youtube.com":         true,
-	"www.youtube.com":     true,
-	"youtu.be":            true,
-	"m.youtube.com":       true,
-	"tiktok.com":          true,
-	"www.tiktok.com":      true,
-	"vm.tiktok.com":       true,
-	"instagram.com":       true,
-	"www.instagram.com":   true,
-	"twitter.com":         true,
-	"x.com":               true,
-	"www.x.com":           true,
-	"vimeo.com":           true,
-	"dailymotion.com":     true,
-	"www.dailymotion.com": true,
-	"twitch.tv":           true,
-	"www.twitch.tv":       true,
-	"facebook.com":        true,
-	"www.facebook.com":    true,
-	// Artlist CDN / stock platforms
-	"artlist.com":                     true,
-	"www.artlist.com":                 true,
-	"artlist.io":                      true,
-	"www.artlist.io":                  true,
-	"cdn.artlist.io":                  true,
-	"cms-public-artifacts.artlist.io": true,
-	"artlist-cdn.s3.amazonaws.com":    true,
-	// Generic HTTP (for Artlist proxied URLs and other stock sources)
-	"s3.amazonaws.com":       true,
-	"storage.googleapis.com": true,
-}
+// allowedHosts defines domains permitted for downloads.
+// Must be populated from config at startup - defaults to empty for security.
+var (
+	allowedHostsMu sync.RWMutex
+	allowedHosts   = make(map[string]bool)
+)
 
 // ValidateDownloadURL checks that a URL is safe to pass to yt-dlp or similar tools.
 // It ensures the URL has an allowed scheme (http/https), a valid host, and no
@@ -91,6 +64,9 @@ func ValidateDownloadURL(rawURL string) error {
 
 // isAllowedHost checks whether the host (or its parent domain) is in the allowlist.
 func isAllowedHost(host string) bool {
+	allowedHostsMu.RLock()
+	defer allowedHostsMu.RUnlock()
+
 	if allowedHosts[host] {
 		return true
 	}
@@ -138,7 +114,20 @@ func ValidateVideoID(id string) error {
 	return nil
 }
 
-// AddAllowedHost adds a domain to the allowlist (useful for testing or config overrides).
+// AddAllowedHost adds a domain to the allowlist (thread-safe).
 func AddAllowedHost(host string) {
+	allowedHostsMu.Lock()
+	defer allowedHostsMu.Unlock()
 	allowedHosts[host] = true
+}
+
+// SetAllowedHosts replaces the entire allowlist with the provided hosts (thread-safe).
+// Call this at startup with hosts from config.
+func SetAllowedHosts(hosts []string) {
+	allowedHostsMu.Lock()
+	defer allowedHostsMu.Unlock()
+	allowedHosts = make(map[string]bool)
+	for _, h := range hosts {
+		allowedHosts[h] = true
+	}
 }

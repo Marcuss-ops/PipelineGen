@@ -116,7 +116,7 @@ type StorageConfig struct {
 type SecurityConfig struct {
 	AdminToken           string   `yaml:"admin_token" env:"VELOX_ADMIN_TOKEN" default:""`
 	WorkerToken          string   `yaml:"worker_token" env:"VELOX_WORKER_TOKEN" default:""`
-	EnableAuth           bool     `yaml:"enable_auth" env:"VELOX_ENABLE_AUTH" default:"false"`
+	EnableAuth           bool     `yaml:"enable_auth" env:"VELOX_ENABLE_AUTH" default:"true"`
 	CORSOrigins          []string `yaml:"cors_origins" env:"VELOX_CORS_ORIGINS" default:"[]"`
 	RateLimitEnabled     bool     `yaml:"rate_limit_enabled" env:"VELOX_RATE_LIMIT_ENABLED" default:"true"`
 	RateLimitRequests    int      `yaml:"rate_limit_requests" env:"VELOX_RATE_LIMIT_REQUESTS" default:"100"`
@@ -162,12 +162,14 @@ type WorkersConfig struct {
 }
 
 // FeaturesConfig controls optional modules.
+// Stable modules default to true only if their dependencies are available.
+// Experimental modules default to false.
 type FeaturesConfig struct {
-	ArtlistEnabled     bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"true"`
-	YouTubeEnabled     bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"true"`
-	DriveEnabled       bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"true"`
-	HarvesterEnabled   bool `yaml:"harvester_enabled" env:"VELOX_FEATURE_HARVESTER_ENABLED" default:"true"`
-	ScriptDocsEnabled  bool `yaml:"script_docs_enabled" env:"VELOX_FEATURE_SCRIPT_DOCS_ENABLED" default:"true"`
-	ScriptClipsEnabled bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"true"`
-	StockEnabled       bool `yaml:"stock_enabled" env:"VELOX_FEATURE_STOCK_ENABLED" default:"true"`
+	ArtlistEnabled     bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"false"`
+	YouTubeEnabled     bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"false"`
+	DriveEnabled       bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"false"`
+	HarvesterEnabled   bool `yaml:"harvester_enabled" env:"VELOX_FEATURE_HARVESTER_ENABLED" default:"false"`
+	ScriptDocsEnabled  bool `yaml:"script_docs_enabled" env:"VELOX_FEATURE_SCRIPT_DOCS_ENABLED" default:"false"`
+	ScriptClipsEnabled bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
+	StockEnabled       bool `yaml:"stock_enabled" env:"VELOX_FEATURE_STOCK_ENABLED" default:"false"`
 }

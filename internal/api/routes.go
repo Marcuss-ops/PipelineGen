@@ -2,8 +2,8 @@
 package api
 
 import (
+	"context"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -24,6 +24,7 @@ import (
 	workflowhandler "velox/go-master/internal/api/handlers/workflow"
 	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/api/middleware"
+	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 )
 
@@ -51,6 +52,8 @@ type Router struct {
 	cfg                 *config.Config
 	handlers            *Handlers
 	rateLimitMiddleware *middleware.RateLimitMiddleware
+	registry            *module.Registry
+	ctx                 context.Context
 }
 
 // NewRouter creates a new API router with pre-constructed handlers
@@ -64,6 +67,16 @@ func NewRouter(
 	}
 }
 
+// SetRegistry sets the module registry for route registration
+func (r *Router) SetRegistry(reg *module.Registry) {
+	r.registry = reg
+}
+
+// SetContext sets the context for module lifecycle management
+func (r *Router) SetContext(ctx context.Context) {
+	r.ctx = ctx
+}
+
 func buildCORSConfig(cfg *config.Config) cors.Config {
 	corsCfg := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -74,8 +87,11 @@ func buildCORSConfig(cfg *config.Config) cors.Config {
 	}
 
 	origins := cfg.Security.CORSOrigins
+
+	// Require explicit CORS origins - default closed
 	if len(origins) == 0 {
-		corsCfg.AllowAllOrigins = true
+		// No origins configured - block all cross-origin requests
+		corsCfg.AllowOrigins = []string{}
 		return corsCfg
 	}
 
@@ -89,15 +105,7 @@ func buildCORSConfig(cfg *config.Config) cors.Config {
 }
 
 // Setup configures the gin router
-var setupOnce sync.Once
-var setupCount int
-
 func (r *Router) Setup() *gin.Engine {
-	setupCount++
-	zap.L().Info("Setup() called", zap.Int("count", setupCount))
-	if setupCount > 1 {
-		zap.L().Panic("Setup() called multiple times!")
-	}
 	log := zap.L().Named("router")
 	gin.SetMode(r.cfg.Server.GinMode)
 
@@ -107,103 +115,39 @@ func (r *Router) Setup() *gin.Engine {
 	engine.Use(middleware.Logger())
 	engine.Use(middleware.Recovery())
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
-	engine.Use(cors.New(buildCORSConfig(r.cfg)))
-
-	h := r.handlers
-
-	// Create middleware instances
-	authMW := middleware.Auth(r.cfg)
-	rateLimitMW := middleware.RateLimit()
-	r.rateLimitMiddleware = rateLimitMW
+	
+	// Only add CORS middleware if origins are configured
+	corsConfig := buildCORSConfig(r.cfg)
+	if len(corsConfig.AllowOrigins) > 0 || corsConfig.AllowAllOrigins {
+		engine.Use(cors.New(corsConfig))
+	} else {
+		log.Info("CORS disabled - no origins configured")
+	}
 
 	// Health checks (public — no auth/rate limit)
-	engine.GET("/health", h.Health.Health)
-	engine.GET("/api/health", h.Health.Health)
+	engine.GET("/health", r.handlers.Health.Health)
+	engine.GET("/api/health", r.handlers.Health.Health)
 
 	// Serve static assets (images, etc.)
 	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")
 	engine.Static("/assets", assetsDir)
 
-	// Public routes (no auth, no rate limit) — accessible from any machine
-
-	public := engine.Group("/api")
-	{
-		// Internal utilities (can be accessed by scripts without auth)
-		if h.Utility != nil {
-			public.GET("/internal/slug", h.Utility.Slugify)
-		}
-		// Catalog API - public search endpoint for folders
-		if h.Catalog != nil {
-			public.GET("/catalog/folders", h.Catalog.SearchFolders)
-		}
-	}
-
-	// API routes
+	// API routes - all protected by default
 	api := engine.Group("/api")
 	{
 		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
-		protected.Use(authMW)
-		protected.Use(rateLimitMW.Handler)
+		protected.Use(middleware.Auth(r.cfg))
+		protected.Use(middleware.RateLimit().Handler)
 		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
-			log.Info("registering API routes", zap.Bool("drive_handler_nil", h.Drive == nil))
-
-			if h.Drive != nil {
-				log.Info("registering drive routes")
-				driveGroup := protected.Group("/drive")
-				h.Drive.RegisterRoutes(driveGroup)
+			// Use module registry if available, otherwise fall back to handler registration
+			if r.registry != nil {
+				log.Info("using module registry for route registration")
+				r.registry.RegisterAllRoutes(r.cfg, protected)
 			} else {
-				log.Warn("drive handler is nil, skipping route registration")
-			}
-
-			if h.Artlist != nil {
-				artlistGroup := protected.Group("/artlist")
-				artlistGroup.Use(middleware.ArtlistEnabled(r.cfg))
-				h.Artlist.RegisterRoutes(artlistGroup)
-			}
-			if h.ImageAssets != nil {
-				imgGroup := protected.Group("/images")
-				h.ImageAssets.RegisterRoutes(imgGroup)
-			}
-			if h.Scraper != nil {
-				scraperGroup := protected.Group("/scraper")
-				h.Scraper.RegisterRoutes(scraperGroup)
-			}
-			if h.ScriptDocs != nil {
-				scriptDocsGroup := protected.Group("/script-docs")
-				scriptDocsGroup.Use(middleware.ScriptDocsEnabled(r.cfg))
-				h.ScriptDocs.RegisterRoutes(scriptDocsGroup)
-			}
-			if h.ScriptHistory != nil {
-				scriptHistoryGroup := protected.Group("/scripts")
-				scriptHistoryGroup.Use(middleware.ScriptClipsEnabled(r.cfg))
-				h.ScriptHistory.RegisterRoutes(scriptHistoryGroup)
-			}
-			if h.Voiceover != nil {
-				voGroup := protected.Group("/voiceover")
-				h.Voiceover.RegisterRoutes(voGroup)
-			}
-			if h.VoiceoverSync != nil {
-				voSyncGroup := protected.Group("/voiceover")
-				h.VoiceoverSync.RegisterRoutes(voSyncGroup)
-			}
-			if h.YouTubeClip != nil {
-				youtubeGroup := protected.Group("/youtube-clips")
-				youtubeGroup.Use(middleware.YouTubeEnabled(r.cfg))
-				h.YouTubeClip.RegisterRoutes(youtubeGroup)
-			}
-			if h.Jobs != nil {
-				jobsGroup := protected.Group("/jobs")
-				h.Jobs.RegisterRoutes(jobsGroup)
-			}
-			if h.Media != nil {
-				mediaGroup := protected.Group("/media")
-				h.Media.RegisterRoutes(mediaGroup)
-			}
-			if h.Workflow != nil {
-				workflowGroup := protected.Group("/workflows")
-				h.Workflow.RegisterRoutes(workflowGroup)
+				log.Info("using legacy handler registration")
+				r.registerHandlersLegacy(protected)
 			}
 		}
 	}
@@ -214,6 +158,80 @@ func (r *Router) Setup() *gin.Engine {
 	}
 
 	return engine
+}
+
+// registerHandlersLegacy registers routes using the old handler-based approach
+func (r *Router) registerHandlersLegacy(protected *gin.RouterGroup) {
+	log := zap.L().Named("router")
+	h := r.handlers
+
+	log.Info("registering API routes", zap.Bool("drive_handler_nil", h.Drive == nil))
+
+	// Internal utilities (now protected)
+	if h.Utility != nil {
+		protected.GET("/internal/slug", h.Utility.Slugify)
+	}
+	// Catalog API - protected search endpoint for folders
+	if h.Catalog != nil {
+		protected.GET("/catalog/folders", h.Catalog.SearchFolders)
+	}
+
+	if h.Drive != nil {
+		log.Info("registering drive routes")
+		driveGroup := protected.Group("/drive")
+		h.Drive.RegisterRoutes(driveGroup)
+	} else {
+		log.Warn("drive handler is nil, skipping route registration")
+	}
+
+	if h.Artlist != nil {
+		artlistGroup := protected.Group("/artlist")
+		artlistGroup.Use(middleware.ArtlistEnabled(r.cfg))
+		h.Artlist.RegisterRoutes(artlistGroup)
+	}
+	if h.ImageAssets != nil {
+		imgGroup := protected.Group("/images")
+		h.ImageAssets.RegisterRoutes(imgGroup)
+	}
+	if h.Scraper != nil {
+		scraperGroup := protected.Group("/scraper")
+		h.Scraper.RegisterRoutes(scraperGroup)
+	}
+	if h.ScriptDocs != nil {
+		scriptDocsGroup := protected.Group("/script-docs")
+		scriptDocsGroup.Use(middleware.ScriptDocsEnabled(r.cfg))
+		h.ScriptDocs.RegisterRoutes(scriptDocsGroup)
+	}
+	if h.ScriptHistory != nil {
+		scriptHistoryGroup := protected.Group("/scripts")
+		scriptHistoryGroup.Use(middleware.ScriptClipsEnabled(r.cfg))
+		h.ScriptHistory.RegisterRoutes(scriptHistoryGroup)
+	}
+	if h.Voiceover != nil {
+		voGroup := protected.Group("/voiceover")
+		h.Voiceover.RegisterRoutes(voGroup)
+	}
+	if h.VoiceoverSync != nil {
+		voSyncGroup := protected.Group("/voiceover")
+		h.VoiceoverSync.RegisterRoutes(voSyncGroup)
+	}
+	if h.YouTubeClip != nil {
+		youtubeGroup := protected.Group("/youtube-clips")
+		youtubeGroup.Use(middleware.YouTubeEnabled(r.cfg))
+		h.YouTubeClip.RegisterRoutes(youtubeGroup)
+	}
+	if h.Jobs != nil {
+		jobsGroup := protected.Group("/jobs")
+		h.Jobs.RegisterRoutes(jobsGroup)
+	}
+	if h.Media != nil {
+		mediaGroup := protected.Group("/media")
+		h.Media.RegisterRoutes(mediaGroup)
+	}
+	if h.Workflow != nil {
+		workflowGroup := protected.Group("/workflows")
+		h.Workflow.RegisterRoutes(workflowGroup)
+	}
 }
 
 // Stop cleans up resources used by the router (rate limiter goroutines)
