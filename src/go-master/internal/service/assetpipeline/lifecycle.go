@@ -16,9 +16,11 @@ type LifecycleService struct {
 	store        AssetRecordStore
 	dedupe       *DedupeService
 	reconcile    *ReconcileService
+	uploader     *Uploader
+	finalizer    *mediaregistry.Finalizer
 	uploadPolicy UploadPolicy
 	persistPolicy PersistPolicy
-	registry     *mediaregistry.Registry
+	registry     mediaregistry.Registry
 	assetIndex   *assetindex.Service
 	log          *zap.Logger
 }
@@ -35,8 +37,9 @@ type LifecycleConfig struct {
 func NewLifecycleService(
 	store AssetRecordStore,
 	driveSvc *gdrive.Service,
-	registry *mediaregistry.Registry,
+	registry mediaregistry.Registry,
 	assetIndex *assetindex.Service,
+	finalizer *mediaregistry.Finalizer,
 	cfg LifecycleConfig,
 	log *zap.Logger,
 ) *LifecycleService {
@@ -51,6 +54,8 @@ func NewLifecycleService(
 		store:        store,
 		dedupe:       dedupe,
 		reconcile:    reconcile,
+		uploader:     NewUploader(driveSvc, log),
+		finalizer:    finalizer,
 		uploadPolicy: cfg.UploadPolicy,
 		persistPolicy: cfg.PersistPolicy,
 		registry:     registry,
@@ -87,6 +92,7 @@ func (s *LifecycleService) ProcessAsset(ctx context.Context, input *FinalizeInpu
 			out.OK = true
 			out.Status = "skipped_duplicate"
 			out.DriveLink = existing.DriveLink
+			out.DriveFileID = existing.DriveFileID
 			out.DownloadLink = existing.DownloadLink
 			out.FileHash = existing.FileHash
 			s.log.Info("skipping duplicate asset",
@@ -96,14 +102,72 @@ func (s *LifecycleService) ProcessAsset(ctx context.Context, input *FinalizeInpu
 		}
 	}
 
-	// Step 2: Upload to Drive (handled by Finalizer)
-	// This is delegated to the existing Finalizer
+	// Step 2: Upload to Drive (if policy enabled and not already uploaded)
+	driveLink := input.DriveLink
+	driveFileID := input.DriveFileID
+	downloadLink := input.DownloadLink
 
-	// Step 3: Persist to databases (handled by Finalizer)
-	// This is delegated to the existing Finalizer
+	if s.uploadPolicy.Enabled && driveLink == "" && input.FolderID != "" {
+		if s.uploader != nil {
+			link, dlink, fileID, err := s.uploader.Upload(ctx, input.LocalPath, input.FolderID)
+			if err != nil {
+				s.log.Warn("drive upload failed", zap.Error(err))
+			} else {
+				driveLink = link
+				downloadLink = dlink
+				driveFileID = fileID
+				s.log.Info("asset uploaded to drive",
+					zap.String("id", input.ID),
+					zap.String("file_id", fileID))
+			}
+		}
+	}
+
+	// Step 3: Persist to databases (if policy enabled)
+	if s.persistPolicy.SaveToMediaRegistry && s.finalizer != nil {
+		rec := &mediaregistry.MediaRecord{
+			ID:           input.ID,
+			Name:         input.Name,
+			Filename:     input.Filename,
+			Source:       input.Source,
+			MediaType:    string(input.Kind),
+			FolderID:     input.FolderID,
+			FolderPath:   input.FolderPath,
+			Group:        input.Group,
+			LocalPath:    input.LocalPath,
+			DriveLink:    driveLink,
+			DriveFileID:  driveFileID,
+			DownloadLink: downloadLink,
+			FileHash:     fileHash,
+			Metadata:     input.Metadata,
+			Status:       "processed",
+			SourceID:     input.SourceID,
+			Subfolder:    input.Subfolder,
+		}
+
+		finalizeOpts := mediaregistry.FinalizeOptions{
+			RequireLocal: false, // Already checked
+			RequireHash:  false, // Already checked
+			RequireDrive: driveLink != "",
+			VerifyDB:     true,
+		}
+
+		finalResult, err := s.finalizer.Finalize(ctx, rec, finalizeOpts)
+		if err != nil {
+			return out, err
+		}
+		if !finalResult.OK {
+			out.Error = finalResult.Error
+			return out, nil
+		}
+	}
 
 	out.OK = true
 	out.Status = "processed"
+	out.DriveLink = driveLink
+	out.DriveFileID = driveFileID
+	out.DownloadLink = downloadLink
+	out.FileHash = fileHash
 	return out, nil
 }
 
