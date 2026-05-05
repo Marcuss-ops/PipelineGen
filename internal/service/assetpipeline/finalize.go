@@ -101,12 +101,11 @@ func (f *Finalizer) Finalize(ctx context.Context, in *FinalizeInput) (*FinalizeR
 	if in.RequireDrive && driveLink == "" {
 		if f.uploader != nil {
 			var err error
-			driveLink, downloadLink, err = f.uploader.Upload(ctx, in.LocalPath, in.FolderID)
+			driveLink, downloadLink, driveFileID, err = f.uploader.Upload(ctx, in.LocalPath, in.FolderID)
 			if err != nil {
 				out.Error = "upload failed: " + err.Error()
 				return out, err
 			}
-			driveFileID = "" // Uploader doesn't return FileID yet
 		} else {
 			out.Error = "upload required but no uploader configured"
 			return out, nil

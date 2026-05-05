@@ -201,6 +201,7 @@ func (s *Service) processLanguage(
 	item.CleanedPath = result.CleanedPath
 	item.FileHash = result.FileHash
 	item.DriveLink = result.DriveLink
+	item.DriveFileID = result.DriveFileID
 	item.Voice = language
 	item.Status = result.Status
 
@@ -223,6 +224,7 @@ func (s *Service) processLanguage(
 			CleanedPath:   item.CleanedPath,
 			FolderID:      dest.FolderID,
 			FolderPath:    dest.FolderPath,
+			DriveFileID:   item.DriveFileID,
 			DriveLink:     item.DriveLink,
 			DownloadLink:  item.DownloadLink,
 			FileHash:      item.FileHash,
@@ -260,6 +262,7 @@ func (s *Service) processLanguage(
 				FolderID:     dest.FolderID,
 				FolderPath:   dest.FolderPath,
 				DriveLink:    item.DriveLink,
+				DriveFileID:  item.DriveFileID,
 				DownloadLink: item.DownloadLink,
 				Metadata:     string(metaJSON),
 				RequireLocal: false,
@@ -285,6 +288,7 @@ func (s *Service) processLanguage(
 				FolderPath:   dest.FolderPath,
 				MediaType:    "audio",
 				DriveLink:    item.DriveLink,
+				DriveFileID:  item.DriveFileID,
 				DownloadLink: item.DownloadLink,
 				FileHash:     item.FileHash,
 				LocalPath:    item.CleanedPath,

@@ -37,6 +37,7 @@ type BatchItem struct {
 	LocalPath    string `json:"local_path,omitempty"`
 	CleanedPath  string `json:"cleaned_path,omitempty"`
 	DriveLink    string `json:"drive_link,omitempty"`
+	DriveFileID  string `json:"drive_file_id,omitempty"`
 	DownloadLink string `json:"download_link,omitempty"`
 	FileHash     string `json:"file_hash,omitempty"`
 	Status       string `json:"status"`

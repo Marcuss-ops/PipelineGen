@@ -63,6 +63,7 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 			TempDir: "tmp",
 			VideoCfg: ffmpeg.NormalizeOptions{},
 		},
+		nil,
 	)
 
 	result, err := p.DownloadProcessUpload(ctx, AssetInput{
@@ -95,6 +96,7 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 			TempDir: "tmp",
 			VideoCfg: ffmpeg.NormalizeOptions{},
 		},
+		nil,
 	)
 
 	result, err := p.DownloadProcessUpload(ctx, AssetInput{
