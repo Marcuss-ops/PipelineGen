@@ -7,7 +7,10 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/jobs"
@@ -226,4 +229,68 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 	if len(jobs) != numGoroutines {
 		t.Errorf("expected %d jobs, got %d", numGoroutines, len(jobs))
 	}
+}
+
+func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
+	ctx := context.Background()
+
+	svc, cleanup := setupTestService(t)
+	defer cleanup()
+
+	repo := svc.repo
+
+	// Insert old running job
+	oldTime := time.Now().UTC().Add(-30 * time.Minute)
+	oldJob := &models.Job{
+		ID:        "job-old-running",
+		Type:      models.JobTypeArtlistRun,
+		Status:    models.StatusRunning,
+		UpdatedAt: oldTime,
+		CreatedAt: oldTime,
+		Payload:   []byte("{}"),
+	}
+	require.NoError(t, repo.Create(ctx, oldJob))
+
+	// Insert fresh running job
+	freshJob := &models.Job{
+		ID:        "job-fresh-running",
+		Type:      models.JobTypeArtlistRun,
+		Status:    models.StatusRunning,
+		UpdatedAt: time.Now().UTC(),
+		CreatedAt: time.Now().UTC(),
+		Payload:   []byte("{}"),
+	}
+	require.NoError(t, repo.Create(ctx, freshJob))
+
+	// Insert completed job (should not be affected)
+	completedJob := &models.Job{
+		ID:        "job-completed",
+		Type:      models.JobTypeArtlistRun,
+		Status:    models.StatusCompleted,
+		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute),
+		CreatedAt: time.Now().UTC().Add(-30 * time.Minute),
+		Payload:   []byte("{}"),
+	}
+	require.NoError(t, repo.Create(ctx, completedJob))
+
+	// Mark stale jobs
+	changed, err := svc.MarkStaleRunningJobsFailed(ctx, 15*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, 1, changed)
+
+	// Verify old job is now failed
+	oldJobGot, err := svc.Get(ctx, oldJob.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StatusFailed, oldJobGot.Status)
+	assert.Contains(t, oldJobGot.Error, "stale")
+
+	// Verify fresh job is still running
+	freshJobGot, err := svc.Get(ctx, freshJob.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StatusRunning, freshJobGot.Status)
+
+	// Verify completed job is still succeeded
+	completedJobGot, err := svc.Get(ctx, completedJob.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StatusCompleted, completedJobGot.Status)
 }

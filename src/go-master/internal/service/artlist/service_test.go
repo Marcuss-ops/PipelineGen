@@ -3,17 +3,24 @@ package artlist
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
 	
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetstore"
+	"velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/security"
 )
 
 // createTestDB creates a temporary SQLite database for testing
@@ -297,3 +304,263 @@ func TestSearchRequestValidation(t *testing.T) {
 		req.Limit = 50
 	}
 }
+
+type fakeMediaProcessor struct {
+	called bool
+	err    error
+	result *mediaasset.AssetResult
+	inputs []mediaasset.AssetInput
+}
+
+func (f *fakeMediaProcessor) DownloadProcessUpload(ctx context.Context, input mediaasset.AssetInput) (*mediaasset.AssetResult, error) {
+	f.called = true
+	f.inputs = append(f.inputs, input)
+
+	if f.err != nil {
+		return &mediaasset.AssetResult{
+			ID:     input.ID,
+			Status: "failed",
+			Error:  f.err.Error(),
+		}, f.err
+	}
+
+	if f.result != nil {
+		return f.result, nil
+	}
+
+	return &mediaasset.AssetResult{
+		ID:        input.ID,
+		Filename:  input.Name + ".mp4",
+		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",
+		FileHash:  "hash-test",
+		Status:    "processed",
+	}, nil
+}
+
+func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	// Add test hosts to security allowlist
+	security.AddAllowedHost("cdn.artlist.io")
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{
+			DataDir: tmp,
+		},
+		Video: config.VideoConfig{
+			Duration: 30,
+		},
+	}
+
+	db := createTestDB(t)
+	defer db.Close()
+
+	logger := zap.NewNop()
+	artlistRepo := clips.NewRepository(db, logger)
+
+	// Insert test clip with valid Artlist HLS URL
+	insertTestClip(t, db, &models.Clip{
+		ID:           "clip-1",
+		Name:         "City Night",
+		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
+		DownloadLink: "https://cdn.artlist.io/video.m3u8",
+		Tags:         []string{"city","night"},
+		Source:       "artlist",
+	})
+
+	processor := &fakeMediaProcessor{
+		err: errors.New("download failed"),
+	}
+
+	svc, err := NewService(
+		cfg,
+		nil,
+		nil,
+		filepath.Join(tmp, "artlist.db.sqlite"),
+		"",
+		artlistRepo,
+		nil,
+		processor,
+		nil,
+		nil,
+		logger,
+	)
+	require.NoError(t, err)
+	defer svc.Close()
+
+	resp, err := svc.RunTag(ctx, &RunTagRequest{
+		Term:     "city",
+		Limit:    1,
+		Strategy: "replace",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, 1, resp.Failed)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, "media_process_failed", resp.Items[0].Status)
+	assert.Contains(t, resp.Items[0].Error, "download failed")
+}
+
+func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	// Add test hosts to security allowlist
+	security.AddAllowedHost("cdn.artlist.io")
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{
+			DataDir: tmp,
+		},
+		Video: config.VideoConfig{
+			Duration: 30,
+		},
+	}
+
+	db := createTestDB(t)
+	defer db.Close()
+
+	logger := zap.NewNop()
+	artlistRepo := clips.NewRepository(db, logger)
+
+	// Insert test clip with valid Artlist HLS URL
+	insertTestClip(t, db, &models.Clip{
+		ID:           "clip-1",
+		Name:         "City Night",
+		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
+		DownloadLink: "https://cdn.artlist.io/video.m3u8",
+		Tags:         []string{"city","night"},
+		Source:       "artlist",
+	})
+
+	processor := &fakeMediaProcessor{}
+
+	svc, err := NewService(
+		cfg,
+		nil,
+		nil,
+		filepath.Join(tmp, "artlist.db.sqlite"),
+		"",
+		artlistRepo,
+		nil,
+		processor,
+		nil,
+		nil,
+		logger,
+	)
+	require.NoError(t, err)
+	defer svc.Close()
+
+	resp, err := svc.RunTag(ctx, &RunTagRequest{
+		Term:         "city",
+		Limit:        1,
+		Strategy:     "replace",
+		RootFolderID: "",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, resp.Processed)
+	require.Len(t, processor.inputs, 1)
+
+	input := processor.inputs[0]
+	assert.Equal(t, "clip-1", input.ID)
+	assert.Equal(t, "City Night", input.Name)
+	assert.Equal(t, "https://cdn.artlist.io/video.m3u8", input.SourceURL)
+	assert.Contains(t, input.OutputDir, "artlist")
+	assert.Equal(t, cfg.Video.Duration, input.Duration)
+}
+
+func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	// Add test hosts to security allowlist
+	security.AddAllowedHost("cdn.artlist.io")
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{
+			DataDir: tmp,
+		},
+		Video: config.VideoConfig{
+			Duration: 30,
+		},
+	}
+
+	db := createTestDB(t)
+	defer db.Close()
+
+	logger := zap.NewNop()
+	artlistRepo := clips.NewRepository(db, logger)
+
+	// Insert test clip with valid Artlist HLS URL
+	insertTestClip(t, db, &models.Clip{
+		ID:           "clip-1",
+		Name:         "City Night",
+		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
+		DownloadLink: "https://cdn.artlist.io/video.m3u8",
+		Tags:         []string{"city","night"},
+		Source:       "artlist",
+	})
+
+	processor := &fakeMediaProcessor{
+		err: errors.New("download failed"),
+	}
+
+	svc, err := NewService(
+		cfg,
+		nil,
+		nil,
+		filepath.Join(tmp, "artlist.db.sqlite"),
+		"",
+		artlistRepo,
+		nil,
+		processor,
+		nil,
+		nil,
+		logger,
+	)
+	require.NoError(t, err)
+	defer svc.Close()
+
+	// Create a job directly (simulate a job that would be processed by a worker)
+	job := &models.Job{
+		ID:        "test-job-1",
+		Type:      models.JobTypeArtlistRun,
+		Status:    models.StatusRunning,
+		Payload:   mustJSON(map[string]interface{}{"term": "city", "limit": 1, "strategy": "replace"}),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+
+	// Create JobTools for testing
+	jobTools := &jobs.JobTools{
+		Progress: func(progress int, message string) {
+			// Mock progress update
+		},
+		Event: func(eventType string, message string, data map[string]any) {
+			// Mock event
+		},
+		IsCancelled: func() bool {
+			return false
+		},
+	}
+
+	// Handle the job (this should fail because all items fail)
+	_, err = svc.HandleJob(ctx, job, jobTools)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "all artlist items failed")
+}
+
+// mustJSON is a helper to convert a value to JSON bytes (panics on error)
+func mustJSON(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+

@@ -17,9 +17,9 @@ import (
 )
 
 type Processor struct {
-	dl       *downloader.YTDLPDownloader
-	httpDL   *downloader.HTTPDownloader
-	ffmpeg   *ffmpeg.Processor
+	dl       YTDLP
+	httpDL   HTTPDownloader
+	ffmpeg   VideoProcessor
 	driveSvc *driveapi.Service
 	log      *zap.Logger
 	dataDir  string
@@ -34,9 +34,9 @@ type ProcessorConfig struct {
 }
 
 func NewProcessor(
-	dl *downloader.YTDLPDownloader,
-	httpDL *downloader.HTTPDownloader,
-	ff *ffmpeg.Processor,
+	dl YTDLP,
+	httpDL HTTPDownloader,
+	ff VideoProcessor,
 	driveSvc *driveapi.Service,
 	log *zap.Logger,
 	cfg ProcessorConfig,

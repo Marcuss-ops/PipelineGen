@@ -410,6 +410,29 @@ func (r *Repository) RequeueExpiredLeases(ctx context.Context) error {
 	return nil
 }
 
+func (r *Repository) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff time.Time, reason string) (int, error) {
+	query := `
+		UPDATE jobs
+		SET status = ?, error = ?, updated_at = ?
+		WHERE status = ?
+		  AND updated_at < ?
+	`
+	
+	result, err := r.db.ExecContext(ctx, query,
+		models.StatusFailed,
+		reason,
+		time.Now().UTC().Format(time.RFC3339),
+		models.StatusRunning,
+		cutoff.Format(time.RFC3339),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to mark stale jobs failed: %w", err)
+	}
+	
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
 func randomString(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
