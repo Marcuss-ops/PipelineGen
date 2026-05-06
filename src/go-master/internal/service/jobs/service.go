@@ -96,6 +96,10 @@ func (s *Service) Get(ctx context.Context, id string) (*models.Job, error) {
 	return s.repo.Get(ctx, id)
 }
 
+func (s *Service) FindActiveByKey(ctx context.Context, activeKey string) (*models.Job, error) {
+	return s.repo.FindActiveByKey(ctx, activeKey)
+}
+
 func (s *Service) List(ctx context.Context, filter models.JobFilter) ([]*models.Job, error) {
 	return s.repo.List(ctx, filter)
 }

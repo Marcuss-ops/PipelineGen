@@ -43,6 +43,22 @@ func (h *Handler) Search(c *gin.Context) {
 	apiutil.OK(c, resp)
 }
 
+// Diagnostics returns Artlist system diagnostics
+func (h *Handler) Diagnostics(c *gin.Context) {
+	term := strings.TrimSpace(c.Query("term"))
+	if term == "" {
+		term = "test"
+	}
+
+	resp, err := h.service.Diagnostics(c.Request.Context(), term)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("diagnostics failed: %v", err))
+		return
+	}
+
+	apiutil.OK(c, resp)
+}
+
 // SearchLive performs a live search using the Node.js scraper
 func (h *Handler) SearchLive(c *gin.Context) {
 	term := strings.TrimSpace(c.Query("term"))

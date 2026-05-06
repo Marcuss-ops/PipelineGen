@@ -56,7 +56,6 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 		&fakeYTDLP{err: errors.New("yt-dlp boom")},
 		&fakeHTTPDownloader{},
 		&fakeFFmpeg{},
-		nil,
 		zap.NewNop(),
 		ProcessorConfig{
 			DataDir: tmp,
@@ -89,7 +88,6 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 		&fakeYTDLP{},
 		&fakeHTTPDownloader{},
 		ff,
-		nil,
 		zap.NewNop(),
 		ProcessorConfig{
 			DataDir: tmp,

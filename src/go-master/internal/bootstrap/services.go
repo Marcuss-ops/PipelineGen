@@ -91,7 +91,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		ytDLPDownloader,
 		httpDL,
 		ffmpegProc,
-		driveClient,
 		log,
 		mediaasset.ProcessorConfig{
 			DataDir:  cfg.Storage.DataDir,

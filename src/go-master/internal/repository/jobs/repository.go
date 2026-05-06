@@ -155,7 +155,7 @@ func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*mo
 	query := `SELECT id, type, status, priority, project, video_name, active_key,
 		payload_json, result_json, progress, error, retry_count, max_retries,
 		worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at
-		FROM jobs WHERE active_key = ? AND active_key != '' LIMIT 1`
+		FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('queued', 'running', 'retrying') ORDER BY started_at DESC LIMIT 1`
 
 	var job models.Job
 	var payloadJSON, resultJSON string

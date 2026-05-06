@@ -161,7 +161,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 	
 	// Create service with minimal dependencies
-	svc, err := NewService(cfg, nil, nil, "", "", artlistRepo, nil, nil, nil, nil, logger)
+	svc, err := NewService(cfg, nil, "", "", artlistRepo, nil, nil, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := clips.NewRepository(db, logger)
 	
-	svc, err := NewService(cfg, nil, nil, "", "", artlistRepo, nil, nil, nil, nil, logger)
+	svc, err := NewService(cfg, nil, "", "", artlistRepo, nil, nil, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -389,7 +389,6 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	svc, err := NewService(
 		cfg,
 		nil,
-		nil,
 		filepath.Join(tmp, "artlist.db.sqlite"),
 		"",
 		artlistRepo,
@@ -452,7 +451,6 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 
 	svc, err := NewService(
 		cfg,
-		nil,
 		nil,
 		filepath.Join(tmp, "artlist.db.sqlite"),
 		"",
@@ -523,7 +521,6 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 
 	svc, err := NewService(
 		cfg,
-		nil,
 		nil,
 		filepath.Join(tmp, "artlist.db.sqlite"),
 		"",

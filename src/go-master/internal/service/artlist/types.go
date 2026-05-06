@@ -18,7 +18,6 @@ type Service struct {
 	cfg               *config.Config
 	mainDB            *sql.DB
 	artlistDB         *sql.DB
-	jobsDB            *sql.DB
 	nodeScraperDir    string
 	artlistRepo       *clips.Repository
 	driveService      *DriveService
@@ -29,7 +28,7 @@ type Service struct {
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor processor.Processor, lifecycleService *assetpipeline.LifecycleService, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor processor.Processor, lifecycleService *assetpipeline.LifecycleService, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -49,7 +48,6 @@ func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPat
 	return &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
-		jobsDB:            jobsDB,
 		artlistDB:         artlistDB,
 		nodeScraperDir:    nodeScraperDir,
 		artlistRepo:       artlistRepo,

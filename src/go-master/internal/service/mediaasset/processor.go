@@ -10,9 +10,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/service/mediaregistry"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
@@ -28,7 +26,6 @@ type Processor struct {
 	dl       YTDLP
 	httpDL   HTTPDownloader
 	ffmpeg   VideoProcessor
-	driveSvc *driveapi.Service
 	log      *zap.Logger
 	dataDir  string
 	tempDir  string
@@ -46,7 +43,6 @@ func NewProcessor(
 	dl YTDLP,
 	httpDL HTTPDownloader,
 	ff VideoProcessor,
-	driveSvc *driveapi.Service,
 	log *zap.Logger,
 	cfg ProcessorConfig,
 	registry mediaregistry.Registry,
@@ -55,7 +51,6 @@ func NewProcessor(
 		dl:       dl,
 		httpDL:   httpDL,
 		ffmpeg:   ff,
-		driveSvc: driveSvc,
 		log:      log,
 		dataDir:  cfg.DataDir,
 		tempDir:  cfg.TempDir,
@@ -119,32 +114,8 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	result.LocalPath = processedPath
 	result.Filename = filepath.Base(processedPath)
 
-	// Pre-upload duplicate check: if media already exists with DriveFileID, skip upload
-	if p.registry != nil {
-		existing, err := p.registry.GetMedia(ctx, input.ID)
-		if err != nil {
-			p.log.Warn("failed to check existing media", zap.Error(err))
-		} else if existing != nil && existing.DriveFileID != "" {
-			// Already uploaded, reuse existing Drive info
-			result.DriveLink = existing.DriveLink
-			result.DriveFileID = existing.DriveFileID
-			result.DownloadLink = existing.DownloadLink
-			result.Status = "already_exists"
-			p.log.Info("skipping upload, media already exists with DriveFileID",
-				zap.String("id", input.ID),
-				zap.String("drive_file_id", existing.DriveFileID))
-			return result, nil
-		}
-	}
-
 	// Cleanup raw file after processing
 	_ = os.Remove(actualRawPath)
-
-	// Step 4: Upload to Drive
-	if err := p.uploadStep(ctx, input, processedPath, result); err != nil {
-		result.Error = fmt.Sprintf("upload failed: %v", err)
-		return result, err
-	}
 
 	result.Status = "processed"
 	return result, nil
@@ -299,29 +270,6 @@ func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, 
 func (p *Processor) hashStep(ctx context.Context, path string) (string, error) {
 	p.log.Info("calculating file hash", zap.String("path", path))
 	return hashutil.MD5File(path)
-}
-
-// uploadStep uploads the processed file to Google Drive.
-func (p *Processor) uploadStep(ctx context.Context, input AssetInput, path string, result *AssetResult) error {
-	if p.driveSvc == nil || input.FolderID == "" {
-		return nil
-	}
-
-	filename := filepath.Base(path)
-	p.log.Info("uploading to Drive", zap.String("id", input.ID), zap.String("filename", filename))
-
-	uploader := &drive.Uploader{Service: p.driveSvc, Log: p.log}
-	uploadResult, err := uploader.UploadFile(ctx, path, input.FolderID, filename)
-	if err != nil {
-		return err
-	}
-
-	result.DriveLink = uploadResult.WebViewLink
-	result.DriveFileID = uploadResult.FileID
-	result.DownloadLink = "https://drive.google.com/uc?id=" + uploadResult.FileID
-	p.log.Info("drive upload success", zap.String("id", input.ID), zap.String("file_id", uploadResult.FileID))
-
-	return nil
 }
 
 // copyFile copies a file from src to dst using streaming (io.Copy).
