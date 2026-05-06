@@ -15,7 +15,7 @@ func WireContentPackage(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ContentPackageWiring, error) {
-	svc := contentpackage.NewService(log)
+	svc := contentpackage.NewService(log, nil, coreDeps.JobsService)
 
 	// Register job handler with the job service
 	if coreDeps.JobsService != nil {

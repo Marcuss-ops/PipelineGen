@@ -110,7 +110,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		zap.String("type", string(job.Type)),
 	)
 
-	// Extract workflow name from payload (json.RawMessage)
+	// Extract workflow name or path from payload (json.RawMessage)
 	var payload map[string]any
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
@@ -118,12 +118,28 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		}
 	}
 
+	// Check if running from file path
+	if path, ok := payload["path"].(string); ok && path != "" {
+		s.log.Info("running workflow from file", zap.String("path", path))
+		result, err := s.RunWorkflowFromFile(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"workflow_id": result.WorkflowID,
+			"status":      result.Status,
+			"duration":    result.Duration.String(),
+			"source":      "file",
+		}, nil
+	}
+
+	// Otherwise, run by workflow name
 	workflowName := ""
 	if v, ok := payload["workflow"].(string); ok {
 		workflowName = v
 	}
 	if workflowName == "" {
-		return nil, fmt.Errorf("workflow name is required in payload")
+		return nil, fmt.Errorf("workflow name or path is required in payload")
 	}
 
 	// Get the workflow by name
@@ -145,6 +161,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		"workflow_id": result.WorkflowID,
 		"status":      result.Status,
 		"duration":    result.Duration.String(),
+		"source":      "named",
 	}, nil
 }
 

@@ -12,7 +12,7 @@ import (
 
 func TestHandleJob(t *testing.T) {
 	log := zap.NewNop()
-	svc := NewService(log)
+	svc := NewService(log, nil, nil)
 
 	// Create a test job
 	job := &models.Job{

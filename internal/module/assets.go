@@ -40,7 +40,7 @@ func (m *AssetsModule) Name() string {
 
 // Enabled checks if the module is enabled
 func (m *AssetsModule) Enabled(cfg *config.Config) bool {
-	return true // Assets module is always enabled
+	return m.handler != nil
 }
 
 // RegisterRoutes registers asset routes

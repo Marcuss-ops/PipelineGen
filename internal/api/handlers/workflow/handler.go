@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -130,9 +129,9 @@ func (h *Handler) runWorkflow(c *gin.Context) {
 		return
 	}
 
-	// Enqueue a job in the job system
+	// Enqueue a job in the job system using request context
 	payload := map[string]any{"workflow": req.Workflow}
-	job, err := h.jobsService.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 		Type:    models.JobType(jobs.JobTypeWorkflowRun),
 		Payload: payload,
 	})
@@ -151,7 +150,7 @@ type runWorkflowFileRequest struct {
 	Path string `json:"path"`
 }
 
-// runWorkflowFile runs a workflow from a YAML file
+// runWorkflowFile runs a workflow from a YAML file (async via job system)
 func (h *Handler) runWorkflowFile(c *gin.Context) {
 	var req runWorkflowFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -160,7 +159,7 @@ func (h *Handler) runWorkflowFile(c *gin.Context) {
 	}
 
 	if req.Path == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "workflow name required"})
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "workflow path required"})
 		return
 	}
 
@@ -171,16 +170,25 @@ func (h *Handler) runWorkflowFile(c *gin.Context) {
 		return
 	}
 
-	// Run workflow synchronously to return result using request context
-	result, err := h.service.RunWorkflowFromFile(c.Request.Context(), path)
+	// Enqueue a job in the job system using request context
+	payload := map[string]any{"path": path}
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+		Type:    models.JobType(jobs.JobTypeWorkflowRun),
+		Payload: payload,
+	})
 	if err != nil {
-		h.log.Error("workflow file run failed", zap.String("path", path), zap.Error(err))
+		h.log.Error("failed to enqueue workflow file job", zap.String("path", path), zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
 
-	h.log.Info("workflow file completed", zap.String("workflow_id", result.WorkflowID), zap.String("status", result.Status))
-	c.JSON(http.StatusOK, result)
+	h.log.Info("enqueued workflow file job", zap.String("job_id", job.ID), zap.String("path", path))
+	c.JSON(http.StatusAccepted, gin.H{
+		"ok":         true,
+		"message":    "workflow file job enqueued",
+		"job_id":     job.ID,
+		"status_url": "/api/jobs/" + job.ID + "/full",
+	})
 }
 
 // getRunStatus returns the status of a workflow run

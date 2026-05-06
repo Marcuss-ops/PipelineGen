@@ -4,27 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/core/jobs"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/models"
 )
 
+// ScriptService interface for generating script docs
+type ScriptService interface {
+	GenerateScriptDoc(ctx context.Context, title string) (string, error)
+}
+
 // Service handles content package job processing.
 type Service struct {
-	log *zap.Logger
+	log          *zap.Logger
+	scriptSvc    ScriptService
+	jobsSvc      *jobservice.Service
 }
 
 // NewService creates a new ContentPackageService.
-func NewService(log *zap.Logger) *Service {
+func NewService(log *zap.Logger, scriptSvc ScriptService, jobsSvc *jobservice.Service) *Service {
 	return &Service{
-		log: log,
+		log:       log,
+		scriptSvc: scriptSvc,
+		jobsSvc:   jobsSvc,
 	}
 }
 
 // HandleJob processes a content package job.
-// Implements the job handler interface: func(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error)
 func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	s.log.Info("handling content package job",
 		zap.String("job_id", job.ID),
@@ -53,27 +61,49 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		tools.Progress(10, "Starting content package creation")
 	}
 
-	startTime := time.Now()
+	// Step 1: Generate script doc from title
+	if tools.Progress != nil {
+		tools.Progress(20, "Generating script document")
+	}
 
-	// TODO: Implement actual content package logic:
-	// 1. Generate script doc based on title + style
-	// 2. Find or process assets
-	// 3. Upload to Drive
-	// 4. Return links and status
+	var scriptDoc string
+	if s.scriptSvc != nil {
+		var err error
+		scriptDoc, err = s.scriptSvc.GenerateScriptDoc(ctx, payload.Title)
+		if err != nil {
+			s.log.Warn("failed to generate script doc", zap.Error(err))
+			scriptDoc = fmt.Sprintf("Script for: %s (generation failed: %v)", payload.Title, err)
+		}
+	} else {
+		// Enqueue a script.generate job if jobsSvc is available
+		if s.jobsSvc != nil {
+			scriptJob, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+				Type:    models.JobType(jobs.JobTypeScriptGenerate),
+				Payload: map[string]any{"topic": payload.Title, "language": "it"},
+			})
+			if err != nil {
+				s.log.Warn("failed to enqueue script job", zap.Error(err))
+			} else {
+				s.log.Info("enqueued script job", zap.String("script_job_id", scriptJob.ID))
+				if tools.Event != nil {
+					tools.Event("script_job_enqueued", "Script generation job enqueued", map[string]any{
+						"script_job_id": scriptJob.ID,
+					})
+				}
+			}
+		}
+		scriptDoc = fmt.Sprintf("Script for: %s (enqueued for generation)", payload.Title)
+	}
 
-	// For now, return a skeleton result
 	result := map[string]any{
-		"job_id":      job.ID,
-		"title":       payload.Title,
-		"style":       payload.Style,
-		"assets":      payload.Assets,
-		"output":      payload.Output,
-		"status":      "completed",
-		"duration":    time.Since(startTime).String(),
-		"script_doc":  fmt.Sprintf("Script for: %s", payload.Title),
-		"asset_jobs":  []string{},
-		"drive_links": []string{},
-		"message":     "Content package job handled (skeleton implementation)",
+		"job_id":     job.ID,
+		"title":      payload.Title,
+		"style":      payload.Style,
+		"assets":     payload.Assets,
+		"output":     payload.Output,
+		"status":     "completed",
+		"script_doc": scriptDoc,
+		"message":    "Content package job completed (first step: script doc)",
 	}
 
 	if tools.Progress != nil {
@@ -88,7 +118,6 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 
 	s.log.Info("content package job completed",
 		zap.String("job_id", job.ID),
-		zap.Duration("duration", time.Since(startTime)),
 	)
 
 	return result, nil
