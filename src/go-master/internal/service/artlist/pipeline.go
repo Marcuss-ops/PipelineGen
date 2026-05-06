@@ -220,7 +220,7 @@ func (s *Service) processCandidates(ctx context.Context, candidates []*models.Cl
 		return
 	}
 	for _, clip := range candidates {
-		s.processClip(ctx, clip, tagFolderID, tagFolderName, resp)
+		s.processClip(ctx, clip, tagFolderID, tagFolderName, resp, req)
 	}
 }
 
@@ -272,7 +272,7 @@ func (s *Service) processDryRun(ctx context.Context, candidates []*models.Clip, 
 }
 
 // processClip processes a single clip
-func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderID, tagFolderName string, resp *RunTagResponse) {
+func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderID, tagFolderName string, resp *RunTagResponse, req *RunTagRequest) {
 	if clip == nil {
 		return
 	}
@@ -352,7 +352,29 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 		Term:      resp.Term,
 		OutputDir: filepath.Join(s.cfg.Storage.DataDir, "artlist", tagFolderName),
 		FolderID:  tagFolderID,
-		Duration:  s.cfg.Video.Duration,
+	}
+	// Apply preset config if available from req
+	if req != nil {
+		if req.ClipDuration > 0 {
+			processInput.Duration = req.ClipDuration
+		} else if s.cfg.Video.Duration > 0 {
+			processInput.Duration = s.cfg.Video.Duration
+		}
+		if req.Width > 0 {
+			processInput.Width = req.Width
+		}
+		if req.Height > 0 {
+			processInput.Height = req.Height
+		}
+		if req.FPS > 0 {
+			// Note: ProcessInput doesn't have FPS field directly
+			// This would need to be passed via Metadata or a custom field
+			processInput.Metadata = map[string]interface{}{
+				"fps": req.FPS,
+			}
+		}
+	} else {
+		processInput.Duration = s.cfg.Video.Duration
 	}
 	result, err := s.mediaProcessor.Process(ctx, processInput)
 	if err != nil {
