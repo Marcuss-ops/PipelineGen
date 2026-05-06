@@ -1,9 +1,6 @@
 package mediapipeline
 
 import (
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/service/drivedestination"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
 )
@@ -24,8 +21,6 @@ type PipelineRequest struct {
 	Segments    []SegmentSpec
 	Destination DestinationSpec
 	Processing  ProcessingSpec
-	UploadDrive bool
-	SaveDB      bool
 	Tags        []string
 	Group       string
 }
@@ -102,18 +97,9 @@ func (item *WorkItem) Fail(err error) {
 	item.Error = err.Error()
 }
 
-type ResolvedDestination struct {
-	FolderID   string
-	FolderPath string
-	Group      string
-}
-
 type Service struct {
 	ytdlpDownloader  *downloader.YTDLPDownloader
 	ffmpegProcessor  *ffmpeg.Processor
-	driveUploader    *drive.Uploader
-	driveDestination *drivedestination.Service
-	clipsRepo        *clips.Repository
 	idGenerator      idGenerator
 	downloadOutputDir string
 	processOutputDir  string
