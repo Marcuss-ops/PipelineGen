@@ -6,9 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/service/drivedestination"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
 )
@@ -16,17 +13,11 @@ import (
 func NewService(
 	ytdlpDownloader *downloader.YTDLPDownloader,
 	ffmpegProcessor *ffmpeg.Processor,
-	driveUploader *drive.Uploader,
-	driveDestination *drivedestination.Service,
-	clipsRepo *clips.Repository,
 	opts ...Option,
 ) *Service {
 	s := &Service{
 		ytdlpDownloader:  ytdlpDownloader,
 		ffmpegProcessor:  ffmpegProcessor,
-		driveUploader:    driveUploader,
-		driveDestination: driveDestination,
-		clipsRepo:        clipsRepo,
 		idGenerator:      &stableIDGenerator{},
 		downloadOutputDir: "/tmp/mediapipeline/downloads",
 		processOutputDir:  "/tmp/mediapipeline/processed",
@@ -53,16 +44,6 @@ func WithOutputDirs(downloadDir, processDir string) Option {
 }
 
 func (s *Service) Run(ctx context.Context, req *PipelineRequest) (*PipelineResponse, error) {
-	var resolvedDest *ResolvedDestination
-
-	if req.UploadDrive && s.driveDestination != nil {
-		dest, err := s.resolveDestination(ctx, req.Destination)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve destination: %w", err)
-		}
-		resolvedDest = dest
-	}
-
 	items := s.expandWorkItems(req)
 
 	for _, item := range items {
@@ -79,25 +60,6 @@ func (s *Service) Run(ctx context.Context, req *PipelineRequest) (*PipelineRespo
 		if err := s.process(ctx, item, req.Processing); err != nil {
 			item.Fail(err)
 			continue
-		}
-
-		if err := s.hashItem(item); err != nil {
-			item.Fail(err)
-			continue
-		}
-
-		if req.UploadDrive && s.driveUploader != nil && resolvedDest != nil {
-			if err := s.uploadItem(ctx, item, resolvedDest); err != nil {
-				item.Fail(err)
-				continue
-			}
-		}
-
-		if req.SaveDB && s.clipsRepo != nil {
-			if err := s.persistItem(ctx, item, req, resolvedDest); err != nil {
-				item.Fail(err)
-				continue
-			}
 		}
 
 		item.Status = "processed"
@@ -135,31 +97,6 @@ func (s *Service) expandWorkItems(req *PipelineRequest) []*WorkItem {
 	}
 
 	return items
-}
-
-func (s *Service) resolveDestination(ctx context.Context, dest DestinationSpec) (*ResolvedDestination, error) {
-	if s.driveDestination == nil {
-		return nil, fmt.Errorf("drive destination resolver not configured")
-	}
-
-	req := &drivedestination.Request{
-		Group:           dest.Group,
-		FolderID:        dest.FolderID,
-		FolderPath:      dest.FolderPath,
-		SubfolderName:   dest.SubfolderName,
-		CreateSubfolder: dest.CreateSubfolder,
-	}
-
-	resolved, err := s.driveDestination.Resolve(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ResolvedDestination{
-		FolderID:   resolved.FolderID,
-		FolderPath: resolved.FolderPath,
-		Group:      resolved.Group,
-	}, nil
 }
 
 func (s *Service) validateItem(item *WorkItem) error {
