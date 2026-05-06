@@ -85,14 +85,14 @@ func (h *Handler) contentPackage(c *gin.Context) {
 		return
 	}
 
-	// Enqueue a job in the job system
+	// Enqueue a job in the job system using request context
 	payload := map[string]any{
 		"title":  req.Title,
 		"style":  req.Style,
 		"assets": req.Assets,
 		"output": req.Output,
 	}
-	job, err := h.jobsService.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 		Type:    models.JobTypeContentPackage,
 		Payload: payload,
 	})
