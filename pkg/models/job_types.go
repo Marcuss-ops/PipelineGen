@@ -54,6 +54,7 @@ const (
 	JobTypeYouTubeUpload    JobType = "youtube.upload"
 	JobTypeCatalogSync      JobType = "catalog.sync"
 	JobTypeArtlistRun       JobType = "media.artlist"
+	JobTypeContentPackage   JobType = "content.package"
 )
 
 // Job rappresenta un job nel sistema

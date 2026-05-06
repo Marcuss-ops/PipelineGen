@@ -142,7 +142,7 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	}
 	defer deps.Cleanup()
 
-	if deps.Handlers == nil {
-		t.Fatal("expected non-nil Handlers")
+	if deps.Registry == nil {
+		t.Fatal("expected non-nil Registry")
 	}
 }

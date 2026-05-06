@@ -23,8 +23,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("", h.Enqueue)
 	r.GET("", h.List)
 	r.GET("/:id", h.Get)
+	r.GET("/:id/full", h.GetFull)
 	r.POST("/:id/cancel", h.Cancel)
 	r.POST("/:id/retry", h.Retry)
+	r.POST("/:id/action", h.Action)
 	r.GET("/:id/events", h.Events)
 }
 
@@ -132,4 +134,92 @@ func (h *Handler) Events(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{"events": events, "count": len(events)})
+}
+
+// GetFull godoc
+// @Summary Get full job details
+// @Description Get job with events and full status
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param id path string true "Job ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 404 {object} map[string]string
+// @Router /jobs/{id}/full [get]
+func (h *Handler) GetFull(c *gin.Context) {
+	id := c.Param("id")
+
+	job, err := h.service.Get(c.Request.Context(), id)
+	if err != nil {
+		apiutil.NotFound(c, "job not found")
+		return
+	}
+
+	events, err := h.service.ListEvents(c.Request.Context(), id)
+	if err != nil {
+		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
+		// Don't fail - just return empty events
+		events = make([]models.JobEvent, 0)
+	}
+
+	retryable := job.CanRetry()
+
+	apiutil.OK(c, gin.H{
+		"id":           job.ID,
+		"type":         job.Type,
+		"status":       job.Status,
+		"progress":     job.Progress,
+		"current_step": job.Status, // TODO: add current_step to job model
+		"events":       events,
+		"result":       job.Result,
+		"retryable":    retryable,
+		"job":          job,
+	})
+}
+
+// ActionRequest represents an action request
+type ActionRequest struct {
+	Action string `json:"action" binding:"required"`
+}
+
+// Action godoc
+// @Summary Perform action on job
+// @Description Cancel or retry a job
+// @Tags jobs
+// @Accept json
+// @Produce json
+// @Param id path string true "Job ID"
+// @Param request body ActionRequest true "Action request"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router /jobs/{id}/action [post]
+func (h *Handler) Action(c *gin.Context) {
+	id := c.Param("id")
+
+	var req ActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+
+	switch req.Action {
+	case "cancel":
+		if err := h.service.Cancel(c.Request.Context(), id); err != nil {
+			h.log.Error("failed to cancel job", zap.String("job_id", id), zap.Error(err))
+			apiutil.InternalError(c, err)
+			return
+		}
+		apiutil.OK(c, gin.H{"message": "job cancelled"})
+	case "retry":
+		job, err := h.service.Retry(c.Request.Context(), id)
+		if err != nil {
+			h.log.Error("failed to retry job", zap.String("job_id", id), zap.Error(err))
+			apiutil.InternalError(c, err)
+			return
+		}
+		apiutil.OK(c, gin.H{"job": job})
+	default:
+		apiutil.BadRequest(c, "unknown action: "+req.Action)
+	}
 }

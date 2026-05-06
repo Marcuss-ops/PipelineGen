@@ -12,6 +12,7 @@ import (
 // RegistryWiring holds the registry and all wired modules
 type RegistryWiring struct {
 	Registry    *module.Registry
+	System      *SystemWiring
 	ArtlistSvc  *ArtlistWiring
 	YouTubeClip *YouTubeClipWiring
 	Jobs       *JobsWiring
@@ -22,6 +23,11 @@ type RegistryWiring struct {
 	Drive      *DriveWiring
 	Workflow   *WorkflowWiring
 	Scraper    *ScraperWiring
+}
+
+// SystemWiring holds the System module wiring
+type SystemWiring struct {
+	Module module.Module
 }
 
 // ScraperWiring holds the Scraper module wiring
@@ -46,6 +52,19 @@ func WireScraper(
 	}, nil
 }
 
+// WireSystem creates the System handler and module
+func WireSystem(
+	cfg *config.Config,
+	log *zap.Logger,
+) *SystemWiring {
+	mod := module.NewSystemModule(cfg, log)
+	log.Info("created System module")
+
+	return &SystemWiring{
+		Module: mod,
+	}
+}
+
 // WireRegistry creates and populates the module registry with all modules
 func WireRegistry(
 	cfg *config.Config,
@@ -57,6 +76,14 @@ func WireRegistry(
 
 	wiring := &RegistryWiring{
 		Registry: registry,
+	}
+
+	// Wire System (doctor endpoint)
+	systemWiring := WireSystem(cfg, log)
+	if systemWiring != nil && systemWiring.Module != nil {
+		wiring.System = systemWiring
+		registry.Register(systemWiring.Module)
+		log.Info("registered System module")
 	}
 
 	// Wire Artlist
@@ -181,6 +208,12 @@ func WireRegistry(
 	utilityModule := module.NewUtilityModule(cfg, log, coreDeps.Utility)
 	registry.Register(utilityModule)
 	log.Info("registered Utility module")
+
+	// Register Assets module (unified asset search)
+	// TODO: wire assets handler with proper dependencies
+	// assetsModule := module.NewAssetsModule(cfg, log, coreDeps)
+	// registry.Register(assetsModule)
+	// log.Info("registered Assets module")
 
 	return wiring, nil
 }

@@ -66,6 +66,49 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/runs/:id", h.getRunStatus)
 	r.GET("/list", h.listWorkflows)
 	r.POST("/load", h.loadWorkflow)
+	r.POST("/content-package", h.contentPackage)
+}
+
+// ContentPackageRequest is the request for creating a content package
+type ContentPackageRequest struct {
+	Title  string `json:"title" binding:"required"`
+	Style  string `json:"style"`
+	Assets string `json:"assets"`
+	Output string `json:"output"`
+}
+
+// contentPackage creates a content package (script + clips + upload)
+func (h *Handler) contentPackage(c *gin.Context) {
+	var req ContentPackageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	// Enqueue a job in the job system
+	payload := map[string]any{
+		"title":  req.Title,
+		"style":  req.Style,
+		"assets": req.Assets,
+		"output": req.Output,
+	}
+	job, err := h.jobsService.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+		Type:    models.JobTypeContentPackage,
+		Payload: payload,
+	})
+	if err != nil {
+		h.log.Error("failed to enqueue content package job", zap.String("title", req.Title), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+
+	h.log.Info("enqueued content package job", zap.String("job_id", job.ID), zap.String("title", req.Title))
+	c.JSON(http.StatusAccepted, gin.H{
+		"ok":        true,
+		"message":   "content package job enqueued",
+		"job_id":    job.ID,
+		"status_url": "/api/jobs/" + job.ID + "/full",
+	})
 }
 
 // runWorkflowRequest is the request body for running a workflow
