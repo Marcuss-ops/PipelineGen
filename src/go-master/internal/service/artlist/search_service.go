@@ -200,9 +200,6 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 	// Enqueue processing job through common jobs service
 	if s.jobsSvc != nil {
 		driveFolderID := ""
-		if s.driveService != nil {
-			driveFolderID = s.driveService.GetDriveFolderID()
-		}
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:       models.JobTypeArtlistRun,
 			Payload:    (&RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID}).ToMap(),

@@ -28,7 +28,7 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 
 	// Normalize request before enqueue
 	req = artlist.NormalizeRunTagRequest(req, artlist.RunDefaults{
-		DefaultRootFolderID: h.service.GetDriveFolderID(),
+		DefaultRootFolderID: "",
 		MaxLimit:           500,
 	})
 

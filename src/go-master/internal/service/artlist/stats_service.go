@@ -58,10 +58,10 @@ func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
 func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsResponse, error) {
 	resp := &DiagnosticsResponse{
 		OK:             true,
-		RootFolderID:   s.driveService.GetDriveFolderID(),
-		DriveFolderID:  s.driveService.GetDriveFolderID(),
+		RootFolderID:   "",
+		DriveFolderID:  "",
 		NodeScraperDir: s.nodeScraperDir,
-		HasDriveClient: s.driveService.GetDriveClient() != nil,
+		HasDriveClient: s.assetDestResolver != nil,
 		HasArtlistDB:   s.artlistDB != nil,
 		MainDBReady:    s.mainDB != nil,
 	}
