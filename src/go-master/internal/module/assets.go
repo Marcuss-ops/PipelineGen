@@ -8,6 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/handlers/assets"
+	"velox/go-master/internal/repository/catalog"
+	artlistSvc "velox/go-master/internal/service/artlist"
 	"velox/go-master/pkg/config"
 )
 
@@ -19,14 +21,15 @@ type AssetsModule struct {
 }
 
 // NewAssetsModule creates a new assets module
-func NewAssetsModule(cfg *config.Config, log *zap.Logger, artlistSvc interface{}, catalogRepo interface{}) *AssetsModule {
-	// Type assert or use adapters as needed
-	// For now, create handler with available dependencies
+func NewAssetsModule(cfg *config.Config, log *zap.Logger, artlistSvc *artlistSvc.Service, catalogRepo *catalog.Repository) *AssetsModule {
 	mod := &AssetsModule{
 		cfg: cfg,
 		log: log,
 	}
-	// TODO: properly wire dependencies
+	// Initialize handler with dependencies
+	if artlistSvc != nil || catalogRepo != nil {
+		mod.handler = assets.NewHandler(artlistSvc, catalogRepo, log)
+	}
 	return mod
 }
 
