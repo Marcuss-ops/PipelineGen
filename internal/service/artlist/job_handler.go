@@ -22,9 +22,6 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 
 	// Normalize the request (worker path)
 	rootFolderID := ""
-	if s.driveService != nil {
-		rootFolderID = s.driveService.GetDriveFolderID()
-	}
 	normalized := NormalizeRunTagRequest(*req, RunDefaults{
 		DefaultRootFolderID: rootFolderID,
 		MaxLimit:           500,

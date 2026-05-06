@@ -171,6 +171,46 @@ func (s *LifecycleService) ProcessAsset(ctx context.Context, input *FinalizeInpu
 	return out, nil
 }
 
+// CheckDuplicate performs a read-only duplicate check for an asset.
+// It does not upload or persist anything, making it safe for dry-run.
+func (s *LifecycleService) CheckDuplicate(ctx context.Context, input *FinalizeInput, fileHash string) (*FinalizeResult, error) {
+	out := &FinalizeResult{
+		OK:        false,
+		Status:    "failed",
+		LocalPath: input.LocalPath,
+	}
+
+	if s.dedupe == nil || !s.dedupe.policy.Enabled {
+		out.OK = true
+		out.Status = "no_dedupe_policy"
+		return out, nil
+	}
+
+	query := ExistingAssetQuery{
+		ID:          input.ID,
+		FileHash:    fileHash,
+		Filename:    input.Filename,
+		Source:      input.Source,
+	}
+
+	existing, err := s.dedupe.CheckDuplicate(ctx, query)
+	if err != nil {
+		return out, err
+	}
+	if existing != nil && s.dedupe.policy.SkipIfExists {
+		out.OK = true
+		out.Status = "would_skip_duplicate"
+		out.DriveLink = existing.DriveLink
+		out.DriveFileID = existing.DriveFileID
+		out.DownloadLink = existing.DownloadLink
+		out.FileHash = existing.FileHash
+		return out, nil
+	}
+	out.OK = true
+	out.Status = "would_process"
+	return out, nil
+}
+
 // Reconcile triggers reconciliation for a given source.
 func (s *LifecycleService) Reconcile(ctx context.Context, source string) (int, error) {
 	if s.reconcile == nil {

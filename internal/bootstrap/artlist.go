@@ -6,9 +6,7 @@ import (
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	artlistPkg "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetpipeline"
-	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaregistry"
-	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
@@ -30,11 +28,9 @@ func WireArtlist(
 	coreDeps *CoreDeps,
 ) (*ArtlistWiring, error) {
 	// Create drive destination service
-	driveDestinationService := drivedestination.NewService(cfg, log, coreDeps.DriveClient)
 
 	// Create Artlist service with drive destination
 	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
-	driveFolderID := drive.ResolveArtlistRootFolderID(cfg)
 
 	// Create mediaregistry components for Artlist
 	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
@@ -53,8 +49,7 @@ func WireArtlist(
 		log,
 	)
 
-	// Create Artlist DriveService
-	artlistDriveService := artlistPkg.NewDriveService(coreDeps.DriveClient, driveFolderID, driveDestinationService, log)
+
 
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,
@@ -62,9 +57,9 @@ func WireArtlist(
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
-		artlistDriveService,
 		coreDeps.MediaProcessor,
 		artlistLifecycle,
+		nil,
 		coreDeps.JobsService,
 		log,
 	)
