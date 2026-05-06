@@ -1,6 +1,7 @@
 package images
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,28 +17,31 @@ import (
 	"time"
 
 	"velox/go-master/internal/repository/images"
+	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/pkg/models"
 
 	"go.uber.org/zap"
 )
 
 type Service struct {
-	repo    *images.Repository
-	baseDir string
-	log     *zap.Logger
-	client  *http.Client
+	repo       *images.Repository
+	baseDir    string
+	log        *zap.Logger
+	client     *http.Client
+	assetIndex *assetindex.Service
 
 	// Gestione concorrenza per evitare doppi download
 	mu           sync.Mutex
 	activeSearch map[string]*sync.WaitGroup
 }
 
-func NewService(repo *images.Repository, baseDir string, log *zap.Logger) *Service {
+func NewService(repo *images.Repository, baseDir string, assetIndex *assetindex.Service, log *zap.Logger) *Service {
 	return &Service{
 		repo:         repo,
 		baseDir:      baseDir,
 		log:          log,
 		client:       &http.Client{Timeout: 15 * time.Second},
+		assetIndex:   assetIndex,
 		activeSearch: make(map[string]*sync.WaitGroup),
 	}
 }
@@ -385,6 +389,25 @@ func (s *Service) IngestImage(subjectSlug string, reader io.Reader, filename str
 		return nil, fmt.Errorf("failed to save image to db: %w", err)
 	}
 	asset.ID = id
+
+	// 8. Write to asset_index for unified tracking
+	if s.assetIndex != nil {
+		assetRec := &assetindex.AssetRecord{
+			AssetID:   fmt.Sprintf("image_%d", asset.ID),
+			AssetType: "image",
+			Source:    "images",
+			SourceID:  fmt.Sprintf("%d", asset.SubjectID),
+			LocalPath: asset.PathRel,
+			FileHash:  asset.Hash,
+			Status:    "ready",
+			Metadata:  fmt.Sprintf(`{"subject_id": "%d", "source_url": "%s"}`, asset.SubjectID, asset.SourceURL),
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		}
+		if err := s.assetIndex.Upsert(context.Background(), assetRec); err != nil {
+			s.log.Warn("failed to write image to asset_index", zap.Error(err))
+		}
+	}
 
 	return asset, nil
 }

@@ -1,18 +1,10 @@
 package artlist
 
-import "time"
-
 // Stats represents the statistics for Artlist endpoints
 type Stats struct {
-	OK                 bool    `json:"ok"`
-	ClipsTotal         int     `json:"clips_total"`
-	ArtlistClipsTotal  int     `json:"artlist_clips_total"`
-	SearchTermsTotal   int     `json:"search_terms_total"`
-	SearchTermsScraped int     `json:"search_terms_scraped"`
-	SearchTermsPending int     `json:"search_terms_pending"`
-	CoveragePct        float64 `json:"coverage_pct"`
-	LastSyncAt         *string `json:"last_sync_at,omitempty"`
-	StaleTerms         int     `json:"stale_terms"`
+	OK                bool    `json:"ok"`
+	ClipsTotal        int     `json:"clips_total"`
+	ArtlistClipsTotal int     `json:"artlist_clips_total"`
 }
 
 // DiagnosticsResponse reports the current Artlist wiring and database readiness.
@@ -31,13 +23,4 @@ type DiagnosticsResponse struct {
 	EstimatedSize     int     `json:"estimated_size,omitempty"`
 	LastProcessedAt   *string `json:"last_processed_at,omitempty"`
 	Error             string  `json:"error,omitempty"`
-}
-
-// TermInfo represents information about a search term
-type TermInfo struct {
-	Term        string    `json:"term"`
-	Scraped     bool      `json:"scraped"`
-	LastScraped *string   `json:"last_scraped"`
-	VideoCount  int       `json:"video_count"`
-	CreatedAt   time.Time `json:"created_at"`
 }

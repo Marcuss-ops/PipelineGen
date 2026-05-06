@@ -8,22 +8,25 @@ import (
 
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/repository/catalog"
+	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/pkg/apiutil"
 )
 
 // Handler handles unified asset search
 type Handler struct {
-	artlistSvc  *artlist.Service
-	catalogRepo *catalog.Repository
-	log         *zap.Logger
+	artlistSvc    *artlist.Service
+	catalogRepo   *catalog.Repository
+	assetIndexSvc *assetindex.Service
+	log           *zap.Logger
 }
 
 // NewHandler creates a new assets handler
-func NewHandler(artlistSvc *artlist.Service, catalogRepo *catalog.Repository, log *zap.Logger) *Handler {
+func NewHandler(artlistSvc *artlist.Service, catalogRepo *catalog.Repository, assetIndexSvc *assetindex.Service, log *zap.Logger) *Handler {
 	return &Handler{
-		artlistSvc:  artlistSvc,
-		catalogRepo: catalogRepo,
-		log:         log,
+		artlistSvc:    artlistSvc,
+		catalogRepo:   catalogRepo,
+		assetIndexSvc: assetIndexSvc,
+		log:           log,
 	}
 }
 
@@ -105,5 +108,30 @@ func (h *Handler) Search(c *gin.Context) {
 		"query":   req.Q,
 		"type":    req.Type,
 		"results": results,
+	})
+}
+
+// Stats godoc
+// @Summary Get asset index statistics
+// @Description Returns statistics about assets indexed in asset_index
+// @Tags assets
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /assets/stats [get]
+func (h *Handler) Stats(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	stats, err := h.assetIndexSvc.GetStats(ctx)
+	if err != nil {
+		h.log.Error("failed to get asset stats", zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":         true,
+		"total":      stats.Total,
+		"by_type":    stats.ByType,
+		"by_status":  stats.ByStatus,
 	})
 }

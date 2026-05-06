@@ -19,6 +19,7 @@ import (
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
@@ -65,6 +66,8 @@ type services struct {
 	mediaProcessor     processor.Processor
 	youtubeClipService *youtubeclip.Service
 	assetIndexService  *assetindex.Service
+	assetResolver      *assetindex.Resolver
+	assetRegistry      *assetregistry.Registry
 }
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
@@ -166,6 +169,13 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
 	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
 
+	// Create and initialize central asset registry
+	assetRegistry := assetregistry.NewRegistry(log)
+	assetRegistry.RegisterClipSource(assetregistry.AssetSourceStock, assetregistry.NewClipsAdapter(clipsRepo, log))
+	assetRegistry.RegisterClipSource(assetregistry.AssetSourceYouTube, assetregistry.NewClipsAdapter(clipsOnlyRepo, log))
+	assetRegistry.RegisterClipSource(assetregistry.AssetSourceArtlist, assetregistry.NewClipsAdapter(artlistRepo, log))
+	log.Info("central asset registry initialized with clip sources")
+
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.images.DB)
 
@@ -173,7 +183,21 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if err := os.MkdirAll(imgAssetsDir, 0755); err != nil {
 		log.Warn("Failed to create image assets directory", zap.Error(err))
 	}
-	imageService := imgservice.NewService(imageRepo, imgAssetsDir, log)
+	imageService := imgservice.NewService(imageRepo, imgAssetsDir, assetIndexService, log)
+
+	// Asset resolver (queries asset_index first, then falls back to specific DBs)
+	clipsRepos := map[string]*clips.Repository{
+		"youtube": clipsOnlyRepo,
+		"stock":    clipsRepo,
+		"artlist":  artlistRepo,
+	}
+	resolverCfg := &assetindex.ResolverConfig{
+		ClipsRepos:    clipsRepos,
+		ImageRepo:     imageRepo,
+		VoiceoverRepo: voRepo,
+	}
+	assetResolver := assetindex.NewResolver(assetIndexService, resolverCfg, log)
+	log.Info("asset resolver initialized")
 
 	harvesterRepo := harvester.NewRepository(dbs.main.DB, log)
 	indexingService := indexing.NewService(clipsRepo, log)
@@ -219,7 +243,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		}
 	}
 
-	catalogSync := catalogsync.NewService(driveClient, syncTargets, log)
+	catalogSync := catalogsync.NewService(driveClient, syncTargets, assetIndexService, log)
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
@@ -261,5 +285,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		mediaProcessor:     mediaProcessor,
 		youtubeClipService: youtubeClipService,
 		assetIndexService:  assetIndexService,
+		assetResolver:      assetResolver,
+		assetRegistry:      assetRegistry,
 	}, nil
 }

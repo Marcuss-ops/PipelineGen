@@ -233,3 +233,56 @@ func (r *Repository) Delete(ctx context.Context, assetID string) error {
     _, err := r.db.ExecContext(ctx, query, assetID)
     return err
 }
+
+type Stats struct {
+    Total      int            `json:"total"`
+    ByType     map[string]int `json:"by_type"`
+    ByStatus   map[string]int `json:"by_status"`
+}
+
+func (r *Repository) GetStats(ctx context.Context) (*Stats, error) {
+    stats := &Stats{
+        ByType:   make(map[string]int),
+        ByStatus: make(map[string]int),
+    }
+
+    // Get total count
+    err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_index`).Scan(&stats.Total)
+    if err != nil {
+        return nil, err
+    }
+
+    // Get count by type
+    rows, err := r.db.QueryContext(ctx, `SELECT asset_type, COUNT(*) as cnt FROM asset_index GROUP BY asset_type`)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var assetType string
+        var cnt int
+        if err := rows.Scan(&assetType, &cnt); err != nil {
+            return nil, err
+        }
+        stats.ByType[assetType] = cnt
+    }
+
+    // Get count by status
+    rows, err = r.db.QueryContext(ctx, `SELECT status, COUNT(*) as cnt FROM asset_index GROUP BY status`)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var status string
+        var cnt int
+        if err := rows.Scan(&status, &cnt); err != nil {
+            return nil, err
+        }
+        stats.ByStatus[status] = cnt
+    }
+
+    return stats, nil
+}

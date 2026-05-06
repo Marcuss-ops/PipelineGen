@@ -12,6 +12,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/service/assetindex"
 	drivequery "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 )
@@ -51,14 +52,16 @@ type Service struct {
 	driveClient *driveapi.Service
 	log         *zap.Logger
 	targets     []Target
+	assetIndex  *assetindex.Service
 	mu          sync.Mutex
 }
 
-func NewService(driveClient *driveapi.Service, targets []Target, log *zap.Logger) *Service {
+func NewService(driveClient *driveapi.Service, targets []Target, assetIndex *assetindex.Service, log *zap.Logger) *Service {
 	return &Service{
 		driveClient: driveClient,
 		log:         log,
 		targets:     targets,
+		assetIndex:  assetIndex,
 	}
 }
 
@@ -279,7 +282,32 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 		clip.Tags = mergeTags(clip.Tags, existing.Tags)
 	}
 
-	return repo.UpsertClip(ctx, clip)
+	if err := repo.UpsertClip(ctx, clip); err != nil {
+		return err
+	}
+
+	// Write to asset_index for unified tracking
+	if s.assetIndex != nil {
+		assetRec := &assetindex.AssetRecord{
+			AssetID:   clip.Source + "_" + clip.ID,
+			AssetType: clip.MediaType,
+			Source:    clip.Source,
+			SourceID:  clip.ID,
+			GroupName: clip.Group,
+			LocalPath: clip.LocalPath,
+			DriveLink: clip.DriveLink,
+			FileHash:  clip.FileHash,
+			Status:    "ready",
+			Metadata:  clip.Metadata,
+			CreatedAt: clip.CreatedAt,
+			UpdatedAt: clip.UpdatedAt,
+		}
+		if err := s.assetIndex.Upsert(ctx, assetRec); err != nil {
+			s.log.Warn("failed to write stock clip to asset_index", zap.Error(err))
+		}
+	}
+
+	return nil
 }
 
 func mergeTags(base, extra []string) []string {

@@ -37,6 +37,10 @@ func (s *Service) Delete(ctx context.Context, assetID string) error {
     return s.repo.Delete(ctx, assetID)
 }
 
+func (s *Service) GetStats(ctx context.Context) (*Stats, error) {
+    return s.repo.GetStats(ctx)
+}
+
 func (s *Service) MarkAsReady(ctx context.Context, assetID string) error {
     return s.repo.UpdateStatus(ctx, assetID, "ready")
 }

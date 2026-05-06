@@ -5,6 +5,7 @@ import (
 	"velox/go-master/internal/api/handlers/script/handlers"
 	assetshandler "velox/go-master/internal/api/handlers/assets"
 	artlistPkg "velox/go-master/internal/service/artlist"
+	assetindex "velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/pkg/config"
@@ -53,9 +54,10 @@ func WireAssets(
 	log *zap.Logger,
 	artlistSvc *artlistPkg.Service,
 	catalogRepo *catalog.Repository,
+	assetIndexSvc *assetindex.Service,
 ) (*AssetsWiring, error) {
-	handler := assetshandler.NewHandler(artlistSvc, catalogRepo, log)
-	mod := module.NewAssetsModule(cfg, log, artlistSvc, catalogRepo)
+	handler := assetshandler.NewHandler(artlistSvc, catalogRepo, assetIndexSvc, log)
+	mod := module.NewAssetsModule(cfg, log, artlistSvc, catalogRepo, assetIndexSvc)
 	log.Info("created Assets module")
 
 	return &AssetsWiring{
@@ -248,7 +250,7 @@ func WireRegistry(
 	log.Info("registered Utility module")
 
 	// Wire and register Assets module (unified asset search)
-	assetsWiring, err := WireAssets(cfg, log, artlistWiring.Service, coreDeps.CatalogRepo)
+	assetsWiring, err := WireAssets(cfg, log, artlistWiring.Service, coreDeps.CatalogRepo, coreDeps.AssetIndexService)
 	if err != nil {
 		log.Warn("failed to wire Assets", zap.Error(err))
 	}
