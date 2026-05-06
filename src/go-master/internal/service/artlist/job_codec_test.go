@@ -177,24 +177,6 @@ func TestNormalizeRunTagRequest(t *testing.T) {
 	}
 }
 
-func TestNormalizeRunTagRequestWithForceReupload(t *testing.T) {
-	// Test ForceReupload conversion
-	req := RunTagRequest{
-		Term:          "test",
-		ForceReupload: true,
-		Strategy:      "",
-	}
-
-	normalized := NormalizeRunTagRequest(req, RunDefaults{})
-
-	if normalized.ForceReupload {
-		t.Fatal("ForceReupload should be cleared after normalization")
-	}
-	if normalized.Strategy != "replace" {
-		t.Fatalf("expected strategy to be 'replace', got %q", normalized.Strategy)
-	}
-}
-
 func TestNormalizeRunTagRequestMaxLimit(t *testing.T) {
 	req := RunTagRequest{
 		Term:  "test",

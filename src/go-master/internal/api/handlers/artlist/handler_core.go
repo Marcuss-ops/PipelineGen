@@ -42,6 +42,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// Public routes
 	r.POST("/run", h.RunTagPipeline)
+	r.POST("/run-smart", h.RunSmartPipeline)
 	r.GET("/runs/:run_id", h.RunStatus)
 	r.GET("/stats", h.Stats)
 	r.GET("/diagnostics", h.Diagnostics)

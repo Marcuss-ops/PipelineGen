@@ -27,36 +27,12 @@ type Server struct {
 	httpServer *http.Server
 }
 
-// NewServerWithHandlers creates a new HTTP server with pre-constructed handlers.
-// Background services are managed externally by the ServiceGroup.
-func NewServerWithHandlers(
+// NewServer creates a new HTTP server with module registry support.
+func NewServer(
 	cfg *config.Config,
-	handlers *Handlers,
-) *Server {
-	router := NewRouter(cfg, handlers)
-	r := router.Setup()
-
-	return &Server{
-		cfg:       cfg,
-		router:    r,
-		appRouter: router,
-		httpServer: &http.Server{
-			Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-			Handler:      r,
-			ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
-			WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
-		},
-	}
-}
-
-// NewServerWithRegistry creates a new HTTP server with module registry support.
-// This is the preferred way to create a server as it supports modular route registration.
-func NewServerWithRegistry(
-	cfg *config.Config,
-	handlers *Handlers,
 	registry *module.Registry,
 ) *Server {
-	router := NewRouter(cfg, handlers)
+	router := NewRouter(cfg)
 	router.SetRegistry(registry)
 	r := router.Setup()
 

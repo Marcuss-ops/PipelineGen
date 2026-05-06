@@ -28,7 +28,7 @@ func main() {
 	}
 
 	fmt.Println("Services wired successfully!")
-	fmt.Printf("YouTubeClip handler: %v\n", deps.Handlers.YouTubeClip != nil)
+	fmt.Printf("Registry: %v\n", deps.Registry != nil)
 
 	if deps.Cleanup != nil {
 		defer deps.Cleanup()

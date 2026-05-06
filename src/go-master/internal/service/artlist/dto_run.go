@@ -7,8 +7,6 @@ type RunTagRequest struct {
 	RootFolderID string `json:"root_folder_id,omitempty"`
 	Strategy     string `json:"strategy,omitempty"`
 	DryRun       bool   `json:"dry_run,omitempty"`
-	// Deprecated: kept for backward compatibility with older clients.
-	ForceReupload bool `json:"force_reupload,omitempty"`
 }
 
 // ToMap converts RunTagRequest to a map for job payload.
@@ -20,6 +18,66 @@ func (r *RunTagRequest) ToMap() map[string]any {
 		"strategy":       r.Strategy,
 		"dry_run":        r.DryRun,
 	}
+}
+
+// RunSmartRequest represents a simplified Artlist pipeline request with presets.
+type RunSmartRequest struct {
+	Term   string `json:"term" binding:"required"`
+	Limit  int    `json:"limit"`
+	Preset string `json:"preset"`
+}
+
+// PresetConfig defines the configuration for a preset.
+type PresetConfig struct {
+	ClipDuration int
+	Width        int
+	Height       int
+	FPS          int
+	Strategy     string
+}
+
+// Presets defines available presets.
+var Presets = map[string]PresetConfig{
+	"youtube_1080p_7s": {
+		ClipDuration: 7,
+		Width:        1920,
+		Height:       1080,
+		FPS:          30,
+		Strategy:     "verify",
+	},
+	"youtube_720p_7s": {
+		ClipDuration: 7,
+		Width:        1280,
+		Height:       720,
+		FPS:          30,
+		Strategy:     "verify",
+	},
+	"stock_7s_drive": {
+		ClipDuration: 7,
+		Width:        1920,
+		Height:       1080,
+		FPS:          30,
+		Strategy:     "verify",
+	},
+}
+
+// ToRunTagRequest converts RunSmartRequest to RunTagRequest using preset.
+func (r *RunSmartRequest) ToRunTagRequest() *RunTagRequest {
+	req := &RunTagRequest{
+		Term:     r.Term,
+		Limit:    r.Limit,
+		Strategy: "verify",
+	}
+
+	// Apply preset if specified
+	if r.Preset != "" {
+		if preset, ok := Presets[r.Preset]; ok {
+			req.Strategy = preset.Strategy
+			// TODO: pass preset config to service for processing
+		}
+	}
+
+	return req
 }
 
 // RunDedupKey creates a deduplication key for artlist jobs.

@@ -47,14 +47,6 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 		req.RootFolderID = defaults.DefaultRootFolderID
 	}
 
-	// Handle deprecated ForceReupload once, then forget it
-	if req.ForceReupload {
-		if req.Strategy == "" {
-			req.Strategy = "replace"
-		}
-		req.ForceReupload = false
-	}
-
 	// Normalize strategy
 	req.Strategy = string(pipeline.NormalizeStrategy(req.Strategy, false))
 

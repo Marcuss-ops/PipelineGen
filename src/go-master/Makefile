@@ -66,6 +66,28 @@ clean:
 run: build
 	./server
 
+# Run system doctor check
+doctor:
+	@curl -s http://127.0.0.1:8080/api/system/doctor | jq . || echo "Server not running? Try: make run"
+
+# Run artlist with smart presets
+# Usage: make artlist TERM=technology LIMIT=10 PRESET=youtube_1080p_7s
+TERM ?= technology
+LIMIT ?= 10
+PRESET ?= youtube_1080p_7s
+artlist:
+	@curl -s -X POST http://127.0.0.1:8080/api/artlist/run-smart \
+		-H "Content-Type: application/json" \
+		-d '{"term":"$(TERM)","limit":$(LIMIT),"preset":"$(PRESET)"}' | jq . || echo "Server not running? Try: make run"
+
+# Run workflow content package
+# Usage: make workflow TITLE="10 shocking moments in WWE history"
+TITLE ?= "10 shocking moments"
+workflow:
+	@curl -s -X POST http://127.0.0.1:8080/api/workflows/content-package \
+		-H "Content-Type: application/json" \
+		-d '{"title":"$(TITLE)","style":"news","assets":"artlist","output":"google_doc"}' | jq . || echo "Server not running? Try: make run"
+
 # Development mode with hot reload (requires air)
 dev:
 	air
