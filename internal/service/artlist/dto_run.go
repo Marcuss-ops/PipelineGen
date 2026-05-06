@@ -2,22 +2,40 @@ package artlist
 
 // RunTagRequest represents the full Artlist tag pipeline request.
 type RunTagRequest struct {
-	Term         string `json:"term"`
-	Limit        int    `json:"limit"`
-	RootFolderID string `json:"root_folder_id,omitempty"`
-	Strategy     string `json:"strategy,omitempty"`
-	DryRun       bool   `json:"dry_run,omitempty"`
+	Term           string `json:"term"`
+	Limit          int    `json:"limit"`
+	RootFolderID   string `json:"root_folder_id,omitempty"`
+	Strategy       string `json:"strategy,omitempty"`
+	DryRun         bool   `json:"dry_run,omitempty"`
+	ClipDuration   int    `json:"clip_duration,omitempty"`
+	Width          int    `json:"width,omitempty"`
+	Height         int    `json:"height,omitempty"`
+	FPS            int    `json:"fps,omitempty"`
 }
 
 // ToMap converts RunTagRequest to a map for job payload.
 func (r *RunTagRequest) ToMap() map[string]any {
-	return map[string]any{
-		"term":           r.Term,
-		"limit":          r.Limit,
-		"root_folder_id": r.RootFolderID,
-		"strategy":       r.Strategy,
-		"dry_run":        r.DryRun,
+	m := map[string]any{
+		"term":            r.Term,
+		"limit":           r.Limit,
+		"root_folder_id":  r.RootFolderID,
+		"strategy":        r.Strategy,
+		"dry_run":         r.DryRun,
 	}
+	// Add preset config if set
+	if r.ClipDuration > 0 {
+		m["clip_duration"] = r.ClipDuration
+	}
+	if r.Width > 0 {
+		m["width"] = r.Width
+	}
+	if r.Height > 0 {
+		m["height"] = r.Height
+	}
+	if r.FPS > 0 {
+		m["fps"] = r.FPS
+	}
+	return m
 }
 
 // RunSmartRequest represents a simplified Artlist pipeline request with presets.
@@ -73,7 +91,10 @@ func (r *RunSmartRequest) ToRunTagRequest() *RunTagRequest {
 	if r.Preset != "" {
 		if preset, ok := Presets[r.Preset]; ok {
 			req.Strategy = preset.Strategy
-			// TODO: pass preset config to service for processing
+			req.ClipDuration = preset.ClipDuration
+			req.Width = preset.Width
+			req.Height = preset.Height
+			req.FPS = preset.FPS
 		}
 	}
 
