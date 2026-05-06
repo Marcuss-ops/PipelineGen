@@ -53,18 +53,6 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 	return req
 }
 
-// Deprecated: Use NormalizeRunTagRequest instead.
-func normalizeRunRequest(req *RunTagRequest) *RunTagRequest {
-	if req == nil {
-		return &RunTagRequest{}
-	}
-	copyReq := *req
-	normalized := NormalizeRunTagRequest(copyReq, RunDefaults{
-		MaxLimit: 500,
-	})
-	return &normalized
-}
-
 func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
 	// Build canonical request for deduplication
 	canonical := map[string]any{

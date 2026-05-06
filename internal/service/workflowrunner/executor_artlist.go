@@ -17,14 +17,6 @@ type artlistExecutor struct {
 	log     *zap.Logger
 }
 
-// newArtlistExecutor creates a new artlist step executor
-// Deprecated: Use newArtlistExecutorV2 with jobs service instead
-func newArtlistExecutor(svc *artlist.Service, log *zap.Logger) StepExecutor {
-	return &artlistExecutor{
-		log: log.With(zap.String("executor", "artlist.run")),
-	}
-}
-
 // newArtlistExecutorV2 creates a new artlist step executor using the jobs service
 func newArtlistExecutorV2(jobsSvc *jobservice.Service, log *zap.Logger) StepExecutor {
 	return &artlistExecutor{

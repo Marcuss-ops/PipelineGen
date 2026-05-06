@@ -13,13 +13,26 @@ type JobCodec struct{}
 
 // PayloadFromRequest converts RunTagRequest to a map suitable for job payload.
 func (c *JobCodec) PayloadFromRequest(req *RunTagRequest) map[string]any {
-	return map[string]any{
+	m := map[string]any{
 		"term":           strings.TrimSpace(req.Term),
 		"limit":          req.Limit,
 		"root_folder_id": req.RootFolderID,
 		"strategy":       req.Strategy,
 		"dry_run":        req.DryRun,
 	}
+	if req.ClipDuration > 0 {
+		m["clip_duration"] = req.ClipDuration
+	}
+	if req.Width > 0 {
+		m["width"] = req.Width
+	}
+	if req.Height > 0 {
+		m["height"] = req.Height
+	}
+	if req.FPS > 0 {
+		m["fps"] = req.FPS
+	}
+	return m
 }
 
 // RequestFromPayload converts a job payload map to RunTagRequest.
@@ -41,6 +54,26 @@ func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 	}
 	if v, ok := payload["dry_run"].(bool); ok {
 		req.DryRun = v
+	}
+	if v, ok := payload["clip_duration"].(float64); ok {
+		req.ClipDuration = int(v)
+	} else if v, ok := payload["clip_duration"].(int); ok {
+		req.ClipDuration = v
+	}
+	if v, ok := payload["width"].(float64); ok {
+		req.Width = int(v)
+	} else if v, ok := payload["width"].(int); ok {
+		req.Width = v
+	}
+	if v, ok := payload["height"].(float64); ok {
+		req.Height = int(v)
+	} else if v, ok := payload["height"].(int); ok {
+		req.Height = v
+	}
+	if v, ok := payload["fps"].(float64); ok {
+		req.FPS = int(v)
+	} else if v, ok := payload["fps"].(int); ok {
+		req.FPS = v
 	}
 	return req
 }

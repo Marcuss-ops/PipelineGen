@@ -14,28 +14,9 @@ type RunTagRequest struct {
 }
 
 // ToMap converts RunTagRequest to a map for job payload.
+// Deprecated: Use JobCodec.PayloadFromRequest instead for consistency.
 func (r *RunTagRequest) ToMap() map[string]any {
-	m := map[string]any{
-		"term":            r.Term,
-		"limit":           r.Limit,
-		"root_folder_id":  r.RootFolderID,
-		"strategy":        r.Strategy,
-		"dry_run":         r.DryRun,
-	}
-	// Add preset config if set
-	if r.ClipDuration > 0 {
-		m["clip_duration"] = r.ClipDuration
-	}
-	if r.Width > 0 {
-		m["width"] = r.Width
-	}
-	if r.Height > 0 {
-		m["height"] = r.Height
-	}
-	if r.FPS > 0 {
-		m["fps"] = r.FPS
-	}
-	return m
+	return (&JobCodec{}).PayloadFromRequest(r)
 }
 
 // RunSmartRequest represents a simplified Artlist pipeline request with presets.
