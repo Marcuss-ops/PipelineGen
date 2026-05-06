@@ -9,8 +9,8 @@ import (
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/service/assetpipeline"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/config"
 )
 
@@ -23,13 +23,13 @@ type Service struct {
 	artlistRepo       *clips.Repository
 	driveService      *DriveService
 	mediaProcessor    processor.Processor
-	mediaFinalizer    *mediaregistry.Finalizer
+	lifecycleService  *assetpipeline.LifecycleService
 	assetDestResolver destination.Resolver
 	jobsSvc           *jobservice.Service
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor processor.Processor, mediaFinalizer *mediaregistry.Finalizer, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, driveService *DriveService, mediaProcessor processor.Processor, lifecycleService *assetpipeline.LifecycleService, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
 	var artlistDB *sql.DB
 	var err error
 	if artlistDBPath != "" {
@@ -55,7 +55,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, jobsDB *sql.DB, artlistDBPat
 		artlistRepo:       artlistRepo,
 		driveService:      driveService,
 		mediaProcessor:    mediaProcessor,
-		mediaFinalizer:    mediaFinalizer,
+		lifecycleService:  lifecycleService,
 		assetDestResolver: assetDestResolver,
 		jobsSvc:           jobsSvc,
 		log:               log,

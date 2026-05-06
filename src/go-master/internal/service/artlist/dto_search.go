@@ -7,7 +7,6 @@ type SearchRequest struct {
 	Term     string `json:"term"`
 	Limit    int    `json:"limit"`
 	PreferDB bool   `json:"prefer_db"`
-	SaveDB   bool   `json:"save_db"`
 }
 
 // SearchResponse represents a search response
@@ -23,7 +22,6 @@ type SearchResponse struct {
 type SyncRequest struct {
 	Terms       []string `json:"terms"`
 	Limit       int      `json:"limit"`
-	SaveDB      bool     `json:"save_db"`
 	OnlyPending bool     `json:"only_pending"`
 }
 

@@ -5,6 +5,7 @@ import (
 
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	artlistPkg "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/mediaregistry"
 	drive "velox/go-master/internal/upload/drive"
@@ -40,6 +41,18 @@ func WireArtlist(
 	driveVerifier := mediaregistry.NewAPIDriveVerifier(coreDeps.DriveClient)
 	mediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, driveVerifier, coreDeps.AssetIndexService, log)
 
+	// Create LifecycleService for artlist
+	artlistStore := assetpipeline.NewRegistryStoreAdapter(clipsRegistry)
+	artlistLifecycle := assetpipeline.NewLifecycleService(
+		artlistStore,
+		coreDeps.DriveClient,
+		clipsRegistry,
+		coreDeps.AssetIndexService,
+		mediaFinalizer,
+		assetpipeline.DefaultLifecycleConfig(),
+		log,
+	)
+
 	// Create Artlist DriveService
 	artlistDriveService := artlistPkg.NewDriveService(coreDeps.DriveClient, driveFolderID, driveDestinationService, log)
 
@@ -52,7 +65,7 @@ func WireArtlist(
 		coreDeps.ArtlistRepo,
 		artlistDriveService,
 		coreDeps.MediaProcessor,
-		mediaFinalizer,
+		artlistLifecycle,
 		coreDeps.JobsService,
 		log,
 	)

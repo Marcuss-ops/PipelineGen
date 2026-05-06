@@ -13,8 +13,7 @@ import (
 
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/service/assetstore"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/pathutil"
 	"velox/go-master/pkg/security"
@@ -182,19 +181,33 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			if clip == nil {
 				continue
 			}
-			asset := assetstore.ExistingAsset{
-				ID:        clip.ID,
-				DriveLink: clip.DriveLink,
-				FileHash:  clip.FileHash,
-				Metadata:  clip.Metadata,
-				LocalPath: clip.LocalPath,
-			}
-			skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), nil, assetstore.DefaultLocalFileChecker)
+			// Use LifecycleService to check if asset would be skipped
 			status := "would_process"
-			if skip {
-				status = "would_skip"
-				resp.WouldSkip++
-				s.log.Info("would skip clip", zap.String("clip_id", clip.ID), zap.String("reason", reason))
+			if s.lifecycleService != nil {
+				metadata := composeArtlistMetadata(clip.Metadata, clip.FileHash, "")
+				input := &assetpipeline.FinalizeInput{
+					ID:           clip.ID,
+					Name:         clip.Name,
+					Filename:     clip.Filename,
+					Kind:         assetpipeline.AssetKindVideo,
+					Source:       "artlist",
+					LocalPath:    clip.LocalPath,
+					DriveLink:    clip.DriveLink,
+					FileHash:     clip.FileHash,
+					Metadata:     metadata,
+					RequireLocal: true,
+					RequireHash:  true,
+					RequireDrive: clip.DriveLink != "",
+					VerifyDB:     true,
+				}
+				_, err := s.lifecycleService.ProcessAsset(ctx, input, clip.FileHash)
+				if err != nil {
+					status = "would_skip"
+					resp.WouldSkip++
+					s.log.Info("would skip clip", zap.String("clip_id", clip.ID), zap.Error(err))
+				} else {
+					resp.WouldProcess++
+				}
 			} else {
 				resp.WouldProcess++
 			}
@@ -209,7 +222,6 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 		return resp, nil
 	}
 
-	processed := 0
 	for _, clip := range candidateClips {
 		if clip == nil {
 			continue
@@ -262,35 +274,6 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 			zap.String("name", clip.Name),
 			zap.String("url", url),
 		)
-
-		// Check if clip should be skipped using assetstore
-		asset := assetstore.ExistingAsset{
-			ID:        clip.ID,
-			DriveLink: clip.DriveLink,
-			FileHash:  clip.FileHash,
-			Metadata:  clip.Metadata,
-			LocalPath: clip.LocalPath,
-		}
-		var checker assetstore.ChecksumChecker
-		if s.driveService != nil {
-			checker = &artlistChecksumChecker{driveClient: s.driveService.GetDriveClient()}
-		}
-		skip, reason, _ := assetstore.ShouldSkipExisting(ctx, asset, assetstore.ExistencePolicy(strategy), checker, assetstore.DefaultLocalFileChecker)
-
-		if skip {
-			s.log.Info("skipping existing clip", zap.String("clip_id", clip.ID), zap.String("reason", reason))
-			resp.Skipped++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:       clip.ID,
-				Name:         clip.Name,
-				Filename:     clip.Filename,
-				Status:       "skipped_existing",
-				DriveLink:    clip.DriveLink,
-				DownloadLink: clip.DownloadLink,
-				LocalPath:    clip.LocalPath,
-			})
-			continue
-		}
 
 		if url == "" {
 			resp.Failed++
@@ -350,101 +333,84 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 		_ = os.Remove(filepath.Join(os.TempDir(), fmt.Sprintf("raw_%s.mp4", clip.ID)))
 
-		// Use mediaregistry finalizer to verify and save
+		// Use LifecycleService for dedupe + upload + persist
 		metadata := composeArtlistMetadata(clip.Metadata, result.FileHash, result.FileHash)
-		mediaRec := &mediaregistry.MediaRecord{
-			ID:           clip.ID,
-			Name:         clip.Name,
-			Filename:     result.Filename,
-			Source:       "artlist",
-			Category:     "stock",
-			MediaType:    "artlist",
-			ExternalURL:  url,
-			FolderID:     tagFolderID,
-			FolderPath:   tagFolderName,
-			LocalPath:    result.LocalPath,
-			DriveLink:    result.DriveLink,
-			DownloadLink: result.DownloadLink,
-			FileHash:     result.FileHash,
-			Metadata:     metadata,
-			Tags:         clip.Tags,
-			Status:       result.Status,
-		}
-
-		var finalResult *mediaregistry.FinalizeResult
-		if s.mediaFinalizer != nil {
-			finalResult, err = s.mediaFinalizer.Finalize(ctx, mediaRec, mediaregistry.FinalizeOptions{
+		if s.lifecycleService != nil {
+			input := &assetpipeline.FinalizeInput{
+				ID:           clip.ID,
+				Name:         clip.Name,
+				Filename:     result.Filename,
+				Kind:         assetpipeline.AssetKindVideo,
+				Source:       "artlist",
+				Group:        "",
+				Subfolder:    tagFolderName,
+				LocalPath:    result.LocalPath,
+				FolderID:     tagFolderID,
+				FolderPath:   tagFolderName,
+				DriveLink:    result.DriveLink,
+				DriveFileID:  result.DriveFileID,
+				DownloadLink: result.DownloadLink,
+				FileHash:     result.FileHash,
+				Metadata:     metadata,
 				RequireLocal: true,
 				RequireHash:  true,
 				RequireDrive: result.DriveLink != "",
 				VerifyDB:     true,
-			})
-		} else {
-			// Mock finalizer for testing
-			finalResult = &mediaregistry.FinalizeResult{
-				OK:     true,
-				Status: result.Status,
-				Record: mediaRec,
 			}
-			err = nil
-		}
-		if err != nil {
-			s.log.Error("finalize error", zap.String("clip_id", clip.ID), zap.Error(err))
-			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:       clip.ID,
-				Name:         clip.Name,
-				Filename:     result.Filename,
-				Status:       "finalize_error",
-				DriveLink:    result.DriveLink,
-				DownloadLink: result.DownloadLink,
-				LocalPath:    result.LocalPath,
-				FileHash:     result.FileHash,
-				Error:        err.Error(),
-			})
-			continue
+
+			lifecycleResult, err := s.lifecycleService.ProcessAsset(ctx, input, result.FileHash)
+			if err != nil {
+				s.log.Error("lifecycle failed", zap.String("clip_id", clip.ID), zap.Error(err))
+				resp.Failed++
+				resp.Items = append(resp.Items, RunTagItem{
+					ClipID:       clip.ID,
+					Name:         clip.Name,
+					Filename:     result.Filename,
+					Status:       "lifecycle_failed",
+					DriveLink:    result.DriveLink,
+					DownloadLink: result.DownloadLink,
+					LocalPath:    result.LocalPath,
+					FileHash:     result.FileHash,
+					Error:        err.Error(),
+				})
+				continue
+			}
+			if !lifecycleResult.OK {
+				resp.Skipped++
+				resp.Items = append(resp.Items, RunTagItem{
+					ClipID:       clip.ID,
+					Name:          clip.Name,
+					Filename:     result.Filename,
+					Status:       lifecycleResult.Status,
+					DriveLink:    lifecycleResult.DriveLink,
+					DownloadLink: lifecycleResult.DownloadLink,
+					LocalPath:    result.LocalPath,
+					FileHash:     result.FileHash,
+					Error:        lifecycleResult.Error,
+				})
+				continue
+			}
+
+			// Update result with lifecycle results
+			result.DriveLink = lifecycleResult.DriveLink
+			result.DriveFileID = lifecycleResult.DriveFileID
+			result.DownloadLink = lifecycleResult.DownloadLink
 		}
 
-		if !finalResult.OK {
-			s.log.Warn("finalize failed", zap.String("clip_id", clip.ID), zap.String("error", finalResult.Error))
-			resp.Failed++
-			resp.Items = append(resp.Items, RunTagItem{
-				ClipID:       clip.ID,
-				Name:         clip.Name,
-				Filename:     result.Filename,
-				Status:       finalResult.Status,
-				DriveLink:    result.DriveLink,
-				DownloadLink: result.DownloadLink,
-				LocalPath:    result.LocalPath,
-				FileHash:     result.FileHash,
-				Error:        finalResult.Error,
-			})
-			continue
-		}
-
-		processed++
-		resp.Processed = processed
+		// Add to response
+		resp.Processed++
 		resp.Items = append(resp.Items, RunTagItem{
 			ClipID:       clip.ID,
 			Name:         clip.Name,
 			Filename:     result.Filename,
-			Status:       finalResult.Status,
-			DownloadURL:  url,
-			DriveLink:    finalResult.Record.DriveLink,
-			DownloadLink: finalResult.Record.DownloadLink,
-			LocalPath:    finalResult.Record.LocalPath,
-			FileHash:     finalResult.Record.FileHash,
+			Status:       "processed",
+			DriveLink:    result.DriveLink,
+			DownloadLink: result.DownloadLink,
+			LocalPath:    result.LocalPath,
+			FileHash:     result.FileHash,
 		})
-
-		s.log.Info("clip pipeline item completed",
-			zap.String("clip_id", clip.ID),
-			zap.String("status", finalResult.Status),
-			zap.String("drive_link", finalResult.Record.DriveLink),
-			zap.String("local_path", finalResult.Record.LocalPath),
-		)
 	}
 
-	resp.Processed = processed
 	resp.Status = "completed"
 	resp.EndedAt = func() *string { t := time.Now().UTC().Format(time.RFC3339); return &t }()
 	s.log.Info("artlist pipeline complete",
