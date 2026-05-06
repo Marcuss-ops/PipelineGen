@@ -66,12 +66,25 @@ func (h *Handler) Search(c *gin.Context) {
 
 	// Search Artlist clips
 	if h.artlistSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
-		// Use artlist service to search clips
-		// This is a simplified version - the actual implementation would call the service
-		results["artlist"] = gin.H{
-			"count":   0,
-			"results": []interface{}{},
-			"note":    "Artlist search integration pending",
+		// Use artlist service to search clips from database
+		searchReq := &artlist.SearchRequest{
+			Term:  req.Q,
+			Limit: req.Limit,
+		}
+		searchResp, err := h.artlistSvc.Search(c.Request.Context(), searchReq)
+		if err != nil {
+			h.log.Warn("artlist search failed", zap.Error(err))
+			results["artlist"] = gin.H{
+				"count":   0,
+				"results": []interface{}{},
+				"error":   err.Error(),
+			}
+		} else if searchResp != nil {
+			results["artlist"] = gin.H{
+				"count":   len(searchResp.Clips),
+				"results": searchResp.Clips,
+				"source":  searchResp.Source,
+			}
 		}
 	}
 

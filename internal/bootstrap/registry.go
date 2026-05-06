@@ -3,7 +3,10 @@ package bootstrap
 import (
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
+	assetshandler "velox/go-master/internal/api/handlers/assets"
+	artlistPkg "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/module"
+	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
@@ -24,6 +27,7 @@ type RegistryWiring struct {
 	Workflow   *WorkflowWiring
 	Scraper    *ScraperWiring
 	ContentPkg *ContentPackageWiring
+	Assets     *AssetsWiring
 }
 
 // SystemWiring holds the System module wiring
@@ -35,6 +39,29 @@ type SystemWiring struct {
 type ScraperWiring struct {
 	Handler *scraperhandler.Handler
 	Module  module.Module
+}
+
+// AssetsWiring holds the Assets module wiring
+type AssetsWiring struct {
+	Handler *assetshandler.Handler
+	Module  module.Module
+}
+
+// WireAssets creates the Assets handler and module
+func WireAssets(
+	cfg *config.Config,
+	log *zap.Logger,
+	artlistSvc *artlistPkg.Service,
+	catalogRepo *catalog.Repository,
+) (*AssetsWiring, error) {
+	handler := assetshandler.NewHandler(artlistSvc, catalogRepo, log)
+	mod := module.NewAssetsModule(cfg, log, artlistSvc, catalogRepo)
+	log.Info("created Assets module")
+
+	return &AssetsWiring{
+		Handler: handler,
+		Module:  mod,
+	}, nil
 }
 
 // WireScraper creates the Scraper handler and module
@@ -220,11 +247,16 @@ func WireRegistry(
 	registry.Register(utilityModule)
 	log.Info("registered Utility module")
 
-	// Register Assets module (unified asset search)
-	// TODO: wire assets handler with proper dependencies
-	// assetsModule := module.NewAssetsModule(cfg, log, coreDeps)
-	// registry.Register(assetsModule)
-	// log.Info("registered Assets module")
+	// Wire and register Assets module (unified asset search)
+	assetsWiring, err := WireAssets(cfg, log, artlistWiring.Service, coreDeps.CatalogRepo)
+	if err != nil {
+		log.Warn("failed to wire Assets", zap.Error(err))
+	}
+	if assetsWiring != nil && assetsWiring.Module != nil {
+		wiring.Assets = assetsWiring
+		registry.Register(assetsWiring.Module)
+		log.Info("registered Assets module")
+	}
 
 	return wiring, nil
 }
