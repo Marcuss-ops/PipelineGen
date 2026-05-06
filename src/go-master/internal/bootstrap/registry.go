@@ -23,6 +23,7 @@ type RegistryWiring struct {
 	Drive      *DriveWiring
 	Workflow   *WorkflowWiring
 	Scraper    *ScraperWiring
+	ContentPkg *ContentPackageWiring
 }
 
 // SystemWiring holds the System module wiring
@@ -194,6 +195,16 @@ func WireRegistry(
 		wiring.Scraper = scraperWiring
 		registry.Register(scraperWiring.Module)
 		log.Info("registered Scraper module")
+	}
+
+	// Wire ContentPackage (job handler for content.package jobs)
+	contentPkgWiring, err := WireContentPackage(log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire ContentPackage", zap.Error(err))
+	}
+	if contentPkgWiring != nil {
+		wiring.ContentPkg = contentPkgWiring
+		log.Info("wired ContentPackage service")
 	}
 
 	// Register ScriptHistory module if available
