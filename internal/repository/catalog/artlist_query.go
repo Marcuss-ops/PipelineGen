@@ -11,10 +11,13 @@ func (r *Repository) SearchArtlist(q string) ([]CatalogRecord, error) {
 	}
 
 	db := r.artlistRepo.DB()
+	// Normalize query: lowercase, remove spaces
+	normalizedQ := strings.ReplaceAll(strings.ToLower(q), " ", "")
 	rows, err := db.Query(`
-		SELECT drive_id, name, full_path, drive_link 
-		FROM artlist_folders 
-	`)
+		SELECT folder_id, group_name, folder_path, folder_id 
+		FROM clip_folders 
+		WHERE search_key LIKE ?
+	`, "%"+normalizedQ+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -23,12 +26,14 @@ func (r *Repository) SearchArtlist(q string) ([]CatalogRecord, error) {
 	var results []CatalogRecord
 	for rows.Next() {
 		var rec CatalogRecord
-		if err := rows.Scan(&rec.DriveID, &rec.Name, &rec.Path, &rec.Link); err == nil {
+		var folderID, groupName, folderPath string
+		if err := rows.Scan(&folderID, &groupName, &folderPath, &rec.DriveID); err == nil {
 			rec.Source = "artlist"
-			rec.ID = rec.DriveID
-			if strings.Contains(strings.ReplaceAll(strings.ToLower(rec.Name+rec.Path), " ", ""), q) {
-				results = append(results, rec)
-			}
+			rec.ID = folderID
+			rec.Name = groupName
+			rec.Path = folderPath
+			rec.Link = "https://drive.google.com/drive/folders/" + folderID
+			results = append(results, rec)
 		}
 	}
 	return results, nil

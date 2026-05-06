@@ -567,12 +567,15 @@ func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*st
 // UpsertClipFolder inserts or updates a clip folder
 func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFolder) error {
 	now := time.Now()
+	// Compute search key: lowercase group + folder path, remove spaces
+	searchKey := strings.ToLower(folder.Group + " " + folder.FolderPath)
+	searchKey = strings.ReplaceAll(searchKey, " ", "")
 
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO clip_folders (id, source, source_url, video_id, folder_id, folder_path,
 			local_folder_path, group_name, manifest_txt_path, manifest_json_path,
-			clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at, search_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source=excluded.source, source_url=excluded.source_url, video_id=excluded.video_id,
 			folder_id=excluded.folder_id, folder_path=excluded.folder_path,
@@ -580,11 +583,12 @@ func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFo
 			manifest_txt_path=excluded.manifest_txt_path, manifest_json_path=excluded.manifest_json_path,
 			clip_count=excluded.clip_count, processed_count=excluded.processed_count,
 			failed_count=excluded.failed_count, skipped_count=excluded.skipped_count,
-			last_error=excluded.last_error, metadata=excluded.metadata, updated_at=excluded.updated_at
-	`, folder.ID, folder.Source, folder.SourceURL, folder.VideoID, folder.FolderID, folder.FolderPath,
+			last_error=excluded.last_error, metadata=excluded.metadata, updated_at=excluded.updated_at,
+			search_key=excluded.search_key
+		`, folder.ID, folder.Source, folder.SourceURL, folder.VideoID, folder.FolderID, folder.FolderPath,
 		folder.LocalFolderPath, folder.Group, folder.ManifestTXTPath, folder.ManifestJSONPath,
 		folder.ClipCount, folder.ProcessedCount, folder.FailedCount, folder.SkippedCount, folder.LastError, folder.Metadata,
-		folder.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		folder.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339), searchKey)
 
 	return err
 }
