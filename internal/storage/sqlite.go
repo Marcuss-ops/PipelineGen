@@ -17,11 +17,23 @@ type SQLiteDB struct {
 }
 
 // NewSQLiteDB creates a new SQLite database connection with WAL mode and connection pooling.
+// If dbName is ":memory:", an in-memory database is created (useful for testing).
 func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
-	dbPath := filepath.Join(dataDir, dbName)
+	var dbPath string
+	var dsn string
+
+	if dbName == ":memory:" {
+		// In-memory database - uses shared cache to allow multiple connections
+		dsn = "file::memory:?cache=shared&_journal_mode=MEMORY&_busy_timeout=5000"
+		dbPath = ":memory:"
+		log.Info("Creating in-memory SQLite database")
+	} else {
+		dbPath = filepath.Join(dataDir, dbName)
+		dsn = dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
+	}
 
 	// Use WAL mode for better concurrency: allows multiple readers with one writer
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database %s: %w", dbPath, err)
 	}
@@ -31,10 +43,14 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(0) // Connections don't expire
 
-	// Enable WAL mode explicitly and optimize settings
-	if err := enableWALMode(db, log); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	// Enable WAL mode explicitly and optimize settings (skip for in-memory)
+	if dbPath != ":memory:" {
+		if err := enableWALMode(db, log); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+		}
+	} else {
+		log.Info("Skipping WAL mode for in-memory database")
 	}
 
 	// Verify connection
@@ -86,9 +102,10 @@ func (s *SQLiteDB) RunMigrations(log *zap.Logger, migrationsDir string) error {
 }
 
 // Backup creates a backup of the database file.
+// For in-memory databases, this is a no-op.
 func (s *SQLiteDB) Backup() error {
-	if s.dbPath == "" {
-		return fmt.Errorf("database path not set")
+	if s.dbPath == "" || s.dbPath == ":memory:" {
+		return nil // No file to backup for in-memory databases
 	}
 
 	backupPath := s.dbPath + time.Now().Format(".20060102_150405.bak")
@@ -112,11 +129,14 @@ func (s *SQLiteDB) BackupTo(backupPath string) error {
 }
 
 // Close closes the database connection.
+// For in-memory databases, this just closes the connection.
 func (s *SQLiteDB) Close() error {
 	if s.DB != nil {
-		// Checkpoint WAL before closing to ensure all data is written
-		if _, err := s.DB.Exec("PRAGMA wal_checkpoint(FULL)"); err != nil {
-			return fmt.Errorf("failed to checkpoint WAL: %w", err)
+		// Checkpoint WAL before closing to ensure all data is written (skip for in-memory)
+		if s.dbPath != ":memory:" {
+			if _, err := s.DB.Exec("PRAGMA wal_checkpoint(FULL)"); err != nil {
+				return fmt.Errorf("failed to checkpoint WAL: %w", err)
+			}
 		}
 		return s.DB.Close()
 	}
