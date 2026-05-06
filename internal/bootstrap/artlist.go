@@ -59,7 +59,6 @@ func WireArtlist(
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,
 		coreDeps.DB.DB,
-		coreDeps.JobsDB,
 		artlistDBPath,
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
