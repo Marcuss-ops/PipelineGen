@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/service/assetdestination"
-	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/audioasset"
 	"velox/go-master/pkg/config"
 
@@ -24,7 +24,7 @@ type Service struct {
 	driveClient       *gdrive.Service
 	assetDestResolver destination.Resolver
 	audioProcessor    *audioasset.Processor
-	lifecycleService  *assetpipeline.LifecycleService
+	lifecycleService  *lifecycle.Service
 }
 
 func NewService(
@@ -33,7 +33,7 @@ func NewService(
 	outputDir string,
 	log *zap.Logger,
 	driveClient *gdrive.Service,
-	lifecycleService *assetpipeline.LifecycleService,
+	lifecycleService *lifecycle.Service,
 ) *Service {
 	// Create asset destination resolver
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
@@ -192,11 +192,11 @@ func (s *Service) processLanguage(
 	metaJSON, _ := json.Marshal(meta)
 
 	// Create FinalizeInput for LifecycleService
-	input := &assetpipeline.FinalizeInput{
+	input := &lifecycle.FinalizeInput{
 		ID:           item.ID,
 		Name:         truncateString(req.Text, 100),
 		Filename:     item.Filename,
-		Kind:         assetpipeline.AssetKindAudio,
+		Kind:         lifecycle.AssetKindAudio,
 		Source:       "voiceover",
 		Group:        dest.Group,
 		Subfolder:    "",

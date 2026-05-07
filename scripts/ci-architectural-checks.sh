@@ -86,6 +86,43 @@ if [ -n "$VIOLATIONS" ]; then
     FAILED=1
 fi
 
+# Check 10: No new mediaregistry imports (deprecated, use assetregistry)
+echo "Check 10: Checking for forbidden mediaregistry imports..."
+VIOLATIONS=$(grep -rn "internal/service/mediaregistry" internal/ --include="*.go" | grep -v "_test.go" | grep -v "internal/service/mediaregistry/" || true)
+if [ -n "$VIOLATIONS" ]; then
+    echo "ERROR: Found forbidden mediaregistry imports (use assetregistry instead):"
+    echo "$VIOLATIONS"
+    FAILED=1
+fi
+
+# Check 11: No drivedestination.Service usages (use core/destination.Resolver)
+echo "Check 11: Checking for forbidden drivedestination.Service usages..."
+VIOLATIONS=$(grep -rn "drivedestination\.Service" internal/ --include="*.go" | grep -v "_test.go" || true)
+if [ -n "$VIOLATIONS" ]; then
+    echo "ERROR: Found forbidden drivedestination.Service usages (use core/destination.Resolver):"
+    echo "$VIOLATIONS"
+    FAILED=1
+fi
+
+# Check 12: Bootstrap files must be under 200 lines
+echo "Check 12: Checking bootstrap file sizes..."
+for file in internal/bootstrap/*.go; do
+    lines=$(wc -l < "$file")
+    if [ "$lines" -gt 200 ]; then
+        echo "ERROR: Bootstrap file $file is over 200 lines ($lines lines)"
+        FAILED=1
+    fi
+done
+
+# Check 13: No global config.Get() outside main/bootstrap
+echo "Check 13: Checking for global config.Get() outside main/bootstrap..."
+VIOLATIONS=$(grep -rn "config\.Get()" internal/ --include="*.go" | grep -v "cmd/" | grep -v "bootstrap/" | grep -v "_test.go" || true)
+if [ -n "$VIOLATIONS" ]; then
+    echo "ERROR: Found config.Get() outside main/bootstrap:"
+    echo "$VIOLATIONS"
+    FAILED=1
+fi
+
 # Final result
 echo "=== Architectural Checks Complete ==="
 if [ $FAILED -eq 1 ]; then

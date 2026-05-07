@@ -11,64 +11,44 @@ import (
 	"go.uber.org/zap"
 )
 
-// VoiceoverModule is a registrable module for Voiceover functionality
-type VoiceoverModule struct {
-	cfg           *config.Config
-	log           *zap.Logger
-	handler       *voiceover.Handler
-	syncHandler   *voiceover.SyncHandler
-}
-
-// NewVoiceoverModule creates a new Voiceover module
+// NewVoiceoverModule creates a new Voiceover module using RouteModule
 func NewVoiceoverModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	handler *voiceover.Handler,
 	syncHandler *voiceover.SyncHandler,
-) *VoiceoverModule {
-	return &VoiceoverModule{
-		cfg:         cfg,
-		log:         log,
-		handler:     handler,
-		syncHandler: syncHandler,
+) *RouteModule {
+	return NewRouteModule(
+		"voiceover",
+		func(cfg *config.Config) bool { return cfg.Features.VoiceoverEnabled },
+		"/voiceover",
+		&voiceoverHandlerWrapper{
+			handler:     handler,
+			syncHandler: syncHandler,
+		},
+		log,
+		WithStart(func(ctx context.Context) error {
+			log.Info("starting voiceover module")
+			return nil
+		}),
+		WithStop(func(ctx context.Context) error {
+			log.Info("stopping voiceover module")
+			return nil
+		}),
+	)
+}
+
+// voiceoverHandlerWrapper wraps both voiceover handlers to register all routes
+type voiceoverHandlerWrapper struct {
+	handler     *voiceover.Handler
+	syncHandler *voiceover.SyncHandler
+}
+
+func (w *voiceoverHandlerWrapper) RegisterRoutes(r *gin.RouterGroup) {
+	if w.handler != nil {
+		w.handler.RegisterRoutes(r)
 	}
-}
-
-// Name returns the module name
-func (m *VoiceoverModule) Name() string {
-	return "voiceover"
-}
-
-// Enabled checks if this module is enabled
-func (m *VoiceoverModule) Enabled(cfg *config.Config) bool {
-	return cfg.Features.VoiceoverEnabled
-}
-
-// RegisterRoutes registers the module's routes
-func (m *VoiceoverModule) RegisterRoutes(rg *gin.RouterGroup) {
-	if m.handler == nil && m.syncHandler == nil {
-		m.log.Warn("voiceover handlers are nil, skipping route registration")
-		return
+	if w.syncHandler != nil {
+		w.syncHandler.RegisterRoutes(r)
 	}
-
-	group := rg.Group("/voiceover")
-	
-	if m.handler != nil {
-		m.handler.RegisterRoutes(group)
-	}
-	if m.syncHandler != nil {
-		m.syncHandler.RegisterRoutes(group)
-	}
-}
-
-// Start performs startup tasks
-func (m *VoiceoverModule) Start(ctx context.Context) error {
-	m.log.Info("starting voiceover module")
-	return nil
-}
-
-// Stop performs graceful shutdown
-func (m *VoiceoverModule) Stop(ctx context.Context) error {
-	m.log.Info("stopping voiceover module")
-	return nil
 }

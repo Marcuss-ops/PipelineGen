@@ -12,8 +12,8 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/pathutil"
@@ -233,11 +233,11 @@ func (s *Service) processDryRun(ctx context.Context, candidates []*models.Clip, 
 		}
 		status := "would_process"
 		if s.lifecycleService != nil {
-			input := &assetpipeline.FinalizeInput{
+			input := &lifecycle.FinalizeInput{
 				ID:           clip.ID,
 				Name:         clip.Name,
 				Filename:     clip.Filename,
-				Kind:         assetpipeline.AssetKindVideo,
+				Kind:         lifecycle.AssetKindVideo,
 				Source:       "artlist",
 				LocalPath:    clip.LocalPath,
 				DriveLink:    clip.DriveLink,
@@ -395,11 +395,11 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 	// Use LifecycleService for dedupe + upload + persist
 	metadata := composeArtlistMetadata(clip.Metadata, result.FileHash, result.FileHash)
 	if s.lifecycleService != nil {
-		input := &assetpipeline.FinalizeInput{
+		input := &lifecycle.FinalizeInput{
 			ID:           clip.ID,
 			Name:         clip.Name,
 			Filename:     result.Filename,
-			Kind:         assetpipeline.AssetKindVideo,
+			Kind:         lifecycle.AssetKindVideo,
 			Source:       "artlist",
 			Group:        "",
 			Subfolder:    tagFolderName,

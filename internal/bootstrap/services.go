@@ -20,10 +20,8 @@ import (
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assetregistry"
-	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
-	"velox/go-master/internal/service/drivedestination"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	jobservice "velox/go-master/internal/service/jobs"
@@ -104,8 +102,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	)
 	mediaProcessor := mediaasset.ToCoreProcessor(mediaProcessorInternal)
 
-	driveDestinationService := drivedestination.NewService(cfg, log, driveClient)
-
 	// Asset index service
 	assetIndexRepo := assetindex.NewRepository(dbs.assets.DB)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
@@ -113,21 +109,12 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
-	// Create YouTube clip finalizer
-	youtubeDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
-	youtubeMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, youtubeDriveVerifier, assetIndexService, log)
-
-	// Create LifecycleService for youtubeclip
-	ytStore := assetpipeline.NewRegistryStoreAdapter(clipsRegistry)
-	ytLifecycle := assetpipeline.NewLifecycleService(
-		ytStore,
-		driveClient,
-		clipsRegistry,
-		assetIndexService,
-		youtubeMediaFinalizer,
-		assetpipeline.DefaultLifecycleConfig(),
-		log,
-	)
+	// Create LifecycleService for youtubeclip using common factory
+	ytLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
+		Registry:    clipsRegistry,
+		DriveClient: driveClient,
+		AssetIndex:  assetIndexService,
+	}, log)
 
 	youtubeClipService := youtubeclip.NewService(
 		cfg,
@@ -135,7 +122,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		clipsOnlyRepo,
 		monitorsRepo,
 		driveClient,
-		driveDestinationService,
 		mediaProcessor,
 		ytLifecycle,
 	)
@@ -146,22 +132,15 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
 
-	// Create voiceover registry adapter and AssetRecordStore for LifecycleService
+	// Create voiceover registry adapter
 	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
-	voStore := assetpipeline.NewRegistryStoreAdapter(voRegistryAdapter)
-	voDriveVerifier := mediaregistry.NewAPIDriveVerifier(driveClient)
-	voMediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(voRegistryAdapter, voDriveVerifier, assetIndexService, log)
 
-	// Create LifecycleService for voiceover
-	voLifecycle := assetpipeline.NewLifecycleService(
-		voStore,
-		driveClient,
-		voRegistryAdapter,
-		assetIndexService,
-		voMediaFinalizer,
-		assetpipeline.DefaultLifecycleConfig(),
-		log,
-	)
+	// Create LifecycleService for voiceover using common factory
+	voLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
+		Registry:    voRegistryAdapter,
+		DriveClient: driveClient,
+		AssetIndex:  assetIndexService,
+	}, log)
 
 	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
@@ -205,43 +184,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 
-	syncTargets := []catalogsync.Target{
-		{
-			Name:         "stock",
-			RootFolderID: cfg.Drive.StockRootFolder,
-			Source:       "stock",
-			MediaType:    "stock",
-			Repo:         clipsRepo,
-		},
-		{
-			Name:         "clips",
-			RootFolderID: cfg.Drive.ClipsRootFolder,
-			Source:       "clips",
-			MediaType:    "clip",
-			Repo:         clipsOnlyRepo,
-		},
-		{
-			Name:         "artlist",
-			RootFolderID: cfg.Harvester.DriveFolderID,
-			Source:       "artlist",
-			MediaType:    "artlist",
-			Repo:         artlistRepo,
-		},
-	}
-
-	if cfg.Drive.ClipRootFolders != nil {
-		for group, folderID := range cfg.Drive.ClipRootFolders {
-			if folderID != "" {
-				syncTargets = append(syncTargets, catalogsync.Target{
-					Name:         "clips_" + group,
-					RootFolderID: folderID,
-					Source:       "clips",
-					MediaType:    "clip",
-					Repo:         clipsOnlyRepo,
-				})
-			}
-		}
-	}
+	// Build sync targets centrally
+	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)
 
 	catalogSync := catalogsync.NewService(driveClient, syncTargets, assetIndexService, log)
 
@@ -260,7 +204,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
-	return &services{
+		return &services{
 		scriptGen:          scriptGen,
 		docClient:          docClient,
 		driveClient:        driveClient,
@@ -288,4 +232,53 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		assetResolver:      assetResolver,
 		assetRegistry:      assetRegistry,
 	}, nil
+}
+
+// buildSyncTargets creates the catalog sync targets from configuration.
+// This centralizes the sync target definitions in one place.
+func buildSyncTargets(
+	cfg *config.Config,
+	clipsOnlyRepo *clips.Repository,
+	clipsRepo *clips.Repository,
+	artlistRepo *clips.Repository,
+) []catalogsync.Target {
+	targets := []catalogsync.Target{
+		{
+			Name:         "stock",
+			RootFolderID: cfg.Drive.StockRootFolder,
+			Source:       "stock",
+			MediaType:    "stock",
+			Repo:         clipsRepo,
+		},
+		{
+			Name:         "clips",
+			RootFolderID: cfg.Drive.ClipsRootFolder,
+			Source:       "clips",
+			MediaType:    "clip",
+			Repo:         clipsOnlyRepo,
+		},
+		{
+			Name:         "artlist",
+			RootFolderID: cfg.Harvester.DriveFolderID,
+			Source:       "artlist",
+			MediaType:    "artlist",
+			Repo:         artlistRepo,
+		},
+	}
+
+	if cfg.Drive.ClipRootFolders != nil {
+		for group, folderID := range cfg.Drive.ClipRootFolders {
+			if folderID != "" {
+				targets = append(targets, catalogsync.Target{
+					Name:         "clips_" + group,
+					RootFolderID: folderID,
+					Source:       "clips",
+					MediaType:    "clip",
+					Repo:         clipsOnlyRepo,
+				})
+			}
+		}
+	}
+
+	return targets
 }

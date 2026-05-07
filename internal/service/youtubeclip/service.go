@@ -15,13 +15,12 @@ import (
 
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/jobs"
+	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/assetdestination"
-	"velox/go-master/internal/service/assetpipeline"
-	"velox/go-master/internal/service/drivedestination"
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
@@ -36,11 +35,10 @@ type Service struct {
 	clipsRepo          *clips.Repository
 	monitoredRepo      *monitors.Repository
 	driveClient        *driveapi.Service
-	driveDestination   *drivedestination.Service
 	assetDestResolver  destination.Resolver
 	mediaProcessor     processor.Processor
 	folderMemory       *foldermemory.Service
-	lifecycleService   *assetpipeline.LifecycleService
+	lifecycleService   *lifecycle.Service
 }
 
 func NewService(
@@ -49,9 +47,8 @@ func NewService(
 	clipsRepo *clips.Repository,
 	monitoredRepo *monitors.Repository,
 	driveClient *driveapi.Service,
-	driveDestination *drivedestination.Service,
 	mediaProcessor processor.Processor,
-	lifecycleService *assetpipeline.LifecycleService,
+	lifecycleService *lifecycle.Service,
 ) *Service {
 	// Create asset destination resolver for unified destination resolution
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
@@ -62,7 +59,6 @@ func NewService(
 		clipsRepo:         clipsRepo,
 		monitoredRepo:     monitoredRepo,
 		driveClient:       driveClient,
-		driveDestination:  driveDestination,
 		assetDestResolver: assetdestination.ToCoreResolver(assetDestResolver),
 		mediaProcessor:    mediaProcessor,
 		folderMemory:      foldermemory.NewService(log, clipsRepo),
@@ -397,11 +393,11 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			folderPath = req.Destination.FolderPath
 		}
 
-		input := &assetpipeline.FinalizeInput{
+		input := &lifecycle.FinalizeInput{
 			ID:           clipID,
 			Name:         item.Name,
 			Filename:     filepath.Base(localPath),
-			Kind:         assetpipeline.AssetKindVideo,
+			Kind:         lifecycle.AssetKindVideo,
 			Source:       "youtube",
 			Group:        getGroupFromDestination(req.Destination),
 			Subfolder:    "",

@@ -14,64 +14,51 @@ import (
 	"go.uber.org/zap"
 )
 
-// YouTubeClipModule is a registrable module for YouTube Clip functionality
-type YouTubeClipModule struct {
-	cfg      *config.Config
-	log      *zap.Logger
-	service  *youtubeclip.Service
-	handler  *youtubecliphandler.Handler
-	jobsSvc *jobservice.Service
-}
-
-// NewYouTubeClipModule creates a new YouTubeClip module
+// NewYouTubeClipModule creates a new YouTubeClip module using RouteModule
 func NewYouTubeClipModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *youtubeclip.Service,
 	handler *youtubecliphandler.Handler,
 	jobsSvc *jobservice.Service,
-) *YouTubeClipModule {
-	return &YouTubeClipModule{
-		cfg:     cfg,
-		log:     log,
-		service: service,
-		handler: handler,
-		jobsSvc: jobsSvc,
-	}
+) *RouteModule {
+	return NewRouteModule(
+		"youtube-clips",
+		func(cfg *config.Config) bool { return cfg.Features.YouTubeEnabled },
+		"/youtube-clips",
+		handler,
+		log,
+		WithStart(func(ctx context.Context) error {
+			log.Info("starting youtube clips module")
+			if service != nil {
+				service.RegisterHandler(jobsSvc)
+			}
+			return nil
+		}),
+		WithStop(func(ctx context.Context) error {
+			log.Info("stopping youtube clips module")
+			return nil
+		}),
+		// Add YouTubeEnabled middleware
+		func(m *RouteModule) {
+			m.handler = &youtubeClipHandlerWithMiddleware{
+				handler:   m.handler,
+				cfg:       cfg,
+				middleware: middleware.YouTubeEnabled(cfg),
+			}
+		},
+	)
 }
 
-// Name returns the module name
-func (m *YouTubeClipModule) Name() string {
-	return "youtube-clips"
+// youtubeClipHandlerWithMiddleware wraps the handler to add YouTubeEnabled middleware
+type youtubeClipHandlerWithMiddleware struct {
+	handler     interface{ RegisterRoutes(*gin.RouterGroup) }
+	cfg         *config.Config
+	middleware  gin.HandlerFunc
 }
 
-// Enabled checks if this module is enabled
-func (m *YouTubeClipModule) Enabled(cfg *config.Config) bool {
-	return cfg.Features.YouTubeEnabled
-}
-
-// RegisterRoutes registers the module's routes
-func (m *YouTubeClipModule) RegisterRoutes(rg *gin.RouterGroup) {
-	if m.handler == nil {
-		m.log.Warn("youtube clip handler is nil, skipping route registration")
-		return
-	}
-
-	group := rg.Group("/youtube-clips")
-	group.Use(middleware.YouTubeEnabled(m.cfg))
-	m.handler.RegisterRoutes(group)
-}
-
-// Start performs startup tasks
-func (m *YouTubeClipModule) Start(ctx context.Context) error {
-	m.log.Info("starting YouTube clips module")
-	// No background tasks needed for now
-	return nil
-}
-
-// Stop performs graceful shutdown
-func (m *YouTubeClipModule) Stop(ctx context.Context) error {
-	m.log.Info("stopping YouTube clips module")
-	// No cleanup needed for now
-	return nil
+func (h *youtubeClipHandlerWithMiddleware) RegisterRoutes(r *gin.RouterGroup) {
+	group := r.Group("")
+	group.Use(h.middleware)
+	h.handler.RegisterRoutes(group)
 }

@@ -30,6 +30,8 @@ const (
 	SourceDrive     Source = "drive"
 )
 
+type Policy map[string]interface{}
+
 type AssetOperation struct {
 	Operation   Operation              `json:"operation" yaml:"operation"`
 	AssetType   AssetType              `json:"asset_type" yaml:"asset_type"`

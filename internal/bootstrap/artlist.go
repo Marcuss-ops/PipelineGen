@@ -3,7 +3,6 @@ package bootstrap
 import (
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	artlistPkg "velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/assetpipeline"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
@@ -25,24 +24,15 @@ func WireArtlist(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ArtlistWiring, error) {
-	// Create drive destination service
-
 	// Create mediaregistry components for Artlist
 	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
-	driveVerifier := mediaregistry.NewAPIDriveVerifier(coreDeps.DriveClient)
-	mediaFinalizer := mediaregistry.NewFinalizerWithAssetIndex(clipsRegistry, driveVerifier, coreDeps.AssetIndexService, log)
 
-	// Create LifecycleService for artlist
-	artlistStore := assetpipeline.NewRegistryStoreAdapter(clipsRegistry)
-	artlistLifecycle := assetpipeline.NewLifecycleService(
-		artlistStore,
-		coreDeps.DriveClient,
-		clipsRegistry,
-		coreDeps.AssetIndexService,
-		mediaFinalizer,
-		assetpipeline.DefaultLifecycleConfig(),
-		log,
-	)
+	// Create LifecycleService for artlist using common factory
+	artlistLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
+		Registry:    clipsRegistry,
+		DriveClient: coreDeps.DriveClient,
+		AssetIndex:  coreDeps.AssetIndexService,
+	}, log)
 
 
 	artlistSvc, err := artlistPkg.NewService(
