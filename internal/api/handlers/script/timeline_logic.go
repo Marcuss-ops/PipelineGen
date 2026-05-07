@@ -199,27 +199,33 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		segStarted := time.Now()
 		associateSegment(ctx, &seg, assocService, req.Topic)
 
-		// If no matches found, use batch results first, then fallback to individual LLM call
+		// Always populate visual fields from batch results (generated at the start)
+		if batchResults != nil {
+			if r, ok := batchResults[seg.Index]; ok {
+				seg.VisualSubject = r.VisualSubject
+				seg.VisualCaption = r.VisualCaption
+				seg.SearchSuggestions = sliceutil.UniqueStrings(
+					append(seg.SearchSuggestions, r.Queries...),
+				)
+				zap.L().Info("populated visual fields from batch results",
+					zap.Int("segment_index", seg.Index),
+					zap.String("visual_subject", seg.VisualSubject),
+					zap.Strings("queries", r.Queries),
+				)
+			}
+		}
+
+		// If no matches found, generate Artlist queries and trigger harvesting
 		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 {
-			zap.L().Info("segment has no matches, generating LLM-based Artlist queries",
+			zap.L().Info("segment has no matches, will generate LLM-based Artlist queries",
 				zap.Int("segment_index", seg.Index),
 				zap.String("subject", seg.Subject),
 				zap.String("canonical_subject", seg.CanonicalSubject),
 			)
 
-			var visualResult VisualQueryResult
-			// Check batch results first
-			if batchResults != nil {
-				if r, ok := batchResults[seg.Index]; ok {
-					visualResult = r
-					zap.L().Info("using batch result for segment",
-						zap.Int("segment_index", seg.Index),
-					)
-				}
-			}
-			// Fallback to individual LLM call if batch result not found
-			if visualResult.Queries == nil {
-				visualResult = GenerateArtlistVisualQuery(
+			// If visual fields not populated from batch, generate individually
+			if seg.VisualSubject == "" {
+				visualResult := GenerateArtlistVisualQuery(
 					ctx,
 					gen,
 					req.Topic,
@@ -227,21 +233,13 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 					seg.NarrativeText,
 					DefaultMaxQueries,
 				)
+
+				seg.VisualSubject = visualResult.VisualSubject
+				seg.VisualCaption = visualResult.VisualCaption
+				seg.SearchSuggestions = sliceutil.UniqueStrings(
+					append(seg.SearchSuggestions, visualResult.Queries...),
+				)
 			}
-
-			zap.L().Info("LLM-generated Artlist queries for segment",
-				zap.Int("segment_index", seg.Index),
-				zap.Int("query_count", len(visualResult.Queries)),
-				zap.Strings("queries", visualResult.Queries),
-				zap.String("visual_subject", visualResult.VisualSubject),
-				zap.String("visual_caption", visualResult.VisualCaption),
-			)
-
-			seg.VisualSubject = visualResult.VisualSubject
-			seg.VisualCaption = visualResult.VisualCaption
-			seg.SearchSuggestions = sliceutil.UniqueStrings(
-				append(seg.SearchSuggestions, visualResult.Queries...),
-			)
 		}
 		if preserveStructuredSubjects {
 			stockFiltered := association.FilterStockMatchesBySubject(seg.StockMatches, seg.Subject)
