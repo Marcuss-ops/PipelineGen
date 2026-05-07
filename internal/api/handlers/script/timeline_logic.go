@@ -449,12 +449,12 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 	matches := assocService.Associate(ctx, input)
 	for _, m := range matches {
 		switch m.Source {
-		case "drive_stock", "stock_folder":
+		case "drive_stock", "stock_folder", "clip_drive":
 			seg.StockMatches = append(seg.StockMatches, m)
-		case "artlist_folder", "artlist_stock", "artlist_dynamic":
+		case "artlist_folder", "artlist_stock", "artlist_dynamic", "artlist_clip":
 			seg.ArtlistMatches = append(seg.ArtlistMatches, m)
 		default:
-			// Ignore any other source like clip_drive/clip_folder
+			// Ignore unrecognized sources
 		}
 	}
 }

@@ -17,6 +17,7 @@ type Service struct {
 	clipsRepo      *clips.Repository
 	catalogRepo    *catalog.Repository
 	engine         *Engine
+	clipSearch     *ClipSearchAssociation
 }
 
 func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository, catalogRepo *catalog.Repository) *Service {
@@ -29,10 +30,14 @@ func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRep
 		catalogRepo:    catalogRepo,
 	}
 
+	// Create clip search association (Artlist clips only)
+	s.clipSearch = NewClipSearchAssociation(artlistRepo)
+
 	// Default engine with standard sources
 	s.engine = NewEngine(
 		NewDriveStockAssociation(stockRepo, artlistRepo),
 		NewArtlistStockAssociation(artlistRepo),
+		s.clipSearch,
 	)
 
 	return s
