@@ -212,6 +212,16 @@ func renderOnlyPhrases(seg TimelineSegment, budget int) (string, int) {
 		b.WriteString("      - \"")
 		b.WriteString(phrase.Text)
 		b.WriteString("\"\n")
+
+		// Add Artlist search link
+		query := phraseToArtlistQuery(phrase.Text)
+		searchURL := "https://artlist.io/stock-video/s/" + strings.ReplaceAll(strings.ToLower(query), " ", "-")
+		b.WriteString("        Query: ")
+		b.WriteString(query)
+		b.WriteString("\n")
+		b.WriteString("        Link: ")
+		b.WriteString(searchURL)
+		b.WriteString("\n")
 	}
 
 	return b.String(), len(scored)

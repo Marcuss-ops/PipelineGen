@@ -251,9 +251,13 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, docume
 	jobCodec := artlist.JobCodec{}
 	for tag := range uniqueTags {
 		req := &artlist.RunTagRequest{
-			Term:     tag,
-			Limit:    5,
-			Strategy: "verify",
+			Term:         tag,
+			Limit:        3,
+			Strategy:     "verify",
+			ClipDuration: 7,
+			Width:        1920,
+			Height:       1080,
+			FPS:          30,
 		}
 		payload := jobCodec.PayloadFromRequest(req)
 

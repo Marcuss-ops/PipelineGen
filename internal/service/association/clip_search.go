@@ -2,7 +2,6 @@ package association
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"velox/go-master/internal/repository/clips"
@@ -23,10 +22,8 @@ func NewClipSearchAssociation(artlistRepo *clips.Repository) *ClipSearchAssociat
 }
 
 func (a *ClipSearchAssociation) Associate(ctx context.Context, input SegmentInput) ([]ScoredMatch, error) {
-	fmt.Println("DEBUG: ClipSearchAssociation.Associate() called")
 	// Search terms: combine subject, keywords, and entities
 	searchTerms := a.buildSearchTerms(input)
-	fmt.Println("DEBUG: searchTerms =", searchTerms)
 
 	zap.L().Info("ClipSearchAssociation: searching artlist clips",
 		zap.String("topic", input.Topic),
@@ -41,7 +38,6 @@ func (a *ClipSearchAssociation) Associate(ctx context.Context, input SegmentInpu
 	// Search ONLY in artlist repository
 	if a.artlistRepo != nil {
 		matches, err := a.searchRepo(ctx, a.artlistRepo, searchTerms, "artlist_clip")
-		fmt.Println("DEBUG: ClipSearchAssociation search results: matches =", len(matches), "err =", err)
 		zap.L().Info("ClipSearchAssociation: search results",
 			zap.Int("match_count", len(matches)),
 			zap.Error(err),

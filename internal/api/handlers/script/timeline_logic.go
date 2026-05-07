@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"velox/go-master/internal/ml/ollama"
@@ -173,6 +174,14 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		// Eseguiamo l'associazione stratificata
 		segStarted := time.Now()
 		associateSegment(ctx, &seg, assocService, req.Topic)
+
+		// If no matches found, generate Artlist fallback queries
+		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 {
+			fallbackQueries := buildArtlistFallbackQueries(seg)
+			seg.SearchSuggestions = sliceutil.UniqueStrings(
+				append(seg.SearchSuggestions, fallbackQueries...),
+			)
+		}
 		if preserveStructuredSubjects {
 			stockFiltered := association.FilterStockMatchesBySubject(seg.StockMatches, seg.Subject)
 			artlistFiltered := association.FilterArtlistMatchesBySubject(seg.ArtlistMatches, seg.Subject)
@@ -457,6 +466,135 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 			// Ignore unrecognized sources
 		}
 	}
+}
+
+// phraseToArtlistQuery converts a narrative phrase to a clean Artlist search query
+func phraseToArtlistQuery(phrase string) string {
+	tokens := textutil.TokenizeWithStopWords(phrase)
+	cleaned := make([]string, 0, len(tokens))
+
+	banned := map[string]bool{
+		"then": true, "they": true, "something": true, "remarkably": true,
+		"similar": true, "thought": true, "evidence": true, "the": true,
+		"a": true, "an": true, "is": true, "was": true, "were": true,
+		"are": true, "been": true, "have": true, "has": true,
+		"had": true, "but": true, "and": true, "or": true,
+	}
+
+	for _, t := range tokens {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" || banned[t] {
+			continue
+		}
+		cleaned = append(cleaned, t)
+		if len(cleaned) >= 4 {
+			break
+		}
+	}
+
+	if len(cleaned) == 0 {
+		return "cinematic documentary"
+	}
+	return strings.Join(cleaned, " ")
+}
+
+// buildArtlistFallbackQueries generates Artlist search queries when no matches found
+func buildArtlistFallbackQueries(seg TimelineSegment) []string {
+	base := firstNonEmpty(seg.CanonicalSubject, seg.Subject)
+
+	queries := make([]string, 0, 3)
+
+	if base != "" && !looksLikeNarrativeFragment(base) {
+		queries = append(queries, base)
+	}
+
+	phrases := bestVisualPhrases(seg.NarrativeText, 2)
+	for _, phrase := range phrases {
+		q := phraseToArtlistQuery(phrase)
+		if q != "" && q != "cinematic documentary" {
+			queries = append(queries, q)
+		}
+	}
+
+	if len(queries) == 0 {
+		queries = append(queries, "documentary geology landscape")
+	}
+
+	if len(queries) > 3 {
+		queries = queries[:3]
+	}
+
+	return queries
+}
+
+// bestVisualPhrases extracts the best visual phrases from narrative text
+func bestVisualPhrases(narrative string, limit int) []string {
+	sentences := textutil.ExtractSentences(narrative)
+	if len(sentences) == 0 {
+		return nil
+	}
+
+	type scoredSentence struct {
+		Text  string
+		Score int
+	}
+
+	scored := make([]scoredSentence, 0, len(sentences))
+	for _, phrase := range sentences {
+		score := scoreVisualPhrase(phrase)
+		if score > 0 {
+			scored = append(scored, scoredSentence{Text: strings.TrimSpace(phrase), Score: score})
+		}
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
+	})
+
+	if len(scored) > limit {
+		scored = scored[:limit]
+	}
+
+	result := make([]string, 0, len(scored))
+	for _, s := range scored {
+		result = append(result, s.Text)
+	}
+	return result
+}
+
+// scoreVisualPhrase scores a phrase based on visual content potential
+func scoreVisualPhrase(phrase string) int {
+	phrase = strings.ToLower(phrase)
+	tokens := textutil.TokenizeWithStopWords(phrase)
+
+	if len(tokens) < 5 {
+		return 0
+	}
+
+	score := len(tokens)
+	visualWords := []string{"cave", "rock", "stone", "water", "forest", "mountain", "sky", "cloud", "sun", "moon", "tree", "river", "lake", "ocean", "sea", "beach", "sand", "desert", "ice", "snow", "fire", "smoke", "people", "person", "team", "group", "ancient", "old", "giant", "large", "small", "bright", "dark"}
+	for _, t := range tokens {
+		for _, v := range visualWords {
+			if t == v {
+				score += 3
+				break
+			}
+		}
+	}
+
+	return score
+}
+
+// looksLikeNarrativeFragment checks if a string looks like a narrative fragment
+func looksLikeNarrativeFragment(s string) bool {
+	s = strings.ToLower(s)
+	narrativeMarkers := []string{"the wind", "the rain", "the sun", "in a", "through the", "across the", "they ", "their ", "then ", "suddenly"}
+	for _, marker := range narrativeMarkers {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // fallbackTimelinePlan creates a basic segment if LLM fails
