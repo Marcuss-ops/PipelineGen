@@ -22,7 +22,6 @@ func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
 		{Role: "user", Content: fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
 
 VIDEO TITLE: %s
-LANGUAGE: %s
 NARRATIVE STYLE: %s
 
 REFERENCE INPUT / INSTRUCTIONS:
@@ -37,7 +36,7 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 6. NO SPEAKER LABELS: Do NOT write "Narrator:", "Narratore:", "Voice:", "Voce:", or any other label. Start directly with the story.
 7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
 
-SCRIPT:`, req.Duration, durationMinutes, sanitizedTitle, req.Language, req.Tone, sanitizedSource, durationMinutes, targetWords)},
+SCRIPT:`, req.Duration, durationMinutes, sanitizedTitle, req.Tone, sanitizedSource, durationMinutes, targetWords)},
 	}
 }
 
@@ -51,7 +50,6 @@ func BuildRegenerationChatMessages(req *types.RegenerationRequest) []types.Messa
 		{Role: "user", Content: fmt.Sprintf(`Rewrite the following documentary script in a cleaner, more compelling form.
 
 VIDEO TITLE: %s
-LANGUAGE: %s
 NARRATIVE STYLE: %s
 
 SCRIPT TO REWRITE:
@@ -63,7 +61,7 @@ STRICT RULES:
 3. Do not add timestamps, headings, labels, or stage directions.
 4. Preserve the original subject and factual content unless the rewrite improves clarity or flow.
 
-SCRIPT:`, sanitizedTitle, req.Language, req.Tone, sanitizedScript)},
+SCRIPT:`, sanitizedTitle, req.Tone, sanitizedScript)},
 	}
 }
 
@@ -83,7 +81,6 @@ func BuildTextPrompt(req *types.TextGenerationRequest) string {
 TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
 
 VIDEO TITLE: %s
-LANGUAGE: %s
 NARRATIVE STYLE: %s
 
 REFERENCE INPUT / INSTRUCTIONS:
@@ -103,7 +100,6 @@ SCRIPT:`,
 		req.Duration,
 		durationMinutes,
 		sanitizedTitle,
-		req.Language,
 		req.Tone,
 		sanitizedSource,
 		durationMinutes,

@@ -215,7 +215,19 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			}
 		}
 
-		// If no matches found, generate Artlist queries and trigger harvesting
+		// Check if matches are semantically relevant; reject if not
+		if !isSemanticallyRelevant(seg, req.Topic) {
+			zap.L().Warn("rejecting semantically irrelevant matches",
+				zap.Int("segment_index", seg.Index),
+				zap.String("topic", req.Topic),
+				zap.String("subject", seg.Subject),
+				zap.String("visual_subject", seg.VisualSubject),
+			)
+			seg.StockMatches = nil
+			seg.ArtlistMatches = nil
+		}
+
+		// If no matches found (or rejected), generate Artlist queries
 		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 {
 			zap.L().Info("segment has no matches, will generate LLM-based Artlist queries",
 				zap.Int("segment_index", seg.Index),
@@ -562,6 +574,56 @@ func applyAssociationHints(seg *TimelineSegment, resp *association.CandidatesRes
 	seg.PreferredStockGroup = best.Source
 	preferredLink := association.NormalizeDriveFolderLink(best.Link, best.FolderID)
 	seg.PreferredStockPaths = sliceutil.UniqueStrings(sliceutil.TrimStrings([]string{best.Path, preferredLink}))
+}
+
+// isSemanticallyRelevant checks if the segment's matches are actually relevant to the topic/subject.
+// Returns false if matches are based on weak keywords (e.g., "rain", "net") while ignoring the main topic.
+func isSemanticallyRelevant(seg TimelineSegment, topic string) bool {
+	// Collect all match titles/paths
+	allMatches := make([]string, 0)
+	for _, m := range seg.StockMatches {
+		allMatches = append(allMatches, m.Title, m.Path)
+	}
+	for _, m := range seg.ArtlistMatches {
+		allMatches = append(allMatches, m.Title, m.Path)
+	}
+
+	if len(allMatches) == 0 {
+		return false
+	}
+
+	// Get key terms from topic and subject
+	keyTerms := make(map[string]bool)
+	for _, term := range strings.Fields(strings.ToLower(topic)) {
+		keyTerms[term] = true
+	}
+	for _, term := range strings.Fields(strings.ToLower(seg.Subject)) {
+		keyTerms[term] = true
+	}
+	if seg.VisualSubject != "" {
+		for _, term := range strings.Fields(strings.ToLower(seg.VisualSubject)) {
+			keyTerms[term] = true
+		}
+	}
+
+	// Check if any match contains key terms
+	for _, match := range allMatches {
+		matchLower := strings.ToLower(match)
+		for term := range keyTerms {
+			if strings.Contains(matchLower, term) {
+				return true
+			}
+		}
+	}
+
+	// No match contains any key term - likely a semantic mismatch
+	zap.L().Warn("semantic mismatch detected",
+		zap.String("topic", topic),
+		zap.String("subject", seg.Subject),
+		zap.String("visual_subject", seg.VisualSubject),
+		zap.Strings("matches", allMatches),
+	)
+	return false
 }
 
 // Deprecated: kept only for timeline_render.go compatibility. Use artlist_query_generator.go instead.
