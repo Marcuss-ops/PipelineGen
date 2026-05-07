@@ -6,6 +6,7 @@ import (
 
 // SegmentInput provides data for association matching.
 type SegmentInput struct {
+	Topic     string
 	Subject   string
 	Keywords  []string
 	Entities  []string

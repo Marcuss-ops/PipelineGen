@@ -3,18 +3,16 @@ package script
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
-	"golang.org/x/text/unicode/norm"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/association"
 	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/textutil"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -55,24 +53,43 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 
 	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService, assocService)
 
-	analysis := extractNarrativeAnalysis(ctx, gen, req, narrative, timeline)
-	analysis = filterAnalysisByNarrative(narrative, analysis)
-
-	// Build image section if service is available
+	// Build image section (always include, use default if service unavailable)
 	var imageSection ScriptSection
 	if imgService != nil {
-		imageSection = buildImagePlanningSection(req, narrative, analysis, ScriptSection{}, ScriptSection{}, ScriptSection{}, pythonScriptsDir, imgService)
+		imageSection = buildImagePlanningSection(req, narrative, nil, ScriptSection{}, ScriptSection{}, ScriptSection{}, pythonScriptsDir, imgService)
+	} else {
+		imageSection = ScriptSection{
+			Title: "📸 Entità con Immagine",
+			Body:  "Servizio immagini non disponibile.",
+		}
+	}
+
+	// Extract end sections
+	phrases := extractImportantPhrases(narrative)
+	specialNames := extractSpecialNames(narrative)
+	importantWords := extractImportantWords(narrative, 10)
+
+	importantPhrasesSection := ScriptSection{
+		Title: "📢 IMPORTANT PHRASES",
+		Body:  renderImportantPhrases(phrases),
+	}
+	specialNamesSection := ScriptSection{
+		Title: "⭐ SPECIAL NAMES",
+		Body:  renderSpecialNames(specialNames),
+	}
+	importantWordsSection := ScriptSection{
+		Title: "🗝️ IMPORTANT WORDS",
+		Body:  renderImportantWords(importantWords),
 	}
 
 	sections := []ScriptSection{
 		{Title: "🧾 Metadata", Body: renderMetadata(req)},
 		{Title: types.MarkerNarrator, Body: narrative},
 		{Title: types.MarkerTimeline, Body: RenderTimeline(timeline)},
-		{Title: "🔎 Local Entities", Body: renderEntityExtractionSection(analysis)},
-	}
-
-	if imageSection.Title != "" {
-		sections = append(sections, imageSection)
+		imageSection,
+		importantPhrasesSection,
+		specialNamesSection,
+		importantWordsSection,
 	}
 
 	content := renderScriptDocument(req.Topic, sections)
@@ -82,101 +99,6 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		Sections: sections,
 		Timeline: timeline,
 	}, nil
-}
-
-func extractNarrativeAnalysis(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, narrative string, timeline *TimelinePlan) *types.FullEntityAnalysis {
-	client := gen.GetClient()
-	if client == nil {
-		return nil
-	}
-
-	chunks := narrativeAnalysisChunks(narrative)
-	if len(chunks) == 0 {
-		chunks = timelinePlanSegmentTextsFromPlan(timeline)
-	}
-	if len(chunks) == 0 {
-		if trimmed := strings.TrimSpace(narrative); trimmed != "" {
-			chunks = []string{trimmed}
-		}
-	}
-	if len(chunks) == 0 {
-		return nil
-	}
-
-	analysis, err := client.ExtractEntitiesFromScript(ctx, chunks, types.DefaultEntityCount)
-	if err != nil {
-		return nil
-	}
-	return analysis
-}
-
-func narrativeAnalysisChunks(narrative string) []string {
-	sentences := textutil.ExtractSentences(narrative)
-	if len(sentences) == 0 {
-		return nil
-	}
-
-	chunks := make([]string, 0, len(sentences))
-	var current []string
-	currentLen := 0
-
-	flush := func() {
-		if len(current) == 0 {
-			return
-		}
-		chunk := strings.TrimSpace(strings.Join(current, ". "))
-		if chunk != "" {
-			if !strings.HasSuffix(chunk, ".") {
-				chunk += "."
-			}
-			chunks = append(chunks, chunk)
-		}
-		current = current[:0]
-		currentLen = 0
-	}
-
-	for _, sentence := range sentences {
-		sentence = strings.TrimSpace(sentence)
-		if sentence == "" {
-			continue
-		}
-		if len(current) > 0 && (len(current) >= 2 || currentLen+len(sentence) > 420) {
-			flush()
-		}
-		current = append(current, sentence)
-		currentLen += len(sentence)
-	}
-	flush()
-
-	if len(chunks) == 0 && strings.TrimSpace(narrative) != "" {
-		return []string{strings.TrimSpace(narrative)}
-	}
-	return chunks
-}
-
-func timelineSegmentCount(plan *TimelinePlan) int {
-	if plan == nil || len(plan.Segments) == 0 {
-		return 0
-	}
-	return len(plan.Segments)
-}
-
-func timelinePlanSegmentTextsFromPlan(plan *TimelinePlan) []string {
-	if plan == nil || len(plan.Segments) == 0 {
-		return nil
-	}
-
-	chunks := make([]string, 0, len(plan.Segments))
-	for _, seg := range plan.Segments {
-		text := strings.TrimSpace(seg.NarrativeText)
-		if text == "" {
-			text = strings.TrimSpace(seg.OpeningSentence + " " + seg.ClosingSentence)
-		}
-		if text != "" {
-			chunks = append(chunks, text)
-		}
-	}
-	return chunks
 }
 
 func renderMetadata(req ScriptDocsRequest) string {
@@ -193,156 +115,175 @@ func renderMetadata(req ScriptDocsRequest) string {
 	return b.String()
 }
 
-func renderEntityExtractionSection(analysis *types.FullEntityAnalysis) string {
-	if analysis == nil || len(analysis.SegmentEntities) == 0 {
-		return "Entity analysis unavailable."
-	}
-
-	phrases := make([]string, 0)
-	names := make([]string, 0)
-	words := make([]string, 0)
-	for _, seg := range analysis.SegmentEntities {
-		phrases = append(phrases, seg.FrasiImportanti...)
-		names = append(names, seg.NomiSpeciali...)
-		words = append(words, seg.ParoleImportanti...)
-		for name := range seg.EntitaSenzaTesto {
-			names = append(names, name)
-		}
-	}
-	phrases = limitStrings(sliceutil.UniqueStrings(phrases), 2)
-	names = limitStrings(sliceutil.UniqueStrings(names), 2)
-	words = limitStrings(sliceutil.UniqueStrings(words), 2)
-
-	var b strings.Builder
-	b.WriteString("📽️ NARRATIVE AND VISUAL ANALYSIS\n")
-	b.WriteString("==========================================\n")
-	b.WriteString(fmt.Sprintf("📊 Segments analyzed: %d\n", analysis.TotalSegments))
-	b.WriteString(fmt.Sprintf("🔍 Total assets detected: %d\n", analysis.TotalEntities))
-	b.WriteString("------------------------------------------\n")
-
-	if len(phrases) > 0 {
-		b.WriteString("\n📢 IMPORTANT PHRASES:\n")
-		for _, phrase := range phrases {
-			b.WriteString("   ✨ \"")
-			b.WriteString(phrase)
-			b.WriteString("\"\n")
-		}
-	}
-	if len(names) > 0 {
-		b.WriteString("\n⭐ SPECIAL NAMES:\n")
-		for _, name := range names {
-			b.WriteString("   🆔 ")
-			b.WriteString(name)
-			b.WriteString("\n")
-		}
-	}
-	if len(words) > 0 {
-		b.WriteString("\n🗝️ IMPORTANT WORDS:\n")
-		for _, word := range words {
-			b.WriteString("   🔹 ")
-			b.WriteString(word)
-			b.WriteString("\n")
-		}
-	}
-
-	return strings.TrimSpace(b.String())
-}
-
-func limitStrings(items []string, limit int) []string {
-	if limit <= 0 || len(items) <= limit {
-		return items
-	}
-	return items[:limit]
-}
-
-func filterAnalysisByNarrative(narrative string, analysis *types.FullEntityAnalysis) *types.FullEntityAnalysis {
-	if analysis == nil {
-		return nil
-	}
-
-	filtered := *analysis
-	filtered.SegmentEntities = make([]types.SegmentEntities, 0, len(analysis.SegmentEntities))
-	total := 0
-
-	for _, seg := range analysis.SegmentEntities {
-		seg.FrasiImportanti = filterStringsByMatch(narrative, seg.FrasiImportanti)
-		seg.NomiSpeciali = filterStringsByMatch(narrative, seg.NomiSpeciali)
-		seg.ParoleImportanti = filterStringsByMatch(narrative, seg.ParoleImportanti)
-		seg.EntitaSenzaTesto = filterMapByMatch(narrative, seg.EntitaSenzaTesto)
-
-		if len(seg.FrasiImportanti) == 0 && len(seg.NomiSpeciali) == 0 && len(seg.ParoleImportanti) == 0 && len(seg.EntitaSenzaTesto) == 0 {
+// extractImportantPhrases splits narrative into sentences, returns up to 10 unique phrases
+func extractImportantPhrases(narrative string) []string {
+	sentences := strings.FieldsFunc(narrative, func(r rune) bool {
+		return r == '.' || r == '!' || r == '?' || r == '\n'
+	})
+	var phrases []string
+	seen := make(map[string]struct{})
+	for _, s := range sentences {
+		s = strings.TrimSpace(s)
+		if s == "" {
 			continue
 		}
-
-		total += len(seg.FrasiImportanti) + len(seg.NomiSpeciali) + len(seg.ParoleImportanti) + len(seg.EntitaSenzaTesto)
-		filtered.SegmentEntities = append(filtered.SegmentEntities, seg)
-	}
-
-	filtered.TotalSegments = len(filtered.SegmentEntities)
-	filtered.TotalEntities = total
-	return &filtered
-}
-
-func filterStringsByMatch(narrative string, items []string) []string {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		if matchesExactPhrase(narrative, item) {
-			out = append(out, item)
+		s = strings.TrimRight(s, ".!?")
+		if s == "" {
+			continue
+		}
+		key := strings.ToLower(s)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		phrases = append(phrases, s)
+		if len(phrases) >= 10 {
+			break
 		}
 	}
-	return out
+	return phrases
 }
 
-func filterMapByMatch(narrative string, items map[string]string) map[string]string {
-	if len(items) == 0 {
-		return nil
+// renderImportantPhrases formats phrases with ✨ prefix
+func renderImportantPhrases(phrases []string) string {
+	if len(phrases) == 0 {
+		return "Nessuna frase importante rilevata."
 	}
-	out := make(map[string]string, len(items))
-	for key, value := range items {
-		if matchesExactPhrase(narrative, key) {
-			out[key] = value
+	var b strings.Builder
+	for _, p := range phrases {
+		b.WriteString("   ✨ \"")
+		b.WriteString(p)
+		b.WriteString("\"\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// extractSpecialNames finds proper nouns (start with uppercase) in narrative
+// Filters out sentence-start words that are common words, not names
+func extractSpecialNames(narrative string) []string {
+	// Common sentence starters that are not proper nouns
+	sentenceStarters := map[string]struct{}{
+		"the": {}, "she's": {}, "he": {}, "her": {}, "his": {},
+		"this": {}, "that": {}, "these": {}, "those": {},
+		"it": {}, "its": {}, "today": {}, "tomorrow": {},
+		"yesterday": {}, "now": {}, "then": {}, "soon": {},
+	}
+	var names []string
+	seen := make(map[string]struct{})
+	words := strings.Fields(narrative)
+
+	for i, w := range words {
+		if len(w) == 0 {
+			continue
+		}
+		firstChar := []rune(w)[0]
+		if !unicode.IsUpper(firstChar) {
+			continue
+		}
+		// Clean punctuation
+		cleanWord := strings.TrimRight(w, ",.!?;:\"'")
+		if cleanWord == "" {
+			continue
+		}
+		// Skip if it's just a sentence starter (and at sentence start position)
+		key := strings.ToLower(cleanWord)
+		if _, isStarter := sentenceStarters[key]; isStarter {
+			// Check if this is likely a sentence start (previous word ends with .!? or it's first word)
+			if i == 0 || isEndOfSentence(words, i-1) {
+				continue
+			}
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		names = append(names, cleanWord)
+		if len(names) >= 10 {
+			break
 		}
 	}
-	return out
+	return names
 }
 
-func matchesExactPhrase(narrative, candidate string) bool {
-	left := normalizeMatchText(narrative)
-	right := normalizeMatchText(candidate)
-	if left == "" || right == "" {
+// isEndOfSentence checks if the word at index is at the end of a sentence
+func isEndOfSentence(words []string, idx int) bool {
+	if idx < 0 || idx >= len(words) {
 		return false
 	}
-	return strings.Contains(" "+left+" ", " "+right+" ")
+	word := words[idx]
+	// Check if word ends with sentence-ending punctuation
+	lastChar := []rune(word)[len([]rune(word))-1]
+	return lastChar == '.' || lastChar == '!' || lastChar == '?'
 }
 
-func normalizeMatchText(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
+// renderSpecialNames formats names with 🆔 prefix
+func renderSpecialNames(names []string) string {
+	if len(names) == 0 {
+		return "Nessun nome speciale rilevato."
 	}
-	replacer := strings.NewReplacer(
-		"’", "'",
-		"‘", "'",
-		"ʼ", "'",
-		"`", "'",
-		"´", "'",
-	)
-	s = replacer.Replace(s)
-	s = norm.NFD.String(strings.ToLower(s))
-
 	var b strings.Builder
-	for _, r := range s {
-		if unicode.Is(unicode.Mn, r) {
-			continue
-		}
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
-			continue
-		}
-		b.WriteRune(' ')
+	for _, n := range names {
+		b.WriteString("   🆔 ")
+		b.WriteString(n)
+		b.WriteString("\n")
 	}
-	return strings.Join(strings.Fields(b.String()), " ")
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// extractImportantWords returns top N frequent non-stop words
+func extractImportantWords(narrative string, max int) []string {
+	stopWords := map[string]struct{}{
+		"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "but": {}, "in": {},
+		"on": {}, "at": {}, "to": {}, "for": {}, "of": {}, "with": {}, "by": {},
+		"is": {}, "are": {}, "was": {}, "were": {}, "be": {}, "been": {}, "being": {},
+		"this": {}, "that": {}, "these": {}, "those": {}, "it": {}, "its": {},
+	}
+	words := strings.Fields(strings.ToLower(narrative))
+	freq := make(map[string]int)
+	for _, w := range words {
+		w = strings.TrimRight(w, ",.!?;:\"'")
+		if w == "" {
+			continue
+		}
+		if _, ok := stopWords[w]; ok {
+			continue
+		}
+		if len([]rune(w)) < 3 {
+			continue
+		}
+		freq[w]++
+	}
+	type wordFreq struct {
+		word  string
+		count int
+	}
+	var wf []wordFreq
+	for w, c := range freq {
+		wf = append(wf, wordFreq{w, c})
+	}
+	sort.Slice(wf, func(i, j int) bool {
+		return wf[i].count > wf[j].count
+	})
+	var result []string
+	for i, w := range wf {
+		if i >= max {
+			break
+		}
+		result = append(result, w.word)
+	}
+	return result
+}
+
+// renderImportantWords formats words with 🔹 prefix
+func renderImportantWords(words []string) string {
+	if len(words) == 0 {
+		return "Nessuna parola importante rilevata."
+	}
+	var b strings.Builder
+	for _, w := range words {
+		b.WriteString("   🔹 ")
+		b.WriteString(w)
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }

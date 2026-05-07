@@ -5,51 +5,63 @@ import (
 	"strings"
 
 	"velox/go-master/internal/matching"
-	"velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/textutil"
 )
 
-// ArtlistStockAssociation cerca nel database delle clip di Artlist.
+// ArtlistStockAssociation searches in the Artlist clip database using multiple terms.
 type ArtlistStockAssociation struct {
-	svc *artlist.Service
+	repo *clips.Repository
 }
 
-func NewArtlistStockAssociation(svc *artlist.Service) *ArtlistStockAssociation {
-	return &ArtlistStockAssociation{svc: svc}
+func NewArtlistStockAssociation(repo *clips.Repository) *ArtlistStockAssociation {
+	return &ArtlistStockAssociation{repo: repo}
 }
 
 func (a *ArtlistStockAssociation) Associate(ctx context.Context, input SegmentInput) ([]ScoredMatch, error) {
-	if a.svc == nil {
+	if a.repo == nil {
 		return nil, nil
 	}
 
-	searchTerm := input.Subject
-	if searchTerm == "" {
-		if len(input.Keywords) > 0 {
-			searchTerm = input.Keywords[0]
-		} else {
-			return nil, nil
+	// Generate multiple search terms
+	terms := collectArtlistSearchTerms(input)
+
+	var allMatches []ScoredMatch
+	seen := make(map[string]bool)
+
+	for _, term := range terms {
+		if term == "" {
+			continue
+		}
+
+		matches := a.searchInDB(ctx, term)
+		for _, m := range matches {
+			key := strings.ToLower(m.Title + "|" + m.Link)
+			if !seen[key] {
+				seen[key] = true
+				allMatches = append(allMatches, m)
+			}
 		}
 	}
 
-	resp, err := a.svc.Search(ctx, &artlist.SearchRequest{
-		Term: searchTerm,
-	})
-	if err != nil {
-		return nil, err
+	return allMatches, nil
+}
+
+func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string) []ScoredMatch {
+	// Use SearchClips which now falls back to LIKE when FTS5 returns 0 results
+	clipsList, err := a.repo.SearchClips(ctx, term)
+	if err != nil || len(clipsList) == 0 {
+		return nil
 	}
 
-	if resp == nil || len(resp.Clips) == 0 {
-		return nil, nil
-	}
-
-	queryTokens := textutil.Tokenize(searchTerm)
+	queryTokens := textutil.Tokenize(term)
 	var matches []ScoredMatch
-	for _, clip := range resp.Clips {
+
+	for _, clip := range clipsList {
 		targetTokens := textutil.Tokenize(clip.Name + " " + strings.Join(clip.Tags, " "))
 		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 
-		if score > 30 {
+		if score > 20 {
 			matches = append(matches, ScoredMatch{
 				Title:   clip.Name,
 				Path:    clip.LocalPath,
@@ -57,9 +69,90 @@ func (a *ArtlistStockAssociation) Associate(ctx context.Context, input SegmentIn
 				Source:  "artlist_stock",
 				Link:    clip.ExternalURL,
 				Details: strings.Join(clip.Tags, ", "),
+				Reason:  "artlist_db: " + term,
 			})
 		}
 	}
 
-	return matches, nil
+	return matches
+}
+
+// collectArtlistSearchTerms generates multiple search terms from segment input.
+func collectArtlistSearchTerms(input SegmentInput) []string {
+	terms := make([]string, 0)
+
+	// Add topic (most important!)
+	if input.Topic != "" {
+		terms = append(terms, input.Topic)
+	}
+
+	// Add subject
+	if input.Subject != "" {
+		terms = append(terms, input.Subject)
+	}
+
+	// Add keywords
+	terms = append(terms, input.Keywords...)
+
+	// Add entities
+	terms = append(terms, input.Entities...)
+
+	// Extract terms from narrative
+	if input.Narrative != "" {
+		narrativeTerms := extractNarrativeTerms(input.Narrative)
+		terms = append(terms, narrativeTerms...)
+	}
+
+	// Clean and limit
+	return cleanAndLimitTerms(terms, 8)
+}
+
+func extractNarrativeTerms(narrative string) []string {
+	terms := make([]string, 0)
+
+	// Tokenize and filter stop words
+	tokens := textutil.TokenizeWithStopWords(narrative)
+	seen := make(map[string]bool)
+
+	for _, tok := range tokens {
+		tok = strings.TrimSpace(tok)
+		if len(tok) < 4 {
+			continue
+		}
+		lower := strings.ToLower(tok)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		terms = append(terms, tok)
+
+		if len(terms) >= 5 {
+			break
+		}
+	}
+
+	return terms
+}
+
+func cleanAndLimitTerms(terms []string, limit int) []string {
+	seen := make(map[string]bool)
+	cleaned := make([]string, 0, len(terms))
+
+	for _, term := range terms {
+		term = strings.TrimSpace(term)
+		if term == "" || len(term) < 3 {
+			continue
+		}
+		lower := strings.ToLower(term)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		cleaned = append(cleaned, term)
+		if len(cleaned) >= limit {
+			break
+		}
+	}
+
+	return cleaned
 }

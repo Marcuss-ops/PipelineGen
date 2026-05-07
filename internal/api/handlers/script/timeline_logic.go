@@ -172,7 +172,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 
 		// Eseguiamo l'associazione stratificata
 		segStarted := time.Now()
-		associateSegment(ctx, &seg, assocService)
+		associateSegment(ctx, &seg, assocService, req.Topic)
 		if preserveStructuredSubjects {
 			stockFiltered := association.FilterStockMatchesBySubject(seg.StockMatches, seg.Subject)
 			artlistFiltered := association.FilterArtlistMatchesBySubject(seg.ArtlistMatches, seg.Subject)
@@ -433,12 +433,13 @@ func marshalStringSliceJSON(values []string) string {
 	return string(data)
 }
 
-func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *association.Service) {
+func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *association.Service, topic string) {
 	if assocService == nil {
 		return
 	}
 
 	input := association.SegmentInput{
+		Topic:     topic,
 		Subject:   segmentAssociationSubject(seg),
 		Keywords:  segmentAssociationKeywords(seg),
 		Entities:  segmentAssociationEntities(seg),

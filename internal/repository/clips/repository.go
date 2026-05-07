@@ -211,9 +211,13 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		return clips, nil
+		// Fallback to LIKE if FTS5 returned 0 results
+		if len(clips) > 0 {
+			return clips, nil
+		}
+		// If we get here, FTS5 succeeded but returned 0 results - fall back to LIKE
 	}
-	r.log.Warn("FTS5 search failed, falling back to LIKE", zap.Error(err))
+	r.log.Warn("FTS5 search failed or returned 0 results, falling back to LIKE", zap.Error(err))
 	// Fallback to LIKE search on multiple fields
 	query = buildClipQuery("") + " WHERE (tags LIKE ? OR group_name LIKE ? OR name LIKE ? OR category LIKE ?)"
 	likePattern := "%" + tag + "%"
