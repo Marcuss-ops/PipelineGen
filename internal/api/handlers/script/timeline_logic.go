@@ -73,8 +73,10 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		rawPlan.Segments[0].EndTime = float64(req.Duration)
 	}
 
-	// BATCH LLM QUERY GENERATION: Pre-generate queries for all segments to populate cache
+	// BATCH LLM QUERY GENERATION: Pre-generate queries for all segments
 	var batchSegments []BatchSegmentInput
+	var batchResults map[int]VisualQueryResult // Accessible in segment loop
+
 	for i, rawSeg := range rawPlan.Segments {
 		subject := strings.TrimSpace(rawSeg.Subject)
 		narrativeText := strings.TrimSpace(rawSeg.NarrativeText)
@@ -89,7 +91,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		zap.L().Info("Pre-generating visual queries in batch",
 			zap.Int("segment_count", len(batchSegments)),
 		)
-		batchResults := GenerateBatchArtlistVisualQueries(ctx, gen, req.Topic, batchSegments, DefaultMaxQueries)
+		batchResults = GenerateBatchArtlistVisualQueries(ctx, gen, req.Topic, batchSegments, DefaultMaxQueries)
 		zap.L().Info("Batch query generation completed",
 			zap.Int("results_count", len(batchResults)),
 		)
@@ -197,7 +199,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		segStarted := time.Now()
 		associateSegment(ctx, &seg, assocService, req.Topic)
 
-		// If no matches found, generate Artlist queries using LLM (will hit cache from batch)
+		// If no matches found, use batch results first, then fallback to individual LLM call
 		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 {
 			zap.L().Info("segment has no matches, generating LLM-based Artlist queries",
 				zap.Int("segment_index", seg.Index),
@@ -205,15 +207,27 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 				zap.String("canonical_subject", seg.CanonicalSubject),
 			)
 
-			// This will hit the cache populated by batch generation
-			visualResult := GenerateArtlistVisualQuery(
-				ctx,
-				gen,
-				req.Topic,
-				firstNonEmpty(seg.CanonicalSubject, seg.Subject),
-				seg.NarrativeText,
-				DefaultMaxQueries,
-			)
+			var visualResult VisualQueryResult
+			// Check batch results first
+			if batchResults != nil {
+				if r, ok := batchResults[seg.Index]; ok {
+					visualResult = r
+					zap.L().Info("using batch result for segment",
+						zap.Int("segment_index", seg.Index),
+					)
+				}
+			}
+			// Fallback to individual LLM call if batch result not found
+			if visualResult.Queries == nil {
+				visualResult = GenerateArtlistVisualQuery(
+					ctx,
+					gen,
+					req.Topic,
+					firstNonEmpty(seg.CanonicalSubject, seg.Subject),
+					seg.NarrativeText,
+					DefaultMaxQueries,
+				)
+			}
 
 			zap.L().Info("LLM-generated Artlist queries for segment",
 				zap.Int("segment_index", seg.Index),
@@ -388,10 +402,6 @@ func bestMatchFromSegment(seg TimelineSegment) (string, string, string, int) {
 	return bestSource, bestPath, bestLink, bestScore
 }
 
-func firstNonEmpty(values ...string) string {
-	return textutil.FirstNonEmpty(values...)
-}
-
 func firstNonEmptySlice(primary, fallback []string) []string {
 	return sliceutil.FirstNonEmpty(primary, fallback)
 }
@@ -509,100 +519,7 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 	}
 }
 
-// phraseToArtlistQuery converts a narrative phrase to a clean Artlist search query
-func phraseToArtlistQuery(phrase string) string {
-	tokens := textutil.TokenizeWithStopWords(phrase)
-	cleaned := make([]string, 0, len(tokens))
 
-	banned := map[string]bool{
-		"then": true, "they": true, "something": true, "remarkably": true,
-		"similar": true, "thought": true, "evidence": true, "the": true,
-		"a": true, "an": true, "is": true, "was": true, "were": true,
-		"are": true, "been": true, "have": true, "has": true,
-		"had": true, "but": true, "and": true, "or": true,
-	}
-
-	for _, t := range tokens {
-		t = strings.ToLower(strings.TrimSpace(t))
-		if t == "" || banned[t] {
-			continue
-		}
-		cleaned = append(cleaned, t)
-		if len(cleaned) >= 4 {
-			break
-		}
-	}
-
-	if len(cleaned) == 0 {
-		return "cinematic documentary"
-	}
-	return strings.Join(cleaned, " ")
-}
-
-// buildArtlistFallbackQueries generates Artlist search queries when no matches found
-func buildArtlistFallbackQueries(seg TimelineSegment) []string {
-	base := firstNonEmpty(seg.CanonicalSubject, seg.Subject)
-
-	queries := make([]string, 0, 3)
-
-	if base != "" && !looksLikeNarrativeFragment(base) {
-		queries = append(queries, base)
-	}
-
-	phrases := bestVisualPhrases(seg.NarrativeText, 2)
-	for _, phrase := range phrases {
-		q := phraseToArtlistQuery(phrase)
-		if q != "" && q != "cinematic documentary" {
-			queries = append(queries, q)
-		}
-	}
-
-	if len(queries) == 0 {
-		queries = append(queries, "documentary geology landscape")
-	}
-
-	if len(queries) > 3 {
-		queries = queries[:3]
-	}
-
-	return queries
-}
-
-// bestVisualPhrases extracts sentences from narrative text
-func bestVisualPhrases(narrative string, limit int) []string {
-	sentences := textutil.ExtractSentences(narrative)
-	if len(sentences) == 0 {
-		return nil
-	}
-
-	// Simply return first N sentences as they are most relevant
-	results := make([]string, 0, limit)
-	for i := 0; i < len(sentences) && i < limit; i++ {
-		results = append(results, strings.TrimSpace(sentences[i]))
-	}
-	return results
-}
-
-// scoreVisualPhrase is deprecated - kept for compatibility
-func scoreVisualPhrase(phrase string) int {
-	tokens := textutil.TokenizeWithStopWords(phrase)
-	if len(tokens) < 5 {
-		return 0
-	}
-	return len(tokens)
-}
-
-// looksLikeNarrativeFragment checks if a string looks like a narrative fragment
-func looksLikeNarrativeFragment(s string) bool {
-	s = strings.ToLower(s)
-	narrativeMarkers := []string{"the wind", "the rain", "the sun", "in a", "through the", "across the", "they ", "their ", "then ", "suddenly"}
-	for _, marker := range narrativeMarkers {
-		if strings.Contains(s, marker) {
-			return true
-		}
-	}
-	return false
-}
 
 // fallbackTimelinePlan creates a basic segment if LLM fails
 func fallbackTimelinePlan(topic string, duration int, narrative string) *timelineLLMPlan {
@@ -647,4 +564,34 @@ func applyAssociationHints(seg *TimelineSegment, resp *association.CandidatesRes
 	seg.PreferredStockGroup = best.Source
 	preferredLink := association.NormalizeDriveFolderLink(best.Link, best.FolderID)
 	seg.PreferredStockPaths = sliceutil.UniqueStrings(sliceutil.TrimStrings([]string{best.Path, preferredLink}))
+}
+
+// Deprecated: kept only for timeline_render.go compatibility. Use artlist_query_generator.go instead.
+func phraseToArtlistQuery(phrase string) string {
+	tokens := textutil.TokenizeWithStopWords(phrase)
+	cleaned := make([]string, 0, len(tokens))
+
+	banned := map[string]bool{
+		"then": true, "they": true, "something": true, "remarkably": true,
+		"similar": true, "thought": true, "evidence": true, "the": true,
+		"a": true, "an": true, "is": true, "was": true, "were": true,
+		"are": true, "been": true, "have": true, "has": true,
+		"had": true, "but": true, "and": true, "or": true,
+	}
+
+	for _, t := range tokens {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" || banned[t] {
+			continue
+		}
+		cleaned = append(cleaned, t)
+		if len(cleaned) >= 4 {
+			break
+		}
+	}
+
+	if len(cleaned) == 0 {
+		return "cinematic documentary"
+	}
+	return strings.Join(cleaned, " ")
 }

@@ -32,6 +32,16 @@ var (
 	queryCacheMu sync.RWMutex
 )
 
+// firstNonEmpty returns the first non-empty string from the input list
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v := strings.TrimSpace(v); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // GenerateArtlistSearchSuggestions generates visual search queries using LLM
 func GenerateArtlistSearchSuggestions(
 	ctx context.Context,
@@ -54,7 +64,7 @@ func GenerateArtlistVisualQuery(
 	narrative string,
 	maxQueries int,
 ) VisualQueryResult {
-	if gen == nil {
+	if gen == nil || gen.GetClient() == nil {
 		zap.L().Warn("GenerateArtlistVisualQuery: generator is nil, using fallback")
 		queries := buildFallbackQueries(topic, subject, narrative)
 		return VisualQueryResult{
@@ -150,7 +160,7 @@ func GenerateBatchArtlistVisualQueries(
 	segments []BatchSegmentInput,
 	maxQueriesPerSegment int,
 ) map[int]VisualQueryResult {
-	if gen == nil {
+	if gen == nil || gen.GetClient() == nil {
 		zap.L().Warn("GenerateBatchArtlistVisualQueries: generator is nil, using fallback")
 		return buildBatchFallback(topic, segments)
 	}
@@ -162,7 +172,6 @@ func GenerateBatchArtlistVisualQueries(
 	// Check cache first
 	results := make(map[int]VisualQueryResult)
 	uncachedSegments := make([]BatchSegmentInput, 0)
-	uncachedIndices := make([]int, 0)
 
 	for _, seg := range segments {
 		cacheKey := buildCacheKey(topic, seg.Subject, seg.Narrative, maxQueriesPerSegment)
@@ -170,7 +179,6 @@ func GenerateBatchArtlistVisualQueries(
 			results[seg.Index] = cached
 		} else {
 			uncachedSegments = append(uncachedSegments, seg)
-			uncachedIndices = append(uncachedIndices, seg.Index)
 		}
 	}
 
@@ -201,17 +209,12 @@ func GenerateBatchArtlistVisualQueries(
 		zap.L().Error("GenerateBatchArtlistVisualQueries: LLM call failed, using fallback",
 			zap.Error(err),
 		)
-		for _, idx := range uncachedIndices {
-			for _, seg := range uncachedSegments {
-				if seg.Index == idx {
-					queries := buildFallbackQueries(topic, seg.Subject, seg.Narrative)
-					results[idx] = VisualQueryResult{
-						VisualSubject: seg.Subject,
-						VisualCaption: seg.Narrative,
-						Queries:       queries,
-					}
-					break
-				}
+		for _, seg := range uncachedSegments {
+			queries := buildFallbackQueries(topic, seg.Subject, seg.Narrative)
+			results[seg.Index] = VisualQueryResult{
+				VisualSubject: seg.Subject,
+				VisualCaption: seg.Narrative,
+				Queries:       queries,
 			}
 		}
 		return results
@@ -219,13 +222,13 @@ func GenerateBatchArtlistVisualQueries(
 
 	// Parse batch response
 	parsedResults := parseBatchVisualQueryResponse(response, uncachedSegments, maxQueriesPerSegment)
-	for i, idx := range uncachedIndices {
-		if i < len(parsedResults) {
-			results[idx] = parsedResults[i]
+	for _, seg := range uncachedSegments {
+		segIdx := seg.Index
+		if result, ok := parsedResults[segIdx]; ok {
+			results[segIdx] = result
 			// Save to cache
-			seg := uncachedSegments[i]
 			cacheKey := buildCacheKey(topic, seg.Subject, seg.Narrative, maxQueriesPerSegment)
-			saveToCache(cacheKey, parsedResults[i])
+			saveToCache(cacheKey, result)
 		}
 	}
 
@@ -392,8 +395,14 @@ Examples:
 Input: "Further excavation is planned, and with each new layer of rock exposed..."
 Output: {"visual_subject": "archaeological excavation", "visual_caption": "Archaeologists carefully uncovering ancient rock layers and fossils", "queries": ["archaeological excavation", "ancient cave discovery", "rock layer excavation"]}
 
-Input: "Analysis of pollen and charcoal fragments within the chambers..."
-Output: {"visual_subject": "laboratory analysis", "visual_caption": "Scientists examining prehistoric organic samples under bright lights", "queries": ["archaeology laboratory", "ancient sample analysis", "prehistoric cave painting"]}
+Input: "Scientists mix chemicals in a lab to test new battery technology..."
+Output: {"visual_subject": "science laboratory", "visual_caption": "Researchers conducting experiments with beakers and microscopes", "queries": ["science lab experiment", "battery research", "chemistry laboratory"]}
+
+Input: "The election campaign trails through small towns, shaking hands with voters..."
+Output: {"visual_subject": "political campaign", "visual_caption": "Politician greeting crowds at a local rally", "queries": ["political campaign", "election rally", "voter handshake"]}
+
+Input: "The race car speeds around the track, tires screeching on the asphalt..."
+Output: {"visual_subject": "motor racing", "visual_caption": "Formula 1 car racing on a circuit track", "queries": ["race car driving", "motorsport circuit", "racing tire screech"]}
 
 Sentence: "%s"
 Context topic: "%s"
@@ -520,23 +529,24 @@ func isAllowedChar(r rune) bool {
 func buildFallbackQueries(topic, subject, narrative string) []string {
 	queries := make([]string, 0, DefaultMaxQueries)
 
+	// Use subject first, then topic
 	base := firstNonEmpty(subject, topic)
 	if base != "" {
 		queries = append(queries, base)
 	}
 
-	if len(queries) < DefaultMaxQueries && narrative != "" {
-		words := strings.Fields(narrative)
-		if len(words) > 3 {
-			candidate := strings.Join(words[:3], " ")
-			if isValidVisualQuery(candidate) {
-				queries = append(queries, candidate)
-			}
-		}
+	// If still need more, add topic if not already present
+	if len(queries) < DefaultMaxQueries && topic != "" && !strings.EqualFold(base, topic) {
+		queries = append(queries, topic)
 	}
 
 	if len(queries) == 0 {
 		queries = append(queries, "documentary landscape")
+	}
+
+	// Truncate to max queries
+	if len(queries) > DefaultMaxQueries {
+		queries = queries[:DefaultMaxQueries]
 	}
 
 	return queries
