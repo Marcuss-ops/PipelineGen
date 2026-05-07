@@ -2,28 +2,29 @@ package main
 
 import (
 	"crypto/md5"
-	"database/sql"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
 
+	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
+	"velox/go-master/internal/storage"
 )
 
 func main() {
 	dbPath := "/home/pierone/Pyt/VeloxEditing/refactored/src/go-master/data/artlist.db.sqlite"
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, logger)
 	if err != nil {
 		log.Fatal("failed to open database:", err)
 	}
-	defer db.Close()
-
-	// Enable WAL mode
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	rows, err := db.Query("SELECT id, drive_link FROM clips WHERE file_hash='' AND drive_link!=''")
 	if err != nil {

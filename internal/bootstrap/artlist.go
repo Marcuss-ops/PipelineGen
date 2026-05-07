@@ -1,8 +1,6 @@
 package bootstrap
 
 import (
-	"path/filepath"
-
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	artlistPkg "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetpipeline"
@@ -29,9 +27,6 @@ func WireArtlist(
 ) (*ArtlistWiring, error) {
 	// Create drive destination service
 
-	// Create Artlist service with drive destination
-	artlistDBPath := filepath.Join(cfg.Storage.DataDir, "artlist.db.sqlite")
-
 	// Create mediaregistry components for Artlist
 	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
 	driveVerifier := mediaregistry.NewAPIDriveVerifier(coreDeps.DriveClient)
@@ -50,11 +45,10 @@ func WireArtlist(
 	)
 
 
-
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,
 		coreDeps.DB.DB,
-		artlistDBPath,
+		coreDeps.ArtlistDB.DB, // Use existing properly-configured connection
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
 		coreDeps.MediaProcessor,
@@ -63,6 +57,9 @@ func WireArtlist(
 		coreDeps.JobsService,
 		log,
 	)
+
+
+
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err

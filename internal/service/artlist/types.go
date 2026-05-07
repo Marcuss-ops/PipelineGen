@@ -26,16 +26,7 @@ type Service struct {
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath string, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *assetpipeline.LifecycleService, assetDestResolver destination.Resolver, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
-	var artlistDB *sql.DB
-	var err error
-	if artlistDBPath != "" {
-		artlistDB, err = sql.Open("sqlite3", artlistDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
-		if err != nil {
-			return nil, err
-		}
-	}
-
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *assetpipeline.LifecycleService, assetDestResolver destination.Resolver, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
 	return &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
@@ -50,10 +41,9 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDBPath string, nodeSc
 	}, nil
 }
 
+// Close is a no-op since the artlistDB connection is managed externally by storage.NewSQLiteDB()
 func (s *Service) Close() error {
-	if s.artlistDB != nil {
-		return s.artlistDB.Close()
-	}
+	// Connection is managed by bootstrap/databases.go, not here
 	return nil
 }
 

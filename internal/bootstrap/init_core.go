@@ -40,6 +40,7 @@ type CoreDeps struct {
 	DriveClient          *gdrive.Service
 	Utility              *common.UtilityHandler
 	DB                   *storage.SQLiteDB // Unified database
+	ArtlistDB            *storage.SQLiteDB // Artlist database (properly configured with WAL)
 	ImagesDB             *storage.SQLiteDB // Images database
 	ScriptsRepo          *scripts.ScriptRepository
 	ImageRepo            *images.Repository
@@ -113,6 +114,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		DriveClient:          svcs.driveClient,
 		Utility:              svcs.utility,
 		DB:                   dbs.main,
+		ArtlistDB:            dbs.artlist,
 		ImagesDB:             dbs.images,
 		ScriptsRepo:          svcs.scriptsRepo,
 		ImageRepo:            svcs.imageRepo,

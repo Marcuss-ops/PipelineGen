@@ -32,6 +32,18 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 		dsn = dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	}
 
+	return newSQLiteConnection(dbPath, dsn, log)
+}
+
+// OpenSQLiteDB creates a new SQLite connection from a full file path with WAL mode and connection pooling.
+// Use this for databases that are not in the standard data directory.
+func OpenSQLiteDB(dbPath string, log *zap.Logger) (*SQLiteDB, error) {
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
+	return newSQLiteConnection(dbPath, dsn, log)
+}
+
+// newSQLiteConnection is the common implementation for creating a configured SQLite connection.
+func newSQLiteConnection(dbPath, dsn string, log *zap.Logger) (*SQLiteDB, error) {
 	// Use WAL mode for better concurrency: allows multiple readers with one writer
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {

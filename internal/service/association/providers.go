@@ -2,13 +2,15 @@ package association
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/storage"
+
+	"go.uber.org/zap"
 )
 
 
@@ -150,15 +152,15 @@ func (s *Service) loadFromScraperDB(candidates []FolderCandidate, seenFolders ma
 	if _, err := os.Stat(dbPath); err != nil {
 		return candidates
 	}
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+
+	log := zap.L()
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, log)
 	if err != nil {
+		log.Warn("Failed to open scraper DB", zap.String("path", dbPath), zap.Error(err))
 		return candidates
 	}
-	defer db.Close()
-
-	// Enable WAL mode
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	rows, err := db.Query("SELECT name, drive_link, full_path FROM artlist_folders")
 	if err != nil {

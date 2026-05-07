@@ -203,11 +203,12 @@ func splitSQLStatements(sqlContent string) []string {
 
 // RunMigrationsOnDB is a convenience function to run migrations on a database.
 func RunMigrationsOnDB(dbPath string, log *zap.Logger, migrationsDir string) error {
-	db, err := sql.Open("sqlite3", dbPath)
+	sqliteDB, err := OpenSQLiteDB(dbPath, log)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	defer db.Close()
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	runner := NewMigrationRunner(db, log, migrationsDir)
 	return runner.RunMigrations()

@@ -11,6 +11,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
 )
@@ -31,13 +32,14 @@ func main() {
 
 	ctx := context.Background()
 
-	// Open assets DB
+	// Open assets DB using standardized helper
 	assetsDBPath := filepath.Join(dataDir, "assets.db.sqlite")
-	assetsDB, err := sql.Open("sqlite3", assetsDBPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	assetsSQLiteDB, err := storage.OpenSQLiteDB(assetsDBPath, log)
 	if err != nil {
 		log.Fatal("Failed to open assets DB", zap.Error(err))
 	}
-	defer assetsDB.Close()
+	defer assetsSQLiteDB.Close()
+	assetsDB := assetsSQLiteDB.DB
 
 	assetIndexRepo := assetindex.NewRepository(assetsDB)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
@@ -59,12 +61,13 @@ func backfillClips(ctx context.Context, log *zap.Logger, dataDir string, svc *as
 		return
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, log)
 	if err != nil {
 		log.Error("Failed to open DB", zap.String("db", dbName), zap.Error(err))
 		return
 	}
-	defer db.Close()
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	// Check if status column exists
 	hasStatus := checkColumnExists(db, "clips", "status")
@@ -159,12 +162,13 @@ func backfillImages(ctx context.Context, log *zap.Logger, dataDir string, svc *a
 		return
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, log)
 	if err != nil {
 		log.Error("Failed to open images DB", zap.Error(err))
 		return
 	}
-	defer db.Close()
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	rows, err := db.QueryContext(ctx, `SELECT i.id, i.source, i.local_path, i.drive_link, i.file_hash, i.status, i.width, i.height, s.name as subject_name FROM images i LEFT JOIN subjects s ON i.subject_id = s.id`)
 	if err != nil {
@@ -218,12 +222,13 @@ func backfillVoiceovers(ctx context.Context, log *zap.Logger, dataDir string, sv
 		return
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, log)
 	if err != nil {
 		log.Error("Failed to open voiceover DB", zap.Error(err))
 		return
 	}
-	defer db.Close()
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	rows, err := db.QueryContext(ctx, `SELECT id, request_id, local_path, drive_file_id, drive_link, download_link, file_hash, status, language, voice, duration_seconds, strategy FROM voiceovers`)
 	if err != nil {

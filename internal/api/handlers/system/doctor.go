@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
 
+	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/config"
 )
 
@@ -207,14 +207,15 @@ func (h *Handler) checkArtlistDB(ctx context.Context, resp *DoctorResponse) {
 		return
 	}
 
-	// Try to open the database
-	db, err := sql.Open("sqlite3", artlistDBPath)
+	// Open database using centralized helper for consistent configuration
+	sqliteDB, err := storage.OpenSQLiteDB(artlistDBPath, h.log)
 	if err != nil {
 		resp.Checks["artlist_db"] = "corrupted"
 		resp.Fixes = append(resp.Fixes, "Check artlist.db.sqlite file")
 		return
 	}
-	defer db.Close()
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	// Try a simple query to verify the database is valid
 	if err := db.Ping(); err != nil {

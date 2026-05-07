@@ -6,7 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"velox/go-master/internal/service/association"
+	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/sliceutil"
+
+	"go.uber.org/zap"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -29,15 +32,13 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 		return nil, nil
 	}
 
-	db, err := sql.Open("sqlite3", c.dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	log := zap.L()
+	sqliteDB, err := storage.OpenSQLiteDB(c.dbPath, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open artlist db: %v", err)
 	}
-	defer db.Close()
-
-	// Enable WAL mode
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	// Tokenize all keywords for maximum reach
 	var tokens []string
@@ -106,11 +107,13 @@ func (c *ArtlistDBClient) LookupClipURLByVideoID(videoID string) (string, error)
 		return "", nil
 	}
 
-	db, err := sql.Open("sqlite3", c.dbPath)
+	log := zap.L()
+	sqliteDB, err := storage.OpenSQLiteDB(c.dbPath, log)
 	if err != nil {
 		return "", fmt.Errorf("failed to open artlist db: %v", err)
 	}
-	defer db.Close()
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	var url string
 	err = db.QueryRow(`

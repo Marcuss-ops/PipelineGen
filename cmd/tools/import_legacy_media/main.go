@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 
+	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
 	"velox/go-master/internal/repository/media"
+	"velox/go-master/internal/storage"
 	"velox/go-master/internal/usecase/mediaimport"
 )
 
@@ -29,17 +30,22 @@ func main() {
 
 	ctx := context.Background()
 
-	oldDB, err := sql.Open("sqlite3", *oldDBPath)
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	oldSQLiteDB, err := storage.OpenSQLiteDB(*oldDBPath, logger)
 	if err != nil {
 		log.Fatalf("Failed to open old database: %v", err)
 	}
-	defer oldDB.Close()
+	defer oldSQLiteDB.Close()
+	oldDB := oldSQLiteDB.DB
 
-	newDB, err := sql.Open("sqlite3", *newDBPath)
+	newSQLiteDB, err := storage.OpenSQLiteDB(*newDBPath, logger)
 	if err != nil {
 		log.Fatalf("Failed to open new database: %v", err)
 	}
-	defer newDB.Close()
+	defer newSQLiteDB.Close()
+	newDB := newSQLiteDB.DB
 
 	repo := media.NewSQLiteRepository(newDB)
 

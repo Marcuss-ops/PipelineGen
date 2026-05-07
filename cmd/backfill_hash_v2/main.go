@@ -6,24 +6,25 @@ import (
 	"log"
 	"strings"
 
-	"database/sql"
+	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/oauth2/google"
 	driveapi "google.golang.org/api/drive/v3"
+	"velox/go-master/internal/storage"
 )
 
 func main() {
 	dbPath := "/home/pierone/Pyt/VeloxEditing/refactored/src/go-master/data/artlist.db.sqlite"
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, logger)
 	if err != nil {
 		log.Fatal("failed to open database:", err)
 	}
-	defer db.Close()
-
-	// Enable WAL mode
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	defer sqliteDB.Close()
+	db := sqliteDB.DB
 
 	ctx := context.Background()
 	client, err := google.DefaultClient(ctx, driveapi.DriveScope)
