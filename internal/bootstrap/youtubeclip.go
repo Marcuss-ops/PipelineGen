@@ -20,12 +20,15 @@ func WireYouTubeClip(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*YouTubeClipWiring, error) {
-	handler := youtubecliphandler.NewHandler(coreDeps.YoutubeClipService, log)
+	handler := youtubecliphandler.NewHandler(coreDeps.YoutubeClipService, log, coreDeps.JobsService)
 
 	var mod module.Module
 	if coreDeps.YoutubeClipService != nil {
-		mod = module.NewYouTubeClipModule(cfg, log, coreDeps.YoutubeClipService, handler)
+		mod = module.NewYouTubeClipModule(cfg, log, coreDeps.YoutubeClipService, handler, coreDeps.JobsService)
 		log.Info("created YouTube Clips module")
+
+		// Register job handler for youtube_clip.extract jobs
+		coreDeps.YoutubeClipService.RegisterHandler(coreDeps.JobsService)
 	}
 
 	return &YouTubeClipWiring{

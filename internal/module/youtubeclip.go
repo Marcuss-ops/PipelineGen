@@ -2,37 +2,41 @@ package module
 
 import (
 	"context"
-	
-	youtubeclipHandler "velox/go-master/internal/api/handlers/youtubeclip"
+
+	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
 	"velox/go-master/internal/api/middleware"
-	youtubeclipService "velox/go-master/internal/service/youtubeclip"
+	jobservice "velox/go-master/internal/service/jobs"
+	youtubeclip "velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/config"
-	
+
 	"github.com/gin-gonic/gin"
-	
+
 	"go.uber.org/zap"
 )
 
-// YouTubeClipModule is a registrable module for YouTube clip functionality
+// YouTubeClipModule is a registrable module for YouTube Clip functionality
 type YouTubeClipModule struct {
-	cfg     *config.Config
-	log     *zap.Logger
-	service *youtubeclipService.Service
-	handler *youtubeclipHandler.Handler
+	cfg      *config.Config
+	log      *zap.Logger
+	service  *youtubeclip.Service
+	handler  *youtubecliphandler.Handler
+	jobsSvc *jobservice.Service
 }
 
 // NewYouTubeClipModule creates a new YouTubeClip module
 func NewYouTubeClipModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	service *youtubeclipService.Service,
-	handler *youtubeclipHandler.Handler,
+	service *youtubeclip.Service,
+	handler *youtubecliphandler.Handler,
+	jobsSvc *jobservice.Service,
 ) *YouTubeClipModule {
 	return &YouTubeClipModule{
 		cfg:     cfg,
 		log:     log,
 		service: service,
 		handler: handler,
+		jobsSvc: jobsSvc,
 	}
 }
 

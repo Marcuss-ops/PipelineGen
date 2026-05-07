@@ -1,9 +1,5 @@
 package scripts
 
-import (
-	"time"
-)
-
 // ScriptRecord represents a script record in the database
 type ScriptRecord struct {
 	ID             int64
@@ -19,8 +15,8 @@ type ScriptRecord struct {
 	FullDocument   string
 	ModelUsed      string
 	OllamaBaseURL  string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	CreatedAt      string
+	UpdatedAt      string
 	Version        int
 	ParentScriptID *int64
 	IsDeleted      bool

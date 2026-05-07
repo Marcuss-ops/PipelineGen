@@ -1,6 +1,7 @@
 package youtubeclip
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,19 +9,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/apiutil"
+	"velox/go-master/pkg/models"
 )
 
 type Handler struct {
 	service *youtubeclip.Service
 	log     *zap.Logger
+	jobsSvc *jobservice.Service
 }
 
-func NewHandler(service *youtubeclip.Service, log *zap.Logger) *Handler {
+func NewHandler(service *youtubeclip.Service, log *zap.Logger, jobsSvc *jobservice.Service) *Handler {
 	return &Handler{
 		service: service,
 		log:     log,
+		jobsSvc: jobsSvc,
 	}
 }
 
@@ -101,6 +106,39 @@ func (h *Handler) Extract(c *gin.Context) {
 		return
 	}
 
+	// Enqueue a job for youtube_clip.extract
+	if h.jobsSvc != nil {
+		// Convert request to map[string]any for job payload
+		payloadBytes, err := json.Marshal(req)
+		if err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+			return
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+			Type:    models.JobType("youtube_clip.extract"),
+			Payload: payload,
+		})
+		if err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+			return
+		}
+
+		// Return job ID immediately
+		apiutil.OK(c, gin.H{
+			"job_id":    job.ID,
+			"message":   "YouTube clip extraction job enqueued",
+			"status_url": "/api/jobs/" + job.ID + "/full",
+		})
+		return
+	}
+
+	// Fallback: if no jobs service, call synchronously (legacy path)
 	resp, err := h.service.Extract(c.Request.Context(), &req)
 
 	// If there's a fatal error (not just item failures), return error

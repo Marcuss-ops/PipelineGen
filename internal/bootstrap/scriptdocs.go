@@ -1,6 +1,8 @@
 package bootstrap
 
 import (
+	scriptdocssvc "velox/go-master/internal/service/scriptdocs"
+	scriptjobsvc "velox/go-master/internal/service/scriptjob"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
@@ -10,8 +12,10 @@ import (
 
 // ScriptDocsWiring holds the ScriptDocs module wiring
 type ScriptDocsWiring struct {
-	Handler *handlers.ScriptDocsHandler
-	Module  module.Module
+	Handler      *handlers.ScriptDocsHandler
+	Module       module.Module
+	ScriptSvc    *scriptdocssvc.Service
+	ScriptJobSvc *scriptjobsvc.Service
 }
 
 // WireScriptDocs creates the ScriptDocs handler and module
@@ -20,6 +24,21 @@ func WireScriptDocs(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ScriptDocsWiring, error) {
+	// Create scriptdocs service
+	var scriptSvc *scriptdocssvc.Service
+	if coreDeps.ScriptGen != nil && coreDeps.ScriptsRepo != nil {
+		scriptSvc = scriptdocssvc.NewService(coreDeps.ScriptGen, coreDeps.ScriptsRepo, log)
+		log.Info("created scriptdocs service")
+	}
+
+	// Create scriptjob service and register handler
+	var scriptJobSvc *scriptjobsvc.Service
+	if scriptSvc != nil && coreDeps.JobsService != nil {
+		scriptJobSvc = scriptjobsvc.NewService(log, scriptSvc, coreDeps.JobsService)
+		scriptJobSvc.RegisterHandler(coreDeps.JobsService)
+		log.Info("registered script.generate job handler")
+	}
+
 	handler := handlers.NewScriptDocsHandler(
 		coreDeps.ScriptGen,
 		coreDeps.DocClient,
@@ -46,7 +65,9 @@ func WireScriptDocs(
 	}
 
 	return &ScriptDocsWiring{
-		Handler: handler,
-		Module:  mod,
+		Handler:      handler,
+		Module:       mod,
+		ScriptSvc:    scriptSvc,
+		ScriptJobSvc: scriptJobSvc,
 	}, nil
 }

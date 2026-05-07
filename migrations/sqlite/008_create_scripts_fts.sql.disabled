@@ -1,0 +1,31 @@
+-- 008_create_scripts_fts.sql
+-- FTS5 virtual table for scripts full-text search
+-- Enable by renaming to .sql when FTS5 is available in your SQLite driver
+
+CREATE VIRTUAL TABLE IF NOT EXISTS scripts_fts USING fts5(
+    script_id UNINDEXED,
+    topic,
+    narrative_text,
+    full_document,
+    entities_json,
+    content=scripts,
+    content_rowid=rowid
+);
+
+-- Trigger to keep FTS in sync with scripts table
+CREATE TRIGGER IF NOT EXISTS scripts_fts_ai AFTER INSERT ON scripts BEGIN
+    INSERT INTO scripts_fts(script_id, topic, narrative_text, full_document, entities_json)
+    VALUES (new.id, new.topic, new.narrative_text, new.full_document, new.entities_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS scripts_fts_au AFTER UPDATE ON scripts BEGIN
+    INSERT INTO scripts_fts(scripts_fts, script_id, topic, narrative_text, full_document, entities_json)
+    VALUES ('delete', old.id, old.topic, old.narrative_text, old.full_document, old.entities_json);
+    INSERT INTO scripts_fts(script_id, topic, narrative_text, full_document, entities_json)
+    VALUES (new.id, new.topic, new.narrative_text, new.full_document, new.entities_json);
+END;
+
+CREATE TRIGGER IF NOT EXISTS scripts_fts_ad AFTER DELETE ON scripts BEGIN
+    INSERT INTO scripts_fts(scripts_fts, script_id, topic, narrative_text, full_document, entities_json)
+    VALUES ('delete', old.id, old.topic, old.narrative_text, old.full_document, old.entities_json);
+END;

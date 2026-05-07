@@ -14,7 +14,9 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/core/jobs"
 	"velox/go-master/internal/core/processor"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/assetdestination"
@@ -659,6 +661,82 @@ func parseTimestamp(ts string) (int, error) {
 	}
 
 	return totalSeconds, nil
+}
+
+// HandleJob processes a youtube_clip.extract job
+func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+	s.log.Info("handling youtube_clip.extract job",
+		zap.String("job_id", job.ID),
+	)
+
+	// Decode payload using the same structure as YouTubeClipExtractPayload
+	var payload struct {
+		WorkspaceID string     `json:"workspace_id"`
+		ProjectID   string     `json:"project_id"`
+		URL         string     `json:"url"`
+		Segments    []Segment `json:"segments"`
+		UploadDrive bool       `json:"upload_drive"`
+		Normalize   *bool      `json:"normalize"`
+	}
+	if len(job.Payload) > 0 {
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+		}
+	}
+
+	if payload.URL == "" {
+		return nil, fmt.Errorf("url is required in payload")
+	}
+
+	if len(payload.Segments) == 0 {
+		return nil, fmt.Errorf("segments are required in payload")
+	}
+
+	// Convert to ExtractRequest
+	req := &ExtractRequest{
+		URL:       payload.URL,
+		Segments:  payload.Segments,
+		Normalize: payload.Normalize,
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(10, "Starting YouTube clip extraction")
+	}
+
+	// Call existing Extract method
+	resp, err := s.Extract(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("extraction failed: %w", err)
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(100, "YouTube clip extraction completed")
+	}
+
+	// Convert response to result map
+	result := map[string]any{
+		"ok":              resp.OK,
+		"source_url":      resp.SourceURL,
+		"video_id":        resp.VideoID,
+		"folder":          resp.Folder,
+		"stats":           resp.Stats,
+		"drive_folder_id": resp.DriveFolderID,
+		"message":         "YouTube clip extraction completed",
+	}
+
+	if !resp.OK && resp.Error != "" {
+		result["error"] = resp.Error
+	}
+
+	return result, nil
+}
+
+// RegisterHandler registers this service as a handler for youtube_clip.extract jobs
+func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+	if jobsSvc != nil {
+		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeYouTubeClipExtract), s.HandleJob)
+		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", string(jobs.JobTypeYouTubeClipExtract)))
+	}
 }
 
 func extractVideoID(inputURL string) string {

@@ -2,15 +2,14 @@ package artlist
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/catalogsync"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
@@ -48,19 +47,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/diagnostics", h.Diagnostics)
 
 	// Internal routes (require X-Internal or X-Velox-Internal header)
-	internal := r.Group("", requireInternalHeader())
+	internal := r.Group("", middleware.RequireInternalHeader())
 	internal.POST("/search", h.Search)
 	internal.POST("/search/live", h.SearchLive)
 	internal.POST("/sync-catalogs", h.SyncCatalogs)
-}
-
-func requireInternalHeader() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Internal")), "true") || strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Velox-Internal")), "true") {
-			c.Next()
-			return
-		}
-		apiutil.Error(c, http.StatusForbidden, "internal endpoint")
-		c.Abort()
-	}
 }

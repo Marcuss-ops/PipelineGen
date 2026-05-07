@@ -23,7 +23,6 @@ import (
 func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	startedAt := time.Now()
 	zap.L().Info("script-docs generate started",
-		zap.String("topic", c.GetString("topic")),
 		zap.Bool("preview", forcePreview),
 	)
 
@@ -64,6 +63,22 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		zap.Int("timeline_segments", len(document.Timeline.Segments)),
 		zap.String("topic", req.Topic),
 	)
+
+	if forcePreview {
+		path, err := h.savePreview(document.Title, document.Content)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		apiutil.OK(c, gin.H{
+			"preview_only": true,
+			"title":        document.Title,
+			"full_content": document.Content,
+			"preview_path": path,
+			"timeline":     document.Timeline,
+		})
+		return
+	}
 
 	var docID, docURL string
 	if h.docClient == nil {
@@ -117,26 +132,6 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 
 	// Trigger background harvest for search suggestions
 	h.triggerBackgroundHarvest(ctx, document)
-
-	if forcePreview {
-		path, err := h.savePreview(document.Title, document.Content)
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"preview_only": true,
-			"title":        document.Title,
-			"full_content": document.Content,
-			"preview_path": path,
-			"timeline":     document.Timeline,
-			"doc_id":       docID,
-			"doc_url":      docURL,
-			"docs_url":     docURL,
-			"voiceover":    voResult,
-		})
-		return
-	}
 
 	apiutil.OK(c, gin.H{
 		"doc_id":       docID,

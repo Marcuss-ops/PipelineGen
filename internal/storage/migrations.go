@@ -160,6 +160,11 @@ func (mr *MigrationRunner) applyMigration(version, sqlContent string) error {
 				mr.log.Warn("Skipping duplicate column", zap.String("statement", stmt))
 				continue
 			}
+			// Ignore "no such column" errors for CREATE INDEX statements
+			if strings.Contains(err.Error(), "no such column") && strings.Contains(stmt, "CREATE INDEX") {
+				mr.log.Warn("Skipping index on non-existent column", zap.String("statement", stmt))
+				continue
+			}
 			// Ignore FTS5 errors - not all SQLite builds have FTS5
 			if strings.Contains(err.Error(), "no such module") && strings.Contains(stmt, "fts5") {
 				mr.log.Warn("FTS5 not available, skipping", zap.String("statement", stmt))

@@ -3,6 +3,7 @@ package ollama
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/prompts"
@@ -31,10 +32,11 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	if err != nil {
 		return nil, fmt.Errorf("script generation failed: %w", err)
 	}
+	wordCount := len(strings.Fields(result))
 	return &types.GenerationResult{
 		Script:      result,
-		WordCount:   len(result),
-		EstDuration: len(result) * 3, // rough estimate: 3 seconds per word
+		WordCount:   wordCount,
+		EstDuration: wordCount * types.SecondsPerWord,
 		Model:       req.Model,
 		Prompt:      prompts.BuildTextPrompt(&req),
 	}, nil
@@ -62,10 +64,11 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 	if err != nil {
 		return nil, fmt.Errorf("script regeneration failed: %w", err)
 	}
+	wordCount := len(strings.Fields(result))
 	return &types.GenerationResult{
 		Script:      result,
-		WordCount:   len(result),
-		EstDuration: len(result) * types.SecondsPerWord,
+		WordCount:   wordCount,
+		EstDuration: wordCount * types.SecondsPerWord,
 		Model:       req.Model,
 		Prompt:      req.OriginalScript,
 	}, nil

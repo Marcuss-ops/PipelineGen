@@ -40,24 +40,7 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 		zap.Bool("dry_run", req.DryRun),
 	)
 
-	if h.jobsService == nil {
-		apiutil.InternalError(c, fmt.Errorf("jobs service not configured"))
-		return
-	}
-
-	// Use common jobs system exclusively
-	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       models.JobTypeArtlistRun,
-		Payload:    req.ToMap(),
-		MaxRetries: 3,
-		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
-	})
-	if err != nil {
-		h.log.Error("failed to enqueue artlist job", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
-		return
-	}
-	c.JSON(http.StatusAccepted, artlist.JobToRunTagResponse(job))
+	h.enqueueArtlistRun(c, req)
 }
 
 // RunSmartPipeline executes the Artlist flow with preset support
@@ -88,6 +71,11 @@ func (h *Handler) RunSmartPipeline(c *gin.Context) {
 		zap.Int("limit", runReq.Limit),
 	)
 
+	h.enqueueArtlistRun(c, *runReq)
+}
+
+// enqueueArtlistRun is the single enqueue path for all Artlist runs
+func (h *Handler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
 	if h.jobsService == nil {
 		apiutil.InternalError(c, fmt.Errorf("jobs service not configured"))
 		return
@@ -96,9 +84,9 @@ func (h *Handler) RunSmartPipeline(c *gin.Context) {
 	// Use common jobs system exclusively
 	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 		Type:       models.JobTypeArtlistRun,
-		Payload:    runReq.ToMap(),
+		Payload:    req.ToMap(),
 		MaxRetries: 3,
-		ActiveKey:  artlist.RunDedupKey(runReq.Term, runReq.RootFolderID, runReq.Strategy, runReq.DryRun),
+		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
 	})
 	if err != nil {
 		h.log.Error("failed to enqueue artlist job", zap.Error(err))

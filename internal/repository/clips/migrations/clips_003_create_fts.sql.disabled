@@ -1,0 +1,32 @@
+-- clips_003_create_fts.sql
+-- FTS5 virtual table for clips full-text search
+-- Enable by renaming to .sql when FTS5 is available in your SQLite driver
+
+CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(
+    clip_id UNINDEXED,
+    name,
+    group_name,
+    folder_path,
+    tags,
+    description,
+    content=clips,
+    content_rowid=rowid
+);
+
+-- Trigger to keep FTS in sync with clips table
+CREATE TRIGGER IF NOT EXISTS clips_fts_ai AFTER INSERT ON clips BEGIN
+    INSERT INTO clips_fts(clip_id, name, group_name, folder_path, tags, description)
+    VALUES (new.id, new.name, new.group_name, new.folder_path, new.tags, new.metadata);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clips_fts_au AFTER UPDATE ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, clip_id, name, group_name, folder_path, tags, description)
+    VALUES ('delete', old.id, old.name, old.group_name, old.folder_path, old.tags, old.metadata);
+    INSERT INTO clips_fts(clip_id, name, group_name, folder_path, tags, description)
+    VALUES (new.id, new.name, new.group_name, new.folder_path, new.tags, new.metadata);
+END;
+
+CREATE TRIGGER IF NOT EXISTS clips_fts_ad AFTER DELETE ON clips BEGIN
+    INSERT INTO clips_fts(clips_fts, clip_id, name, group_name, folder_path, tags, description)
+    VALUES ('delete', old.id, old.name, old.group_name, old.folder_path, old.tags, old.metadata);
+END;

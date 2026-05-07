@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/association"
@@ -8,6 +10,11 @@ import (
 )
 
 func (h *ScriptDocsHandler) AssociationCandidates(c *gin.Context) {
+	if h.assocService == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "association service not initialized")
+		return
+	}
+
 	req, ok := apiutil.BindJSON[association.CandidatesRequest](c)
 	if !ok {
 		return

@@ -5,18 +5,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/drivereconcile"
 	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
-	cleanupSvc   *drivecleanup.Service
 	reconcileSvc *drivereconcile.Service
 }
 
-func NewHandler(cleanupSvc *drivecleanup.Service, reconcileSvc *drivereconcile.Service) *Handler {
-	return &Handler{cleanupSvc: cleanupSvc, reconcileSvc: reconcileSvc}
+func NewHandler(reconcileSvc *drivereconcile.Service) *Handler {
+	return &Handler{reconcileSvc: reconcileSvc}
 }
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
