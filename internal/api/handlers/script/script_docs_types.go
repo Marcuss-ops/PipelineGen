@@ -15,13 +15,13 @@ type ScriptDocsRequest struct {
 
 func (r *ScriptDocsRequest) Normalize() {
 	if r.Duration <= 0 {
-		r.Duration = 60
+		r.Duration = 60 // Must match types.DefaultDuration
 	}
 	if r.Language == "" {
-		r.Language = "it"
+		r.Language = "it" // Must match types.DefaultLanguage
 	}
 	if r.Template == "" {
-		r.Template = "documentary"
+		r.Template = "documentary" // Must match types.DefaultTemplate
 	}
 }
 

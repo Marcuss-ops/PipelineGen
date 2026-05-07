@@ -36,29 +36,29 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	return &types.GenerationResult{
 		Script:      result,
 		WordCount:   wordCount,
-		EstDuration: wordCount * types.SecondsPerWord,
+		EstDuration: estimateDurationSeconds(wordCount),
 		Model:       req.Model,
 		Prompt:      prompts.BuildTextPrompt(&req),
 	}, nil
 }
 
+// estimateDurationSeconds estimates speech duration from word count using WordsPerMinute (140 WPM)
+func estimateDurationSeconds(wordCount int) int {
+	if wordCount <= 0 {
+		return 0
+	}
+	return (wordCount * 60) / types.WordsPerMinute
+}
+
 func setTextDefaults(req *types.TextGenerationRequest) {
-	if req.Language == "" {
-		req.Language = "english"
-	}
-	if req.Duration == 0 {
-		req.Duration = 60
-	}
-	if req.Tone == "" {
-		req.Tone = "professional"
-	}
+	types.ApplyDefaults(req)
 }
 
 func (g *Generator) RegenerateScript(ctx context.Context, req types.RegenerationRequest) (*types.GenerationResult, error) {
 	if g.client == nil {
 		return nil, fmt.Errorf("ollama client not initialized")
 	}
-	setRegenerationDefaults(&req)
+	types.ApplyDefaultsToRegeneration(&req)
 	messages := prompts.BuildRegenerationChatMessages(&req)
 	result, err := g.client.Chat(ctx, messages, req.Options)
 	if err != nil {
@@ -68,14 +68,8 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 	return &types.GenerationResult{
 		Script:      result,
 		WordCount:   wordCount,
-		EstDuration: wordCount * types.SecondsPerWord,
+		EstDuration: estimateDurationSeconds(wordCount),
 		Model:       req.Model,
 		Prompt:      req.OriginalScript,
 	}, nil
-}
-
-func setRegenerationDefaults(req *types.RegenerationRequest) {
-	if req.Language == "" {
-		req.Language = "english"
-	}
 }

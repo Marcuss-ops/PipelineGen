@@ -129,11 +129,21 @@ func (s *Service) ensureClips(ctx context.Context, term string, limit int, resp 
 
 	// Force live search if clips have invalid URLs (e.g., Drive links instead of Artlist HLS)
 	hasValidURLs := false
+	hasValidDriveLinks := false
 	for _, clip := range clipsList {
 		if clip != nil && strings.Contains(clip.ExternalURL, "artlist") && strings.Contains(clip.ExternalURL, ".m3u8") {
 			hasValidURLs = true
 			break
 		}
+		if clip != nil && clip.DriveLink != "" && strings.Contains(clip.DriveLink, "drive.google.com") {
+			hasValidDriveLinks = true
+		}
+	}
+
+	// If we have clips with valid Drive links, skip live search
+	if hasValidDriveLinks && len(clipsList) > 0 {
+		s.log.Info("clips have valid Drive links, skipping live search", zap.String("term", term), zap.Int("count", len(clipsList)))
+		return clipsList, nil
 	}
 
 	if len(clipsList) == 0 || !hasValidURLs {
@@ -275,6 +285,25 @@ func (s *Service) processDryRun(ctx context.Context, candidates []*models.Clip, 
 func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderID, tagFolderName string, resp *RunTagResponse, req *RunTagRequest) {
 	if clip == nil {
 		return
+	}
+
+	// Aggiungi il termine di ricerca ai SearchTerms del clip
+	if req != nil && req.Term != "" {
+		// Inizializza SearchTerms se nil
+		if clip.SearchTerms == nil {
+			clip.SearchTerms = []string{}
+		}
+		// Aggiungi il termine se non presente
+		termExists := false
+		for _, t := range clip.SearchTerms {
+			if t == req.Term {
+				termExists = true
+				break
+			}
+		}
+		if !termExists {
+			clip.SearchTerms = append(clip.SearchTerms, req.Term)
+		}
 	}
 
 	// Skip if clip already has Drive link

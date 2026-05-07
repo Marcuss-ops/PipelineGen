@@ -159,6 +159,7 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 			ID:           id,
 			Name:         name,
 			Tags:         []string{term},
+			SearchTerms:  []string{term}, // Frasi di riferimento
 			ExternalURL:  c.PrimaryURL,
 			DownloadLink: c.PrimaryURL,
 		}

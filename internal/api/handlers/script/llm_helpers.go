@@ -154,16 +154,8 @@ func deriveFallbackSubject(seg *timelineLLMSegment, topic string, topicTokens []
 	if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
 		return entitySubject
 	}
-	candidates := []string{
-		seg.Subject,
-		seg.OpeningSentence,
-		seg.ClosingSentence,
-	}
-	for _, candidate := range candidates {
-		if s := conciseSubject(candidate); s != "" {
-			return s
-		}
-	}
+	// conciseSubject disabled: produces bad subjects from first tokens
+	// TODO: Implement VisualSubjectGenerator for proper subject extraction
 	return topic
 }
 

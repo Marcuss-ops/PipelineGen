@@ -228,12 +228,25 @@ func (h *ScriptDocsHandler) savePreview(title, content string) (string, error) {
 
 // triggerBackgroundHarvest enqueues jobs for background harvesting based on search suggestions
 func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, document *script.ScriptDocument) {
+	fmt.Println("DEBUG: triggerBackgroundHarvest called")
+	zap.L().Info("triggerBackgroundHarvest called",
+		zap.Bool("artlistService_nil", h.artlistService == nil),
+		zap.Bool("jobsService_nil", h.jobsService == nil),
+		zap.Bool("document_nil", document == nil),
+	)
+
 	if h.artlistService == nil || h.jobsService == nil || document == nil || document.Timeline == nil {
+		zap.L().Warn("triggerBackgroundHarvest: early return, prerequisites not met")
 		return
 	}
 
 	uniqueTags := make(map[string]struct{})
 	for _, seg := range document.Timeline.Segments {
+		zap.L().Info("triggerBackgroundHarvest: checking segment",
+			zap.Int("segment_index", seg.Index),
+			zap.Int("search_suggestions_count", len(seg.SearchSuggestions)),
+			zap.Strings("suggestions", seg.SearchSuggestions),
+		)
 		for _, tag := range seg.SearchSuggestions {
 			tag = strings.TrimSpace(tag)
 			if tag != "" {
@@ -242,7 +255,13 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, docume
 		}
 	}
 
+	zap.L().Info("triggerBackgroundHarvest: unique tags collected",
+		zap.Int("unique_tag_count", len(uniqueTags)),
+		zap.Any("unique_tags", uniqueTags),
+	)
+
 	if len(uniqueTags) == 0 {
+		zap.L().Warn("triggerBackgroundHarvest: no unique tags, returning")
 		return
 	}
 
@@ -250,6 +269,12 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, docume
 
 	jobCodec := artlist.JobCodec{}
 	for tag := range uniqueTags {
+		zap.L().Info("triggerBackgroundHarvest: about to enqueue job",
+			zap.String("tag", tag),
+			zap.String("strategy", "verify"),
+			zap.Int("limit", 3),
+		)
+
 		req := &artlist.RunTagRequest{
 			Term:         tag,
 			Limit:        3,
@@ -267,9 +292,15 @@ func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, docume
 			Priority: 5, // Lower priority for background tasks
 		})
 		if err != nil {
-			zap.L().Error("failed to enqueue background harvest job", zap.String("tag", tag), zap.Error(err))
+			zap.L().Error("triggerBackgroundHarvest: FAILED to enqueue job",
+				zap.String("tag", tag),
+				zap.Error(err),
+			)
 		} else {
-			zap.L().Info("enqueued background harvest job", zap.String("tag", tag), zap.String("job_id", job.ID))
+			zap.L().Info("triggerBackgroundHarvest: SUCCESS enqueued job",
+				zap.String("tag", tag),
+				zap.String("job_id", job.ID),
+			)
 		}
 	}
 }

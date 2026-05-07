@@ -32,6 +32,8 @@ type TimelineSegment struct {
 	StockMatches         []association.ScoredMatch `json:"stock_matches,omitempty"`
 	DriveMatches         []association.ScoredMatch `json:"drive_matches,omitempty"`
 	ArtlistMatches       []association.ScoredMatch `json:"artlist_matches,omitempty"`
+	VisualSubject       string                    `json:"visual_subject,omitempty"`
+	VisualCaption       string                    `json:"visual_caption,omitempty"`
 	SearchSuggestions    []string                  `json:"search_suggestions,omitempty"`
 }
 
@@ -42,15 +44,16 @@ type timelineLLMPlan struct {
 }
 
 type timelineLLMSegment struct {
-	Index           int      `json:"index"`
-	StartTime       float64  `json:"start_time"`
-	EndTime         float64  `json:"end_time"`
-	Subject         string   `json:"subject"`
-	NarrativeText   string   `json:"narrative_text"`
-	OpeningSentence string   `json:"opening_sentence"`
-	ClosingSentence string   `json:"closing_sentence"`
-	Keywords        []string `json:"keywords"`
-	Entities        []string `json:"entities"`
+	Index              int      `json:"index"`
+	StartTime          float64  `json:"start_time"`
+	EndTime            float64  `json:"end_time"`
+	Subject            string   `json:"subject"`
+	NarrativeText      string   `json:"narrative_text"`
+	OpeningSentence    string   `json:"opening_sentence"`
+	ClosingSentence    string   `json:"closing_sentence"`
+	Keywords           []string `json:"keywords"`
+	Entities           []string `json:"entities"`
+	SearchSuggestions  []string `json:"search_suggestions"`
 }
 
 const (

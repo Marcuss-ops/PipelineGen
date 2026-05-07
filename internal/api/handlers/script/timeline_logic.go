@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 	"velox/go-master/internal/ml/ollama"
@@ -19,7 +18,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const timelineCacheVersion = "v12"
+const timelineCacheVersion = "v13"
 
 // BuildTimelinePlan coordinates the LLM planning and asset matching.
 func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service) (*TimelinePlan, error) {
@@ -74,6 +73,28 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		rawPlan.Segments[0].EndTime = float64(req.Duration)
 	}
 
+	// BATCH LLM QUERY GENERATION: Pre-generate queries for all segments to populate cache
+	var batchSegments []BatchSegmentInput
+	for i, rawSeg := range rawPlan.Segments {
+		subject := strings.TrimSpace(rawSeg.Subject)
+		narrativeText := strings.TrimSpace(rawSeg.NarrativeText)
+		batchSegments = append(batchSegments, BatchSegmentInput{
+			Index:     i + 1,
+			Subject:   subject,
+			Narrative: narrativeText,
+		})
+	}
+
+	if gen != nil && len(batchSegments) > 0 {
+		zap.L().Info("Pre-generating visual queries in batch",
+			zap.Int("segment_count", len(batchSegments)),
+		)
+		batchResults := GenerateBatchArtlistVisualQueries(ctx, gen, req.Topic, batchSegments, DefaultMaxQueries)
+		zap.L().Info("Batch query generation completed",
+			zap.Int("results_count", len(batchResults)),
+		)
+	}
+
 	plan := &TimelinePlan{
 		PrimaryFocus:  req.Topic,
 		SegmentCount:  len(rawPlan.Segments),
@@ -94,7 +115,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		opening := strings.TrimSpace(rawSeg.OpeningSentence)
 		closing := strings.TrimSpace(rawSeg.ClosingSentence)
 
-		// Fallback to extraction if LLM didn't provide them, but don't force override if they are already there
+		// Fallback to extraction if LLM didn't provide them
 		if blockText != "" {
 			if opening == "" {
 				opening = firstSentence(blockText)
@@ -105,17 +126,19 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		}
 
 		seg := TimelineSegment{
-			Index:           i + 1,
-			StartTime:       rawSeg.StartTime,
-			EndTime:         rawSeg.EndTime,
-			Timestamp:       fmt.Sprintf("%.0f-%.0f", rawSeg.StartTime, rawSeg.EndTime),
-			Subject:         strings.TrimSpace(rawSeg.Subject),
-			NarrativeText:   blockText,
-			OpeningSentence: opening,
-			ClosingSentence: closing,
-			Keywords:        rawSeg.Keywords,
-			Entities:        rawSeg.Entities,
+			Index:             i + 1,
+			StartTime:        rawSeg.StartTime,
+			EndTime:          rawSeg.EndTime,
+			Timestamp:        fmt.Sprintf("%.0f-%.0f", rawSeg.StartTime, rawSeg.EndTime),
+			Subject:          strings.TrimSpace(rawSeg.Subject),
+			NarrativeText:    blockText,
+			OpeningSentence:  opening,
+			ClosingSentence:  closing,
+			Keywords:         rawSeg.Keywords,
+			Entities:         rawSeg.Entities,
+			SearchSuggestions: rawSeg.SearchSuggestions,
 		}
+
 		if preserveStructuredSubjects {
 			seg.Subject = firstNonEmpty(seg.Subject, req.Topic)
 		} else {
@@ -123,7 +146,6 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		}
 
 		if normalized, err := normalizer.NormalizeSegment(ctx, segmentnorm.SegmentInput{
-
 			Topic:         req.Topic,
 			Duration:      req.Duration,
 			Template:      req.Template,
@@ -175,11 +197,36 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		segStarted := time.Now()
 		associateSegment(ctx, &seg, assocService, req.Topic)
 
-		// If no matches found, generate Artlist fallback queries
+		// If no matches found, generate Artlist queries using LLM (will hit cache from batch)
 		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 {
-			fallbackQueries := buildArtlistFallbackQueries(seg)
+			zap.L().Info("segment has no matches, generating LLM-based Artlist queries",
+				zap.Int("segment_index", seg.Index),
+				zap.String("subject", seg.Subject),
+				zap.String("canonical_subject", seg.CanonicalSubject),
+			)
+
+			// This will hit the cache populated by batch generation
+			visualResult := GenerateArtlistVisualQuery(
+				ctx,
+				gen,
+				req.Topic,
+				firstNonEmpty(seg.CanonicalSubject, seg.Subject),
+				seg.NarrativeText,
+				DefaultMaxQueries,
+			)
+
+			zap.L().Info("LLM-generated Artlist queries for segment",
+				zap.Int("segment_index", seg.Index),
+				zap.Int("query_count", len(visualResult.Queries)),
+				zap.Strings("queries", visualResult.Queries),
+				zap.String("visual_subject", visualResult.VisualSubject),
+				zap.String("visual_caption", visualResult.VisualCaption),
+			)
+
+			seg.VisualSubject = visualResult.VisualSubject
+			seg.VisualCaption = visualResult.VisualCaption
 			seg.SearchSuggestions = sliceutil.UniqueStrings(
-				append(seg.SearchSuggestions, fallbackQueries...),
+				append(seg.SearchSuggestions, visualResult.Queries...),
 			)
 		}
 		if preserveStructuredSubjects {
@@ -365,7 +412,6 @@ func resolveTimelineSegmentSubject(ctx context.Context, req ScriptDocsRequest, s
 	}
 
 	if entitySubject := preferredEntitySubject(&timelineLLMSegment{
-
 		Subject:  rawSubject,
 		Entities: seg.Entities,
 	}, topicTokens(topic)); entitySubject != "" {
@@ -375,12 +421,7 @@ func resolveTimelineSegmentSubject(ctx context.Context, req ScriptDocsRequest, s
 	if subjectMatchesTopic(rawSubject, topicTokens(topic)) {
 		return rawSubject
 	}
-	if concise := conciseSubject(seg.OpeningSentence); concise != "" {
-		return concise
-	}
-	if concise := conciseSubject(seg.ClosingSentence); concise != "" {
-		return concise
-	}
+	// conciseSubject disabled: produces bad subjects from first tokens
 	if topic != "" {
 		return topic
 	}
@@ -527,62 +568,28 @@ func buildArtlistFallbackQueries(seg TimelineSegment) []string {
 	return queries
 }
 
-// bestVisualPhrases extracts the best visual phrases from narrative text
+// bestVisualPhrases extracts sentences from narrative text
 func bestVisualPhrases(narrative string, limit int) []string {
 	sentences := textutil.ExtractSentences(narrative)
 	if len(sentences) == 0 {
 		return nil
 	}
 
-	type scoredSentence struct {
-		Text  string
-		Score int
+	// Simply return first N sentences as they are most relevant
+	results := make([]string, 0, limit)
+	for i := 0; i < len(sentences) && i < limit; i++ {
+		results = append(results, strings.TrimSpace(sentences[i]))
 	}
-
-	scored := make([]scoredSentence, 0, len(sentences))
-	for _, phrase := range sentences {
-		score := scoreVisualPhrase(phrase)
-		if score > 0 {
-			scored = append(scored, scoredSentence{Text: strings.TrimSpace(phrase), Score: score})
-		}
-	}
-
-	sort.SliceStable(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
-	})
-
-	if len(scored) > limit {
-		scored = scored[:limit]
-	}
-
-	result := make([]string, 0, len(scored))
-	for _, s := range scored {
-		result = append(result, s.Text)
-	}
-	return result
+	return results
 }
 
-// scoreVisualPhrase scores a phrase based on visual content potential
+// scoreVisualPhrase is deprecated - kept for compatibility
 func scoreVisualPhrase(phrase string) int {
-	phrase = strings.ToLower(phrase)
 	tokens := textutil.TokenizeWithStopWords(phrase)
-
 	if len(tokens) < 5 {
 		return 0
 	}
-
-	score := len(tokens)
-	visualWords := []string{"cave", "rock", "stone", "water", "forest", "mountain", "sky", "cloud", "sun", "moon", "tree", "river", "lake", "ocean", "sea", "beach", "sand", "desert", "ice", "snow", "fire", "smoke", "people", "person", "team", "group", "ancient", "old", "giant", "large", "small", "bright", "dark"}
-	for _, t := range tokens {
-		for _, v := range visualWords {
-			if t == v {
-				score += 3
-				break
-			}
-		}
-	}
-
-	return score
+	return len(tokens)
 }
 
 // looksLikeNarrativeFragment checks if a string looks like a narrative fragment

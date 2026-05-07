@@ -3,7 +3,8 @@ package types
 const (
 	// Speech constants for duration estimation
 	WordsPerMinute = 140
-	SecondsPerWord = 3 // Rough estimate for non-speech tasks or very slow speech
+	// SecondsPerWord is deprecated, use estimateDurationSeconds() which calculates properly
+	SecondsPerWord = 3 // Kept for backward compatibility, not used for speech estimation
 
 	// LLM Filtering
 	MarkerNarrator = "🎙️ Narrative Script"

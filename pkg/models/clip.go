@@ -24,6 +24,7 @@ type Clip struct {
 	LocalPath    string    `json:"local_path"` // Path to downloaded local file
 	Status       string    `json:"status"`
 	Error        string    `json:"error"`
+	SearchTerms  []string  `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

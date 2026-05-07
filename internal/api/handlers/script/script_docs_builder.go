@@ -66,7 +66,9 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 
 	// Extract end sections
 	phrases := extractImportantPhrases(narrative)
-	specialNames := extractSpecialNames(narrative)
+	// SpecialNames extraction disabled: fragile uppercase heuristic produces false positives
+	// TODO: Replace with LLM-based entity extraction using BuildEntityExtractionPrompt
+	specialNames := []string{}
 	importantWords := extractImportantWords(narrative, 10)
 
 	importantPhrasesSection := ScriptSection{

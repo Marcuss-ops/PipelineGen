@@ -26,7 +26,7 @@ import (
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns       = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, created_at, updated_at`
+	clipColumns       = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, created_at, updated_at`
 	clipFolderColumns = `id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at`
 )
 
@@ -66,13 +66,17 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal tags: %w", err)
 	}
+	searchTermsJSON, err := json.Marshal(clip.SearchTerms)
+	if err != nil {
+		return fmt.Errorf("failed to marshal search_terms: %w", err)
+	}
 	now := time.Now()
 
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO clips (id, name, filename, folder_id, folder_path, group_name, media_type,
 			drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata,
-			file_hash, local_path, status, error, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			file_hash, local_path, status, error, search_terms, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, filename=excluded.filename, folder_id=excluded.folder_id,
 			folder_path=excluded.folder_path, group_name=excluded.group_name,
@@ -82,11 +86,12 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			external_url=excluded.external_url, duration=excluded.duration,
 			metadata=excluded.metadata, file_hash=excluded.file_hash,
 			local_path=excluded.local_path, status=excluded.status, error=excluded.error,
+			search_terms=excluded.search_terms,
 			updated_at=excluded.updated_at
 		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group,
 		clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, string(tagsJSON), clip.Source,
 		clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash,
-		clip.LocalPath, clip.Status, clip.Error, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
 
 	return err
 }
@@ -391,6 +396,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var clip models.Clip
 	var tagsJSON string
+	var searchTermsJSON string
 	var fileHash, localPath string
 	var createdAt, updatedAt string
 	var status, errMsg string
@@ -398,13 +404,18 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
 		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &status, &errMsg, &createdAt, &updatedAt)
+		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(searchTermsJSON), &clip.SearchTerms); err != nil {
+		// Non-blocking: if search_terms is invalid JSON, just log and continue
+		clip.SearchTerms = []string{}
 	}
 
 	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
@@ -425,6 +436,7 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var clip models.Clip
 	var tagsJSON string
+	var searchTermsJSON string
 	var fileHash, localPath string
 	var createdAt, updatedAt string
 	var status, errMsg string
@@ -432,7 +444,7 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	err := row.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
 		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &status, &errMsg, &createdAt, &updatedAt)
+		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &createdAt, &updatedAt)
 
 	if err != nil {
 		return nil, err
@@ -441,6 +453,11 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
 		r.log.Error("failed to unmarshal clip tags", zap.Error(err))
 	}
+	if err := json.Unmarshal([]byte(searchTermsJSON), &clip.SearchTerms); err != nil {
+		r.log.Error("failed to unmarshal clip search_terms", zap.Error(err))
+		clip.SearchTerms = []string{}
+	}
+
 	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
 		clip.CreatedAt = t
 	}
