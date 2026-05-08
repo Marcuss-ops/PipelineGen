@@ -91,6 +91,23 @@ export async function deleteMedia(source: MediaSource, id: string) {
   return apiFetch(`/api/media/${source}/clips/${id}/delete`, { method: 'POST' });
 }
 
+export async function findDuplicates(source: MediaSource, id: string) {
+  return apiFetch<{
+    ok: boolean;
+    source: string;
+    clip_id: string;
+    file_hash: string;
+    duplicates: Array<{
+      source: string;
+      id: string;
+      name: string;
+      drive_link: string;
+      local_path: string;
+      thumb_url: string;
+    }>;
+  }>(`/api/media/${source}/clips/${id}/duplicates`);
+}
+
 export async function bulkReprocessMedia(source: MediaSource, ids: string[]) {
   return Promise.all(ids.map((id) => reprocessMedia(source, id)));
 }
