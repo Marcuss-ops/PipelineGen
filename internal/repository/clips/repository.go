@@ -507,6 +507,26 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 	return clip, err
 }
 
+// FindClipsByHash returns all clips with the given file hash.
+func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*models.Clip, error) {
+	query := buildClipQuery("") + " WHERE file_hash = ?"
+	rows, err := r.db.QueryContext(ctx, query, hash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
 // GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id
 func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Clip, error) {
 	query := buildClipQuery("") + " WHERE drive_file_id IS NOT NULL AND drive_file_id != ''"
