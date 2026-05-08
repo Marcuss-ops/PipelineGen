@@ -275,6 +275,7 @@ func (s *Service) processDryRun(ctx context.Context, candidates []*models.Clip, 
 			ClipID: clip.ID,
 			Name:   clip.Name,
 			Status: status,
+			DriveFileID:  clip.DriveFileID,
 		})
 	}
 	resp.Status = "completed_dry_run"
@@ -318,6 +319,7 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 			Filename:     clip.Filename,
 			Status:       "skipped_existing",
 			DriveLink:    clip.DriveLink,
+			DriveFileID:  clip.DriveFileID,
 			DownloadLink: clip.DownloadLink,
 			LocalPath:    clip.LocalPath,
 		})
@@ -425,26 +427,26 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 	metadata := composeArtlistMetadata(clip.Metadata, result.FileHash, result.FileHash)
 	if s.lifecycleService != nil {
 		input := &lifecycle.FinalizeInput{
-			ID:           clip.ID,
-			Name:         clip.Name,
-			Filename:     result.Filename,
-			Kind:         lifecycle.AssetKindVideo,
-			Source:       "artlist",
-			Group:        "",
-			Subfolder:    tagFolderName,
-			LocalPath:    result.LocalPath,
-			FolderID:     tagFolderID,
-			FolderPath:   tagFolderName,
-			DriveLink:    result.DriveLink,
-			DriveFileID:  result.DriveFileID,
-			DownloadLink: result.DownloadLink,
-			FileHash:     result.FileHash,
-			Metadata:     metadata,
-			RequireLocal: true,
-			RequireHash:  true,
-			RequireDrive: result.DriveLink != "",
-			VerifyDB:     true,
-		}
+				ID:           clip.ID,
+				Name:         clip.Name,
+				Filename:     clip.Filename,
+				Kind:         lifecycle.AssetKindVideo,
+				Source:       "artlist",
+				Group:        "",
+				Subfolder:    tagFolderName,
+				LocalPath:    clip.LocalPath,
+				FolderID:     tagFolderID,
+				FolderPath:   tagFolderName,
+				DriveLink:    clip.DriveLink,
+				DriveFileID:  clip.DriveFileID,
+				DownloadLink: clip.DownloadLink,
+				FileHash:     clip.FileHash,
+				Metadata:     metadata,
+				RequireLocal: true,
+				RequireHash:  true,
+				RequireDrive: clip.DriveLink != "",
+				VerifyDB:     true,
+			}
 		lifecycleResult, err := s.lifecycleService.ProcessAsset(ctx, input, result.FileHash)
 		if err != nil {
 			s.log.Error("lifecycle failed", zap.String("clip_id", clip.ID), zap.Error(err))
@@ -477,10 +479,13 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 			})
 			return
 		}
-		// Update result with lifecycle results
+		// Update result and clip with lifecycle results
 		result.DriveLink = lifecycleResult.DriveLink
 		result.DriveFileID = lifecycleResult.DriveFileID
 		result.DownloadLink = lifecycleResult.DownloadLink
+		clip.DriveLink = lifecycleResult.DriveLink
+		clip.DriveFileID = lifecycleResult.DriveFileID
+		clip.DownloadLink = lifecycleResult.DownloadLink
 	}
 
 	// Add to response
@@ -508,5 +513,13 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 				zap.String("clip_id", clip.ID),
 			)
 		}
+	}
+
+	// Save updated clip to DB (including DriveFileID from lifecycle)
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		s.log.Warn("failed to save clip after processing",
+			zap.String("clip_id", clip.ID),
+			zap.Error(err),
+		)
 	}
 }

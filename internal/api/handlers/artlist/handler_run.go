@@ -28,7 +28,7 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 
 	// Normalize request before enqueue
 	req = artlist.NormalizeRunTagRequest(req, artlist.RunDefaults{
-		DefaultRootFolderID: "",
+		DefaultRootFolderID: h.cfg.Harvester.DriveFolderID,
 		MaxLimit:           500,
 	})
 
@@ -56,11 +56,11 @@ func (h *Handler) RunSmartPipeline(c *gin.Context) {
 	}
 
 	// Convert to RunTagRequest using preset
-	runReq := req.ToRunTagRequest()
+	runReq := req.ToRunTagRequest(h.presetsConfig)
 
 	// Normalize request
 	normalized := artlist.NormalizeRunTagRequest(*runReq, artlist.RunDefaults{
-		DefaultRootFolderID: "",
+		DefaultRootFolderID: h.cfg.Harvester.DriveFolderID,
 		MaxLimit:           500,
 	})
 	runReq = &normalized

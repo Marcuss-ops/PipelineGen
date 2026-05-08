@@ -8,6 +8,7 @@ import (
 	"velox/go-master/internal/service/clipcatalog"
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/clipresolver"
+	"velox/go-master/internal/service/matchingconfig"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
@@ -63,6 +64,7 @@ func WireArtlist(
 		nil, // assetDestResolver - not available at bootstrap
 		clipIndexerSvc,
 		coreDeps.JobsService,
+		coreDeps.DriveClient,
 		log,
 	)
 
@@ -77,14 +79,26 @@ func WireArtlist(
 		log.Info("registered artlist job handler")
 	}
 
+	// Load presets config early for use by clipResolver and handler
+	presetsConfig, err := artlistPkg.LoadPresets("config/artlist_presets.yaml")
+	if err != nil {
+		log.Warn("failed to load artlist presets, using defaults", zap.Error(err))
+	}
+
 	// Create clipresolver service with harvest capability
 	var clipResolver *clipresolver.Service
 	if clipCatalogRepo != nil {
 		var harvestSvc clipresolver.ArtlistHarvestService
 		if coreDeps.JobsService != nil {
-			harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log)
+			harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig)
 		}
-		clipResolver = clipresolver.NewService(clipCatalogRepo, harvestSvc, "config/ontology.yaml")
+
+		matchingCfg, err := matchingconfig.LoadMatchingConfig("config/matching.yaml")
+		if err != nil {
+			log.Warn("failed to load matching config, using defaults", zap.Error(err))
+		}
+
+		clipResolver = clipresolver.NewService(clipCatalogRepo, harvestSvc, "config/ontology.yaml", matchingCfg)
 	}
 
 	// Store clipResolver in coreDeps for other wire functions
@@ -101,6 +115,8 @@ func WireArtlist(
 			clipResolver,
 			cfg.Paths.NodeScraperDir,
 			log,
+			presetsConfig,
+			cfg,
 		)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"velox/go-master/internal/service/matchingconfig"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 )
@@ -36,49 +37,24 @@ func BuildSearchText(clip ClipMetadata) string {
 	return strings.Join(unique, " ")
 }
 
-// InferCategoryFromSearchTerm infers category from search term
-func InferCategoryFromSearchTerm(term string) string {
-	termLower := strings.ToLower(term)
-
-	categories := map[string][]string{
-		"rural_life": {"amish", "farm", "countryside", "rural", "barn", "field", "horse", "buggy", "wagon"},
-		"urban":       {"city", "urban", "street", "building", "downtown", "metropolis"},
-		"nature":      {"forest", "mountain", "river", "lake", "tree", "landscape", "sunset", "sunrise"},
-		"technology":  {"computer", "tech", "code", "programming", "digital", "screen"},
-		"people":      {"person", "people", "family", "group", "crowd", "man", "woman"},
-		"food":        {"food", "cooking", "restaurant", "meal", "dinner", "lunch", "pizza"},
-		"sports":      {"sport", "game", "football", "basketball", "soccer", "tennis"},
-		"travel":      {"travel", "beach", "vacation", "tourism", "hotel", "flight"},
-	}
-
-	for category, keywords := range categories {
-		for _, keyword := range keywords {
-			if strings.Contains(termLower, keyword) {
-				return category
-			}
-		}
-	}
-
-	return "general"
-}
-
 // ComputeQualityScore computes a quality score for a clip
-func ComputeQualityScore(clip ClipMetadata) float64 {
-	score := 0.5 // base score
+// Weights are loaded from config/matching.yaml
+func ComputeQualityScore(clip ClipMetadata, cfg *matchingconfig.MatchingConfig) float64 {
+	score := cfg.ClipQuality.BaseScore
 
 	// Boost if has embedding
 	if len(clip.Embedding) > 0 {
-		score += 0.2
+		score += cfg.ClipQuality.EmbeddingBonus
 	}
 
 	// Boost if has category
 	if clip.Category != "" {
-		score += 0.15
+		score += cfg.ClipQuality.CategoryBonus
 	}
 
 	// Penalty for high reuse
-	if clip.ReuseCount > 5 {
-		score -= 0.1 * float64(clip.ReuseCount-5)
+	if clip.ReuseCount > cfg.ClipQuality.ReuseThreshold {
+		score -= cfg.ClipQuality.ReusePenaltyPerUse * float64(clip.ReuseCount-cfg.ClipQuality.ReuseThreshold)
 	}
 
 	// Ensure score is between 0 and 1
@@ -148,7 +124,7 @@ func ExtendSearchText(existing, newTerms string) string {
 }
 
 // BuildClipMetadataFromModel builds ClipMetadata from models.Clip
-func BuildClipMetadataFromModel(clip *models.Clip) ClipMetadata {
+func BuildClipMetadataFromModel(clip *models.Clip, cfg *matchingconfig.MatchingConfig) ClipMetadata {
 	meta := ClipMetadata{
 		ID:         clip.ID,
 		Name:       clip.Name,
@@ -162,7 +138,7 @@ func BuildClipMetadataFromModel(clip *models.Clip) ClipMetadata {
 	}
 
 	// Compute quality score
-	meta.QualityScore = ComputeQualityScore(meta)
+	meta.QualityScore = ComputeQualityScore(meta, cfg)
 
 	return meta
 }

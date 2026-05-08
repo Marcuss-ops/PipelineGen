@@ -1,5 +1,11 @@
 package artlist
 
+import (
+	"io/ioutil"
+
+	"gopkg.in/yaml.v3"
+)
+
 // RunTagRequest represents the full Artlist tag pipeline request.
 type RunTagRequest struct {
 	Term           string `json:"term"`
@@ -28,40 +34,35 @@ type RunSmartRequest struct {
 
 // PresetConfig defines the configuration for a preset.
 type PresetConfig struct {
-	ClipDuration int
-	Width        int
-	Height       int
-	FPS          int
-	Strategy     string
+	ClipDuration int    `yaml:"clip_duration"`
+	Width        int    `yaml:"width"`
+	Height       int    `yaml:"height"`
+	FPS          int    `yaml:"fps"`
+	Strategy     string `yaml:"strategy"`
 }
 
-// Presets defines available presets.
-var Presets = map[string]PresetConfig{
-	"youtube_1080p_7s": {
-		ClipDuration: 7,
-		Width:        1920,
-		Height:       1080,
-		FPS:          30,
-		Strategy:     "verify",
-	},
-	"youtube_720p_7s": {
-		ClipDuration: 7,
-		Width:        1280,
-		Height:       720,
-		FPS:          30,
-		Strategy:     "verify",
-	},
-	"stock_7s_drive": {
-		ClipDuration: 7,
-		Width:        1920,
-		Height:       1080,
-		FPS:          30,
-		Strategy:     "verify",
-	},
+// PresetsConfig holds all preset definitions from config file.
+type PresetsConfig struct {
+	Presets map[string]PresetConfig `yaml:"presets"`
+}
+
+// LoadPresets loads preset configurations from YAML file.
+func LoadPresets(path string) (*PresetsConfig, error) {
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &PresetsConfig{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
 }
 
 // ToRunTagRequest converts RunSmartRequest to RunTagRequest using preset.
-func (r *RunSmartRequest) ToRunTagRequest() *RunTagRequest {
+func (r *RunSmartRequest) ToRunTagRequest(presets *PresetsConfig) *RunTagRequest {
 	req := &RunTagRequest{
 		Term:     r.Term,
 		Limit:    r.Limit,
@@ -69,8 +70,8 @@ func (r *RunSmartRequest) ToRunTagRequest() *RunTagRequest {
 	}
 
 	// Apply preset if specified
-	if r.Preset != "" {
-		if preset, ok := Presets[r.Preset]; ok {
+	if r.Preset != "" && presets != nil {
+		if preset, ok := presets.Presets[r.Preset]; ok {
 			req.Strategy = preset.Strategy
 			req.ClipDuration = preset.ClipDuration
 			req.Width = preset.Width
@@ -95,6 +96,7 @@ type RunTagItem struct {
 	Status       string `json:"status"`
 	DownloadURL  string `json:"download_url,omitempty"`
 	DriveLink    string `json:"drive_link,omitempty"`
+	DriveFileID  string `json:"drive_file_id,omitempty"`
 	DownloadLink string `json:"download_link,omitempty"`
 	LocalPath    string `json:"local_path,omitempty"`
 	FileHash     string `json:"file_hash,omitempty"`

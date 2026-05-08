@@ -9,6 +9,7 @@ import (
 	"velox/go-master/internal/service/catalogsync"
 	"velox/go-master/internal/service/clipresolver"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/pkg/config"
 )
 
 type Handler struct {
@@ -18,6 +19,8 @@ type Handler struct {
 	clipResolver   *clipresolver.Service
 	nodeScraperDir string
 	log            *zap.Logger
+	presetsConfig  *artlist.PresetsConfig
+	cfg            *config.Config
 }
 
 func NewHandler(
@@ -27,6 +30,8 @@ func NewHandler(
 	clipResolver *clipresolver.Service,
 	nodeScraperDir string,
 	log *zap.Logger,
+	presetsConfig *artlist.PresetsConfig,
+	cfg *config.Config,
 ) *Handler {
 	return &Handler{
 		service:        service,
@@ -35,6 +40,8 @@ func NewHandler(
 		clipResolver:   clipResolver,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
+		presetsConfig:  presetsConfig,
+		cfg:            cfg,
 	}
 }
 

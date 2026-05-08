@@ -2,9 +2,50 @@
 package textutil
 
 import (
+	"bufio"
+	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 )
+
+var stopwords map[string]bool
+
+func init() {
+	stopwords = make(map[string]bool)
+	loadStopwordsFromDir("config/stopwords")
+}
+
+func loadStopwordsFromDir(dir string) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	for _, file := range files {
+		if file.IsDir() || filepath.Ext(file.Name()) != ".txt" {
+			continue
+		}
+		path := filepath.Join(dir, file.Name())
+		loadStopwordsFile(path)
+	}
+}
+
+func loadStopwordsFile(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		word := strings.TrimSpace(scanner.Text())
+		if word != "" && !strings.HasPrefix(word, "#") {
+			stopwords[strings.ToLower(word)] = true
+		}
+	}
+}
 
 // Tokenize splits text into tokens using unicode-aware word boundaries.
 func Tokenize(text string) []string {
@@ -24,15 +65,9 @@ func Normalize(text string) string {
 	return strings.TrimSpace(t)
 }
 
-// IsStopWord checks if a term is a common stop word (English and Italian).
+// IsStopWord checks if a term is a common stop word loaded from config files.
 func IsStopWord(term string) bool {
-	switch term {
-	case "the", "and", "for", "with", "that", "this", "from", "then", "into", "over",
-		"una", "uno", "del", "della", "delle", "degli", "nel", "nella", "nei",
-		"per", "con", "tra", "gli", "le", "dei", "dai", "dalle", "dagli", "sul", "sulla", "sugli":
-		return true
-	}
-	return false
+	return stopwords[strings.ToLower(term)]
 }
 
 // TokenizeWithStopWords removes stop words from tokenization.

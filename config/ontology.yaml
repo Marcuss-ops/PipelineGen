@@ -9,7 +9,7 @@ amish:
   preferred_categories: ["rural_life", "tradition", "transport"]
 
 technology:
-  core_terms: ["data center", "5g", "engineer", "server"]
+  core_terms: ["data center", "5g", "engineer", "server", "computer", "tech", "code", "programming", "digital", "screen"]
   visual_synonyms:
     - ["server room", "data center", "rack"]
     - ["engineer", "technician"]
@@ -25,3 +25,57 @@ paleolithic:
   avoid: ["modern", "city", "computer", "smartphone"]
   preferred_categories: ["prehistory", "nature", "ancient"]
   boost: 1.1
+
+urban:
+  core_terms: ["city", "urban", "street", "building", "downtown", "metropolis"]
+  visual_synonyms:
+    - ["skyline", "cityscape", "traffic"]
+    - ["apartment", "skyscraper", "bridge"]
+  avoid: ["farm", "rural", "forest", "mountain"]
+  preferred_categories: ["urban", "modern", "city"]
+  boost: 1.0
+
+nature:
+  core_terms: ["forest", "mountain", "river", "lake", "tree", "landscape", "sunset", "sunrise"]
+  visual_synonyms:
+    - ["waterfall", "ocean", "beach"]
+    - ["flowers", "garden", "meadow"]
+  avoid: ["city", "urban", "building", "computer"]
+  preferred_categories: ["nature", "outdoor", "landscape"]
+  boost: 1.0
+
+people:
+  core_terms: ["person", "people", "family", "group", "crowd", "man", "woman"]
+  visual_synonyms:
+    - ["child", "teenager", "adult", "elder"]
+    - ["friends", "couple", "team"]
+  avoid: ["building", "computer", "abstract"]
+  preferred_categories: ["people", "lifestyle", "portrait"]
+  boost: 1.0
+
+food:
+  core_terms: ["food", "cooking", "restaurant", "meal", "dinner", "lunch", "pizza"]
+  visual_synonyms:
+    - ["chef", "kitchen", "baking"]
+    - ["breakfast", "snack", "dessert"]
+  avoid: ["technology", "sport", "abstract"]
+  preferred_categories: ["food", "lifestyle", "culinary"]
+  boost: 1.0
+
+sports:
+  core_terms: ["sport", "game", "football", "basketball", "soccer", "tennis"]
+  visual_synonyms:
+    - ["stadium", "athlete", "competition"]
+    - ["match", "tournament", "race"]
+  avoid: ["food", "technology", "abstract"]
+  preferred_categories: ["sports", "fitness", "recreation"]
+  boost: 1.0
+
+travel:
+  core_terms: ["travel", "beach", "vacation", "tourism", "hotel", "flight"]
+  visual_synonyms:
+    - ["luggage", "passport", "map"]
+    - ["resort", "cruise", "adventure"]
+  avoid: ["office", "work", "computer"]
+  preferred_categories: ["travel", "lifestyle", "adventure"]
+  boost: 1.0

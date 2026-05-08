@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"go.uber.org/zap"
+	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
@@ -25,10 +26,11 @@ type Service struct {
 	assetDestResolver destination.Resolver
 	jobsSvc           *jobservice.Service
 	clipIndexer       *clipindexer.Service
+	driveSvc          *driveapi.Service
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service, log *zap.Logger) (*Service, error) {
 	return &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
@@ -40,6 +42,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScrap
 		assetDestResolver: assetDestResolver,
 		clipIndexer:       clipIndexer,
 		jobsSvc:           jobsSvc,
+		driveSvc:          driveSvc,
 		log:               log,
 	}, nil
 }

@@ -7,15 +7,17 @@ import (
 	"unicode"
 
 	"velox/go-master/internal/service/clipcatalog"
+	"velox/go-master/internal/service/matchingconfig"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 )
 
 // Service provides clip recommendation functionality
 type Service struct {
-	catalogRepo  *clipcatalog.Repository
-	harvestSvc   ArtlistHarvestService
-	ontologyPath string
+	catalogRepo    *clipcatalog.Repository
+	harvestSvc     ArtlistHarvestService
+	ontologyPath   string
+	matchingConfig *matchingconfig.MatchingConfig
 }
 
 // ArtlistHarvestService interface for enqueueing harvest jobs
@@ -24,11 +26,12 @@ type ArtlistHarvestService interface {
 }
 
 // NewService creates a new clip resolver service
-func NewService(catalogRepo *clipcatalog.Repository, harvestSvc ArtlistHarvestService, ontologyPath string) *Service {
+func NewService(catalogRepo *clipcatalog.Repository, harvestSvc ArtlistHarvestService, ontologyPath string, matchingConfig *matchingconfig.MatchingConfig) *Service {
 	return &Service{
-		catalogRepo:  catalogRepo,
-		harvestSvc:   harvestSvc,
-		ontologyPath: ontologyPath,
+		catalogRepo:    catalogRepo,
+		harvestSvc:     harvestSvc,
+		ontologyPath:   ontologyPath,
+		matchingConfig: matchingConfig,
 	}
 }
 
@@ -298,7 +301,7 @@ func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
 
 	score := 0.0
 	for _, qt := range queryTokens {
-		if len(qt) < 5 {
+		if !s.matchingConfig.IsMeaningfulToken(qt) {
 			continue
 		}
 		for _, tt := range targetTokens {
@@ -328,10 +331,10 @@ func (s *Service) matchesTopic(clip *models.Clip, topic string) bool {
 	tagsStr := strings.Join(clip.Tags, " ")
 	searchText := strings.ToLower(searchTermsStr + " " + clip.Name + " " + tagsStr)
 
-	// Count matching tokens (only tokens with len >= 5 to avoid short false matches)
+	// Count matching tokens (filter out meaningless short tokens)
 	matched := 0
 	for _, tok := range topicTokens {
-		if len(tok) < 5 {
+		if !s.matchingConfig.IsMeaningfulToken(tok) {
 			continue
 		}
 		if strings.Contains(searchText, strings.ToLower(tok)) {

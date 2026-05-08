@@ -12,15 +12,17 @@ import (
 
 // JobHarvestService implements ArtlistHarvestService using the jobs service
 type JobHarvestService struct {
-	jobsSvc *jobs.Service
-	log     *zap.Logger
+	jobsSvc      *jobs.Service
+	log          *zap.Logger
+	presetsConfig *jobservice.PresetsConfig
 }
 
 // NewJobHarvestService creates a new JobHarvestService
-func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger) *JobHarvestService {
+func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger, presetsConfig *jobservice.PresetsConfig) *JobHarvestService {
 	return &JobHarvestService{
-		jobsSvc: jobsSvc,
-		log:     log,
+		jobsSvc:      jobsSvc,
+		log:          log,
+		presetsConfig: presetsConfig,
 	}
 }
 
@@ -38,8 +40,8 @@ func (s *JobHarvestService) EnqueueHarvest(ctx context.Context, term string, lim
 	}
 
 	// Apply preset if specified
-	if preset != "" {
-		if p, ok := jobservice.Presets[preset]; ok {
+	if preset != "" && s.presetsConfig != nil {
+		if p, ok := s.presetsConfig.Presets[preset]; ok {
 			req.Strategy = p.Strategy
 			req.ClipDuration = p.ClipDuration
 			req.Width = p.Width
