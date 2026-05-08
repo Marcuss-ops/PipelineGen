@@ -116,6 +116,7 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 				"filename":      item.Filename,
 				"status":        item.Status,
 				"drive_link":    item.DriveLink,
+				"drive_file_id": item.DriveFileID,
 				"download_link": item.DownloadLink,
 				"local_path":    item.LocalPath,
 				"file_hash":     item.FileHash,
@@ -145,6 +146,9 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]interface{}) {
 	}
 	if v, ok := itemMap["drive_link"].(string); ok {
 		item.DriveLink = v
+	}
+	if v, ok := itemMap["drive_file_id"].(string); ok {
+		item.DriveFileID = v
 	}
 	if v, ok := itemMap["download_link"].(string); ok {
 		item.DownloadLink = v

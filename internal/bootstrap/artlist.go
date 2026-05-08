@@ -5,12 +5,14 @@ import (
 
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	artlistPkg "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/core/destination"
+	"velox/go-master/internal/module"
+	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/clipcatalog"
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/matchingconfig"
 	"velox/go-master/internal/service/mediaregistry"
-	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 
@@ -53,6 +55,13 @@ func WireArtlist(
 	// Create clipindexer service
 	clipIndexerSvc := clipindexer.NewService(nil, coreDeps.ArtlistDB.DB, coreDeps.ArtlistDB.Path(), log)
 
+	// Create asset destination resolver for Drive uploads
+	var assetDestResolver destination.Resolver
+	if coreDeps.DriveClient != nil {
+		assetDest := assetdestination.NewResolver(cfg, log, coreDeps.DriveClient)
+		assetDestResolver = assetdestination.ToCoreResolver(assetDest)
+	}
+
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,
 		coreDeps.DB.DB,
@@ -61,7 +70,7 @@ func WireArtlist(
 		coreDeps.ArtlistRepo,
 		coreDeps.MediaProcessor,
 		artlistLifecycle,
-		nil, // assetDestResolver - not available at bootstrap
+		assetDestResolver,
 		clipIndexerSvc,
 		coreDeps.JobsService,
 		coreDeps.DriveClient,

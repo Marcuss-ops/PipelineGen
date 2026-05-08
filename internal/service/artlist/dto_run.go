@@ -96,7 +96,7 @@ type RunTagItem struct {
 	Status       string `json:"status"`
 	DownloadURL  string `json:"download_url,omitempty"`
 	DriveLink    string `json:"drive_link,omitempty"`
-	DriveFileID  string `json:"drive_file_id,omitempty"`
+	DriveFileID  string `json:"drive_file_id"`
 	DownloadLink string `json:"download_link,omitempty"`
 	LocalPath    string `json:"local_path,omitempty"`
 	FileHash     string `json:"file_hash,omitempty"`

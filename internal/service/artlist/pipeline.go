@@ -492,7 +492,7 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 
 	// Add to response
 	resp.Processed++
-	resp.Items = append(resp.Items, RunTagItem{
+	item := RunTagItem{
 		ClipID:       clip.ID,
 		Name:         clip.Name,
 		Filename:     result.Filename,
@@ -502,7 +502,14 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 		DownloadLink: result.DownloadLink,
 		LocalPath:    result.LocalPath,
 		FileHash:     result.FileHash,
-	})
+	}
+	s.log.Info("response item prepared",
+		zap.String("clip_id", clip.ID),
+		zap.String("item.DriveFileID", item.DriveFileID),
+		zap.String("item.DriveLink", item.DriveLink),
+		zap.String("item.LocalPath", item.LocalPath),
+	)
+	resp.Items = append(resp.Items, item)
 
 	// Auto-index clip after successful processing
 	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() {

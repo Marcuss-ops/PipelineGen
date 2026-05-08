@@ -175,6 +175,9 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 			if existing.DriveLink != "" {
 				clip.DriveLink = existing.DriveLink
 			}
+			if existing.DriveFileID != "" {
+				clip.DriveFileID = existing.DriveFileID
+			}
 			if existing.DownloadLink != "" {
 				clip.DownloadLink = existing.DownloadLink
 			}
