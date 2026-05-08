@@ -79,7 +79,14 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
-	args := []string{"-y"}
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-threads", "1",
+		"-filter_threads", "1",
+		"-filter_complex_threads", "1",
+	}
 
 	// Generate new PTS to fix timestamp issues
 	args = append(args, "-fflags", "+genpts")
@@ -94,8 +101,10 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	args = append(args, "-i", input)
 
 	// Filter chain with PTS reset to ensure monotonic timestamps
-	filter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,fps=%d,setpts=PTS-STARTPTS",
-		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS)
+	filter := fmt.Sprintf(
+		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,setpts=PTS-STARTPTS",
+		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS,
+	)
 	args = append(args, "-vf", filter)
 
 	if !opts.KeepAudio {
