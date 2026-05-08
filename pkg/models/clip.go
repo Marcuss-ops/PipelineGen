@@ -22,6 +22,7 @@ type Clip struct {
 	Metadata     string    `json:"metadata"`
 	FileHash     string    `json:"file_hash"`
 	LocalPath    string    `json:"local_path"` // Path to downloaded local file
+	ThumbURL     string    `json:"thumb_url"` // Thumbnail URL
 	Status       string    `json:"status"`
 	Error        string    `json:"error"`
 	SearchTerms  []string  `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download

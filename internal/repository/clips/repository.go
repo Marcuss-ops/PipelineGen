@@ -397,14 +397,14 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var clip models.Clip
 	var tagsJSON string
 	var searchTermsJSON string
-	var fileHash, localPath string
+	var fileHash, localPath, thumbURL string
 	var createdAt, updatedAt string
 	var status, errMsg string
-
+	
 	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
 		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &createdAt, &updatedAt)
+		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &thumbURL, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -427,8 +427,11 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 
 	clip.FileHash = fileHash
 	clip.LocalPath = localPath
+	clip.ThumbURL = thumbURL
 	clip.Status = status
 	clip.Error = errMsg
+
+	r.log.Info("scanClipRows", zap.String("id", clip.ID), zap.String("thumb_url", thumbURL))
 
 	return &clip, nil
 }
@@ -437,14 +440,14 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var clip models.Clip
 	var tagsJSON string
 	var searchTermsJSON string
-	var fileHash, localPath string
+	var fileHash, localPath, thumbURL string
 	var createdAt, updatedAt string
 	var status, errMsg string
 
 	err := row.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
 		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &createdAt, &updatedAt)
+		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &thumbURL, &createdAt, &updatedAt)
 
 	if err != nil {
 		return nil, err
@@ -467,6 +470,7 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 
 	clip.FileHash = fileHash
 	clip.LocalPath = localPath
+	clip.ThumbURL = thumbURL
 	clip.Status = status
 	clip.Error = errMsg
 
