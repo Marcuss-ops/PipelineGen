@@ -57,8 +57,12 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 
 	args := []string{"--no-playlist"}
 
-	// Add impersonation args for sites with Cloudflare anti-bot (e.g., Artlist)
-	if strings.Contains(req.URL, "artlist.io") {
+	// Add Artlist-specific args (cookies, headers, impersonation)
+	if strings.Contains(req.URL, "artlist") {
+		args = append(args, "--cookies", "/tmp/artlist_cookies.txt")
+		args = append(args, "--add-header", "Referer:https://artlist.io/")
+		args = append(args, "--add-header", "Origin:https://artlist.io/")
+		args = append(args, "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 		args = append(args, "--extractor-args", "generic:impersonate")
 	}
 
