@@ -50,7 +50,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		if svcs.jobsService != nil && svcs.jobsDispatcher != nil && svcs.jobsRepo != nil {
 			workers := cfg.Jobs.MaxParallelPerProject
 			if workers <= 0 {
-				workers = 2
+				workers = 1
 			}
 			leaseTTL := time.Duration(cfg.Jobs.LeaseTTLSeconds) * time.Second
 			if leaseTTL <= 0 {

@@ -300,7 +300,7 @@ func (r *Repository) Complete(ctx context.Context, jobID string, result map[stri
 	}
 
 	now := time.Now()
-	query := `UPDATE jobs SET status = 'completed', result_json = ?, progress = 100, completed_at = ?, updated_at = ? WHERE id = ?`
+	query := `UPDATE jobs SET status = 'completed', result_json = ?, progress = 100, completed_at = ?, updated_at = ?, active_key = '' WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, string(resultJSON), now.Format(time.RFC3339), now.Format(time.RFC3339), jobID)
 	if err != nil {
 		return fmt.Errorf("failed to complete job: %w", err)
@@ -312,7 +312,7 @@ func (r *Repository) Complete(ctx context.Context, jobID string, result map[stri
 
 func (r *Repository) Fail(ctx context.Context, jobID string, errMsg string) error {
 	now := time.Now()
-	query := `UPDATE jobs SET status = 'failed', error = ?, completed_at = ?, updated_at = ? WHERE id = ?`
+	query := `UPDATE jobs SET status = 'failed', error = ?, completed_at = ?, updated_at = ?, active_key = '' WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, errMsg, now.Format(time.RFC3339), now.Format(time.RFC3339), jobID)
 	if err != nil {
 		return fmt.Errorf("failed to fail job: %w", err)
@@ -324,7 +324,7 @@ func (r *Repository) Fail(ctx context.Context, jobID string, errMsg string) erro
 
 func (r *Repository) Cancel(ctx context.Context, jobID string) error {
 	now := time.Now()
-	query := `UPDATE jobs SET status = 'cancelled', cancelled_at = ?, updated_at = ? WHERE id = ?`
+	query := `UPDATE jobs SET status = 'cancelled', cancelled_at = ?, updated_at = ?, active_key = '' WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, now.Format(time.RFC3339), now.Format(time.RFC3339), jobID)
 	if err != nil {
 		return fmt.Errorf("failed to cancel job: %w", err)

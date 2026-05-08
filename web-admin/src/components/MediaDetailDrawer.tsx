@@ -102,9 +102,35 @@ export function MediaDetailDrawer({
 }
 
 function Preview({ item }: { item: MediaItem }) {
+  const [imgSrc, setImgSrc] = useState<string>(
+    item.preview_url || item.thumb_url || ''
+  );
+
+  useEffect(() => {
+    if (item.preview_url || item.thumb_url) {
+      setImgSrc(item.preview_url || item.thumb_url || '');
+      return;
+    }
+    // Try to build a Drive thumbnail if drive_link exists
+    if (item.drive_link) {
+      const match = item.drive_link.match(/\/d\/([^/?]+)/);
+      if (match) {
+        setImgSrc(`https://drive.google.com/thumbnail?id=${match[1]}&sz=w800-h600`);
+        return;
+      }
+    }
+    // Fallback placeholder
+    setImgSrc(`https://placehold.co/800x600/f8fafc/64748b?text=${encodeURIComponent(item.name || item.source)}`);
+  }, [item]);
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-950">
-      <img src={item.preview_url || item.thumb_url || 'https://placehold.co/1600x900?text=Preview'} className="max-h-[280px] w-full object-cover opacity-95" alt="" />
+    <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-100 shadow-inner">
+      <img
+        src={imgSrc}
+        onError={() => setImgSrc(`https://placehold.co/800x600/ef4444/white?text=Preview+non+disponibile`)}
+        className="max-h-[400px] w-full object-contain bg-zinc-50"
+        alt="Preview"
+      />
     </div>
   );
 }

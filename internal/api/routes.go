@@ -98,6 +98,11 @@ func (r *Router) Setup() *gin.Engine {
 	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")
 	engine.Static("/assets", assetsDir)
 
+	// Serve React admin frontend
+	adminDir := "web-admin/dist"
+	engine.Static("/admin", adminDir)
+	engine.StaticFile("/admin", filepath.Join(adminDir, "index.html"))
+
 	// API routes
 	api := engine.Group("/api")
 	{

@@ -31,7 +31,7 @@ export function MediaTable({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      <div className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
+      <div className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-6 border-b border-zinc-200 bg-zinc-50 px-6 py-4 text-xs font-bold uppercase tracking-wide text-zinc-500 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
         <input type="checkbox" checked={allSelected} onChange={(event) => onSelectAll(event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
         <span>Preview</span>
         <span>Asset</span>
@@ -44,9 +44,9 @@ export function MediaTable({
       ) : (
         <div className="divide-y divide-zinc-100">
           {items.map((item) => (
-            <div key={item.id} className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-3 px-4 py-3 transition hover:bg-zinc-50 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
+            <div key={item.id} className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-6 px-6 py-5 transition hover:bg-zinc-50 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
               <input type="checkbox" checked={selected.has(item.id)} onChange={(event) => onSelect(item.id, event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
-              <button onClick={() => onOpen(item)} className="h-14 w-14 overflow-hidden rounded-xl bg-zinc-100 ring-1 ring-zinc-900/5">
+              <button onClick={() => onOpen(item)} className="h-20 w-20 overflow-hidden rounded-2xl bg-zinc-100 ring-2 ring-zinc-900/5">
                 <img src={item.thumb_url || `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`} className="h-full w-full object-cover" alt="" />
               </button>
               <div className="min-w-0">

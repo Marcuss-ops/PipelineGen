@@ -6,7 +6,7 @@ export function AppShell({ children }: PropsWithChildren) {
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950">
       <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-14 max-w-[1800px] items-center gap-4 px-8 sm:px-10">
           <div className="flex items-center gap-3">
             <div className="grid h-8 w-8 place-items-center rounded-xl bg-zinc-950 text-white">
               <Database className="h-4 w-4" />
@@ -25,7 +25,7 @@ export function AppShell({ children }: PropsWithChildren) {
           </Button>
         </div>
       </header>
-      <main className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-[1800px] px-8 py-8 sm:px-10">{children}</main>
     </div>
   );
 }

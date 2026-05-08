@@ -1,11 +1,11 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia } from '../api/media';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
 import { SourceTabs } from '../components/SourceTabs';
-import { StatsGrid } from '../components/StatsGrid';
+import { StatsGrid, type FilterType } from '../components/StatsGrid';
 import { Button } from '../components/ui/Button';
 import { SOURCES, sourceById } from '../lib/sources';
 import type { ClipPayload, MediaItem, MediaSource } from '../lib/types';
@@ -17,16 +17,38 @@ export function MediaAdminPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<MediaItem | null>(null);
   const [notice, setNotice] = useState<string>('');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
   const mediaQuery = useQuery({
     queryKey: ['media', source, search],
     queryFn: () => listMedia(source, search),
   });
 
-  const allSourceCounts = useMemo(() => Object.fromEntries(SOURCES.map((item) => [item.id, item.id === source ? mediaQuery.data?.length ?? 0 : 0])), [mediaQuery.data?.length, source]);
+  const allSourceQueries = useQueries({
+    queries: SOURCES.map((s) => ({
+      queryKey: ['media-count', s.id],
+      queryFn: () => listMedia(s.id as MediaSource, ''),
+      staleTime: 60000,
+    })),
+  });
+
+  const allSourceCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    SOURCES.forEach((s, idx) => {
+      const q = allSourceQueries[idx];
+      counts[s.id] = q.data?.length ?? 0;
+    });
+    return counts;
+  }, [allSourceQueries.map((q) => q.data).join(','), SOURCES]);
 
   const items = mediaQuery.data ?? [];
-  const selectedItems = items.filter((item) => selected.has(item.id));
+  const filteredItems = useMemo(() => {
+    if (activeFilter === 'processed') return items.filter((item) => item.drive_link || item.download_link);
+    if (activeFilter === 'missingDrive') return items.filter((item) => !item.drive_link && !item.download_link);
+    if (activeFilter === 'missingHash') return items.filter((item) => !item.file_hash);
+    return items;
+  }, [items, activeFilter]);
+  const selectedItems = filteredItems.filter((item) => selected.has(item.id));
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['media'] });
 
@@ -54,8 +76,8 @@ export function MediaAdminPage() {
   };
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <div className="space-y-10">
+      <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-blue-600">Admin console</p>
@@ -68,10 +90,10 @@ export function MediaAdminPage() {
         </div>
       </section>
 
-      <StatsGrid items={items} />
+      <StatsGrid items={items} isLoading={mediaQuery.isLoading} activeFilter={activeFilter} onFilter={(f) => setActiveFilter(f)} />
 
-      <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); }} />
+      <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); }} />
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-bold">{sourceById[source].label}</h3>
@@ -97,10 +119,10 @@ export function MediaAdminPage() {
       {notice && <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm">{notice}</div>}
 
       <MediaTable
-        items={items}
+        items={filteredItems}
         selected={selected}
         onSelect={(id, checked) => setSelected((previous) => { const next = new Set(previous); checked ? next.add(id) : next.delete(id); return next; })}
-        onSelectAll={(checked) => setSelected(checked ? new Set(items.map((item) => item.id)) : new Set())}
+        onSelectAll={(checked) => setSelected(checked ? new Set(filteredItems.map((item) => item.id)) : new Set())}
         onOpen={setEditing}
         onEdit={setEditing}
         onVerify={(item) => actionMutation.mutate({ action: 'verify', item })}

@@ -66,7 +66,7 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		return nil, fmt.Errorf("failed to run voiceover migrations: %w", err)
 	}
 
-	jobsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "jobs.db.sqlite", log)
+	jobsDB, err := storage.NewSQLiteDBWithMaxConns(cfg.Storage.DataDir, "jobs.db.sqlite", 1, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize jobs database: %w", err)
 	}

@@ -32,18 +32,25 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 		dsn = dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	}
 
-	return newSQLiteConnection(dbPath, dsn, log)
+	return newSQLiteConnection(dbPath, dsn, 5, log)
+}
+
+// NewSQLiteDBWithMaxConns creates a new SQLite database connection with custom max open connections.
+func NewSQLiteDBWithMaxConns(dataDir, dbName string, maxOpenConns int, log *zap.Logger) (*SQLiteDB, error) {
+	dbPath := filepath.Join(dataDir, dbName)
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
+	return newSQLiteConnection(dbPath, dsn, maxOpenConns, log)
 }
 
 // OpenSQLiteDB creates a new SQLite connection from a full file path with WAL mode and connection pooling.
 // Use this for databases that are not in the standard data directory.
 func OpenSQLiteDB(dbPath string, log *zap.Logger) (*SQLiteDB, error) {
 	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
-	return newSQLiteConnection(dbPath, dsn, log)
+	return newSQLiteConnection(dbPath, dsn, 5, log)
 }
 
 // newSQLiteConnection is the common implementation for creating a configured SQLite connection.
-func newSQLiteConnection(dbPath, dsn string, log *zap.Logger) (*SQLiteDB, error) {
+func newSQLiteConnection(dbPath, dsn string, maxOpenConns int, log *zap.Logger) (*SQLiteDB, error) {
 	// Use WAL mode for better concurrency: allows multiple readers with one writer
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
@@ -51,8 +58,11 @@ func newSQLiteConnection(dbPath, dsn string, log *zap.Logger) (*SQLiteDB, error)
 	}
 
 	// Connection pooling settings - WAL mode allows more concurrent connections
-	db.SetMaxOpenConns(10) // WAL mode supports multiple readers
-	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxOpenConns / 2)
+	if maxOpenConns == 1 {
+		db.SetMaxIdleConns(1)
+	}
 	db.SetConnMaxLifetime(0) // Connections don't expire
 
 	// Enable WAL mode explicitly and optimize settings (skip for in-memory)
@@ -65,13 +75,26 @@ func newSQLiteConnection(dbPath, dsn string, log *zap.Logger) (*SQLiteDB, error)
 		log.Info("Skipping WAL mode for in-memory database")
 	}
 
-	// Verify connection
+	// Verify connection and set busy_timeout explicitly
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to ping database %s: %w", dbPath, err)
 	}
 
-	log.Info("Database connection established with WAL mode", zap.String("path", dbPath))
+	// Ensure busy_timeout is set on the connection used for Ping
+	var busyTimeout int
+	err = db.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeout)
+	if err != nil {
+		log.Warn("Failed to query busy_timeout", zap.Error(err))
+	} else if busyTimeout == 0 {
+		log.Warn("busy_timeout is 0, setting it explicitly")
+		_, err = db.Exec("PRAGMA busy_timeout=5000")
+		if err != nil {
+			log.Warn("Failed to set busy_timeout", zap.Error(err))
+		}
+	}
+
+	log.Info("Database connection established with WAL mode", zap.String("path", dbPath), zap.Int("max_open_conns", maxOpenConns))
 
 	return &SQLiteDB{DB: db, dbPath: dbPath}, nil
 }
