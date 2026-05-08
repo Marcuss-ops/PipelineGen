@@ -21,7 +21,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
   - `velox.db.sqlite`: scripts, monitored_sources, harvester_jobs, media_items, media_files, media_tags, video_metadata, script_stock_matches, video_stats_history, artlist_runs
   - `stock.db.sqlite`: clips (stock), clip_folders (stock)
   - `clips.db.sqlite`: clips (YouTube), clip_folders, segment_embeddings
-  - `artlist.db.sqlite`: clips (Artlist), clip_folders, artlist_runs
+  - `artlist.db.sqlite`: clips (Artlist, with `search_text` TEXT, `embedding_json` TEXT), clip_folders, artlist_runs
   - `images.db.sqlite`: (vuoto o image tables)
   - `voiceover.db.sqlite`: (vuoto o voiceover tables)
   - `jobs.db.sqlite`: jobs, job_events
@@ -33,7 +33,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 - **Database**: SQLite with WAL mode
   - `velox.db.sqlite` - Main database (clips, channels, monitored sources)
   - `jobs.db.sqlite` - Job queue database
-  - `artlist.db.sqlite` - Artlist scraper database (optional)
+  - `artlist.db.sqlite` - Artlist scraper database, stores clip metadata updated by clipindexer
 - **Storage**: Google Drive integration for clip uploads
 - **Workers**: 2 background job workers for async processing
 
@@ -42,6 +42,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 - **YouTube Clip Service**: Extract and process YouTube clips
 - **Job Service**: Queue and process background jobs
 - **Drive Destination Service**: Manage Google Drive folders and uploads
+- **Clipindexer Service**: Generates `search_text` and `embedding_json` metadata for Artlist clips via `scripts/index_clips.py`. Integrates Go service with Python script, passes database path/clip details, handles `None` tags, and updates `artlist.db.sqlite`.
 
 ## Configuration
 
@@ -101,6 +102,16 @@ sqlite3 data/velox.db.sqlite ".tables"
 sqlite3 data/jobs.db.sqlite ".schema jobs"
 ```
 
+### Clipindexer Testing
+Test the Python script manually:
+```bash
+python3 scripts/index_clips.py --db data/artlist.db.sqlite --clip-id <CLIP_ID>
+```
+Verify metadata updates:
+```bash
+sqlite3 data/artlist.db.sqlite "SELECT search_text, embedding_json FROM clips WHERE id = <CLIP_ID>;"
+```
+
 ## Known Issues & Fixes
 
 ### Fixed Issues
@@ -114,6 +125,17 @@ sqlite3 data/jobs.db.sqlite ".schema jobs"
 
 3. **Missing `monitored_sources` table**
    - Fixed: Created table with proper schema in `velox.db.sqlite`
+
+4. **Clipindexer not passing database path to Python script**
+   - Fixed: Added `dbPath` field to clipindexer service, updated `IndexClip` to pass `--db` argument to `scripts/index_clips.py`
+   - Fixed: Added `Path()` method to `SQLiteDB` to expose database file path
+
+5. **Python script `index_clips.py` failing on `None` tags**
+   - Fixed: Added try-except blocks to default to empty list for invalid/missing tags
+   - Fixed: Updated script to accept `--clip-id`, `--clip-name`, `--clip-path` arguments from Go service
+
+6. **Numpy compatibility conflicts from `tts` and `fish-speech` packages**
+   - Fixed: Uninstalled `tts` (0.22.0) and `fish-speech` (0.1.0) Python packages, resolving version conflicts with `sentence-transformers` and `spacy`
 
 ### Recurring Issues
 1. **Artlist search is slow** (30-50 seconds per search via node-scraper)
@@ -150,6 +172,10 @@ When adding new tables to `velox.db.sqlite`, ensure:
 - ✅ Merged `internal/core/media/models.go` into `model.go`
 - ✅ Removed deprecated `api-cron` mode from server
 - ✅ Fixed import paths (`internal/pkg/` → `pkg/`)
+- ✅ Fixed clipindexer service integration with `scripts/index_clips.py` (added `--db` argument passing, updated Python script to handle `None` tags and accept clip-specific arguments)
+- ✅ Added `Path()` method to `SQLiteDB` struct to expose database file path for clipindexer
+- ✅ Resolved numpy compatibility conflicts by uninstalling `tts` (Coqui TTS) and `fish-speech` Python packages
+- ✅ Committed and pushed clipindexer fixes to `origin/main` (commit `88bcef3`)
 
 ### Pending
 - Consolidate `internal/core/media/` - verify unified models work
@@ -173,6 +199,7 @@ src/go-master/
 │   ├── api/handlers/          # HTTP handlers
 │   ├── service/               # Business logic
 │   │   ├── artlist/          # Artlist pipeline
+│   │   ├── clipindexer/      # Clip metadata indexing (integrates with Python script)
 │   │   ├── jobs/             # Job queue system
 │   │   ├── mediaasset/       # Media processing (adapter pattern)
 │   │   ├── assetdestination/ # Destination resolver (adapter pattern)
