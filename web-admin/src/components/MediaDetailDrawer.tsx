@@ -54,7 +54,7 @@ export function MediaDetailDrawer({
       setDuplicates([]);
       return;
     }
-    findDuplicates(item.source, item.id)
+    findDuplicates(item.source as any, item.id)
       .then((data) => {
         if (data.ok && data.duplicates) {
           setDuplicates(data.duplicates);
