@@ -1,8 +1,13 @@
 package bootstrap
 
 import (
+	"context"
+
 	artlistHandler "velox/go-master/internal/api/handlers/artlist"
 	artlistPkg "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/clipcatalog"
+	"velox/go-master/internal/service/clipindexer"
+	"velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
@@ -34,6 +39,18 @@ func WireArtlist(
 		AssetIndex:  coreDeps.AssetIndexService,
 	}, log)
 
+	// Ensure clipcatalog schema
+	if coreDeps.ArtlistDB != nil && coreDeps.ArtlistDB.DB != nil {
+		if err := clipcatalog.EnsureSchema(context.Background(), coreDeps.ArtlistDB.DB, log); err != nil {
+			log.Warn("failed to ensure clipcatalog schema", zap.Error(err))
+		}
+	}
+
+	// Create clipcatalog repository
+	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
+
+	// Create clipindexer service
+	clipIndexerSvc := clipindexer.NewService(nil, coreDeps.ArtlistDB.DB, log)
 
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,
@@ -43,12 +60,11 @@ func WireArtlist(
 		coreDeps.ArtlistRepo,
 		coreDeps.MediaProcessor,
 		artlistLifecycle,
-		nil,
+		nil, // assetDestResolver - not available at bootstrap
+		clipIndexerSvc,
 		coreDeps.JobsService,
 		log,
 	)
-
-
 
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
@@ -61,12 +77,19 @@ func WireArtlist(
 		log.Info("registered artlist job handler")
 	}
 
+	// Create clipresolver service with harvest capability
+	var clipResolver *clipresolver.Service
+	if clipCatalogRepo != nil {
+		clipResolver = clipresolver.NewService(clipCatalogRepo, nil, "")
+	}
+
 	var handler *artlistHandler.Handler
 	if artlistSvc != nil {
 		handler = artlistHandler.NewHandler(
 			artlistSvc,
 			coreDeps.CatalogSyncService,
 			coreDeps.JobsService,
+			clipResolver,
 			cfg.Paths.NodeScraperDir,
 			log,
 		)

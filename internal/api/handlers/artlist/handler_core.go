@@ -7,6 +7,7 @@ import (
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/catalogsync"
+	"velox/go-master/internal/service/clipresolver"
 	jobservice "velox/go-master/internal/service/jobs"
 )
 
@@ -14,6 +15,7 @@ type Handler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
 	jobsService    *jobservice.Service
+	clipResolver   *clipresolver.Service
 	nodeScraperDir string
 	log            *zap.Logger
 }
@@ -22,6 +24,7 @@ func NewHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
 	jobsService *jobservice.Service,
+	clipResolver *clipresolver.Service,
 	nodeScraperDir string,
 	log *zap.Logger,
 ) *Handler {
@@ -29,6 +32,7 @@ func NewHandler(
 		service:        service,
 		catalogSync:    catalogSync,
 		jobsService:    jobsService,
+		clipResolver:   clipResolver,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
 	}

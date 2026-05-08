@@ -10,6 +10,7 @@ import (
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/pkg/config"
 )
 
@@ -23,10 +24,11 @@ type Service struct {
 	lifecycleService  *lifecycle.Service
 	assetDestResolver destination.Resolver
 	jobsSvc           *jobservice.Service
+	clipIndexer       *clipindexer.Service
 	log               *zap.Logger
 }
 
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, log *zap.Logger) (*Service, error) {
 	return &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
@@ -36,6 +38,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScrap
 		mediaProcessor:    mediaProcessor,
 		lifecycleService:  lifecycleService,
 		assetDestResolver: assetDestResolver,
+		clipIndexer:       clipIndexer,
 		jobsSvc:           jobsSvc,
 		log:               log,
 	}, nil

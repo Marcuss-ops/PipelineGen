@@ -495,4 +495,18 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 		LocalPath:    result.LocalPath,
 		FileHash:     result.FileHash,
 	})
+
+	// Auto-index clip after successful processing
+	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() {
+		if err := s.clipIndexer.IndexClip(ctx, clip.ID); err != nil {
+			s.log.Warn("failed to index clip after processing",
+				zap.String("clip_id", clip.ID),
+				zap.Error(err),
+			)
+		} else {
+			s.log.Info("clip indexed successfully after processing",
+				zap.String("clip_id", clip.ID),
+			)
+		}
+	}
 }

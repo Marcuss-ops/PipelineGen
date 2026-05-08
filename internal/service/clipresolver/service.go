@@ -1,4 +1,4 @@
-package artlist
+package clipresolver
 
 import (
 	"context"
@@ -6,9 +6,31 @@ import (
 	"strings"
 	"unicode"
 
+	"velox/go-master/internal/service/clipcatalog"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 )
+
+// Service provides clip recommendation functionality
+type Service struct {
+	catalogRepo  *clipcatalog.Repository
+	harvestSvc   ArtlistHarvestService
+	ontologyPath string
+}
+
+// ArtlistHarvestService interface for enqueueing harvest jobs
+type ArtlistHarvestService interface {
+	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (jobID string, err error)
+}
+
+// NewService creates a new clip resolver service
+func NewService(catalogRepo *clipcatalog.Repository, harvestSvc ArtlistHarvestService, ontologyPath string) *Service {
+	return &Service{
+		catalogRepo:  catalogRepo,
+		harvestSvc:   harvestSvc,
+		ontologyPath: ontologyPath,
+	}
+}
 
 // Recommend provides clip recommendations based on segment context
 func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*RecommendResponse, error) {
@@ -16,8 +38,8 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		OK:          true,
 		Topic:       req.Topic,
 		SegmentID:   req.SegmentID,
-		Recommended: make([]ClipRecommend, 0),
-		Rejected:    make([]ClipRejected, 0),
+		Recommended: make([]RecommendedClip, 0),
+		Rejected:    make([]RejectedClip, 0),
 	}
 
 	if len(req.Queries) == 0 && req.Topic == "" && req.SegmentText == "" {
@@ -49,27 +71,24 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 	}
 
 	// Search for clips using all search terms
-	clipScores := make(map[string]*ClipWithScore)
+	clipScores := make(map[string]*ClipScore)
 	for _, term := range searchTerms {
-		clips, err := s.searchClipsForRecommend(ctx, term)
+		candidates, err := s.catalogRepo.FindCandidates(ctx, term, limit*2)
 		if err != nil {
 			continue
 		}
 
-		for _, clip := range clips {
-			if clip == nil {
-				continue
-			}
-			if clipScores[clip.ID] == nil {
-				clipScores[clip.ID] = &ClipWithScore{
-					Clip:        clip,
+		for _, cand := range candidates {
+			if clipScores[cand.ID] == nil {
+				clipScores[cand.ID] = &ClipScore{
+					Clip:        s.candidateToClip(cand),
 					Score:       0,
 					Breakdown:   &ScoreBreakdown{},
 					MatchedTerms: make([]string, 0),
 				}
 			}
 
-			entry := clipScores[clip.ID]
+			entry := clipScores[cand.ID]
 			s.scoreClip(entry, term, req, avoidTerms, usedClipIDs)
 		}
 	}
@@ -78,7 +97,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 	for clipID, entry := range clipScores {
 		if entry.Score < minScore {
 			if req.Explain {
-				resp.Rejected = append(resp.Rejected, ClipRejected{
+				resp.Rejected = append(resp.Rejected, RejectedClip{
 					ClipID:       clipID,
 					Title:        entry.Clip.Name,
 					Score:        entry.Score,
@@ -91,7 +110,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		// Check negative terms
 		if entry.RejectReason != "" {
 			if req.Explain {
-				resp.Rejected = append(resp.Rejected, ClipRejected{
+				resp.Rejected = append(resp.Rejected, RejectedClip{
 					ClipID:       clipID,
 					Title:        entry.Clip.Name,
 					Score:        entry.Score,
@@ -101,7 +120,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 			continue
 		}
 
-		rec := ClipRecommend{
+		rec := RecommendedClip{
 			ClipID:        clipID,
 			Title:         entry.Clip.Name,
 			DriveLink:     entry.Clip.DriveLink,
@@ -135,6 +154,11 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		resp.HarvestTerms = req.Queries
 		if len(resp.HarvestTerms) == 0 && req.Topic != "" {
 			resp.HarvestTerms = []string{req.Topic}
+		}
+
+		// Auto-harvest if enabled
+		if req.AutoHarvest && s.harvestSvc != nil {
+			s.enqueueHarvestForTerms(ctx, resp.HarvestTerms)
 		}
 	}
 
@@ -184,16 +208,7 @@ func (s *Service) collectSearchTerms(req *RecommendRequest) []string {
 	return terms
 }
 
-func (s *Service) searchClipsForRecommend(ctx context.Context, term string) ([]*models.Clip, error) {
-	// Search in database using existing SearchClips method
-	clips, err := s.artlistRepo.SearchClips(ctx, term)
-	if err != nil {
-		return nil, err
-	}
-	return clips, nil
-}
-
-func (s *Service) scoreClip(entry *ClipWithScore, matchedQuery string, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
+func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
 	clip := entry.Clip
 	bd := entry.Breakdown
 
@@ -208,29 +223,29 @@ func (s *Service) scoreClip(entry *ClipWithScore, matchedQuery string, req *Reco
 	}
 	entry.MatchedTerms = append(entry.MatchedTerms, matchedQuery)
 
-	// Topic boost
+	// Topic boost (weight: 0.20)
 	if req.Topic != "" && s.matchesTopic(clip, req.Topic) {
-		boost := 0.15
+		boost := 0.20
 		bd.TopicBoost = boost
 		entry.Score += boost
 	}
 
-	// Category boost
+	// Category boost (weight: 0.10)
 	if req.Category != "" && strings.EqualFold(clip.Category, req.Category) {
 		boost := 0.10
 		bd.CategoryBoost = boost
 		entry.Score += boost
 	}
 
-	// Quality score from clip metadata
-	qualityScore := 0.05 // default
+	// Quality score (weight: 0.15)
+	qualityScore := 0.15
 	bd.QualityScore = qualityScore
 	entry.Score += qualityScore
 
-	// Negative penalty - check avoid terms
+	// Negative penalty (weight: 0.40)
 	for term := range avoidTerms {
 		if s.clipContainsTerm(clip, term) {
-			penalty := 0.5
+			penalty := 0.40
 			bd.NegativePenalty += penalty
 			entry.Score -= penalty
 			if entry.RejectReason == "" {
@@ -239,9 +254,9 @@ func (s *Service) scoreClip(entry *ClipWithScore, matchedQuery string, req *Reco
 		}
 	}
 
-	// Reuse penalty
+	// Reuse penalty (weight: 0.10)
 	if usedClipIDs[clip.ID] {
-		penalty := 0.3
+		penalty := 0.10
 		bd.ReusePenalty = penalty
 		entry.Score -= penalty
 		if entry.RejectReason == "" {
@@ -256,7 +271,9 @@ func (s *Service) scoreClip(entry *ClipWithScore, matchedQuery string, req *Reco
 }
 
 func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
-	// Simple text scoring based on term matches in name, search_terms, tags
+	// Weight: 0.45
+	baseWeight := 0.45
+
 	searchTermsStr := strings.Join(clip.SearchTerms, " ")
 	tagsStr := strings.Join(clip.Tags, " ")
 	targetText := clip.Name + " " + searchTermsStr + " " + tagsStr
@@ -273,15 +290,17 @@ func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
 		}
 	}
 
-	// Cap at reasonable value
-	if score > 0.4 {
-		score = 0.4
+	// Apply weight
+	score = score * (baseWeight / 0.4) // Normalize since max raw score is ~0.4
+
+	// Cap at baseWeight
+	if score > baseWeight {
+		score = baseWeight
 	}
 	return score
 }
 
 func (s *Service) matchesTopic(clip *models.Clip, topic string) bool {
-	// Check if clip is relevant to the topic
 	topicLower := strings.ToLower(topic)
 	searchTermsStr := strings.Join(clip.SearchTerms, " ")
 	tagsStr := strings.Join(clip.Tags, " ")
@@ -297,8 +316,7 @@ func (s *Service) clipContainsTerm(clip *models.Clip, term string) bool {
 	return strings.Contains(searchText, termLower)
 }
 
-func (s *Service) sortRecommendations(recs []ClipRecommend) {
-	// Simple bubble sort by score descending
+func (s *Service) sortRecommendations(recs []RecommendedClip) {
 	n := len(recs)
 	for i := 0; i < n-1; i++ {
 		for j := 0; j < n-i-1; j++ {
@@ -309,14 +327,14 @@ func (s *Service) sortRecommendations(recs []ClipRecommend) {
 	}
 }
 
-func (s *Service) buildRecommendReason(entry *ClipWithScore, req *RecommendRequest) string {
+func (s *Service) buildRecommendReason(entry *ClipScore, req *RecommendRequest) string {
 	reasons := make([]string, 0)
 
 	if entry.Breakdown.TopicBoost > 0 {
 		reasons = append(reasons, fmt.Sprintf("Matches topic '%s'", req.Topic))
 	}
 	if entry.Breakdown.CategoryBoost > 0 {
-		reasons = append(reasons, fmt.Sprintf("Category '%s'", req.Category))
+		reasons = append(reasons, fmt.Sprintf("Category '%s'", entry.Clip.Category))
 	}
 	if entry.MatchedQuery != "" {
 		reasons = append(reasons, fmt.Sprintf("Matched query '%s'", entry.MatchedQuery))
@@ -332,4 +350,30 @@ func (s *Service) buildRecommendReason(entry *ClipWithScore, req *RecommendReque
 		return "General match"
 	}
 	return strings.Join(reasons, "; ")
+}
+
+func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *models.Clip {
+	return &models.Clip{
+		ID:         cand.ID,
+		Name:       cand.Name,
+		DriveLink:  cand.DriveLink,
+		LocalPath:   cand.LocalPath,
+		Category:    cand.Category,
+		SearchTerms: []string{cand.SearchText},
+		Tags:        cand.Tags,
+	}
+}
+
+func (s *Service) enqueueHarvestForTerms(ctx context.Context, terms []string) {
+	if s.harvestSvc == nil {
+		return
+	}
+
+	for _, term := range terms {
+		_, err := s.harvestSvc.EnqueueHarvest(ctx, term, 3, "youtube_1080p_7s")
+		if err != nil {
+			// Log error but continue with other terms
+			continue
+		}
+	}
 }
