@@ -434,13 +434,13 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 				Source:       "artlist",
 				Group:        "",
 				Subfolder:    tagFolderName,
-				LocalPath:    clip.LocalPath,
+				LocalPath:    result.LocalPath,
 				FolderID:     tagFolderID,
 				FolderPath:   tagFolderName,
 				DriveLink:    clip.DriveLink,
 				DriveFileID:  clip.DriveFileID,
-				DownloadLink: clip.DownloadLink,
-				FileHash:     clip.FileHash,
+				DownloadLink: result.DownloadLink,
+				FileHash:     result.FileHash,
 				Metadata:     metadata,
 				RequireLocal: true,
 				RequireHash:  true,
@@ -486,6 +486,8 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 		clip.DriveLink = lifecycleResult.DriveLink
 		clip.DriveFileID = lifecycleResult.DriveFileID
 		clip.DownloadLink = lifecycleResult.DownloadLink
+		clip.LocalPath = result.LocalPath
+		clip.FileHash = result.FileHash
 	}
 
 	// Add to response
@@ -496,6 +498,7 @@ func (s *Service) processClip(ctx context.Context, clip *models.Clip, tagFolderI
 		Filename:     result.Filename,
 		Status:       "processed",
 		DriveLink:    result.DriveLink,
+		DriveFileID:  result.DriveFileID,
 		DownloadLink: result.DownloadLink,
 		LocalPath:    result.LocalPath,
 		FileHash:     result.FileHash,
