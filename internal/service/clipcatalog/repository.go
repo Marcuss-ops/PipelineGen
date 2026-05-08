@@ -31,17 +31,39 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 		limit = 10
 	}
 
-	// Use LIKE search on search_text, name, and tags
-	sqlQuery := `
-		SELECT id, name, search_text, category, scene_type, tags, drive_link, local_path, quality_score, reuse_count
+	// Tokenize query for better matching
+	tokens := textutil.Tokenize(query)
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+
+	// Build SQL query with OR conditions for each token
+	conditions := make([]string, 0)
+	args := make([]interface{}, 0)
+	for _, token := range tokens {
+		if len(token) < 3 {
+			continue
+		}
+		likePattern := "%" + token + "%"
+		conditions = append(conditions, "(search_text LIKE ? OR name LIKE ? OR tags LIKE ?)")
+		args = append(args, likePattern, likePattern, likePattern)
+	}
+
+	if len(conditions) == 0 {
+		return nil, nil
+	}
+
+	sqlQuery := fmt.Sprintf(`
+		SELECT id, name, search_text, category, scene_type, tags, drive_link, local_path, quality_score, reuse_count, usable_for_json, avoid_for_json
 		FROM clips
-		WHERE search_text LIKE ? OR name LIKE ? OR tags LIKE ?
+		WHERE %s
 		ORDER BY quality_score DESC, reuse_count ASC
 		LIMIT ?
-	`
+	`, strings.Join(conditions, " OR "))
 
-	likePattern := "%" + query + "%"
-	rows, err := r.db.QueryContext(ctx, sqlQuery, likePattern, likePattern, likePattern, limit)
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find candidates: %w", err)
 	}
@@ -51,7 +73,9 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 	for rows.Next() {
 		var c ClipCandidate
 		var tagsStr string
-		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount); err != nil {
+		var usableForJSON string
+		var avoidForJSON string
+		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON); err != nil {
 			r.logger.Warn("failed to scan candidate", zap.Error(err))
 			continue
 		}
@@ -59,6 +83,16 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 		// Parse tags
 		if tagsStr != "" {
 			json.Unmarshal([]byte(tagsStr), &c.Tags)
+		}
+
+		// Parse usable_for
+		if usableForJSON != "" {
+			json.Unmarshal([]byte(usableForJSON), &c.UsableFor)
+		}
+
+		// Parse avoid_for
+		if avoidForJSON != "" {
+			json.Unmarshal([]byte(avoidForJSON), &c.AvoidFor)
 		}
 
 		candidates = append(candidates, c)

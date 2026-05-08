@@ -27,6 +27,7 @@ type RecommendResponse struct {
 	Rejected     []RejectedClip   `json:"rejected,omitempty"`
 	NeedsHarvest bool             `json:"needs_harvest"`
 	HarvestTerms  []string         `json:"harvest_terms,omitempty"`
+	HarvestJobIDs []string         `json:"harvest_job_ids,omitempty"`
 }
 
 // RecommendedClip represents a recommended clip with score breakdown
@@ -58,6 +59,7 @@ type ScoreBreakdown struct {
 	VectorScore    float64 `json:"vector_score,omitempty"`
 	TopicBoost     float64 `json:"topic_boost,omitempty"`
 	CategoryBoost  float64 `json:"category_boost,omitempty"`
+	UsableForBoost float64 `json:"usable_for_boost,omitempty"`
 	QualityScore   float64 `json:"quality_score,omitempty"`
 	NegativePenalty float64 `json:"negative_penalty,omitempty"`
 	ReusePenalty   float64 `json:"reuse_penalty,omitempty"`

@@ -80,7 +80,16 @@ func WireArtlist(
 	// Create clipresolver service with harvest capability
 	var clipResolver *clipresolver.Service
 	if clipCatalogRepo != nil {
-		clipResolver = clipresolver.NewService(clipCatalogRepo, nil, "")
+		var harvestSvc clipresolver.ArtlistHarvestService
+		if coreDeps.JobsService != nil {
+			harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log)
+		}
+		clipResolver = clipresolver.NewService(clipCatalogRepo, harvestSvc, "config/ontology.yaml")
+	}
+
+	// Store clipResolver in coreDeps for other wire functions
+	if clipResolver != nil {
+		coreDeps.ClipResolver = clipResolver
 	}
 
 	var handler *artlistHandler.Handler
@@ -107,4 +116,12 @@ func WireArtlist(
 		Module:  mod,
 		Service: artlistSvc,
 	}, nil
+}
+
+// GetClipResolver returns the clipResolver from the wiring (if available)
+func (w *ArtlistWiring) GetClipResolver() *clipresolver.Service {
+	if w == nil || w.Handler == nil {
+		return nil
+	}
+	return nil
 }

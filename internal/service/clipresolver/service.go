@@ -158,7 +158,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 
 		// Auto-harvest if enabled
 		if req.AutoHarvest && s.harvestSvc != nil {
-			s.enqueueHarvestForTerms(ctx, resp.HarvestTerms)
+			resp.HarvestJobIDs = s.enqueueHarvestForTerms(ctx, resp.HarvestTerms)
 		}
 	}
 
@@ -209,11 +209,11 @@ func (s *Service) collectSearchTerms(req *RecommendRequest) []string {
 }
 
 func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
-	clip := entry.Clip
+	c := entry.Clip
 	bd := entry.Breakdown
 
 	// Text score - based on search_text, name, tags
-	textScore := s.calculateTextScore(clip, matchedQuery)
+	textScore := s.calculateTextScore(c, matchedQuery)
 	bd.TextScore = textScore
 	entry.Score += textScore
 
@@ -224,27 +224,42 @@ func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *Recommen
 	entry.MatchedTerms = append(entry.MatchedTerms, matchedQuery)
 
 	// Topic boost (weight: 0.20)
-	if req.Topic != "" && s.matchesTopic(clip, req.Topic) {
+	if req.Topic != "" && s.matchesTopic(c, req.Topic) {
 		boost := 0.20
 		bd.TopicBoost = boost
 		entry.Score += boost
 	}
 
 	// Category boost (weight: 0.10)
-	if req.Category != "" && strings.EqualFold(clip.Category, req.Category) {
+	if req.Category != "" && strings.EqualFold(c.Category, req.Category) {
 		boost := 0.10
 		bd.CategoryBoost = boost
 		entry.Score += boost
 	}
 
+	// UsableFor boost (weight: 0.15)
+	if len(c.UsableFor) > 0 {
+		for _, term := range req.Queries {
+			if s.clipUsableFor(c, term) {
+				boost := 0.15
+				bd.UsableForBoost += boost
+				entry.Score += boost
+				break
+			}
+		}
+	}
+
 	// Quality score (weight: 0.15)
-	qualityScore := 0.15
+	qualityScore := c.QualityScore * 0.15
+	if qualityScore > 0.15 {
+		qualityScore = 0.15
+	}
 	bd.QualityScore = qualityScore
 	entry.Score += qualityScore
 
 	// Negative penalty (weight: 0.40)
 	for term := range avoidTerms {
-		if s.clipContainsTerm(clip, term) {
+		if s.clipContainsTerm(c, term) {
 			penalty := 0.40
 			bd.NegativePenalty += penalty
 			entry.Score -= penalty
@@ -255,7 +270,7 @@ func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *Recommen
 	}
 
 	// Reuse penalty (weight: 0.10)
-	if usedClipIDs[clip.ID] {
+	if usedClipIDs[c.ID] {
 		penalty := 0.10
 		bd.ReusePenalty = penalty
 		entry.Score -= penalty
@@ -301,19 +316,63 @@ func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
 }
 
 func (s *Service) matchesTopic(clip *models.Clip, topic string) bool {
-	topicLower := strings.ToLower(topic)
+	topicTokens := textutil.Tokenize(topic)
+	if len(topicTokens) == 0 {
+		return false
+	}
+
 	searchTermsStr := strings.Join(clip.SearchTerms, " ")
 	tagsStr := strings.Join(clip.Tags, " ")
 	searchText := strings.ToLower(searchTermsStr + " " + clip.Name + " " + tagsStr)
-	return strings.Contains(searchText, topicLower)
+
+	// Count matching tokens (only tokens with len >= 4)
+	matched := 0
+	for _, tok := range topicTokens {
+		if len(tok) < 4 {
+			continue
+		}
+		if strings.Contains(searchText, strings.ToLower(tok)) {
+			matched++
+		}
+	}
+
+	// Return true if at least 1 meaningful token matches
+	return matched > 0
 }
 
 func (s *Service) clipContainsTerm(clip *models.Clip, term string) bool {
 	termLower := strings.ToLower(term)
+
+	// Check in search terms, name, tags
 	searchTermsStr := strings.Join(clip.SearchTerms, " ")
 	tagsStr := strings.Join(clip.Tags, " ")
 	searchText := strings.ToLower(searchTermsStr + " " + clip.Name + " " + tagsStr)
-	return strings.Contains(searchText, termLower)
+	if strings.Contains(searchText, termLower) {
+		return true
+	}
+
+	// Check in avoid_for list
+	for _, avoid := range clip.AvoidFor {
+		if strings.EqualFold(avoid, term) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *Service) clipUsableFor(clip *models.Clip, term string) bool {
+	if len(clip.UsableFor) == 0 {
+		return false
+	}
+
+	termLower := strings.ToLower(term)
+	for _, usable := range clip.UsableFor {
+		if strings.EqualFold(usable, term) || strings.Contains(strings.ToLower(usable), termLower) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) sortRecommendations(recs []RecommendedClip) {
@@ -354,26 +413,37 @@ func (s *Service) buildRecommendReason(entry *ClipScore, req *RecommendRequest) 
 
 func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *models.Clip {
 	return &models.Clip{
-		ID:         cand.ID,
-		Name:       cand.Name,
-		DriveLink:  cand.DriveLink,
-		LocalPath:   cand.LocalPath,
-		Category:    cand.Category,
-		SearchTerms: []string{cand.SearchText},
-		Tags:        cand.Tags,
+		ID:           cand.ID,
+		Name:         cand.Name,
+		DriveLink:    cand.DriveLink,
+		LocalPath:     cand.LocalPath,
+		Category:      cand.Category,
+		SearchTerms:  []string{cand.SearchText},
+		Tags:         cand.Tags,
+		SearchText:   cand.SearchText,
+		SceneType:    cand.SceneType,
+		QualityScore: cand.QualityScore,
+		ReuseCount:   cand.ReuseCount,
+		UsableFor:    cand.UsableFor,
+		AvoidFor:     cand.AvoidFor,
 	}
 }
 
-func (s *Service) enqueueHarvestForTerms(ctx context.Context, terms []string) {
+func (s *Service) enqueueHarvestForTerms(ctx context.Context, terms []string) []string {
 	if s.harvestSvc == nil {
-		return
+		return nil
 	}
 
+	jobIDs := make([]string, 0)
 	for _, term := range terms {
-		_, err := s.harvestSvc.EnqueueHarvest(ctx, term, 3, "youtube_1080p_7s")
+		jobID, err := s.harvestSvc.EnqueueHarvest(ctx, term, 3, "youtube_1080p_7s")
 		if err != nil {
 			// Log error but continue with other terms
 			continue
 		}
+		if jobID != "" {
+			jobIDs = append(jobIDs, jobID)
+		}
 	}
+	return jobIDs
 }

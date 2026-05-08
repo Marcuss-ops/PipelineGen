@@ -56,6 +56,7 @@ func WireScriptDocs(
 		nil, // artlistSvc - will be set later if available
 		coreDeps.AssocService,
 		coreDeps.JobsService,
+		coreDeps.ClipResolver,
 	)
 
 	var mod module.Module

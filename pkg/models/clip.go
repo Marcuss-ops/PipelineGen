@@ -27,6 +27,14 @@ type Clip struct {
 	SearchTerms  []string  `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	// Extended fields for clip catalog
+	SearchText   string    `json:"search_text,omitempty"`
+	SceneType    string    `json:"scene_type,omitempty"`
+	QualityScore float64   `json:"quality_score,omitempty"`
+	ReuseCount   int       `json:"reuse_count,omitempty"`
+	LastUsedAt   string    `json:"last_used_at,omitempty"`
+	UsableFor    []string  `json:"usable_for,omitempty"`
+	AvoidFor     []string  `json:"avoid_for,omitempty"`
 }
 
 // IndexingCheckpoint represents a checkpoint for the indexing process

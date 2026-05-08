@@ -30,6 +30,8 @@ type ClipCandidate struct {
 	LocalPath    string   `json:"local_path,omitempty"`
 	QualityScore float64  `json:"quality_score"`
 	ReuseCount   int      `json:"reuse_count"`
+	UsableFor   []string `json:"usable_for,omitempty"`
+	AvoidFor     []string `json:"avoid_for,omitempty"`
 }
 
 // IndexRequest represents a request to index a clip

@@ -41,7 +41,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 	defer cancel()
 
 	generateStarted := time.Now()
-	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.clipsOnlyRepo, h.artlistService, h.imgService, h.assocService)
+	document, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.clipsOnlyRepo, h.artlistService, h.imgService, h.assocService, h.clipResolver)
 	if err != nil {
 		zap.L().Error("script document generation failed",
 			zap.Error(err),

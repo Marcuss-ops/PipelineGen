@@ -24,6 +24,7 @@ import (
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
 	"velox/go-master/internal/service/youtubeclip"
+	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -65,6 +66,7 @@ type CoreDeps struct {
 	MediaProcessor       processor.Processor
 	YoutubeClipService   *youtubeclip.Service
 	AssetIndexService    *assetindex.Service
+	ClipResolver         *clipresolver.Service
 }
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {

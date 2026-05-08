@@ -8,6 +8,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/association"
+	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/visualquery"
 	segmentnorm "velox/go-master/internal/service/catalognormalizer"
 	"velox/go-master/pkg/sliceutil"
@@ -86,5 +87,45 @@ func searchArtlistFromDB(ctx context.Context, seg *TimelineSegment, artlistServi
 	}
 	if len(artlistClips) > 0 {
 		seg.ArtlistMatches = artlistClips
+	}
+}
+
+// searchArtlistWithResolver searches Artlist clips using the ClipResolver for better recommendations
+func searchArtlistWithResolver(ctx context.Context, seg *TimelineSegment, clipResolver *clipresolver.Service, topic string, usedClipIDs []string) {
+	if clipResolver == nil || len(seg.SearchSuggestions) == 0 {
+		return
+	}
+
+	req := &clipresolver.RecommendRequest{
+		Topic:         topic,
+		SegmentID:     seg.Timestamp,
+		SegmentText:   seg.NarrativeText,
+		Queries:       seg.SearchSuggestions,
+		UsedClipIDs:   usedClipIDs,
+		Limit:         5,
+		MinScore:      0.5,
+		Explain:       false,
+		AutoHarvest:   true,
+	}
+
+	resp, err := clipResolver.Recommend(ctx, req)
+	if err != nil {
+		return
+	}
+
+	if len(resp.Recommended) > 0 {
+		artlistClips := make([]association.ScoredMatch, 0, len(resp.Recommended))
+		for _, rec := range resp.Recommended {
+			artlistClips = append(artlistClips, association.ScoredMatch{
+				Title:  rec.Title,
+				Path:   rec.LocalPath,
+				Score:  int(rec.Score * 100),
+				Source: "clip_resolver",
+				Link:   rec.DriveLink,
+			})
+		}
+		seg.ArtlistMatches = artlistClips
+	} else if resp.NeedsHarvest {
+		seg.SearchSuggestions = append(seg.SearchSuggestions, resp.HarvestTerms...)
 	}
 }

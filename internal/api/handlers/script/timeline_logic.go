@@ -8,6 +8,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/association"
+	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/visualquery"
 	segmentnorm "velox/go-master/internal/service/catalognormalizer"
 	"velox/go-master/internal/service/timeline"
@@ -17,7 +18,7 @@ import (
 
 const timelineCacheVersion = "v14"
 
-func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service) (*TimelinePlan, error) {
+func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service, clipResolver *clipresolver.Service) (*TimelinePlan, error) {
 	startedAt := time.Now()
 	zap.L().Info("Building timeline plan", zap.String("topic", req.Topic))
 
@@ -86,8 +87,10 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			}
 		}
 
-		// Now search Artlist DB using the search suggestions (which are now populated)
-		if artlistService != nil && len(seg.SearchSuggestions) > 0 {
+		// Now search Artlist using ClipResolver (preferred) or fallback to DB search
+		if clipResolver != nil && len(seg.SearchSuggestions) > 0 {
+			searchArtlistWithResolver(ctx, &seg, clipResolver, req.Topic, nil)
+		} else if artlistService != nil && len(seg.SearchSuggestions) > 0 {
 			searchArtlistFromDB(ctx, &seg, artlistService)
 		}
 

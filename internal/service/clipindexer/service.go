@@ -31,9 +31,10 @@ func DefaultConfig() *Config {
 
 // Service provides clip indexing functionality
 type Service struct {
-	db     *sql.DB
-	cfg    *Config
-	log    *zap.Logger
+	db            *sql.DB
+	cfg           *Config
+	log           *zap.Logger
+	scriptPath    string
 }
 
 // NewService creates a new clipindexer service
@@ -41,10 +42,21 @@ func NewService(cfg *Config, db *sql.DB, log *zap.Logger) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
+	
+	// Resolve script path to absolute
+	scriptPath := cfg.ScriptPath
+	if !filepath.IsAbs(scriptPath) {
+		absPath, err := filepath.Abs(scriptPath)
+		if err == nil {
+			scriptPath = absPath
+		}
+	}
+	
 	return &Service{
-		db:  db,
-		cfg: cfg,
-		log: log,
+		db:         db,
+		cfg:        cfg,
+		log:        log,
+		scriptPath: scriptPath,
 	}
 }
 
@@ -62,8 +74,9 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 		return fmt.Errorf("failed to get clip info: %w", err)
 	}
 
-	// Build command arguments
-	args := []string{s.cfg.ScriptPath}
+	// Build command arguments using absolute script path
+	scriptName := filepath.Base(s.scriptPath)
+	args := []string{scriptName}
 
 	if name != "" {
 		args = append(args, "--clip-name", name)
@@ -73,11 +86,11 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	}
 	args = append(args, "--clip-id", clipID)
 
-	// Execute Python script
+	// Execute Python script from the script's directory
 	cmd := exec.CommandContext(ctx, s.cfg.PythonBin, args...)
-	cmd.Dir = filepath.Dir(s.cfg.ScriptPath)
+	cmd.Dir = filepath.Dir(s.scriptPath)
 
-	s.log.Info("indexing clip", zap.String("clip_id", clipID), zap.Strings("args", args))
+	s.log.Info("indexing clip", zap.String("clip_id", clipID), zap.String("script", s.scriptPath), zap.Strings("args", args))
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
