@@ -1,10 +1,7 @@
 package script
 
 import (
-	"fmt"
 	"strings"
-	"velox/go-master/internal/service/association"
-	"velox/go-master/pkg/textutil"
 )
 
 // RenderTimeline converts a TimelinePlan into the final formatted text section.
@@ -16,24 +13,7 @@ func RenderTimeline(plan *TimelinePlan) string {
 	var b strings.Builder
 
 	for _, seg := range plan.Segments {
-		b.WriteString("[")
-		b.WriteString(seg.Timestamp)
-		b.WriteString("]\n")
-
-		if seg.Subject != "" {
-			b.WriteString(fmt.Sprintf("   Subject: %s\n", seg.Subject))
-		}
-
-		if strings.TrimSpace(seg.OpeningSentence) != "" {
-			b.WriteString("   Start: ")
-			b.WriteString(textutil.Truncate(seg.OpeningSentence, 80))
-			b.WriteString("\n")
-		}
-		if strings.TrimSpace(seg.ClosingSentence) != "" {
-			b.WriteString("   End:   ")
-			b.WriteString(textutil.Truncate(seg.ClosingSentence, 80))
-			b.WriteString("\n")
-		}
+		b.WriteString(renderSegmentHeader(seg))
 
 		// ASSET ASSOCIATIONS
 		assetRendered := false
@@ -60,50 +40,4 @@ func RenderTimeline(plan *TimelinePlan) string {
 	}
 
 	return strings.TrimSpace(b.String())
-}
-
-func hasStrongMatch(matches []association.ScoredMatch, minScore int) bool {
-	for _, match := range matches {
-		if match.Score >= minScore {
-			return true
-		}
-	}
-	return false
-}
-
-func renderSpecificMatch(label string, matches []association.ScoredMatch) string {
-	if len(matches) == 0 {
-		return ""
-	}
-	best := matches[0]
-	for _, m := range matches {
-		if m.Score > best.Score {
-			best = m
-		}
-	}
-
-	var b strings.Builder
-	b.WriteString("\n   ")
-	b.WriteString(label)
-	b.WriteString(":\n")
-
-	title := best.Title
-	if title == "" {
-		title = "Asset"
-	}
-	b.WriteString("      - ")
-	b.WriteString(title)
-	b.WriteString("\n")
-
-	if best.Link != "" {
-		b.WriteString("        Link: ")
-		b.WriteString(best.Link)
-		b.WriteString("\n")
-	} else if best.Path != "" {
-		b.WriteString("        Path: ")
-		b.WriteString(best.Path)
-		b.WriteString("\n")
-	}
-
-	return b.String()
 }
