@@ -1,8 +1,9 @@
-import { X } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ClipPayload, MediaItem } from '../lib/types';
 import { safeJson } from '../lib/utils';
 import { Button } from './ui/Button';
+import { findDuplicates } from '../api/media';
 
 export function MediaDetailDrawer({
   item,
@@ -16,6 +17,14 @@ export function MediaDetailDrawer({
   onSave: (payload: ClipPayload) => void;
 }) {
   const [draft, setDraft] = useState<ClipPayload>({});
+  const [duplicates, setDuplicates] = useState<Array<{
+    source: string;
+    id: string;
+    name: string;
+    drive_link: string;
+    local_path: string;
+    thumb_url: string;
+  }>>([]);
 
   useEffect(() => {
     if (!item) return;
@@ -38,6 +47,20 @@ export function MediaDetailDrawer({
       status: item.status,
       error: item.error,
     });
+  }, [item]);
+
+  useEffect(() => {
+    if (!item) {
+      setDuplicates([]);
+      return;
+    }
+    findDuplicates(item.source, item.id)
+      .then((data) => {
+        if (data.ok && data.duplicates) {
+          setDuplicates(data.duplicates);
+        }
+      })
+      .catch(() => setDuplicates([]));
   }, [item]);
 
   if (!open || !item) return null;
@@ -64,6 +87,23 @@ export function MediaDetailDrawer({
 
         <div className="grid gap-4 p-5">
           <Preview item={item} />
+
+          {duplicates.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertTriangle className="h-4 w-4" />
+                Questo asset ha {duplicates.length} duplicati con lo stesso file hash.
+              </div>
+              <ul className="mt-2 space-y-1">
+                {duplicates.map((dup) => (
+                  <li key={`${dup.source}-${dup.id}`} className="text-xs">
+                    {dup.source} • {dup.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <Field label="Nome" value={String(draft.name ?? '')} onChange={(v) => update('name', v)} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Filename" value={String(draft.filename ?? '')} onChange={(v) => update('filename', v)} />
