@@ -101,7 +101,70 @@ export function MediaDetailDrawer({
   );
 }
 
-function Preview({ item }: { item: MediaItem }) {
+function getDriveFileId(item: MediaItem): string {
+  if (item.drive_file_id) return item.drive_file_id;
+
+  const value = item.drive_link || item.download_link || "";
+
+  const fileMatch = value.match(/\/file\/d\/([^/?]+)/);
+  if (fileMatch?.[1]) return fileMatch[1];
+
+  const idMatch = value.match(/[?&]id=([^&]+)/);
+  if (idMatch?.[1]) return idMatch[1];
+
+  return "";
+}
+
+function isVideoAsset(item: MediaItem): boolean {
+  const filename = String(
+    item.filename || item.local_path || item.download_link || item.drive_link || ""
+  ).toLowerCase();
+
+  return (
+    item.source === "artlist" ||
+    item.source === "youtube" ||
+    item.source === "clips" ||
+    item.source === "stock" ||
+    filename.endsWith(".mp4") ||
+    filename.endsWith(".mov") ||
+    filename.endsWith(".webm") ||
+    filename.endsWith(".mkv") ||
+    filename.endsWith(".avi") ||
+    filename.endsWith(".m4v")
+  );
+}
+
+function VideoPreview({ item }: { item: MediaItem }) {
+  const driveFileId = getDriveFileId(item);
+
+  if (driveFileId) {
+    return (
+      <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-950 shadow-inner">
+        <iframe
+          src={`https://drive.google.com/file/d/${driveFileId}/preview`}
+          allow="autoplay; fullscreen"
+          allowFullScreen
+          className="aspect-video w-full bg-zinc-950"
+          title={item.name || "Drive video preview"}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-950 shadow-inner">
+      <video
+        controls
+        preload="metadata"
+        poster={item.thumb_url || undefined}
+        src={item.preview_url || item.download_link}
+        className="max-h-[420px] w-full bg-zinc-950"
+      />
+    </div>
+  );
+}
+
+function ImagePreview({ item }: { item: MediaItem }) {
   const [imgSrc, setImgSrc] = useState<string>(
     item.preview_url || item.thumb_url || ''
   );
@@ -111,7 +174,6 @@ function Preview({ item }: { item: MediaItem }) {
       setImgSrc(item.preview_url || item.thumb_url || '');
       return;
     }
-    // Try to build a Drive thumbnail if drive_link exists
     if (item.drive_link) {
       const match = item.drive_link.match(/\/d\/([^/?]+)/);
       if (match) {
@@ -119,7 +181,6 @@ function Preview({ item }: { item: MediaItem }) {
         return;
       }
     }
-    // Fallback placeholder
     setImgSrc(`https://placehold.co/800x600/f8fafc/64748b?text=${encodeURIComponent(item.name || item.source)}`);
   }, [item]);
 
@@ -133,6 +194,16 @@ function Preview({ item }: { item: MediaItem }) {
       />
     </div>
   );
+}
+
+function Preview({ item }: { item: MediaItem }) {
+  const isVideo = isVideoAsset(item);
+
+  if (isVideo) {
+    return <VideoPreview item={item} />;
+  }
+
+  return <ImagePreview item={item} />;
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {

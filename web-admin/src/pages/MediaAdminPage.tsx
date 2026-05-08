@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia } from '../api/media';
+import { bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia } from '../api/media';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
 import { SourceTabs } from '../components/SourceTabs';
@@ -46,6 +46,9 @@ export function MediaAdminPage() {
     if (activeFilter === 'processed') return items.filter((item) => item.drive_link || item.download_link);
     if (activeFilter === 'missingDrive') return items.filter((item) => !item.drive_link && !item.download_link);
     if (activeFilter === 'missingHash') return items.filter((item) => !item.file_hash);
+    if (activeFilter === 'noThumbnail') return items.filter((item) => !item.thumb_url);
+    if (activeFilter === 'localOnly') return items.filter((item) => item.local_path && !item.drive_link);
+    if (activeFilter === 'withErrors') return items.filter((item) => Boolean(item.error) || String(item.status || '').includes('failed'));
     return items;
   }, [items, activeFilter]);
   const selectedItems = filteredItems.filter((item) => selected.has(item.id));
@@ -73,6 +76,22 @@ export function MediaAdminPage() {
   const handleBulkTrash = () => {
     selectedItems.forEach((item) => actionMutation.mutate({ action: 'trash', item }));
     setSelected(new Set());
+  };
+
+  const handleBulkReprocess = async () => {
+    const ids = Array.from(selected);
+    await bulkReprocessMedia(source, ids);
+    setNotice(`Reprocessing ${ids.length} clip`);
+    setSelected(new Set());
+    refresh();
+  };
+
+  const handleBulkReupload = async () => {
+    const ids = Array.from(selected);
+    await bulkReuploadMedia(source, ids);
+    setNotice(`Reuploading ${ids.length} clip`);
+    setSelected(new Set());
+    refresh();
   };
 
   return (
@@ -106,12 +125,23 @@ export function MediaAdminPage() {
         </div>
       </section>
 
+      <div className="flex flex-wrap gap-2">
+        <Button variant={activeFilter === 'all' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('all')}>All</Button>
+        <Button variant={activeFilter === 'missingDrive' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('missingDrive')}>Needs processing</Button>
+        <Button variant={activeFilter === 'missingHash' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('missingHash')}>Missing hash</Button>
+        <Button variant={activeFilter === 'noThumbnail' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('noThumbnail')}>No thumbnail</Button>
+        <Button variant={activeFilter === 'localOnly' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('localOnly')}>Local only</Button>
+        <Button variant={activeFilter === 'withErrors' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('withErrors')}>Errors</Button>
+      </div>
+
       {selected.size > 0 && (
-        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
-          <p className="text-sm font-semibold text-blue-950">{selected.size} elementi selezionati</p>
+        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm">
+          <p className="text-sm font-semibold text-blue-950">{selected.size} clip selezionate</p>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setSelected(new Set())}>Deseleziona</Button>
-            <Button variant="danger" onClick={handleBulkTrash}><Trash2 className="h-4 w-4" /> Trash selezionati</Button>
+            <Button variant="secondary" onClick={handleBulkReprocess}>Reprocess</Button>
+            <Button variant="secondary" onClick={handleBulkReupload}>Reupload</Button>
+            <Button variant="danger" onClick={handleBulkTrash}><Trash2 className="h-4 w-4" /> Delete</Button>
           </div>
         </div>
       )}

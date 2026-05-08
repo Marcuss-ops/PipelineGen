@@ -90,3 +90,15 @@ export async function trashMedia(source: MediaSource, id: string) {
 export async function deleteMedia(source: MediaSource, id: string) {
   return apiFetch(`/api/media/${source}/clips/${id}/delete`, { method: 'POST' });
 }
+
+export async function bulkReprocessMedia(source: MediaSource, ids: string[]) {
+  return Promise.all(ids.map((id) => reprocessMedia(source, id)));
+}
+
+export async function bulkReuploadMedia(source: MediaSource, ids: string[]) {
+  return Promise.all(ids.map((id) => reuploadMedia(source, id)));
+}
+
+export async function bulkTrashMedia(source: MediaSource, ids: string[]) {
+  return Promise.all(ids.map((id) => trashMedia(source, id)));
+}

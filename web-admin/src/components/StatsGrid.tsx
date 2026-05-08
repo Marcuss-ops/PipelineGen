@@ -1,7 +1,7 @@
-import { AlertTriangle, CheckCircle2, Cloud, Database, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Cloud, Database, EyeOff, ImageOff, Loader2, Server } from 'lucide-react';
 import type { MediaItem } from '../lib/types';
 
-export type FilterType = 'all' | 'processed' | 'missingDrive' | 'missingHash';
+export type FilterType = 'all' | 'processed' | 'missingDrive' | 'missingHash' | 'noThumbnail' | 'localOnly' | 'withErrors';
 
 export function StatsGrid({
   items,
@@ -17,11 +17,17 @@ export function StatsGrid({
   const processed = items.filter((item) => item.drive_link || item.download_link).length;
   const missingDrive = items.filter((item) => !item.drive_link && !item.download_link).length;
   const missingHash = items.filter((item) => !item.file_hash).length;
+  const noThumbnail = items.filter((item) => !item.thumb_url).length;
+  const localOnly = items.filter((item) => item.local_path && !item.drive_link).length;
+  const withErrors = items.filter((item) => Boolean(item.error) || String(item.status || '').includes('failed')).length;
   const cards: { label: string; value: number; icon: React.ElementType; filter: FilterType }[] = [
     { label: 'Totale record', value: items.length, icon: Database, filter: 'all' },
     { label: 'Processati', value: processed, icon: CheckCircle2, filter: 'processed' },
     { label: 'Senza Drive', value: missingDrive, icon: Cloud, filter: 'missingDrive' },
     { label: 'Senza hash', value: missingHash, icon: AlertTriangle, filter: 'missingHash' },
+    { label: 'Senza thumbnail', value: noThumbnail, icon: ImageOff, filter: 'noThumbnail' },
+    { label: 'Solo locali', value: localOnly, icon: Server, filter: 'localOnly' },
+    { label: 'Con errori', value: withErrors, icon: AlertTriangle, filter: 'withErrors' },
   ];
   return (
     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
