@@ -48,5 +48,6 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	internal := r.Group("", middleware.RequireInternalHeader())
 	internal.POST("/search", h.Search)
 	internal.POST("/search/live", h.SearchLive)
+	internal.POST("/recommend", h.Recommend)
 	internal.POST("/sync-catalogs", h.SyncCatalogs)
 }
