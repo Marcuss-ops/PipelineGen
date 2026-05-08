@@ -154,3 +154,8 @@ func (s *SQLiteDB) Close() error {
 	}
 	return nil
 }
+
+// Path returns the database file path.
+func (s *SQLiteDB) Path() string {
+	return s.dbPath
+}

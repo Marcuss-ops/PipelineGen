@@ -50,7 +50,7 @@ func WireArtlist(
 	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
 
 	// Create clipindexer service
-	clipIndexerSvc := clipindexer.NewService(nil, coreDeps.ArtlistDB.DB, log)
+	clipIndexerSvc := clipindexer.NewService(nil, coreDeps.ArtlistDB.DB, coreDeps.ArtlistDB.Path(), log)
 
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,

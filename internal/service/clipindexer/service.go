@@ -16,6 +16,7 @@ type Config struct {
 	Enabled      bool   `yaml:"enabled"`
 	ScriptPath   string `yaml:"script_path"`
 	PythonBin    string `yaml:"python_bin"`
+	DBPath       string `yaml:"db_path"`
 	AutoIndexAfterArtlist bool `yaml:"auto_index_after_artlist"`
 }
 
@@ -35,10 +36,11 @@ type Service struct {
 	cfg           *Config
 	log           *zap.Logger
 	scriptPath    string
+	dbPath        string
 }
 
 // NewService creates a new clipindexer service
-func NewService(cfg *Config, db *sql.DB, log *zap.Logger) *Service {
+func NewService(cfg *Config, db *sql.DB, dbPath string, log *zap.Logger) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
@@ -57,6 +59,7 @@ func NewService(cfg *Config, db *sql.DB, log *zap.Logger) *Service {
 		cfg:        cfg,
 		log:        log,
 		scriptPath: scriptPath,
+		dbPath:     dbPath,
 	}
 }
 
@@ -77,6 +80,11 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	// Build command arguments using absolute script path
 	scriptName := filepath.Base(s.scriptPath)
 	args := []string{scriptName}
+
+	// Add database path (required by script)
+	if s.dbPath != "" {
+		args = append(args, "--db", s.dbPath)
+	}
 
 	if name != "" {
 		args = append(args, "--clip-name", name)
