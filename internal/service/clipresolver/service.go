@@ -298,6 +298,9 @@ func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
 
 	score := 0.0
 	for _, qt := range queryTokens {
+		if len(qt) < 5 {
+			continue
+		}
 		for _, tt := range targetTokens {
 			if strings.EqualFold(qt, tt) {
 				score += 0.1
@@ -325,10 +328,10 @@ func (s *Service) matchesTopic(clip *models.Clip, topic string) bool {
 	tagsStr := strings.Join(clip.Tags, " ")
 	searchText := strings.ToLower(searchTermsStr + " " + clip.Name + " " + tagsStr)
 
-	// Count matching tokens (only tokens with len >= 4)
+	// Count matching tokens (only tokens with len >= 5 to avoid short false matches)
 	matched := 0
 	for _, tok := range topicTokens {
-		if len(tok) < 4 {
+		if len(tok) < 5 {
 			continue
 		}
 		if strings.Contains(searchText, strings.ToLower(tok)) {
