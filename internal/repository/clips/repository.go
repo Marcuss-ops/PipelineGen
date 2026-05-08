@@ -431,8 +431,6 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	clip.Status = status
 	clip.Error = errMsg
 
-	r.log.Info("scanClipRows", zap.String("id", clip.ID), zap.String("thumb_url", thumbURL))
-
 	return &clip, nil
 }
 
