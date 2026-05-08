@@ -1,0 +1,92 @@
+import { apiFetch } from './client';
+import { makeMockItems } from '../data/mockMedia';
+import type { ClipPayload, MediaItem, MediaSource } from '../lib/types';
+import { asArray } from '../lib/utils';
+
+type ApiClipResponse = {
+  ok?: boolean;
+  source?: string;
+  clips?: unknown[];
+  items?: unknown[];
+  count?: number;
+};
+
+function normalizeClip(raw: any, source: MediaSource): MediaItem {
+  return {
+    id: String(raw.id ?? raw.clip_id ?? crypto.randomUUID()),
+    source: raw.source ?? source,
+    name: raw.name ?? raw.title ?? raw.filename ?? 'Untitled asset',
+    filename: raw.filename,
+    category: raw.category,
+    tags: asArray(raw.tags),
+    search_terms: asArray(raw.search_terms),
+    status: raw.status,
+    error: raw.error,
+    external_url: raw.external_url,
+    drive_link: raw.drive_link,
+    drive_file_id: raw.drive_file_id,
+    download_link: raw.download_link,
+    local_path: raw.local_path,
+    file_hash: raw.file_hash,
+    folder_id: raw.folder_id,
+    folder_path: raw.folder_path,
+    duration: raw.duration,
+    metadata: raw.metadata,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    thumb_url: raw.thumb_url,
+    preview_url: raw.preview_url,
+  };
+}
+
+export async function listMedia(source: MediaSource, q = ''): Promise<MediaItem[]> {
+  try {
+    const query = q ? `?q=${encodeURIComponent(q)}` : '';
+    const data = await apiFetch<ApiClipResponse>(`/api/media/${source}/clips${query}`);
+    const list = data.clips ?? data.items ?? [];
+    return list.map((item) => normalizeClip(item, source));
+  } catch (error) {
+    console.warn('Using mock media because backend is not reachable:', error);
+    return makeMockItems(source).filter((item) => {
+      const needle = q.toLowerCase();
+      return !needle || [item.name, item.category, item.tags.join(' ')].join(' ').toLowerCase().includes(needle);
+    });
+  }
+}
+
+export async function updateMedia(source: MediaSource, id: string, payload: ClipPayload) {
+  return apiFetch(`/api/admin/${source}/clips/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createMedia(source: MediaSource, payload: ClipPayload) {
+  return apiFetch(`/api/admin/${source}/clips`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyMedia(source: MediaSource, id: string) {
+  return apiFetch(`/api/media/${source}/clips/${id}/verify`, { method: 'POST' });
+}
+
+export async function reprocessMedia(source: MediaSource, id: string) {
+  return apiFetch(`/api/media/${source}/clips/${id}/reprocess`, {
+    method: 'POST',
+    body: JSON.stringify({ force: true, upload_drive: true, normalize: true }),
+  });
+}
+
+export async function reuploadMedia(source: MediaSource, id: string) {
+  return apiFetch(`/api/media/${source}/clips/${id}/reupload`, { method: 'POST' });
+}
+
+export async function trashMedia(source: MediaSource, id: string) {
+  return apiFetch(`/api/media/${source}/clips/${id}/trash`, { method: 'POST' });
+}
+
+export async function deleteMedia(source: MediaSource, id: string) {
+  return apiFetch(`/api/media/${source}/clips/${id}/delete`, { method: 'POST' });
+}

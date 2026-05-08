@@ -1,0 +1,37 @@
+{
+  "name": "pipelinegen-web-admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@tanstack/react-query": "latest",
+    "@tanstack/react-table": "latest",
+    "@vitejs/plugin-react": "latest",
+    "clsx": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwind-merge": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "^25.6.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.5.0",
+    "eslint": "latest",
+    "eslint-plugin-react-hooks": "latest",
+    "eslint-plugin-react-refresh": "latest",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.19",
+    "typescript-eslint": "latest"
+  }
+}

@@ -1,0 +1,123 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Search, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia } from '../api/media';
+import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
+import { MediaTable } from '../components/MediaTable';
+import { SourceTabs } from '../components/SourceTabs';
+import { StatsGrid } from '../components/StatsGrid';
+import { Button } from '../components/ui/Button';
+import { SOURCES, sourceById } from '../lib/sources';
+import type { ClipPayload, MediaItem, MediaSource } from '../lib/types';
+
+export function MediaAdminPage() {
+  const queryClient = useQueryClient();
+  const [source, setSource] = useState<MediaSource>('artlist');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<MediaItem | null>(null);
+  const [notice, setNotice] = useState<string>('');
+
+  const mediaQuery = useQuery({
+    queryKey: ['media', source, search],
+    queryFn: () => listMedia(source, search),
+  });
+
+  const allSourceCounts = useMemo(() => Object.fromEntries(SOURCES.map((item) => [item.id, item.id === source ? mediaQuery.data?.length ?? 0 : 0])), [mediaQuery.data?.length, source]);
+
+  const items = mediaQuery.data ?? [];
+  const selectedItems = items.filter((item) => selected.has(item.id));
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['media'] });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: ClipPayload }) => updateMedia(source, id, payload),
+    onSuccess: () => { setNotice('Asset aggiornato'); setEditing(null); refresh(); },
+    onError: (error) => setNotice(`Backend non disponibile o endpoint mancante: ${String(error)}`),
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: async ({ action, item }: { action: 'verify' | 'reprocess' | 'reupload' | 'trash' | 'delete'; item: MediaItem }) => {
+      if (action === 'verify') return verifyMedia(source, item.id);
+      if (action === 'reprocess') return reprocessMedia(source, item.id);
+      if (action === 'reupload') return reuploadMedia(source, item.id);
+      if (action === 'delete') return deleteMedia(source, item.id);
+      return trashMedia(source, item.id);
+    },
+    onSuccess: (_, vars) => { setNotice(`Azione completata: ${vars.action}`); refresh(); },
+    onError: (error) => setNotice(`Azione non riuscita: ${String(error)}`),
+  });
+
+  const handleBulkTrash = () => {
+    selectedItems.forEach((item) => actionMutation.mutate({ action: 'trash', item }));
+    setSelected(new Set());
+  };
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-blue-600">Admin console</p>
+            <h2 className="mt-1 text-3xl font-extrabold tracking-tight">Gestione completa media database</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">Controlla Artlist, Stock, YouTube clips, Voiceover e Images da una sola UI React. Modifica metadata, verifica coerenza, reprocessa e gestisci Drive.</p>
+          </div>
+          <Button onClick={() => setEditing({ id: crypto.randomUUID(), source, name: 'Nuovo asset', tags: [], status: 'draft' })}>
+            <Plus className="h-4 w-4" /> Aggiungi asset
+          </Button>
+        </div>
+      </section>
+
+      <StatsGrid items={items} />
+
+      <section className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); }} />
+        <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-lg font-bold">{sourceById[source].label}</h3>
+            <p className="text-sm text-zinc-500">{sourceById[source].description}</p>
+          </div>
+          <div className="relative w-full md:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Cerca in ${sourceById[source].label}...`} className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" />
+          </div>
+        </div>
+      </section>
+
+      {selected.size > 0 && (
+        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm font-semibold text-blue-950">{selected.size} elementi selezionati</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setSelected(new Set())}>Deseleziona</Button>
+            <Button variant="danger" onClick={handleBulkTrash}><Trash2 className="h-4 w-4" /> Trash selezionati</Button>
+          </div>
+        </div>
+      )}
+
+      {notice && <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm">{notice}</div>}
+
+      <MediaTable
+        items={items}
+        selected={selected}
+        onSelect={(id, checked) => setSelected((previous) => { const next = new Set(previous); checked ? next.add(id) : next.delete(id); return next; })}
+        onSelectAll={(checked) => setSelected(checked ? new Set(items.map((item) => item.id)) : new Set())}
+        onOpen={setEditing}
+        onEdit={setEditing}
+        onVerify={(item) => actionMutation.mutate({ action: 'verify', item })}
+        onReprocess={(item) => actionMutation.mutate({ action: 'reprocess', item })}
+        onReupload={(item) => actionMutation.mutate({ action: 'reupload', item })}
+        onTrash={(item) => actionMutation.mutate({ action: 'trash', item })}
+      />
+
+      <MediaDetailDrawer
+        item={editing}
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        onSave={(payload) => {
+          if (!editing) return;
+          updateMutation.mutate({ id: editing.id, payload });
+        }}
+      />
+    </div>
+  );
+}
