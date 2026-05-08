@@ -1,0 +1,27 @@
+amish:
+  core_terms: ["amish", "plain community", "ordnung", "simple life"]
+  visual_synonyms:
+    - ["horse wagon", "horse buggy", "buggy"]
+    - ["schoolhouse", "one-room school"]
+    - ["elder", "bearded man", "plain dress"]
+  boost: 1.3
+  avoid: ["computer", "television", "smartphone", "city", "pizza", "nightlife", "technology"]
+  preferred_categories: ["rural_life", "tradition", "transport"]
+
+technology:
+  core_terms: ["data center", "5g", "engineer", "server"]
+  visual_synonyms:
+    - ["server room", "data center", "rack"]
+    - ["engineer", "technician"]
+  avoid: ["farm", "horse", "ancient", "amish", "rural"]
+  preferred_categories: ["technology", "modern", "office"]
+  boost: 1.2
+
+paleolithic:
+  core_terms: ["paleolithic", "stone age", "caveman", "hunter gatherer"]
+  visual_synonyms:
+    - ["cave", "stone tool", "spear"]
+    - ["mammoth", "wild beast"]
+  avoid: ["modern", "city", "computer", "smartphone"]
+  preferred_categories: ["prehistory", "nature", "ancient"]
+  boost: 1.1
