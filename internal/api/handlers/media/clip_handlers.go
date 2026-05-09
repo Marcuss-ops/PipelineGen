@@ -580,3 +580,144 @@ func (h *CommonHandler) DownloadClip(c *gin.Context) {
 
 	apiutil.NotFound(c, "clip video not available (no local file and no drive ID)")
 }
+
+// CreateClip creates a new clip.
+func (h *CommonHandler) CreateClip(c *gin.Context) {
+	source := c.Param("source")
+	repo := h.resolveRepo(source)
+	if repo == nil {
+		apiutil.BadRequest(c, "invalid source: "+source)
+		return
+	}
+
+	var clip models.Clip
+	if err := c.ShouldBindJSON(&clip); err != nil {
+		apiutil.BadRequest(c, "invalid clip data: "+err.Error())
+		return
+	}
+
+	// Ensure ID is generated if missing
+	if clip.ID == "" {
+		clip.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+
+	if err := repo.SaveClip(c.Request.Context(), &clip); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":      true,
+		"source":  source,
+		"clip_id": clip.ID,
+		"clip":    clip,
+	})
+}
+
+// UpdateClip updates an existing clip.
+func (h *CommonHandler) UpdateClip(c *gin.Context) {
+	source := c.Param("source")
+	clipID := c.Param("id")
+
+	repo := h.resolveRepo(source)
+	if repo == nil {
+		apiutil.BadRequest(c, "invalid source: "+source)
+		return
+	}
+
+	var payload map[string]interface{}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		apiutil.BadRequest(c, "invalid payload")
+		return
+	}
+
+	ctx := c.Request.Context()
+	clip, err := repo.GetClip(ctx, clipID)
+	if err != nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
+
+	// Manual update of fields from payload
+	if val, ok := payload["name"].(string); ok {
+		clip.Name = val
+	}
+	if val, ok := payload["category"].(string); ok {
+		clip.Category = val
+	}
+	if val, ok := payload["tags"].([]interface{}); ok {
+		tags := make([]string, len(val))
+		for i, v := range val {
+			if s, ok := v.(string); ok {
+				tags[i] = s
+			}
+		}
+		clip.Tags = tags
+	}
+	if val, ok := payload["search_terms"].([]interface{}); ok {
+		terms := make([]string, len(val))
+		for i, v := range val {
+			if s, ok := v.(string); ok {
+				terms[i] = s
+			}
+		}
+		clip.SearchTerms = terms
+	}
+	if val, ok := payload["status"].(string); ok {
+		clip.Status = val
+	}
+	if val, ok := payload["error"].(string); ok {
+		clip.Error = val
+	}
+	if val, ok := payload["folder_id"].(string); ok {
+		clip.FolderID = val
+	}
+	if val, ok := payload["folder_path"].(string); ok {
+		clip.FolderPath = val
+	}
+	if val, ok := payload["drive_link"].(string); ok {
+		clip.DriveLink = val
+	}
+	if val, ok := payload["download_link"].(string); ok {
+		clip.DownloadLink = val
+	}
+	if val, ok := payload["thumb_url"].(string); ok {
+		clip.ThumbURL = val
+	}
+
+	if err := repo.SaveClip(ctx, clip); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":      true,
+		"source":  source,
+		"clip_id": clipID,
+		"clip":    clip,
+	})
+}
+
+// GetClip returns a single clip.
+func (h *CommonHandler) GetClip(c *gin.Context) {
+	source := c.Param("source")
+	clipID := c.Param("id")
+
+	repo := h.resolveRepo(source)
+	if repo == nil {
+		apiutil.BadRequest(c, "invalid source: "+source)
+		return
+	}
+
+	clip, err := repo.GetClip(c.Request.Context(), clipID)
+	if err != nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":     true,
+		"source": source,
+		"clip":   clip,
+	})
+}

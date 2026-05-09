@@ -56,6 +56,9 @@ func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering common media routes")
 	
 	// Clip-level endpoints
+	r.POST("/:source/clips", h.CreateClip)
+	r.GET("/:source/clips/:id", h.GetClip)
+	r.PATCH("/:source/clips/:id", h.UpdateClip)
 	r.POST("/:source/clips/:id/status", h.ClipStatus)
 	r.POST("/:source/clips/:id/verify", h.VerifyClip)
 	r.POST("/:source/clips/:id/trash", h.TrashClip)

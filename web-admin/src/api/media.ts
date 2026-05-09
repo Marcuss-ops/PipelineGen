@@ -55,14 +55,14 @@ export async function listMedia(source: MediaSource, q = ''): Promise<MediaItem[
 }
 
 export async function updateMedia(source: MediaSource, id: string, payload: ClipPayload) {
-  return apiFetch(`/api/admin/${source}/clips/${id}`, {
+  return apiFetch(`/api/media/${source}/clips/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
 }
 
 export async function createMedia(source: MediaSource, payload: ClipPayload) {
-  return apiFetch(`/api/admin/${source}/clips`, {
+  return apiFetch(`/api/media/${source}/clips`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
