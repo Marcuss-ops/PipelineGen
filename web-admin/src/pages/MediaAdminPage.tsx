@@ -45,7 +45,7 @@ export function MediaAdminPage() {
 
   const mediaQuery = useInfiniteQuery({
     queryKey: ['media', source, search],
-    queryFn: ({ pageParam = 0 }) => listMedia(source, search, 50, pageParam),
+    queryFn: ({ pageParam = 0 }) => listMedia(source, search, 50, pageParam).then(res => res.items),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       if (lastPage.length < 50) return undefined;
@@ -57,7 +57,7 @@ export function MediaAdminPage() {
   const allSourceQueries = useQueries({
     queries: SOURCES.map((s) => ({
       queryKey: ['media-count', s.id],
-      queryFn: () => listMedia(s.id as MediaSource, ''),
+      queryFn: () => listMedia(s.id as MediaSource, '', 1), // Only fetch 1 item to get total count
       staleTime: 60000,
     })),
   });
@@ -66,7 +66,7 @@ export function MediaAdminPage() {
     const counts: Record<string, number> = {};
     SOURCES.forEach((s, idx) => {
       const q = allSourceQueries[idx];
-      counts[s.id] = q.data?.length ?? 0;
+      counts[s.id] = q.data?.total ?? 0;
     });
     return counts;
   }, [allSourceQueries, SOURCES]);
@@ -186,12 +186,6 @@ export function MediaAdminPage() {
         </div>
       </div>
 
-      <StatsGrid
-        items={normalizedItems}
-        activeFilter={activeFilter}
-        onFilter={setActiveFilter}
-        isLoading={treeQuery.isLoading || mediaQuery.isLoading}
-      />
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); setActiveFolderId('root'); }} />

@@ -40,22 +40,29 @@ function normalizeClip(raw: any, source: MediaSource): MediaItem {
   };
 }
 
-export async function listMedia(source: MediaSource, q = '', limit = 100, offset = 0): Promise<MediaItem[]> {
+export async function listMedia(source: MediaSource, q = '', limit = 100, offset = 0): Promise<{ items: MediaItem[]; total: number }> {
   try {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     params.set('limit', String(limit));
     params.set('offset', String(offset));
     
-    const data = await apiFetch<ApiClipResponse>(`/api/media/${source}/clips?${params.toString()}`);
+    const data = await apiFetch<ApiClipResponse & { total?: number }>(`/api/media/${source}/clips?${params.toString()}`);
     const list = data.clips ?? data.items ?? [];
-    return list.map((item) => normalizeClip(item, source));
+    return {
+      items: list.map((item) => normalizeClip(item, source)),
+      total: data.total ?? list.length
+    };
   } catch (error) {
     console.warn('Using mock media because backend is not reachable:', error);
-    return makeMockItems(source).filter((item: MediaItem) => {
+    const mock = makeMockItems(source).filter((item: MediaItem) => {
       const needle = q.toLowerCase();
       return !needle || [item.name, item.category, item.tags.join(' ')].join(' ').toLowerCase().includes(needle);
-    }).slice(offset, offset + limit);
+    });
+    return {
+      items: mock.slice(offset, offset + limit).map((item) => normalizeClip(item, source)),
+      total: mock.length
+    };
   }
 }
 
