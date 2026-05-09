@@ -24,16 +24,38 @@ import (
 // runAllMigrations applies database migrations to each database.
 // Each database gets only the migrations relevant to its purpose.
 func runAllMigrations(dbs *databases, log *zap.Logger) error {
-	// Apply main migrations only to main DB (velox.db)
+	// 1. Create all tables first
+	
+	// Scripts migrations -> velox.db.sqlite
+	scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
+	if err := dbs.main.RunMigrations(log, scriptsMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run scripts migrations: %w", err)
+	}
+
+	// Harvester migrations -> velox.db.sqlite
+	harvesterMigrationsDir := filepath.Join("internal", "repository", "harvester", "migrations")
+	if err := os.MkdirAll(harvesterMigrationsDir, 0755); err == nil {
+		if err := dbs.main.RunMigrations(log, harvesterMigrationsDir); err != nil {
+			log.Warn("Failed to run harvester migrations", zap.Error(err))
+		}
+	}
+
+	// Media migrations -> velox.db.sqlite
+	mediaMigrationsDir := filepath.Join("internal", "repository", "media", "migrations")
+	if err := dbs.main.RunMigrations(log, mediaMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run media migrations: %w", err)
+	}
+
+	// Main orchestration migrations (contains table creations 001-004, 006-007)
+	// NOTE: 005 contains indexes for tables created above, so we might need to split it 
+	// or ensure it runs after them. Since RunMigrations runs the whole directory, 
+	// we'll keep it here but we've already run the external ones.
 	orchestrationMigrationsDir := filepath.Join("migrations", "sqlite")
 	if err := dbs.main.RunMigrations(log, orchestrationMigrationsDir); err != nil {
 		return fmt.Errorf("failed to run orchestration migrations: %w", err)
 	}
 
-	scriptsMigrationsDir := filepath.Join("internal", "repository", "scripts", "migrations")
-	if err := dbs.main.RunMigrations(log, scriptsMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run scripts migrations: %w", err)
-	}
+	// 2. Apply migrations to other databases
 
 	// Apply clips migrations only to databases that need clips tables
 	clipsMigrationsDir := filepath.Join("internal", "repository", "clips", "migrations")
@@ -55,14 +77,6 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 		return fmt.Errorf("failed to run artlist database migrations: %w", err)
 	}
 
-	// Harvester migrations only to main DB
-	harvesterMigrationsDir := filepath.Join("internal", "repository", "harvester", "migrations")
-	if err := os.MkdirAll(harvesterMigrationsDir, 0755); err == nil {
-		if err := dbs.main.RunMigrations(log, harvesterMigrationsDir); err != nil {
-			log.Warn("Failed to run harvester migrations", zap.Error(err))
-		}
-	}
-
 	// Images migrations only to images DB
 	imagesMigrationsDir := filepath.Join("internal", "repository", "images", "migrations")
 	if err := dbs.images.RunMigrations(log, imagesMigrationsDir); err != nil {
@@ -75,11 +89,6 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 		return fmt.Errorf("failed to run voiceovers migrations: %w", err)
 	}
 
-	// Media migrations only to main DB
-	mediaMigrationsDir := filepath.Join("internal", "repository", "media", "migrations")
-	if err := dbs.main.RunMigrations(log, mediaMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run media migrations: %w", err)
-	}
-
 	return nil
 }
+

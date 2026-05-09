@@ -185,9 +185,8 @@ func TestYouTubeClipHandlesMediaProcessorFailure(t *testing.T) {
 		nil, // clips repo
 		nil, // monitors repo
 		nil, // drive client
-		nil, // drive destination
 		processor,
-		nil, // finalizer
+		nil, // lifecycle
 	)
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
@@ -227,7 +226,6 @@ func TestYouTubeClipPassesExpectedAssetInputToProcessor(t *testing.T) {
 	svc := NewService(
 		cfg,
 		log,
-		nil,
 		nil,
 		nil,
 		nil,

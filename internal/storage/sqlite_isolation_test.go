@@ -23,6 +23,8 @@ var expectedTables = map[string][]string{
 		"video_stats_history",
 		"artlist_runs", // Currently in main DB (per user's schema)
 		"script_sections", // Part of scripts feature
+		"pipeline_runs",    // Added feature
+		"pipeline_run_items", // Added feature
 		"schema_migrations",
 		// Should NOT have: clip_folders, clip_tags, clips, indexing_checkpoints, script_sections, segment_embeddings
 	},
@@ -42,6 +44,11 @@ var expectedTables = map[string][]string{
 	"artlist.db.sqlite": {
 		"clips",        // Artlist-specific clips
 		"clip_folders",  // Artlist-specific folders
+		"clips_fts",    // FTS tables
+		"clips_fts_config",
+		"clips_fts_data",
+		"clips_fts_docsize",
+		"clips_fts_idx",
 		"schema_migrations",
 		// artlist_runs should be here per user's schema, but currently in velox.db
 		// Should NOT have: segment_embeddings

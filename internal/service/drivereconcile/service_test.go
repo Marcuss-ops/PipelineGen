@@ -11,6 +11,33 @@ import (
 	"velox/go-master/internal/repository/clips"
 )
 
+const testSchema = `CREATE TABLE clips (
+	id TEXT PRIMARY KEY,
+	name TEXT,
+	filename TEXT,
+	folder_id TEXT,
+	folder_path TEXT,
+	group_name TEXT,
+	media_type TEXT,
+	drive_link TEXT,
+	drive_file_id TEXT DEFAULT '',
+	download_link TEXT,
+	tags TEXT,
+	source TEXT,
+	category TEXT,
+	external_url TEXT,
+	duration REAL,
+	metadata TEXT,
+	file_hash TEXT,
+	local_path TEXT,
+	status TEXT DEFAULT '',
+	error TEXT DEFAULT '',
+	search_terms TEXT NOT NULL DEFAULT '[]',
+	thumb_url TEXT DEFAULT '',
+	created_at TEXT,
+	updated_at TEXT
+)`
+
 func TestNewService(t *testing.T) {
 	repo := &clips.Repository{}
 	svc := NewService(repo, nil, zap.NewNop())
@@ -27,30 +54,7 @@ func TestReconcile_EmptySource_NoPanic(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.Exec(`CREATE TABLE clips (
-		id TEXT PRIMARY KEY,
-		name TEXT,
-		filename TEXT,
-		folder_id TEXT,
-		folder_path TEXT,
-		group_name TEXT,
-		media_type TEXT,
-		drive_link TEXT,
-		drive_file_id TEXT DEFAULT '',
-		download_link TEXT,
-		tags TEXT,
-		source TEXT,
-		category TEXT,
-		external_url TEXT,
-		duration REAL,
-		metadata TEXT,
-		file_hash TEXT,
-		local_path TEXT,
-		status TEXT DEFAULT '',
-		error TEXT DEFAULT '',
-		created_at TEXT,
-		updated_at TEXT
-	)`)
+	_, err = db.Exec(testSchema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +73,3 @@ func TestReconcile_EmptySource_NoPanic(t *testing.T) {
 		t.Fatal("expected dry run to be true")
 	}
 }
-
-// Note: Full integration tests would require a mock Drive service
-// The Reconcile method with a nil driveSvc will skip the Drive->SQLite check
-// and only check SQLite->Drive (which requires a repo with data)
