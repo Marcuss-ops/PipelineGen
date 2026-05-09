@@ -176,7 +176,29 @@ function isVideoAsset(item: MediaItem): boolean {
 
 function VideoPreview({ item }: { item: MediaItem }) {
   const driveFileId = getDriveFileId(item);
+  const [error, setError] = useState(false);
 
+  // 1. Try our smart proxy first (Local or Drive via Backend)
+  // We use this if we have a way to identify the file
+  if (!error && (item.local_path || item.drive_file_id || driveFileId)) {
+    const videoSrc = `/api/media/${item.source}/clips/${item.id}/download`;
+    return (
+      <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-950 shadow-inner">
+        <video
+          controls
+          autoPlay
+          muted
+          preload="metadata"
+          poster={item.thumb_url || undefined}
+          src={videoSrc}
+          onError={() => setError(true)}
+          className="max-h-[420px] w-full bg-zinc-950"
+        />
+      </div>
+    );
+  }
+
+  // 2. Fallback to Drive iframe (more compatible but requires GDrive login in some cases)
   if (driveFileId) {
     return (
       <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-950 shadow-inner">
@@ -191,6 +213,7 @@ function VideoPreview({ item }: { item: MediaItem }) {
     );
   }
 
+  // 3. Last resort: direct links (like Artlist public URLs)
   return (
     <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-950 shadow-inner">
       <video
@@ -214,6 +237,13 @@ function ImagePreview({ item }: { item: MediaItem }) {
       setImgSrc(item.preview_url || item.thumb_url || '');
       return;
     }
+    
+    // If it's an image from Drive, use the thumbnail API
+    if (item.source === 'images' && item.drive_file_id) {
+      setImgSrc(`https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w800-h600`);
+      return;
+    }
+
     if (item.drive_link) {
       const match = item.drive_link.match(/\/d\/([^/?]+)/);
       if (match) {

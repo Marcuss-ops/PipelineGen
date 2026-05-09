@@ -3,6 +3,7 @@ import type { MediaItem } from '../lib/types';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { formatDate } from '../lib/utils';
+import { VideoThumbnail } from './VideoThumbnail';
 
 export function MediaTable({
   items,
@@ -46,8 +47,8 @@ export function MediaTable({
           {items.map((item) => (
             <div key={item.id} className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-6 px-6 py-5 transition hover:bg-zinc-50 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
               <input type="checkbox" checked={selected.has(item.id)} onChange={(event) => onSelect(item.id, event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
-              <button onClick={() => onOpen(item)} className="h-20 w-20 overflow-hidden rounded-2xl bg-zinc-100 ring-2 ring-zinc-900/5">
-                <img src={item.thumb_url || `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`} className="h-full w-full object-cover" alt="" />
+              <button onClick={() => onOpen(item)} className="h-20 w-20">
+                <VideoThumbnail item={item} className="h-20 w-20 rounded-2xl" />
               </button>
               <div className="min-w-0">
                 <button onClick={() => onOpen(item)} className="block max-w-full truncate text-left text-sm font-bold text-zinc-900 hover:text-blue-600">{item.name}</button>

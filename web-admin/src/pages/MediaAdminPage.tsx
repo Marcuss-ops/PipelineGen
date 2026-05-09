@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2, RefreshCw } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia } from '../api/media';
+import { bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages } from '../api/media';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
 import { SourceTabs } from '../components/SourceTabs';
@@ -94,22 +94,30 @@ export function MediaAdminPage() {
     refresh();
   };
 
+  const syncMutation = useMutation({
+    mutationFn: syncImages,
+    onSuccess: (data) => {
+      setNotice(data.message || 'Sincronizzazione completata');
+      refresh();
+    },
+    onError: (err) => setNotice(`Errore sinc: ${err}`),
+  });
+
   return (
-    <div className="space-y-10">
-      <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-blue-600">Admin console</p>
-            <h2 className="mt-1 text-3xl font-extrabold tracking-tight">Gestione completa media database</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">Controlla Artlist, Stock, YouTube clips, Voiceover e Images da una sola UI React. Modifica metadata, verifica coerenza, reprocessa e gestisci Drive.</p>
-          </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-black tracking-tight text-zinc-900">Media Database</h1>
+        <div className="flex gap-2">
+          {source === 'images' && (
+            <Button variant="secondary" onClick={() => syncMutation.mutate()} isLoading={syncMutation.isPending}>
+              <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} /> Sincronizza Drive
+            </Button>
+          )}
           <Button onClick={() => setEditing({ id: crypto.randomUUID(), source, name: 'Nuovo asset', tags: [], status: 'draft' })}>
             <Plus className="h-4 w-4" /> Aggiungi asset
           </Button>
         </div>
-      </section>
-
-      <StatsGrid items={items} isLoading={mediaQuery.isLoading} activeFilter={activeFilter} onFilter={(f) => setActiveFilter(f)} />
+      </div>
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
         <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); }} />
@@ -124,15 +132,6 @@ export function MediaAdminPage() {
           </div>
         </div>
       </section>
-
-      <div className="flex flex-wrap gap-2">
-        <Button variant={activeFilter === 'all' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('all')}>All</Button>
-        <Button variant={activeFilter === 'missingDrive' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('missingDrive')}>Needs processing</Button>
-        <Button variant={activeFilter === 'missingHash' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('missingHash')}>Missing hash</Button>
-        <Button variant={activeFilter === 'noThumbnail' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('noThumbnail')}>No thumbnail</Button>
-        <Button variant={activeFilter === 'localOnly' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('localOnly')}>Local only</Button>
-        <Button variant={activeFilter === 'withErrors' ? 'primary' : 'secondary'} onClick={() => setActiveFilter('withErrors')}>Errors</Button>
-      </div>
 
       {selected.size > 0 && (
         <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm">

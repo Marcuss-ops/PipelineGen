@@ -80,6 +80,8 @@ type HarvesterConfig struct {
 type DriveConfig struct {
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
+	// ImagesRootFolder is the root folder ID for image files on Drive.
+	ImagesRootFolder string `yaml:"images_root_folder" env:"VELOX_DRIVE_IMAGES_ROOT" default:""`
 	// VoiceoverRootFolder is the root folder ID for voiceover files on Drive.
 	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
 	// ClipRootFolders maps group names to Drive folder IDs for clip organization.

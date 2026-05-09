@@ -18,9 +18,12 @@ import (
 
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/pkg/config"
+	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 
 	"go.uber.org/zap"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 type Service struct {
@@ -29,19 +32,25 @@ type Service struct {
 	log        *zap.Logger
 	client     *http.Client
 	assetIndex *assetindex.Service
+	driveSvc   *driveapi.Service
+	folderID   string
+	cfg        *config.Config
 
 	// Gestione concorrenza per evitare doppi download
 	mu           sync.Mutex
 	activeSearch map[string]*sync.WaitGroup
 }
 
-func NewService(repo *images.Repository, baseDir string, assetIndex *assetindex.Service, log *zap.Logger) *Service {
+func NewService(repo *images.Repository, baseDir string, assetIndex *assetindex.Service, driveSvc *driveapi.Service, folderID string, cfg *config.Config, log *zap.Logger) *Service {
 	return &Service{
 		repo:         repo,
 		baseDir:      baseDir,
 		log:          log,
 		client:       &http.Client{Timeout: 15 * time.Second},
 		assetIndex:   assetIndex,
+		driveSvc:     driveSvc,
+		folderID:     folderID,
+		cfg:          cfg,
 		activeSearch: make(map[string]*sync.WaitGroup),
 	}
 }
@@ -431,4 +440,91 @@ func (s *Service) GetOrRegisterSubject(slug, displayName string) (*models.Subjec
 	}
 	newSubject.ID = id
 	return newSubject, nil
+}
+
+// SyncFromDrive scansiona la cartella Drive e sincronizza il database
+func (s *Service) SyncFromDrive(ctx context.Context) error {
+	if s.driveSvc == nil || s.folderID == "" {
+		s.log.Warn("Drive service or folder ID not configured for image sync")
+		return nil
+	}
+
+	s.log.Info("Starting image synchronization from Drive", zap.String("folderID", s.folderID))
+
+	// 1. List files in the root folder
+	query := driveutil.BuildFolderQuery(s.folderID)
+	fileList, err := s.driveSvc.Files.List().Q(query).
+		Fields("files(id, name, mimeType, md5Checksum, size, createdTime, webViewLink)").
+		Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to list drive files: %w", err)
+	}
+
+	for _, file := range fileList.Files {
+		// Skip folders
+		if file.MimeType == "application/vnd.google-apps.folder" {
+			continue
+		}
+
+		// Skip non-image files (basic check)
+		if !strings.HasPrefix(file.MimeType, "image/") {
+			continue
+		}
+
+		// Use MD5 checksum as hash if available
+		hash := file.Md5Checksum
+		if hash == "" {
+			hash = file.Id // Fallback to ID
+		}
+
+		// Check if image exists in DB
+		existing, _ := s.repo.GetImageByHash(hash)
+		if existing != nil {
+			// Update DriveFileID if missing
+			if existing.DriveFileID == "" {
+				existing.DriveFileID = file.Id
+				// Update in DB (optional, but good for coherence)
+			}
+			continue
+		}
+
+		s.log.Info("Indexing new image found on Drive", zap.String("name", file.Name), zap.String("id", file.Id))
+
+		// Create basic asset
+		asset := &models.ImageAsset{
+			Hash:         hash,
+			Description:  file.Name,
+			DriveFileID:  file.Id,
+			SourceURL:    file.WebViewLink,
+			SizeBytes:    file.Size,
+			Status:       "processed",
+			CreatedAt:    time.Now(),
+		}
+
+		// Add to DB
+		id, err := s.repo.AddImage(asset)
+		if err != nil {
+			s.log.Error("Failed to add image to DB", zap.Error(err))
+			continue
+		}
+		asset.ID = id
+
+		// Update Asset Index
+		if s.assetIndex != nil {
+			s.assetIndex.UpsertAsset(ctx, &assetindex.AssetRecord{
+				ID:        fmt.Sprintf("img_%d", id),
+				Hash:      hash,
+				Source:    "images",
+				Type:      "image",
+				Status:    "ready",
+				DriveLink: file.WebViewLink,
+				Metadata: map[string]interface{}{
+					"name": file.Name,
+					"size": file.Size,
+				},
+			})
+		}
+	}
+
+	return nil
 }

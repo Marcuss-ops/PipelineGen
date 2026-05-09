@@ -1,0 +1,54 @@
+import { useState, useRef, useEffect } from 'react';
+import type { MediaItem } from '../lib/types';
+
+export function VideoThumbnail({ item, className = "" }: { item: MediaItem, className?: string }) {
+  const [isHovering, setIsHovering] = useState(false);
+  const [error, setError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // The download endpoint is now our smart proxy (Local -> Drive)
+  const hasVideoSource = !!(item.local_path || item.drive_file_id || item.preview_url || item.download_link);
+  const proxySrc = (item.local_path || item.drive_file_id) 
+    ? `/api/media/${item.source}/clips/${item.id}/download` 
+    : (item.preview_url || item.download_link);
+
+  useEffect(() => {
+    if (isHovering && !error && videoRef.current) {
+      videoRef.current.play().catch(() => {
+        // Auto-play might be blocked
+      });
+    } else if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, [isHovering, error]);
+
+  return (
+    <div 
+      className={`relative overflow-hidden bg-zinc-100 ring-2 ring-zinc-900/5 ${className}`}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      {/* Thumbnail Image */}
+      <img 
+        src={item.thumb_url || `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`} 
+        className={`h-full w-full object-cover transition-opacity duration-300 ${isHovering && !error && hasVideoSource ? 'opacity-0' : 'opacity-100'}`}
+        alt="" 
+      />
+
+      {/* Video Preview */}
+      {isHovering && proxySrc && !error && (
+        <video
+          ref={videoRef}
+          src={proxySrc}
+          muted
+          loop
+          autoPlay
+          playsInline
+          onError={() => setError(true)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+    </div>
+  );
+}

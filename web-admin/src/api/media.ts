@@ -119,3 +119,7 @@ export async function bulkReuploadMedia(source: MediaSource, ids: string[]) {
 export async function bulkTrashMedia(source: MediaSource, ids: string[]) {
   return Promise.all(ids.map((id) => trashMedia(source, id)));
 }
+
+export async function syncImages() {
+  return apiFetch<{ ok: boolean; message: string }>('/api/images/sync', { method: 'POST' });
+}

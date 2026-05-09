@@ -162,7 +162,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if err := os.MkdirAll(imgAssetsDir, 0755); err != nil {
 		log.Warn("Failed to create image assets directory", zap.Error(err))
 	}
-	imageService := imgservice.NewService(imageRepo, imgAssetsDir, assetIndexService, log)
+	imageService := imgservice.NewService(imageRepo, imgAssetsDir, assetIndexService, driveClient, cfg.Drive.ImagesRootFolder, cfg, log)
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
 	clipsRepos := map[string]*clips.Repository{

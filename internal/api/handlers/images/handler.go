@@ -49,11 +49,21 @@ func (h *Handler) Search(c *gin.Context) {
 	})
 }
 
-// Sync avvia la sincronizzazione manuale del file system
+// Sync avvia la sincronizzazione manuale del file system e di Drive
 func (h *Handler) Sync(c *gin.Context) {
+	ctx := c.Request.Context()
+	
+	// 1. Local Sync
 	if err := h.service.SyncAssets(); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"message": "Synchronization complete"})
+
+	// 2. Drive Sync
+	if err := h.service.SyncFromDrive(ctx); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
 }
