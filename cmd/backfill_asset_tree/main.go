@@ -18,14 +18,12 @@ func main() {
 	dataDir := "data"
 	assetsDBPath := filepath.Join(dataDir, "assets.db.sqlite")
 
-	// Open Assets DB
 	db, err := sql.Open("sqlite3", assetsDBPath)
 	if err != nil {
 		log.Fatalf("failed to open assets db: %v", err)
 	}
 	defer db.Close()
 
-	// Clear existing tree for a clean backfill
 	_, _ = db.Exec("DELETE FROM asset_tree_nodes")
 	fmt.Println("Cleared existing asset tree nodes")
 
@@ -34,7 +32,6 @@ func main() {
 		log.Fatalf("failed to create repo: %v", err)
 	}
 
-	// 1. Sync from clip DBs (clips, artlist, stock)
 	type dbMap struct {
 		file   string
 		source string
@@ -46,14 +43,11 @@ func main() {
 	}
 
 	for _, d := range clipDBs {
-		syncFoldersFromClipsDB(ctx, dataDir, d.file, d.source, repo)
-		syncFromClipsDB(ctx, dataDir, d.file, d.source, repo)
+		// Use a combined sync function that handles nesting
+		syncSourceWithNesting(ctx, dataDir, d.file, d.source, repo)
 	}
 
-	// 2. Sync from images.db.sqlite
 	syncFromImagesDB(ctx, dataDir, repo)
-
-	// 3. Sync from voiceover.db.sqlite
 	syncFromVoiceoverDB(ctx, dataDir, repo)
 }
 
@@ -66,7 +60,7 @@ func isFilePath(path string) bool {
 	return false
 }
 
-func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile, sourceOverride string, repo *assettree.Repository) {
+func syncSourceWithNesting(ctx context.Context, dataDir, dbFile, source string, repo *assettree.Repository) {
 	dbPath := filepath.Join(dataDir, dbFile)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return
@@ -78,149 +72,115 @@ func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile, sourceOverride
 	}
 	defer db.Close()
 
-	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='clip_folders'").Scan(&tableName)
-	if err != nil {
-		return
-	}
-
-	rows, err := db.Query("SELECT folder_id, folder_path FROM clip_folders")
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	count := 0
-	for rows.Next() {
-		var folderID, folderPath sql.NullString
-		if err := rows.Scan(&folderID, &folderPath); err != nil {
-			continue
-		}
-
-		if folderID.String == "" {
-			continue
-		}
-
-		fPath := folderPath.String
-		if isFilePath(fPath) {
-			fPath = filepath.Dir(fPath)
-			if fPath == "." {
-				continue // Skip root-level files incorrectly marked as folders
+	// 1. Map paths to folder IDs
+	pathMap := make(map[string]string)
+	
+	var hasFoldersTable bool
+	err = db.QueryRow("SELECT 1 FROM sqlite_master WHERE type='table' AND name='clip_folders'").Scan(&hasFoldersTable)
+	if err == nil {
+		rows, _ := db.Query("SELECT folder_id, folder_path FROM clip_folders")
+		if rows != nil {
+			defer rows.Close()
+			for rows.Next() {
+				var fid, fpath sql.NullString
+				if err := rows.Scan(&fid, &fpath); err == nil && fid.String != "" {
+					p := strings.Trim(fpath.String, "/")
+					if p != "" {
+						pathMap[p] = fid.String
+					}
+				}
 			}
 		}
+	}
 
-		name := filepath.Base(fPath)
-		if name == "." || name == "/" || name == "" {
-			name = folderID.String
+	// 2. Ensure all path segments exist as folders
+	ensurePathSegments := func(fullPath string) string {
+		fullPath = strings.Trim(fullPath, "/")
+		if fullPath == "" {
+			return ""
 		}
 
-		node := &assettree.AssetNode{
-			ID:       folderID.String,
-			Source:   sourceOverride,
-			AssetID:  folderID.String,
-			Name:     name,
-			Type:     "folder",
-			ParentID: "",
-			Path:     fPath,
-			Depth:    strings.Count(fPath, "/"),
-			IsFolder: true,
-			Metadata: "{}",
-		}
+		segments := strings.Split(fullPath, "/")
+		currentPath := ""
+		parentID := ""
 
-		repo.UpsertNode(ctx, node)
-		count++
-	}
-	fmt.Printf("Synced %d folders from %s (source: %s)\n", count, dbFile, sourceOverride)
-}
-
-func syncFromClipsDB(ctx context.Context, dataDir, dbFile, sourceOverride string, repo *assettree.Repository) {
-	dbPath := filepath.Join(dataDir, dbFile)
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return
-	}
-
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return
-	}
-	defer db.Close()
-
-	var tableName string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='clips'").Scan(&tableName)
-	if err != nil {
-		return
-	}
-
-	rows, err := db.Query("SELECT id, name, filename, folder_id, folder_path, drive_link, drive_file_id, status FROM clips")
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-
-	count := 0
-	for rows.Next() {
-		var id, name, filename, folderID, folderPath, driveLink, driveFileID, status sql.NullString
-		if err := rows.Scan(&id, &name, &filename, &folderID, &folderPath, &driveLink, &driveFileID, &status); err != nil {
-			continue
-		}
-
-		effectiveFolderID := folderID.String
-		fPath := folderPath.String
-		
-		// If folderPath is actually a file path, extract the directory
-		if isFilePath(fPath) {
-			fPath = filepath.Dir(fPath)
-			if fPath == "." {
-				effectiveFolderID = "" // Root
+		for _, seg := range segments {
+			if currentPath == "" {
+				currentPath = seg
+			} else {
+				currentPath = currentPath + "/" + seg
 			}
+
+			folderID, exists := pathMap[currentPath]
+			if !exists {
+				// Generate a deterministic ID for intermediate folders if they don't exist in DB
+				folderID = "generated_" + source + "_" + strings.ReplaceAll(currentPath, "/", "_")
+				pathMap[currentPath] = folderID
+			}
+
+			node := &assettree.AssetNode{
+				ID:       folderID,
+				Source:   source,
+				AssetID:  folderID,
+				Name:     seg,
+				Type:     "folder",
+				ParentID: parentID,
+				Path:     currentPath,
+				Depth:    strings.Count(currentPath, "/"),
+				IsFolder: true,
+				Metadata: "{}",
+			}
+			repo.UpsertNode(ctx, node)
+			parentID = folderID
 		}
+		return parentID
+	}
 
-		if effectiveFolderID != "" {
-			syncFolderNode(ctx, repo, sourceOverride, effectiveFolderID, fPath)
+	// 3. Sync Clips
+	var hasClipsTable bool
+	err = db.QueryRow("SELECT 1 FROM sqlite_master WHERE type='table' AND name='clips'").Scan(&hasClipsTable)
+	if err == nil {
+		rows, _ := db.Query("SELECT id, name, filename, folder_id, folder_path, drive_link, drive_file_id, status FROM clips")
+		if rows != nil {
+			defer rows.Close()
+			count := 0
+			for rows.Next() {
+				var id, name, filename, folderID, folderPath, driveLink, driveFileID, status sql.NullString
+				if err := rows.Scan(&id, &name, &filename, &folderID, &folderPath, &driveLink, &driveFileID, &status); err != nil {
+					continue
+				}
+
+				fPath := folderPath.String
+				if isFilePath(fPath) {
+					fPath = filepath.Dir(fPath)
+				}
+				
+				effectiveParentID := ensurePathSegments(fPath)
+				
+				// If DB had a folder_id, but our path logic generated a different one or didn't find it,
+				// we trust the path logic for hierarchy but we could also use folderID.String if it matches.
+				// For now, path logic is safer for nesting.
+
+				node := &assettree.AssetNode{
+					ID:          id.String,
+					Source:      source,
+					AssetID:     id.String,
+					Name:        name.String,
+					Type:        "video",
+					ParentID:    effectiveParentID,
+					Path:        fPath,
+					Depth:       strings.Count(fPath, "/"),
+					IsFolder:    false,
+					DriveFileID: driveFileID.String,
+					DriveLink:   driveLink.String,
+					Metadata:    fmt.Sprintf("{\"status\":\"%s\",\"filename\":\"%s\"}", status.String, filename.String),
+				}
+				repo.UpsertNode(ctx, node)
+				count++
+			}
+			fmt.Printf("Synced %d items from %s (source: %s)\n", count, dbFile, source)
 		}
-
-		node := &assettree.AssetNode{
-			ID:          id.String,
-			Source:      sourceOverride,
-			AssetID:     id.String,
-			Name:        name.String,
-			Type:        "video",
-			ParentID:    effectiveFolderID,
-			Path:        fPath,
-			Depth:       strings.Count(fPath, "/"),
-			IsFolder:    false,
-			DriveFileID: driveFileID.String,
-			DriveLink:   driveLink.String,
-			Metadata:    fmt.Sprintf("{\"status\":\"%s\",\"filename\":\"%s\"}", status.String, filename.String),
-		}
-
-		repo.UpsertNode(ctx, node)
-		count++
 	}
-	fmt.Printf("Synced %d clips from %s (source: %s)\n", count, dbFile, sourceOverride)
-}
-
-func syncFolderNode(ctx context.Context, repo *assettree.Repository, source, folderID, folderPath string) {
-	if folderID == "" {
-		return
-	}
-	name := filepath.Base(folderPath)
-	if name == "." || name == "/" || name == "" {
-		name = folderID
-	}
-	node := &assettree.AssetNode{
-		ID:       folderID,
-		Source:   source,
-		AssetID:  folderID,
-		Name:     name,
-		Type:     "folder",
-		ParentID: "",
-		Path:     folderPath,
-		Depth:    strings.Count(folderPath, "/"),
-		IsFolder: true,
-		Metadata: "{}",
-	}
-	repo.UpsertNode(ctx, node)
 }
 
 func syncFromImagesDB(ctx context.Context, dataDir string, repo *assettree.Repository) {
@@ -241,6 +201,10 @@ func syncFromImagesDB(ctx context.Context, dataDir string, repo *assettree.Repos
 		return
 	}
 
+	// Create a dummy ensurePathSegments for this scope if needed, 
+	// but we can just use a shared one. For now I'll use the one in syncSourceWithNesting logic by moving it out.
+	// Actually, I'll just copy the logic or refactor.
+	
 	rows, err := db.Query("SELECT id, description, drive_link, drive_file_id, thumb_url, status FROM images")
 	if err != nil {
 		return
@@ -266,7 +230,7 @@ func syncFromImagesDB(ctx context.Context, dataDir string, repo *assettree.Repos
 			Name:        name,
 			Type:        "image",
 			ParentID:    "",
-			Path:        name,
+			Path:        "",
 			Depth:       0,
 			IsFolder:    false,
 			DriveFileID: driveFileID.String,
@@ -304,12 +268,57 @@ func syncFromVoiceoverDB(ctx context.Context, dataDir string, repo *assettree.Re
 	}
 	defer rows.Close()
 
+	// 1. Map paths to folder IDs (shared logic)
+	pathMap := make(map[string]string)
+	ensurePathSegments := func(fullPath string) string {
+		fullPath = strings.Trim(fullPath, "/")
+		if fullPath == "" {
+			return ""
+		}
+		segments := strings.Split(fullPath, "/")
+		currentPath := ""
+		parentID := ""
+		for _, seg := range segments {
+			if currentPath == "" {
+				currentPath = seg
+			} else {
+				currentPath = currentPath + "/" + seg
+			}
+			folderID, exists := pathMap[currentPath]
+			if !exists {
+				folderID = "generated_voiceover_" + strings.ReplaceAll(currentPath, "/", "_")
+				pathMap[currentPath] = folderID
+			}
+			node := &assettree.AssetNode{
+				ID:       folderID,
+				Source:   "voiceover",
+				AssetID:  folderID,
+				Name:     seg,
+				Type:     "folder",
+				ParentID: parentID,
+				Path:     currentPath,
+				Depth:    strings.Count(currentPath, "/"),
+				IsFolder: true,
+				Metadata: "{}",
+			}
+			repo.UpsertNode(ctx, node)
+			parentID = folderID
+		}
+		return parentID
+	}
+
 	count := 0
 	for rows.Next() {
 		var id, text, driveLink, driveFileID, folderID, folderPath, status sql.NullString
 		if err := rows.Scan(&id, &text, &driveLink, &driveFileID, &folderID, &folderPath, &status); err != nil {
 			continue
 		}
+
+		fPath := folderPath.String
+		if isFilePath(fPath) {
+			fPath = filepath.Dir(fPath)
+		}
+		effectiveParentID := ensurePathSegments(fPath)
 
 		name := text.String
 		if len(name) > 50 {
@@ -325,9 +334,9 @@ func syncFromVoiceoverDB(ctx context.Context, dataDir string, repo *assettree.Re
 			AssetID:     id.String,
 			Name:        name,
 			Type:        "audio",
-			ParentID:    folderID.String,
-			Path:        folderPath.String,
-			Depth:       strings.Count(folderPath.String, "/"),
+			ParentID:    effectiveParentID,
+			Path:        fPath,
+			Depth:       strings.Count(fPath, "/"),
 			IsFolder:    false,
 			DriveFileID: driveFileID.String,
 			DriveLink:   driveLink.String,
@@ -339,4 +348,5 @@ func syncFromVoiceoverDB(ctx context.Context, dataDir string, repo *assettree.Re
 	}
 	fmt.Printf("Synced %d items from voiceover.db.sqlite\n", count)
 }
+
 
