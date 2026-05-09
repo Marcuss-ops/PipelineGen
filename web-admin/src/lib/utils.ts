@@ -29,7 +29,10 @@ export function safeJson<T>(val: any, fallback: T): T {
 
 export function withToken(url: string): string {
   if (!url) return '';
-  // Match the default token in client.ts
+  // Only add token to local /api paths
+  if (!url.startsWith('/api') && !url.startsWith('http://localhost') && !url.startsWith('http://127.0.0.1')) {
+    return url;
+  }
   const token = 'ciao';
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}token=${token}`;
