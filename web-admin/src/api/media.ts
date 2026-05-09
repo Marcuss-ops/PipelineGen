@@ -41,7 +41,7 @@ function normalizeClip(raw: any, source: MediaSource): MediaItem {
 
 export async function listMedia(source: MediaSource, q = ''): Promise<MediaItem[]> {
   try {
-    const query = q ? `?q=${encodeURIComponent(q)}` : '';
+    const query = q ? `?q=${encodeURIComponent(q)}&limit=500` : '?limit=500';
     const data = await apiFetch<ApiClipResponse>(`/api/media/${source}/clips${query}`);
     const list = data.clips ?? data.items ?? [];
     return list.map((item) => normalizeClip(item, source));

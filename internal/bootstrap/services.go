@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -18,8 +19,10 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
+	assettree_repo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
@@ -64,6 +67,7 @@ type services struct {
 	mediaProcessor     processor.Processor
 	youtubeClipService *youtubeclip.Service
 	assetIndexService  *assetindex.Service
+	assetTreeService   *assettree.Service
 	assetResolver      *assetindex.Resolver
 	assetRegistry      *assetregistry.Registry
 }
@@ -106,6 +110,14 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	assetIndexRepo := assetindex.NewRepository(dbs.assets.DB)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
 	log.Info("asset index service initialized", zap.String("db", "assets.db.sqlite"))
+
+	// Asset tree service
+	assetTreeRepo, err := assettree_repo.NewRepository(dbs.assets.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
+	}
+	assetTreeService := assettree.NewService(assetTreeRepo, log)
+	log.Info("asset tree service initialized")
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
@@ -187,7 +199,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Build sync targets centrally
 	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)
 
-	catalogSync := catalogsync.NewService(driveClient, syncTargets, assetIndexService, log)
+	catalogSync := catalogsync.NewService(driveClient, syncTargets, assetIndexService, assetTreeService, log)
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
@@ -204,7 +216,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
-		return &services{
+	return &services{
 		scriptGen:          scriptGen,
 		docClient:          docClient,
 		driveClient:        driveClient,
@@ -229,6 +241,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		mediaProcessor:     mediaProcessor,
 		youtubeClipService: youtubeClipService,
 		assetIndexService:  assetIndexService,
+		assetTreeService:   assetTreeService,
 		assetResolver:      assetResolver,
 		assetRegistry:      assetRegistry,
 	}, nil

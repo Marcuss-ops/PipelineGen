@@ -175,3 +175,33 @@ func (h *CommonHandler) DeleteFolder(c *gin.Context) {
 		"folder": folderID,
 	})
 }
+
+// GetFolderChildren returns the children of a specific folder.
+// id can be "root" or an empty string to get root folders.
+func (h *CommonHandler) GetFolderChildren(c *gin.Context) {
+	source := c.Param("source")
+	folderID := c.Param("id")
+
+	if folderID == "root" {
+		folderID = ""
+	}
+
+	repo := h.resolveRepo(source)
+	if repo == nil {
+		apiutil.BadRequest(c, "invalid source: "+source)
+		return
+	}
+
+	ctx := c.Request.Context()
+	children, err := repo.GetFolderChildren(ctx, folderID)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":       true,
+		"source":   source,
+		"children": children,
+	})
+}

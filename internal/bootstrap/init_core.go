@@ -2,8 +2,8 @@ package bootstrap
 
 import (
 	"context"
-
 	"database/sql"
+
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/ml/ollama"
@@ -14,8 +14,10 @@ import (
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
+	"velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	jobservice "velox/go-master/internal/service/jobs"
@@ -24,7 +26,6 @@ import (
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
 	"velox/go-master/internal/service/youtubeclip"
-	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/storage"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -34,7 +35,6 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 )
 
-// CoreDeps holds the minimal runtime dependencies needed by the stripped-down server.
 type CoreDeps struct {
 	ScriptGen            *ollama.Generator
 	DocClient            drive.DocClient
@@ -43,6 +43,7 @@ type CoreDeps struct {
 	DB                   *storage.SQLiteDB // Unified database
 	ArtlistDB            *storage.SQLiteDB // Artlist database (properly configured with WAL)
 	ImagesDB             *storage.SQLiteDB // Images database
+	AssetsDB             *storage.SQLiteDB // Assets database
 	ScriptsRepo          *scripts.ScriptRepository
 	ImageRepo            *images.Repository
 	ImageService         *imgservice.Service
@@ -66,6 +67,7 @@ type CoreDeps struct {
 	MediaProcessor       processor.Processor
 	YoutubeClipService   *youtubeclip.Service
 	AssetIndexService    *assetindex.Service
+	AssetTreeService     *assettree.Service
 	ClipResolver         *clipresolver.Service
 }
 
@@ -88,13 +90,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		return nil, nil, err
 	}
 
-	// 3. Migrations
-	if err := runAllMigrations(dbs, log); err != nil {
-		cancel()
-		return nil, nil, err
-	}
-
-	// 4. Services
+	// 3. Core Services
 	svcs, err := initServices(ctx, cfg, dbs, log)
 	if err != nil {
 		cancel()
@@ -118,6 +114,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		DB:                   dbs.main,
 		ArtlistDB:            dbs.artlist,
 		ImagesDB:             dbs.images,
+		AssetsDB:             dbs.assets,
 		ScriptsRepo:          svcs.scriptsRepo,
 		ImageRepo:            svcs.imageRepo,
 		ImageService:         svcs.imageService,
@@ -141,5 +138,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		MediaProcessor:       svcs.mediaProcessor,
 		YoutubeClipService:   svcs.youtubeClipService,
 		AssetIndexService:    svcs.assetIndexService,
+		AssetTreeService:     svcs.assetTreeService,
 	}, cleanup, nil
 }

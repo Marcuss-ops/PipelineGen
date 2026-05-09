@@ -29,6 +29,7 @@ type RegistryWiring struct {
 	Scraper    *ScraperWiring
 	ContentPkg *ContentPackageWiring
 	Assets     *AssetsWiring
+	AssetTree  *AssetTreeWiring
 }
 
 // SystemWiring holds the System module wiring
@@ -341,6 +342,17 @@ func WireRegistry(
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
 		log.Info("registered Assets module")
+	}
+
+	// Wire and register AssetTree module
+	assetTreeWiring, err := WireAssetTree(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire AssetTree", zap.Error(err))
+	}
+	if assetTreeWiring != nil && assetTreeWiring.Module != nil {
+		wiring.AssetTree = assetTreeWiring
+		registry.Register(assetTreeWiring.Module)
+		log.Info("registered AssetTree module")
 	}
 
 	return wiring, nil

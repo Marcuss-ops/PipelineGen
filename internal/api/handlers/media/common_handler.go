@@ -70,6 +70,7 @@ func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// Folder-level endpoints
 	r.GET("/:source/folders", h.ListFolders)
+	r.GET("/:source/folders/:id/children", h.GetFolderChildren)
 	r.GET("/:source/folders/:id/status", h.FolderStatus)
 	r.POST("/:source/folders/:id/regenerate-manifest", h.RegenerateManifest)
 	r.POST("/:source/folders/:id/trash", h.TrashFolder)

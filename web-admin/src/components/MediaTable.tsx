@@ -44,7 +44,13 @@ export function MediaTable({
         <div className="py-16 text-center text-sm text-zinc-500">Nessun elemento trovato</div>
       ) : (
         <div className="divide-y divide-zinc-100">
-          {items.map((item) => (
+          {items.filter(item => {
+            // Filtro dinamico per le cartelle: non usiamo nomi hardcoded.
+            // Se un elemento non ha estensione ed è senza durata, lo trattiamo come cartella e lo nascondiamo.
+            const hasExtension = item.filename?.includes('.') || item.name?.includes('.');
+            if (!hasExtension && !item.duration) return false;
+            return true;
+          }).map((item) => (
             <div key={item.id} className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-6 px-6 py-5 transition hover:bg-zinc-50 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
               <input type="checkbox" checked={selected.has(item.id)} onChange={(event) => onSelect(item.id, event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
               <button onClick={() => onOpen(item)} className="h-20 w-20">

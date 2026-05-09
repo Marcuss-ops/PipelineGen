@@ -13,6 +13,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/service/assettree"
 	drivequery "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 )
@@ -53,15 +54,17 @@ type Service struct {
 	log         *zap.Logger
 	targets     []Target
 	assetIndex  *assetindex.Service
+	assetTree   *assettree.Service
 	mu          sync.Mutex
 }
 
-func NewService(driveClient *driveapi.Service, targets []Target, assetIndex *assetindex.Service, log *zap.Logger) *Service {
+func NewService(driveClient *driveapi.Service, targets []Target, assetIndex *assetindex.Service, assetTree *assettree.Service, log *zap.Logger) *Service {
 	return &Service{
 		driveClient: driveClient,
 		log:         log,
 		targets:     targets,
 		assetIndex:  assetIndex,
+		assetTree:   assetTree,
 	}
 }
 
@@ -133,36 +136,50 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 
 	now := time.Now().UTC()
 	rootClip := &models.Clip{
-		ID:           target.RootFolderID,
-		Name:         rootName,
-		Filename:     rootName,
-		FolderID:     target.RootFolderID,
-		FolderPath:   rootName,
-		Group:        target.Source,
-		MediaType:    target.MediaType,
-		DriveLink:    rootLink,
-		DownloadLink: rootLink,
-		Source:       target.Source,
-		Category:     "folder",
-		ExternalURL:  rootLink,
-		Tags:         []string{},
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:             target.RootFolderID,
+		Name:           rootName,
+		Filename:       rootName,
+		FolderID:       target.RootFolderID,
+		ParentFolderID: "", // Root has no parent
+		Depth:          0,
+		IsFolder:       true,
+		FolderPath:     rootName,
+		Group:          target.Source,
+		MediaType:      target.MediaType,
+		DriveLink:      rootLink,
+		DownloadLink:   rootLink,
+		Source:         target.Source,
+		Category:       "folder",
+		ExternalURL:    rootLink,
+		Tags:           []string{},
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := s.upsertPreservingExisting(ctx, target.Repo, rootClip); err != nil {
 		rootSummary.Failed++
 		return rootSummary, err
 	}
+
+	// Save to common AssetTree
+	if s.assetTree != nil {
+		node := s.assetTree.NormalizeDriveNode(
+			target.RootFolderID, rootName, folderMimeType, rootLink, rootLink, "", target.RootFolderID, "", target.Source, target.RootFolderID,
+		)
+		if err := s.assetTree.UpsertNode(ctx, node); err != nil {
+			s.log.Warn("failed to save root to asset tree", zap.Error(err), zap.String("id", target.RootFolderID))
+		}
+	}
+
 	rootSummary.Synced++
 
-	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.RootFolderID, rootName, target)
+	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.RootFolderID, target.RootFolderID, rootName, target)
 	rootSummary.Requested = requested
 	rootSummary.Synced += synced
 	rootSummary.Failed += failed
 	return rootSummary, err
 }
 
-func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repository, folderID, folderPath string, target Target) (int, int, int, error) {
+func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repository, folderID, rootID, folderPath string, target Target) (int, int, int, error) {
 	children, err := s.listChildren(ctx, folderID)
 	if err != nil {
 		return 0, 0, 1, err
@@ -189,9 +206,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		}
 		if link == "" {
 			if child.MimeType == folderMimeType {
-				link = "https://driveapi.google.com/drive/folders/" + child.Id
+				link = "https://drive.google.com/drive/folders/" + child.Id
 			} else {
-				link = "https://driveapi.google.com/file/d/" + child.Id
+				link = "https://drive.google.com/file/d/" + child.Id
 			}
 		}
 
@@ -201,31 +218,45 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		}
 
 		record := &models.Clip{
-			ID:           child.Id,
-			Name:         childName,
-			Filename:     childName,
-			FolderID:     folderID,
-			FolderPath:   childPath,
-			Group:        target.Source,
-			MediaType:    target.MediaType,
-			DriveLink:    link,
-			DownloadLink: link,
-			Source:       target.Source,
-			Category:     category,
-			ExternalURL:  link,
-			Tags:         []string{},
-			CreatedAt:    time.Now().UTC(),
-			UpdatedAt:    time.Now().UTC(),
+			ID:             child.Id,
+			Name:           childName,
+			Filename:       childName,
+			FolderID:       folderID,
+			ParentFolderID: folderID,
+			Depth:          strings.Count(childPath, "/"),
+			IsFolder:       child.MimeType == folderMimeType,
+			FolderPath:     childPath,
+			Group:          target.Source,
+			MediaType:      target.MediaType,
+			DriveLink:      link,
+			DownloadLink:   link,
+			Source:         target.Source,
+			Category:       category,
+			ExternalURL:    link,
+			Tags:           []string{},
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
 		}
 
 		if err := s.upsertPreservingExisting(ctx, repo, record); err != nil {
 			failed++
 			continue
 		}
+
+		// Save to common AssetTree
+		if s.assetTree != nil {
+			node := s.assetTree.NormalizeDriveNode(
+				child.Id, childName, child.MimeType, child.WebViewLink, child.WebContentLink, folderID, rootID, folderPath, target.Source, child.Id,
+			)
+			if err := s.assetTree.UpsertNode(ctx, node); err != nil {
+				s.log.Warn("failed to save node to asset tree", zap.Error(err), zap.String("id", child.Id))
+			}
+		}
+
 		synced++
 
 		if child.MimeType == folderMimeType {
-			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.Id, childPath, target)
+			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.Id, rootID, childPath, target)
 			requested += subRequested
 			synced += subSynced
 			failed += subFailed

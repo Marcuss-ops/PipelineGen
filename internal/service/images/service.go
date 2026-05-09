@@ -452,7 +452,7 @@ func (s *Service) SyncFromDrive(ctx context.Context) error {
 	s.log.Info("Starting image synchronization from Drive", zap.String("folderID", s.folderID))
 
 	// 1. List files in the root folder
-	query := driveutil.BuildFolderQuery(s.folderID)
+	query := driveutil.BuildQuery(s.folderID)
 	fileList, err := s.driveSvc.Files.List().Q(query).
 		Fields("files(id, name, mimeType, md5Checksum, size, createdTime, webViewLink)").
 		Context(ctx).Do()
@@ -511,17 +511,19 @@ func (s *Service) SyncFromDrive(ctx context.Context) error {
 
 		// Update Asset Index
 		if s.assetIndex != nil {
-			s.assetIndex.UpsertAsset(ctx, &assetindex.AssetRecord{
-				ID:        fmt.Sprintf("img_%d", id),
-				Hash:      hash,
-				Source:    "images",
-				Type:      "image",
-				Status:    "ready",
-				DriveLink: file.WebViewLink,
-				Metadata: map[string]interface{}{
-					"name": file.Name,
-					"size": file.Size,
-				},
+			metadataJSON, _ := json.Marshal(map[string]interface{}{
+				"name": file.Name,
+				"size": file.Size,
+			})
+			
+			s.assetIndex.Upsert(ctx, &assetindex.AssetRecord{
+				AssetID:      fmt.Sprintf("img_%d", id),
+				FileHash:     hash,
+				Source:       "images",
+				AssetType:    "image",
+				Status:       "ready",
+				DriveLink:    file.WebViewLink,
+				Metadata:     string(metadataJSON),
 			})
 		}
 	}

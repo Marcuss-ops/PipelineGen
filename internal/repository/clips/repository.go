@@ -26,7 +26,7 @@ import (
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns       = `id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, created_at, updated_at`
+	clipColumns       = `id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, created_at, updated_at`
 	clipFolderColumns = `id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at`
 )
 
@@ -73,12 +73,13 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 	now := time.Now()
 
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO clips (id, name, filename, folder_id, folder_path, group_name, media_type,
+		INSERT INTO clips (id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type,
 			drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata,
 			file_hash, local_path, status, error, search_terms, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, filename=excluded.filename, folder_id=excluded.folder_id,
+			parent_folder_id=excluded.parent_folder_id, depth=excluded.depth, is_folder=excluded.is_folder,
 			folder_path=excluded.folder_path, group_name=excluded.group_name,
 			media_type=excluded.media_type, drive_link=excluded.drive_link,
 			drive_file_id=excluded.drive_file_id, download_link=excluded.download_link, tags=excluded.tags,
@@ -88,7 +89,7 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			local_path=excluded.local_path, status=excluded.status, error=excluded.error,
 			search_terms=excluded.search_terms,
 			updated_at=excluded.updated_at
-		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group,
+		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group,
 		clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, string(tagsJSON), clip.Source,
 		clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash,
 		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
@@ -401,7 +402,7 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var createdAt, updatedAt string
 	var status, errMsg string
 	
-	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
+	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.ParentFolderID, &clip.Depth, &clip.IsFolder, &clip.FolderPath,
 		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
 		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &thumbURL, &createdAt, &updatedAt)
@@ -442,7 +443,7 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var createdAt, updatedAt string
 	var status, errMsg string
 
-	err := row.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.FolderPath,
+	err := row.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.ParentFolderID, &clip.Depth, &clip.IsFolder, &clip.FolderPath,
 		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
 		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
 		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &thumbURL, &createdAt, &updatedAt)
@@ -862,4 +863,31 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 		folders = append(folders, &folder)
 	}
 	return folders, rows.Err()
+}
+
+// GetFolderChildren returns all clips that are children of the given parent_folder_id.
+// Pass an empty string to get root folders.
+func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.Clip, error) {
+	query := `SELECT ` + clipColumns + `
+		FROM clips
+		WHERE parent_folder_id = ?
+		ORDER BY is_folder DESC, name ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.Clip
+	for rows.Next() {
+		clip, err := scanClipRows(rows)
+		if err != nil {
+			r.log.Error("failed to scan clip", zap.Error(err))
+			continue
+		}
+		clips = append(clips, clip)
+	}
+
+	return clips, rows.Err()
 }

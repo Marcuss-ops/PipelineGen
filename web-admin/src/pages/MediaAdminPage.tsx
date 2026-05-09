@@ -125,7 +125,7 @@ export function MediaAdminPage() {
         <h1 className="text-2xl font-black tracking-tight text-zinc-900">Media Database</h1>
         <div className="flex gap-2">
           {source === 'images' && (
-            <Button variant="secondary" onClick={() => syncMutation.mutate()} isLoading={syncMutation.isPending}>
+            <Button variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
               <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} /> Sincronizza Drive
             </Button>
           )}

@@ -530,7 +530,12 @@ func (h *CommonHandler) DownloadClip(c *gin.Context) {
 
 	// 1. Try local file if it exists
 	if clip.LocalPath != "" {
-		if _, err := os.Stat(clip.LocalPath); err == nil {
+		if info, err := os.Stat(clip.LocalPath); err == nil && !info.IsDir() {
+			ext := strings.ToLower(filepath.Ext(clip.LocalPath))
+			if ext == ".txt" || ext == ".json" || ext == ".md" {
+				apiutil.BadRequest(c, "file is not a video: "+ext)
+				return
+			}
 			c.File(clip.LocalPath)
 			return
 		}
@@ -550,6 +555,21 @@ func (h *CommonHandler) DownloadClip(c *gin.Context) {
 			zap.String("clip_id", clipID), 
 			zap.String("drive_id", driveID))
 		
+		// Use Files.Get but with Fields to check MimeType first
+		driveFile, err := h.driveUploader.Service.Files.Get(driveID).Fields("id, name, mimeType, size").Context(c.Request.Context()).Do()
+		if err != nil {
+			h.log.Error("failed to get drive file metadata", zap.Error(err), zap.String("id", driveID))
+			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", err))
+			return
+		}
+
+		// BLOCK non-media MIME types from Drive
+		if !strings.HasPrefix(driveFile.MimeType, "video/") && !strings.HasPrefix(driveFile.MimeType, "audio/") && driveFile.MimeType != "application/octet-stream" {
+			h.log.Warn("refusing to proxy non-media file from drive", zap.String("mime", driveFile.MimeType))
+			apiutil.BadRequest(c, "drive file is not media: "+driveFile.MimeType)
+			return
+		}
+
 		resp, err := h.driveUploader.Service.Files.Get(driveID).
 			Context(c.Request.Context()).
 			Download()
@@ -601,7 +621,7 @@ func (h *CommonHandler) CreateClip(c *gin.Context) {
 		clip.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
-	if err := repo.SaveClip(c.Request.Context(), &clip); err != nil {
+	if err := repo.UpsertClip(c.Request.Context(), &clip); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
@@ -685,7 +705,7 @@ func (h *CommonHandler) UpdateClip(c *gin.Context) {
 		clip.ThumbURL = val
 	}
 
-	if err := repo.SaveClip(ctx, clip); err != nil {
+	if err := repo.UpsertClip(ctx, clip); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}

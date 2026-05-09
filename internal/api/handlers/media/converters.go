@@ -60,7 +60,7 @@ func (h *CommonHandler) resolveRepo(source string) *clips.Repository {
 	switch strings.ToLower(source) {
 	case "artlist":
 		return h.artlistRepo
-	case "youtube", "clips":
+	case "youtube", "clips", "boxe", "wwe", "discovery", "music":
 		return h.clipsRepo
 	case "stock":
 		return h.stockRepo

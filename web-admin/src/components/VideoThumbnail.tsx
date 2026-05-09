@@ -19,11 +19,20 @@ export function VideoThumbnail({ item, className = "" }: { item: MediaItem, clas
 
   const driveFileId = item.drive_file_id || getDriveFileId(item.drive_link) || getDriveFileId(item.download_link);
   
+  // Basic extension check
+  const isBadExtension = (filename?: string) => {
+    if (!filename) return false;
+    const ext = filename.toLowerCase().split('.').pop();
+    return ['txt', 'json', 'md', 'html', 'pdf', 'csv'].includes(ext || '');
+  };
+
   // The download endpoint is now our smart proxy (Local -> Drive)
-  const hasProxyVideo = !!(item.local_path || driveFileId);
+  const hasProxyVideo = !!(item.local_path || driveFileId) && !isBadExtension(item.filename || item.name);
   const proxySrc = hasProxyVideo 
     ? `/api/media/${item.source}/clips/${item.id}/download` 
     : (item.preview_url || item.download_link);
+
+  const posterSrc = item.thumb_url || (driveFileId ? `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w400` : `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`);
 
   useEffect(() => {
     if (isHovering && !error && videoRef.current) {
@@ -44,7 +53,7 @@ export function VideoThumbnail({ item, className = "" }: { item: MediaItem, clas
     >
       {/* Thumbnail Image */}
       <img 
-        src={item.thumb_url || `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`} 
+        src={posterSrc} 
         className={`h-full w-full object-cover transition-opacity duration-300 ${isHovering && !error && hasProxyVideo ? 'opacity-0' : 'opacity-100'}`}
         alt="" 
       />
