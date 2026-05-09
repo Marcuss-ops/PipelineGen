@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"velox/go-master/internal/repository/assettree"
+	"velox/go-master/internal/storage"
+	"velox/go-master/pkg/logger"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -18,11 +20,16 @@ func main() {
 	dataDir := "data"
 	assetsDBPath := filepath.Join(dataDir, "assets.db.sqlite")
 
-	db, err := sql.Open("sqlite3", assetsDBPath)
+	// Initialize a basic logger for storage operations
+	logger.Init("info", "console")
+	logSvc := logger.Get()
+
+	sqliteDB, err := storage.OpenSQLiteDB(assetsDBPath, logSvc)
 	if err != nil {
 		log.Fatalf("failed to open assets db: %v", err)
 	}
-	defer db.Close()
+	db := sqliteDB.DB
+	defer sqliteDB.Close()
 
 	_, _ = db.Exec("DELETE FROM asset_tree_nodes")
 	fmt.Println("Cleared existing asset tree nodes")
@@ -66,11 +73,12 @@ func syncSourceWithNesting(ctx context.Context, dataDir, dbFile, source string, 
 		return
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, nil)
 	if err != nil {
 		return
 	}
-	defer db.Close()
+	db := sqliteDB.DB
+	defer sqliteDB.Close()
 
 	// 1. Map paths to folder IDs and collect folder metadata
 	pathMap := make(map[string]string)
@@ -204,11 +212,12 @@ func syncFromImagesDB(ctx context.Context, dataDir string, repo *assettree.Repos
 		return
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, nil)
 	if err != nil {
 		return
 	}
-	defer db.Close()
+	db := sqliteDB.DB
+	defer sqliteDB.Close()
 
 	var tableName string
 	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='images'").Scan(&tableName)
@@ -265,11 +274,12 @@ func syncFromVoiceoverDB(ctx context.Context, dataDir string, repo *assettree.Re
 		return
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	sqliteDB, err := storage.OpenSQLiteDB(dbPath, nil)
 	if err != nil {
 		return
 	}
-	defer db.Close()
+	db := sqliteDB.DB
+	defer sqliteDB.Close()
 
 	var tableName string
 	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='voiceovers'").Scan(&tableName)

@@ -2,37 +2,13 @@ package bootstrap
 
 import (
 	"context"
-	"database/sql"
+	"fmt"
 
-	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/repository/catalog"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/images"
-	"velox/go-master/internal/repository/monitors"
-	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assettree"
-	"velox/go-master/internal/service/association"
-	"velox/go-master/internal/service/catalogsync"
-	"velox/go-master/internal/service/clipresolver"
-	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/internal/service/indexing"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/monitor"
-	"velox/go-master/internal/service/scheduler"
-	"velox/go-master/internal/service/voiceover"
-	"velox/go-master/internal/service/voiceoversync"
-	"velox/go-master/internal/service/youtubeclip"
-	"velox/go-master/internal/storage"
-	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/security"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 
@@ -53,6 +29,12 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	if err != nil {
 		cancel()
 		return nil, nil, err
+	}
+
+	// Run all database migrations centrally
+	if err := runAllMigrations(dbs, log); err != nil {
+		cancel()
+		return nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
 	// 3. Core Services

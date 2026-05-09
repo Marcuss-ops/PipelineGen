@@ -137,10 +137,24 @@ sqlite3 data/artlist.db.sqlite "SELECT search_text, embedding_json FROM clips WH
 6. **Numpy compatibility conflicts from `tts` and `fish-speech` packages**
    - Fixed: Uninstalled `tts` (0.22.0) and `fish-speech` (0.1.0) Python packages, resolving version conflicts with `sentence-transformers` and `spacy`
 
+7. **Inconsistent SQLite configurations**
+   - Fixed: Centralized all database access via `storage.OpenSQLiteDB` ensuring WAL mode and `busy_timeout` are applied system-wide.
+   - Fixed: Migrated all initialization and schema management to `runAllMigrations` in bootstrap.
+
+8. **Missing models and broken registry wiring**
+   - Fixed: Restored `AssetNode` model and fixed type mismatches in API handlers.
+   - Fixed: Corrected module registration loop in `registry.go` to handle multiple return values.
+
 ### Recurring Issues
 1. **Artlist search is slow** (30-50 seconds per search via node-scraper)
-2. **Inconsistent SQLite config** - 12+ locations still open DB without WAL/busy_timeout
-3. **Binary and scripts in source dir** - Need proper `.gitignore`
+2. **Binary and scripts in source dir** - Need proper `.gitignore`
+
+### Drive Token Regeneration
+If Google Drive authentication fails, regenerate the token:
+```bash
+python3 scripts/generate_drive_token.py
+```
+Follow the link, authorize, and paste the code back into the terminal.
 
 ## Development Notes
 
@@ -172,14 +186,16 @@ When adding new tables to `velox.db.sqlite`, ensure:
 - ✅ Merged `internal/core/media/models.go` into `model.go`
 - ✅ Removed deprecated `api-cron` mode from server
 - ✅ Fixed import paths (`internal/pkg/` → `pkg/`)
-- ✅ Fixed clipindexer service integration with `scripts/index_clips.py` (added `--db` argument passing, updated Python script to handle `None` tags and accept clip-specific arguments)
-- ✅ Added `Path()` method to `SQLiteDB` struct to expose database file path for clipindexer
-- ✅ Resolved numpy compatibility conflicts by uninstalling `tts` (Coqui TTS) and `fish-speech` Python packages
-- ✅ Committed and pushed clipindexer fixes to `origin/main` (commit `88bcef3`)
+- ✅ Fixed clipindexer service integration with `scripts/index_clips.py`
+- ✅ Added `Path()` method to `SQLiteDB` struct to expose database file path
+- ✅ Resolved numpy compatibility conflicts (uninstalled `tts` and `fish-speech`)
+- ✅ Centralized database migrations and standard connection pooling (WAL/busy_timeout applied system-wide)
+- ✅ Migrated harvester/catalog sync/db backup from cron to job system
+- ✅ Fixed bootstrap registry wiring and missing `AssetNode` model
+- ✅ Created `scripts/generate_drive_token.py` for automated OAuth2 token regeneration
 
 ### Pending
 - Consolidate `internal/core/media/` - verify unified models work
-- Migrate harvester/catalog sync/db backup from cron to job system (cron already removed, verify)
 - Remove duplicates and adapt all modules to canonical contracts
 - CI checks: `scripts/ci-architectural-checks.sh` must block violations
 

@@ -115,28 +115,73 @@ func WireRegistry(
 	}
 
 	modules := []reg{
-		{"System", func() (module.Module, interface{}, error) { 
+		{"System", func() (module.Module, interface{}, error) {
 			w := WireSystem(cfg, log)
-			return w.Module, w, nil 
+			return w.Module, w, nil
 		}, func(w interface{}) { wiring.System = w.(*SystemWiring) }},
-		{"Artlist", func() (module.Module, interface{}, error) { return WireArtlist(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.ArtlistSvc = w.(*ArtlistWiring) }},
-		{"ScriptDocs", func() (module.Module, interface{}, error) { return WireScriptDocs(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.ScriptDocs = w.(*ScriptDocsWiring) }},
-		{"Voiceover", func() (module.Module, interface{}, error) { return WireVoiceover(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.Voiceover = w.(*VoiceoverWiring) }},
-		{"YouTubeClip", func() (module.Module, interface{}, error) { return WireYouTubeClip(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.YouTubeClip = w.(*YouTubeClipWiring) }},
-		{"Jobs", func() (module.Module, interface{}, error) { return WireJobs(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.Jobs = w.(*JobsWiring) }},
-		{"Media", func() (module.Module, interface{}, error) { return WireMedia(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.Media = w.(*MediaWiring) }},
-		{"Images", func() (module.Module, interface{}, error) { return WireImages(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.Images = w.(*ImagesWiring) }},
-		{"Drive", func() (module.Module, interface{}, error) { return WireDrive(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.Drive = w.(*DriveWiring) }},
-		{"Scraper", func() (module.Module, interface{}, error) { return WireScraper(cfg, log, coreDeps) }, 
-			func(w interface{}) { wiring.Scraper = w.(*ScraperWiring) }},
+		{"Artlist", func() (module.Module, interface{}, error) {
+			w, err := WireArtlist(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.ArtlistSvc = w.(*ArtlistWiring) }},
+		{"ScriptDocs", func() (module.Module, interface{}, error) {
+			w, err := WireScriptDocs(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.ScriptDocs = w.(*ScriptDocsWiring) }},
+		{"Voiceover", func() (module.Module, interface{}, error) {
+			w, err := WireVoiceover(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.Voiceover = w.(*VoiceoverWiring) }},
+		{"YouTubeClip", func() (module.Module, interface{}, error) {
+			w, err := WireYouTubeClip(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.YouTubeClip = w.(*YouTubeClipWiring) }},
+		{"Jobs", func() (module.Module, interface{}, error) {
+			w, err := WireJobs(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.Jobs = w.(*JobsWiring) }},
+		{"Media", func() (module.Module, interface{}, error) {
+			w, err := WireMedia(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.Media = w.(*MediaWiring) }},
+		{"Images", func() (module.Module, interface{}, error) {
+			w, err := WireImages(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.Images = w.(*ImagesWiring) }},
+		{"Drive", func() (module.Module, interface{}, error) {
+			w, err := WireDrive(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.Drive = w.(*DriveWiring) }},
+		{"Scraper", func() (module.Module, interface{}, error) {
+			w, err := WireScraper(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.Scraper = w.(*ScraperWiring) }},
 	}
 
 	for _, m := range modules {

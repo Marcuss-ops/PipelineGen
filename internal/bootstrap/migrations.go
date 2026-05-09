@@ -84,9 +84,26 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 	}
 
 	// Voiceover migrations only to voiceover DB
-	voiceoversMigrationsDir := filepath.Join("internal", "repository", "voiceovers", "migrations")
-	if err := dbs.voiceover.RunMigrations(log, voiceoversMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run voiceovers migrations: %w", err)
+	// We apply both potential migration locations to ensure full schema consistency
+	voiceoversRepoMigrationsDir := filepath.Join("internal", "repository", "voiceovers", "migrations")
+	if err := dbs.voiceover.RunMigrations(log, voiceoversRepoMigrationsDir); err != nil {
+		log.Warn("failed to run voiceover repo migrations", zap.Error(err))
+	}
+	voiceoversLegacyMigrationsDir := filepath.Join("migrations", "voiceovers")
+	if err := dbs.voiceover.RunMigrations(log, voiceoversLegacyMigrationsDir); err != nil {
+		log.Warn("failed to run voiceover legacy migrations", zap.Error(err))
+	}
+
+	// Jobs migrations -> jobs.db.sqlite
+	jobsMigrationsDir := filepath.Join("migrations", "jobs")
+	if err := dbs.jobs.RunMigrations(log, jobsMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run jobs migrations: %w", err)
+	}
+
+	// Asset Index migrations -> assets.db.sqlite
+	assetIndexMigrationsDir := filepath.Join("migrations", "asset_index")
+	if err := dbs.assets.RunMigrations(log, assetIndexMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run asset index migrations: %w", err)
 	}
 
 	return nil

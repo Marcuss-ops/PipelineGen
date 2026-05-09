@@ -215,16 +215,14 @@ func (h *CommonHandler) GetFolderChildren(c *gin.Context) {
 			apiutil.BadRequest(c, "invalid source: "+source)
 			return
 		}
-		children, err = repo.GetFolderChildren(ctx, folderID)
-		// Manual pagination for legacy repo if needed
-		if err == nil && offset < len(children) {
-			end := offset + limit
-			if end > len(children) {
-				end = len(children)
+		children = []*models.AssetNode{}
+		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
+		if clipErr == nil {
+			for _, clip := range clipChildren {
+				children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
 			}
-			children = children[offset:end]
-		} else if err == nil {
-			children = []*models.AssetNode{}
+		} else {
+			err = clipErr
 		}
 	}
 

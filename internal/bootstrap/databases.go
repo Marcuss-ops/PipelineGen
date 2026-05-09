@@ -62,24 +62,15 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize voiceover database: %w", err)
 	}
-	if err := voiceoverDB.RunMigrations(log, "migrations/voiceovers"); err != nil {
-		return nil, fmt.Errorf("failed to run voiceover migrations: %w", err)
-	}
 
 	jobsDB, err := storage.NewSQLiteDBWithMaxConns(cfg.Storage.DataDir, "jobs.db.sqlite", 1, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize jobs database: %w", err)
 	}
-	if err := jobsDB.RunMigrations(log, "migrations/jobs"); err != nil {
-		return nil, fmt.Errorf("failed to run jobs migrations: %w", err)
-	}
 
 	assetsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "assets.db.sqlite", log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize assets database: %w", err)
-	}
-	if err := assetsDB.RunMigrations(log, "migrations/asset_index"); err != nil {
-		return nil, fmt.Errorf("failed to run asset index migrations: %w", err)
 	}
 
 	// Log FTS5 status once (driver-dependent, not DB-dependent)
