@@ -1,14 +1,27 @@
 import { useState, useRef, useEffect } from 'react';
 import type { MediaItem } from '../lib/types';
 
+function getDriveFileId(value?: string) {
+  if (!value) return '';
+  const fileMatch = value.match(/\/file\/d\/([^/?]+)/);
+  if (fileMatch?.[1]) return fileMatch[1];
+  const dMatch = value.match(/\/d\/([^/?]+)/);
+  if (dMatch?.[1]) return dMatch[1];
+  const idMatch = value.match(/[?&]id=([^&]+)/);
+  if (idMatch?.[1]) return idMatch[1];
+  return '';
+}
+
 export function VideoThumbnail({ item, className = "" }: { item: MediaItem, className?: string }) {
   const [isHovering, setIsHovering] = useState(false);
   const [error, setError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const driveFileId = item.drive_file_id || getDriveFileId(item.drive_link) || getDriveFileId(item.download_link);
+  
   // The download endpoint is now our smart proxy (Local -> Drive)
-  const hasVideoSource = !!(item.local_path || item.drive_file_id || item.preview_url || item.download_link);
-  const proxySrc = (item.local_path || item.drive_file_id) 
+  const hasProxyVideo = !!(item.local_path || driveFileId);
+  const proxySrc = hasProxyVideo 
     ? `/api/media/${item.source}/clips/${item.id}/download` 
     : (item.preview_url || item.download_link);
 
@@ -32,7 +45,7 @@ export function VideoThumbnail({ item, className = "" }: { item: MediaItem, clas
       {/* Thumbnail Image */}
       <img 
         src={item.thumb_url || `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`} 
-        className={`h-full w-full object-cover transition-opacity duration-300 ${isHovering && !error && hasVideoSource ? 'opacity-0' : 'opacity-100'}`}
+        className={`h-full w-full object-cover transition-opacity duration-300 ${isHovering && !error && hasProxyVideo ? 'opacity-0' : 'opacity-100'}`}
         alt="" 
       />
 

@@ -48,7 +48,21 @@ export function MediaTable({
             <div key={item.id} className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-6 px-6 py-5 transition hover:bg-zinc-50 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
               <input type="checkbox" checked={selected.has(item.id)} onChange={(event) => onSelect(item.id, event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
               <button onClick={() => onOpen(item)} className="h-20 w-20">
-                <VideoThumbnail item={item} className="h-20 w-20 rounded-2xl" />
+                {item.source === 'images' ? (
+                  <img
+                    src={
+                      item.thumb_url ||
+                      item.preview_url ||
+                      (item.drive_file_id
+                        ? `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w400`
+                        : `https://placehold.co/112x112?text=images`)
+                    }
+                    className="h-20 w-20 rounded-2xl object-cover ring-2 ring-zinc-900/5"
+                    alt=""
+                  />
+                ) : (
+                  <VideoThumbnail item={item} className="h-20 w-20 rounded-2xl" />
+                )}
               </button>
               <div className="min-w-0">
                 <button onClick={() => onOpen(item)} className="block max-w-full truncate text-left text-sm font-bold text-zinc-900 hover:text-blue-600">{item.name}</button>

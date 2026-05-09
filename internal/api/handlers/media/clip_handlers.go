@@ -538,12 +538,11 @@ func (h *CommonHandler) DownloadClip(c *gin.Context) {
 
 	// 2. Try to proxy from Google Drive
 	driveID := clip.DriveFileID
-	if driveID == "" && clip.DriveLink != "" {
-		// Extract ID from link
-		if parts := strings.Split(clip.DriveLink, "/d/"); len(parts) > 1 {
-			driveID = strings.Split(parts[1], "/")[0]
-			driveID = strings.Split(driveID, "?")[0]
-		}
+	if driveID == "" {
+		driveID = driveutil.FileIDFromLink(clip.DriveLink)
+	}
+	if driveID == "" {
+		driveID = driveutil.FileIDFromLink(clip.DownloadLink)
 	}
 
 	if driveID != "" && h.driveUploader != nil && h.driveUploader.Service != nil {

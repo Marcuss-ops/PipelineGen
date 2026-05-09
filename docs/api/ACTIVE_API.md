@@ -140,11 +140,30 @@ Note: `/api/voiceover/sync/status` was removed - was returning fake status (debt
 
 ## Media Endpoints
 
-**Group:** `/api/media`
+**Group:** `/api/media/:source` (where `:source` is `stock`, `youtube`, `artlist`, or `images`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/media/manifest/export` | Export media manifest |
+| GET | `/api/media/:source/clips` | List clips for a source |
+| GET | `/api/media/:source/clips/:id` | Get clip details |
+| GET | `/api/media/:source/clips/:id/download` | **Stream/Proxy clip video file** (Local -> Drive fallback) |
+| POST | `/api/media/:source/clips/:id/verify` | Verify clip integrity |
+| POST | `/api/media/:source/clips/:id/reprocess` | Reprocess clip (normalize, upload to drive) |
+| POST | `/api/media/:source/clips/:id/reupload` | Force re-upload to Drive |
+| POST | `/api/media/:source/clips/:id/trash` | Move clip to Drive trash and remove from DB |
+| POST | `/api/media/:source/clips/:id/delete` | Permanently delete clip from Drive and DB |
+| GET | `/api/media/:source/clips/:id/duplicates` | Find potential duplicates by hash |
+| GET | `/api/media/:source/folders` | List folders/categories for source |
+| GET | `/api/media/manifest/export` | Export global media manifest |
+
+## Admin Endpoints
+
+**Group:** `/api/admin/:source` (Requires Admin Token)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/admin/:source/clips` | Create a new clip record |
+| PATCH | `/api/admin/:source/clips/:id` | Update an existing clip record |
 
 ## Scraper Endpoints
 
