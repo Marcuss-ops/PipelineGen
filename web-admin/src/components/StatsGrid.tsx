@@ -38,16 +38,18 @@ export function StatsGrid({
             key={card.label}
             onClick={() => onFilter?.(card.filter)}
             className={`rounded-3xl border p-8 text-left shadow-sm transition hover:shadow-md ${
-              isActive ? 'border-blue-500 bg-blue-50' : 'border-zinc-200 bg-white'
+              isActive 
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700' 
+                : 'border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900'
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className={`text-sm font-medium ${isActive ? 'text-blue-700' : 'text-zinc-500'}`}>{card.label}</span>
-              <card.icon className={`h-6 w-6 ${isActive ? 'text-blue-500' : 'text-zinc-400'}`} />
+              <span className={`text-sm font-medium ${isActive ? 'text-blue-700 dark:text-blue-400' : 'text-zinc-500 dark:text-zinc-400'}`}>{card.label}</span>
+              <card.icon className={`h-6 w-6 ${isActive ? 'text-blue-500' : 'text-zinc-400 dark:text-zinc-500'}`} />
             </div>
-            <div className={`mt-4 text-4xl font-extrabold tracking-tight ${isActive ? 'text-blue-900' : 'text-zinc-900'}`}>
+            <div className={`mt-4 text-4xl font-extrabold tracking-tight ${isActive ? 'text-blue-900 dark:text-blue-100' : 'text-zinc-900 dark:text-zinc-100'}`}>
               {isLoading ? (
-                <Loader2 className="h-8 w-8 animate-spin text-zinc-300" />
+                <Loader2 className="h-8 w-8 animate-spin text-zinc-300 dark:text-zinc-700" />
               ) : (
                 card.value
               )}

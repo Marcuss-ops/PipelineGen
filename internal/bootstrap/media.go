@@ -47,6 +47,7 @@ func WireMedia(
 			coreDeps.StockDriveRepo,
 			driveCleanupSvc,
 			folderMemSvc,
+			coreDeps.AssetTreeService,
 			driveUploader,
 			coreDeps.MediaProcessor,
 			log,

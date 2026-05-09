@@ -87,10 +87,10 @@ func (r *Repository) Upsert(ctx context.Context, rec *Record) error {
 
 func (r *Repository) GetByID(ctx context.Context, id string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE id = ?`, id)
 
 	var rec Record
@@ -118,10 +118,10 @@ func (r *Repository) GetByID(ctx context.Context, id string) (*Record, error) {
 
 func (r *Repository) FindExisting(ctx context.Context, textHash, language, folderID string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers
 		WHERE text_hash = ? AND language = ? AND folder_id = ?
 		ORDER BY created_at DESC LIMIT 1
@@ -160,10 +160,10 @@ func (r *Repository) MarkStatus(ctx context.Context, id, status, errMsg string) 
 
 func (r *Repository) ListByRequestID(ctx context.Context, requestID string) ([]*Record, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE request_id = ? ORDER BY created_at`, requestID)
 	if err != nil {
 		return nil, err
@@ -193,10 +193,10 @@ func (r *Repository) ListByRequestID(ctx context.Context, requestID string) ([]*
 
 func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*Record, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers WHERE folder_id = ? ORDER BY created_at`, folderID)
 	if err != nil {
 		return nil, err
@@ -231,10 +231,10 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*Record, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers
 		WHERE drive_file_id = ? OR drive_link LIKE ? OR download_link LIKE ?`,
 		fileID, "%"+fileID+"%", "%"+fileID+"%")
@@ -258,10 +258,10 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*Reco
 
 func (r *Repository) ListAll(ctx context.Context) ([]*Record, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, request_id, text_hash, text_preview, language, voice, filename,
-			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
-			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, created_at, updated_at
+		SELECT id, COALESCE(request_id, ''), COALESCE(text_hash, ''), COALESCE(text_preview, ''), COALESCE(language, ''), COALESCE(voice, ''), COALESCE(filename, ''),
+			COALESCE(local_path, ''), COALESCE(cleaned_path, ''), COALESCE(folder_id, ''), COALESCE(folder_path, ''), COALESCE(drive_file_id, ''),
+			COALESCE(drive_link, ''), COALESCE(download_link, ''), COALESCE(file_hash, ''), duration_seconds, COALESCE(status, ''),
+			COALESCE(error, ''), COALESCE(strategy, ''), COALESCE(metadata, '{}'), created_at, updated_at
 		FROM voiceovers ORDER BY created_at`)
 	if err != nil {
 		return nil, err

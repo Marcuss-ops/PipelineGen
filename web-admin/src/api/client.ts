@@ -1,5 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-const API_TOKEN = import.meta.env.VITE_API_TOKEN || 'ciao';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+export const API_TOKEN = import.meta.env.VITE_API_TOKEN || 'ciao';
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {

@@ -25,7 +25,6 @@ type RegistryWiring struct {
 	Voiceover  *VoiceoverWiring
 	Images     *ImagesWiring
 	Drive      *DriveWiring
-	Workflow   *WorkflowWiring
 	Scraper    *ScraperWiring
 	ContentPkg *ContentPackageWiring
 	Assets     *AssetsWiring
@@ -96,31 +95,8 @@ func WireSystem(
 	}
 }
 
-// ModuleFactory defines a factory function for wiring a module
-type ModuleFactory struct {
-	Name   string
-	Wire   func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error)
-}
 
-// wireAndRegister is a helper that wires a module and registers it if successful
-func wireAndRegister(
-	factory ModuleFactory,
-	cfg *config.Config,
-	log *zap.Logger,
-	coreDeps *CoreDeps,
-	registry *module.Registry,
-) interface{} {
-	mod, wiring, err := factory.Wire(cfg, log, coreDeps)
-	if err != nil {
-		log.Warn("failed to wire module", zap.String("module", factory.Name), zap.Error(err))
-		return nil
-	}
-	if mod != nil {
-		registry.Register(mod)
-		log.Info("registered module", zap.String("module", factory.Name))
-	}
-	return wiring
-}
+// WireRegistry creates and populates the module registry with all modules using factory pattern
 
 // WireRegistry creates and populates the module registry with all modules using factory pattern
 func WireRegistry(
@@ -129,230 +105,74 @@ func WireRegistry(
 	coreDeps *CoreDeps,
 ) (*RegistryWiring, error) {
 	registry := module.NewRegistry()
-	log.Info("module registry created")
+	wiring := &RegistryWiring{Registry: registry}
 
-	wiring := &RegistryWiring{
-		Registry: registry,
+	// Module registration configuration
+	type reg struct {
+		name   string
+		wire   func() (module.Module, interface{}, error)
+		assign func(interface{})
 	}
 
-	// Define all module factories
-	factories := []ModuleFactory{
-		{
-			Name: "System",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w := WireSystem(cfg, log)
-				if w == nil {
-					return nil, nil, nil
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Artlist",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireArtlist(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "ScriptDocs",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireScriptDocs(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Voiceover",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireVoiceover(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "YouTubeClip",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireYouTubeClip(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Jobs",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireJobs(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Media",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireMedia(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Images",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireImages(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Drive",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireDrive(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Workflow",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireWorkflow(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
-		{
-			Name: "Scraper",
-			Wire: func(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (module.Module, interface{}, error) {
-				w, err := WireScraper(cfg, log, coreDeps)
-				if err != nil || w == nil {
-					return nil, nil, err
-				}
-				return w.Module, w, nil
-			},
-		},
+	modules := []reg{
+		{"System", func() (module.Module, interface{}, error) { 
+			w := WireSystem(cfg, log)
+			return w.Module, w, nil 
+		}, func(w interface{}) { wiring.System = w.(*SystemWiring) }},
+		{"Artlist", func() (module.Module, interface{}, error) { return WireArtlist(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.ArtlistSvc = w.(*ArtlistWiring) }},
+		{"ScriptDocs", func() (module.Module, interface{}, error) { return WireScriptDocs(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.ScriptDocs = w.(*ScriptDocsWiring) }},
+		{"Voiceover", func() (module.Module, interface{}, error) { return WireVoiceover(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.Voiceover = w.(*VoiceoverWiring) }},
+		{"YouTubeClip", func() (module.Module, interface{}, error) { return WireYouTubeClip(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.YouTubeClip = w.(*YouTubeClipWiring) }},
+		{"Jobs", func() (module.Module, interface{}, error) { return WireJobs(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.Jobs = w.(*JobsWiring) }},
+		{"Media", func() (module.Module, interface{}, error) { return WireMedia(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.Media = w.(*MediaWiring) }},
+		{"Images", func() (module.Module, interface{}, error) { return WireImages(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.Images = w.(*ImagesWiring) }},
+		{"Drive", func() (module.Module, interface{}, error) { return WireDrive(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.Drive = w.(*DriveWiring) }},
+		{"Scraper", func() (module.Module, interface{}, error) { return WireScraper(cfg, log, coreDeps) }, 
+			func(w interface{}) { wiring.Scraper = w.(*ScraperWiring) }},
 	}
 
-	// Wire all modules using the factory pattern
-	for _, factory := range factories {
-		switch factory.Name {
-		case "System":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.System = w.(*SystemWiring)
+	for _, m := range modules {
+		mod, w, err := m.wire()
+		if err != nil {
+			log.Warn("failed to wire module", zap.String("module", m.name), zap.Error(err))
+			continue
+		}
+		if mod != nil {
+			registry.Register(mod)
+			if m.assign != nil && w != nil {
+				m.assign(w)
 			}
-		case "Artlist":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.ArtlistSvc = w.(*ArtlistWiring)
-			}
-		case "ScriptDocs":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.ScriptDocs = w.(*ScriptDocsWiring)
-			}
-		case "Voiceover":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Voiceover = w.(*VoiceoverWiring)
-			}
-		case "YouTubeClip":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.YouTubeClip = w.(*YouTubeClipWiring)
-			}
-		case "Jobs":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Jobs = w.(*JobsWiring)
-			}
-		case "Media":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Media = w.(*MediaWiring)
-			}
-		case "Images":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Images = w.(*ImagesWiring)
-			}
-		case "Drive":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Drive = w.(*DriveWiring)
-			}
-		case "Workflow":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Workflow = w.(*WorkflowWiring)
-			}
-		case "Scraper":
-			w := wireAndRegister(factory, cfg, log, coreDeps, registry)
-			if w != nil {
-				wiring.Scraper = w.(*ScraperWiring)
-			}
+			log.Info("registered module", zap.String("module", m.name))
 		}
 	}
 
-	// Wire ContentPackage (job handler for content.package jobs)
-	contentPkgWiring, err := WireContentPackage(log, coreDeps)
-	if err != nil {
-		log.Warn("failed to wire ContentPackage", zap.Error(err))
-	}
-	if contentPkgWiring != nil {
+	// Remaining specific wiring
+	if contentPkgWiring, err := WireContentPackage(log, coreDeps); err == nil && contentPkgWiring != nil {
 		wiring.ContentPkg = contentPkgWiring
-		log.Info("wired ContentPackage service")
 	}
 
-	// Register ScriptHistory module if available
 	if coreDeps.ScriptsRepo != nil {
-		scriptHistoryHandler := handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)
-		scriptHistoryModule := module.NewScriptHistoryModule(cfg, log, scriptHistoryHandler)
-		registry.Register(scriptHistoryModule)
-		log.Info("registered ScriptHistory module")
+		registry.Register(module.NewScriptHistoryModule(cfg, log, handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)))
 	}
 
-	// Register Utility module
-	utilityModule := module.NewUtilityModule(cfg, log, coreDeps.Utility)
-	registry.Register(utilityModule)
-	log.Info("registered Utility module")
+	registry.Register(module.NewUtilityModule(cfg, log, coreDeps.Utility))
 
-	// Wire and register Assets module (unified asset search)
-	assetsWiring, err := WireAssets(cfg, log, wiring.ArtlistSvc.Service, coreDeps.CatalogRepo, coreDeps.AssetIndexService)
-	if err != nil {
-		log.Warn("failed to wire Assets", zap.Error(err))
-	}
-	if assetsWiring != nil && assetsWiring.Module != nil {
+	if assetsWiring, err := WireAssets(cfg, log, wiring.ArtlistSvc.Service, coreDeps.CatalogRepo, coreDeps.AssetIndexService); err == nil && assetsWiring != nil {
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
-		log.Info("registered Assets module")
 	}
 
-	// Wire and register AssetTree module
-	assetTreeWiring, err := WireAssetTree(cfg, log, coreDeps)
-	if err != nil {
-		log.Warn("failed to wire AssetTree", zap.Error(err))
-	}
-	if assetTreeWiring != nil && assetTreeWiring.Module != nil {
+	if assetTreeWiring, err := WireAssetTree(cfg, log, coreDeps); err == nil && assetTreeWiring != nil {
 		wiring.AssetTree = assetTreeWiring
 		registry.Register(assetTreeWiring.Module)
-		log.Info("registered AssetTree module")
 	}
 
 	return wiring, nil

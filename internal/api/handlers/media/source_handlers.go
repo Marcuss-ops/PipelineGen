@@ -94,7 +94,9 @@ func (h *CommonHandler) ListClips(c *gin.Context) {
 		allClips = clips
 	}
 
+	total := 0
 	if sourceLower == "voiceover" || sourceLower == "images" {
+		total = len(allClips)
 		if offset >= len(allClips) {
 			allClips = []*models.Clip{}
 		} else {
@@ -104,12 +106,23 @@ func (h *CommonHandler) ListClips(c *gin.Context) {
 			}
 			allClips = allClips[offset:end]
 		}
+	} else {
+		repo := h.resolveRepo(source)
+		if repo != nil {
+			if q == "" {
+				total, _ = repo.CountClips(ctx)
+			} else {
+				// For search, total is len of results for now (since SearchClips isn't paged yet)
+				total = len(allClips)
+			}
+		}
 	}
 
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
 		"count":  len(allClips),
+		"total":  total,
 		"clips":  allClips,
 	})
 }

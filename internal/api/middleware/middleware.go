@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/logger"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Auth returns a gin middleware for authentication
@@ -21,7 +22,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		token := extractAuthToken(c)
-		logger.Info("Auth check", 
+		logger.Info("Auth check",
 			zap.String("path", c.Request.URL.Path),
 			zap.String("received_token", token),
 			zap.String("expected_token", cfg.Security.AdminToken))
@@ -40,7 +41,7 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		logger.Warn("Unauthorized access attempt", 
+		logger.Warn("Unauthorized access attempt",
 			zap.String("path", c.Request.URL.Path),
 			zap.String("token", token),
 			zap.String("client_ip", c.ClientIP()))
@@ -54,6 +55,10 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 
 func extractAuthToken(c *gin.Context) string {
 	if token := strings.TrimSpace(c.GetHeader("X-Velox-Admin-Token")); token != "" {
+		return token
+	}
+
+	if token := strings.TrimSpace(c.Query("token")); token != "" {
 		return token
 	}
 
@@ -211,8 +216,7 @@ func (r *RateLimitMiddleware) Stop() {
 
 // RateLimit creates a rate limiting middleware. The returned RateLimitMiddleware
 // must have its Stop() method called during server shutdown to prevent goroutine leaks.
-func RateLimit() *RateLimitMiddleware {
-	cfg := config.Get()
+func RateLimit(cfg *config.Config) *RateLimitMiddleware {
 	if !cfg.Security.RateLimitEnabled {
 		return &RateLimitMiddleware{
 			Handler: func(c *gin.Context) {

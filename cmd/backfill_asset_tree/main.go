@@ -72,21 +72,32 @@ func syncSourceWithNesting(ctx context.Context, dataDir, dbFile, source string, 
 	}
 	defer db.Close()
 
-	// 1. Map paths to folder IDs
+	// 1. Map paths to folder IDs and collect folder metadata
 	pathMap := make(map[string]string)
-	
+	folderMetadata := make(map[string]struct {
+		DriveLink   string
+		DriveFileID string
+	})
+
 	var hasFoldersTable bool
 	err = db.QueryRow("SELECT 1 FROM sqlite_master WHERE type='table' AND name='clip_folders'").Scan(&hasFoldersTable)
 	if err == nil {
-		rows, _ := db.Query("SELECT folder_id, folder_path FROM clip_folders")
+		rows, _ := db.Query("SELECT folder_id, folder_path, COALESCE(drive_link, ''), COALESCE(folder_id, '') FROM clip_folders")
 		if rows != nil {
 			defer rows.Close()
 			for rows.Next() {
-				var fid, fpath sql.NullString
-				if err := rows.Scan(&fid, &fpath); err == nil && fid.String != "" {
+				var fid, fpath, dlink, dfileid sql.NullString
+				if err := rows.Scan(&fid, &fpath, &dlink, &dfileid); err == nil && fid.String != "" {
 					p := strings.Trim(fpath.String, "/")
 					if p != "" {
 						pathMap[p] = fid.String
+						folderMetadata[fid.String] = struct {
+							DriveLink   string
+							DriveFileID string
+						}{
+							DriveLink:   dlink.String,
+							DriveFileID: dfileid.String,
+						}
 					}
 				}
 			}
@@ -118,17 +129,21 @@ func syncSourceWithNesting(ctx context.Context, dataDir, dbFile, source string, 
 				pathMap[currentPath] = folderID
 			}
 
+			meta := folderMetadata[folderID]
+
 			node := &assettree.AssetNode{
-				ID:       folderID,
-				Source:   source,
-				AssetID:  folderID,
-				Name:     seg,
-				Type:     "folder",
-				ParentID: parentID,
-				Path:     currentPath,
-				Depth:    strings.Count(currentPath, "/"),
-				IsFolder: true,
-				Metadata: "{}",
+				ID:          folderID,
+				Source:      source,
+				AssetID:     folderID,
+				Name:        seg,
+				Type:        "folder",
+				ParentID:    parentID,
+				Path:        currentPath,
+				Depth:       strings.Count(currentPath, "/"),
+				IsFolder:    true,
+				DriveFileID: meta.DriveFileID,
+				DriveLink:   meta.DriveLink,
+				Metadata:    "{}",
 			}
 			repo.UpsertNode(ctx, node)
 			parentID = folderID

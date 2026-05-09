@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueries, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { Plus, Search, Trash2, RefreshCw, Folder } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages } from '../api/media';
@@ -43,9 +43,14 @@ export function MediaAdminPage() {
     getBreadcrumb(source, activeFolderId).then(setBreadcrumb).catch(() => setBreadcrumb([]));
   }, [source, activeFolderId]);
 
-  const mediaQuery = useQuery({
+  const mediaQuery = useInfiniteQuery({
     queryKey: ['media', source, search],
-    queryFn: () => listMedia(source, search),
+    queryFn: ({ pageParam = 0 }) => listMedia(source, search, 50, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < 50) return undefined;
+      return allPages.length * 50;
+    },
     enabled: search !== '',
   });
 
@@ -66,7 +71,9 @@ export function MediaAdminPage() {
     return counts;
   }, [allSourceQueries, SOURCES]);
 
-  const items = search === '' ? (treeQuery.data || []) : (mediaQuery.data || []);
+  const items = search === '' 
+    ? (treeQuery.data || []) 
+    : (mediaQuery.data?.pages.flat() || []);
   
   // Transform Tree items to MediaItems for compatibility with MediaTable
   const normalizedItems = useMemo(() => {
@@ -179,17 +186,24 @@ export function MediaAdminPage() {
         </div>
       </div>
 
-      <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+      <StatsGrid
+        items={normalizedItems}
+        activeFilter={activeFilter}
+        onFilter={setActiveFilter}
+        isLoading={treeQuery.isLoading || mediaQuery.isLoading}
+      />
+
+      <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); setActiveFolderId('root'); }} />
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h3 className="text-lg font-bold">{sourceById[source].label}</h3>
-            <p className="text-sm text-zinc-500">{sourceById[source].description}</p>
+            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{sourceById[source].label}</h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">{sourceById[source].description}</p>
           </div>
           <div className="relative w-full md:max-w-md flex gap-2">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Cerca in ${sourceById[source].label}...`} className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Cerca in ${sourceById[source].label}...`} className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:focus:border-blue-500 dark:focus:bg-zinc-900" />
             </div>
           </div>
         </div>
@@ -229,6 +243,26 @@ export function MediaAdminPage() {
         onTrash={(item) => actionMutation.mutate({ action: 'trash', item })}
         onFolderClick={(id) => setActiveFolderId(id)}
       />
+
+      {search !== '' && mediaQuery.hasNextPage && (
+        <div className="mt-8 flex justify-center">
+          <Button 
+            variant="secondary" 
+            onClick={() => mediaQuery.fetchNextPage()} 
+            disabled={mediaQuery.isFetchingNextPage}
+            className="w-full max-w-xs"
+          >
+            {mediaQuery.isFetchingNextPage ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Caricamento...
+              </>
+            ) : (
+              'Carica altri asset'
+            )}
+          </Button>
+        </div>
+      )}
 
       <MediaDetailDrawer
         item={editing}

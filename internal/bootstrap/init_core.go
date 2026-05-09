@@ -35,41 +35,6 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 )
 
-type CoreDeps struct {
-	ScriptGen            *ollama.Generator
-	DocClient            drive.DocClient
-	DriveClient          *gdrive.Service
-	Utility              *common.UtilityHandler
-	DB                   *storage.SQLiteDB // Unified database
-	ArtlistDB            *storage.SQLiteDB // Artlist database (properly configured with WAL)
-	ImagesDB             *storage.SQLiteDB // Images database
-	AssetsDB             *storage.SQLiteDB // Assets database
-	ScriptsRepo          *scripts.ScriptRepository
-	ImageRepo            *images.Repository
-	ImageService         *imgservice.Service
-	StockDriveRepo       *clips.Repository
-	ArtlistRepo          *clips.Repository
-	ClipsOnlyRepo        *clips.Repository
-	MonitorsRepo         *monitors.Repository
-	VoiceoverRepo        *voiceovers.Repository
-	VoiceoverService     *voiceover.Service
-	VoiceoverSync        *voiceoversync.Service
-	IndexingService      *indexing.Service
-	// NOTE: HarvesterCronService eliminated - migrate to job system
-	// CatalogSyncService kept for now - should be migrated to job system
-	CatalogSyncService   *catalogsync.Service
-	ChannelMonitor       *monitor.ChannelMonitor
-	StockScheduler       *scheduler.StockScheduler
-	CatalogRepo          *catalog.Repository
-	AssocService         *association.Service
-	JobsService          *jobservice.Service
-	JobsDB               *sql.DB
-	MediaProcessor       processor.Processor
-	YoutubeClipService   *youtubeclip.Service
-	AssetIndexService    *assetindex.Service
-	AssetTreeService     *assettree.Service
-	ClipResolver         *clipresolver.Service
-}
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
 	return initCoreMinimal(cfg, log, "")

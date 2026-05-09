@@ -19,7 +19,7 @@ func (r *Repository) GetSubjectBySlugOrAlias(query string) (*models.Subject, err
 	var s models.Subject
 	// Cerchiamo prima per slug esatto o wikidata_id
 	err := r.db.QueryRow(`
-		SELECT id, slug, display_name, wikidata_id, category, notes, created_at, updated_at
+		SELECT id, slug, COALESCE(display_name, ''), COALESCE(wikidata_id, ''), COALESCE(category, ''), COALESCE(notes, ''), created_at, updated_at
 		FROM subjects WHERE slug = ? OR wikidata_id = ? OR aliases LIKE ?
 	`, query, query, "%"+query+"%").Scan(&s.ID, &s.Slug, &s.DisplayName, &s.WikidataID, &s.Category, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
@@ -31,7 +31,7 @@ func (r *Repository) GetSubjectBySlugOrAlias(query string) (*models.Subject, err
 // SearchSubjectsFTS esegue una ricerca full-text sui soggetti
 func (r *Repository) SearchSubjectsFTS(searchTerm string) ([]models.Subject, error) {
 	rows, err := r.db.Query(`
-		SELECT id, slug, display_name, wikidata_id, category, notes, created_at, updated_at
+		SELECT id, slug, COALESCE(display_name, ''), COALESCE(wikidata_id, ''), COALESCE(category, ''), COALESCE(notes, ''), created_at, updated_at
 		FROM subjects
 		WHERE id IN (SELECT rowid FROM subjects_fts WHERE subjects_fts MATCH ?)
 	`, searchTerm)
@@ -98,7 +98,7 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRow(`
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
+		SELECT id, hash, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(license, ''), width, height, size_bytes, quality_score, COALESCE(description, ''), COALESCE(drive_file_id, ''), COALESCE(status, ''), COALESCE(error, ''), COALESCE(metadata_json, '{}'), created_at
 		FROM images WHERE hash = ?
 	`, hash).Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.DriveFileID, &img.Status, &img.Error, &img.MetadataJSON, &img.CreatedAt)
 	if err != nil {
@@ -110,7 +110,7 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 // ListImagesBySubject elenca le immagini di un soggetto
 func (r *Repository) ListImagesBySubject(subjectID int64) ([]models.ImageAsset, error) {
 	rows, err := r.db.Query(`
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
+		SELECT id, hash, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(license, ''), width, height, size_bytes, quality_score, COALESCE(description, ''), COALESCE(drive_file_id, ''), COALESCE(status, ''), COALESCE(error, ''), COALESCE(metadata_json, '{}'), created_at
 		FROM images WHERE subject_id = ?
 		ORDER BY quality_score DESC, created_at DESC
 	`, subjectID)
@@ -133,7 +133,7 @@ func (r *Repository) ListImagesBySubject(subjectID int64) ([]models.ImageAsset, 
 // ListAll lists all image assets
 func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
+		SELECT id, hash, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(license, ''), width, height, size_bytes, quality_score, COALESCE(description, ''), COALESCE(drive_file_id, ''), COALESCE(status, ''), COALESCE(error, ''), COALESCE(metadata_json, '{}'), created_at
 		FROM images ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -161,7 +161,7 @@ func (r *Repository) Delete(ctx context.Context, id int64) error {
 // GetByDriveFileID retrieves an image by Drive file ID (checks source_url)
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, hash, subject_id, path_rel, source_url, license, width, height, size_bytes, quality_score, description, drive_file_id, status, error, metadata_json, created_at
+		SELECT id, hash, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(license, ''), width, height, size_bytes, quality_score, COALESCE(description, ''), COALESCE(drive_file_id, ''), COALESCE(status, ''), COALESCE(error, ''), COALESCE(metadata_json, '{}'), created_at
 		FROM images WHERE source_url LIKE ? OR source_url LIKE ?
 	`, "%"+fileID+"%", "%drive.google.com%"+fileID+"%")
 

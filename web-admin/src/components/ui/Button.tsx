@@ -7,9 +7,9 @@ type ButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & 
 };
 
 const variants = {
-  primary: 'bg-zinc-950 text-white hover:bg-black',
-  secondary: 'bg-white border border-zinc-200 text-zinc-900 hover:bg-zinc-50',
-  ghost: 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100',
+  primary: 'bg-zinc-950 text-white hover:bg-black dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200',
+  secondary: 'bg-white border border-zinc-200 text-zinc-900 hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-800',
+  ghost: 'text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-50 dark:hover:bg-zinc-800',
   danger: 'bg-red-600 text-white hover:bg-red-700',
 };
 

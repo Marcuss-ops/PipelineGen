@@ -26,8 +26,8 @@ import (
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns       = `id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, created_at, updated_at`
-	clipFolderColumns = `id, source, source_url, video_id, folder_id, folder_path, local_folder_path, group_name, manifest_txt_path, manifest_json_path, clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at`
+	clipColumns = `id, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(depth, 0) AS depth, is_folder, COALESCE(folder_path, '') AS folder_path, COALESCE(group_name, '') AS group_name, COALESCE(media_type, '') AS media_type, COALESCE(drive_link, '') AS drive_link, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(download_link, '') AS download_link, COALESCE(tags, '[]') AS tags, source, COALESCE(category, '') AS category, COALESCE(external_url, '') AS external_url, COALESCE(duration, 0) AS duration, COALESCE(metadata, '{}') AS metadata, COALESCE(file_hash, '') AS file_hash, COALESCE(local_path, '') AS local_path, COALESCE(status, '') AS status, COALESCE(error, '') AS error, COALESCE(search_terms, '[]') AS search_terms, COALESCE(thumb_url, '') AS thumb_url, created_at, updated_at`
+	clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 )
 
 // buildClipFolderQuery builds a SELECT query for clip_folders
@@ -159,8 +159,8 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 	if limit <= 0 {
 		limit = 50
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > 10000 {
+		limit = 10000
 	}
 	if offset < 0 {
 		offset = 0
@@ -396,82 +396,119 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 // scanClipRows scans a clip from sql.Rows
 func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var clip models.Clip
-	var tagsJSON string
-	var searchTermsJSON string
-	var fileHash, localPath, thumbURL string
-	var createdAt, updatedAt string
-	var status, errMsg string
+	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull sql.NullString
+	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
+	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
+	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
+	var statusNull, errorNull, thumbURLNull sql.NullString
 	
-	err := rows.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.ParentFolderID, &clip.Depth, &clip.IsFolder, &clip.FolderPath,
-		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
-		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &thumbURL, &createdAt, &updatedAt)
+	err := rows.Scan(
+		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
+		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
+		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
+		&createdAtNull, &updatedAtNull)
+	
 	if err != nil {
+		fmt.Printf("DEBUG: Scan error clip_id=%v err=%v\n", clip.ID, err)
 		return nil, err
 	}
 
-	if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal tags: %w", err)
+	clip.Name = nameNull.String
+	clip.Filename = filenameNull.String
+	clip.FolderID = folderIDNull.String
+	clip.ParentFolderID = parentFolderIDNull.String
+	clip.FolderPath = folderPathNull.String
+	clip.Group = groupNull.String
+	clip.MediaType = mediaTypeNull.String
+	clip.DriveLink = driveLinkNull.String
+	clip.DriveFileID = driveFileIDNull.String
+	clip.DownloadLink = downloadLinkNull.String
+	clip.Source = sourceNull.String
+	clip.Category = categoryNull.String
+	clip.ExternalURL = externalURLNull.String
+	clip.FileHash = fileHashNull.String
+	clip.LocalPath = localPathNull.String
+	clip.Status = statusNull.String
+	clip.Error = errorNull.String
+	clip.ThumbURL = thumbURLNull.String
+	clip.Metadata = metadataNull.String
+
+	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
+		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
+	}
+	if searchTermsNull.Valid && searchTermsNull.String != "" && searchTermsNull.String != "[]" {
+		_ = json.Unmarshal([]byte(searchTermsNull.String), &clip.SearchTerms)
 	}
 
-	if err := json.Unmarshal([]byte(searchTermsJSON), &clip.SearchTerms); err != nil {
-		// Non-blocking: if search_terms is invalid JSON, just log and continue
-		clip.SearchTerms = []string{}
+	if createdAtNull.Valid {
+		if t, err := time.Parse(time.RFC3339, createdAtNull.String); err == nil {
+			clip.CreatedAt = t
+		}
 	}
-
-	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
-		clip.CreatedAt = t
+	if updatedAtNull.Valid {
+		if t, err := time.Parse(time.RFC3339, updatedAtNull.String); err == nil {
+			clip.UpdatedAt = t
+		}
 	}
-	if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
-		clip.UpdatedAt = t
-	}
-
-	clip.FileHash = fileHash
-	clip.LocalPath = localPath
-	clip.ThumbURL = thumbURL
-	clip.Status = status
-	clip.Error = errMsg
 
 	return &clip, nil
 }
 
 func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var clip models.Clip
-	var tagsJSON string
-	var searchTermsJSON string
-	var fileHash, localPath, thumbURL string
-	var createdAt, updatedAt string
-	var status, errMsg string
+	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull sql.NullString
+	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
+	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
+	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
+	var statusNull, errorNull, thumbURLNull sql.NullString
 
-	err := row.Scan(&clip.ID, &clip.Name, &clip.Filename, &clip.FolderID, &clip.ParentFolderID, &clip.Depth, &clip.IsFolder, &clip.FolderPath,
-		&clip.Group, &clip.MediaType, &clip.DriveLink, &clip.DriveFileID, &clip.DownloadLink, &tagsJSON,
-		&clip.Source, &clip.Category, &clip.ExternalURL, &clip.Duration, &clip.Metadata,
-		&fileHash, &localPath, &status, &errMsg, &searchTermsJSON, &thumbURL, &createdAt, &updatedAt)
+	err := row.Scan(
+		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
+		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
+		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
+		&createdAtNull, &updatedAtNull)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if err := json.Unmarshal([]byte(tagsJSON), &clip.Tags); err != nil {
-		r.log.Error("failed to unmarshal clip tags", zap.Error(err))
+	clip.Name = nameNull.String
+	clip.Filename = filenameNull.String
+	clip.FolderID = folderIDNull.String
+	clip.ParentFolderID = parentFolderIDNull.String
+	clip.FolderPath = folderPathNull.String
+	clip.Group = groupNull.String
+	clip.MediaType = mediaTypeNull.String
+	clip.DriveLink = driveLinkNull.String
+	clip.DriveFileID = driveFileIDNull.String
+	clip.DownloadLink = downloadLinkNull.String
+	clip.Source = sourceNull.String
+	clip.Category = categoryNull.String
+	clip.ExternalURL = externalURLNull.String
+	clip.FileHash = fileHashNull.String
+	clip.LocalPath = localPathNull.String
+	clip.Status = statusNull.String
+	clip.Error = errorNull.String
+	clip.ThumbURL = thumbURLNull.String
+	clip.Metadata = metadataNull.String
+
+	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
+		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
 	}
-	if err := json.Unmarshal([]byte(searchTermsJSON), &clip.SearchTerms); err != nil {
-		r.log.Error("failed to unmarshal clip search_terms", zap.Error(err))
-		clip.SearchTerms = []string{}
+	if searchTermsNull.Valid && searchTermsNull.String != "" && searchTermsNull.String != "[]" {
+		_ = json.Unmarshal([]byte(searchTermsNull.String), &clip.SearchTerms)
 	}
 
-	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
-		clip.CreatedAt = t
+	if createdAtNull.Valid {
+		if t, err := time.Parse(time.RFC3339, createdAtNull.String); err == nil {
+			clip.CreatedAt = t
+		}
 	}
-	if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
-		clip.UpdatedAt = t
+	if updatedAtNull.Valid {
+		if t, err := time.Parse(time.RFC3339, updatedAtNull.String); err == nil {
+			clip.UpdatedAt = t
+		}
 	}
-
-	clip.FileHash = fileHash
-	clip.LocalPath = localPath
-	clip.ThumbURL = thumbURL
-	clip.Status = status
-	clip.Error = errMsg
 
 	return &clip, nil
 }

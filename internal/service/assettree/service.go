@@ -99,9 +99,19 @@ func (s *Service) UpsertNode(ctx context.Context, node *repo.AssetNode) error {
 	return s.repo.UpsertNode(ctx, node)
 }
 
+// DeleteByAssetID deletes a node by its source and original asset ID.
+func (s *Service) DeleteByAssetID(ctx context.Context, source, assetID string) error {
+	return s.repo.DeleteByAssetID(ctx, source, assetID)
+}
+
 // ListChildren gets the direct children of a given parent node
 func (s *Service) ListChildren(ctx context.Context, source, parentID string) ([]*repo.AssetNode, error) {
-	return s.repo.GetChildren(ctx, source, parentID)
+	return s.ListChildrenPaged(ctx, source, parentID, 10000, 0)
+}
+
+// ListChildrenPaged gets the direct children of a given parent node with pagination
+func (s *Service) ListChildrenPaged(ctx context.Context, source, parentID string, limit, offset int) ([]*repo.AssetNode, error) {
+	return s.repo.GetChildrenPaged(ctx, source, parentID, limit, offset)
 }
 
 // GetBreadcrumb returns the path from root to the given node ID

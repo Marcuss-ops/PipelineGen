@@ -223,6 +223,13 @@ func (h *CommonHandler) TrashClip(c *gin.Context) {
 		return
 	}
 
+	// Also delete from Asset Tree if service is available
+	if h.assetTreeSvc != nil {
+		if err := h.assetTreeSvc.DeleteByAssetID(ctx, source, clipID); err != nil {
+			h.log.Warn("failed to delete from asset tree", zap.String("clip_id", clipID), zap.Error(err))
+		}
+	}
+
 	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"action":  "trashed",
@@ -269,6 +276,13 @@ func (h *CommonHandler) DeleteClip(c *gin.Context) {
 	if err := repo.DeleteClip(ctx, clipID); err != nil {
 		apiutil.InternalError(c, err)
 		return
+	}
+
+	// Also delete from Asset Tree if service is available
+	if h.assetTreeSvc != nil {
+		if err := h.assetTreeSvc.DeleteByAssetID(ctx, source, clipID); err != nil {
+			h.log.Warn("failed to delete from asset tree", zap.String("clip_id", clipID), zap.Error(err))
+		}
 	}
 
 	apiutil.OK(c, gin.H{
@@ -626,6 +640,14 @@ func (h *CommonHandler) CreateClip(c *gin.Context) {
 		return
 	}
 
+	// Also update Asset Tree if service is available
+	if h.assetTreeSvc != nil {
+		node := clipToAssetNode(&clip)
+		if err := h.assetTreeSvc.UpsertNode(c.Request.Context(), node); err != nil {
+			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
+		}
+	}
+
 	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
@@ -708,6 +730,14 @@ func (h *CommonHandler) UpdateClip(c *gin.Context) {
 	if err := repo.UpsertClip(ctx, clip); err != nil {
 		apiutil.InternalError(c, err)
 		return
+	}
+
+	// Also update Asset Tree if service is available
+	if h.assetTreeSvc != nil {
+		node := clipToAssetNode(clip)
+		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
+			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clipID), zap.Error(err))
+		}
 	}
 
 	apiutil.OK(c, gin.H{

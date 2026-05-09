@@ -40,10 +40,14 @@ function normalizeClip(raw: any, source: MediaSource): MediaItem {
   };
 }
 
-export async function listMedia(source: MediaSource, q = ''): Promise<MediaItem[]> {
+export async function listMedia(source: MediaSource, q = '', limit = 100, offset = 0): Promise<MediaItem[]> {
   try {
-    const query = q ? `?q=${encodeURIComponent(q)}&limit=500` : '?limit=500';
-    const data = await apiFetch<ApiClipResponse>(`/api/media/${source}/clips${query}`);
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    
+    const data = await apiFetch<ApiClipResponse>(`/api/media/${source}/clips?${params.toString()}`);
     const list = data.clips ?? data.items ?? [];
     return list.map((item) => normalizeClip(item, source));
   } catch (error) {
@@ -51,7 +55,7 @@ export async function listMedia(source: MediaSource, q = ''): Promise<MediaItem[
     return makeMockItems(source).filter((item: MediaItem) => {
       const needle = q.toLowerCase();
       return !needle || [item.name, item.category, item.tags.join(' ')].join(' ').toLowerCase().includes(needle);
-    });
+    }).slice(offset, offset + limit);
   }
 }
 

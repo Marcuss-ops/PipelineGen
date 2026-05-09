@@ -109,7 +109,7 @@ func (r *Router) Setup() *gin.Engine {
 		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
 		protected.Use(middleware.Auth(r.cfg))
-		protected.Use(middleware.RateLimit().Handler)
+		protected.Use(middleware.RateLimit(r.cfg).Handler)
 		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
 			// Use module registry for route registration

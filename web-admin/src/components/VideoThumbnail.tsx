@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { MediaItem } from '../lib/types';
+import { withToken } from '../lib/utils';
 
 function getDriveFileId(value?: string) {
   if (!value) return '';
@@ -18,7 +19,7 @@ export function VideoThumbnail({ item, className = "" }: { item: MediaItem, clas
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const driveFileId = item.drive_file_id || getDriveFileId(item.drive_link) || getDriveFileId(item.download_link);
-  
+
   // Basic extension check
   const isBadExtension = (filename?: string) => {
     if (!filename) return false;
@@ -28,9 +29,9 @@ export function VideoThumbnail({ item, className = "" }: { item: MediaItem, clas
 
   // The download endpoint is now our smart proxy (Local -> Drive)
   const hasProxyVideo = !!(item.local_path || driveFileId) && !isBadExtension(item.filename || item.name);
-  const proxySrc = hasProxyVideo 
-    ? `/api/media/${item.source}/clips/${item.id}/download` 
-    : (item.preview_url || item.download_link);
+  const proxySrc = hasProxyVideo
+    ? withToken(`/api/media/${item.source}/clips/${item.id}/download`)
+    : withToken(item.preview_url || item.download_link || '');
 
   const posterSrc = item.thumb_url || (driveFileId ? `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w400` : `https://placehold.co/112x112?text=${encodeURIComponent(item.source)}`);
 
@@ -46,16 +47,16 @@ export function VideoThumbnail({ item, className = "" }: { item: MediaItem, clas
   }, [isHovering, error]);
 
   return (
-    <div 
+    <div
       className={`relative overflow-hidden bg-zinc-100 ring-2 ring-zinc-900/5 ${className}`}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
       {/* Thumbnail Image */}
-      <img 
-        src={posterSrc} 
+      <img
+        src={withToken(posterSrc)}
         className={`h-full w-full object-cover transition-opacity duration-300 ${isHovering && !error && hasProxyVideo ? 'opacity-0' : 'opacity-100'}`}
-        alt="" 
+        alt=""
       />
 
       {/* Video Preview */}

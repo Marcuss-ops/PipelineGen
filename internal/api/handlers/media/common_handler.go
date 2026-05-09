@@ -8,6 +8,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/upload/drive"
@@ -22,19 +23,21 @@ type CommonHandler struct {
 	imagesRepo     *images.Repository
 	cleanupSvc     *drivecleanup.Service
 	folderMemSvc   *foldermemory.Service
+	assetTreeSvc   *assettree.Service
 	driveUploader  *drive.Uploader
 	mediaProcessor processor.Processor
 	log            *zap.Logger
 }
 
 // NewCommonHandler creates a new common media handler.
-func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, folderMemSvc *foldermemory.Service, driveUploader *drive.Uploader, mediaProcessor processor.Processor, log *zap.Logger) *CommonHandler {
+func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, folderMemSvc *foldermemory.Service, assetTreeSvc *assettree.Service, driveUploader *drive.Uploader, mediaProcessor processor.Processor, log *zap.Logger) *CommonHandler {
 	return &CommonHandler{
 		artlistRepo:    artlistRepo,
 		clipsRepo:      clipsRepo,
 		stockRepo:      stockRepo,
 		cleanupSvc:     cleanupSvc,
 		folderMemSvc:   folderMemSvc,
+		assetTreeSvc:   assetTreeSvc,
 		driveUploader:  driveUploader,
 		mediaProcessor: mediaProcessor,
 		log:            log,

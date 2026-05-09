@@ -7,8 +7,36 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/repository/assettree"
 	"velox/go-master/pkg/models"
 )
+
+// clipToAssetNode converts a models.Clip to assettree.AssetNode for unified tree handling.
+func clipToAssetNode(clip *models.Clip) *assettree.AssetNode {
+	nodeType := "file"
+	if clip.IsFolder {
+		nodeType = "folder"
+	} else if clip.MediaType != "" {
+		nodeType = clip.MediaType
+	}
+
+	return &assettree.AssetNode{
+		ID:          clip.ID,
+		Source:      clip.Source,
+		AssetID:     clip.ID,
+		Name:        clip.Name,
+		Type:        nodeType,
+		ParentID:    clip.FolderID,
+		Path:        clip.FolderPath,
+		Depth:       clip.Depth,
+		IsFolder:    clip.IsFolder,
+		DriveFileID: clip.DriveFileID,
+		DriveLink:   clip.DriveLink,
+		Metadata:    clip.Metadata,
+		CreatedAt:   clip.CreatedAt,
+		UpdatedAt:   clip.UpdatedAt,
+	}
+}
 
 // voiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
 func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
