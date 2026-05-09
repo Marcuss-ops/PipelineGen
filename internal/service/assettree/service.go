@@ -104,6 +104,11 @@ func (s *Service) DeleteByAssetID(ctx context.Context, source, assetID string) e
 	return s.repo.DeleteByAssetID(ctx, source, assetID)
 }
 
+// DeleteNode deletes a node by its explicit ID.
+func (s *Service) DeleteNode(ctx context.Context, id string) error {
+	return s.repo.DeleteNode(ctx, id)
+}
+
 // ListChildren gets the direct children of a given parent node
 func (s *Service) ListChildren(ctx context.Context, source, parentID string) ([]*repo.AssetNode, error) {
 	return s.ListChildrenPaged(ctx, source, parentID, 10000, 0)

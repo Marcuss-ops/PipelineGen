@@ -22,8 +22,8 @@ func WireJobs(
 ) (*JobsWiring, error) {
 	handler := jobshandler.NewHandler(coreDeps.JobsService, log)
 
-	mod := module.NewJobsModule(cfg, log, coreDeps.JobsService, handler)
-	log.Info("created Jobs module")
+	mod := module.NewRouteModule("jobs", nil, "/jobs", handler, log)
+	log.Info("created Jobs module using RouteModule")
 
 	return &JobsWiring{
 		Handler: handler,

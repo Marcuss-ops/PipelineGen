@@ -3,9 +3,6 @@ package youtubeclip
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -138,42 +135,5 @@ func (h *Handler) Extract(c *gin.Context) {
 		return
 	}
 
-	// Fallback: if no jobs service, call synchronously (legacy path)
-	resp, err := h.service.Extract(c.Request.Context(), &req)
-
-	// If there's a fatal error (not just item failures), return error
-	if err != nil && (resp == nil || len(resp.Items) == 0) {
-		// Check if it's a user error
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "required") ||
-			strings.Contains(errMsg, "invalid") ||
-			strings.Contains(errMsg, "segments") {
-			apiutil.BadRequest(c, errMsg)
-			return
-		}
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	// If resp is nil, return error
-	if resp == nil {
-		apiutil.InternalError(c, fmt.Errorf("nil response"))
-		return
-	}
-
-	// If all items failed, return 500; if some failed, return 207; if all succeeded, return 200
-	failedCount := 0
-	for _, item := range resp.Items {
-		if item.Status == "failed" {
-			failedCount++
-		}
-	}
-
-	if failedCount == len(resp.Items) && len(resp.Items) > 0 {
-		c.JSON(http.StatusInternalServerError, resp)
-	} else if failedCount > 0 {
-		c.JSON(http.StatusMultiStatus, resp)
-	} else {
-		apiutil.OK(c, resp)
-	}
+	apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
 }

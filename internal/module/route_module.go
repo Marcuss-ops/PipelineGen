@@ -18,10 +18,16 @@ type RouteModule struct {
 	log         *zap.Logger
 	startFn     func(context.Context) error
 	stopFn      func(context.Context) error
+	middleware  []gin.HandlerFunc
 }
 
 // RouteModuleOption configures a RouteModule.
 type RouteModuleOption func(*RouteModule)
+
+// WithMiddleware adds middleware to the module's route group.
+func WithMiddleware(mw ...gin.HandlerFunc) RouteModuleOption {
+	return func(m *RouteModule) { m.middleware = append(m.middleware, mw...) }
+}
 
 // WithStart sets an optional start function.
 func WithStart(fn func(context.Context) error) RouteModuleOption {
@@ -75,6 +81,9 @@ func (m *RouteModule) RegisterRoutes(rg *gin.RouterGroup) {
 		return
 	}
 	group := rg.Group(m.prefix)
+	for _, mw := range m.middleware {
+		group.Use(mw)
+	}
 	m.handler.RegisterRoutes(group)
 }
 

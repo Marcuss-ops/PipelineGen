@@ -11,6 +11,7 @@ import (
 	"google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/assettree"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
@@ -19,14 +20,16 @@ type Service struct {
 	driveClient *drive.Service
 	log         *zap.Logger
 	repo         *voiceovers.Repository
+	assetTreeSvc *assettree.Service
 	rootFolderID string
 }
 
-func NewService(driveClient *drive.Service, repo *voiceovers.Repository, rootFolderID string, log *zap.Logger) *Service {
+func NewService(driveClient *drive.Service, repo *voiceovers.Repository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
 	return &Service{
-		driveClient: driveClient,
-		log:         log,
+		driveClient:  driveClient,
+		log:          log,
 		repo:         repo,
+		assetTreeSvc: assetTreeSvc,
 		rootFolderID: rootFolderID,
 	}
 }
@@ -66,6 +69,14 @@ func (s *Service) Sync(ctx context.Context) (*Summary, error) {
 		return summary, fmt.Errorf("voiceover root folder ID not configured")
 	}
 
+	if s.assetTreeSvc != nil {
+		rootNode := s.assetTreeSvc.NormalizeDriveNode(
+			s.rootFolderID, "Voiceover", folderMimeType, "", "",
+			"", s.rootFolderID, "", "voiceover", "",
+		)
+		s.assetTreeSvc.UpsertNode(ctx, rootNode)
+	}
+
 	synced, failed, err := s.syncFolderRecursive(ctx, s.rootFolderID, "")
 	if err != nil {
 		summary.OK = false
@@ -101,6 +112,15 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 		childPath := path.Join(folderPath, childName)
 
 		if child.MimeType == folderMimeType {
+			// Upsert folder to tree
+			if s.assetTreeSvc != nil {
+				node := s.assetTreeSvc.NormalizeDriveNode(
+					child.Id, child.Name, child.MimeType, child.WebViewLink, child.WebContentLink,
+					folderID, s.rootFolderID, folderPath, "voiceover", "",
+				)
+				s.assetTreeSvc.UpsertNode(ctx, node)
+			}
+
 			subSynced, subFailed, err := s.syncFolderRecursive(ctx, child.Id, childPath)
 			if err != nil {
 				s.log.Warn("failed to sync subfolder",
@@ -197,7 +217,20 @@ func (s *Service) syncFile(ctx context.Context, file *drive.File, filePath strin
 		}
 	}
 
-	return s.repo.Upsert(ctx, rec)
+	if err := s.repo.Upsert(ctx, rec); err != nil {
+		return err
+	}
+
+	// Upsert file to tree
+	if s.assetTreeSvc != nil {
+		node := s.assetTreeSvc.NormalizeDriveNode(
+			file.Id, file.Name, file.MimeType, file.WebViewLink, file.WebContentLink,
+			folderID, s.rootFolderID, filePath, "voiceover", id,
+		)
+		return s.assetTreeSvc.UpsertNode(ctx, node)
+	}
+
+	return nil
 }
 
 // buildDriveQuery builds a Drive API query string.

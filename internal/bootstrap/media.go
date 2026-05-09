@@ -3,7 +3,7 @@ package bootstrap
 import (
 	mediahandler "velox/go-master/internal/api/handlers/media"
 	"velox/go-master/internal/service/drivecleanup"
-	foldermemory "velox/go-master/internal/service/foldermemory"
+	"velox/go-master/internal/service/media"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
@@ -26,8 +26,6 @@ func WireMedia(
 	var handler *mediahandler.CommonHandler
 
 	if coreDeps.StockDriveRepo != nil && coreDeps.ArtlistRepo != nil && coreDeps.ClipsOnlyRepo != nil {
-		// Create folder memory service
-		folderMemSvc := foldermemory.NewService(log, coreDeps.ArtlistRepo)
 
 		// Create drive uploader
 		var driveUploader *drive.Uploader
@@ -41,15 +39,27 @@ func WireMedia(
 			driveCleanupSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log, true)
 		}
 
+		// Create deletion service
+		deletionSvc := media.NewDeletionService(
+			coreDeps.ArtlistRepo,
+			coreDeps.ClipsOnlyRepo,
+			coreDeps.StockDriveRepo,
+			coreDeps.VoiceoverRepo,
+			coreDeps.ImageRepo,
+			driveUploader,
+			coreDeps.AssetTreeService,
+			log,
+		)
+
 		handler = mediahandler.NewCommonHandler(
 			coreDeps.ArtlistRepo,
 			coreDeps.ClipsOnlyRepo,
 			coreDeps.StockDriveRepo,
 			driveCleanupSvc,
-			folderMemSvc,
 			coreDeps.AssetTreeService,
 			driveUploader,
 			coreDeps.MediaProcessor,
+			deletionSvc,
 			log,
 		)
 
@@ -70,8 +80,8 @@ func WireMedia(
 		log.Warn("common media handler not initialized - missing dependencies")
 	}
 
-	mod := module.NewMediaModule(cfg, log, handler)
-	log.Info("created Media module")
+	mod := module.NewRouteModule("media", nil, "/media", handler, log)
+	log.Info("created Media module using RouteModule")
 
 	return &MediaWiring{
 		Handler: handler,

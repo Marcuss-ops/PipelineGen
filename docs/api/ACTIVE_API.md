@@ -154,6 +154,7 @@ Note: `/api/voiceover/sync/status` was removed - was returning fake status (debt
 | POST | `/api/media/:source/clips/:id/delete` | Permanently delete clip from Drive and DB |
 | GET | `/api/media/:source/clips/:id/duplicates` | Find potential duplicates by hash |
 | GET | `/api/media/:source/folders` | List folders/categories for source |
+| POST | `/api/media/:source/cleanup-orphans` | Cleanup orphaned files (diagnostics) |
 | GET | `/api/media/manifest/export` | Export global media manifest |
 
 ## Admin Endpoints

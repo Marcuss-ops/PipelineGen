@@ -132,6 +132,30 @@ export async function bulkTrashMedia(source: MediaSource, ids: string[]) {
   return Promise.all(ids.map((id) => trashMedia(source, id)));
 }
 
+export async function bulkAddTags(source: MediaSource, ids: string[], tags: string[]) {
+  return apiFetch(`/api/media/${source}/bulk/tags/add`, {
+    method: 'POST',
+    body: JSON.stringify({ ids, tags }),
+  });
+}
+
+export async function bulkRemoveTags(source: MediaSource, ids: string[], tags: string[]) {
+  return apiFetch(`/api/media/${source}/bulk/tags/remove`, {
+    method: 'POST',
+    body: JSON.stringify({ ids, tags }),
+  });
+}
+
+export async function cleanupOrphans(source: MediaSource, dryRun = true) {
+  return apiFetch<{
+    ok: boolean;
+    source: string;
+    orphans: string[];
+    count: number;
+    checked: number;
+  }>(`/api/media/${source}/cleanup-orphans?dry_run=${dryRun}`, { method: 'POST' });
+}
+
 export async function syncImages() {
   return apiFetch<{ ok: boolean; message: string }>('/api/images/sync', { method: 'POST' });
 }

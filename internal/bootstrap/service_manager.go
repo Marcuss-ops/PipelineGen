@@ -152,7 +152,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
 	if cfg.Drive.VoiceoverRootFolder != "" && voRepo != nil {
-		voiceoverSync = voiceoversync.NewService(driveClient, voRepo, cfg.Drive.VoiceoverRootFolder, log)
+		voiceoverSync = voiceoversync.NewService(driveClient, voRepo, assetTreeService, cfg.Drive.VoiceoverRootFolder, log)
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", cfg.Drive.VoiceoverRootFolder))
 	}
 

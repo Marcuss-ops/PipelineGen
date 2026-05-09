@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"net/http"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/artlist"
@@ -93,7 +92,7 @@ func (h *Handler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
 		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 		return
 	}
-	c.JSON(http.StatusAccepted, artlist.JobToRunTagResponse(job))
+	apiutil.Accepted(c, artlist.JobToRunTagResponse(job))
 }
 
 // RunStatus returns the tracked status for a background artlist run

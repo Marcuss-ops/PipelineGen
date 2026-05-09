@@ -8,8 +8,6 @@ import (
 	artlistService "velox/go-master/internal/service/artlist"
 	"velox/go-master/pkg/config"
 
-	"github.com/gin-gonic/gin"
-
 	"go.uber.org/zap"
 )
 
@@ -37,26 +35,6 @@ func NewArtlistModule(
 			}
 			return nil
 		}),
-		// Add ArtlistEnabled middleware
-		func(m *RouteModule) {
-			m.handler = &artlistHandlerWithMiddleware{
-				handler:   m.handler,
-				cfg:       cfg,
-				middleware: middleware.ArtlistEnabled(cfg),
-			}
-		},
+		WithMiddleware(middleware.ArtlistEnabled(cfg)),
 	)
-}
-
-// artlistHandlerWithMiddleware wraps the handler to add ArtlistEnabled middleware
-type artlistHandlerWithMiddleware struct {
-	handler    interface{ RegisterRoutes(*gin.RouterGroup) }
-	cfg        *config.Config
-	middleware gin.HandlerFunc
-}
-
-func (h *artlistHandlerWithMiddleware) RegisterRoutes(r *gin.RouterGroup) {
-	group := r.Group("")
-	group.Use(h.middleware)
-	h.handler.RegisterRoutes(group)
 }

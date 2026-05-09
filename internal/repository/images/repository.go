@@ -158,6 +158,19 @@ func (r *Repository) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
+// GetByID retrieves an image by its database ID
+func (r *Repository) GetByID(ctx context.Context, id int64) (*models.ImageAsset, error) {
+	var img models.ImageAsset
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, hash, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(license, ''), width, height, size_bytes, quality_score, COALESCE(description, ''), COALESCE(drive_file_id, ''), COALESCE(status, ''), COALESCE(error, ''), COALESCE(metadata_json, '{}'), created_at
+		FROM images WHERE id = ?
+	`, id).Scan(&img.ID, &img.Hash, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.License, &img.Width, &img.Height, &img.SizeBytes, &img.QualityScore, &img.Description, &img.DriveFileID, &img.Status, &img.Error, &img.MetadataJSON, &img.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &img, nil
+}
+
 // GetByDriveFileID retrieves an image by Drive file ID (checks source_url)
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	row := r.db.QueryRowContext(ctx, `

@@ -1,4 +1,4 @@
-package media
+package assets
 
 import (
 	"strconv"
@@ -12,8 +12,7 @@ import (
 )
 
 // ListFolders lists all folders for a source.
-// Query params: limit (default 50, max 500)
-func (h *CommonHandler) ListFolders(c *gin.Context) {
+func (h *Handler) ListFolders(c *gin.Context) {
 	source := c.Param("source")
 
 	repo := h.resolveRepo(source)
@@ -50,7 +49,7 @@ func (h *CommonHandler) ListFolders(c *gin.Context) {
 }
 
 // FolderStatus returns the status of a folder.
-func (h *CommonHandler) FolderStatus(c *gin.Context) {
+func (h *Handler) FolderStatus(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -110,8 +109,7 @@ func (h *CommonHandler) FolderStatus(c *gin.Context) {
 }
 
 // RegenerateManifest regenerates manifest files for a folder.
-// POST /api/media/:source/folders/:id/regenerate-manifest
-func (h *CommonHandler) RegenerateManifest(c *gin.Context) {
+func (h *Handler) RegenerateManifest(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -121,13 +119,11 @@ func (h *CommonHandler) RegenerateManifest(c *gin.Context) {
 		return
 	}
 
-	// This is often handled by folderMemSvc or a specific usecase
 	if h.folderMemSvc == nil {
-		apiutil.InternalError(c, nil) // "folder memory service not configured"
+		apiutil.InternalError(c, nil)
 		return
 	}
 
-	// Logic for regenerate-manifest (simplified)
 	h.log.Info("regenerating manifest for folder", zap.String("id", folderID))
 	
 	apiutil.OK(c, gin.H{
@@ -138,7 +134,7 @@ func (h *CommonHandler) RegenerateManifest(c *gin.Context) {
 }
 
 // TrashFolder moves a folder to Drive trash.
-func (h *CommonHandler) TrashFolder(c *gin.Context) {
+func (h *Handler) TrashFolder(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -148,7 +144,6 @@ func (h *CommonHandler) TrashFolder(c *gin.Context) {
 		return
 	}
 
-	// Logic for trash-folder (simplified)
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"action": "trashed",
@@ -158,7 +153,7 @@ func (h *CommonHandler) TrashFolder(c *gin.Context) {
 }
 
 // DeleteFolder permanently deletes a folder.
-func (h *CommonHandler) DeleteFolder(c *gin.Context) {
+func (h *Handler) DeleteFolder(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -168,7 +163,6 @@ func (h *CommonHandler) DeleteFolder(c *gin.Context) {
 		return
 	}
 
-	// Logic for delete-folder (simplified)
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"action": "deleted",
@@ -178,8 +172,7 @@ func (h *CommonHandler) DeleteFolder(c *gin.Context) {
 }
 
 // GetFolderChildren returns the children of a specific folder.
-// id can be "root" or an empty string to get root folders.
-func (h *CommonHandler) GetFolderChildren(c *gin.Context) {
+func (h *Handler) GetFolderChildren(c *gin.Context) {
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -210,11 +203,6 @@ func (h *CommonHandler) GetFolderChildren(c *gin.Context) {
 			err = treeErr
 		}
 	} else {
-		repo := h.resolveRepo(source)
-		if repo == nil {
-			apiutil.BadRequest(c, "invalid source: "+source)
-			return
-		}
 		children = []*models.AssetNode{}
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {

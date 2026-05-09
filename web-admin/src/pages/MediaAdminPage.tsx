@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueries, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Plus, Search, Trash2, RefreshCw, Folder } from 'lucide-react';
+import { Plus, Search, Trash2, RefreshCw, Folder, Tags, ShieldAlert } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
-import { bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages } from '../api/media';
+import { bulkAddTags, bulkRemoveTags, cleanupOrphans, bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages } from '../api/media';
 import { getTree, getBreadcrumb, type AssetNode } from '../api/assets';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
@@ -151,6 +151,29 @@ export function MediaAdminPage() {
     refresh();
   };
 
+  const handleBulkTags = async () => {
+    const input = window.prompt('Inserisci i tag separati da virgola (es: cinemmatic, alaska):');
+    if (!input) return;
+    const tags = input.split(',').map(s => s.trim()).filter(Boolean);
+    const ids = Array.from(selected);
+    await bulkAddTags(source, ids, tags);
+    setNotice(`Aggiunti tag a ${ids.length} elementi`);
+    setSelected(new Set());
+    refresh();
+  };
+
+  const handleCleanupOrphans = async () => {
+    if (!window.confirm('Vuoi cercare i file orfani (DB presente ma file rimosso su Drive)?')) return;
+    setNotice('Ricerca orfani in corso...');
+    try {
+      const data = await cleanupOrphans(source, false);
+      setNotice(`Pulizia completata: rimossi ${data.count} elementi orfani su ${data.checked} controllati.`);
+      refresh();
+    } catch (err) {
+      setNotice(`Errore pulizia: ${err}`);
+    }
+  };
+
   const syncMutation = useMutation({
     mutationFn: syncImages,
     onSuccess: (data) => {
@@ -164,13 +187,16 @@ export function MediaAdminPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black tracking-tight text-zinc-900">Media Database</h1>
-        <div className="flex gap-2">
-          {source === 'images' && (
-            <Button variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
-              <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} /> Sincronizza Drive
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={handleCleanupOrphans}>
+              <ShieldAlert className="h-4 w-4" /> Pulisci Orfani
             </Button>
-          )}
-          <Button onClick={() => setEditing({
+            {source === 'images' && (
+              <Button variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
+                <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} /> Sincronizza Drive
+              </Button>
+            )}
+            <Button onClick={() => setEditing({
             id: crypto.randomUUID(),
             source,
             name: 'Nuovo asset',
@@ -210,6 +236,7 @@ export function MediaAdminPage() {
             <Button variant="secondary" onClick={() => setSelected(new Set())}>Deseleziona</Button>
             <Button variant="secondary" onClick={handleBulkReprocess}>Reprocess</Button>
             <Button variant="secondary" onClick={handleBulkReupload}>Reupload</Button>
+            <Button variant="secondary" onClick={handleBulkTags}><Tags className="h-4 w-4" /> Tag</Button>
             <Button variant="danger" onClick={handleBulkTrash}><Trash2 className="h-4 w-4" /> Delete</Button>
           </div>
         </div>

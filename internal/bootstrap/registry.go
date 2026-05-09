@@ -3,11 +3,7 @@ package bootstrap
 import (
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/script/handlers"
-	assetshandler "velox/go-master/internal/api/handlers/assets"
-	artlistPkg "velox/go-master/internal/service/artlist"
-	assetindex "velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/module"
-	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
@@ -28,7 +24,6 @@ type RegistryWiring struct {
 	Scraper    *ScraperWiring
 	ContentPkg *ContentPackageWiring
 	Assets     *AssetsWiring
-	AssetTree  *AssetTreeWiring
 }
 
 // SystemWiring holds the System module wiring
@@ -42,29 +37,6 @@ type ScraperWiring struct {
 	Module  module.Module
 }
 
-// AssetsWiring holds the Assets module wiring
-type AssetsWiring struct {
-	Handler *assetshandler.Handler
-	Module  module.Module
-}
-
-// WireAssets creates the Assets handler and module
-func WireAssets(
-	cfg *config.Config,
-	log *zap.Logger,
-	artlistSvc *artlistPkg.Service,
-	catalogRepo *catalog.Repository,
-	assetIndexSvc *assetindex.Service,
-) (*AssetsWiring, error) {
-	handler := assetshandler.NewHandler(artlistSvc, catalogRepo, assetIndexSvc, log)
-	mod := module.NewAssetsModule(cfg, log, artlistSvc, catalogRepo, assetIndexSvc)
-	log.Info("created Assets module")
-
-	return &AssetsWiring{
-		Handler: handler,
-		Module:  mod,
-	}, nil
-}
 
 // WireScraper creates the Scraper handler and module
 func WireScraper(
@@ -210,14 +182,9 @@ func WireRegistry(
 
 	registry.Register(module.NewUtilityModule(cfg, log, coreDeps.Utility))
 
-	if assetsWiring, err := WireAssets(cfg, log, wiring.ArtlistSvc.Service, coreDeps.CatalogRepo, coreDeps.AssetIndexService); err == nil && assetsWiring != nil {
+	if assetsWiring, err := WireAssets(cfg, log, coreDeps, wiring.ArtlistSvc.Service, coreDeps.CatalogRepo, coreDeps.AssetIndexService); err == nil && assetsWiring != nil {
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
-	}
-
-	if assetTreeWiring, err := WireAssetTree(cfg, log, coreDeps); err == nil && assetTreeWiring != nil {
-		wiring.AssetTree = assetTreeWiring
-		registry.Register(assetTreeWiring.Module)
 	}
 
 	return wiring, nil

@@ -12,9 +12,8 @@ import (
 
 // Recommend handles the recommendation endpoint using clipresolver
 func (h *Handler) Recommend(c *gin.Context) {
-	var req clipresolver.RecommendRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, fmt.Sprintf("invalid request: %v", err))
+	req, ok := apiutil.BindJSON[clipresolver.RecommendRequest](c)
+	if !ok {
 		return
 	}
 

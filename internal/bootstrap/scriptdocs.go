@@ -39,6 +39,9 @@ func WireScriptDocs(
 		log.Info("registered script.generate job handler")
 	}
 
+	// Create persistence service
+	persistSvc := scriptdocssvc.NewPersistenceService(coreDeps.ScriptsRepo, coreDeps.JobsService, log)
+
 	handler := handlers.NewScriptDocsHandler(
 		coreDeps.ScriptGen,
 		coreDeps.DocClient,
@@ -57,6 +60,7 @@ func WireScriptDocs(
 		coreDeps.AssocService,
 		coreDeps.JobsService,
 		coreDeps.ClipResolver,
+		persistSvc,
 	)
 
 	var mod module.Module

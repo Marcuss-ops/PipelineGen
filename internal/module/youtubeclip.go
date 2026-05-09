@@ -9,8 +9,6 @@ import (
 	youtubeclip "velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/config"
 
-	"github.com/gin-gonic/gin"
-
 	"go.uber.org/zap"
 )
 
@@ -39,26 +37,6 @@ func NewYouTubeClipModule(
 			log.Info("stopping youtube clips module")
 			return nil
 		}),
-		// Add YouTubeEnabled middleware
-		func(m *RouteModule) {
-			m.handler = &youtubeClipHandlerWithMiddleware{
-				handler:   m.handler,
-				cfg:       cfg,
-				middleware: middleware.YouTubeEnabled(cfg),
-			}
-		},
+		WithMiddleware(middleware.YouTubeEnabled(cfg)),
 	)
-}
-
-// youtubeClipHandlerWithMiddleware wraps the handler to add YouTubeEnabled middleware
-type youtubeClipHandlerWithMiddleware struct {
-	handler     interface{ RegisterRoutes(*gin.RouterGroup) }
-	cfg         *config.Config
-	middleware  gin.HandlerFunc
-}
-
-func (h *youtubeClipHandlerWithMiddleware) RegisterRoutes(r *gin.RouterGroup) {
-	group := r.Group("")
-	group.Use(h.middleware)
-	h.handler.RegisterRoutes(group)
 }

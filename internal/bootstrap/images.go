@@ -22,8 +22,14 @@ func WireImages(
 ) (*ImagesWiring, error) {
 	handler := imghandler.NewHandler(coreDeps.ImageService)
 
-	mod := module.NewImagesModule(cfg, log, handler)
-	log.Info("created Images module")
+	mod := module.NewRouteModule(
+		"images",
+		func(cfg *config.Config) bool { return cfg.Features.ImagesEnabled },
+		"/images",
+		handler,
+		log,
+	)
+	log.Info("created Images module using RouteModule")
 
 	return &ImagesWiring{
 		Handler: handler,

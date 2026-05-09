@@ -9,6 +9,7 @@ import (
 	"velox/go-master/internal/service/association"
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/upload/drive"
 
@@ -35,10 +36,11 @@ type ScriptDocsHandler struct {
 	assocService     *association.Service
 	jobsService      *jobservice.Service
 	clipResolver     *clipresolver.Service
+	persistSvc       *scriptdocs.PersistenceService
 }
 
 // NewScriptDocsHandler creates a modular script-docs handler.
-func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service, assocService *association.Service, jobsService *jobservice.Service, clipResolver *clipresolver.Service) *ScriptDocsHandler {
+func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voService *voiceover.Service, imgService *imgservice.Service, dataDir, clipTextDir, pythonScriptsDir, nodeScraperDir string, scriptsRepo *scripts.ScriptRepository, StockDriveRepo, ArtlistRepo, clipsOnlyRepo *clips.Repository, stockRootFolder string, artlistService *artlistSvc.Service, assocService *association.Service, jobsService *jobservice.Service, clipResolver *clipresolver.Service, persistSvc *scriptdocs.PersistenceService) *ScriptDocsHandler {
 	return &ScriptDocsHandler{
 		generator:        gen,
 		docClient:        docClient,
@@ -57,6 +59,7 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voSe
 		assocService:     assocService,
 		jobsService:      jobsService,
 		clipResolver:     clipResolver,
+		persistSvc:       persistSvc,
 	}
 }
 

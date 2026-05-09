@@ -215,7 +215,40 @@ func (u *Uploader) DeleteFolder(ctx context.Context, folderID string) error {
 	return nil
 }
 
+// GetFileMD5 retrieves the MD5 checksum of a file from Google Drive.
+func (u *Uploader) GetFileMD5(ctx context.Context, fileID string) (string, error) {
+	if u.Service == nil {
+		return "", fmt.Errorf("drive service not configured")
+	}
+	file, err := u.Service.Files.Get(fileID).Fields("id,md5Checksum").Context(ctx).Do()
+	if err != nil {
+		return "", err
+	}
+	return file.Md5Checksum, nil
+}
+
 // openFile is a helper to open a file (easily mockable for tests).
 var openFile = func(path string) (*os.File, error) {
 	return os.Open(path)
+}
+
+// FileExists checks if a file exists on Google Drive.
+func (u *Uploader) FileExists(ctx context.Context, fileID string) (bool, error) {
+	if u.Service == nil {
+		return false, fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(fileID) == "" {
+		return false, nil
+	}
+
+	_, err := u.Service.Files.Get(fileID).Fields("id", "trashed").Context(ctx).Do()
+	if err != nil {
+		// Check if it's a 404
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "notFound") {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
 }

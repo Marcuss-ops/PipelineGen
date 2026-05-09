@@ -10,7 +10,7 @@ import (
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/drivecleanup"
-	"velox/go-master/internal/service/foldermemory"
+	"velox/go-master/internal/service/media"
 	"velox/go-master/internal/upload/drive"
 )
 
@@ -22,24 +22,24 @@ type CommonHandler struct {
 	voiceoverRepo  *voiceovers.Repository
 	imagesRepo     *images.Repository
 	cleanupSvc     *drivecleanup.Service
-	folderMemSvc   *foldermemory.Service
 	assetTreeSvc   *assettree.Service
 	driveUploader  *drive.Uploader
 	mediaProcessor processor.Processor
+	deletionSvc    *media.DeletionService
 	log            *zap.Logger
 }
 
 // NewCommonHandler creates a new common media handler.
-func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, folderMemSvc *foldermemory.Service, assetTreeSvc *assettree.Service, driveUploader *drive.Uploader, mediaProcessor processor.Processor, log *zap.Logger) *CommonHandler {
+func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, assetTreeSvc *assettree.Service, driveUploader *drive.Uploader, mediaProcessor processor.Processor, deletionSvc *media.DeletionService, log *zap.Logger) *CommonHandler {
 	return &CommonHandler{
 		artlistRepo:    artlistRepo,
 		clipsRepo:      clipsRepo,
 		stockRepo:      stockRepo,
 		cleanupSvc:     cleanupSvc,
-		folderMemSvc:   folderMemSvc,
 		assetTreeSvc:   assetTreeSvc,
 		driveUploader:  driveUploader,
 		mediaProcessor: mediaProcessor,
+		deletionSvc:    deletionSvc,
 		log:            log,
 	}
 }
@@ -70,14 +70,8 @@ func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:source/clips/:id/reprocess", h.ReprocessClip)
 	r.GET("/:source/clips/:id/duplicates", h.FindDuplicates)
 	r.GET("/:source/clips/:id/download", h.DownloadClip)
-
-	// Folder-level endpoints
-	r.GET("/:source/folders", h.ListFolders)
-	r.GET("/:source/folders/:id/children", h.GetFolderChildren)
-	r.GET("/:source/folders/:id/status", h.FolderStatus)
-	r.POST("/:source/folders/:id/regenerate-manifest", h.RegenerateManifest)
-	r.POST("/:source/folders/:id/trash", h.TrashFolder)
-	r.POST("/:source/folders/:id/delete", h.DeleteFolder)
+	r.POST("/:source/bulk/tags/add", h.BulkAddTags)
+	r.POST("/:source/bulk/tags/remove", h.BulkRemoveTags)
 
 	// Source-level endpoints
 	r.GET("/:source/clips", h.ListClips)

@@ -144,6 +144,106 @@ func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Cl
 	return clips, rows.Err()
 }
 
+// BulkAddTags adds a set of tags to multiple clips efficiently.
+func (r *Repository) BulkAddTags(ctx context.Context, ids []string, tags []string) error {
+	if len(ids) == 0 || len(tags) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, id := range ids {
+		var currentTagsJSON string
+		err := tx.QueryRowContext(ctx, "SELECT tags FROM clips WHERE id = ?", id).Scan(&currentTagsJSON)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return err
+		}
+
+		var currentTags []string
+		if currentTagsJSON != "" && currentTagsJSON != "[]" {
+			json.Unmarshal([]byte(currentTagsJSON), &currentTags)
+		}
+
+		tagMap := make(map[string]bool)
+		for _, t := range currentTags {
+			tagMap[t] = true
+		}
+		for _, t := range tags {
+			tagMap[t] = true
+		}
+
+		newTags := make([]string, 0, len(tagMap))
+		for t := range tagMap {
+			newTags = append(newTags, t)
+		}
+
+		newTagsJSON, _ := json.Marshal(newTags)
+		_, err = tx.ExecContext(ctx, "UPDATE clips SET tags = ?, updated_at = ? WHERE id = ?", string(newTagsJSON), time.Now().Format(time.RFC3339), id)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// BulkRemoveTags removes a set of tags from multiple clips.
+func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []string) error {
+	if len(ids) == 0 || len(tags) == 0 {
+		return nil
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	toRemove := make(map[string]bool)
+	for _, t := range tags {
+		toRemove[t] = true
+	}
+
+	for _, id := range ids {
+		var currentTagsJSON string
+		err := tx.QueryRowContext(ctx, "SELECT tags FROM clips WHERE id = ?", id).Scan(&currentTagsJSON)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return err
+		}
+
+		var currentTags []string
+		if currentTagsJSON != "" && currentTagsJSON != "[]" {
+			json.Unmarshal([]byte(currentTagsJSON), &currentTags)
+		}
+
+		newTags := make([]string, 0)
+		for _, t := range currentTags {
+			if !toRemove[t] {
+				newTags = append(newTags, t)
+			}
+		}
+
+		newTagsJSON, _ := json.Marshal(newTags)
+		_, err = tx.ExecContext(ctx, "UPDATE clips SET tags = ?, updated_at = ? WHERE id = ?", string(newTagsJSON), time.Now().Format(time.RFC3339), id)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+
 // buildClipQuery builds a SELECT query using the standard clip columns
 func buildClipQuery(source string) string {
 	query := "SELECT " + clipColumns + " FROM clips"

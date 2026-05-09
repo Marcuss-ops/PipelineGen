@@ -1,137 +1,84 @@
 package assets
 
 import (
-	"strings"
-
-	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/catalog"
+	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/repository/images"
+	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/service/assettree"
+	"velox/go-master/internal/service/drivecleanup"
+	"velox/go-master/internal/service/foldermemory"
+	"velox/go-master/internal/service/media"
+	"velox/go-master/internal/upload/drive"
 )
 
-// Handler handles unified asset search
+// Handler handles unified asset operations (search, tree, folders, etc.)
 type Handler struct {
+	// Search & Index
 	artlistSvc    *artlist.Service
 	catalogRepo   *catalog.Repository
 	assetIndexSvc *assetindex.Service
-	log           *zap.Logger
+	
+	// Media Repositories (for folder/clip resolution)
+	artlistRepo   *clips.Repository
+	clipsRepo     *clips.Repository
+	stockRepo     *clips.Repository
+	voiceoverRepo *voiceovers.Repository
+	imagesRepo    *images.Repository
+	
+	// Services
+	cleanupSvc     *drivecleanup.Service
+	folderMemSvc   *foldermemory.Service
+	assetTreeSvc   *assettree.Service
+	driveUploader  *drive.Uploader
+	mediaProcessor processor.Processor
+	deletionSvc    *media.DeletionService
+	
+	log *zap.Logger
 }
 
 // NewHandler creates a new assets handler
-func NewHandler(artlistSvc *artlist.Service, catalogRepo *catalog.Repository, assetIndexSvc *assetindex.Service, log *zap.Logger) *Handler {
+func NewHandler(
+	artlistSvc *artlist.Service,
+	catalogRepo *catalog.Repository,
+	assetIndexSvc *assetindex.Service,
+	artlistRepo, clipsRepo, stockRepo *clips.Repository,
+	cleanupSvc *drivecleanup.Service,
+	folderMemSvc *foldermemory.Service,
+	assetTreeSvc *assettree.Service,
+	driveUploader *drive.Uploader,
+	mediaProcessor processor.Processor,
+	deletionSvc *media.DeletionService,
+	log *zap.Logger,
+) *Handler {
 	return &Handler{
-		artlistSvc:    artlistSvc,
-		catalogRepo:   catalogRepo,
-		assetIndexSvc: assetIndexSvc,
-		log:           log,
+		artlistSvc:     artlistSvc,
+		catalogRepo:    catalogRepo,
+		assetIndexSvc:  assetIndexSvc,
+		artlistRepo:    artlistRepo,
+		clipsRepo:      clipsRepo,
+		stockRepo:      stockRepo,
+		cleanupSvc:     cleanupSvc,
+		folderMemSvc:   folderMemSvc,
+		assetTreeSvc:   assetTreeSvc,
+		driveUploader:  driveUploader,
+		mediaProcessor: mediaProcessor,
+		deletionSvc:    deletionSvc,
+		log:            log,
 	}
 }
 
-// SearchRequest represents a search request
-type SearchRequest struct {
-	Q     string `form:"q" binding:"required"`
-	Type  string `form:"type"` // video, image, audio, all
-	Limit int    `form:"limit,default=20"`
+// SetVoiceoverRepo sets the voiceover repository.
+func (h *Handler) SetVoiceoverRepo(repo *voiceovers.Repository) {
+	h.voiceoverRepo = repo
 }
 
-// Search godoc
-// @Summary Search assets across multiple sources
-// @Description Search for clips, images, audio across Artlist, Catalog, etc.
-// @Tags assets
-// @Accept json
-// @Produce json
-// @Param q query string true "Search query"
-// @Param type query string false "Asset type (video, image, audio, all)"
-// @Param limit query int false "Limit results (default 20)"
-// @Success 200 {object} map[string]interface{}
-// @Router /assets/search [get]
-func (h *Handler) Search(c *gin.Context) {
-	var req SearchRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request: "+err.Error())
-		return
-	}
-
-	req.Q = strings.TrimSpace(req.Q)
-	if req.Q == "" {
-		apiutil.BadRequest(c, "query parameter 'q' is required")
-		return
-	}
-
-	if req.Limit <= 0 {
-		req.Limit = 20
-	}
-
-	results := gin.H{}
-
-	// Search Artlist clips
-	if h.artlistSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
-		// Use artlist service to search clips from database
-		searchReq := &artlist.SearchRequest{
-			Term:  req.Q,
-			Limit: req.Limit,
-		}
-		searchResp, err := h.artlistSvc.Search(c.Request.Context(), searchReq)
-		if err != nil {
-			h.log.Warn("artlist search failed", zap.Error(err))
-			results["artlist"] = gin.H{
-				"count":   0,
-				"results": []interface{}{},
-				"error":   err.Error(),
-			}
-		} else if searchResp != nil {
-			results["artlist"] = gin.H{
-				"count":   len(searchResp.Clips),
-				"results": searchResp.Clips,
-				"source":  searchResp.Source,
-			}
-		}
-	}
-
-	// Search Catalog folders
-	if h.catalogRepo != nil {
-		catalogResults, err := h.catalogRepo.SearchAll(req.Q)
-		if err != nil {
-			h.log.Warn("catalog search failed", zap.Error(err))
-		} else {
-			results["catalog"] = gin.H{
-				"count":   len(catalogResults),
-				"results": catalogResults,
-			}
-		}
-	}
-
-	apiutil.OK(c, gin.H{
-		"query":   req.Q,
-		"type":    req.Type,
-		"results": results,
-	})
-}
-
-// Stats godoc
-// @Summary Get asset index statistics
-// @Description Returns statistics about assets indexed in asset_index
-// @Tags assets
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /assets/stats [get]
-func (h *Handler) Stats(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	stats, err := h.assetIndexSvc.GetStats(ctx)
-	if err != nil {
-		h.log.Error("failed to get asset stats", zap.Error(err))
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"total":      stats.Total,
-		"by_type":    stats.ByType,
-		"by_status":  stats.ByStatus,
-	})
+// SetImagesRepo sets the images repository.
+func (h *Handler) SetImagesRepo(repo *images.Repository) {
+	h.imagesRepo = repo
 }
