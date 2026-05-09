@@ -67,7 +67,7 @@ func Logger() gin.HandlerFunc {
 		case status >= 400:
 			logger.Warn("Client error", fields...)
 		default:
-			logger.Debug("Request completed", fields...)
+			logger.Info("Request completed", fields...)
 		}
 
 		// Add to request logs

@@ -21,6 +21,10 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		token := extractAuthToken(c)
+		logger.Info("Auth check", 
+			zap.String("path", c.Request.URL.Path),
+			zap.String("received_token", token),
+			zap.String("expected_token", cfg.Security.AdminToken))
 
 		// Check admin token
 		if token != "" && token == cfg.Security.AdminToken {
@@ -36,6 +40,10 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		logger.Warn("Unauthorized access attempt", 
+			zap.String("path", c.Request.URL.Path),
+			zap.String("token", token),
+			zap.String("client_ip", c.ClientIP()))
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"ok":    false,
 			"error": "Unauthorized",

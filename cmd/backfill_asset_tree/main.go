@@ -25,16 +25,29 @@ func main() {
 	}
 	defer db.Close()
 
+	// Clear existing tree for a clean backfill
+	_, _ = db.Exec("DELETE FROM asset_tree_nodes")
+	fmt.Println("Cleared existing asset tree nodes")
+
 	repo, err := assettree.NewRepository(db, nil)
 	if err != nil {
 		log.Fatalf("failed to create repo: %v", err)
 	}
 
 	// 1. Sync from clip DBs (clips, artlist, stock)
-	clipDBs := []string{"clips.db.sqlite", "artlist.db.sqlite", "stock.db.sqlite"}
-	for _, dbFile := range clipDBs {
-		syncFoldersFromClipsDB(ctx, dataDir, dbFile, repo)
-		syncFromClipsDB(ctx, dataDir, dbFile, repo)
+	type dbMap struct {
+		file   string
+		source string
+	}
+	clipDBs := []dbMap{
+		{file: "clips.db.sqlite", source: "youtube"},
+		{file: "artlist.db.sqlite", source: "artlist"},
+		{file: "stock.db.sqlite", source: "stock"},
+	}
+
+	for _, d := range clipDBs {
+		syncFoldersFromClipsDB(ctx, dataDir, d.file, d.source, repo)
+		syncFromClipsDB(ctx, dataDir, d.file, d.source, repo)
 	}
 
 	// 2. Sync from images.db.sqlite
@@ -44,7 +57,16 @@ func main() {
 	syncFromVoiceoverDB(ctx, dataDir, repo)
 }
 
-func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *assettree.Repository) {
+func isFilePath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".mp4", ".mkv", ".mov", ".avi", ".mp3", ".wav", ".txt", ".json", ".jpg", ".png", ".jpeg":
+		return true
+	}
+	return false
+}
+
+func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile, sourceOverride string, repo *assettree.Repository) {
 	dbPath := filepath.Join(dataDir, dbFile)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return
@@ -62,7 +84,7 @@ func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *a
 		return
 	}
 
-	rows, err := db.Query("SELECT folder_id, source, folder_path FROM clip_folders")
+	rows, err := db.Query("SELECT folder_id, folder_path FROM clip_folders")
 	if err != nil {
 		return
 	}
@@ -70,8 +92,8 @@ func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *a
 
 	count := 0
 	for rows.Next() {
-		var folderID, source, folderPath sql.NullString
-		if err := rows.Scan(&folderID, &source, &folderPath); err != nil {
+		var folderID, folderPath sql.NullString
+		if err := rows.Scan(&folderID, &folderPath); err != nil {
 			continue
 		}
 
@@ -79,39 +101,28 @@ func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *a
 			continue
 		}
 
-		sourceStr := source.String
-		if sourceStr == "" {
-			if strings.Contains(dbFile, "artlist") {
-				sourceStr = "artlist"
-			} else if strings.Contains(dbFile, "stock") {
-				sourceStr = "stock"
-			} else {
-				sourceStr = "clips"
+		fPath := folderPath.String
+		if isFilePath(fPath) {
+			fPath = filepath.Dir(fPath)
+			if fPath == "." {
+				continue // Skip root-level files incorrectly marked as folders
 			}
 		}
 
-		name := filepath.Base(folderPath.String)
-		if name == "." || name == "/" {
+		name := filepath.Base(fPath)
+		if name == "." || name == "/" || name == "" {
 			name = folderID.String
-		}
-
-		// Calculate parent_id (naive approach: take parent of path)
-		parentPath := filepath.Dir(folderPath.String)
-		parentID := ""
-		if parentPath != "." && parentPath != "/" {
-			// In our flat DB, we don't always have parent folder IDs easily.
-			// For now, we'll keep it flat or use a heuristic.
 		}
 
 		node := &assettree.AssetNode{
 			ID:       folderID.String,
-			Source:   sourceStr,
+			Source:   sourceOverride,
 			AssetID:  folderID.String,
 			Name:     name,
 			Type:     "folder",
-			ParentID: parentID,
-			Path:     folderPath.String,
-			Depth:    strings.Count(folderPath.String, "/"),
+			ParentID: "",
+			Path:     fPath,
+			Depth:    strings.Count(fPath, "/"),
 			IsFolder: true,
 			Metadata: "{}",
 		}
@@ -119,10 +130,10 @@ func syncFoldersFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *a
 		repo.UpsertNode(ctx, node)
 		count++
 	}
-	fmt.Printf("Synced %d folders from %s\n", count, dbFile)
+	fmt.Printf("Synced %d folders from %s (source: %s)\n", count, dbFile, sourceOverride)
 }
 
-func syncFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *assettree.Repository) {
+func syncFromClipsDB(ctx context.Context, dataDir, dbFile, sourceOverride string, repo *assettree.Repository) {
 	dbPath := filepath.Join(dataDir, dbFile)
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		return
@@ -140,7 +151,7 @@ func syncFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *assettre
 		return
 	}
 
-	rows, err := db.Query("SELECT id, source, name, folder_id, folder_path, drive_link, drive_file_id, status FROM clips")
+	rows, err := db.Query("SELECT id, name, filename, folder_id, folder_path, drive_link, drive_file_id, status FROM clips")
 	if err != nil {
 		return
 	}
@@ -148,46 +159,45 @@ func syncFromClipsDB(ctx context.Context, dataDir, dbFile string, repo *assettre
 
 	count := 0
 	for rows.Next() {
-		var id, source, name, folderID, folderPath, driveLink, driveFileID, status sql.NullString
-		if err := rows.Scan(&id, &source, &name, &folderID, &folderPath, &driveLink, &driveFileID, &status); err != nil {
+		var id, name, filename, folderID, folderPath, driveLink, driveFileID, status sql.NullString
+		if err := rows.Scan(&id, &name, &filename, &folderID, &folderPath, &driveLink, &driveFileID, &status); err != nil {
 			continue
 		}
 
-		sourceStr := source.String
-		if sourceStr == "" {
-			if strings.Contains(dbFile, "artlist") {
-				sourceStr = "artlist"
-			} else if strings.Contains(dbFile, "stock") {
-				sourceStr = "stock"
-			} else {
-				sourceStr = "clips"
+		effectiveFolderID := folderID.String
+		fPath := folderPath.String
+		
+		// If folderPath is actually a file path, extract the directory
+		if isFilePath(fPath) {
+			fPath = filepath.Dir(fPath)
+			if fPath == "." {
+				effectiveFolderID = "" // Root
 			}
 		}
 
-		// Ensure folder exists
-		if folderID.String != "" {
-			syncFolderNode(ctx, repo, sourceStr, folderID.String, folderPath.String)
+		if effectiveFolderID != "" {
+			syncFolderNode(ctx, repo, sourceOverride, effectiveFolderID, fPath)
 		}
 
 		node := &assettree.AssetNode{
 			ID:          id.String,
-			Source:      sourceStr,
+			Source:      sourceOverride,
 			AssetID:     id.String,
 			Name:        name.String,
 			Type:        "video",
-			ParentID:    folderID.String,
-			Path:        folderPath.String,
-			Depth:       strings.Count(folderPath.String, "/"),
+			ParentID:    effectiveFolderID,
+			Path:        fPath,
+			Depth:       strings.Count(fPath, "/"),
 			IsFolder:    false,
 			DriveFileID: driveFileID.String,
 			DriveLink:   driveLink.String,
-			Metadata:    fmt.Sprintf("{\"status\":\"%s\"}", status.String),
+			Metadata:    fmt.Sprintf("{\"status\":\"%s\",\"filename\":\"%s\"}", status.String, filename.String),
 		}
 
 		repo.UpsertNode(ctx, node)
 		count++
 	}
-	fmt.Printf("Synced %d clips from %s\n", count, dbFile)
+	fmt.Printf("Synced %d clips from %s (source: %s)\n", count, dbFile, sourceOverride)
 }
 
 func syncFolderNode(ctx context.Context, repo *assettree.Repository, source, folderID, folderPath string) {
@@ -195,7 +205,7 @@ func syncFolderNode(ctx context.Context, repo *assettree.Repository, source, fol
 		return
 	}
 	name := filepath.Base(folderPath)
-	if name == "." || name == "/" {
+	if name == "." || name == "/" || name == "" {
 		name = folderID
 	}
 	node := &assettree.AssetNode{
@@ -231,7 +241,7 @@ func syncFromImagesDB(ctx context.Context, dataDir string, repo *assettree.Repos
 		return
 	}
 
-	rows, err := db.Query("SELECT id, source, description, drive_link, drive_file_id, thumb_url, status FROM images")
+	rows, err := db.Query("SELECT id, description, drive_link, drive_file_id, thumb_url, status FROM images")
 	if err != nil {
 		return
 	}
@@ -239,8 +249,8 @@ func syncFromImagesDB(ctx context.Context, dataDir string, repo *assettree.Repos
 
 	count := 0
 	for rows.Next() {
-		var id, source, description, driveLink, driveFileID, thumbURL, status sql.NullString
-		if err := rows.Scan(&id, &source, &description, &driveLink, &driveFileID, &thumbURL, &status); err != nil {
+		var id, description, driveLink, driveFileID, thumbURL, status sql.NullString
+		if err := rows.Scan(&id, &description, &driveLink, &driveFileID, &thumbURL, &status); err != nil {
 			continue
 		}
 
@@ -309,23 +319,6 @@ func syncFromVoiceoverDB(ctx context.Context, dataDir string, repo *assettree.Re
 			name = id.String
 		}
 
-		// Ensure folder exists
-		if folderID.String != "" {
-			fnode := &assettree.AssetNode{
-				ID:       folderID.String,
-				Source:   "voiceover",
-				AssetID:  folderID.String,
-				Name:     filepath.Base(folderPath.String),
-				Type:     "folder",
-				ParentID: "",
-				Path:     folderPath.String,
-				Depth:    strings.Count(folderPath.String, "/"),
-				IsFolder: true,
-				Metadata: "{}",
-			}
-			repo.UpsertNode(ctx, fnode)
-		}
-
 		node := &assettree.AssetNode{
 			ID:          id.String,
 			Source:      "voiceover",
@@ -346,3 +339,4 @@ func syncFromVoiceoverDB(ctx context.Context, dataDir string, repo *assettree.Re
 	}
 	fmt.Printf("Synced %d items from voiceover.db.sqlite\n", count)
 }
+
