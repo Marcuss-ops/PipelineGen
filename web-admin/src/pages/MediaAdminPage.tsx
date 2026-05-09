@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueries, useQueryClient } from '@tanstack/rea
 import { Plus, Search, Trash2, RefreshCw, Folder } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages } from '../api/media';
+import { getTree, getBreadcrumb, type AssetNode } from '../api/assets';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
 import { SourceTabs } from '../components/SourceTabs';
@@ -10,6 +11,8 @@ import { Button } from '../components/ui/Button';
 import { SOURCES, sourceById } from '../lib/sources';
 import type { ClipPayload, MediaItem, MediaSource } from '../lib/types';
 import { apiFetch } from '../api/client';
+import { HierarchyNavigator } from '../components/HierarchyNavigator';
+import { asArray, cn } from '../lib/utils';
 
 type FolderInfo = { id: string; folder_path: string; clip_count: number };
 
@@ -21,19 +24,29 @@ export function MediaAdminPage() {
   const [editing, setEditing] = useState<MediaItem | null>(null);
   const [notice, setNotice] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [activeFolder, setActiveFolder] = useState<string>('all');
-  const [folders, setFolders] = useState<FolderInfo[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string>('root');
+  const [breadcrumb, setBreadcrumb] = useState<AssetNode[]>([]);
 
-  // Load folders for current source
+  // Tree query
+  const treeQuery = useQuery({
+    queryKey: ['tree', source, activeFolderId],
+    queryFn: () => getTree(source, activeFolderId),
+    enabled: search === '',
+  });
+
+  // Breadcrumb query
   useEffect(() => {
-    apiFetch<{ ok: boolean; folders: FolderInfo[] }>(`/api/media/${source}/folders`)
-      .then(res => setFolders(res.folders || []))
-      .catch(() => setFolders([]));
-  }, [source]);
+    if (activeFolderId === 'root') {
+      setBreadcrumb([]);
+      return;
+    }
+    getBreadcrumb(source, activeFolderId).then(setBreadcrumb).catch(() => setBreadcrumb([]));
+  }, [source, activeFolderId]);
 
   const mediaQuery = useQuery({
     queryKey: ['media', source, search],
     queryFn: () => listMedia(source, search),
+    enabled: search !== '',
   });
 
   const allSourceQueries = useQueries({
@@ -51,25 +64,46 @@ export function MediaAdminPage() {
       counts[s.id] = q.data?.length ?? 0;
     });
     return counts;
-  }, [allSourceQueries.map((q) => q.data).join(','), SOURCES]);
+  }, [allSourceQueries, SOURCES]);
 
-  const items = mediaQuery.data ?? [];
+  const items = search === '' ? (treeQuery.data || []) : (mediaQuery.data || []);
+  
+  // Transform Tree items to MediaItems for compatibility with MediaTable
+  const normalizedItems = useMemo(() => {
+    return items.map(item => {
+      const base = item as any;
+      return {
+        ...base,
+        id: base.id,
+        name: base.name,
+        source: base.source || source,
+        is_folder: base.is_folder ?? false,
+        type: base.type || (base.is_folder ? 'folder' : 'file'),
+        drive_link: base.drive_link,
+        folder_path: base.path || base.folder_path,
+        tags: asArray(base.tags),
+        search_terms: asArray(base.search_terms),
+        created_at: base.created_at || new Date().toISOString(),
+        updated_at: base.updated_at || new Date().toISOString(),
+        status: base.status || 'unknown'
+      } as MediaItem;
+    });
+  }, [items, source]);
+
   const filteredItems = useMemo(() => {
-    let result = items;
-    if (activeFolder !== 'all') {
-      result = result.filter(item => item.folder_path === activeFolder || item.folder_id === activeFolder);
-    }
+    let result = normalizedItems;
     if (activeFilter === 'processed') result = result.filter((item) => item.drive_link || item.download_link);
     if (activeFilter === 'missingDrive') result = result.filter((item) => !item.drive_link && !item.download_link);
-    if (activeFilter === 'missingHash') result = result.filter((item) => !item.file_hash);
-    if (activeFilter === 'noThumbnail') result = result.filter((item) => !item.thumb_url);
-    if (activeFilter === 'localOnly') result = result.filter((item) => item.local_path && !item.drive_link);
     if (activeFilter === 'withErrors') result = result.filter((item) => Boolean(item.error) || String(item.status || '').includes('failed'));
     return result;
-  }, [items, activeFilter, activeFolder]);
+  }, [normalizedItems, activeFilter]);
+
   const selectedItems = filteredItems.filter((item) => selected.has(item.id));
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['media'] });
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['media'] });
+    queryClient.invalidateQueries({ queryKey: ['tree'] });
+  };
 
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: ClipPayload }) => updateMedia(source, id, payload),
@@ -129,14 +163,24 @@ export function MediaAdminPage() {
               <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} /> Sincronizza Drive
             </Button>
           )}
-          <Button onClick={() => setEditing({ id: crypto.randomUUID(), source, name: 'Nuovo asset', tags: [], status: 'draft' })}>
+          <Button onClick={() => setEditing({
+            id: crypto.randomUUID(),
+            source,
+            name: 'Nuovo asset',
+            tags: [],
+            search_terms: [],
+            is_folder: false,
+            status: 'draft',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          } as MediaItem)}>
             <Plus className="h-4 w-4" /> Aggiungi asset
           </Button>
         </div>
       </div>
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); }} />
+        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); setActiveFolderId('root'); }} />
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-bold">{sourceById[source].label}</h3>
@@ -147,24 +191,6 @@ export function MediaAdminPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Cerca in ${sourceById[source].label}...`} className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10" />
             </div>
-            
-            {folders.length > 0 && (
-              <div className="relative w-48">
-                <Folder className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-                <select 
-                  value={activeFolder} 
-                  onChange={(e) => setActiveFolder(e.target.value)}
-                  className="h-10 w-full appearance-none rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-8 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
-                >
-                  <option value="all">Tutte le cartelle</option>
-                  {folders.map(f => (
-                    <option key={f.id} value={f.folder_path || f.id}>
-                      {f.folder_path ? f.folder_path.split('/').pop() : f.id} ({f.clip_count})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
         </div>
       </section>
@@ -183,6 +209,13 @@ export function MediaAdminPage() {
 
       {notice && <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm">{notice}</div>}
 
+      {search === '' && (
+        <HierarchyNavigator 
+          breadcrumb={breadcrumb} 
+          onNavigate={(id) => setActiveFolderId(id)} 
+        />
+      )}
+
       <MediaTable
         items={filteredItems}
         selected={selected}
@@ -194,6 +227,7 @@ export function MediaAdminPage() {
         onReprocess={(item) => actionMutation.mutate({ action: 'reprocess', item })}
         onReupload={(item) => actionMutation.mutate({ action: 'reupload', item })}
         onTrash={(item) => actionMutation.mutate({ action: 'trash', item })}
+        onFolderClick={(id) => setActiveFolderId(id)}
       />
 
       <MediaDetailDrawer
@@ -208,3 +242,4 @@ export function MediaAdminPage() {
     </div>
   );
 }
+

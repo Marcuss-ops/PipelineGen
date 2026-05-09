@@ -1,4 +1,4 @@
-import { Check, Cloud, Edit3, ExternalLink, RotateCcw, Trash2, UploadCloud } from 'lucide-react';
+import { Check, Cloud, Edit3, ExternalLink, RotateCcw, Trash2, UploadCloud, Folder as FolderIcon } from 'lucide-react';
 import type { MediaItem } from '../lib/types';
 import { Badge } from './ui/Badge';
 import { Button } from './ui/Button';
@@ -16,6 +16,7 @@ export function MediaTable({
   onReprocess,
   onReupload,
   onTrash,
+  onFolderClick,
 }: {
   items: MediaItem[];
   selected: Set<string>;
@@ -27,6 +28,7 @@ export function MediaTable({
   onReprocess: (item: MediaItem) => void;
   onReupload: (item: MediaItem) => void;
   onTrash: (item: MediaItem) => void;
+  onFolderClick?: (id: string) => void;
 }) {
   const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
 
@@ -44,17 +46,16 @@ export function MediaTable({
         <div className="py-16 text-center text-sm text-zinc-500">Nessun elemento trovato</div>
       ) : (
         <div className="divide-y divide-zinc-100">
-          {items.filter(item => {
-            // Filtro dinamico per le cartelle: non usiamo nomi hardcoded.
-            // Se un elemento non ha estensione ed è senza durata, lo trattiamo come cartella e lo nascondiamo.
-            const hasExtension = item.filename?.includes('.') || item.name?.includes('.');
-            if (!hasExtension && !item.duration) return false;
-            return true;
-          }).map((item) => (
+          {items.map((item) => (
             <div key={item.id} className="grid grid-cols-[40px_72px_1fr_160px_180px_260px] items-center gap-6 px-6 py-5 transition hover:bg-zinc-50 max-xl:grid-cols-[40px_72px_1fr_180px] max-lg:grid-cols-[40px_60px_1fr_120px]">
               <input type="checkbox" checked={selected.has(item.id)} onChange={(event) => onSelect(item.id, event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
-              <button onClick={() => onOpen(item)} className="h-20 w-20">
-                {item.source === 'images' ? (
+              <button 
+                onClick={() => item.is_folder && onFolderClick ? onFolderClick(item.id) : onOpen(item)} 
+                className="h-20 w-20 flex items-center justify-center bg-zinc-50 rounded-2xl border border-zinc-100"
+              >
+                {item.is_folder ? (
+                  <FolderIcon className="h-10 w-10 text-blue-500" />
+                ) : item.source === 'images' ? (
                   <img
                     src={
                       item.thumb_url ||
@@ -72,16 +73,17 @@ export function MediaTable({
               </button>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <button onClick={() => onOpen(item)} className="block truncate text-left text-sm font-bold text-zinc-900 hover:text-blue-600">{item.name}</button>
-                  {item.folder_path && (
-                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
-                      /{item.folder_path.split('/').pop()}
-                    </span>
-                  )}
+                  <button 
+                    onClick={() => item.is_folder && onFolderClick ? onFolderClick(item.id) : onOpen(item)} 
+                    className={`block truncate text-left text-sm font-bold hover:text-blue-600 ${item.is_folder ? 'text-blue-700' : 'text-zinc-900'}`}
+                  >
+                    {item.is_folder && <span className="mr-1">📁</span>}
+                    {item.name}
+                  </button>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {item.category && <Badge>{item.category}</Badge>}
-                  {item.tags.slice(0, 3).map((tag) => <Badge key={tag} className="bg-zinc-50">{tag}</Badge>)}
+                  {!item.is_folder && item.tags.slice(0, 3).map((tag) => <Badge key={tag} className="bg-zinc-50">{tag}</Badge>)}
                   {item.status && <Badge className={item.status.includes('missing') || item.status.includes('failed') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}>{item.status}</Badge>}
                 </div>
                 <div className="mt-1 truncate text-xs text-zinc-400">
@@ -90,15 +92,19 @@ export function MediaTable({
               </div>
               <div className="space-y-1 text-xs max-xl:hidden">
                 <div className="flex items-center gap-2 text-zinc-600"><Cloud className="h-3.5 w-3.5" /> {item.drive_link ? 'Drive ok' : 'Drive mancante'}</div>
-                <div className="flex items-center gap-2 text-zinc-600"><Check className="h-3.5 w-3.5" /> {item.file_hash ? 'Hash ok' : 'Hash mancante'}</div>
+                {!item.is_folder && <div className="flex items-center gap-2 text-zinc-600"><Check className="h-3.5 w-3.5" /> {item.file_hash ? 'Hash ok' : 'Hash mancante'}</div>}
               </div>
               <div className="text-xs text-zinc-500 max-lg:hidden">{formatDate(item.updated_at)}</div>
               <div className="flex justify-end gap-1">
                 {item.drive_link && <Button variant="ghost" size="sm" onClick={() => window.open(item.drive_link, '_blank')} title="Apri Drive"><ExternalLink className="h-4 w-4" /></Button>}
-                <Button variant="ghost" size="sm" onClick={() => onEdit(item)} title="Modifica"><Edit3 className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="sm" onClick={() => onVerify(item)} title="Verifica"><Check className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="sm" onClick={() => onReupload(item)} title="Reupload"><UploadCloud className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="sm" onClick={() => onReprocess(item)} title="Reprocess"><RotateCcw className="h-4 w-4" /></Button>
+                {!item.is_folder && (
+                  <>
+                    <Button variant="ghost" size="sm" onClick={() => onEdit(item)} title="Modifica"><Edit3 className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" onClick={() => onVerify(item)} title="Verifica"><Check className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" onClick={() => onReupload(item)} title="Reupload"><UploadCloud className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" onClick={() => onReprocess(item)} title="Reprocess"><RotateCcw className="h-4 w-4" /></Button>
+                  </>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => onTrash(item)} title="Trash"><Trash2 className="h-4 w-4 text-red-600" /></Button>
               </div>
             </div>
@@ -108,3 +114,4 @@ export function MediaTable({
     </div>
   );
 }
+

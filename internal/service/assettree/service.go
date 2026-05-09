@@ -28,13 +28,14 @@ func (s *Service) IsFolderMime(mimeType string) bool {
 	return mimeType == "application/vnd.google-apps.folder"
 }
 
-// ComputeDepth computes the depth of a node based on its path
+// ComputeDepth computes the depth of a node based on its path.
+// Root level (no slashes) returns 0.
 func (s *Service) ComputeDepth(nodePath string) int {
 	cleanPath := strings.Trim(nodePath, "/")
 	if cleanPath == "" {
 		return 0
 	}
-	return strings.Count(cleanPath, "/") + 1
+	return strings.Count(cleanPath, "/")
 }
 
 // NormalizeDriveNode creates an AssetNode from raw drive attributes

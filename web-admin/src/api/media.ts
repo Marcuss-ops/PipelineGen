@@ -14,7 +14,7 @@ type ApiClipResponse = {
 function normalizeClip(raw: any, source: MediaSource): MediaItem {
   return {
     id: String(raw.id ?? raw.clip_id ?? crypto.randomUUID()),
-    source: raw.source ?? source,
+    source: String(raw.source ?? source),
     name: raw.name ?? raw.title ?? raw.filename ?? 'Untitled asset',
     filename: raw.filename,
     category: raw.category,
@@ -36,6 +36,7 @@ function normalizeClip(raw: any, source: MediaSource): MediaItem {
     updated_at: raw.updated_at,
     thumb_url: raw.thumb_url,
     preview_url: raw.preview_url,
+    is_folder: Boolean(raw.is_folder),
   };
 }
 
@@ -47,7 +48,7 @@ export async function listMedia(source: MediaSource, q = ''): Promise<MediaItem[
     return list.map((item) => normalizeClip(item, source));
   } catch (error) {
     console.warn('Using mock media because backend is not reachable:', error);
-    return makeMockItems(source).filter((item) => {
+    return makeMockItems(source).filter((item: MediaItem) => {
       const needle = q.toLowerCase();
       return !needle || [item.name, item.category, item.tags.join(' ')].join(' ').toLowerCase().includes(needle);
     });
