@@ -46,9 +46,13 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 	}
 
 	_, err := r.db.Exec(`
-		INSERT OR IGNORE INTO images (id, subject_id, source_url, hash, local_path, description, status, metadata_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, img.SubjectID, img.SourceURL, img.Hash, img.PathRel, img.Description, "ready", "{}")
+		INSERT OR REPLACE INTO images (
+			id, subject_id, source_url, hash, local_path, 
+			description, drive_file_id, status, metadata_json
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, id, img.SubjectID, img.SourceURL, img.Hash, img.PathRel, 
+	   img.Description, img.DriveFileID, img.Status, "{}")
 	
 	return 0, err
 }
@@ -57,9 +61,11 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRow(`
-		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE hash = ?
-	`, hash).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt)
+	`, hash).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
+	               &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
 	
 	if err != nil {
 		return nil, err
@@ -71,9 +77,11 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 func (r *Repository) GetByID(ctx context.Context, id interface{}) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE id = ?
-	`, id).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt)
+	`, id).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
+	               &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
 	
 	if err != nil {
 		return nil, err
@@ -91,9 +99,11 @@ func (r *Repository) Delete(ctx context.Context, id interface{}) error {
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE drive_file_id = ? OR source_url LIKE ?
-	`, fileID, "%"+fileID+"%").Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt)
+	`, fileID, "%"+fileID+"%").Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
+	                                 &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
 	
 	if err != nil {
 		return nil, err
@@ -104,7 +114,8 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 // ListImagesBySubject elenca le immagini di un soggetto
 func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageAsset, error) {
 	rows, err := r.db.Query(`
-		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE subject_id = ?
 	`, subjectID)
 	if err != nil {
@@ -115,7 +126,8 @@ func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageA
 	var images []models.ImageAsset
 	for rows.Next() {
 		var img models.ImageAsset
-		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
+		                     &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		images = append(images, img)
@@ -126,7 +138,8 @@ func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageA
 // ListAll lists all image assets
 func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -137,7 +150,8 @@ func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) 
 	var images []*models.ImageAsset
 	for rows.Next() {
 		var img models.ImageAsset
-		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
+		                     &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		images = append(images, &img)

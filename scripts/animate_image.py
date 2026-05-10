@@ -3,7 +3,7 @@ import os
 import argparse
 import sys
 
-def create_zoom_out(input_img, output_video, duration=5, fps=30):
+def create_zoom_out(input_img, output_video, duration=7, fps=30):
     """
     Creates a zoom-out animation from a static image and upscales it to 1080p.
     """
@@ -42,6 +42,8 @@ def create_zoom_out(input_img, output_video, duration=5, fps=30):
     
     print(f"Executing: {' '.join(cmd)}")
     try:
+        # Using capture_output=False to show progress in logs if needed, 
+        # but for now we keep it quiet unless error
         subprocess.run(cmd, check=True, capture_output=True, text=True)
         print(f"Success! Animation saved to {output_video}")
         return True
@@ -54,7 +56,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Animate an image with zoom-out effect and upscale to 1080p")
     parser.add_argument("input", help="Path to input image")
     parser.add_argument("--output", default="animation.mp4", help="Path to output video")
-    parser.add_argument("--duration", type=int, default=5, help="Duration in seconds")
+    parser.add_argument("--duration", type=int, default=7, help="Duration in seconds")
     
     args = parser.parse_args()
     

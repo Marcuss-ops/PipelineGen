@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"velox/go-master/pkg/models"
 	imagesRepo "velox/go-master/internal/repository/images"
 	"go.uber.org/zap"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -32,12 +34,14 @@ type Service struct {
 	dataDir       string
 	imagesDir     string
 	driveFolderID string
+	driveSvc      *driveapi.Service
 	nvidiaAPIKey  string
 	nvidiaModel   string
+	scriptsDir    string
 	mu            sync.Mutex
 }
 
-func NewService(repo *imagesRepo.Repository, driveSvc interface{}, log *zap.Logger, dataDir string, driveFolderID string) *Service {
+func NewService(repo *imagesRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger, dataDir string, driveFolderID string) *Service {
 	imagesDir := filepath.Join(dataDir, "images")
 	os.MkdirAll(imagesDir, 0755)
 
@@ -48,8 +52,10 @@ func NewService(repo *imagesRepo.Repository, driveSvc interface{}, log *zap.Logg
 		dataDir:       dataDir,
 		imagesDir:     imagesDir,
 		driveFolderID: driveFolderID,
-		nvidiaAPIKey:  "", // Will be set via setter or updated constructor
+		driveSvc:      driveSvc,
+		nvidiaAPIKey:  "",
 		nvidiaModel:   "stabilityai/sdxl-turbo",
+		scriptsDir:    filepath.Join(filepath.Dir(dataDir), "scripts"), // Default relative to dataDir
 	}
 }
 
@@ -58,6 +64,10 @@ func (s *Service) SetNvidiaConfig(apiKey, model string) {
 	if model != "" {
 		s.nvidiaModel = model
 	}
+}
+
+func (s *Service) SetScriptsDir(dir string) {
+	s.scriptsDir = dir
 }
 
 // Slugify crea uno slug URL-friendly
@@ -363,19 +373,44 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 		return nil, fmt.Errorf("failed to write image file: %w", err)
 	}
 
-	// 6. Crea record DB
+	// 6. Upload to Drive if configured
+	var driveFileID string
+	if s.driveSvc != nil && s.driveFolderID != "" {
+		s.log.Info("Uploading image to Google Drive", zap.String("filename", filename), zap.String("folder_id", s.driveFolderID))
+		
+		driveFile := &driveapi.File{
+			Name:    filename,
+			Parents: []string{s.driveFolderID},
+		}
+		
+		// Use a new reader for the content
+		res, err := s.driveSvc.Files.Create(driveFile).
+			Media(strings.NewReader(string(content))).
+			Fields("id").
+			Do()
+		
+		if err != nil {
+			s.log.Error("Drive upload failed", zap.Error(err))
+		} else {
+			driveFileID = res.Id
+			s.log.Info("Drive upload successful", zap.String("file_id", driveFileID))
+		}
+	}
+
+	// 7. Crea record DB
 	asset := &models.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      relPath,
 		SourceURL:    sourceURL,
 		Description:  description,
+		DriveFileID:  driveFileID,
 		Status:       "ready",
 		MetadataJSON: "{}",
 	}
 
 	if _, err := s.repo.AddImage(asset); err != nil {
-		// Final safety check for UNIQUE constraint (IGNORE handled by INSERT OR IGNORE, but double check)
+		// Final safety check for UNIQUE constraint
 		if existing, exErr := s.repo.GetImageByHash(hash); exErr == nil && existing != nil {
 			return existing, nil
 		}
@@ -442,8 +477,6 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int) (*mode
 			"seed":   0,
 			"steps":  30,
 		}
-		// Local NIM SDXL Turbo might not support 1920x1080 directly in the same way
-		// but let's pass it if the user really wants to try.
 		useCloudAuth = false
 		sourceLabel = "nvidia-local"
 		model = "local-nim"
@@ -521,4 +554,47 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int) (*mode
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", model, prompt)
 
 	return s.IngestImage(slug, strings.NewReader(string(imageData)), filename, sourceLabel, description)
+}
+
+func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {
+	// 1. Get image from repo
+	asset, err := s.repo.GetImageByHash(imageHash)
+	if err != nil {
+		return "", fmt.Errorf("image not found: %w", err)
+	}
+
+	fullPath := filepath.Join(s.imagesDir, asset.PathRel)
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("local file not found: %s", fullPath)
+	}
+
+	// 2. Prepare output path
+	outputName := fmt.Sprintf("animate_%s.mp4", imageHash)
+	outputDir := filepath.Join(s.dataDir, "animations")
+	os.MkdirAll(outputDir, 0755)
+	outputPath := filepath.Join(outputDir, outputName)
+
+	// 3. Run script
+	scriptPath := filepath.Join(s.scriptsDir, "animate_image.py")
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		// Fallback for development if scripts is in current dir
+		scriptPath = "scripts/animate_image.py"
+	}
+
+	durStr := fmt.Sprintf("%d", duration)
+	if duration <= 0 {
+		durStr = "7"
+	}
+
+	cmd := exec.CommandContext(ctx, "python3", scriptPath, fullPath, "--output", outputPath, "--duration", durStr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		s.log.Error("Animation script failed", zap.Error(err), zap.String("output", string(output)))
+		return "", fmt.Errorf("animation failed: %w", err)
+	}
+
+	s.log.Info("Animation created", zap.String("path", outputPath))
+	
+	// Return relative path for web access if needed, or full path
+	return outputPath, nil
 }

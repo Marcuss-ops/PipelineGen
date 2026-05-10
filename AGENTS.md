@@ -103,7 +103,11 @@ Test different models:
 - **Flux 2 Klein**: `python3 scripts/test_nvidia_images.py --model flux-2-klein`
 
 API Endpoint: `POST /api/images/generate/nvidia`
-Payload: `{"prompt": "...", "model": "flux-1-dev"}` (options: `local-nim`, `flux-1-dev`, `flux-2-klein`)
+Payload: `{"prompt": "...", "model": "flux-1-dev", "width": 1280, "height": 720}` (options: `local-nim`, `flux-1-dev`, `flux-2-klein`)
+
+Animate Endpoint: `POST /api/images/animate`
+Payload: `{"image_hash": "...", "duration": 7}`
+Generates a 1080p zoom-out video (MP4) from a stored image.
 
 ### Check Database Tables
 ```bash
