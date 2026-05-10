@@ -108,9 +108,21 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 					zap.String("suggestion", suggestion),
 				)
 				
-				liveResp, _, err := artlistService.DiscoverAndQueueRun(ctx, suggestion, 3)
+				liveResp, runResp, err := artlistService.DiscoverAndQueueRun(ctx, suggestion, 3)
 				if err == nil && liveResp != nil && len(liveResp.Clips) > 0 {
 					zap.L().Info("Live discovery successful", zap.Int("clips_found", len(liveResp.Clips)), zap.String("term", suggestion))
+					
+					// Add the folder match if available
+					if runResp != nil && runResp.TagFolderLink != "" {
+						seg.ArtlistMatches = append(seg.ArtlistMatches, association.ScoredMatch{
+							Title:  "Drive Folder: " + suggestion,
+							Score:  100, // Top priority
+							Source: "drive_folder_live",
+							Link:   runResp.TagFolderLink,
+							Reason: "target upload folder",
+						})
+					}
+
 					for _, c := range liveResp.Clips {
 						link := c.DriveLink
 						if link == "" {

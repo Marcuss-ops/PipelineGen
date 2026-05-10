@@ -204,6 +204,14 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 	// Enqueue processing job through common jobs service
 	if s.jobsSvc != nil {
 		driveFolderID := ""
+		if s.cfg != nil {
+			driveFolderID = s.cfg.Harvester.DriveFolderID
+		}
+		
+		// Synchronously resolve destination folder so we can return the link immediately
+		tagFolderName := strings.ReplaceAll(strings.ToLower(term), " ", "_")
+		resolvedFolderID := s.resolveDestination(ctx, driveFolderID, term, tagFolderName, &RunTagResponse{})
+		
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:       models.JobTypeArtlistRun,
 			Payload:    (&RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID}).ToMap(),
@@ -214,8 +222,17 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 			s.log.Warn("artlist discovery queued save but failed to enqueue job", zap.String("term", term), zap.Error(err))
 			return liveResp, nil, nil
 		}
-		// Return job info - caller can poll for completion if needed
-		return liveResp, JobToRunTagResponse(job), nil
+		
+		// Return job info with resolved folder details
+		runResp := JobToRunTagResponse(job)
+		if runResp != nil {
+			runResp.TagFolderID = resolvedFolderID
+			if resolvedFolderID != "" {
+				runResp.TagFolderLink = "https://drive.google.com/drive/folders/" + resolvedFolderID
+			}
+		}
+		
+		return liveResp, runResp, nil
 	}
 
 	return liveResp, nil, nil

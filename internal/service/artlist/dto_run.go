@@ -113,6 +113,7 @@ type RunTagResponse struct {
 	DryRun          bool         `json:"dry_run,omitempty"`
 	RootFolderID    string       `json:"root_folder_id,omitempty"`
 	TagFolderID     string       `json:"tag_folder_id,omitempty"`
+	TagFolderLink   string       `json:"tag_folder_link,omitempty"`
 	Requested       int          `json:"requested"`
 	Found           int          `json:"found"`
 	Processed       int          `json:"processed"`

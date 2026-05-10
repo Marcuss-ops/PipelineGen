@@ -10,7 +10,7 @@ import (
 // resolveDestination resolves the Drive folder for the tag
 func (s *Service) resolveDestination(ctx context.Context, rootFolderID, term, tagFolderName string, resp *RunTagResponse) string {
 	tagFolderID := rootFolderID
-	if s.assetDestResolver != nil && rootFolderID != "" {
+	if s.assetDestResolver != nil {
 		resolved, err := s.assetDestResolver.Resolve(ctx, &destination.ResolveRequest{
 			Source:          "artlist",
 			Group:           term,
