@@ -1,0 +1,10 @@
+{
+  "name": "node-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "puppeteer": "^23.6.0",
+    "puppeteer-core": "^23.6.0"
+  }
+}

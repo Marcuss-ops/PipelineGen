@@ -82,3 +82,8 @@ func (h *ScriptDocsHandler) Modes(c *gin.Context) {
 func (h *ScriptDocsHandler) Generate(c *gin.Context) {
 	h.generate(c)
 }
+
+// SetArtlistService sets the Artlist service for live discovery
+func (h *ScriptDocsHandler) SetArtlistService(svc *artlistSvc.Service) {
+	h.artlistService = svc
+}

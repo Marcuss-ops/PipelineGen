@@ -94,6 +94,49 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 			searchArtlistFromDB(ctx, &seg, artlistService)
 		}
 
+		// SMART HARVESTING: If still no matches, try a live search for the most relevant suggestions
+		if len(seg.ArtlistMatches) == 0 && artlistService != nil && len(seg.SearchSuggestions) > 0 {
+			maxToSearch := 2
+			if len(seg.SearchSuggestions) < maxToSearch {
+				maxToSearch = len(seg.SearchSuggestions)
+			}
+
+			for i := 0; i < maxToSearch; i++ {
+				suggestion := seg.SearchSuggestions[i]
+				zap.L().Info("No local matches, triggering live Artlist discovery",
+					zap.Int("segment_index", seg.Index),
+					zap.String("suggestion", suggestion),
+				)
+				
+				liveResp, _, err := artlistService.DiscoverAndQueueRun(ctx, suggestion, 3)
+				if err == nil && liveResp != nil && len(liveResp.Clips) > 0 {
+					zap.L().Info("Live discovery successful", zap.Int("clips_found", len(liveResp.Clips)), zap.String("term", suggestion))
+					for _, c := range liveResp.Clips {
+						link := c.DriveLink
+						if link == "" {
+							link = c.ExternalURL
+						}
+						if link == "" {
+							link = c.DownloadLink
+						}
+
+						seg.ArtlistMatches = append(seg.ArtlistMatches, association.ScoredMatch{
+							Title:  c.Name,
+							Path:   c.LocalPath,
+							Score:  95 - (i * 5), // Slightly lower score for secondary suggestions
+							Source: "artlist_live_discovery",
+							Link:   link,
+							Reason: "live search: " + suggestion,
+						})
+					}
+					// If we found something, we can stop searching further suggestions for this segment
+					break
+				} else if err != nil {
+					zap.L().Warn("Live discovery failed", zap.Error(err), zap.String("term", suggestion))
+				}
+			}
+		}
+
 		// Finally, filter ALL matches for semantic relevance
 		if !hasUsefulVisualMatch(seg, req.Topic) {
 			zap.L().Warn("no useful visual match found for segment",

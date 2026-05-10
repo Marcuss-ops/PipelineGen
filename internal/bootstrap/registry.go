@@ -171,6 +171,12 @@ func WireRegistry(
 		}
 	}
 
+	// Post-wiring injection
+	if wiring.ScriptDocs != nil && wiring.ArtlistSvc != nil && wiring.ScriptDocs.Handler != nil {
+		wiring.ScriptDocs.Handler.SetArtlistService(wiring.ArtlistSvc.Service)
+		log.Info("injected ArtlistService into ScriptDocsHandler")
+	}
+
 	// Remaining specific wiring
 	if contentPkgWiring, err := WireContentPackage(log, coreDeps); err == nil && contentPkgWiring != nil {
 		wiring.ContentPkg = contentPkgWiring

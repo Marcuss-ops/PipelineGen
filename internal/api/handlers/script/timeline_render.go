@@ -31,7 +31,19 @@ func RenderTimeline(plan *TimelinePlan) string {
 		// Priority 2: Artlist Drive Association
 		if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
 			label := "📦 Artlist Drive Association"
-			if !hasStrongMatch(seg.ArtlistMatches, 50) {
+			
+			// Check if it was a live discovery
+			isLive := false
+			for _, m := range seg.ArtlistMatches {
+				if m.Source == "artlist_live_discovery" {
+					isLive = true
+					break
+				}
+			}
+			
+			if isLive {
+				label = "🚀 Live Artlist Discovery"
+			} else if !hasStrongMatch(seg.ArtlistMatches, 50) {
 				label = "⚠️ Weak Artlist Association"
 			}
 			b.WriteString(renderSpecificMatch(label, seg.ArtlistMatches))
