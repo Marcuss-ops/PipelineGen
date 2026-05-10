@@ -15,6 +15,7 @@ import (
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -68,20 +69,29 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		
 		resp, err := gen.GetClient().Chat(ctx, messages, nil)
 		if err == nil {
+			zap.L().Info("LLM metadata extraction response received", zap.String("response", resp))
 			// Extract JSON from potential markdown markers
 			jsonStr := textutil.StripCodeFence(resp)
 			if err := json.Unmarshal([]byte(jsonStr), &extracted); err == nil {
 				analysis = &types.FullEntityAnalysis{
 					SegmentEntities: []types.SegmentEntities{extracted},
 				}
+				zap.L().Info("LLM metadata unmarshaled successfully", 
+					zap.Int("phrases", len(extracted.FrasiImportanti)),
+					zap.Int("names", len(extracted.NomiSpeciali)),
+				)
+			} else {
+				zap.L().Error("LLM metadata unmarshal failed", zap.Error(err), zap.String("json", jsonStr))
 			}
+		} else {
+			zap.L().Error("LLM metadata extraction failed", zap.Error(err))
 		}
 	}
 
 	// Build image section (always include, use default if service unavailable)
 	var imageSection ScriptSection
 	if imgService != nil {
-		imageSection = buildImagePlanningSection(req, narrative, analysis, ScriptSection{}, ScriptSection{}, ScriptSection{}, pythonScriptsDir, imgService)
+		imageSection = buildImagePlanningSection(req, narrative, analysis, pythonScriptsDir, imgService)
 	} else {
 		imageSection = ScriptSection{
 			Title: "📸 Entità con Immagine",

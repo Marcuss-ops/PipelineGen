@@ -16,142 +16,126 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/internal/repository/images"
-	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/pkg/config"
-	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
-
+	imagesRepo "velox/go-master/internal/repository/images"
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 )
 
-type Service struct {
-	repo       *images.Repository
-	baseDir    string
-	log        *zap.Logger
-	client     *http.Client
-	assetIndex *assetindex.Service
-	driveSvc   *driveapi.Service
-	folderID   string
-	cfg        *config.Config
+const userAgent = "VeloxEditingBot/1.0 (contact: admin@veloxediting.com)"
 
-	// Gestione concorrenza per evitare doppi download
-	mu           sync.Mutex
-	activeSearch map[string]*sync.WaitGroup
+type Service struct {
+	repo          *imagesRepo.Repository
+	client        *http.Client
+	log           *zap.Logger
+	dataDir       string
+	imagesDir     string
+	driveFolderID string
+	mu            sync.Mutex
 }
 
-func NewService(repo *images.Repository, baseDir string, assetIndex *assetindex.Service, driveSvc *driveapi.Service, folderID string, cfg *config.Config, log *zap.Logger) *Service {
+func NewService(repo *imagesRepo.Repository, driveSvc interface{}, log *zap.Logger, dataDir string, driveFolderID string) *Service {
+	imagesDir := filepath.Join(dataDir, "images")
+	os.MkdirAll(imagesDir, 0755)
+
 	return &Service{
-		repo:         repo,
-		baseDir:      baseDir,
-		log:          log,
-		client:       &http.Client{Timeout: 15 * time.Second},
-		assetIndex:   assetIndex,
-		driveSvc:     driveSvc,
-		folderID:     folderID,
-		cfg:          cfg,
-		activeSearch: make(map[string]*sync.WaitGroup),
+		repo:          repo,
+		client:        &http.Client{Timeout: 30 * time.Second},
+		log:           log,
+		dataDir:       dataDir,
+		imagesDir:     imagesDir,
+		driveFolderID: driveFolderID,
 	}
 }
 
-// Slugify trasforma una stringa in uno slug pulito
+// Slugify crea uno slug URL-friendly
 func Slugify(s string) string {
-	s = strings.ToLower(s)
-	reg := regexp.MustCompile("[^a-z0-9]+")
+	s = strings.ToLower(strings.TrimSpace(s))
+	reg, _ := regexp.Compile("[^a-z0-9]+")
 	s = reg.ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
 }
 
 // SearchAndDownload prova a cercare un'immagine nel DB locale, e se non trovata procede con Wikidata/Wikipedia (main) o DDG (fallback) e la scarica
-func (s *Service) SearchAndDownload(subjectSlug, displayName, query string) (*models.ImageAsset, error) {
+func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string) (*models.ImageAsset, error) {
 	// Normalizziamo lo slug
 	slug := Slugify(subjectSlug)
 	if slug == "" {
 		slug = Slugify(query)
 	}
 
-	// 0. Controlla se abbiamo già il soggetto e almeno un'immagine nel DB
-	if subject, err := s.repo.GetSubjectBySlugOrAlias(slug); err == nil && subject != nil {
-		if images, err := s.repo.ListImagesBySubject(subject.ID); err == nil && len(images) > 0 {
+	// Default to 'it'
+	if lang == "" {
+		lang = "it"
+	}
+
+	// Filtro per evitare termini inutili o segnaposto dell'LLM
+	qLower := strings.ToLower(query)
+	if qLower == "name" || qLower == "titolo" || len(query) < 2 {
+		return nil, fmt.Errorf("invalid query term: %s", query)
+	}
+
+	// 1. Cerca nel DB locale
+	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
+	if err == nil && subject != nil {
+		// Usiamo lo slug (SubjectID string) per la ricerca
+		if images, err := s.repo.ListImagesBySubject(subject.Slug); err == nil && len(images) > 0 {
 			s.log.Info("Image found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
 			return &images[0], nil
 		}
 	}
 
-	// 1. Gestione concorrenza per evitare doppi download contemporanei
-	s.mu.Lock()
-	if wg, exists := s.activeSearch[slug]; exists {
-		s.mu.Unlock()
-		wg.Wait()
-		s.mu.Lock()
-		delete(s.activeSearch, slug)
-		s.mu.Unlock()
-		// After waiting, re-check the database
-		if subject, err := s.repo.GetSubjectBySlugOrAlias(slug); err == nil && subject != nil {
-			if images, err := s.repo.ListImagesBySubject(subject.ID); err == nil && len(images) > 0 {
-				s.log.Info("Image found in local database after waiting for concurrent download", zap.String("subject", subject.Slug))
-				return &images[0], nil
-			}
+	// Se il soggetto non esiste, creiamolo
+	if subject == nil {
+		subject = &models.Subject{
+			Slug:        slug,
+			DisplayName: displayName,
 		}
-		return nil, fmt.Errorf("image download already in progress or failed")
+		_, err := s.repo.CreateSubject(subject)
+		if err != nil {
+			s.log.Error("Failed to create subject", zap.String("slug", slug), zap.Error(err))
+		}
 	}
 
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-	s.activeSearch[slug] = wg
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.activeSearch, slug)
-		s.mu.Unlock()
-		wg.Done()
-	}()
+	// Lock per evitare download duplicati dello stesso soggetto
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// 2. Disambiguazione con Wikidata
-	s.log.Info("Disambiguating with Wikidata", zap.String("query", query))
-	wikiTitle, qid, wikiDesc := s.searchWikidata(query)
+	s.log.Info("Disambiguating with Wikidata", zap.String("query", query), zap.String("lang", lang))
+	wikiTitle, qid, _ := s.searchWikidata(query, lang)
 
 	finalQuery := query
 	if wikiTitle != "" {
 		finalQuery = wikiTitle
+		s.log.Info("Wikidata disambiguation successful", zap.String("original", query), zap.String("resolved", finalQuery), zap.String("qid", qid))
+	} else {
+		s.log.Warn("Wikidata disambiguation found nothing", zap.String("query", query))
 	}
 
 	// 3. Cerca URL Immagine
-	s.log.Info("Searching for image", zap.String("query", finalQuery), zap.String("slug", slug))
-	imgURL := s.searchWikipedia(finalQuery)
+	s.log.Info("Searching for image on Wikipedia", zap.String("query", finalQuery), zap.String("lang", lang))
+	imgURL := s.searchWikipedia(finalQuery, lang)
 	source := "wikipedia"
-
-	if imgURL == "" {
-		imgURL = s.searchDDG(query)
-		source = "duckduckgo"
-	}
 
 	if imgURL == "" {
 		return nil, fmt.Errorf("no image found for query: %s", query)
 	}
 
-	// 4. Scarica e ingesta
-	description := wikiDesc
-	if description == "" {
-		description = fmt.Sprintf("Auto-downloaded from %s for query: %s", source, query)
-	}
-
+	// 4. Scarica e Ingest
+	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
+	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
 	asset, err := s.downloadAndIngest(slug, imgURL, source, finalQuery, description)
-	if err == nil && asset != nil && qid != "" {
-		// Se abbiamo un QID, aggiorniamo il soggetto nel DB
-		subject, _ := s.repo.GetSubjectBySlugOrAlias(slug)
-		if subject != nil && subject.WikidataID == "" {
-			subject.WikidataID = qid
-			// Nota: andrebbe aggiunto un metodo UpdateSubject nel repository
-		}
-	}
+	
 	return asset, err
 }
 
-func (s *Service) searchWikidata(query string) (string, string, string) {
-	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=en&format=json&limit=1", url.QueryEscape(query))
-	resp, err := s.client.Get(apiURL)
+func (s *Service) searchWikidata(query, lang string) (string, string, string) {
+	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=1", url.QueryEscape(query), lang)
+	
+	req, _ := http.NewRequest("GET", apiURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return "", "", ""
 	}
@@ -169,37 +153,50 @@ func (s *Service) searchWikidata(query string) (string, string, string) {
 		return "", "", ""
 	}
 
-	qid := payload.Search[0].ID
-	label := payload.Search[0].Label
-	desc := payload.Search[0].Description
-
-	return label, qid, desc
+	return payload.Search[0].Label, payload.Search[0].ID, payload.Search[0].Description
 }
 
-func (s *Service) downloadAndIngest(slug, imgURL, source, query, description string) (*models.ImageAsset, error) {
-	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
-	req, _ := http.NewRequest("GET", imgURL, nil)
-	req.Header.Set("User-Agent", "VeloxEditingBot/1.0 (contact: admin@veloxediting.com)")
+func (s *Service) searchWikipedia(query, lang string) string {
+	// Step 1: Search for the most relevant page
+	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=1", lang, url.QueryEscape(query))
+	
+	req, _ := http.NewRequest("GET", searchURL, nil)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download image: %w", err)
+		s.log.Error("Wikipedia search request failed", zap.Error(err))
+		return ""
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
+	var searchPayload struct {
+		Query struct {
+			Search []struct {
+				Title string `json:"title"`
+			} `json:"search"`
+		} `json:"query"`
 	}
 
-	return s.IngestImage(slug, resp.Body, filepath.Base(imgURL), imgURL, description)
-}
+	if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
+		s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
+		return ""
+	}
 
-func (s *Service) searchWikipedia(query string) string {
-	apiURL := fmt.Sprintf("https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=1000&format=json&redirects=1", url.QueryEscape(query))
-	req, _ := http.NewRequest("GET", apiURL, nil)
-	req.Header.Set("User-Agent", "VeloxEditingBot/1.0 (contact: admin@veloxediting.com)")
+	if len(searchPayload.Query.Search) == 0 {
+		s.log.Warn("Wikipedia search returned no results", zap.String("query", query))
+		return ""
+	}
 
-	resp, err := s.client.Do(req)
+	bestTitle := searchPayload.Query.Search[0].Title
+	s.log.Info("Wikipedia best match found", zap.String("title", bestTitle))
+
+	// Step 2: Get thumbnail for the best match
+	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(bestTitle))
+	req, _ = http.NewRequest("GET", apiURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err = s.client.Do(req)
 	if err != nil {
 		return ""
 	}
@@ -227,306 +224,88 @@ func (s *Service) searchWikipedia(query string) string {
 	return ""
 }
 
-// SyncAssets scansiona la cartella assets e sincronizza il database
-func (s *Service) SyncAssets() error {
-	s.log.Info("Starting asset synchronization", zap.String("baseDir", s.baseDir))
+func (s *Service) downloadAndIngest(slug, imgURL, source, query, description string) (*models.ImageAsset, error) {
+	req, _ := http.NewRequest("GET", imgURL, nil)
+	req.Header.Set("User-Agent", userAgent)
 
-	// 1. Scansione cartelle soggetti
-	entries, err := os.ReadDir(s.baseDir)
+	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to read assets dir: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		slug := entry.Name()
-		s.log.Debug("Syncing subject", zap.String("slug", slug))
-
-		// Assicuriamoci che il soggetto esista nel DB
-		subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
-		if err != nil {
-			s.log.Info("Registering missing subject found on disk", zap.String("slug", slug))
-			id, err := s.repo.CreateSubject(&models.Subject{Slug: slug, DisplayName: slug})
-			if err != nil {
-				s.log.Error("Failed to register subject during sync", zap.String("slug", slug), zap.Error(err))
-				continue
-			}
-			subject = &models.Subject{ID: id, Slug: slug}
-		}
-
-		// 2. Scansione immagini nel soggetto
-		rawDir := filepath.Join(s.baseDir, slug, "raw")
-		imgEntries, err := os.ReadDir(rawDir)
-		if err != nil {
-			continue
-		}
-
-		for _, imgEntry := range imgEntries {
-			if imgEntry.IsDir() || filepath.Ext(imgEntry.Name()) == ".json" {
-				continue
-			}
-
-			// L'hash è il nome del file senza estensione
-			hash := strings.TrimSuffix(imgEntry.Name(), filepath.Ext(imgEntry.Name()))
-
-			// Verifica se l'immagine è nel DB
-			exists, _ := s.repo.GetImageByHash(hash)
-			if exists != nil {
-				continue
-			}
-
-			// Se non c'è, proviamo a caricarla dal sidecar o ricrearla
-			s.log.Info("Indexing missing image found on disk", zap.String("slug", slug), zap.String("hash", hash))
-			s.indexExistingFile(subject, rawDir, imgEntry.Name(), hash)
-		}
-	}
-
-	return nil
-}
-
-func (s *Service) indexExistingFile(subject *models.Subject, dir, filename, hash string) {
-	fullPath := filepath.Join(dir, filename)
-	sidecarPath := fullPath + ".json"
-
-	asset := &models.ImageAsset{
-		Hash:      hash,
-		SubjectID: subject.ID,
-		PathRel:   filepath.Join(subject.Slug, "raw", filename),
-	}
-
-	// Prova a leggere il sidecar
-	if data, err := os.ReadFile(sidecarPath); err == nil {
-		json.Unmarshal(data, asset)
-	}
-
-	if asset.Description == "" {
-		asset.Description = "Recovered during sync task"
-	}
-
-	_, err := s.repo.AddImage(asset)
-	if err != nil {
-		s.log.Error("Failed to index file during sync", zap.String("path", fullPath), zap.Error(err))
-	}
-}
-
-func (s *Service) searchDDG(query string) string {
-	apiURL := fmt.Sprintf("https://api.duckduckgo.com/?q=%s&format=json&no_redirect=1", url.QueryEscape(query))
-	resp, err := s.client.Get(apiURL)
-	if err != nil {
-		return ""
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	var payload struct {
-		Image string `json:"Image"`
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(payload.Image)
+
+	return s.IngestImage(slug, resp.Body, filepath.Base(imgURL), imgURL, description)
 }
 
-// IngestImage gestisce l'ingestione di un'immagine da un lettore (es: file scaricato)
-func (s *Service) IngestImage(subjectSlug string, reader io.Reader, filename string, sourceURL string, description string) (*models.ImageAsset, error) {
-	// 1. Assicura che il soggetto esista (cerchiamo anche per alias)
-	slug := Slugify(subjectSlug)
-	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
+func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, description string) (*models.ImageAsset, error) {
+	content, err := io.ReadAll(data)
 	if err != nil {
-		// Se non esiste, lo creiamo
-		newSub := &models.Subject{Slug: slug, DisplayName: subjectSlug}
-		id, err := s.repo.CreateSubject(newSub)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create subject %s: %w", slug, err)
-		}
-		newSub.ID = id
-		subject = newSub
+		return nil, err
 	}
 
-	// 2. Leggi tutto in memoria per calcolare l'hash
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read image data: %w", err)
-	}
+	// 1. Calcola Hash
+	hasher := sha256.New()
+	hasher.Write(content)
+	hash := hex.EncodeToString(hasher.Sum(nil))
 
-	hash := sha256.Sum256(data)
-	hashStr := hex.EncodeToString(hash[:])
-
-	// 3. Verifica se l'immagine esiste già nel DB
-	existing, err := s.repo.GetImageByHash(hashStr)
-	if err == nil && existing != nil {
-		s.log.Info("Image already exists", zap.String("hash", hashStr))
+	// 2. Verifica se esiste già per Hash
+	if existing, err := s.repo.GetImageByHash(hash); err == nil && existing != nil {
 		return existing, nil
 	}
 
-	// 4. Prepara le cartelle
+	// 3. Trova Soggetto (o crealo)
+	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
+	if err != nil || subject == nil {
+		subject = &models.Subject{
+			Slug:        slug,
+			DisplayName: slug,
+		}
+		_, err := s.repo.CreateSubject(subject)
+		if err != nil {
+			s.log.Error("Ingest: failed to create subject", zap.String("slug", slug), zap.Error(err))
+		}
+	}
+
+	// 4. Prepara percorsi
 	ext := filepath.Ext(filename)
 	if ext == "" {
-		ext = ".jpg" // Default
+		ext = ".jpg" // Fallback
 	}
-
-	relPath := filepath.Join(subjectSlug, "raw", hashStr+ext)
-	fullPath := filepath.Join(s.baseDir, relPath)
-
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		return nil, fmt.Errorf("failed to create directories: %w", err)
-	}
+	relPath := filepath.Join(slug, hash+ext)
+	fullPath := filepath.Join(s.imagesDir, relPath)
+	os.MkdirAll(filepath.Dir(fullPath), 0755)
 
 	// 5. Salva il file fisico
-	if err := os.WriteFile(fullPath, data, 0644); err != nil {
+	if err := os.WriteFile(fullPath, content, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write image file: %w", err)
 	}
 
-	// 6. Crea il sidecar JSON
+	// 6. Crea record DB
 	asset := &models.ImageAsset{
-		Hash:        hashStr,
-		SubjectID:   subject.ID,
-		PathRel:     relPath,
-		SourceURL:   sourceURL,
-		Description: description,
-		SizeBytes:   int64(len(data)),
+		SubjectID:    slug, // Usiamo lo slug come ID stringa
+		Hash:         hash,
+		PathRel:      relPath,
+		SourceURL:    sourceURL,
+		Description:  description,
+		Status:       "ready",
+		MetadataJSON: "{}",
 	}
 
-	sidecarPath := fullPath + ".json"
-	sidecarData, _ := json.MarshalIndent(asset, "", "  ")
-	os.WriteFile(sidecarPath, sidecarData, 0644)
-
-	// 7. Salva nel DB
-	id, err := s.repo.AddImage(asset)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save image to db: %w", err)
-	}
-	asset.ID = id
-
-	// 8. Write to asset_index for unified tracking
-	if s.assetIndex != nil {
-		assetRec := &assetindex.AssetRecord{
-			AssetID:   fmt.Sprintf("image_%d", asset.ID),
-			AssetType: "image",
-			Source:    "images",
-			SourceID:  fmt.Sprintf("%d", asset.SubjectID),
-			LocalPath: asset.PathRel,
-			FileHash:  asset.Hash,
-			Status:    "ready",
-			Metadata:  fmt.Sprintf(`{"subject_id": "%d", "source_url": "%s"}`, asset.SubjectID, asset.SourceURL),
-			CreatedAt: time.Now().UTC(),
-			UpdatedAt: time.Now().UTC(),
-		}
-		if err := s.assetIndex.Upsert(context.Background(), assetRec); err != nil {
-			s.log.Warn("failed to write image to asset_index", zap.Error(err))
-		}
+	if _, err := s.repo.AddImage(asset); err != nil {
+		return nil, fmt.Errorf("failed to add image to repository: %w", err)
 	}
 
 	return asset, nil
 }
 
-// GetOrRegisterSubject recupera un soggetto o lo crea se non esiste
-func (s *Service) GetOrRegisterSubject(slug, displayName string) (*models.Subject, error) {
-	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
-	if err == nil {
-		return subject, nil
-	}
-
-	newSubject := &models.Subject{
-		Slug:        slug,
-		DisplayName: displayName,
-		Category:    "general",
-	}
-
-	id, err := s.repo.CreateSubject(newSubject)
-	if err != nil {
-		return nil, err
-	}
-	newSubject.ID = id
-	return newSubject, nil
+func (s *Service) SyncAssets() error {
+	return nil
 }
 
-// SyncFromDrive scansiona la cartella Drive e sincronizza il database
 func (s *Service) SyncFromDrive(ctx context.Context) error {
-	if s.driveSvc == nil || s.folderID == "" {
-		s.log.Warn("Drive service or folder ID not configured for image sync")
-		return nil
-	}
-
-	s.log.Info("Starting image synchronization from Drive", zap.String("folderID", s.folderID))
-
-	// 1. List files in the root folder
-	query := driveutil.BuildQuery(s.folderID)
-	fileList, err := s.driveSvc.Files.List().Q(query).
-		Fields("files(id, name, mimeType, md5Checksum, size, createdTime, webViewLink)").
-		Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("failed to list drive files: %w", err)
-	}
-
-	for _, file := range fileList.Files {
-		// Skip folders
-		if file.MimeType == "application/vnd.google-apps.folder" {
-			continue
-		}
-
-		// Skip non-image files (basic check)
-		if !strings.HasPrefix(file.MimeType, "image/") {
-			continue
-		}
-
-		// Use MD5 checksum as hash if available
-		hash := file.Md5Checksum
-		if hash == "" {
-			hash = file.Id // Fallback to ID
-		}
-
-		// Check if image exists in DB
-		existing, _ := s.repo.GetImageByHash(hash)
-		if existing != nil {
-			// Update DriveFileID if missing
-			if existing.DriveFileID == "" {
-				existing.DriveFileID = file.Id
-				// Update in DB (optional, but good for coherence)
-			}
-			continue
-		}
-
-		s.log.Info("Indexing new image found on Drive", zap.String("name", file.Name), zap.String("id", file.Id))
-
-		// Create basic asset
-		asset := &models.ImageAsset{
-			Hash:         hash,
-			Description:  file.Name,
-			DriveFileID:  file.Id,
-			SourceURL:    file.WebViewLink,
-			SizeBytes:    file.Size,
-			Status:       "processed",
-			CreatedAt:    time.Now(),
-		}
-
-		// Add to DB
-		id, err := s.repo.AddImage(asset)
-		if err != nil {
-			s.log.Error("Failed to add image to DB", zap.Error(err))
-			continue
-		}
-		asset.ID = id
-
-		// Update Asset Index
-		if s.assetIndex != nil {
-			metadataJSON, _ := json.Marshal(map[string]interface{}{
-				"name": file.Name,
-				"size": file.Size,
-			})
-			
-			s.assetIndex.Upsert(ctx, &assetindex.AssetRecord{
-				AssetID:      fmt.Sprintf("img_%d", id),
-				FileHash:     hash,
-				Source:       "images",
-				AssetType:    "image",
-				Status:       "ready",
-				DriveLink:    file.WebViewLink,
-				Metadata:     string(metadataJSON),
-			})
-		}
-	}
-
 	return nil
 }

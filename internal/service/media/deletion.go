@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
@@ -71,8 +70,8 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		}
 		clip = voiceoverRecordToClip(rec)
 	} else if strings.ToLower(source) == "images" && s.imagesRepo != nil {
-		id, _ := strconv.ParseInt(clipID, 10, 64)
-		img, err := s.imagesRepo.GetByID(ctx, id)
+		// Images now use string IDs (hashes/slugs)
+		img, err := s.imagesRepo.GetByID(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("image not found: %w", err)
 		}
@@ -109,8 +108,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	if strings.ToLower(source) == "voiceover" && s.voiceoverRepo != nil {
 		err = s.voiceoverRepo.Delete(ctx, clipID)
 	} else if strings.ToLower(source) == "images" && s.imagesRepo != nil {
-		id, _ := strconv.ParseInt(clipID, 10, 64)
-		err = s.imagesRepo.Delete(ctx, id)
+		err = s.imagesRepo.Delete(ctx, clipID)
 	} else if repo != nil {
 		err = repo.DeleteClip(ctx, clipID)
 	}
@@ -242,7 +240,7 @@ func imageAssetToClip(img *models.ImageAsset) *models.Clip {
 		name = filepath.Base(img.PathRel)
 	}
 	return &models.Clip{
-		ID:        strconv.FormatInt(img.ID, 10),
+		ID:        img.Hash, // Now using hash as string ID
 		Name:      name,
 		Filename:  filepath.Base(img.PathRel),
 		DriveLink: img.SourceURL,

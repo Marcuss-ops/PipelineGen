@@ -2,6 +2,7 @@ package script
 
 import (
 	"strings"
+	"fmt"
 
 	"velox/go-master/internal/ml/ollama/types"
 	imgservice "velox/go-master/internal/service/images"
@@ -11,38 +12,53 @@ type imagePlanItem struct {
 	Subject string
 	URL     string
 	Path    string
-	Reason  string
 }
 
-func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, stockSection, artlistSection, driveSection ScriptSection, pythonScriptsDir string, imgService *imgservice.Service) ScriptSection {
+func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, pythonScriptsDir string, imgService *imgservice.Service) ScriptSection {
 	subjects := pickImageSubjects(req.Topic, analysis, 5)
+	
+	fmt.Printf("[DEBUG] Image planning starting for subjects: %v\n", subjects)
+
 	if len(subjects) == 0 {
 		return ScriptSection{
 			Title: "📸 Entità con Immagine",
-			Body:  "Nessuna entità rilevata per la ricerca immagini.",
+			Body:  "Nessun soggetto identificato per le immagini.",
 		}
 	}
 
 	var items []imagePlanItem
 	for _, subject := range subjects {
 		if imgService != nil {
-			slug := strings.ReplaceAll(strings.ToLower(subject), " ", "-")
-			asset, err := imgService.SearchAndDownload(slug, subject, subject)
-			if err == nil && asset != nil {
-				items = append(items, imagePlanItem{
-					Subject: subject,
-					URL:     asset.SourceURL,
-					Path:    asset.PathRel,
-					Reason:  "Trovata e salvata come link diretto (Wikipedia/DDG)",
-				})
+			slug := Slugify(subject)
+			fmt.Printf("[DEBUG] Searching for subject: '%s' (slug: '%s')\n", subject, slug)
+			
+			asset, err := imgService.SearchAndDownload(slug, subject, subject, req.Language)
+			if err != nil {
+				fmt.Printf("[DEBUG] SearchAndDownload ERROR for '%s': %v\n", subject, err)
+				continue
 			}
+			
+			if asset == nil {
+				fmt.Printf("[DEBUG] SearchAndDownload returned NIL asset for '%s'\n", subject)
+				continue
+			}
+
+			fmt.Printf("[DEBUG] Found asset for '%s': URL=%s, Path=%s\n", subject, asset.SourceURL, asset.PathRel)
+
+			items = append(items, imagePlanItem{
+				Subject: subject,
+				URL:     asset.SourceURL,
+				Path:    asset.PathRel,
+			})
 		}
 	}
+
+	fmt.Printf("[DEBUG] Image planning finished. Items found: %d\n", len(items))
 
 	if len(items) == 0 {
 		return ScriptSection{
 			Title: "📸 Entità con Immagine",
-			Body:  "Nessuna immagine trovata per le entità rilevate.",
+			Body:  "Ricerca completata: nessuna immagine trovata online (zero items).",
 		}
 	}
 
@@ -56,55 +72,37 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 	seen := make(map[string]struct{})
 	var result []string
 
-	add := func(s string) bool {
-		if len(result) >= max {
-			return false
-		}
+	add := func(s string, allowSingle bool) {
 		s = strings.TrimSpace(s)
-		if s == "" {
-			return false
+		if s == "" || len(result) >= max {
+			return
 		}
-		// Filtriamo nomi troppo lunghi o troppo corti per la ricerca immagini
-		if strings.Count(s, " ") > 2 {
-			return false
+		if !allowSingle && !strings.Contains(s, " ") {
+			return
 		}
-		if len([]rune(s)) < 3 {
-			return false
+		if len([]rune(s)) < 3 || strings.Count(s, " ") > 5 {
+			return
 		}
 		key := strings.ToLower(s)
 		if _, ok := seen[key]; ok {
-			return false
+			return
 		}
 		seen[key] = struct{}{}
 		result = append(result, s)
-		return true
 	}
 
-	// 1. Nomi speciali dall'analisi (priorità alta)
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
 			for _, name := range segment.NomiSpeciali {
-				if strings.Contains(name, " ") {
-					add(name)
-				}
+				add(name, true)
 			}
-		}
-	}
-
-	// 2. Entità senza testo (keyword estratte)
-	if analysis != nil {
-		for _, segment := range analysis.SegmentEntities {
 			for name := range segment.EntitaSenzaTesto {
-				if strings.Contains(name, " ") {
-					add(name)
-				}
+				add(name, true)
 			}
 		}
 	}
 
-	// 3. Topic completo come fallback, così "Mike Tyson" non si spezza in token singoli.
-	add(topic)
-
+	add(topic, true)
 	return result
 }
 
@@ -114,11 +112,21 @@ func renderImagePlans(items []imagePlanItem) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString("\"")
-		b.WriteString(item.Subject)
-		b.WriteString("\": \"")
-		b.WriteString(item.URL)
-		b.WriteString("\"")
+		b.WriteString(fmt.Sprintf("🖼️ \"%s\": %s", item.Subject, item.URL))
 	}
 	return b.String()
+}
+
+// Local slugify
+func Slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

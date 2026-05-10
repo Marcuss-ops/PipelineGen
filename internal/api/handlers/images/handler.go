@@ -24,6 +24,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 // Search cerca un'immagine per un soggetto, scaricandola se non esiste
 func (h *Handler) Search(c *gin.Context) {
 	query := c.Query("q")
+	lang := c.DefaultQuery("lang", "it")
 	if query == "" {
 		apiutil.BadRequest(c, "missing query parameter 'q'")
 		return
@@ -31,7 +32,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	// Proviamo a cercare/scaricare
 	slug := strings.ReplaceAll(strings.ToLower(query), " ", "-")
-	asset, err := h.service.SearchAndDownload(slug, query, query)
+	asset, err := h.service.SearchAndDownload(slug, query, query, lang)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
