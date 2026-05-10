@@ -96,14 +96,13 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 
 		// Finally, filter ALL matches for semantic relevance
 		if !hasUsefulVisualMatch(seg, req.Topic) {
-			zap.L().Warn("rejecting all matches - no useful visual match",
+			zap.L().Warn("no useful visual match found for segment",
 				zap.Int("segment_index", seg.Index),
 				zap.String("subject", seg.Subject),
 				zap.String("visual_subject", seg.VisualSubject),
 				zap.Strings("search_suggestions", seg.SearchSuggestions),
 			)
-			seg.StockMatches = nil
-			seg.ArtlistMatches = nil
+			// We no longer nullify matches here, allowing the renderer and score system to decide
 		}
 
 		// Store in cache and add to plan

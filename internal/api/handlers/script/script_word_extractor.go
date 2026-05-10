@@ -5,25 +5,15 @@ import (
 	"strings"
 )
 
-// extractImportantWords returns top N frequent non-stop words
+// extractImportantWords is now a simple fallback using length and frequency.
+// The main logic has moved to LLM extraction in BuildScriptDocument.
 func extractImportantWords(narrative string, max int) []string {
-	stopWords := map[string]struct{}{
-		"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "but": {}, "in": {},
-		"on": {}, "at": {}, "to": {}, "for": {}, "of": {}, "with": {}, "by": {},
-		"is": {}, "are": {}, "was": {}, "were": {}, "be": {}, "been": {}, "being": {},
-		"this": {}, "that": {}, "these": {}, "those": {}, "it": {}, "its": {},
-	}
 	words := strings.Fields(strings.ToLower(narrative))
 	freq := make(map[string]int)
 	for _, w := range words {
-		w = strings.TrimRight(w, ",.!?;:\"'")
-		if w == "" {
-			continue
-		}
-		if _, ok := stopWords[w]; ok {
-			continue
-		}
-		if len([]rune(w)) < 3 {
+		w = strings.Trim(w, ",.!?;:\"'()")
+		// Simple logic: ignore words shorter than 4 chars (most prepositions/articles)
+		if len([]rune(w)) < 4 {
 			continue
 		}
 		freq[w]++
@@ -37,6 +27,9 @@ func extractImportantWords(narrative string, max int) []string {
 		wf = append(wf, wordFreq{w, c})
 	}
 	sort.Slice(wf, func(i, j int) bool {
+		if wf[i].count == wf[j].count {
+			return wf[i].word < wf[j].word
+		}
 		return wf[i].count > wf[j].count
 	})
 	var result []string

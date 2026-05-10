@@ -2,16 +2,19 @@ package script
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/prompts"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/association"
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/pkg/textutil"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -52,10 +55,33 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 
 	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService, assocService, clipResolver)
 
+	// Extract entities and metadata using LLM (The "Logic" vs Hardcoding)
+	var analysis *types.FullEntityAnalysis
+	if gen != nil {
+		extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 10)
+		var extracted types.SegmentEntities
+		
+		// Use Chat to get the JSON response
+		messages := []types.Message{
+			{Role: "user", Content: extractionPrompt},
+		}
+		
+		resp, err := gen.GetClient().Chat(ctx, messages, nil)
+		if err == nil {
+			// Extract JSON from potential markdown markers
+			jsonStr := textutil.StripCodeFence(resp)
+			if err := json.Unmarshal([]byte(jsonStr), &extracted); err == nil {
+				analysis = &types.FullEntityAnalysis{
+					SegmentEntities: []types.SegmentEntities{extracted},
+				}
+			}
+		}
+	}
+
 	// Build image section (always include, use default if service unavailable)
 	var imageSection ScriptSection
 	if imgService != nil {
-		imageSection = buildImagePlanningSection(req, narrative, nil, ScriptSection{}, ScriptSection{}, ScriptSection{}, pythonScriptsDir, imgService)
+		imageSection = buildImagePlanningSection(req, narrative, analysis, ScriptSection{}, ScriptSection{}, ScriptSection{}, pythonScriptsDir, imgService)
 	} else {
 		imageSection = ScriptSection{
 			Title: "📸 Entità con Immagine",
@@ -63,12 +89,17 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		}
 	}
 
-	// Extract end sections
-	phrases := extractImportantPhrases(narrative)
-	// SpecialNames extraction disabled: fragile uppercase heuristic produces false positives
-	// TODO: Replace with LLM-based entity extraction using BuildEntityExtractionPrompt
-	specialNames := []string{}
-	importantWords := extractImportantWords(narrative, 10)
+	// Extract end sections from LLM analysis
+	var phrases []string
+	var specialNames []string
+	var importantWords []string
+
+	if analysis != nil && len(analysis.SegmentEntities) > 0 {
+		entities := analysis.SegmentEntities[0]
+		phrases = entities.FrasiImportanti
+		specialNames = entities.NomiSpeciali
+		importantWords = entities.ParoleImportanti
+	}
 
 	importantPhrasesSection := ScriptSection{
 		Title: "📢 IMPORTANT PHRASES",
