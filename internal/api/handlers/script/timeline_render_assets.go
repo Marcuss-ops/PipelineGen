@@ -43,20 +43,31 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 	b.WriteString(label)
 	b.WriteString(":\n")
 
-	// 1. Render Folders first
+	// 1. Render Folders first (High Emphasis)
+	folderFound := false
 	for _, m := range matches {
 		if m.Source == "drive_folder_live" {
-			b.WriteString("      📂 ")
-			b.WriteString(m.Title)
+			b.WriteString("      📂 Destination Drive Folder:\n")
 			if m.Link != "" {
-				b.WriteString("\n        Link: ")
+				b.WriteString("        Link: ")
 				b.WriteString(m.Link)
+			} else {
+				b.WriteString("        Status: Resolving...")
 			}
 			b.WriteString("\n")
+			folderFound = true
 		}
 	}
 
-	// 2. Render Clips (up to 2)
+	// 2. Render Clips (up to 2 if folder found, up to 3 if not)
+	limit := 3
+	if folderFound {
+		limit = 1 // Show only one preview if we have the folder
+		b.WriteString("      🎬 Preview Clips (Auto-Uploading):\n")
+	} else {
+		b.WriteString("      🎬 Available Clips:\n")
+	}
+
 	renderedClips := 0
 	for _, m := range matches {
 		if m.Source == "drive_folder_live" {
@@ -70,22 +81,18 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 		if title == "" {
 			title = "Asset"
 		}
-		b.WriteString("      🎬 ")
+		b.WriteString("        - ")
 		b.WriteString(title)
 		b.WriteString("\n")
 
 		if m.Link != "" {
-			b.WriteString("        Link: ")
+			b.WriteString("          Link: ")
 			b.WriteString(m.Link)
-			b.WriteString("\n")
-		} else if m.Path != "" {
-			b.WriteString("        Path: ")
-			b.WriteString(m.Path)
 			b.WriteString("\n")
 		}
 		
 		renderedClips++
-		if renderedClips >= 2 {
+		if renderedClips >= limit {
 			break
 		}
 	}

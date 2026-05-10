@@ -74,7 +74,18 @@ func (s *Service) Resolve(ctx context.Context, req *Request) (*Resolved, error) 
 		// Step 2: Resolve by group name
 		folderID, err := s.resolveGroupFolder(ctx, req.Group)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve group folder: %w", err)
+			s.log.Warn("failed to resolve group folder, searching for 'Artlist' fallback",
+				zap.String("group", req.Group),
+				zap.Error(err),
+			)
+			// Fallback: search for a general "Artlist" folder in root
+			fallbackID, fbErr := s.getOrCreateSubfolder(ctx, "root", "Artlist")
+			if fbErr == nil {
+				folderID = fallbackID
+			} else {
+				// Final fallback: use root (dangerous but gives us a link)
+				folderID = "root"
+			}
 		}
 		result.FolderID = folderID
 	}

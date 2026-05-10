@@ -210,7 +210,12 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 		
 		// Synchronously resolve destination folder so we can return the link immediately
 		tagFolderName := strings.ReplaceAll(strings.ToLower(term), " ", "_")
-		resolvedFolderID := s.resolveDestination(ctx, driveFolderID, term, tagFolderName, &RunTagResponse{})
+		groupName := "Artlist"
+		if term != "" {
+			groupName = term
+		}
+
+		resolvedFolderID := s.resolveDestination(ctx, driveFolderID, groupName, tagFolderName, &RunTagResponse{})
 		
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:       models.JobTypeArtlistRun,
