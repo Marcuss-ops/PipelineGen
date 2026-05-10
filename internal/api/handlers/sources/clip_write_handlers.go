@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 )
 
 // CreateClip creates a new clip.
-func (h *CommonHandler) CreateClip(c *gin.Context) {
+func (h *Handler) CreateClip(c *gin.Context) {
 	source := c.Param("source")
 	repo := h.resolveRepo(source)
 	if repo == nil {
@@ -52,7 +52,7 @@ func (h *CommonHandler) CreateClip(c *gin.Context) {
 }
 
 // UpdateClip updates an existing clip.
-func (h *CommonHandler) UpdateClip(c *gin.Context) {
+func (h *Handler) UpdateClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -144,7 +144,7 @@ func (h *CommonHandler) UpdateClip(c *gin.Context) {
 }
 
 // TrashClip moves a clip to Drive trash and removes SQLite record.
-func (h *CommonHandler) TrashClip(c *gin.Context) {
+func (h *Handler) TrashClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -162,7 +162,7 @@ func (h *CommonHandler) TrashClip(c *gin.Context) {
 }
 
 // DeleteClip permanently deletes a clip from Drive and SQLite.
-func (h *CommonHandler) DeleteClip(c *gin.Context) {
+func (h *Handler) DeleteClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -180,7 +180,7 @@ func (h *CommonHandler) DeleteClip(c *gin.Context) {
 }
 
 // BulkAddTags adds tags to multiple clips in one request.
-func (h *CommonHandler) BulkAddTags(c *gin.Context) {
+func (h *Handler) BulkAddTags(c *gin.Context) {
 	source := c.Param("source")
 	var req struct {
 		IDs  []string `json:"ids"`
@@ -227,7 +227,7 @@ func (h *CommonHandler) BulkAddTags(c *gin.Context) {
 }
 
 // BulkRemoveTags removes tags from multiple clips.
-func (h *CommonHandler) BulkRemoveTags(c *gin.Context) {
+func (h *Handler) BulkRemoveTags(c *gin.Context) {
 	source := c.Param("source")
 	var req struct {
 		IDs  []string `json:"ids"`

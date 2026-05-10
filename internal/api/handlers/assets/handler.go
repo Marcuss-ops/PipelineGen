@@ -3,11 +3,10 @@ package assets
 import (
 	"go.uber.org/zap"
 
+	sources "velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/images"
-	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
@@ -17,32 +16,8 @@ import (
 	"velox/go-master/internal/upload/drive"
 )
 
-// Handler handles unified asset operations (search, tree, folders, etc.)
-type Handler struct {
-	// Search & Index
-	artlistSvc    *artlist.Service
-	catalogRepo   *catalog.Repository
-	assetIndexSvc *assetindex.Service
-	
-	// Media Repositories (for folder/clip resolution)
-	artlistRepo   *clips.Repository
-	clipsRepo     *clips.Repository
-	stockRepo     *clips.Repository
-	voiceoverRepo *voiceovers.Repository
-	imagesRepo    *images.Repository
-	
-	// Services
-	cleanupSvc     *drivecleanup.Service
-	folderMemSvc   *foldermemory.Service
-	assetTreeSvc   *assettree.Service
-	driveUploader  *drive.Uploader
-	mediaProcessor processor.Processor
-	deletionSvc    *media.DeletionService
-	
-	log *zap.Logger
-}
+type Handler = sources.Handler
 
-// NewHandler creates a new assets handler
 func NewHandler(
 	artlistSvc *artlist.Service,
 	catalogRepo *catalog.Repository,
@@ -56,29 +31,19 @@ func NewHandler(
 	deletionSvc *media.DeletionService,
 	log *zap.Logger,
 ) *Handler {
-	return &Handler{
-		artlistSvc:     artlistSvc,
-		catalogRepo:    catalogRepo,
-		assetIndexSvc:  assetIndexSvc,
-		artlistRepo:    artlistRepo,
-		clipsRepo:      clipsRepo,
-		stockRepo:      stockRepo,
-		cleanupSvc:     cleanupSvc,
-		folderMemSvc:   folderMemSvc,
-		assetTreeSvc:   assetTreeSvc,
-		driveUploader:  driveUploader,
-		mediaProcessor: mediaProcessor,
-		deletionSvc:    deletionSvc,
-		log:            log,
-	}
-}
-
-// SetVoiceoverRepo sets the voiceover repository.
-func (h *Handler) SetVoiceoverRepo(repo *voiceovers.Repository) {
-	h.voiceoverRepo = repo
-}
-
-// SetImagesRepo sets the images repository.
-func (h *Handler) SetImagesRepo(repo *images.Repository) {
-	h.imagesRepo = repo
+	return sources.NewHandler(
+		artlistSvc,
+		catalogRepo,
+		assetIndexSvc,
+		artlistRepo,
+		clipsRepo,
+		stockRepo,
+		cleanupSvc,
+		folderMemSvc,
+		assetTreeSvc,
+		driveUploader,
+		mediaProcessor,
+		deletionSvc,
+		log,
+	)
 }

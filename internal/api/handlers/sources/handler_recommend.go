@@ -1,4 +1,4 @@
-package artlist
+package sources
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 )
 
 // Recommend handles the recommendation endpoint using clipresolver
-func (h *Handler) Recommend(c *gin.Context) {
+func (h *ArtlistHandler) Recommend(c *gin.Context) {
 	req, ok := apiutil.BindJSON[clipresolver.RecommendRequest](c)
 	if !ok {
 		return

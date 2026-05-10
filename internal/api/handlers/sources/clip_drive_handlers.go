@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 )
 
 // ReuploadClip reuploads a clip to Drive.
-func (h *CommonHandler) ReuploadClip(c *gin.Context) {
+func (h *Handler) ReuploadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 

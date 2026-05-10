@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"strings"
@@ -10,7 +10,7 @@ import (
 )
 
 // Reconcile checks for mismatches between SQLite and Google Drive.
-func (h *CommonHandler) Reconcile(c *gin.Context) {
+func (h *Handler) Reconcile(c *gin.Context) {
 	source := c.Param("source")
 	sourceLower := strings.ToLower(source)
 

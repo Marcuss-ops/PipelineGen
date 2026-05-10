@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"strings"
@@ -34,7 +34,7 @@ type DeleteDriveFileResult struct {
 }
 
 // TrashByDriveFile trashes a clip by Drive file ID or link.
-func (h *CommonHandler) TrashByDriveFile(c *gin.Context) {
+func (h *Handler) TrashByDriveFile(c *gin.Context) {
 	source := c.Param("source")
 
 	var req DeleteDriveFileRequest
@@ -56,7 +56,7 @@ func (h *CommonHandler) TrashByDriveFile(c *gin.Context) {
 }
 
 // DeleteByDriveFile permanently deletes a clip by Drive file ID or link.
-func (h *CommonHandler) DeleteByDriveFile(c *gin.Context) {
+func (h *Handler) DeleteByDriveFile(c *gin.Context) {
 	source := c.Param("source")
 
 	var req DeleteDriveFileRequest

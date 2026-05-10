@@ -1,4 +1,4 @@
-package artlist
+package sources
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 )
 
 // RunTagPipeline executes the full Artlist flow for a tag
-func (h *Handler) RunTagPipeline(c *gin.Context) {
+func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 	req, ok := apiutil.BindJSON[artlist.RunTagRequest](c)
 	if !ok {
 		return
@@ -28,7 +28,7 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 	// Normalize request before enqueue
 	req = artlist.NormalizeRunTagRequest(req, artlist.RunDefaults{
 		DefaultRootFolderID: h.cfg.Harvester.DriveFolderID,
-		MaxLimit:           500,
+		MaxLimit:            500,
 	})
 
 	h.log.Info("artlist run requested",
@@ -43,7 +43,7 @@ func (h *Handler) RunTagPipeline(c *gin.Context) {
 }
 
 // RunSmartPipeline executes the Artlist flow with preset support
-func (h *Handler) RunSmartPipeline(c *gin.Context) {
+func (h *ArtlistHandler) RunSmartPipeline(c *gin.Context) {
 	req, ok := apiutil.BindJSON[artlist.RunSmartRequest](c)
 	if !ok {
 		return
@@ -60,7 +60,7 @@ func (h *Handler) RunSmartPipeline(c *gin.Context) {
 	// Normalize request
 	normalized := artlist.NormalizeRunTagRequest(*runReq, artlist.RunDefaults{
 		DefaultRootFolderID: h.cfg.Harvester.DriveFolderID,
-		MaxLimit:           500,
+		MaxLimit:            500,
 	})
 	runReq = &normalized
 
@@ -74,7 +74,7 @@ func (h *Handler) RunSmartPipeline(c *gin.Context) {
 }
 
 // enqueueArtlistRun is the single enqueue path for all Artlist runs
-func (h *Handler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
+func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
 	if h.jobsService == nil {
 		apiutil.InternalError(c, fmt.Errorf("jobs service not configured"))
 		return
@@ -96,7 +96,7 @@ func (h *Handler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
 }
 
 // RunStatus returns the tracked status for a background artlist run
-func (h *Handler) RunStatus(c *gin.Context) {
+func (h *ArtlistHandler) RunStatus(c *gin.Context) {
 	runID := strings.TrimSpace(c.Param("run_id"))
 	if runID == "" {
 		apiutil.BadRequest(c, "run_id is required")

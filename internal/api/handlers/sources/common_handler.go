@@ -1,27 +1,35 @@
-package media
+package sources
 
 import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/core/processor"
+	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/drivecleanup"
+	"velox/go-master/internal/service/foldermemory"
 	"velox/go-master/internal/service/media"
 	"velox/go-master/internal/upload/drive"
 )
 
-// CommonHandler handles common media operations across different sources.
-type CommonHandler struct {
+// Handler handles common media operations across different sources.
+type Handler struct {
+	artlistSvc     *artlist.Service
+	catalogRepo    *catalog.Repository
+	assetIndexSvc  *assetindex.Service
 	artlistRepo    *clips.Repository
 	clipsRepo      *clips.Repository
 	stockRepo      *clips.Repository
 	voiceoverRepo  *voiceovers.Repository
 	imagesRepo     *images.Repository
 	cleanupSvc     *drivecleanup.Service
+	folderMemSvc   *foldermemory.Service
 	assetTreeSvc   *assettree.Service
 	driveUploader  *drive.Uploader
 	mediaProcessor processor.Processor
@@ -29,13 +37,29 @@ type CommonHandler struct {
 	log            *zap.Logger
 }
 
-// NewCommonHandler creates a new common media handler.
-func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, cleanupSvc *drivecleanup.Service, assetTreeSvc *assettree.Service, driveUploader *drive.Uploader, mediaProcessor processor.Processor, deletionSvc *media.DeletionService, log *zap.Logger) *CommonHandler {
-	return &CommonHandler{
+// NewHandler creates a new common media handler.
+func NewHandler(
+	artlistSvc *artlist.Service,
+	catalogRepo *catalog.Repository,
+	assetIndexSvc *assetindex.Service,
+	artlistRepo, clipsRepo, stockRepo *clips.Repository,
+	cleanupSvc *drivecleanup.Service,
+	folderMemSvc *foldermemory.Service,
+	assetTreeSvc *assettree.Service,
+	driveUploader *drive.Uploader,
+	mediaProcessor processor.Processor,
+	deletionSvc *media.DeletionService,
+	log *zap.Logger,
+) *Handler {
+	return &Handler{
+		artlistSvc:     artlistSvc,
+		catalogRepo:    catalogRepo,
+		assetIndexSvc:  assetIndexSvc,
 		artlistRepo:    artlistRepo,
 		clipsRepo:      clipsRepo,
 		stockRepo:      stockRepo,
 		cleanupSvc:     cleanupSvc,
+		folderMemSvc:   folderMemSvc,
 		assetTreeSvc:   assetTreeSvc,
 		driveUploader:  driveUploader,
 		mediaProcessor: mediaProcessor,
@@ -45,19 +69,19 @@ func NewCommonHandler(artlistRepo, clipsRepo, stockRepo *clips.Repository, clean
 }
 
 // SetVoiceoverRepo sets the voiceover repository.
-func (h *CommonHandler) SetVoiceoverRepo(repo *voiceovers.Repository) {
+func (h *Handler) SetVoiceoverRepo(repo *voiceovers.Repository) {
 	h.voiceoverRepo = repo
 }
 
 // SetImagesRepo sets the images repository.
-func (h *CommonHandler) SetImagesRepo(repo *images.Repository) {
+func (h *Handler) SetImagesRepo(repo *images.Repository) {
 	h.imagesRepo = repo
 }
 
 // RegisterRoutes registers media routes with source parameter.
-func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering common media routes")
-	
+
 	// Clip-level endpoints
 	r.POST("/:source/clips", h.CreateClip)
 	r.GET("/:source/clips/:id", h.GetClip)
@@ -74,6 +98,10 @@ func (h *CommonHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:source/bulk/tags/remove", h.BulkRemoveTags)
 
 	// Source-level endpoints
+	r.GET("/search", h.Search)
+	r.GET("/stats", h.Stats)
+	r.GET("/:source/tree", h.GetTree)
+	r.GET("/:source/breadcrumb", h.GetBreadcrumb)
 	r.GET("/:source/clips", h.ListClips)
 	r.POST("/:source/reconcile", h.Reconcile)
 	r.POST("/:source/cleanup-orphans", h.CleanupOrphans)

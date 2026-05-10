@@ -1,4 +1,4 @@
-package artlist
+package sources
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 )
 
 // Stats returns statistics about Artlist clips and search terms
-func (h *Handler) Stats(c *gin.Context) {
+func (h *ArtlistHandler) Stats(c *gin.Context) {
 	stats, err := h.service.GetStats(c.Request.Context())
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("failed to get stats: %v", err))
@@ -23,7 +23,7 @@ func (h *Handler) Stats(c *gin.Context) {
 }
 
 // Search searches for Artlist clips in the database
-func (h *Handler) Search(c *gin.Context) {
+func (h *ArtlistHandler) Search(c *gin.Context) {
 	req, ok := apiutil.BindJSON[artlist.SearchRequest](c)
 	if !ok {
 		return
@@ -44,7 +44,7 @@ func (h *Handler) Search(c *gin.Context) {
 }
 
 // Diagnostics returns Artlist system diagnostics
-func (h *Handler) Diagnostics(c *gin.Context) {
+func (h *ArtlistHandler) Diagnostics(c *gin.Context) {
 	term := strings.TrimSpace(c.Query("term"))
 	if term == "" {
 		term = "test"
@@ -60,7 +60,7 @@ func (h *Handler) Diagnostics(c *gin.Context) {
 }
 
 // SearchLive performs a live search using the Node.js scraper
-func (h *Handler) SearchLive(c *gin.Context) {
+func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 	term := strings.TrimSpace(c.Query("term"))
 	limitStr := c.DefaultQuery("limit", "20")
 	limit := 8

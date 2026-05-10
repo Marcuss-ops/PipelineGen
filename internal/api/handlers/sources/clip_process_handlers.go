@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 )
 
 // ReprocessClip reprocesses a clip (download/process/upload).
-func (h *CommonHandler) ReprocessClip(c *gin.Context) {
+func (h *Handler) ReprocessClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 

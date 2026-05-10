@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"strconv"
@@ -10,7 +10,7 @@ import (
 )
 
 // GetClip returns a single clip.
-func (h *CommonHandler) GetClip(c *gin.Context) {
+func (h *Handler) GetClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -46,7 +46,7 @@ func (h *CommonHandler) GetClip(c *gin.Context) {
 }
 
 // ClipStatus returns the status of a clip.
-func (h *CommonHandler) ClipStatus(c *gin.Context) {
+func (h *Handler) ClipStatus(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -91,7 +91,7 @@ func (h *CommonHandler) ClipStatus(c *gin.Context) {
 }
 
 // ListClips lists all clips for a source with pagination and search.
-func (h *CommonHandler) ListClips(c *gin.Context) {
+func (h *Handler) ListClips(c *gin.Context) {
 	source := c.Param("source")
 	sourceLower := strings.ToLower(source)
 

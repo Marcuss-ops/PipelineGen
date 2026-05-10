@@ -1,4 +1,4 @@
-package artlist
+package sources
 
 import (
 	"github.com/gin-gonic/gin"
@@ -12,7 +12,7 @@ import (
 	"velox/go-master/pkg/config"
 )
 
-type Handler struct {
+type ArtlistHandler struct {
 	service        *artlist.Service
 	catalogSync    *catalogsync.Service
 	jobsService    *jobservice.Service
@@ -23,7 +23,7 @@ type Handler struct {
 	cfg            *config.Config
 }
 
-func NewHandler(
+func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
 	jobsService *jobservice.Service,
@@ -32,8 +32,8 @@ func NewHandler(
 	log *zap.Logger,
 	presetsConfig *artlist.PresetsConfig,
 	cfg *config.Config,
-) *Handler {
-	return &Handler{
+) *ArtlistHandler {
+	return &ArtlistHandler{
 		service:        service,
 		catalogSync:    catalogSync,
 		jobsService:    jobsService,
@@ -45,7 +45,7 @@ func NewHandler(
 	}
 }
 
-func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
+func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering Artlist routes")
 
 	// Public routes

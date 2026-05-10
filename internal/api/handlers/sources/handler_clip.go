@@ -1,4 +1,4 @@
-package artlist
+package sources
 
 type ImportScraperDBRequest struct {
 	DBPath string `json:"db_path"`

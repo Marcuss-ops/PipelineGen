@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 )
 
 // DownloadClip streams the local video file for a clip.
-func (h *CommonHandler) DownloadClip(c *gin.Context) {
+func (h *Handler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 

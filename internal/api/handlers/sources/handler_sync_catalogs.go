@@ -1,4 +1,4 @@
-package artlist
+package sources
 
 import (
 	"net/http"
@@ -7,7 +7,7 @@ import (
 	"velox/go-master/pkg/apiutil"
 )
 
-func (h *Handler) SyncCatalogs(c *gin.Context) {
+func (h *ArtlistHandler) SyncCatalogs(c *gin.Context) {
 	if h.catalogSync == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "catalog sync service not configured")
 		return

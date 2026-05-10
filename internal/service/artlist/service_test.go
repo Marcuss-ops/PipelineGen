@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	_ "github.com/mattn/go-sqlite3"
-	
+
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetstore"
@@ -32,7 +32,7 @@ func createTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
-	
+
 	// Create schema
 	schema := `
 	CREATE TABLE IF NOT EXISTS clips (
@@ -40,6 +40,9 @@ func createTestDB(t *testing.T) *sql.DB {
 		name TEXT,
 		filename TEXT,
 		folder_id TEXT,
+		parent_folder_id TEXT DEFAULT '',
+		depth INTEGER DEFAULT 0,
+		is_folder INTEGER DEFAULT 0,
 		folder_path TEXT,
 		group_name TEXT,
 		media_type TEXT,
@@ -66,21 +69,21 @@ func createTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to create schema: %v", err)
 	}
-	
+
 	return db
 }
 
 // insertTestClip inserts a test clip into the database
 func insertTestClip(t *testing.T, db *sql.DB, clip *models.Clip) {
 	t.Helper()
-	
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.Exec(`
 		INSERT OR REPLACE INTO clips 
-		(id, name, filename, folder_id, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", now, now)
-	
+		(id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", now, now)
+
 	if err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
 	}
@@ -94,7 +97,7 @@ func TestAssetStoreSkipStrategy(t *testing.T) {
 		FileHash:  "hash123",
 		LocalPath: "/tmp/test.mp4",
 	}
-	
+
 	// Test skip strategy - should skip because drive link exists
 	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicySkip, nil, assetstore.DefaultLocalFileChecker)
 	if !skip {
@@ -114,7 +117,7 @@ func TestAssetStoreReplaceStrategy(t *testing.T) {
 		FileHash:  "hash123",
 		LocalPath: "/tmp/test.mp4",
 	}
-	
+
 	// Test replace strategy - should NOT skip
 	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicyReplace, nil, assetstore.DefaultLocalFileChecker)
 	if skip {
@@ -137,7 +140,7 @@ func TestAssetStoreVerifyStrategyWithDriveLink(t *testing.T) {
 		FileHash:  "hash123",
 		LocalPath: tmpFile,
 	}
-	
+
 	// Test verify strategy - should skip because drive link exists and local file exists
 	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicyVerify, nil, assetstore.DefaultLocalFileChecker)
 	if !skip {
@@ -152,23 +155,23 @@ func TestAssetStoreVerifyStrategyWithDriveLink(t *testing.T) {
 func TestArtlistServiceCreation(t *testing.T) {
 	db := createTestDB(t)
 	defer db.Close()
-	
+
 	cfg := &config.Config{
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),
 		},
 	}
-	
+
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := clips.NewRepository(db, logger)
-	
+
 	// Create service with minimal dependencies
 	svc, err := NewService(cfg, nil, nil, "", artlistRepo, nil, nil, nil, nil, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
 	defer svc.Close()
-	
+
 	if svc == nil {
 		t.Error("expected service to be non-nil")
 	}
@@ -178,30 +181,30 @@ func TestArtlistServiceCreation(t *testing.T) {
 func TestArtlistSearchRequest(t *testing.T) {
 	db := createTestDB(t)
 	defer db.Close()
-	
+
 	cfg := &config.Config{}
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := clips.NewRepository(db, logger)
-	
+
 	svc, err := NewService(cfg, nil, nil, "", artlistRepo, nil, nil, nil, nil, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
 	defer svc.Close()
-	
+
 	ctx := context.Background()
-	
+
 	// Insert test clip
 	clip := &models.Clip{
-		ID:          "artlist_search_001",
-		Name:        "Search Test Clip",
-		ExternalURL: "https://artlist.io/clip/search",
+		ID:           "artlist_search_001",
+		Name:         "Search Test Clip",
+		ExternalURL:  "https://artlist.io/clip/search",
 		DownloadLink: "https://artlist.io/hls/search.m3u8",
-		Tags:        []string{"search"},
-		Source:      "artlist",
+		Tags:         []string{"search"},
+		Source:       "artlist",
 	}
 	insertTestClip(t, db, clip)
-	
+
 	// Test search
 	req := &SearchRequest{Term: "search", Limit: 10}
 	resp, err := svc.Search(ctx, req)
@@ -216,67 +219,67 @@ func TestArtlistSearchRequest(t *testing.T) {
 func TestArtlistClipStoredInSQLite(t *testing.T) {
 	db := createTestDB(t)
 	defer db.Close()
-	
+
 	// Insert a clip directly
 	clip := &models.Clip{
-		ID:          "artlist_store_001",
-		Name:        "Store Test Clip",
-		ExternalURL: "https://artlist.io/clip/store",
+		ID:           "artlist_store_001",
+		Name:         "Store Test Clip",
+		ExternalURL:  "https://artlist.io/clip/store",
 		DownloadLink: "https://artlist.io/hls/store.m3u8",
-		Tags:        []string{"store"},
-		Source:      "artlist",
+		Tags:         []string{"store"},
+		Source:       "artlist",
 	}
 	insertTestClip(t, db, clip)
-	
+
 	// Verify clip is in database
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM clips WHERE id = ?", clip.ID).Scan(&count)
 	if err != nil {
 		t.Fatalf("failed to query clip: %v", err)
 	}
-	
+
 	if count != 1 {
 		t.Errorf("expected 1 clip in DB, got %d", count)
 	}
-	
+
 	// Verify drive link field exists (even if empty)
 	var driveLink string
 	err = db.QueryRow("SELECT drive_link FROM clips WHERE id = ?", clip.ID).Scan(&driveLink)
 	if err != nil {
 		t.Fatalf("failed to query drive link: %v", err)
 	}
-	
+
 	t.Logf("Clip stored successfully, drive_link=%s", driveLink)
 }
 
 func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	db := createTestDB(t)
 	defer db.Close()
-	
+
 	// Insert a clip with drive link
 	clip := &models.Clip{
-		ID:          "artlist_drive_001",
-		Name:        "Drive Link Test Clip",
-		ExternalURL: "https://artlist.io/clip/drive",
+		ID:           "artlist_drive_001",
+		Name:         "Drive Link Test Clip",
+		ExternalURL:  "https://artlist.io/clip/drive",
 		DownloadLink: "https://artlist.io/hls/drive.m3u8",
-		DriveLink:   "https://drive.google.com/file/d/drivelink123/view",
-		FileHash:    "drivehash123",
-		Tags:        []string{"drive"},
-		Source:      "artlist",
+		DriveLink:    "https://drive.google.com/file/d/drivelink123/view",
+		FileHash:     "drivehash123",
+		Tags:         []string{"drive"},
+		Source:       "artlist",
 	}
 	insertTestClip(t, db, clip)
-	
+
 	// Verify drive link is persisted
 	var driveLink string
 	err := db.QueryRow("SELECT drive_link FROM clips WHERE id = ?", clip.ID).Scan(&driveLink)
 	if err != nil {
 		t.Fatalf("failed to query drive link: %v", err)
 	}
-	
+
 	if driveLink != clip.DriveLink {
 		t.Errorf("expected drive link %s, got %s", clip.DriveLink, driveLink)
 	}
-	
+
 	t.Log("Drive link correctly persisted in SQLite")
 }
 
@@ -287,12 +290,12 @@ func TestRunTagRequestValidation(t *testing.T) {
 		Limit:    10,
 		Strategy: "verify",
 	}
-	
+
 	// Empty term should cause validation error in RunTag
 	if req.Term == "" {
 		t.Log("Empty term correctly identified as invalid")
 	}
-	
+
 	// Valid term
 	req.Term = "test"
 	if req.Term == "" {
@@ -305,16 +308,16 @@ func TestSearchRequestValidation(t *testing.T) {
 		Term:  "",
 		Limit: 10,
 	}
-	
+
 	if req.Term == "" {
 		t.Log("Empty term in search request")
 	}
-	
+
 	req.Term = "music"
 	if req.Limit <= 0 {
 		req.Limit = 8
 	}
-	
+
 	if req.Limit > 50 {
 		req.Limit = 50
 	}
@@ -380,7 +383,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		Name:         "City Night",
 		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
 		DownloadLink: "https://cdn.artlist.io/video.m3u8",
-		Tags:         []string{"city","night"},
+		Tags:         []string{"city", "night"},
 		Source:       "artlist",
 	})
 
@@ -447,7 +450,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		Name:         "City Night",
 		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
 		DownloadLink: "https://cdn.artlist.io/video.m3u8",
-		Tags:         []string{"city","night"},
+		Tags:         []string{"city", "night"},
 		Source:       "artlist",
 	})
 
@@ -517,7 +520,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		Name:         "City Night",
 		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
 		DownloadLink: "https://cdn.artlist.io/video.m3u8",
-		Tags:         []string{"city","night"},
+		Tags:         []string{"city", "night"},
 		Source:       "artlist",
 	})
 
@@ -580,5 +583,3 @@ func mustJSON(v interface{}) []byte {
 	}
 	return b
 }
-
-

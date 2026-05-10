@@ -1,9 +1,9 @@
 package module
 
 import (
-	mediahandler "velox/go-master/internal/api/handlers/media"
+	assetshandler "velox/go-master/internal/api/handlers/assets"
 	"velox/go-master/pkg/config"
-	
+
 	"go.uber.org/zap"
 )
 
@@ -11,7 +11,7 @@ import (
 func NewMediaModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *mediahandler.CommonHandler,
+	handler *assetshandler.Handler,
 ) *RouteModule {
 	return NewRouteModule(
 		"media",

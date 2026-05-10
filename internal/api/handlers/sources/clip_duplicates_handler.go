@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"github.com/gin-gonic/gin"
@@ -8,7 +8,7 @@ import (
 )
 
 // FindDuplicates finds clips with the same file_hash across different sources.
-func (h *CommonHandler) FindDuplicates(c *gin.Context) {
+func (h *Handler) FindDuplicates(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 

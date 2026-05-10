@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 )
 
 // VerifyClip verifies DB, local file, and Drive coherence.
-func (h *CommonHandler) VerifyClip(c *gin.Context) {
+func (h *Handler) VerifyClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -49,7 +49,7 @@ func (h *CommonHandler) VerifyClip(c *gin.Context) {
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
-func (h *CommonHandler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *models.Clip) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *models.Clip) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

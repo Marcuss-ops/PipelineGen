@@ -1,4 +1,4 @@
-package media
+package sources
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 )
 
 // CleanupOrphans removes orphaned records and files.
-func (h *CommonHandler) CleanupOrphans(c *gin.Context) {
+func (h *Handler) CleanupOrphans(c *gin.Context) {
 	source := c.Param("source")
 
 	repo := h.resolveRepo(source)
