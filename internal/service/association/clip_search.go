@@ -6,6 +6,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -176,10 +177,42 @@ func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, topic string, 
 		}
 	}
 
-	// 3. Generic Filtering (PENALTY)
-	// If it's a "Surf" clip and we didn't mention surf, penalize it if it's just a "Sea" match
-	if !strings.Contains(topic, "surf") && strings.Contains(clipName, "surf") {
-		score -= 50
+	// 3. Relevance Density Penalty (ALGORITHMIC)
+	// If a clip has many descriptive tokens that are NOT in our query, 
+	// it means the clip is primarily about something else.
+	clipTokens := textutil.Tokenize(clipName + " " + clipTags)
+	unmatchedCount := 0
+	uniqueClipTokens := make(map[string]bool)
+	for _, ct := range clipTokens {
+		if len(ct) <= 3 {
+			continue
+		}
+		if !uniqueClipTokens[ct] {
+			uniqueClipTokens[ct] = true
+			foundInQuery := false
+			for _, t := range terms {
+				if strings.Contains(strings.ToLower(t), ct) {
+					foundInQuery = true
+					break
+				}
+			}
+			if !foundInQuery {
+				unmatchedCount++
+			}
+		}
+	}
+
+	// Penalty: if more than 60% of the clip's unique tokens are NOT in the query,
+	// and we didn't match the topic, penalize.
+	if len(uniqueClipTokens) > 0 && !topicMatched {
+		noiseRatio := float64(unmatchedCount) / float64(len(uniqueClipTokens))
+		if noiseRatio > 0.6 {
+			score -= int(noiseRatio * 40)
+		}
+	}
+
+	if score < 0 {
+		score = 0
 	}
 
 	return score, topicMatched

@@ -119,9 +119,34 @@ func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetToke
 		score += 40
 	}
 
-	// Penalty for generic surfing if topic doesn't mention it
-	if topic != "" && !strings.Contains(topic, "surf") && strings.Contains(clipText, "surf") {
-		score -= 50
+	// Relevance Density Penalty (ALGORITHMIC)
+	// If the clip is full of specific info that we didn't ask for, it's a "noisy" match.
+	unmatchedCount := 0
+	uniqueClipTokens := make(map[string]bool)
+	for _, ct := range targetTokens {
+		if len(ct) <= 3 {
+			continue
+		}
+		if !uniqueClipTokens[ct] {
+			uniqueClipTokens[ct] = true
+			foundInQuery := false
+			for _, q := range queryTokens {
+				if q == ct {
+					foundInQuery = true
+					break
+				}
+			}
+			if !foundInQuery {
+				unmatchedCount++
+			}
+		}
+	}
+
+	if len(uniqueClipTokens) > 0 && !topicMatched {
+		noiseRatio := float64(unmatchedCount) / float64(len(uniqueClipTokens))
+		if noiseRatio > 0.7 { // Penalty for high dilution
+			score -= int(noiseRatio * 50)
+		}
 	}
 
 	if score > 100 {
