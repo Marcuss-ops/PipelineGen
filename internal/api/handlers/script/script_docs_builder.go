@@ -69,7 +69,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		resp, err := gen.GetClient().Chat(ctx, messages, nil)
 		if err == nil {
 			// Extract JSON from potential markdown markers
-			jsonStr := textutil.StripCodeFence(resp)
+			jsonStr := textutil.ExtractJSONObject(resp)
 			if err := json.Unmarshal([]byte(jsonStr), &extracted); err == nil {
 				analysis = &types.FullEntityAnalysis{
 					SegmentEntities: []types.SegmentEntities{extracted},
@@ -98,7 +98,12 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		entities := analysis.SegmentEntities[0]
 		phrases = entities.FrasiImportanti
 		specialNames = entities.NomiSpeciali
-		importantWords = entities.ParoleImportanti
+
+		for _, w := range entities.ParoleImportanti {
+			if !textutil.IsStopWord(w) {
+				importantWords = append(importantWords, w)
+			}
+		}
 	}
 
 	importantPhrasesSection := ScriptSection{

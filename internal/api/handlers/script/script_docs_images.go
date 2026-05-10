@@ -84,9 +84,7 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
 			for _, name := range segment.NomiSpeciali {
-				if strings.Contains(name, " ") {
-					add(name)
-				}
+				add(name)
 			}
 		}
 	}
@@ -95,9 +93,7 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
 			for name := range segment.EntitaSenzaTesto {
-				if strings.Contains(name, " ") {
-					add(name)
-				}
+				add(name)
 			}
 		}
 	}
