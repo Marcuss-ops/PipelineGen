@@ -33,7 +33,7 @@ export function withToken(url: string): string {
   if (!url.startsWith('/api') && !url.startsWith('http://localhost') && !url.startsWith('http://127.0.0.1')) {
     return url;
   }
-  const token = 'ciao';
+  const token = import.meta.env.VITE_API_TOKEN || '';
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}token=${token}`;
 }
