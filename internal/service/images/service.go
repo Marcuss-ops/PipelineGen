@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"math/rand"
 
 	"velox/go-master/pkg/models"
 	imagesRepo "velox/go-master/internal/repository/images"
@@ -78,7 +79,16 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
 	if err == nil && subject != nil {
 		if images, err := s.repo.ListImagesBySubject(subject.Slug); err == nil && len(images) > 0 {
-			s.log.Info("Image found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
+			s.log.Info("Images found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
+			
+			// SCELTA CASUALE: Se abbiamo più immagini, ne prendiamo una a caso
+			if len(images) > 1 {
+				source := rand.New(rand.NewSource(time.Now().UnixNano()))
+				randomIndex := source.Intn(len(images))
+				s.log.Info("Picking random image from database", zap.Int("index", randomIndex), zap.Int("total", len(images)))
+				return &images[randomIndex], nil
+			}
+			
 			return &images[0], nil
 		}
 	}
