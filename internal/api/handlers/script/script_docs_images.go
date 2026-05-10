@@ -72,37 +72,63 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 	seen := make(map[string]struct{})
 	var result []string
 
-	add := func(s string, allowSingle bool) {
+	add := func(s string, priority bool) {
 		s = strings.TrimSpace(s)
 		if s == "" || len(result) >= max {
 			return
 		}
-		if !allowSingle && !strings.Contains(s, " ") {
+		
+		// Filtro qualitativo: AVOID generic common nouns unless high priority
+		lower := strings.ToLower(s)
+		genericNouns := map[string]bool{
+			"bottega": true, "pizzaiolo": true, "storia": true, "passione": true, 
+			"tradizione": true, "vita": true, "momento": true, "segreto": true,
+		}
+		
+		if !priority && genericNouns[lower] {
 			return
 		}
+
+		// Filtriamo nomi troppo lunghi o troppo corti
 		if len([]rune(s)) < 3 || strings.Count(s, " ") > 5 {
 			return
 		}
-		key := strings.ToLower(s)
-		if _, ok := seen[key]; ok {
+		
+		if _, ok := seen[lower]; ok {
 			return
 		}
-		seen[key] = struct{}{}
+		
+		seen[lower] = struct{}{}
 		result = append(result, s)
 	}
 
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
+			// 1. Nomi speciali (priorità massima - es: "San Marzano", "Vesuvio")
 			for _, name := range segment.NomiSpeciali {
-				add(name, true)
+				// Preferiamo entità composte (es: "San Marzano") rispetto a parole singole generiche
+				add(name, strings.Contains(name, " "))
 			}
+			
+			// 2. Parole importanti (es: "mozzarella di bufala", "forno a legna")
+			// Molte parole importanti sono ottimi soggetti visivi
+			for _, word := range segment.ParoleImportanti {
+				// Solo se specifiche (almeno 2 parole)
+				if strings.Contains(word, " ") {
+					add(word, true)
+				}
+			}
+
+			// 3. Entità senza testo (keyword estratte)
 			for name := range segment.EntitaSenzaTesto {
-				add(name, true)
+				add(name, false)
 			}
 		}
 	}
 
+	// 4. Topic completo come fallback finale
 	add(topic, true)
+
 	return result
 }
 

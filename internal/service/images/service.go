@@ -157,8 +157,15 @@ func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 }
 
 func (s *Service) searchWikipedia(query, lang string) string {
+	// Aggiungiamo un pizzico di contesto per evitare ambiguità (es: fiore margherita vs pizza)
+	// Ma lo facciamo solo se la query è molto corta o potenzialmente ambigua
+	searchQuery := query
+	if !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
+		searchQuery = query + " " + lang // Aggiungere la lingua o un termine generico aiuta
+	}
+
 	// Step 1: Search for the most relevant page
-	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=1", lang, url.QueryEscape(query))
+	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=1", lang, url.QueryEscape(searchQuery))
 	
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("User-Agent", userAgent)

@@ -109,29 +109,33 @@ SCRIPT:`,
 
 // BuildEntityExtractionPrompt builds the prompt for entity extraction.
 func BuildEntityExtractionPrompt(text string, entityCount int) string {
-	return fmt.Sprintf(`You are extracting structured entities from a documentary script fragment.
+	return fmt.Sprintf(`You are extracting structured metadata from a documentary script fragment for a visual production pipeline.
 
 Return ONLY valid JSON with exactly this shape:
 {
   "frasi_importanti": ["..."],
-  "entity_senza_testo": {"Name": ""},
+  "entity_senza_testo": {"VisualSubject": "Description of search term"},
   "nomi_speciali": ["..."],
   "parole_importanti": ["..."]
 }
 
-Rules:
-- Extract up to %d items per array.
-- Only extract exact spans that appear verbatim in the TEXT below.
-- Do not paraphrase, infer, summarize, or invent names, phrases, or keywords.
-- Prefer meaningful names, places, organizations, concepts, and visual cues that are explicitly present in the text.
-- If a candidate is not literally present in the text, omit it.
-- If a category has no items, return an empty array or empty object.
-- Do not add markdown, commentary, code fences, or extra keys.
+RULES FOR VISUAL ENTITIES:
+1. "nomi_speciali": Extract up to %d specific names of people, places, or identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei"). 
+   - AVOID abstract or generic nouns (e.g., AVOID "bottega", "pizzaiolo", "storia", "passione").
+   - PREFER concrete entities that have a dedicated Wikipedia page.
+2. "parole_importanti": Extract up to %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
+3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences.
+4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query.
+
+STRICT CONSTRAINTS:
+- Only extract spans that appear verbatim in the TEXT.
+- Do not paraphrase or invent.
+- Return ONLY the JSON object.
 
 TEXT:
 "%s"
 
-JSON:`, entityCount, text)
+JSON:`, entityCount, entityCount, text)
 }
 
 // BuildTimelineAssetRoutingPrompt asks the model to choose the best asset source and folder for a timeline segment.
