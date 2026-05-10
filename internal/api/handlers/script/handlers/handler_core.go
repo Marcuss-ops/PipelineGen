@@ -66,7 +66,6 @@ func NewScriptDocsHandler(gen *ollama.Generator, docClient drive.DocClient, voSe
 // RegisterRoutes registers the script-docs routes.
 func (h *ScriptDocsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
-	r.POST("/preview", h.GeneratePreview)
 	r.POST("/association-candidates", h.AssociationCandidates)
 	r.GET("/modes", h.Modes)
 }
@@ -75,16 +74,11 @@ func (h *ScriptDocsHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *ScriptDocsHandler) Modes(c *gin.Context) {
 	apiutil.OK(c, gin.H{
 		"ok":    true,
-		"modes": []string{"default", "preview"},
+		"modes": []string{"default"},
 	})
 }
 
 // Generate produces the full document and uploads it to Google Docs when available.
 func (h *ScriptDocsHandler) Generate(c *gin.Context) {
-	h.generate(c, false)
-}
-
-// GeneratePreview always writes a local preview file instead of uploading to Docs.
-func (h *ScriptDocsHandler) GeneratePreview(c *gin.Context) {
-	h.generate(c, true)
+	h.generate(c)
 }

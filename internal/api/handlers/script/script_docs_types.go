@@ -4,13 +4,12 @@ import "strings"
 
 // ScriptDocsRequest is the input for modular script-doc generation.
 type ScriptDocsRequest struct {
-	Topic       string `json:"topic" binding:"required"`
-	Duration    int    `json:"duration"`
-	Language    string `json:"language"`
-	Template    string `json:"template"`
-	PreviewOnly bool   `json:"preview_only"`
-	SourceText  string `json:"source_text"`
-	Voiceover   bool   `json:"voiceover"`
+	Topic      string `json:"topic" binding:"required"`
+	Duration   int    `json:"duration"`
+	Language   string `json:"language"`
+	Template   string `json:"template"`
+	SourceText string `json:"source_text"`
+	Voiceover  bool   `json:"voiceover"`
 }
 
 func (r *ScriptDocsRequest) Normalize() {
@@ -31,7 +30,7 @@ type ScriptSection struct {
 	Body  string
 }
 
-// ScriptDocument is the final assembled output before upload/preview.
+// ScriptDocument is the final assembled output before upload.
 type ScriptDocument struct {
 	Title    string
 	Content  string

@@ -13,11 +13,9 @@ import (
 	"velox/go-master/pkg/apiutil"
 )
 
-func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
+func (h *ScriptDocsHandler) generate(c *gin.Context) {
 	startedAt := time.Now()
-	zap.L().Info("script-docs generate started",
-		zap.Bool("preview", forcePreview),
-	)
+	zap.L().Info("script-docs generate started")
 
 	if h.generator == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "script generator not initialized")
@@ -56,22 +54,6 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		zap.Int("timeline_segments", len(document.Timeline.Segments)),
 		zap.String("topic", req.Topic),
 	)
-
-	if forcePreview {
-		path, err := h.savePreview(document.Title, document.Content)
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-		apiutil.OK(c, gin.H{
-			"preview_only": true,
-			"title":        document.Title,
-			"full_content": document.Content,
-			"preview_path": path,
-			"timeline":     document.Timeline,
-		})
-		return
-	}
 
 	var docID, docURL string
 	if h.docClient == nil {
@@ -141,4 +123,16 @@ func (h *ScriptDocsHandler) generate(c *gin.Context, forcePreview bool) {
 		zap.String("topic", req.Topic),
 		zap.String("doc_id", docID),
 	)
+}
+
+func narrativeOnly(content string) string {
+	marker := "## 🎙️ Narrator"
+	if idx := strings.Index(content, marker); idx != -1 {
+		part := content[idx+len(marker):]
+		if nextIdx := strings.Index(part, "## 🎬 Timeline"); nextIdx != -1 {
+			return strings.TrimSpace(part[:nextIdx])
+		}
+		return strings.TrimSpace(part)
+	}
+	return content
 }
