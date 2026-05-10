@@ -62,8 +62,8 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 	// 2. Render Clips (up to 2 if folder found, up to 3 if not)
 	limit := 3
 	if folderFound {
-		limit = 1 // Show only one preview if we have the folder
-		b.WriteString("      🎬 Preview Clips (Auto-Uploading):\n")
+		limit = 2
+		b.WriteString("      🎬 Assets being uploaded to Drive:\n")
 	} else {
 		b.WriteString("      🎬 Available Clips:\n")
 	}
@@ -85,7 +85,8 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 		b.WriteString(title)
 		b.WriteString("\n")
 
-		if m.Link != "" {
+		// ONLY show raw link if we DON'T have a drive folder
+		if !folderFound && m.Link != "" {
 			b.WriteString("          Link: ")
 			b.WriteString(m.Link)
 			b.WriteString("\n")
