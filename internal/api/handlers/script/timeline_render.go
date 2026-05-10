@@ -19,9 +19,9 @@ func RenderTimeline(plan *TimelinePlan) string {
 		assetRendered := false
 
 		// Priority 1: Stock Drive Association
-		if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, 10) {
+		if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, 35) {
 			label := "📦 Stock Drive Association"
-			if !hasStrongMatch(seg.StockMatches, 25) {
+			if !hasStrongMatch(seg.StockMatches, 50) {
 				label = "⚠️ Weak Stock Association"
 			}
 			b.WriteString(renderSpecificMatch(label, seg.StockMatches))
@@ -29,9 +29,9 @@ func RenderTimeline(plan *TimelinePlan) string {
 		}
 
 		// Priority 2: Artlist Drive Association
-		if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 10) {
+		if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
 			label := "📦 Artlist Drive Association"
-			if !hasStrongMatch(seg.ArtlistMatches, 25) {
+			if !hasStrongMatch(seg.ArtlistMatches, 50) {
 				label = "⚠️ Weak Artlist Association"
 			}
 			b.WriteString(renderSpecificMatch(label, seg.ArtlistMatches))

@@ -15,7 +15,7 @@ Given a documentary sentence, create a JSON object with visual subject, visual c
 Rules:
 - visual_subject: 2-4 words summarizing the visual theme
 - visual_caption: 5-15 words describing what should be shown visually
-- queries: array of %d short search queries (2-4 words each)
+- queries: array of %d short search queries in ENGLISH (2-4 words each)
 - Use concrete visual concepts, not abstract ideas
 - Avoid filler words (the, a, an, is, was, were, are, been, have, has, had, but, and, or)
 - Avoid full sentences in queries
@@ -53,7 +53,7 @@ Given an array of documentary segments, create a JSON array where each element h
 Rules:
 - visual_subject: 2-4 words summarizing the visual theme
 - visual_caption: 5-15 words describing what should be shown visually
-- queries: array of up to %d short search queries (2-4 words each)
+- queries: array of up to %d short search queries in ENGLISH (2-4 words each)
 - Use concrete visual concepts, not abstract ideas
 - Avoid filler words
 - Return only valid JSON array

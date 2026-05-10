@@ -50,6 +50,11 @@ func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
 	return &Repository{db: db, log: log}
 }
 
+// Log returns the repository's logger
+func (r *Repository) Log() *zap.Logger {
+	return r.log
+}
+
 // DB returns the underlying database connection
 func (r *Repository) DB() *sql.DB {
 	return r.db

@@ -6,6 +6,7 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // ArtlistStockAssociation searches in the Artlist clip database using multiple terms.
@@ -63,9 +64,15 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, t
 		clipText := strings.ToLower(clip.Name + " " + strings.Join(clip.Tags, " "))
 		targetTokens := textutil.Tokenize(clipText)
 		
-		score := a.calculateImprovedScore(queryTokens, targetTokens, clipText, topic, topicTokens)
+		score, topicMatched, matchedTokens := a.calculateImprovedScore(queryTokens, targetTokens, clipText, topic, topicTokens)
 
-		if score > 30 {
+		if score > 35 {
+			a.repo.Log().Debug("Artlist match found", 
+				zap.String("clip", clip.Name), 
+				zap.Int("score", score), 
+				zap.Bool("topic_matched", topicMatched),
+				zap.Strings("matched_tokens", matchedTokens))
+
 			matches = append(matches, ScoredMatch{
 				Title:   clip.Name,
 				Path:    clip.LocalPath,
@@ -81,12 +88,13 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, t
 	return matches
 }
 
-func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetTokens []string, clipText, topic string, topicTokens []string) int {
+func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetTokens []string, clipText, topic string, topicTokens []string) (int, bool, []string) {
 	if len(queryTokens) == 0 || len(targetTokens) == 0 {
-		return 0
+		return 0, false, nil
 	}
 
 	matchCount := 0
+	matchedTokens := make([]string, 0)
 	targetMap := make(map[string]bool)
 	for _, t := range targetTokens {
 		targetMap[t] = true
@@ -96,6 +104,7 @@ func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetToke
 	for _, q := range queryTokens {
 		if targetMap[q] {
 			matchCount++
+			matchedTokens = append(matchedTokens, q)
 			// Check if this matched token is part of the topic
 			for _, tt := range topicTokens {
 				if q == tt && len(q) > 3 {
@@ -106,17 +115,23 @@ func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetToke
 	}
 
 	if matchCount == 0 {
-		return 0
+		return 0, false, nil
 	}
 
 	score := (matchCount * 100) / len(queryTokens)
 	
 	// Topic match bonus
 	if topicMatched {
-		score += 30
+		score += 40
 	}
 	if topic != "" && strings.Contains(clipText, topic) {
-		score += 40
+		score += 50
+		topicMatched = true
+	}
+
+	// MANDATORY: If topic is provided but NO topic tokens matched, cap the score
+	if topic != "" && !topicMatched && score > 40 {
+		score = 40
 	}
 
 	// Relevance Density Penalty (ALGORITHMIC)
@@ -144,7 +159,7 @@ func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetToke
 
 	if len(uniqueClipTokens) > 0 && !topicMatched {
 		noiseRatio := float64(unmatchedCount) / float64(len(uniqueClipTokens))
-		if noiseRatio > 0.7 { // Penalty for high dilution
+		if noiseRatio > 0.6 { // Penalty for high dilution
 			score -= int(noiseRatio * 50)
 		}
 	}
@@ -156,7 +171,7 @@ func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetToke
 		score = 0
 	}
 
-	return score
+	return score, topicMatched, matchedTokens
 }
 
 // collectArtlistSearchTerms generates multiple search terms from segment input.

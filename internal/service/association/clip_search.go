@@ -101,7 +101,7 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 		
 		// STRICT FILTER: If we have a topic but it's not in the clip, and the score is low,
 		// it means we are just matching generic keywords. Better to show nothing than wrong stuff.
-		if topic != "" && !topicMatched && score < 40 {
+		if topic != "" && !topicMatched && score < 45 { // Increased threshold
 			continue
 		}
 
@@ -207,7 +207,7 @@ func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, topic string, 
 	if len(uniqueClipTokens) > 0 && !topicMatched {
 		noiseRatio := float64(unmatchedCount) / float64(len(uniqueClipTokens))
 		if noiseRatio > 0.6 {
-			score -= int(noiseRatio * 40)
+			score -= int(noiseRatio * 60) // Increased penalty
 		}
 	}
 
