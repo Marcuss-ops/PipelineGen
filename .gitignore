@@ -13,14 +13,17 @@ velox-server
 restart-server.sh
 credentials.json
 token.json
+.env
+.env.*
+!.env.example
 
 # Runtime data
 data/
-!data/*.db.sqlite
 *.db
 *.db-shm
 *.db-wal
 *.bak
+*.sqlite
 
 # Logs
 *.log
@@ -32,26 +35,35 @@ logs/
 *.swp
 *.swo
 *~
+.DS_Store
+Thumbs.db
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 
-# Build artifacts
+# Build artifacts and dependencies
 bin/
 build/
 dist/
+node_modules/
+web-admin/node_modules/
+web-admin/dist/
 server_bin
 velox-master
 *.tsbuildinfo
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Config files with local settings
 config.yaml
 
 # Test coverage
 coverage.out
-
-# OS files
-.DS_Store
-Thumbs.db
