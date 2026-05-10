@@ -21,6 +21,7 @@ import (
 
 	"velox/go-master/pkg/models"
 	imagesRepo "velox/go-master/internal/repository/images"
+	clipsRepo "velox/go-master/internal/repository/clips"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 )
@@ -29,6 +30,7 @@ const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 type Service struct {
 	repo          *imagesRepo.Repository
+	stockRepo     *clipsRepo.Repository
 	client        *http.Client
 	log           *zap.Logger
 	dataDir       string
@@ -41,12 +43,13 @@ type Service struct {
 	mu            sync.Mutex
 }
 
-func NewService(repo *imagesRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger, dataDir string, driveFolderID string) *Service {
+func NewService(repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger, dataDir string, driveFolderID string) *Service {
 	imagesDir := filepath.Join(dataDir, "images")
 	os.MkdirAll(imagesDir, 0755)
 
 	return &Service{
 		repo:          repo,
+		stockRepo:     stockRepo,
 		client:        &http.Client{Timeout: 30 * time.Second},
 		log:           log,
 		dataDir:       dataDir,
@@ -595,6 +598,56 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	s.log.Info("Animation created", zap.String("path", outputPath))
 	
-	// Return relative path for web access if needed, or full path
+	// 4. Upload video to Drive
+	var driveVideoID string
+	if s.driveSvc != nil && s.driveFolderID != "" {
+		s.log.Info("Uploading animated video to Google Drive", zap.String("filename", outputName))
+		
+		videoFile, err := os.Open(outputPath)
+		if err == nil {
+			driveFile := &driveapi.File{
+				Name:    outputName,
+				Parents: []string{s.driveFolderID},
+			}
+			
+			res, err := s.driveSvc.Files.Create(driveFile).
+				Media(videoFile).
+				Fields("id").
+				Do()
+			
+			videoFile.Close()
+			
+			if err != nil {
+				s.log.Error("Drive video upload failed", zap.Error(err))
+			} else {
+				driveVideoID = res.Id
+				s.log.Info("Drive video upload successful", zap.String("file_id", driveVideoID))
+			}
+		}
+	}
+
+	// 5. Ingest into Stock DB (if repo available)
+	if s.stockRepo != nil {
+		clip := &models.Clip{
+			ID:          "ai_" + imageHash,
+			Name:        "AI Animation: " + asset.SubjectID,
+			Filename:    outputName,
+			Group:       "ai-generated",
+			MediaType:   "video",
+			DriveFileID: driveVideoID,
+			LocalPath:   outputPath,
+			Duration:    duration,
+			Source:      "nvidia-animation",
+			Status:      "ready",
+			CreatedAt:   time.Now(),
+		}
+		
+		if err := s.stockRepo.AddClip(clip); err != nil {
+			s.log.Warn("Failed to ingest animated clip into stock DB", zap.Error(err))
+		} else {
+			s.log.Info("Animated clip ingested into stock DB", zap.String("clip_id", clip.ID))
+		}
+	}
+
 	return outputPath, nil
 }

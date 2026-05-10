@@ -123,7 +123,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if err := os.MkdirAll(imgAssetsDir, 0755); err != nil {
 		log.Warn("Failed to create image assets directory", zap.Error(err))
 	}
-	imageService := imgservice.NewService(imageRepo, driveClient, log, cfg.Storage.DataDir, cfg.Drive.ImagesRootFolder)
+	imageService := imgservice.NewService(imageRepo, clipsRepo, driveClient, log, cfg.Storage.DataDir, cfg.Drive.ImagesRootFolder)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
