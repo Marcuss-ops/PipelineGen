@@ -32,7 +32,7 @@ BuildScriptDocument()
     ↓
 ┌───────────────────────────────────────────────────┐
 │  3. Batch Visual Query Generation (LLM)          │
-│     → GenerateBatchArtlistVisualQueries()          │
+│     → visualquery.GenerateBatchArtlistVisualQueries()│
 │     → For each segment, generate:                  │
 │       - visual_subject (2-4 words)                │
 │       - visual_caption (5-15 words)               │
@@ -178,7 +178,7 @@ func BuildTimelinePlan(
 **Fallback**: If LLM fails, creates single segment covering entire narrative.
 
 #### 4.2 Batch Visual Query Generation
-**File**: `internal/api/handlers/script/artlist_query_generator.go`
+**File**: `internal/service/visualquery/generator.go`
 
 ```go
 func GenerateBatchArtlistVisualQueries(
@@ -242,13 +242,13 @@ For each segment:
 
 6. **Fallback Logic**:
    - If no matches found: queries already generated in batch
-   - Use `GenerateArtlistVisualQuery()` only if batch missed a segment
+   - Use `visualquery.GenerateArtlistVisualQuery()` only if batch missed a segment
 
 ---
 
 ### 5. Visual Query Generator
 
-**File**: `internal/api/handlers/script/artlist_query_generator.go`
+**File**: `internal/service/visualquery/generator.go`
 
 **Key Functions**:
 
@@ -532,7 +532,7 @@ curl -X POST http://127.0.0.1:8080/api/script-docs/generate \
 | HTTP Handler | `internal/api/handlers/script/handlers/handler_generate.go` |
 | Document Builder | `internal/api/handlers/script/script_docs_builder.go` |
 | Timeline Logic | `internal/api/handlers/script/timeline_logic.go` |
-| Visual Query Generator | `internal/api/handlers/script/artlist_query_generator.go` |
+| Visual Query Generator | `internal/service/visualquery/generator.go` |
 | LLM Generation | `internal/ml/ollama/generate.go` |
 | Prompt Builders | `internal/ml/ollama/prompts/prompt_builders.go` |
 | Default Values | `internal/ml/ollama/types/defaults.go` |

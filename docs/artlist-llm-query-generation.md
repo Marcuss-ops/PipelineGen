@@ -25,7 +25,7 @@ This system uses LLM (Large Language Model) to transform documentary narrative t
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │         GenerateArtlistSearchSuggestions()                      │
-│  (artlist_query_generator.go)                                 │
+│  (internal/service/visualquery/generator.go)                  │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
@@ -64,9 +64,9 @@ This system uses LLM (Large Language Model) to transform documentary narrative t
 
 ## Key Components
 
-### 1. artlist_query_generator.go
+### 1. visualquery.Generator
 
-**Location:** `internal/api/handlers/script/artlist_query_generator.go`
+**Location:** `internal/service/visualquery/generator.go`
 
 **Main Function:**
 ```go
@@ -190,7 +190,7 @@ for tag := range uniqueTags {
 
 Comprehensive logging is added at each stage:
 
-1. **Entry Point:** `GenerateArtlistSearchSuggestions()` logs input parameters
+1. **Entry Point:** `visualquery.GenerateArtlistSearchSuggestions()` logs input parameters
 2. **LLM Request:** Logs the prompt being sent to Ollama
 3. **LLM Response:** Logs response length and preview
 4. **Parsing:** Logs JSON parse failures
@@ -272,8 +272,8 @@ journalctl -u pipelinegen -f | grep "GenerateArtlistSearchSuggestions"
 
 ## Files Modified/Created
 
-1. **Created:** `internal/api/handlers/script/artlist_query_generator.go`
-2. **Modified:** `internal/api/handlers/script/timeline_logic.go` (lines 178-195)
+1. **Removed:** `internal/api/handlers/script/artlist_query_generator.go` (Deprecated)
+2. **Maintained:** `internal/api/handlers/script/timeline_logic.go` (using `visualquery` package)
 3. **Documentation:** `docs/artlist-llm-query-generation.md` (this file)
 
 ## Benefits Over Previous Approach
