@@ -96,6 +96,15 @@ systemctl status pipelinegen --no-pager -l
 journalctl -u pipelinegen -f
 ```
 
+### NVIDIA AI Image Generation
+Test different models:
+- **Local NIM**: `python3 scripts/test_nvidia_images.py --model local-nim`
+- **Flux 1 Dev**: `python3 scripts/test_nvidia_images.py --model flux-1-dev`
+- **Flux 2 Klein**: `python3 scripts/test_nvidia_images.py --model flux-2-klein`
+
+API Endpoint: `POST /api/images/generate/nvidia`
+Payload: `{"prompt": "...", "model": "flux-1-dev"}` (options: `local-nim`, `flux-1-dev`, `flux-2-klein`)
+
 ### Check Database Tables
 ```bash
 sqlite3 data/velox.db.sqlite ".tables"

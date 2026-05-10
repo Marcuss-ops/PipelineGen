@@ -3,6 +3,7 @@ package images
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -31,6 +32,8 @@ type Service struct {
 	dataDir       string
 	imagesDir     string
 	driveFolderID string
+	nvidiaAPIKey  string
+	nvidiaModel   string
 	mu            sync.Mutex
 }
 
@@ -45,6 +48,15 @@ func NewService(repo *imagesRepo.Repository, driveSvc interface{}, log *zap.Logg
 		dataDir:       dataDir,
 		imagesDir:     imagesDir,
 		driveFolderID: driveFolderID,
+		nvidiaAPIKey:  "", // Will be set via setter or updated constructor
+		nvidiaModel:   "stabilityai/sdxl-turbo",
+	}
+}
+
+func (s *Service) SetNvidiaConfig(apiKey, model string) {
+	s.nvidiaAPIKey = apiKey
+	if model != "" {
+		s.nvidiaModel = model
 	}
 }
 
@@ -379,4 +391,134 @@ func (s *Service) SyncAssets() error {
 
 func (s *Service) SyncFromDrive(ctx context.Context) error {
 	return nil
+}
+
+func (s *Service) GenerateAImage(prompt, model string, width, height int) (*models.ImageAsset, error) {
+	var invokeURL string
+	var payload map[string]interface{}
+	var useCloudAuth bool
+	var sourceLabel string
+
+	// Default resolution if not provided
+	if width <= 0 {
+		width = 1024
+	}
+	if height <= 0 {
+		height = 1024
+	}
+
+	switch model {
+	case "flux-1-dev":
+		invokeURL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev"
+		payload = map[string]interface{}{
+			"prompt":    prompt,
+			"mode":      "base",
+			"cfg_scale": 3.5,
+			"width":     width,
+			"height":    height,
+			"seed":      0,
+			"steps":     50,
+		}
+		useCloudAuth = true
+		sourceLabel = "flux-1-dev"
+
+	case "flux-2-klein":
+		invokeURL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b"
+		payload = map[string]interface{}{
+			"prompt": prompt,
+			"width":  width,
+			"height": height,
+			"seed":   0,
+			"steps":  4,
+		}
+		useCloudAuth = true
+		sourceLabel = "flux-2-klein"
+
+	case "local-nim", "":
+		invokeURL = "http://localhost:8000/v1/infer"
+		payload = map[string]interface{}{
+			"prompt": prompt,
+			"mode":   "base",
+			"seed":   0,
+			"steps":  30,
+		}
+		// Local NIM SDXL Turbo might not support 1920x1080 directly in the same way
+		// but let's pass it if the user really wants to try.
+		useCloudAuth = false
+		sourceLabel = "nvidia-local"
+		model = "local-nim"
+
+	default:
+		return nil, fmt.Errorf("unsupported model: %s", model)
+	}
+
+	jsonPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", invokeURL, strings.NewReader(string(jsonPayload)))
+	if err != nil {
+		return nil, err
+	}
+
+	if useCloudAuth {
+		if s.nvidiaAPIKey == "" || s.nvidiaAPIKey == "PASTE_YOUR_NVIDIA_API_KEY_HERE" {
+			return nil, fmt.Errorf("NVIDIA API key not configured (required for cloud models)")
+		}
+		req.Header.Set("Authorization", "Bearer "+s.nvidiaAPIKey)
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s error (status %d): %s", model, resp.StatusCode, string(body))
+	}
+
+	var responseBody struct {
+		Image     string `json:"image"`
+		Artifacts []struct {
+			Base64 string `json:"base64"`
+		} `json:"artifacts"`
+	}
+
+	if err := json.Unmarshal(body, &responseBody); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	var base64Data string
+	if responseBody.Image != "" {
+		base64Data = responseBody.Image
+	} else if len(responseBody.Artifacts) > 0 {
+		base64Data = responseBody.Artifacts[0].Base64
+	}
+
+	if base64Data == "" {
+		return nil, fmt.Errorf("no image data found in response")
+	}
+
+	// Decode base64
+	imageData, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode base64 image: %w", err)
+	}
+
+	// Ingest image
+	slug := Slugify(prompt)
+	if len(slug) > 50 {
+		slug = slug[:50]
+	}
+	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
+	description := fmt.Sprintf("AI generated image via %s for prompt: %s", model, prompt)
+
+	return s.IngestImage(slug, strings.NewReader(string(imageData)), filename, sourceLabel, description)
 }

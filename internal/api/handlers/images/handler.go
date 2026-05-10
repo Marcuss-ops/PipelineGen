@@ -20,6 +20,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/search", h.Search)
 	r.POST("/upload", h.Upload) // Nuovo endpoint
 	r.POST("/sync", h.Sync)
+	r.POST("/generate/nvidia", h.GenerateNvidia)
 }
 
 type UploadRequest struct {
@@ -27,6 +28,13 @@ type UploadRequest struct {
 	Name    string `json:"name"`
 	URL     string `json:"image_url" binding:"required"`
 	Lang    string `json:"lang"`
+}
+
+type GenerateNvidiaRequest struct {
+	Prompt string `json:"prompt" binding:"required"`
+	Model  string `json:"model"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
 }
 
 // Upload permette di aggiungere manualmente un'immagine tramite URL
@@ -100,4 +108,31 @@ func (h *Handler) Sync(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
+}
+
+// GenerateNvidia genera un'immagine AI tramite NVIDIA NIM
+func (h *Handler) GenerateNvidia(c *gin.Context) {
+	var req GenerateNvidiaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	asset, err := h.service.GenerateAImage(req.Prompt, req.Model, req.Width, req.Height)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, gin.H{
+		"prompt": req.Prompt,
+		"model":  req.Model,
+		"image": gin.H{
+			"hash":       asset.Hash,
+			"path_rel":   asset.PathRel,
+			"source_url": asset.SourceURL,
+			"url_full":   "/assets/" + asset.PathRel,
+			"desc":       asset.Description,
+		},
+	})
 }
