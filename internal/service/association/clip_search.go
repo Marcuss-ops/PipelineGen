@@ -37,7 +37,7 @@ func (a *ClipSearchAssociation) Associate(ctx context.Context, input SegmentInpu
 
 	// Search ONLY in artlist repository
 	if a.artlistRepo != nil {
-		matches, err := a.searchRepo(ctx, a.artlistRepo, searchTerms, "artlist_clip")
+		matches, err := a.searchRepo(ctx, a.artlistRepo, input.Topic, searchTerms, "artlist_clip")
 		zap.L().Info("ClipSearchAssociation: search results",
 			zap.Int("match_count", len(matches)),
 			zap.Error(err),
@@ -61,7 +61,12 @@ func (a *ClipSearchAssociation) buildSearchTerms(input SegmentInput) []string {
 		terms = append(terms, term)
 	}
 
-	// Add topic as PRIMARY search term (artlist clips are tagged by topic)
+	// Add subject as TOP PRIORITY if present
+	if input.Subject != "" {
+		addTerm(input.Subject)
+	}
+
+	// Add topic as PRIMARY search term
 	if input.Topic != "" {
 		addTerm(input.Topic)
 		// Also add individual words from topic
@@ -78,17 +83,12 @@ func (a *ClipSearchAssociation) buildSearchTerms(input SegmentInput) []string {
 		addTerm(kw)
 	}
 
-	// Add subject as secondary search term
-	if input.Subject != "" {
-		addTerm(input.Subject)
-	}
-
 	return terms
 }
 
-func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repository, terms []string, source string) ([]ScoredMatch, error) {
-	// Use up to 5 search terms
-	limit := 10
+func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repository, topic string, terms []string, source string) ([]ScoredMatch, error) {
+	// Use up to 10 search terms
+	limit := 15
 	clips, err := repo.SearchClipsByKeywords(ctx, terms, limit)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,14 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 
 	matches := make([]ScoredMatch, 0, len(clips))
 	for _, clip := range clips {
-		score := a.calculateScore(clip, terms)
+		score, topicMatched := a.calculateScore(clip, topic, terms)
+		
+		// STRICT FILTER: If we have a topic but it's not in the clip, and the score is low,
+		// it means we are just matching generic keywords. Better to show nothing than wrong stuff.
+		if topic != "" && !topicMatched && score < 40 {
+			continue
+		}
+
 		match := ScoredMatch{
 			Title:  clip.Name,
 			Path:   clip.FolderPath,
@@ -114,26 +121,66 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 	return matches, nil
 }
 
-func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, terms []string) int {
-	score := 50 // Base score for clip matches
+func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, topic string, terms []string) (int, bool) {
+	score := 10 // Lower base score to allow for more differentiation
 
-	// Boost score if clip name matches terms
 	clipName := strings.ToLower(clip.Name)
 	clipPath := strings.ToLower(clip.FolderPath)
 	clipTags := strings.ToLower(strings.Join(clip.Tags, " "))
+	
+	topic = strings.ToLower(topic)
+	topicMatched := false
 
-	for _, term := range terms {
-		term = strings.ToLower(term)
-		if strings.Contains(clipName, term) {
-			score += 20
+	// 1. Topic Boost (MASSIVE)
+	if topic != "" {
+		topicWords := strings.Fields(topic)
+		for _, tw := range topicWords {
+			if len(tw) <= 3 {
+				continue
+			}
+			if strings.Contains(clipName, tw) || strings.Contains(clipTags, tw) {
+				score += 50
+				topicMatched = true
+			}
 		}
-		if strings.Contains(clipPath, term) {
-			score += 15
-		}
-		if strings.Contains(clipTags, term) {
-			score += 10
+		if strings.Contains(clipName, topic) || strings.Contains(clipTags, topic) {
+			score += 100 // Exact topic match is gold
+			topicMatched = true
 		}
 	}
 
-	return score
+	// 2. Term Matches
+	for i, term := range terms {
+		term = strings.ToLower(term)
+		weight := 10
+		if i < 2 {
+			weight = 20 // First two terms (usually subject/topic) have more weight
+		}
+
+		matched := false
+		if strings.Contains(clipName, term) {
+			score += weight * 2
+			matched = true
+		}
+		if strings.Contains(clipPath, term) {
+			score += weight
+			matched = true
+		}
+		if strings.Contains(clipTags, term) {
+			score += weight
+			matched = true
+		}
+		
+		if matched && topicMatched {
+			score += 10 // Synergy bonus
+		}
+	}
+
+	// 3. Generic Filtering (PENALTY)
+	// If it's a "Surf" clip and we didn't mention surf, penalize it if it's just a "Sea" match
+	if !strings.Contains(topic, "surf") && strings.Contains(clipName, "surf") {
+		score -= 50
+	}
+
+	return score, topicMatched
 }

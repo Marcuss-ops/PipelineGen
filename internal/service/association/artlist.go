@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"velox/go-master/internal/matching"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/textutil"
 )
@@ -34,7 +33,7 @@ func (a *ArtlistStockAssociation) Associate(ctx context.Context, input SegmentIn
 			continue
 		}
 
-		matches := a.searchInDB(ctx, term)
+		matches := a.searchInDB(ctx, term, input.Topic)
 		for _, m := range matches {
 			key := strings.ToLower(m.Title + "|" + m.Link)
 			if !seen[key] {
@@ -47,7 +46,7 @@ func (a *ArtlistStockAssociation) Associate(ctx context.Context, input SegmentIn
 	return allMatches, nil
 }
 
-func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string) []ScoredMatch {
+func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, topic string) []ScoredMatch {
 	// Use SearchClips which now falls back to LIKE when FTS5 returns 0 results
 	clipsList, err := a.repo.SearchClips(ctx, term)
 	if err != nil || len(clipsList) == 0 {
@@ -55,13 +54,18 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string) [
 	}
 
 	queryTokens := textutil.Tokenize(term)
+	topic = strings.ToLower(topic)
+	topicTokens := textutil.Tokenize(topic)
+	
 	var matches []ScoredMatch
 
 	for _, clip := range clipsList {
-		targetTokens := textutil.Tokenize(clip.Name + " " + strings.Join(clip.Tags, " "))
-		score := matching.CalculateTokenScore(queryTokens, targetTokens)
+		clipText := strings.ToLower(clip.Name + " " + strings.Join(clip.Tags, " "))
+		targetTokens := textutil.Tokenize(clipText)
+		
+		score := a.calculateImprovedScore(queryTokens, targetTokens, clipText, topic, topicTokens)
 
-		if score > 20 {
+		if score > 30 {
 			matches = append(matches, ScoredMatch{
 				Title:   clip.Name,
 				Path:    clip.LocalPath,
@@ -75,6 +79,59 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string) [
 	}
 
 	return matches
+}
+
+func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetTokens []string, clipText, topic string, topicTokens []string) int {
+	if len(queryTokens) == 0 || len(targetTokens) == 0 {
+		return 0
+	}
+
+	matchCount := 0
+	targetMap := make(map[string]bool)
+	for _, t := range targetTokens {
+		targetMap[t] = true
+	}
+
+	topicMatched := false
+	for _, q := range queryTokens {
+		if targetMap[q] {
+			matchCount++
+			// Check if this matched token is part of the topic
+			for _, tt := range topicTokens {
+				if q == tt && len(q) > 3 {
+					topicMatched = true
+				}
+			}
+		}
+	}
+
+	if matchCount == 0 {
+		return 0
+	}
+
+	score := (matchCount * 100) / len(queryTokens)
+	
+	// Topic match bonus
+	if topicMatched {
+		score += 30
+	}
+	if topic != "" && strings.Contains(clipText, topic) {
+		score += 40
+	}
+
+	// Penalty for generic surfing if topic doesn't mention it
+	if topic != "" && !strings.Contains(topic, "surf") && strings.Contains(clipText, "surf") {
+		score -= 50
+	}
+
+	if score > 100 {
+		score = 100
+	}
+	if score < 0 {
+		score = 0
+	}
+
+	return score
 }
 
 // collectArtlistSearchTerms generates multiple search terms from segment input.
