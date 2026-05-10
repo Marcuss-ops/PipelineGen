@@ -6,6 +6,7 @@ import (
 
 	"velox/go-master/internal/ml/ollama/types"
 	imgservice "velox/go-master/internal/service/images"
+	"go.uber.org/zap"
 )
 
 type imagePlanItem struct {
@@ -17,7 +18,10 @@ type imagePlanItem struct {
 func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, pythonScriptsDir string, imgService *imgservice.Service) ScriptSection {
 	subjects := pickImageSubjects(req.Topic, analysis, 5)
 	
-	fmt.Printf("[DEBUG] Image planning starting for subjects: %v\n", subjects)
+	zap.L().Info("Image planning starting", 
+		zap.Strings("subjects", subjects),
+		zap.String("topic", req.Topic),
+	)
 
 	if len(subjects) == 0 {
 		return ScriptSection{
@@ -30,20 +34,32 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 	for _, subject := range subjects {
 		if imgService != nil {
 			slug := Slugify(subject)
-			fmt.Printf("[DEBUG] Searching for subject: '%s' (slug: '%s')\n", subject, slug)
 			
-			asset, err := imgService.SearchAndDownload(slug, subject, subject, req.Language)
+			// Costruiamo una query più specifica se il soggetto è corto
+			query := subject
+			if len(strings.Fields(subject)) < 2 && !strings.Contains(strings.ToLower(req.Topic), strings.ToLower(subject)) {
+				query = subject + " " + req.Topic
+			}
+			
+			zap.L().Debug("Searching for image subject", 
+				zap.String("subject", subject), 
+				zap.String("query", query),
+			)
+			
+			asset, err := imgService.SearchAndDownload(slug, subject, query, req.Language)
 			if err != nil {
-				fmt.Printf("[DEBUG] SearchAndDownload ERROR for '%s': %v\n", subject, err)
+				zap.L().Warn("Image search failed", zap.String("subject", subject), zap.Error(err))
 				continue
 			}
 			
 			if asset == nil {
-				fmt.Printf("[DEBUG] SearchAndDownload returned NIL asset for '%s'\n", subject)
 				continue
 			}
 
-			fmt.Printf("[DEBUG] Found asset for '%s': URL=%s, Path=%s\n", subject, asset.SourceURL, asset.PathRel)
+			zap.L().Info("Found image asset", 
+				zap.String("subject", subject), 
+				zap.String("url", asset.SourceURL),
+			)
 
 			items = append(items, imagePlanItem{
 				Subject: subject,
@@ -53,12 +69,10 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 		}
 	}
 
-	fmt.Printf("[DEBUG] Image planning finished. Items found: %d\n", len(items))
-
 	if len(items) == 0 {
 		return ScriptSection{
 			Title: "📸 Entità con Immagine",
-			Body:  "Ricerca completata: nessuna immagine trovata online (zero items).",
+			Body:  "Ricerca completata: nessuna immagine trovata online.",
 		}
 	}
 
@@ -104,24 +118,23 @@ func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int
 
 	if analysis != nil {
 		for _, segment := range analysis.SegmentEntities {
-			// 1. Nomi speciali (priorità massima - es: "San Marzano", "Vesuvio")
+			// 1. Nomi speciali (priorità massima)
 			for _, name := range segment.NomiSpeciali {
-				// Preferiamo entità composte (es: "San Marzano") rispetto a parole singole generiche
 				add(name, strings.Contains(name, " "))
 			}
 			
-			// 2. Parole importanti (es: "mozzarella di bufala", "forno a legna")
-			// Molte parole importanti sono ottimi soggetti visivi
+			// 2. Parole importanti (solo se specifiche)
 			for _, word := range segment.ParoleImportanti {
-				// Solo se specifiche (almeno 2 parole)
 				if strings.Contains(word, " ") {
 					add(word, true)
 				}
 			}
 
-			// 3. Entità senza testo (keyword estratte)
-			for name := range segment.EntitaSenzaTesto {
-				add(name, false)
+			// 3. Entità senza testo
+			if segment.EntitaSenzaTesto != nil {
+				for name := range segment.EntitaSenzaTesto {
+					add(name, false)
+				}
 			}
 		}
 	}

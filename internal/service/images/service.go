@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const userAgent = "VeloxEditingBot/1.0 (contact: admin@veloxediting.com)"
+const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
 type Service struct {
 	repo          *imagesRepo.Repository
@@ -77,7 +77,6 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	// 1. Cerca nel DB locale
 	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
 	if err == nil && subject != nil {
-		// Usiamo lo slug (SubjectID string) per la ricerca
 		if images, err := s.repo.ListImagesBySubject(subject.Slug); err == nil && len(images) > 0 {
 			s.log.Info("Image found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
 			return &images[0], nil
@@ -92,7 +91,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 		}
 		_, err := s.repo.CreateSubject(subject)
 		if err != nil {
-			s.log.Error("Failed to create subject", zap.String("slug", slug), zap.Error(err))
+			s.log.Warn("Ingest: subject might already exist", zap.String("slug", slug))
 		}
 	}
 
@@ -116,6 +115,12 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	s.log.Info("Searching for image on Wikipedia", zap.String("query", finalQuery), zap.String("lang", lang))
 	imgURL := s.searchWikipedia(finalQuery, lang)
 	source := "wikipedia"
+
+	if imgURL == "" {
+		s.log.Info("Wikipedia failed, falling back to DuckDuckGo", zap.String("query", query))
+		imgURL = s.searchDDG(query)
+		source = "duckduckgo"
+	}
 
 	if imgURL == "" {
 		return nil, fmt.Errorf("no image found for query: %s", query)
@@ -157,11 +162,10 @@ func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 }
 
 func (s *Service) searchWikipedia(query, lang string) string {
-	// Aggiungiamo un pizzico di contesto per evitare ambiguità (es: fiore margherita vs pizza)
-	// Ma lo facciamo solo se la query è molto corta o potenzialmente ambigua
+	// Aggiungiamo un pizzico di contesto per evitare ambiguità
 	searchQuery := query
 	if !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
-		searchQuery = query + " " + lang // Aggiungere la lingua o un termine generico aiuta
+		searchQuery = query + " " + lang
 	}
 
 	// Step 1: Search for the most relevant page
@@ -191,7 +195,7 @@ func (s *Service) searchWikipedia(query, lang string) string {
 	}
 
 	if len(searchPayload.Query.Search) == 0 {
-		s.log.Warn("Wikipedia search returned no results", zap.String("query", query))
+		s.log.Warn("Wikipedia search returned no results", zap.String("query", searchQuery))
 		return ""
 	}
 
@@ -231,6 +235,51 @@ func (s *Service) searchWikipedia(query, lang string) string {
 	return ""
 }
 
+func (s *Service) searchDDG(query string) string {
+	// Simple implementation for DuckDuckGo image search
+	vqdURL := fmt.Sprintf("https://duckduckgo.com/?q=%s", url.QueryEscape(query))
+	req, _ := http.NewRequest("GET", vqdURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	// Robust regex for vqd
+	re := regexp.MustCompile(`vqd=['"]([^'"]+)['"]`)
+	matches := re.FindStringSubmatch(string(body))
+	if len(matches) < 2 {
+		return ""
+	}
+	vqd := matches[1]
+
+	// Fetch images
+	apiURL := fmt.Sprintf("https://duckduckgo.com/i.js?l=it-it&o=json&q=%s&vqd=%s&f=,,,&p=1", url.QueryEscape(query), vqd)
+	req, _ = http.NewRequest("GET", apiURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err = s.client.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		Results []struct {
+			Image string `json:"image"`
+		} `json:"results"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil || len(payload.Results) == 0 {
+		return ""
+	}
+
+	return payload.Results[0].Image
+}
+
 func (s *Service) downloadAndIngest(slug, imgURL, source, query, description string) (*models.ImageAsset, error) {
 	req, _ := http.NewRequest("GET", imgURL, nil)
 	req.Header.Set("User-Agent", userAgent)
@@ -261,6 +310,7 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 
 	// 2. Verifica se esiste già per Hash
 	if existing, err := s.repo.GetImageByHash(hash); err == nil && existing != nil {
+		s.log.Info("Image with this hash already exists", zap.String("hash", hash))
 		return existing, nil
 	}
 
@@ -273,14 +323,14 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 		}
 		_, err := s.repo.CreateSubject(subject)
 		if err != nil {
-			s.log.Error("Ingest: failed to create subject", zap.String("slug", slug), zap.Error(err))
+			s.log.Warn("Ingest: subject might exist", zap.String("slug", slug))
 		}
 	}
 
 	// 4. Prepara percorsi
 	ext := filepath.Ext(filename)
 	if ext == "" {
-		ext = ".jpg" // Fallback
+		ext = ".jpg"
 	}
 	relPath := filepath.Join(slug, hash+ext)
 	fullPath := filepath.Join(s.imagesDir, relPath)
@@ -293,7 +343,7 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 
 	// 6. Crea record DB
 	asset := &models.ImageAsset{
-		SubjectID:    slug, // Usiamo lo slug come ID stringa
+		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      relPath,
 		SourceURL:    sourceURL,
@@ -303,6 +353,10 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 	}
 
 	if _, err := s.repo.AddImage(asset); err != nil {
+		// Final safety check for UNIQUE constraint (IGNORE handled by INSERT OR IGNORE, but double check)
+		if existing, exErr := s.repo.GetImageByHash(hash); exErr == nil && existing != nil {
+			return existing, nil
+		}
 		return nil, fmt.Errorf("failed to add image to repository: %w", err)
 	}
 

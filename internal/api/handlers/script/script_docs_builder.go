@@ -51,35 +51,54 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	if narrative == "" {
 		narrative = req.Topic
 	}
-	// cleanNarrativeBody now relies on the general CleanScript logic but we can add document-specific cleaning here
 	narrative = types.CleanScript(narrative)
 
 	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService, assocService, clipResolver)
 
-	// Extract entities and metadata using LLM (The "Logic" vs Hardcoding)
+	// Extract entities and metadata using LLM
 	var analysis *types.FullEntityAnalysis
 	if gen != nil {
 		extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 10)
-		var extracted types.SegmentEntities
 		
-		// Use Chat to get the JSON response
+		type localExtracted struct {
+			FrasiImportanti  []string    `json:"frasi_importanti"`
+			EntitaSenzaTesto interface{} `json:"entity_senza_testo"`
+			NomiSpeciali     []string    `json:"nomi_speciali"`
+			ParoleImportanti []string    `json:"parole_importanti"`
+		}
+		
+		var extracted localExtracted
 		messages := []types.Message{
 			{Role: "user", Content: extractionPrompt},
 		}
 		
 		resp, err := gen.GetClient().Chat(ctx, messages, nil)
 		if err == nil {
-			zap.L().Info("LLM metadata extraction response received", zap.String("response", resp))
-			// Extract JSON from potential markdown markers
-			jsonStr := textutil.StripCodeFence(resp)
+			jsonStr := textutil.ExtractJSONObject(resp)
+			zap.L().Info("LLM metadata extraction successful", zap.String("json", jsonStr))
+			
 			if err := json.Unmarshal([]byte(jsonStr), &extracted); err == nil {
-				analysis = &types.FullEntityAnalysis{
-					SegmentEntities: []types.SegmentEntities{extracted},
+				formal := types.SegmentEntities{
+					FrasiImportanti:  extracted.FrasiImportanti,
+					NomiSpeciali:     extracted.NomiSpeciali,
+					ParoleImportanti: extracted.ParoleImportanti,
+					EntitaSenzaTesto: make(map[string]string),
 				}
-				zap.L().Info("LLM metadata unmarshaled successfully", 
-					zap.Int("phrases", len(extracted.FrasiImportanti)),
-					zap.Int("names", len(extracted.NomiSpeciali)),
-				)
+				
+				if extracted.EntitaSenzaTesto != nil {
+					switch v := extracted.EntitaSenzaTesto.(type) {
+					case string:
+						formal.EntitaSenzaTesto[v] = "Search term"
+					case map[string]interface{}:
+						for k := range v {
+							formal.EntitaSenzaTesto[k] = "Search term"
+						}
+					}
+				}
+
+				analysis = &types.FullEntityAnalysis{
+					SegmentEntities: []types.SegmentEntities{formal},
+				}
 			} else {
 				zap.L().Error("LLM metadata unmarshal failed", zap.Error(err), zap.String("json", jsonStr))
 			}
@@ -88,7 +107,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		}
 	}
 
-	// Build image section (always include, use default if service unavailable)
+	// Build image section
 	var imageSection ScriptSection
 	if imgService != nil {
 		imageSection = buildImagePlanningSection(req, narrative, analysis, pythonScriptsDir, imgService)

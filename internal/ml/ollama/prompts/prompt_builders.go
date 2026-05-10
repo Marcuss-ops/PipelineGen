@@ -121,7 +121,8 @@ Return ONLY valid JSON with exactly this shape:
 
 RULES FOR VISUAL ENTITIES:
 1. "nomi_speciali": Extract up to %d specific names of people, places, or identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei"). 
-   - AVOID abstract or generic nouns (e.g., AVOID "bottega", "pizzaiolo", "storia", "passione").
+   - AVOID abstract or generic nouns (e.g., AVOID "bottega", "pizzaiolo", "storia", "passione", "tradizione").
+   - AVOID ambiguous common words unless qualified (e.g., AVOID "Campana" alone, PREFER "Mozzarella di bufala campana").
    - PREFER concrete entities that have a dedicated Wikipedia page.
 2. "parole_importanti": Extract up to %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
 3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences.

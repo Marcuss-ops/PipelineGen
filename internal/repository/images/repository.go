@@ -26,20 +26,16 @@ func (r *Repository) GetSubjectBySlugOrAlias(id string) (*models.Subject, error)
 	if err != nil {
 		return nil, err
 	}
-	s.ID = 0
 	return &s, nil
 }
 
 // CreateSubject crea un nuovo soggetto
 func (r *Repository) CreateSubject(s *models.Subject) (int64, error) {
 	_, err := r.db.Exec(`
-		INSERT INTO subjects (id, name, description, metadata_json)
+		INSERT OR IGNORE INTO subjects (id, name, description, metadata_json)
 		VALUES (?, ?, ?, ?)
 	`, s.Slug, s.DisplayName, s.Notes, "{}")
-	if err != nil {
-		return 0, err
-	}
-	return 0, nil
+	return 0, err
 }
 
 // AddImage aggiunge un record immagine
@@ -50,7 +46,7 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 	}
 
 	_, err := r.db.Exec(`
-		INSERT INTO images (id, subject_id, source_url, hash, path_rel, description, status, metadata_json)
+		INSERT OR IGNORE INTO images (id, subject_id, source_url, hash, local_path, description, status, metadata_json)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`, id, img.SubjectID, img.SourceURL, img.Hash, img.PathRel, img.Description, "ready", "{}")
 	
@@ -61,7 +57,7 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRow(`
-		SELECT id, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
 		FROM images WHERE hash = ?
 	`, hash).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt)
 	
@@ -74,9 +70,8 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 // GetByID recupera un'immagine tramite il suo ID stringa
 func (r *Repository) GetByID(ctx context.Context, id interface{}) (*models.ImageAsset, error) {
 	var img models.ImageAsset
-	// Supportiamo sia string che int64 (per compatibilità col vecchio codice)
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
 		FROM images WHERE id = ?
 	`, id).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt)
 	
@@ -96,7 +91,7 @@ func (r *Repository) Delete(ctx context.Context, id interface{}) error {
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
 		FROM images WHERE drive_file_id = ? OR source_url LIKE ?
 	`, fileID, "%"+fileID+"%").Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, &img.Description, &img.Hash, &img.CreatedAt)
 	
@@ -109,7 +104,7 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 // ListImagesBySubject elenca le immagini di un soggetto
 func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageAsset, error) {
 	rows, err := r.db.Query(`
-		SELECT id, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
 		FROM images WHERE subject_id = ?
 	`, subjectID)
 	if err != nil {
@@ -131,7 +126,7 @@ func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageA
 // ListAll lists all image assets
 func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, subject_id, COALESCE(path_rel, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
+		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), COALESCE(description, ''), hash, created_at
 		FROM images ORDER BY created_at DESC
 	`)
 	if err != nil {
