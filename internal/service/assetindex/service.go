@@ -80,3 +80,6 @@ type CreateOrUpdateOptions struct {
     Status       string
     Metadata     string
 }
+func (s *Service) ListAll(ctx context.Context) ([]*AssetRecord, error) {
+    return s.repo.ListAll(ctx)
+}

@@ -27,6 +27,7 @@ import (
 	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
+	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -157,6 +158,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
+	// Lifecycle Scheduler
+	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, log)
+	go lifecycleScheduler.Start(ctx)
+
 	return &services{
 		scriptGen:          scriptGen,
 		docClient:          docClient,
@@ -183,6 +188,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		assetIndexService:  assetIndexService,
 		assetTreeService:   assetTreeService,
 		assetResolver:      assetResolver,
+		lifecycleScheduler: lifecycleScheduler,
 	}, nil
 }
 

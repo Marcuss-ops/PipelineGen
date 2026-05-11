@@ -3,6 +3,7 @@ package sources
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -25,11 +26,13 @@ import (
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/apiutil"
+	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 )
 
 // Handler handles common media operations.
 type Handler struct {
+	cfg            *config.Config
 	artlistSvc     *artlist.Service
 	youtubeSvc     *youtubeclip.Service
 	voiceoverSvc   *voiceover.Service
@@ -56,6 +59,7 @@ type Handler struct {
 
 // NewHandler creates a new common media handler.
 func NewHandler(
+	cfg *config.Config,
 	artlistSvc *artlist.Service,
 	youtubeSvc *youtubeclip.Service,
 	voiceoverSvc *voiceover.Service,
@@ -73,6 +77,7 @@ func NewHandler(
 	log *zap.Logger,
 ) *Handler {
 	h := &Handler{
+		cfg:            cfg,
 		artlistSvc:     artlistSvc,
 		youtubeSvc:     youtubeSvc,
 		voiceoverSvc:   voiceoverSvc,
@@ -195,6 +200,24 @@ func (h *Handler) Cleanup(c *gin.Context) {
 		CheckDrive bool `json:"check_drive"`
 	}
 	_ = c.ShouldBindJSON(&req)
+
+	deep := c.Query("deep") == "true"
+	if deep && h.deletionSvc != nil {
+		assetsDir := filepath.Join(h.cfg.Storage.DataDir, h.cfg.Storage.AssetsDir)
+		if strings.ToLower(source) == "all" || source == "" {
+			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), assetsDir, false)
+			if err != nil {
+				apiutil.InternalError(c, err)
+				return
+			}
+			apiutil.OK(c, gin.H{
+				"ok":      true,
+				"deleted": deleted,
+				"message": "deep cleanup completed",
+			})
+			return
+		}
+	}
 
 	repo := h.resolveRepo(source)
 	sourceLower := strings.ToLower(source)

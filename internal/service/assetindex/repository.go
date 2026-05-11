@@ -286,3 +286,50 @@ func (r *Repository) GetStats(ctx context.Context) (*Stats, error) {
 
     return stats, nil
 }
+
+func (r *Repository) ListAll(ctx context.Context) ([]*AssetRecord, error) {
+	query := `
+        SELECT asset_id, asset_type, source, source_id, operation_key,
+               group_name, subfolder, local_path, drive_link, download_link,
+               file_hash, content_hash, status, metadata_json, created_at, updated_at
+        FROM asset_index
+    `
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []*AssetRecord
+	for rows.Next() {
+		rec := &AssetRecord{}
+		var createdAtStr, updatedAtStr string
+		err := rows.Scan(
+			&rec.AssetID,
+			&rec.AssetType,
+			&rec.Source,
+			&rec.SourceID,
+			&rec.OperationKey,
+			&rec.GroupName,
+			&rec.Subfolder,
+			&rec.LocalPath,
+			&rec.DriveLink,
+			&rec.DownloadLink,
+			&rec.FileHash,
+			&rec.ContentHash,
+			&rec.Status,
+			&rec.Metadata,
+			&createdAtStr,
+			&updatedAtStr,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rec.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
+		rec.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
+		results = append(results, rec)
+	}
+
+	return results, nil
+}

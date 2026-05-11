@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/upload/drive"
 	driveutil "velox/go-master/pkg/drive"
@@ -25,6 +27,7 @@ type DeletionService struct {
 	imagesRepo    *images.Repository
 	driveUploader *drive.Uploader
 	assetTreeSvc  *assettree.Service
+	assetIndexSvc *assetindex.Service
 	log           *zap.Logger
 }
 
@@ -35,6 +38,7 @@ func NewDeletionService(
 	imagesRepo *images.Repository,
 	driveUploader *drive.Uploader,
 	assetTreeSvc *assettree.Service,
+	assetIndexSvc *assetindex.Service,
 	log *zap.Logger,
 ) *DeletionService {
 	return &DeletionService{
@@ -45,6 +49,7 @@ func NewDeletionService(
 		imagesRepo:    imagesRepo,
 		driveUploader: driveUploader,
 		assetTreeSvc:  assetTreeSvc,
+		assetIndexSvc: assetIndexSvc,
 		log:           log,
 	}
 }
@@ -249,4 +254,50 @@ func imageAssetToClip(img *models.ImageAsset) *models.Clip {
 		Source:    "images",
 		CreatedAt: img.CreatedAt,
 	}
+}
+func (s *DeletionService) CleanupOrphanFiles(ctx context.Context, assetsDir string, dryRun bool) (int, error) {
+	s.log.Info("starting deep orphan file cleanup", zap.String("dir", assetsDir), zap.Bool("dry_run", dryRun))
+
+	// 1. Get all assets from database
+	dbAssets, err := s.assetIndexSvc.ListAll(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list assets from DB: %w", err)
+	}
+
+	// Build map of absolute local paths for fast lookup
+	referencedPaths := make(map[string]bool)
+	for _, asset := range dbAssets {
+		if asset.LocalPath != "" {
+			absPath, _ := filepath.Abs(asset.LocalPath)
+			referencedPaths[absPath] = true
+		}
+	}
+
+	// 2. Scan directory
+	var deletedCount int
+	err = filepath.Walk(assetsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		absPath, _ := filepath.Abs(path)
+		if !referencedPaths[absPath] {
+			s.log.Info("found orphan file", zap.String("path", path))
+			if !dryRun {
+				if err := os.Remove(path); err != nil {
+					s.log.Error("failed to delete orphan file", zap.String("path", path), zap.Error(err))
+				} else {
+					deletedCount++
+				}
+			} else {
+				deletedCount++
+			}
+		}
+		return nil
+	})
+
+	return deletedCount, err
 }

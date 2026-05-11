@@ -60,10 +60,12 @@ func WireAssets(
 		coreDeps.ImageRepo,
 		driveUploader,
 		coreDeps.AssetTreeService,
+		coreDeps.AssetIndexService,
 		log,
 	)
 
 	handler := sources.NewHandler(
+		cfg,
 		artlistSvc,
 		youtubeSvc,
 		voiceoverSvc,

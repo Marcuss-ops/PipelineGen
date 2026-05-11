@@ -48,10 +48,12 @@ func WireMedia(
 			coreDeps.ImageRepo,
 			driveUploader,
 			coreDeps.AssetTreeService,
+			coreDeps.AssetIndexService,
 			log,
 		)
 
 		handler = sources.NewHandler(
+			cfg,
 			nil, // artlistSvc
 			nil, // youtubeSvc
 			nil, // voiceoverSvc
