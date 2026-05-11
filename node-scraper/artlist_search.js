@@ -211,12 +211,15 @@ async function searchArtlist(term, limit, profileDir) {
 
     const clips = [];
     const clipQueue = clipPages.slice(0, targetCandidates);
-    const detailPage = await browser.newPage();
-    await detailPage.setViewport({ width: 1440, height: 900 });
-    await detailPage.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+    const concurrency = 4; // Fetch 4 clips at a time
 
-    try {
-      for (const clipPageUrl of clipQueue) {
+    for (let i = 0; i < clipQueue.length; i += concurrency) {
+      const chunk = clipQueue.slice(i, i + concurrency);
+      const results = await Promise.all(chunk.map(async (clipPageUrl) => {
+        const detailPage = await browser.newPage();
+        await detailPage.setViewport({ width: 1440, height: 900 });
+        await detailPage.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+
         const streamSet = new Set();
         const capture = (url) => {
           if (typeof url === 'string' && url.includes('.m3u8')) {
@@ -229,9 +232,9 @@ async function searchArtlist(term, limit, profileDir) {
         detailPage.on('response', onResponse);
 
         try {
-          await detailPage.goto(clipPageUrl, { waitUntil: 'networkidle2', timeout: 120000 });
+          await detailPage.goto(clipPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
           await detailPage.waitForSelector('video, [class*="player"], [class*="video"]', { timeout: 10000 }).catch(() => {});
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           const title = await detailPage.title();
           const html = (await detailPage.evaluate(() => document.documentElement.outerHTML))
             .replace(/\\\//g, '/')
@@ -249,25 +252,21 @@ async function searchArtlist(term, limit, profileDir) {
           if (videoSrc && !streams.includes(videoSrc)) {
             streams.push(videoSrc);
           }
-          clips.push({
+          return {
             title,
             clip_page_url: clipPageUrl,
             stream_urls: streams,
             primary_url: streams[0] || videoSrc || clipPageUrl,
             clip_id: extractClipId(clipPageUrl),
-          });
+          };
+        } catch (e) {
+          console.error(`[artlist] failed to fetch detail for ${clipPageUrl}:`, e.message);
+          return null;
         } finally {
-          if (typeof detailPage.off === 'function') {
-            detailPage.off('request', onRequest);
-            detailPage.off('response', onResponse);
-          } else if (typeof detailPage.removeListener === 'function') {
-            detailPage.removeListener('request', onRequest);
-            detailPage.removeListener('response', onResponse);
-          }
+          await detailPage.close().catch(() => {});
         }
-      }
-    } finally {
-      await detailPage.close().catch(() => {});
+      }));
+      clips.push(...results.filter(Boolean));
     }
 
     const scored = clips

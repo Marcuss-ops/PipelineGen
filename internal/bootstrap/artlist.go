@@ -37,7 +37,7 @@ func WireArtlist(
 	artlistLifecycle := wireArtlistLifecycle(coreDeps, log)
 
 	// 2. Catalog & Indexer
-	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(coreDeps, log)
+	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(cfg, coreDeps, log)
 
 	// 3. Resolvers
 	assetDestResolver := wireAssetDestinationResolver(cfg, coreDeps, log)
@@ -78,7 +78,7 @@ func WireArtlist(
 	}, nil
 }
 
-func wireArtlistCatalog(coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
+func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
 	if coreDeps.ArtlistDB != nil && coreDeps.ArtlistDB.DB != nil {
 		if err := clipcatalog.EnsureSchema(context.Background(), coreDeps.ArtlistDB.DB, log); err != nil {
 			log.Warn("failed to ensure clipcatalog schema", zap.Error(err))
@@ -86,7 +86,14 @@ func wireArtlistCatalog(coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repos
 	}
 
 	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
-	clipIndexerSvc := clipindexer.NewService(nil, coreDeps.ArtlistDB.DB, coreDeps.ArtlistDB.Path(), log)
+	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{
+		Enabled:               cfg.ClipIndexer.Enabled,
+		ServerURL:             cfg.ClipIndexer.ServerURL,
+		ScriptPath:            cfg.ClipIndexer.ScriptPath,
+		PythonBin:             cfg.ClipIndexer.PythonBin,
+		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
+		DBPath:                coreDeps.ArtlistDB.Path(),
+	}, coreDeps.ArtlistDB.DB, coreDeps.ArtlistDB.Path(), log)
 
 	return clipCatalogRepo, clipIndexerSvc
 }

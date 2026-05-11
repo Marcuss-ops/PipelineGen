@@ -17,8 +17,9 @@ type Config struct {
 	Harvester HarvesterConfig `yaml:"harvester"`
 	Jobs      JobsConfig      `yaml:"jobs"`
 	Workers   WorkersConfig   `yaml:"workers"`
-	Video     VideoConfig     `yaml:"video"`
-	Features  FeaturesConfig  `yaml:"features"`
+	Video       VideoConfig       `yaml:"video"`
+	Features    FeaturesConfig    `yaml:"features"`
+	ClipIndexer ClipIndexerConfig `yaml:"clip_indexer"`
 }
 
 // VideoConfig holds video processing configuration.
@@ -178,4 +179,13 @@ type FeaturesConfig struct {
 	VoiceoverEnabled   bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
 	WorkflowEnabled    bool `yaml:"workflow_enabled" env:"VELOX_FEATURE_WORKFLOW_ENABLED" default:"false"`
 	ImagesEnabled      bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
+}
+
+// ClipIndexerConfig holds settings for the clip metadata indexing service.
+type ClipIndexerConfig struct {
+	Enabled               bool   `yaml:"enabled" default:"true"`
+	ServerURL             string `yaml:"server_url" default:"http://127.0.0.1:8001"`
+	ScriptPath            string `yaml:"script_path" default:"scripts/index_clips.py"`
+	PythonBin             string `yaml:"python_bin" default:"python3"`
+	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist" default:"true"`
 }
