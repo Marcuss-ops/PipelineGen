@@ -27,6 +27,7 @@ func (a *coreAdapter) Process(ctx context.Context, input *processor.ProcessInput
 		FolderID:         input.FolderID,
 		Duration:         input.Duration,
 		ForceKeyframes:    input.ForceKeyframes,
+		StreamCopy:       input.StreamCopy,
 		DownloadSections:  input.DownloadSections,
 		Normalize:         input.Normalize,
 		KeepAudio:         input.KeepAudio,

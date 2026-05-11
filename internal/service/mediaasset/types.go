@@ -13,6 +13,7 @@ type AssetInput struct {
 	// Download options
 	DownloadSections []string
 	ForceKeyframes    bool
+	StreamCopy        bool
 	// Normalize options
 	Normalize      *bool
 	KeepAudio      bool

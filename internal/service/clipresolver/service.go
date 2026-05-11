@@ -76,9 +76,14 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 	// Search for clips using all search terms
 	clipScores := make(map[string]*ClipScore)
 	for _, term := range searchTerms {
-		candidates, err := s.catalogRepo.FindCandidates(ctx, term, limit*2)
+		// Try semantic search first
+		candidates, err := s.catalogRepo.SearchSemantic(ctx, term, limit*2)
 		if err != nil {
-			continue
+			// Fallback to text matching if semantic search fails or is not configured
+			candidates, err = s.catalogRepo.FindCandidates(ctx, term, limit*2)
+			if err != nil {
+				continue
+			}
 		}
 
 		for _, cand := range candidates {

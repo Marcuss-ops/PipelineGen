@@ -83,9 +83,11 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 		"-y",
 		"-hide_banner",
 		"-loglevel", "warning",
-		"-threads", "1",
-		"-filter_threads", "1",
-		"-filter_complex_threads", "1",
+	}
+
+	// Use hardware acceleration if NVENC is requested
+	if strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-hwaccel", "auto")
 	}
 
 	// Generate new PTS to fix timestamp issues
@@ -101,6 +103,8 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	args = append(args, "-i", input)
 
 	// Filter chain with PTS reset to ensure monotonic timestamps
+	// Hardware acceleration note: scaling on CPU for now to keep it stable across platforms,
+	// but using NVENC for the heavy lifting (encoding).
 	filter := fmt.Sprintf(
 		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,setpts=PTS-STARTPTS",
 		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS,
@@ -110,34 +114,36 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	if !opts.KeepAudio {
 		args = append(args, "-an")
 	} else {
-		// If keeping audio, we should probably encode it to a standard codec like AAC
 		args = append(args, "-c:a", "aac", "-b:a", "128k")
-		// Also reset audio timestamps
 		args = append(args, "-af", "asetpts=PTS-STARTPTS")
 	}
 
 	// Video codec settings
 	args = append(args, "-c:v", opts.Codec)
 	
-	// Keyframe settings to prevent frame issues
+	// Keyframe settings
 	keyframeInterval := opts.KeyframeInterval
 	if keyframeInterval <= 0 {
-		keyframeInterval = opts.FPS * 2 // Default: 2 seconds GOP
+		keyframeInterval = opts.FPS * 2
 	}
 	args = append(args, "-g", fmt.Sprintf("%d", keyframeInterval))
-	args = append(args, "-keyint_min", fmt.Sprintf("%d", keyframeInterval/2))
-	args = append(args, "-sc_threshold", "0") // Disable scene change detection
-	args = append(args, "-bf", "0")      // Disable B-frames for simpler decoding
-	args = append(args, "-refs", "1")     // Single reference frame
 	
-	// Rate control
-	args = append(args, "-preset", opts.Preset)
-	args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+	// NVENC specific optimizations
+	if strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-preset", opts.Preset) // e.g. p1..p7
+		args = append(args, "-rc", "vbr")
+		args = append(args, "-cq", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-bf", "0")
+	} else {
+		args = append(args, "-preset", opts.Preset)
+		args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-bf", "0")
+		args = append(args, "-refs", "1")
+	}
 	
-	// Output flags for better compatibility
-	args = append(args, "-pix_fmt", "yuv420p") // Standard pixel format
+	args = append(args, "-pix_fmt", "yuv420p")
 	args = append(args, "-movflags", "+faststart")
-	args = append(args, "-vsync", "cfr") // Constant frame rate
+	args = append(args, "-vsync", "cfr")
 	args = append(args, output)
 
 	_, err := executil.Run(ctx, p.path, args, executil.Options{

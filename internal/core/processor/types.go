@@ -20,6 +20,7 @@ type ProcessInput struct {
 	FolderID         string
 	Duration         int
 	ForceKeyframes    bool
+	StreamCopy        bool
 	DownloadSections  []string
 	Normalize         *bool
 	KeepAudio         bool

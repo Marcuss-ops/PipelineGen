@@ -182,6 +182,7 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 		OutputPath:       rawPath,
 		ForceKeyframes:   input.ForceKeyframes,
 		DownloadSections: input.DownloadSections,
+		StreamCopy:       input.StreamCopy,
 	}
 	if len(input.DownloadSections) > 0 {
 		dlReq.Format = "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/best[height<=1080]"

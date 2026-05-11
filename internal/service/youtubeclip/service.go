@@ -347,6 +347,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			FolderID:         driveFolderID,
 			Duration:         duration,
 			ForceKeyframes:    req.ForceKeyframes,
+			StreamCopy:       !shouldNormalize, // Fast extraction if no normalization needed
 			DownloadSections:  []string{section},
 			Normalize:         &normalize,
 			KeepAudio:         req.KeepAudio,

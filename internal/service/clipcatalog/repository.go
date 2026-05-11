@@ -1,10 +1,12 @@
 package clipcatalog
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -16,13 +18,128 @@ import (
 
 // Repository handles database operations for clip metadata
 type Repository struct {
-	db     *sql.DB
-	logger *zap.Logger
+	db        *sql.DB
+	logger    *zap.Logger
+	serverURL string
+	dbPath    string
 }
 
 // NewRepository creates a new clip catalog repository
 func NewRepository(db *sql.DB, logger *zap.Logger) *Repository {
 	return &Repository{db: db, logger: logger}
+}
+
+// SetServerInfo sets the semantic search server configuration
+func (r *Repository) SetServerInfo(url, dbPath string) {
+	r.serverURL = url
+	r.dbPath = dbPath
+}
+
+// SearchSemantic performs semantic search using the embedding server
+func (r *Repository) SearchSemantic(ctx context.Context, query string, limit int) ([]ClipCandidate, error) {
+	if r.serverURL == "" || r.dbPath == "" {
+		return nil, fmt.Errorf("semantic search not configured")
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	payload := map[string]interface{}{
+		"db_path": r.dbPath,
+		"query":   query,
+		"limit":   limit,
+	}
+	body, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("%s/search", strings.TrimSuffix(r.serverURL, "/"))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("semantic search request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("semantic search returned status %d", resp.StatusCode)
+	}
+
+	var searchResp struct {
+		Clips []struct {
+			ClipID string  `json:"clip_id"`
+			Score  float64 `json:"score"`
+		} `json:"clips"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		return nil, fmt.Errorf("failed to decode search response: %w", err)
+	}
+
+	if len(searchResp.Clips) == 0 {
+		return nil, nil
+	}
+
+	// Fetch full candidate details from DB for the IDs returned by semantic search
+	ids := make([]string, 0, len(searchResp.Clips))
+	scores := make(map[string]float64)
+	for _, c := range searchResp.Clips {
+		ids = append(ids, c.ClipID)
+		scores[c.ClipID] = c.Score
+	}
+
+	// Use placeholders for IDs
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	sqlQuery := fmt.Sprintf(`
+		SELECT id, name, search_text, category, scene_type, tags, drive_link, local_path, quality_score, reuse_count, usable_for_json, avoid_for_json
+		FROM clips
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch semantic candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := make([]ClipCandidate, 0)
+	for rows.Next() {
+		var c ClipCandidate
+		var tagsStr string
+		var usableForJSON string
+		var avoidForJSON string
+		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON); err != nil {
+			continue
+		}
+
+		// Parse tags
+		if tagsStr != "" {
+			json.Unmarshal([]byte(tagsStr), &c.Tags)
+		}
+		if usableForJSON != "" {
+			json.Unmarshal([]byte(usableForJSON), &c.UsableFor)
+		}
+		if avoidForJSON != "" {
+			json.Unmarshal([]byte(avoidForJSON), &c.AvoidFor)
+		}
+
+		candidates = append(candidates, c)
+	}
+
+	// Sort candidates by the semantic score
+	// (Optional: can also blend with quality_score)
+	return candidates, nil
 }
 
 // FindCandidates searches for clip candidates based on query

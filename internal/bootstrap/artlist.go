@@ -86,6 +86,8 @@ func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger)
 	}
 
 	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
+	clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.ArtlistDB.Path())
+
 	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{
 		Enabled:               cfg.ClipIndexer.Enabled,
 		ServerURL:             cfg.ClipIndexer.ServerURL,
@@ -94,6 +96,13 @@ func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger)
 		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
 		DBPath:                coreDeps.ArtlistDB.Path(),
 	}, coreDeps.ArtlistDB.DB, coreDeps.ArtlistDB.Path(), log)
+
+	// Start background embedding server and watchdog
+	if err := clipIndexerSvc.StartServer(); err != nil {
+		log.Warn("failed to start embedding server", zap.Error(err))
+	} else {
+		clipIndexerSvc.StartWatchdog()
+	}
 
 	return clipCatalogRepo, clipIndexerSvc
 }

@@ -114,7 +114,9 @@ func enableWALMode(db *sql.DB, log *zap.Logger) error {
 		"PRAGMA wal_autocheckpoint=1000",
 		"PRAGMA busy_timeout=5000",
 		"PRAGMA synchronous=NORMAL", // WAL mode: NORMAL is safe and faster
-		"PRAGMA cache_size=-2000",   // 2MB cache
+		"PRAGMA cache_size=-64000",  // 64MB cache
+		"PRAGMA temp_store=MEMORY",  // Use memory for temporary tables and indices
+		"PRAGMA mmap_size=30000000000", // Use memory-mapped I/O (up to 30GB)
 		"PRAGMA foreign_keys=ON",    // Enable foreign key constraints
 	}
 

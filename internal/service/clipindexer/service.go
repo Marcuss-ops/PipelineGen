@@ -160,17 +160,33 @@ func (s *Service) indexViaScript(ctx context.Context, clipID string) error {
 	return nil
 }
 
-// IndexRunItems indexes multiple clips from a run
+// IndexRunItems indexes multiple clips from a run using bulk API if possible
 func (s *Service) IndexRunItems(ctx context.Context, items []map[string]interface{}) error {
 	if !s.cfg.Enabled {
 		return nil
 	}
 
+	clipIDs := make([]string, 0, len(items))
 	for _, item := range items {
 		clipID, _ := item["clip_id"].(string)
-		if clipID == "" {
-			continue
+		if clipID != "" {
+			clipIDs = append(clipIDs, clipID)
 		}
+	}
+
+	if len(clipIDs) == 0 {
+		return nil
+	}
+
+	if s.cfg.ServerURL != "" {
+		err := s.indexBulkAPI(ctx, clipIDs)
+		if err == nil {
+			return nil
+		}
+		s.log.Warn("bulk indexing via API failed, falling back to individual indexing", zap.Error(err))
+	}
+
+	for _, clipID := range clipIDs {
 		if err := s.IndexClip(ctx, clipID); err != nil {
 			s.log.Warn("failed to index clip", zap.String("clip_id", clipID), zap.Error(err))
 		}
@@ -178,7 +194,107 @@ func (s *Service) IndexRunItems(ctx context.Context, items []map[string]interfac
 	return nil
 }
 
+func (s *Service) indexBulkAPI(ctx context.Context, clipIDs []string) error {
+	payload := map[string]interface{}{
+		"db_path":  s.dbPath,
+		"clip_ids": clipIDs,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/index_bulk", strings.TrimSuffix(s.cfg.ServerURL, "/"))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
+
+	s.log.Info("bulk indexing completed via API", zap.Int("count", len(clipIDs)))
+	return nil
+}
+
 // IsEnabled returns whether the service is enabled
 func (s *Service) IsEnabled() bool {
 	return s.cfg.Enabled
+}
+
+// StartServer starts the Python embedding server as a background process
+func (s *Service) StartServer() error {
+	if !s.cfg.Enabled || s.cfg.ServerURL == "" {
+		return nil
+	}
+
+	// Check if server is already running
+	if s.checkServer() {
+		s.log.Info("embedding server already running")
+		return nil
+	}
+
+	// Start server
+	serverScript := filepath.Join(filepath.Dir(s.scriptPath), "embedding_server.py")
+	s.log.Info("starting embedding server", zap.String("script", serverScript))
+	
+	cmd := exec.Command(s.cfg.PythonBin, serverScript)
+	cmd.Dir = filepath.Dir(s.scriptPath)
+	
+	// Start the process in the background
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start embedding server: %w", err)
+	}
+
+	s.log.Info("embedding server process started", zap.Int("pid", cmd.Process.Pid))
+	return nil
+}
+
+// StartWatchdog starts a background goroutine to monitor and restart the server if it fails
+func (s *Service) StartWatchdog() {
+	if !s.cfg.Enabled || s.cfg.ServerURL == "" {
+		return
+	}
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		for range ticker.C {
+			if !s.checkServer() {
+				s.log.Warn("embedding server health check failed, restarting...")
+				if err := s.StartServer(); err != nil {
+					s.log.Error("watchdog failed to restart server", zap.Error(err))
+				}
+			}
+		}
+	}()
+}
+
+func (s *Service) checkServer() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("%s/health", strings.TrimSuffix(s.cfg.ServerURL, "/"))
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
 }

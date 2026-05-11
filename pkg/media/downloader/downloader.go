@@ -39,6 +39,7 @@ type DownloadRequest struct {
 	NoPlaylist     bool
 	DownloadSections []string // e.g. ["*00:01:20-00:01:35"]
 	ForceKeyframes bool
+	StreamCopy     bool // If true, force stream copy (fast but less precise)
 	Timeout        time.Duration
 }
 
@@ -85,6 +86,8 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		}
 		if req.ForceKeyframes {
 			args = append(args, "--force-keyframes-at-cuts")
+		} else if req.StreamCopy {
+			args = append(args, "--downloader-args", "ffmpeg:-c copy")
 		}
 	}
 
