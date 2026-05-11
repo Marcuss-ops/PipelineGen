@@ -10,28 +10,16 @@ import (
 	"velox/go-master/internal/repository/clips"
 	assettreerepo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/pkg/models"
 	driveutil "velox/go-master/pkg/drive"
 )
 
 // resolveRepo returns the appropriate repository for the given source.
+// Uses centralized SourceResolver from mediaregistry.
 func (h *Handler) resolveRepo(source string) *clips.Repository {
-	switch strings.ToLower(source) {
-	case "artlist":
-		return h.artlistRepo
-	case "youtube", "clips", "boxe", "wwe", "discovery", "music":
-		return h.clipsRepo
-	case "stock":
-		return h.stockRepo
-	case "voiceover":
-		// Note: Returns nil as voiceover doesn't use clips.Repository,
-		// but we allow the source check to pass elsewhere.
-		return nil
-	case "images":
-		return nil
-	default:
-		return nil
-	}
+	resolver := mediaregistry.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo)
+	return resolver.ResolveRepo(source)
 }
 
 // clipToAssetNode converts a models.Clip to assettree.AssetNode for unified tree handling.
@@ -87,45 +75,14 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 	}
 }
 
-// voiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
+// voiceoverRecordToClip delegates to the canonical converter in mediaregistry.
 func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
-	name := rec.Filename
-	if name == "" {
-		name = rec.TextPreview
-		if len(name) > 50 {
-			name = name[:50]
-		}
-	}
-	return &models.Clip{
-		ID:           rec.ID,
-		Name:         name,
-		Source:       "voiceover",
-		LocalPath:    rec.LocalPath,
-		DriveLink:    rec.DriveLink,
-		FileHash:     rec.FileHash,
-		CreatedAt:    rec.CreatedAt,
-		UpdatedAt:    rec.UpdatedAt,
-		SearchTerms:  []string{rec.TextPreview},
-		MediaType:    "audio",
-	}
+	return mediaregistry.VoiceoverRecordToClip(rec)
 }
 
-// imageAssetToClip converts an models.ImageAsset to models.Clip for unified handling.
+// imageAssetToClip uses the canonical converter from mediaregistry.
 func imageAssetToClip(asset *models.ImageAsset) *models.Clip {
-	return &models.Clip{
-		ID:           asset.SlugID,
-		Name:         asset.Description,
-		Source:       "images",
-		LocalPath:    asset.PathRel,
-		DriveLink:    "", // Images repo doesn't seem to have direct Drive link in model yet
-		FileHash:     asset.Hash,
-		ThumbURL:     "", 
-		CreatedAt:    asset.CreatedAt,
-		UpdatedAt:    asset.CreatedAt,
-		SearchTerms:  []string{asset.Description},
-		MediaType:    "image",
-		Tags:         asset.Tags,
-	}
+	return mediaregistry.ImageAssetToClip(asset)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.

@@ -40,6 +40,8 @@ type Clip struct {
 	UsableFor      []string  `json:"usable_for,omitempty"`
 	AvoidFor       []string  `json:"avoid_for,omitempty"`
 	ChildCount     int       `json:"child_count,omitempty"`
+	PHash          string    `json:"phash,omitempty"`
+	VisualEmbeddingJSON string `json:"visual_embedding_json,omitempty"`
 }
 
 // IndexingCheckpoint represents a checkpoint for the indexing process

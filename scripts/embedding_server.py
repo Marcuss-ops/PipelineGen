@@ -12,9 +12,11 @@ import uvicorn
 try:
     from sentence_transformers import SentenceTransformer
     import spacy
+    import imagehash
+    from PIL import Image
 except ImportError as e:
     print(f"Missing dependency: {e}")
-    print("Install: pip install fastapi uvicorn sentence-transformers spacy")
+    print("Install: pip install fastapi uvicorn sentence-transformers spacy imagehash pillow")
     exit(1)
 
 # Load models once
@@ -22,6 +24,8 @@ print("Loading NLP model (en_core_web_sm)...")
 nlp = spacy.load("en_core_web_sm")
 print("Loading SentenceTransformer model (all-MiniLM-L6-v2)...")
 model = SentenceTransformer("all-MiniLM-L6-v2")
+print("Loading CLIP model (clip-ViT-B-32)...")
+clip_model = SentenceTransformer("clip-ViT-B-32")
 
 app = FastAPI(title="PipelineGen Embedding Server")
 
@@ -101,17 +105,61 @@ class SearchRequest(BaseModel):
     db_path: str
     query: str
     limit: int = 10
+    mode: str = "text" # "text" or "visual"
 
 @app.post("/search")
 def search(req: SearchRequest):
-    cache = load_embeddings(req.db_path)
-    if not cache:
-        return {"clips": [], "reason": "no_embeddings_found"}
+    mode = req.mode.lower()
+    embedding_col = "embedding_json" if mode == "text" else "visual_embedding_json"
+    target_model = model if mode == "text" else clip_model
+    
+    # Cache key includes mode
+    cache_key = f"{req.db_path}_{mode}"
+    
+    if cache_key in embedding_cache:
+        cache = embedding_cache[cache_key]
+    else:
+        try:
+            conn = sqlite3.connect(req.db_path)
+            cursor = conn.cursor()
+            cursor.execute(f"SELECT id, {embedding_col} FROM clips WHERE {embedding_col} != '[]' AND {embedding_col} IS NOT NULL")
+            rows = cursor.fetchall()
+            conn.close()
+            
+            ids = []
+            embeddings = []
+            for row in rows:
+                try:
+                    emb = json.loads(row[1])
+                    if len(emb) > 0:
+                        ids.append(row[0])
+                        embeddings.append(emb)
+                except:
+                    continue
+            
+            if not embeddings:
+                return {"clips": [], "reason": "no_embeddings_found"}
+                
+            matrix = np.array(embeddings, dtype=np.float32)
+            norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+            matrix = matrix / (norms + 1e-10)
+            
+            cache = {"ids": ids, "matrix": matrix}
+            embedding_cache[cache_key] = cache
+        except Exception as e:
+            print(f"Error loading embeddings for {cache_key}: {e}")
+            return {"clips": [], "reason": str(e)}
     
     try:
-        # Embed query
-        query_text = normalize_text(req.query)
-        query_vec = model.encode(query_text).astype(np.float32)
+        # Embed query using the appropriate model
+        if mode == "text":
+            query_text = normalize_text(req.query)
+            query_vec = target_model.encode(query_text).astype(np.float32)
+        else:
+            # For visual mode, we embed the text query using CLIP's text encoder
+            # SentenceTransformer's CLIP model handles this automatically
+            query_vec = target_model.encode(req.query).astype(np.float32)
+            
         query_vec = query_vec / (np.linalg.norm(query_vec) + 1e-10)
         
         # Calculate cosine similarity
@@ -127,7 +175,7 @@ def search(req: SearchRequest):
                 "score": float(similarities[idx])
             })
             
-        return {"clips": results, "query_normalized": query_text}
+        return {"clips": results, "mode": mode}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -142,7 +190,7 @@ def index_clip(req: IndexRequest):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("SELECT id, name, tags FROM clips WHERE id = ?", (req.clip_id,))
+        cursor.execute("SELECT id, name, tags, local_path FROM clips WHERE id = ?", (req.clip_id,))
         clip = cursor.fetchone()
         
         if not clip:
@@ -167,6 +215,34 @@ def index_clip(req: IndexRequest):
             "UPDATE clips SET search_text = ?, embedding_json = ? WHERE id = ?",
             (search_text, embedding_json, req.clip_id)
         )
+        
+        # New: Visual Indexing if local_path exists
+        local_path = clip["local_path"]
+        if local_path and os.path.exists(local_path):
+            try:
+                # We need to extract a frame. We'll use a temporary path.
+                frame_path = f"{local_path}_thumb.png"
+                import subprocess
+                subprocess.run([
+                    "ffmpeg", "-y", "-ss", "1", "-i", local_path, 
+                    "-frames:v", "1", "-q:v", "2", frame_path
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                if os.path.exists(frame_path):
+                    img = Image.open(frame_path)
+                    phash = str(imagehash.phash(img))
+                    visual_emb = clip_model.encode(img).tolist()
+                    visual_emb_json = json.dumps(visual_emb)
+                    
+                    cursor.execute(
+                        "UPDATE clips SET phash = ?, visual_embedding_json = ? WHERE id = ?",
+                        (phash, visual_emb_json, req.clip_id)
+                    )
+                    os.remove(frame_path)
+                    print(f"Visual index updated for {req.clip_id}")
+            except Exception as ve:
+                print(f"Failed visual indexing in /index: {ve}")
+
         conn.commit()
         conn.close()
 
@@ -179,9 +255,66 @@ def index_clip(req: IndexRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class VisualIndexRequest(BaseModel):
+    db_path: str
+    clip_id: str
+    frame_path: str
+
+@app.post("/index_visual")
+def index_visual(req: VisualIndexRequest):
+    db_path = Path(req.db_path)
+    if not db_path.exists():
+        raise HTTPException(status_code=404, detail=f"Database not found: {db_path}")
+
+    frame_path = Path(req.frame_path)
+    if not frame_path.exists():
+        raise HTTPException(status_code=404, detail=f"Frame not found: {frame_path}")
+
+    try:
+        # Load image
+        img = Image.open(frame_path)
+        
+        # Compute pHash
+        phash = str(imagehash.phash(img))
+        
+        # Compute CLIP embedding
+        visual_emb = clip_model.encode(img).tolist()
+        visual_emb_json = json.dumps(visual_emb)
+
+        # Update DB
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE clips SET phash = ?, visual_embedding_json = ? WHERE id = ?",
+            (phash, visual_emb_json, req.clip_id)
+        )
+        conn.commit()
+        conn.close()
+
+        return {
+            "ok": True, 
+            "clip_id": req.clip_id, 
+            "phash": phash, 
+            "visual_embedding_size": len(visual_emb)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 class BulkIndexRequest(BaseModel):
     db_path: str
     clip_ids: List[str]
+
+class PhashRequest(BaseModel):
+    image_path: str
+
+@app.post("/phash")
+def compute_phash(req: PhashRequest):
+    try:
+        img = Image.open(req.image_path)
+        h = str(imagehash.phash(img))
+        return {"phash": h}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/index_bulk")
 def index_bulk(req: BulkIndexRequest):

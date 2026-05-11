@@ -8,9 +8,11 @@ try:
     from sentence_transformers import SentenceTransformer
     import spacy
     import yake
+    import requests
+    import subprocess
 except ImportError as e:
     print(f"Missing dependency: {e}")
-    print("Install: pip install sentence-transformers spacy yake[full]")
+    print("Install: pip install sentence-transformers spacy yake[full] requests")
     exit(1)
 
 nlp = spacy.load("en_core_web_sm")
@@ -82,6 +84,32 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
             (search_text, embedding, clip_id)
         )
         print(f"Updated clip {clip_id}: search_text='{search_text[:50]}...'")
+
+        # Visual Indexing
+        if local_path and Path(local_path).exists():
+            try:
+                frame_path = Path(local_path).parent / f"{clip_id}_thumb.png"
+                # Extract frame at 1s
+                subprocess.run([
+                    "ffmpeg", "-y", "-ss", "1", "-i", local_path, 
+                    "-frames:v", "1", "-q:v", "2", str(frame_path)
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Call embedding server for visual indexing
+                resp = requests.post("http://127.0.0.1:8001/index_visual", json={
+                    "db_path": str(Path(db_path).absolute()),
+                    "clip_id": clip_id,
+                    "frame_path": str(frame_path.absolute())
+                })
+                if resp.status_code == 200:
+                    data = resp.json()
+                    print(f"Visual indexing success: phash={data.get('phash')}")
+                    # Cleanup frame
+                    frame_path.unlink()
+                else:
+                    print(f"Visual indexing failed: {resp.text}")
+            except Exception as e:
+                print(f"Visual indexing error: {e}")
 
     conn.commit()
     conn.close()

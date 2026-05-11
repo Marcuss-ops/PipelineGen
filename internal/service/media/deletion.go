@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
@@ -13,6 +12,7 @@ import (
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
+	"velox/go-master/internal/service/mediaregistry"
 	"velox/go-master/internal/upload/drive"
 	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
@@ -58,9 +58,14 @@ func NewDeletionService(
 func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID string, permanently bool) error {
 	s.log.Info("deleting clip", zap.String("source", source), zap.String("clip_id", clipID), zap.Bool("permanently", permanently))
 
-	// 1. Get Repo
-	repo := s.resolveRepo(source)
-	if repo == nil && strings.ToLower(source) != "voiceover" && strings.ToLower(source) != "images" {
+	// 1. Get Repo via centralized resolver
+	canonical := mediaregistry.CanonicalSource(source)
+	if canonical == "" {
+		return fmt.Errorf("invalid source: %s", source)
+	}
+	resolver := mediaregistry.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
+	repo := resolver.ResolveRepo(source)
+	if repo == nil && canonical != "voiceover" && canonical != "images" {
 		return fmt.Errorf("invalid source: %s", source)
 	}
 
@@ -68,19 +73,18 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	var clip *models.Clip
 	var err error
 
-	if strings.ToLower(source) == "voiceover" && s.voiceoverRepo != nil {
+	if canonical == "voiceover" && s.voiceoverRepo != nil {
 		rec, err := s.voiceoverRepo.GetByID(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("voiceover not found: %w", err)
 		}
-		clip = voiceoverRecordToClip(rec)
-	} else if strings.ToLower(source) == "images" && s.imagesRepo != nil {
-		// Images now use string IDs (hashes/slugs)
+		clip = mediaregistry.VoiceoverRecordToClip(rec)
+	} else if canonical == "images" && s.imagesRepo != nil {
 		img, err := s.imagesRepo.GetByID(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("image not found: %w", err)
 		}
-		clip = imageAssetToClip(img)
+		clip = mediaregistry.ImageAssetToClip(img)
 	} else if repo != nil {
 		clip, err = repo.GetClip(ctx, clipID)
 		if err != nil {
@@ -110,9 +114,9 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	}
 
 	// 4. Delete from DB
-	if strings.ToLower(source) == "voiceover" && s.voiceoverRepo != nil {
+	if canonical == "voiceover" && s.voiceoverRepo != nil {
 		err = s.voiceoverRepo.Delete(ctx, clipID)
-	} else if strings.ToLower(source) == "images" && s.imagesRepo != nil {
+	} else if canonical == "images" && s.imagesRepo != nil {
 		err = s.imagesRepo.Delete(ctx, clipID)
 	} else if repo != nil {
 		err = repo.DeleteClip(ctx, clipID)
@@ -186,13 +190,13 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 			voRepo := repo.(*voiceovers.Repository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
-				return voiceoverRecordToClip(rec), source, nil
+				return mediaregistry.VoiceoverRecordToClip(rec), source, nil
 			}
 		case "images":
 			imgRepo := repo.(*images.Repository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
-				return imageAssetToClip(img), source, nil
+				return mediaregistry.ImageAssetToClip(img), source, nil
 			}
 		}
 	}
@@ -200,60 +204,11 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 	return nil, "", nil
 }
 
+// resolveRepo delegates to the centralized SourceResolver.
+// DEPRECATED: Prefer using mediaregistry.SourceResolver directly.
 func (s *DeletionService) resolveRepo(source string) *clips.Repository {
-	switch strings.ToLower(source) {
-	case "artlist":
-		return s.artlistRepo
-	case "youtube", "clips", "boxe", "wwe", "discovery", "music":
-		return s.clipsRepo
-	case "stock":
-		return s.stockRepo
-	default:
-		return nil
-	}
-}
-
-// Helper converters (copied from handlers/media/converters.go for now)
-func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
-	name := rec.Filename
-	if name == "" {
-		name = rec.TextPreview
-		if len(name) > 50 {
-			name = name[:50]
-		}
-	}
-	return &models.Clip{
-		ID:           rec.ID,
-		Name:         name,
-		Filename:     rec.Filename,
-		FolderID:     rec.FolderID,
-		FolderPath:   rec.FolderPath,
-		DriveLink:    rec.DriveLink,
-		DownloadLink: rec.DownloadLink,
-		FileHash:     rec.FileHash,
-		LocalPath:    rec.LocalPath,
-		Source:       "voiceover",
-		Metadata:     rec.Metadata,
-		CreatedAt:    rec.CreatedAt,
-		UpdatedAt:    rec.UpdatedAt,
-	}
-}
-
-func imageAssetToClip(img *models.ImageAsset) *models.Clip {
-	name := img.Description
-	if name == "" {
-		name = filepath.Base(img.PathRel)
-	}
-	return &models.Clip{
-		ID:        img.Hash, // Now using hash as string ID
-		Name:      name,
-		Filename:  filepath.Base(img.PathRel),
-		DriveLink: img.SourceURL,
-		FileHash:  img.Hash,
-		LocalPath: img.PathRel,
-		Source:    "images",
-		CreatedAt: img.CreatedAt,
-	}
+	resolver := mediaregistry.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
+	return resolver.ResolveRepo(source)
 }
 func (s *DeletionService) CleanupOrphanFiles(ctx context.Context, assetsDir string, dryRun bool) (int, error) {
 	s.log.Info("starting deep orphan file cleanup", zap.String("dir", assetsDir), zap.Bool("dry_run", dryRun))

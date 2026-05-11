@@ -26,7 +26,7 @@ import (
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns = `id, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(depth, 0) AS depth, is_folder, COALESCE(folder_path, '') AS folder_path, COALESCE(group_name, '') AS group_name, COALESCE(media_type, '') AS media_type, COALESCE(drive_link, '') AS drive_link, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(download_link, '') AS download_link, COALESCE(tags, '[]') AS tags, source, COALESCE(category, '') AS category, COALESCE(external_url, '') AS external_url, COALESCE(duration, 0) AS duration, COALESCE(metadata, '{}') AS metadata, COALESCE(file_hash, '') AS file_hash, COALESCE(local_path, '') AS local_path, COALESCE(status, '') AS status, COALESCE(error, '') AS error, COALESCE(search_terms, '[]') AS search_terms, COALESCE(thumb_url, '') AS thumb_url, created_at, updated_at, (SELECT COUNT(*) FROM clips c2 WHERE c2.parent_folder_id = clips.id) AS child_count`
+	clipColumns = `id, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(depth, 0) AS depth, is_folder, COALESCE(folder_path, '') AS folder_path, COALESCE(group_name, '') AS group_name, COALESCE(media_type, '') AS media_type, COALESCE(drive_link, '') AS drive_link, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(download_link, '') AS download_link, COALESCE(tags, '[]') AS tags, source, COALESCE(category, '') AS category, COALESCE(external_url, '') AS external_url, COALESCE(duration, 0) AS duration, COALESCE(metadata, '{}') AS metadata, COALESCE(file_hash, '') AS file_hash, COALESCE(local_path, '') AS local_path, COALESCE(status, '') AS status, COALESCE(error, '') AS error, COALESCE(search_terms, '[]') AS search_terms, COALESCE(thumb_url, '') AS thumb_url, COALESCE(phash, '') AS phash, COALESCE(visual_embedding_json, '[]') AS visual_embedding_json, created_at, updated_at, (SELECT COUNT(*) FROM clips c2 WHERE c2.parent_folder_id = clips.id) AS child_count`
 	clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 )
 
@@ -80,8 +80,8 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO clips (id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type,
 			drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata,
-			file_hash, local_path, status, error, search_terms, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			file_hash, local_path, status, error, search_terms, phash, visual_embedding_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, filename=excluded.filename, folder_id=excluded.folder_id,
 			parent_folder_id=excluded.parent_folder_id, depth=excluded.depth, is_folder=excluded.is_folder,
@@ -92,12 +92,13 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			external_url=excluded.external_url, duration=excluded.duration,
 			metadata=excluded.metadata, file_hash=excluded.file_hash,
 			local_path=excluded.local_path, status=excluded.status, error=excluded.error,
-			search_terms=excluded.search_terms,
+			search_terms=excluded.search_terms, phash=excluded.phash,
+			visual_embedding_json=excluded.visual_embedding_json,
 			updated_at=excluded.updated_at
 		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group,
 		clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, string(tagsJSON), clip.Source,
 		clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash,
-		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.PHash, clip.VisualEmbeddingJSON, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
 
 	return err
 }
@@ -505,13 +506,13 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
 	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
 	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
-	var statusNull, errorNull, thumbURLNull sql.NullString
+	var statusNull, errorNull, thumbURLNull, phashNull, visualEmbNull sql.NullString
 	
 	err := rows.Scan(
 		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
 		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
 		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
-		&createdAtNull, &updatedAtNull, &clip.ChildCount)
+		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &clip.ChildCount)
 	
 	if err != nil {
 		fmt.Printf("DEBUG: Scan error clip_id=%v err=%v\n", clip.ID, err)
@@ -537,6 +538,8 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	clip.Error = errorNull.String
 	clip.ThumbURL = thumbURLNull.String
 	clip.Metadata = metadataNull.String
+	clip.PHash = phashNull.String
+	clip.VisualEmbeddingJSON = visualEmbNull.String
 
 	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
 		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
@@ -565,13 +568,13 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
 	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
 	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
-	var statusNull, errorNull, thumbURLNull sql.NullString
+	var statusNull, errorNull, thumbURLNull, phashNull, visualEmbNull sql.NullString
 
 	err := row.Scan(
 		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
 		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
 		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
-		&createdAtNull, &updatedAtNull, &clip.ChildCount)
+		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &clip.ChildCount)
 
 	if err != nil {
 		return nil, err
@@ -1032,4 +1035,23 @@ func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]
 	}
 
 	return clips, rows.Err()
+}
+
+// FindByPHash searches for a clip with the given perceptual hash.
+// Returns the clip ID if found, empty string if not.
+func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, error) {
+	if phash == "" {
+		return "", nil
+	}
+	var id string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id FROM clips WHERE phash = ? AND phash != '' LIMIT 1`, phash,
+	).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("FindByPHash: %w", err)
+	}
+	return id, nil
 }

@@ -296,3 +296,22 @@ func (p *Processor) Version(ctx context.Context) (string, error) {
 	}
 	return "", nil
 }
+
+// ExtractFrame extracts a single frame at the specified timestamp as a high-quality PNG.
+func (p *Processor) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-ss", fmt.Sprintf("%.3f", timestamp),
+		"-i", input,
+		"-frames:v", "1",
+		"-q:v", "2",
+		output,
+	}
+
+	_, err := executil.Run(ctx, p.path, args, executil.Options{
+		Timeout: 30 * time.Second,
+	})
+	return err
+}

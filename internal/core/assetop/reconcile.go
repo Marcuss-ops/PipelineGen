@@ -5,6 +5,7 @@ import (
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
+	"velox/go-master/pkg/drive"
 )
 
 // ReconcileService provides Drive reconciliation for asset records.
@@ -141,9 +142,5 @@ func (s *ReconcileService) SyncDriveFileID(ctx context.Context, source string) (
 
 // extractFileIDFromLink extracts the file ID from a Google Drive link.
 func extractFileIDFromLink(link string) string {
-	// Handle patterns like:
-	// https://drive.google.com/file/d/FILE_ID/view
-	// https://drive.google.com/open?id=FILE_ID
-	// https://drive.google.com/uc?id=FILE_ID
-	return ""
+	return drive.FileIDFromLink(link)
 }

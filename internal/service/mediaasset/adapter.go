@@ -50,5 +50,6 @@ func (a *coreAdapter) Process(ctx context.Context, input *processor.ProcessInput
 		DownloadLink: result.DownloadLink,
 		Status:       result.Status,
 		Error:        result.Error,
+		DuplicateOf:  result.DuplicateOf,
 	}, nil
 }

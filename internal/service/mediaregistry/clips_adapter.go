@@ -38,6 +38,8 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		LocalPath:    rec.LocalPath,
 		Status:       rec.Status,
 		Error:        rec.Error,
+		PHash:        rec.PHash,
+		VisualEmbeddingJSON: rec.VisualEmbeddingJSON,
 		UpdatedAt:    time.Now(),
 	}
 	return r.repo.UpsertClip(ctx, clip)
@@ -70,6 +72,10 @@ func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaReco
 	return records, nil
 }
 
+func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, error) {
+	return r.repo.FindByPHash(ctx, phash)
+}
+
 func clipToMediaRecord(clip *models.Clip) *MediaRecord {
 	return &MediaRecord{
 		ID:           clip.ID,
@@ -92,5 +98,7 @@ func clipToMediaRecord(clip *models.Clip) *MediaRecord {
 		LocalPath:    clip.LocalPath,
 		Status:       clip.Status,
 		Error:        clip.Error,
+		PHash:        clip.PHash,
+		VisualEmbeddingJSON: clip.VisualEmbeddingJSON,
 	}
 }

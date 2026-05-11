@@ -43,4 +43,5 @@ type ProcessResult struct {
 	DownloadLink string
 	Status       string
 	Error        string
+	DuplicateOf  string
 }

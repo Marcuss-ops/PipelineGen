@@ -7,4 +7,5 @@ type Registry interface {
 	GetMedia(ctx context.Context, id string) (*MediaRecord, error)
 	DeleteMedia(ctx context.Context, id string) error
 	GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error)
+	FindByPHash(ctx context.Context, phash string) (string, error)
 }

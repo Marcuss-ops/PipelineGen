@@ -32,4 +32,5 @@ type AssetResult struct {
 	DownloadLink string
 	Status       string
 	Error        string
+	DuplicateOf  string
 }

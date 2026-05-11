@@ -25,6 +25,8 @@ type MediaRecord struct {
 	// Asset index fields
 	SourceID      string
 	Subfolder     string
+	PHash         string
+	VisualEmbeddingJSON string
 }
 
 type FinalizeOptions struct {

@@ -51,6 +51,11 @@ func (a *voiceoverRegistryAdapter) GetAllWithDriveFileID(ctx context.Context) ([
 	return result, nil
 }
 
+func (a *voiceoverRegistryAdapter) FindByPHash(ctx context.Context, phash string) (string, error) {
+	// Voiceovers are audio — pHash is not applicable.
+	return "", nil
+}
+
 func mediaRecordToVoiceover(mediaRec *mediaregistry.MediaRecord) *voiceovers.Record {
 	var meta struct {
 		TextHash    string `json:"text_hash"`

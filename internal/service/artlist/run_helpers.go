@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/upload/drive"
+	"velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 )
 

@@ -7,7 +7,7 @@ import (
 
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/upload/drive"
+	"velox/go-master/pkg/drive"
 )
 
 type DriveVerifier interface {
