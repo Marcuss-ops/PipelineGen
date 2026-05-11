@@ -16,11 +16,12 @@ import (
 )
 
 type backgroundJobs struct {
-	channelMonitor   *monitor.ChannelMonitor
-	stockScheduler   *scheduler.StockScheduler
-	indexingService  *indexing.Service
-	jobRunner        *svcjobs.Runner
-	jobScanner       *jobrepo.Scanner
+	channelMonitor    *monitor.ChannelMonitor
+	stockScheduler    *scheduler.StockScheduler
+	driveSyncSchedule *scheduler.DriveSyncScheduler
+	indexingService   *indexing.Service
+	jobRunner         *svcjobs.Runner
+	jobScanner        *jobrepo.Scanner
 }
 
 func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, svcs *services, log *zap.Logger, mode string) *backgroundJobs {
@@ -44,6 +45,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	var jobScanner *jobrepo.Scanner
 	var channelMon *monitor.ChannelMonitor
 	var stockSched *scheduler.StockScheduler
+	var driveSyncSched *scheduler.DriveSyncScheduler
 
 	if runWorker {
 		// Jobs system - Runner and Scanner
@@ -84,6 +86,25 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			go stockSched.Start(ctx)
 			log.Info("Stock scheduler started")
 		}
+
+		// Periodic Drive sync scheduler - always enabled if sync services exist
+		if svcs.catalogSync != nil || svcs.voiceoverSync != nil || svcs.imageService != nil {
+			syncInterval := 6 * time.Hour // default
+			if cfg.Jobs.CatalogSyncInterval != "" {
+				if parsed, err := time.ParseDuration(cfg.Jobs.CatalogSyncInterval); err == nil {
+					syncInterval = parsed
+				}
+			}
+			driveSyncSched = scheduler.NewDriveSyncScheduler(
+				svcs.catalogSync,
+				svcs.voiceoverSync,
+				svcs.imageService,
+				log,
+				syncInterval,
+			)
+			go driveSyncSched.Start(ctx)
+			log.Info("Drive sync scheduler started", zap.Duration("interval", syncInterval))
+		}
 	}
 
 	if runMaintenance {
@@ -105,10 +126,11 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 
 	return &backgroundJobs{
-		channelMonitor:   channelMon,
-		stockScheduler:   stockSched,
-		indexingService:  svcs.indexingService,
-		jobRunner:        jobRunner,
-		jobScanner:       jobScanner,
+		channelMonitor:    channelMon,
+		stockScheduler:    stockSched,
+		driveSyncSchedule: driveSyncSched,
+		indexingService:   svcs.indexingService,
+		jobRunner:         jobRunner,
+		jobScanner:        jobScanner,
 	}
 }

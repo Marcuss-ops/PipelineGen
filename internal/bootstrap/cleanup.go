@@ -35,6 +35,13 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				jobs.stockScheduler.Stop()
 			}()
 		}
+		if jobs.driveSyncSchedule != nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				jobs.driveSyncSchedule.Stop()
+			}()
+		}
 	// NOTE: harvesterCronSvc and catalogSyncJob removed (cron system eliminated)
 	// These should be migrated to the job system
 
