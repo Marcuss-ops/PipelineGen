@@ -79,6 +79,7 @@ func WireAssets(
 		driveUploader,
 		coreDeps.MediaProcessor,
 		deletionSvc,
+		coreDeps.CatalogSyncService,
 		log,
 	)
 

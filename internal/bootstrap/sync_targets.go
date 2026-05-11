@@ -23,9 +23,9 @@ func buildSyncTargets(
 			Repo:         clipsRepo,
 		},
 		{
-			Name:         "clips",
+			Name:         "youtube",
 			RootFolderID: cfg.Drive.ClipsRootFolder,
-			Source:       "clips",
+			Source:       "youtube",
 			MediaType:    "clip",
 			Repo:         clipsOnlyRepo,
 		},
@@ -42,9 +42,9 @@ func buildSyncTargets(
 		for group, folderID := range cfg.Drive.ClipRootFolders {
 			if folderID != "" {
 				targets = append(targets, catalogsync.Target{
-					Name:         "clips_" + group,
+					Name:         "youtube_" + group,
 					RootFolderID: folderID,
-					Source:       "clips",
+					Source:       "youtube",
 					MediaType:    "clip",
 					Repo:         clipsOnlyRepo,
 				})

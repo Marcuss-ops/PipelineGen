@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
+	"velox/go-master/internal/service/catalogsync"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/foldermemory"
 	jobservice "velox/go-master/internal/service/jobs"
@@ -46,6 +47,7 @@ type Handler struct {
 	driveUploader  *drive.Uploader
 	mediaProcessor processor.Processor
 	deletionSvc    *media.DeletionService
+	catalogSync    *catalogsync.Service
 	log            *zap.Logger
 
 	// Sub-handlers
@@ -67,6 +69,7 @@ func NewHandler(
 	driveUploader *drive.Uploader,
 	mediaProcessor processor.Processor,
 	deletionSvc *media.DeletionService,
+	catalogSync *catalogsync.Service,
 	log *zap.Logger,
 ) *Handler {
 	h := &Handler{
@@ -85,6 +88,7 @@ func NewHandler(
 		driveUploader:  driveUploader,
 		mediaProcessor: mediaProcessor,
 		deletionSvc:    deletionSvc,
+		catalogSync:    catalogSync,
 		log:            log,
 	}
 
@@ -166,11 +170,20 @@ func (h *Handler) Reconcile(c *gin.Context) {
 
 	h.log.Info("Starting reconciliation", zap.String("source", source), zap.String("folder", req.FolderID))
 	
-	// Implementation placeholder for reconciliation logic
+	if h.catalogSync != nil {
+		summary, err := h.catalogSync.SyncSource(c.Request.Context(), source)
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		apiutil.OK(c, summary)
+		return
+	}
+
 	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
-		"message": "reconciliation started",
+		"message": "reconciliation started (no service)",
 	})
 }
 

@@ -104,6 +104,21 @@ func (s *Service) SyncAll(ctx context.Context) (*Summary, error) {
 	return summary, nil
 }
 
+// SyncSource synchronizes a specific source target.
+func (s *Service) SyncSource(ctx context.Context, source string) (*RootSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, target := range s.targets {
+		if strings.EqualFold(target.Source, source) {
+			summary, err := s.syncTarget(ctx, target)
+			return &summary, err
+		}
+	}
+
+	return nil, fmt.Errorf("source not found: %s", source)
+}
+
 func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, error) {
 	rootSummary := RootSummary{
 		Name:         target.Name,

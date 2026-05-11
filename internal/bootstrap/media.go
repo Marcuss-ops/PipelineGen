@@ -67,6 +67,7 @@ func WireMedia(
 			driveUploader,
 			coreDeps.MediaProcessor,
 			deletionSvc,
+			coreDeps.CatalogSyncService,
 			log,
 		)
 
