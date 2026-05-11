@@ -25,17 +25,19 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 type UploadRequest struct {
-	Subject string `json:"subject" binding:"required"`
-	Name    string `json:"name"`
-	URL     string `json:"image_url" binding:"required"`
-	Lang    string `json:"lang"`
+	Subject string   `json:"subject" binding:"required"`
+	Name    string   `json:"name"`
+	URL     string   `json:"image_url" binding:"required"`
+	Lang    string   `json:"lang"`
+	Tags    []string `json:"tags"`
 }
 
 type GenerateNvidiaRequest struct {
-	Prompt string `json:"prompt" binding:"required"`
-	Model  string `json:"model"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
+	Prompt string   `json:"prompt" binding:"required"`
+	Model  string   `json:"model"`
+	Width  int      `json:"width"`
+	Height int      `json:"height"`
+	Tags   []string `json:"tags"`
 }
 
 type AnimateRequest struct {
@@ -56,11 +58,8 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 
 	slug := strings.ReplaceAll(strings.ToLower(req.Subject), " ", "-")
-	asset, err := h.service.SearchAndDownload(slug, req.Name, req.URL, req.Lang)
+	asset, err := h.service.SearchAndDownload(slug, req.Name, req.URL, req.Lang, req.Tags)
 	if err != nil {
-		// Se SearchAndDownload fallisce perché req.URL non è una query ma un link diretto, 
-		// dovremmo chiamare direttamente downloadAndIngest. 
-		// Ma SearchAndDownload è già abbastanza robusta se l'URL è valido.
 		apiutil.InternalError(c, err)
 		return
 	}
@@ -79,7 +78,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	// Proviamo a cercare/scaricare
 	slug := strings.ReplaceAll(strings.ToLower(query), " ", "-")
-	asset, err := h.service.SearchAndDownload(slug, query, query, lang)
+	asset, err := h.service.SearchAndDownload(slug, query, query, lang, nil)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
@@ -93,6 +92,7 @@ func (h *Handler) Search(c *gin.Context) {
 			"source_url": asset.SourceURL,
 			"url_full":   "/assets/" + asset.PathRel,
 			"desc":       asset.Description,
+			"tags":       asset.Tags,
 		},
 	})
 }
@@ -124,7 +124,7 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 		return
 	}
 
-	asset, err := h.service.GenerateAImage(req.Prompt, req.Model, req.Width, req.Height)
+	asset, err := h.service.GenerateAImage(req.Prompt, req.Model, req.Width, req.Height, req.Tags)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
@@ -139,9 +139,11 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 			"source_url": asset.SourceURL,
 			"url_full":   "/assets/" + asset.PathRel,
 			"desc":       asset.Description,
+			"tags":       asset.Tags,
 		},
 	})
 }
+
 
 // Animate crea un video zoom-out da un'immagine esistente
 func (h *Handler) Animate(c *gin.Context) {

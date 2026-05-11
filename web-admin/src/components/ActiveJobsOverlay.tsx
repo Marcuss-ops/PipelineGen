@@ -16,8 +16,9 @@ export const ActiveJobsOverlay: React.FC = () => {
           // We don't filter by status to show recently completed/failed too
         });
         
+        const jobs = response.jobs || [];
         // Filter for jobs that are actually "active" or recently finished
-        const interesting = response.jobs.filter(j => 
+        const interesting = jobs.filter(j => 
           ['running', 'processing', 'queued', 'pending'].includes(j.status) ||
           (new Date().getTime() - new Date(j.updated_at).getTime() < 30000) // completed in last 30s
         );

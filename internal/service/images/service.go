@@ -82,7 +82,7 @@ func Slugify(s string) string {
 }
 
 // SearchAndDownload prova a cercare un'immagine nel DB locale, e se non trovata procede con Wikidata/Wikipedia (main) o DDG (fallback) e la scarica
-func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string) (*models.ImageAsset, error) {
+func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string, tags []string) (*models.ImageAsset, error) {
 	// Normalizziamo lo slug
 	slug := Slugify(subjectSlug)
 	if slug == "" {
@@ -164,10 +164,11 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	// 4. Scarica e Ingest
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
 	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
-	asset, err := s.downloadAndIngest(slug, imgURL, source, finalQuery, description)
+	asset, err := s.downloadAndIngest(slug, imgURL, source, finalQuery, description, tags)
 	
 	return asset, err
 }
+
 
 func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=1", url.QueryEscape(query), lang)
@@ -315,7 +316,7 @@ func (s *Service) searchDDG(query string) string {
 	return payload.Results[0].Image
 }
 
-func (s *Service) downloadAndIngest(slug, imgURL, source, query, description string) (*models.ImageAsset, error) {
+func (s *Service) downloadAndIngest(slug, imgURL, source, query, description string, tags []string) (*models.ImageAsset, error) {
 	req, _ := http.NewRequest("GET", imgURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 
@@ -329,10 +330,10 @@ func (s *Service) downloadAndIngest(slug, imgURL, source, query, description str
 		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
-	return s.IngestImage(slug, resp.Body, filepath.Base(imgURL), imgURL, description)
+	return s.IngestImage(slug, resp.Body, filepath.Base(imgURL), imgURL, description, tags)
 }
 
-func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, description string) (*models.ImageAsset, error) {
+func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, description string, tags []string) (*models.ImageAsset, error) {
 	content, err := io.ReadAll(data)
 	if err != nil {
 		return nil, err
@@ -346,6 +347,7 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 	// 2. Verifica se esiste già per Hash
 	if existing, err := s.repo.GetImageByHash(hash); err == nil && existing != nil {
 		s.log.Info("Image with this hash already exists", zap.String("hash", hash))
+		// Se abbiamo nuovi tag, potremmo volerli aggiungere? Per ora restituiamo l'esistente.
 		return existing, nil
 	}
 
@@ -410,6 +412,7 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 		DriveFileID:  driveFileID,
 		Status:       "ready",
 		MetadataJSON: "{}",
+		Tags:         tags,
 	}
 
 	if _, err := s.repo.AddImage(asset); err != nil {
@@ -494,7 +497,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 	return nil
 }
 
-func (s *Service) GenerateAImage(prompt, model string, width, height int) (*models.ImageAsset, error) {
+func (s *Service) GenerateAImage(prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
 	var invokeURL string
 	var payload map[string]interface{}
 	var useCloudAuth bool
@@ -619,7 +622,7 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int) (*mode
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", model, prompt)
 
-	return s.IngestImage(slug, strings.NewReader(string(imageData)), filename, sourceLabel, description)
+	return s.IngestImage(slug, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags)
 }
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {

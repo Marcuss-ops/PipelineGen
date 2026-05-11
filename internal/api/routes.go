@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"path/filepath"
 	"time"
 
@@ -81,6 +82,11 @@ func (r *Router) Setup() *gin.Engine {
 	engine.Use(middleware.Logger())
 	engine.Use(middleware.Recovery())
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
+
+	// Root redirect to health
+	engine.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/health")
+	})
 
 	// Only add CORS middleware if origins are configured
 	corsConfig := buildCORSConfig(r.cfg)

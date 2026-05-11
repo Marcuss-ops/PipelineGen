@@ -46,7 +46,7 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 				zap.String("query", query),
 			)
 			
-			asset, err := imgService.SearchAndDownload(slug, subject, query, req.Language)
+			asset, err := imgService.SearchAndDownload(slug, subject, query, req.Language, nil)
 			if err != nil {
 				zap.L().Warn("Image search failed", zap.String("subject", subject), zap.Error(err))
 				continue

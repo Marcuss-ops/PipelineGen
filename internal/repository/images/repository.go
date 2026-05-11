@@ -45,7 +45,13 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 		id = fmt.Sprintf("img_%d", img.CreatedAt.UnixNano())
 	}
 
-	_, err := r.db.Exec(`
+	tx, err := r.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
 		INSERT OR REPLACE INTO images (
 			id, subject_id, source_url, file_hash, local_path, 
 			description, drive_file_id, status, metadata_json
@@ -54,7 +60,26 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 	`, id, img.SubjectID, img.SourceURL, img.Hash, img.PathRel, 
 	   img.Description, img.DriveFileID, img.Status, "{}")
 	
-	return 0, err
+	if err != nil {
+		return 0, err
+	}
+
+	// Inserimento tag
+	if len(img.Tags) > 0 {
+		_, err = tx.Exec("DELETE FROM image_tags WHERE image_id = ?", id)
+		if err != nil {
+			return 0, err
+		}
+
+		for _, tag := range img.Tags {
+			_, err = tx.Exec("INSERT INTO image_tags (image_id, tag) VALUES (?, ?)", id, tag)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	return 0, tx.Commit()
 }
 
 // GetImageByHash recupera un'immagine tramite il suo hash
@@ -70,6 +95,8 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	img.Tags, _ = r.getTagsForImage(img.SlugID)
 	return &img, nil
 }
 
@@ -86,6 +113,8 @@ func (r *Repository) GetByID(ctx context.Context, id interface{}) (*models.Image
 	if err != nil {
 		return nil, err
 	}
+
+	img.Tags, _ = r.getTagsForImage(img.SlugID)
 	return &img, nil
 }
 
@@ -108,6 +137,8 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 	if err != nil {
 		return nil, err
 	}
+
+	img.Tags, _ = r.getTagsForImage(img.SlugID)
 	return &img, nil
 }
 
@@ -130,6 +161,7 @@ func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageA
 		                     &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
 			return nil, err
 		}
+		img.Tags, _ = r.getTagsForImage(img.SlugID)
 		images = append(images, img)
 	}
 	return images, nil
@@ -154,10 +186,30 @@ func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) 
 		                     &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
 			return nil, err
 		}
+		img.Tags, _ = r.getTagsForImage(img.SlugID)
 		images = append(images, &img)
 	}
 	return images, rows.Err()
 }
+
+func (r *Repository) getTagsForImage(imageID string) ([]string, error) {
+	rows, err := r.db.Query("SELECT tag FROM image_tags WHERE image_id = ?", imageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, nil
+}
+
 
 func (r *Repository) UpdateSubject(s *models.Subject) error {
 	_, err := r.db.Exec("UPDATE subjects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", s.DisplayName, s.Slug)

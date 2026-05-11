@@ -52,7 +52,7 @@ func clipToAssetNode(clip *models.Clip) *assettreerepo.AssetNode {
 		AssetID:     clip.ID,
 		Name:        clip.Name,
 		Type:        nodeType,
-		ParentID:    clip.FolderID,
+		ParentID:    clip.ParentFolderID,
 		Path:        clip.FolderPath,
 		Depth:       clip.Depth,
 		IsFolder:    clip.IsFolder,
@@ -61,6 +61,7 @@ func clipToAssetNode(clip *models.Clip) *assettreerepo.AssetNode {
 		Metadata:    clip.Metadata,
 		CreatedAt:   clip.CreatedAt,
 		UpdatedAt:   clip.UpdatedAt,
+		ChildCount:  clip.ChildCount,
 	}
 }
 
@@ -123,6 +124,7 @@ func imageAssetToClip(asset *models.ImageAsset) *models.Clip {
 		UpdatedAt:    asset.CreatedAt,
 		SearchTerms:  []string{asset.Description},
 		MediaType:    "image",
+		Tags:         asset.Tags,
 	}
 }
 
@@ -274,5 +276,6 @@ func treeNodeToAssetNode(tn *assettreerepo.AssetNode) *models.AssetNode {
 		DriveFileID: tn.DriveFileID,
 		DriveLink:   tn.DriveLink,
 		Metadata:    tn.Metadata,
+		ChildCount:  tn.ChildCount,
 	}
 }
