@@ -39,6 +39,7 @@ type Clip struct {
 	LastUsedAt     string    `json:"last_used_at,omitempty"`
 	UsableFor      []string  `json:"usable_for,omitempty"`
 	AvoidFor       []string  `json:"avoid_for,omitempty"`
+	ChildCount     int       `json:"child_count,omitempty"`
 }
 
 // IndexingCheckpoint represents a checkpoint for the indexing process

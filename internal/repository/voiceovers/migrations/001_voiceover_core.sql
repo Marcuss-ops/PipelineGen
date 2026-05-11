@@ -1,5 +1,5 @@
--- 002_update_voiceovers_table.sql
--- Create voiceovers table with the correct schema for the current codebase
+-- 001_initial_schema.sql
+-- Consolidated schema for voiceovers table
 
 CREATE TABLE IF NOT EXISTS voiceovers (
     id TEXT PRIMARY KEY,
@@ -21,12 +21,11 @@ CREATE TABLE IF NOT EXISTS voiceovers (
     status TEXT NOT NULL DEFAULT 'pending',
     error TEXT NOT NULL DEFAULT '',
     strategy TEXT NOT NULL DEFAULT '',
-    metadata TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Create indexes
 CREATE INDEX IF NOT EXISTS idx_voiceovers_request_id ON voiceovers(request_id);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_text_hash ON voiceovers(text_hash);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_language ON voiceovers(language);
@@ -34,3 +33,9 @@ CREATE INDEX IF NOT EXISTS idx_voiceovers_voice ON voiceovers(voice);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_status ON voiceovers(status);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_folder_id ON voiceovers(folder_id);
 CREATE INDEX IF NOT EXISTS idx_voiceovers_created ON voiceovers(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_voiceovers_updated_at ON voiceovers(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_voiceovers_duration ON voiceovers(duration_seconds) WHERE duration_seconds > 0;
+CREATE INDEX IF NOT EXISTS idx_voiceovers_strategy ON voiceovers(strategy) WHERE strategy != '';
+CREATE INDEX IF NOT EXISTS idx_voiceovers_status_updated ON voiceovers(status, updated_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_voiceovers_file_hash ON voiceovers(file_hash) WHERE file_hash IS NOT NULL AND file_hash != '';

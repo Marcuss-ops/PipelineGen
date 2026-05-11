@@ -3,16 +3,10 @@ package assettree
 import (
 	"context"
 	"database/sql"
-	"embed"
-	"fmt"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
 )
-
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
 
 // AssetNode represents a node in the asset tree hierarchy
 type AssetNode struct {
@@ -31,6 +25,7 @@ type AssetNode struct {
 	Metadata    string    `json:"metadata"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	ChildCount  int       `json:"child_count,omitempty"`
 }
 
 // Repository manages the asset tree nodes in the database.
@@ -41,76 +36,10 @@ type Repository struct {
 
 // NewRepository creates a new repository for asset trees.
 func NewRepository(db *sql.DB, log *zap.Logger) (*Repository, error) {
-	if err := runMigrations(db, log); err != nil {
-		return nil, err
-	}
 	return &Repository{
 		db:  db,
 		log: log,
 	}, nil
-}
-
-func runMigrations(db *sql.DB, log *zap.Logger) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version TEXT PRIMARY KEY,
-			applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-		)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create schema_migrations table: %w", err)
-	}
-
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
-		return fmt.Errorf("failed to read migrations directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
-			continue
-		}
-
-		version := entry.Name()
-		var count int
-		err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = ?", version).Scan(&count)
-		if err == nil && count > 0 {
-			continue
-		}
-
-		log.Info("Applying asset tree migration", zap.String("version", version))
-		content, err := migrationsFS.ReadFile("migrations/" + version)
-		if err != nil {
-			return fmt.Errorf("failed to read migration %s: %w", version, err)
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-
-		for _, stmt := range strings.Split(string(content), ";") {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
-			}
-			if _, err := tx.Exec(stmt); err != nil {
-				tx.Rollback()
-				return fmt.Errorf("failed to execute statement in %s: %w\nStmt: %s", version, err, stmt)
-			}
-		}
-
-		if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("failed to record migration %s: %w", version, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // UpsertNode inserts or updates an asset node.
@@ -162,14 +91,12 @@ func (r *Repository) GetChildren(ctx context.Context, source, parentID string) (
 
 // GetChildrenPaged returns the direct children of a given parent node within a source with pagination.
 func (r *Repository) GetChildrenPaged(ctx context.Context, source, parentID string, limit, offset int) ([]*AssetNode, error) {
-	query := `
-		SELECT id, source, COALESCE(asset_id, ''), name, type, COALESCE(parent_id, ''), COALESCE(root_id, ''), path, depth, is_folder,
-		       COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(metadata, '{}'), created_at, updated_at
+	query := `SELECT id, source, asset_id, name, type, parent_id, root_id, path, depth, is_folder, drive_file_id, drive_link, metadata, created_at, updated_at,
+		(SELECT COUNT(*) FROM asset_tree_nodes c WHERE c.parent_id = asset_tree_nodes.id) AS child_count
 		FROM asset_tree_nodes
 		WHERE source = ? AND parent_id = ?
 		ORDER BY is_folder DESC, name ASC
-		LIMIT ? OFFSET ?
-	`
+		LIMIT ? OFFSET ?`
 	rows, err := r.db.QueryContext(ctx, query, source, parentID, limit, offset)
 	if err != nil {
 		return nil, err
@@ -191,8 +118,9 @@ func (r *Repository) GetChildrenPaged(ctx context.Context, source, parentID stri
 // GetNode returns a single node by its ID.
 func (r *Repository) GetNode(ctx context.Context, id string) (*AssetNode, error) {
 	query := `
-		SELECT id, source, COALESCE(asset_id, ''), name, type, COALESCE(parent_id, ''), COALESCE(root_id, ''), path, depth, is_folder,
-		       COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(metadata, '{}'), created_at, updated_at
+		SELECT id, source, asset_id, name, type, parent_id, root_id, path, depth, is_folder,
+		       drive_file_id, drive_link, metadata, created_at, updated_at,
+		       (SELECT COUNT(*) FROM asset_tree_nodes c WHERE c.parent_id = asset_tree_nodes.id) AS child_count
 		FROM asset_tree_nodes
 		WHERE id = ?
 	`
@@ -214,25 +142,24 @@ func (r *Repository) DeleteByAssetID(ctx context.Context, source, assetID string
 
 func (r *Repository) scanNode(scanner interface{ Scan(dest ...any) error }) (*AssetNode, error) {
 	var node AssetNode
-	var isFolderInt int
-	var createdAtStr, updatedAtStr string
+	var createdAt, updatedAt string
 
 	err := scanner.Scan(
-		&node.ID, &node.Source, &node.AssetID, &node.Name, &node.Type, &node.ParentID, &node.RootID, &node.Path,
-		&node.Depth, &isFolderInt, &node.DriveFileID, &node.DriveLink, &node.Metadata,
-		&createdAtStr, &updatedAtStr,
+		&node.ID, &node.Source, &node.AssetID, &node.Name, &node.Type, &node.ParentID,
+		&node.RootID, &node.Path, &node.Depth, &node.IsFolder, &node.DriveFileID,
+		&node.DriveLink, &node.Metadata, &createdAt, &updatedAt, &node.ChildCount,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	node.IsFolder = isFolderInt > 0
-	if t, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+	if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
 		node.CreatedAt = t
 	}
-	if t, err := time.Parse(time.RFC3339, updatedAtStr); err == nil {
+	if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
 		node.UpdatedAt = t
 	}
+
 	return &node, nil
 }
 

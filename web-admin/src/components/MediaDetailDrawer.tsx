@@ -43,7 +43,7 @@ export function MediaDetailDrawer({
       folder_id: item.folder_id,
       folder_path: item.folder_path,
       duration: item.duration,
-      metadata: safeJson(item.metadata),
+      metadata: safeJson(item.metadata, {}),
       status: item.status,
       error: item.error,
     });
@@ -194,7 +194,6 @@ function isVideoAsset(item: MediaItem): boolean {
   return (
     item.source === "artlist" ||
     item.source === "youtube" ||
-    item.source === "clips" ||
     item.source === "stock" ||
     filename.endsWith(".mp4") ||
     filename.endsWith(".mov") ||

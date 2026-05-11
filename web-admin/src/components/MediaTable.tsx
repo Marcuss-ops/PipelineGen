@@ -38,7 +38,7 @@ export function MediaTable({
         <input type="checkbox" checked={allSelected} onChange={(event) => onSelectAll(event.target.checked)} className="h-4 w-4 rounded border-zinc-300" />
         <span>Preview</span>
         <span>Asset / Folder</span>
-        <span className="max-xl:hidden">Coerenza</span>
+        <span className="max-xl:hidden">Elementi</span>
         <span className="max-lg:hidden">Aggiornato</span>
         <span className="text-right">Azioni</span>
       </div>
@@ -101,8 +101,22 @@ export function MediaTable({
                 </div>
               </div>
               <div className="space-y-1 text-xs max-xl:hidden">
-                <div className="flex items-center gap-2 text-zinc-600"><Cloud className="h-3.5 w-3.5" /> {item.drive_link ? 'Drive ok' : 'Drive mancante'}</div>
-                {!item.is_folder && <div className="flex items-center gap-2 text-zinc-600"><Check className="h-3.5 w-3.5" /> {item.file_hash ? 'Hash ok' : 'Hash mancante'}</div>}
+                {item.is_folder ? (
+                  <div className="font-black text-blue-600 dark:text-blue-400 text-sm">
+                    {item.child_count || 0} <span className="text-[10px] uppercase font-bold text-zinc-400 ml-1">elementi</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                      <Cloud className={`h-3 w-3 ${item.drive_link ? 'text-emerald-500' : 'text-red-500'}`} />
+                      {item.drive_link ? 'Drive ok' : 'Mancante'}
+                    </div>
+                    <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                      <Check className={`h-3 w-3 ${item.file_hash ? 'text-emerald-500' : 'text-zinc-400'}`} />
+                      {item.file_hash ? 'Hash ok' : 'No hash'}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="text-xs text-zinc-500 max-lg:hidden">{formatDate(item.updated_at)}</div>
               <div className="flex justify-end gap-1">

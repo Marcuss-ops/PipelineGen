@@ -428,6 +428,69 @@ func (s *Service) SyncAssets() error {
 }
 
 func (s *Service) SyncFromDrive(ctx context.Context) error {
+	if s.driveSvc == nil || s.driveFolderID == "" {
+		return fmt.Errorf("drive service or folder ID not configured")
+	}
+
+	s.log.Info("Starting images sync from Drive", zap.String("folder_id", s.driveFolderID))
+	return s.syncFolderRecursive(ctx, s.driveFolderID, "")
+}
+
+func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath string) error {
+	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
+	fl, err := s.driveSvc.Files.List().
+		Q(query).
+		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
+		PageSize(1000).
+		Context(ctx).
+		Do()
+	if err != nil {
+		return err
+	}
+
+	for _, file := range fl.Files {
+		if file.MimeType == "application/vnd.google-apps.folder" {
+			newPath := filepath.Join(folderPath, file.Name)
+			if err := s.syncFolderRecursive(ctx, file.Id, newPath); err != nil {
+				s.log.Warn("failed to sync subfolder", zap.String("id", file.Id), zap.Error(err))
+			}
+			continue
+		}
+
+		// Skip non-image files (basic check)
+		lowerName := strings.ToLower(file.Name)
+		if !strings.HasSuffix(lowerName, ".jpg") && !strings.HasSuffix(lowerName, ".jpeg") && 
+		   !strings.HasSuffix(lowerName, ".png") && !strings.HasSuffix(lowerName, ".webp") {
+			continue
+		}
+
+		// Check if already exists by Drive ID
+		existing, err := s.repo.GetByDriveFileID(ctx, file.Id)
+		if err == nil && existing != nil {
+			continue
+		}
+
+		// Create metadata-only record
+		// Note: We don't have the hash yet, so we use a placeholder or the Drive ID
+		// IngestImage would be better but it downloads the file.
+		// For population, we just want the record.
+		
+		asset := &models.ImageAsset{
+			SubjectID:    Slugify(file.Name),
+			Hash:         "drive_" + file.Id, // Placeholder hash
+			PathRel:      "", // No local path yet
+			SourceURL:    file.WebViewLink,
+			Description:  "Synced from Drive: " + file.Name,
+			DriveFileID:  file.Id,
+			Status:       "ready",
+			MetadataJSON: "{}",
+		}
+
+		if _, err := s.repo.AddImage(asset); err != nil {
+			s.log.Warn("failed to add synced image", zap.String("name", file.Name), zap.Error(err))
+		}
+	}
+
 	return nil
 }
 

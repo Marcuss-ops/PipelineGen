@@ -15,4 +15,5 @@ type AssetNode struct {
 	DriveFileID string `json:"drive_file_id"`
 	DriveLink   string `json:"drive_link"`
 	Metadata    string `json:"metadata"`
+	ChildCount  int    `json:"child_count,omitempty"`
 }

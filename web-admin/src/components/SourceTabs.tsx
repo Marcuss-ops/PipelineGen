@@ -11,7 +11,7 @@ export function SourceTabs({ active, counts, onChange }: { active: MediaSource; 
           return (
             <button
               key={source.id}
-              onClick={() => onChange(source.id)}
+              onClick={() => onChange(source.id as MediaSource)}
               className={cn('relative flex h-16 items-center gap-3 border-b-2 px-6 text-base font-semibold transition', isActive ? 'border-zinc-950 text-zinc-950 dark:border-white dark:text-white' : 'border-transparent text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300')}
             >
               <span className={cn('h-3 w-3 rounded-full', source.accent)} />

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueries, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Plus, Search, Trash2, RefreshCw, Folder, Tags, ShieldAlert } from 'lucide-react';
+import { Plus, Search, Trash2, RefreshCw, Folder, Tags, ShieldAlert, Activity, Video } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
-import { bulkAddTags, bulkRemoveTags, cleanupOrphans, bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages } from '../api/media';
+import { bulkAddTags, bulkRemoveTags, cleanupOrphans, bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages, searchLive } from '../api/media';
 import { getTree, getBreadcrumb, type AssetNode } from '../api/assets';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
@@ -22,6 +22,8 @@ export function MediaAdminPage() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<MediaItem | null>(null);
+  const [isLiveSearch, setIsLiveSearch] = useState(false);
+  const [liveResults, setLiveResults] = useState<any>(null);
   const [notice, setNotice] = useState<string>('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [activeFolderId, setActiveFolderId] = useState<string>('root');
@@ -51,7 +53,7 @@ export function MediaAdminPage() {
       if (lastPage.length < 50) return undefined;
       return allPages.length * 50;
     },
-    enabled: search !== '',
+    enabled: search !== '' && !isLiveSearch,
   });
 
   const allSourceQueries = useQueries({
@@ -183,6 +185,18 @@ export function MediaAdminPage() {
     onError: (err) => setNotice(`Errore sinc: ${err}`),
   });
 
+  const handleLiveSearch = async () => {
+    if (!search) return;
+    setNotice('Ricerca live in corso...');
+    try {
+      const results = await searchLive(search);
+      setLiveResults(results);
+      setNotice(`Ricerca completata: trovati ${results.youtube?.count || 0} video su YouTube`);
+    } catch (err) {
+      setNotice(`Errore ricerca live: ${err}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -203,6 +217,8 @@ export function MediaAdminPage() {
             tags: [],
             search_terms: [],
             is_folder: false,
+            type: 'clip',
+            folder_path: 'root',
             status: 'draft',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -214,17 +230,41 @@ export function MediaAdminPage() {
 
 
       <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); setActiveFolderId('root'); }} />
+        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); setActiveFolderId('root'); setIsLiveSearch(false); setLiveResults(null); }} />
         <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{sourceById[source].label}</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">{sourceById[source].description}</p>
           </div>
-          <div className="relative w-full md:max-w-md flex gap-2">
+          <div className="relative w-full md:max-w-xl flex gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Cerca in ${sourceById[source].label}...`} className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:focus:border-blue-500 dark:focus:bg-zinc-900" />
+              <input 
+                value={search} 
+                onChange={(event) => setSearch(event.target.value)} 
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && isLiveSearch) {
+                    handleLiveSearch();
+                  }
+                }}
+                placeholder={isLiveSearch ? "Cerca ovunque (es: chuck norris -15)..." : `Cerca in ${sourceById[source].label}...`} 
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:focus:border-blue-500 dark:focus:bg-zinc-900" 
+              />
             </div>
+            <Button 
+              variant={isLiveSearch ? 'primary' : 'secondary'} 
+              onClick={() => {
+                if (isLiveSearch && search) {
+                  handleLiveSearch();
+                } else {
+                  setIsLiveSearch(!isLiveSearch);
+                }
+              }}
+              className="whitespace-nowrap"
+            >
+              <Activity className={cn("h-4 w-4 mr-2", isLiveSearch && "animate-pulse")} />
+              {isLiveSearch ? 'Cerca Live' : 'Live Mode'}
+            </Button>
           </div>
         </div>
       </section>
@@ -244,45 +284,90 @@ export function MediaAdminPage() {
 
       {notice && <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm">{notice}</div>}
 
-      {search === '' && (
-        <HierarchyNavigator 
-          breadcrumb={breadcrumb} 
-          onNavigate={(id) => setActiveFolderId(id)} 
-        />
+      {isLiveSearch && liveResults && (
+        <div className="space-y-6">
+          {liveResults.youtube && liveResults.youtube.results.length > 0 && (
+            <div className="bg-white rounded-3xl border border-zinc-200 p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Video className="w-5 h-5 text-red-600" />
+                <h2 className="text-lg font-bold">Risultati YouTube</h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {liveResults.youtube.results.map((item: any) => (
+                  <div key={item.id} className="group relative bg-zinc-50 rounded-2xl overflow-hidden border border-zinc-100 hover:shadow-lg transition-all">
+                    <img src={item.thumb_url || item.thumbnail} alt={item.name} className="w-full aspect-video object-cover" />
+                    <div className="p-3">
+                      <h4 className="text-sm font-semibold truncate">{item.name}</h4>
+                      <p className="text-[10px] text-zinc-500 mt-1">{item.duration}s</p>
+                      <Button 
+                        size="sm" 
+                        className="w-full mt-2" 
+                        onClick={() => {
+                          // Handle extraction job start
+                          setNotice(`Avviata estrazione per ${item.name}`);
+                          apiFetch('/api/assets/youtube/clips', {
+                            method: 'POST',
+                            body: JSON.stringify({ 
+                              video_url: item.external_url || `https://youtube.com/watch?v=${item.id}`,
+                              name: item.name
+                            })
+                          }).catch(err => setNotice(`Errore: ${err}`));
+                        }}
+                      >
+                        Estrai Clip
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
-      <MediaTable
-        items={filteredItems}
-        selected={selected}
-        onSelect={(id, checked) => setSelected((previous) => { const next = new Set(previous); checked ? next.add(id) : next.delete(id); return next; })}
-        onSelectAll={(checked) => setSelected(checked ? new Set(filteredItems.map((item) => item.id)) : new Set())}
-        onOpen={setEditing}
-        onEdit={setEditing}
-        onVerify={(item) => actionMutation.mutate({ action: 'verify', item })}
-        onReprocess={(item) => actionMutation.mutate({ action: 'reprocess', item })}
-        onReupload={(item) => actionMutation.mutate({ action: 'reupload', item })}
-        onTrash={(item) => actionMutation.mutate({ action: 'trash', item })}
-        onFolderClick={(id) => setActiveFolderId(id)}
-      />
+      {!isLiveSearch && (
+        <>
+          {search === '' && (
+            <HierarchyNavigator 
+              breadcrumb={breadcrumb} 
+              onNavigate={(id) => setActiveFolderId(id)} 
+            />
+          )}
 
-      {search !== '' && mediaQuery.hasNextPage && (
-        <div className="mt-8 flex justify-center">
-          <Button 
-            variant="secondary" 
-            onClick={() => mediaQuery.fetchNextPage()} 
-            disabled={mediaQuery.isFetchingNextPage}
-            className="w-full max-w-xs"
-          >
-            {mediaQuery.isFetchingNextPage ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Caricamento...
-              </>
-            ) : (
-              'Carica altri asset'
-            )}
-          </Button>
-        </div>
+          <MediaTable
+            items={filteredItems}
+            selected={selected}
+            onSelect={(id, checked) => setSelected((previous) => { const next = new Set(previous); checked ? next.add(id) : next.delete(id); return next; })}
+            onSelectAll={(checked) => setSelected(checked ? new Set(filteredItems.map((item) => item.id)) : new Set())}
+            onOpen={setEditing}
+            onEdit={setEditing}
+            onVerify={(item) => actionMutation.mutate({ action: 'verify', item })}
+            onReprocess={(item) => actionMutation.mutate({ action: 'reprocess', item })}
+            onReupload={(item) => actionMutation.mutate({ action: 'reupload', item })}
+            onTrash={(item) => actionMutation.mutate({ action: 'trash', item })}
+            onFolderClick={(id) => setActiveFolderId(id)}
+          />
+
+          {search !== '' && mediaQuery.hasNextPage && (
+            <div className="mt-8 flex justify-center">
+              <Button 
+                variant="secondary" 
+                onClick={() => mediaQuery.fetchNextPage()} 
+                disabled={mediaQuery.isFetchingNextPage}
+                className="w-full max-w-xs"
+              >
+                {mediaQuery.isFetchingNextPage ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Caricamento...
+                  </>
+                ) : (
+                  'Carica altri asset'
+                )}
+              </Button>
+            </div>
+          )}
+        </>
       )}
 
       <MediaDetailDrawer

@@ -18,22 +18,21 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 - **Ogni database deve avere solo le tabelle necessarie** al servizio che lo usa
 - **Non applicare migration generiche a più database se creano tabelle non usate da quel database.**
 - Schema desiderato:
-  - `velox.db.sqlite`: scripts, monitored_sources, harvester_jobs, media_items, media_files, media_tags, video_metadata, script_stock_matches, video_stats_history, artlist_runs
-  - `stock.db.sqlite`: clips (stock), clip_folders (stock)
-  - `clips.db.sqlite`: clips (YouTube), clip_folders, segment_embeddings
-  - `artlist.db.sqlite`: clips (Artlist, with `search_text` TEXT, `embedding_json` TEXT), clip_folders, artlist_runs
-  - `images.db.sqlite`: (vuoto o image tables)
-  - `voiceover.db.sqlite`: (vuoto o voiceover tables)
-  - `jobs.db.sqlite`: jobs, job_events
+  - `data/velox/velox.db.sqlite`: Generic (scripts, jobs, asset_index, media, harvester, pipeline_runs)
+  - `data/stock/stock.db.sqlite`: Stock footage metadata
+  - `data/clips/clips.db.sqlite`: YouTube clips metadata
+  - `data/artlist/artlist.db.sqlite`: Artlist assets metadata
+  - `data/images/images.db.sqlite`: Images metadata
+  - `data/voiceover/voiceover.db.sqlite`: Voiceover metadata
 
 ## Architecture
 
 ### Core Components
 - **Server**: Go binary (`pipelinegen`) using Gin web framework
 - **Database**: SQLite with WAL mode
-  - `velox.db.sqlite` - Main database (clips, channels, monitored sources)
-  - `jobs.db.sqlite` - Job queue database
-  - `artlist.db.sqlite` - Artlist scraper database, stores clip metadata updated by clipindexer
+  - `data/velox/velox.db.sqlite` - Main database (Scripts, Jobs, Asset Index, Media)
+  - `data/clips/clips.db.sqlite` - YouTube clips metadata
+  - `data/artlist/artlist.db.sqlite` - Artlist scraper database
 - **Storage**: Google Drive integration for clip uploads
 - **Workers**: 2 background job workers for async processing
 
@@ -59,6 +58,7 @@ All SQLite connections should use:
 - **Busy timeout**: 5000ms
 - **Connection pool**: Max 5-10 open connections, 2-5 idle
 - **Pragmas**: `journal_mode=WAL`, `busy_timeout=5000`, `synchronous=NORMAL`, `cache_size=-2000`
+- **Mapping**: Le associazioni tra moduli e database sono centralizzate in `internal/storage/db_config.go`.
 
 ## API Endpoints
 
@@ -111,18 +111,18 @@ Generates a 1080p zoom-out video (MP4) from a stored image.
 
 ### Check Database Tables
 ```bash
-sqlite3 data/velox.db.sqlite ".tables"
-sqlite3 data/jobs.db.sqlite ".schema jobs"
+sqlite3 data/velox/velox.db.sqlite ".tables"
+sqlite3 data/jobs/jobs.db.sqlite ".schema jobs"
 ```
 
 ### Clipindexer Testing
 Test the Python script manually:
 ```bash
-python3 scripts/index_clips.py --db data/artlist.db.sqlite --clip-id <CLIP_ID>
+python3 scripts/index_clips.py --db data/artlist/artlist.db.sqlite --clip-id <CLIP_ID>
 ```
 Verify metadata updates:
 ```bash
-sqlite3 data/artlist.db.sqlite "SELECT search_text, embedding_json FROM clips WHERE id = <CLIP_ID>;"
+sqlite3 data/artlist/artlist.db.sqlite "SELECT search_text, embedding_json FROM clips WHERE id = <CLIP_ID>;"
 ```
 
 ## Known Issues & Fixes

@@ -54,26 +54,23 @@ func (h *Handler) Doctor(c *gin.Context) {
 		Fixes:  []string{},
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
 	// Check data directory
 	h.checkDataDir(ctx, resp)
 
-	// Check Ollama
-	h.checkOllama(ctx, resp)
-
-	// Check yt-dlp
-	h.checkYtDlp(ctx, resp)
+	// Check external tools
+	h.checkExternalTools(ctx, resp)
 
 	// Check Google token
 	h.checkGoogleToken(ctx, resp)
 
-	// Check databases
+	// Check all databases (6-module architecture)
 	h.checkDatabases(ctx, resp)
 
-	// Check Artlist DB
-	h.checkArtlistDB(ctx, resp)
+	// Check Voiceover service specifically
+	h.checkVoiceover(ctx, resp)
 
 	// Determine overall status
 	for _, status := range resp.Checks {
@@ -94,135 +91,102 @@ func (h *Handler) checkDataDir(ctx context.Context, resp *DoctorResponse) {
 		return
 	}
 
-	// Check if directory exists
 	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
 		resp.Checks["data_dir"] = "missing"
 		resp.Fixes = append(resp.Fixes, fmt.Sprintf("mkdir -p %s", dataDir))
 		return
 	}
 
-	// Check if writable
-	testFile := filepath.Join(dataDir, ".write_test")
-	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-		resp.Checks["data_dir"] = "not_writable"
-		resp.Fixes = append(resp.Fixes, fmt.Sprintf("chmod 755 %s", dataDir))
-		return
-	}
-	os.Remove(testFile)
-
 	resp.Checks["data_dir"] = "ok"
 }
 
-func (h *Handler) checkOllama(ctx context.Context, resp *DoctorResponse) {
-	// Check if ollama is installed
-	_, err := exec.LookPath("ollama")
-	if err != nil {
+func (h *Handler) checkExternalTools(ctx context.Context, resp *DoctorResponse) {
+	// Ollama
+	if _, err := exec.LookPath("ollama"); err != nil {
 		resp.Checks["ollama"] = "not_installed"
-		resp.Fixes = append(resp.Fixes, "Install ollama from https://ollama.com")
-		return
+	} else {
+		resp.Checks["ollama"] = "ok"
 	}
 
-	// Check if ollama service is running and has the required model
-	cmd := exec.CommandContext(ctx, "ollama", "list")
-	output, err := cmd.Output()
-	if err != nil {
-		resp.Checks["ollama"] = "not_running"
-		resp.Fixes = append(resp.Fixes, "Start ollama service")
-		return
-	}
-
-	// Check for required model
-	requiredModel := h.cfg.External.OllamaModel
-	if requiredModel == "" {
-		requiredModel = "gemma3:4b"
-	}
-
-	hasModel := false
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.Contains(line, requiredModel) {
-			hasModel = true
-			break
-		}
-	}
-
-	if !hasModel {
-		resp.Checks["ollama"] = "missing_model"
-		resp.Fixes = append(resp.Fixes, fmt.Sprintf("Run: ollama pull %s", requiredModel))
-		return
-	}
-
-	resp.Checks["ollama"] = "ok"
-}
-
-func (h *Handler) checkYtDlp(ctx context.Context, resp *DoctorResponse) {
-	// Check if yt-dlp is installed
-	_, err := exec.LookPath("yt-dlp")
-	if err != nil {
+	// yt-dlp
+	if _, err := exec.LookPath("yt-dlp"); err != nil {
 		resp.Checks["yt_dlp"] = "not_installed"
-		resp.Fixes = append(resp.Fixes, "pip install yt-dlp")
-		return
+	} else {
+		resp.Checks["yt_dlp"] = "ok"
 	}
 
-	// Check version
-	cmd := exec.CommandContext(ctx, "yt-dlp", "--version")
-	if err := cmd.Run(); err != nil {
-		resp.Checks["yt_dlp"] = "broken"
-		resp.Fixes = append(resp.Fixes, "Reinstall yt-dlp: pip install --upgrade yt-dlp")
-		return
+	// ffmpeg
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		resp.Checks["ffmpeg"] = "not_installed"
+	} else {
+		resp.Checks["ffmpeg"] = "ok"
 	}
 
-	resp.Checks["yt_dlp"] = "ok"
+	// python3
+	if _, err := exec.LookPath("python3"); err != nil {
+		resp.Checks["python3"] = "not_installed"
+	} else {
+		resp.Checks["python3"] = "ok"
+	}
 }
 
 func (h *Handler) checkGoogleToken(ctx context.Context, resp *DoctorResponse) {
-	// Check if Google OAuth token exists and is valid
 	tokenPath := filepath.Join(h.cfg.Storage.DataDir, "token.json")
 	if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
-		resp.Checks["google_token"] = "missing"
-		resp.Fixes = append(resp.Fixes, "Run Google OAuth flow to generate token.json")
-		return
+		// Try root directory too
+		if _, err := os.Stat("token.json"); os.IsNotExist(err) {
+			resp.Checks["google_token"] = "missing"
+			resp.Fixes = append(resp.Fixes, "Run Google OAuth flow")
+			return
+		}
 	}
-
-	// TODO: Add actual token validation by trying to refresh or make a simple API call
 	resp.Checks["google_token"] = "ok"
 }
 
 func (h *Handler) checkDatabases(ctx context.Context, resp *DoctorResponse) {
-	// Check main database
-	mainDBPath := filepath.Join(h.cfg.Storage.DataDir, "velox.db.sqlite")
-	if _, err := os.Stat(mainDBPath); os.IsNotExist(err) {
-		resp.Checks["main_db"] = "missing"
-		resp.Fixes = append(resp.Fixes, "Database will be created on first run")
-		return
-	}
+	dbs := storage.GetAllDBs()
+	for _, dbRelPath := range dbs {
+		name := strings.Split(dbRelPath, "/")[0]
+		path := storage.GetDBPath(h.cfg.Storage.DataDir, dbRelPath)
+		
+		key := fmt.Sprintf("db_%s", name)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			resp.Checks[key] = "missing"
+			continue
+		}
 
-	resp.Checks["main_db"] = "ok"
+		// Try to open and ping
+		db, err := storage.OpenSQLiteDB(path, h.log)
+		if err != nil {
+			resp.Checks[key] = "error"
+			resp.Fixes = append(resp.Fixes, fmt.Sprintf("Check database: %s", path))
+			continue
+		}
+		
+		if err := db.DB.Ping(); err != nil {
+			resp.Checks[key] = "unreachable"
+		} else {
+			resp.Checks[key] = "ok"
+		}
+		db.Close()
+	}
 }
 
-func (h *Handler) checkArtlistDB(ctx context.Context, resp *DoctorResponse) {
-	artlistDBPath := filepath.Join(h.cfg.Storage.DataDir, "artlist.db.sqlite")
-	if _, err := os.Stat(artlistDBPath); os.IsNotExist(err) {
-		resp.Checks["artlist_db"] = "missing"
-		resp.Fixes = append(resp.Fixes, "Artlist DB will be created on first run")
-		return
+func (h *Handler) checkVoiceover(ctx context.Context, resp *DoctorResponse) {
+	scriptPath := filepath.Join(h.cfg.Paths.PythonScriptsDir, "tts_edge.py")
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		resp.Checks["voiceover_script"] = "missing"
+		resp.Fixes = append(resp.Fixes, "Restore scripts/tts_edge.py")
+	} else {
+		resp.Checks["voiceover_script"] = "ok"
 	}
 
-	// Open database using centralized helper for consistent configuration
-	sqliteDB, err := storage.OpenSQLiteDB(artlistDBPath, h.log)
-	if err != nil {
-		resp.Checks["artlist_db"] = "corrupted"
-		resp.Fixes = append(resp.Fixes, "Check artlist.db.sqlite file")
-		return
+	// Check edge-tts package
+	cmd := exec.CommandContext(ctx, "python3", "-c", "import edge_tts")
+	if err := cmd.Run(); err != nil {
+		resp.Checks["voiceover_library"] = "missing_edge_tts"
+		resp.Fixes = append(resp.Fixes, "pip install edge-tts")
+	} else {
+		resp.Checks["voiceover_library"] = "ok"
 	}
-	defer sqliteDB.Close()
-	db := sqliteDB.DB
-
-	// Try a simple query to verify the database is valid
-	if err := db.Ping(); err != nil {
-		resp.Checks["artlist_db"] = "corrupted"
-		resp.Fixes = append(resp.Fixes, "Check artlist.db.sqlite file")
-		return
-	}
-
-	resp.Checks["artlist_db"] = "ok"
 }

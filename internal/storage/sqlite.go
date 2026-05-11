@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -29,6 +30,13 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 		log.Info("Creating in-memory SQLite database")
 	} else {
 		dbPath = filepath.Join(dataDir, dbName)
+		
+		// Ensure parent directory exists
+		parentDir := filepath.Dir(dbPath)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create database directory %s: %w", parentDir, err)
+		}
+		
 		dsn = dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	}
 
@@ -136,14 +144,22 @@ func (s *SQLiteDB) RunMigrations(log *zap.Logger, migrationsDir string) error {
 	return runner.RunMigrations()
 }
 
-// Backup creates a backup of the database file.
-// For in-memory databases, this is a no-op.
+// Backup creates a backup of the database file in a 'backups' subdirectory.
 func (s *SQLiteDB) Backup() error {
 	if s.dbPath == "" || s.dbPath == ":memory:" {
-		return nil // No file to backup for in-memory databases
+		return nil
 	}
 
-	backupPath := s.dbPath + time.Now().Format(".20060102_150405.bak")
+	// Ensure we use the directory where the database file is located
+	dataDir := filepath.Dir(s.dbPath)
+	backupDir := filepath.Join(dataDir, "backups")
+	
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return fmt.Errorf("failed to create backup directory %s: %w", backupDir, err)
+	}
+
+	dbName := filepath.Base(s.dbPath)
+	backupPath := filepath.Join(backupDir, dbName+time.Now().Format(".20060102_150405.bak"))
 	return s.BackupTo(backupPath)
 }
 

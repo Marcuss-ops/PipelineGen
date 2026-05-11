@@ -1,80 +1,78 @@
-// Package bootstrap initializes the application: databases, migrations, and service wiring.
-//
-// Database Architecture:
-//   - velox.db.sqlite  → mainDB: scripts, media_items, monitored_sources, harvester_jobs
-//   - stock.db.sqlite  → stockDB: stock footage clips
-//   - clips.db.sqlite  → clipsDB: YouTube clips + segment_embeddings
-//   - artlist.db.sqlite → artlistDB: Artlist assets
-//   - images.db.sqlite → imagesDB: placeholder for image tables
-//   - voiceover.db.sqlite → voiceoverDB: placeholder for voiceover tables
-//   - jobs.db.sqlite   → jobsDB: job queue
-//
-// See docs/sqlite-databases.md for schema boundaries and migration strategy.
 package bootstrap
 
 import (
 	"fmt"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/config"
-
-	"go.uber.org/zap"
 )
 
 type databases struct {
-	main      *storage.SQLiteDB
-	stock     *storage.SQLiteDB
-	clips     *storage.SQLiteDB
-	artlist   *storage.SQLiteDB
-	images    *storage.SQLiteDB
-	voiceover *storage.SQLiteDB
-	assets    *storage.SQLiteDB
-	jobs      *storage.SQLiteDB
+	main      *storage.SQLiteDB // General (Scripts, Runs, Jobs, Asset Index)
+	stock     *storage.SQLiteDB // Stock footage
+	clips     *storage.SQLiteDB // YouTube clips
+	artlist   *storage.SQLiteDB // Artlist assets
+	images    *storage.SQLiteDB // Images
+	voiceover *storage.SQLiteDB // Voiceovers
+
+	// Aliases for unified access
+	jobs   *storage.SQLiteDB
+	assets *storage.SQLiteDB
+}
+
+func (d *databases) Close() {
+	if d.main != nil {
+		d.main.Close()
+	}
+	if d.stock != nil {
+		d.stock.Close()
+	}
+	if d.clips != nil {
+		d.clips.Close()
+	}
+	if d.artlist != nil {
+		d.artlist.Close()
+	}
+	if d.images != nil {
+		d.images.Close()
+	}
+	if d.voiceover != nil {
+		d.voiceover.Close()
+	}
 }
 
 func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
-	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "velox.db.sqlite", log)
+	// Initialize the 6 main databases
+	mainDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBVelox, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize main database: %w", err)
 	}
 
-	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "stock.db.sqlite", log)
+	stockDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBStock, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stock database: %w", err)
 	}
 
-	clipsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "clips.db.sqlite", log)
+	clipsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBClips, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize clips database: %w", err)
 	}
 
-	artlistDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "artlist.db.sqlite", log)
+	artlistDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBArtlist, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize artlist database: %w", err)
 	}
 
-	imagesDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "images.db.sqlite", log)
+	imagesDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBImages, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize images database: %w", err)
 	}
 
-	voiceoverDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "voiceover.db.sqlite", log)
+	voiceoverDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBVoiceover, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize voiceover database: %w", err)
 	}
-
-	jobsDB, err := storage.NewSQLiteDBWithMaxConns(cfg.Storage.DataDir, "jobs.db.sqlite", 1, log)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize jobs database: %w", err)
-	}
-
-	assetsDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, "assets.db.sqlite", log)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize assets database: %w", err)
-	}
-
-	// Log FTS5 status once (driver-dependent, not DB-dependent)
-	storage.LogFTS5Status(log, mainDB)
 
 	return &databases{
 		main:      mainDB,
@@ -83,7 +81,9 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		artlist:   artlistDB,
 		images:    imagesDB,
 		voiceover: voiceoverDB,
-		assets:    assetsDB,
-		jobs:      jobsDB,
+		
+		// Map aliases to the main database
+		jobs:   mainDB,
+		assets: mainDB,
 	}, nil
 }

@@ -23,6 +23,12 @@ func (h *Handler) resolveRepo(source string) *clips.Repository {
 		return h.clipsRepo
 	case "stock":
 		return h.stockRepo
+	case "voiceover":
+		// Note: Returns nil as voiceover doesn't use clips.Repository,
+		// but we allow the source check to pass elsewhere.
+		return nil
+	case "images":
+		return nil
 	default:
 		return nil
 	}

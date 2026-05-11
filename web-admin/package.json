@@ -17,6 +17,7 @@
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "react-hot-toast": "^2.6.0",
     "tailwind-merge": "latest",
     "typescript": "latest",
     "vite": "latest"

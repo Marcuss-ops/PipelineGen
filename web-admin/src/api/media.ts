@@ -14,7 +14,7 @@ type ApiClipResponse = {
 function normalizeClip(raw: any, source: MediaSource): MediaItem {
   return {
     id: String(raw.id ?? raw.clip_id ?? crypto.randomUUID()),
-    source: String(raw.source ?? source),
+    source: (raw.source ?? source) as MediaSource,
     name: raw.name ?? raw.title ?? raw.filename ?? 'Untitled asset',
     filename: raw.filename,
     category: raw.category,
@@ -34,9 +34,10 @@ function normalizeClip(raw: any, source: MediaSource): MediaItem {
     metadata: raw.metadata,
     created_at: raw.created_at,
     updated_at: raw.updated_at,
-    thumb_url: raw.thumb_url,
+    thumb_url: raw.thumb_url || raw.thumbnail,
     preview_url: raw.preview_url,
     is_folder: Boolean(raw.is_folder),
+    type: raw.type || (Boolean(raw.is_folder) ? 'folder' : 'file'),
   };
 }
 
@@ -47,7 +48,7 @@ export async function listMedia(source: MediaSource, q = '', limit = 100, offset
     params.set('limit', String(limit));
     params.set('offset', String(offset));
     
-    const data = await apiFetch<ApiClipResponse & { total?: number }>(`/api/media/${source}/clips?${params.toString()}`);
+    const data = await apiFetch<ApiClipResponse & { total?: number }>(`/api/assets/${source}/clips?${params.toString()}`);
     const list = data.clips ?? data.items ?? [];
     return {
       items: list.map((item) => normalizeClip(item, source)),
@@ -67,40 +68,40 @@ export async function listMedia(source: MediaSource, q = '', limit = 100, offset
 }
 
 export async function updateMedia(source: MediaSource, id: string, payload: ClipPayload) {
-  return apiFetch(`/api/media/${source}/clips/${id}`, {
+  return apiFetch(`/api/assets/${source}/clips/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
 }
 
 export async function createMedia(source: MediaSource, payload: ClipPayload) {
-  return apiFetch(`/api/media/${source}/clips`, {
+  return apiFetch(`/api/assets/${source}/clips`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 export async function verifyMedia(source: MediaSource, id: string) {
-  return apiFetch(`/api/media/${source}/clips/${id}/verify`, { method: 'POST' });
+  return apiFetch(`/api/assets/${source}/clips/${id}/verify`, { method: 'POST' });
 }
 
 export async function reprocessMedia(source: MediaSource, id: string) {
-  return apiFetch(`/api/media/${source}/clips/${id}/reprocess`, {
+  return apiFetch(`/api/assets/${source}/clips/${id}/reprocess`, {
     method: 'POST',
     body: JSON.stringify({ force: true, upload_drive: true, normalize: true }),
   });
 }
 
 export async function reuploadMedia(source: MediaSource, id: string) {
-  return apiFetch(`/api/media/${source}/clips/${id}/reupload`, { method: 'POST' });
+  return apiFetch(`/api/assets/${source}/clips/${id}/reupload`, { method: 'POST' });
 }
 
 export async function trashMedia(source: MediaSource, id: string) {
-  return apiFetch(`/api/media/${source}/clips/${id}/trash`, { method: 'POST' });
+  return apiFetch(`/api/assets/${source}/clips/${id}/trash`, { method: 'POST' });
 }
 
 export async function deleteMedia(source: MediaSource, id: string) {
-  return apiFetch(`/api/media/${source}/clips/${id}/delete`, { method: 'POST' });
+  return apiFetch(`/api/assets/${source}/clips/${id}/delete`, { method: 'POST' });
 }
 
 export async function findDuplicates(source: MediaSource, id: string) {
@@ -117,7 +118,7 @@ export async function findDuplicates(source: MediaSource, id: string) {
       local_path: string;
       thumb_url: string;
     }>;
-  }>(`/api/media/${source}/clips/${id}/duplicates`);
+  }>(`/api/assets/${source}/clips/${id}/duplicates`);
 }
 
 export async function bulkReprocessMedia(source: MediaSource, ids: string[]) {
@@ -133,14 +134,14 @@ export async function bulkTrashMedia(source: MediaSource, ids: string[]) {
 }
 
 export async function bulkAddTags(source: MediaSource, ids: string[], tags: string[]) {
-  return apiFetch(`/api/media/${source}/bulk/tags/add`, {
+  return apiFetch(`/api/assets/${source}/bulk/tags/add`, {
     method: 'POST',
     body: JSON.stringify({ ids, tags }),
   });
 }
 
 export async function bulkRemoveTags(source: MediaSource, ids: string[], tags: string[]) {
-  return apiFetch(`/api/media/${source}/bulk/tags/remove`, {
+  return apiFetch(`/api/assets/${source}/bulk/tags/remove`, {
     method: 'POST',
     body: JSON.stringify({ ids, tags }),
   });
@@ -153,7 +154,15 @@ export async function cleanupOrphans(source: MediaSource, dryRun = true) {
     orphans: string[];
     count: number;
     checked: number;
-  }>(`/api/media/${source}/cleanup-orphans?dry_run=${dryRun}`, { method: 'POST' });
+  }>(`/api/assets/${source}/cleanup?dry_run=${dryRun}`, { method: 'POST' });
+}
+
+export async function searchLive(q: string, limit = 20): Promise<any> {
+  return apiFetch(`/api/assets/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+}
+
+export async function getDiagnostics() {
+  return apiFetch<any>('/api/assets/diagnostics');
 }
 
 export async function syncImages() {

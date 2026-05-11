@@ -1,9 +1,9 @@
 export const SOURCES = [
-  { id: 'artlist', label: 'Artlist', description: 'Artlist assets' },
-  { id: 'youtube', label: 'YouTube', description: 'YouTube clips' },
-  { id: 'stock', label: 'Stock Footage', description: 'Raw clips from stock folders' },
-  { id: 'images', label: 'Images', description: 'Image assets from Drive' },
-  { id: 'voiceover', label: 'Voiceover', description: 'Generated voiceovers' }
+  { id: 'artlist', label: 'Artlist', description: 'Artlist assets', accent: 'bg-yellow-400' },
+  { id: 'youtube', label: 'YouTube', description: 'YouTube clips', accent: 'bg-red-500' },
+  { id: 'stock', label: 'Stock Footage', description: 'Raw clips from stock folders', accent: 'bg-blue-400' },
+  { id: 'images', label: 'Images', description: 'Image assets from Drive', accent: 'bg-green-400' },
+  { id: 'voiceover', label: 'Voiceover', description: 'Generated voiceovers', accent: 'bg-purple-400' }
 ];
 
 export const sourceById = SOURCES.reduce((acc, s) => {

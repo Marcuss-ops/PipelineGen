@@ -66,13 +66,14 @@ fi
 
 # 6. Check Database Tables
 echo -e "\n${YELLOW}6. Checking Artlist Database...${NC}"
-if [ -f "data/artlist.db.sqlite" ]; then
-    echo "Tables in artlist.db.sqlite:"
-    sqlite3 data/artlist.db.sqlite ".tables" 2>/dev/null || echo "sqlite3 not available"
+DB_PATH="data/artlist/artlist.db.sqlite"
+if [ -f "$DB_PATH" ]; then
+    echo "Tables in $DB_PATH:"
+    sqlite3 "$DB_PATH" ".tables" 2>/dev/null || echo "sqlite3 not available"
     echo -e "\nClips count:"
-    sqlite3 data/artlist.db.sqlite "SELECT COUNT(*) FROM clips;" 2>/dev/null || echo "N/A"
+    sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM clips;" 2>/dev/null || echo "N/A"
 else
-    echo -e "${RED}Database file not found${NC}"
+    echo -e "${RED}Database file not found at $DB_PATH${NC}"
 fi
 
 # 7. Test Recommend Endpoint (internal)

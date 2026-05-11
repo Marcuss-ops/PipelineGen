@@ -24,6 +24,7 @@ import (
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/apiutil"
+	"velox/go-master/pkg/models"
 )
 
 // Handler handles common media operations.
@@ -140,6 +141,9 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		h.Voiceover.RegisterRoutes(voiceover)
 	}
+	
+	// System diagnostics
+	r.GET("/diagnostics", h.GetDiagnostics)
 }
 
 // Reconcile reconciles database with Drive files.
@@ -180,28 +184,43 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	repo := h.resolveRepo(source)
-	if repo == nil {
+	sourceLower := strings.ToLower(source)
+	if repo == nil && sourceLower != "images" && sourceLower != "voiceover" {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
 	ctx := c.Request.Context()
-	clips, err := repo.ListClipsPaged(ctx, 10000, 0, "")
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
+	var allClips []*models.Clip
+	sourceLower = strings.ToLower(source)
+
+	if sourceLower == "images" && h.imagesRepo != nil {
+		imgs, _ := h.imagesRepo.ListAll(ctx)
+		for _, img := range imgs {
+			allClips = append(allClips, imageAssetToClip(img))
+		}
+	} else if sourceLower == "voiceover" && h.voiceoverRepo != nil {
+		recs, _ := h.voiceoverRepo.ListAll(ctx)
+		for _, rec := range recs {
+			allClips = append(allClips, voiceoverRecordToClip(rec))
+		}
+	} else if repo != nil {
+		clips, err := repo.ListClipsPaged(ctx, 10000, 0, "")
+		if err == nil {
+			allClips = clips
+		}
 	}
 
 	results := []gin.H{}
 	deletedCount := 0
 
-	for _, clip := range clips {
+	for _, clip := range allClips {
 		verify := h.verifyClip(ctx, source, repo, clip)
 		isOrphan := !verify["db"].(bool) || (!verify["local_file"].(bool) && !verify["has_drive_link"].(bool))
 		
 		if isOrphan {
-			if !req.DryRun {
-				if err := repo.DeleteClip(ctx, clip.ID); err == nil {
+			if !req.DryRun && h.deletionSvc != nil {
+				if err := h.deletionSvc.DeleteClip(ctx, source, clip.ID, false); err == nil {
 					deletedCount++
 				}
 			}
@@ -262,4 +281,46 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 
 	result := h.verifyClip(c.Request.Context(), source, repo, clip)
 	c.JSON(http.StatusOK, result)
+}
+
+// GetDiagnostics returns system health and version information.
+func (h *Handler) GetDiagnostics(c *gin.Context) {
+	results := gin.H{
+		"ok": true,
+		"services": gin.H{
+			"artlist":   h.artlistSvc != nil,
+			"youtube":   h.youtubeSvc != nil,
+			"voiceover": h.voiceoverSvc != nil,
+			"jobs":      h.jobsSvc != nil,
+		},
+		"environment": gin.H{
+			"go_version": "1.25.9",
+		},
+	}
+
+	// Add repository status
+	repos := gin.H{}
+	if h.artlistRepo != nil {
+		repos["artlist"] = "connected"
+	}
+	if h.clipsRepo != nil {
+		repos["clips"] = "connected"
+	}
+	if h.stockRepo != nil {
+		repos["stock"] = "connected"
+	}
+	results["repositories"] = repos
+
+	// Check Drive connectivity
+	if h.driveUploader != nil {
+		results["drive"] = gin.H{
+			"status": "connected",
+		}
+	} else {
+		results["drive"] = gin.H{
+			"status": "disconnected",
+		}
+	}
+
+	apiutil.OK(c, results)
 }

@@ -14,13 +14,14 @@ import (
 
 // ReconcileResult holds the result of a reconcile operation.
 type ReconcileResult struct {
-	Source                 string `json:"source"`
-	DryRun                 bool   `json:"dry_run"`
-	SQLiteMissingOnDrive   int    `json:"sqlite_missing_on_drive"`
-	DriveMissingInSQLite   int    `json:"drive_missing_in_sqlite"`
-	WouldDeleteSQLite      int    `json:"would_delete_sqlite"`
-	WouldInsertSQLite      int    `json:"would_insert_sqlite"`
-	MissingFileIDs        []string `json:"missing_file_ids,omitempty"`
+	Source                 string   `json:"source"`
+	DryRun                 bool     `json:"dry_run"`
+	SQLiteMissingOnDrive   int      `json:"sqlite_missing_on_drive"`
+	DriveMissingInSQLite   int      `json:"drive_missing_in_sqlite"`
+	DeletedFromSQLite      int      `json:"deleted_from_sqlite"`
+	AddedToSQLite          int      `json:"added_to_sqlite"`
+	MissingFileIDs         []string `json:"missing_file_ids,omitempty"`
+	OrphanedDriveFileIDs   []string `json:"orphaned_drive_file_ids,omitempty"`
 }
 
 // Service handles reconciliation between SQLite and Google Drive.
@@ -82,8 +83,18 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 
 		if !exists {
 			result.SQLiteMissingOnDrive++
-			result.WouldDeleteSQLite++
 			result.MissingFileIDs = append(result.MissingFileIDs, fileID)
+
+			if !dryRun {
+				if err := s.repo.DeleteClip(ctx, clip.ID); err != nil {
+					s.log.Error("failed to delete orphaned clip record",
+						zap.String("clip_id", clip.ID),
+						zap.Error(err),
+					)
+				} else {
+					result.DeletedFromSQLite++
+				}
+			}
 		}
 	}
 
@@ -104,7 +115,7 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 				// Check if this file exists in SQLite
 				if !sqliteClipIDs[file.Id] {
 					result.DriveMissingInSQLite++
-					result.WouldInsertSQLite++
+					result.OrphanedDriveFileIDs = append(result.OrphanedDriveFileIDs, file.Id)
 				}
 			}
 		}

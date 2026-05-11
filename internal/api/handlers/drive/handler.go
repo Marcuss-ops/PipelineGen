@@ -20,6 +20,7 @@ func NewHandler(reconcileSvc *drivereconcile.Service) *Handler {
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	zap.L().Info("RegisterRoutes called", zap.String("handler_addr", fmt.Sprintf("%p", h)))
 	r.POST("/reconcile", h.Reconcile)
+	r.POST("/cleanup", h.Cleanup)
 }
 
 // Reconcile checks for mismatches between SQLite and Google Drive.
@@ -43,6 +44,34 @@ func (h *Handler) Reconcile(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	result, err := h.reconcileSvc.Reconcile(ctx, req.Source, req.RootFolderID, req.DryRun)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, result)
+}
+
+// Cleanup performs orphan removal.
+// Body: { "source": "artlist", "root_folder_id": "xxx" }
+func (h *Handler) Cleanup(c *gin.Context) {
+	if h.reconcileSvc == nil {
+		apiutil.InternalError(c, fmt.Errorf("reconcile service not configured"))
+		return
+	}
+
+	var req struct {
+		Source       string `json:"source"`
+		RootFolderID string `json:"root_folder_id"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, "invalid request body")
+		return
+	}
+
+	ctx := c.Request.Context()
+	result, err := h.reconcileSvc.Reconcile(ctx, req.Source, req.RootFolderID, false)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
