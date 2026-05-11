@@ -52,6 +52,7 @@ const (
 	JobTypeSubtitleGenerate JobType = "subtitle.generate"
 	JobTypeRenderVideo      JobType = "render.video"
 	JobTypeYouTubeUpload    JobType = "youtube.upload"
+	JobTypeYouTubeClipExtract JobType = "youtube_clip.extract"
 	JobTypeCatalogSync      JobType = "catalog.sync"
 	JobTypeArtlistRun       JobType = "media.artlist"
 	JobTypeContentPackage   JobType = "content.package"

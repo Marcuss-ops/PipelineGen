@@ -36,6 +36,26 @@ func (h *Handler) Search(c *gin.Context) {
 
 	results := gin.H{}
 
+	// Search YouTube clips
+	if h.youtubeSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
+		// YouTube search is live and supports the "-N" limit suffix internally in s.SearchLive
+		ytResults, err := h.youtubeSvc.SearchLive(c.Request.Context(), req.Q, req.Limit)
+		if err != nil {
+			h.log.Warn("youtube search failed", zap.Error(err))
+			results["youtube"] = gin.H{
+				"count":   0,
+				"results": []interface{}{},
+				"error":   err.Error(),
+			}
+		} else {
+			results["youtube"] = gin.H{
+				"count":   len(ytResults),
+				"results": ytResults,
+				"source":  "live",
+			}
+		}
+	}
+
 	// Search Artlist clips
 	if h.artlistSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
 		searchReq := &artlist.SearchRequest{

@@ -10,7 +10,9 @@ import (
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/audioasset"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/models"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -58,7 +60,13 @@ func NewService(
 	}
 }
 
-
+// RegisterHandler registers this service as a handler for voiceover jobs
+func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+	if jobsSvc != nil {
+		jobsSvc.RegisterHandler(models.JobTypeVoiceoverBatch, s.HandleJob)
+		s.log.Info("registered voiceover job handler")
+	}
+}
 
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
 	resp, err := s.GenerateBatch(ctx, &BatchRequest{

@@ -3,7 +3,7 @@ package module
 import (
 	"context"
 
-	artlistHandler "velox/go-master/internal/api/handlers/artlist"
+	"velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/api/middleware"
 	artlistService "velox/go-master/internal/service/artlist"
 	"velox/go-master/pkg/config"
@@ -16,7 +16,7 @@ func NewArtlistModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *artlistService.Service,
-	handler *artlistHandler.Handler,
+	handler *sources.ArtlistHandler,
 ) *RouteModule {
 	return NewRouteModule(
 		"artlist",

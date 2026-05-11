@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/service/pipeline"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/models"
 )
@@ -48,7 +47,7 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 	}
 
 	// Normalize strategy
-	req.Strategy = string(pipeline.NormalizeStrategy(req.Strategy, false))
+	req.Strategy = string(models.NormalizeStrategy(req.Strategy, false))
 
 	return req
 }

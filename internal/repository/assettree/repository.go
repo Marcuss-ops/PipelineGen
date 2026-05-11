@@ -233,6 +233,6 @@ func (r *Repository) scanNode(scanner interface{ Scan(dest ...any) error }) (*As
 	if t, err := time.Parse(time.RFC3339, updatedAtStr); err == nil {
 		node.UpdatedAt = t
 	}
-
 	return &node, nil
 }
+

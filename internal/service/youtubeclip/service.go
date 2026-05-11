@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,7 +16,6 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/core/destination"
-	"velox/go-master/internal/core/jobs"
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
 	jobservice "velox/go-master/internal/service/jobs"
@@ -727,11 +728,102 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 	return result, nil
 }
 
+// SearchLive performs a live YouTube search using yt-dlp
+func (s *Service) SearchLive(ctx context.Context, query string, limit int) ([]models.Clip, error) {
+	// Parse limit from query if present (e.g., "query -15")
+	if strings.Contains(query, " -") {
+		parts := strings.Split(query, " -")
+		if len(parts) > 1 {
+			if l, err := strconv.Atoi(parts[len(parts)-1]); err == nil && l > 0 {
+				limit = l
+				query = strings.Join(parts[:len(parts)-1], " -")
+			}
+		}
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	s.log.Info("Performing live YouTube search", zap.String("query", query), zap.Int("limit", limit))
+
+	ytdlpPath := s.cfg.External.YtdlpPath
+	if ytdlpPath == "" {
+		ytdlpPath = "yt-dlp"
+	}
+
+	// Use ytsearchN:query format
+	searchQuery := fmt.Sprintf("ytsearch%d:%s", limit, query)
+	
+	args := []string{
+		searchQuery,
+		"--dump-json",
+		"--flat-playlist",
+		"--no-warnings",
+	}
+
+	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		s.log.Error("yt-dlp search failed", zap.Error(err), zap.String("stderr", stderr.String()))
+		return nil, fmt.Errorf("search failed: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	results := make([]models.Clip, 0, len(lines))
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		var item struct {
+			ID         string  `json:"id"`
+			URL        string  `json:"url"`
+			Title      string  `json:"title"`
+			Duration   float64 `json:"duration"`
+			Uploader   string  `json:"uploader"`
+			Thumbnails []struct {
+				URL string `json:"url"`
+			} `json:"thumbnails"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &item); err != nil {
+			s.log.Warn("failed to unmarshal search result line", zap.Error(err))
+			continue
+		}
+
+		thumbnail := ""
+		if len(item.Thumbnails) > 0 {
+			thumbnail = item.Thumbnails[len(item.Thumbnails)-1].URL
+		}
+
+		clip := models.Clip{
+			ID:           "youtube_" + item.ID,
+			Name:         item.Title,
+			Source:       "youtube",
+			ExternalURL:  item.URL,
+			DownloadLink: item.URL,
+			ThumbURL:     thumbnail,
+			Metadata:     fmt.Sprintf(`{"uploader": %q, "duration": %f, "video_id": %q}`, item.Uploader, item.Duration, item.ID),
+		}
+		results = append(results, clip)
+	}
+
+	return results, nil
+}
+
 // RegisterHandler registers this service as a handler for youtube_clip.extract jobs
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeYouTubeClipExtract), s.HandleJob)
-		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", string(jobs.JobTypeYouTubeClipExtract)))
+		jobsSvc.RegisterHandler(models.JobTypeYouTubeClipExtract, s.HandleJob)
+		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", string(models.JobTypeYouTubeClipExtract)))
 	}
 }
 

@@ -642,7 +642,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 			CreatedAt:   time.Now(),
 		}
 		
-		if err := s.stockRepo.AddClip(clip); err != nil {
+		if err := s.stockRepo.UpsertClip(context.Background(), clip); err != nil {
 			s.log.Warn("Failed to ingest animated clip into stock DB", zap.Error(err))
 		} else {
 			s.log.Info("Animated clip ingested into stock DB", zap.String("clip_id", clip.ID))

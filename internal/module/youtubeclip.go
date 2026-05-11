@@ -3,10 +3,9 @@ package module
 import (
 	"context"
 
-	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
-	"velox/go-master/internal/api/middleware"
+	"velox/go-master/internal/api/handlers/sources"
 	jobservice "velox/go-master/internal/service/jobs"
-	youtubeclip "velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
@@ -17,7 +16,7 @@ func NewYouTubeClipModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *youtubeclip.Service,
-	handler *youtubecliphandler.Handler,
+	handler *sources.YouTubeClipHandler,
 	jobsSvc *jobservice.Service,
 ) *RouteModule {
 	return NewRouteModule(
@@ -27,16 +26,12 @@ func NewYouTubeClipModule(
 		handler,
 		log,
 		WithStart(func(ctx context.Context) error {
-			log.Info("starting youtube clips module")
-			if service != nil {
-				service.RegisterHandler(jobsSvc)
-			}
+			log.Info("starting youtube-clips module")
 			return nil
 		}),
 		WithStop(func(ctx context.Context) error {
-			log.Info("stopping youtube clips module")
+			log.Info("stopping youtube-clips module")
 			return nil
 		}),
-		WithMiddleware(middleware.YouTubeEnabled(cfg)),
 	)
 }

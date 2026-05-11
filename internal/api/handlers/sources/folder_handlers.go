@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/repository/assettree"
 	"velox/go-master/pkg/apiutil"
 	"velox/go-master/pkg/models"
 )
@@ -169,78 +168,4 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 		"source": source,
 		"folder": folderID,
 	})
-}
-
-// GetFolderChildren returns the children of a specific folder.
-func (h *Handler) GetFolderChildren(c *gin.Context) {
-	source := c.Param("source")
-	folderID := c.Param("id")
-
-	if folderID == "root" {
-		folderID = ""
-	}
-
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
-	}
-
-	ctx := c.Request.Context()
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	var children []*models.AssetNode
-	var err error
-
-	if h.assetTreeSvc != nil {
-		treeNodes, treeErr := h.assetTreeSvc.ListChildrenPaged(ctx, source, folderID, limit, offset)
-		if treeErr == nil {
-			for _, tn := range treeNodes {
-				children = append(children, treeNodeToAssetNode(tn))
-			}
-		} else {
-			err = treeErr
-		}
-	} else {
-		children = []*models.AssetNode{}
-		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
-		if clipErr == nil {
-			for _, clip := range clipChildren {
-				children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
-			}
-		} else {
-			err = clipErr
-		}
-	}
-
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":       true,
-		"source":   source,
-		"count":    len(children),
-		"children": children,
-	})
-}
-
-func treeNodeToAssetNode(tn *assettree.AssetNode) *models.AssetNode {
-	return &models.AssetNode{
-		ID:          tn.ID,
-		Source:      tn.Source,
-		AssetID:     tn.AssetID,
-		Name:        tn.Name,
-		Type:        tn.Type,
-		ParentID:    tn.ParentID,
-		RootID:      tn.RootID,
-		Path:        tn.Path,
-		Depth:       tn.Depth,
-		IsFolder:    tn.IsFolder,
-		DriveFileID: tn.DriveFileID,
-		DriveLink:   tn.DriveLink,
-		Metadata:    tn.Metadata,
-	}
 }

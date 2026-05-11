@@ -1,7 +1,7 @@
 package bootstrap
 
 import (
-	assetshandler "velox/go-master/internal/api/handlers/assets"
+	"velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/media"
@@ -13,7 +13,7 @@ import (
 
 // MediaWiring holds the Media module wiring
 type MediaWiring struct {
-	Handler *assetshandler.Handler
+	Handler *sources.Handler
 	Module  module.Module
 }
 
@@ -23,7 +23,7 @@ func WireMedia(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*MediaWiring, error) {
-	var handler *assetshandler.Handler
+	var handler *sources.Handler
 
 	if coreDeps.StockDriveRepo != nil && coreDeps.ArtlistRepo != nil && coreDeps.ClipsOnlyRepo != nil {
 
@@ -51,15 +51,18 @@ func WireMedia(
 			log,
 		)
 
-		handler = assetshandler.NewHandler(
-			nil,
-			nil,
-			nil,
+		handler = sources.NewHandler(
+			nil, // artlistSvc
+			nil, // youtubeSvc
+			nil, // voiceoverSvc
+			coreDeps.JobsService,
+			nil, // catalogRepo
+			coreDeps.AssetIndexService,
 			coreDeps.ArtlistRepo,
 			coreDeps.ClipsOnlyRepo,
 			coreDeps.StockDriveRepo,
 			driveCleanupSvc,
-			nil,
+			nil, // folderMemSvc
 			coreDeps.AssetTreeService,
 			driveUploader,
 			coreDeps.MediaProcessor,

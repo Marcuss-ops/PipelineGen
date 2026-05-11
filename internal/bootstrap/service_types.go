@@ -11,7 +11,6 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
@@ -51,5 +50,4 @@ type services struct {
 	assetIndexService  *assetindex.Service
 	assetTreeService   *assettree.Service
 	assetResolver      *assetindex.Resolver
-	assetRegistry      *assetregistry.Registry
 }

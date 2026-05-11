@@ -1,8 +1,9 @@
 package bootstrap
 
 import (
-	youtubecliphandler "velox/go-master/internal/api/handlers/youtubeclip"
+	"velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/module"
+	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
@@ -10,8 +11,9 @@ import (
 
 // YouTubeClipWiring holds the YouTube Clip module wiring
 type YouTubeClipWiring struct {
-	Handler *youtubecliphandler.Handler
+	Handler *sources.YouTubeClipHandler
 	Module  module.Module
+	Service *youtubeclip.Service
 }
 
 // WireYouTubeClip creates the YouTube Clip handler and module
@@ -20,7 +22,7 @@ func WireYouTubeClip(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*YouTubeClipWiring, error) {
-	handler := youtubecliphandler.NewHandler(coreDeps.YoutubeClipService, log, coreDeps.JobsService)
+	handler := sources.NewYouTubeClipHandler(coreDeps.YoutubeClipService, log, coreDeps.JobsService)
 
 	var mod module.Module
 	if coreDeps.YoutubeClipService != nil {
@@ -34,5 +36,6 @@ func WireYouTubeClip(
 	return &YouTubeClipWiring{
 		Handler: handler,
 		Module:  mod,
+		Service: coreDeps.YoutubeClipService,
 	}, nil
 }

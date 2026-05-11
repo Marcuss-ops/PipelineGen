@@ -3,12 +3,15 @@ package bootstrap
 import (
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api/handlers/assets"
-	artlistPkg "velox/go-master/internal/service/artlist"
+	"velox/go-master/internal/api/handlers/sources"
+	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/foldermemory"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/media"
+	"velox/go-master/internal/service/voiceover"
+	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/repository/catalog"
@@ -17,7 +20,7 @@ import (
 
 // AssetsWiring holds the Assets module wiring
 type AssetsWiring struct {
-	Handler     *assets.Handler
+	Handler     *sources.Handler
 	Module      module.Module
 }
 
@@ -26,7 +29,10 @@ func WireAssets(
 	cfg *config.Config,
 	log *zap.Logger,
 	coreDeps *CoreDeps,
-	artlistSvc *artlistPkg.Service,
+	artlistSvc *artlist.Service,
+	youtubeSvc *youtubeclip.Service,
+	voiceoverSvc *voiceover.Service,
+	jobsSvc *jobservice.Service,
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
 ) (*AssetsWiring, error) {
@@ -57,8 +63,11 @@ func WireAssets(
 		log,
 	)
 
-	handler := assets.NewHandler(
+	handler := sources.NewHandler(
 		artlistSvc,
+		youtubeSvc,
+		voiceoverSvc,
+		jobsSvc,
 		catalogRepo,
 		assetIndexSvc,
 		coreDeps.ArtlistRepo,

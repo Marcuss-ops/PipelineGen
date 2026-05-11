@@ -2,50 +2,122 @@ package sources
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/apiutil"
-	driveutil "velox/go-master/pkg/drive"
+	assettreerepo "velox/go-master/internal/repository/assettree"
+	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/pkg/models"
+	driveutil "velox/go-master/pkg/drive"
 )
 
-// VerifyClip verifies DB, local file, and Drive coherence.
-func (h *Handler) VerifyClip(c *gin.Context) {
-	source := c.Param("source")
-	clipID := c.Param("id")
+// resolveRepo returns the appropriate repository for the given source.
+func (h *Handler) resolveRepo(source string) *clips.Repository {
+	switch strings.ToLower(source) {
+	case "artlist":
+		return h.artlistRepo
+	case "youtube", "clips", "boxe", "wwe", "discovery", "music":
+		return h.clipsRepo
+	case "stock":
+		return h.stockRepo
+	default:
+		return nil
+	}
+}
 
-	// Handle Voiceover source
-	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
-		rec, err := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
-		if err != nil {
-			apiutil.NotFound(c, "voiceover not found")
-			return
+// clipToAssetNode converts a models.Clip to assettree.AssetNode for unified tree handling.
+func clipToAssetNode(clip *models.Clip) *assettreerepo.AssetNode {
+	if clip == nil {
+		return nil
+	}
+	nodeType := "file"
+	if clip.IsFolder {
+		nodeType = "folder"
+	} else if clip.MediaType != "" {
+		nodeType = clip.MediaType
+	}
+
+	return &assettreerepo.AssetNode{
+		ID:          clip.ID,
+		Source:      clip.Source,
+		AssetID:     clip.ID,
+		Name:        clip.Name,
+		Type:        nodeType,
+		ParentID:    clip.FolderID,
+		Path:        clip.FolderPath,
+		Depth:       clip.Depth,
+		IsFolder:    clip.IsFolder,
+		DriveFileID: clip.DriveFileID,
+		DriveLink:   clip.DriveLink,
+		Metadata:    clip.Metadata,
+		CreatedAt:   clip.CreatedAt,
+		UpdatedAt:   clip.UpdatedAt,
+	}
+}
+
+// voiceoverRecordToAssetNode converts a models.VoiceoverRecord to assettree.AssetNode.
+func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
+	if r == nil {
+		return nil
+	}
+	return &assettreerepo.AssetNode{
+		ID:          r.ID,
+		Source:      "voiceover",
+		AssetID:     r.ID,
+		Name:        r.Filename,
+		Type:        "audio",
+		ParentID:    "",
+		Path:        r.Filename,
+		IsFolder:    false,
+		DriveFileID: r.DriveFileID,
+		DriveLink:   r.DriveLink,
+		Metadata:    "{}",
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
+	}
+}
+
+// voiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
+func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
+	name := rec.Filename
+	if name == "" {
+		name = rec.TextPreview
+		if len(name) > 50 {
+			name = name[:50]
 		}
-		clip := voiceoverRecordToClip(rec)
-		result := h.verifyClip(c.Request.Context(), source, nil, clip)
-		c.JSON(http.StatusOK, result)
-		return
 	}
-
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
-		return
+	return &models.Clip{
+		ID:           rec.ID,
+		Name:         name,
+		Source:       "voiceover",
+		LocalPath:    rec.LocalPath,
+		DriveLink:    rec.DriveLink,
+		FileHash:     rec.FileHash,
+		CreatedAt:    rec.CreatedAt,
+		UpdatedAt:    rec.UpdatedAt,
+		SearchTerms:  []string{rec.TextPreview},
+		MediaType:    "audio",
 	}
+}
 
-	clip, err := repo.GetClip(c.Request.Context(), clipID)
-	if err != nil {
-		apiutil.NotFound(c, "clip not found")
-		return
+// imageAssetToClip converts an models.ImageAsset to models.Clip for unified handling.
+func imageAssetToClip(asset *models.ImageAsset) *models.Clip {
+	return &models.Clip{
+		ID:           asset.SlugID,
+		Name:         asset.Description,
+		Source:       "images",
+		LocalPath:    asset.PathRel,
+		DriveLink:    "", // Images repo doesn't seem to have direct Drive link in model yet
+		FileHash:     asset.Hash,
+		ThumbURL:     "", 
+		CreatedAt:    asset.CreatedAt,
+		UpdatedAt:    asset.CreatedAt,
+		SearchTerms:  []string{asset.Description},
+		MediaType:    "image",
 	}
-
-	result := h.verifyClip(c.Request.Context(), source, repo, clip)
-	c.JSON(http.StatusOK, result)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
@@ -126,7 +198,7 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 					} else {
 						h.log.Info("recovered and saved missing hash from drive", zap.String("clip_id", clip.ID), zap.String("hash", md5))
 					}
-				} else if source == "voiceover" && h.voiceoverRepo != nil {
+				} else if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 					rec, err := h.voiceoverRepo.GetByID(ctx, clip.ID)
 					if err == nil && rec != nil {
 						rec.FileHash = md5
@@ -176,4 +248,25 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 	}
 
 	return result
+}
+
+func treeNodeToAssetNode(tn *assettreerepo.AssetNode) *models.AssetNode {
+	if tn == nil {
+		return nil
+	}
+	return &models.AssetNode{
+		ID:          tn.ID,
+		Source:      tn.Source,
+		AssetID:     tn.AssetID,
+		Name:        tn.Name,
+		Type:        tn.Type,
+		ParentID:    tn.ParentID,
+		RootID:      tn.RootID,
+		Path:        tn.Path,
+		Depth:       tn.Depth,
+		IsFolder:    tn.IsFolder,
+		DriveFileID: tn.DriveFileID,
+		DriveLink:   tn.DriveLink,
+		Metadata:    tn.Metadata,
+	}
 }

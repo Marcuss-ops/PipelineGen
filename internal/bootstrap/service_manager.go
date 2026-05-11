@@ -18,7 +18,6 @@ import (
 	"velox/go-master/internal/repository/voiceovers"
 	assettree_repo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
@@ -109,13 +108,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
 	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
 
-	// Create and initialize central asset registry
-	assetRegistry := assetregistry.NewRegistry(log)
-	assetRegistry.RegisterClipSource(assetregistry.AssetSourceStock, assetregistry.NewClipsAdapter(clipsRepo, log))
-	assetRegistry.RegisterClipSource(assetregistry.AssetSourceYouTube, assetregistry.NewClipsAdapter(clipsOnlyRepo, log))
-	assetRegistry.RegisterClipSource(assetregistry.AssetSourceArtlist, assetregistry.NewClipsAdapter(artlistRepo, log))
-	log.Info("central asset registry initialized with clip sources")
-
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.images.DB)
 
@@ -191,7 +183,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		assetIndexService:  assetIndexService,
 		assetTreeService:   assetTreeService,
 		assetResolver:      assetResolver,
-		assetRegistry:      assetRegistry,
 	}, nil
 }
 

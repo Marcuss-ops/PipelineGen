@@ -15,16 +15,18 @@ type RegistryWiring struct {
 	System      *SystemWiring
 	ArtlistSvc  *ArtlistWiring
 	YouTubeClip *YouTubeClipWiring
-	Jobs       *JobsWiring
-	Media      *MediaWiring
-	ScriptDocs *ScriptDocsWiring
-	Voiceover  *VoiceoverWiring
-	Images     *ImagesWiring
-	Drive      *DriveWiring
-	Scraper    *ScraperWiring
-	ContentPkg *ContentPackageWiring
-	Assets     *AssetsWiring
+	Jobs        *JobsWiring
+	Media       *MediaWiring
+	ScriptDocs  *ScriptDocsWiring
+	Voiceover   *VoiceoverWiring
+	Images      *ImagesWiring
+	Drive       *DriveWiring
+	Scraper     *ScraperWiring
+	ContentPkg  *ContentPackageWiring
+	Assets      *AssetsWiring
 }
+
+
 
 // SystemWiring holds the System module wiring
 type SystemWiring struct {
@@ -188,7 +190,17 @@ func WireRegistry(
 
 	registry.Register(module.NewUtilityModule(cfg, log, coreDeps.Utility))
 
-	if assetsWiring, err := WireAssets(cfg, log, coreDeps, wiring.ArtlistSvc.Service, coreDeps.CatalogRepo, coreDeps.AssetIndexService); err == nil && assetsWiring != nil {
+	if assetsWiring, err := WireAssets(
+		cfg,
+		log,
+		coreDeps,
+		wiring.ArtlistSvc.Service,
+		wiring.YouTubeClip.Service,
+		wiring.Voiceover.Service,
+		coreDeps.JobsService,
+		coreDeps.CatalogRepo,
+		coreDeps.AssetIndexService,
+	); err == nil && assetsWiring != nil {
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
 	}

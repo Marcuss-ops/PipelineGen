@@ -1,6 +1,9 @@
 package voiceover
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type BatchRequest struct {
 	Text             string              `json:"text"`
@@ -10,6 +13,13 @@ type BatchRequest struct {
 	Strategy         string              `json:"strategy"`
 	Destination      *DestinationRequest `json:"destination,omitempty"`
 	Metadata         map[string]any      `json:"metadata,omitempty"`
+}
+
+func (r *BatchRequest) ToMap() map[string]any {
+	data, _ := json.Marshal(r)
+	var m map[string]any
+	json.Unmarshal(data, &m)
+	return m
 }
 
 type DestinationRequest struct {
