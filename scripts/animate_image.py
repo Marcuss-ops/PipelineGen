@@ -31,11 +31,15 @@ def create_zoom_out(input_img, output_video, duration=7, fps=30):
     
     cmd = [
         'ffmpeg', '-y',
+        '-hwaccel', 'cuda',
         '-loop', '1',
         '-i', input_img,
         '-vf', vf,
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
+        '-c:v', 'h264_nvenc',
+        '-preset', 'p1',
+        '-tune', 'hq',
+        '-rc', 'vbr',
+        '-cq', '24',
         '-t', str(duration),
         '-pix_fmt', 'yuv420p',
         output_video

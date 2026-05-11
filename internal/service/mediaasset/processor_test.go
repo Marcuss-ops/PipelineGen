@@ -48,6 +48,15 @@ func (f *fakeFFmpeg) RemuxHLS(ctx context.Context, sourceURL, outputPath string)
 	return os.WriteFile(outputPath, []byte("hls-video"), 0644)
 }
 
+func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error) {
+	return &ffmpeg.MediaInfo{
+		Width:  1920,
+		Height: 1080,
+		FPS:    30,
+		Codec:  "h264",
+	}, nil
+}
+
 func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
@@ -109,4 +118,58 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 	assert.True(t, ff.normalizeCalled)
 	assert.Equal(t, "failed", result.Status)
 	assert.Contains(t, result.Error, "process failed")
+}
+
+func TestProcessorZeroCopyOptimization(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	ff := &fakeFFmpeg{}
+
+	p := NewProcessor(
+		&fakeYTDLP{},
+		&fakeHTTPDownloader{},
+		ff,
+		zap.NewNop(),
+		ProcessorConfig{
+			DataDir: tmp,
+			TempDir: "tmp",
+			VideoCfg: ffmpeg.NormalizeOptions{
+				Width:  1920,
+				Height: 1080,
+				FPS:    30,
+			},
+		},
+		nil,
+	)
+
+	// Case 1: StreamCopy is true and specs match -> Normalize should NOT be called
+	result, err := p.DownloadProcessUpload(ctx, AssetInput{
+		ID:         "clip-1",
+		Name:       "test clip",
+		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		OutputDir:  filepath.Join(tmp, "out"),
+		StreamCopy: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, ff.normalizeCalled)
+	assert.Equal(t, "processed", result.Status)
+
+	// Case 2: StreamCopy is true but specs don't match -> Normalize SHOULD be called
+	ff.normalizeCalled = false
+	p.videoCfg.FPS = 60 // Change target FPS to 60
+	
+	result, err = p.DownloadProcessUpload(ctx, AssetInput{
+		ID:         "clip-2",
+		Name:       "test clip 2",
+		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+		OutputDir:  filepath.Join(tmp, "out2"),
+		StreamCopy: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, ff.normalizeCalled)
 }

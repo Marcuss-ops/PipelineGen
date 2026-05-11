@@ -5,6 +5,7 @@ package ffmpeg
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -87,7 +88,8 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 	// Use hardware acceleration if NVENC is requested
 	if strings.Contains(opts.Codec, "nvenc") {
-		args = append(args, "-hwaccel", "auto")
+		// Use CUDA for decoding if available
+		args = append(args, "-hwaccel", "cuda")
 	}
 
 	// Generate new PTS to fix timestamp issues
@@ -130,9 +132,15 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	
 	// NVENC specific optimizations
 	if strings.Contains(opts.Codec, "nvenc") {
-		args = append(args, "-preset", opts.Preset) // e.g. p1..p7
+		// P1 is the fastest preset for NVENC
+		preset := opts.Preset
+		if preset == "fast" || preset == "" {
+			preset = "p1"
+		}
+		args = append(args, "-preset", preset)
 		args = append(args, "-rc", "vbr")
 		args = append(args, "-cq", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-tune", "hq")
 		args = append(args, "-bf", "0")
 	} else {
 		args = append(args, "-preset", opts.Preset)
@@ -192,34 +200,73 @@ func (p *Processor) CutSegment(ctx context.Context, input, output string, start,
 
 // MediaInfo holds probed media information.
 type MediaInfo struct {
-	Duration string `json:"duration,omitempty"`
-	Width    int    `json:"width,omitempty"`
-	Height   int    `json:"height,omitempty"`
-	FPS      string `json:"fps,omitempty"`
-	Codec    string `json:"codec,omitempty"`
+	Duration float64 `json:"duration,omitempty"`
+	Width    int     `json:"width,omitempty"`
+	Height   int     `json:"height,omitempty"`
+	FPS      float64 `json:"fps,omitempty"`
+	Codec    string  `json:"codec,omitempty"`
 }
 
 // Probe retrieves media information using ffprobe.
-func Probe(ctx context.Context, path string) (*MediaInfo, error) {
-	ffprobe := "ffprobe"
+func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) {
 	args := []string{
 		"-v", "error",
-		"-show_entries", "format=duration:stream=width,height,r_frame_rate,codec_name",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=width,height,r_frame_rate,codec_name,duration",
 		"-of", "json",
 		path,
 	}
 
-	result, err := executil.Run(ctx, ffprobe, args, executil.Options{
+	result, err := executil.Run(ctx, "ffprobe", args, executil.Options{
 		Timeout: 30 * time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe failed: %w", err)
 	}
 
-	// Parse the JSON output (simplified - in production use encoding/json)
-	// For now, return basic info
-	_ = result
-	return &MediaInfo{}, nil
+	var probeResult struct {
+		Streams []struct {
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+			FrameRate string `json:"r_frame_rate"`
+			CodecName string `json:"codec_name"`
+			Duration  string `json:"duration"`
+		} `json:"streams"`
+	}
+
+	if err := json.Unmarshal([]byte(result.Output), &probeResult); err != nil {
+		return nil, fmt.Errorf("failed to parse ffprobe output: %w", err)
+	}
+
+	if len(probeResult.Streams) == 0 {
+		return nil, fmt.Errorf("no video streams found")
+	}
+
+	s := probeResult.Streams[0]
+	info := &MediaInfo{
+		Width:  s.Width,
+		Height: s.Height,
+		Codec:  s.CodecName,
+	}
+
+	// Parse FPS (e.g. "30/1" or "24000/1001")
+	if s.FrameRate != "" {
+		var num, den float64
+		if _, err := fmt.Sscanf(s.FrameRate, "%f/%f", &num, &den); err == nil && den != 0 {
+			info.FPS = num / den
+		} else {
+			// Try single value
+			fmt.Sscanf(s.FrameRate, "%f", &num)
+			info.FPS = num
+		}
+	}
+
+	// Parse duration
+	if s.Duration != "" {
+		fmt.Sscanf(s.Duration, "%f", &info.Duration)
+	}
+
+	return info, nil
 }
 
 // MergeInputs concatenates multiple video files into one.

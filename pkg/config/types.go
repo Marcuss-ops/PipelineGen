@@ -27,8 +27,8 @@ type VideoConfig struct {
 	Width            int    `yaml:"width" default:"1920"`
 	Height           int    `yaml:"height" default:"1080"`
 	FPS             int    `yaml:"fps" default:"30"`
-	Codec           string `yaml:"codec" default:"libx264"`
-	Preset          string `yaml:"preset" default:"fast"`
+	Codec           string `yaml:"codec" default:"h264_nvenc"`
+	Preset          string `yaml:"preset" default:"p1"`
 	CRF             int    `yaml:"crf" default:"23"`
 	Duration        int    `yaml:"duration" default:"7"`
 	KeyframeInterval int    `yaml:"keyframe_interval" default:"60"`
@@ -49,10 +49,10 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 		v.Duration = 7
 	}
 	if v.Codec == "" {
-		v.Codec = "libx264"
+		v.Codec = "h264_nvenc"
 	}
 	if v.Preset == "" {
-		v.Preset = "fast"
+		v.Preset = "p1"
 	}
 	if v.CRF <= 0 {
 		v.CRF = 23
@@ -151,7 +151,7 @@ type PathsConfig struct {
 type JobsConfig struct {
 	NewJobsPaused         bool   `yaml:"new_jobs_paused" default:"false"`
 	LeaseTTLSeconds       int    `yaml:"lease_ttl_seconds" default:"300"`
-	MaxParallelPerProject int    `yaml:"max_parallel_per_project" default:"2"`
+	MaxParallelPerProject int    `yaml:"max_parallel_per_project" default:"16"`
 	AutoCleanupHours      int    `yaml:"auto_cleanup_hours" default:"24"`
 	CatalogSyncInterval   string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
 	MaintenanceInterval   string `yaml:"maintenance_interval" default:"24h"`
