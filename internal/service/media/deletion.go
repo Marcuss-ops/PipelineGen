@@ -204,12 +204,6 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 	return nil, "", nil
 }
 
-// resolveRepo delegates to the centralized SourceResolver.
-// DEPRECATED: Prefer using mediaregistry.SourceResolver directly.
-func (s *DeletionService) resolveRepo(source string) *clips.Repository {
-	resolver := mediaregistry.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
-	return resolver.ResolveRepo(source)
-}
 func (s *DeletionService) CleanupOrphanFiles(ctx context.Context, assetsDir string, dryRun bool) (int, error) {
 	s.log.Info("starting deep orphan file cleanup", zap.String("dir", assetsDir), zap.Bool("dry_run", dryRun))
 
