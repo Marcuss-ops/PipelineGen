@@ -33,6 +33,20 @@ func TestPrimaryFocus(t *testing.T) {
 			entities: []string{"Mike Tyson"},
 			expected: "Mike Tyson",
 		},
+		{
+			name:     "Subject with extra info, entity match",
+			topic:    "Mike Tyson: The Baddest Man on the Planet",
+			subject:  "Mike Tyson Training",
+			entities: []string{"Mike Tyson", "Boxing"},
+			expected: "Mike Tyson",
+		},
+		{
+			name:     "Topic with entity match",
+			topic:    "History of Muhammad Ali",
+			subject:  "The Rumble in the Jungle",
+			entities: []string{"Muhammad Ali"},
+			expected: "Muhammad Ali",
+		},
 	}
 
 	for _, tt := range tests {
