@@ -11,6 +11,12 @@ import (
 )
 
 func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
+	if coreDeps.ClipIndexerService != nil {
+		clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
+		clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.ArtlistDB.Path())
+		return clipCatalogRepo, coreDeps.ClipIndexerService
+	}
+
 	if coreDeps.ArtlistDB != nil && coreDeps.ArtlistDB.DB != nil {
 		if err := clipcatalog.EnsureSchema(context.Background(), coreDeps.ArtlistDB.DB, log); err != nil {
 			log.Warn("failed to ensure clipcatalog schema", zap.Error(err))

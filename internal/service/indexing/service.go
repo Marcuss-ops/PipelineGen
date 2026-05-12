@@ -14,17 +14,25 @@ import (
 	"velox/go-master/pkg/models"
 )
 
+// Enricher defines the contract for AI-based metadata enrichment of clips.
+type Enricher interface {
+	IndexClip(ctx context.Context, clipID string) error
+	IndexRunItems(ctx context.Context, items []map[string]interface{}) error
+}
+
 // Service handles indexing of video assets
 type Service struct {
-	repo *clips.Repository
-	log  *zap.Logger
+	repo     *clips.Repository
+	enricher Enricher
+	log      *zap.Logger
 }
 
 // NewService creates a new indexing service
-func NewService(repo *clips.Repository, log *zap.Logger) *Service {
+func NewService(repo *clips.Repository, enricher Enricher, log *zap.Logger) *Service {
 	return &Service{
-		repo: repo,
-		log:  log,
+		repo:     repo,
+		enricher: enricher,
+		log:      log,
 	}
 }
 
@@ -82,6 +90,13 @@ func (s *Service) IndexDirectory(ctx context.Context, rootDir string) error {
 		if err := s.repo.UpsertClip(ctx, clip); err != nil {
 			s.log.Error("Failed to upsert clip", zap.String("name", name), zap.Error(err))
 			return nil // Continue indexing other clips
+		}
+
+		// Optional: Trigger enrichment if enricher is available
+		if s.enricher != nil {
+			if err := s.enricher.IndexClip(ctx, clipID); err != nil {
+				s.log.Warn("Enrichment failed for clip", zap.String("id", clipID), zap.Error(err))
+			}
 		}
 
 		return nil

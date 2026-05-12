@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -16,13 +15,12 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
-	assettree_repo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
+	"velox/go-master/internal/service/clipindexer"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/voiceover"
@@ -55,18 +53,11 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log)
 	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
 
-	// Asset index service
-	assetIndexRepo := assetindex.NewRepository(dbs.assets.DB)
-	assetIndexService := assetindex.NewService(assetIndexRepo)
-	log.Info("asset index service initialized", zap.String("db", "assets.db.sqlite"))
-
-	// Asset tree service
-	assetTreeRepo, err := assettree_repo.NewRepository(dbs.assets.DB, log)
+	// Asset services (Index & Tree)
+	assetIndexService, assetTreeService, err := initAssetServices(dbs, log)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
+		return nil, err
 	}
-	assetTreeService := assettree.NewService(assetTreeRepo, log)
-	log.Info("asset tree service initialized")
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
@@ -133,7 +124,16 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	assetResolver := assetindex.NewResolver(assetIndexService, resolverCfg, log)
 	log.Info("asset resolver initialized")
 
-	indexingService := indexing.NewService(clipsRepo, log)
+	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
+		Enabled:               cfg.ClipIndexer.Enabled,
+		ServerURL:             cfg.ClipIndexer.ServerURL,
+		ScriptPath:            cfg.ClipIndexer.ScriptPath,
+		PythonBin:             cfg.ClipIndexer.PythonBin,
+		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
+		DBPath:                dbs.artlist.Path(),
+	}, dbs.artlist.DB, dbs.artlist.Path(), log)
+
+	indexingService := indexing.NewService(clipsRepo, clipIndexerService, log)
 	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)
 
 	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
@@ -177,6 +177,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		voiceoverService:   voService,
 		voiceoverSync:      voiceoverSync,
 		indexingService:    indexingService,
+		clipIndexerService: clipIndexerService,
 		catalogRepo:        catalogRepo,
 		catalogSync:        catalogSync,
 		assocService:       assocService,

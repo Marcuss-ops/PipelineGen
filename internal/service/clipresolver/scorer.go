@@ -1,18 +1,39 @@
 package clipresolver
 
-import "velox/go-master/pkg/models"
+import (
+	"math"
+	"velox/go-master/pkg/models"
+)
 
-// CalculateVectorScore calculates the vector similarity score
-// This is a placeholder - actual implementation will use embeddings
-func CalculateVectorScore(clip *models.Clip, queryEmbedding []float64) float64 {
-	// TODO: Implement actual vector similarity using embeddings
-	// For now, return 0 as embeddings are not yet stored in Go
-	return 0.0
+// CalculateVectorScore calculates the vector similarity score between a clip and a query embedding.
+func CalculateVectorScore(clipEmbedding, queryEmbedding []float64) float64 {
+	return CosineSimilarity(clipEmbedding, queryEmbedding)
 }
 
-// ApplyOntologyBoost applies boosts from ontology.yaml
-func ApplyOntologyBoost(score float64, clip *models.Clip, topic string) float64 {
-	// TODO: Load ontology.yaml and apply topic-specific boosts
-	// For now, return score unchanged
-	return score
+// CosineSimilarity calculates the cosine similarity between two vectors.
+func CosineSimilarity(a, b []float64) float64 {
+	if len(a) == 0 || len(a) != len(b) {
+		return 0
+	}
+
+	var dot, normA, normB float64
+	for i := range a {
+		dot += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+// ApplyOntologyBoost applies boosts from ontology rules.
+func ApplyOntologyBoost(scorer OntologyScorer, score float64, clip *models.Clip, topic string) float64 {
+	if scorer == nil {
+		return score
+	}
+	return scorer.Apply(score, clip, topic)
 }

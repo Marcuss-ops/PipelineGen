@@ -1,6 +1,20 @@
 package clipresolver
 
-import "velox/go-master/pkg/models"
+import (
+	"context"
+	"velox/go-master/pkg/models"
+)
+
+// EmbeddingProvider defines the interface for obtaining text and clip embeddings.
+type EmbeddingProvider interface {
+	EmbedText(ctx context.Context, text string) ([]float64, error)
+	GetClipEmbedding(ctx context.Context, clipID string) ([]float64, error)
+}
+
+// OntologyScorer defines the interface for applying ontology-based scoring.
+type OntologyScorer interface {
+	Apply(score float64, clip *models.Clip, topic string) float64
+}
 
 // RecommendRequest is the request for clip recommendation
 type RecommendRequest struct {

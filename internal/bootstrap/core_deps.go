@@ -19,6 +19,7 @@ import (
 	"velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
+	"velox/go-master/internal/service/clipindexer"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/monitor"
 	"velox/go-master/internal/service/scheduler"
@@ -51,6 +52,7 @@ type CoreDeps struct {
 	VoiceoverService     *voiceover.Service
 	VoiceoverSync        *voiceoversync.Service
 	IndexingService      *indexing.Service
+	ClipIndexerService   *clipindexer.Service
 	CatalogSyncService   *catalogsync.Service
 	ChannelMonitor       *monitor.ChannelMonitor
 	StockScheduler       *scheduler.StockScheduler

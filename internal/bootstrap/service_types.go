@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
+	"velox/go-master/internal/service/clipindexer"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
@@ -40,6 +41,7 @@ type services struct {
 	voiceoverService   *voiceover.Service
 	voiceoverSync      *voiceoversync.Service
 	indexingService    *indexing.Service
+	clipIndexerService *clipindexer.Service
 	catalogRepo        *catalog.Repository
 	catalogSync        *catalogsync.Service
 	assocService       *association.Service

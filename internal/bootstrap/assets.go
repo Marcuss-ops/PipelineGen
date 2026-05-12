@@ -15,8 +15,28 @@ import (
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/repository/catalog"
+	assettreerepo "velox/go-master/internal/repository/assettree"
+	"velox/go-master/internal/service/assettree"
 	"velox/go-master/pkg/config"
+	"fmt"
 )
+
+func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
+	// Asset index service
+	assetIndexRepo := assetindex.NewRepository(dbs.assets.DB)
+	assetIndexService := assetindex.NewService(assetIndexRepo)
+	log.Info("asset index service initialized", zap.String("db", "assets.db.sqlite"))
+
+	// Asset tree service
+	assetTreeRepo, err := assettreerepo.NewRepository(dbs.assets.DB, log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
+	}
+	assetTreeService := assettree.NewService(assetTreeRepo, log)
+	log.Info("asset tree service initialized")
+
+	return assetIndexService, assetTreeService, nil
+}
 
 // AssetsWiring holds the Assets module wiring
 type AssetsWiring struct {

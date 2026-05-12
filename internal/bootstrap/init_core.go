@@ -73,6 +73,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		VoiceoverService:     svcs.voiceoverService,
 		VoiceoverSync:        svcs.voiceoverSync,
 		IndexingService:      svcs.indexingService,
+		ClipIndexerService:   svcs.clipIndexerService,
 		// NOTE: HarvesterCronService removed (cron system eliminated)
 		CatalogSyncService:   svcs.catalogSync,
 		// NOTE: CatalogSyncJob removed (cron system eliminated)
