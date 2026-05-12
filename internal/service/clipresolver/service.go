@@ -14,7 +14,7 @@ import (
 
 // Service provides clip recommendation functionality
 type Service struct {
-	catalogRepo    *clipcatalog.Repository
+	repos          map[string]*clipcatalog.Repository
 	harvestSvc     ArtlistHarvestService
 	embedProvider  EmbeddingProvider
 	ontologyScorer OntologyScorer
@@ -28,14 +28,14 @@ type ArtlistHarvestService interface {
 
 // NewService creates a new clip resolver service
 func NewService(
-	catalogRepo *clipcatalog.Repository,
+	repos map[string]*clipcatalog.Repository,
 	harvestSvc ArtlistHarvestService,
 	embedProvider EmbeddingProvider,
 	ontologyScorer OntologyScorer,
 	matchingConfig *matchingconfig.MatchingConfig,
 ) *Service {
 	return &Service{
-		catalogRepo:    catalogRepo,
+		repos:          repos,
 		harvestSvc:     harvestSvc,
 		embedProvider:  embedProvider,
 		ontologyScorer: ontologyScorer,
@@ -92,31 +92,37 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		}
 	}
 
-	// Search for clips using all search terms
+	// Search for clips using all search terms across all repositories
 	clipScores := make(map[string]*ClipScore)
 	for _, term := range searchTerms {
-		// Try semantic search first
-		candidates, err := s.catalogRepo.SearchSemantic(ctx, term, limit*2)
-		if err != nil {
-			// Fallback to text matching if semantic search fails or is not configured
-			candidates, err = s.catalogRepo.FindCandidates(ctx, term, limit*2)
-			if err != nil {
-				continue
-			}
-		}
-
-		for _, cand := range candidates {
-			if clipScores[cand.ID] == nil {
-				clipScores[cand.ID] = &ClipScore{
-					Clip:        s.candidateToClip(cand),
-					Score:       0,
-					Breakdown:   &ScoreBreakdown{},
-					MatchedTerms: make([]string, 0),
+		for source, repo := range s.repos {
+			// Try semantic search first
+			candidates, err := repo.SearchSemantic(ctx, term, limit*2)
+			
+			// Fallback to text matching if semantic search fails, is not configured, or returns no results
+			if err != nil || len(candidates) == 0 {
+				textCandidates, textErr := repo.FindCandidates(ctx, term, limit*2)
+				if textErr == nil {
+					candidates = textCandidates
 				}
 			}
 
-			entry := clipScores[cand.ID]
-			s.scoreClip(ctx, entry, term, queryEmbeddings[term], req, avoidTerms, usedClipIDs)
+			for _, cand := range candidates {
+				globalID := fmt.Sprintf("%s:%s", source, cand.ID)
+				if clipScores[globalID] == nil {
+					clipScores[globalID] = &ClipScore{
+						Clip:        s.candidateToClip(cand),
+						Score:       0,
+						Breakdown:   &ScoreBreakdown{},
+						MatchedTerms: make([]string, 0),
+					}
+					// Store original source for boosting (hijack MediaType temporarily)
+					clipScores[globalID].Clip.MediaType = source
+				}
+
+				entry := clipScores[globalID]
+				s.scoreClip(ctx, entry, term, queryEmbeddings[term], req, avoidTerms, usedClipIDs)
+			}
 		}
 	}
 
@@ -241,6 +247,7 @@ func (s *Service) collectSearchTerms(req *RecommendRequest) []string {
 func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery string, queryEmbedding []float64, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
 	c := entry.Clip
 	bd := entry.Breakdown
+	source := c.MediaType // Source name stored here
 
 	// 1. Text score (weight from config)
 	textWeight := s.matchingConfig.Matching.TextScoreWeight
@@ -271,7 +278,15 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 	}
 	entry.MatchedTerms = append(entry.MatchedTerms, matchedQuery)
 
-	// 3. Topic boost
+	// 3. Source boost (PRIORITIZATION)
+	// Give massive boost to "stock" or "youtube" sources over generic "artlist"
+	if source == "stock" || source == "youtube" {
+		boost := 0.50 // High boost for internal/specific assets
+		bd.SourceBoost = boost
+		entry.Score += boost
+	}
+
+	// 4. Topic boost
 	topicWeight := s.matchingConfig.Matching.TopicBoostWeight
 	if topicWeight == 0 {
 		topicWeight = 0.20
@@ -282,7 +297,7 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 		entry.Score += boost
 	}
 
-	// 4. Category boost
+	// 5. Category boost
 	categoryWeight := s.matchingConfig.Matching.CategoryBoostWeight
 	if categoryWeight == 0 {
 		categoryWeight = 0.10
@@ -293,7 +308,7 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 		entry.Score += boost
 	}
 
-	// 5. UsableFor boost
+	// 6. UsableFor boost
 	usableWeight := s.matchingConfig.Matching.UsableForBoostWeight
 	if usableWeight == 0 {
 		usableWeight = 0.15
@@ -309,7 +324,7 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 		}
 	}
 
-	// 6. Quality score
+	// 7. Quality score
 	qualityWeight := s.matchingConfig.Matching.QualityScoreWeight
 	if qualityWeight == 0 {
 		qualityWeight = 0.15
@@ -321,7 +336,7 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 	bd.QualityScore = qualityScore
 	entry.Score += qualityScore
 
-	// 7. Negative penalty
+	// 8. Negative penalty
 	negativeWeight := s.matchingConfig.Matching.NegativePenaltyWeight
 	if negativeWeight == 0 {
 		negativeWeight = 0.40
@@ -337,7 +352,7 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 		}
 	}
 
-	// 8. Reuse penalty
+	// 9. Reuse penalty
 	reuseWeight := s.matchingConfig.Matching.ReusePenaltyWeight
 	if reuseWeight == 0 {
 		reuseWeight = 0.10

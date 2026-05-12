@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/service/association"
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/internal/service/visualplanner"
 	"velox/go-master/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -53,72 +54,33 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 	narrative = types.CleanScript(narrative)
 
+	// 1. Build Timeline
 	timeline, _ := BuildTimelinePlan(ctx, gen, req, dataDir, nodeScraperDir, sourceText, narrative, StockDriveRepo, ArtlistRepo, ClipsRepo, artlistService, assocService, clipResolver)
 
-	// Extract entities and metadata using LLM
-	var analysis *types.FullEntityAnalysis
-	if gen != nil {
-		extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 10)
-		
-		type localExtracted struct {
-			FrasiImportanti  []string    `json:"frasi_importanti"`
-			EntitaSenzaTesto interface{} `json:"entity_senza_testo"`
-			NomiSpeciali     []string    `json:"nomi_speciali"`
-			ParoleImportanti []string    `json:"parole_importanti"`
-		}
-		
-		var extracted localExtracted
-		messages := []types.Message{
-			{Role: "user", Content: extractionPrompt},
-		}
-		
-		resp, err := gen.GetClient().Chat(ctx, messages, nil)
-		if err == nil {
-			jsonStr := textutil.ExtractJSONObject(resp)
-			zap.L().Info("LLM metadata extraction successful", zap.String("json", jsonStr))
-			
-			if err := json.Unmarshal([]byte(jsonStr), &extracted); err == nil {
-				formal := types.SegmentEntities{
-					FrasiImportanti:  extracted.FrasiImportanti,
-					NomiSpeciali:     extracted.NomiSpeciali,
-					ParoleImportanti: extracted.ParoleImportanti,
-					EntitaSenzaTesto: make(map[string]string),
-				}
-				
-				if extracted.EntitaSenzaTesto != nil {
-					switch v := extracted.EntitaSenzaTesto.(type) {
-					case string:
-						formal.EntitaSenzaTesto[v] = "Search term"
-					case map[string]interface{}:
-						for k := range v {
-							formal.EntitaSenzaTesto[k] = "Search term"
-						}
-					}
-				}
+	// 2. Extract Document Analysis
+	analysis := extractDocumentAnalysis(ctx, gen, narrative)
 
-				analysis = &types.FullEntityAnalysis{
-					SegmentEntities: []types.SegmentEntities{formal},
-				}
-			} else {
-				zap.L().Error("LLM metadata unmarshal failed", zap.Error(err), zap.String("json", jsonStr))
-			}
-		} else {
-			zap.L().Error("LLM metadata extraction failed", zap.Error(err))
+	// 3. Build Unified Visual Plan
+	var vpSegments []visualplanner.TimelineSegment
+	if timeline != nil {
+		for _, seg := range timeline.Segments {
+			vpSegments = append(vpSegments, visualplanner.TimelineSegment{
+				Index:             seg.Index,
+				VisualSubject:     seg.VisualSubject,
+				VisualCaption:     seg.VisualCaption,
+				SearchSuggestions: seg.SearchSuggestions,
+			})
 		}
 	}
+	vPlan := visualplanner.Build(req.Topic, narrative, analysis, vpSegments)
 
-	// Build image section
+	// 4. Resolve Images through section builder
 	var imageSection ScriptSection
 	if imgService != nil {
-		imageSection = buildImagePlanningSection(req, narrative, analysis, pythonScriptsDir, imgService)
-	} else {
-		imageSection = ScriptSection{
-			Title: "📸 Entità con Immagine",
-			Body:  "Servizio immagini non disponibile.",
-		}
+		imageSection = buildImagePlanningSection(req, vPlan, imgService)
 	}
 
-	// Extract end sections from LLM analysis
+	// 5. Extract metadata for final sections
 	var phrases []string
 	var specialNames []string
 	var importantWords []string
@@ -136,7 +98,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 	specialNamesSection := ScriptSection{
 		Title: "⭐ SPECIAL NAMES",
-		Body:  renderSpecialNames(specialNames),
+		Body:  renderSpecialNamesWithImages(specialNames, nil),
 	}
 	importantWordsSection := ScriptSection{
 		Title: "🗝️ IMPORTANT WORDS",
@@ -147,11 +109,14 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		{Title: "🧾 Metadata", Body: renderMetadata(req)},
 		{Title: types.MarkerNarrator, Body: narrative},
 		{Title: types.MarkerTimeline, Body: RenderTimeline(timeline)},
-		imageSection,
-		importantPhrasesSection,
-		specialNamesSection,
-		importantWordsSection,
 	}
+
+	// Only add image section if it has content
+	if strings.TrimSpace(imageSection.Body) != "" && !strings.Contains(imageSection.Body, "nessuna immagine trovata") && !strings.Contains(imageSection.Body, "Nessun soggetto") {
+		sections = append(sections, imageSection)
+	}
+
+	sections = append(sections, importantPhrasesSection, specialNamesSection, importantWordsSection)
 
 	content := renderScriptDocument(req.Topic, sections)
 	return &ScriptDocument{
@@ -160,4 +125,60 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		Sections: sections,
 		Timeline: timeline,
 	}, nil
+}
+
+func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrative string) *types.FullEntityAnalysis {
+	if gen == nil {
+		return nil
+	}
+
+	extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 10)
+	
+	type localExtracted struct {
+		FrasiImportanti  []string    `json:"frasi_importanti"`
+		EntitaSenzaTesto interface{} `json:"entity_senza_testo"`
+		NomiSpeciali     []string    `json:"nomi_speciali"`
+		ParoleImportanti []string    `json:"parole_importanti"`
+	}
+	
+	var extracted localExtracted
+	messages := []types.Message{
+		{Role: "user", Content: extractionPrompt},
+	}
+	
+	resp, err := gen.GetClient().Chat(ctx, messages, nil)
+	if err != nil {
+		zap.L().Error("LLM metadata extraction failed", zap.Error(err))
+		return nil
+	}
+
+	jsonStr := textutil.ExtractJSONObject(resp)
+	zap.L().Info("LLM metadata extraction successful", zap.String("json", jsonStr))
+	
+	if err := json.Unmarshal([]byte(jsonStr), &extracted); err != nil {
+		zap.L().Error("LLM metadata unmarshal failed", zap.Error(err), zap.String("json", jsonStr))
+		return nil
+	}
+
+	formal := types.SegmentEntities{
+		FrasiImportanti:  extracted.FrasiImportanti,
+		NomiSpeciali:     extracted.NomiSpeciali,
+		ParoleImportanti: extracted.ParoleImportanti,
+		EntitaSenzaTesto: make(map[string]string),
+	}
+	
+	if extracted.EntitaSenzaTesto != nil {
+		switch v := extracted.EntitaSenzaTesto.(type) {
+		case string:
+			formal.EntitaSenzaTesto[v] = "Search term"
+		case map[string]interface{}:
+			for k := range v {
+				formal.EntitaSenzaTesto[k] = "Search term"
+			}
+		}
+	}
+
+	return &types.FullEntityAnalysis{
+		SegmentEntities: []types.SegmentEntities{formal},
+	}
 }

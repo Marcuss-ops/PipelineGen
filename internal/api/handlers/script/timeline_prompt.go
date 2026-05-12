@@ -19,15 +19,16 @@ Rules:
 - Keep each subject short and human-readable, ideally 2 to 6 words.
 - Divide by argument or topic shifts, not by a fixed number of segments.
 - Create as many segments as the narrative needs, but RESPECT THE MINIMUM SEGMENT REQUIREMENTS:
-  * For duration <= 60 seconds: minimum 4 segments
-  * For duration 60-180 seconds: minimum 6 segments
-  * For duration 300 seconds: minimum 10 segments
-  * For other durations: minimum 1 segment per 30 seconds of video
+  * For duration <= 60 seconds: minimum 2 segments
+  * For duration 60-180 seconds: minimum 4 segments
+  * For duration 300 seconds: minimum 8 segments
+  * For other durations: minimum 1 segment per 45 seconds of video
 - If the narrative is short, you can exceed the minimum, but never go below it.
 - Keep segments in the same order as the script.
 - Each segment must be contiguous and represent one coherent idea.
 - If the source material contains obvious section headings or subject transitions, use them to preserve the natural chapter structure.
 - For a script built from clearly separated subjects, return one segment per subject block.
+- For topics with strong focal subjects (e.g. "Mike Tyson"), you can use larger segments if the visuals remain consistent.
 - Use timestamps in seconds from 0 to %d.
 - The first segment must start at 0.
 - The last segment must end exactly at %d.

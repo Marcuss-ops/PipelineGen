@@ -144,7 +144,25 @@ func wireClipResolver(coreDeps *CoreDeps, clipCatalogRepo *clipcatalog.Repositor
 	// Create embedding provider (points to the Python server started by clipindexer)
 	embedProvider := clipresolver.NewPythonEmbeddingProvider("http://127.0.0.1:8001", clipCatalogRepo)
 
-	return clipresolver.NewService(clipCatalogRepo, harvestSvc, embedProvider, ontologyScorer, matchingCfg)
+	// Build map of prioritized repositories
+	repos := make(map[string]*clipcatalog.Repository)
+	
+	// 1. Stock database (highest priority)
+	if coreDeps.StockDB != nil && coreDeps.StockDB.DB != nil {
+		repos["stock"] = clipcatalog.NewRepository(coreDeps.StockDB.DB, log)
+		repos["stock"].SetServerInfo("http://127.0.0.1:8001", coreDeps.StockDB.Path())
+	}
+
+	// 2. YouTube clips database
+	if coreDeps.YouTubeDB != nil && coreDeps.YouTubeDB.DB != nil {
+		repos["youtube"] = clipcatalog.NewRepository(coreDeps.YouTubeDB.DB, log)
+		repos["youtube"].SetServerInfo("http://127.0.0.1:8001", coreDeps.YouTubeDB.Path())
+	}
+
+	// 3. Artlist database (fallback)
+	repos["artlist"] = clipCatalogRepo
+
+	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg)
 }
 
 func wireArtlistService(

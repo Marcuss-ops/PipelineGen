@@ -58,7 +58,7 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 
 	_, err = tx.Exec(`
 		INSERT OR REPLACE INTO images (
-			id, subject_id, source_url, file_hash, local_path, 
+			id, subject_id, source_url, hash, local_path, 
 			description, drive_file_id, status, metadata_json
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -92,8 +92,8 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 	var img models.ImageAsset
 	err := r.db.QueryRow(`
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
-		       COALESCE(description, ''), COALESCE(drive_file_id, ''), file_hash, created_at
-		FROM images WHERE file_hash = ?
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
+		FROM images WHERE hash = ?
 	`, hash).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
 	               &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
 	
@@ -110,7 +110,7 @@ func (r *Repository) GetByID(ctx context.Context, id interface{}) (*models.Image
 	var img models.ImageAsset
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
-		       COALESCE(description, ''), COALESCE(drive_file_id, ''), file_hash, created_at
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE id = ?
 	`, id).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
 	               &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
@@ -134,7 +134,7 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 	var img models.ImageAsset
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
-		       COALESCE(description, ''), COALESCE(drive_file_id, ''), file_hash, created_at
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE drive_file_id = ? OR source_url LIKE ?
 	`, fileID, "%"+fileID+"%").Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
 	                                 &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
@@ -151,7 +151,7 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageAsset, error) {
 	rows, err := r.db.Query(`
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
-		       COALESCE(description, ''), COALESCE(drive_file_id, ''), file_hash, created_at
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE subject_id = ?
 	`, subjectID)
 	if err != nil {
@@ -176,7 +176,7 @@ func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageA
 func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
-		       COALESCE(description, ''), COALESCE(drive_file_id, ''), file_hash, created_at
+		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images ORDER BY created_at DESC
 	`)
 	if err != nil {

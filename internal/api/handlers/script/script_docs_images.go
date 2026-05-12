@@ -4,8 +4,8 @@ import (
 	"strings"
 	"fmt"
 
-	"velox/go-master/internal/ml/ollama/types"
 	imgservice "velox/go-master/internal/service/images"
+	"velox/go-master/internal/service/visualplanner"
 	"go.uber.org/zap"
 )
 
@@ -15,10 +15,10 @@ type imagePlanItem struct {
 	Path    string
 }
 
-func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis, pythonScriptsDir string, imgService *imgservice.Service) ScriptSection {
-	subjects := pickImageSubjects(req.Topic, analysis, 5)
+func buildImagePlanningSection(req ScriptDocsRequest, plan *visualplanner.VisualPlan, imgService *imgservice.Service) ScriptSection {
+	subjects := plan.GlobalImageSubjects(5)
 	
-	zap.L().Info("Image planning starting", 
+	zap.L().Info("Image planning starting from visual plan", 
 		zap.Strings("subjects", subjects),
 		zap.String("topic", req.Topic),
 	)
@@ -41,11 +41,6 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 				query = subject + " " + req.Topic
 			}
 			
-			zap.L().Debug("Searching for image subject", 
-				zap.String("subject", subject), 
-				zap.String("query", query),
-			)
-			
 			asset, err := imgService.SearchAndDownload(slug, subject, query, req.Language, nil)
 			if err != nil {
 				zap.L().Warn("Image search failed", zap.String("subject", subject), zap.Error(err))
@@ -55,11 +50,6 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 			if asset == nil {
 				continue
 			}
-
-			zap.L().Info("Found image asset", 
-				zap.String("subject", subject), 
-				zap.String("url", asset.SourceURL),
-			)
 
 			items = append(items, imagePlanItem{
 				Subject: subject,
@@ -80,69 +70,6 @@ func buildImagePlanningSection(req ScriptDocsRequest, narrative string, analysis
 		Title: "📸 Entità con Immagine",
 		Body:  renderImagePlans(items),
 	}
-}
-
-func pickImageSubjects(topic string, analysis *types.FullEntityAnalysis, max int) []string {
-	seen := make(map[string]struct{})
-	var result []string
-
-	add := func(s string, priority bool) {
-		s = strings.TrimSpace(s)
-		if s == "" || len(result) >= max {
-			return
-		}
-		
-		// Filtro qualitativo: AVOID generic common nouns unless high priority
-		lower := strings.ToLower(s)
-		genericNouns := map[string]bool{
-			"bottega": true, "pizzaiolo": true, "storia": true, "passione": true, 
-			"tradizione": true, "vita": true, "momento": true, "segreto": true,
-		}
-		
-		if !priority && genericNouns[lower] {
-			return
-		}
-
-		// Filtriamo nomi troppo lunghi o troppo corti
-		if len([]rune(s)) < 3 || strings.Count(s, " ") > 5 {
-			return
-		}
-		
-		if _, ok := seen[lower]; ok {
-			return
-		}
-		
-		seen[lower] = struct{}{}
-		result = append(result, s)
-	}
-
-	if analysis != nil {
-		for _, segment := range analysis.SegmentEntities {
-			// 1. Nomi speciali (priorità massima)
-			for _, name := range segment.NomiSpeciali {
-				add(name, strings.Contains(name, " "))
-			}
-			
-			// 2. Parole importanti (solo se specifiche)
-			for _, word := range segment.ParoleImportanti {
-				if strings.Contains(word, " ") {
-					add(word, true)
-				}
-			}
-
-			// 3. Entità senza testo
-			if segment.EntitaSenzaTesto != nil {
-				for name := range segment.EntitaSenzaTesto {
-					add(name, false)
-				}
-			}
-		}
-	}
-
-	// 4. Topic completo come fallback finale
-	add(topic, true)
-
-	return result
 }
 
 func renderImagePlans(items []imagePlanItem) string {

@@ -74,6 +74,7 @@ type ScoreBreakdown struct {
 	TopicBoost     float64 `json:"topic_boost,omitempty"`
 	CategoryBoost  float64 `json:"category_boost,omitempty"`
 	UsableForBoost float64 `json:"usable_for_boost,omitempty"`
+	SourceBoost    float64 `json:"source_boost,omitempty"`
 	QualityScore   float64 `json:"quality_score,omitempty"`
 	NegativePenalty float64 `json:"negative_penalty,omitempty"`
 	ReusePenalty   float64 `json:"reuse_penalty,omitempty"`

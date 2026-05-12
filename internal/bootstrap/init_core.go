@@ -60,6 +60,8 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		Utility:              svcs.utility,
 		DB:                   dbs.main,
 		ArtlistDB:            dbs.artlist,
+		StockDB:              dbs.stock,
+		YouTubeDB:            dbs.clips,
 		ImagesDB:             dbs.images,
 		AssetsDB:             dbs.assets,
 		ScriptsRepo:          svcs.scriptsRepo,

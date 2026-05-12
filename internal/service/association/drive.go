@@ -42,12 +42,20 @@ func (a *DriveStockAssociation) Associate(ctx context.Context, input SegmentInpu
 	}
 
 	var matches []ScoredMatch
+	topicSlug := strings.ReplaceAll(strings.ToLower(input.Topic), " ", "-")
+
 	for _, f := range folders {
 		targetTokens := textutil.Tokenize(f.TopicSlug)
 		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 
+		// Exact or strong match with segment subject
 		if strings.Contains(f.TopicSlug, slug) || strings.Contains(slug, f.TopicSlug) {
 			score += 20
+		}
+
+		// HUGE BOOST: If the folder matches the main topic, it should be prioritized
+		if topicSlug != "" && (strings.Contains(f.TopicSlug, topicSlug) || strings.Contains(topicSlug, f.TopicSlug)) {
+			score += 50
 		}
 
 		if score > 40 {

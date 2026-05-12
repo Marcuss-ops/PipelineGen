@@ -39,6 +39,8 @@ type CoreDeps struct {
 	Utility              *common.UtilityHandler
 	DB                   *storage.SQLiteDB // Unified database
 	ArtlistDB            *storage.SQLiteDB // Artlist database
+	StockDB              *storage.SQLiteDB // Stock database
+	YouTubeDB            *storage.SQLiteDB // YouTube clips database
 	ImagesDB             *storage.SQLiteDB // Images database
 	AssetsDB             *storage.SQLiteDB // Assets database
 	ScriptsRepo          *scripts.ScriptRepository

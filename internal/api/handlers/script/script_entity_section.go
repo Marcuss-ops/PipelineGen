@@ -67,12 +67,17 @@ func isEndOfSentence(words []string, idx int) bool {
 
 // renderSpecialNames formats names with 🏷 prefix
 func renderSpecialNames(names []string) string {
+	return renderSpecialNamesWithImages(names, nil)
+}
+
+// renderSpecialNamesWithImages formats names with 🏷 prefix
+func renderSpecialNamesWithImages(names []string, images map[string]string) string {
 	if len(names) == 0 {
 		return "Nessun nome speciale rilevato."
 	}
 	var b strings.Builder
 	for _, n := range names {
-		b.WriteString("   🏷 ")
+		b.WriteString("    🏷 ")
 		b.WriteString(n)
 		b.WriteString("\n")
 	}
