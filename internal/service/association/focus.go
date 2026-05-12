@@ -4,17 +4,40 @@ import (
 	"strings"
 )
 
-// PrimaryFocus extracts the core subject from a topic or subject string.
-// It prioritizes the part before separators like ":", " - ", etc.
-// If entities are provided, it can be used to validate the focus.
+// PrimaryFocus extracts the core subject from a topic, subject, or entities.
 func PrimaryFocus(topic, subject string, entities []string) string {
-	// Try subject first as it is more specific to the segment
+	topic = strings.TrimSpace(topic)
+	subject = strings.TrimSpace(subject)
+
+	// 1. First priority: Check if any entity is the "start" of the topic or subject
+	// This usually identifies the protagonist in titles like "Mike Tyson: ..."
+	for _, entity := range entities {
+		if entity == "" {
+			continue
+		}
+		eLow := strings.ToLower(entity)
+		if strings.HasPrefix(strings.ToLower(topic), eLow) ||
+			strings.HasPrefix(strings.ToLower(subject), eLow) {
+			return entity
+		}
+	}
+
+	// 2. Second priority: Any entity that is contained in the subject (more specific than topic)
+	for _, entity := range entities {
+		if entity == "" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(subject), strings.ToLower(entity)) {
+			return entity
+		}
+	}
+
+	// 3. Third priority: Clean the subtitle from subject or topic
 	focus := stripSubtitle(subject)
-	if focus != "" {
+	if focus != "" && focus != subject {
 		return focus
 	}
 
-	// Fallback to topic
 	return stripSubtitle(topic)
 }
 

@@ -23,15 +23,32 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 	}
 
 	// 1. Try preferred stock match first (e.g. "Mike Tyson" folder)
+	var preferredPaths []string
 	if preferred, ok := assocService.ResolvePreferredStockMatch(ctx, input); ok {
 		seg.StockMatches = append(seg.StockMatches, *preferred)
-		// If we found a direct match, we still might want Artlist clips for variety,
-		// but the preferred one is now first and scored high (1000).
+		if preferred.Path != "" {
+			preferredPaths = append(preferredPaths, strings.ToLower(preferred.Path))
+		}
 	}
 
 	// 2. Run general association engine
 	matches := assocService.Associate(ctx, input)
 	for _, m := range matches {
+		// Deduplicate: skip if this path was already added as preferred
+		if m.Path != "" {
+			skip := false
+			mPath := strings.ToLower(m.Path)
+			for _, p := range preferredPaths {
+				if p == mPath {
+					skip = true
+					break
+				}
+			}
+			if skip {
+				continue
+			}
+		}
+
 		switch m.Source {
 		case "drive_stock", "stock_folder", "clip_drive":
 			seg.StockMatches = append(seg.StockMatches, m)
