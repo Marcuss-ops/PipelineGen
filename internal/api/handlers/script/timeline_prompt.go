@@ -15,8 +15,8 @@ Split the script into the most natural topical segments.
 Rules:
 - The overall topic is: %s
 - Every segment subject must stay close to the topic and its immediate subtopic.
-- PRIORITIZE REAL NAMES: Use the actual names of people, places, or specific entities as segment subjects (e.g., "Floyd Mayweather Jr." instead of "Money").
-- AVOID NICKNAMES: Unless the nickname is more recognizable and unique than the name, prefer the formal name.
+- STRICT NAMING POLICY FOR 'subject': You MUST use the REAL, FORMAL, FULL NAME of the primary person, place, or entity being discussed in the segment. No nicknames, no aliases, no abstract concepts.
+- ABSOLUTELY NO ABSTRACT PHRASES: Do NOT use phrases like "Put them side by side", "The Rise", "The Fall", "Comparison". The subject MUST be a concrete entity (a person, place, or thing).
 - Never output file names, path fragments, or unrelated people/places.
 - Keep each subject short and human-readable, ideally 2 to 6 words.
 - Divide by argument or topic shifts, not by a fixed number of segments.
@@ -38,6 +38,7 @@ Rules:
 - The 'narrative_text' of all segments combined MUST exactly match the provided SCRIPT. Do not omit or truncate any part of the script.
 - The 'search_suggestions' field MUST contain at least 3 specific, descriptive keywords or short phrases (e.g., "pizza dough kneading", "wood fired oven", "italian chef cooking") that would be perfect to search on Artlist for this segment.
 - Even for short videos (e.g. 30s), if the script is long, you must include the full script text across the segments.
+- "entities" MUST contain MAXIMUM 1 entity per segment. Only extract the single most important name, place or specific object. Do not extract more than one.
 - Return ONLY valid JSON with this shape:
 {
   "primary_focus": "short title of the main subject",
@@ -51,7 +52,7 @@ Rules:
       "opening_sentence": "opening sentence or excerpt",
       "closing_sentence": "closing sentence or excerpt",
       "keywords": ["optional", "keywords"],
-      "entities": ["optional", "entities"]
+      "entities": ["MAX 1 entity"]
     }
   ]
 }

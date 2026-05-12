@@ -9,19 +9,29 @@ func sanitizeTimelineLLMPlan(plan *timelineLLMPlan, topic string) {
 		return
 	}
 	topicTokens := topicTokens(topic)
+
 	for i := range plan.Segments {
 		seg := &plan.Segments[i]
-		if shouldReplaceLLMSubject(seg.Subject) || !subjectMatchesTopic(seg.Subject, topicTokens) {
-			seg.Subject = deriveFallbackSubject(seg, topic, topicTokens)
+
+		// Only replace if the subject is clearly broken (empty, file path, too long)
+		if shouldReplaceLLMSubject(seg.Subject) {
+			if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
+				seg.Subject = entitySubject
+			} else {
+				seg.Subject = topic
+			}
 		}
+		
+		// Always try to use a canonical/preferred entity if available
 		if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
 			seg.Subject = entitySubject
 		}
-		if seg.Subject == "" {
+		
+		if strings.TrimSpace(seg.Subject) == "" {
 			seg.Subject = topic
 		}
 	}
-	if strings.TrimSpace(plan.PrimaryFocus) == "" || !subjectMatchesTopic(plan.PrimaryFocus, topicTokens) {
+	if strings.TrimSpace(plan.PrimaryFocus) == "" {
 		plan.PrimaryFocus = topic
 	}
 }
