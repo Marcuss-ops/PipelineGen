@@ -120,11 +120,12 @@ Return ONLY valid JSON with exactly this shape:
 }
 
 RULES FOR VISUAL ENTITIES:
-1. "nomi_speciali": Extract up to %d specific names of people, places, or identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei"). 
+1. "nomi_speciali": Extract a MAXIMUM of %d specific names of people, places, or identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei"). 
+   - STRICT LIMIT: Do NOT extract more than %d names under any circumstance. Only take the most important ones.
    - AVOID abstract or generic nouns.
    - AVOID ambiguous common words unless qualified (e.g., AVOID "Campana" alone, PREFER "Mozzarella di bufala campana").
    - PREFER concrete entities that have a dedicated Wikipedia page.
-2. "parole_importanti": Extract up to %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
+2. "parole_importanti": Extract a MAXIMUM of %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
 3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences.
 4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query.
 
@@ -136,7 +137,7 @@ STRICT CONSTRAINTS:
 TEXT:
 "%s"
 
-JSON:`, entityCount, entityCount, text)
+JSON:`, entityCount, entityCount, entityCount, text)
 }
 
 // BuildTimelineAssetRoutingPrompt asks the model to choose the best asset source and folder for a timeline segment.

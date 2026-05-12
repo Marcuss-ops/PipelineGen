@@ -16,7 +16,7 @@ Rules:
 - The overall topic is: %s
 - Every segment subject must stay close to the topic and its immediate subtopic.
 - STRICT NAMING POLICY FOR 'subject': You MUST use the REAL, FORMAL, FULL NAME of the primary person, place, or entity being discussed in the segment. No nicknames, no aliases, no abstract concepts.
-- ABSOLUTELY NO ABSTRACT PHRASES: Do NOT use phrases like "Put them side by side", "The Rise", "The Fall", "Comparison". The subject MUST be a concrete entity (a person, place, or thing).
+- The subject MUST be a concrete entity (a person, place, or thing). No abstract phrases.
 - Never output file names, path fragments, or unrelated people/places.
 - Keep each subject short and human-readable, ideally 2 to 6 words.
 - Divide by argument or topic shifts, not by a fixed number of segments.

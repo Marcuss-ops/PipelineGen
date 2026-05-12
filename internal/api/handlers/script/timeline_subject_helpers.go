@@ -13,15 +13,6 @@ func subjectMatchesTopic(subject string, topicTokens []string) bool {
 	return termutil.SubjectMatchesTopic(subject, topicTokens)
 }
 
-func deriveFallbackSubject(seg *timelineLLMSegment, topic string, topicTokens []string) string {
-	if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
-		return entitySubject
-	}
-	// conciseSubject disabled: produces bad subjects from first tokens
-	// TODO: Implement VisualSubjectGenerator for proper subject extraction
-	return topic
-}
-
 func preferredEntitySubject(seg *timelineLLMSegment, topicTokens []string) string {
 	if seg == nil {
 		return ""

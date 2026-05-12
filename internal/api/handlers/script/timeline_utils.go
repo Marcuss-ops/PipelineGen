@@ -6,18 +6,6 @@ import (
 	"velox/go-master/pkg/textutil"
 )
 
-// conciseSubject extracts a short subject from text (DISABLED - produces bad subjects)
-func conciseSubject(text string) string {
-	tokens := topicTokensFromText(text)
-	if len(tokens) == 0 {
-		return ""
-	}
-	if len(tokens) > 5 {
-		tokens = tokens[:5]
-	}
-	return strings.Join(tokens, " ")
-}
-
 func topicTokens(topic string) []string {
 	return topicTokensFromText(topic)
 }

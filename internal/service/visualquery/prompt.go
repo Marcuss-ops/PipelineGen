@@ -15,9 +15,9 @@ Given a documentary segment, create a JSON object with visual details and search
 Rules:
 - visual_subject: 2-4 words summarizing the visual theme
 - visual_caption: 5-15 words describing what should be shown visually
-- queries: array of 3 short search queries in ENGLISH (2-4 words each). MUST BE GENERIC STOCK FOOTAGE CONCEPTS (e.g., "boxing training" instead of "Mike Tyson", "vintage rock singer" instead of "Elvis Presley"). DO NOT use proper names of famous people in this field, describe the action/environment instead.
-- entity_queries: array of 1-2 specific names or unique entities (e.g., "Mike Tyson", "Vesuvius") if present.
-- visual_prompts: array of 1-2 long, descriptive visual prompts for AI search (e.g., "close up of a professional boxer throwing an intense punch in a dark gym")
+- queries: array of 3 short search queries in ENGLISH (2-4 words each). MUST BE GENERIC STOCK FOOTAGE CONCEPTS describing the action/environment. DO NOT use proper names of famous people in this field.
+- entity_queries: array of 1-2 specific names or unique entities if present.
+- visual_prompts: array of 1-2 long, descriptive visual prompts for AI image generation (describe the action, lighting, composition)
 - Use concrete visual concepts, not abstract ideas
 - Avoid filler words
 - Return only valid JSON object
@@ -39,7 +39,7 @@ Given an array of documentary segments, create a JSON array where each element h
 Rules:
 - visual_subject: 2-4 words summarizing the visual theme
 - visual_caption: 5-15 words describing what should be shown visually
-- queries: array of up to %d short search queries in ENGLISH (2-4 words each). MUST BE GENERIC STOCK FOOTAGE CONCEPTS (e.g., "boxing training", "vintage singer"). DO NOT use proper names of famous people.
+- queries: array of up to %d short search queries in ENGLISH (2-4 words each). MUST BE GENERIC STOCK FOOTAGE CONCEPTS. DO NOT use proper names of famous people.
 - entity_queries: array of names/unique entities
 - visual_prompts: array of long descriptive visual prompts
 - Use concrete visual concepts, not abstract ideas
