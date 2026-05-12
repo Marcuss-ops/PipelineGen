@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/pathutil"
 )
 
 // ScraperClip represents a clip from the node scraper output
@@ -209,7 +210,7 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 		}
 		
 		// Synchronously resolve destination folder so we can return the link immediately
-		tagFolderName := strings.ReplaceAll(strings.ToLower(term), " ", "_")
+		tagFolderName := pathutil.SafeFolderName(term)
 		groupName := "Artlist"
 		if term != "" {
 			groupName = term

@@ -72,7 +72,7 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 
 	// Default to sync processing
 	if req.Filename == "" {
-		req.Filename = "manual_vo_" + strings.ReplaceAll(req.Language, "-", "_") + ".mp3"
+		req.Filename = "manual vo " + strings.ReplaceAll(req.Language, "-", " ") + ".mp3"
 	}
 	result, err := h.service.Generate(c.Request.Context(), req.Text, req.Language, req.Filename)
 	if err != nil {

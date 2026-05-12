@@ -15,6 +15,8 @@ Split the script into the most natural topical segments.
 Rules:
 - The overall topic is: %s
 - Every segment subject must stay close to the topic and its immediate subtopic.
+- PRIORITIZE REAL NAMES: Use the actual names of people, places, or specific entities as segment subjects (e.g., "Floyd Mayweather Jr." instead of "Money").
+- AVOID NICKNAMES: Unless the nickname is more recognizable and unique than the name, prefer the formal name.
 - Never output file names, path fragments, or unrelated people/places.
 - Keep each subject short and human-readable, ideally 2 to 6 words.
 - Divide by argument or topic shifts, not by a fixed number of segments.

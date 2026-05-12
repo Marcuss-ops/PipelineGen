@@ -8,17 +8,18 @@ import (
 
 func SafeName(name string) string {
 	replacer := strings.NewReplacer(
-		"/", "-",
-		"\\", "-",
-		":", "-",
-		"*", "-",
-		"?", "-",
-		"\"", "-",
-		"<", "-",
-		">", "-",
-		"|", "-",
+		"/", " ",
+		"\\", " ",
+		":", " ",
+		"*", " ",
+		"?", " ",
+		"\"", " ",
+		"<", " ",
+		">", " ",
+		"|", " ",
+		"_", " ",
 	)
-	return replacer.Replace(strings.TrimSpace(name))
+	return strings.TrimSpace(replacer.Replace(name))
 }
 
 func TmpPath(outputDir, filename string) string {

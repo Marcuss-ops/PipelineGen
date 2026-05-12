@@ -175,10 +175,10 @@ func (r *Repository) FindCandidatesFTS(ctx context.Context, query string, limit 
 		SELECT 
 			c.id, c.name, c.search_text, c.category, c.scene_type, c.tags, 
 			c.drive_link, c.local_path, c.quality_score, c.reuse_count, 
-			c.usable_for_json, c.avoid_for_json,
+			c.usable_for_json, c.avoid_for_json, c.folder_id, c.folder_path,
 			bm25(clips_fts, 5.0, 2.0, 1.0, 1.5, 1.0) as rank
 		FROM clips_fts
-		JOIN clips c ON c.id = clips_fts.clip_id
+		JOIN clips c ON c.id = clips_fts.id
 		WHERE clips_fts MATCH ?
 		ORDER BY rank ASC, c.quality_score DESC, c.reuse_count ASC
 		LIMIT ?
@@ -199,7 +199,7 @@ func (r *Repository) FindCandidatesFTS(ctx context.Context, query string, limit 
 		var usableForJSON string
 		var avoidForJSON string
 		var rank float64
-		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON, &rank); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON, &c.FolderID, &c.FolderPath, &rank); err != nil {
 			continue
 		}
 
@@ -249,7 +249,7 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 	}
 
 	sqlQuery := fmt.Sprintf(`
-		SELECT id, name, search_text, category, scene_type, tags, drive_link, local_path, quality_score, reuse_count, usable_for_json, avoid_for_json
+		SELECT id, name, search_text, category, scene_type, tags, drive_link, local_path, quality_score, reuse_count, usable_for_json, avoid_for_json, folder_id, folder_path
 		FROM clips
 		WHERE %s
 		ORDER BY quality_score DESC, reuse_count ASC
@@ -270,7 +270,7 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 		var tagsStr string
 		var usableForJSON string
 		var avoidForJSON string
-		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON, &c.FolderID, &c.FolderPath); err != nil {
 			r.logger.Warn("failed to scan candidate", zap.Error(err))
 			continue
 		}

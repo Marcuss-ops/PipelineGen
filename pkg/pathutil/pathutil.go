@@ -63,37 +63,37 @@ func SafeFilename(outputDir, filename string) (string, error) {
 }
 
 // SafeFolderName creates a safe folder name from a string.
-// Similar to Slug but allows dots and ensures it's not empty.
+// Similar to Slug but uses spaces instead of underscores and allows dots.
 func SafeFolderName(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.TrimSpace(name)
 	if name == "" {
 		return "untitled"
 	}
 
 	var b strings.Builder
-	lastUnderscore := false
+	lastSpace := false
 
 	for _, r := range name {
 		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 			b.WriteRune(r)
-			lastUnderscore = false
+			lastSpace = false
 		case r == ' ' || r == '-' || r == '_' || r == '.':
-			if b.Len() > 0 && !lastUnderscore {
-				b.WriteByte('_')
-				lastUnderscore = true
+			if b.Len() > 0 && !lastSpace {
+				b.WriteByte(' ')
+				lastSpace = true
 			}
 		default:
 			if r < 128 {
-				if b.Len() > 0 && !lastUnderscore {
-					b.WriteByte('_')
-					lastUnderscore = true
+				if b.Len() > 0 && !lastSpace {
+					b.WriteByte(' ')
+					lastSpace = true
 				}
 			}
 		}
 	}
 
-	out := strings.Trim(b.String(), "_")
+	out := strings.TrimSpace(b.String())
 	if out == "" {
 		return "untitled"
 	}

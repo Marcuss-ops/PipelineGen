@@ -95,7 +95,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context) {
 	var voResult interface{}
 	if req.Voiceover && h.voService != nil {
 		voiceoverStarted := time.Now()
-		filename := strings.ReplaceAll(req.Topic, " ", "_") + ".mp3"
+		filename := req.Topic + ".mp3"
 		res, err := h.voService.Generate(ctx, narrativeOnly(document.Content), req.Language, filename)
 		if err != nil {
 			zap.L().Warn("voiceover generation failed", zap.Error(err), zap.Duration("elapsed", time.Since(voiceoverStarted)))

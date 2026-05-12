@@ -50,17 +50,19 @@ type RecommendResponse struct {
 
 // RecommendedClip represents a recommended clip with score breakdown
 type RecommendedClip struct {
-	ClipID        string          `json:"clip_id"`
-	Title         string          `json:"title"`
-	DriveLink     string          `json:"drive_link,omitempty"`
-	LocalPath     string          `json:"local_path,omitempty"`
-	Score         float64         `json:"score"`
-	MatchedQuery  string          `json:"matched_query,omitempty"`
-	Category      string          `json:"category,omitempty"`
-	SceneType     string          `json:"scene_type,omitempty"`
-	MatchedTerms  []string        `json:"matched_terms,omitempty"`
+	ClipID         string          `json:"clip_id"`
+	Title          string          `json:"title"`
+	DriveLink      string          `json:"drive_link,omitempty"`
+	LocalPath      string          `json:"local_path,omitempty"`
+	FolderID       string          `json:"folder_id,omitempty"`
+	FolderPath     string          `json:"folder_path,omitempty"`
+	Score          float64         `json:"score"`
+	MatchedQuery   string          `json:"matched_query,omitempty"`
+	Category       string          `json:"category,omitempty"`
+	SceneType      string          `json:"scene_type,omitempty"`
+	MatchedTerms   []string        `json:"matched_terms,omitempty"`
 	ScoreBreakdown *ScoreBreakdown `json:"score_breakdown,omitempty"`
-	Reason        string          `json:"reason,omitempty"`
+	Reason         string          `json:"reason,omitempty"`
 }
 
 // RejectedClip represents a rejected clip with reason

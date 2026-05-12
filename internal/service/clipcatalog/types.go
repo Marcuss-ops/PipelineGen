@@ -25,13 +25,15 @@ type ClipCandidate struct {
 	Name         string   `json:"name"`
 	SearchText   string   `json:"search_text"`
 	Category     string   `json:"category"`
-	SceneType   string   `json:"scene_type"`
+	SceneType    string   `json:"scene_type"`
 	Tags         []string `json:"tags"`
 	DriveLink    string   `json:"drive_link,omitempty"`
 	LocalPath    string   `json:"local_path,omitempty"`
+	FolderID     string   `json:"folder_id,omitempty"`
+	FolderPath   string   `json:"folder_path,omitempty"`
 	QualityScore float64  `json:"quality_score"`
 	ReuseCount   int      `json:"reuse_count"`
-	UsableFor   []string `json:"usable_for,omitempty"`
+	UsableFor    []string `json:"usable_for,omitempty"`
 	AvoidFor     []string `json:"avoid_for,omitempty"`
 }
 

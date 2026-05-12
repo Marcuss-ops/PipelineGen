@@ -13,7 +13,7 @@ import (
 	"velox/go-master/pkg/sliceutil"
 )
 
-const cacheVersion = "v14"
+const cacheVersion = "v18"
 
 type Cache struct {
 	repo *clips.Repository

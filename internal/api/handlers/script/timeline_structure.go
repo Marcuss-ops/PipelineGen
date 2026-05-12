@@ -241,24 +241,80 @@ func conciseStructuredSubject(text string) string {
 		return ""
 	}
 
+	// Remove leading numbering like "1. ", "Part 1: ", etc.
+	text = stripLeadingNumbering(text)
+
+	// Prefer the part BEFORE the colon if it's not a generic label
 	if idx := strings.Index(text, ":"); idx != -1 {
-		text = strings.TrimSpace(text[:idx])
+		first := strings.TrimSpace(text[:idx])
+		second := strings.TrimSpace(text[idx+1:])
+		if isGenericLabel(first) {
+			text = second
+		} else {
+			text = first
+		}
 	}
-	if idx := strings.Index(text, "—"); idx != -1 {
-		text = strings.TrimSpace(text[idx+len("—"):])
+
+	// For dashes, we usually want the part that contains the "Name" or "Subject".
+	// Patterns like "Name - Description" or "Description - Name" or "1. Name - Nickname".
+	separators := []string{" — ", " – ", " - "}
+	for _, sep := range separators {
+		if idx := strings.Index(text, sep); idx != -1 {
+			first := strings.TrimSpace(text[:idx])
+			second := strings.TrimSpace(text[idx+len(sep):])
+
+			// If first part is a name or specific entity and second is a nickname (often in quotes),
+			// or if first part is long and second is short, or if first is a generic label.
+			if isGenericLabel(first) {
+				text = second
+			} else if strings.HasPrefix(second, "\"") || strings.HasPrefix(second, "'") {
+				// Pattern: Name - "Nickname"
+				text = first
+			} else {
+				// Default to first part if it's substantial
+				text = first
+			}
+			break
+		}
 	}
-	if idx := strings.Index(text, "-"); idx != -1 {
-		text = strings.TrimSpace(text[idx+1:])
-	}
+
+	// Final cleanup: remove quotes and extra punctuation
+	text = strings.Trim(text, " \"'.,:-—–")
 
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
 		return ""
 	}
-	if len(fields) > 4 {
-		fields = fields[:4]
+
+	// If it's too long, it might be a sentence fragment.
+	// But don't truncate if it's a name like "Floyd Mayweather Jr."
+	if len(fields) > 5 {
+		fields = fields[:5]
 	}
 	return strings.Join(fields, " ")
+}
+
+func stripLeadingNumbering(text string) string {
+	// Matches "1. ", "1) ", "(1) ", "Part 1: ", "Chapter 1 - "
+	re := regexp.MustCompile(`(?i)^([(\[]?\d+[)\]]?|[a-z]+\s+\d+)\s*[:.\-—–]?\s*`)
+	return re.ReplaceAllString(text, "")
+}
+
+func isGenericLabel(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	generics := []string{"part", "chapter", "section", "block", "segment", "intro", "introduction", "outro", "conclusion"}
+	for _, g := range generics {
+		if strings.HasPrefix(lower, g) {
+			return true
+		}
+	}
+	// Also check if it's just a number
+	if _, err := regexp.Compile(`^\d+$`); err == nil {
+		if regexp.MustCompile(`^\d+$`).MatchString(lower) {
+			return true
+		}
+	}
+	return false
 }
 
 func structuredBlockKeywords(heading, body string) []string {

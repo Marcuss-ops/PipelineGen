@@ -216,16 +216,18 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		}
 
 		rec := RecommendedClip{
-			ClipID:        clipID,
-			Title:         entry.Clip.Name,
-			DriveLink:     entry.Clip.DriveLink,
-			LocalPath:     entry.Clip.LocalPath,
-			Score:         entry.Score,
-			MatchedQuery:  entry.MatchedQuery,
-			Category:      entry.Clip.Category,
-			MatchedTerms:  entry.MatchedTerms,
+			ClipID:         clipID,
+			Title:          entry.Clip.Name,
+			DriveLink:      entry.Clip.DriveLink,
+			LocalPath:      entry.Clip.LocalPath,
+			FolderID:       entry.Clip.ParentFolderID,
+			FolderPath:     entry.Clip.FolderPath,
+			Score:          entry.Score,
+			MatchedQuery:   entry.MatchedQuery,
+			Category:       entry.Clip.Category,
+			MatchedTerms:   entry.MatchedTerms,
 			ScoreBreakdown: entry.Breakdown,
-			Reason:        s.buildRecommendReason(entry, req),
+			Reason:         s.buildRecommendReason(entry, req),
 		}
 
 		if !req.Explain {
@@ -596,8 +598,10 @@ func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *models.Clip {
 		ID:           cand.ID,
 		Name:         cand.Name,
 		DriveLink:    cand.DriveLink,
-		LocalPath:     cand.LocalPath,
-		Category:      cand.Category,
+		LocalPath:    cand.LocalPath,
+		ParentFolderID: cand.FolderID,
+		FolderPath:   cand.FolderPath,
+		Category:     cand.Category,
 		SearchTerms:  []string{cand.SearchText},
 		Tags:         cand.Tags,
 		SearchText:   cand.SearchText,

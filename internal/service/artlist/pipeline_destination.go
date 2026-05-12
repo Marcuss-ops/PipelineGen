@@ -5,6 +5,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/core/destination"
+	"velox/go-master/pkg/pathutil"
 )
 
 // resolveDestination resolves the Drive folder for the tag
@@ -13,7 +14,7 @@ func (s *Service) resolveDestination(ctx context.Context, rootFolderID, term, ta
 	if s.assetDestResolver != nil {
 		resolved, err := s.assetDestResolver.Resolve(ctx, &destination.ResolveRequest{
 			Source:          "artlist",
-			Group:           term,
+			Group:           pathutil.SafeFolderName(term),
 			FolderID:        rootFolderID,
 			SubfolderName:   tagFolderName,
 			CreateSubfolder: true,

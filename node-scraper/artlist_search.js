@@ -236,6 +236,12 @@ async function searchArtlist(term, limit, profileDir) {
           await detailPage.waitForSelector('video, [class*="player"], [class*="video"]', { timeout: 10000 }).catch(() => {});
           await new Promise((resolve) => setTimeout(resolve, 1000));
           const title = await detailPage.title();
+          
+          if (title.includes('Just a moment')) {
+            console.error(`[artlist] Cloudflare block detected for ${clipPageUrl}`);
+            return null;
+          }
+
           const html = (await detailPage.evaluate(() => document.documentElement.outerHTML))
             .replace(/\\\//g, '/')
             .replace(/\\u0026/g, '&');

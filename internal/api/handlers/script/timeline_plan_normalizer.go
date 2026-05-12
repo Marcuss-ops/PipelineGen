@@ -24,6 +24,17 @@ func normalizeTimelineLLMPlan(plan *timelineLLMPlan, duration int) *timelineLLMP
 		return nil
 	}
 
+	minSegments := 2
+	if duration >= 60 {
+		minSegments = 4
+	}
+	if duration >= 300 {
+		minSegments = 8
+	}
+	if len(segments) < minSegments {
+		return nil
+	}
+
 	sort.SliceStable(segments, func(i, j int) bool {
 		if segments[i].StartTime == segments[j].StartTime {
 			if segments[i].EndTime == segments[j].EndTime {

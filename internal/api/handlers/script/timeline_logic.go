@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const timelineCacheVersion = "v14"
+const timelineCacheVersion = "v18"
 
 func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service, clipResolver *clipresolver.Service) (*TimelinePlan, error) {
 	startedAt := time.Now()
@@ -37,11 +37,6 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	rawPlan, err := chooseTimelinePlanWithLLM(ctx, gen, req.Topic, req.Duration, sourceText, narrative)
 	if err != nil {
 		rawPlan = fallbackTimelinePlan(req.Topic, req.Duration, narrative)
-	}
-
-	// Apply structured timeline if available
-	if structuredPlan, ok := buildStructuredTimelinePlan(req.Topic, req.Duration, sourceText); ok && len(structuredPlan.Segments) > 1 {
-		rawPlan = structuredPlan
 	}
 
 	// Prepare segments for batch query generation

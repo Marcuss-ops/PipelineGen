@@ -3,6 +3,7 @@ package script
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"velox/go-master/internal/repository/clips"
@@ -122,14 +123,25 @@ func searchArtlistWithResolver(ctx context.Context, seg *TimelineSegment, clipRe
 	if len(resp.Recommended) > 0 {
 		artlistClips := make([]association.ScoredMatch, 0, len(resp.Recommended))
 		for _, rec := range resp.Recommended {
-			artlistClips = append(artlistClips, association.ScoredMatch{
+			match := association.ScoredMatch{
 				ClipID: rec.ClipID,
 				Title:  rec.Title,
 				Path:   rec.LocalPath,
 				Score:  int(rec.Score * 100),
 				Source: "clip_resolver",
 				Link:   rec.DriveLink,
-			})
+			}
+
+			// Add folder info if available
+			if rec.FolderID != "" {
+				match.FolderLink = "https://drive.google.com/drive/folders/" + rec.FolderID
+				if rec.FolderPath != "" {
+					match.FolderName = filepath.Base(rec.FolderPath)
+				} else {
+					match.FolderName = "Source Folder"
+				}
+			}
+			artlistClips = append(artlistClips, match)
 		}
 		seg.ArtlistMatches = artlistClips
 	} else if resp.NeedsHarvest {

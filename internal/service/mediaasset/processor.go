@@ -86,7 +86,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 
 	// Setup paths
 	tmpDir, saveDir := p.setupDirectories(input)
-	finalFilename := SafeName(input.Name) + "_" + input.ID + ".mp4"
+	finalFilename := SafeName(input.Name) + " " + input.ID + ".mp4"
 	processedPath := OutputPath(saveDir, finalFilename)
 
 	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly)

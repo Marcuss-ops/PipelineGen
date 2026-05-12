@@ -60,6 +60,38 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	// 2. Extract Document Analysis
 	analysis := extractDocumentAnalysis(ctx, gen, narrative)
 
+	// 5. Extract metadata for final sections
+	var phrases []string
+	var specialNames []string
+	var importantWords []string
+
+	if analysis != nil && len(analysis.SegmentEntities) > 0 {
+		entities := analysis.SegmentEntities[0]
+		phrases = entities.FrasiImportanti
+		specialNames = entities.NomiSpeciali
+		importantWords = entities.ParoleImportanti
+		
+		zap.L().Info("LLM document analysis successful",
+			zap.Int("phrases", len(phrases)),
+			zap.Int("special_names", len(specialNames)),
+			zap.Int("important_words", len(importantWords)),
+		)
+	}
+
+	// FALLBACK: If LLM analysis failed or returned empty results, use heuristics
+	if len(phrases) == 0 {
+		zap.L().Info("falling back to heuristic phrase extraction")
+		phrases = extractImportantPhrases(narrative)
+	}
+	if len(specialNames) == 0 {
+		zap.L().Info("falling back to heuristic name extraction")
+		specialNames = extractSpecialNames(narrative)
+	}
+	if len(importantWords) == 0 {
+		zap.L().Info("falling back to heuristic word extraction")
+		importantWords = extractImportantWords(narrative, 10)
+	}
+
 	// 3. Build Unified Visual Plan
 	var vpSegments []visualplanner.TimelineSegment
 	if timeline != nil {
@@ -78,18 +110,6 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	var imageSection ScriptSection
 	if imgService != nil {
 		imageSection = buildImagePlanningSection(req, vPlan, imgService)
-	}
-
-	// 5. Extract metadata for final sections
-	var phrases []string
-	var specialNames []string
-	var importantWords []string
-
-	if analysis != nil && len(analysis.SegmentEntities) > 0 {
-		entities := analysis.SegmentEntities[0]
-		phrases = entities.FrasiImportanti
-		specialNames = entities.NomiSpeciali
-		importantWords = entities.ParoleImportanti
 	}
 
 	importantPhrasesSection := ScriptSection{
