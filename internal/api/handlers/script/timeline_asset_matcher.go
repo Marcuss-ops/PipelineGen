@@ -22,7 +22,7 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 		Narrative: seg.NarrativeText,
 	}
 
-	// 1. Try preferred stock match first (e.g. "Mike Tyson" folder)
+	// 1. Try preferred stock match first based on primary focus
 	var preferredPaths []string
 	if preferred, ok := assocService.ResolvePreferredStockMatch(ctx, input); ok {
 		seg.StockMatches = append(seg.StockMatches, *preferred)

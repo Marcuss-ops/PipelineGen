@@ -96,15 +96,6 @@ func extractGlobalSubjects(topic string, analysis *types.FullEntityAnalysis, seg
 			return
 		}
 
-		// Generic filter (can be expanded)
-		genericNouns := map[string]bool{
-			"bottega": true, "pizzaiolo": true, "storia": true, "passione": true, 
-			"tradizione": true, "vita": true, "momento": true, "segreto": true,
-		}
-		if priority < 50 && genericNouns[lower] {
-			return
-		}
-
 		seen[lower] = struct{}{}
 		result = append(result, VisualSubject{
 			Text:     text,

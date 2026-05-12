@@ -28,7 +28,7 @@ Rules:
 - Each segment must be contiguous and represent one coherent idea.
 - If the source material contains obvious section headings or subject transitions, use them to preserve the natural chapter structure.
 - For a script built from clearly separated subjects, return one segment per subject block.
-- For topics with strong focal subjects (e.g. "Mike Tyson"), you can use larger segments if the visuals remain consistent.
+- For topics with strong focal subjects, you can use larger segments if the visuals remain consistent.
 - Use timestamps in seconds from 0 to %d.
 - The first segment must start at 0.
 - The last segment must end exactly at %d.
@@ -44,7 +44,7 @@ Rules:
       "index": 1,
       "start_time": 0,
       "end_time": 18.5,
-      "subject": "Main person or specific topic of this block (e.g. 'Mike Tyson' or 'Amish lifestyle')",
+      "subject": "Main person or specific topic of this block",
       "narrative_text": "exact excerpt from the script for this segment",
       "opening_sentence": "opening sentence or excerpt",
       "closing_sentence": "closing sentence or excerpt",

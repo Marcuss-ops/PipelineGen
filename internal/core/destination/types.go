@@ -12,10 +12,10 @@ type Resolver interface {
 // ResolveRequest contains the information needed to resolve a destination.
 type ResolveRequest struct {
 	Source         string // e.g. "youtube", "artlist", "voiceover"
-	Group          string // e.g. "boxe", "wwe", "wnba"
+	Group          string // Name of the group folder
 	FolderID       string // explicit folder ID (overrides group)
 	FolderPath     string // optional path info
-	SubfolderName  string // e.g. "Mike Tyson" or video ID
+	SubfolderName  string // Name of the subfolder or video ID
 	CreateSubfolder bool  // whether to create subfolder if not exists
 	AssetID        string
 	AssetType      string // "clip", "stock", "artlist", "image", "voiceover"

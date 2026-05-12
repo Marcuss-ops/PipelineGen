@@ -61,7 +61,7 @@ CREATE TABLE clip_folders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     drive_folder_id TEXT,
-    group_name TEXT, -- 'boxe', 'wwe', 'wnba', etc.
+    group_name TEXT, -- group identifier
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```

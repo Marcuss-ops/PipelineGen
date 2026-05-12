@@ -84,5 +84,5 @@ drive:
 ## Database Schema (Images)
 
 The `images.db.sqlite` contains:
-- `subjects`: Organized by slug (e.g., "mike-tyson").
+- `subjects`: Organized by slug (e.g., "subject-name").
 - `images`: Contains `file_hash`, `local_path`, `drive_file_id`, and `source_url`.

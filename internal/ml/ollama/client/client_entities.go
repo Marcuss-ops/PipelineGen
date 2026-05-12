@@ -270,7 +270,7 @@ func fallbackSpecialNames(segment string, limit int) []string {
 		return nil
 	}
 
-	// First try contiguous capitalized phrases like "Mike Tyson" or "New York".
+	// First try contiguous capitalized phrases.
 	multiWord := regexp.MustCompile(`\b(?:[A-Z][\p{L}'’\-]*\s+){1,4}[A-Z][\p{L}'’\-]*\b`).FindAllString(segment, -1)
 	names := make([]string, 0, limit)
 	for _, candidate := range multiWord {
@@ -454,9 +454,7 @@ var noisyExtractionCandidates = map[string]struct{}{
 	"he": {}, "her": {}, "him": {}, "his": {}, "i": {}, "it": {}, "its": {}, "me": {}, "my": {},
 	"our": {}, "ours": {}, "she": {}, "their": {}, "them": {}, "they": {}, "this": {}, "that": {},
 	"these": {}, "those": {}, "we": {}, "you": {}, "the": {}, "a": {}, "an": {}, "of": {}, "in": {},
-	"on": {}, "at": {}, "to": {}, "and": {}, "name": {}, "names": {}, "trainer": {}, "trainers": {},
-	"fighter": {}, "fighters": {}, "boxer": {}, "boxing": {}, "man": {}, "men": {}, "woman": {},
-	"women": {}, "person": {}, "people": {}, "subject": {}, "subjects": {},
+	"on": {}, "at": {}, "to": {}, "and": {}, "name": {}, "names": {},
 }
 
 var genericImportantWords = map[string]struct{}{

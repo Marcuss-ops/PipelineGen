@@ -23,7 +23,7 @@ var StandardSources = []SourceDefinition{
 	},
 	{
 		Canonical: "clips",
-		Aliases:   []string{"youtube", "clips", "boxe", "wwe", "discovery", "music"},
+		Aliases:   []string{"youtube", "clips"},
 		MediaType: "video",
 	},
 	{

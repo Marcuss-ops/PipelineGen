@@ -65,8 +65,8 @@ var resolver destination.Resolver
 
 result, err := resolver.Resolve(ctx, &destination.ResolveRequest{
     Source:        "youtube",
-    Group:         "boxe",
-    SubfolderName: "Mike Tyson",
+    Group:         "sports",
+    SubfolderName: "Athlete Name",
 })
 ```
 
@@ -134,7 +134,7 @@ registry.RegisterClipSource(assetSourceArtlist, artlistRepo)
 // Enqueue job
 err := jobService.Enqueue(ctx, &models.Job{
     Type: "media.artlist",
-    Payload: map[string]interface{}{"term": "boxe"},
+    Payload: map[string]interface{}{"term": "topic_name"},
 })
 ```
 

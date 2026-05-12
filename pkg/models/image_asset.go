@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Subject rappresenta un'entità o un argomento (es: "Mike Tyson")
+// Subject rappresenta un'entità o un argomento
 type Subject struct {
 	ID          int64     `json:"id"`
 	Slug        string    `json:"slug"`

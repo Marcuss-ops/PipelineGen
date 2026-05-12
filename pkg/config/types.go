@@ -86,7 +86,7 @@ type DriveConfig struct {
 	// VoiceoverRootFolder is the root folder ID for voiceover files on Drive.
 	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
 	// ClipRootFolders maps group names to Drive folder IDs for clip organization.
-	// Example: map[string]string{"boxe": "DRIVE_ID_1", "wwe": "DRIVE_ID_2"}
+	// Example: map[string]string{"group1": "DRIVE_ID_1", "group2": "DRIVE_ID_2"}
 	ClipRootFolders map[string]string `yaml:"clip_root_folders" env:"VELOX_DRIVE_CLIP_ROOT_FOLDERS" default:"{}"`
 }
 

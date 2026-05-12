@@ -10,7 +10,6 @@ func PrimaryFocus(topic, subject string, entities []string) string {
 	subject = strings.TrimSpace(subject)
 
 	// 1. First priority: Check if any entity is the "start" of the topic or subject
-	// This usually identifies the protagonist in titles like "Mike Tyson: ..."
 	for _, entity := range entities {
 		if entity == "" {
 			continue

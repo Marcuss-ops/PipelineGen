@@ -31,10 +31,10 @@ func NewResolver(cfg *config.Config, log *zap.Logger, driveSvc *driveapi.Service
 // ResolveRequest holds the unified destination resolution request.
 type ResolveRequest struct {
 	Source          string // e.g. "youtube", "artlist", "voiceover"
-	Group           string // e.g. "boxe", "wwe", "wnba"
+	Group           string // Name of the group folder
 	FolderID        string // explicit folder ID (overrides group)
 	FolderPath      string // optional path info
-	SubfolderName   string // e.g. "Mike Tyson" or video ID
+	SubfolderName   string // Name of the subfolder or video ID
 	CreateSubfolder bool   // whether to create subfolder if not exists
 }
 

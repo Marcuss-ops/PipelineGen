@@ -36,7 +36,7 @@ The service is exposed through the following API endpoint:
   "save_db": true,
   "upload_drive": true,
   "destination": {
-    "group": "boxe",
+    "group": "group_name",
     "create_subfolder": true
   }
 }
@@ -52,7 +52,7 @@ The service is exposed through the following API endpoint:
 - `save_db` (boolean, optional, default: `true`): If `true`, the clip metadata will be saved to the database.
 - `upload_drive` (boolean, optional, default: `true`): If `true`, the clip will be uploaded to Google Drive.
 - `destination` (object, optional): Specifies the Google Drive destination.
-  - `group` (string, optional): The name of the destination group (e.g., "boxe").
+  - `group` (string, optional): The name of the destination group.
   - `create_subfolder` (boolean, optional, default: `false`): If `true`, a subfolder will be automatically created for the video.
 
 ### Response Body
