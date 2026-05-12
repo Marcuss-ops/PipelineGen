@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/upload/drive"
+	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/pathutil"
 )
@@ -19,7 +19,7 @@ type artlistChecksumChecker struct {
 }
 
 func (c *artlistChecksumChecker) GetMD5Checksum(ctx context.Context, driveLink string) (string, error) {
-	fileID := drive.FileIDFromLink(driveLink)
+	fileID := driveutil.FileIDFromLink(driveLink)
 	if fileID == "" {
 		return "", fmt.Errorf("could not extract file ID from link: %s", driveLink)
 	}

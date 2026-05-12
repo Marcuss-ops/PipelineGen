@@ -24,7 +24,7 @@ import (
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
 	"velox/go-master/internal/service/scheduler"
@@ -53,7 +53,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// 4. Media Processing
 	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)
 	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log)
-	clipsRegistry := mediaregistry.NewClipsRegistry(clipsOnlyRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
 
 	// Asset index service
 	assetIndexRepo := assetindex.NewRepository(dbs.assets.DB)

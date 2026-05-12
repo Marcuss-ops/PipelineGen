@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
@@ -33,7 +33,7 @@ type Processor struct {
 	dataDir  string
 	tempDir  string
 	videoCfg ffmpeg.NormalizeOptions
-	registry mediaregistry.Registry
+	registry assetregistry.Registry
 }
 
 type ProcessorConfig struct {
@@ -48,7 +48,7 @@ func NewProcessor(
 	ff VideoProcessor,
 	log *zap.Logger,
 	cfg ProcessorConfig,
-	registry mediaregistry.Registry,
+	registry assetregistry.Registry,
 ) *Processor {
 	return &Processor{
 		dl:       dl,

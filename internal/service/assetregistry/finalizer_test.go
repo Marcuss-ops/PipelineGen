@@ -1,4 +1,4 @@
-package mediaregistry
+package assetregistry
 
 import (
 	"context"
@@ -73,6 +73,18 @@ func (m *mockRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecor
 		}
 	}
 	return result, nil
+}
+
+func (m *mockRegistry) FindByPHash(ctx context.Context, phash string) (string, error) {
+	if m.shouldErr {
+		return "", sql.ErrConnDone
+	}
+	for _, rec := range m.savedRecords {
+		if rec.PHash == phash && phash != "" {
+			return rec.ID, nil
+		}
+	}
+	return "", sql.ErrNoRows
 }
 
 func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {

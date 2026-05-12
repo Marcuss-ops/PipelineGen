@@ -17,7 +17,7 @@ func NewAssetsModule(
 ) *RouteModule {
 	return NewRouteModule(
 		"assets",
-		func(cfg *config.Config) bool { return true },
+		func(cfg *config.Config) bool { return handler != nil },
 		"/assets",
 		handler,
 		log,

@@ -6,23 +6,23 @@ import (
 	"time"
 
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 )
 
 type voiceoverRegistryAdapter struct {
 	repo *voiceovers.Repository
 }
 
-func NewVoiceoverRegistryAdapter(repo *voiceovers.Repository) mediaregistry.Registry {
+func NewVoiceoverRegistryAdapter(repo *voiceovers.Repository) assetregistry.Registry {
 	return &voiceoverRegistryAdapter{repo: repo}
 }
 
-func (a *voiceoverRegistryAdapter) UpsertMedia(ctx context.Context, rec *mediaregistry.MediaRecord) error {
+func (a *voiceoverRegistryAdapter) UpsertMedia(ctx context.Context, rec *assetregistry.MediaRecord) error {
 	vRec := mediaRecordToVoiceover(rec)
 	return a.repo.Upsert(ctx, vRec)
 }
 
-func (a *voiceoverRegistryAdapter) GetMedia(ctx context.Context, id string) (*mediaregistry.MediaRecord, error) {
+func (a *voiceoverRegistryAdapter) GetMedia(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
 	vRec, err := a.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -37,12 +37,12 @@ func (a *voiceoverRegistryAdapter) DeleteMedia(ctx context.Context, id string) e
 	return a.repo.Delete(ctx, id)
 }
 
-func (a *voiceoverRegistryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*mediaregistry.MediaRecord, error) {
+func (a *voiceoverRegistryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*assetregistry.MediaRecord, error) {
 	records, err := a.repo.ListAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var result []*mediaregistry.MediaRecord
+	var result []*assetregistry.MediaRecord
 	for _, rec := range records {
 		if rec.DriveFileID != "" {
 			result = append(result, voiceoverToMediaRecord(rec))
@@ -56,7 +56,7 @@ func (a *voiceoverRegistryAdapter) FindByPHash(ctx context.Context, phash string
 	return "", nil
 }
 
-func mediaRecordToVoiceover(mediaRec *mediaregistry.MediaRecord) *voiceovers.Record {
+func mediaRecordToVoiceover(mediaRec *assetregistry.MediaRecord) *voiceovers.Record {
 	var meta struct {
 		TextHash    string `json:"text_hash"`
 		TextPreview string `json:"text_preview"`
@@ -102,7 +102,7 @@ func mediaRecordToVoiceover(mediaRec *mediaregistry.MediaRecord) *voiceovers.Rec
 	return rec
 }
 
-func voiceoverToMediaRecord(rec *voiceovers.Record) *mediaregistry.MediaRecord {
+func voiceoverToMediaRecord(rec *voiceovers.Record) *assetregistry.MediaRecord {
 	meta := map[string]interface{}{
 		"text_hash":     rec.TextHash,
 		"text_preview":  rec.TextPreview,
@@ -116,7 +116,7 @@ func voiceoverToMediaRecord(rec *voiceovers.Record) *mediaregistry.MediaRecord {
 	}
 	metaJSON, _ := json.Marshal(meta)
 
-	return &mediaregistry.MediaRecord{
+	return &assetregistry.MediaRecord{
 		ID:           rec.ID,
 		Source:       "voiceover",
 		Name:         rec.TextPreview,

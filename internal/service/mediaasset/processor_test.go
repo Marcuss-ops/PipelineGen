@@ -57,6 +57,10 @@ func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo,
 	}, nil
 }
 
+func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
+	return os.WriteFile(output, []byte("fake-frame"), 0644)
+}
+
 func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()

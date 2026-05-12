@@ -12,7 +12,7 @@ import (
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/upload/drive"
 	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
@@ -59,11 +59,11 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	s.log.Info("deleting clip", zap.String("source", source), zap.String("clip_id", clipID), zap.Bool("permanently", permanently))
 
 	// 1. Get Repo via centralized resolver
-	canonical := mediaregistry.CanonicalSource(source)
+	canonical := assetregistry.CanonicalSource(source)
 	if canonical == "" {
 		return fmt.Errorf("invalid source: %s", source)
 	}
-	resolver := mediaregistry.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
+	resolver := assetregistry.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
 	repo := resolver.ResolveRepo(source)
 	if repo == nil && canonical != "voiceover" && canonical != "images" {
 		return fmt.Errorf("invalid source: %s", source)
@@ -78,13 +78,13 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		if err != nil {
 			return fmt.Errorf("voiceover not found: %w", err)
 		}
-		clip = mediaregistry.VoiceoverRecordToClip(rec)
+		clip = assetregistry.VoiceoverRecordToClip(rec)
 	} else if canonical == "images" && s.imagesRepo != nil {
 		img, err := s.imagesRepo.GetByID(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("image not found: %w", err)
 		}
-		clip = mediaregistry.ImageAssetToClip(img)
+		clip = assetregistry.ImageAssetToClip(img)
 	} else if repo != nil {
 		clip, err = repo.GetClip(ctx, clipID)
 		if err != nil {
@@ -190,13 +190,13 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 			voRepo := repo.(*voiceovers.Repository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
-				return mediaregistry.VoiceoverRecordToClip(rec), source, nil
+				return assetregistry.VoiceoverRecordToClip(rec), source, nil
 			}
 		case "images":
 			imgRepo := repo.(*images.Repository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
-				return mediaregistry.ImageAssetToClip(img), source, nil
+				return assetregistry.ImageAssetToClip(img), source, nil
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-package mediaregistry
+package assetregistry
 
 import (
 	"strings"

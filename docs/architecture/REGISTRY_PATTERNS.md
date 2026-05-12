@@ -101,7 +101,7 @@ registry.RegisterClipSource(assetSourceYouTube, youtubeRepo)
 registry.RegisterClipSource(assetSourceArtlist, artlistRepo)
 ```
 
-**Note**: `mediaregistry.Registry` è SPERIMENTALE e potrebbe essere rimosso. Usare `assetregistry.Registry` per nuovi codici.
+**Note**: `assetregistry.Registry` è SPERIMENTALE e potrebbe essere rimosso. Usare `assetregistry.Registry` per nuovi codici.
 
 ---
 
@@ -172,7 +172,7 @@ Prima di aggiungere una nuova feature, controlla:
 
 | Pattern/Sistema | Motivo | Sostituire Con |
 |------------------|--------|----------------|
-| `mediaregistry.Registry` | SPERIMENTALE, non usato | `assetregistry.Registry` o rimuovere |
+| `assetregistry.Registry` | SPERIMENTALE, non usato | `assetregistry.Registry` o rimuovere |
 | `internal/service/assetpipeline/` | Thin wrapper inutile | Chiamate dirette ai componenti |
 | Usi diretti di `drivedestination.Service` | Bypassa resolver canonico | `core/destination.Resolver` |
 

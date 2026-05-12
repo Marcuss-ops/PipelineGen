@@ -28,8 +28,8 @@ type UploadPolicy struct {
 
 // PersistPolicy defines the policy for persisting assets to databases.
 type PersistPolicy struct {
-	// SaveToMediaRegistry saves to the media registry (velox.db.sqlite)
-	SaveToMediaRegistry bool
+	// SaveToAssetRegistry saves to the media registry (velox.db.sqlite)
+	SaveToAssetRegistry bool
 	// SaveToAssetIndex saves to the asset index (assets.db.sqlite)
 	SaveToAssetIndex bool
 	// SaveToDomainDB saves to the domain-specific DB (clips.db, voiceover.db, etc.)
@@ -72,7 +72,7 @@ func DefaultUploadPolicy() UploadPolicy {
 // DefaultPersistPolicy returns the default persist policy.
 func DefaultPersistPolicy() PersistPolicy {
 	return PersistPolicy{
-		SaveToMediaRegistry: true,
+		SaveToAssetRegistry: true,
 		SaveToAssetIndex:    true,
 		SaveToDomainDB:      true,
 	}

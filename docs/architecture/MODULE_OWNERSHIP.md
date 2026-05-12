@@ -18,12 +18,12 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 | **Jobs**          | `internal/cron/*`              | `internal/service/jobs/` + `internal/core/jobs/` | **ATTIVO**     | Eliminare cron/*  |
 |                   | `internal/repository/harvester/` |                          | **DEPRECATO**   | Migrare a jobs    |
 | **Media**         | `internal/repository/clips/`   | `internal/service/mediaasset/` | **ATTIVO** | Mediaregistry in valutazione |
-|                   |                                | `internal/service/mediaregistry/` | **SPERIMENTALE** | Valutare se utile |
+|                   |                                | `internal/service/assetregistry/` | **SPERIMENTALE** | Valutare se utile |
 | **Drive Destination** | Config diretto in `pkg/config/types.go` | `internal/service/drivedestination/` | **ATTIVO** | Eliminare riferimenti diretti |
 |                   |                                | `internal/service/assetdestination/` | **ATTIVO** | Unificare se duplicato |
 | **Artlist**       | Pipeline diretta (old)          | `internal/service/artlist/` | **ATTIVO** | Usa job system |
 | **YouTube Clips** | Service custom (old)            | `internal/service/mediaasset/` processor | **ATTIVO** | Usa MediaProcessor |
-| **Voiceover**     | Batch diretto                   | `internal/service/mediaregistry/` + voiceover adapter | **SPERIMENTALE** | Completare o rimuovere |
+| **Voiceover**     | Batch diretto                   | `internal/service/assetregistry/` + voiceover adapter | **SPERIMENTALE** | Completare o rimuovere |
 | **Workflow**      | N/A                             | `internal/service/workflowrunner/` | **DISABILITATO** | Feature flag OFF, in quarantena |
 | **Script**        | Python scripts                  | `internal/api/handlers/script/` | **ATTIVO** | Documentare meglio |
 
@@ -72,7 +72,7 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 - **Stato**: ATTIVO
 
 ### Media Registry (Finalizer)
-- **Owner**: `internal/service/mediaregistry/`
+- **Owner**: `internal/service/assetregistry/`
 - **Interfaccia**: `Registry`, `Finalizer`
 - **Adapter**: `clips_adapter.go`, `voiceover_adapter.go`
 - **Stato**: **SPERIMENTALE** - Valutare se necessario o se `mediaasset.Processor` basta
@@ -116,9 +116,9 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 - **Azione**: Spostare in `internal/experimental/` o eliminare
 - **Stato**: Disabilitato dietro feature flag
 
-### 4. `mediaregistry.VoiceoverRegistry` (codice morto)
+### 4. `assetregistry.VoiceoverRegistry` (codice morto)
 - **Perché**: Mai usato, duplicato da `voiceover.NewVoiceoverRegistryAdapter()`
-- **Azione**: Eliminare `internal/service/mediaregistry/voiceover_adapter.go` (VoiceoverRegistry)
+- **Azione**: Eliminare `internal/service/assetregistry/voiceover_adapter.go` (VoiceoverRegistry)
 
 ### 5. `workflowrunner.Registry.Get()` e `List()`
 - **Perché**: Funzioni mai chiamate
@@ -142,7 +142,7 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 ### 1. Asset
 - **Modello**: Da definire in `internal/core/asset/`
 - **Processore**: `mediaasset.MediaProcessor` (canonico)
-- **Registry**: `mediaregistry.Registry` (sperimentale, valutare)
+- **Registry**: `assetregistry.Registry` (sperimentale, valutare)
 
 ### 2. Job
 - **Modello**: `internal/core/jobs/types.go` (canonico)

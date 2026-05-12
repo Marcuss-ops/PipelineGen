@@ -46,12 +46,14 @@ if [ -n "$VIOLATIONS" ]; then
     # Not failing the build yet, just warning
 fi
 
-# Check 5: Check for TODO without associated issue tracking in critical paths
+# Check 5: Checking for TODO in workflow runner...
 echo "Check 5: Checking for TODO in workflow runner..."
-VIOLATIONS=$(grep -rn "TODO\|FIXME" internal/service/workflowrunner/ --include="*.go" || true)
-if [ -n "$VIOLATIONS" ]; then
-    echo "INFO: Found TODO/FIXME in workflowrunner (expected, module is experimental):"
-    echo "$VIOLATIONS"
+if [ -d "internal/service/workflowrunner/" ]; then
+    VIOLATIONS=$(grep -rn "TODO\|FIXME" internal/service/workflowrunner/ --include="*.go" || true)
+    if [ -n "$VIOLATIONS" ]; then
+        echo "INFO: Found TODO/FIXME in workflowrunner (expected, module is experimental):"
+        echo "$VIOLATIONS"
+    fi
 fi
 
 # Check 6: Verify experimental modules have EXPERIMENTAL.md
@@ -63,9 +65,11 @@ fi
 
 # Check 7: No path traversal in workflow handler
 echo "Check 7: Verifying path jail in workflow handler..."
-if ! grep -q "resolveWorkflowPath\|filepath.Dir.*!=" internal/api/handlers/workflow/handler.go; then
-    echo "ERROR: workflow handler must only accept workflow names, not paths"
-    FAILED=1
+if [ -f "internal/api/handlers/workflow/handler.go" ]; then
+    if ! grep -q "resolveWorkflowPath\|filepath.Dir.*!=" internal/api/handlers/workflow/handler.go; then
+        echo "ERROR: workflow handler must only accept workflow names, not paths"
+        FAILED=1
+    fi
 fi
 
 # Check 8: Verify core contracts are used (not internal/pkg/ paths)

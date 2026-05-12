@@ -15,7 +15,7 @@ import (
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/matchingconfig"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 )
@@ -131,7 +131,7 @@ func wireArtlistHandler(
 }
 
 func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
-	clipsRegistry := mediaregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
 	return NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
 		DriveClient: coreDeps.DriveClient,

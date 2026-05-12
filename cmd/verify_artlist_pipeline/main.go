@@ -23,22 +23,24 @@ const apiBase = "http://127.0.0.1:8080"
 const searchTerm = "nature"
 const searchLimit = 3
 
+type artlistClip struct {
+	ClipID string `json:"clip_id"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Name   string `json:"name"`
+}
+
 type searchLiveResponse struct {
-	OK    bool   `json:"ok"`
-	Term  string `json:"term"`
-	Clips []struct {
-		ClipID string `json:"clip_id"`
-		ID     string `json:"id"`
-		Title  string `json:"title"`
-		Name   string `json:"name"`
-	} `json:"clips"`
+	OK    bool          `json:"ok"`
+	Term  string        `json:"term"`
+	Clips []artlistClip `json:"clips"`
 }
 
 type runResponse struct {
-	OK        bool   `json:"ok"`
-	RunID     string `json:"run_id"`
-	Status    string `json:"status"`
-	Error     string `json:"error"`
+	OK     bool   `json:"ok"`
+	RunID  string `json:"run_id"`
+	Status string `json:"status"`
+	Error  string `json:"error"`
 }
 
 type statusResponse struct {
@@ -172,7 +174,7 @@ func main() {
 	}
 }
 
-func doLiveSearch() ([]searchLiveResponse, error) {
+func doLiveSearch() ([]artlistClip, error) {
 	// Try posting
 	payload := fmt.Sprintf(`{"term":"%s","limit":%d}`, searchTerm, searchLimit)
 	req, err := http.NewRequest("POST", apiBase+"/api/artlist/search/live", bytes.NewBufferString(payload))

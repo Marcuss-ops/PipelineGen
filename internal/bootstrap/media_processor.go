@@ -8,7 +8,7 @@ import (
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/mediaasset"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"
@@ -19,7 +19,7 @@ func initMediaProcessor(cfg *config.Config, clipsOnlyRepo *clips.Repository, log
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
-	clipsRegistry := mediaregistry.NewClipsRegistry(clipsOnlyRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
 
 	mediaProcessorInternal := mediaasset.NewProcessor(
 		ytDLPDownloader,

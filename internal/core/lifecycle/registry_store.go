@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 )
 
-// RegistryStoreAdapter adapts a mediaregistry.Registry to the AssetRecordStore interface.
+// RegistryStoreAdapter adapts a assetregistry.Registry to the AssetRecordStore interface.
 type RegistryStoreAdapter struct {
-	registry mediaregistry.Registry
+	registry assetregistry.Registry
 }
 
 // NewRegistryStoreAdapter creates a new RegistryStoreAdapter.
-func NewRegistryStoreAdapter(registry mediaregistry.Registry) AssetRecordStore {
+func NewRegistryStoreAdapter(registry assetregistry.Registry) AssetRecordStore {
 	return &RegistryStoreAdapter{registry: registry}
 }
 
@@ -80,17 +80,17 @@ func (a *RegistryStoreAdapter) DeleteAssetRecord(ctx context.Context, id string)
 }
 
 // Upsert implements AssetRecordStore.
-func (a *RegistryStoreAdapter) Upsert(ctx context.Context, rec *mediaregistry.MediaRecord) error {
+func (a *RegistryStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error {
 	return a.registry.UpsertMedia(ctx, rec)
 }
 
 // Get implements AssetRecordStore.
-func (a *RegistryStoreAdapter) Get(ctx context.Context, id string) (*mediaregistry.MediaRecord, error) {
+func (a *RegistryStoreAdapter) Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
 	return a.registry.GetMedia(ctx, id)
 }
 
-// mediaRecordToAssetRecord converts a mediaregistry.MediaRecord to an AssetRecord.
-func mediaRecordToAssetRecord(rec *mediaregistry.MediaRecord) *AssetRecord {
+// mediaRecordToAssetRecord converts a assetregistry.MediaRecord to an AssetRecord.
+func mediaRecordToAssetRecord(rec *assetregistry.MediaRecord) *AssetRecord {
 	if rec == nil {
 		return nil
 	}

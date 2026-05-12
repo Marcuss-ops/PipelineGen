@@ -6,16 +6,16 @@ import (
 
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 )
 
 // LifecycleDeps holds the dependencies needed to create a lifecycle service
 type LifecycleDeps struct {
-	Registry      mediaregistry.Registry
+	Registry      assetregistry.Registry
 	DriveClient   *gdrive.Service
 	AssetIndex    *assetindex.Service
-	DriveVerifier mediaregistry.DriveVerifier
-	Finalizer     *mediaregistry.Finalizer
+	DriveVerifier assetregistry.DriveVerifier
+	Finalizer     *assetregistry.Finalizer
 	Store         lifecycle.AssetRecordStore
 }
 
@@ -27,12 +27,12 @@ func NewLifecycleFromDeps(
 ) *lifecycle.Service {
 	// Create drive verifier if not provided
 	if deps.DriveVerifier == nil && deps.DriveClient != nil {
-		deps.DriveVerifier = mediaregistry.NewAPIDriveVerifier(deps.DriveClient)
+		deps.DriveVerifier = assetregistry.NewAPIDriveVerifier(deps.DriveClient)
 	}
 
 	// Create finalizer if not provided
 	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
-		deps.Finalizer = mediaregistry.NewFinalizerWithAssetIndex(
+		deps.Finalizer = assetregistry.NewFinalizerWithAssetIndex(
 			deps.Registry,
 			deps.DriveVerifier,
 			deps.AssetIndex,

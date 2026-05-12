@@ -1,4 +1,4 @@
-package mediaregistry
+package assetregistry
 
 type MediaRecord struct {
 	ID            string

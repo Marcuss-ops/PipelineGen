@@ -10,15 +10,15 @@ import (
 	"velox/go-master/internal/repository/clips"
 	assettreerepo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/models"
 	driveutil "velox/go-master/pkg/drive"
 )
 
 // resolveRepo returns the appropriate repository for the given source.
-// Uses centralized SourceResolver from mediaregistry.
+// Uses centralized SourceResolver from assetregistry.
 func (h *Handler) resolveRepo(source string) *clips.Repository {
-	resolver := mediaregistry.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo)
+	resolver := assetregistry.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo)
 	return resolver.ResolveRepo(source)
 }
 
@@ -75,14 +75,14 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 	}
 }
 
-// voiceoverRecordToClip delegates to the canonical converter in mediaregistry.
+// voiceoverRecordToClip delegates to the canonical converter in assetregistry.
 func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
-	return mediaregistry.VoiceoverRecordToClip(rec)
+	return assetregistry.VoiceoverRecordToClip(rec)
 }
 
-// imageAssetToClip uses the canonical converter from mediaregistry.
+// imageAssetToClip uses the canonical converter from assetregistry.
 func imageAssetToClip(asset *models.ImageAsset) *models.Clip {
-	return mediaregistry.ImageAssetToClip(asset)
+	return assetregistry.ImageAssetToClip(asset)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.

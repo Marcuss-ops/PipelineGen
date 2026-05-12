@@ -15,6 +15,11 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// DB returns the underlying database connection
+func (r *Repository) DB() *sql.DB {
+	return r.db
+}
+
 // GetSubjectBySlugOrAlias recupera un soggetto tramite ID (slug)
 func (r *Repository) GetSubjectBySlugOrAlias(id string) (*models.Subject, error) {
 	var s models.Subject

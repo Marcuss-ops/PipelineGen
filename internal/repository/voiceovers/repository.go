@@ -39,6 +39,11 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// DB returns the underlying database connection
+func (r *Repository) DB() *sql.DB {
+	return r.db
+}
+
 func (r *Repository) Upsert(ctx context.Context, rec *Record) error {
 	now := time.Now().Format(time.RFC3339)
 

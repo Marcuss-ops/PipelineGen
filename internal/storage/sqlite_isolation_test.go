@@ -11,7 +11,7 @@ import (
 // expectedTables defines the TARGET tables for each database (per user's desired schema).
 // NOTE: Tables listed as "unexpected" by tests need cleanup.
 var expectedTables = map[string][]string{
-	"velox.db.sqlite": {
+	"velox/velox.db.sqlite": {
 		"scripts",
 		"monitored_sources",
 		"harvester_jobs",
@@ -21,27 +21,29 @@ var expectedTables = map[string][]string{
 		"video_metadata",
 		"script_stock_matches",
 		"video_stats_history",
-		"artlist_runs", // Currently in main DB (per user's schema)
-		"script_sections", // Part of scripts feature
-		"pipeline_runs",    // Added feature
-		"pipeline_run_items", // Added feature
+		"artlist_runs",
+		"script_sections",
+		"pipeline_runs",
+		"pipeline_run_items",
 		"schema_migrations",
-		// Should NOT have: clip_folders, clip_tags, clips, indexing_checkpoints, script_sections, segment_embeddings
+		"jobs",
+		"job_events",
+		"asset_index",
+		"asset_links",
+		"asset_tree_nodes",
 	},
-	"stock.db.sqlite": {
+	"stock/stock.db.sqlite": {
 		"clips",        // Stock-specific clips
 		"clip_folders",  // Stock-specific folders
 		"schema_migrations",
-		// Should NOT have: media_files, media_items, media_tags (from main migrations)
-		// Should NOT have: segment_embeddings (only needed in clips.db)
 	},
-	"clips.db.sqlite": {
+	"clips/clips.db.sqlite": {
 		"clips",             // YouTube-specific clips
 		"clip_folders",       // YouTube-specific folders
 		"segment_embeddings", // Timeline cache - appropriate here
 		"schema_migrations",
 	},
-	"artlist.db.sqlite": {
+	"artlist/artlist.db.sqlite": {
 		"clips",        // Artlist-specific clips
 		"clip_folders",  // Artlist-specific folders
 		"clips_fts",    // FTS tables
@@ -50,21 +52,15 @@ var expectedTables = map[string][]string{
 		"clips_fts_docsize",
 		"clips_fts_idx",
 		"schema_migrations",
-		// artlist_runs should be here per user's schema, but currently in velox.db
-		// Should NOT have: segment_embeddings
 	},
-	"images.db.sqlite": {
+	"images/images.db.sqlite": {
 		"images",
 		"subjects",
+		"image_tags",
 		"schema_migrations",
 	},
-	"voiceover.db.sqlite": {
+	"voiceover/voiceover.db.sqlite": {
 		"voiceovers",
-		"schema_migrations",
-	},
-	"jobs.db.sqlite": {
-		"jobs",
-		"job_events",
 		"schema_migrations",
 	},
 }
@@ -73,12 +69,12 @@ var expectedTables = map[string][]string{
 func TestDBIsolation(t *testing.T) {
 	dataDir := filepath.Join("..", "..", "data")
 
-	for dbName, expected := range expectedTables {
-		t.Run(dbName, func(t *testing.T) {
-			dbPath := filepath.Join(dataDir, dbName)
+	for dbPathSuffix, expected := range expectedTables {
+		t.Run(dbPathSuffix, func(t *testing.T) {
+			dbPath := filepath.Join(dataDir, dbPathSuffix)
 			db, err := sql.Open("sqlite3", dbPath)
 			if err != nil {
-				t.Skipf("Database %s not found: %v", dbName, err)
+				t.Skipf("Database %s not found: %v", dbPathSuffix, err)
 				return
 			}
 			defer db.Close()
@@ -114,7 +110,7 @@ func TestDBIsolation(t *testing.T) {
 
 			for _, table := range actualTables {
 				if !expectedSet[table] {
-					t.Errorf("Database %s has unexpected table: %s", dbName, table)
+					t.Errorf("Database %s has unexpected table: %s", dbPathSuffix, table)
 				}
 			}
 
@@ -124,12 +120,12 @@ func TestDBIsolation(t *testing.T) {
 					continue
 				}
 				if !actualSet[table] {
-					t.Errorf("Database %s missing expected table: %s", dbName, table)
+					t.Errorf("Database %s missing expected table: %s", dbPathSuffix, table)
 				}
 			}
 
 			// Log actual tables for debugging
-			t.Logf("Database %s tables: %v", dbName, actualTables)
+			t.Logf("Database %s tables: %v", dbPathSuffix, actualTables)
 		})
 	}
 }
@@ -137,7 +133,9 @@ func TestDBIsolation(t *testing.T) {
 // TestFTS5Fallback verifies that LIKE search works when FTS5 is not available.
 func TestFTS5Fallback(t *testing.T) {
 	dataDir := filepath.Join("..", "..", "data")
-	dbPath := filepath.Join(dataDir, "clips.db.sqlite")
+	dbPath := filepath.Join(dataDir, "clips", "clips.db.sqlite")
+	absPath, _ := filepath.Abs(dbPath)
+	t.Logf("Testing with database: %s", absPath)
 
 	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
@@ -205,7 +203,7 @@ func TestSegmentEmbeddingsLocation(t *testing.T) {
 	dataDir := filepath.Join("..", "..", "data")
 
 	// Should have segment_embeddings
-	for _, dbName := range []string{"clips.db.sqlite"} {
+	for _, dbName := range []string{"clips/clips.db.sqlite"} {
 		db, err := sql.Open("sqlite3", filepath.Join(dataDir, dbName))
 		if err != nil {
 			t.Skipf("Database %s not found", dbName)

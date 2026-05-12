@@ -33,7 +33,7 @@
 | **YouTube Clips** | ATTIVO | `YOUTUBE_ENABLED` | Estrazione clip YouTube | `clips.db.sqlite` | `internal/service/youtubeclip/` |
 | **Media** | ATTIVO | sempre ON | Manifest export, asset management | `velox.db.sqlite` | `internal/module/media/` |
 | **MediaAsset Processor** | ATTIVO | sempre ON | Processore canonico media (condiviso) | varie | `internal/service/mediaasset/` |
-| **MediaRegistry** | SPERIMENTALE | n/a | Finalizer, registry pattern | varie | `internal/service/mediaregistry/` |
+| **AssetRegistry** | SPERIMENTALE | n/a | Finalizer, registry pattern | varie | `internal/service/assetregistry/` |
 
 ### Content Generation
 

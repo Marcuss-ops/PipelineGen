@@ -14,7 +14,7 @@ func TestAssetsModule_Enabled(t *testing.T) {
 	log := zap.NewNop()
 
 	t.Run("nil dependencies returns false", func(t *testing.T) {
-		mod := NewAssetsModule(cfg, log, nil, nil, nil)
+		mod := NewAssetsModule(cfg, log, nil)
 		assert.False(t, mod.Enabled(cfg))
 	})
 

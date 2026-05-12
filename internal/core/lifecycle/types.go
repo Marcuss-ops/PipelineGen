@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 )
 
 type AssetKind string
@@ -60,8 +60,8 @@ type AssetRecord = assetop.AssetRecord
 
 // AssetRecordStore defines the interface for asset record persistence
 type AssetRecordStore interface {
-	Upsert(ctx context.Context, rec *mediaregistry.MediaRecord) error
-	Get(ctx context.Context, id string) (*mediaregistry.MediaRecord, error)
+	Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error
+	Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error)
 	FindExisting(ctx context.Context, query ExistingAssetQuery) (*AssetRecord, error)
 	ListWithDriveFileID(ctx context.Context, source string) ([]*AssetRecord, error)
 	MarkDriveMissing(ctx context.Context, id string) error

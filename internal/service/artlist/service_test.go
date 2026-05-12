@@ -61,6 +61,8 @@ func createTestDB(t *testing.T) *sql.DB {
 		error TEXT DEFAULT '',
 		search_terms TEXT NOT NULL DEFAULT '[]',
 		thumb_url TEXT DEFAULT '',
+		phash TEXT NOT NULL DEFAULT '',
+		visual_embedding_json TEXT NOT NULL DEFAULT '[]',
 		created_at TEXT,
 		updated_at TEXT
 	);
@@ -80,9 +82,9 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *models.Clip) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.Exec(`
 		INSERT OR REPLACE INTO clips 
-		(id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", now, now)
+		(id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, phash, visual_embedding_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", "", "[]", now, now)
 
 	if err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)

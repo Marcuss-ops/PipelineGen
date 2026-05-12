@@ -8,7 +8,7 @@ import (
 
 	"velox/go-master/internal/core/assetop"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/mediaregistry"
+	"velox/go-master/internal/service/assetregistry"
 )
 
 // Service orchestrates the full asset lifecycle:
@@ -18,10 +18,10 @@ type Service struct {
 	dedupe       *assetop.DedupeService
 	reconcile    *assetop.ReconcileService
 	uploader     *assetop.Uploader
-	finalizer    *mediaregistry.Finalizer
+	finalizer    *assetregistry.Finalizer
 	uploadPolicy assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
-	registry     mediaregistry.Registry
+	registry     assetregistry.Registry
 	assetIndex   *assetindex.Service
 	log          *zap.Logger
 }
@@ -38,9 +38,9 @@ type Config struct {
 func NewService(
 	store AssetRecordStore,
 	driveSvc *gdrive.Service,
-	registry mediaregistry.Registry,
+	registry assetregistry.Registry,
 	assetIndex *assetindex.Service,
-	finalizer *mediaregistry.Finalizer,
+	finalizer *assetregistry.Finalizer,
 	cfg Config,
 	log *zap.Logger,
 ) *Service {
@@ -124,8 +124,8 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	}
 
 	// Step 3: Persist to databases (if policy enabled)
-	if s.persistPolicy.SaveToMediaRegistry && s.finalizer != nil {
-		rec := &mediaregistry.MediaRecord{
+	if s.persistPolicy.SaveToAssetRegistry && s.finalizer != nil {
+		rec := &assetregistry.MediaRecord{
 			ID:           input.ID,
 			Name:         input.Name,
 			Filename:     input.Filename,
@@ -145,7 +145,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			Subfolder:    input.Subfolder,
 		}
 
-		finalizeOpts := mediaregistry.FinalizeOptions{
+		finalizeOpts := assetregistry.FinalizeOptions{
 			RequireLocal: false,
 			RequireHash:  false,
 			RequireDrive: driveLink != "",
