@@ -48,7 +48,17 @@ func (s *Service) RegisterAssociation(a Association) {
 }
 
 func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMatch {
-	return s.engine.AssociateAll(ctx, input)
+	matches := s.engine.AssociateAll(ctx, input)
+	
+	// Boost stock drive priority over Artlist
+	for i := range matches {
+		src := strings.ToLower(matches[i].Source)
+		if strings.Contains(src, "stock") && !strings.Contains(src, "artlist") {
+			matches[i].Score += 50 // Significant boost to prioritize local stock
+		}
+	}
+	
+	return matches
 }
 
 // ResolvePreferredStockMatch checks for a high-priority exact stock folder match based on primary focus.

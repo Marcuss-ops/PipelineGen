@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 
 	"go.uber.org/zap"
@@ -14,12 +16,19 @@ import (
 )
 
 func main() {
-	dbPath := "/home/pierone/Pyt/VeloxEditing/refactored/src/go-master/data/artlist.db.sqlite"
+	dbPath := flag.String("db", "", "Path to SQLite database (absolute)")
+	flag.Parse()
+	if *dbPath == "" {
+		log.Fatal("Usage: backfill_hash_v2 --db <absolute-path-to-sqlite>")
+	}
+	if !filepath.IsAbs(*dbPath) {
+		log.Fatalf("db path must be absolute, got: %s", *dbPath)
+	}
 
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	sqliteDB, err := storage.OpenSQLiteDB(dbPath, logger)
+	sqliteDB, err := storage.OpenSQLiteDB(*dbPath, logger)
 	if err != nil {
 		log.Fatal("failed to open database:", err)
 	}

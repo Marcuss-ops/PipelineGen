@@ -84,8 +84,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		phrases = extractImportantPhrases(narrative)
 	}
 	if len(specialNames) == 0 {
-		zap.L().Info("falling back to heuristic name extraction")
-		specialNames = extractSpecialNames(narrative)
+		zap.L().Info("LLM entity extraction returned no names, skipping heuristic fallback (disabled)")
 	}
 	if len(importantWords) == 0 {
 		zap.L().Info("falling back to heuristic word extraction")
@@ -152,7 +151,8 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 		return nil
 	}
 
-	extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 10)
+	// Requesting maximum 3 special names/entities to avoid cluttering the document
+	extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 3)
 	
 	type localExtracted struct {
 		FrasiImportanti  []string    `json:"frasi_importanti"`
