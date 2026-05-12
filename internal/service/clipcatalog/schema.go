@@ -42,7 +42,39 @@ func EnsureSchema(ctx context.Context, db *sql.DB, logger *zap.Logger) error {
 		return fmt.Errorf("failed to create category index: %w", err)
 	}
 
+	// Create FTS5 virtual table
+	if err := ensureFTSTable(ctx, db, logger); err != nil {
+		return fmt.Errorf("failed to ensure FTS table: %w", err)
+	}
+
 	logger.Info("clipcatalog schema ensured")
+	return nil
+}
+
+func ensureFTSTable(ctx context.Context, db *sql.DB, logger *zap.Logger) error {
+	// Check if FTS5 is available
+	var ftsAvailable int
+	_ = db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_compile_options WHERE compile_options = 'ENABLE_FTS5'").Scan(&ftsAvailable)
+	
+	// Create the FTS table
+	// Note: using simple FTS table without triggers for now for robustness
+	sqlStmt := `
+		CREATE VIRTUAL TABLE IF NOT EXISTS clips_fts USING fts5(
+			clip_id UNINDEXED,
+			name,
+			search_text,
+			tags,
+			category,
+			scene_type,
+			tokenize='unicode61 remove_diacritics 2'
+		);
+	`
+	if _, err := db.ExecContext(ctx, sqlStmt); err != nil {
+		logger.Warn("failed to create FTS5 table (might not be supported)", zap.Error(err))
+		return nil // Don't fail the whole startup if FTS5 is missing
+	}
+
+	logger.Info("FTS5 table ensured")
 	return nil
 }
 

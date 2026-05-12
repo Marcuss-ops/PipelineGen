@@ -2,6 +2,8 @@ package script
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"velox/go-master/internal/ml/ollama"
@@ -68,6 +70,10 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 
 	normalizer := segmentnorm.NewService(stockRepo, clipsRepo, artlistRepo, zap.L())
 
+	var usedClipIDs []string
+	var usedFolderIDs []string
+	var usedPaths []string
+
 	for i, rawSeg := range rawPlan.Segments {
 		seg := buildSegment(ctx, req, rawSeg, i, dataDir, stockRepo, assocService, normalizer)
 
@@ -84,14 +90,42 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 				seg.VisualSubject = visualResult.VisualSubject
 				seg.VisualCaption = visualResult.VisualCaption
 				seg.SearchSuggestions = sliceutil.UniqueStrings(append(seg.SearchSuggestions, visualResult.Queries...))
+				seg.VisualPrompts = visualResult.VisualPrompts
+				seg.EntityQueries = visualResult.EntityQueries
 			}
 		}
 
 		// Now search Artlist using ClipResolver (preferred) or fallback to DB search
 		if clipResolver != nil && len(seg.SearchSuggestions) > 0 {
-			searchArtlistWithResolver(ctx, &seg, clipResolver, req.Topic, nil)
+			searchArtlistWithResolver(ctx, &seg, clipResolver, req.Topic, usedClipIDs, usedFolderIDs, usedPaths)
 		} else if artlistService != nil && len(seg.SearchSuggestions) > 0 {
 			searchArtlistFromDB(ctx, &seg, artlistService)
+		}
+
+		// Update used lists
+		for _, m := range seg.ArtlistMatches {
+			if m.ClipID != "" {
+				usedClipIDs = append(usedClipIDs, m.ClipID)
+			}
+			if m.Path != "" {
+				usedPaths = append(usedPaths, strings.ToLower(m.Path))
+				dir := filepath.Dir(m.Path)
+				if dir != "." && dir != "/" {
+					usedFolderIDs = append(usedFolderIDs, strings.ToLower(dir))
+				}
+			}
+		}
+		for _, m := range seg.StockMatches {
+			if m.ClipID != "" {
+				usedClipIDs = append(usedClipIDs, m.ClipID)
+			}
+			if m.Path != "" {
+				usedPaths = append(usedPaths, strings.ToLower(m.Path))
+				dir := filepath.Dir(m.Path)
+				if dir != "." && dir != "/" {
+					usedFolderIDs = append(usedFolderIDs, strings.ToLower(dir))
+				}
+			}
 		}
 
 		// SMART HARVESTING: If still no matches, try a live search for the most relevant suggestions

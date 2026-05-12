@@ -2,6 +2,7 @@ package association
 
 // ScoredMatch rappresenta un potenziale match di media con metadati.
 type ScoredMatch struct {
+	ClipID  string `json:"clip_id,omitempty"`
 	Title   string `json:"title"`
 	Path    string `json:"path"`
 	Score   int    `json:"score"`

@@ -7,6 +7,7 @@ type ClipMetadata struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`
 	SearchText   string    `json:"search_text"`
+	Tags         []string  `json:"tags,omitempty"`
 	Embedding    []float64 `json:"embedding,omitempty"`
 	Category     string    `json:"category,omitempty"`
 	SceneType   string    `json:"scene_type,omitempty"`

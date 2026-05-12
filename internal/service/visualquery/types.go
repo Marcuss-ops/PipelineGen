@@ -12,6 +12,8 @@ type VisualQueryResult struct {
 	VisualSubject string   `json:"visual_subject"`
 	VisualCaption string   `json:"visual_caption"`
 	Queries       []string `json:"queries"`
+	EntityQueries []string `json:"entity_queries"`
+	VisualPrompts []string `json:"visual_prompts"`
 }
 
 // BatchSegmentInput represents a segment for batch processing

@@ -2,8 +2,9 @@ package types
 
 // Message rappresenta un messaggio chat
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string   `json:"role"`
+	Content string   `json:"content"`
+	Images  []string `json:"images,omitempty"` // Base64 encoded images
 }
 
 // ChatRequest richiesta chat
@@ -26,6 +27,7 @@ type GenerateRequest struct {
 	Prompt  string                 `json:"prompt"`
 	Context []int                  `json:"context,omitempty"`
 	Stream  bool                   `json:"stream"`
+	Images  []string               `json:"images,omitempty"` // Base64 encoded images
 	Options map[string]interface{} `json:"options,omitempty"`
 }
 

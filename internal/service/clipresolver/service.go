@@ -3,6 +3,7 @@ package clipresolver
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -66,13 +67,20 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		minScore = s.matchingConfig.Matching.MinScore
 	}
 
-	// Collect all search terms from queries and topic
-	searchTerms := s.collectSearchTerms(req)
-
 	// Build set of used clip IDs for quick lookup
 	usedClipIDs := make(map[string]bool)
 	for _, id := range req.UsedClipIDs {
 		usedClipIDs[id] = true
+	}
+
+	usedFolders := make(map[string]bool)
+	for _, f := range req.UsedFolderIDs {
+		usedFolders[strings.ToLower(strings.TrimSpace(f))] = true
+	}
+
+	usedPaths := make(map[string]bool)
+	for _, p := range req.UsedPaths {
+		usedPaths[strings.ToLower(strings.TrimSpace(p))] = true
 	}
 
 	// Build set of avoid terms
@@ -81,26 +89,77 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		avoidTerms[strings.ToLower(strings.TrimSpace(term))] = true
 	}
 
-	// Prepare query embeddings if provider is available
+	// Search for clips using all search terms across all repositories with weights
+	clipScores := make(map[string]*ClipScore)
+	
+	type WeightedQuery struct {
+		Term   string
+		Weight float64
+	}
+	
+	weightedQueries := []WeightedQuery{}
+	seenQueries := make(map[string]bool)
+	
+	addWeighted := func(term string, weight float64) {
+		term = strings.TrimSpace(term)
+		if term == "" {
+			return
+		}
+		lower := strings.ToLower(term)
+		if seenQueries[lower] {
+			return
+		}
+		seenQueries[lower] = true
+		weightedQueries = append(weightedQueries, WeightedQuery{Term: term, Weight: weight})
+	}
+
+	// 1. Entity queries (Highest weight for direct subject match)
+	for _, q := range req.EntityQueries {
+		addWeighted(q, 1.3)
+	}
+
+	// 2. Visual prompts (High weight for semantic/vector match)
+	for _, q := range req.VisualPrompts {
+		addWeighted(q, 1.2)
+	}
+
+	// 3. Regular queries (Standard weight)
+	for _, q := range req.Queries {
+		addWeighted(q, 1.0)
+	}
+
+	// 4. Topic as fallback
+	if req.Topic != "" {
+		addWeighted(req.Topic, 1.0)
+	}
+
+	// Prepare query embeddings for all weighted queries
 	queryEmbeddings := make(map[string][]float64)
 	if s.embedProvider != nil {
-		for _, term := range searchTerms {
-			emb, err := s.embedProvider.EmbedText(ctx, term)
+		for _, wq := range weightedQueries {
+			emb, err := s.embedProvider.EmbedText(ctx, wq.Term)
 			if err == nil {
-				queryEmbeddings[term] = emb
+				queryEmbeddings[wq.Term] = emb
 			}
 		}
 	}
 
-	// Search for clips using all search terms across all repositories
-	clipScores := make(map[string]*ClipScore)
-	for _, term := range searchTerms {
+	for _, wq := range weightedQueries {
+		term := wq.Term
 		for source, repo := range s.repos {
 			// Try semantic search first
 			candidates, err := repo.SearchSemantic(ctx, term, limit*2)
 			
-			// Fallback to text matching if semantic search fails, is not configured, or returns no results
+			// Fallback to FTS matching if semantic search fails or returns no results
 			if err != nil || len(candidates) == 0 {
+				ftsCandidates, ftsErr := repo.FindCandidatesFTS(ctx, term, limit*2)
+				if ftsErr == nil && len(ftsCandidates) > 0 {
+					candidates = ftsCandidates
+				}
+			}
+
+			// Final fallback to simple text matching if FTS also fails
+			if len(candidates) == 0 {
 				textCandidates, textErr := repo.FindCandidates(ctx, term, limit*2)
 				if textErr == nil {
 					candidates = textCandidates
@@ -121,7 +180,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 				}
 
 				entry := clipScores[globalID]
-				s.scoreClip(ctx, entry, term, queryEmbeddings[term], req, avoidTerms, usedClipIDs)
+				s.scoreClipWeighted(ctx, entry, wq.Term, wq.Weight, queryEmbeddings[wq.Term], req, avoidTerms, usedClipIDs, usedFolders, usedPaths)
 			}
 		}
 	}
@@ -244,21 +303,21 @@ func (s *Service) collectSearchTerms(req *RecommendRequest) []string {
 	return terms
 }
 
-func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery string, queryEmbedding []float64, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
+func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, matchedQuery string, queryWeight float64, queryEmbedding []float64, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool, usedFolders map[string]bool, usedPaths map[string]bool) {
 	c := entry.Clip
 	bd := entry.Breakdown
 	source := c.MediaType // Source name stored here
 
-	// 1. Text score (weight from config)
+	// 1. Text score (weighted by query importance)
 	textWeight := s.matchingConfig.Matching.TextScoreWeight
 	if textWeight == 0 {
 		textWeight = 0.45
 	}
-	textScore := s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45)
+	textScore := s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45) * queryWeight
 	bd.TextScore = textScore
 	entry.Score += textScore
 
-	// 2. Vector score (weight from config)
+	// 2. Vector score (weighted by query importance)
 	if len(queryEmbedding) > 0 && s.embedProvider != nil {
 		clipEmb, err := s.embedProvider.GetClipEmbedding(ctx, c.ID)
 		if err == nil && len(clipEmb) > 0 {
@@ -266,7 +325,7 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 			if vectorWeight == 0 {
 				vectorWeight = 0.40
 			}
-			vectorScore := CalculateVectorScore(clipEmb, queryEmbedding) * vectorWeight
+			vectorScore := CalculateVectorScore(clipEmb, queryEmbedding) * vectorWeight * queryWeight
 			bd.VectorScore = vectorScore
 			entry.Score += vectorScore
 		}
@@ -279,9 +338,8 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 	entry.MatchedTerms = append(entry.MatchedTerms, matchedQuery)
 
 	// 3. Source boost (PRIORITIZATION)
-	// Give massive boost to "stock" or "youtube" sources over generic "artlist"
 	if source == "stock" || source == "youtube" {
-		boost := 0.50 // High boost for internal/specific assets
+		boost := 0.50
 		bd.SourceBoost = boost
 		entry.Score += boost
 	}
@@ -366,10 +424,42 @@ func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery 
 		}
 	}
 
-	// Ensure score is non-negative
+	// 10. Diversity penalty
+	if c.LocalPath != "" {
+		lowerPath := strings.ToLower(c.LocalPath)
+		if usedPaths[lowerPath] {
+			penalty := 0.30
+			bd.DiversityPenalty += penalty
+			entry.Score -= penalty
+		}
+
+		folderKey := s.folderKeyFromPath(c.LocalPath)
+		if folderKey != "" && usedFolders[folderKey] {
+			penalty := 0.25
+			bd.DiversityPenalty += penalty
+			entry.Score -= penalty
+		}
+	}
+
 	if entry.Score < 0 {
 		entry.Score = 0
 	}
+}
+
+func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery string, queryEmbedding []float64, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool, usedFolders map[string]bool, usedPaths map[string]bool) {
+	s.scoreClipWeighted(ctx, entry, matchedQuery, 1.0, queryEmbedding, req, avoidTerms, usedClipIDs, usedFolders, usedPaths)
+}
+
+func (s *Service) folderKeyFromPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	dir := filepath.Dir(path)
+	if dir == "." || dir == "/" {
+		return ""
+	}
+	return strings.ToLower(dir)
 }
 
 func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {

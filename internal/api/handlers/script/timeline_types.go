@@ -35,6 +35,8 @@ type TimelineSegment struct {
 	VisualSubject       string                    `json:"visual_subject,omitempty"`
 	VisualCaption       string                    `json:"visual_caption,omitempty"`
 	SearchSuggestions    []string                  `json:"search_suggestions,omitempty"`
+	VisualPrompts        []string                  `json:"visual_prompts,omitempty"`
+	EntityQueries        []string                  `json:"entity_queries,omitempty"`
 }
 
 // internal LLM structures

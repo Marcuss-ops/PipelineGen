@@ -142,6 +142,84 @@ func (r *Repository) SearchSemantic(ctx context.Context, query string, limit int
 	return candidates, nil
 }
 
+// FindCandidatesFTS searches for clip candidates using FTS5 for better ranking
+func (r *Repository) FindCandidatesFTS(ctx context.Context, query string, limit int) ([]ClipCandidate, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// Tokenize query and prepare for FTS MATCH
+	tokens := textutil.Tokenize(query)
+	if len(tokens) == 0 {
+		return nil, nil
+	}
+	
+	// Join tokens with OR or just as a phrase. For FTS, simple space works as AND.
+	// We use "term*" for prefix matching.
+	ftsQuery := ""
+	for _, t := range tokens {
+		if len(t) < 2 {
+			continue
+		}
+		if ftsQuery != "" {
+			ftsQuery += " "
+		}
+		ftsQuery += t + "*"
+	}
+
+	if ftsQuery == "" {
+		return nil, nil
+	}
+
+	sqlQuery := `
+		SELECT 
+			c.id, c.name, c.search_text, c.category, c.scene_type, c.tags, 
+			c.drive_link, c.local_path, c.quality_score, c.reuse_count, 
+			c.usable_for_json, c.avoid_for_json,
+			bm25(clips_fts, 5.0, 2.0, 1.0, 1.5, 1.0) as rank
+		FROM clips_fts
+		JOIN clips c ON c.id = clips_fts.clip_id
+		WHERE clips_fts MATCH ?
+		ORDER BY rank ASC, c.quality_score DESC, c.reuse_count ASC
+		LIMIT ?
+	`
+
+	rows, err := r.db.QueryContext(ctx, sqlQuery, ftsQuery, limit)
+	if err != nil {
+		// If FTS table doesn't exist or other error, fallback to legacy FindCandidates
+		r.logger.Warn("FTS search failed, falling back", zap.Error(err))
+		return r.FindCandidates(ctx, query, limit)
+	}
+	defer rows.Close()
+
+	candidates := make([]ClipCandidate, 0)
+	for rows.Next() {
+		var c ClipCandidate
+		var tagsStr string
+		var usableForJSON string
+		var avoidForJSON string
+		var rank float64
+		if err := rows.Scan(&c.ID, &c.Name, &c.SearchText, &c.Category, &c.SceneType, &tagsStr, &c.DriveLink, &c.LocalPath, &c.QualityScore, &c.ReuseCount, &usableForJSON, &avoidForJSON, &rank); err != nil {
+			continue
+		}
+
+		// Parse tags
+		if tagsStr != "" {
+			json.Unmarshal([]byte(tagsStr), &c.Tags)
+		}
+		if usableForJSON != "" {
+			json.Unmarshal([]byte(usableForJSON), &c.UsableFor)
+		}
+		if avoidForJSON != "" {
+			json.Unmarshal([]byte(avoidForJSON), &c.AvoidFor)
+		}
+
+		candidates = append(candidates, c)
+	}
+
+	return candidates, nil
+}
+
 // FindCandidates searches for clip candidates based on query
 func (r *Repository) FindCandidates(ctx context.Context, query string, limit int) ([]ClipCandidate, error) {
 	if limit <= 0 {
@@ -220,6 +298,12 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 
 // UpdateMetadata updates the metadata for a clip
 func (r *Repository) UpdateMetadata(ctx context.Context, clipID string, meta ClipMetadata) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	embeddingJSON, _ := json.Marshal(meta.Embedding)
 	usableForJSON, _ := json.Marshal(meta.UsableFor)
 	avoidForJSON, _ := json.Marshal(meta.AvoidFor)
@@ -238,7 +322,7 @@ func (r *Repository) UpdateMetadata(ctx context.Context, clipID string, meta Cli
 	`
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.ExecContext(ctx, sqlStmt,
+	_, err = tx.ExecContext(ctx, sqlStmt,
 		meta.SearchText,
 		string(embeddingJSON),
 		meta.Category,
@@ -249,12 +333,28 @@ func (r *Repository) UpdateMetadata(ctx context.Context, clipID string, meta Cli
 		now,
 		clipID,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to update metadata for clip %s: %w", clipID, err)
 	}
 
-	return nil
+	// Update FTS table
+	tagsStr := ""
+	if len(meta.Tags) > 0 {
+		t, _ := json.Marshal(meta.Tags)
+		tagsStr = string(t)
+	}
+	
+	// Delete old FTS entry
+	_, _ = tx.ExecContext(ctx, "DELETE FROM clips_fts WHERE clip_id = ?", clipID)
+	
+	// Insert new FTS entry (fetching name from clips table)
+	ftsStmt := `
+		INSERT INTO clips_fts(clip_id, name, search_text, tags, category, scene_type)
+		SELECT id, name, ?, ?, ?, ? FROM clips WHERE id = ?
+	`
+	_, _ = tx.ExecContext(ctx, ftsStmt, meta.SearchText, tagsStr, meta.Category, meta.SceneType, clipID)
+
+	return tx.Commit()
 }
 
 // MarkUsed marks a clip as used and updates reuse count

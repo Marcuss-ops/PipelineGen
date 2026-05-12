@@ -113,21 +113,13 @@ func parseBatchVisualQueryResponse(response string, segments []BatchSegmentInput
 			result.VisualCaption = v
 		}
 		if v, ok := item["queries"].([]interface{}); ok {
-			validated := make([]string, 0, len(v))
-			seen := make(map[string]bool)
-			for _, q := range v {
-				if qs, ok := q.(string); ok {
-					qs = strings.TrimSpace(qs)
-					if !seen[qs] && isValidVisualQuery(qs) {
-						validated = append(validated, qs)
-						seen[qs] = true
-					}
-					if len(validated) >= maxQueries {
-						break
-					}
-				}
-			}
-			result.Queries = validated
+			result.Queries = parseInterfaceSlice(v, maxQueries)
+		}
+		if v, ok := item["entity_queries"].([]interface{}); ok {
+			result.EntityQueries = parseInterfaceSlice(v, 3)
+		}
+		if v, ok := item["visual_prompts"].([]interface{}); ok {
+			result.VisualPrompts = parseInterfaceSlice(v, 3)
 		}
 		
 		if segIndex >= 0 {
@@ -136,4 +128,22 @@ func parseBatchVisualQueryResponse(response string, segments []BatchSegmentInput
 	}
 	
 	return results
+}
+
+func parseInterfaceSlice(v []interface{}, limit int) []string {
+	validated := make([]string, 0, len(v))
+	seen := make(map[string]bool)
+	for _, q := range v {
+		if qs, ok := q.(string); ok {
+			qs = strings.TrimSpace(qs)
+			if qs != "" && !seen[qs] {
+				validated = append(validated, qs)
+				seen[qs] = true
+			}
+			if len(validated) >= limit {
+				break
+			}
+		}
+	}
+	return validated
 }

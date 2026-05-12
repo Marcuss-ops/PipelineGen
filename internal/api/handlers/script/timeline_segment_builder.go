@@ -63,6 +63,8 @@ func populateVisualFields(seg *TimelineSegment, batchResults map[int]visualquery
 		seg.VisualSubject = r.VisualSubject
 		seg.VisualCaption = r.VisualCaption
 		seg.SearchSuggestions = sliceutil.UniqueStrings(append(seg.SearchSuggestions, r.Queries...))
+		seg.VisualPrompts = r.VisualPrompts
+		seg.EntityQueries = r.EntityQueries
 	}
 }
 
@@ -91,7 +93,7 @@ func searchArtlistFromDB(ctx context.Context, seg *TimelineSegment, artlistServi
 }
 
 // searchArtlistWithResolver searches Artlist clips using the ClipResolver for better recommendations
-func searchArtlistWithResolver(ctx context.Context, seg *TimelineSegment, clipResolver *clipresolver.Service, topic string, usedClipIDs []string) {
+func searchArtlistWithResolver(ctx context.Context, seg *TimelineSegment, clipResolver *clipresolver.Service, topic string, usedClipIDs, usedFolderIDs, usedPaths []string) {
 	if clipResolver == nil || len(seg.SearchSuggestions) == 0 {
 		return
 	}
@@ -101,7 +103,11 @@ func searchArtlistWithResolver(ctx context.Context, seg *TimelineSegment, clipRe
 		SegmentID:     seg.Timestamp,
 		SegmentText:   seg.NarrativeText,
 		Queries:       seg.SearchSuggestions,
+		EntityQueries: sliceutil.UniqueStrings(append(seg.CanonicalEntities, seg.EntityQueries...)),
+		VisualPrompts: seg.VisualPrompts,
 		UsedClipIDs:   usedClipIDs,
+		UsedFolderIDs: usedFolderIDs,
+		UsedPaths:     usedPaths,
 		Limit:         5,
 		MinScore:      0.5,
 		Explain:       false,
@@ -117,6 +123,7 @@ func searchArtlistWithResolver(ctx context.Context, seg *TimelineSegment, clipRe
 		artlistClips := make([]association.ScoredMatch, 0, len(resp.Recommended))
 		for _, rec := range resp.Recommended {
 			artlistClips = append(artlistClips, association.ScoredMatch{
+				ClipID: rec.ClipID,
 				Title:  rec.Title,
 				Path:   rec.LocalPath,
 				Score:  int(rec.Score * 100),

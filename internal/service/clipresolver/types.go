@@ -22,10 +22,14 @@ type RecommendRequest struct {
 	SegmentID     string   `json:"segment_id,omitempty"`
 	SegmentText   string   `json:"segment_text,omitempty"`
 	Queries       []string `json:"queries"`
+	EntityQueries []string `json:"entity_queries,omitempty"`
+	VisualPrompts []string `json:"visual_prompts,omitempty"`
 	Category      string   `json:"category,omitempty"`
 	SceneType     string   `json:"scene_type,omitempty"`
 	AvoidTerms    []string `json:"avoid_terms,omitempty"`
 	UsedClipIDs   []string `json:"used_clip_ids,omitempty"`
+	UsedFolderIDs []string `json:"used_folder_ids,omitempty"`
+	UsedPaths     []string `json:"used_paths,omitempty"`
 	Limit         int      `json:"limit"`
 	MinScore      float64  `json:"min_score"`
 	Explain       bool     `json:"explain"`
@@ -76,8 +80,9 @@ type ScoreBreakdown struct {
 	UsableForBoost float64 `json:"usable_for_boost,omitempty"`
 	SourceBoost    float64 `json:"source_boost,omitempty"`
 	QualityScore   float64 `json:"quality_score,omitempty"`
-	NegativePenalty float64 `json:"negative_penalty,omitempty"`
-	ReusePenalty   float64 `json:"reuse_penalty,omitempty"`
+	NegativePenalty  float64 `json:"negative_penalty,omitempty"`
+	ReusePenalty     float64 `json:"reuse_penalty,omitempty"`
+	DiversityPenalty float64 `json:"diversity_penalty,omitempty"`
 }
 
 // ClipScore is an internal type for scoring clips
