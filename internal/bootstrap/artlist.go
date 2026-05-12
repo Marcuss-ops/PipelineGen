@@ -13,6 +13,7 @@ import (
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/matchingconfig"
+	"velox/go-master/internal/service/ontology"
 	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
@@ -131,7 +132,19 @@ func wireClipResolver(coreDeps *CoreDeps, clipCatalogRepo *clipcatalog.Repositor
 		log.Warn("failed to load matching config, using defaults", zap.Error(err))
 	}
 
-	return clipresolver.NewService(clipCatalogRepo, harvestSvc, "config/ontology.yaml", matchingCfg)
+	// Load ontology registry
+	ontologyReg, err := ontology.LoadRegistry("config/ontology.yaml")
+	var ontologyScorer clipresolver.OntologyScorer
+	if err != nil {
+		log.Warn("failed to load ontology registry", zap.Error(err))
+	} else {
+		ontologyScorer = ontology.NewScorer(ontologyReg)
+	}
+
+	// Create embedding provider (points to the Python server started by clipindexer)
+	embedProvider := clipresolver.NewPythonEmbeddingProvider("http://127.0.0.1:8001", clipCatalogRepo)
+
+	return clipresolver.NewService(clipCatalogRepo, harvestSvc, embedProvider, ontologyScorer, matchingCfg)
 }
 
 func wireArtlistService(

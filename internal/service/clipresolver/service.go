@@ -16,7 +16,8 @@ import (
 type Service struct {
 	catalogRepo    *clipcatalog.Repository
 	harvestSvc     ArtlistHarvestService
-	ontologyPath   string
+	embedProvider  EmbeddingProvider
+	ontologyScorer OntologyScorer
 	matchingConfig *matchingconfig.MatchingConfig
 }
 
@@ -26,11 +27,18 @@ type ArtlistHarvestService interface {
 }
 
 // NewService creates a new clip resolver service
-func NewService(catalogRepo *clipcatalog.Repository, harvestSvc ArtlistHarvestService, ontologyPath string, matchingConfig *matchingconfig.MatchingConfig) *Service {
+func NewService(
+	catalogRepo *clipcatalog.Repository,
+	harvestSvc ArtlistHarvestService,
+	embedProvider EmbeddingProvider,
+	ontologyScorer OntologyScorer,
+	matchingConfig *matchingconfig.MatchingConfig,
+) *Service {
 	return &Service{
 		catalogRepo:    catalogRepo,
 		harvestSvc:     harvestSvc,
-		ontologyPath:   ontologyPath,
+		embedProvider:  embedProvider,
+		ontologyScorer: ontologyScorer,
 		matchingConfig: matchingConfig,
 	}
 }
@@ -55,7 +63,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 	}
 	minScore := req.MinScore
 	if minScore <= 0 {
-		minScore = 0.5
+		minScore = s.matchingConfig.Matching.MinScore
 	}
 
 	// Collect all search terms from queries and topic
@@ -71,6 +79,17 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 	avoidTerms := make(map[string]bool)
 	for _, term := range req.AvoidTerms {
 		avoidTerms[strings.ToLower(strings.TrimSpace(term))] = true
+	}
+
+	// Prepare query embeddings if provider is available
+	queryEmbeddings := make(map[string][]float64)
+	if s.embedProvider != nil {
+		for _, term := range searchTerms {
+			emb, err := s.embedProvider.EmbedText(ctx, term)
+			if err == nil {
+				queryEmbeddings[term] = emb
+			}
+		}
 	}
 
 	// Search for clips using all search terms
@@ -97,12 +116,15 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 			}
 
 			entry := clipScores[cand.ID]
-			s.scoreClip(entry, term, req, avoidTerms, usedClipIDs)
+			s.scoreClip(ctx, entry, term, queryEmbeddings[term], req, avoidTerms, usedClipIDs)
 		}
 	}
 
 	// Process all scored clips
 	for clipID, entry := range clipScores {
+		// Final ontology application to the overall score
+		entry.Score = ApplyOntologyBoost(s.ontologyScorer, entry.Score, entry.Clip, req.Topic)
+
 		if entry.Score < minScore {
 			if req.Explain {
 				resp.Rejected = append(resp.Rejected, RejectedClip{
@@ -216,14 +238,32 @@ func (s *Service) collectSearchTerms(req *RecommendRequest) []string {
 	return terms
 }
 
-func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
+func (s *Service) scoreClip(ctx context.Context, entry *ClipScore, matchedQuery string, queryEmbedding []float64, req *RecommendRequest, avoidTerms map[string]bool, usedClipIDs map[string]bool) {
 	c := entry.Clip
 	bd := entry.Breakdown
 
-	// Text score - based on search_text, name, tags
-	textScore := s.calculateTextScore(c, matchedQuery)
+	// 1. Text score (weight from config)
+	textWeight := s.matchingConfig.Matching.TextScoreWeight
+	if textWeight == 0 {
+		textWeight = 0.45
+	}
+	textScore := s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45)
 	bd.TextScore = textScore
 	entry.Score += textScore
+
+	// 2. Vector score (weight from config)
+	if len(queryEmbedding) > 0 && s.embedProvider != nil {
+		clipEmb, err := s.embedProvider.GetClipEmbedding(ctx, c.ID)
+		if err == nil && len(clipEmb) > 0 {
+			vectorWeight := s.matchingConfig.Matching.VectorScoreWeight
+			if vectorWeight == 0 {
+				vectorWeight = 0.40
+			}
+			vectorScore := CalculateVectorScore(clipEmb, queryEmbedding) * vectorWeight
+			bd.VectorScore = vectorScore
+			entry.Score += vectorScore
+		}
+	}
 
 	// Update matched query and terms
 	if entry.MatchedQuery == "" {
@@ -231,25 +271,37 @@ func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *Recommen
 	}
 	entry.MatchedTerms = append(entry.MatchedTerms, matchedQuery)
 
-	// Topic boost (weight: 0.20)
+	// 3. Topic boost
+	topicWeight := s.matchingConfig.Matching.TopicBoostWeight
+	if topicWeight == 0 {
+		topicWeight = 0.20
+	}
 	if req.Topic != "" && s.matchesTopic(c, req.Topic) {
-		boost := 0.20
+		boost := topicWeight
 		bd.TopicBoost = boost
 		entry.Score += boost
 	}
 
-	// Category boost (weight: 0.10)
+	// 4. Category boost
+	categoryWeight := s.matchingConfig.Matching.CategoryBoostWeight
+	if categoryWeight == 0 {
+		categoryWeight = 0.10
+	}
 	if req.Category != "" && strings.EqualFold(c.Category, req.Category) {
-		boost := 0.10
+		boost := categoryWeight
 		bd.CategoryBoost = boost
 		entry.Score += boost
 	}
 
-	// UsableFor boost (weight: 0.15)
+	// 5. UsableFor boost
+	usableWeight := s.matchingConfig.Matching.UsableForBoostWeight
+	if usableWeight == 0 {
+		usableWeight = 0.15
+	}
 	if len(c.UsableFor) > 0 {
 		for _, term := range req.Queries {
 			if s.clipUsableFor(c, term) {
-				boost := 0.15
+				boost := usableWeight
 				bd.UsableForBoost += boost
 				entry.Score += boost
 				break
@@ -257,18 +309,26 @@ func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *Recommen
 		}
 	}
 
-	// Quality score (weight: 0.15)
-	qualityScore := c.QualityScore * 0.15
-	if qualityScore > 0.15 {
-		qualityScore = 0.15
+	// 6. Quality score
+	qualityWeight := s.matchingConfig.Matching.QualityScoreWeight
+	if qualityWeight == 0 {
+		qualityWeight = 0.15
+	}
+	qualityScore := c.QualityScore * qualityWeight
+	if qualityScore > qualityWeight {
+		qualityScore = qualityWeight
 	}
 	bd.QualityScore = qualityScore
 	entry.Score += qualityScore
 
-	// Negative penalty (weight: 0.40)
+	// 7. Negative penalty
+	negativeWeight := s.matchingConfig.Matching.NegativePenaltyWeight
+	if negativeWeight == 0 {
+		negativeWeight = 0.40
+	}
 	for term := range avoidTerms {
 		if s.clipContainsTerm(c, term) {
-			penalty := 0.40
+			penalty := negativeWeight
 			bd.NegativePenalty += penalty
 			entry.Score -= penalty
 			if entry.RejectReason == "" {
@@ -277,9 +337,13 @@ func (s *Service) scoreClip(entry *ClipScore, matchedQuery string, req *Recommen
 		}
 	}
 
-	// Reuse penalty (weight: 0.10)
+	// 8. Reuse penalty
+	reuseWeight := s.matchingConfig.Matching.ReusePenaltyWeight
+	if reuseWeight == 0 {
+		reuseWeight = 0.10
+	}
 	if usedClipIDs[c.ID] {
-		penalty := 0.10
+		penalty := reuseWeight
 		bd.ReusePenalty = penalty
 		entry.Score -= penalty
 		if entry.RejectReason == "" {
