@@ -22,6 +22,14 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 		Narrative: seg.NarrativeText,
 	}
 
+	// 1. Try preferred stock match first (e.g. "Mike Tyson" folder)
+	if preferred, ok := assocService.ResolvePreferredStockMatch(ctx, input); ok {
+		seg.StockMatches = append(seg.StockMatches, *preferred)
+		// If we found a direct match, we still might want Artlist clips for variety,
+		// but the preferred one is now first and scored high (1000).
+	}
+
+	// 2. Run general association engine
 	matches := assocService.Associate(ctx, input)
 	for _, m := range matches {
 		switch m.Source {

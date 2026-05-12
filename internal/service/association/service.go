@@ -51,6 +51,30 @@ func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMat
 	return s.engine.AssociateAll(ctx, input)
 }
 
+// ResolvePreferredStockMatch checks for a high-priority exact stock folder match based on primary focus.
+func (s *Service) ResolvePreferredStockMatch(ctx context.Context, input SegmentInput) (*ScoredMatch, bool) {
+	focus := PrimaryFocus(input.Topic, input.Subject, input.Entities)
+	if focus == "" {
+		return nil, false
+	}
+
+	direct, ok, err := s.FindDirectStockFolderCandidate(ctx, input.Topic, focus)
+	if err != nil || !ok || direct == nil {
+		return nil, false
+	}
+
+	link := NormalizeDriveFolderLink(direct.Link, direct.FolderID)
+
+	return &ScoredMatch{
+		Title:  direct.Name,
+		Path:   direct.Path,
+		Score:  1000,
+		Source: "drive_stock",
+		Link:   link,
+		Reason: "direct protagonist stock folder match",
+	}, true
+}
+
 func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*CandidatesResponse, error) {
 	req.Normalize()
 
