@@ -247,7 +247,7 @@ func TestYouTubeClipPassesExpectedAssetInputToProcessor(t *testing.T) {
 
 	input := processor.inputs[0]
 	assert.Contains(t, input.ID, "yt_")
-	assert.Equal(t, "clip_one", input.Name)
+	assert.Equal(t, "clip one", input.Name)
 	assert.Equal(t, "https://www.youtube.com/watch?v=dQw4w9WgXcQ", input.SourceURL)
 	assert.Equal(t, []string{"*10-20"}, input.DownloadSections)
 	assert.True(t, input.DisableDuration)

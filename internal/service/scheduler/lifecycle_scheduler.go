@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -77,8 +78,28 @@ func (s *LifecycleScheduler) Stop() {
 func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 	s.log.Info("Triggering periodic catalog sync")
 	
-	// Sources to sync
-	sources := []string{"youtube", "artlist", "stock", "voiceover", "images"}
+	// Sources to sync - only those with configured root folders
+	var sources []string
+	if s.cfg.Drive.ClipsRootFolder != "" {
+		sources = append(sources, "youtube")
+	}
+	if s.cfg.Harvester.DriveFolderID != "" {
+		sources = append(sources, "artlist")
+	}
+	if s.cfg.Drive.StockRootFolder != "" {
+		sources = append(sources, "stock")
+	}
+	if s.cfg.Drive.VoiceoverRootFolder != "" {
+		sources = append(sources, "voiceover")
+	}
+	if s.cfg.Drive.ImagesRootFolder != "" {
+		sources = append(sources, "images")
+	}
+
+	if len(sources) == 0 {
+		s.log.Info("No sources configured for periodic sync")
+		return
+	}
 	
 	for _, src := range sources {
 		url := ""
@@ -89,11 +110,13 @@ func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 		}
 
 		go func(source, targetURL string) {
-			req, err := http.NewRequestWithContext(ctx, "POST", targetURL, nil)
+			body := strings.NewReader("{}")
+			req, err := http.NewRequestWithContext(ctx, "POST", targetURL, body)
 			if err != nil {
 				s.log.Error("Failed to create sync request", zap.String("source", source), zap.Error(err))
 				return
 			}
+			req.Header.Set("Content-Type", "application/json")
 			
 			client := &http.Client{Timeout: 5 * time.Minute}
 			resp, err := client.Do(req)
@@ -111,11 +134,13 @@ func (s *LifecycleScheduler) triggerCleanup(ctx context.Context) {
 	s.log.Info("Triggering periodic deep cleanup")
 	
 	url := fmt.Sprintf("%s/api/assets/all/cleanup?deep=true", s.apiURL)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+	body := strings.NewReader("{}")
+	req, err := http.NewRequestWithContext(ctx, "POST", url, body)
 	if err != nil {
 		s.log.Error("Failed to create cleanup request", zap.Error(err))
 		return
 	}
+	req.Header.Set("Content-Type", "application/json")
 	
 	client := &http.Client{Timeout: 30 * time.Minute}
 	resp, err := client.Do(req)
