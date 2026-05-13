@@ -52,8 +52,9 @@ const testSchema = `
 		last_attempt_at TEXT,
 		processed_at TEXT,
 		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)
+		updated_at TEXT NOT NULL,
+		deleted_at DATETIME
+		);
 `
 
 func TestDeleteClip(t *testing.T) {
@@ -92,8 +93,68 @@ func TestDeleteClip(t *testing.T) {
 		t.Fatalf("DeleteClip failed: %v", err)
 	}
 
-	if _, err := repo.GetClip(ctx, "clip_1"); err == nil {
-		t.Fatal("expected error after deleting clip, got nil")
+	// Verify that GetClip excludes it
+	clip, err := repo.GetClip(ctx, "clip_1")
+	if clip != nil {
+		t.Fatal("expected nil clip after deleting clip")
+	}
+
+	// Verify the record is actually still in the DB (soft delete check)
+	var deletedAt sql.NullString
+	err = db.QueryRowContext(ctx, "SELECT deleted_at FROM clips WHERE id = 'clip_1'").Scan(&deletedAt)
+	if err != nil {
+		t.Fatalf("expected record to still exist in db, got err: %v", err)
+	}
+	if !deletedAt.Valid || deletedAt.String == "" {
+		t.Fatal("expected deleted_at to be set")
+	}
+
+	// Test SearchClipsByKeywords excludes it
+	clips, err := repo.SearchClipsByKeywords(ctx, []string{"test"}, 10)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if len(clips) > 0 {
+		t.Fatal("expected search to exclude soft-deleted clips")
+	}
+}
+
+func TestRestoreClip(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, _ = db.Exec(testSchema)
+	repo := NewRepository(db, zap.NewNop())
+
+	_ = repo.UpsertClip(ctx, &models.Clip{
+		ID:        "clip_res",
+		Name:      "Restore Clip",
+		Tags:      []string{"restore"},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+
+	_ = repo.DeleteClip(ctx, "clip_res")
+
+	// Ensure excluded
+	clip, _ := repo.GetClip(ctx, "clip_res")
+	if clip != nil {
+		t.Fatal("expected nil clip after soft delete")
+	}
+
+	// Restore
+	if err := repo.RestoreClip(ctx, "clip_res"); err != nil {
+		t.Fatalf("RestoreClip failed: %v", err)
+	}
+
+	// Ensure present
+	clip, err = repo.GetClip(ctx, "clip_res")
+	if err != nil || clip == nil {
+		t.Fatalf("expected clip to be present after restore, err: %v", err)
 	}
 }
 
@@ -129,7 +190,15 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 		t.Fatalf("DeleteClipByDriveLink failed: %v", err)
 	}
 
-	if _, err := repo.GetClip(ctx, "clip_2"); err == nil {
-		t.Fatal("expected error after deleting clip by drive link, got nil")
+	c, _ := repo.GetClip(ctx, "clip_2")
+	if c != nil {
+		t.Fatal("expected nil clip after deleting by drive link")
+	}
+
+	// Verify the record is actually still in the DB (soft delete check)
+	var deletedAt sql.NullString
+	err = db.QueryRowContext(ctx, "SELECT deleted_at FROM clips WHERE id = 'clip_2'").Scan(&deletedAt)
+	if err != nil || !deletedAt.Valid || deletedAt.String == "" {
+		t.Fatalf("expected record to still exist with deleted_at set, got err: %v", err)
 	}
 }

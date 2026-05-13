@@ -64,7 +64,8 @@ func createTestDB(t *testing.T) *sql.DB {
 		phash TEXT NOT NULL DEFAULT '',
 		visual_embedding_json TEXT NOT NULL DEFAULT '[]',
 		created_at TEXT,
-		updated_at TEXT
+		updated_at TEXT,
+		deleted_at DATETIME
 	);
 	`
 	_, err = db.Exec(schema)

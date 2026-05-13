@@ -8,6 +8,7 @@ import (
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/pkg/sqlutil"
 
 	"go.uber.org/zap"
 
@@ -63,15 +64,13 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 		LEFT JOIN search_terms s ON v.search_term_id = s.id
 		WHERE `
 
-	var conditions []string
-	var args []interface{}
-	for _, token := range tokens {
-		conditions = append(conditions, "(s.term LIKE ? OR v.url LIKE ?)")
-		pattern := "%" + token + "%"
-		args = append(args, pattern, pattern)
+	columns := []string{"s.term", "v.url"}
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(tokens, columns)
+	if conditionSQL == "" {
+		return nil, nil
 	}
 
-	query := queryBase + "(" + strings.Join(conditions, " OR ") + ") GROUP BY v.url LIMIT ?"
+	query := queryBase + conditionSQL + " GROUP BY v.url LIMIT ?"
 	args = append(args, limit)
 
 	rows, err := db.Query(query, args...)

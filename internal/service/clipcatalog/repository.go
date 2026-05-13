@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/sqlutil"
 	"velox/go-master/pkg/textutil"
 )
 
@@ -232,19 +233,10 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 		return nil, nil
 	}
 
-	// Build SQL query with OR conditions for each token
-	conditions := make([]string, 0)
-	args := make([]interface{}, 0)
-	for _, token := range tokens {
-		if len(token) < 3 {
-			continue
-		}
-		likePattern := "%" + token + "%"
-		conditions = append(conditions, "(search_text LIKE ? OR name LIKE ? OR tags LIKE ?)")
-		args = append(args, likePattern, likePattern, likePattern)
-	}
-
-	if len(conditions) == 0 {
+	// Build SQL query enforcing AND across tokens
+	columns := []string{"search_text", "name", "tags"}
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(tokens, columns)
+	if conditionSQL == "" {
 		return nil, nil
 	}
 
@@ -254,7 +246,7 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 		WHERE %s
 		ORDER BY quality_score DESC, reuse_count ASC
 		LIMIT ?
-	`, strings.Join(conditions, " OR "))
+	`, conditionSQL)
 
 	args = append(args, limit)
 

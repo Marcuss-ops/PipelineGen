@@ -31,6 +31,7 @@ type Clip struct {
 	SearchTerms    []string  `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 	// Extended fields for clip catalog
 	SearchText     string    `json:"search_text,omitempty"`
 	SceneType      string    `json:"scene_type,omitempty"`

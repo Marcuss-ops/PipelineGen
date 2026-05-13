@@ -41,7 +41,7 @@ CREATE TABLE clips (
     processed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
-, search_text TEXT DEFAULT '', embedding_json TEXT DEFAULT '[]', scene_type TEXT DEFAULT '', usable_for_json TEXT DEFAULT '[]', avoid_for_json TEXT DEFAULT '[]', quality_score REAL DEFAULT 0.0, reuse_count INTEGER DEFAULT 0, last_used_at TEXT DEFAULT '', last_indexed_at TEXT DEFAULT '');
+, search_text TEXT DEFAULT '', embedding_json TEXT DEFAULT '[]', scene_type TEXT DEFAULT '', usable_for_json TEXT DEFAULT '[]', avoid_for_json TEXT DEFAULT '[]', quality_score REAL DEFAULT 0.0, reuse_count INTEGER DEFAULT 0, last_used_at TEXT DEFAULT '', last_indexed_at TEXT DEFAULT '', deleted_at DATETIME);
 CREATE INDEX idx_clips_folder_id ON clips(folder_id);
 CREATE INDEX idx_clips_folder_path ON clips(folder_path);
 CREATE INDEX idx_clips_group_name ON clips(group_name);

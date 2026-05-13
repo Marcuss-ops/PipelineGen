@@ -51,8 +51,9 @@ const testSchema = `CREATE TABLE clips (
 	last_attempt_at TEXT,
 	processed_at TEXT,
 	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL
-)`
+	updated_at TEXT NOT NULL,
+	deleted_at DATETIME
+	);`
 
 func TestNewService(t *testing.T) {
 	repo := &clips.Repository{}

@@ -22,11 +22,12 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/sqlutil"
 )
 
 // Clip column constants to avoid repetition
 const (
-	clipColumns = `id, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(depth, 0) AS depth, is_folder, COALESCE(folder_path, '') AS folder_path, COALESCE(group_name, '') AS group_name, COALESCE(media_type, '') AS media_type, COALESCE(drive_link, '') AS drive_link, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(download_link, '') AS download_link, COALESCE(tags, '[]') AS tags, source, COALESCE(category, '') AS category, COALESCE(external_url, '') AS external_url, COALESCE(duration, 0) AS duration, COALESCE(metadata, '{}') AS metadata, COALESCE(file_hash, '') AS file_hash, COALESCE(local_path, '') AS local_path, COALESCE(status, '') AS status, COALESCE(error, '') AS error, COALESCE(search_terms, '[]') AS search_terms, COALESCE(thumb_url, '') AS thumb_url, COALESCE(phash, '') AS phash, COALESCE(visual_embedding_json, '[]') AS visual_embedding_json, created_at, updated_at, (SELECT COUNT(*) FROM clips c2 WHERE c2.parent_folder_id = clips.id) AS child_count`
+	clipColumns = `id, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(depth, 0) AS depth, is_folder, COALESCE(folder_path, '') AS folder_path, COALESCE(group_name, '') AS group_name, COALESCE(media_type, '') AS media_type, COALESCE(drive_link, '') AS drive_link, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(download_link, '') AS download_link, COALESCE(tags, '[]') AS tags, source, COALESCE(category, '') AS category, COALESCE(external_url, '') AS external_url, COALESCE(duration, 0) AS duration, COALESCE(metadata, '{}') AS metadata, COALESCE(file_hash, '') AS file_hash, COALESCE(local_path, '') AS local_path, COALESCE(status, '') AS status, COALESCE(error, '') AS error, COALESCE(search_terms, '[]') AS search_terms, COALESCE(thumb_url, '') AS thumb_url, COALESCE(phash, '') AS phash, COALESCE(visual_embedding_json, '[]') AS visual_embedding_json, created_at, updated_at, deleted_at, (SELECT COUNT(*) FROM clips c2 WHERE c2.parent_folder_id = clips.id) AS child_count`
 	clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 )
 
@@ -77,11 +78,16 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 	}
 	now := time.Now()
 
+	var deletedAt interface{}
+	if clip.DeletedAt != nil {
+		deletedAt = clip.DeletedAt.Format(time.RFC3339)
+	}
+
 	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO clips (id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type,
 			drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata,
-			file_hash, local_path, status, error, search_terms, phash, visual_embedding_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			file_hash, local_path, status, error, search_terms, phash, visual_embedding_json, created_at, updated_at, deleted_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, filename=excluded.filename, folder_id=excluded.folder_id,
 			parent_folder_id=excluded.parent_folder_id, depth=excluded.depth, is_folder=excluded.is_folder,
@@ -94,17 +100,39 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
 			local_path=excluded.local_path, status=excluded.status, error=excluded.error,
 			search_terms=excluded.search_terms, phash=excluded.phash,
 			visual_embedding_json=excluded.visual_embedding_json,
-			updated_at=excluded.updated_at
+			updated_at=excluded.updated_at, deleted_at=excluded.deleted_at
 		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group,
 		clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, string(tagsJSON), clip.Source,
 		clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash,
-		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.PHash, clip.VisualEmbeddingJSON, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339))
+		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.PHash, clip.VisualEmbeddingJSON, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339), deletedAt)
 
 	return err
 }
 
-// DeleteClip deletes a clip by its ID.
+// DeleteClip soft-deletes a clip by its ID.
 func (r *Repository) DeleteClip(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip id is required")
+	}
+
+	_, err := r.db.ExecContext(ctx, "UPDATE clips SET deleted_at = ?, updated_at = ? WHERE id = ?", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339), id)
+	return err
+}
+
+// RestoreClip restores a soft-deleted clip by its ID.
+func (r *Repository) RestoreClip(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip id is required")
+	}
+
+	_, err := r.db.ExecContext(ctx, "UPDATE clips SET deleted_at = NULL, updated_at = ? WHERE id = ?", time.Now().Format(time.RFC3339), id)
+	return err
+}
+
+// HardDeleteClip permanently deletes a clip by its ID.
+func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("clip id is required")
@@ -114,14 +142,15 @@ func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 	return err
 }
 
-// DeleteClipByDriveLink deletes a clip by its Drive link (checks both drive_link and download_link).
+// DeleteClipByDriveLink soft-deletes a clip by its Drive link (checks both drive_link and download_link).
 func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {
 		return fmt.Errorf("drive link is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "DELETE FROM clips WHERE drive_link = ? OR download_link = ?", driveLink, driveLink)
+	now := time.Now().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx, "UPDATE clips SET deleted_at = ?, updated_at = ? WHERE drive_link = ? OR download_link = ?", now, now, driveLink, driveLink)
 	return err
 }
 
@@ -250,11 +279,11 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 }
 
 
-// buildClipQuery builds a SELECT query using the standard clip columns
+// buildClipQuery builds a SELECT query using the standard clip columns, excluding deleted clips.
 func buildClipQuery(source string) string {
-	query := "SELECT " + clipColumns + " FROM clips"
+	query := "SELECT " + clipColumns + " FROM clips WHERE deleted_at IS NULL"
 	if source != "" {
-		query += " WHERE source = ?"
+		query += " AND source = ?"
 	}
 	return query
 }
@@ -278,6 +307,7 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 
 	query := `SELECT ` + clipColumns + `
 		FROM clips
+		WHERE deleted_at IS NULL
 		ORDER BY updated_at DESC
 		LIMIT ? OFFSET ?`
 
@@ -331,9 +361,19 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 	}
 	r.log.Warn("FTS5 search failed or returned 0 results, falling back to LIKE", zap.Error(err))
 	// Fallback to LIKE search on multiple fields
-	query = buildClipQuery("") + " WHERE (tags LIKE ? OR group_name LIKE ? OR name LIKE ? OR category LIKE ?)"
-	likePattern := "%" + tag + "%"
-	rows, err = r.db.QueryContext(ctx, query, likePattern, likePattern, likePattern, likePattern)
+	columns := []string{"tags", "group_name", "name", "category"}
+	keywords := strings.Fields(tag)
+	if len(keywords) == 0 {
+		keywords = []string{tag}
+	}
+	
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*models.Clip{}, nil
+	}
+
+	query = buildClipQuery("") + " AND " + conditionSQL
+	rows, err = r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -392,17 +432,16 @@ func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []strin
 	r.log.Warn("FTS5 search failed, falling back to LIKE", zap.Error(err))
 
 	// Fallback to LIKE search
-	var conditions []string
-	var args []interface{}
-	for _, kw := range keywords {
-		conditions = append(conditions, "(name LIKE ? OR tags LIKE ? OR folder_path LIKE ? OR group_name LIKE ? OR category LIKE ?)")
-		args = append(args, "%"+kw+"%", "%"+kw+"%", "%"+kw+"%", "%"+kw+"%", "%"+kw+"%")
+	columns := []string{"name", "tags", "folder_path", "group_name", "category"}
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*models.Clip{}, nil
 	}
 
 	query = fmt.Sprintf(
-		"%s WHERE (%s) LIMIT ?",
+		"%s AND (%s) LIMIT ?",
 		buildClipQuery(""),
-		strings.Join(conditions, " OR "),
+		conditionSQL,
 	)
 	args = append(args, limit)
 
@@ -465,11 +504,10 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	r.log.Warn("FTS5 search failed, falling back to LIKE", zap.Error(err))
 
 	// Fallback to LIKE search
-	var conditions []string
-	var args []interface{}
-	for _, kw := range keywords {
-		conditions = append(conditions, "(name LIKE ? OR tags LIKE ?)")
-		args = append(args, "%"+kw+"%", "%"+kw+"%")
+	columns := []string{"name", "tags"}
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*models.Clip{}, nil
 	}
 
 	query = fmt.Sprintf(`
@@ -478,7 +516,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 		WHERE source = 'stock' AND (%s)
 		LIMIT ?`,
 		clipColumns,
-		strings.Join(conditions, " OR "),
+		conditionSQL,
 	)
 	args = append(args, limit)
 
@@ -502,18 +540,18 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 // scanClipRows scans a clip from sql.Rows
 func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 	var clip models.Clip
-	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull sql.NullString
+	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull, deletedAtNull sql.NullString
 	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
 	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
 	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
 	var statusNull, errorNull, thumbURLNull, phashNull, visualEmbNull sql.NullString
-	
+
 	err := rows.Scan(
 		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
 		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
 		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
-		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &clip.ChildCount)
-	
+		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &deletedAtNull, &clip.ChildCount)
+
 	if err != nil {
 		fmt.Printf("DEBUG: Scan error clip_id=%v err=%v\n", clip.ID, err)
 		return nil, err
@@ -558,13 +596,17 @@ func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
 			clip.UpdatedAt = t
 		}
 	}
+	if deletedAtNull.Valid && deletedAtNull.String != "" {
+		if t, err := time.Parse(time.RFC3339, deletedAtNull.String); err == nil {
+			clip.DeletedAt = &t
+		}
+	}
 
 	return &clip, nil
 }
-
 func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 	var clip models.Clip
-	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull sql.NullString
+	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull, deletedAtNull sql.NullString
 	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
 	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
 	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
@@ -574,7 +616,7 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
 		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
 		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
-		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &clip.ChildCount)
+		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &deletedAtNull, &clip.ChildCount)
 
 	if err != nil {
 		return nil, err
@@ -617,20 +659,25 @@ func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
 			clip.UpdatedAt = t
 		}
 	}
+	if deletedAtNull.Valid && deletedAtNull.String != "" {
+		if t, err := time.Parse(time.RFC3339, deletedAtNull.String); err == nil {
+			clip.DeletedAt = &t
+		}
+	}
 
 	return &clip, nil
 }
 
 // GetClipByFolderAndFilename retrieves a clip by folder and filename
 func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.Clip, error) {
-	query := buildClipQuery("") + " WHERE folder_id = ? AND filename = ? LIMIT 1"
+	query := buildClipQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderID, filename)
 	return r.scanClipRow(row)
 }
 
 // GetClip retrieves a clip by ID
 func (r *Repository) GetClip(ctx context.Context, id string) (*models.Clip, error) {
-	query := buildClipQuery("") + " WHERE id = ? LIMIT 1"
+	query := buildClipQuery("") + " AND id = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, id)
 	return r.scanClipRow(row)
 }
@@ -643,7 +690,7 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 		return nil, fmt.Errorf("drive file id is required")
 	}
 
-	query := buildClipQuery("") + " WHERE drive_link LIKE ? OR download_link LIKE ? LIMIT 1"
+	query := buildClipQuery("") + " AND (drive_link LIKE ? OR download_link LIKE ?) LIMIT 1"
 	pattern := "%" + fileID + "%"
 	row := r.db.QueryRowContext(ctx, query, pattern, pattern)
 	clip, err := r.scanClipRow(row)
@@ -655,7 +702,7 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 
 // FindClipsByHash returns all clips with the given file hash.
 func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " WHERE file_hash = ?"
+	query := buildClipQuery("") + " AND file_hash = ?"
 	rows, err := r.db.QueryContext(ctx, query, hash)
 	if err != nil {
 		return nil, err
@@ -675,7 +722,7 @@ func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*model
 
 // GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id
 func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " WHERE drive_file_id IS NOT NULL AND drive_file_id != ''"
+	query := buildClipQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
@@ -847,7 +894,7 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 
 // ListClipsByFolderID returns all clips for a given folder ID
 func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " WHERE folder_id = ? ORDER BY created_at ASC"
+	query := buildClipQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
 	if err != nil {
 		return nil, err
@@ -867,7 +914,7 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 
 // ListClipsByFolderPath returns all clips for a given folder path
 func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " WHERE folder_path = ? ORDER BY created_at ASC"
+	query := buildClipQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
 		return nil, err
@@ -979,9 +1026,19 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 
 	// Fallback to LIKE
 	r.log.Warn("FTS5 for clip_folders not available, falling back to LIKE", zap.Error(err))
-	query = buildClipFolderQuery("") + " WHERE source_url LIKE ? OR video_id LIKE ? OR group_name LIKE ? OR folder_path LIKE ? ORDER BY updated_at DESC"
-	searchTerm := "%" + keyword + "%"
-	rows, err = r.db.QueryContext(ctx, query, searchTerm, searchTerm, searchTerm, searchTerm)
+	columns := []string{"source_url", "video_id", "group_name", "folder_path"}
+	keywords := strings.Fields(keyword)
+	if len(keywords) == 0 {
+		keywords = []string{keyword}
+	}
+
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*models.ClipFolder{}, nil
+	}
+
+	query = buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
+	rows, err = r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1015,7 +1072,7 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.Clip, error) {
 	query := `SELECT ` + clipColumns + `
 		FROM clips
-		WHERE parent_folder_id = ?
+		WHERE parent_folder_id = ? AND deleted_at IS NULL
 		ORDER BY is_folder DESC, name ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, parentID)
@@ -1045,7 +1102,7 @@ func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, err
 	}
 	var id string
 	err := r.db.QueryRowContext(ctx,
-		`SELECT id FROM clips WHERE phash = ? AND phash != '' LIMIT 1`, phash,
+		`SELECT id FROM clips WHERE phash = ? AND phash != '' AND deleted_at IS NULL LIMIT 1`, phash,
 	).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
