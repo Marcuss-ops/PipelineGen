@@ -1,7 +1,10 @@
 // Package config provides configuration management for the PipelineGen system.
 package config
 
-import "sync"
+import (
+	"path/filepath"
+	"sync"
+)
 
 // Config holds all configuration for the application.
 type Config struct {
@@ -117,6 +120,59 @@ type StorageConfig struct {
 	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"youtube-clips"`
 	ArtlistDir      string `yaml:"artlist_dir" default:"artlist"`
 	ImagesDir       string `yaml:"images_dir" default:"images"`
+}
+
+// FullPath returns the absolute path to a subdirectory within DataDir.
+func (s StorageConfig) FullPath(subDir string) string {
+	if filepath.IsAbs(subDir) {
+		return subDir
+	}
+	return filepath.Join(s.DataDir, subDir)
+}
+
+// VoiceoversPath returns the full path to the voiceovers directory.
+func (s StorageConfig) VoiceoversPath() string {
+	return s.FullPath(s.VoiceoversDir)
+}
+
+// AssetsPath returns the full path to the main assets directory.
+func (s StorageConfig) AssetsPath() string {
+	return s.FullPath(s.AssetsDir)
+}
+
+// DownloadsPath returns the full path to the downloads directory.
+func (s StorageConfig) DownloadsPath() string {
+	return s.FullPath(s.DownloadsDir)
+}
+
+// BackupsPath returns the full path to the backups directory.
+func (s StorageConfig) BackupsPath() string {
+	return s.FullPath(s.BackupsDir)
+}
+
+// TempPath returns the full path to the temporary directory.
+func (s StorageConfig) TempPath() string {
+	return s.FullPath(s.TempDir)
+}
+
+// AnimationsPath returns the full path to the animations directory.
+func (s StorageConfig) AnimationsPath() string {
+	return s.FullPath(s.AnimationsDir)
+}
+
+// YoutubeClipsPath returns the full path to the youtube clips directory.
+func (s StorageConfig) YoutubeClipsPath() string {
+	return s.FullPath(s.YoutubeClipsDir)
+}
+
+// ArtlistPath returns the full path to the artlist directory.
+func (s StorageConfig) ArtlistPath() string {
+	return s.FullPath(s.ArtlistDir)
+}
+
+// ImagesPath returns the full path to the images directory.
+func (s StorageConfig) ImagesPath() string {
+	return s.FullPath(s.ImagesDir)
 }
 
 // SecurityConfig holds security-related configuration.

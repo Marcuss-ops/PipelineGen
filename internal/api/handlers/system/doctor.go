@@ -34,9 +34,17 @@ func NewHandler(cfg *config.Config, log *zap.Logger) *Handler {
 
 // DoctorResponse represents the response from the doctor endpoint
 type DoctorResponse struct {
-	OK     bool              `json:"ok"`
-	Checks map[string]string `json:"checks"`
-	Fixes  []string         `json:"fixes,omitempty"`
+	OK      bool              `json:"ok"`
+	Checks  map[string]string `json:"checks"`
+	Storage map[string]StorageStatus `json:"storage,omitempty"`
+	Fixes   []string         `json:"fixes,omitempty"`
+}
+
+type StorageStatus struct {
+	Path     string `json:"path"`
+	Exists   bool   `json:"exists"`
+	Writable bool   `json:"writable"`
+	Error    string `json:"error,omitempty"`
 }
 
 // Doctor godoc
@@ -49,16 +57,17 @@ type DoctorResponse struct {
 // @Router /system/doctor [get]
 func (h *Handler) Doctor(c *gin.Context) {
 	resp := &DoctorResponse{
-		OK:     true,
-		Checks: make(map[string]string),
-		Fixes:  []string{},
+		OK:      true,
+		Checks:  make(map[string]string),
+		Storage: make(map[string]StorageStatus),
+		Fixes:   []string{},
 	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 
-	// Check data directory
-	h.checkDataDir(ctx, resp)
+	// Check storage directories deeply
+	h.checkStorageDeep(ctx, resp)
 
 	// Check external tools
 	h.checkExternalTools(ctx, resp)
@@ -79,25 +88,50 @@ func (h *Handler) Doctor(c *gin.Context) {
 			break
 		}
 	}
+	for _, s := range resp.Storage {
+		if !s.Exists || !s.Writable {
+			resp.OK = false
+			break
+		}
+	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
-func (h *Handler) checkDataDir(ctx context.Context, resp *DoctorResponse) {
-	dataDir := h.cfg.Storage.DataDir
-	if dataDir == "" {
-		resp.Checks["data_dir"] = "not_configured"
-		resp.Fixes = append(resp.Fixes, "Set storage.data_dir in config")
-		return
+func (h *Handler) checkStorageDeep(ctx context.Context, resp *DoctorResponse) {
+	dirs := map[string]string{
+		"data_dir":      h.cfg.Storage.DataDir,
+		"assets_dir":    h.cfg.Storage.AssetsPath(),
+		"images_dir":    h.cfg.Storage.ImagesPath(),
+		"temp_dir":      h.cfg.Storage.TempPath(),
+		"animations":    h.cfg.Storage.AnimationsPath(),
+		"youtube_clips": h.cfg.Storage.YoutubeClipsPath(),
 	}
 
-	if _, err := os.Stat(dataDir); os.IsNotExist(err) {
-		resp.Checks["data_dir"] = "missing"
-		resp.Fixes = append(resp.Fixes, fmt.Sprintf("mkdir -p %s", dataDir))
-		return
+	for key, path := range dirs {
+		status := StorageStatus{Path: path}
+		
+		if _, err := os.Stat(path); err == nil {
+			status.Exists = true
+			
+			// Check writability by creating a temp file
+			tmpFile := filepath.Join(path, ".velox_write_test")
+			if err := os.WriteFile(tmpFile, []byte("test"), 0644); err == nil {
+				status.Writable = true
+				_ = os.Remove(tmpFile)
+			} else {
+				status.Writable = false
+				status.Error = err.Error()
+				resp.Fixes = append(resp.Fixes, fmt.Sprintf("chmod +w %s", path))
+			}
+		} else {
+			status.Exists = false
+			status.Error = err.Error()
+			resp.Fixes = append(resp.Fixes, fmt.Sprintf("mkdir -p %s", path))
+		}
+		
+		resp.Storage[key] = status
 	}
-
-	resp.Checks["data_dir"] = "ok"
 }
 
 func (h *Handler) checkExternalTools(ctx context.Context, resp *DoctorResponse) {

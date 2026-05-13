@@ -3,12 +3,12 @@ package sources
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
@@ -51,6 +51,7 @@ type Handler struct {
 	mediaProcessor processor.Processor
 	deletionSvc    *media.DeletionService
 	catalogSync    *catalogsync.Service
+	maintenanceSvc *maintenance.Service
 	log            *zap.Logger
 
 	// Sub-handlers
@@ -74,6 +75,7 @@ func NewHandler(
 	mediaProcessor processor.Processor,
 	deletionSvc *media.DeletionService,
 	catalogSync *catalogsync.Service,
+	maintenanceSvc *maintenance.Service,
 	log *zap.Logger,
 ) *Handler {
 	h := &Handler{
@@ -94,6 +96,7 @@ func NewHandler(
 		mediaProcessor: mediaProcessor,
 		deletionSvc:    deletionSvc,
 		catalogSync:    catalogSync,
+		maintenanceSvc: maintenanceSvc,
 		log:            log,
 	}
 
@@ -198,23 +201,40 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	var req struct {
 		DryRun     bool `json:"dry_run"`
 		CheckDrive bool `json:"check_drive"`
+		Deep       bool `json:"deep"`
 	}
 	_ = c.ShouldBindJSON(&req)
 
-	deep := c.Query("deep") == "true"
-	if deep && h.deletionSvc != nil {
-		assetsDir := filepath.Join(h.cfg.Storage.DataDir, h.cfg.Storage.AssetsDir)
-		if strings.ToLower(source) == "all" || source == "" {
-			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), assetsDir, false)
+	deep := c.Query("deep") == "true" || req.Deep
+	
+	// Use Job system for heavy all-source deep cleanup
+	if deep && (strings.ToLower(source) == "all" || source == "") {
+		if h.jobsSvc != nil {
+			job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+				Type:     models.JobTypeSystemCleanup,
+				Payload:  map[string]any{"deep": true, "dry_run": req.DryRun},
+				Priority: 10,
+			})
 			if err != nil {
 				apiutil.InternalError(c, err)
 				return
 			}
 			apiutil.OK(c, gin.H{
 				"ok":      true,
-				"deleted": deleted,
-				"message": "deep cleanup completed",
+				"job_id":  job.ID,
+				"message": "system cleanup job enqueued",
 			})
+			return
+		}
+		
+		// Fallback to synchronous if no jobs service (unlikely)
+		if h.deletionSvc != nil && !req.DryRun {
+			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), h.cfg.Storage.AssetsPath(), false)
+			if err != nil {
+				apiutil.InternalError(c, err)
+				return
+			}
+			apiutil.OK(c, gin.H{"ok": true, "deleted": deleted, "message": "deep cleanup completed synchronously"})
 			return
 		}
 	}

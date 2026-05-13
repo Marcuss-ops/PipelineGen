@@ -2,8 +2,9 @@ package maintenance
 
 import (
 	"context"
-	"path/filepath"
-	"strings"
+	"encoding/json"
+	"fmt"
+	"os"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/assetindex"
@@ -50,7 +51,7 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 	results := make(map[string]any)
 	
 	// 1. Orphan file cleanup
-	assetsDir := filepath.Join(s.cfg.Storage.DataDir, s.cfg.Storage.AssetsDir)
+	assetsDir := s.cfg.Storage.AssetsPath()
 	deleted, err := s.deletionSvc.CleanupOrphanFiles(ctx, assetsDir, dryRun)
 	if err != nil {
 		s.log.Error("Orphan file cleanup failed", zap.Error(err))
@@ -61,8 +62,19 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 
 	// 2. Asset Tree / Index consistency check
 	if deep {
-		// Implement deep consistency checks if needed
-		s.log.Info("Deep consistency check requested (not fully implemented yet)")
+		s.log.Info("Deep consistency check started")
+		// TODO: Implement deep consistency checks:
+		// - Missing local files (DB entry exists but file doesn't)
+		// - Missing Drive links
+		// - Asset Index vs Asset Tree reconciliation
+		results["deep_cleanup"] = "partially_implemented"
+	}
+
+	// 3. Stale temp files cleanup
+	tempDir := s.cfg.Storage.TempPath()
+	if _, err := os.Stat(tempDir); err == nil {
+		// Basic temp cleanup logic could go here
+		results["temp_cleanup"] = "skipped"
 	}
 
 	return results, nil
@@ -72,14 +84,21 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	s.log.Info("Handling maintenance job", zap.String("job_id", job.ID))
 
+	var payload struct {
+		Deep   bool `json:"deep"`
+		DryRun bool `json:"dry_run"`
+	}
+	if len(job.Payload) > 0 {
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal maintenance payload: %w", err)
+		}
+	}
+
 	if tools.Progress != nil {
 		tools.Progress(10, "Starting system maintenance")
 	}
 
-	deep := strings.Contains(string(job.Payload), "\"deep\":true")
-	dryRun := strings.Contains(string(job.Payload), "\"dry_run\":true")
-
-	results, err := s.RunCleanup(ctx, deep, dryRun)
+	results, err := s.RunCleanup(ctx, payload.Deep, payload.DryRun)
 	if err != nil {
 		return nil, err
 	}

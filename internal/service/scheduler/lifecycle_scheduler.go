@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,31 +36,36 @@ func NewLifecycleScheduler(cfg *config.Config, jobsSvc *jobservice.Service, log 
 func (s *LifecycleScheduler) Start(ctx context.Context) {
 	s.log.Info("Starting lifecycle scheduler")
 
-	// 1. Catalog Sync Ticker (every 1 hour by default or from config)
-	syncInterval := 1 * time.Hour
-	if s.cfg.Harvester.CheckInterval != "" {
-		if d, err := time.ParseDuration(s.cfg.Harvester.CheckInterval); err == nil {
+	// 1. Catalog Sync Ticker
+	syncInterval := 6 * time.Hour
+	if s.cfg.Jobs.CatalogSyncInterval != "" {
+		if d, err := time.ParseDuration(s.cfg.Jobs.CatalogSyncInterval); err == nil {
 			syncInterval = d
 		}
 	}
 
-	// 2. Cleanup Ticker (every 24 hours)
-	cleanupInterval := 24 * time.Hour
+	// 2. Maintenance Ticker
+	maintenanceInterval := 24 * time.Hour
+	if s.cfg.Jobs.MaintenanceInterval != "" {
+		if d, err := time.ParseDuration(s.cfg.Jobs.MaintenanceInterval); err == nil {
+			maintenanceInterval = d
+		}
+	}
 
 	syncTicker := time.NewTicker(syncInterval)
-	cleanupTicker := time.NewTicker(cleanupInterval)
+	maintenanceTicker := time.NewTicker(maintenanceInterval)
 	defer syncTicker.Stop()
-	defer cleanupTicker.Stop()
+	defer maintenanceTicker.Stop()
 
 	s.log.Info("Lifecycle scheduler active",
 		zap.Duration("sync_interval", syncInterval),
-		zap.Duration("cleanup_interval", cleanupInterval))
+		zap.Duration("maintenance_interval", maintenanceInterval))
 
 	for {
 		select {
 		case <-syncTicker.C:
 			s.triggerSync(ctx)
-		case <-cleanupTicker.C:
+		case <-maintenanceTicker.C:
 			s.triggerCleanup(ctx)
 		case <-s.stopCh:
 			s.log.Info("Lifecycle scheduler stopped")
@@ -138,14 +142,14 @@ func (s *LifecycleScheduler) triggerCleanup(ctx context.Context) {
 
 	payload := map[string]any{
 		"deep":       true,
-		"assets_dir": filepath.Join(s.cfg.Storage.DataDir, "assets"),
+		"assets_dir": s.cfg.Storage.AssetsPath(),
 	}
 
 	job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 		Type:      models.JobTypeSystemCleanup,
 		Payload:   payload,
 		Priority:  5,
-		ActiveKey: "periodic_cleanup_" + time.Now().Format("2006-01-02"), // One per day max
+		ActiveKey: "system_maintenance_periodic", // Allow only one active periodic maintenance job
 	})
 	if err != nil {
 		s.log.Error("Failed to enqueue cleanup job", zap.Error(err))

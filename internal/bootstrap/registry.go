@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"velox/go-master/internal/api/handlers/script/handlers"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 
@@ -143,6 +144,11 @@ func WireRegistry(
 
 	registry.Register(module.NewUtilityModule(cfg, log, coreDeps.Utility))
 
+	// Maintenance service (must be initialized before assets for registration)
+	maintenanceSvc := maintenance.NewService(cfg, log, coreDeps.AssetIndexService, coreDeps.AssetTreeService, coreDeps.DeletionService, coreDeps.JobsService)
+	maintenanceSvc.RegisterHandler()
+	coreDeps.MaintenanceService = maintenanceSvc
+
 	if assetsWiring, err := WireAssets(
 		cfg,
 		log,
@@ -153,13 +159,11 @@ func WireRegistry(
 		coreDeps.JobsService,
 		coreDeps.CatalogRepo,
 		coreDeps.AssetIndexService,
+		maintenanceSvc,
 	); err == nil && assetsWiring != nil {
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
 		coreDeps.DeletionService = assetsWiring.DeletionSvc
-		if assetsWiring.DeletionSvc != nil {
-			assetsWiring.DeletionSvc.RegisterHandler(coreDeps.JobsService)
-		}
 	}
 
 	return wiring, nil

@@ -10,6 +10,7 @@ import (
 	"velox/go-master/internal/service/foldermemory"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/media"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
@@ -56,6 +57,7 @@ func WireAssets(
 	jobsSvc *jobservice.Service,
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
+	maintenanceSvc *maintenance.Service,
 ) (*AssetsWiring, error) {
 	// Create folder memory service
 	folderMemSvc := foldermemory.NewService(log, coreDeps.ArtlistRepo)
@@ -103,8 +105,10 @@ func WireAssets(
 		coreDeps.MediaProcessor,
 		deletionSvc,
 		coreDeps.CatalogSyncService,
+		maintenanceSvc,
 		log,
 	)
+
 
 	// Add voiceover and image repos
 	if coreDeps.VoiceoverRepo != nil {

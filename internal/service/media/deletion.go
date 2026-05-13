@@ -2,13 +2,11 @@ package media
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"go.uber.org/zap"
-	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/voiceovers"
@@ -251,53 +249,4 @@ func (s *DeletionService) CleanupOrphanFiles(ctx context.Context, assetsDir stri
 	})
 
 	return deletedCount, err
-}
-
-// HandleJob processes a system.cleanup job.
-func (s *DeletionService) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
-	s.log.Info("handling system.cleanup job", zap.String("job_id", job.ID))
-
-	var payload struct {
-		Deep      bool   `json:"deep"`
-		AssetsDir string `json:"assets_dir"`
-		DryRun    bool   `json:"dry_run"`
-	}
-	if len(job.Payload) > 0 {
-		if err := json.Unmarshal(job.Payload, &payload); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
-		}
-	}
-
-	if tools.Progress != nil {
-		tools.Progress(10, "Starting orphan file cleanup")
-	}
-
-	if payload.AssetsDir == "" {
-		// Default assets dir if not provided
-		payload.AssetsDir = "data/assets"
-	}
-
-	deleted, err := s.CleanupOrphanFiles(ctx, payload.AssetsDir, payload.DryRun)
-	if err != nil {
-		return nil, err
-	}
-
-	if tools.Progress != nil {
-		tools.Progress(100, "Orphan file cleanup completed")
-	}
-
-	return map[string]any{
-		"ok":           true,
-		"deleted_count": deleted,
-		"dry_run":       payload.DryRun,
-		"assets_dir":    payload.AssetsDir,
-	}, nil
-}
-
-// RegisterHandler registers this service as a handler for system.cleanup jobs.
-func (s *DeletionService) RegisterHandler(jobsSvc *jobservice.Service) {
-	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeSystemCleanup, s.HandleJob)
-		s.log.Info("registered system.cleanup job handler")
-	}
 }

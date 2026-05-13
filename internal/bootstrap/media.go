@@ -4,6 +4,7 @@ import (
 	"velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/service/drivecleanup"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/service/media"
 	drive "velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
@@ -70,6 +71,7 @@ func WireMedia(
 			coreDeps.MediaProcessor,
 			deletionSvc,
 			coreDeps.CatalogSyncService,
+			(*maintenance.Service)(nil),
 			log,
 		)
 
