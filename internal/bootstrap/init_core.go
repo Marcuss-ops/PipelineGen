@@ -89,5 +89,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		YoutubeClipService:   svcs.youtubeClipService,
 		AssetIndexService:    svcs.assetIndexService,
 		AssetTreeService:     svcs.assetTreeService,
+		MaintenanceService:   svcs.maintenanceSvc,
 	}, cleanup, nil
 }

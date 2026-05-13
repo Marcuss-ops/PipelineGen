@@ -3,30 +3,33 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/models"
 )
 
 // LifecycleScheduler handles periodic system maintenance (Sync, Cleanup)
 type LifecycleScheduler struct {
-	cfg    *config.Config
-	log    *zap.Logger
-	apiURL string
-	stopCh chan struct{}
+	cfg     *config.Config
+	log     *zap.Logger
+	jobsSvc *jobservice.Service
+	apiURL  string
+	stopCh  chan struct{}
 }
 
 // NewLifecycleScheduler creates a new lifecycle scheduler
-func NewLifecycleScheduler(cfg *config.Config, log *zap.Logger) *LifecycleScheduler {
+func NewLifecycleScheduler(cfg *config.Config, jobsSvc *jobservice.Service, log *zap.Logger) *LifecycleScheduler {
 	apiURL := fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)
 	return &LifecycleScheduler{
-		cfg:    cfg,
-		log:    log,
-		apiURL: apiURL,
-		stopCh: make(chan struct{}),
+		cfg:     cfg,
+		log:     log,
+		jobsSvc: jobsSvc,
+		apiURL:  apiURL,
+		stopCh:  make(chan struct{}),
 	}
 }
 
@@ -76,8 +79,13 @@ func (s *LifecycleScheduler) Stop() {
 }
 
 func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
-	s.log.Info("Triggering periodic catalog sync")
+	s.log.Info("Triggering periodic catalog sync via job system")
 	
+	if s.jobsSvc == nil {
+		s.log.Warn("Jobs service not available, skipping periodic sync")
+		return
+	}
+
 	// Sources to sync - only those with configured root folders
 	var sources []string
 	if s.cfg.Drive.ClipsRootFolder != "" {
@@ -102,52 +110,46 @@ func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 	}
 	
 	for _, src := range sources {
-		url := ""
-		if src == "voiceover" || src == "images" {
-			url = fmt.Sprintf("%s/api/%s/sync", s.apiURL, src)
-		} else {
-			url = fmt.Sprintf("%s/api/assets/%s/reconcile", s.apiURL, src)
+		payload := map[string]any{
+			"source": src,
 		}
 
-		go func(source, targetURL string) {
-			body := strings.NewReader("{}")
-			req, err := http.NewRequestWithContext(ctx, "POST", targetURL, body)
-			if err != nil {
-				s.log.Error("Failed to create sync request", zap.String("source", source), zap.Error(err))
-				return
-			}
-			req.Header.Set("Content-Type", "application/json")
-			
-			client := &http.Client{Timeout: 5 * time.Minute}
-			resp, err := client.Do(req)
-			if err != nil {
-				s.log.Error("Failed to execute sync", zap.String("source", source), zap.Error(err))
-				return
-			}
-			defer resp.Body.Close()
-			s.log.Info("Sync triggered successfully", zap.String("source", source), zap.Int("status", resp.StatusCode))
-		}(src, url)
+		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+			Type:      models.JobTypeCatalogSync,
+			Payload:   payload,
+			Priority:  10,
+			ActiveKey: fmt.Sprintf("sync_%s_%s", src, time.Now().Format("2006-01-02-15")), // One per hour max
+		})
+		if err != nil {
+			s.log.Error("Failed to enqueue sync job", zap.String("source", src), zap.Error(err))
+			continue
+		}
+		s.log.Info("Sync job enqueued", zap.String("source", src), zap.String("job_id", job.ID))
 	}
 }
 
 func (s *LifecycleScheduler) triggerCleanup(ctx context.Context) {
-	s.log.Info("Triggering periodic deep cleanup")
+	s.log.Info("Triggering periodic deep cleanup via job system")
 	
-	url := fmt.Sprintf("%s/api/assets/all/cleanup?deep=true", s.apiURL)
-	body := strings.NewReader("{}")
-	req, err := http.NewRequestWithContext(ctx, "POST", url, body)
-	if err != nil {
-		s.log.Error("Failed to create cleanup request", zap.Error(err))
+	if s.jobsSvc == nil {
+		s.log.Warn("Jobs service not available, skipping periodic cleanup")
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	
-	client := &http.Client{Timeout: 30 * time.Minute}
-	resp, err := client.Do(req)
+
+	payload := map[string]any{
+		"deep":       true,
+		"assets_dir": filepath.Join(s.cfg.Storage.DataDir, "assets"),
+	}
+
+	job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+		Type:      models.JobTypeSystemCleanup,
+		Payload:   payload,
+		Priority:  5,
+		ActiveKey: "periodic_cleanup_" + time.Now().Format("2006-01-02"), // One per day max
+	})
 	if err != nil {
-		s.log.Error("Failed to execute cleanup", zap.Error(err))
+		s.log.Error("Failed to enqueue cleanup job", zap.Error(err))
 		return
 	}
-	defer resp.Body.Close()
-	s.log.Info("Deep cleanup triggered successfully", zap.Int("status", resp.StatusCode))
+	s.log.Info("Cleanup job enqueued", zap.String("job_id", job.ID))
 }

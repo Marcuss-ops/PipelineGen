@@ -15,8 +15,11 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/association"
+	"velox/go-master/internal/service/media"
+
 	"velox/go-master/internal/service/catalogsync"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
@@ -53,6 +56,25 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log)
 	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
 
+	// Ensure all storage directories exist
+	storageDirs := []string{
+		cfg.Storage.DataDir,
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.AssetsDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.DownloadsDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.BackupsDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.TempDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.AnimationsDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.YoutubeClipsDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.ArtlistDir),
+		filepath.Join(cfg.Storage.DataDir, cfg.Storage.ImagesDir),
+	}
+	for _, dir := range storageDirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
+		}
+	}
+
 	// Asset services (Index & Tree)
 	assetIndexService, assetTreeService, err := initAssetServices(dbs, log)
 	if err != nil {
@@ -79,9 +101,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	)
 
 	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
-	if err := os.MkdirAll(voDir, 0755); err != nil {
-		log.Warn("Failed to create voiceovers directory", zap.Error(err))
-	}
 	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
 
 	// Create voiceover registry adapter
@@ -103,11 +122,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.images.DB)
 
-	imgAssetsDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.AssetsDir)
-	if err := os.MkdirAll(imgAssetsDir, 0755); err != nil {
-		log.Warn("Failed to create image assets directory", zap.Error(err))
-	}
-	imageService := imgservice.NewService(imageRepo, clipsRepo, driveClient, log, cfg.Storage.DataDir, cfg.Drive.ImagesRootFolder)
+	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
@@ -158,8 +173,37 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
+	// Register job handlers
+	catalogSync.RegisterHandler(jobsService)
+	youtubeClipService.RegisterHandler(jobsService)
+	voService.RegisterHandler(jobsService)
+
+	// Create drive uploader
+	var driveUploader *drive.Uploader
+	if driveClient != nil {
+		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
+	}
+
+	// Create deletion service
+	deletionSvc := media.NewDeletionService(
+		artlistRepo,
+		clipsOnlyRepo,
+		clipsRepo,
+		voRepo,
+		imageRepo,
+		driveUploader,
+		assetTreeService,
+		assetIndexService,
+		log,
+	)
+
+	// Maintenance service
+	maintenanceSvc := maintenance.NewService(cfg, log, assetIndexService, assetTreeService, deletionSvc, jobsService)
+	maintenanceSvc.RegisterHandler()
+	deletionSvc.RegisterHandler(jobsService)
+
 	// Lifecycle Scheduler
-	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, log)
+	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, jobsService, log)
 	go lifecycleScheduler.Start(ctx)
 
 	return &services{
@@ -190,6 +234,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		assetTreeService:   assetTreeService,
 		assetResolver:      assetResolver,
 		lifecycleScheduler: lifecycleScheduler,
+		maintenanceSvc:     maintenanceSvc,
 	}, nil
 }
 

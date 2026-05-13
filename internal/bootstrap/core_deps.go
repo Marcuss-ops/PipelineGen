@@ -21,7 +21,10 @@ import (
 	"velox/go-master/internal/service/indexing"
 	"velox/go-master/internal/service/clipindexer"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/media"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/service/monitor"
+
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
@@ -67,4 +70,6 @@ type CoreDeps struct {
 	AssetIndexService    *assetindex.Service
 	AssetTreeService     *assettree.Service
 	ClipResolver         *clipresolver.Service
+	DeletionService      *media.DeletionService
+	MaintenanceService   *maintenance.Service
 }

@@ -56,6 +56,7 @@ const (
 	JobTypeCatalogSync      JobType = "catalog.sync"
 	JobTypeArtlistRun       JobType = "media.artlist"
 	JobTypeContentPackage   JobType = "content.package"
+	JobTypeSystemCleanup    JobType = "system.cleanup"
 )
 
 // Job rappresenta un job nel sistema

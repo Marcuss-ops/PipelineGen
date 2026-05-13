@@ -42,6 +42,7 @@ func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *a
 type AssetsWiring struct {
 	Handler     *sources.Handler
 	Module      module.Module
+	DeletionSvc *media.DeletionService
 }
 
 // WireAssets creates the unified Assets handler and module
@@ -119,5 +120,6 @@ func WireAssets(
 	return &AssetsWiring{
 		Handler:     handler,
 		Module:      mod,
+		DeletionSvc: deletionSvc,
 	}, nil
 }

@@ -2,6 +2,7 @@ package catalogsync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
@@ -376,4 +378,64 @@ func mergeTags(base, extra []string) []string {
 	add(base)
 	add(extra)
 	return out
+}
+
+// HandleJob processes a catalog.sync job.
+func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+	s.log.Info("handling catalog.sync job", zap.String("job_id", job.ID))
+
+	var payload struct {
+		Source string `json:"source"`
+	}
+	if len(job.Payload) > 0 {
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+		}
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(10, "Starting catalog synchronization")
+	}
+
+	var result map[string]any
+	if payload.Source != "" {
+		s.log.Info("syncing specific source", zap.String("source", payload.Source))
+		summary, err := s.SyncSource(ctx, payload.Source)
+		if err != nil {
+			return nil, err
+		}
+		result = map[string]any{
+			"ok":        true,
+			"source":    payload.Source,
+			"requested": summary.Requested,
+			"synced":    summary.Synced,
+			"failed":    summary.Failed,
+		}
+	} else {
+		s.log.Info("syncing all sources")
+		summary, err := s.SyncAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+		result = map[string]any{
+			"ok":     summary.OK,
+			"synced": summary.Synced,
+			"failed": summary.Failed,
+			"roots":  summary.Roots,
+		}
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(100, "Catalog synchronization completed")
+	}
+
+	return result, nil
+}
+
+// RegisterHandler registers this service as a handler for catalog.sync jobs.
+func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+	if jobsSvc != nil {
+		jobsSvc.RegisterHandler(models.JobTypeCatalogSync, s.HandleJob)
+		s.log.Info("registered catalog.sync job handler")
+	}
 }

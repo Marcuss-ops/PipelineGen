@@ -107,12 +107,16 @@ type ServerConfig struct {
 
 // StorageConfig holds storage configuration.
 type StorageConfig struct {
-	DataDir       string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
-	VoiceoversDir string `yaml:"voiceovers_dir" env:"VELOX_VOICEOVERS_DIR" default:"voiceovers"`
-	AssetsDir     string `yaml:"assets_dir" env:"VELOX_ASSETS_DIR" default:"assets/subjects"`
-	DownloadsDir  string `yaml:"downloads_dir" env:"VELOX_DOWNLOADS_DIR" default:"downloads"`
-	BackupsDir    string `yaml:"backups_dir" env:"VELOX_BACKUPS_DIR" default:"backups"`
-	TempDir       string `yaml:"temp_dir" env:"VELOX_TEMP_DIR" default:"tmp"`
+	DataDir         string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	VoiceoversDir   string `yaml:"voiceovers_dir" env:"VELOX_VOICEOVERS_DIR" default:"voiceovers"`
+	AssetsDir       string `yaml:"assets_dir" env:"VELOX_ASSETS_DIR" default:"assets/subjects"`
+	DownloadsDir    string `yaml:"downloads_dir" env:"VELOX_DOWNLOADS_DIR" default:"downloads"`
+	BackupsDir      string `yaml:"backups_dir" env:"VELOX_BACKUPS_DIR" default:"backups"`
+	TempDir         string `yaml:"temp_dir" env:"VELOX_TEMP_DIR" default:"tmp"`
+	AnimationsDir   string `yaml:"animations_dir" default:"animations"`
+	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"youtube-clips"`
+	ArtlistDir      string `yaml:"artlist_dir" default:"artlist"`
+	ImagesDir       string `yaml:"images_dir" default:"images"`
 }
 
 // SecurityConfig holds security-related configuration.

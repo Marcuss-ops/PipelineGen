@@ -22,6 +22,7 @@ import (
 	"velox/go-master/internal/service/voiceoversync"
 	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/upload/drive"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -54,4 +55,5 @@ type services struct {
 	assetTreeService   *assettree.Service
 	assetResolver      *assetindex.Resolver
 	lifecycleScheduler *scheduler.LifecycleScheduler
+	maintenanceSvc     *maintenance.Service
 }

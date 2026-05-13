@@ -156,6 +156,10 @@ func WireRegistry(
 	); err == nil && assetsWiring != nil {
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
+		coreDeps.DeletionService = assetsWiring.DeletionSvc
+		if assetsWiring.DeletionSvc != nil {
+			assetsWiring.DeletionSvc.RegisterHandler(coreDeps.JobsService)
+		}
 	}
 
 	return wiring, nil

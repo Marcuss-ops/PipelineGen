@@ -19,6 +19,7 @@ import (
 	"time"
 	"math/rand"
 
+	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 	imagesRepo "velox/go-master/internal/repository/images"
 	clipsRepo "velox/go-master/internal/repository/clips"
@@ -35,6 +36,7 @@ type Service struct {
 	log           *zap.Logger
 	dataDir       string
 	imagesDir     string
+	animationsDir string
 	driveFolderID string
 	driveSvc      *driveapi.Service
 	nvidiaAPIKey  string
@@ -43,9 +45,10 @@ type Service struct {
 	mu            sync.Mutex
 }
 
-func NewService(repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger, dataDir string, driveFolderID string) *Service {
-	imagesDir := filepath.Join(dataDir, "images")
-	os.MkdirAll(imagesDir, 0755)
+func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger) *Service {
+	dataDir := cfg.Storage.DataDir
+	imagesDir := filepath.Join(dataDir, cfg.Storage.ImagesDir)
+	animationsDir := filepath.Join(dataDir, cfg.Storage.AnimationsDir)
 
 	return &Service{
 		repo:          repo,
@@ -54,11 +57,12 @@ func NewService(repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, dr
 		log:           log,
 		dataDir:       dataDir,
 		imagesDir:     imagesDir,
-		driveFolderID: driveFolderID,
+		animationsDir: animationsDir,
+		driveFolderID: cfg.Drive.ImagesRootFolder,
 		driveSvc:      driveSvc,
-		nvidiaAPIKey:  "",
-		nvidiaModel:   "stabilityai/sdxl-turbo",
-		scriptsDir:    filepath.Join(filepath.Dir(dataDir), "scripts"), // Default relative to dataDir
+		nvidiaAPIKey:  cfg.External.NvidiaAPIKey,
+		nvidiaModel:   cfg.External.NvidiaModel,
+		scriptsDir:    cfg.Paths.PythonScriptsDir,
 	}
 }
 
@@ -639,9 +643,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 2. Prepare output path
 	outputName := fmt.Sprintf("animate_%s.mp4", imageHash)
-	outputDir := filepath.Join(s.dataDir, "animations")
-	os.MkdirAll(outputDir, 0755)
-	outputPath := filepath.Join(outputDir, outputName)
+	outputPath := filepath.Join(s.animationsDir, outputName)
 
 	// 3. Run script
 	scriptPath := filepath.Join(s.scriptsDir, "animate_image.py")
