@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"os"
-	"path/filepath"
 
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/ml/ollama"
@@ -59,17 +58,20 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Ensure all storage directories exist
 	storageDirs := []string{
 		cfg.Storage.DataDir,
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.AssetsDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.DownloadsDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.BackupsDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.TempDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.AnimationsDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.YoutubeClipsDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.ArtlistDir),
-		filepath.Join(cfg.Storage.DataDir, cfg.Storage.ImagesDir),
+		cfg.Storage.VoiceoversPath(),
+		cfg.Storage.AssetsPath(),
+		cfg.Storage.DownloadsPath(),
+		cfg.Storage.BackupsPath(),
+		cfg.Storage.TempPath(),
+		cfg.Storage.AnimationsPath(),
+		cfg.Storage.YoutubeClipsPath(),
+		cfg.Storage.ArtlistPath(),
+		cfg.Storage.ImagesPath(),
 	}
 	for _, dir := range storageDirs {
+		if dir == "" {
+			continue
+		}
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Warn("Failed to create storage directory", zap.String("path", dir), zap.Error(err))
 		}
@@ -100,7 +102,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		ytLifecycle,
 	)
 
-	voDir := filepath.Join(cfg.Storage.DataDir, cfg.Storage.VoiceoversDir)
+	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
 
 	// Create voiceover registry adapter

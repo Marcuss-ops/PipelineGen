@@ -44,12 +44,22 @@ func NewService(
 	}
 }
 
+// SetDeletionService updates the deletion service.
+func (s *Service) SetDeletionService(deletionSvc *media.DeletionService) {
+	s.deletionSvc = deletionSvc
+}
+
 // RunCleanup performs a full system cleanup.
 func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[string]any, error) {
 	s.log.Info("Starting system-wide cleanup", zap.Bool("deep", deep), zap.Bool("dry_run", dryRun))
 	
 	results := make(map[string]any)
 	
+	if s.deletionSvc == nil {
+		s.log.Error("Deletion service not available for cleanup")
+		return nil, fmt.Errorf("deletion service not initialized")
+	}
+
 	// 1. Orphan file cleanup
 	assetsDir := s.cfg.Storage.AssetsPath()
 	deleted, err := s.deletionSvc.CleanupOrphanFiles(ctx, assetsDir, dryRun)

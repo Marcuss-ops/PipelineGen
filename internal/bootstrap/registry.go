@@ -164,6 +164,12 @@ func WireRegistry(
 		wiring.Assets = assetsWiring
 		registry.Register(assetsWiring.Module)
 		coreDeps.DeletionService = assetsWiring.DeletionSvc
+		
+		// Inject real deletion service into maintenance
+		if maintenanceSvc != nil && assetsWiring.DeletionSvc != nil {
+			maintenanceSvc.SetDeletionService(assetsWiring.DeletionSvc)
+			log.Info("injected DeletionService into MaintenanceService")
+		}
 	}
 
 	return wiring, nil

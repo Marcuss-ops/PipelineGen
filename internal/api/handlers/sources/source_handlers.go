@@ -210,10 +210,16 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	// Use Job system for heavy all-source deep cleanup
 	if deep && (strings.ToLower(source) == "all" || source == "") {
 		if h.jobsSvc != nil {
+			activeKey := "system_maintenance_manual"
+			if req.DryRun {
+				activeKey += "_dry"
+			}
+			
 			job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-				Type:     models.JobTypeSystemCleanup,
-				Payload:  map[string]any{"deep": true, "dry_run": req.DryRun},
-				Priority: 10,
+				Type:      models.JobTypeSystemCleanup,
+				Payload:   map[string]any{"deep": true, "dry_run": req.DryRun},
+				Priority:  10,
+				ActiveKey: activeKey,
 			})
 			if err != nil {
 				apiutil.InternalError(c, err)
