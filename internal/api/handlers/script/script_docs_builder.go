@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/prompts"
@@ -15,6 +17,7 @@ import (
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/visualplanner"
+	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -64,17 +67,20 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	var phrases []string
 	var specialNames []string
 	var importantWords []string
+	var artlistPhrases []string
 
 	if analysis != nil && len(analysis.SegmentEntities) > 0 {
 		entities := analysis.SegmentEntities[0]
 		phrases = entities.FrasiImportanti
 		specialNames = entities.NomiSpeciali
 		importantWords = entities.ParoleImportanti
-		
+		artlistPhrases = entities.ArtlistPhrases
+
 		zap.L().Info("LLM document analysis successful",
 			zap.Int("phrases", len(phrases)),
 			zap.Int("special_names", len(specialNames)),
 			zap.Int("important_words", len(importantWords)),
+			zap.Int("artlist_phrases", len(artlistPhrases)),
 		)
 	}
 
@@ -111,6 +117,12 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		imageSection = buildImagePlanningSection(req, vPlan, imgService)
 	}
 
+	// 4b. Resolve Artlist Phrases
+	var artlistSection ScriptSection
+	if ArtlistRepo != nil && len(artlistPhrases) > 0 {
+		artlistSection = buildArtlistPhrasesSection(ctx, artlistPhrases, ArtlistRepo)
+	}
+
 	importantPhrasesSection := ScriptSection{
 		Title: "📢 IMPORTANT PHRASES",
 		Body:  renderImportantPhrases(phrases),
@@ -133,6 +145,11 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	// Only add image section if it has content
 	if strings.TrimSpace(imageSection.Body) != "" && !strings.Contains(imageSection.Body, "nessuna immagine trovata") && !strings.Contains(imageSection.Body, "Nessun soggetto") {
 		sections = append(sections, imageSection)
+	}
+
+	// Add artlist section if it has content
+	if strings.TrimSpace(artlistSection.Body) != "" {
+		sections = append(sections, artlistSection)
 	}
 
 	sections = append(sections, importantPhrasesSection, specialNamesSection, importantWordsSection)
@@ -159,6 +176,7 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 		EntitaSenzaTesto interface{} `json:"entity_senza_testo"`
 		NomiSpeciali     []string    `json:"nomi_speciali"`
 		ParoleImportanti []string    `json:"parole_importanti"`
+		ArtlistPhrases   []string    `json:"artlist_phrases"`
 	}
 	
 	var extracted localExtracted
@@ -184,6 +202,7 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 		FrasiImportanti:  extracted.FrasiImportanti,
 		NomiSpeciali:     extracted.NomiSpeciali,
 		ParoleImportanti: extracted.ParoleImportanti,
+		ArtlistPhrases:   extracted.ArtlistPhrases,
 		EntitaSenzaTesto: make(map[string]string),
 	}
 	
@@ -200,5 +219,98 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 
 	return &types.FullEntityAnalysis{
 		SegmentEntities: []types.SegmentEntities{formal},
+	}
+}
+
+func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRepo *clips.Repository) ScriptSection {
+	if len(phrases) == 0 || ArtlistRepo == nil {
+		return ScriptSection{}
+	}
+
+	var b strings.Builder
+	foundCount := 0
+	usedIDs := make(map[string]bool)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	for _, phrase := range phrases {
+		// Clean and split phrase into keywords
+		cleanPhrase := strings.ToLower(phrase)
+		words := strings.Fields(cleanPhrase)
+		var keywords []string
+		for _, w := range words {
+			// Skip very short words or common stop words
+			if len(w) > 2 && w != "the" && w != "and" && w != "for" && w != "with" {
+				keywords = append(keywords, w)
+			}
+		}
+
+		if len(keywords) == 0 {
+			continue
+		}
+
+		// Search in Artlist DB for these keywords
+		matches, err := ArtlistRepo.SearchClipsByKeywords(ctx, keywords, 5)
+		if err == nil && len(matches) > 0 {
+			// Find the first match that isn't already used
+			var bestMatch *models.Clip
+			for _, m := range matches {
+				if usedIDs[m.ID] {
+					continue
+				}
+				bestMatch = m
+				break
+			}
+
+			if bestMatch != nil {
+				finalClip := bestMatch
+
+				// If it's a folder, pick a random child clip
+				if bestMatch.IsFolder {
+					children, err := ArtlistRepo.GetFolderChildren(ctx, bestMatch.ID)
+					if err == nil && len(children) > 0 {
+						var files []*models.Clip
+						for _, child := range children {
+							if !child.IsFolder && (child.DriveLink != "" || child.ExternalURL != "") {
+								files = append(files, child)
+							}
+						}
+						if len(files) > 0 {
+							finalClip = files[rng.Intn(len(files))]
+						}
+					}
+				}
+
+				link := finalClip.DriveLink
+				if link == "" {
+					link = finalClip.ExternalURL
+				}
+				
+				if link != "" {
+					usedIDs[finalClip.ID] = true
+					foundCount++
+					
+					// Resolve a nice display name
+					displayName := finalClip.Name
+					if displayName == "" {
+						displayName = finalClip.Filename
+					}
+					// Clean up the name (remove Artlist suffix if present)
+					displayName = strings.Split(displayName, " by ")[0]
+					displayName = strings.Split(displayName, " – ")[0]
+					displayName = strings.TrimSuffix(displayName, ".mp4")
+					
+					b.WriteString(fmt.Sprintf("🎥 \"%s\": %s (%s)\n", phrase, displayName, link))
+				}
+			}
+		}
+	}
+
+	if foundCount == 0 {
+		return ScriptSection{}
+	}
+
+	return ScriptSection{
+		Title: "🎬 ARTLIST PHRASES",
+		Body:  strings.TrimSpace(b.String()),
 	}
 }

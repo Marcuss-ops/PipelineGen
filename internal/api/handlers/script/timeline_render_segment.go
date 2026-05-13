@@ -15,7 +15,7 @@ func renderSegmentHeader(seg TimelineSegment) string {
 	b.WriteString("]\n")
 
 	if seg.Subject != "" {
-		b.WriteString(fmt.Sprintf("   Subject: %s\n", seg.Subject))
+		b.WriteString(fmt.Sprintf("   Subject: %s\n", NormalizeRepeatedSubject(seg.Subject)))
 	}
 
 	if strings.TrimSpace(seg.OpeningSentence) != "" {

@@ -2,12 +2,22 @@ package script
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/pkg/termutil"
 )
+
+var partSuffixRegex = regexp.MustCompile(`(?i)\s*\(part\s+\d+\)\s*$`)
+
+// NormalizeRepeatedSubject removes common suffixes like "(part 1)" from subjects
+// to facilitate grouping consecutive segments.
+func NormalizeRepeatedSubject(subject string) string {
+	subject = strings.TrimSpace(subject)
+	return strings.TrimSpace(partSuffixRegex.ReplaceAllString(subject, ""))
+}
 
 func subjectMatchesTopic(subject string, topicTokens []string) bool {
 	return termutil.SubjectMatchesTopic(subject, topicTokens)

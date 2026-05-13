@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/script"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/apiutil"
 )
 
@@ -35,7 +36,7 @@ func (h *ScriptDocsHandler) generate(c *gin.Context) {
 		zap.String("template", req.Template),
 	)
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Minute)
 	defer cancel()
 
 	generateStarted := time.Now()
@@ -55,36 +56,53 @@ func (h *ScriptDocsHandler) generate(c *gin.Context) {
 		zap.String("topic", req.Topic),
 	)
 
-	var docID, docURL string
-	if h.docClient == nil {
-		zap.L().Error("doc creation requested but google docs client is not initialized")
-		apiutil.Error(c, http.StatusServiceUnavailable, "google docs client not initialized; cannot publish document")
-		return
+	// Trigger background harvest for search suggestions
+	var harvestJobIDs []string
+	if h.persistSvc != nil {
+		harvestJobIDs = h.persistSvc.TriggerBackgroundHarvest(ctx, document)
 	}
 
-	docStarted := time.Now()
-	zap.L().Info("google doc creation started",
-		zap.String("title", document.Title),
-		zap.String("folder_id", h.stockRootFolder),
-	)
-	doc, err := h.docClient.CreateDoc(ctx, document.Title, document.Content, h.stockRootFolder)
-	if err != nil {
-		zap.L().Error("doc creation failed during generation",
-			zap.Error(err),
+	// Wait for harvest jobs if requested
+	if req.WaitForHarvest && len(harvestJobIDs) > 0 && h.jobsService != nil {
+		zap.L().Info("waiting for background harvest jobs", zap.Int("count", len(harvestJobIDs)))
+		waitForJobs(ctx, h.jobsService, harvestJobIDs)
+
+		// RE-BUILD document to include newly downloaded assets
+		zap.L().Info("re-building script document after harvest")
+		newDoc, err := script.BuildScriptDocument(ctx, h.generator, req, h.dataDir, h.pythonScriptsDir, h.nodeScraperDir, h.StockDriveRepo, h.ArtlistRepo, h.clipsOnlyRepo, h.artlistService, h.imgService, h.assocService, h.clipResolver)
+		if err == nil {
+			document = newDoc
+		} else {
+			zap.L().Warn("failed to re-build document after harvest", zap.Error(err))
+		}
+	}
+
+	var docID, docURL string
+	if h.docClient != nil {
+		docStarted := time.Now()
+		zap.L().Info("google doc creation started",
+			zap.String("title", document.Title),
+			zap.String("folder_id", h.stockRootFolder),
+		)
+		doc, err := h.docClient.CreateDoc(ctx, document.Title, document.Content, h.stockRootFolder)
+		if err != nil {
+			zap.L().Error("doc creation failed during generation",
+				zap.Error(err),
+				zap.Duration("elapsed", time.Since(docStarted)),
+				zap.Duration("total_elapsed", time.Since(startedAt)),
+				zap.String("title", document.Title),
+			)
+			apiutil.InternalError(c, fmt.Errorf("failed to create Google Doc: %v", err))
+			return
+		}
+		zap.L().Info("google doc created",
 			zap.Duration("elapsed", time.Since(docStarted)),
 			zap.Duration("total_elapsed", time.Since(startedAt)),
-			zap.String("title", document.Title),
+			zap.String("doc_id", doc.ID),
 		)
-		apiutil.InternalError(c, fmt.Errorf("failed to create Google Doc: %v", err))
-		return
+		docID = doc.ID
+		docURL = doc.URL
 	}
-	zap.L().Info("google doc created",
-		zap.Duration("elapsed", time.Since(docStarted)),
-		zap.Duration("total_elapsed", time.Since(startedAt)),
-		zap.String("doc_id", doc.ID),
-	)
-	docID = doc.ID
-	docURL = doc.URL
 
 	// Save script to database if repository is available
 	if h.scriptsRepo != nil {
@@ -104,9 +122,6 @@ func (h *ScriptDocsHandler) generate(c *gin.Context) {
 			voResult = res
 		}
 	}
-
-	// Trigger background harvest for search suggestions
-	h.triggerBackgroundHarvest(ctx, document)
 
 	apiutil.OK(c, gin.H{
 		"doc_id":       docID,
@@ -135,4 +150,31 @@ func narrativeOnly(content string) string {
 		return strings.TrimSpace(part)
 	}
 	return content
+}
+
+func waitForJobs(ctx context.Context, svc *jobservice.Service, jobIDs []string) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			allDone := true
+			for _, id := range jobIDs {
+				job, err := svc.Get(ctx, id)
+				if err != nil {
+					continue
+				}
+				if !job.Status.IsTerminal() {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				return
+			}
+		}
+	}
 }

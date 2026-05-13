@@ -116,7 +116,8 @@ Return ONLY valid JSON with exactly this shape:
   "frasi_importanti": ["..."],
   "entity_senza_testo": {"VisualSubject": "Description of search term"},
   "nomi_speciali": ["..."],
-  "parole_importanti": ["..."]
+  "parole_importanti": ["..."],
+  "artlist_phrases": ["visual phrase 1", "visual phrase 2"]
 }
 
 RULES FOR VISUAL ENTITIES:
@@ -128,6 +129,7 @@ RULES FOR VISUAL ENTITIES:
 2. "parole_importanti": Extract a MAXIMUM of %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
 3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences.
 4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query.
+5. "artlist_phrases": Extract up to 5 short phrases (3-6 words) that describe a specific visual action or cinematic scene suitable for stock footage (e.g., "rain falling on pavement", "athlete training in gym").
 
 STRICT CONSTRAINTS:
 - Only extract spans that appear verbatim in the TEXT.

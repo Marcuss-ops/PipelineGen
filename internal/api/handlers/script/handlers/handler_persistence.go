@@ -22,9 +22,9 @@ func (h *ScriptDocsHandler) saveScriptToDB(ctx context.Context, req script.Scrip
 }
 
 // triggerBackgroundHarvest enqueues jobs for background harvesting using the persistence service
-func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, document *script.ScriptDocument) {
+func (h *ScriptDocsHandler) triggerBackgroundHarvest(ctx context.Context, document *script.ScriptDocument) []string {
 	if h.persistSvc == nil {
-		return
+		return nil
 	}
-	h.persistSvc.TriggerBackgroundHarvest(ctx, document)
+	return h.persistSvc.TriggerBackgroundHarvest(ctx, document)
 }

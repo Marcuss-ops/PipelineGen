@@ -4,12 +4,13 @@ import "strings"
 
 // ScriptDocsRequest is the input for modular script-doc generation.
 type ScriptDocsRequest struct {
-	Topic      string `json:"topic" binding:"required"`
-	Duration   int    `json:"duration"`
-	Language   string `json:"language"`
-	Template   string `json:"template"`
-	SourceText string `json:"source_text"`
-	Voiceover  bool   `json:"voiceover"`
+	Topic          string `json:"topic" binding:"required"`
+	Duration       int    `json:"duration"`
+	Language       string `json:"language"`
+	Template       string `json:"template"`
+	SourceText     string `json:"source_text"`
+	Voiceover      bool   `json:"voiceover"`
+	WaitForHarvest bool   `json:"wait_for_harvest"`
 }
 
 func (r *ScriptDocsRequest) Normalize() {

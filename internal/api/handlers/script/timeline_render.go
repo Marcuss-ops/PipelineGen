@@ -1,6 +1,7 @@
 package script
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -12,52 +13,65 @@ func RenderTimeline(plan *TimelinePlan) string {
 
 	var b strings.Builder
 
-	for _, seg := range plan.Segments {
-		b.WriteString(renderSegmentHeader(seg))
-
-		// ASSET ASSOCIATIONS
-		assetRendered := false
-
-		// Priority 1: Stock Drive Association
-		if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, 35) {
-			label := "📦 Stock Drive Association"
-			if !hasStrongMatch(seg.StockMatches, 50) {
-				label = "⚠️ Weak Stock Association"
-			}
-			b.WriteString(renderSpecificMatch(label, seg.StockMatches))
-			assetRendered = true
+	for i := 0; i < len(plan.Segments); {
+		j := i + 1
+		for j < len(plan.Segments) && canGroup(plan.Segments[i], plan.Segments[j]) {
+			j++
 		}
 
-		// Priority 2: Artlist Drive Association
-		if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
-			label := "📦 Artlist Drive Association"
-			
-			// Check if it was a live discovery
-			isLive := false
-			for _, m := range seg.ArtlistMatches {
-				if m.Source == "artlist_live_discovery" {
-					isLive = true
-					break
-				}
-			}
-			
-			if isLive {
-				label = "🚀 Live Artlist Discovery"
-			} else if !hasStrongMatch(seg.ArtlistMatches, 50) {
-				label = "⚠️ Weak Artlist Association"
-			}
-			b.WriteString(renderSpecificMatch(label, seg.ArtlistMatches))
-			assetRendered = true
+		if j-i > 1 {
+			b.WriteString(renderGroupedSegments(plan.Segments[i:j]))
+		} else {
+			seg := plan.Segments[i]
+			b.WriteString(renderSegmentHeader(seg))
+			b.WriteString(renderSegmentAssets(seg))
 		}
 
-		if !assetRendered {
-			b.WriteString("\n   ⚠️ No Association Found\n")
-		}
-
-		if seg.Index < len(plan.Segments) {
+		if j < len(plan.Segments) {
 			b.WriteString("\n")
 		}
+		i = j
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+func canGroup(s1, s2 TimelineSegment) bool {
+	if NormalizeRepeatedSubject(s1.Subject) != NormalizeRepeatedSubject(s2.Subject) {
+		return false
+	}
+	// Compare primary asset link
+	return getPrimaryLink(s1) == getPrimaryLink(s2)
+}
+
+func getPrimaryLink(seg TimelineSegment) string {
+	if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, 35) {
+		return seg.StockMatches[0].Link
+	}
+	if len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
+		return seg.ArtlistMatches[0].Link
+	}
+	return ""
+}
+
+func renderGroupedSegments(segments []TimelineSegment) string {
+	var b strings.Builder
+	first := segments[0]
+	last := segments[len(segments)-1]
+
+	// Range Header
+	b.WriteString(fmt.Sprintf("[%d-%d]\n", int(first.StartTime), int(last.EndTime)))
+
+	// List individual parts concisely
+	for _, seg := range segments {
+		b.WriteString(fmt.Sprintf("   [%s] Part %d\n", seg.Timestamp, seg.Index))
+	}
+
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("   Subject: %s\n", NormalizeRepeatedSubject(first.Subject)))
+
+	// Assets from the first segment (as they are identical in the group)
+	b.WriteString(renderSegmentAssets(first))
+
+	return b.String()
 }

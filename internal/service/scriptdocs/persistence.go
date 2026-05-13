@@ -70,9 +70,9 @@ func (s *PersistenceService) SaveScriptToDB(ctx context.Context, req script.Scri
 }
 
 // TriggerBackgroundHarvest enqueues jobs for background harvesting based on search suggestions.
-func (s *PersistenceService) TriggerBackgroundHarvest(ctx context.Context, document *script.ScriptDocument) {
+func (s *PersistenceService) TriggerBackgroundHarvest(ctx context.Context, document *script.ScriptDocument) []string {
 	if s.jobsService == nil || document == nil || document.Timeline == nil {
-		return
+		return nil
 	}
 
 	uniqueTags := make(map[string]struct{})
@@ -86,11 +86,12 @@ func (s *PersistenceService) TriggerBackgroundHarvest(ctx context.Context, docum
 	}
 
 	if len(uniqueTags) == 0 {
-		return
+		return nil
 	}
 
 	s.log.Info("enqueueing background harvest jobs for suggestions", zap.Int("tag_count", len(uniqueTags)))
 
+	var jobIDs []string
 	jobCodec := artlist.JobCodec{}
 	for tag := range uniqueTags {
 		req := &artlist.RunTagRequest{
@@ -113,6 +114,8 @@ func (s *PersistenceService) TriggerBackgroundHarvest(ctx context.Context, docum
 			s.log.Error("Failed to enqueue harvest job", zap.String("tag", tag), zap.Error(err))
 		} else {
 			s.log.Info("Successfully enqueued harvest job", zap.String("tag", tag), zap.String("job_id", job.ID))
+			jobIDs = append(jobIDs, job.ID)
 		}
 	}
+	return jobIDs
 }

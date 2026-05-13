@@ -68,23 +68,23 @@ type EntityExtractionRequest struct {
 
 // EntityExtractionResult represents the result of entity extraction for a segment
 type EntityExtractionResult struct {
-	SegmentIndex     int                 `json:"segment_index"`
-	FrasiImportanti  []string            `json:"frasi_importanti"`
-	EntitaSenzaTesto map[string]string   `json:"entity_senza_testo"`
-	NomiSpeciali     []string            `json:"nomi_speciali"`
-	ParoleImportanti []string            `json:"parole_importanti"`
-	ArtlistPhrases   map[string][]string `json:"artlist_phrases"`
+	SegmentIndex     int               `json:"segment_index"`
+	FrasiImportanti  []string          `json:"frasi_importanti"`
+	EntitaSenzaTesto map[string]string `json:"entity_senza_testo"`
+	NomiSpeciali     []string          `json:"nomi_speciali"`
+	ParoleImportanti []string          `json:"parole_importanti"`
+	ArtlistPhrases   []string          `json:"artlist_phrases"`
 }
 
 // SegmentEntities represents extracted entities for a single segment
 type SegmentEntities struct {
-	SegmentIndex     int                 `json:"segment_index"`
-	SegmentText      string              `json:"segment_text"`
-	FrasiImportanti  []string            `json:"frasi_importanti"`
-	EntitaSenzaTesto map[string]string   `json:"entity_senza_testo"`
-	NomiSpeciali     []string            `json:"nomi_speciali"`
-	ParoleImportanti []string            `json:"parole_importanti"`
-	ArtlistPhrases   map[string][]string `json:"artlist_phrases"`
+	SegmentIndex     int               `json:"segment_index"`
+	SegmentText      string            `json:"segment_text"`
+	FrasiImportanti  []string          `json:"frasi_importanti"`
+	EntitaSenzaTesto map[string]string `json:"entity_senza_testo"`
+	NomiSpeciali     []string          `json:"nomi_speciali"`
+	ParoleImportanti []string          `json:"parole_importanti"`
+	ArtlistPhrases   []string          `json:"artlist_phrases"`
 	ArtlistMatches   map[string][]string `json:"artlist_matches"`
 }
 
