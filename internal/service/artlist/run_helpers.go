@@ -18,6 +18,21 @@ type RunDefaults struct {
 	MaxLimit            int
 }
 
+// NormalizeSearchTerm trims the term and keeps at most the first two words.
+// This keeps Artlist searches focused on the strongest query tokens.
+func NormalizeSearchTerm(term string) string {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return ""
+	}
+
+	parts := strings.Fields(term)
+	if len(parts) > 2 {
+		parts = parts[:2]
+	}
+	return strings.Join(parts, " ")
+}
+
 // NormalizeRunTagRequest normalizes a RunTagRequest using the provided defaults.
 // This is the SINGLE normalization function that should be used everywhere:
 // - Before dedup key generation
@@ -26,7 +41,7 @@ type RunDefaults struct {
 // - At the start of pipeline RunTag
 func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagRequest {
 	// Normalize term
-	req.Term = strings.TrimSpace(req.Term)
+	req.Term = NormalizeSearchTerm(req.Term)
 
 	// Normalize limit
 	if req.Limit <= 0 {

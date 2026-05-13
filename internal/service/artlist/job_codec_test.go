@@ -170,10 +170,19 @@ func TestNormalizeRunTagRequest(t *testing.T) {
 	})
 
 	if normalized.Term != "Test Term" {
-		t.Fatalf("term not trimmed: got %q", normalized.Term)
+		t.Fatalf("term not normalized to first two words: got %q", normalized.Term)
 	}
 	if normalized.Limit != 5 {
 		t.Fatalf("default limit not applied: got %d", normalized.Limit)
+	}
+}
+
+func TestNormalizeSearchTermLimitsToTwoWords(t *testing.T) {
+	if got := NormalizeSearchTerm("  blue ocean sunset "); got != "blue ocean" {
+		t.Fatalf("expected first two words, got %q", got)
+	}
+	if got := NormalizeSearchTerm("single"); got != "single" {
+		t.Fatalf("expected single word unchanged, got %q", got)
 	}
 }
 

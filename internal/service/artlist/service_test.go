@@ -261,6 +261,12 @@ func TestSearchRequestValidation(t *testing.T) {
 	}
 }
 
+func TestSearchNormalizationLimitsToTwoWords(t *testing.T) {
+	if got := NormalizeSearchTerm("  mountain river sunrise "); got != "mountain river" {
+		t.Fatalf("expected first two words, got %q", got)
+	}
+}
+
 type fakeMediaProcessor struct {
 	called bool
 	err    error

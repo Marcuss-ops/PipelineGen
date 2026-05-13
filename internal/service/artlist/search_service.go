@@ -38,13 +38,14 @@ type ScraperResponse struct {
 }
 
 func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
-	resp := &SearchResponse{OK: true, Term: req.Term}
+	term := NormalizeSearchTerm(req.Term)
+	resp := &SearchResponse{OK: true, Term: term}
 
-	if req.Term == "" {
+	if term == "" {
 		return resp, nil
 	}
 
-	clipsList, err := s.artlistRepo.SearchClips(ctx, req.Term)
+	clipsList, err := s.artlistRepo.SearchClips(ctx, term)
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err
@@ -72,7 +73,7 @@ func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchRespon
 }
 
 func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
-	term = strings.TrimSpace(term)
+	term = NormalizeSearchTerm(term)
 	if term == "" {
 		return nil, fmt.Errorf("term is required")
 	}
@@ -130,6 +131,7 @@ func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]Scr
 }
 
 func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int) (*SearchResponse, error) {
+	term = NormalizeSearchTerm(term)
 	clips, err := s.SearchLive(ctx, term, limit)
 	if err != nil {
 		return nil, err
@@ -193,6 +195,7 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 }
 
 func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit int) (*SearchResponse, *RunTagResponse, error) {
+	term = NormalizeSearchTerm(term)
 	liveResp, err := s.SearchLiveAndSave(ctx, term, limit)
 	if err != nil {
 		return nil, nil, err
