@@ -2,7 +2,7 @@ package bootstrap
 
 import (
 	drivehandler "velox/go-master/internal/api/handlers/drive"
-	"velox/go-master/internal/service/drivereconcile"
+	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
 
@@ -11,9 +11,9 @@ import (
 
 // DriveWiring holds the Drive module wiring
 type DriveWiring struct {
-	Handler  *drivehandler.Handler
-	Module   module.Module
-	Reconcile *drivereconcile.Service
+	Handler   *drivehandler.Handler
+	Module    module.Module
+	Reconcile *drivecleanup.Service
 }
 
 // WireDrive creates the Drive handler and module
@@ -23,9 +23,9 @@ func WireDrive(
 	coreDeps *CoreDeps,
 ) (*DriveWiring, error) {
 	// Create drive reconcile service
-	var reconcileSvc *drivereconcile.Service
+	var reconcileSvc *drivecleanup.Service
 	if coreDeps.DriveClient != nil {
-		reconcileSvc = drivereconcile.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log)
+		reconcileSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log, true)
 		log.Info("drive reconcile service initialized")
 	}
 

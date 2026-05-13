@@ -12,8 +12,6 @@ import (
 	"velox/go-master/internal/service/association"
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/visualquery"
-	segmentnorm "velox/go-master/internal/service/catalognormalizer"
-	"velox/go-master/internal/service/timeline"
 	"velox/go-master/pkg/sliceutil"
 	"go.uber.org/zap"
 )
@@ -24,7 +22,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 	startedAt := time.Now()
 	zap.L().Info("Building timeline plan", zap.String("topic", req.Topic))
 
-	cache := timeline.NewCache(clipsRepo, gen)
+	cache := NewCache(clipsRepo, gen)
 	cacheKey := cache.BuildKey(req.Topic, req.Template, sourceText, narrative, req.Duration)
 
 	// Try cache first
@@ -63,7 +61,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		Segments:      make([]TimelineSegment, 0, len(rawPlan.Segments)),
 	}
 
-	normalizer := segmentnorm.NewService(stockRepo, clipsRepo, artlistRepo, zap.L())
+	normalizer := newCatalogNormalizerService(stockRepo, clipsRepo, artlistRepo, zap.L())
 
 	var usedClipIDs []string
 	var usedFolderIDs []string

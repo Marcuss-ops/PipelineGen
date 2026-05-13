@@ -177,6 +177,20 @@ func TestNormalizeRunTagRequest(t *testing.T) {
 	}
 }
 
+func TestNormalizeRunTagRequestRootFallback(t *testing.T) {
+	req := RunTagRequest{
+		Term: "test",
+	}
+
+	normalized := NormalizeRunTagRequest(req, RunDefaults{
+		DefaultRootFolderID: "artlist-root",
+	})
+
+	if normalized.RootFolderID != "artlist-root" {
+		t.Fatalf("root folder fallback not applied: got %q", normalized.RootFolderID)
+	}
+}
+
 func TestNormalizeRunTagRequestMaxLimit(t *testing.T) {
 	req := RunTagRequest{
 		Term:  "test",

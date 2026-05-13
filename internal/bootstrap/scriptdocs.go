@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	scriptdocssvc "velox/go-master/internal/service/scriptdocs"
-	scriptjobsvc "velox/go-master/internal/service/scriptjob"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/module"
 	"velox/go-master/pkg/config"
@@ -15,7 +14,7 @@ type ScriptDocsWiring struct {
 	Handler      *handlers.ScriptDocsHandler
 	Module       module.Module
 	ScriptSvc    *scriptdocssvc.Service
-	ScriptJobSvc *scriptjobsvc.Service
+	ScriptJobSvc *scriptdocssvc.JobService
 }
 
 // WireScriptDocs creates the ScriptDocs handler and module
@@ -32,9 +31,9 @@ func WireScriptDocs(
 	}
 
 	// Create scriptjob service and register handler
-	var scriptJobSvc *scriptjobsvc.Service
+	var scriptJobSvc *scriptdocssvc.JobService
 	if scriptSvc != nil && coreDeps.JobsService != nil {
-		scriptJobSvc = scriptjobsvc.NewService(log, scriptSvc, coreDeps.JobsService)
+		scriptJobSvc = scriptdocssvc.NewJobService(log, scriptSvc, coreDeps.JobsService)
 		scriptJobSvc.RegisterHandler(coreDeps.JobsService)
 		log.Info("registered script.generate job handler")
 	}

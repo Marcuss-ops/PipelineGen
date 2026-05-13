@@ -16,7 +16,6 @@ import (
 	"velox/go-master/internal/service/association"
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/internal/service/visualplanner"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 	"go.uber.org/zap"
@@ -98,10 +97,10 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 
 	// 3. Build Unified Visual Plan
-	var vpSegments []visualplanner.TimelineSegment
+	var vpSegments []VisualTimelineSegment
 	if timeline != nil {
 		for _, seg := range timeline.Segments {
-			vpSegments = append(vpSegments, visualplanner.TimelineSegment{
+			vpSegments = append(vpSegments, VisualTimelineSegment{
 				Index:             seg.Index,
 				VisualSubject:     seg.VisualSubject,
 				VisualCaption:     seg.VisualCaption,
@@ -109,7 +108,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 			})
 		}
 	}
-	vPlan := visualplanner.Build(req.Topic, narrative, analysis, vpSegments)
+	vPlan := Build(req.Topic, narrative, analysis, vpSegments)
 
 	// 4. Resolve Images through section builder
 	var imageSection ScriptSection

@@ -63,4 +63,4 @@ Jobs are stored in `jobs.db.sqlite` (separate from the main `velox.db.sqlite`).
 - `schema_migrations` - Migration tracking
 
 Persistence is managed by `internal/service/jobs/` using the repository pattern.
-See `docs/sqlite-databases.md` for full database architecture.
+See `docs/archive/sqlite-databases.md` for full database architecture.

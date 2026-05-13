@@ -19,7 +19,7 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 |                   | `internal/repository/harvester/` |                          | **DEPRECATO**   | Migrare a jobs    |
 | **Media**         | `internal/repository/clips/`   | `internal/service/mediaasset/` | **ATTIVO** | Mediaregistry in valutazione |
 |                   |                                | `internal/service/assetregistry/` | **SPERIMENTALE** | Valutare se utile |
-| **Drive Destination** | Config diretto in `pkg/config/types.go` | `internal/service/drivedestination/` | **ATTIVO** | Eliminare riferimenti diretti |
+| **Drive Destination** | Config diretto in `pkg/config/types.go` | `internal/upload/drive/` | **ATTIVO** | Eliminare riferimenti diretti |
 |                   |                                | `internal/service/assetdestination/` | **ATTIVO** | Unificare se duplicato |
 | **Artlist**       | Pipeline diretta (old)          | `internal/service/artlist/` | **ATTIVO** | Usa job system |
 | **YouTube Clips** | Service custom (old)            | `internal/service/mediaasset/` processor | **ATTIVO** | Usa MediaProcessor |
@@ -66,7 +66,7 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 - **Stato**: **CANONICO** - Unico processore media approvato
 
 ### Drive Destination
-- **Owner**: `internal/service/drivedestination/`
+- **Owner**: `internal/upload/drive/`
 - **Resolver unificato**: `internal/service/assetdestination/`
 - **Config**: `pkg/config/types.go` (DriveConfig)
 - **Stato**: ATTIVO
@@ -133,7 +133,7 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 | `pkg/idutil` | 13 linee, wrap inutile | Inlineare `StableSlugID()` |
 | `pkg/jsonutil` | 15 linee, wrap inutile | Inlineare `ReadJSON()` |
 | `internal/service/assetpipeline` | Solo pass-through | Eliminare, chiamare direttamente i componenti |
-| `assetstore/types.go` interfaces | Singola implementazione | Rimuovere interface, usare direttamente |
+| legacy assetstore interfaces | Rimossa l'implementazione | Usare helper e contratti canonici già spostati |
 
 ---
 

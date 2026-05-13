@@ -49,7 +49,7 @@
 |--------|-------|--------------|-------------|----------|--------------|
 | **Assets** | ATTIVO | sempre ON | Ricerca unificata asset | `velox.db.sqlite`, `artlist.db.sqlite` | `internal/module/assets/` |
 | **Images** | ATTIVO | `IMAGES_ENABLED` | Ricerca e sync immagini | `images.db.sqlite` | `internal/service/images/` |
-| **Drive Destination** | ATTIVO | sempre ON | Upload Drive, resolver dest. | nessuno (API) | `internal/service/drivedestination/` + `internal/service/assetdestination/` |
+| **Drive Destination** | ATTIVO | sempre ON | Upload Drive, resolver dest. | nessuno (API) | `internal/upload/drive/` + `internal/service/assetdestination/` |
 | **Asset Destination** | ATTIVO | sempre ON | Resolver unificato destinazioni | nessuno | `internal/service/assetdestination/` |
 
 ### Automation

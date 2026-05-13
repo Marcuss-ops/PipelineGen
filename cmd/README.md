@@ -1,31 +1,34 @@
 # CLI Utilities (`cmd/`)
 
-This directory contains various standalone tools and workers that support the main Velox server.
+This directory now has two entrypoints:
 
-## Core Services
-- **`server/`**: The main Go Master API server.
-- **`harvester/`**: (Referenced in GEMINI.md) Service for IO-bound content harvesting.
-- **`downloader/`**: (Referenced in GEMINI.md) Service for parallel video fetching.
+- `cmd/server/`: the main HTTP server and workers
+- `cmd/admin/`: one-shot admin and maintenance commands
 
-## Ingestion & Sync Tools
-- **`sync_drive/`**: Syncs Google Drive folders into the SQLite database. Supports recursive traversal and stores metadata for video clips.
-- **`artlist_import/`**: Specialized importer that reads from the Node Scraper's SQLite database (`artlist_videos.db`) and upserts clips into the main Velox database.
-- **`sync_drive_content/`**: Enhanced sync tool for Drive content.
-- **`sync_images/`**: Specialized tool for syncing image assets into the `images.db.sqlite` database.
+## Admin Commands
 
-## Migration & Data Management
-- **`migrate_json_to_sql/`**: A critical utility for transitioning from the legacy JSON-based storage (`clip_index.json`, `artlist_stock_index.json`) to the new SQLite-based repository.
-- **`indexer/`**: Re-indexes assets and updates tags or metadata.
+Run with:
 
-## Test & Debugging
-- **`test_dbs/`**: Utility to verify database connectivity and integrity.
-- **`test_images/`**: Verification tool for image processing and storage.
-- **`test_lebron/`**: Specialized test script (likely for a specific project/video type).
-
-## Usage Note
-Most of these tools expect the `VELOX_CONFIG` or standard configuration paths to be set. Always check the specific `main.go` for required flags or environment variables.
-
-Example running a migration:
 ```bash
-go run cmd/migrate_json_to_sql/main.go -json ./data/clip_index.json -db-dir ./data
+go run ./cmd/admin <command> [flags]
 ```
+
+Available commands:
+
+- `backfill-hash`
+- `backfill-hash-v2`
+- `backfill-asset-index`
+- `backfill-asset-tree`
+- `cleanup-orphans`
+- `cleanup-all-orphans`
+- `cleanup-artlist-empty-folders`
+- `cleanup-stock-orphans`
+- `delete-specific-folders`
+- `sync-all-drive`
+- `test-youtube`
+- `verify-artlist-pipeline`
+
+## Notes
+
+- `cmd/server` remains the canonical runtime entrypoint.
+- Older standalone command directories were folded into `cmd/admin` to keep the tree smaller.

@@ -46,11 +46,14 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 
 	// Assume request is already normalized
 	rootFolderID := req.RootFolderID
+	if rootFolderID == "" && s.cfg != nil {
+		rootFolderID = strings.TrimSpace(s.cfg.Harvester.DriveFolderID)
+	}
 	strategy := req.Strategy
 	resp.Requested = req.Limit
 	resp.DryRun = req.DryRun
 	resp.Strategy = req.Strategy
-	resp.RootFolderID = req.RootFolderID
+	resp.RootFolderID = rootFolderID
 
 	if s.assetDestResolver == nil && !req.DryRun {
 		s.log.Warn("drive service not configured, proceeding with local harvesting only")

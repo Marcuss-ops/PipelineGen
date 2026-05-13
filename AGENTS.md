@@ -48,7 +48,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 ### Systemd Service
 - **Service name**: `pipelinegen`
 - **Service file**: `/etc/systemd/system/pipelinegen.service`
-- **Binary path**: `/home/pierone/Pyt/VeloxEditing/refactored/src/go-master/pipelinegen`
+- **Binary path**: `/home/pierone/Pyt/Pipeline Gen/pipelinegen`
 - **Run mode**: `--mode all` (starts HTTP server + workers)
 - **Port**: `127.0.0.1:8080`
 
@@ -81,7 +81,7 @@ curl http://127.0.0.1:8080/api/artlist/diagnostics | jq
 
 ### Build and Restart Server
 ```bash
-cd /home/pierone/Pyt/VeloxEditing/refactored/src/go-master
+cd /home/pierone/Pyt/Pipeline\ Gen
 go build -o pipelinegen ./cmd/server/
 echo "ciao" | sudo -S systemctl restart pipelinegen
 ```
@@ -221,8 +221,9 @@ All modules must use canonical contracts in `internal/core/`:
 
 ## File Structure
 ```
-src/go-master/
+.
 ├── cmd/server/main.go          # Main entry point
+├── cmd/admin/main.go           # One-shot admin and maintenance commands
 ├── internal/
 │   ├── core/                  # Canonical contracts (destination, processor, media, jobs)
 │   ├── api/handlers/          # HTTP handlers

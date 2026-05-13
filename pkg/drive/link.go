@@ -38,3 +38,16 @@ func FileIDFromLink(link string) string {
 
 	return ""
 }
+
+// NormalizeDriveFolderLink returns a Drive folder link if link or folderID is set.
+func NormalizeDriveFolderLink(driveLink, folderID string) string {
+	driveLink = strings.TrimSpace(driveLink)
+	folderID = strings.TrimSpace(folderID)
+	if driveLink != "" {
+		return driveLink
+	}
+	if folderID != "" {
+		return "https://drive.google.com/drive/folders/" + folderID
+	}
+	return ""
+}

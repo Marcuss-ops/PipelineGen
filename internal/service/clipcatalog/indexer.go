@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"velox/go-master/internal/service/matchingconfig"
 	"velox/go-master/pkg/models"
+	"velox/go-master/pkg/matchingconfig"
 	"velox/go-master/pkg/textutil"
 )
 

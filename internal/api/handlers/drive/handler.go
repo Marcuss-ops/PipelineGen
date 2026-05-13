@@ -5,15 +5,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/drivereconcile"
+	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/pkg/apiutil"
 )
 
 type Handler struct {
-	reconcileSvc *drivereconcile.Service
+	reconcileSvc *drivecleanup.Service
 }
 
-func NewHandler(reconcileSvc *drivereconcile.Service) *Handler {
+func NewHandler(reconcileSvc *drivecleanup.Service) *Handler {
 	return &Handler{reconcileSvc: reconcileSvc}
 }
 

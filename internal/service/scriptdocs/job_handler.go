@@ -1,4 +1,4 @@
-package scriptjob
+package scriptdocs
 
 import (
 	"context"
@@ -8,33 +8,31 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/core/jobs"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/pkg/models"
 )
 
-// Service handles script.generate jobs
-type Service struct {
-	log      *zap.Logger
-	docSvc   *scriptdocs.Service
-	jobsSvc  *jobservice.Service
+// JobService handles script.generate jobs.
+type JobService struct {
+	log     *zap.Logger
+	docSvc  *Service
+	jobsSvc *jobservice.Service
 }
 
-// NewService creates a new script job service
-func NewService(log *zap.Logger, docSvc *scriptdocs.Service, jobsSvc *jobservice.Service) *Service {
-	return &Service{
+// NewJobService creates a new script job service.
+func NewJobService(log *zap.Logger, docSvc *Service, jobsSvc *jobservice.Service) *JobService {
+	return &JobService{
 		log:     log,
 		docSvc:  docSvc,
 		jobsSvc: jobsSvc,
 	}
 }
 
-// HandleJob processes a script.generate job
-func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+// HandleJob processes a script.generate job.
+func (s *JobService) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	s.log.Info("handling script.generate job",
 		zap.String("job_id", job.ID),
 	)
 
-	// Decode payload
 	var payload jobs.ScriptGeneratePayload
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
@@ -50,7 +48,6 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		tools.Progress(10, "Starting script generation")
 	}
 
-	// Generate script using the scriptdocs service
 	if s.docSvc == nil {
 		return nil, fmt.Errorf("script docs service is not available")
 	}
@@ -71,15 +68,15 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 	result := map[string]any{
 		"job_id":   job.ID,
 		"script_id": scriptID,
-		"topic":     payload.Topic,
-		"status":    "completed",
-		"message":   "Script generated successfully",
+		"topic":    payload.Topic,
+		"status":   "completed",
+		"message":  "Script generated successfully",
 	}
 
 	if tools.Event != nil {
 		tools.Event("completed", "Script generation completed", map[string]any{
 			"script_id": scriptID,
-			"topic":     payload.Topic,
+			"topic":      payload.Topic,
 		})
 	}
 
@@ -91,8 +88,8 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 	return result, nil
 }
 
-// RegisterHandler registers this service as a handler for script.generate jobs
-func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+// RegisterHandler registers this service as a handler for script.generate jobs.
+func (s *JobService) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
 		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeScriptGenerate), s.HandleJob)
 		s.log.Info("registered script.generate job handler", zap.String("type", string(jobs.JobTypeScriptGenerate)))

@@ -7,6 +7,7 @@ import (
 
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
+	driveutil "velox/go-master/pkg/drive"
 )
 
 type Service struct {
@@ -73,7 +74,7 @@ func (s *Service) ResolvePreferredStockMatch(ctx context.Context, input SegmentI
 		return nil, false
 	}
 
-	link := NormalizeDriveFolderLink(direct.Link, direct.FolderID)
+	link := driveutil.NormalizeDriveFolderLink(direct.Link, direct.FolderID)
 
 	return &ScoredMatch{
 		Title:  direct.Name,
@@ -91,9 +92,7 @@ func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*
 	// 1. Direct match logic
 	if direct, ok, err := s.FindDirectStockFolderCandidate(ctx, req.Topic, req.Subject); err == nil && ok {
 		link := direct.Link
-		if link == "" && direct.FolderID != "" {
-			link = "https://drive.google.com/drive/folders/" + direct.FolderID
-		}
+		link = driveutil.NormalizeDriveFolderLink(link, direct.FolderID)
 		candidate := Candidate{
 			Database: "stock.db.sqlite",
 			Source:   "stock_folder",

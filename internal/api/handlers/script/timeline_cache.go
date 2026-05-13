@@ -7,7 +7,6 @@ import (
 
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/association"
-	"velox/go-master/internal/service/timeline"
 	"velox/go-master/pkg/textutil"
 )
 
@@ -40,7 +39,7 @@ func convertCacheRowsToPlan(rows []clips.SegmentEmbeddingRecord) *TimelinePlan {
 	return plan
 }
 
-func storeSegmentInCache(ctx context.Context, c *timeline.Cache, cacheKey string, req ScriptDocsRequest, seg TimelineSegment, narrative string) error {
+func storeSegmentInCache(ctx context.Context, c *Cache, cacheKey string, req ScriptDocsRequest, seg TimelineSegment, narrative string) error {
 	bestSource, bestPath, bestLink, bestScore := bestMatchFromSegment(seg)
 	payload, err := json.Marshal(seg)
 	if err != nil {

@@ -1,4 +1,4 @@
-package drivereconcile
+package drivecleanup
 
 import (
 	"context"
@@ -8,36 +8,19 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/repository/clips"
 	driveutil "velox/go-master/pkg/drive"
 )
 
 // ReconcileResult holds the result of a reconcile operation.
 type ReconcileResult struct {
-	Source                 string   `json:"source"`
-	DryRun                 bool     `json:"dry_run"`
-	SQLiteMissingOnDrive   int      `json:"sqlite_missing_on_drive"`
-	DriveMissingInSQLite   int      `json:"drive_missing_in_sqlite"`
-	DeletedFromSQLite      int      `json:"deleted_from_sqlite"`
-	AddedToSQLite          int      `json:"added_to_sqlite"`
-	MissingFileIDs         []string `json:"missing_file_ids,omitempty"`
-	OrphanedDriveFileIDs   []string `json:"orphaned_drive_file_ids,omitempty"`
-}
-
-// Service handles reconciliation between SQLite and Google Drive.
-type Service struct {
-	repo     *clips.Repository
-	driveSvc *driveapi.Service
-	log      *zap.Logger
-}
-
-// NewService creates a new reconcile service.
-func NewService(repo *clips.Repository, driveSvc *driveapi.Service, log *zap.Logger) *Service {
-	return &Service{
-		repo:     repo,
-		driveSvc: driveSvc,
-		log:      log,
-	}
+	Source               string   `json:"source"`
+	DryRun               bool     `json:"dry_run"`
+	SQLiteMissingOnDrive int      `json:"sqlite_missing_on_drive"`
+	DriveMissingInSQLite int      `json:"drive_missing_in_sqlite"`
+	DeletedFromSQLite    int      `json:"deleted_from_sqlite"`
+	AddedToSQLite        int      `json:"added_to_sqlite"`
+	MissingFileIDs       []string `json:"missing_file_ids,omitempty"`
+	OrphanedDriveFileIDs  []string `json:"orphaned_drive_file_ids,omitempty"`
 }
 
 // Reconcile compares SQLite clips with Drive files and reports mismatches.
@@ -48,20 +31,17 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 		DryRun: dryRun,
 	}
 
-	// Get all clips from SQLite for the source
-	clips, err := s.repo.ListClips(ctx, source)
+	clipsList, err := s.repo.ListClips(ctx, source)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list clips: %w", err)
 	}
 
-	// Build set of SQLite clip IDs for Drive -> SQLite check
 	sqliteClipIDs := make(map[string]bool)
-	for _, clip := range clips {
+	for _, clip := range clipsList {
 		sqliteClipIDs[clip.ID] = true
 	}
 
-	// Check each clip's Drive file (SQLite -> Drive)
-	for _, clip := range clips {
+	for _, clip := range clipsList {
 		fileID := driveutil.FileIDFromLink(clip.DriveLink)
 		if fileID == "" {
 			fileID = driveutil.FileIDFromLink(clip.DownloadLink)
@@ -71,7 +51,6 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 			continue
 		}
 
-		// Check if file exists on Drive and is not trashed
 		exists, err := s.fileExistsAndNotTrashed(ctx, fileID)
 		if err != nil {
 			s.log.Warn("failed to check file existence",
@@ -98,7 +77,6 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 		}
 	}
 
-	// Drive -> SQLite check (if rootFolderID is provided)
 	if rootFolderID != "" && s.driveSvc != nil {
 		driveFiles, err := s.listDriveFilesRecursive(ctx, rootFolderID)
 		if err != nil {
@@ -108,11 +86,9 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 			)
 		} else {
 			for _, file := range driveFiles {
-				// Skip folders
 				if file.MimeType == "application/vnd.google-apps.folder" {
 					continue
 				}
-				// Check if this file exists in SQLite
 				if !sqliteClipIDs[file.Id] {
 					result.DriveMissingInSQLite++
 					result.OrphanedDriveFileIDs = append(result.OrphanedDriveFileIDs, file.Id)
@@ -124,7 +100,6 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 	return result, nil
 }
 
-// listDriveFilesRecursive lists all files in a Drive folder recursively.
 func (s *Service) listDriveFilesRecursive(ctx context.Context, folderID string) ([]*driveapi.File, error) {
 	var allFiles []*driveapi.File
 	err := s.listDriveFilesRecursiveHelper(ctx, folderID, &allFiles)
@@ -142,7 +117,6 @@ func (s *Service) listDriveFilesRecursiveHelper(ctx context.Context, folderID st
 	return call.Pages(ctx, func(fl *driveapi.FileList) error {
 		for _, file := range fl.Files {
 			*allFiles = append(*allFiles, file)
-			// Recurse into folders
 			if file.MimeType == "application/vnd.google-apps.folder" {
 				if err := s.listDriveFilesRecursiveHelper(ctx, file.Id, allFiles); err != nil {
 					return err
@@ -153,7 +127,6 @@ func (s *Service) listDriveFilesRecursiveHelper(ctx context.Context, folderID st
 	})
 }
 
-// fileExistsAndNotTrashed checks if a file exists on Drive and is not in trash.
 func (s *Service) fileExistsAndNotTrashed(ctx context.Context, fileID string) (bool, error) {
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
@@ -162,7 +135,6 @@ func (s *Service) fileExistsAndNotTrashed(ctx context.Context, fileID string) (b
 
 	file, err := s.driveSvc.Files.Get(fileID).Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
-		// File doesn't exist or API error
 		return false, nil
 	}
 

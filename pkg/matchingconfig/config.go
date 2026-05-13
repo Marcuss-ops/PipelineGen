@@ -1,7 +1,8 @@
+// Package matchingconfig provides loading and helpers for matching thresholds.
 package matchingconfig
 
 import (
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -23,7 +24,7 @@ type MatchingConfig struct {
 		UsableForBoostWeight float64 `yaml:"usable_for_boost_weight"`
 		QualityScoreWeight   float64 `yaml:"quality_score_weight"`
 		NegativePenaltyWeight float64 `yaml:"negative_penalty_weight"`
-		ReusePenaltyWeight   float64 `yaml:"reuse_penalty_weight"`
+		ReusePenaltyWeight    float64 `yaml:"reuse_penalty_weight"`
 
 		NarrativeMinTokenLen int `yaml:"narrative_min_token_len"`
 		NarrativeMaxTerms    int `yaml:"narrative_max_terms"`
@@ -39,12 +40,12 @@ type MatchingConfig struct {
 		ReusePenaltyPerUse float64 `yaml:"reuse_penalty_per_use"`
 	} `yaml:"clip_quality"`
 
-	shortTokensMap  map[string]bool
-	allowed4LetterMap map[string]bool
+	shortTokensMap     map[string]bool
+	allowed4LetterMap  map[string]bool
 }
 
 func LoadMatchingConfig(path string) (*MatchingConfig, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

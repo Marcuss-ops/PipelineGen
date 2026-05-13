@@ -1,11 +1,11 @@
-package timeline
+package script
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"strconv"
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
@@ -32,7 +32,7 @@ func (c *Cache) BuildKey(topic, template, sourceText, narrative string, duration
 		cacheVersion,
 		strings.ToLower(strings.TrimSpace(topic)),
 		strings.ToLower(strings.TrimSpace(template)),
-		fmt.Sprintf("%d", duration),
+		strconv.Itoa(duration),
 		strings.ToLower(strings.TrimSpace(sourceText)),
 		strings.ToLower(strings.TrimSpace(narrative)),
 	})

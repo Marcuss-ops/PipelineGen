@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,7 +16,6 @@ import (
 
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/service/assetstore"
 	"velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
@@ -90,69 +88,6 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *models.Clip) {
 	if err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
 	}
-}
-
-func TestAssetStoreSkipStrategy(t *testing.T) {
-	// Test assetstore.SholdSkipExisting with skip strategy
-	asset := assetstore.ExistingAsset{
-		ID:        "test_clip_001",
-		DriveLink: "https://drive.google.com/file/d/abc123/view",
-		FileHash:  "hash123",
-		LocalPath: "/tmp/test.mp4",
-	}
-
-	// Test skip strategy - should skip because drive link exists
-	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicySkip, nil, assetstore.DefaultLocalFileChecker)
-	if !skip {
-		t.Error("expected skip=true with skip strategy and existing drive link")
-	}
-	if reason == "" {
-		t.Error("expected non-empty reason")
-	}
-	t.Logf("Skip reason: %s", reason)
-}
-
-func TestAssetStoreReplaceStrategy(t *testing.T) {
-	// Test assetstore.ShouldSkipExisting with replace strategy
-	asset := assetstore.ExistingAsset{
-		ID:        "test_clip_002",
-		DriveLink: "https://drive.google.com/file/d/abc123/view",
-		FileHash:  "hash123",
-		LocalPath: "/tmp/test.mp4",
-	}
-
-	// Test replace strategy - should NOT skip
-	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicyReplace, nil, assetstore.DefaultLocalFileChecker)
-	if skip {
-		t.Error("expected skip=false with replace strategy")
-	}
-	t.Logf("Replace strategy result: skip=%v, reason=%s", skip, reason)
-}
-
-func TestAssetStoreVerifyStrategyWithDriveLink(t *testing.T) {
-	// Test assetstore.ShouldSkipExisting with verify strategy
-	// Create a temp file that exists
-	tmpFile := filepath.Join(t.TempDir(), "test.mp4")
-	if err := os.WriteFile(tmpFile, []byte("test content"), 0644); err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-
-	asset := assetstore.ExistingAsset{
-		ID:        "test_clip_003",
-		DriveLink: "https://drive.google.com/file/d/abc123/view",
-		FileHash:  "hash123",
-		LocalPath: tmpFile,
-	}
-
-	// Test verify strategy - should skip because drive link exists and local file exists
-	skip, reason, _ := assetstore.ShouldSkipExisting(context.Background(), asset, assetstore.ExistencePolicyVerify, nil, assetstore.DefaultLocalFileChecker)
-	if !skip {
-		t.Error("expected skip=true with verify strategy and valid file hash")
-	}
-	if reason == "" {
-		t.Error("expected non-empty reason")
-	}
-	t.Logf("Verify strategy result: skip=%v, reason=%s", skip, reason)
 }
 
 func TestArtlistServiceCreation(t *testing.T) {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/internal/service/visualplanner"
 	"go.uber.org/zap"
 )
 
@@ -15,7 +14,7 @@ type imagePlanItem struct {
 	Path    string
 }
 
-func buildImagePlanningSection(req ScriptDocsRequest, plan *visualplanner.VisualPlan, imgService *imgservice.Service) ScriptSection {
+func buildImagePlanningSection(req ScriptDocsRequest, plan *VisualPlan, imgService *imgservice.Service) ScriptSection {
 	subjects := plan.GlobalImageSubjects(5)
 	
 	zap.L().Info("Image planning starting from visual plan", 

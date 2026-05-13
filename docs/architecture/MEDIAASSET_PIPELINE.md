@@ -60,24 +60,15 @@ Common pipeline for processing media assets.
   - Uploads to Google Drive
   - Returns result with paths and links
 
-### `internal/service/assetstore`
+### Deduplication Helpers
 
-Deduplication logic for existing assets.
+The old standalone asset deduplication layer has been folded into the
+source-specific services and shared helpers. Deduplication and checksum checks
+now live closer to the code that uses them, mainly in:
 
-**Types** (`types.go`):
-- `ExistencePolicy`: Strategy for handling existing assets
-  - `replace`: Always reprocess
-  - `skip`: Skip if exists
-  - `verify`: Verify integrity before skipping
-
-- `ExistingAsset`: Asset to check
-- `ChecksumChecker`: Interface for remote checksum verification
-
-**ShouldSkipExisting** (`shouldskip.go`):
-- `ShouldSkipExisting(ctx, asset, policy, checker) -> (skip, reason, error)`
-  - Implements skip/replace/verify strategies
-  - Checks Drive links, local files, file hashes
-  - Verifies remote checksums via `ChecksumChecker`
+- `internal/service/media`
+- `internal/service/artlist`
+- `pkg/drive`
 
 ## Service Integration
 
@@ -86,13 +77,13 @@ Deduplication logic for existing assets.
 **Pipeline** (`pipeline.go`):
 1. Search clips in DB (or live search if empty)
 2. For each clip:
-   - Check if should skip using `assetstore.ShouldSkipExisting`
+   - Apply source-specific deduplication rules
    - Call `mediaasset.ProcessAsset` for download/process/upload
    - Update clip in DB with results
 3. Return response with processed/skipped/failed counts
 
 **Checksum Checker** (`pipeline.go`):
-- `artlistChecksumChecker`: Implements `assetstore.ChecksumChecker`
+- `artlistChecksumChecker`: Implements the shared checksum-checking behavior
 - Gets MD5 checksum from Google Drive API
 
 ### YouTube Clip Service (`internal/service/youtubeclip`)
@@ -114,7 +105,7 @@ Deduplication logic for existing assets.
 RunTag(term, limit)
   └─> SearchClips(term)
   └─> for each clip:
-      └─> assetstore.ShouldSkipExisting()
+      └─> source-specific deduplication
       └─> mediaasset.ProcessAsset()
           ├─> downloader.Download()
           ├─> ffmpeg.Normalize()
@@ -159,7 +150,7 @@ To add a new service (e.g., Stock):
 2. Initialize `mediaasset.Processor` in `bootstrap/wire.go`
 3. Implement "source discovery" logic (search/fetch clips)
 4. For each clip, call `mediaasset.ProcessAsset`
-5. Use `assetstore.ShouldSkipExisting` for deduplication
+5. Apply source-specific deduplication before processing
 6. Save results to DB
 
 ## Benefits

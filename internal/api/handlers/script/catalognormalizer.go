@@ -1,4 +1,4 @@
-package catalognormalizer
+package script
 
 import (
 	"context"
@@ -11,13 +11,12 @@ import (
 	"strings"
 	"sync"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/textutil"
-
-	"go.uber.org/zap"
 )
 
-type Service struct {
+type catalogNormalizerService struct {
 	stockRepo   *clips.Repository
 	clipsRepo   *clips.Repository
 	artlistRepo *clips.Repository
@@ -55,7 +54,6 @@ type NormalizedSegment struct {
 	CanonicalEntitiesJSON string
 }
 
-// SegmentInput is the minimal data the normalizer needs from a script segment.
 type SegmentInput struct {
 	Topic         string
 	Duration      int
@@ -66,8 +64,8 @@ type SegmentInput struct {
 	Entities      []string
 }
 
-func NewService(stockRepo, clipsRepo, artlistRepo *clips.Repository, log *zap.Logger) *Service {
-	return &Service{
+func newCatalogNormalizerService(stockRepo, clipsRepo, artlistRepo *clips.Repository, log *zap.Logger) *catalogNormalizerService {
+	return &catalogNormalizerService{
 		stockRepo:   stockRepo,
 		clipsRepo:   clipsRepo,
 		artlistRepo: artlistRepo,
@@ -75,7 +73,7 @@ func NewService(stockRepo, clipsRepo, artlistRepo *clips.Repository, log *zap.Lo
 	}
 }
 
-func (s *Service) NormalizeSegment(ctx context.Context, input SegmentInput) (*NormalizedSegment, error) {
+func (s *catalogNormalizerService) NormalizeSegment(ctx context.Context, input SegmentInput) (*NormalizedSegment, error) {
 	if strings.TrimSpace(input.Subject) == "" && strings.TrimSpace(input.NarrativeText) == "" {
 		return nil, fmt.Errorf("segment input is empty")
 	}
@@ -130,7 +128,7 @@ func (s *Service) NormalizeSegment(ctx context.Context, input SegmentInput) (*No
 	}, nil
 }
 
-func (s *Service) ensureIndex(ctx context.Context) error {
+func (s *catalogNormalizerService) ensureIndex(ctx context.Context) error {
 	var err error
 	s.once.Do(func() {
 		var entries []catalogEntry
@@ -145,7 +143,7 @@ func (s *Service) ensureIndex(ctx context.Context) error {
 	return err
 }
 
-func (s *Service) loadEntries(ctx context.Context) ([]catalogEntry, error) {
+func (s *catalogNormalizerService) loadEntries(ctx context.Context) ([]catalogEntry, error) {
 	type sourceSpec struct {
 		db   string
 		name string
@@ -224,7 +222,7 @@ func (s *Service) loadEntries(ctx context.Context) ([]catalogEntry, error) {
 	return entries, nil
 }
 
-func (s *Service) resolveBestCandidate(subject string, keywords, entities []string, narrative string) *catalogEntry {
+func (s *catalogNormalizerService) resolveBestCandidate(subject string, keywords, entities []string, narrative string) *catalogEntry {
 	s.mu.RLock()
 	entries := append([]catalogEntry{}, s.indexed...)
 	s.mu.RUnlock()
@@ -251,7 +249,6 @@ func (s *Service) resolveBestCandidate(subject string, keywords, entities []stri
 	if best == nil || bestScore < 2 {
 		return nil
 	}
-	// Prefer strong stock matches when available.
 	if best.Source != "stock" {
 		for i := range entries {
 			entry := entries[i]
@@ -271,7 +268,7 @@ func (s *Service) resolveBestCandidate(subject string, keywords, entities []stri
 	return best
 }
 
-func (s *Service) canonicalizeEntities(entities []string) []string {
+func (s *catalogNormalizerService) canonicalizeEntities(entities []string) []string {
 	if len(entities) == 0 {
 		return nil
 	}
@@ -297,7 +294,7 @@ func (s *Service) canonicalizeEntities(entities []string) []string {
 	return out
 }
 
-func (s *Service) canonicalizeKeywords(keywords []string, subject string) []string {
+func (s *catalogNormalizerService) canonicalizeKeywords(keywords []string, subject string) []string {
 	terms := uniqueOrderedStrings(append([]string{}, keywords...))
 	terms = append(terms, tokenizeForCanonical(subject)...)
 	return uniqueOrderedStrings(terms)

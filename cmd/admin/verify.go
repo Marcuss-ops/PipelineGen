@@ -16,12 +16,13 @@ import (
 
 	"velox/go-master/internal/bootstrap"
 	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/logger"
 )
 
-const apiBase = "http://127.0.0.1:8080"
-const searchTerm = "nature"
-const searchLimit = 3
+const (
+	apiBase     = "http://127.0.0.1:8080"
+	searchTerm  = "nature"
+	searchLimit = 3
+)
 
 type artlistClip struct {
 	ClipID string `json:"clip_id"`
@@ -53,24 +54,20 @@ type statusResponse struct {
 	Failed    int    `json:"failed"`
 }
 
-func main() {
+func runVerifyArtlistPipeline(args []string) error {
 	fmt.Println("=== Artlist Pipeline Verification Tool ===")
 	fmt.Println()
 
-	cfg := config.Get()
-	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid configuration: %v\n", err)
-		os.Exit(1)
+	cfg, log, cleanup, err := appLogger()
+	if err != nil {
+		return err
 	}
-
-	logger.Init(cfg.GetLogLevel(), cfg.GetLogFormat())
-	log := logger.Get()
-	defer logger.Sync()
+	defer cleanup()
 
 	deps, err := bootstrap.WireServices(cfg, log, "")
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 	if deps.Cleanup != nil {
 		defer deps.Cleanup()
@@ -78,7 +75,6 @@ func main() {
 
 	allOK := true
 
-	// Step 1: Live Search
 	fmt.Print("Step 1: Live Artlist Search... ")
 	clips, err := doLiveSearch()
 	if err != nil {
@@ -104,7 +100,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Step 2: Run Pipeline
 	fmt.Print("Step 2: Starting Artlist pipeline run... ")
 	runID, err := startRun()
 	if err != nil {
@@ -119,7 +114,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Step 3: Poll until completion
 	fmt.Println("Step 3: Waiting for job completion...")
 	status, err := pollRunStatus(runID)
 	if err != nil {
@@ -142,7 +136,6 @@ func main() {
 		fmt.Println("  ✅ Job completed successfully")
 	}
 
-	// Step 4: Verify job in DB
 	fmt.Print("Step 4: Verifying job in database... ")
 	if err := verifyJobInDB(runID, cfg); err != nil {
 		fmt.Printf("FAILED: %v\n", err)
@@ -151,7 +144,6 @@ func main() {
 		fmt.Println("✅ OK")
 	}
 
-	// Step 5: Verify clip indexing (if clips were processed)
 	if status.Processed > 0 {
 		fmt.Print("Step 5: Verifying clip indexing... ")
 		if err := verifyClipIndexing(cfg); err != nil {
@@ -168,14 +160,14 @@ func main() {
 	if allOK {
 		fmt.Println("✅ ALL CHECKS PASSED - Artlist pipeline is working correctly")
 		os.Exit(0)
-	} else {
-		fmt.Println("❌ SOME CHECKS FAILED")
-		os.Exit(1)
 	}
+
+	fmt.Println("❌ SOME CHECKS FAILED")
+	os.Exit(1)
+	return nil
 }
 
 func doLiveSearch() ([]artlistClip, error) {
-	// Try posting
 	payload := fmt.Sprintf(`{"term":"%s","limit":%d}`, searchTerm, searchLimit)
 	req, err := http.NewRequest("POST", apiBase+"/api/artlist/search/live", bytes.NewBufferString(payload))
 	if err != nil {
@@ -186,7 +178,6 @@ func doLiveSearch() ([]artlistClip, error) {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		// Fallback: also check with query params
 		qreq, qErr := http.NewRequest("POST", fmt.Sprintf("%s/api/artlist/search/live?term=%s&limit=%d", apiBase, searchTerm, searchLimit), nil)
 		if qErr != nil {
 			return nil, fmt.Errorf("request failed: %w", err)
@@ -270,15 +261,13 @@ func pollRunStatus(runID string) (*statusResponse, error) {
 func verifyJobInDB(runID string, cfg *config.Config) error {
 	dbPath := filepath.Join(cfg.Storage.DataDir, "velox", "velox.db.sqlite")
 	if _, err := os.Stat(dbPath); err != nil {
-		// Try alternate path
 		dbPath = filepath.Join(cfg.Storage.DataDir, "velox.db.sqlite")
 		if _, err := os.Stat(dbPath); err != nil {
 			return fmt.Errorf("cannot find velox db at %s/velox/velox.db.sqlite or %s/velox.db.sqlite: %w", cfg.Storage.DataDir, cfg.Storage.DataDir, err)
 		}
 	}
 
-	cmd := exec.Command("sqlite3", dbPath,
-		fmt.Sprintf("SELECT status FROM jobs WHERE id='%s'", runID))
+	cmd := exec.Command("sqlite3", dbPath, fmt.Sprintf("SELECT status FROM jobs WHERE id='%s'", runID))
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("sqlite query failed: %w", err)
@@ -300,9 +289,7 @@ func verifyClipIndexing(cfg *config.Config) error {
 		}
 	}
 
-	// Get latest clip ID that was processed
-	cmd := exec.Command("sqlite3", artlistDB,
-		"SELECT id FROM clips WHERE search_terms IS NOT NULL ORDER BY updated_at DESC LIMIT 1")
+	cmd := exec.Command("sqlite3", artlistDB, "SELECT id FROM clips WHERE search_terms IS NOT NULL ORDER BY updated_at DESC LIMIT 1")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("sqlite query for latest clip failed: %w", err)
@@ -313,13 +300,11 @@ func verifyClipIndexing(cfg *config.Config) error {
 		return fmt.Errorf("no clips found in artlist database")
 	}
 
-	// Run the index_clips.py script against this clip
 	scriptsDir := cfg.Paths.PythonScriptsDir
 	if scriptsDir == "" {
 		scriptsDir = "scripts"
 	}
 	scriptPath := filepath.Join(scriptsDir, "index_clips.py")
-
 	if _, err := os.Stat(scriptPath); err != nil {
 		return fmt.Errorf("index_clips.py not found at %s: %w", scriptPath, err)
 	}
@@ -330,9 +315,7 @@ func verifyClipIndexing(cfg *config.Config) error {
 		return fmt.Errorf("index_clips.py failed: %w (output: %s)", err, string(pythonOutput))
 	}
 
-	// Verify search_text was updated
-	verifyCmd := exec.Command("sqlite3", artlistDB,
-		fmt.Sprintf("SELECT search_text FROM clips WHERE id='%s'", clipID))
+	verifyCmd := exec.Command("sqlite3", artlistDB, fmt.Sprintf("SELECT search_text FROM clips WHERE id='%s'", clipID))
 	verifyOutput, err := verifyCmd.Output()
 	if err != nil {
 		return fmt.Errorf("verify search_text failed: %w", err)

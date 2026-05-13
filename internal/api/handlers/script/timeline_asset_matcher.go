@@ -6,6 +6,7 @@ import (
 
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/visualquery"
+	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/sliceutil"
 )
 
@@ -111,7 +112,7 @@ func applyAssociationHints(seg *TimelineSegment, resp *association.CandidatesRes
 	best := resp.Candidates[0]
 	seg.PreferredStockReason = best.Reason
 	seg.PreferredStockGroup = best.Source
-	preferredLink := association.NormalizeDriveFolderLink(best.Link, best.FolderID)
+	preferredLink := driveutil.NormalizeDriveFolderLink(best.Link, best.FolderID)
 	seg.PreferredStockPaths = sliceutil.UniqueStrings(sliceutil.TrimStrings([]string{best.Path, preferredLink}))
 }
 

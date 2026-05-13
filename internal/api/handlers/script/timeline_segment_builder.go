@@ -11,12 +11,11 @@ import (
 	"velox/go-master/internal/service/association"
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/visualquery"
-	segmentnorm "velox/go-master/internal/service/catalognormalizer"
 	"velox/go-master/pkg/sliceutil"
 )
 
 // buildSegment creates a TimelineSegment from raw LLM output
-func buildSegment(ctx context.Context, req ScriptDocsRequest, rawSeg timelineLLMSegment, idx int, dataDir string, stockRepo *clips.Repository, assocService *association.Service, normalizer *segmentnorm.Service) TimelineSegment {
+func buildSegment(ctx context.Context, req ScriptDocsRequest, rawSeg timelineLLMSegment, idx int, dataDir string, stockRepo *clips.Repository, assocService *association.Service, normalizer *catalogNormalizerService) TimelineSegment {
 	seg := TimelineSegment{
 		Index:             idx + 1,
 		StartTime:        rawSeg.StartTime,
@@ -35,7 +34,7 @@ func buildSegment(ctx context.Context, req ScriptDocsRequest, rawSeg timelineLLM
 	}
 
 	// Normalize
-	if normalized, _ := normalizer.NormalizeSegment(ctx, segmentnorm.SegmentInput{
+	if normalized, _ := normalizer.NormalizeSegment(ctx, SegmentInput{
 		Topic:         req.Topic,
 		Duration:      req.Duration,
 		Template:      req.Template,

@@ -6,6 +6,9 @@ The script generation pipeline (`PipelineGen`) is a Go-based backend service tha
 
 **Entry Point**: `POST /api/script-docs/generate`
 
+Note: the implementation has since been consolidated under `internal/api/handlers/script/`.
+Package names below reflect the current behavior, but some internal helpers were moved or folded into that package during cleanup.
+
 ---
 
 ## Architecture Flow
@@ -222,9 +225,10 @@ For each segment:
    - Use entity-based subject if available
    - Fallback to topic if no better subject found
 
-2. **Normalization** (`segmentnorm.Service`):
+2. **Normalization**:
    - Canonicalize keywords and entities
    - Map to standard vocabulary
+   - Implemented by the script package's internal catalog normalizer helper
 
 3. **Association Hints**:
    - Apply preferred stock paths from associations

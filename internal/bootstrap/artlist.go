@@ -12,10 +12,10 @@ import (
 	"velox/go-master/internal/service/clipcatalog"
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/clipresolver"
-	"velox/go-master/internal/service/matchingconfig"
 	"velox/go-master/internal/service/ontology"
 	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/matchingconfig"
 	"velox/go-master/pkg/models"
 )
 

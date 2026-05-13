@@ -3,6 +3,7 @@ package artlist
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/jobs"
@@ -22,9 +23,12 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 
 	// Normalize the request (worker path)
 	rootFolderID := ""
+	if s.cfg != nil {
+		rootFolderID = strings.TrimSpace(s.cfg.Harvester.DriveFolderID)
+	}
 	normalized := NormalizeRunTagRequest(*req, RunDefaults{
 		DefaultRootFolderID: rootFolderID,
-		MaxLimit:           500,
+		MaxLimit:            500,
 	})
 	req = &normalized
 
