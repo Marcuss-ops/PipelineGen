@@ -18,22 +18,17 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 - **Concentrarsi solo su schema boundaries, diagnostics e test**
 - **Ogni database deve avere solo le tabelle necessarie** al servizio che lo usa
 - **Non applicare migration generiche a più database se creano tabelle non usate da quel database.**
-- Schema desiderato:
-  - `data/velox/velox.db.sqlite`: Generic (scripts, jobs, asset_index, media, harvester, pipeline_runs)
-  - `data/stock/stock.db.sqlite`: Stock footage metadata
-  - `data/clips/clips.db.sqlite`: YouTube clips metadata
-  - `data/artlist/artlist.db.sqlite`: Artlist assets metadata
-  - `data/images/images.db.sqlite`: Images metadata
-  - `data/voiceover/voiceover.db.sqlite`: Voiceover metadata
+- Schema attuale (Unificato):
+  - `data/velox/velox.db.sqlite`: Generic (scripts, jobs, asset_index, harvester, pipeline_runs)
+  - `data/media/media.db.sqlite`: Unified Media (YouTube, Artlist, Stock, Images, Voiceovers)
 
 ## Architecture
 
 ### Core Components
 - **Server**: Go binary (`pipelinegen`) using Gin web framework
 - **Database**: SQLite with WAL mode
-  - `data/velox/velox.db.sqlite` - Main database (Scripts, Jobs, Asset Index, Media)
-  - `data/clips/clips.db.sqlite` - YouTube clips metadata
-  - `data/artlist/artlist.db.sqlite` - Artlist scraper database
+  - `data/velox/velox.db.sqlite` - Main database (Scripts, Jobs, Asset Index)
+  - `data/media/media.db.sqlite` - Unified Media database (Artlist, YouTube, Stock, Images, Voiceovers)
 - **Storage**: Google Drive integration for clip uploads
 - **Workers**: 2 background job workers for async processing
 
@@ -192,26 +187,21 @@ When adding new tables to `velox.db.sqlite`, ensure:
 ## Migration Status (Brutal Care Plan)
 
 ### Completed
-- ✅ Eliminated `internal/service/assetpipeline/` thin wrapper (Service struct removed, using Finalizer directly)
+- ✅ Database Unification: All media sources migrated to `media.db.sqlite`
+- ✅ Eliminated `internal/service/assetpipeline/` thin wrapper
 - ✅ Migrated `workflowrunner.results` from in-memory maps to job system
 - ✅ Migrated `assetdestination.Resolver` to `internal/core/destination.Resolver`
-- ✅ Migrated `mediaasset.Processor` to `internal/core/processor.Processor` (adapters created)
-- ✅ Fixed Go toolchain corruption (Go 1.25.9 installed to `/usr/local/go`)
-- ✅ Merged `internal/core/media/models.go` into `model.go`
+- ✅ Migrated `mediaasset.Processor` to `internal/core/processor.Processor`
+- ✅ Consolidated `internal/core/media/` - unified models in `model.go`
+- ✅ Fixed Go toolchain corruption (Go 1.25.9 installed)
 - ✅ Removed deprecated `api-cron` mode from server
 - ✅ Fixed import paths (`internal/pkg/` → `pkg/`)
-- ✅ Fixed clipindexer service integration with `scripts/index_clips.py`
-- ✅ Added `Path()` method to `SQLiteDB` struct to expose database file path
-- ✅ Resolved numpy compatibility conflicts (uninstalled `tts` and `fish-speech`)
-- ✅ Centralized database migrations and standard connection pooling (WAL/busy_timeout applied system-wide)
-- ✅ Migrated harvester/catalog sync/db backup from cron to job system
-- ✅ Fixed bootstrap registry wiring and missing `AssetNode` model
-- ✅ Created `scripts/generate_drive_token.py` for automated OAuth2 token regeneration
+- ✅ Centralized database migrations and connection pooling (WAL/busy_timeout)
+- ✅ Migrated harvester/catalog sync/db backup to job system
 
 ### Pending
-- Consolidate `internal/core/media/` - verify unified models work
-- Remove duplicates and adapt all modules to canonical contracts
 - CI checks: `scripts/ci-architectural-checks.sh` must block violations
+- Remove any remaining duplicates in legacy doc folders
 
 ## Core Contracts
 
