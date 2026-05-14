@@ -6,6 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 import { categories, searchTerms, videoLinks, closeDB } from './src/db.js';
+import { normalizeQuery, tokenizeQuery, scoreClipRelevance, isRelevantClip } from './src/artlist/scoring.js';
+import { extractClipId, normalizeLinks } from './src/artlist/url.js';
+import { exportCookiesForYtDlp } from './src/artlist/cookies.js';
+import { makeTempBrowserDir, resolveChromeProfile, openBrowser, createBrowserPage, closeBrowserHandle } from './src/artlist/browser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,123 +44,6 @@ function parseArgs(argv) {
   }
 
   return args;
-}
-
-function makeTempBrowserDir() {
-  const baseDir = fs.existsSync('/dev/shm') ? '/dev/shm' : os.tmpdir();
-  return fs.mkdtempSync(path.join(baseDir, 'velox-chrome-'));
-}
-
-function normalizeLinks(values) {
-  return [...new Set(values.filter(Boolean).map((value) => String(value).trim().replace(/\\+$/, '')))];
-}
-
-function extractClipId(url) {
-  const match = String(url || '').match(/\/clip\/[^/]+\/(\d+)/);
-  return match ? match[1] : '';
-}
-
-function normalizeQuery(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function tokenizeQuery(value) {
-  return normalizeQuery(value)
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 2);
-}
-
-function scoreClipRelevance(term, clip) {
-  const tokens = tokenizeQuery(term);
-  if (tokens.length === 0) return 0;
-
-  const haystack = normalizeQuery([
-    clip?.title,
-    clip?.clip_page_url,
-    clip?.primary_url,
-    clip?.stream_urls?.join(' '),
-  ].filter(Boolean).join(' '));
-
-  let hits = 0;
-  for (const token of tokens) {
-    if (haystack.includes(token)) {
-      hits += 1;
-    }
-  }
-
-  if (hits === 0) return 0;
-  if (tokens.length === 1) return hits >= 1 ? 100 : 0;
-
-  const score = Math.round((hits / tokens.length) * 100);
-  return score;
-}
-
-function isRelevantClip(term, clip) {
-  return scoreClipRelevance(term, clip) >= (tokenizeQuery(term).length > 1 ? 60 : 100);
-}
-
-function resolveChromeProfile(profileDir) {
-  if (profileDir && fs.existsSync(profileDir)) {
-    return profileDir;
-  }
-  return makeTempBrowserDir();
-}
-
-async function openBrowser(profileDir) {
-  const browserWs = process.env.BROWSER_WS || process.env.LIGHTPANDA_WS || process.env.CHROME_WS || '';
-  if (browserWs) {
-    const browser = await puppeteer.connect({
-      browserWSEndpoint: browserWs,
-    });
-    return { browser, connected: true };
-  }
-
-  const userDataDir = resolveChromeProfile(profileDir);
-  const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_EXECUTABLE || '/usr/bin/google-chrome',
-    headless: 'new',
-    userDataDir,
-    args: [
-      '--no-sandbox',
-      '--disable-gpu',
-      '--disable-blink-features=AutomationControlled',
-      '--no-first-run',
-      '--no-default-browser-check',
-    ],
-  });
-  return { browser, connected: false };
-}
-
-async function createBrowserPage(profileDir) {
-  const { browser, connected } = await openBrowser(profileDir);
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  return { browser, connected, context, page };
-}
-
-async function closeBrowserHandle(handle) {
-  try {
-    if (handle?.page) {
-      await handle.page.close().catch(() => {});
-    }
-    if (handle?.context) {
-      await handle.context.close().catch(() => {});
-    }
-  } finally {
-    if (handle?.browser) {
-      if (handle.connected && handle.browser.disconnect) {
-        await handle.browser.disconnect().catch(() => {});
-      } else if (handle.browser.close) {
-        await handle.browser.close().catch(() => {});
-      }
-    }
-  }
 }
 
 async function searchArtlist(term, limit, profileDir) {
@@ -211,7 +98,7 @@ async function searchArtlist(term, limit, profileDir) {
 
     const clips = [];
     const clipQueue = clipPages.slice(0, targetCandidates);
-    const concurrency = 4; // Fetch 4 clips at a time
+    const concurrency = 4;
 
     for (let i = 0; i < clipQueue.length; i += concurrency) {
       const chunk = clipQueue.slice(i, i + concurrency);
@@ -247,9 +134,9 @@ async function searchArtlist(term, limit, profileDir) {
             .replace(/\\u0026/g, '&');
           const streams = normalizeLinks([
             ...streamSet,
-            ...((html.match(/https?:\/\/[^"'\\s>]+\.m3u8[^"'\\s>]*/g) || [])),
-            ...((html.match(/https?:\/\/[^"'\\s>]+\.mp4[^"'\\s>]*/g) || [])),
-            ...((html.match(/https?:\/\/[^"'\\s>]+cdn[^"'\\s>]*/g) || [])),
+            ...((html.match(/https?:\/\/[^"'\s>]+\.m3u8[^"'\s>]*/g) || [])),
+            ...((html.match(/https?:\/\/[^"'\s>]+\.mp4[^"'\s>]*/g) || [])),
+            ...((html.match(/https?:\/\/[^"'\s>]+cdn[^"'\s>]*/g) || [])),
           ]);
           const videoSrc = await detailPage.evaluate(() => {
             const video = document.querySelector('video');
@@ -296,15 +183,14 @@ async function searchArtlist(term, limit, profileDir) {
         return String(a.clip_id).localeCompare(String(b.clip_id));
       });
 
-    // Export cookies for yt-dlp/ffmpeg after successful search
-  try {
-    const cookiePath = '/tmp/artlist_cookies.txt';
-    await exportCookiesForYtDlp(page, cookiePath);
-  } catch (e) {
-    console.error('[artlist] cookie export failed:', e.message);
-  }
+    try {
+      const cookiePath = '/tmp/artlist_cookies.txt';
+      await exportCookiesForYtDlp(page, cookiePath);
+    } catch (e) {
+      console.error('[artlist] cookie export failed:', e.message);
+    }
 
-  return {
+    return {
       term,
       search_url: searchUrl,
       clips: (scored.length >= limit ? scored : fallback).slice(0, limit).map(({ score, ...clip }) => clip),
@@ -312,30 +198,6 @@ async function searchArtlist(term, limit, profileDir) {
   } finally {
     await closeBrowserHandle(handle);
   }
-}
-
-async function exportCookiesForYtDlp(page, outputPath) {
-  const cookies = await page.cookies();
-
-  const lines = [
-    '# Netscape HTTP Cookie File',
-    '# Generated by PipelineGen Artlist scraper',
-  ];
-
-  for (const c of cookies) {
-    const domain = c.domain || '';
-    const includeSubdomains = domain.startsWith('.') ? 'TRUE' : 'FALSE';
-    const path = c.path || '/';
-    const secure = c.secure ? 'TRUE' : 'FALSE';
-    const expires = c.expires && c.expires > 0 ? Math.floor(c.expires) : 0;
-    const name = c.name;
-    const value = c.value;
-
-    lines.push([domain, includeSubdomains, path, secure, expires, name, value].join('\t'));
-  }
-
-  fs.writeFileSync(outputPath, lines.join('\n') + '\n', 'utf8');
-  console.error(`[artlist] exported ${cookies.length} cookies to ${outputPath}`);
 }
 
 async function searchArtlistPreview(term, limit, profileDir) {
