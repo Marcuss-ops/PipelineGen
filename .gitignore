@@ -1,69 +1,24 @@
-# Binaries
-pipelinegen
-pipelinegen.exe
-pipelinegen_*
-backfill_hash
-backfill_hash_v2
-server
-server_bin
-velox-master
-velox-server
+```
+# Dependencies
+go.sum
+vendor/
 
-# Scripts with local credentials
-restart-server.sh
-credentials.json
-token.json
-.env
-.env.*
-!.env.example
-
-# Runtime data
-data/
-*.db
-*.db-shm
-*.db-wal
-*.bak
-*.sqlite
-
-# Logs
+# Logs and temp files
 *.log
-logs/
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# Temporary files
-tmp/
-temp/
 *.tmp
 
-# Build artifacts and dependencies
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Build artifacts
 bin/
-build/
-dist/
-node_modules/
-web-admin/node_modules/
-web-admin/dist/
-server_bin
-velox-master
-*.tsbuildinfo
-
-# Python artifacts
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Config files with local settings
-config.yaml
-
-# Test coverage
-coverage.out
+*.exe
+*.dll
+*.so
+```
