@@ -729,8 +729,9 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 	return result, nil
 }
 
-// SearchLive performs a live YouTube search using yt-dlp
-func (s *Service) SearchLive(ctx context.Context, query string, limit int) ([]models.Clip, error) {
+// SearchLive performs a live YouTube search using yt-dlp.
+// sort can be "views" for most viewed videos.
+func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]models.Clip, error) {
 	// Parse limit from query if present (e.g., "query -15")
 	if strings.Contains(query, " -") {
 		parts := strings.Split(query, " -")
@@ -749,21 +750,35 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int) ([]mo
 		limit = 50
 	}
 
-	s.log.Info("Performing live YouTube search", zap.String("query", query), zap.Int("limit", limit))
+	s.log.Info("Performing live YouTube search", zap.String("query", query), zap.Int("limit", limit), zap.String("sort", sort))
 
 	ytdlpPath := s.cfg.External.YtdlpPath
 	if ytdlpPath == "" {
 		ytdlpPath = "yt-dlp"
 	}
 
-	// Use ytsearchN:query format
-	searchQuery := fmt.Sprintf("ytsearch%d:%s", limit, query)
-	
-	args := []string{
-		searchQuery,
-		"--dump-json",
-		"--flat-playlist",
-		"--no-warnings",
+	var searchQuery string
+	var args []string
+
+	if sort == "views" {
+		// Use YouTube search URL with view count filter (sp=CAM%253D)
+		searchQuery = fmt.Sprintf("https://www.youtube.com/results?search_query=%s&sp=CAM%%253D", url.QueryEscape(query))
+		args = []string{
+			searchQuery,
+			"--dump-json",
+			"--flat-playlist",
+			"--no-warnings",
+			"--playlist-end", strconv.Itoa(limit),
+		}
+	} else {
+		// Use standard ytsearchN:query format
+		searchQuery = fmt.Sprintf("ytsearch%d:%s", limit, query)
+		args = []string{
+			searchQuery,
+			"--dump-json",
+			"--flat-playlist",
+			"--no-warnings",
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, ytdlpPath, args...)

@@ -14,6 +14,7 @@ type SearchRequest struct {
 	Q     string `form:"q" binding:"required"`
 	Type  string `form:"type"` // video, image, audio, all
 	Limit int    `form:"limit,default=20"`
+	Sort  string `form:"sort"`
 }
 
 // Search godoc
@@ -39,7 +40,7 @@ func (h *Handler) Search(c *gin.Context) {
 	// Search YouTube clips
 	if h.youtubeSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
 		// YouTube search is live and supports the "-N" limit suffix internally in s.SearchLive
-		ytResults, err := h.youtubeSvc.SearchLive(c.Request.Context(), req.Q, req.Limit)
+		ytResults, err := h.youtubeSvc.SearchLive(c.Request.Context(), req.Q, req.Limit, req.Sort)
 		if err != nil {
 			h.log.Warn("youtube search failed", zap.Error(err))
 			results["youtube"] = gin.H{

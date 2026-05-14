@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/models"
-	"velox/go-master/pkg/pathutil"
 )
+
 
 // SearchService gestisce tutte le operazioni di ricerca Artlist.
 type SearchService struct {
@@ -231,15 +231,19 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 		}
 		
 		// Synchronously resolve destination folder so we can return the link immediately
-		tagFolderName := pathutil.SafeFolderName(term)
 		groupName := "Artlist"
 		if term != "" {
 			groupName = term
 		}
 
-		resolvedFolderID := s.resolveDestination(ctx, driveFolderID, groupName, tagFolderName, &RunTagResponse{})
-		
+		dest, err := s.destinationService.ResolveDestination(ctx, groupName, driveFolderID)
+		resolvedFolderID := ""
+		if err == nil {
+			resolvedFolderID = dest.FolderID
+		}
+
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+
 			Type:       models.JobTypeArtlistRun,
 			Payload:    (&RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID}).ToMap(),
 			MaxRetries: 3,
@@ -263,4 +267,21 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 	}
 
 	return liveResp, nil, nil
+}
+
+// SearchClips searches clips in the database
+func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models.Clip {
+	s := ss.service
+	clips, err := s.artlistRepo.SearchClips(ctx, term)
+	if err != nil {
+		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
+		return nil
+	}
+	return clips
+}
+
+// UpsertClip inserts or updates a clip in the database
+func (ss *SearchService) UpsertClip(ctx context.Context, clip *models.Clip) error {
+	s := ss.service
+	return s.artlistRepo.UpsertClip(ctx, clip)
 }

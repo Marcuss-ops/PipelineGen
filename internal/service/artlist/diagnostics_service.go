@@ -1,72 +1,64 @@
 package artlist
 
 import (
-"context"
-"fmt"
+	"context"
+	"fmt"
+	"strings"
 )
 
 // DiagnosticsService fornisce statistiche e diagnostiche sul catalogo Artlist
 type DiagnosticsService struct {
-svc *Service
+	svc *Service
 }
 
 // NewDiagnosticsService crea un nuovo servizio diagnostico
 func NewDiagnosticsService(svc *Service) *DiagnosticsService {
-return &DiagnosticsService{svc: svc}
+	return &DiagnosticsService{svc: svc}
 }
 
 // GetStats ottiene statistiche generali sul catalogo
 func (d *DiagnosticsService) GetStats(ctx context.Context) (*Stats, error) {
-totalClips, err := d.svc.artlistRepo.CountAll(ctx)
-if err != nil {
-return nil, fmt.Errorf("failed to count clips: %w", err)
-}
+	totalClips, err := d.svc.artlistRepo.CountClips(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count clips: %w", err)
+	}
 
-clipsWithFiles, err := d.svc.artlistRepo.CountWithLocalFiles(ctx)
-if err != nil {
-return nil, fmt.Errorf("failed to count clips with files: %w", err)
-}
-
-clipsWithDrive, err := d.svc.artlistRepo.CountWithDriveLinks(ctx)
-if err != nil {
-return nil, fmt.Errorf("failed to count clips with drive links: %w", err)
-}
-
-categories, err := d.svc.artlistRepo.GetCategories(ctx)
-if err != nil {
-return nil, fmt.Errorf("failed to get categories: %w", err)
-}
-
-return &Stats{
-TotalClips:      totalClips,
-ClipsWithFiles:  clipsWithFiles,
-ClipsWithDrive:  clipsWithDrive,
-CategoriesCount: len(categories),
-}, nil
+	return &Stats{
+		OK:                true,
+		ClipsTotal:        totalClips,
+		ArtlistClipsTotal: totalClips,
+	}, nil
 }
 
 // Diagnostics ottiene informazioni diagnostiche per un termine specifico
 func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*DiagnosticsResponse, error) {
-if term == "" {
-return nil, fmt.Errorf("term is required")
-}
+	resp := &DiagnosticsResponse{
+		OK:             true,
+		NodeScraperDir: d.svc.nodeScraperDir,
+		HasDriveClient: d.svc.assetDestResolver != nil,
+		HasArtlistDB:   d.svc.artlistDB != nil,
+		MainDBReady:    d.svc.mainDB != nil,
+	}
 
-clips := d.svc.searchService.SearchClips(ctx, term)
+	if d.svc.artlistRepo != nil {
+		if total, err := d.svc.artlistRepo.CountClips(ctx); err == nil {
+			resp.ClipsTotal = total
+			resp.ArtlistClipsTotal = total
+		}
+	}
 
-var clipsWithFiles, clipsWithDrive int
-for _, clip := range clips {
-if clip.LocalPath != "" {
-clipsWithFiles++
-}
-if clip.DriveLink != "" {
-clipsWithDrive++
-}
-}
+	term = strings.TrimSpace(term)
+	if term != "" {
+		resp.SearchTerm = term
+		if matches, err := d.svc.artlistRepo.SearchClips(ctx, term); err == nil {
+			resp.MatchingClips = len(matches)
+			resp.EstimatedSize = len(matches)
+		}
 
-return &DiagnosticsResponse{
-Term:           term,
-ClipsFound:     len(clips),
-ClipsWithFiles: clipsWithFiles,
-ClipsWithDrive: clipsWithDrive,
-}, nil
+		if lastProcessedAt, err := d.svc.artlistRepo.LastUpdatedAtForTerm(ctx, term); err == nil {
+			resp.LastProcessedAt = lastProcessedAt
+		}
+	}
+
+	return resp, nil
 }

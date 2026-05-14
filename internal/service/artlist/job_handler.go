@@ -12,7 +12,8 @@ import (
 
 var jobCodec = &JobCodec{}
 
-func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (a *JobAdapter) HandleJob(ctx context.Context, job *models.Job, tools *jobs.JobTools) (map[string]any, error) {
+	s := a.service
 	s.log.Info("handling artlist job",
 		zap.String("job_id", job.ID),
 		zap.String("type", string(job.Type)),

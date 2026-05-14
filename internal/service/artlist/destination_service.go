@@ -7,10 +7,7 @@ import (
 "strings"
 
 driveapi "google.golang.org/api/drive/v3"
-
-driveutil "velox/go-master/pkg/drive"
 )
-
 // DestinationInfo rappresenta una destinazione risolta per i clip
 type DestinationInfo struct {
 FolderID   string

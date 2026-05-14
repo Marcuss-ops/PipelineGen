@@ -18,25 +18,25 @@ return &ClipStatusService{svc: svc}
 
 // GetClipStatus ottiene lo stato di una clip specifica
 func (s *ClipStatusService) GetClipStatus(ctx context.Context, clipID string) (*ClipStatusResponse, error) {
-if clipID == "" {
-return nil, fmt.Errorf("clipID is required")
-}
+	if clipID == "" {
+		return nil, fmt.Errorf("clipID is required")
+	}
 
-clip, err := s.svc.artlistRepo.GetByClipID(ctx, clipID)
-if err != nil {
-return nil, fmt.Errorf("failed to get clip: %w", err)
-}
+	clip, err := s.svc.artlistRepo.GetClip(ctx, clipID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get clip: %w", err)
+	}
 
-if clip == nil {
-return nil, fmt.Errorf("clip not found: %s", clipID)
-}
+	if clip == nil {
+		return nil, fmt.Errorf("clip not found: %s", clipID)
+	}
 
-resp := &ClipStatusResponse{
-ClipID:      clip.ClipID,
-Name:        clip.Title,
-Source:      clip.Source,
-ExternalURL: clip.PrimaryURL,
-}
+	resp := &ClipStatusResponse{
+		ClipID:      clip.ID,
+		Name:        clip.Name,
+		Source:      clip.Source,
+		ExternalURL: clip.ExternalURL,
+	}
 
 if clip.LocalPath != "" {
 if _, err := os.Stat(clip.LocalPath); err == nil {

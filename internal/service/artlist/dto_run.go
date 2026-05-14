@@ -125,6 +125,7 @@ type RunTagResponse struct {
 	LastProcessedAt *string     `json:"last_processed_at,omitempty"`
 	StartedAt       *string     `json:"started_at,omitempty"`
 	EndedAt         *string     `json:"ended_at,omitempty"`
+	CompletedAt     *string     `json:"completed_at,omitempty"`
 	Items           []RunTagItem `json:"items,omitempty"`
 	Error           string       `json:"error,omitempty"`
 }

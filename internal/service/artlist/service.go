@@ -11,9 +11,11 @@ import (
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/service/jobs"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/models"
 )
 
 // Service è un facade leggero che delega a componenti specializzati.
