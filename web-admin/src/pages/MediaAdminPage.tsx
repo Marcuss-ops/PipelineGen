@@ -1,77 +1,31 @@
-import { useMutation, useQuery, useQueries, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { Plus, Search, Trash2, RefreshCw, Folder, Tags, ShieldAlert, Activity, Video } from 'lucide-react';
-import { useMemo, useState, useEffect } from 'react';
-import { bulkAddTags, bulkRemoveTags, cleanupOrphans, bulkReprocessMedia, bulkReuploadMedia, bulkTrashMedia, deleteMedia, listMedia, reprocessMedia, reuploadMedia, trashMedia, updateMedia, verifyMedia, syncImages, searchLive } from '../api/media';
-import { getTree, getBreadcrumb, type AssetNode } from '../api/assets';
+import { useMemo, useState } from 'react';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
-import { SourceTabs } from '../components/SourceTabs';
 import { StatsGrid, type FilterType } from '../components/StatsGrid';
-import { Button } from '../components/ui/Button';
-import { SOURCES, sourceById } from '../lib/sources';
-import type { ClipPayload, MediaItem, MediaSource } from '../lib/types';
-import { apiFetch } from '../api/client';
+import type { MediaItem, MediaSource } from '../lib/types';
 import { HierarchyNavigator } from '../components/HierarchyNavigator';
-import { asArray, cn } from '../lib/utils';
+import { asArray } from '../lib/utils';
+import { 
+  useMediaAdminState, 
+  useMediaQueries, 
+  useMediaActions 
+} from './media/useMediaAdminHooks';
+import { MediaToolbar, MediaAdminHeader } from './media/MediaToolbar';
+import { MediaBulkActionsBar } from './media/MediaBulkActionsBar';
+import { LiveSearchResults } from './media/LiveSearchResults';
 
 type FolderInfo = { id: string; folder_path: string; clip_count: number };
 
 export function MediaAdminPage() {
-  const queryClient = useQueryClient();
   const [source, setSource] = useState<MediaSource>('artlist');
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<MediaItem | null>(null);
-  const [isLiveSearch, setIsLiveSearch] = useState(false);
-  const [liveResults, setLiveResults] = useState<any>(null);
-  const [notice, setNotice] = useState<string>('');
+  const state = useMediaAdminState();
+  const { search, setSearch, selected, setSelected, editing, setEditing, isLiveSearch, setIsLiveSearch, liveResults, setLiveResults, notice, setNotice, activeFolderId, setActiveFolderId, breadcrumb, setBreadcrumb } = state;
+  
+  const { treeQuery, mediaQuery, allSourceCounts, refresh } = useMediaQueries(source, search, isLiveSearch, activeFolderId, setBreadcrumb);
+  const actions = useMediaActions(source, refresh, setNotice, setEditing, setSelected, selected);
+  const { handleBulkTrash, handleBulkReprocess, handleBulkReupload, handleBulkTags, handleCleanupOrphans, syncMutation, handleLiveSearch } = actions;
+  
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [activeFolderId, setActiveFolderId] = useState<string>('root');
-  const [breadcrumb, setBreadcrumb] = useState<AssetNode[]>([]);
-
-  // Tree query
-  const treeQuery = useQuery({
-    queryKey: ['tree', source, activeFolderId],
-    queryFn: () => getTree(source, activeFolderId),
-    enabled: search === '',
-  });
-
-  // Breadcrumb query
-  useEffect(() => {
-    if (activeFolderId === 'root') {
-      setBreadcrumb([]);
-      return;
-    }
-    getBreadcrumb(source, activeFolderId).then(setBreadcrumb).catch(() => setBreadcrumb([]));
-  }, [source, activeFolderId]);
-
-  const mediaQuery = useInfiniteQuery({
-    queryKey: ['media', source, search],
-    queryFn: ({ pageParam = 0 }) => listMedia(source, search, 50, pageParam).then(res => res.items),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length < 50) return undefined;
-      return allPages.length * 50;
-    },
-    enabled: search !== '' && !isLiveSearch,
-  });
-
-  const allSourceQueries = useQueries({
-    queries: SOURCES.map((s) => ({
-      queryKey: ['media-count', s.id],
-      queryFn: () => listMedia(s.id as MediaSource, '', 1), // Only fetch 1 item to get total count
-      staleTime: 60000,
-    })),
-  });
-
-  const allSourceCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    SOURCES.forEach((s, idx) => {
-      const q = allSourceQueries[idx];
-      counts[s.id] = q.data?.total ?? 0;
-    });
-    return counts;
-  }, [allSourceQueries, SOURCES]);
 
   const items = search === '' 
     ? (treeQuery.data || []) 
@@ -109,220 +63,79 @@ export function MediaAdminPage() {
 
   const selectedItems = filteredItems.filter((item) => selected.has(item.id));
 
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['media'] });
-    queryClient.invalidateQueries({ queryKey: ['tree'] });
+  const handleAddAsset = () => {
+    setEditing({
+      id: crypto.randomUUID(),
+      source,
+      name: 'Nuovo asset',
+      tags: [],
+      search_terms: [],
+      is_folder: false,
+      type: 'clip',
+      folder_path: 'root',
+      status: 'draft',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    } as MediaItem);
   };
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: ClipPayload }) => updateMedia(source, id, payload),
-    onSuccess: () => { setNotice('Asset aggiornato'); setEditing(null); refresh(); },
-    onError: (error) => setNotice(`Backend non disponibile o endpoint mancante: ${String(error)}`),
-  });
-
-  const actionMutation = useMutation({
-    mutationFn: async ({ action, item }: { action: 'verify' | 'reprocess' | 'reupload' | 'trash' | 'delete'; item: MediaItem }) => {
-      if (action === 'verify') return verifyMedia(source, item.id);
-      if (action === 'reprocess') return reprocessMedia(source, item.id);
-      if (action === 'reupload') return reuploadMedia(source, item.id);
-      if (action === 'delete') return deleteMedia(source, item.id);
-      return trashMedia(source, item.id);
-    },
-    onSuccess: (_, vars) => { setNotice(`Azione completata: ${vars.action}`); refresh(); },
-    onError: (error) => setNotice(`Azione non riuscita: ${String(error)}`),
-  });
-
-  const handleBulkTrash = () => {
-    selectedItems.forEach((item) => actionMutation.mutate({ action: 'trash', item }));
+  const handleSourceChange = (next: MediaSource) => {
+    setSource(next);
     setSelected(new Set());
+    setActiveFilter('all');
+    setActiveFolderId('root');
+    setIsLiveSearch(false);
+    setLiveResults(null);
   };
 
-  const handleBulkReprocess = async () => {
-    const ids = Array.from(selected);
-    await bulkReprocessMedia(source, ids);
-    setNotice(`Reprocessing ${ids.length} clip`);
-    setSelected(new Set());
-    refresh();
-  };
-
-  const handleBulkReupload = async () => {
-    const ids = Array.from(selected);
-    await bulkReuploadMedia(source, ids);
-    setNotice(`Reuploading ${ids.length} clip`);
-    setSelected(new Set());
-    refresh();
-  };
-
-  const handleBulkTags = async () => {
-    const input = window.prompt('Inserisci i tag separati da virgola (es: cinemmatic, alaska):');
-    if (!input) return;
-    const tags = input.split(',').map(s => s.trim()).filter(Boolean);
-    const ids = Array.from(selected);
-    await bulkAddTags(source, ids, tags);
-    setNotice(`Aggiunti tag a ${ids.length} elementi`);
-    setSelected(new Set());
-    refresh();
-  };
-
-  const handleCleanupOrphans = async () => {
-    if (!window.confirm('Vuoi cercare i file orfani (DB presente ma file rimosso su Drive)?')) return;
-    setNotice('Ricerca orfani in corso...');
-    try {
-      const data = await cleanupOrphans(source, false);
-      setNotice(`Pulizia completata: rimossi ${data.count} elementi orfani su ${data.checked} controllati.`);
-      refresh();
-    } catch (err) {
-      setNotice(`Errore pulizia: ${err}`);
-    }
-  };
-
-  const syncMutation = useMutation({
-    mutationFn: syncImages,
-    onSuccess: (data) => {
-      setNotice(data.message || 'Sincronizzazione completata');
-      refresh();
-    },
-    onError: (err) => setNotice(`Errore sinc: ${err}`),
-  });
-
-  const handleLiveSearch = async () => {
-    if (!search) return;
-    setNotice('Ricerca live in corso...');
-    try {
-      const results = await searchLive(search);
+  const executeLiveSearch = async () => {
+    const results = await handleLiveSearch(search);
+    if (results) {
       setLiveResults(results);
       setNotice(`Ricerca completata: trovati ${results.youtube?.count || 0} video su YouTube`);
-    } catch (err) {
-      setNotice(`Errore ricerca live: ${err}`);
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black tracking-tight text-zinc-900">Media Database</h1>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={handleCleanupOrphans}>
-              <ShieldAlert className="h-4 w-4" /> Pulisci Orfani
-            </Button>
-            {source === 'images' && (
-              <Button variant="secondary" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}>
-                <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} /> Sincronizza Drive
-              </Button>
-            )}
-            <Button onClick={() => setEditing({
-            id: crypto.randomUUID(),
-            source,
-            name: 'Nuovo asset',
-            tags: [],
-            search_terms: [],
-            is_folder: false,
-            type: 'clip',
-            folder_path: 'root',
-            status: 'draft',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          } as MediaItem)}>
-            <Plus className="h-4 w-4" /> Aggiungi asset
-          </Button>
-        </div>
-      </div>
+      <MediaAdminHeader 
+        source={source}
+        onCleanupOrphans={handleCleanupOrphans}
+        onSyncImages={() => syncMutation.mutate()}
+        onAddAsset={handleAddAsset}
+        syncMutation={syncMutation}
+      />
 
+      <MediaToolbar
+        source={source}
+        search={search}
+        isLiveSearch={isLiveSearch}
+        activeFilter={activeFilter}
+        allSourceCounts={allSourceCounts}
+        onSourceChange={handleSourceChange}
+        onSearchChange={setSearch}
+        onLiveSearchToggle={() => setIsLiveSearch(!isLiveSearch)}
+        onFilterChange={setActiveFilter}
+        onCleanupOrphans={handleCleanupOrphans}
+        onSyncImages={() => syncMutation.mutate()}
+        onAddAsset={handleAddAsset}
+        onLiveSearchExecute={executeLiveSearch}
+        syncMutation={syncMutation}
+      />
 
-      <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <SourceTabs active={source} counts={allSourceCounts} onChange={(next) => { setSource(next); setSelected(new Set()); setActiveFilter('all'); setActiveFolderId('root'); setIsLiveSearch(false); setLiveResults(null); }} />
-        <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{sourceById[source].label}</h3>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">{sourceById[source].description}</p>
-          </div>
-          <div className="relative w-full md:max-w-xl flex gap-2">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
-              <input 
-                value={search} 
-                onChange={(event) => setSearch(event.target.value)} 
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && isLiveSearch) {
-                    handleLiveSearch();
-                  }
-                }}
-                placeholder={isLiveSearch ? "Cerca ovunque (es: chuck norris -15)..." : `Cerca in ${sourceById[source].label}...`} 
-                className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:focus:border-blue-500 dark:focus:bg-zinc-900" 
-              />
-            </div>
-            <Button 
-              variant={isLiveSearch ? 'primary' : 'secondary'} 
-              onClick={() => {
-                if (isLiveSearch && search) {
-                  handleLiveSearch();
-                } else {
-                  setIsLiveSearch(!isLiveSearch);
-                }
-              }}
-              className="whitespace-nowrap"
-            >
-              <Activity className={cn("h-4 w-4 mr-2", isLiveSearch && "animate-pulse")} />
-              {isLiveSearch ? 'Cerca Live' : 'Live Mode'}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {selected.size > 0 && (
-        <div className="flex items-center justify-between rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm">
-          <p className="text-sm font-semibold text-blue-950">{selected.size} clip selezionate</p>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setSelected(new Set())}>Deseleziona</Button>
-            <Button variant="secondary" onClick={handleBulkReprocess}>Reprocess</Button>
-            <Button variant="secondary" onClick={handleBulkReupload}>Reupload</Button>
-            <Button variant="secondary" onClick={handleBulkTags}><Tags className="h-4 w-4" /> Tag</Button>
-            <Button variant="danger" onClick={handleBulkTrash}><Trash2 className="h-4 w-4" /> Delete</Button>
-          </div>
-        </div>
-      )}
+      <MediaBulkActionsBar
+        selectedCount={selected.size}
+        onDeselectAll={() => setSelected(new Set())}
+        onReprocess={handleBulkReprocess}
+        onReupload={handleBulkReupload}
+        onAddTags={handleBulkTags}
+        onTrash={handleBulkTrash.bind(null, filteredItems)}
+      />
 
       {notice && <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 shadow-sm">{notice}</div>}
 
       {isLiveSearch && liveResults && (
-        <div className="space-y-6">
-          {liveResults.youtube && liveResults.youtube.results.length > 0 && (
-            <div className="bg-white rounded-3xl border border-zinc-200 p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Video className="w-5 h-5 text-red-600" />
-                <h2 className="text-lg font-bold">Risultati YouTube</h2>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {liveResults.youtube.results.map((item: any) => (
-                  <div key={item.id} className="group relative bg-zinc-50 rounded-2xl overflow-hidden border border-zinc-100 hover:shadow-lg transition-all">
-                    <img src={item.thumb_url || item.thumbnail} alt={item.name} className="w-full aspect-video object-cover" />
-                    <div className="p-3">
-                      <h4 className="text-sm font-semibold truncate">{item.name}</h4>
-                      <p className="text-[10px] text-zinc-500 mt-1">{item.duration}s</p>
-                      <Button 
-                        size="sm" 
-                        className="w-full mt-2" 
-                        onClick={() => {
-                          // Handle extraction job start
-                          setNotice(`Avviata estrazione per ${item.name}`);
-                          apiFetch('/api/assets/youtube/clips', {
-                            method: 'POST',
-                            body: JSON.stringify({ 
-                              video_url: item.external_url || `https://youtube.com/watch?v=${item.id}`,
-                              name: item.name
-                            })
-                          }).catch(err => setNotice(`Errore: ${err}`));
-                        }}
-                      >
-                        Estrai Clip
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <LiveSearchResults results={liveResults} onNotice={setNotice} />
       )}
 
       {!isLiveSearch && (
@@ -341,10 +154,10 @@ export function MediaAdminPage() {
             onSelectAll={(checked) => setSelected(checked ? new Set(filteredItems.map((item) => item.id)) : new Set())}
             onOpen={setEditing}
             onEdit={setEditing}
-            onVerify={(item) => actionMutation.mutate({ action: 'verify', item })}
-            onReprocess={(item) => actionMutation.mutate({ action: 'reprocess', item })}
-            onReupload={(item) => actionMutation.mutate({ action: 'reupload', item })}
-            onTrash={(item) => actionMutation.mutate({ action: 'trash', item })}
+            onVerify={(item) => actions.actionMutation.mutate({ action: 'verify', item })}
+            onReprocess={(item) => actions.actionMutation.mutate({ action: 'reprocess', item })}
+            onReupload={(item) => actions.actionMutation.mutate({ action: 'reupload', item })}
+            onTrash={(item) => actions.actionMutation.mutate({ action: 'trash', item })}
             onFolderClick={(id) => setActiveFolderId(id)}
           />
 
@@ -354,32 +167,34 @@ export function MediaAdminPage() {
                 variant="secondary" 
                 onClick={() => mediaQuery.fetchNextPage()} 
                 disabled={mediaQuery.isFetchingNextPage}
-                className="w-full max-w-xs"
               >
-                {mediaQuery.isFetchingNextPage ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Caricamento...
-                  </>
-                ) : (
-                  'Carica altri asset'
-                )}
+                Carica altri risultati
               </Button>
             </div>
           )}
         </>
       )}
 
-      <MediaDetailDrawer
-        item={editing}
-        open={Boolean(editing)}
-        onClose={() => setEditing(null)}
-        onSave={(payload) => {
-          if (!editing) return;
-          updateMutation.mutate({ id: editing.id, payload });
+      <StatsGrid
+        activeFilter={activeFilter}
+        onFilterChange={setActiveFilter}
+        counts={{
+          total: normalizedItems.length,
+          processed: normalizedItems.filter(i => i.drive_link || i.download_link).length,
+          missingDrive: normalizedItems.filter(i => !i.drive_link && !i.download_link).length,
+          withErrors: normalizedItems.filter(i => Boolean(i.error) || String(i.status || '').includes('failed')).length,
         }}
       />
+
+      {editing && (
+        <MediaDetailDrawer
+          open={!!editing}
+          onClose={() => setEditing(null)}
+          item={editing}
+          onSave={(payload) => actions.updateMutation.mutate({ id: editing.id, payload })}
+          isLoading={actions.updateMutation.isPending}
+        />
+      )}
     </div>
   );
 }
-
