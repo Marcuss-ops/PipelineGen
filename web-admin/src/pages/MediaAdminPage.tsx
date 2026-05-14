@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Button } from '@mui/material';
 import { MediaDetailDrawer } from '../components/MediaDetailDrawer';
 import { MediaTable } from '../components/MediaTable';
 import { StatsGrid, type FilterType } from '../components/StatsGrid';
@@ -13,8 +14,6 @@ import {
 import { MediaToolbar, MediaAdminHeader } from './media/MediaToolbar';
 import { MediaBulkActionsBar } from './media/MediaBulkActionsBar';
 import { LiveSearchResults } from './media/LiveSearchResults';
-
-type FolderInfo = { id: string; folder_path: string; clip_count: number };
 
 export function MediaAdminPage() {
   const [source, setSource] = useState<MediaSource>('artlist');
