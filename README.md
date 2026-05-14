@@ -57,7 +57,7 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
 
 ## 🧠 Job System
 
-PipelineGen uses a unified job system for all long-running operations. Jobs are stored in `data/jobs.db.sqlite` and are processed by background workers. You can track job progress via the `/api/jobs` endpoints.
+PipelineGen uses a unified job system for all long-running operations. Jobs are stored in `data/velox/velox.db.sqlite` (Main Database) and are processed by background workers. You can track job progress via the `/api/jobs` endpoints.
 
 ## 📁 Project Structure
 
