@@ -17,6 +17,16 @@ import (
 	"velox/go-master/pkg/pathutil"
 )
 
+// SearchService gestisce tutte le operazioni di ricerca Artlist.
+type SearchService struct {
+	service *Service
+}
+
+// NewSearchService crea una nuova istanza di SearchService.
+func NewSearchService(s *Service) *SearchService {
+	return &SearchService{service: s}
+}
+
 // ScraperClip represents a clip from the node scraper output
 type ScraperClip struct {
 	ClipID      string   `json:"clip_id"`
@@ -37,7 +47,9 @@ type ScraperResponse struct {
 	Saved     int           `json:"saved"`
 }
 
-func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
+// Search esegue una ricerca di clip nel database Artlist.
+func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
+	s := ss.service
 	term := NormalizeSearchTerm(req.Term)
 	resp := &SearchResponse{OK: true, Term: term}
 
@@ -72,7 +84,9 @@ func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchRespon
 	return resp, nil
 }
 
-func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+// SearchLive esegue una ricerca live tramite scraper Node.js.
+func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+	s := ss.service
 	term = NormalizeSearchTerm(term)
 	if term == "" {
 		return nil, fmt.Errorf("term is required")
@@ -130,9 +144,11 @@ func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]Scr
 	return response.Clips, nil
 }
 
-func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int) (*SearchResponse, error) {
+// SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
+func (ss *SearchService) SearchLiveAndSave(ctx context.Context, term string, limit int) (*SearchResponse, error) {
+	s := ss.service
 	term = NormalizeSearchTerm(term)
-	clips, err := s.SearchLive(ctx, term, limit)
+	clips, err := ss.SearchLive(ctx, term, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -194,9 +210,11 @@ func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int)
 	return resp, nil
 }
 
-func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit int) (*SearchResponse, *RunTagResponse, error) {
+// DiscoverAndQueueRun scopre clip e accoda un'esecuzione.
+func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, limit int) (*SearchResponse, *RunTagResponse, error) {
+	s := ss.service
 	term = NormalizeSearchTerm(term)
-	liveResp, err := s.SearchLiveAndSave(ctx, term, limit)
+	liveResp, err := ss.SearchLiveAndSave(ctx, term, limit)
 	if err != nil {
 		return nil, nil, err
 	}

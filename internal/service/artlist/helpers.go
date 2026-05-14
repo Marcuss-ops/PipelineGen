@@ -8,8 +8,19 @@ import (
 	"velox/go-master/pkg/models"
 )
 
+// ClipStatusService gestisce le operazioni di stato delle clip.
+type ClipStatusService struct {
+	service *Service
+}
+
+// NewClipStatusService crea una nuova istanza di ClipStatusService.
+func NewClipStatusService(s *Service) *ClipStatusService {
+	return &ClipStatusService{service: s}
+}
+
 // GetClipStatus returns the status of a clip
-func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatusResponse, error) {
+func (cs *ClipStatusService) GetClipStatus(ctx context.Context, clipID string) (*ClipStatusResponse, error) {
+	s := cs.service
 	clip, err := s.artlistRepo.GetClip(ctx, clipID)
 	if err != nil {
 		return nil, err
@@ -31,7 +42,8 @@ func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatus
 }
 
 // SearchClips searches clips in the database
-func (s *Service) SearchClips(ctx context.Context, term string) []*models.Clip {
+func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models.Clip {
+	s := ss.service
 	clips, err := s.artlistRepo.SearchClips(ctx, term)
 	if err != nil {
 		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
@@ -41,6 +53,7 @@ func (s *Service) SearchClips(ctx context.Context, term string) []*models.Clip {
 }
 
 // UpsertClip inserts or updates a clip in the database
-func (s *Service) UpsertClip(ctx context.Context, clip *models.Clip) error {
+func (ss *SearchService) UpsertClip(ctx context.Context, clip *models.Clip) error {
+	s := ss.service
 	return s.artlistRepo.UpsertClip(ctx, clip)
 }
