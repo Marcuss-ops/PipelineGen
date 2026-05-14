@@ -17,7 +17,7 @@ func ApplyNegativeFilter(clips []ClipScore, avoidTerms map[string]bool) []ClipSc
 	return filtered
 }
 
-func containsNegativeTerm(clip *models.Clip, avoidTerms map[string]bool) bool {
+func containsNegativeTerm(clip *models.MediaAsset, avoidTerms map[string]bool) bool {
 	// Check name
 	for term := range avoidTerms {
 		if containsIgnoreCase(clip.Name, term) {

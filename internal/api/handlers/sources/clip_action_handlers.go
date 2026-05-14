@@ -102,7 +102,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	var clip *models.Clip
+	var clip *models.MediaAsset
 	var err error
 
 	// Handle Voiceover source
@@ -150,10 +150,10 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	}
 
 	if driveID != "" && h.driveUploader != nil && h.driveUploader.Service != nil {
-		h.log.Info("local file missing, proxying from drive", 
-			zap.String("clip_id", clipID), 
+		h.log.Info("local file missing, proxying from drive",
+			zap.String("clip_id", clipID),
 			zap.String("drive_id", driveID))
-		
+
 		// Use Files.Get but with Fields to check MimeType first
 		driveFile, err := h.driveUploader.Service.Files.Get(driveID).Fields("id, name, mimeType, size").Context(c.Request.Context()).Do()
 		if err != nil {
@@ -183,13 +183,13 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		if contentType == "" || contentType == "application/octet-stream" {
 			contentType = "video/mp4"
 		}
-		
+
 		c.Header("Content-Type", contentType)
 		if contentLength := resp.Header.Get("Content-Length"); contentLength != "" {
 			c.Header("Content-Length", contentLength)
 		}
 		c.Header("Cache-Control", "public, max-age=3600")
-		
+
 		_, err = io.Copy(c.Writer, resp.Body)
 		if err != nil {
 			h.log.Debug("drive stream interrupted", zap.Error(err))
@@ -301,9 +301,9 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	if clip.FileHash == "" {
 		apiutil.OK(c, gin.H{
 			"ok":         true,
-			"source":      source,
+			"source":     source,
 			"clip_id":    clipID,
-			"file_hash":   "",
+			"file_hash":  "",
 			"duplicates": []gin.H{},
 		})
 		return
@@ -345,9 +345,9 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 
 	apiutil.OK(c, gin.H{
 		"ok":         true,
-		"source":      source,
-		"clip_id":     clipID,
-		"file_hash":   clip.FileHash,
-		"duplicates":  duplicates,
+		"source":     source,
+		"clip_id":    clipID,
+		"file_hash":  clip.FileHash,
+		"duplicates": duplicates,
 	})
 }

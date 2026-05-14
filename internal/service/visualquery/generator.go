@@ -3,9 +3,9 @@ package visualquery
 import (
 	"context"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
-	"go.uber.org/zap"
 )
 
 // GenerateArtlistSearchSuggestions generates visual search queries using LLM
@@ -61,7 +61,7 @@ func GenerateArtlistVisualQuery(
 	)
 
 	prompt := buildVisualQueryPrompt(topic, subject, narrative)
-	
+
 	messages := []types.Message{
 		{
 			Role:    "system",
@@ -72,7 +72,7 @@ func GenerateArtlistVisualQuery(
 			Content: prompt,
 		},
 	}
-	
+
 	response, err := gen.GetClient().Chat(ctx, messages, nil)
 	if err != nil {
 		zap.L().Error("GenerateArtlistVisualQuery: LLM call failed, using fallback",
@@ -154,7 +154,7 @@ func GenerateBatchArtlistVisualQueries(
 	)
 
 	prompt := buildBatchVisualQueryPrompt(topic, uncachedSegments, maxQueriesPerSegment)
-	
+
 	messages := []types.Message{
 		{
 			Role:    "system",
@@ -165,7 +165,7 @@ func GenerateBatchArtlistVisualQueries(
 			Content: prompt,
 		},
 	}
-	
+
 	response, err := gen.GetClient().Chat(ctx, messages, nil)
 	if err != nil {
 		zap.L().Error("GenerateBatchArtlistVisualQueries: LLM call failed, using fallback",

@@ -4,8 +4,8 @@ import "context"
 
 // HarvestPolicy determines when to enqueue harvest jobs
 type HarvestPolicy struct {
-	Enabled            bool    `json:"enabled"`
-	MinScoreThreshold  float64 `json:"min_score_threshold"`
+	Enabled           bool    `json:"enabled"`
+	MinScoreThreshold float64 `json:"min_score_threshold"`
 	MaxClipsThreshold int     `json:"max_clips_threshold"`
 }
 

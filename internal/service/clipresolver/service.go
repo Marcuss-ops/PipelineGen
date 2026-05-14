@@ -8,8 +8,8 @@ import (
 	"unicode"
 
 	"velox/go-master/internal/service/clipcatalog"
-	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/matchingconfig"
+	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 )
 
@@ -91,15 +91,15 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 
 	// Search for clips using all search terms across all repositories with weights
 	clipScores := make(map[string]*ClipScore)
-	
+
 	type WeightedQuery struct {
 		Term   string
 		Weight float64
 	}
-	
+
 	weightedQueries := []WeightedQuery{}
 	seenQueries := make(map[string]bool)
-	
+
 	addWeighted := func(term string, weight float64) {
 		term = strings.TrimSpace(term)
 		if term == "" {
@@ -149,7 +149,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 		for source, repo := range s.repos {
 			// Try semantic search first
 			candidates, err := repo.SearchSemantic(ctx, term, limit*2)
-			
+
 			// Fallback to FTS matching if semantic search fails or returns no results
 			if err != nil || len(candidates) == 0 {
 				ftsCandidates, ftsErr := repo.FindCandidatesFTS(ctx, term, limit*2)
@@ -170,9 +170,9 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 				globalID := fmt.Sprintf("%s:%s", source, cand.ID)
 				if clipScores[globalID] == nil {
 					clipScores[globalID] = &ClipScore{
-						Clip:        s.candidateToClip(cand),
-						Score:       0,
-						Breakdown:   &ScoreBreakdown{},
+						Clip:         s.candidateToClip(cand),
+						Score:        0,
+						Breakdown:    &ScoreBreakdown{},
 						MatchedTerms: make([]string, 0),
 					}
 					// Store original source for boosting (hijack MediaType temporarily)
@@ -464,7 +464,7 @@ func (s *Service) folderKeyFromPath(path string) string {
 	return strings.ToLower(dir)
 }
 
-func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
+func (s *Service) calculateTextScore(clip *models.MediaAsset, query string) float64 {
 	// Weight: 0.45
 	baseWeight := 0.45
 
@@ -497,7 +497,7 @@ func (s *Service) calculateTextScore(clip *models.Clip, query string) float64 {
 	return score
 }
 
-func (s *Service) matchesTopic(clip *models.Clip, topic string) bool {
+func (s *Service) matchesTopic(clip *models.MediaAsset, topic string) bool {
 	topicTokens := textutil.Tokenize(topic)
 	if len(topicTokens) == 0 {
 		return false
@@ -522,7 +522,7 @@ func (s *Service) matchesTopic(clip *models.Clip, topic string) bool {
 	return matched > 0
 }
 
-func (s *Service) clipContainsTerm(clip *models.Clip, term string) bool {
+func (s *Service) clipContainsTerm(clip *models.MediaAsset, term string) bool {
 	termLower := strings.ToLower(term)
 
 	// Check in search terms, name, tags
@@ -543,7 +543,7 @@ func (s *Service) clipContainsTerm(clip *models.Clip, term string) bool {
 	return false
 }
 
-func (s *Service) clipUsableFor(clip *models.Clip, term string) bool {
+func (s *Service) clipUsableFor(clip *models.MediaAsset, term string) bool {
 	if len(clip.UsableFor) == 0 {
 		return false
 	}
@@ -593,23 +593,23 @@ func (s *Service) buildRecommendReason(entry *ClipScore, req *RecommendRequest) 
 	return strings.Join(reasons, "; ")
 }
 
-func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *models.Clip {
-	return &models.Clip{
-		ID:           cand.ID,
-		Name:         cand.Name,
-		DriveLink:    cand.DriveLink,
-		LocalPath:    cand.LocalPath,
+func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *models.MediaAsset {
+	return &models.MediaAsset{
+		ID:             cand.ID,
+		Name:           cand.Name,
+		DriveLink:      cand.DriveLink,
+		LocalPath:      cand.LocalPath,
 		ParentFolderID: cand.FolderID,
-		FolderPath:   cand.FolderPath,
-		Category:     cand.Category,
-		SearchTerms:  []string{cand.SearchText},
-		Tags:         cand.Tags,
-		SearchText:   cand.SearchText,
-		SceneType:    cand.SceneType,
-		QualityScore: cand.QualityScore,
-		ReuseCount:   cand.ReuseCount,
-		UsableFor:    cand.UsableFor,
-		AvoidFor:     cand.AvoidFor,
+		FolderPath:     cand.FolderPath,
+		Category:       cand.Category,
+		SearchTerms:    []string{cand.SearchText},
+		Tags:           cand.Tags,
+		SearchText:     cand.SearchText,
+		SceneType:      cand.SceneType,
+		QualityScore:   cand.QualityScore,
+		ReuseCount:     cand.ReuseCount,
+		UsableFor:      cand.UsableFor,
+		AvoidFor:       cand.AvoidFor,
 	}
 }
 

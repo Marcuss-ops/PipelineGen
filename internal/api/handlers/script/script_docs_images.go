@@ -1,11 +1,11 @@
 package script
 
 import (
-	"strings"
 	"fmt"
+	"strings"
 
-	imgservice "velox/go-master/internal/service/images"
 	"go.uber.org/zap"
+	imgservice "velox/go-master/internal/service/images"
 )
 
 type imagePlanItem struct {
@@ -16,8 +16,8 @@ type imagePlanItem struct {
 
 func buildImagePlanningSection(req ScriptDocsRequest, plan *VisualPlan, imgService *imgservice.Service) ScriptSection {
 	subjects := plan.GlobalImageSubjects(5)
-	
-	zap.L().Info("Image planning starting from visual plan", 
+
+	zap.L().Info("Image planning starting from visual plan",
 		zap.Strings("subjects", subjects),
 		zap.String("topic", req.Topic),
 	)
@@ -33,19 +33,19 @@ func buildImagePlanningSection(req ScriptDocsRequest, plan *VisualPlan, imgServi
 	for _, subject := range subjects {
 		if imgService != nil {
 			slug := Slugify(subject)
-			
+
 			// Costruiamo una query più specifica se il soggetto è corto
 			query := subject
 			if len(strings.Fields(subject)) < 2 && !strings.Contains(strings.ToLower(req.Topic), strings.ToLower(subject)) {
 				query = subject + " " + req.Topic
 			}
-			
+
 			asset, err := imgService.SearchAndDownload(slug, subject, query, req.Language, nil)
 			if err != nil {
 				zap.L().Warn("Image search failed", zap.String("subject", subject), zap.Error(err))
 				continue
 			}
-			
+
 			if asset == nil {
 				continue
 			}

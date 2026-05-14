@@ -8,14 +8,14 @@ import (
 )
 
 func TestClipToMediaAsset(t *testing.T) {
-	clip := models.Clip{
+	clip := models.MediaAsset{
 		ID:           "clip-1",
 		Name:         "Test Clip",
 		Category:     "stock",
 		Tags:         []string{"tag1", "tag2"},
 		ExternalURL:  "http://example.com/clip1",
 		Duration:     120,
-		Metadata:     `{"key":"value"}`,
+		Metadata:     map[string]any{"key": "value"},
 		DriveLink:    "https://drive.google.com/file/d/123",
 		DownloadLink: "http://example.com/download/123",
 		LocalPath:    "/tmp/clip1.mp4",
@@ -50,8 +50,8 @@ func TestClipToMediaAsset(t *testing.T) {
 	if asset.DurationSecs != 120 {
 		t.Errorf("DurationSecs = %d, want %d", asset.DurationSecs, 120)
 	}
-	if asset.MetadataJSON != clip.Metadata {
-		t.Errorf("MetadataJSON = %q, want %q", asset.MetadataJSON, clip.Metadata)
+	if asset.MetadataJSON != clip.MetadataJSON() {
+		t.Errorf("MetadataJSON = %q, want %q", asset.MetadataJSON, clip.MetadataJSON())
 	}
 	if asset.PrimaryFile == nil {
 		t.Fatal("PrimaryFile is nil")
@@ -106,8 +106,8 @@ func TestMediaAssetToClip(t *testing.T) {
 	if clip.Duration != 180 {
 		t.Errorf("Duration = %d, want %d", clip.Duration, 180)
 	}
-	if clip.Metadata != asset.MetadataJSON {
-		t.Errorf("Metadata = %q, want %q", clip.Metadata, asset.MetadataJSON)
+	if clip.MetadataJSON() != asset.MetadataJSON {
+		t.Errorf("MetadataJSON = %q, want %q", clip.MetadataJSON(), asset.MetadataJSON)
 	}
 	if clip.LocalPath != asset.PrimaryFile.LocalPath {
 		t.Errorf("LocalPath = %q, want %q", clip.LocalPath, asset.PrimaryFile.LocalPath)
@@ -121,7 +121,7 @@ func TestMediaAssetToClip(t *testing.T) {
 }
 
 func TestClipToMediaAssetEmptyPrimaryFile(t *testing.T) {
-	clip := models.Clip{
+	clip := models.MediaAsset{
 		ID:   "clip-2",
 		Name: "Empty File Clip",
 	}

@@ -18,11 +18,11 @@ type coreAdapter struct {
 func (a *coreAdapter) Resolve(ctx context.Context, req *destination.ResolveRequest) (*destination.ResolveResult, error) {
 	// Convert core request to assetdestination request
 	adReq := &ResolveRequest{
-		Source:         req.Source,
-		Group:          req.Group,
-		FolderID:       req.FolderID,
-		FolderPath:     req.FolderPath,
-		SubfolderName:  req.SubfolderName,
+		Source:          req.Source,
+		Group:           req.Group,
+		FolderID:        req.FolderID,
+		FolderPath:      req.FolderPath,
+		SubfolderName:   req.SubfolderName,
 		CreateSubfolder: req.CreateSubfolder,
 	}
 

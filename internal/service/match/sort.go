@@ -29,5 +29,3 @@ func SortTopMatches(matches []association.ScoredMatch, limit int) []association.
 	}
 	return matches
 }
-
-

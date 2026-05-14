@@ -104,15 +104,15 @@ func mediaRecordToVoiceover(mediaRec *assetregistry.MediaRecord) *voiceovers.Rec
 
 func voiceoverToMediaRecord(rec *voiceovers.Record) *assetregistry.MediaRecord {
 	meta := map[string]interface{}{
-		"text_hash":     rec.TextHash,
-		"text_preview":  rec.TextPreview,
-		"language":      rec.Language,
-		"voice":         rec.Voice,
-		"cleaned_path":  rec.CleanedPath,
-		"strategy":      rec.Strategy,
-		"request_id":    rec.RequestID,
-		"created_at":    rec.CreatedAt.Format(time.RFC3339),
-		"updated_at":    rec.UpdatedAt.Format(time.RFC3339),
+		"text_hash":    rec.TextHash,
+		"text_preview": rec.TextPreview,
+		"language":     rec.Language,
+		"voice":        rec.Voice,
+		"cleaned_path": rec.CleanedPath,
+		"strategy":     rec.Strategy,
+		"request_id":   rec.RequestID,
+		"created_at":   rec.CreatedAt.Format(time.RFC3339),
+		"updated_at":   rec.UpdatedAt.Format(time.RFC3339),
 	}
 	metaJSON, _ := json.Marshal(meta)
 

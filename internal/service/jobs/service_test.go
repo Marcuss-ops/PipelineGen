@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/jobs"
 	"velox/go-master/pkg/models"

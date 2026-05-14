@@ -1,48 +1,111 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
-// Clip represents a video clip asset
-type Clip struct {
-	ID             string    `json:"id"`
-	Name           string    `json:"name"`
-	Filename       string    `json:"filename"`
-	FolderID       string    `json:"folder_id"` // Keep for backward compatibility, but ParentFolderID is the true parent
-	ParentFolderID string    `json:"parent_folder_id"`
-	FolderPath     string    `json:"folder_path"`
-	Depth          int       `json:"depth"`
-	IsFolder       bool      `json:"is_folder"`
-	Group          string    `json:"group"`
-	MediaType      string    `json:"media_type"`
-	DriveLink      string    `json:"drive_link"`
-	DownloadLink   string    `json:"download_link"`
-	DriveFileID    string    `json:"drive_file_id"` // Google Drive file ID
-	Tags           []string  `json:"tags"`
-	Source         string    `json:"source"`
-	Category       string    `json:"category"`
-	ExternalURL    string    `json:"external_url"`
-	Duration       int       `json:"duration"`
-	Metadata       string    `json:"metadata"`
-	FileHash       string    `json:"file_hash"`
-	LocalPath      string    `json:"local_path"` // Path to downloaded local file
-	ThumbURL       string    `json:"thumb_url"` // Thumbnail URL
-	Status         string    `json:"status"`
-	Error          string    `json:"error"`
-	SearchTerms    []string  `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+// MediaAsset represents a video clip or image asset
+type MediaAsset struct {
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Filename       string     `json:"filename"`
+	FolderID       string     `json:"folder_id"` // Keep for backward compatibility, but ParentFolderID is the true parent
+	ParentFolderID string     `json:"parent_folder_id"`
+	FolderPath     string     `json:"folder_path"`
+	Depth          int        `json:"depth"`
+	IsFolder       bool       `json:"is_folder"`
+	Group          string     `json:"group"`
+	MediaType      string     `json:"media_type"`
+	DriveLink      string     `json:"drive_link"`
+	DownloadLink   string     `json:"download_link"`
+	DriveFileID    string     `json:"drive_file_id"` // Google Drive file ID
+	Tags           []string   `json:"tags"`
+	Source         string     `json:"source"`
+	Category       string     `json:"category"`
+	ExternalURL    string     `json:"external_url"`
+	Duration       int        `json:"duration"`
+	Metadata       map[string]any `json:"metadata"` // Flexible metadata map (stored as JSON in DB)
+	FileHash       string     `json:"file_hash"`
+	LocalPath      string     `json:"local_path"` // Path to downloaded local file
+	ThumbURL       string     `json:"thumb_url"`  // Thumbnail URL
+	Status         string     `json:"status"`
+	Error          string     `json:"error"`
+	SearchTerms    []string   `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 	// Extended fields for clip catalog
-	SearchText     string    `json:"search_text,omitempty"`
-	SceneType      string    `json:"scene_type,omitempty"`
-	QualityScore   float64   `json:"quality_score,omitempty"`
-	ReuseCount     int       `json:"reuse_count,omitempty"`
-	LastUsedAt     string    `json:"last_used_at,omitempty"`
-	UsableFor      []string  `json:"usable_for,omitempty"`
-	AvoidFor       []string  `json:"avoid_for,omitempty"`
-	ChildCount     int       `json:"child_count,omitempty"`
-	PHash          string    `json:"phash,omitempty"`
-	VisualEmbeddingJSON string `json:"visual_embedding_json,omitempty"`
+	SearchText          string   `json:"search_text,omitempty"`
+	SceneType           string   `json:"scene_type,omitempty"`
+	QualityScore        float64  `json:"quality_score,omitempty"`
+	ReuseCount          int      `json:"reuse_count,omitempty"`
+	LastUsedAt          string   `json:"last_used_at,omitempty"`
+	UsableFor           []string `json:"usable_for,omitempty"`
+	AvoidFor            []string `json:"avoid_for,omitempty"`
+	ChildCount          int      `json:"child_count,omitempty"`
+	PHash               string   `json:"phash,omitempty"`
+	VisualEmbeddingJSON string   `json:"visual_embedding_json,omitempty"`
+	EmbeddingJSON       string   `json:"embedding_json,omitempty"` // Per Hybrid Search Semantica
+}
+
+// MetadataJSON returns the Metadata map serialized as a JSON string.
+// Returns "{}" if Metadata is nil or empty.
+func (m *MediaAsset) MetadataJSON() string {
+	if m.Metadata == nil {
+		return "{}"
+	}
+	b, err := json.Marshal(m.Metadata)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+// SetMetadataJSON parses a JSON string into the Metadata map.
+// If the string is empty or invalid, Metadata is set to an empty map.
+func (m *MediaAsset) SetMetadataJSON(jsonStr string) {
+	if jsonStr == "" || jsonStr == "{}" || jsonStr == "null" {
+		m.Metadata = make(map[string]any)
+		return
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &meta); err != nil {
+		m.Metadata = make(map[string]any)
+		return
+	}
+	m.Metadata = meta
+}
+
+// GetMetadataString retrieves a string value from the Metadata map by key.
+// Returns "" if the key doesn't exist or the value is not a string.
+func (m *MediaAsset) GetMetadataString(key string) string {
+	if m.Metadata == nil {
+		return ""
+	}
+	v, ok := m.Metadata[key]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// SetMetadataString sets a string value in the Metadata map.
+func (m *MediaAsset) SetMetadataString(key, value string) {
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]any)
+	}
+	m.Metadata[key] = value
+}
+
+// MetadataString returns the Metadata map as a JSON string.
+// Deprecated: use MetadataJSON() instead. Kept for backward compatibility.
+func (m *MediaAsset) MetadataString() string {
+	return m.MetadataJSON()
 }
 
 // IndexingCheckpoint represents a checkpoint for the indexing process
@@ -52,3 +115,4 @@ type IndexingCheckpoint struct {
 	LastIndexedAt time.Time `json:"last_indexed_at"`
 	Metadata      string    `json:"metadata"`
 }
+

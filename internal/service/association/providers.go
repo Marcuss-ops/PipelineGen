@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 func (s *Service) buildStockFolderCandidates(ctx context.Context) ([]FolderCandidate, error) {
 	if s.stockRepo != nil {
 		if records, err := s.loadClipsFromDB(ctx, s.stockRepo, "stock"); err == nil && len(records) > 0 {

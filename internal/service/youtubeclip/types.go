@@ -1,13 +1,13 @@
 package youtubeclip
 
 type ExtractRequest struct {
-	URL            string             `json:"url"`
-	Segments       []Segment          `json:"segments"`
-	ForceKeyframes bool               `json:"force_keyframes"`
-	Normalize      *bool              `json:"normalize,omitempty"` // Use pointer to distinguish between missing and false
-	KeepAudio      bool               `json:"keep_audio"`
-	WriteSummary   *bool              `json:"write_summary,omitempty"`
-	Strategy       string             `json:"strategy,omitempty"` // verify, skip, replace
+	URL            string              `json:"url"`
+	Segments       []Segment           `json:"segments"`
+	ForceKeyframes bool                `json:"force_keyframes"`
+	Normalize      *bool               `json:"normalize,omitempty"` // Use pointer to distinguish between missing and false
+	KeepAudio      bool                `json:"keep_audio"`
+	WriteSummary   *bool               `json:"write_summary,omitempty"`
+	Strategy       string              `json:"strategy,omitempty"` // verify, skip, replace
 	Destination    *DestinationRequest `json:"destination,omitempty"`
 }
 
@@ -27,23 +27,23 @@ type Segment struct {
 }
 
 type ExtractResponse struct {
-	OK              bool               `json:"ok"`
-	SourceURL       string             `json:"source_url"`
-	VideoID         string             `json:"video_id,omitempty"`
-	Folder          *FolderInfo        `json:"folder,omitempty"`
-	Stats           *ExtractStats      `json:"stats,omitempty"`
-	Items           []ExtractItem      `json:"items"`
-	Error           string             `json:"error,omitempty"`
-	DriveFolderID   string             `json:"drive_folder_id,omitempty"`
-	DriveFolderPath string             `json:"drive_folder_path,omitempty"`
+	OK              bool          `json:"ok"`
+	SourceURL       string        `json:"source_url"`
+	VideoID         string        `json:"video_id,omitempty"`
+	Folder          *FolderInfo   `json:"folder,omitempty"`
+	Stats           *ExtractStats `json:"stats,omitempty"`
+	Items           []ExtractItem `json:"items"`
+	Error           string        `json:"error,omitempty"`
+	DriveFolderID   string        `json:"drive_folder_id,omitempty"`
+	DriveFolderPath string        `json:"drive_folder_path,omitempty"`
 }
 
 type FolderInfo struct {
-	ID              string `json:"id"`
-	LocalFolderPath string `json:"local_folder_path"`
-	DriveFolderID   string `json:"drive_folder_id,omitempty"`
-	DriveFolderPath string `json:"drive_folder_path,omitempty"`
-	ManifestTXTPath string `json:"manifest_txt_path,omitempty"`
+	ID               string `json:"id"`
+	LocalFolderPath  string `json:"local_folder_path"`
+	DriveFolderID    string `json:"drive_folder_id,omitempty"`
+	DriveFolderPath  string `json:"drive_folder_path,omitempty"`
+	ManifestTXTPath  string `json:"manifest_txt_path,omitempty"`
 	ManifestJSONPath string `json:"manifest_json_path,omitempty"`
 }
 
@@ -55,16 +55,16 @@ type ExtractStats struct {
 }
 
 type ExtractItem struct {
-	ID             string `json:"id,omitempty"`
-	Name           string `json:"name"`
-	Start          string `json:"start"`
-	End            string `json:"end"`
-	LocalPath      string `json:"local_path,omitempty"`
-	DriveLink      string `json:"drive_link,omitempty"`
-	DriveFileID    string `json:"drive_file_id,omitempty"`
-	DownloadLink   string `json:"download_link,omitempty"`
-	Status         string `json:"status"`
-	Error          string `json:"error,omitempty"`
-	DriveFolderID  string `json:"drive_folder_id,omitempty"`
+	ID              string `json:"id,omitempty"`
+	Name            string `json:"name"`
+	Start           string `json:"start"`
+	End             string `json:"end"`
+	LocalPath       string `json:"local_path,omitempty"`
+	DriveLink       string `json:"drive_link,omitempty"`
+	DriveFileID     string `json:"drive_file_id,omitempty"`
+	DownloadLink    string `json:"download_link,omitempty"`
+	Status          string `json:"status"`
+	Error           string `json:"error,omitempty"`
+	DriveFolderID   string `json:"drive_folder_id,omitempty"`
 	DriveFolderPath string `json:"drive_folder_path,omitempty"`
 }

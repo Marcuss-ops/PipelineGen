@@ -139,12 +139,8 @@ func runCleanupAllOrphans(args []string) error {
 			var dummy int
 			var dbErr error
 			switch t.dbPrefix {
-			case "artlist":
-				dbErr = deps.ArtlistDB.DB.QueryRowContext(ctx, "SELECT 1 FROM clips WHERE id = ?", f.Id).Scan(&dummy)
-			case "stock":
-				dbErr = deps.StockDB.DB.QueryRowContext(ctx, "SELECT 1 FROM clips WHERE id = ?", f.Id).Scan(&dummy)
-			case "clips":
-				dbErr = deps.YouTubeDB.DB.QueryRowContext(ctx, "SELECT 1 FROM clips WHERE id = ?", f.Id).Scan(&dummy)
+			case "artlist", "stock", "clips":
+				dbErr = deps.MediaDB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ?", f.Id).Scan(&dummy)
 			}
 
 			if dbErr != nil {
@@ -219,7 +215,7 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 	var orphanFolders []struct{ id, name string }
 	for _, f := range list.Files {
 		var dummy int
-		err := deps.ArtlistDB.DB.QueryRowContext(ctx, "SELECT 1 FROM clips WHERE id = ? AND is_folder = 1", f.Id).Scan(&dummy)
+		err := deps.MediaDB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
 		if err != nil {
 			orphanFolders = append(orphanFolders, struct{ id, name string }{f.Id, f.Name})
 		}
@@ -294,7 +290,7 @@ func runCleanupStockOrphans(args []string) error {
 	var orphanFolders []struct{ id, name string }
 	for _, f := range list.Files {
 		var dummy int
-		err := deps.StockDB.DB.QueryRowContext(ctx, "SELECT 1 FROM clips WHERE id = ? AND is_folder = 1", f.Id).Scan(&dummy)
+		err := deps.MediaDB.DB.QueryRowContext(ctx, "SELECT 1 FROM media_assets WHERE id = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.is_folder') = 1", f.Id).Scan(&dummy)
 		if err != nil {
 			orphanFolders = append(orphanFolders, struct{ id, name string }{f.Id, f.Name})
 		}

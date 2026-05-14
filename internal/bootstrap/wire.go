@@ -10,7 +10,7 @@ import (
 // AppDeps holds the minimal initialized dependencies for the server.
 type AppDeps struct {
 	Registry *module.Registry
-	Cleanup func()
+	Cleanup  func()
 }
 
 // WireServices initializes the full server composition root.

@@ -10,11 +10,11 @@ import (
 // parseVisualQueryResponse parses the LLM response into VisualQueryResult
 func parseVisualQueryResponse(response string, subject string, narrative string, maxQueries int) VisualQueryResult {
 	response = strings.TrimSpace(response)
-	
+
 	// Try to extract JSON from response
 	jsonStart := strings.Index(response, "{")
 	jsonEnd := strings.LastIndex(response, "}")
-	
+
 	if jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart {
 		zap.L().Warn("parseVisualQueryResponse: no valid JSON object found")
 		return VisualQueryResult{
@@ -23,9 +23,9 @@ func parseVisualQueryResponse(response string, subject string, narrative string,
 			Queries:       nil,
 		}
 	}
-	
+
 	jsonStr := response[jsonStart : jsonEnd+1]
-	
+
 	var result VisualQueryResult
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		zap.L().Warn("parseVisualQueryResponse: JSON parse failed",
@@ -38,7 +38,7 @@ func parseVisualQueryResponse(response string, subject string, narrative string,
 			Queries:       nil,
 		}
 	}
-	
+
 	// Validate and filter queries
 	validated := make([]string, 0, len(result.Queries))
 	seen := make(map[string]bool)
@@ -56,31 +56,31 @@ func parseVisualQueryResponse(response string, subject string, narrative string,
 		}
 	}
 	result.Queries = validated
-	
+
 	if result.VisualSubject == "" {
 		result.VisualSubject = subject
 	}
 	if result.VisualCaption == "" {
 		result.VisualCaption = narrative
 	}
-	
+
 	return result
 }
 
 // parseBatchVisualQueryResponse parses batch LLM response
 func parseBatchVisualQueryResponse(response string, segments []BatchSegmentInput, maxQueries int) map[int]VisualQueryResult {
 	response = strings.TrimSpace(response)
-	
+
 	jsonStart := strings.Index(response, "[")
 	jsonEnd := strings.LastIndex(response, "]")
-	
+
 	if jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart {
 		zap.L().Warn("parseBatchVisualQueryResponse: no valid JSON array found")
 		return buildBatchFallback("", segments)
 	}
-	
+
 	jsonStr := response[jsonStart : jsonEnd+1]
-	
+
 	var batchResults []map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &batchResults); err != nil {
 		zap.L().Warn("parseBatchVisualQueryResponse: JSON parse failed",
@@ -88,7 +88,7 @@ func parseBatchVisualQueryResponse(response string, segments []BatchSegmentInput
 		)
 		return buildBatchFallback("", segments)
 	}
-	
+
 	results := make(map[int]VisualQueryResult)
 	for i, item := range batchResults {
 		subject := ""
@@ -99,13 +99,13 @@ func parseBatchVisualQueryResponse(response string, segments []BatchSegmentInput
 			narrative = segments[i].Narrative
 			segIndex = segments[i].Index
 		}
-		
+
 		result := VisualQueryResult{
 			VisualSubject: subject,
 			VisualCaption: narrative,
 			Queries:       nil,
 		}
-		
+
 		if v, ok := item["visual_subject"].(string); ok {
 			result.VisualSubject = v
 		}
@@ -121,12 +121,12 @@ func parseBatchVisualQueryResponse(response string, segments []BatchSegmentInput
 		if v, ok := item["visual_prompts"].([]interface{}); ok {
 			result.VisualPrompts = parseInterfaceSlice(v, 3)
 		}
-		
+
 		if segIndex >= 0 {
 			results[segIndex] = result
 		}
 	}
-	
+
 	return results
 }
 

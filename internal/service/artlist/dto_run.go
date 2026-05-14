@@ -8,15 +8,15 @@ import (
 
 // RunTagRequest represents the full Artlist tag pipeline request.
 type RunTagRequest struct {
-	Term           string `json:"term"`
-	Limit          int    `json:"limit"`
-	RootFolderID   string `json:"root_folder_id,omitempty"`
-	Strategy       string `json:"strategy,omitempty"`
-	DryRun         bool   `json:"dry_run,omitempty"`
-	ClipDuration   int    `json:"clip_duration,omitempty"`
-	Width          int    `json:"width,omitempty"`
-	Height         int    `json:"height,omitempty"`
-	FPS            int    `json:"fps,omitempty"`
+	Term         string `json:"term"`
+	Limit        int    `json:"limit"`
+	RootFolderID string `json:"root_folder_id,omitempty"`
+	Strategy     string `json:"strategy,omitempty"`
+	DryRun       bool   `json:"dry_run,omitempty"`
+	ClipDuration int    `json:"clip_duration,omitempty"`
+	Width        int    `json:"width,omitempty"`
+	Height       int    `json:"height,omitempty"`
+	FPS          int    `json:"fps,omitempty"`
 }
 
 // ToMap converts RunTagRequest to a map for job payload.

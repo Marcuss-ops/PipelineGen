@@ -162,4 +162,3 @@ func (r *Repository) scanNode(scanner interface{ Scan(dest ...any) error }) (*As
 
 	return &node, nil
 }
-

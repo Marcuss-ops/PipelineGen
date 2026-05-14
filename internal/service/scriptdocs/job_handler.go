@@ -66,17 +66,17 @@ func (s *JobService) HandleJob(ctx context.Context, job *models.Job, tools *jobs
 	}
 
 	result := map[string]any{
-		"job_id":   job.ID,
+		"job_id":    job.ID,
 		"script_id": scriptID,
-		"topic":    payload.Topic,
-		"status":   "completed",
-		"message":  "Script generated successfully",
+		"topic":     payload.Topic,
+		"status":    "completed",
+		"message":   "Script generated successfully",
 	}
 
 	if tools.Event != nil {
 		tools.Event("completed", "Script generation completed", map[string]any{
 			"script_id": scriptID,
-			"topic":      payload.Topic,
+			"topic":     payload.Topic,
 		})
 	}
 

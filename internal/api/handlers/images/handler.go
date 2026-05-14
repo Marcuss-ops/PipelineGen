@@ -100,7 +100,7 @@ func (h *Handler) Search(c *gin.Context) {
 // Sync avvia la sincronizzazione manuale del file system e di Drive
 func (h *Handler) Sync(c *gin.Context) {
 	ctx := c.Request.Context()
-	
+
 	// 1. Local Sync
 	if err := h.service.SyncAssets(); err != nil {
 		apiutil.InternalError(c, err)
@@ -143,7 +143,6 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 		},
 	})
 }
-
 
 // Animate crea un video zoom-out da un'immagine esistente
 func (h *Handler) Animate(c *gin.Context) {

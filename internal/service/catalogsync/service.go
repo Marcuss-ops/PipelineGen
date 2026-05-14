@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
+	jobservice "velox/go-master/internal/service/jobs"
 	drivequery "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
 )
@@ -152,7 +152,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	}
 
 	now := time.Now().UTC()
-	rootClip := &models.Clip{
+	rootClip := &models.MediaAsset{
 		ID:             target.RootFolderID,
 		Name:           rootName,
 		Filename:       rootName,
@@ -234,7 +234,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 			category = "folder"
 		}
 
-		record := &models.Clip{
+		record := &models.MediaAsset{
 			ID:             child.Id,
 			Name:           childName,
 			Filename:       childName,
@@ -309,7 +309,7 @@ func (s *Service) listChildren(ctx context.Context, folderID string) ([]*driveap
 	return files, nil
 }
 
-func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *models.Clip) error {
+func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *models.MediaAsset) error {
 	if repo == nil || clip == nil {
 		return nil
 	}
@@ -321,7 +321,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 		if existing.LocalPath != "" {
 			clip.LocalPath = existing.LocalPath
 		}
-		if existing.Metadata != "" {
+		if len(existing.Metadata) > 0 {
 			clip.Metadata = existing.Metadata
 		}
 		if !existing.CreatedAt.IsZero() {
@@ -346,7 +346,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 			DriveLink: clip.DriveLink,
 			FileHash:  clip.FileHash,
 			Status:    "ready",
-			Metadata:  clip.Metadata,
+			Metadata:  clip.MetadataJSON(),
 			CreatedAt: clip.CreatedAt,
 			UpdatedAt: clip.UpdatedAt,
 		}

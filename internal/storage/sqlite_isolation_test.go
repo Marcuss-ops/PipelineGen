@@ -34,18 +34,18 @@ var expectedTables = map[string][]string{
 	},
 	"stock/stock.db.sqlite": {
 		"clips",        // Stock-specific clips
-		"clip_folders",  // Stock-specific folders
+		"clip_folders", // Stock-specific folders
 		"schema_migrations",
 	},
 	"clips/clips.db.sqlite": {
-		"clips",             // YouTube-specific clips
+		"clips",              // YouTube-specific clips
 		"clip_folders",       // YouTube-specific folders
 		"segment_embeddings", // Timeline cache - appropriate here
 		"schema_migrations",
 	},
 	"artlist/artlist.db.sqlite": {
 		"clips",        // Artlist-specific clips
-		"clip_folders",  // Artlist-specific folders
+		"clip_folders", // Artlist-specific folders
 		"clips_fts",    // FTS tables
 		"clips_fts_config",
 		"clips_fts_data",

@@ -14,13 +14,13 @@ type AudioInput struct {
 }
 
 type AudioResult struct {
-	LocalPath    string
-	CleanedPath  string
-	FileHash     string
-	DriveLink    string
-	DriveFileID  string
-	Status       string
-	Error        string
+	LocalPath   string
+	CleanedPath string
+	FileHash    string
+	DriveLink   string
+	DriveFileID string
+	Status      string
+	Error       string
 }
 
 type DestinationSpec struct {

@@ -13,12 +13,12 @@ import (
 
 // DriveSyncScheduler handles periodic Drive synchronization of all asset types.
 type DriveSyncScheduler struct {
-	catalogSync  *catalogsync.Service
+	catalogSync   *catalogsync.Service
 	voiceoverSync *voiceoversync.Service
 	imageService  *imgservice.Service
-	log          *zap.Logger
-	interval     time.Duration
-	stopCh       chan struct{}
+	log           *zap.Logger
+	interval      time.Duration
+	stopCh        chan struct{}
 }
 
 // NewDriveSyncScheduler creates a new Drive sync scheduler.

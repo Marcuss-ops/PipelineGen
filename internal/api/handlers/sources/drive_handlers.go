@@ -42,7 +42,7 @@ func (h *Handler) TrashByDriveFile(c *gin.Context) {
 		apiutil.BadRequest(c, "invalid request body")
 		return
 	}
-	
+
 	fileID := strings.TrimSpace(req.FileID)
 	if fileID == "" && req.DriveLink != "" {
 		fileID = driveutil.FileIDFromLink(req.DriveLink)

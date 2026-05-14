@@ -9,11 +9,11 @@ import (
 	"velox/go-master/internal/module"
 	artlistPkg "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/clipcatalog"
 	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/ontology"
-	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/matchingconfig"
 	"velox/go-master/pkg/models"
@@ -40,7 +40,7 @@ func WireArtlist(
 
 	// 3. Resolvers
 	assetDestResolver := wireAssetDestinationResolver(cfg, coreDeps, log)
-	
+
 	// Load presets early
 	presetsConfig, err := artlistPkg.LoadPresets("config/artlist_presets.yaml")
 	if err != nil {
@@ -146,17 +146,17 @@ func wireClipResolver(coreDeps *CoreDeps, clipCatalogRepo *clipcatalog.Repositor
 
 	// Build map of prioritized repositories
 	repos := make(map[string]*clipcatalog.Repository)
-	
+
 	// 1. Stock database (highest priority)
-	if coreDeps.StockDB != nil && coreDeps.StockDB.DB != nil {
-		repos["stock"] = clipcatalog.NewRepository(coreDeps.StockDB.DB, log)
-		repos["stock"].SetServerInfo("http://127.0.0.1:8001", coreDeps.StockDB.Path())
+	if coreDeps.MediaDB != nil && coreDeps.MediaDB.DB != nil {
+		repos["stock"] = clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
+		repos["stock"].SetServerInfo("http://127.0.0.1:8001", coreDeps.MediaDB.Path())
 	}
 
 	// 2. YouTube clips database
-	if coreDeps.YouTubeDB != nil && coreDeps.YouTubeDB.DB != nil {
-		repos["youtube"] = clipcatalog.NewRepository(coreDeps.YouTubeDB.DB, log)
-		repos["youtube"].SetServerInfo("http://127.0.0.1:8001", coreDeps.YouTubeDB.Path())
+	if coreDeps.MediaDB != nil && coreDeps.MediaDB.DB != nil {
+		repos["youtube"] = clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
+		repos["youtube"].SetServerInfo("http://127.0.0.1:8001", coreDeps.MediaDB.Path())
 	}
 
 	// 3. Artlist database (fallback)
@@ -176,7 +176,7 @@ func wireArtlistService(
 	artlistSvc, err := artlistPkg.NewService(
 		cfg,
 		coreDeps.DB.DB,
-		coreDeps.ArtlistDB.DB,
+		coreDeps.MediaDB.DB,
 		cfg.Paths.NodeScraperDir,
 		coreDeps.ArtlistRepo,
 		coreDeps.MediaProcessor,

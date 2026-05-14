@@ -9,20 +9,20 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/assettree"
-	"velox/go-master/internal/service/media"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/media"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/models"
 )
 
 // Service coordinates system-wide maintenance tasks.
 type Service struct {
-	cfg             *config.Config
-	log             *zap.Logger
-	assetIndexSvc   *assetindex.Service
-	assetTreeSvc    *assettree.Service
-	deletionSvc     *media.DeletionService
-	jobsSvc         *jobservice.Service
+	cfg           *config.Config
+	log           *zap.Logger
+	assetIndexSvc *assetindex.Service
+	assetTreeSvc  *assettree.Service
+	deletionSvc   *media.DeletionService
+	jobsSvc       *jobservice.Service
 }
 
 // NewService creates a new maintenance service.
@@ -52,9 +52,9 @@ func (s *Service) SetDeletionService(deletionSvc *media.DeletionService) {
 // RunCleanup performs a full system cleanup.
 func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[string]any, error) {
 	s.log.Info("Starting system-wide cleanup", zap.Bool("deep", deep), zap.Bool("dry_run", dryRun))
-	
+
 	results := make(map[string]any)
-	
+
 	if s.deletionSvc == nil {
 		s.log.Error("Deletion service not available for cleanup")
 		return nil, fmt.Errorf("deletion service not initialized")

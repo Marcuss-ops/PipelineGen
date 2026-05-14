@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/service/voiceover"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/pkg/apiutil"
 	"velox/go-master/pkg/models"
 )
@@ -64,7 +64,7 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 		}
 
 		apiutil.OK(c, gin.H{
-			"job_id": job.ID,
+			"job_id":  job.ID,
 			"message": "Voiceover generation enqueued",
 		})
 		return
@@ -101,7 +101,7 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 		}
 
 		apiutil.OK(c, gin.H{
-			"job_id": job.ID,
+			"job_id":  job.ID,
 			"message": "Voiceover batch enqueued",
 		})
 		return

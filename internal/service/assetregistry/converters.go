@@ -9,7 +9,7 @@ import (
 
 // VoiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
 // This is the canonical converter — do NOT create copies in handlers or services.
-func VoiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
+func VoiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
 	if rec == nil {
 		return nil
 	}
@@ -20,7 +20,7 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
 			name = name[:50]
 		}
 	}
-	return &models.Clip{
+	clip := &models.MediaAsset{
 		ID:           rec.ID,
 		Name:         name,
 		Filename:     rec.Filename,
@@ -32,18 +32,19 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
 		FileHash:     rec.FileHash,
 		LocalPath:    rec.LocalPath,
 		Source:       "voiceover",
-		Metadata:     rec.Metadata,
 		MediaType:    "audio",
 		SearchTerms:  []string{rec.TextPreview},
 		CreatedAt:    rec.CreatedAt,
 		UpdatedAt:    rec.UpdatedAt,
 	}
+	clip.SetMetadataJSON(rec.Metadata)
+	return clip
 }
 
 // ImageAssetToClip converts an models.ImageAsset to models.Clip for unified handling.
 // Uses SlugID as ID (consistent with admin UI) and Hash as FileHash.
 // This is the canonical converter — do NOT create copies in handlers or services.
-func ImageAssetToClip(asset *models.ImageAsset) *models.Clip {
+func ImageAssetToClip(asset *models.ImageAsset) *models.MediaAsset {
 	if asset == nil {
 		return nil
 	}
@@ -57,7 +58,7 @@ func ImageAssetToClip(asset *models.ImageAsset) *models.Clip {
 	if id == "" {
 		id = asset.Hash
 	}
-	return &models.Clip{
+	return &models.MediaAsset{
 		ID:          id,
 		Name:        name,
 		Filename:    filepath.Base(asset.PathRel),

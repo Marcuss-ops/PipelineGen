@@ -11,8 +11,8 @@ import (
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/upload/drive"
 	driveutil "velox/go-master/pkg/drive"
 	"velox/go-master/pkg/models"
@@ -70,7 +70,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	}
 
 	// 2. Get Clip Data to find Drive file ID
-	var clip *models.Clip
+	var clip *models.MediaAsset
 	var err error
 
 	if canonical == "voiceover" && s.voiceoverRepo != nil {
@@ -157,7 +157,7 @@ func (s *DeletionService) DeleteByDriveFile(ctx context.Context, fileID string, 
 }
 
 // FindClipByDriveFileID searches for a clip across repositories.
-func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*models.Clip, string, error) {
+func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*models.MediaAsset, string, error) {
 	repos := map[string]interface{}{
 		"artlist":   s.artlistRepo,
 		"clips":     s.clipsRepo,

@@ -5,7 +5,7 @@ import (
 	"velox/go-master/pkg/models"
 )
 
-func modelClipsToScoredMatches(clips []models.Clip, details string, source string, link string) []association.ScoredMatch {
+func modelClipsToScoredMatches(clips []models.MediaAsset, details string, source string, link string) []association.ScoredMatch {
 	matches := make([]association.ScoredMatch, 0, len(clips))
 	for _, c := range clips {
 		l := link

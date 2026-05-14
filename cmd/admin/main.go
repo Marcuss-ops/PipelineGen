@@ -18,18 +18,18 @@ func main() {
 	args := os.Args[2:]
 
 	commands := map[string]commandFunc{
-		"backfill-hash":               runBackfillHash,
-		"backfill-hash-v2":            runBackfillHashV2,
-		"backfill-asset-index":        runBackfillAssetIndex,
-		"backfill-asset-tree":         runBackfillAssetTree,
-		"cleanup-orphans":             runCleanupOrphans,
-		"cleanup-all-orphans":         runCleanupAllOrphans,
+		"backfill-hash":                 runBackfillHash,
+		"backfill-hash-v2":              runBackfillHashV2,
+		"backfill-asset-index":          runBackfillAssetIndex,
+		"backfill-asset-tree":           runBackfillAssetTree,
+		"cleanup-orphans":               runCleanupOrphans,
+		"cleanup-all-orphans":           runCleanupAllOrphans,
 		"cleanup-artlist-empty-folders": runCleanupArtlistEmptyFolders,
-		"cleanup-stock-orphans":       runCleanupStockOrphans,
-		"delete-specific-folders":     runDeleteSpecificFolders,
-		"sync-all-drive":              runSyncAllDrive,
-		"test-youtube":                runTestYouTube,
-		"verify-artlist-pipeline":     runVerifyArtlistPipeline,
+		"cleanup-stock-orphans":         runCleanupStockOrphans,
+		"delete-specific-folders":       runDeleteSpecificFolders,
+		"sync-all-drive":                runSyncAllDrive,
+		"test-youtube":                  runTestYouTube,
+		"verify-artlist-pipeline":       runVerifyArtlistPipeline,
 	}
 
 	fn, ok := commands[cmdName]

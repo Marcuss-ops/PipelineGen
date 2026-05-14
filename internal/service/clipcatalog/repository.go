@@ -154,7 +154,7 @@ func (r *Repository) FindCandidatesFTS(ctx context.Context, query string, limit 
 	if len(tokens) == 0 {
 		return nil, nil
 	}
-	
+
 	// Join tokens with OR or just as a phrase. For FTS, simple space works as AND.
 	// We use "term*" for prefix matching.
 	ftsQuery := ""
@@ -335,10 +335,10 @@ func (r *Repository) UpdateMetadata(ctx context.Context, clipID string, meta Cli
 		t, _ := json.Marshal(meta.Tags)
 		tagsStr = string(t)
 	}
-	
+
 	// Delete old FTS entry
 	_, _ = tx.ExecContext(ctx, "DELETE FROM clips_fts WHERE clip_id = ?", clipID)
-	
+
 	// Insert new FTS entry (fetching name from clips table)
 	ftsStmt := `
 		INSERT INTO clips_fts(clip_id, name, search_text, tags, category, scene_type)
@@ -393,10 +393,10 @@ func (r *Repository) GetEmbedding(ctx context.Context, clipID string) ([]float64
 }
 
 // GetClip retrieves a full clip by ID
-func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.Clip, error) {
+func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.MediaAsset, error) {
 	// Delegate to existing clips repository or implement here
 	// For now, return a basic clip
-	var clip models.Clip
+	var clip models.MediaAsset
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name, drive_link, local_path, category, search_text
 		FROM clips WHERE id = ?
@@ -410,7 +410,7 @@ func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.Clip, 
 }
 
 // BuildSearchTextFromClip builds search text from clip metadata
-func BuildSearchTextFromClip(clip *models.Clip) string {
+func BuildSearchTextFromClip(clip *models.MediaAsset) string {
 	parts := make([]string, 0)
 
 	// Add name tokens

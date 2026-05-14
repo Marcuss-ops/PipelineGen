@@ -11,13 +11,13 @@ import (
 )
 
 type EnqueueRequest struct {
-	Type       models.JobType    `json:"type"`
-	Project    string            `json:"project,omitempty"`
-	VideoName  string            `json:"video_name,omitempty"`
-	Payload    map[string]any    `json:"payload"`
-	Priority   int               `json:"priority,omitempty"`
-	MaxRetries int               `json:"max_retries,omitempty"`
-	ActiveKey  string            `json:"active_key,omitempty"`
+	Type       models.JobType `json:"type"`
+	Project    string         `json:"project,omitempty"`
+	VideoName  string         `json:"video_name,omitempty"`
+	Payload    map[string]any `json:"payload"`
+	Priority   int            `json:"priority,omitempty"`
+	MaxRetries int            `json:"max_retries,omitempty"`
+	ActiveKey  string         `json:"active_key,omitempty"`
 }
 
 type JobTools struct {

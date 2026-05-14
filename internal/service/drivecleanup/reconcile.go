@@ -20,7 +20,7 @@ type ReconcileResult struct {
 	DeletedFromSQLite    int      `json:"deleted_from_sqlite"`
 	AddedToSQLite        int      `json:"added_to_sqlite"`
 	MissingFileIDs       []string `json:"missing_file_ids,omitempty"`
-	OrphanedDriveFileIDs  []string `json:"orphaned_drive_file_ids,omitempty"`
+	OrphanedDriveFileIDs []string `json:"orphaned_drive_file_ids,omitempty"`
 }
 
 // Reconcile compares SQLite clips with Drive files and reports mismatches.

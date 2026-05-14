@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/config"
 	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/pkg/config"
 )
 
 // ChannelConfig represents a monitored YouTube channel
@@ -41,20 +41,20 @@ type MonitorConfig struct {
 
 // ChannelMonitor handles periodic YouTube channel monitoring
 type ChannelMonitor struct {
-	cfg       *config.Config
-	clipsRepo *clips.Repository
-	log       *zap.Logger
-	stopCh    chan struct{}
+	cfg        *config.Config
+	clipsRepo  *clips.Repository
+	log        *zap.Logger
+	stopCh     chan struct{}
 	youtubeSvc *youtubeclip.Service
 }
 
 // NewChannelMonitor creates a new channel monitor
 func NewChannelMonitor(cfg *config.Config, clipsRepo *clips.Repository, log *zap.Logger, youtubeSvc *youtubeclip.Service) *ChannelMonitor {
 	return &ChannelMonitor{
-		cfg:       cfg,
-		clipsRepo: clipsRepo,
-		log:       log,
-		stopCh:    make(chan struct{}),
+		cfg:        cfg,
+		clipsRepo:  clipsRepo,
+		log:        log,
+		stopCh:     make(chan struct{}),
 		youtubeSvc: youtubeSvc,
 	}
 }
@@ -179,7 +179,7 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, chann
 	}
 
 	videoURL := fmt.Sprintf("https://www.youtube.com/watch?v=%s", videoID)
-	
+
 	req := &youtubeclip.ExtractRequest{
 		URL: videoURL,
 		Segments: []youtubeclip.Segment{
@@ -189,7 +189,7 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, chann
 			Group: channel.Category,
 		},
 	}
-	
+
 	// Add proper defaults to extraction request
 	normalize := true
 	req.Normalize = &normalize
@@ -206,7 +206,7 @@ func (m *ChannelMonitor) downloadClip(ctx context.Context, videoID string, chann
 // loadConfig loads the monitor configuration from file
 func (m *ChannelMonitor) loadConfig() (*MonitorConfig, error) {
 	configPath := "config/channel_monitor_config.json"
-	
+
 	// Fallback to data dir if config file does not exist in root
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		configPath = filepath.Join(m.cfg.Storage.DataDir, "channel_monitor_config.json")

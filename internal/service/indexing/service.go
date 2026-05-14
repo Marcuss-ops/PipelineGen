@@ -116,7 +116,7 @@ func (s *Service) indexSingleFile(ctx context.Context, rootDir, path string) {
 		s.log.Debug("Reusing existing clip ID", zap.String("name", name), zap.String("id", clipID))
 	}
 
-	clip := &models.Clip{
+	clip := &models.MediaAsset{
 		ID:           clipID,
 		Name:         name,
 		Filename:     filename,

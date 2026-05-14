@@ -32,22 +32,22 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 
 // DownloadRequest configures a download operation.
 type DownloadRequest struct {
-	URL            string
-	OutputPath     string
-	Format         string // e.g. "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"
-	MergeFormat    string // e.g. "mp4"
-	NoPlaylist     bool
+	URL              string
+	OutputPath       string
+	Format           string // e.g. "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best"
+	MergeFormat      string // e.g. "mp4"
+	NoPlaylist       bool
 	DownloadSections []string // e.g. ["*00:01:20-00:01:35"]
-	ForceKeyframes bool
-	StreamCopy     bool // If true, force stream copy (fast but less precise)
-	Timeout        time.Duration
+	ForceKeyframes   bool
+	StreamCopy       bool // If true, force stream copy (fast but less precise)
+	Timeout          time.Duration
 }
 
 // DownloadedSegment represents a successfully downloaded segment.
 type DownloadedSegment struct {
-	Path   string
-	Name   string
-	Index  int
+	Path  string
+	Name  string
+	Index int
 }
 
 // Download downloads a full video.
@@ -169,9 +169,9 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 
 // ListChannelVideos lists videos from a YouTube channel using flat playlist.
 type VideoInfo struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Views    int64  `json:"view_count"`
+	ID       string  `json:"id"`
+	Title    string  `json:"title"`
+	Views    int64   `json:"view_count"`
 	Duration float64 `json:"duration"` // yt-dlp might return float
 }
 

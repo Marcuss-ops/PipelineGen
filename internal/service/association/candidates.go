@@ -17,14 +17,16 @@ type CandidatesRequest struct {
 }
 
 type Candidate struct {
-	Database string `json:"database"`
-	Source   string `json:"source"`
-	Name     string `json:"name"`
-	Path     string `json:"path,omitempty"`
-	FolderID string `json:"folder_id,omitempty"`
-	Link     string `json:"link,omitempty"`
-	Score    int    `json:"score"`
-	Reason   string `json:"reason,omitempty"`
+	Database  string    `json:"database"`
+	Source    string    `json:"source"`
+	Name      string    `json:"name"`
+	Path      string    `json:"path,omitempty"`
+	FolderID  string    `json:"folder_id,omitempty"`
+	Link      string    `json:"link,omitempty"`
+	Score     int       `json:"score"`
+	Reason    string    `json:"reason,omitempty"`
+	Tags      []string  `json:"tags,omitempty"`
+	Embedding []float32 `json:"embedding,omitempty"`
 }
 
 type CandidatesResponse struct {

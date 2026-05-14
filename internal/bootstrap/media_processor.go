@@ -7,8 +7,8 @@ import (
 
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/service/mediaasset"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/media/downloader"
 	"velox/go-master/pkg/media/ffmpeg"

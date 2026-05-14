@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/service/clipcatalog"
-	"go.uber.org/zap"
 )
 
 type Service struct {
@@ -50,7 +50,7 @@ func (s *Service) TagClip(ctx context.Context, clipID string, localPath string) 
 	// 1. Extract frame
 	framePath := filepath.Join(s.tmpDir, clipID+"_frame.jpg")
 	os.MkdirAll(s.tmpDir, 0755)
-	
+
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-ss", "00:00:02", "-i", localPath, "-frames:v", "1", framePath)
 	if err := cmd.Run(); err != nil {
 		// Try at 0 if 2s fails (clip might be shorter)
@@ -80,7 +80,7 @@ Return ONLY a valid JSON object with the following schema:
   "usable_for": ["context1", "context2"],
   "avoid_for": ["context1"]
 }`
-	
+
 	messages := []types.Message{
 		{
 			Role:    "user",
@@ -88,7 +88,7 @@ Return ONLY a valid JSON object with the following schema:
 			Images:  []string{base64Image},
 		},
 	}
-	
+
 	// Use a VLM model if specified, otherwise default
 	resp, err := s.gen.GetClient().Chat(ctx, messages, nil)
 	if err != nil {
@@ -117,13 +117,13 @@ Return ONLY a valid JSON object with the following schema:
 		AvoidFor:     result.AvoidFor,
 		QualityScore: 0.8, // Boost quality since it's now well-tagged
 	}
-	
+
 	if err := s.repo.UpdateMetadata(ctx, clipID, meta); err != nil {
 		return fmt.Errorf("failed to update repository: %w", err)
 	}
 
-	s.log.Info("clip tagged successfully via VLM", 
-		zap.String("clip_id", clipID), 
+	s.log.Info("clip tagged successfully via VLM",
+		zap.String("clip_id", clipID),
 		zap.String("category", result.Category),
 	)
 

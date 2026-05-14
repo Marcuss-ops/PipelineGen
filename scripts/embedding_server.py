@@ -70,8 +70,8 @@ def load_embeddings(db_path: str):
     try:
         conn = sqlite3.connect(db_path_str)
         cursor = conn.cursor()
-        # Query for all clips with embeddings
-        cursor.execute("SELECT id, embedding_json FROM clips WHERE embedding_json != '[]' AND embedding_json IS NOT NULL")
+        # Query for all media assets with embeddings
+        cursor.execute("SELECT id, embedding_json FROM media_assets WHERE embedding_json != '[]' AND embedding_json IS NOT NULL")
         rows = cursor.fetchall()
         conn.close()
         
@@ -110,7 +110,14 @@ class SearchRequest(BaseModel):
 @app.post("/search")
 def search(req: SearchRequest):
     mode = req.mode.lower()
-    embedding_col = "embedding_json" if mode == "text" else "visual_embedding_json"
+    # If mode is visual, we might need to extract from metadata_json if it's not a column
+    # For now, assume embedding_json is a column in media_assets (it is)
+    # But visual_embedding_json is NOT a column, it's in metadata_json
+    if mode == "text":
+        query_sql = "SELECT id, embedding_json FROM media_assets WHERE embedding_json != '[]' AND embedding_json IS NOT NULL"
+    else:
+        query_sql = "SELECT id, json_extract(metadata_json, '$.visual_embedding_json') FROM media_assets WHERE json_extract(metadata_json, '$.visual_embedding_json') IS NOT NULL"
+    
     target_model = model if mode == "text" else clip_model
     
     # Cache key includes mode
@@ -122,7 +129,7 @@ def search(req: SearchRequest):
         try:
             conn = sqlite3.connect(req.db_path)
             cursor = conn.cursor()
-            cursor.execute(f"SELECT id, {embedding_col} FROM clips WHERE {embedding_col} != '[]' AND {embedding_col} IS NOT NULL")
+            cursor.execute(query_sql)
             rows = cursor.fetchall()
             conn.close()
             
@@ -190,7 +197,7 @@ def index_clip(req: IndexRequest):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("SELECT id, name, tags, local_path FROM clips WHERE id = ?", (req.clip_id,))
+        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path FROM media_assets WHERE id = ?", (req.clip_id,))
         clip = cursor.fetchone()
         
         if not clip:
@@ -212,7 +219,7 @@ def index_clip(req: IndexRequest):
         embedding_json = json.dumps(embedding_list)
 
         cursor.execute(
-            "UPDATE clips SET search_text = ?, embedding_json = ? WHERE id = ?",
+            "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?",
             (search_text, embedding_json, req.clip_id)
         )
         
@@ -235,7 +242,7 @@ def index_clip(req: IndexRequest):
                     visual_emb_json = json.dumps(visual_emb)
                     
                     cursor.execute(
-                        "UPDATE clips SET phash = ?, visual_embedding_json = ? WHERE id = ?",
+                        "UPDATE media_assets SET metadata_json = json_set(json_set(COALESCE(metadata_json,'{}'), '$.phash', ?), '$.visual_embedding_json', ?) WHERE id = ?",
                         (phash, visual_emb_json, req.clip_id)
                     )
                     os.remove(frame_path)
@@ -285,7 +292,7 @@ def index_visual(req: VisualIndexRequest):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE clips SET phash = ?, visual_embedding_json = ? WHERE id = ?",
+            "UPDATE media_assets SET metadata_json = json_set(json_set(COALESCE(metadata_json,'{}'), '$.phash', ?), '$.visual_embedding_json', ?) WHERE id = ?",
             (phash, visual_emb_json, req.clip_id)
         )
         conn.commit()
@@ -329,7 +336,7 @@ def index_bulk(req: BulkIndexRequest):
 
         indexed_count = 0
         for clip_id in req.clip_ids:
-            cursor.execute("SELECT id, name, tags FROM clips WHERE id = ?", (clip_id,))
+            cursor.execute("SELECT id, name, tags FROM media_assets WHERE id = ?", (clip_id,))
             clip = cursor.fetchone()
             if not clip:
                 continue
@@ -349,7 +356,7 @@ def index_bulk(req: BulkIndexRequest):
             embedding_json = json.dumps(embedding_list)
 
             cursor.execute(
-                "UPDATE clips SET search_text = ?, embedding_json = ? WHERE id = ?",
+                "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?",
                 (search_text, embedding_json, clip_id)
             )
             indexed_count += 1

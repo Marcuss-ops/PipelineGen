@@ -124,7 +124,7 @@ func (h *Handler) RegenerateManifest(c *gin.Context) {
 	}
 
 	h.log.Info("regenerating manifest for folder", zap.String("id", folderID))
-	
+
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,

@@ -417,7 +417,7 @@ func (r *Repository) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff 
 		WHERE status = ?
 		  AND updated_at < ?
 	`
-	
+
 	result, err := r.db.ExecContext(ctx, query,
 		models.StatusFailed,
 		reason,
@@ -428,7 +428,7 @@ func (r *Repository) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff 
 	if err != nil {
 		return 0, fmt.Errorf("failed to mark stale jobs failed: %w", err)
 	}
-	
+
 	n, _ := result.RowsAffected()
 	return int(n), nil
 }

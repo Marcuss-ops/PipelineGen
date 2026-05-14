@@ -4,24 +4,24 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
 	jobservice "velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/models"
-	"go.uber.org/zap"
 )
 
 // JobHarvestService implements ArtlistHarvestService using the jobs service
 type JobHarvestService struct {
-	jobsSvc      *jobs.Service
-	log          *zap.Logger
+	jobsSvc       *jobs.Service
+	log           *zap.Logger
 	presetsConfig *jobservice.PresetsConfig
 }
 
 // NewJobHarvestService creates a new JobHarvestService
 func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger, presetsConfig *jobservice.PresetsConfig) *JobHarvestService {
 	return &JobHarvestService{
-		jobsSvc:      jobsSvc,
-		log:          log,
+		jobsSvc:       jobsSvc,
+		log:           log,
 		presetsConfig: presetsConfig,
 	}
 }

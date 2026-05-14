@@ -17,34 +17,10 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 		return fmt.Errorf("failed to run main migrations: %w", err)
 	}
 
-	// 2. Clips migrations (Stock, YouTube, Artlist)
-	clipsMigrationsDir := filepath.Join("internal", "repository", "clips", "migrations")
-	
-	// Stock footage DB
-	if err := dbs.stock.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run stock clips migrations: %w", err)
-	}
-	
-	// YouTube clips DB
-	if err := dbs.clips.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run clips database migrations: %w", err)
-	}
-	
-	// Artlist assets DB
-	if err := dbs.artlist.RunMigrations(log, clipsMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run artlist database migrations: %w", err)
-	}
-
-	// 3. Images migrations
-	imagesMigrationsDir := filepath.Join("internal", "repository", "images", "migrations")
-	if err := dbs.images.RunMigrations(log, imagesMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run images migrations: %w", err)
-	}
-
-	// 4. Voiceover migrations
-	voiceoverMigrationsDir := filepath.Join("internal", "repository", "voiceovers", "migrations")
-	if err := dbs.voiceover.RunMigrations(log, voiceoverMigrationsDir); err != nil {
-		return fmt.Errorf("failed to run voiceover migrations: %w", err)
+	// 2. Media database
+	mediaMigrationsDir := filepath.Join("migrations", "media")
+	if err := dbs.media.RunMigrations(log, mediaMigrationsDir); err != nil {
+		return fmt.Errorf("failed to run media migrations: %w", err)
 	}
 
 	return nil

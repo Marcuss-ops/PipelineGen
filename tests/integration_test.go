@@ -135,10 +135,10 @@ func TestServerShutdownClean(t *testing.T) {
 			EnableAuth: false, // Disable auth for simplicity
 		},
 		Features: config.FeaturesConfig{
-			ArtlistEnabled:   false,
-			YouTubeEnabled:   false,
-			DriveEnabled:     false,
-			ImagesEnabled:    false,
+			ArtlistEnabled: false,
+			YouTubeEnabled: false,
+			DriveEnabled:   false,
+			ImagesEnabled:  false,
 		},
 		Storage: config.StorageConfig{
 			DataDir: t.TempDir(),

@@ -44,13 +44,13 @@ func BuildFallbackLikeConditions(tokens []string, columns []string) (string, []i
 		if len(token) < 2 {
 			continue // Skip very short tokens to avoid overly broad LIKE %a% matches
 		}
-		
+
 		var colConditions []string
 		for _, col := range columns {
 			colConditions = append(colConditions, col+" LIKE ?")
 			args = append(args, "%"+token+"%")
 		}
-		
+
 		andConditions = append(andConditions, "("+strings.Join(colConditions, " OR ")+")")
 	}
 

@@ -35,9 +35,9 @@ func NewHTTPDownloader(timeout time.Duration) *HTTPDownloader {
 
 // HTTPDownloadRequest configures a direct HTTP download.
 type HTTPDownloadRequest struct {
-	URL         string
-	OutputPath  string
-	MaxSize     int64 // 0 = unlimited
+	URL        string
+	OutputPath string
+	MaxSize    int64 // 0 = unlimited
 }
 
 // Download performs a direct HTTP download.

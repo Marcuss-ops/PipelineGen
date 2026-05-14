@@ -11,14 +11,14 @@ import (
 // RouteModule is a generic module for simple route-only modules.
 // It eliminates boilerplate for modules that just register routes.
 type RouteModule struct {
-	name        string
-	enabled     func(*config.Config) bool
-	prefix      string
-	handler     interface{ RegisterRoutes(*gin.RouterGroup) }
-	log         *zap.Logger
-	startFn     func(context.Context) error
-	stopFn      func(context.Context) error
-	middleware  []gin.HandlerFunc
+	name       string
+	enabled    func(*config.Config) bool
+	prefix     string
+	handler    interface{ RegisterRoutes(*gin.RouterGroup) }
+	log        *zap.Logger
+	startFn    func(context.Context) error
+	stopFn     func(context.Context) error
+	middleware []gin.HandlerFunc
 }
 
 // RouteModuleOption configures a RouteModule.

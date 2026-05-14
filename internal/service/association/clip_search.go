@@ -2,6 +2,7 @@ package association
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"velox/go-master/internal/repository/clips"
@@ -98,7 +99,7 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 	matches := make([]ScoredMatch, 0, len(clips))
 	for _, clip := range clips {
 		score, topicMatched := a.calculateScore(clip, topic, terms)
-		
+
 		// STRICT FILTER: If we have a topic but it's not in the clip, and the score is low,
 		// it means we are just matching generic keywords. Better to show nothing than wrong stuff.
 		if topic != "" && !topicMatched && score < 45 { // Increased threshold
@@ -106,12 +107,13 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 		}
 
 		match := ScoredMatch{
-			Title:  clip.Name,
-			Path:   clip.FolderPath,
-			Score:  score,
-			Source: source,
-			Link:   clip.DriveLink,
-			Reason: "clip search match",
+			Title:     clip.Name,
+			Path:      clip.FolderPath,
+			Score:     score,
+			Source:    source,
+			Link:      clip.DriveLink,
+			Reason:    "clip search match",
+			Embedding: ParseEmbeddingJSON(clip.EmbeddingJSON),
 		}
 		if match.Link == "" && clip.FolderID != "" {
 			match.Link = "https://drive.google.com/drive/folders/" + clip.FolderID
@@ -122,13 +124,13 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 	return matches, nil
 }
 
-func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, topic string, terms []string) (int, bool) {
+func (a *ClipSearchAssociation) calculateScore(clip *models.MediaAsset, topic string, terms []string) (int, bool) {
 	score := 10 // Lower base score to allow for more differentiation
 
 	clipName := strings.ToLower(clip.Name)
 	clipPath := strings.ToLower(clip.FolderPath)
 	clipTags := strings.ToLower(strings.Join(clip.Tags, " "))
-	
+
 	topic = strings.ToLower(topic)
 	topicMatched := false
 
@@ -171,14 +173,14 @@ func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, topic string, 
 			score += weight
 			matched = true
 		}
-		
+
 		if matched && topicMatched {
 			score += 10 // Synergy bonus
 		}
 	}
 
 	// 3. Relevance Density Penalty (ALGORITHMIC)
-	// If a clip has many descriptive tokens that are NOT in our query, 
+	// If a clip has many descriptive tokens that are NOT in our query,
 	// it means the clip is primarily about something else.
 	clipTokens := textutil.Tokenize(clipName + " " + clipTags)
 	unmatchedCount := 0
@@ -216,4 +218,15 @@ func (a *ClipSearchAssociation) calculateScore(clip *models.Clip, topic string, 
 	}
 
 	return score, topicMatched
+}
+
+func ParseEmbeddingJSON(jsonStr string) []float32 {
+	if jsonStr == "" {
+		return nil
+	}
+	var emb []float32
+	if err := json.Unmarshal([]byte(jsonStr), &emb); err != nil {
+		return nil
+	}
+	return emb
 }

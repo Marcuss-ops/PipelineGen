@@ -38,16 +38,16 @@ func TestFeaturesConfigDefaults(t *testing.T) {
 func TestFeaturesConfigDisabled(t *testing.T) {
 	cfg := &Config{
 		Features: FeaturesConfig{
-			ArtlistEnabled:    false,
-			YouTubeEnabled:    false,
-			DriveEnabled:      false,
-			ScriptDocsEnabled: false,
+			ArtlistEnabled:     false,
+			YouTubeEnabled:     false,
+			DriveEnabled:       false,
+			ScriptDocsEnabled:  false,
 			ScriptClipsEnabled: false,
-			VoiceoverEnabled:  false,
-			WorkflowEnabled:   false,
-			ImagesEnabled:     false,
+			VoiceoverEnabled:   false,
+			WorkflowEnabled:    false,
+			ImagesEnabled:      false,
 		},
-}
+	}
 
 	if cfg.Features.ArtlistEnabled {
 		t.Error("ArtlistEnabled should be false")

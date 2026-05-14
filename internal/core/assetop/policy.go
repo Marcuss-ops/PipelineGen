@@ -51,11 +51,11 @@ type ReconcilePolicy struct {
 // DefaultDuplicatePolicy returns the default duplicate policy.
 func DefaultDuplicatePolicy() DuplicatePolicy {
 	return DuplicatePolicy{
-		Enabled:             true,
-		CheckByHash:         true,
-		CheckByDriveFileID:  true,
-		CheckByFilename:     false,
-		SkipIfExists:        true,
+		Enabled:            true,
+		CheckByHash:        true,
+		CheckByDriveFileID: true,
+		CheckByFilename:    false,
+		SkipIfExists:       true,
 	}
 }
 
@@ -81,9 +81,9 @@ func DefaultPersistPolicy() PersistPolicy {
 // DefaultReconcilePolicy returns the default reconcile policy.
 func DefaultReconcilePolicy() ReconcilePolicy {
 	return ReconcilePolicy{
-		Enabled:                      true,
-		DeleteDBIfDriveMissing:       false,
-		MarkMissingInsteadOfDelete:   true,
-		SyncDriveFileID:              true,
+		Enabled:                    true,
+		DeleteDBIfDriveMissing:     false,
+		MarkMissingInsteadOfDelete: true,
+		SyncDriveFileID:            true,
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,14 +18,13 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"math/rand"
 
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/models"
-	imagesRepo "velox/go-master/internal/repository/images"
-	clipsRepo "velox/go-master/internal/repository/clips"
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
+	clipsRepo "velox/go-master/internal/repository/clips"
+	imagesRepo "velox/go-master/internal/repository/images"
+	"velox/go-master/pkg/config"
+	"velox/go-master/pkg/models"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -109,7 +109,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	if err == nil && subject != nil {
 		if images, err := s.repo.ListImagesBySubject(subject.Slug); err == nil && len(images) > 0 {
 			s.log.Info("Images found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
-			
+
 			// SCELTA CASUALE: Se abbiamo più immagini, ne prendiamo una a caso
 			if len(images) > 1 {
 				source := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -117,7 +117,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 				s.log.Info("Picking random image from database", zap.Int("index", randomIndex), zap.Int("total", len(images)))
 				return &images[randomIndex], nil
 			}
-			
+
 			return &images[0], nil
 		}
 	}
@@ -169,14 +169,13 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
 	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
 	asset, err := s.downloadAndIngest(slug, imgURL, source, finalQuery, description, tags)
-	
+
 	return asset, err
 }
 
-
 func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=1", url.QueryEscape(query), lang)
-	
+
 	req, _ := http.NewRequest("GET", apiURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 
@@ -210,7 +209,7 @@ func (s *Service) searchWikipedia(query, lang string) string {
 
 	// Step 1: Search for the most relevant page
 	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=1", lang, url.QueryEscape(searchQuery))
-	
+
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 
@@ -386,18 +385,18 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 	var driveFileID string
 	if s.driveSvc != nil && s.driveFolderID != "" {
 		s.log.Info("Uploading image to Google Drive", zap.String("filename", filename), zap.String("folder_id", s.driveFolderID))
-		
+
 		driveFile := &driveapi.File{
 			Name:    filename,
 			Parents: []string{s.driveFolderID},
 		}
-		
+
 		// Use a new reader for the content
 		res, err := s.driveSvc.Files.Create(driveFile).
 			Media(strings.NewReader(string(content))).
 			Fields("id").
 			Do()
-		
+
 		if err != nil {
 			s.log.Error("Drive upload failed", zap.Error(err))
 		} else {
@@ -466,8 +465,8 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 
 		// Skip non-image files (basic check)
 		lowerName := strings.ToLower(file.Name)
-		if !strings.HasSuffix(lowerName, ".jpg") && !strings.HasSuffix(lowerName, ".jpeg") && 
-		   !strings.HasSuffix(lowerName, ".png") && !strings.HasSuffix(lowerName, ".webp") {
+		if !strings.HasSuffix(lowerName, ".jpg") && !strings.HasSuffix(lowerName, ".jpeg") &&
+			!strings.HasSuffix(lowerName, ".png") && !strings.HasSuffix(lowerName, ".webp") {
 			continue
 		}
 
@@ -481,11 +480,11 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 		// Note: We don't have the hash yet, so we use a placeholder or the Drive ID
 		// IngestImage would be better but it downloads the file.
 		// For population, we just want the record.
-		
+
 		asset := &models.ImageAsset{
 			SubjectID:    Slugify(file.Name),
 			Hash:         "drive_" + file.Id, // Placeholder hash
-			PathRel:      "", // No local path yet
+			PathRel:      "",                 // No local path yet
 			SourceURL:    file.WebViewLink,
 			Description:  "Synced from Drive: " + file.Name,
 			DriveFileID:  file.Id,
@@ -665,26 +664,26 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 	}
 
 	s.log.Info("Animation created", zap.String("path", outputPath))
-	
+
 	// 4. Upload video to Drive
 	var driveVideoID string
 	if s.driveSvc != nil && s.driveFolderID != "" {
 		s.log.Info("Uploading animated video to Google Drive", zap.String("filename", outputName))
-		
+
 		videoFile, err := os.Open(outputPath)
 		if err == nil {
 			driveFile := &driveapi.File{
 				Name:    outputName,
 				Parents: []string{s.driveFolderID},
 			}
-			
+
 			res, err := s.driveSvc.Files.Create(driveFile).
 				Media(videoFile).
 				Fields("id").
 				Do()
-			
+
 			videoFile.Close()
-			
+
 			if err != nil {
 				s.log.Error("Drive video upload failed", zap.Error(err))
 			} else {
@@ -696,7 +695,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 5. Ingest into Stock DB (if repo available)
 	if s.stockRepo != nil {
-		clip := &models.Clip{
+		clip := &models.MediaAsset{
 			ID:          "ai_" + imageHash,
 			Name:        "AI Animation: " + asset.SubjectID,
 			Filename:    outputName,
@@ -709,7 +708,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 			Status:      "ready",
 			CreatedAt:   time.Now(),
 		}
-		
+
 		if err := s.stockRepo.UpsertClip(context.Background(), clip); err != nil {
 			s.log.Warn("Failed to ingest animated clip into stock DB", zap.Error(err))
 		} else {

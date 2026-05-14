@@ -2,9 +2,9 @@ package visualquery
 
 const (
 	DefaultMaxQueries = 3
-	MinQueryWords    = 2
-	MaxQueryWords    = 4
-	cacheVersion     = "v1"
+	MinQueryWords     = 2
+	MaxQueryWords     = 4
+	cacheVersion      = "v1"
 )
 
 // VisualQueryResult contains the enriched query result from LLM

@@ -10,22 +10,22 @@ import (
 )
 
 type Repository struct {
-    db *sql.DB
+	db *sql.DB
 }
 
 func NewRepository(db *sql.DB) *Repository {
-    return &Repository{db: db}
+	return &Repository{db: db}
 }
 
 func (r *Repository) Upsert(ctx context.Context, rec *AssetRecord) error {
-    if rec.CreatedAt.IsZero() {
-        rec.CreatedAt = time.Now().UTC()
-    }
-    if rec.UpdatedAt.IsZero() {
-        rec.UpdatedAt = time.Now().UTC()
-    }
+	if rec.CreatedAt.IsZero() {
+		rec.CreatedAt = time.Now().UTC()
+	}
+	if rec.UpdatedAt.IsZero() {
+		rec.UpdatedAt = time.Now().UTC()
+	}
 
-    query := `
+	query := `
         INSERT INTO asset_index (
             asset_id, asset_type, source, source_id, operation_key,
             group_name, subfolder, local_path, drive_link, download_link,
@@ -48,26 +48,26 @@ func (r *Repository) Upsert(ctx context.Context, rec *AssetRecord) error {
             updated_at = excluded.updated_at
     `
 
-    _, err := r.db.ExecContext(ctx, query,
-        rec.AssetID,
-        rec.AssetType,
-        rec.Source,
-        rec.SourceID,
-        rec.OperationKey,
-        rec.GroupName,
-        rec.Subfolder,
-        rec.LocalPath,
-        rec.DriveLink,
-        rec.DownloadLink,
-        rec.FileHash,
-        rec.ContentHash,
-        rec.Status,
-        rec.Metadata,
-        rec.CreatedAt.Format(time.RFC3339),
-        rec.UpdatedAt.Format(time.RFC3339),
-    )
+	_, err := r.db.ExecContext(ctx, query,
+		rec.AssetID,
+		rec.AssetType,
+		rec.Source,
+		rec.SourceID,
+		rec.OperationKey,
+		rec.GroupName,
+		rec.Subfolder,
+		rec.LocalPath,
+		rec.DriveLink,
+		rec.DownloadLink,
+		rec.FileHash,
+		rec.ContentHash,
+		rec.Status,
+		rec.Metadata,
+		rec.CreatedAt.Format(time.RFC3339),
+		rec.UpdatedAt.Format(time.RFC3339),
+	)
 
-    return err
+	return err
 }
 
 func (r *Repository) FindByContentHash(ctx context.Context, hash string) (*AssetRecord, error) {
@@ -115,23 +115,23 @@ func (r *Repository) FindByContentHash(ctx context.Context, hash string) (*Asset
 }
 
 func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder string) ([]*AssetRecord, error) {
-    var conditions []string
-    var args []interface{}
+	var conditions []string
+	var args []interface{}
 
-    conditions = append(conditions, "status = ?")
-    args = append(args, "ready")
+	conditions = append(conditions, "status = ?")
+	args = append(args, "ready")
 
-    if group != "" {
-        conditions = append(conditions, "group_name = ?")
-        args = append(args, group)
-    }
+	if group != "" {
+		conditions = append(conditions, "group_name = ?")
+		args = append(args, group)
+	}
 
-    if subfolder != "" {
-        conditions = append(conditions, "subfolder = ?")
-        args = append(args, subfolder)
-    }
+	if subfolder != "" {
+		conditions = append(conditions, "subfolder = ?")
+		args = append(args, subfolder)
+	}
 
-    query := `
+	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
                file_hash, content_hash, status, metadata_json, created_at, updated_at
@@ -140,13 +140,13 @@ func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder stri
         ORDER BY created_at DESC
     `
 
-    rows, err := r.db.QueryContext(ctx, query, args...)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    var results []*AssetRecord
+	var results []*AssetRecord
 	for rows.Next() {
 		rec := &AssetRecord{}
 		var createdAtStr, updatedAtStr string
@@ -223,68 +223,68 @@ func (r *Repository) FindBySource(ctx context.Context, source, sourceID string) 
 }
 
 func (r *Repository) UpdateStatus(ctx context.Context, assetID, status string) error {
-    query := `UPDATE asset_index SET status = ?, updated_at = ? WHERE asset_id = ?`
-    _, err := r.db.ExecContext(ctx, query, status, time.Now().UTC().Format(time.RFC3339), assetID)
-    return err
+	query := `UPDATE asset_index SET status = ?, updated_at = ? WHERE asset_id = ?`
+	_, err := r.db.ExecContext(ctx, query, status, time.Now().UTC().Format(time.RFC3339), assetID)
+	return err
 }
 
 func (r *Repository) Delete(ctx context.Context, assetID string) error {
-    query := `DELETE FROM asset_index WHERE asset_id = ?`
-    _, err := r.db.ExecContext(ctx, query, assetID)
-    return err
+	query := `DELETE FROM asset_index WHERE asset_id = ?`
+	_, err := r.db.ExecContext(ctx, query, assetID)
+	return err
 }
 
 type Stats struct {
-    Total      int            `json:"total"`
-    ByType     map[string]int `json:"by_type"`
-    ByStatus   map[string]int `json:"by_status"`
+	Total    int            `json:"total"`
+	ByType   map[string]int `json:"by_type"`
+	ByStatus map[string]int `json:"by_status"`
 }
 
 func (r *Repository) GetStats(ctx context.Context) (*Stats, error) {
-    stats := &Stats{
-        ByType:   make(map[string]int),
-        ByStatus: make(map[string]int),
-    }
+	stats := &Stats{
+		ByType:   make(map[string]int),
+		ByStatus: make(map[string]int),
+	}
 
-    // Get total count
-    err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_index`).Scan(&stats.Total)
-    if err != nil {
-        return nil, err
-    }
+	// Get total count
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_index`).Scan(&stats.Total)
+	if err != nil {
+		return nil, err
+	}
 
-    // Get count by type
-    rows, err := r.db.QueryContext(ctx, `SELECT asset_type, COUNT(*) as cnt FROM asset_index GROUP BY asset_type`)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	// Get count by type
+	rows, err := r.db.QueryContext(ctx, `SELECT asset_type, COUNT(*) as cnt FROM asset_index GROUP BY asset_type`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    for rows.Next() {
-        var assetType string
-        var cnt int
-        if err := rows.Scan(&assetType, &cnt); err != nil {
-            return nil, err
-        }
-        stats.ByType[assetType] = cnt
-    }
+	for rows.Next() {
+		var assetType string
+		var cnt int
+		if err := rows.Scan(&assetType, &cnt); err != nil {
+			return nil, err
+		}
+		stats.ByType[assetType] = cnt
+	}
 
-    // Get count by status
-    rows, err = r.db.QueryContext(ctx, `SELECT status, COUNT(*) as cnt FROM asset_index GROUP BY status`)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
+	// Get count by status
+	rows, err = r.db.QueryContext(ctx, `SELECT status, COUNT(*) as cnt FROM asset_index GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    for rows.Next() {
-        var status string
-        var cnt int
-        if err := rows.Scan(&status, &cnt); err != nil {
-            return nil, err
-        }
-        stats.ByStatus[status] = cnt
-    }
+	for rows.Next() {
+		var status string
+		var cnt int
+		if err := rows.Scan(&status, &cnt); err != nil {
+			return nil, err
+		}
+		stats.ByStatus[status] = cnt
+	}
 
-    return stats, nil
+	return stats, nil
 }
 
 func (r *Repository) ListAll(ctx context.Context) ([]*AssetRecord, error) {

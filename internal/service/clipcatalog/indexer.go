@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/matchingconfig"
+	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
 )
 
@@ -124,7 +124,7 @@ func ExtendSearchText(existing, newTerms string) string {
 }
 
 // BuildClipMetadataFromModel builds ClipMetadata from models.Clip
-func BuildClipMetadataFromModel(clip *models.Clip, cfg *matchingconfig.MatchingConfig) ClipMetadata {
+func BuildClipMetadataFromModel(clip *models.MediaAsset, cfg *matchingconfig.MatchingConfig) ClipMetadata {
 	meta := ClipMetadata{
 		ID:         clip.ID,
 		Name:       clip.Name,

@@ -10,9 +10,9 @@ import (
 
 // Options configures how a command is run.
 type Options struct {
-	Timeout      time.Duration
-	WorkDir      string
-	Env          []string
+	Timeout        time.Duration
+	WorkDir        string
+	Env            []string
 	CombinedOutput bool
 }
 

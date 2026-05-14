@@ -38,7 +38,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	engine := gin.New()
 	apiGroup := engine.Group("/api")
 	protected := apiGroup.Group("")
-	
+
 	// This is what RegisterAllRoutes does - calls RegisterRoutes on each module
 	registry.RegisterAllRoutes(cfg, protected)
 
@@ -94,7 +94,7 @@ func (m *mockModuleWithGroup) Enabled(cfg *config.Config) bool {
 func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 	// This is the key fix: create a sub-group with the module's prefix
 	group := rg.Group(m.prefix)
-	
+
 	switch m.name {
 	case "artlist":
 		group.POST("/run", func(c *gin.Context) {})

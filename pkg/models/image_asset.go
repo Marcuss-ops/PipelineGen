@@ -21,7 +21,7 @@ type Subject struct {
 type ImageAsset struct {
 	ID           int64     `json:"id"`
 	Hash         string    `json:"hash"`
-	SubjectID    string    `json:"subject_id"` // TEXT in database (slug)
+	SubjectID    string    `json:"subject_id"`        // TEXT in database (slug)
 	SlugID       string    `json:"slug_id,omitempty"` // Alias for internal logic
 	PathRel      string    `json:"path_rel"`
 	SourceURL    string    `json:"source_url"`

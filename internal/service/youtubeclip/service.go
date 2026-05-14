@@ -18,11 +18,11 @@ import (
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
-	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/assetdestination"
 	"velox/go-master/internal/service/foldermemory"
+	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/config"
 	"velox/go-master/pkg/hashutil"
 	"velox/go-master/pkg/models"
@@ -31,15 +31,15 @@ import (
 )
 
 type Service struct {
-	cfg                *config.Config
-	log                *zap.Logger
-	clipsRepo          *clips.Repository
-	monitoredRepo      *monitors.Repository
-	driveClient        *driveapi.Service
-	assetDestResolver  destination.Resolver
-	mediaProcessor     processor.Processor
-	folderMemory       *foldermemory.Service
-	lifecycleService   *lifecycle.Service
+	cfg               *config.Config
+	log               *zap.Logger
+	clipsRepo         *clips.Repository
+	monitoredRepo     *monitors.Repository
+	driveClient       *driveapi.Service
+	assetDestResolver destination.Resolver
+	mediaProcessor    processor.Processor
+	folderMemory      *foldermemory.Service
+	lifecycleService  *lifecycle.Service
 }
 
 func NewService(
@@ -69,7 +69,7 @@ func NewService(
 
 func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractResponse, error) {
 	s.log.Info("YouTube Extract service called", zap.String("url", req.URL))
-	
+
 	videoID := extractVideoID(req.URL)
 	if videoID == "" {
 		videoID = hashutil.MD5String(req.URL)[:12]
@@ -78,17 +78,17 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	// Upsert MonitoredSource for the YouTube video
 	now := time.Now().UTC().Format(time.RFC3339)
 	monitoredSource := &models.MonitoredSource{
-		ID:             "youtube_" + videoID,
-		Source:         "youtube",
-		ExternalID:     videoID,
-		ExternalURL:    req.URL,
-		GroupName:      "",
-		Category:       "manual_extract",
-		Status:         "processing",
-		LastSeenAt:     now,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-		MetadataJSON:   "{}",
+		ID:           "youtube_" + videoID,
+		Source:       "youtube",
+		ExternalID:   videoID,
+		ExternalURL:  req.URL,
+		GroupName:    "",
+		Category:     "manual_extract",
+		Status:       "processing",
+		LastSeenAt:   now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		MetadataJSON: "{}",
 	}
 	if req.Destination != nil {
 		monitoredSource.GroupName = req.Destination.Group
@@ -137,7 +137,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	if req.Destination != nil && req.Destination.SubfolderName != "" {
 		folderSlug = pathutil.SafeFolderName(req.Destination.SubfolderName)
 	}
-	
+
 	outDir := filepath.Join(s.cfg.Storage.DataDir, "youtube-clips", folderSlug)
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		resp.OK = false
@@ -151,11 +151,11 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	var resolvedPath string
 	if s.assetDestResolver != nil && req.Destination != nil {
 		destReq := &destination.ResolveRequest{
-			Source:         "youtube",
-			Group:          req.Destination.Group,
-			FolderID:       req.Destination.FolderID,
-			FolderPath:     req.Destination.FolderPath,
-			SubfolderName:  req.Destination.SubfolderName,
+			Source:          "youtube",
+			Group:           req.Destination.Group,
+			FolderID:        req.Destination.FolderID,
+			FolderPath:      req.Destination.FolderPath,
+			SubfolderName:   req.Destination.SubfolderName,
 			CreateSubfolder: req.Destination.CreateSubfolder,
 		}
 
@@ -174,7 +174,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			resolvedPath = resolved.FolderPath
 		}
 	}
-	
+
 	// Set folder info on response
 	resp.Folder = &FolderInfo{
 		ID:               fmt.Sprintf("clipfolder_youtube_%s", videoID),
@@ -202,7 +202,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				clipFolder.FolderPath = resolvedPath
 				clipFolder.Group = getGroupFromDestination(req.Destination)
 			}
-			
+
 			// Update local path if it changed (e.g. user provided a specific subfolder_name)
 			if clipFolder.LocalFolderPath != outDir {
 				clipFolder.LocalFolderPath = outDir
@@ -211,18 +211,18 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			}
 		} else {
 			clipFolder = &models.ClipFolder{
-				ID:              folderID,
-				Source:          "youtube",
-				SourceURL:       resp.SourceURL,
-				VideoID:         videoID,
-				FolderID:        driveFolderID,
-				FolderPath:      resolvedPath,
-				LocalFolderPath: outDir,
-				Group:           getGroupFromDestination(req.Destination),
-				ManifestTXTPath: filepath.Join(outDir, "clip_manifest.txt"),
+				ID:               folderID,
+				Source:           "youtube",
+				SourceURL:        resp.SourceURL,
+				VideoID:          videoID,
+				FolderID:         driveFolderID,
+				FolderPath:       resolvedPath,
+				LocalFolderPath:  outDir,
+				Group:            getGroupFromDestination(req.Destination),
+				ManifestTXTPath:  filepath.Join(outDir, "clip_manifest.txt"),
 				ManifestJSONPath: filepath.Join(outDir, "clip_manifest.json"),
-				CreatedAt:       time.Now().UTC(),
-				UpdatedAt:       time.Now().UTC(),
+				CreatedAt:        time.Now().UTC(),
+				UpdatedAt:        time.Now().UTC(),
 			}
 			s.log.Info("created new clip folder", zap.String("folder_id", folderID))
 		}
@@ -258,10 +258,10 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 	for i, seg := range req.Segments {
 		item := ExtractItem{
-			Name:           pathutil.SafeFolderName(seg.Name),
-			Start:          strings.TrimSpace(seg.Start),
-			End:            strings.TrimSpace(seg.End),
-			DriveFolderID:  driveFolderID,
+			Name:            pathutil.SafeFolderName(seg.Name),
+			Start:           strings.TrimSpace(seg.Start),
+			End:             strings.TrimSpace(seg.End),
+			DriveFolderID:   driveFolderID,
 			DriveFolderPath: resolvedPath,
 		}
 
@@ -340,18 +340,18 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		processInput := &processor.ProcessInput{
 			ID:               clipID,
 			Name:             item.Name,
-			SourceURL:         resp.SourceURL,
+			SourceURL:        resp.SourceURL,
 			Term:             "",
-			OutputDir:         outDir,
+			OutputDir:        outDir,
 			Filename:         "",
 			FolderID:         driveFolderID,
 			Duration:         duration,
-			ForceKeyframes:    req.ForceKeyframes,
+			ForceKeyframes:   req.ForceKeyframes,
 			StreamCopy:       !shouldNormalize, // Fast extraction if no normalization needed
-			DownloadSections:  []string{section},
-			Normalize:         &normalize,
-			KeepAudio:         req.KeepAudio,
-			DisableDuration:   true, // Don't truncate YouTube clips to the global default duration
+			DownloadSections: []string{section},
+			Normalize:        &normalize,
+			KeepAudio:        req.KeepAudio,
+			DisableDuration:  true, // Don't truncate YouTube clips to the global default duration
 			Metadata: map[string]interface{}{
 				"video_id":         videoID,
 				"start":            item.Start,
@@ -468,7 +468,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				Status:          item.Status,
 				Tags:            fmt.Sprintf("%v", seg.Tags),
 			}
-			
+
 			// Replace existing or append new
 			found := false
 			for j, mItem := range manifest.Clips {
@@ -489,7 +489,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 	// Update folder manifest (TXT + JSON)
 	if clipFolder != nil {
-			// Compute manifest stats using foldermemory
+		// Compute manifest stats using foldermemory
 		stats := s.folderMemory.ComputeManifestStats(manifest)
 		manifest.Stats = stats
 
@@ -580,7 +580,7 @@ func (s *Service) SearchFolders(ctx context.Context, keyword string) ([]*models.
 }
 
 // ListFolderClips returns all clips in a folder by folder ID
-func (s *Service) ListFolderClips(ctx context.Context, folderID string) ([]*models.Clip, error) {
+func (s *Service) ListFolderClips(ctx context.Context, folderID string) ([]*models.MediaAsset, error) {
 	if s.clipsRepo == nil {
 		return nil, fmt.Errorf("clips repository not available")
 	}
@@ -669,12 +669,12 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 
 	// Decode payload using the same structure as YouTubeClipExtractPayload
 	var payload struct {
-		WorkspaceID string     `json:"workspace_id"`
-		ProjectID   string     `json:"project_id"`
-		URL         string     `json:"url"`
+		WorkspaceID string    `json:"workspace_id"`
+		ProjectID   string    `json:"project_id"`
+		URL         string    `json:"url"`
 		Segments    []Segment `json:"segments"`
-		UploadDrive bool       `json:"upload_drive"`
-		Normalize   *bool      `json:"normalize"`
+		UploadDrive bool      `json:"upload_drive"`
+		Normalize   *bool     `json:"normalize"`
 	}
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
@@ -731,7 +731,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 
 // SearchLive performs a live YouTube search using yt-dlp.
 // sort can be "views" for most viewed videos.
-func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]models.Clip, error) {
+func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]models.MediaAsset, error) {
 	// Parse limit from query if present (e.g., "query -15")
 	if strings.Contains(query, " -") {
 		parts := strings.Split(query, " -")
@@ -780,6 +780,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			"--no-warnings",
 		}
 	}
+	}
 
 	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
 	var stdout, stderr strings.Builder
@@ -792,7 +793,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	results := make([]models.Clip, 0, len(lines))
+	results := make([]models.MediaAsset, 0, len(lines))
 
 	for _, line := range lines {
 		if line == "" {
@@ -820,15 +821,15 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			thumbnail = item.Thumbnails[len(item.Thumbnails)-1].URL
 		}
 
-		clip := models.Clip{
+		clip := models.MediaAsset{
 			ID:           "youtube_" + item.ID,
 			Name:         item.Title,
 			Source:       "youtube",
 			ExternalURL:  item.URL,
 			DownloadLink: item.URL,
 			ThumbURL:     thumbnail,
-			Metadata:     fmt.Sprintf(`{"uploader": %q, "duration": %f, "video_id": %q}`, item.Uploader, item.Duration, item.ID),
 		}
+		clip.SetMetadataJSON(fmt.Sprintf(`{"uploader": %q, "duration": %f, "video_id": %q}`, item.Uploader, item.Duration, item.ID))
 		results = append(results, clip)
 	}
 
@@ -891,4 +892,3 @@ func extractVideoID(inputURL string) string {
 
 	return ""
 }
-

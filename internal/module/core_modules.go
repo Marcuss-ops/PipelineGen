@@ -5,9 +5,9 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/api/handlers/system"
-	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	drivehandler "velox/go-master/internal/api/handlers/drive"
+	scraperhandler "velox/go-master/internal/api/handlers/scraper"
+	"velox/go-master/internal/api/handlers/system"
 	"velox/go-master/pkg/config"
 )
 

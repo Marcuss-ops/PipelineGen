@@ -5,8 +5,8 @@ import (
 	"path"
 	"strings"
 
-	repo "velox/go-master/internal/repository/assettree"
 	"go.uber.org/zap"
+	repo "velox/go-master/internal/repository/assettree"
 )
 
 // Service provides utility functions for asset trees
@@ -57,7 +57,7 @@ func (s *Service) NormalizeDriveNode(
 		link = strings.TrimSpace(webContentLink)
 	}
 	isFolder := s.IsFolderMime(mimeType)
-	
+
 	if link == "" {
 		if isFolder {
 			link = "https://drive.google.com/drive/folders/" + id
@@ -122,7 +122,7 @@ func (s *Service) ListChildrenPaged(ctx context.Context, source, parentID string
 // GetBreadcrumb returns the path from root to the given node ID
 func (s *Service) GetBreadcrumb(ctx context.Context, id string) ([]*repo.AssetNode, error) {
 	var breadcrumb []*repo.AssetNode
-	
+
 	currentID := id
 	for currentID != "" {
 		node, err := s.repo.GetNode(ctx, currentID)
@@ -134,6 +134,6 @@ func (s *Service) GetBreadcrumb(ctx context.Context, id string) ([]*repo.AssetNo
 		breadcrumb = append([]*repo.AssetNode{node}, breadcrumb...)
 		currentID = node.ParentID
 	}
-	
+
 	return breadcrumb, nil
 }

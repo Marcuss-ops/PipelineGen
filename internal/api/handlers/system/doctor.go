@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	_ "github.com/mattn/go-sqlite3"
+	"go.uber.org/zap"
 
 	"velox/go-master/internal/storage"
 	"velox/go-master/pkg/config"
@@ -34,10 +34,10 @@ func NewHandler(cfg *config.Config, log *zap.Logger) *Handler {
 
 // DoctorResponse represents the response from the doctor endpoint
 type DoctorResponse struct {
-	OK      bool              `json:"ok"`
-	Checks  map[string]string `json:"checks"`
+	OK      bool                     `json:"ok"`
+	Checks  map[string]string        `json:"checks"`
 	Storage map[string]StorageStatus `json:"storage,omitempty"`
-	Fixes   []string         `json:"fixes,omitempty"`
+	Fixes   []string                 `json:"fixes,omitempty"`
 }
 
 type StorageStatus struct {
@@ -110,10 +110,10 @@ func (h *Handler) checkStorageDeep(ctx context.Context, resp *DoctorResponse) {
 
 	for key, path := range dirs {
 		status := StorageStatus{Path: path}
-		
+
 		if _, err := os.Stat(path); err == nil {
 			status.Exists = true
-			
+
 			// Check writability by creating a temp file
 			tmpFile := filepath.Join(path, ".velox_write_test")
 			if err := os.WriteFile(tmpFile, []byte("test"), 0644); err == nil {
@@ -129,7 +129,7 @@ func (h *Handler) checkStorageDeep(ctx context.Context, resp *DoctorResponse) {
 			status.Error = err.Error()
 			resp.Fixes = append(resp.Fixes, fmt.Sprintf("mkdir -p %s", path))
 		}
-		
+
 		resp.Storage[key] = status
 	}
 }
@@ -182,7 +182,7 @@ func (h *Handler) checkDatabases(ctx context.Context, resp *DoctorResponse) {
 	for _, dbRelPath := range dbs {
 		name := strings.Split(dbRelPath, "/")[0]
 		path := storage.GetDBPath(h.cfg.Storage.DataDir, dbRelPath)
-		
+
 		key := fmt.Sprintf("db_%s", name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			resp.Checks[key] = "missing"
@@ -196,7 +196,7 @@ func (h *Handler) checkDatabases(ctx context.Context, resp *DoctorResponse) {
 			resp.Fixes = append(resp.Fixes, fmt.Sprintf("Check database: %s", path))
 			continue
 		}
-		
+
 		if err := db.DB.Ping(); err != nil {
 			resp.Checks[key] = "unreachable"
 		} else {

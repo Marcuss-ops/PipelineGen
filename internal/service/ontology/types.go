@@ -18,5 +18,5 @@ type Registry struct {
 
 // OntologyScorer defines the interface for applying ontology-based scoring.
 type OntologyScorer interface {
-	Apply(score float64, clip *models.Clip, topic string) float64
+	Apply(score float64, clip *models.MediaAsset, topic string) float64
 }

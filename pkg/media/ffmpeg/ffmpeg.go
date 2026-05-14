@@ -30,29 +30,29 @@ func New(cfg *config.Config) *Processor {
 
 // NormalizeOptions configures video normalization.
 type NormalizeOptions struct {
-	Duration        int  // Max duration in seconds (0 = no limit)
-	DisableDuration bool // If true, ignore Duration even if > 0
-	KeepAudio       bool // If true, do not strip audio
-	Width           int
-	Height          int
-	FPS             int
-	Codec           string
-	Preset          string
-	CRF             int
-	KeyframeInterval int  // GOP size (keyframe interval, 0 = default)
+	Duration         int  // Max duration in seconds (0 = no limit)
+	DisableDuration  bool // If true, ignore Duration even if > 0
+	KeepAudio        bool // If true, do not strip audio
+	Width            int
+	Height           int
+	FPS              int
+	Codec            string
+	Preset           string
+	CRF              int
+	KeyframeInterval int // GOP size (keyframe interval, 0 = default)
 }
 
 // DefaultNormalizeOptions returns defaults from config.
 func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
 	v := cfg.Video.WithDefaults()
 	return NormalizeOptions{
-		Duration:        v.Duration,
-		Width:           v.Width,
-		Height:          v.Height,
-		FPS:             v.FPS,
-		Codec:           v.Codec,
-		Preset:          v.Preset,
-		CRF:             v.CRF,
+		Duration:         v.Duration,
+		Width:            v.Width,
+		Height:           v.Height,
+		FPS:              v.FPS,
+		Codec:            v.Codec,
+		Preset:           v.Preset,
+		CRF:              v.CRF,
 		KeyframeInterval: v.KeyframeInterval,
 	}
 }
@@ -94,7 +94,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 	// Generate new PTS to fix timestamp issues
 	args = append(args, "-fflags", "+genpts")
-	
+
 	// Avoid negative timestamps
 	args = append(args, "-avoid_negative_ts", "make_zero")
 
@@ -122,14 +122,14 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 	// Video codec settings
 	args = append(args, "-c:v", opts.Codec)
-	
+
 	// Keyframe settings
 	keyframeInterval := opts.KeyframeInterval
 	if keyframeInterval <= 0 {
 		keyframeInterval = opts.FPS * 2
 	}
 	args = append(args, "-g", fmt.Sprintf("%d", keyframeInterval))
-	
+
 	// NVENC specific optimizations
 	if strings.Contains(opts.Codec, "nvenc") {
 		// P1 is the fastest preset for NVENC
@@ -148,7 +148,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 		args = append(args, "-bf", "0")
 		args = append(args, "-refs", "1")
 	}
-	
+
 	args = append(args, "-pix_fmt", "yuv420p")
 	args = append(args, "-movflags", "+faststart")
 	args = append(args, "-vsync", "cfr")

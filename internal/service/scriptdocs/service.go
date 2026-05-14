@@ -57,15 +57,15 @@ func (s *Service) GenerateScript(ctx context.Context, topic, style, language str
 
 	// Save to database
 	scriptRec := &scripts.ScriptRecord{
-		Topic:     topic,
-		Duration:  60,
-		Language:  language,
-		Template:  style,
-		Mode:      "generated",
+		Topic:         topic,
+		Duration:      60,
+		Language:      language,
+		Template:      style,
+		Mode:          "generated",
 		NarrativeText: result.Script,
-		ModelUsed: result.Model,
-		Version:   1,
-		IsDeleted: false,
+		ModelUsed:     result.Model,
+		Version:       1,
+		IsDeleted:     false,
 	}
 
 	scriptID, err := s.scriptsRepo.SaveScript(scriptRec, nil, nil)

@@ -1,7 +1,9 @@
 package bootstrap
 
 import (
+	gdrive "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/api/handlers/common"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/catalog"
@@ -14,17 +16,15 @@ import (
 	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/catalogsync"
+	"velox/go-master/internal/service/clipindexer"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
-	"velox/go-master/internal/service/clipindexer"
 	jobservice "velox/go-master/internal/service/jobs"
+	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
-	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/youtubeclip"
-	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/upload/drive"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 type services struct {

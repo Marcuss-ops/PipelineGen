@@ -242,7 +242,7 @@ func (p *Processor) isHLSURL(url string) bool {
 // processStep normalizes/processes the video if needed.
 func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, processedPath string) (string, error) {
 	shouldNormalize := input.Normalize == nil || *input.Normalize
-	
+
 	// If normalization is not requested, just move the file
 	if !shouldNormalize {
 		p.log.Info("skipping normalization as requested, moving raw to processed path", zap.String("id", input.ID))
@@ -265,9 +265,9 @@ func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, 
 			// Check if properties match (with some tolerance for FPS)
 			fpsMatch := info.FPS >= float64(target.FPS)-0.1 && info.FPS <= float64(target.FPS)+0.1
 			resMatch := info.Width == target.Width && info.Height == target.Height
-			
+
 			if resMatch && fpsMatch {
-				p.log.Info("Zero-Copy Optimization: properties match, skipping normalization", 
+				p.log.Info("Zero-Copy Optimization: properties match, skipping normalization",
 					zap.String("id", input.ID),
 					zap.Int("width", info.Width),
 					zap.Int("height", info.Height),
@@ -349,7 +349,7 @@ func (p *Processor) checkPHashDeduplication(ctx context.Context, clipID, videoPa
 
 	// 2. Call embedding server to get pHash
 	serverURL := "http://127.0.0.1:8001/phash"
-	
+
 	type PhashRequest struct {
 		ImagePath string `json:"image_path"`
 	}

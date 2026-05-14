@@ -2,8 +2,8 @@ package bootstrap
 
 import (
 	drivehandler "velox/go-master/internal/api/handlers/drive"
-	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/module"
+	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
@@ -34,8 +34,8 @@ func WireDrive(
 	log.Info("created Drive module")
 
 	return &DriveWiring{
-		Handler:  handler,
-		Module:   mod,
+		Handler:   handler,
+		Module:    mod,
 		Reconcile: reconcileSvc,
 	}, nil
 }

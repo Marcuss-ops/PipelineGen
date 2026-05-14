@@ -71,8 +71,8 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 		&fakeFFmpeg{},
 		zap.NewNop(),
 		ProcessorConfig{
-			DataDir: tmp,
-			TempDir: "tmp",
+			DataDir:  tmp,
+			TempDir:  "tmp",
 			VideoCfg: ffmpeg.NormalizeOptions{},
 		},
 		nil,
@@ -103,8 +103,8 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 		ff,
 		zap.NewNop(),
 		ProcessorConfig{
-			DataDir: tmp,
-			TempDir: "tmp",
+			DataDir:  tmp,
+			TempDir:  "tmp",
 			VideoCfg: ffmpeg.NormalizeOptions{},
 		},
 		nil,
@@ -164,7 +164,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	// Case 2: StreamCopy is true but specs don't match -> Normalize SHOULD be called
 	ff.normalizeCalled = false
 	p.videoCfg.FPS = 60 // Change target FPS to 60
-	
+
 	result, err = p.DownloadProcessUpload(ctx, AssetInput{
 		ID:         "clip-2",
 		Name:       "test clip 2",

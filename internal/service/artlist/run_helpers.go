@@ -84,7 +84,7 @@ func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
 	return fmt.Sprintf("%x", hash)
 }
 
-func driveFileIDFromClip(clip *models.Clip) string {
+func driveFileIDFromClip(clip *models.MediaAsset) string {
 	if clip == nil {
 		return ""
 	}

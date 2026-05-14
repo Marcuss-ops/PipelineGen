@@ -1,8 +1,8 @@
 package sources
 
 import (
-	"strings"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"velox/go-master/pkg/apiutil"
@@ -100,7 +100,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 	q := c.Query("q")
 
 	ctx := c.Request.Context()
-	var allClips []*models.Clip
+	var allClips []*models.MediaAsset
 
 	if sourceLower == "voiceover" {
 		if h.voiceoverRepo == nil {
@@ -146,7 +146,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 	if sourceLower == "voiceover" || sourceLower == "images" {
 		total = len(allClips)
 		if offset >= len(allClips) {
-			allClips = []*models.Clip{}
+			allClips = []*models.MediaAsset{}
 		} else {
 			end := offset + limit
 			if end > len(allClips) {

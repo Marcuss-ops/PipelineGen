@@ -18,8 +18,8 @@ import (
 )
 
 type Processor struct {
-	pythonScriptsDir string
-	driveClient      *driveapi.Service
+	pythonScriptsDir  string
+	driveClient       *driveapi.Service
 	assetDestResolver destination.Resolver
 	log               *zap.Logger
 }
@@ -31,8 +31,8 @@ func NewProcessor(
 	log *zap.Logger,
 ) *Processor {
 	return &Processor{
-		pythonScriptsDir: pythonScriptsDir,
-		driveClient:      driveClient,
+		pythonScriptsDir:  pythonScriptsDir,
+		driveClient:       driveClient,
 		assetDestResolver: assetDestResolver,
 		log:               log,
 	}

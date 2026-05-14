@@ -26,7 +26,7 @@ func (s *Service) generateAudio(ctx context.Context, text, language, filename st
 		return "", nil, err
 	}
 
-scriptPath := filepath.Join(s.pythonScriptsDir, "tts_edge.py")
+	scriptPath := filepath.Join(s.pythonScriptsDir, "tts_edge.py")
 	s.log.Info("Running TTS script", zap.String("script_path", scriptPath))
 
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"path/filepath"
 
-	"velox/go-master/internal/upload/drive"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
+	"velox/go-master/internal/upload/drive"
 )
 
 type Uploader struct {

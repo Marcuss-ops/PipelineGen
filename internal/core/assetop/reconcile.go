@@ -10,10 +10,10 @@ import (
 
 // ReconcileService provides Drive reconciliation for asset records.
 type ReconcileService struct {
-	store     AssetRecordStore
-	driveSvc  *gdrive.Service
-	policy     ReconcilePolicy
-	log        *zap.Logger
+	store    AssetRecordStore
+	driveSvc *gdrive.Service
+	policy   ReconcilePolicy
+	log      *zap.Logger
 }
 
 // NewReconcileService creates a new ReconcileService.
@@ -26,8 +26,8 @@ func NewReconcileService(
 	return &ReconcileService{
 		store:    store,
 		driveSvc: driveSvc,
-		policy:    policy,
-		log:       log,
+		policy:   policy,
+		log:      log,
 	}
 }
 

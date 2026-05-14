@@ -15,7 +15,7 @@ import (
 // Resolver provides a unified way to resolve assets across all databases.
 // It queries asset_index first (fast), then falls back to specific DBs if needed.
 type Resolver struct {
-	svc          *Service
+	svc           *Service
 	clipsRepos    map[string]*clips.Repository // source -> repo (youtube, stock, artlist)
 	imageRepo     *images.Repository
 	voiceoverRepo *voiceovers.Repository
@@ -32,7 +32,7 @@ type ResolverConfig struct {
 // NewResolver creates a new AssetResolver
 func NewResolver(svc *Service, cfg *ResolverConfig, log *zap.Logger) *Resolver {
 	return &Resolver{
-		svc:          svc,
+		svc:           svc,
 		clipsRepos:    cfg.ClipsRepos,
 		imageRepo:     cfg.ImageRepo,
 		voiceoverRepo: cfg.VoiceoverRepo,
@@ -159,7 +159,7 @@ func (r *Resolver) resolveVoiceoverFromDB(ctx context.Context, id string) (*Asse
 }
 
 // clipToAssetRecord converts a models.Clip to an AssetRecord
-func clipToAssetRecord(source string, clip *models.Clip) *AssetRecord {
+func clipToAssetRecord(source string, clip *models.MediaAsset) *AssetRecord {
 	rec := &AssetRecord{
 		AssetID:   source + "_" + clip.ID,
 		AssetType: getAssetTypeFromSource(source),
@@ -172,8 +172,8 @@ func clipToAssetRecord(source string, clip *models.Clip) *AssetRecord {
 		Status:    clip.Status,
 	}
 
-	if clip.Metadata != "" {
-		rec.Metadata = clip.Metadata
+	if len(clip.Metadata) > 0 {
+		rec.Metadata = clip.MetadataJSON()
 	}
 
 	return rec

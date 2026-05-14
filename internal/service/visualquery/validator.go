@@ -18,7 +18,7 @@ func isValidVisualQuery(query string) bool {
 	}
 
 	words := strings.Fields(query)
-	
+
 	// Check word count
 	if len(words) < MinQueryWords || len(words) > MaxQueryWords {
 		return false

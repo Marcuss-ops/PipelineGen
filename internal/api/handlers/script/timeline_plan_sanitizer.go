@@ -21,12 +21,12 @@ func sanitizeTimelineLLMPlan(plan *timelineLLMPlan, topic string) {
 				seg.Subject = topic
 			}
 		}
-		
+
 		// Always try to use a canonical/preferred entity if available
 		if entitySubject := preferredEntitySubject(seg, topicTokens); entitySubject != "" {
 			seg.Subject = entitySubject
 		}
-		
+
 		if strings.TrimSpace(seg.Subject) == "" {
 			seg.Subject = topic
 		}

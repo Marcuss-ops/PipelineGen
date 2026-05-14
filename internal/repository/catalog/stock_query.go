@@ -101,16 +101,16 @@ func (r *Repository) loadStockFolderCatalogFromClipsTable() ([]StockClipRef, err
 		SELECT
 			COALESCE(id, ''),
 			COALESCE(name, ''),
-			COALESCE(filename, ''),
-			COALESCE(folder_id, ''),
-			COALESCE(folder_path, ''),
-			COALESCE(group_name, ''),
-			COALESCE(media_type, 'stock'),
-			COALESCE(drive_link, ''),
+			COALESCE(json_extract(metadata_json, '$.filename'), ''),
+			COALESCE(json_extract(metadata_json, '$.folder_id'), ''),
+			COALESCE(json_extract(metadata_json, '$.folder_path'), ''),
+			COALESCE(json_extract(metadata_json, '$.group_name'), ''),
+			COALESCE(json_extract(metadata_json, '$.media_type'), 'stock'),
+			COALESCE(json_extract(metadata_json, '$.drive_link'), ''),
 			COALESCE(tags, ''),
 			COALESCE(source, 'stock')
-		FROM clips
-		WHERE LOWER(COALESCE(source, 'stock')) = 'stock' OR LOWER(COALESCE(media_type, '')) = 'stock'
+		FROM media_assets
+		WHERE LOWER(COALESCE(source, 'stock')) = 'stock' OR LOWER(COALESCE(json_extract(metadata_json, '$.media_type'), '')) = 'stock'
 	`)
 	if err != nil {
 		return nil, err
@@ -193,17 +193,17 @@ func (r *Repository) loadStockCatalogFromClipsTable() ([]StockClipRef, error) {
 		SELECT
 			COALESCE(id, ''),
 			COALESCE(name, ''),
-			COALESCE(filename, ''),
-			COALESCE(folder_id, ''),
-			COALESCE(folder_path, ''),
-			COALESCE(group_name, ''),
-			COALESCE(media_type, 'stock'),
-			COALESCE(drive_link, ''),
+			COALESCE(json_extract(metadata_json, '$.filename'), ''),
+			COALESCE(json_extract(metadata_json, '$.folder_id'), ''),
+			COALESCE(json_extract(metadata_json, '$.folder_path'), ''),
+			COALESCE(json_extract(metadata_json, '$.group_name'), ''),
+			COALESCE(json_extract(metadata_json, '$.media_type'), 'stock'),
+			COALESCE(json_extract(metadata_json, '$.drive_link'), ''),
 			COALESCE(tags, ''),
 			COALESCE(source, 'stock'),
-			COALESCE(duration, 0)
-		FROM clips
-		WHERE LOWER(COALESCE(source, 'stock')) = 'stock' OR LOWER(COALESCE(media_type, '')) = 'stock'
+			COALESCE(duration_ms / 1000, 0)
+		FROM media_assets
+		WHERE LOWER(COALESCE(source, 'stock')) = 'stock' OR LOWER(COALESCE(json_extract(metadata_json, '$.media_type'), '')) = 'stock'
 	`)
 	if err != nil {
 		return nil, err

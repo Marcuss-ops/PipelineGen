@@ -75,7 +75,7 @@ func createTestDB(t *testing.T) *sql.DB {
 }
 
 // insertTestClip inserts a test clip into the database
-func insertTestClip(t *testing.T, db *sql.DB, clip *models.Clip) {
+func insertTestClip(t *testing.T, db *sql.DB, clip *models.MediaAsset) {
 	t.Helper()
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -83,7 +83,7 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *models.Clip) {
 		INSERT OR REPLACE INTO clips 
 		(id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, phash, visual_embedding_json, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", "", "[]", now, now)
+	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.MetadataJSON(), clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", "", "[]", now, now)
 
 	if err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
@@ -133,7 +133,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert test clip
-	clip := &models.Clip{
+	clip := &models.MediaAsset{
 		ID:           "artlist_search_001",
 		Name:         "Search Test Clip",
 		ExternalURL:  "https://artlist.io/clip/search",
@@ -159,7 +159,7 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 	defer db.Close()
 
 	// Insert a clip directly
-	clip := &models.Clip{
+	clip := &models.MediaAsset{
 		ID:           "artlist_store_001",
 		Name:         "Store Test Clip",
 		ExternalURL:  "https://artlist.io/clip/store",
@@ -195,7 +195,7 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	defer db.Close()
 
 	// Insert a clip with drive link
-	clip := &models.Clip{
+	clip := &models.MediaAsset{
 		ID:           "artlist_drive_001",
 		Name:         "Drive Link Test Clip",
 		ExternalURL:  "https://artlist.io/clip/drive",
@@ -322,7 +322,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	insertTestClip(t, db, &models.Clip{
+	insertTestClip(t, db, &models.MediaAsset{
 		ID:           "clip-1",
 		Name:         "City Night",
 		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
@@ -389,7 +389,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	insertTestClip(t, db, &models.Clip{
+	insertTestClip(t, db, &models.MediaAsset{
 		ID:           "clip-1",
 		Name:         "City Night",
 		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
@@ -459,7 +459,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	insertTestClip(t, db, &models.Clip{
+	insertTestClip(t, db, &models.MediaAsset{
 		ID:           "clip-1",
 		Name:         "City Night",
 		ExternalURL:  "https://cdn.artlist.io/video.m3u8",

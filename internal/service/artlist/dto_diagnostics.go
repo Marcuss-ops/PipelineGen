@@ -2,9 +2,9 @@ package artlist
 
 // Stats represents the statistics for Artlist endpoints
 type Stats struct {
-	OK                bool    `json:"ok"`
-	ClipsTotal        int     `json:"clips_total"`
-	ArtlistClipsTotal int     `json:"artlist_clips_total"`
+	OK                bool `json:"ok"`
+	ClipsTotal        int  `json:"clips_total"`
+	ArtlistClipsTotal int  `json:"artlist_clips_total"`
 }
 
 // DiagnosticsResponse reports the current Artlist wiring and database readiness.

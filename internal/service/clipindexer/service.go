@@ -17,32 +17,32 @@ import (
 
 // Config holds clipindexer configuration
 type Config struct {
-	Enabled      bool   `yaml:"enabled"`
-	ServerURL    string `yaml:"server_url"`
-	ScriptPath   string `yaml:"script_path"`
-	PythonBin    string `yaml:"python_bin"`
-	DBPath       string `yaml:"db_path"`
-	AutoIndexAfterArtlist bool `yaml:"auto_index_after_artlist"`
+	Enabled               bool   `yaml:"enabled"`
+	ServerURL             string `yaml:"server_url"`
+	ScriptPath            string `yaml:"script_path"`
+	PythonBin             string `yaml:"python_bin"`
+	DBPath                string `yaml:"db_path"`
+	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist"`
 }
 
 // DefaultConfig returns default clipindexer config
 func DefaultConfig() *Config {
 	return &Config{
-		Enabled:                true,
-		ServerURL:              "http://127.0.0.1:8001",
-		ScriptPath:             "scripts/index_clips.py",
-		PythonBin:              "python3",
-		AutoIndexAfterArtlist:  true,
+		Enabled:               true,
+		ServerURL:             "http://127.0.0.1:8001",
+		ScriptPath:            "scripts/index_clips.py",
+		PythonBin:             "python3",
+		AutoIndexAfterArtlist: true,
 	}
 }
 
 // Service provides clip indexing functionality
 type Service struct {
-	db            *sql.DB
-	cfg           *Config
-	log           *zap.Logger
-	scriptPath    string
-	dbPath        string
+	db         *sql.DB
+	cfg        *Config
+	log        *zap.Logger
+	scriptPath string
+	dbPath     string
 }
 
 // NewService creates a new clipindexer service
@@ -50,7 +50,7 @@ func NewService(cfg *Config, db *sql.DB, dbPath string, log *zap.Logger) *Servic
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
-	
+
 	// Resolve script path to absolute
 	scriptPath := cfg.ScriptPath
 	if !filepath.IsAbs(scriptPath) {
@@ -59,7 +59,7 @@ func NewService(cfg *Config, db *sql.DB, dbPath string, log *zap.Logger) *Servic
 			scriptPath = absPath
 		}
 	}
-	
+
 	return &Service{
 		db:         db,
 		cfg:        cfg,
@@ -92,7 +92,7 @@ func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
 		"db_path": s.dbPath,
 		"clip_id": clipID,
 	}
-	
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -123,7 +123,7 @@ func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
 func (s *Service) indexViaScript(ctx context.Context, clipID string) error {
 	// Get clip info from DB
 	var name, localPath string
-	err := s.db.QueryRowContext(ctx, "SELECT name, local_path FROM clips WHERE id = ?", clipID).Scan(&name, &localPath)
+	err := s.db.QueryRowContext(ctx, "SELECT name, json_extract(metadata_json, '$.local_path') FROM media_assets WHERE id = ?", clipID).Scan(&name, &localPath)
 	if err != nil {
 		return fmt.Errorf("failed to get clip info: %w", err)
 	}
@@ -247,10 +247,10 @@ func (s *Service) StartServer() error {
 	// Start server
 	serverScript := filepath.Join(filepath.Dir(s.scriptPath), "embedding_server.py")
 	s.log.Info("starting embedding server", zap.String("script", serverScript))
-	
+
 	cmd := exec.Command(s.cfg.PythonBin, serverScript)
 	cmd.Dir = filepath.Dir(s.scriptPath)
-	
+
 	// Start the process in the background
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start embedding server: %w", err)

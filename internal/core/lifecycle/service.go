@@ -14,23 +14,23 @@ import (
 // Service orchestrates the full asset lifecycle:
 // duplicate checking, upload, persistence, and reconciliation.
 type Service struct {
-	store        AssetRecordStore
-	dedupe       *assetop.DedupeService
-	reconcile    *assetop.ReconcileService
-	uploader     *assetop.Uploader
-	finalizer    *assetregistry.Finalizer
-	uploadPolicy assetop.UploadPolicy
+	store         AssetRecordStore
+	dedupe        *assetop.DedupeService
+	reconcile     *assetop.ReconcileService
+	uploader      *assetop.Uploader
+	finalizer     *assetregistry.Finalizer
+	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
-	registry     assetregistry.Registry
-	assetIndex   *assetindex.Service
-	log          *zap.Logger
+	registry      assetregistry.Registry
+	assetIndex    *assetindex.Service
+	log           *zap.Logger
 }
 
 // Config holds configuration for Service.
 type Config struct {
 	DuplicatePolicy assetop.DuplicatePolicy
-	UploadPolicy   assetop.UploadPolicy
-	PersistPolicy  assetop.PersistPolicy
+	UploadPolicy    assetop.UploadPolicy
+	PersistPolicy   assetop.PersistPolicy
 	ReconcilePolicy assetop.ReconcilePolicy
 }
 
@@ -52,16 +52,16 @@ func NewService(
 	}
 
 	return &Service{
-		store:        store,
-		dedupe:       dedupe,
-		reconcile:    reconcile,
-		uploader:     assetop.NewUploader(driveSvc, log),
-		finalizer:    finalizer,
-		uploadPolicy: cfg.UploadPolicy,
+		store:         store,
+		dedupe:        dedupe,
+		reconcile:     reconcile,
+		uploader:      assetop.NewUploader(driveSvc, log),
+		finalizer:     finalizer,
+		uploadPolicy:  cfg.UploadPolicy,
 		persistPolicy: cfg.PersistPolicy,
-		registry:     registry,
-		assetIndex:   assetIndex,
-		log:          log,
+		registry:      registry,
+		assetIndex:    assetIndex,
+		log:           log,
 	}
 }
 
@@ -79,10 +79,10 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	// Step 1: Check for duplicates
 	if s.dedupe != nil && s.dedupe.Policy().Enabled {
 		query := assetop.ExistingAssetQuery{
-			ID:          input.ID,
-			FileHash:    fileHash,
-			Filename:    input.Filename,
-			Source:      input.Source,
+			ID:       input.ID,
+			FileHash: fileHash,
+			Filename: input.Filename,
+			Source:   input.Source,
 		}
 
 		existing, err := s.dedupe.CheckDuplicate(ctx, query)
@@ -186,10 +186,10 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 	}
 
 	query := assetop.ExistingAssetQuery{
-		ID:          input.ID,
-		FileHash:    fileHash,
-		Filename:    input.Filename,
-		Source:      input.Source,
+		ID:       input.ID,
+		FileHash: fileHash,
+		Filename: input.Filename,
+		Source:   input.Source,
 	}
 
 	existing, err := s.dedupe.CheckDuplicate(ctx, query)
@@ -222,8 +222,8 @@ func (s *Service) Reconcile(ctx context.Context, source string) (int, error) {
 func DefaultConfig() Config {
 	return Config{
 		DuplicatePolicy: assetop.DefaultDuplicatePolicy(),
-		UploadPolicy:   assetop.DefaultUploadPolicy(),
-		PersistPolicy:  assetop.DefaultPersistPolicy(),
+		UploadPolicy:    assetop.DefaultUploadPolicy(),
+		PersistPolicy:   assetop.DefaultPersistPolicy(),
 		ReconcilePolicy: assetop.DefaultReconcilePolicy(),
 	}
 }

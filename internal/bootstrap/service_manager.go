@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"velox/go-master/internal/api/handlers/common"
+	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/catalog"
@@ -14,27 +15,25 @@ import (
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/media"
 
+	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/catalogsync"
+	"velox/go-master/internal/service/clipindexer"
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/internal/service/indexing"
-	"velox/go-master/internal/service/clipindexer"
 	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/voiceoversync"
-	"velox/go-master/internal/service/scheduler"
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"
 )
-
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
@@ -51,7 +50,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 
 	// 4. Media Processing
-	clipsOnlyRepo := clips.NewRepository(dbs.clips.DB, log)
+	clipsOnlyRepo := clips.NewRepository(dbs.media.DB, log)
 	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log)
 	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
 
@@ -103,7 +102,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	)
 
 	voDir := cfg.Storage.VoiceoversPath()
-	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
+	voRepo := voiceovers.NewRepository(dbs.media.DB)
 
 	// Create voiceover registry adapter
 	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
@@ -118,11 +117,11 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
-	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
+	clipsRepo := clips.NewRepository(dbs.media.DB, log)
+	artlistRepo := clips.NewRepository(dbs.media.DB, log)
 
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
-	imageRepo := images.NewRepository(dbs.images.DB)
+	imageRepo := images.NewRepository(dbs.media.DB)
 
 	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
@@ -130,8 +129,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
 	clipsRepos := map[string]*clips.Repository{
 		"youtube": clipsOnlyRepo,
-		"stock":    clipsRepo,
-		"artlist":  artlistRepo,
+		"stock":   clipsRepo,
+		"artlist": artlistRepo,
 	}
 	resolverCfg := &assetindex.ResolverConfig{
 		ClipsRepos:    clipsRepos,
@@ -147,13 +146,13 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		ScriptPath:            cfg.ClipIndexer.ScriptPath,
 		PythonBin:             cfg.ClipIndexer.PythonBin,
 		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
-		DBPath:                dbs.artlist.Path(),
-	}, dbs.artlist.DB, dbs.artlist.Path(), log)
+		DBPath:                dbs.media.Path(),
+	}, dbs.media.DB, dbs.media.Path(), log)
 
 	indexingService := indexing.NewService(clipsRepo, clipIndexerService, log)
 	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)
 
-	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
+	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, cfg.Paths.PythonScriptsDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 
 	// Build sync targets centrally
 	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)
@@ -238,4 +237,3 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		maintenanceSvc:     maintenanceSvc,
 	}, nil
 }
-

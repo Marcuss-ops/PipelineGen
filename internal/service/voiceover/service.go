@@ -189,13 +189,13 @@ func (s *Service) processLanguage(
 
 	// Process through LifecycleService (dedupe + upload + persist)
 	meta := map[string]interface{}{
-		"text_hash":     textHash,
-		"text_preview":  truncateString(req.Text, 100),
-		"language":      item.Language,
-		"voice":         item.Voice,
-		"strategy":      req.Strategy,
-		"request_id":    requestID,
-		"cleaned_path":  item.CleanedPath,
+		"text_hash":    textHash,
+		"text_preview": truncateString(req.Text, 100),
+		"language":     item.Language,
+		"voice":        item.Voice,
+		"strategy":     req.Strategy,
+		"request_id":   requestID,
+		"cleaned_path": item.CleanedPath,
 	}
 	metaJSON, _ := json.Marshal(meta)
 
@@ -245,11 +245,11 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 	}
 
 	resolved, err := s.assetDestResolver.Resolve(ctx, &destination.ResolveRequest{
-		Source:         "voiceover",
-		Group:          dest.Group,
-		FolderID:       dest.FolderID,
-		FolderPath:     dest.FolderPath,
-		SubfolderName:  dest.SubfolderName,
+		Source:          "voiceover",
+		Group:           dest.Group,
+		FolderID:        dest.FolderID,
+		FolderPath:      dest.FolderPath,
+		SubfolderName:   dest.SubfolderName,
 		CreateSubfolder: dest.CreateSubfolder,
 	})
 	if err != nil {
@@ -282,5 +282,3 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen]
 }
-
-

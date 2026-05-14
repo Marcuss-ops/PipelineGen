@@ -76,7 +76,7 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 		FileID:       created.Id,
 		WebViewLink:  created.WebViewLink,
 		DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
-		MD5Checksum:   created.Md5Checksum,
+		MD5Checksum:  created.Md5Checksum,
 	}, nil
 }
 

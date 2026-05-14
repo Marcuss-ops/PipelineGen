@@ -1,15 +1,15 @@
-// Package clips provides the repository for YouTube clips (clips.db.sqlite).
+// Package clips provides the repository for media assets (media_assets table).
 //
 // This repository manages:
-//   - YouTube clips and their metadata
+//   - Video clips and their metadata
 //   - Clip folders for organization
 //   - Segment embeddings for timeline generation
 //
-// Database: clips.db.sqlite
-// Migrations: internal/repository/clips/migrations/
+// Database: clips.db.sqlite / artlist.db.sqlite / stock.db.sqlite
+// Table: media_assets (unified schema with metadata_json for flexible fields)
 //
 // Note: Stock and Artlist clips use separate databases (stock.db, artlist.db)
-// but share the same clips.Repository structure with different instances.
+// but share the same Repository structure with different instances.
 package clips
 
 import (
@@ -25,9 +25,10 @@ import (
 	"velox/go-master/pkg/sqlutil"
 )
 
-// Clip column constants to avoid repetition
+// mediaAssetColumns defines the columns selected from media_assets table.
+// Extended fields are stored in metadata_json and parsed into Metadata map.
 const (
-	clipColumns = `id, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(depth, 0) AS depth, is_folder, COALESCE(folder_path, '') AS folder_path, COALESCE(group_name, '') AS group_name, COALESCE(media_type, '') AS media_type, COALESCE(drive_link, '') AS drive_link, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(download_link, '') AS download_link, COALESCE(tags, '[]') AS tags, source, COALESCE(category, '') AS category, COALESCE(external_url, '') AS external_url, COALESCE(duration, 0) AS duration, COALESCE(metadata, '{}') AS metadata, COALESCE(file_hash, '') AS file_hash, COALESCE(local_path, '') AS local_path, COALESCE(status, '') AS status, COALESCE(error, '') AS error, COALESCE(search_terms, '[]') AS search_terms, COALESCE(thumb_url, '') AS thumb_url, COALESCE(phash, '') AS phash, COALESCE(visual_embedding_json, '[]') AS visual_embedding_json, created_at, updated_at, deleted_at, (SELECT COUNT(*) FROM clips c2 WHERE c2.parent_folder_id = clips.id) AS child_count`
+	mediaAssetColumns = `id, COALESCE(source, '') AS source, COALESCE(name, '') AS name, COALESCE(tags, '[]') AS tags, COALESCE(embedding_json, '[]') AS embedding_json, COALESCE(duration_ms, 0) AS duration_ms, COALESCE(url, '') AS url, created_at, COALESCE(metadata_json, '{}') AS metadata_json`
 	clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 )
 
@@ -66,45 +67,109 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 	return r.db.BeginTx(ctx, opts)
 }
 
-// UpsertClip inserts or updates a clip
-func (r *Repository) UpsertClip(ctx context.Context, clip *models.Clip) error {
+// UpsertClip inserts or updates a media asset (media_assets table).
+// Extended fields are stored in metadata_json as a JSON map.
+func (r *Repository) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
 	tagsJSON, err := json.Marshal(clip.Tags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tags: %w", err)
 	}
-	searchTermsJSON, err := json.Marshal(clip.SearchTerms)
-	if err != nil {
-		return fmt.Errorf("failed to marshal search_terms: %w", err)
-	}
 	now := time.Now()
 
-	var deletedAt interface{}
-	if clip.DeletedAt != nil {
-		deletedAt = clip.DeletedAt.Format(time.RFC3339)
+	// Store extended fields in Metadata map
+	if clip.FolderID != "" {
+		clip.SetMetadataString("folder_id", clip.FolderID)
+	}
+	if clip.DriveLink != "" {
+		clip.SetMetadataString("drive_link", clip.DriveLink)
+	}
+	if clip.DownloadLink != "" {
+		clip.SetMetadataString("download_link", clip.DownloadLink)
+	}
+	if clip.DriveFileID != "" {
+		clip.SetMetadataString("drive_file_id", clip.DriveFileID)
+	}
+	if clip.FileHash != "" {
+		clip.SetMetadataString("file_hash", clip.FileHash)
+	}
+	if clip.LocalPath != "" {
+		clip.SetMetadataString("local_path", clip.LocalPath)
+	}
+	if clip.Status != "" {
+		clip.SetMetadataString("status", clip.Status)
+	}
+	if clip.MediaType != "" {
+		clip.SetMetadataString("media_type", clip.MediaType)
+	}
+	if clip.Group != "" {
+		clip.SetMetadataString("group_name", clip.Group)
+	}
+	if clip.Category != "" {
+		clip.SetMetadataString("category", clip.Category)
+	}
+	if clip.Filename != "" {
+		clip.SetMetadataString("filename", clip.Filename)
+	}
+	if clip.ParentFolderID != "" {
+		clip.SetMetadataString("parent_folder_id", clip.ParentFolderID)
+	}
+	if clip.FolderPath != "" {
+		clip.SetMetadataString("folder_path", clip.FolderPath)
+	}
+	if clip.Error != "" {
+		clip.SetMetadataString("error", clip.Error)
+	}
+	if clip.ThumbURL != "" {
+		clip.SetMetadataString("thumb_url", clip.ThumbURL)
+	}
+	if clip.PHash != "" {
+		clip.SetMetadataString("phash", clip.PHash)
+	}
+	if clip.VisualEmbeddingJSON != "" {
+		clip.SetMetadataString("visual_embedding_json", clip.VisualEmbeddingJSON)
+	}
+	if clip.SearchText != "" {
+		clip.SetMetadataString("search_text", clip.SearchText)
+	}
+	if clip.SceneType != "" {
+		clip.SetMetadataString("scene_type", clip.SceneType)
+	}
+	if clip.QualityScore != 0 {
+		clip.SetMetadataString("quality_score", fmt.Sprintf("%f", clip.QualityScore))
+	}
+	if clip.ReuseCount != 0 {
+		clip.SetMetadataString("reuse_count", fmt.Sprintf("%d", clip.ReuseCount))
+	}
+	if clip.LastUsedAt != "" {
+		clip.SetMetadataString("last_used_at", clip.LastUsedAt)
+	}
+	if len(clip.UsableFor) > 0 {
+		b, _ := json.Marshal(clip.UsableFor)
+		clip.SetMetadataString("usable_for", string(b))
+	}
+	if len(clip.AvoidFor) > 0 {
+		b, _ := json.Marshal(clip.AvoidFor)
+		clip.SetMetadataString("avoid_for", string(b))
+	}
+	// Embedding is stored directly, also save to metadata for consistency
+	if clip.EmbeddingJSON != "" {
+		clip.SetMetadataString("embedding_json", clip.EmbeddingJSON)
 	}
 
+	// Serialize Metadata map to JSON for the metadata_json column
+	metadataJSON := clip.MetadataJSON()
+
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO clips (id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type,
-			drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata,
-			file_hash, local_path, status, error, search_terms, phash, visual_embedding_json, created_at, updated_at, deleted_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO media_assets (id, source, name, tags, duration_ms, url, metadata_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			name=excluded.name, filename=excluded.filename, folder_id=excluded.folder_id,
-			parent_folder_id=excluded.parent_folder_id, depth=excluded.depth, is_folder=excluded.is_folder,
-			folder_path=excluded.folder_path, group_name=excluded.group_name,
-			media_type=excluded.media_type, drive_link=excluded.drive_link,
-			drive_file_id=excluded.drive_file_id, download_link=excluded.download_link, tags=excluded.tags,
-			source=excluded.source, category=excluded.category,
-			external_url=excluded.external_url, duration=excluded.duration,
-			metadata=excluded.metadata, file_hash=excluded.file_hash,
-			local_path=excluded.local_path, status=excluded.status, error=excluded.error,
-			search_terms=excluded.search_terms, phash=excluded.phash,
-			visual_embedding_json=excluded.visual_embedding_json,
-			updated_at=excluded.updated_at, deleted_at=excluded.deleted_at
-		`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group,
-		clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, string(tagsJSON), clip.Source,
-		clip.Category, clip.ExternalURL, clip.Duration, clip.Metadata, clip.FileHash,
-		clip.LocalPath, clip.Status, clip.Error, string(searchTermsJSON), clip.PHash, clip.VisualEmbeddingJSON, clip.CreatedAt.Format(time.RFC3339), now.Format(time.RFC3339), deletedAt)
+			source=excluded.source,
+			name=excluded.name,
+			tags=excluded.tags,
+			duration_ms=excluded.duration_ms,
+			url=excluded.url,
+			metadata_json=excluded.metadata_json
+		`, clip.ID, clip.Source, clip.Name, string(tagsJSON), clip.Duration, clip.ExternalURL, metadataJSON, now.Format(time.RFC3339))
 
 	return err
 }
@@ -116,7 +181,7 @@ func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE clips SET deleted_at = ?, updated_at = ? WHERE id = ?", time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339), id)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?) WHERE id = ?", time.Now().Format(time.RFC3339), id)
 	return err
 }
 
@@ -127,7 +192,7 @@ func (r *Repository) RestoreClip(ctx context.Context, id string) error {
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE clips SET deleted_at = NULL, updated_at = ? WHERE id = ?", time.Now().Format(time.RFC3339), id)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_remove(COALESCE(metadata_json,'{}'), '$.deleted_at') WHERE id = ?", id)
 	return err
 }
 
@@ -138,11 +203,11 @@ func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "DELETE FROM clips WHERE id = ?", id)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
 	return err
 }
 
-// DeleteClipByDriveLink soft-deletes a clip by its Drive link (checks both drive_link and download_link).
+// DeleteClipByDriveLink deletes a clip by its Drive link (stored in metadata_json).
 func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {
@@ -150,13 +215,13 @@ func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string
 	}
 
 	now := time.Now().Format(time.RFC3339)
-	_, err := r.db.ExecContext(ctx, "UPDATE clips SET deleted_at = ?, updated_at = ? WHERE drive_link = ? OR download_link = ?", now, now, driveLink, driveLink)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?) WHERE json_extract(metadata_json, '$.drive_link') = ? OR json_extract(metadata_json, '$.download_link') = ?", now, driveLink, driveLink)
 	return err
 }
 
 // ListClips returns all clips, optionally filtered by source
-func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Clip, error) {
-	query := buildClipQuery(source)
+func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.MediaAsset, error) {
+	query := buildMediaAssetQuery(source)
 	args := []interface{}{}
 	if source != "" {
 		args = append(args, source)
@@ -168,9 +233,9 @@ func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.Cl
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -193,7 +258,7 @@ func (r *Repository) BulkAddTags(ctx context.Context, ids []string, tags []strin
 
 	for _, id := range ids {
 		var currentTagsJSON string
-		err := tx.QueryRowContext(ctx, "SELECT tags FROM clips WHERE id = ?", id).Scan(&currentTagsJSON)
+		err := tx.QueryRowContext(ctx, "SELECT tags FROM media_assets WHERE id = ?", id).Scan(&currentTagsJSON)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				continue
@@ -220,7 +285,7 @@ func (r *Repository) BulkAddTags(ctx context.Context, ids []string, tags []strin
 		}
 
 		newTagsJSON, _ := json.Marshal(newTags)
-		_, err = tx.ExecContext(ctx, "UPDATE clips SET tags = ?, updated_at = ? WHERE id = ?", string(newTagsJSON), time.Now().Format(time.RFC3339), id)
+		_, err = tx.ExecContext(ctx, "UPDATE media_assets SET tags = ? WHERE id = ?", string(newTagsJSON), id)
 		if err != nil {
 			return err
 		}
@@ -248,7 +313,7 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 
 	for _, id := range ids {
 		var currentTagsJSON string
-		err := tx.QueryRowContext(ctx, "SELECT tags FROM clips WHERE id = ?", id).Scan(&currentTagsJSON)
+		err := tx.QueryRowContext(ctx, "SELECT tags FROM media_assets WHERE id = ?", id).Scan(&currentTagsJSON)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				continue
@@ -269,7 +334,7 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 		}
 
 		newTagsJSON, _ := json.Marshal(newTags)
-		_, err = tx.ExecContext(ctx, "UPDATE clips SET tags = ?, updated_at = ? WHERE id = ?", string(newTagsJSON), time.Now().Format(time.RFC3339), id)
+		_, err = tx.ExecContext(ctx, "UPDATE media_assets SET tags = ? WHERE id = ?", string(newTagsJSON), id)
 		if err != nil {
 			return err
 		}
@@ -278,10 +343,10 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 	return tx.Commit()
 }
 
-
-// buildClipQuery builds a SELECT query using the standard clip columns, excluding deleted clips.
-func buildClipQuery(source string) string {
-	query := "SELECT " + clipColumns + " FROM clips WHERE deleted_at IS NULL"
+// buildMediaAssetQuery builds a SELECT query using the standard media_asset columns,
+// excluding deleted clips (those with '$.deleted_at' in metadata_json).
+func buildMediaAssetQuery(source string) string {
+	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
 	if source != "" {
 		query += " AND source = ?"
 	}
@@ -290,7 +355,7 @@ func buildClipQuery(source string) string {
 
 // ListClipsPaged returns clips with pagination and optional search.
 // If q is non-empty, performs a search; otherwise lists all clips with pagination.
-func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q string) ([]*models.Clip, error) {
+func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q string) ([]*models.MediaAsset, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -305,10 +370,10 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 		return r.SearchClips(ctx, q)
 	}
 
-	query := `SELECT ` + clipColumns + `
-		FROM clips
-		WHERE deleted_at IS NULL
-		ORDER BY updated_at DESC
+	query := `SELECT ` + mediaAssetColumns + `
+		FROM media_assets
+		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?`
 
 	rows, err := r.db.QueryContext(ctx, query, limit, offset)
@@ -317,9 +382,9 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -328,60 +393,29 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 	return clips, rows.Err()
 }
 
-// SearchClips searches clips by tag or group_name using FTS5.
-// Falls back to LIKE search if FTS5 table doesn't exist.
-func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Clip, error) {
-	// Try FTS5 search first
-	query := `
-		SELECT c.` + clipColumns + `
-		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.clip_id
-		WHERE clips_fts MATCH ?
-		ORDER BY rank`
-	matchExpr := "(tags:\"" + tag + "*\" OR group_name:\"" + tag + "*\")"
-	rows, err := r.db.QueryContext(ctx, query, matchExpr)
-	if err == nil {
-		defer rows.Close()
-		var clips []*models.Clip
-		for rows.Next() {
-			clip, err := scanClipRows(rows)
-			if err != nil {
-				return nil, err
-			}
-			clips = append(clips, clip)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		// Fallback to LIKE if FTS5 returned 0 results
-		if len(clips) > 0 {
-			return clips, nil
-		}
-		// If we get here, FTS5 succeeded but returned 0 results - fall back to LIKE
-	}
-	r.log.Warn("FTS5 search failed or returned 0 results, falling back to LIKE", zap.Error(err))
-	// Fallback to LIKE search on multiple fields
-	columns := []string{"tags", "group_name", "name", "category"}
+// SearchClips searches clips by tag or name using LIKE on the media_assets table.
+func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.MediaAsset, error) {
+	columns := []string{"tags", "name"}
 	keywords := strings.Fields(tag)
 	if len(keywords) == 0 {
 		keywords = []string{tag}
 	}
-	
+
 	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
 	if conditionSQL == "" {
-		return []*models.Clip{}, nil
+		return []*models.MediaAsset{}, nil
 	}
 
-	query = buildClipQuery("") + " AND " + conditionSQL
-	rows, err = r.db.QueryContext(ctx, query, args...)
+	query := buildMediaAssetQuery("") + " AND (" + conditionSQL + ")"
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -390,145 +424,34 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Cli
 	return clips, rows.Err()
 }
 
-// SearchClipsByKeywords searches clips by keywords using FTS5.
-// Falls back to LIKE search if FTS5 table doesn't exist.
-func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.Clip, error) {
+// SearchClipsByKeywords searches clips by keywords using LIKE on the media_assets table.
+func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.MediaAsset, error) {
 	if len(keywords) == 0 {
-		return []*models.Clip{}, nil
+		return []*models.MediaAsset{}, nil
 	}
 
-	// Build FTS5 match expression
-	matchExpr := ""
-	for i, kw := range keywords {
-		if i > 0 {
-			matchExpr += " OR "
-		}
-		matchExpr += "(name:\"" + kw + "*\" OR tags:\"" + kw + "*\" OR folder_path:\"" + kw + "*\" OR group_name:\"" + kw + "*\" OR category:\"" + kw + "*\")"
-	}
-
-	query := fmt.Sprintf(`
-		SELECT c.%s
-		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.clip_id
-		WHERE clips_fts MATCH ?
-		ORDER BY rank
-		LIMIT ?`, clipColumns)
-	rows, err := r.db.QueryContext(ctx, query, matchExpr, limit)
-	if err == nil {
-		defer rows.Close()
-		var clips []*models.Clip
-		for rows.Next() {
-			clip, err := scanClipRows(rows)
-			if err != nil {
-				return nil, err
-			}
-			clips = append(clips, clip)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		return clips, nil
-	}
-	r.log.Warn("FTS5 search failed, falling back to LIKE", zap.Error(err))
-
-	// Fallback to LIKE search
-	columns := []string{"name", "tags", "folder_path", "group_name", "category"}
-	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
-	if conditionSQL == "" {
-		return []*models.Clip{}, nil
-	}
-
-	query = fmt.Sprintf(
-		"%s AND (%s) LIMIT ?",
-		buildClipQuery(""),
-		conditionSQL,
-	)
-	args = append(args, limit)
-
-	rows, err = r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var clips []*models.Clip
-	for rows.Next() {
-		clip, err := scanClipRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		clips = append(clips, clip)
-	}
-	return clips, rows.Err()
-}
-
-// SearchStockByKeywords searches stock clips by keywords using FTS5.
-// Falls back to LIKE search if FTS5 table doesn't exist.
-func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.Clip, error) {
-	if len(keywords) == 0 {
-		return []*models.Clip{}, nil
-	}
-
-	// Build FTS5 match expression
-	matchExpr := ""
-	for i, kw := range keywords {
-		if i > 0 {
-			matchExpr += " OR "
-		}
-		matchExpr += "(name:\"" + kw + "*\" OR tags:\"" + kw + "*\" OR folder_path:\"" + kw + "*\" OR group_name:\"" + kw + "*\" OR category:\"" + kw + "*\")"
-	}
-
-	query := fmt.Sprintf(`
-		SELECT c.%s
-		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.clip_id
-		WHERE c.source = 'stock' AND clips_fts MATCH ?
-		ORDER BY rank
-		LIMIT ?`, clipColumns)
-	rows, err := r.db.QueryContext(ctx, query, matchExpr, limit)
-	if err == nil {
-		defer rows.Close()
-		var clips []*models.Clip
-		for rows.Next() {
-			clip, err := scanClipRows(rows)
-			if err != nil {
-				return nil, err
-			}
-			clips = append(clips, clip)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		return clips, nil
-	}
-	r.log.Warn("FTS5 search failed, falling back to LIKE", zap.Error(err))
-
-	// Fallback to LIKE search
 	columns := []string{"name", "tags"}
 	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
 	if conditionSQL == "" {
-		return []*models.Clip{}, nil
+		return []*models.MediaAsset{}, nil
 	}
 
-	query = fmt.Sprintf(`
-		SELECT %s
-		FROM clips
-		WHERE source = 'stock' AND (%s)
-		LIMIT ?`,
-		clipColumns,
+	query := fmt.Sprintf(
+		"%s AND (%s) LIMIT ?",
+		buildMediaAssetQuery(""),
 		conditionSQL,
 	)
 	args = append(args, limit)
 
-	rows, err = r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -537,181 +460,223 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	return clips, rows.Err()
 }
 
-// scanClipRows scans a clip from sql.Rows
-func scanClipRows(rows *sql.Rows) (*models.Clip, error) {
-	var clip models.Clip
-	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull, deletedAtNull sql.NullString
-	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
-	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
-	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
-	var statusNull, errorNull, thumbURLNull, phashNull, visualEmbNull sql.NullString
+// SearchStockByKeywords searches stock clips by keywords using LIKE on the media_assets table.
+func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.MediaAsset, error) {
+	if len(keywords) == 0 {
+		return []*models.MediaAsset{}, nil
+	}
+
+	columns := []string{"name", "tags"}
+	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
+	if conditionSQL == "" {
+		return []*models.MediaAsset{}, nil
+	}
+
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM media_assets
+		WHERE source = 'stock' AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL AND (%s)
+		LIMIT ?`,
+		mediaAssetColumns,
+		conditionSQL,
+	)
+	args = append(args, limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clips []*models.MediaAsset
+	for rows.Next() {
+		clip, err := scanMediaAssetRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		clips = append(clips, clip)
+	}
+	return clips, rows.Err()
+}
+
+// scanMediaAssetRows scans a media asset from sql.Rows
+func scanMediaAssetRows(rows *sql.Rows) (*models.MediaAsset, error) {
+	var clip models.MediaAsset
+	var tagsNull, metadataStr sql.NullString
+	var sourceNull, nameNull, urlNull sql.NullString
+	var createdAtStr sql.NullString
+	var duration sql.NullInt64
+	var embeddingJSON sql.NullString
 
 	err := rows.Scan(
-		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
-		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
-		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
-		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &deletedAtNull, &clip.ChildCount)
-
+		&clip.ID, &sourceNull, &nameNull, &tagsNull, &embeddingJSON, &duration, &urlNull, &createdAtStr, &metadataStr,
+	)
 	if err != nil {
-		fmt.Printf("DEBUG: Scan error clip_id=%v err=%v\n", clip.ID, err)
 		return nil, err
 	}
 
-	clip.Name = nameNull.String
-	clip.Filename = filenameNull.String
-	clip.FolderID = folderIDNull.String
-	clip.ParentFolderID = parentFolderIDNull.String
-	clip.FolderPath = folderPathNull.String
-	clip.Group = groupNull.String
-	clip.MediaType = mediaTypeNull.String
-	clip.DriveLink = driveLinkNull.String
-	clip.DriveFileID = driveFileIDNull.String
-	clip.DownloadLink = downloadLinkNull.String
 	clip.Source = sourceNull.String
-	clip.Category = categoryNull.String
-	clip.ExternalURL = externalURLNull.String
-	clip.FileHash = fileHashNull.String
-	clip.LocalPath = localPathNull.String
-	clip.Status = statusNull.String
-	clip.Error = errorNull.String
-	clip.ThumbURL = thumbURLNull.String
-	clip.Metadata = metadataNull.String
-	clip.PHash = phashNull.String
-	clip.VisualEmbeddingJSON = visualEmbNull.String
+	clip.Name = nameNull.String
+	clip.ExternalURL = urlNull.String
 
-	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
-		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
-	}
-	if searchTermsNull.Valid && searchTermsNull.String != "" && searchTermsNull.String != "[]" {
-		_ = json.Unmarshal([]byte(searchTermsNull.String), &clip.SearchTerms)
+	if embeddingJSON.Valid {
+		clip.EmbeddingJSON = embeddingJSON.String
 	}
 
-	if createdAtNull.Valid {
-		if t, err := time.Parse(time.RFC3339, createdAtNull.String); err == nil {
+	if duration.Valid {
+		clip.Duration = int(duration.Int64)
+	}
+
+	if createdAtStr.Valid {
+		if t, err := time.Parse(time.RFC3339, createdAtStr.String); err == nil {
 			clip.CreatedAt = t
-		}
-	}
-	if updatedAtNull.Valid {
-		if t, err := time.Parse(time.RFC3339, updatedAtNull.String); err == nil {
 			clip.UpdatedAt = t
 		}
 	}
-	if deletedAtNull.Valid && deletedAtNull.String != "" {
-		if t, err := time.Parse(time.RFC3339, deletedAtNull.String); err == nil {
-			clip.DeletedAt = &t
-		}
+
+	// Parse tags
+	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
+		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
 	}
+
+	// Parse metadata_json into Metadata map
+	clip.SetMetadataJSON(metadataStr.String)
+
+	// Extract common fields from Metadata map for convenience
+	clip.FolderID = clip.GetMetadataString("folder_id")
+	clip.ParentFolderID = clip.GetMetadataString("parent_folder_id")
+	clip.FolderPath = clip.GetMetadataString("folder_path")
+	clip.Group = clip.GetMetadataString("group_name")
+	clip.MediaType = clip.GetMetadataString("media_type")
+	clip.DriveLink = clip.GetMetadataString("drive_link")
+	clip.DriveFileID = clip.GetMetadataString("drive_file_id")
+	clip.DownloadLink = clip.GetMetadataString("download_link")
+	clip.Category = clip.GetMetadataString("category")
+	clip.FileHash = clip.GetMetadataString("file_hash")
+	clip.LocalPath = clip.GetMetadataString("local_path")
+	clip.Status = clip.GetMetadataString("status")
+	clip.Error = clip.GetMetadataString("error")
+	clip.ThumbURL = clip.GetMetadataString("thumb_url")
+	clip.PHash = clip.GetMetadataString("phash")
+	clip.Filename = clip.GetMetadataString("filename")
+	clip.VisualEmbeddingJSON = clip.GetMetadataString("visual_embedding_json")
+	clip.SearchText = clip.GetMetadataString("search_text")
+	clip.SceneType = clip.GetMetadataString("scene_type")
 
 	return &clip, nil
 }
-func (r *Repository) scanClipRow(row *sql.Row) (*models.Clip, error) {
-	var clip models.Clip
-	var tagsNull, searchTermsNull, metadataNull, createdAtNull, updatedAtNull, deletedAtNull sql.NullString
-	var nameNull, filenameNull, folderIDNull, parentFolderIDNull, folderPathNull sql.NullString
-	var groupNull, mediaTypeNull, driveLinkNull, driveFileIDNull, downloadLinkNull sql.NullString
-	var sourceNull, categoryNull, externalURLNull, fileHashNull, localPathNull sql.NullString
-	var statusNull, errorNull, thumbURLNull, phashNull, visualEmbNull sql.NullString
+
+// scanMediaAssetRow scans a single media asset from sql.Row
+func (r *Repository) scanMediaAssetRow(row *sql.Row) (*models.MediaAsset, error) {
+	var clip models.MediaAsset
+	var tagsNull, metadataStr sql.NullString
+	var sourceNull, nameNull, urlNull sql.NullString
+	var createdAtStr sql.NullString
+	var duration sql.NullInt64
+	var embeddingJSON sql.NullString
 
 	err := row.Scan(
-		&clip.ID, &nameNull, &filenameNull, &folderIDNull, &parentFolderIDNull, &clip.Depth, &clip.IsFolder, &folderPathNull,
-		&groupNull, &mediaTypeNull, &driveLinkNull, &driveFileIDNull, &downloadLinkNull, &tagsNull, &sourceNull,
-		&categoryNull, &externalURLNull, &clip.Duration, &metadataNull, &fileHashNull, &localPathNull, &statusNull, &errorNull, &searchTermsNull, &thumbURLNull,
-		&phashNull, &visualEmbNull, &createdAtNull, &updatedAtNull, &deletedAtNull, &clip.ChildCount)
-
+		&clip.ID, &sourceNull, &nameNull, &tagsNull, &embeddingJSON, &duration, &urlNull, &createdAtStr, &metadataStr,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	clip.Name = nameNull.String
-	clip.Filename = filenameNull.String
-	clip.FolderID = folderIDNull.String
-	clip.ParentFolderID = parentFolderIDNull.String
-	clip.FolderPath = folderPathNull.String
-	clip.Group = groupNull.String
-	clip.MediaType = mediaTypeNull.String
-	clip.DriveLink = driveLinkNull.String
-	clip.DriveFileID = driveFileIDNull.String
-	clip.DownloadLink = downloadLinkNull.String
 	clip.Source = sourceNull.String
-	clip.Category = categoryNull.String
-	clip.ExternalURL = externalURLNull.String
-	clip.FileHash = fileHashNull.String
-	clip.LocalPath = localPathNull.String
-	clip.Status = statusNull.String
-	clip.Error = errorNull.String
-	clip.ThumbURL = thumbURLNull.String
-	clip.Metadata = metadataNull.String
+	clip.Name = nameNull.String
+	clip.ExternalURL = urlNull.String
 
-	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
-		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
-	}
-	if searchTermsNull.Valid && searchTermsNull.String != "" && searchTermsNull.String != "[]" {
-		_ = json.Unmarshal([]byte(searchTermsNull.String), &clip.SearchTerms)
+	if embeddingJSON.Valid {
+		clip.EmbeddingJSON = embeddingJSON.String
 	}
 
-	if createdAtNull.Valid {
-		if t, err := time.Parse(time.RFC3339, createdAtNull.String); err == nil {
+	if duration.Valid {
+		clip.Duration = int(duration.Int64)
+	}
+
+	if createdAtStr.Valid {
+		if t, err := time.Parse(time.RFC3339, createdAtStr.String); err == nil {
 			clip.CreatedAt = t
-		}
-	}
-	if updatedAtNull.Valid {
-		if t, err := time.Parse(time.RFC3339, updatedAtNull.String); err == nil {
 			clip.UpdatedAt = t
 		}
 	}
-	if deletedAtNull.Valid && deletedAtNull.String != "" {
-		if t, err := time.Parse(time.RFC3339, deletedAtNull.String); err == nil {
-			clip.DeletedAt = &t
-		}
+
+	// Parse tags
+	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
+		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
 	}
+
+	// Parse metadata_json into Metadata map
+	clip.SetMetadataJSON(metadataStr.String)
+
+	// Extract common fields from Metadata map for convenience
+	clip.FolderID = clip.GetMetadataString("folder_id")
+	clip.ParentFolderID = clip.GetMetadataString("parent_folder_id")
+	clip.FolderPath = clip.GetMetadataString("folder_path")
+	clip.Group = clip.GetMetadataString("group_name")
+	clip.MediaType = clip.GetMetadataString("media_type")
+	clip.DriveLink = clip.GetMetadataString("drive_link")
+	clip.DriveFileID = clip.GetMetadataString("drive_file_id")
+	clip.DownloadLink = clip.GetMetadataString("download_link")
+	clip.Category = clip.GetMetadataString("category")
+	clip.FileHash = clip.GetMetadataString("file_hash")
+	clip.LocalPath = clip.GetMetadataString("local_path")
+	clip.Status = clip.GetMetadataString("status")
+	clip.Error = clip.GetMetadataString("error")
+	clip.ThumbURL = clip.GetMetadataString("thumb_url")
+	clip.PHash = clip.GetMetadataString("phash")
+	clip.Filename = clip.GetMetadataString("filename")
+	clip.VisualEmbeddingJSON = clip.GetMetadataString("visual_embedding_json")
+	clip.SearchText = clip.GetMetadataString("search_text")
+	clip.SceneType = clip.GetMetadataString("scene_type")
 
 	return &clip, nil
 }
 
-// GetClipByFolderAndFilename retrieves a clip by folder and filename
-func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.Clip, error) {
-	query := buildClipQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
+// GetClipByFolderAndFilename retrieves a clip by folder and filename (stored in metadata_json).
+func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.MediaAsset, error) {
+	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.filename') = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderID, filename)
-	return r.scanClipRow(row)
+	return r.scanMediaAssetRow(row)
 }
 
 // GetClip retrieves a clip by ID
-func (r *Repository) GetClip(ctx context.Context, id string) (*models.Clip, error) {
-	query := buildClipQuery("") + " AND id = ? LIMIT 1"
+func (r *Repository) GetClip(ctx context.Context, id string) (*models.MediaAsset, error) {
+	query := buildMediaAssetQuery("") + " AND id = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, id)
-	return r.scanClipRow(row)
+	return r.scanMediaAssetRow(row)
 }
 
-// GetClipByDriveFileID finds a clip by Drive file ID (searches both drive_link and download_link).
+// GetClipByDriveFileID finds a clip by Drive file ID (searches both drive_link and download_link in metadata_json).
 // Returns nil, nil if not found.
-func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*models.Clip, error) {
+func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*models.MediaAsset, error) {
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
 		return nil, fmt.Errorf("drive file id is required")
 	}
 
-	query := buildClipQuery("") + " AND (drive_link LIKE ? OR download_link LIKE ?) LIMIT 1"
+	query := buildMediaAssetQuery("") + " AND (json_extract(COALESCE(metadata_json,'{}'), '$.drive_link') LIKE ? OR json_extract(COALESCE(metadata_json,'{}'), '$.download_link') LIKE ?) LIMIT 1"
 	pattern := "%" + fileID + "%"
 	row := r.db.QueryRowContext(ctx, query, pattern, pattern)
-	clip, err := r.scanClipRow(row)
+	clip, err := r.scanMediaAssetRow(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return clip, err
 }
 
-// FindClipsByHash returns all clips with the given file hash.
-func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " AND file_hash = ?"
+// FindClipsByHash returns all clips with the given file hash (stored in metadata_json).
+func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*models.MediaAsset, error) {
+	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.file_hash') = ?"
 	rows, err := r.db.QueryContext(ctx, query, hash)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -720,18 +685,18 @@ func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*model
 	return clips, rows.Err()
 }
 
-// GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id
-func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
+// GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (stored in metadata_json).
+func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.MediaAsset, error) {
+	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.drive_file_id') IS NOT NULL AND json_extract(COALESCE(metadata_json,'{}'), '$.drive_file_id') != ''"
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -740,7 +705,7 @@ func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Clip,
 	return clips, rows.Err()
 }
 
-// UpdateDriveFileID updates the drive_file_id for a clip
+// UpdateDriveFileID updates the drive_file_id for a clip (stored in metadata_json).
 func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
 	clipID = strings.TrimSpace(clipID)
 	fileID = strings.TrimSpace(fileID)
@@ -748,46 +713,33 @@ func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID strin
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE clips SET drive_file_id=?, updated_at=? WHERE id=?", fileID, time.Now().Format(time.RFC3339), clipID)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.drive_file_id', ?) WHERE id=?", fileID, clipID)
 	return err
 }
 
-// CountClips returns the total number of clips
+// CountClips returns the total number of clips (excluding soft-deleted).
 func (r *Repository) CountClips(ctx context.Context) (int, error) {
-	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM clips")
+	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL")
 	var count int
 	err := row.Scan(&count)
 	return count, err
 }
 
-// UpdateFileHash updates the file_hash for a clip.
+// UpdateFileHash updates the file_hash for a clip (stored in metadata_json).
 func (r *Repository) UpdateFileHash(ctx context.Context, clipID, hash string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE clips SET file_hash=? WHERE id=?", hash, clipID)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.file_hash', ?) WHERE id=?", hash, clipID)
 	return err
 }
 
-// LastUpdatedAtForTerm returns the most recent updated_at value for clips matching a term.
-// Uses FTS5 if available, falls back to LIKE.
+// LastUpdatedAtForTerm returns the most recent created_at value for clips matching a term.
+// Uses LIKE search on tags.
 func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error) {
-	// Try FTS5 first
-	query := `
-		SELECT MAX(c.updated_at)
-		FROM clips_fts fts
-		JOIN clips c ON c.id = fts.clip_id
-		WHERE c.source = 'artlist' AND clips_fts MATCH ?
-	`
 	term = strings.TrimSpace(term)
-	row := r.db.QueryRowContext(ctx, query, "tags:\""+term+"*\"")
-	var lastUpdated sql.NullString
-	err := row.Scan(&lastUpdated)
-	if err == nil && lastUpdated.Valid && strings.TrimSpace(lastUpdated.String) != "" {
-		return &lastUpdated.String, nil
-	}
 
-	// Fallback to LIKE
-	row = r.db.QueryRowContext(ctx, `
-		SELECT MAX(updated_at)
-		FROM clips
+	var lastUpdated sql.NullString
+	row := r.db.QueryRowContext(ctx, `
+		SELECT MAX(created_at)
+		FROM media_assets
 		WHERE source = 'artlist' AND tags LIKE ?
 	`, "%"+term+"%")
 
@@ -892,18 +844,18 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 	return &folder, nil
 }
 
-// ListClipsByFolderID returns all clips for a given folder ID
-func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
+// ListClipsByFolderID returns all clips for a given folder ID (stored in metadata_json).
+func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.MediaAsset, error) {
+	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -912,18 +864,18 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 	return clips, rows.Err()
 }
 
-// ListClipsByFolderPath returns all clips for a given folder path
-func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.Clip, error) {
-	query := buildClipQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
+// ListClipsByFolderPath returns all clips for a given folder path (stored in metadata_json).
+func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.MediaAsset, error) {
+	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.folder_path') = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -932,9 +884,9 @@ func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath strin
 	return clips, rows.Err()
 }
 
-// CountClipsByFolderID returns the number of clips in a folder
+// CountClipsByFolderID returns the number of clips in a folder (folder_id stored in metadata_json).
 func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) (int, error) {
-	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM clips WHERE folder_id = ?", folderID)
+	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ?", folderID)
 	var count int
 	err := row.Scan(&count)
 	return count, err
@@ -983,49 +935,8 @@ func (r *Repository) ListClipFolders(ctx context.Context, source string) ([]*mod
 }
 
 // SearchClipFolders searches clip folders by keyword in source_url, video_id, group_name, or folder_path
-// Uses FTS5 if available, falls back to LIKE.
+// Uses LIKE search.
 func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*models.ClipFolder, error) {
-	// Try FTS5 first (if clip_folders_fts exists)
-	query := `
-		SELECT f.id, f.source, f.source_url, f.video_id, f.folder_id, f.folder_path,
-		       f.local_folder_path, f.group_name, f.manifest_txt_path, f.manifest_json_path,
-		       f.clip_count, f.processed_count, f.failed_count, f.skipped_count,
-		       f.last_error, f.metadata, f.created_at, f.updated_at
-		FROM clip_folders_fts fts
-		JOIN clip_folders f ON f.id = fts.folder_id
-		WHERE clip_folders_fts MATCH ?
-		ORDER BY rank`
-	rows, err := r.db.QueryContext(ctx, query, keyword+"*")
-	if err == nil {
-		defer rows.Close()
-		var folders []*models.ClipFolder
-		for rows.Next() {
-			var folder models.ClipFolder
-			var createdAt, updatedAt string
-			err := rows.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID,
-				&folder.FolderID, &folder.FolderPath, &folder.LocalFolderPath, &folder.Group,
-				&folder.ManifestTXTPath, &folder.ManifestJSONPath, &folder.ClipCount,
-				&folder.ProcessedCount, &folder.FailedCount, &folder.SkippedCount,
-				&folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
-			if err != nil {
-				return nil, err
-			}
-			if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
-				folder.CreatedAt = t
-			}
-			if t, err := time.Parse(time.RFC3339, updatedAt); err == nil {
-				folder.UpdatedAt = t
-			}
-			folders = append(folders, &folder)
-		}
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
-		return folders, nil
-	}
-
-	// Fallback to LIKE
-	r.log.Warn("FTS5 for clip_folders not available, falling back to LIKE", zap.Error(err))
 	columns := []string{"source_url", "video_id", "group_name", "folder_path"}
 	keywords := strings.Fields(keyword)
 	if len(keywords) == 0 {
@@ -1037,8 +948,8 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 		return []*models.ClipFolder{}, nil
 	}
 
-	query = buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
-	rows, err = r.db.QueryContext(ctx, query, args...)
+	query := buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1068,12 +979,13 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 }
 
 // GetFolderChildren returns all clips that are children of the given parent_folder_id.
+// parent_folder_id is stored in metadata_json.
 // Pass an empty string to get root folders.
-func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.Clip, error) {
-	query := `SELECT ` + clipColumns + `
-		FROM clips
-		WHERE parent_folder_id = ? AND deleted_at IS NULL
-		ORDER BY is_folder DESC, name ASC`
+func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.MediaAsset, error) {
+	query := `SELECT ` + mediaAssetColumns + `
+		FROM media_assets
+		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.parent_folder_id') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		ORDER BY name ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, parentID)
 	if err != nil {
@@ -1081,9 +993,9 @@ func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]
 	}
 	defer rows.Close()
 
-	var clips []*models.Clip
+	var clips []*models.MediaAsset
 	for rows.Next() {
-		clip, err := scanClipRows(rows)
+		clip, err := scanMediaAssetRows(rows)
 		if err != nil {
 			r.log.Error("failed to scan clip", zap.Error(err))
 			continue
@@ -1094,7 +1006,7 @@ func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]
 	return clips, rows.Err()
 }
 
-// FindByPHash searches for a clip with the given perceptual hash.
+// FindByPHash searches for a clip with the given perceptual hash (stored in metadata_json).
 // Returns the clip ID if found, empty string if not.
 func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, error) {
 	if phash == "" {
@@ -1102,7 +1014,7 @@ func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, err
 	}
 	var id string
 	err := r.db.QueryRowContext(ctx,
-		`SELECT id FROM clips WHERE phash = ? AND phash != '' AND deleted_at IS NULL LIMIT 1`, phash,
+		`SELECT id FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.phash') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL LIMIT 1`, phash,
 	).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil

@@ -1,22 +1,22 @@
 package mediaasset
 
 type AssetInput struct {
-	ID               string
-	Name             string
-	SourceURL         string
-	Term             string
-	OutputDir         string
-	Filename         string
-	FolderID         string
-	Duration         int
-	FPS              int
+	ID        string
+	Name      string
+	SourceURL string
+	Term      string
+	OutputDir string
+	Filename  string
+	FolderID  string
+	Duration  int
+	FPS       int
 	// Download options
 	DownloadSections []string
-	ForceKeyframes    bool
-	StreamCopy        bool
+	ForceKeyframes   bool
+	StreamCopy       bool
 	// Normalize options
-	Normalize      *bool
-	KeepAudio      bool
+	Normalize       *bool
+	KeepAudio       bool
 	DisableDuration bool
 	// Metadata
 	Metadata map[string]interface{}

@@ -55,7 +55,7 @@ func ensureFTSTable(ctx context.Context, db *sql.DB, logger *zap.Logger) error {
 	// Check if FTS5 is available
 	var ftsAvailable int
 	_ = db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_compile_options WHERE compile_options = 'ENABLE_FTS5'").Scan(&ftsAvailable)
-	
+
 	// Create the FTS table
 	// Note: using simple FTS table without triggers for now for robustness
 	sqlStmt := `

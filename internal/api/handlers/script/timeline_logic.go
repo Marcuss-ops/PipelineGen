@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	artlistSvc "velox/go-master/internal/service/artlist"
@@ -13,7 +14,6 @@ import (
 	clipresolver "velox/go-master/internal/service/clipresolver"
 	"velox/go-master/internal/service/visualquery"
 	"velox/go-master/pkg/sliceutil"
-	"go.uber.org/zap"
 )
 
 const timelineCacheVersion = "v18"
@@ -134,11 +134,11 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 					zap.Int("segment_index", seg.Index),
 					zap.String("suggestion", suggestion),
 				)
-				
+
 				liveResp, runResp, err := artlistService.DiscoverAndQueueRun(ctx, suggestion, 3)
 				if err == nil && liveResp != nil && len(liveResp.Clips) > 0 {
 					zap.L().Info("Live discovery successful", zap.Int("clips_found", len(liveResp.Clips)), zap.String("term", suggestion))
-					
+
 					// Add the folder match if available
 					if runResp != nil && runResp.TagFolderLink != "" {
 						seg.ArtlistMatches = append(seg.ArtlistMatches, association.ScoredMatch{
@@ -173,6 +173,21 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 				} else if err != nil {
 					zap.L().Warn("Live discovery failed", zap.Error(err), zap.String("term", suggestion))
 				}
+			}
+		}
+
+		// Apply Hybrid Search (Semantic + Linear Scoring)
+		if assocService != nil {
+			queryEmb, err := assocService.GenerateEmbedding(ctx, seg.NarrativeText)
+			if err == nil && len(queryEmb) > 0 {
+				if len(seg.ArtlistMatches) > 0 {
+					seg.ArtlistMatches = assocService.ScoreMedia(ctx, seg.NarrativeText, queryEmb, seg.ArtlistMatches)
+				}
+				if len(seg.StockMatches) > 0 {
+					seg.StockMatches = assocService.ScoreMedia(ctx, seg.NarrativeText, queryEmb, seg.StockMatches)
+				}
+			} else {
+				zap.L().Warn("failed to generate embedding for segment", zap.Error(err), zap.Int("segment_index", seg.Index))
 			}
 		}
 

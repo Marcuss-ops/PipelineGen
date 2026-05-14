@@ -18,9 +18,9 @@ type ScriptService interface {
 
 // Service handles content package job processing.
 type Service struct {
-	log          *zap.Logger
-	scriptSvc    ScriptService
-	jobsSvc      *jobservice.Service
+	log       *zap.Logger
+	scriptSvc ScriptService
+	jobsSvc   *jobservice.Service
 }
 
 // NewService creates a new ContentPackageService.

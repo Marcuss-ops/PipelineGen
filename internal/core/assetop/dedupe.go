@@ -55,8 +55,8 @@ type AssetRecordStore interface {
 // DedupeService provides duplicate checking for assets.
 type DedupeService struct {
 	store  AssetRecordStore
-	policy  DuplicatePolicy
-	log     *zap.Logger
+	policy DuplicatePolicy
+	log    *zap.Logger
 }
 
 // Policy returns the duplicate policy.
@@ -68,8 +68,8 @@ func (s *DedupeService) Policy() DuplicatePolicy {
 func NewDedupeService(store AssetRecordStore, policy DuplicatePolicy, log *zap.Logger) *DedupeService {
 	return &DedupeService{
 		store:  store,
-		policy:  policy,
-		log:     log,
+		policy: policy,
+		log:    log,
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
 	return initCoreMinimal(cfg, log, "")
 }
@@ -48,47 +47,44 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
 	// 6. Create VoiceoverRepo
-	voRepo := voiceovers.NewRepository(dbs.voiceover.DB)
+	voRepo := voiceovers.NewRepository(dbs.media.DB)
 
 	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
 
 	return &CoreDeps{
-		ScriptGen:            svcs.scriptGen,
-		DocClient:            svcs.docClient,
-		DriveClient:          svcs.driveClient,
-		Utility:              svcs.utility,
-		DB:                   dbs.main,
-		ArtlistDB:            dbs.artlist,
-		StockDB:              dbs.stock,
-		YouTubeDB:            dbs.clips,
-		ImagesDB:             dbs.images,
-		AssetsDB:             dbs.assets,
-		ScriptsRepo:          svcs.scriptsRepo,
-		ImageRepo:            svcs.imageRepo,
-		ImageService:         svcs.imageService,
-		StockDriveRepo:       svcs.stockDriveRepo,
-		ArtlistRepo:          svcs.artlistRepo,
-		ClipsOnlyRepo:        svcs.clipsOnlyRepo,
-		MonitorsRepo:         svcs.monitorsRepo,
-		VoiceoverRepo:        voRepo,
-		VoiceoverService:     svcs.voiceoverService,
-		VoiceoverSync:        svcs.voiceoverSync,
-		IndexingService:      svcs.indexingService,
-		ClipIndexerService:   svcs.clipIndexerService,
+		ScriptGen:          svcs.scriptGen,
+		DocClient:          svcs.docClient,
+		DriveClient:        svcs.driveClient,
+		Utility:            svcs.utility,
+		DB:                 dbs.main,
+		MediaDB:            dbs.media,
+		AssetsDB:           dbs.assets,
+		ScriptsRepo:        svcs.scriptsRepo,
+		ImageRepo:          svcs.imageRepo,
+		ImageService:       svcs.imageService,
+		StockDriveRepo:     svcs.stockDriveRepo,
+		ArtlistRepo:        svcs.artlistRepo,
+		ClipsOnlyRepo:      svcs.clipsOnlyRepo,
+		MonitorsRepo:       svcs.monitorsRepo,
+		VoiceoverRepo:      voRepo,
+		VoiceoverService:   svcs.voiceoverService,
+		VoiceoverSync:      svcs.voiceoverSync,
+		IndexingService:    svcs.indexingService,
+		ClipIndexerService: svcs.clipIndexerService,
 		// NOTE: HarvesterCronService removed (cron system eliminated)
-		CatalogSyncService:   svcs.catalogSync,
+		CatalogSyncService: svcs.catalogSync,
 		// NOTE: CatalogSyncJob removed (cron system eliminated)
-		ChannelMonitor:       jobs.channelMonitor,
-		StockScheduler:       jobs.stockScheduler,
-		CatalogRepo:          svcs.catalogRepo,
-		AssocService:         svcs.assocService,
-		JobsService:          svcs.jobsService,
-		JobsDB:               dbs.jobs.DB,
-		MediaProcessor:       svcs.mediaProcessor,
-		YoutubeClipService:   svcs.youtubeClipService,
-		AssetIndexService:    svcs.assetIndexService,
-		AssetTreeService:     svcs.assetTreeService,
-		MaintenanceService:   svcs.maintenanceSvc,
+		ChannelMonitor:     jobs.channelMonitor,
+		StockScheduler:     jobs.stockScheduler,
+		CatalogRepo:        svcs.catalogRepo,
+		AssocService:       svcs.assocService,
+		JobsService:        svcs.jobsService,
+		JobsDB:             dbs.jobs.DB,
+		MediaProcessor:     svcs.mediaProcessor,
+		YoutubeClipService: svcs.youtubeClipService,
+		AssetIndexService:  svcs.assetIndexService,
+		AssetTreeService:   svcs.assetTreeService,
+		MaintenanceService: svcs.maintenanceSvc,
 	}, cleanup, nil
 }

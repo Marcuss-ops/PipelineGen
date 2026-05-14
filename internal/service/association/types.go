@@ -2,19 +2,18 @@ package association
 
 // ScoredMatch rappresenta un potenziale match di media con metadati.
 type ScoredMatch struct {
-	ClipID     string `json:"clip_id,omitempty"`
-	Title      string `json:"title"`
-	Path       string `json:"path"`
-	Score      int    `json:"score"`
-	Source     string `json:"source"`
-	Link       string `json:"link"`
-	FolderLink string `json:"folder_link,omitempty"`
-	FolderName string `json:"folder_name,omitempty"`
-	Details    string `json:"details"`
-	Reason     string `json:"reason,omitempty"`
+	ClipID     string    `json:"clip_id,omitempty"`
+	Title      string    `json:"title"`
+	Path       string    `json:"path"`
+	Score      int       `json:"score"`
+	Source     string    `json:"source"`
+	Link       string    `json:"link"`
+	FolderLink string    `json:"folder_link,omitempty"`
+	FolderName string    `json:"folder_name,omitempty"`
+	Details    string    `json:"details"`
+	Reason     string    `json:"reason,omitempty"`
+	Embedding  []float32 `json:"embedding,omitempty"`
 }
-
-
 
 // AssetSource definisce le origini degli asset.
 type AssetSource string

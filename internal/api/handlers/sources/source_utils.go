@@ -7,12 +7,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/repository/clips"
 	assettreerepo "velox/go-master/internal/repository/assettree"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/service/assetregistry"
-	"velox/go-master/pkg/models"
 	driveutil "velox/go-master/pkg/drive"
+	"velox/go-master/pkg/models"
 )
 
 // resolveRepo returns the appropriate repository for the given source.
@@ -23,7 +23,7 @@ func (h *Handler) resolveRepo(source string) *clips.Repository {
 }
 
 // clipToAssetNode converts a models.Clip to assettree.AssetNode for unified tree handling.
-func clipToAssetNode(clip *models.Clip) *assettreerepo.AssetNode {
+func clipToAssetNode(clip *models.MediaAsset) *assettreerepo.AssetNode {
 	if clip == nil {
 		return nil
 	}
@@ -46,7 +46,7 @@ func clipToAssetNode(clip *models.Clip) *assettreerepo.AssetNode {
 		IsFolder:    clip.IsFolder,
 		DriveFileID: clip.DriveFileID,
 		DriveLink:   clip.DriveLink,
-		Metadata:    clip.Metadata,
+		Metadata:    clip.MetadataJSON(),
 		CreatedAt:   clip.CreatedAt,
 		UpdatedAt:   clip.UpdatedAt,
 		ChildCount:  clip.ChildCount,
@@ -76,17 +76,17 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 }
 
 // voiceoverRecordToClip delegates to the canonical converter in assetregistry.
-func voiceoverRecordToClip(rec *voiceovers.Record) *models.Clip {
+func voiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
 	return assetregistry.VoiceoverRecordToClip(rec)
 }
 
 // imageAssetToClip uses the canonical converter from assetregistry.
-func imageAssetToClip(asset *models.ImageAsset) *models.Clip {
+func imageAssetToClip(asset *models.ImageAsset) *models.MediaAsset {
 	return assetregistry.ImageAssetToClip(asset)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *models.Clip) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *models.MediaAsset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

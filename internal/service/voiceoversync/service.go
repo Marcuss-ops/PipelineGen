@@ -17,8 +17,8 @@ import (
 const folderMimeType = "application/vnd.google-apps.folder"
 
 type Service struct {
-	driveClient *drive.Service
-	log         *zap.Logger
+	driveClient  *drive.Service
+	log          *zap.Logger
 	repo         *voiceovers.Repository
 	assetTreeSvc *assettree.Service
 	rootFolderID string

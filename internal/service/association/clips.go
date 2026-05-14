@@ -8,7 +8,6 @@ import (
 	"velox/go-master/pkg/textutil"
 )
 
-
 // ClipDriveAssociation cerca clip specifiche nel database delle clip scaricate.
 type ClipDriveAssociation struct {
 	repo *clips.Repository

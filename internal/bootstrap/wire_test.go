@@ -27,7 +27,7 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 			EnableAuth: false,
 		},
 		Server: config.ServerConfig{
-			Port:        8080,
+			Port:         8080,
 			ReadTimeout:  600,
 			WriteTimeout: 600,
 		},
@@ -72,7 +72,7 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 			EnableAuth: false,
 		},
 		Server: config.ServerConfig{
-			Port:        8080,
+			Port:         8080,
 			ReadTimeout:  600,
 			WriteTimeout: 600,
 		},
@@ -118,7 +118,7 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 			EnableAuth: false,
 		},
 		Server: config.ServerConfig{
-			Port:        8080,
+			Port:         8080,
 			ReadTimeout:  600,
 			WriteTimeout: 600,
 		},

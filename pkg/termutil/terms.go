@@ -7,12 +7,12 @@ import (
 )
 
 type Options struct {
-	MinLen       int
-	Lowercase    bool
-	RemoveStops  bool
-	Unique       bool
-	UniqueCI     bool
-	Limit        int
+	MinLen      int
+	Lowercase   bool
+	RemoveStops bool
+	Unique      bool
+	UniqueCI    bool
+	Limit       int
 }
 
 func defaultOpts() Options {

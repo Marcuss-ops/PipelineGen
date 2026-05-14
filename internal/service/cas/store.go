@@ -37,10 +37,10 @@ func (s *Store) PutFile(srcPath string) (*PutResult, error) {
 	if _, err := os.Stat(finalPath); err == nil {
 		// File already exists
 		return &PutResult{
-			ContentHash: hash,
-			Path:        finalPath,
+			ContentHash:   hash,
+			Path:          finalPath,
 			AlreadyExists: true,
-			Timestamp:   time.Now().UTC(),
+			Timestamp:     time.Now().UTC(),
 		}, nil
 	}
 
@@ -85,10 +85,10 @@ func (s *Store) PutFile(srcPath string) (*PutResult, error) {
 	}
 
 	return &PutResult{
-		ContentHash: hash,
-		Path:        finalPath,
+		ContentHash:   hash,
+		Path:          finalPath,
 		AlreadyExists: false,
-		Timestamp:   time.Now().UTC(),
+		Timestamp:     time.Now().UTC(),
 	}, nil
 }
 
@@ -96,24 +96,24 @@ func (s *Store) PutFile(srcPath string) (*PutResult, error) {
 // Returns true if the file exists and its hash matches.
 func (s *Store) Verify(contentHash string) (bool, error) {
 	dir := filepath.Join(s.Root, contentHash[0:2], contentHash[2:4])
-	
+
 	// Try to find the file with any extension
-	pattern := filepath.Join(dir, contentHash + ".*")
+	pattern := filepath.Join(dir, contentHash+".*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return false, err
 	}
-	
+
 	if len(matches) == 0 {
 		return false, nil
 	}
-	
+
 	// Verify the hash of the first match
 	actualHash, err := hashutil.SHA256File(matches[0])
 	if err != nil {
 		return false, err
 	}
-	
+
 	return actualHash == contentHash, nil
 }
 

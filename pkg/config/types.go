@@ -10,16 +10,16 @@ import (
 type Config struct {
 	mu sync.RWMutex
 
-	Server    ServerConfig    `yaml:"server"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	Storage   StorageConfig   `yaml:"storage"`
-	Security  SecurityConfig  `yaml:"security"`
-	External  ExternalConfig  `yaml:"external"`
-	Paths     PathsConfig     `yaml:"paths"`
-	Drive     DriveConfig     `yaml:"drive"`
-	Harvester HarvesterConfig `yaml:"harvester"`
-	Jobs      JobsConfig      `yaml:"jobs"`
-	Workers   WorkersConfig   `yaml:"workers"`
+	Server      ServerConfig      `yaml:"server"`
+	Logging     LoggingConfig     `yaml:"logging"`
+	Storage     StorageConfig     `yaml:"storage"`
+	Security    SecurityConfig    `yaml:"security"`
+	External    ExternalConfig    `yaml:"external"`
+	Paths       PathsConfig       `yaml:"paths"`
+	Drive       DriveConfig       `yaml:"drive"`
+	Harvester   HarvesterConfig   `yaml:"harvester"`
+	Jobs        JobsConfig        `yaml:"jobs"`
+	Workers     WorkersConfig     `yaml:"workers"`
 	Video       VideoConfig       `yaml:"video"`
 	Features    FeaturesConfig    `yaml:"features"`
 	ClipIndexer ClipIndexerConfig `yaml:"clip_indexer"`
@@ -29,11 +29,11 @@ type Config struct {
 type VideoConfig struct {
 	Width            int    `yaml:"width" default:"1920"`
 	Height           int    `yaml:"height" default:"1080"`
-	FPS             int    `yaml:"fps" default:"30"`
-	Codec           string `yaml:"codec" default:"h264_nvenc"`
-	Preset          string `yaml:"preset" default:"p1"`
-	CRF             int    `yaml:"crf" default:"23"`
-	Duration        int    `yaml:"duration" default:"7"`
+	FPS              int    `yaml:"fps" default:"30"`
+	Codec            string `yaml:"codec" default:"h264_nvenc"`
+	Preset           string `yaml:"preset" default:"p1"`
+	CRF              int    `yaml:"crf" default:"23"`
+	Duration         int    `yaml:"duration" default:"7"`
 	KeyframeInterval int    `yaml:"keyframe_interval" default:"60"`
 }
 

@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/pkg/textutil"
-	"go.uber.org/zap"
 )
 
 // ArtlistStockAssociation searches in the Artlist clip database using multiple terms.
@@ -57,19 +57,19 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, t
 	queryTokens := textutil.Tokenize(term)
 	topic = strings.ToLower(topic)
 	topicTokens := textutil.Tokenize(topic)
-	
+
 	var matches []ScoredMatch
 
 	for _, clip := range clipsList {
 		clipText := strings.ToLower(clip.Name + " " + strings.Join(clip.Tags, " "))
 		targetTokens := textutil.Tokenize(clipText)
-		
+
 		score, topicMatched, matchedTokens := a.calculateImprovedScore(queryTokens, targetTokens, clipText, topic, topicTokens)
 
 		if score > 35 {
-			a.repo.Log().Debug("Artlist match found", 
-				zap.String("clip", clip.Name), 
-				zap.Int("score", score), 
+			a.repo.Log().Debug("Artlist match found",
+				zap.String("clip", clip.Name),
+				zap.Int("score", score),
 				zap.Bool("topic_matched", topicMatched),
 				zap.Strings("matched_tokens", matchedTokens))
 
@@ -119,7 +119,7 @@ func (a *ArtlistStockAssociation) calculateImprovedScore(queryTokens, targetToke
 	}
 
 	score := (matchCount * 100) / len(queryTokens)
-	
+
 	// Topic match bonus
 	if topicMatched {
 		score += 40

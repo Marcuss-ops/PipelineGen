@@ -36,4 +36,3 @@ type ClipStatusResponse struct {
 	Source       string `json:"source"`
 	ExternalURL  string `json:"external_url"`
 }
-

@@ -75,7 +75,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 		clipsList = clipsList[:limit]
 	}
 
-	resp.Clips = make([]models.Clip, 0, len(clipsList))
+	resp.Clips = make([]models.MediaAsset, 0, len(clipsList))
 	for _, c := range clipsList {
 		resp.Clips = append(resp.Clips, *c)
 	}
@@ -153,7 +153,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, term string, lim
 		return nil, err
 	}
 
-	resp := &SearchResponse{OK: true, Term: term, Source: "live", Clips: make([]models.Clip, 0, len(clips))}
+	resp := &SearchResponse{OK: true, Term: term, Source: "live", Clips: make([]models.MediaAsset, 0, len(clips))}
 
 	for _, c := range clips {
 		// Handle both clip_id (new format) and id (old format)
@@ -174,7 +174,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, term string, lim
 			name = id
 		}
 
-		clip := &models.Clip{
+		clip := &models.MediaAsset{
 			ID:           id,
 			Name:         name,
 			Tags:         []string{term},
@@ -229,7 +229,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 		if s.cfg != nil {
 			driveFolderID = s.cfg.Harvester.DriveFolderID
 		}
-		
+
 		// Synchronously resolve destination folder so we can return the link immediately
 		groupName := "Artlist"
 		if term != "" {
@@ -253,7 +253,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 			s.log.Warn("artlist discovery queued save but failed to enqueue job", zap.String("term", term), zap.Error(err))
 			return liveResp, nil, nil
 		}
-		
+
 		// Return job info with resolved folder details
 		runResp := JobToRunTagResponse(job)
 		if runResp != nil {
@@ -262,7 +262,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 				runResp.TagFolderLink = "https://drive.google.com/drive/folders/" + resolvedFolderID
 			}
 		}
-		
+
 		return liveResp, runResp, nil
 	}
 

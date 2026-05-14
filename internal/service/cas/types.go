@@ -3,8 +3,8 @@ package cas
 import "time"
 
 type PutResult struct {
-	ContentHash string
-	Path        string
+	ContentHash   string
+	Path          string
 	AlreadyExists bool
-	Timestamp   time.Time
+	Timestamp     time.Time
 }

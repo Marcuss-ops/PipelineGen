@@ -50,7 +50,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 	}
 
 	now := time.Now()
-	
+
 	var payload json.RawMessage
 	if req.Payload != nil {
 		payloadBytes, err := json.Marshal(req.Payload)
@@ -61,19 +61,19 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 	}
 
 	job := &models.Job{
-		ID:          generateJobID(),
-		Type:        req.Type,
-		Status:      models.StatusQueued,
-		Priority:    req.Priority,
-		Project:     req.Project,
-		VideoName:   req.VideoName,
-		Payload:     payload,
-		RetryCount:  0,
-		MaxRetries:  req.MaxRetries,
-		Progress:    0,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-		ActiveKey:   req.ActiveKey,
+		ID:         generateJobID(),
+		Type:       req.Type,
+		Status:     models.StatusQueued,
+		Priority:   req.Priority,
+		Project:    req.Project,
+		VideoName:  req.VideoName,
+		Payload:    payload,
+		RetryCount: 0,
+		MaxRetries: req.MaxRetries,
+		Progress:   0,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		ActiveKey:  req.ActiveKey,
 	}
 
 	if job.MaxRetries == 0 {

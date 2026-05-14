@@ -84,7 +84,7 @@ func (s *LifecycleScheduler) Stop() {
 
 func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 	s.log.Info("Triggering periodic catalog sync via job system")
-	
+
 	if s.jobsSvc == nil {
 		s.log.Warn("Jobs service not available, skipping periodic sync")
 		return
@@ -112,7 +112,7 @@ func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 		s.log.Info("No sources configured for periodic sync")
 		return
 	}
-	
+
 	for _, src := range sources {
 		payload := map[string]any{
 			"source": src,
@@ -134,7 +134,7 @@ func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 
 func (s *LifecycleScheduler) triggerCleanup(ctx context.Context) {
 	s.log.Info("Triggering periodic deep cleanup via job system")
-	
+
 	if s.jobsSvc == nil {
 		s.log.Warn("Jobs service not available, skipping periodic cleanup")
 		return

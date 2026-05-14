@@ -4,7 +4,7 @@ import "time"
 
 // IndexResult represents the result of an indexing operation
 type IndexResult struct {
-	ClipID           string    `json:"clip_id"`
+	ClipID            string    `json:"clip_id"`
 	Success           bool      `json:"success"`
 	Error             string    `json:"error,omitempty"`
 	IndexedAt         time.Time `json:"indexed_at"`

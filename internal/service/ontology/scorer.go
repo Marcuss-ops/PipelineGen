@@ -17,7 +17,7 @@ func NewScorer(registry *Registry) *Scorer {
 }
 
 // Apply applies the ontology rules for a given topic to the clip score.
-func (s *Scorer) Apply(score float64, clip *models.Clip, topic string) float64 {
+func (s *Scorer) Apply(score float64, clip *models.MediaAsset, topic string) float64 {
 	if s.registry == nil || topic == "" {
 		return score
 	}
@@ -49,7 +49,7 @@ func (s *Scorer) Apply(score float64, clip *models.Clip, topic string) float64 {
 	return finalScore
 }
 
-func (s *Scorer) matchesAny(clip *models.Clip, terms []string) bool {
+func (s *Scorer) matchesAny(clip *models.MediaAsset, terms []string) bool {
 	if len(terms) == 0 {
 		return false
 	}
@@ -63,7 +63,7 @@ func (s *Scorer) matchesAny(clip *models.Clip, terms []string) bool {
 	return false
 }
 
-func (s *Scorer) matchesAnySynonym(clip *models.Clip, synonyms [][]string) bool {
+func (s *Scorer) matchesAnySynonym(clip *models.MediaAsset, synonyms [][]string) bool {
 	for _, group := range synonyms {
 		if s.matchesAny(clip, group) {
 			return true
@@ -72,7 +72,7 @@ func (s *Scorer) matchesAnySynonym(clip *models.Clip, synonyms [][]string) bool 
 	return false
 }
 
-func (s *Scorer) matchesCategory(clip *models.Clip, categories []string) bool {
+func (s *Scorer) matchesCategory(clip *models.MediaAsset, categories []string) bool {
 	if clip.Category == "" || len(categories) == 0 {
 		return false
 	}
@@ -85,7 +85,7 @@ func (s *Scorer) matchesCategory(clip *models.Clip, categories []string) bool {
 	return false
 }
 
-func (s *Scorer) getSearchText(clip *models.Clip) string {
+func (s *Scorer) getSearchText(clip *models.MediaAsset) string {
 	var sb strings.Builder
 	sb.WriteString(strings.ToLower(clip.Name))
 	sb.WriteString(" ")

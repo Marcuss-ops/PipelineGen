@@ -11,11 +11,11 @@ type SearchRequest struct {
 
 // SearchResponse represents a search response
 type SearchResponse struct {
-	OK     bool          `json:"ok"`
-	Term   string        `json:"term"`
-	Source string        `json:"source"`
-	Clips  []models.Clip `json:"clips"`
-	Error  string        `json:"error,omitempty"`
+	OK     bool                `json:"ok"`
+	Term   string              `json:"term"`
+	Source string              `json:"source"`
+	Clips  []models.MediaAsset `json:"clips"`
+	Error  string              `json:"error,omitempty"`
 }
 
 // SyncRequest represents a sync request

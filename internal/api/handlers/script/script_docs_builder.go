@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/prompts"
 	"velox/go-master/internal/ml/ollama/types"
@@ -18,7 +19,6 @@ import (
 	imgservice "velox/go-master/internal/service/images"
 	"velox/go-master/pkg/models"
 	"velox/go-master/pkg/textutil"
-	"go.uber.org/zap"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -169,7 +169,7 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 
 	// Requesting maximum 3 special names/entities to avoid cluttering the document
 	extractionPrompt := prompts.BuildEntityExtractionPrompt(narrative, 3)
-	
+
 	type localExtracted struct {
 		FrasiImportanti  []string    `json:"frasi_importanti"`
 		EntitaSenzaTesto interface{} `json:"entity_senza_testo"`
@@ -177,12 +177,12 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 		ParoleImportanti []string    `json:"parole_importanti"`
 		ArtlistPhrases   []string    `json:"artlist_phrases"`
 	}
-	
+
 	var extracted localExtracted
 	messages := []types.Message{
 		{Role: "user", Content: extractionPrompt},
 	}
-	
+
 	resp, err := gen.GetClient().Chat(ctx, messages, nil)
 	if err != nil {
 		zap.L().Error("LLM metadata extraction failed", zap.Error(err))
@@ -191,7 +191,7 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 
 	jsonStr := textutil.ExtractJSONObject(resp)
 	zap.L().Info("LLM metadata extraction successful", zap.String("json", jsonStr))
-	
+
 	if err := json.Unmarshal([]byte(jsonStr), &extracted); err != nil {
 		zap.L().Error("LLM metadata unmarshal failed", zap.Error(err), zap.String("json", jsonStr))
 		return nil
@@ -204,7 +204,7 @@ func extractDocumentAnalysis(ctx context.Context, gen *ollama.Generator, narrati
 		ArtlistPhrases:   extracted.ArtlistPhrases,
 		EntitaSenzaTesto: make(map[string]string),
 	}
-	
+
 	if extracted.EntitaSenzaTesto != nil {
 		switch v := extracted.EntitaSenzaTesto.(type) {
 		case string:
@@ -251,7 +251,7 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 		matches, err := ArtlistRepo.SearchClipsByKeywords(ctx, keywords, 5)
 		if err == nil && len(matches) > 0 {
 			// Find the first match that isn't already used
-			var bestMatch *models.Clip
+			var bestMatch *models.MediaAsset
 			for _, m := range matches {
 				if usedIDs[m.ID] {
 					continue
@@ -267,7 +267,7 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 				if bestMatch.IsFolder {
 					children, err := ArtlistRepo.GetFolderChildren(ctx, bestMatch.ID)
 					if err == nil && len(children) > 0 {
-						var files []*models.Clip
+						var files []*models.MediaAsset
 						for _, child := range children {
 							if !child.IsFolder && (child.DriveLink != "" || child.ExternalURL != "") {
 								files = append(files, child)
@@ -283,11 +283,11 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 				if link == "" {
 					link = finalClip.ExternalURL
 				}
-				
+
 				if link != "" {
 					usedIDs[finalClip.ID] = true
 					foundCount++
-					
+
 					// Resolve a nice display name
 					displayName := finalClip.Name
 					if displayName == "" {
@@ -297,7 +297,7 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 					displayName = strings.Split(displayName, " by ")[0]
 					displayName = strings.Split(displayName, " – ")[0]
 					displayName = strings.TrimSuffix(displayName, ".mp4")
-					
+
 					b.WriteString(fmt.Sprintf("🎥 \"%s\": %s (%s)\n", phrase, displayName, link))
 				}
 			}

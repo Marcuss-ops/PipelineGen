@@ -12,19 +12,19 @@ import (
 
 func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
 	if coreDeps.ClipIndexerService != nil {
-		clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
-		clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.ArtlistDB.Path())
+		clipCatalogRepo := clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
+		clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.MediaDB.Path())
 		return clipCatalogRepo, coreDeps.ClipIndexerService
 	}
 
-	if coreDeps.ArtlistDB != nil && coreDeps.ArtlistDB.DB != nil {
-		if err := clipcatalog.EnsureSchema(context.Background(), coreDeps.ArtlistDB.DB, log); err != nil {
+	if coreDeps.MediaDB != nil && coreDeps.MediaDB.DB != nil {
+		if err := clipcatalog.EnsureSchema(context.Background(), coreDeps.MediaDB.DB, log); err != nil {
 			log.Warn("failed to ensure clipcatalog schema", zap.Error(err))
 		}
 	}
 
-	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.ArtlistDB.DB, log)
-	clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.ArtlistDB.Path())
+	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
+	clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.MediaDB.Path())
 
 	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{
 		Enabled:               cfg.ClipIndexer.Enabled,
@@ -32,8 +32,8 @@ func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger)
 		ScriptPath:            cfg.ClipIndexer.ScriptPath,
 		PythonBin:             cfg.ClipIndexer.PythonBin,
 		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
-		DBPath:                coreDeps.ArtlistDB.Path(),
-	}, coreDeps.ArtlistDB.DB, coreDeps.ArtlistDB.Path(), log)
+		DBPath:                coreDeps.MediaDB.Path(),
+	}, coreDeps.MediaDB.DB, coreDeps.MediaDB.Path(), log)
 
 	// Start background embedding server and watchdog
 	if err := clipIndexerSvc.StartServer(); err != nil {

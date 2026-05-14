@@ -46,17 +46,17 @@ const (
 
 // New job types for the unified job system
 const (
-	JobTypeMediaExtract     JobType = "media.extract"
-	JobTypeMediaStock       JobType = "media.stock"
-	JobTypeVoiceoverBatch   JobType = "voiceover.batch"
-	JobTypeSubtitleGenerate JobType = "subtitle.generate"
-	JobTypeRenderVideo      JobType = "render.video"
-	JobTypeYouTubeUpload    JobType = "youtube.upload"
+	JobTypeMediaExtract       JobType = "media.extract"
+	JobTypeMediaStock         JobType = "media.stock"
+	JobTypeVoiceoverBatch     JobType = "voiceover.batch"
+	JobTypeSubtitleGenerate   JobType = "subtitle.generate"
+	JobTypeRenderVideo        JobType = "render.video"
+	JobTypeYouTubeUpload      JobType = "youtube.upload"
 	JobTypeYouTubeClipExtract JobType = "youtube_clip.extract"
-	JobTypeCatalogSync      JobType = "catalog.sync"
-	JobTypeArtlistRun       JobType = "media.artlist"
-	JobTypeContentPackage   JobType = "content.package"
-	JobTypeSystemCleanup    JobType = "system.cleanup"
+	JobTypeCatalogSync        JobType = "catalog.sync"
+	JobTypeArtlistRun         JobType = "media.artlist"
+	JobTypeContentPackage     JobType = "content.package"
+	JobTypeSystemCleanup      JobType = "system.cleanup"
 )
 
 // Job rappresenta un job nel sistema

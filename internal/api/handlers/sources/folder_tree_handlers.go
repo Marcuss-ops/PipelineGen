@@ -45,7 +45,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {
 			for _, clip := range clipChildren {
-			        children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
+				children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
 			}
 		} else {
 			err = clipErr
@@ -81,26 +81,26 @@ func (h *Handler) GetTree(c *gin.Context) {
 
 	treeNodes, err := h.assetTreeSvc.ListChildren(c.Request.Context(), source, parentID)
 	if err != nil {
-	        h.log.Error("failed to list children", zap.Error(err), zap.String("source", source), zap.String("parent_id", parentID))
-	        apiutil.InternalError(c, err)
-	        return
+		h.log.Error("failed to list children", zap.Error(err), zap.String("source", source), zap.String("parent_id", parentID))
+		apiutil.InternalError(c, err)
+		return
 	}
 
 	var children []*models.AssetNode
 	for _, tn := range treeNodes {
-	        children = append(children, treeNodeToAssetNode(tn))
+		children = append(children, treeNodeToAssetNode(tn))
 	}
 
 	if len(children) == 0 {
-	        // Fallback to clips repository if asset tree is empty
-	        if repo := h.resolveRepo(source); repo != nil {
-	                clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
-	                if clipErr == nil {
-	                        for _, clip := range clipChildren {
-	                                children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
-	                        }
-	                }
-	        }
+		// Fallback to clips repository if asset tree is empty
+		if repo := h.resolveRepo(source); repo != nil {
+			clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
+			if clipErr == nil {
+				for _, clip := range clipChildren {
+					children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
+				}
+			}
+		}
 	}
 	apiutil.OK(c, gin.H{
 		"ok":       true,

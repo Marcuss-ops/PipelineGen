@@ -112,9 +112,9 @@ func (h *Handler) Stats(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"total":      stats.Total,
-		"by_type":    stats.ByType,
-		"by_status":  stats.ByStatus,
+		"ok":        true,
+		"total":     stats.Total,
+		"by_type":   stats.ByType,
+		"by_status": stats.ByStatus,
 	})
 }

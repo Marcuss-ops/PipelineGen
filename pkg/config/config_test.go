@@ -11,8 +11,8 @@ func TestConfigValidateFailsWithoutAdminTokenWhenAuthEnabled(t *testing.T) {
 			AdminToken: "",
 		},
 		Server: ServerConfig{
-			Port:        8080,
-			ReadTimeout: 600,
+			Port:         8080,
+			ReadTimeout:  600,
 			WriteTimeout: 600,
 		},
 		External: ExternalConfig{
@@ -39,8 +39,8 @@ func TestConfigValidateFailsWithInvalidPort(t *testing.T) {
 					EnableAuth: false,
 				},
 				Server: ServerConfig{
-					Port:        tt.port,
-					ReadTimeout: 600,
+					Port:         tt.port,
+					ReadTimeout:  600,
 					WriteTimeout: 600,
 				},
 				External: ExternalConfig{
@@ -60,8 +60,8 @@ func TestConfigValidateFailsWithMissingOllamaURL(t *testing.T) {
 			EnableAuth: false,
 		},
 		Server: ServerConfig{
-			Port:        8080,
-			ReadTimeout: 600,
+			Port:         8080,
+			ReadTimeout:  600,
 			WriteTimeout: 600,
 		},
 		External: ExternalConfig{
@@ -79,8 +79,8 @@ func TestConfigValidateFailsWithZeroReadTimeout(t *testing.T) {
 			EnableAuth: false,
 		},
 		Server: ServerConfig{
-			Port:        8080,
-			ReadTimeout: 0,
+			Port:         8080,
+			ReadTimeout:  0,
 			WriteTimeout: 600,
 		},
 		External: ExternalConfig{
@@ -98,8 +98,8 @@ func TestConfigValidateFailsWithZeroWriteTimeout(t *testing.T) {
 			EnableAuth: false,
 		},
 		Server: ServerConfig{
-			Port:        8080,
-			ReadTimeout: 600,
+			Port:         8080,
+			ReadTimeout:  600,
 			WriteTimeout: 0,
 		},
 		External: ExternalConfig{
@@ -118,8 +118,8 @@ func TestConfigValidateAcceptsValidConfig(t *testing.T) {
 			AdminToken: "valid-token",
 		},
 		Server: ServerConfig{
-			Port:        8080,
-			ReadTimeout: 600,
+			Port:         8080,
+			ReadTimeout:  600,
 			WriteTimeout: 600,
 		},
 		External: ExternalConfig{

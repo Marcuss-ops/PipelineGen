@@ -4,9 +4,9 @@ import (
 	"velox/go-master/pkg/models"
 )
 
-// ClipToMediaAsset converts a models.Clip to a MediaAsset.
-// workspaceID and projectID must be provided as they are not part of Clip.
-func ClipToMediaAsset(c models.Clip, workspaceID, projectID string) MediaAsset {
+// ClipToMediaAsset converts a models.MediaAsset to a core MediaAsset (legacy name).
+// workspaceID and projectID must be provided as they are not part of MediaAsset.
+func ClipToMediaAsset(c models.MediaAsset, workspaceID, projectID string) MediaAsset {
 	asset := MediaAsset{
 		ID:           c.ID,
 		WorkspaceID:  workspaceID,
@@ -16,7 +16,7 @@ func ClipToMediaAsset(c models.Clip, workspaceID, projectID string) MediaAsset {
 		Tags:         c.Tags,
 		ExternalURL:  c.ExternalURL,
 		DurationSecs: c.Duration,
-		MetadataJSON: c.Metadata,
+		MetadataJSON: c.MetadataJSON(),
 		CreatedAt:    c.CreatedAt,
 		UpdatedAt:    c.UpdatedAt,
 	}
@@ -34,19 +34,19 @@ func ClipToMediaAsset(c models.Clip, workspaceID, projectID string) MediaAsset {
 	return asset
 }
 
-// MediaAssetToClip converts a MediaAsset to models.Clip.
-func MediaAssetToClip(a MediaAsset) models.Clip {
-	clip := models.Clip{
+// MediaAssetToClip converts a MediaAsset to models.MediaAsset.
+func MediaAssetToClip(a MediaAsset) models.MediaAsset {
+	clip := models.MediaAsset{
 		ID:          a.ID,
 		Name:        a.Title,
 		Category:    a.Category,
 		Tags:        a.Tags,
 		ExternalURL: a.ExternalURL,
 		Duration:    a.DurationSecs,
-		Metadata:    a.MetadataJSON,
 		CreatedAt:   a.CreatedAt,
 		UpdatedAt:   a.UpdatedAt,
 	}
+	clip.SetMetadataJSON(a.MetadataJSON)
 
 	if a.PrimaryFile != nil {
 		clip.LocalPath = a.PrimaryFile.LocalPath

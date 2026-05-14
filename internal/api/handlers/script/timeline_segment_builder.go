@@ -18,13 +18,13 @@ import (
 func buildSegment(ctx context.Context, req ScriptDocsRequest, rawSeg timelineLLMSegment, idx int, dataDir string, stockRepo *clips.Repository, assocService *association.Service, normalizer *catalogNormalizerService) TimelineSegment {
 	seg := TimelineSegment{
 		Index:             idx + 1,
-		StartTime:        rawSeg.StartTime,
-		EndTime:          rawSeg.EndTime,
-		Timestamp:        fmt.Sprintf("%.0f-%.0f", rawSeg.StartTime, rawSeg.EndTime),
-		Subject:          strings.TrimSpace(rawSeg.Subject),
-		NarrativeText:    strings.TrimSpace(rawSeg.NarrativeText),
-		Keywords:         rawSeg.Keywords,
-		Entities:         rawSeg.Entities,
+		StartTime:         rawSeg.StartTime,
+		EndTime:           rawSeg.EndTime,
+		Timestamp:         fmt.Sprintf("%.0f-%.0f", rawSeg.StartTime, rawSeg.EndTime),
+		Subject:           strings.TrimSpace(rawSeg.Subject),
+		NarrativeText:     strings.TrimSpace(rawSeg.NarrativeText),
+		Keywords:          rawSeg.Keywords,
+		Entities:          rawSeg.Entities,
 		SearchSuggestions: rawSeg.SearchSuggestions,
 	}
 
@@ -73,7 +73,7 @@ func searchArtlistFromDB(ctx context.Context, seg *TimelineSegment, artlistServi
 	if len(seg.SearchSuggestions) == 0 {
 		return
 	}
-	
+
 	var artlistClips []association.ScoredMatch
 	for _, query := range seg.SearchSuggestions {
 		clipPtrs := artlistService.SearchClips(ctx, query)

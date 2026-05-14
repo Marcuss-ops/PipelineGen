@@ -13,7 +13,7 @@ type EmbeddingProvider interface {
 
 // OntologyScorer defines the interface for applying ontology-based scoring.
 type OntologyScorer interface {
-	Apply(score float64, clip *models.Clip, topic string) float64
+	Apply(score float64, clip *models.MediaAsset, topic string) float64
 }
 
 // RecommendRequest is the request for clip recommendation
@@ -38,14 +38,14 @@ type RecommendRequest struct {
 
 // RecommendResponse is the response for clip recommendation
 type RecommendResponse struct {
-	OK           bool             `json:"ok"`
-	Topic         string           `json:"topic,omitempty"`
-	SegmentID     string           `json:"segment_id,omitempty"`
+	OK            bool              `json:"ok"`
+	Topic         string            `json:"topic,omitempty"`
+	SegmentID     string            `json:"segment_id,omitempty"`
 	Recommended   []RecommendedClip `json:"recommended"`
-	Rejected     []RejectedClip   `json:"rejected,omitempty"`
-	NeedsHarvest bool             `json:"needs_harvest"`
-	HarvestTerms  []string         `json:"harvest_terms,omitempty"`
-	HarvestJobIDs []string         `json:"harvest_job_ids,omitempty"`
+	Rejected      []RejectedClip    `json:"rejected,omitempty"`
+	NeedsHarvest  bool              `json:"needs_harvest"`
+	HarvestTerms  []string          `json:"harvest_terms,omitempty"`
+	HarvestJobIDs []string          `json:"harvest_job_ids,omitempty"`
 }
 
 // RecommendedClip represents a recommended clip with score breakdown
@@ -75,13 +75,13 @@ type RejectedClip struct {
 
 // ScoreBreakdown provides explainable scoring
 type ScoreBreakdown struct {
-	TextScore      float64 `json:"text_score,omitempty"`
-	VectorScore    float64 `json:"vector_score,omitempty"`
-	TopicBoost     float64 `json:"topic_boost,omitempty"`
-	CategoryBoost  float64 `json:"category_boost,omitempty"`
-	UsableForBoost float64 `json:"usable_for_boost,omitempty"`
-	SourceBoost    float64 `json:"source_boost,omitempty"`
-	QualityScore   float64 `json:"quality_score,omitempty"`
+	TextScore        float64 `json:"text_score,omitempty"`
+	VectorScore      float64 `json:"vector_score,omitempty"`
+	TopicBoost       float64 `json:"topic_boost,omitempty"`
+	CategoryBoost    float64 `json:"category_boost,omitempty"`
+	UsableForBoost   float64 `json:"usable_for_boost,omitempty"`
+	SourceBoost      float64 `json:"source_boost,omitempty"`
+	QualityScore     float64 `json:"quality_score,omitempty"`
 	NegativePenalty  float64 `json:"negative_penalty,omitempty"`
 	ReusePenalty     float64 `json:"reuse_penalty,omitempty"`
 	DiversityPenalty float64 `json:"diversity_penalty,omitempty"`
@@ -89,7 +89,7 @@ type ScoreBreakdown struct {
 
 // ClipScore is an internal type for scoring clips
 type ClipScore struct {
-	Clip         *models.Clip
+	Clip         *models.MediaAsset
 	Score        float64
 	Breakdown    *ScoreBreakdown
 	MatchedQuery string

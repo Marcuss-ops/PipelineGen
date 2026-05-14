@@ -42,8 +42,8 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				jobs.driveSyncSchedule.Stop()
 			}()
 		}
-	// NOTE: harvesterCronSvc and catalogSyncJob removed (cron system eliminated)
-	// These should be migrated to the job system
+		// NOTE: harvesterCronSvc and catalogSyncJob removed (cron system eliminated)
+		// These should be migrated to the job system
 
 		// Wait for all stop operations with timeout
 		done := make(chan struct{})
@@ -57,53 +57,22 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 		case <-time.After(5 * time.Second):
 			log.Warn("Timeout waiting for background jobs to stop")
 		}
-
-		if dbs.images != nil {
-			if err := dbs.images.Backup(); err != nil {
-				log.Warn("Failed to create images backup on shutdown", zap.Error(err))
-			}
-			if err := dbs.images.Close(); err != nil {
-				log.Error("Failed to close images database", zap.Error(err))
-			}
-		}
+		
 		if dbs.main != nil {
 			if err := dbs.main.Backup(); err != nil {
-				log.Warn("Failed to create backup on shutdown", zap.Error(err))
+				log.Warn("Failed to create main backup on shutdown", zap.Error(err))
 			}
 			if err := dbs.main.Close(); err != nil {
 				log.Error("Failed to close main database", zap.Error(err))
 			}
 		}
-		if dbs.stock != nil {
-			if err := dbs.stock.Backup(); err != nil {
-				log.Warn("Failed to create stock backup on shutdown", zap.Error(err))
+
+		if dbs.media != nil {
+			if err := dbs.media.Backup(); err != nil {
+				log.Warn("Failed to create media backup on shutdown", zap.Error(err))
 			}
-			if err := dbs.stock.Close(); err != nil {
-				log.Error("Failed to close stock database", zap.Error(err))
-			}
-		}
-		if dbs.clips != nil {
-			if err := dbs.clips.Backup(); err != nil {
-				log.Warn("Failed to create clips backup on shutdown", zap.Error(err))
-			}
-			if err := dbs.clips.Close(); err != nil {
-				log.Error("Failed to close clips database", zap.Error(err))
-			}
-		}
-		if dbs.artlist != nil {
-			if err := dbs.artlist.Backup(); err != nil {
-				log.Warn("Failed to create artlist backup on shutdown", zap.Error(err))
-			}
-			if err := dbs.artlist.Close(); err != nil {
-				log.Error("Failed to close artlist database", zap.Error(err))
-			}
-		}
-		if dbs.voiceover != nil {
-			if err := dbs.voiceover.Backup(); err != nil {
-				log.Warn("Failed to create voiceover backup on shutdown", zap.Error(err))
-			}
-			if err := dbs.voiceover.Close(); err != nil {
-				log.Error("Failed to close voiceover database", zap.Error(err))
+			if err := dbs.media.Close(); err != nil {
+				log.Error("Failed to close media database", zap.Error(err))
 			}
 		}
 		if dbs.jobs != nil {

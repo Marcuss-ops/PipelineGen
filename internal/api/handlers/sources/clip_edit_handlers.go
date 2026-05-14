@@ -19,7 +19,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	var clip models.Clip
+	var clip models.MediaAsset
 	if err := c.ShouldBindJSON(&clip); err != nil {
 		apiutil.BadRequest(c, "invalid clip data: "+err.Error())
 		return

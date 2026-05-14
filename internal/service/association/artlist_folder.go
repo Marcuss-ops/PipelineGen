@@ -4,7 +4,6 @@ import (
 	"context"
 )
 
-
 // ArtlistFolderAssociation matches a segment against known Artlist folders.
 type ArtlistFolderAssociation struct {
 	s *Service

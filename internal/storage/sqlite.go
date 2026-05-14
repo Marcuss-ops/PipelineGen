@@ -30,13 +30,13 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 		log.Info("Creating in-memory SQLite database")
 	} else {
 		dbPath = filepath.Join(dataDir, dbName)
-		
+
 		// Ensure parent directory exists
 		parentDir := filepath.Dir(dbPath)
 		if err := os.MkdirAll(parentDir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create database directory %s: %w", parentDir, err)
 		}
-		
+
 		dsn = dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	}
 
@@ -113,11 +113,11 @@ func enableWALMode(db *sql.DB, log *zap.Logger) error {
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA wal_autocheckpoint=1000",
 		"PRAGMA busy_timeout=5000",
-		"PRAGMA synchronous=NORMAL", // WAL mode: NORMAL is safe and faster
-		"PRAGMA cache_size=-64000",  // 64MB cache
-		"PRAGMA temp_store=MEMORY",  // Use memory for temporary tables and indices
+		"PRAGMA synchronous=NORMAL",    // WAL mode: NORMAL is safe and faster
+		"PRAGMA cache_size=-64000",     // 64MB cache
+		"PRAGMA temp_store=MEMORY",     // Use memory for temporary tables and indices
 		"PRAGMA mmap_size=30000000000", // Use memory-mapped I/O (up to 30GB)
-		"PRAGMA foreign_keys=ON",    // Enable foreign key constraints
+		"PRAGMA foreign_keys=ON",       // Enable foreign key constraints
 	}
 
 	for _, pragma := range pragmas {
@@ -155,7 +155,7 @@ func (s *SQLiteDB) Backup() error {
 	// Ensure we use the directory where the database file is located
 	dataDir := filepath.Dir(s.dbPath)
 	backupDir := filepath.Join(dataDir, "backups")
-	
+
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return fmt.Errorf("failed to create backup directory %s: %w", backupDir, err)
 	}

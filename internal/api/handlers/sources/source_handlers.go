@@ -153,7 +153,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	{
 		h.Voiceover.RegisterRoutes(voiceover)
 	}
-	
+
 	// System diagnostics
 	r.GET("/diagnostics", h.GetDiagnostics)
 }
@@ -177,7 +177,7 @@ func (h *Handler) Reconcile(c *gin.Context) {
 	}
 
 	h.log.Info("Starting reconciliation", zap.String("source", source), zap.String("folder", req.FolderID))
-	
+
 	if h.catalogSync != nil {
 		summary, err := h.catalogSync.SyncSource(c.Request.Context(), source)
 		if err != nil {
@@ -206,7 +206,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	deep := c.Query("deep") == "true" || req.Deep
-	
+
 	// Use Job system for heavy all-source deep cleanup
 	if deep && (strings.ToLower(source) == "all" || source == "") {
 		if h.jobsSvc != nil {
@@ -214,7 +214,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 			if req.DryRun {
 				activeKey += "_dry"
 			}
-			
+
 			job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 				Type:      models.JobTypeSystemCleanup,
 				Payload:   map[string]any{"deep": true, "dry_run": req.DryRun},
@@ -232,7 +232,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 			})
 			return
 		}
-		
+
 		// Fallback to synchronous if no jobs service (unlikely)
 		if h.deletionSvc != nil && !req.DryRun {
 			deleted, err := h.deletionSvc.CleanupOrphanFiles(c.Request.Context(), h.cfg.Storage.AssetsPath(), false)
@@ -253,7 +253,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	var allClips []*models.Clip
+	var allClips []*models.MediaAsset
 	sourceLower = strings.ToLower(source)
 
 	if sourceLower == "images" && h.imagesRepo != nil {
@@ -279,7 +279,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	for _, clip := range allClips {
 		verify := h.verifyClip(ctx, source, repo, clip)
 		isOrphan := !verify["db"].(bool) || (!verify["local_file"].(bool) && !verify["has_drive_link"].(bool))
-		
+
 		if isOrphan {
 			if !req.DryRun && h.deletionSvc != nil {
 				if err := h.deletionSvc.DeleteClip(ctx, source, clip.ID, false); err == nil {

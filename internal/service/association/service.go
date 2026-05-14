@@ -19,12 +19,14 @@ type Service struct {
 	catalogRepo    *catalog.Repository
 	engine         *Engine
 	clipSearch     *ClipSearchAssociation
+	scriptsDir     string
 }
 
-func NewService(dataDir, nodeScraperDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository, catalogRepo *catalog.Repository) *Service {
+func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository, catalogRepo *catalog.Repository) *Service {
 	s := &Service{
 		dataDir:        dataDir,
 		nodeScraperDir: nodeScraperDir,
+		scriptsDir:     scriptsDir,
 		stockRepo:      stockRepo,
 		artlistRepo:    artlistRepo,
 		clipsRepo:      clipsRepo,
@@ -50,7 +52,7 @@ func (s *Service) RegisterAssociation(a Association) {
 
 func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMatch {
 	matches := s.engine.AssociateAll(ctx, input)
-	
+
 	// Boost stock drive priority over Artlist
 	for i := range matches {
 		src := strings.ToLower(matches[i].Source)
@@ -58,8 +60,13 @@ func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMat
 			matches[i].Score += 50 // Significant boost to prioritize local stock
 		}
 	}
-	
+
 	return matches
+}
+
+// ScoreMedia calcola i punteggi ibridi (Lineare + Semantico) usando l'Engine interno.
+func (s *Service) ScoreMedia(ctx context.Context, query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
+	return s.engine.ScoreMedia(query, queryEmb, candidates)
 }
 
 // ResolvePreferredStockMatch checks for a high-priority exact stock folder match based on primary focus.
@@ -158,7 +165,6 @@ func (s *Service) FindDirectStockFolderCandidate(ctx context.Context, topic, sub
 	}
 	return &best, true, nil
 }
-
 
 func (s *Service) directFolderMatch(folders []FolderCandidate, topic, subject string) (FolderCandidate, bool) {
 	focuses := []string{}

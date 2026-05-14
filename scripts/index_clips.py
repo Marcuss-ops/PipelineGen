@@ -32,7 +32,7 @@ def process_db(db_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT id, clip_id, tags FROM clips WHERE search_text IS NULL OR embedding IS NULL")
+    cursor.execute("SELECT id, name, tags FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
     clips = cursor.fetchall()
     for clip in clips:
         tags_str = clip["tags"] or "[]"
@@ -44,7 +44,7 @@ def process_db(db_path):
             tags = []
         search_text = generate_search_text(tags)
         embedding = compute_embedding(normalize_text(search_text))
-        cursor.execute("UPDATE clips SET search_text = ?, embedding = ? WHERE id = ?", (search_text, embedding, clip["id"]))
+        cursor.execute("UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?", (search_text, embedding, clip["id"]))
         print(f"Updated {clip['clip_id']} in {db_path}")
     conn.commit()
     conn.close()
@@ -56,9 +56,9 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
 
     # Get clip info if clip_id provided
     if clip_id:
-        cursor.execute("SELECT id, name, local_path, tags FROM clips WHERE id = ?", (clip_id,))
+        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path FROM media_assets WHERE id = ?", (clip_id,))
     else:
-        cursor.execute("SELECT id, name, local_path, tags FROM clips WHERE search_text IS NULL OR embedding IS NULL")
+        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
 
     clips = cursor.fetchall()
     for clip in clips:
@@ -80,7 +80,7 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
         embedding = compute_embedding(search_text)
 
         cursor.execute(
-            "UPDATE clips SET search_text = ?, embedding_json = ? WHERE id = ?",
+            "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?",
             (search_text, embedding, clip_id)
         )
         print(f"Updated clip {clip_id}: search_text='{search_text[:50]}...'")

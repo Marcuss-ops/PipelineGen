@@ -43,7 +43,7 @@ func hash(s string) uint32 {
 func getFromCache(key string) (VisualQueryResult, bool) {
 	queryCacheMu.RLock()
 	defer queryCacheMu.RUnlock()
-	
+
 	result, ok := queryCache[key]
 	return result, ok
 }
@@ -52,6 +52,6 @@ func getFromCache(key string) (VisualQueryResult, bool) {
 func saveToCache(key string, result VisualQueryResult) {
 	queryCacheMu.Lock()
 	defer queryCacheMu.Unlock()
-	
+
 	queryCache[key] = result
 }

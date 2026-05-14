@@ -1,9 +1,9 @@
 package bootstrap
 
 import (
-	scriptdocssvc "velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/module"
+	scriptdocssvc "velox/go-master/internal/service/scriptdocs"
 	"velox/go-master/pkg/config"
 
 	"go.uber.org/zap"

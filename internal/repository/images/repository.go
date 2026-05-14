@@ -27,7 +27,7 @@ func (r *Repository) GetSubjectBySlugOrAlias(id string) (*models.Subject, error)
 		SELECT id, name, COALESCE(description, ''), created_at, updated_at
 		FROM subjects WHERE id = ?
 	`, id).Scan(&s.Slug, &s.DisplayName, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
-	
+
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +62,9 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 			description, drive_file_id, status, metadata_json
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, id, img.SubjectID, img.SourceURL, img.Hash, img.PathRel, 
-	   img.Description, img.DriveFileID, img.Status, "{}")
-	
+	`, id, img.SubjectID, img.SourceURL, img.Hash, img.PathRel,
+		img.Description, img.DriveFileID, img.Status, "{}")
+
 	if err != nil {
 		return 0, err
 	}
@@ -94,9 +94,9 @@ func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
 		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE hash = ?
-	`, hash).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
-	               &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
-	
+	`, hash).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL,
+		&img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
+
 	if err != nil {
 		return nil, err
 	}
@@ -112,9 +112,9 @@ func (r *Repository) GetByID(ctx context.Context, id interface{}) (*models.Image
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
 		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE id = ?
-	`, id).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
-	               &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
-	
+	`, id).Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL,
+		&img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
+
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +136,9 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 		SELECT id, subject_id, COALESCE(local_path, ''), COALESCE(source_url, ''), 
 		       COALESCE(description, ''), COALESCE(drive_file_id, ''), hash, created_at
 		FROM images WHERE drive_file_id = ? OR source_url LIKE ?
-	`, fileID, "%"+fileID+"%").Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
-	                                 &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
-	
+	`, fileID, "%"+fileID+"%").Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL,
+		&img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt)
+
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +162,8 @@ func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageA
 	var images []models.ImageAsset
 	for rows.Next() {
 		var img models.ImageAsset
-		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
-		                     &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL,
+			&img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		img.Tags, _ = r.getTagsForImage(img.SlugID)
@@ -187,8 +187,8 @@ func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) 
 	var images []*models.ImageAsset
 	for rows.Next() {
 		var img models.ImageAsset
-		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL, 
-		                     &img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
+		if err := rows.Scan(&img.SlugID, &img.SubjectID, &img.PathRel, &img.SourceURL,
+			&img.Description, &img.DriveFileID, &img.Hash, &img.CreatedAt); err != nil {
 			return nil, err
 		}
 		img.Tags, _ = r.getTagsForImage(img.SlugID)
@@ -214,7 +214,6 @@ func (r *Repository) getTagsForImage(imageID string) ([]string, error) {
 	}
 	return tags, nil
 }
-
 
 func (r *Repository) UpdateSubject(s *models.Subject) error {
 	_, err := r.db.Exec("UPDATE subjects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", s.DisplayName, s.Slug)

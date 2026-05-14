@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/pkg/llmjson"
-	"go.uber.org/zap"
 )
 
 // callTimelineLLM calls the LLM to generate a timeline plan

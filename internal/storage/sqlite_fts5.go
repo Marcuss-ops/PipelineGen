@@ -35,7 +35,7 @@ func LogFTS5Status(log *zap.Logger, dbs ...*SQLiteDB) {
 	if len(dbs) == 0 {
 		return
 	}
-	
+
 	// Check using the first DB connection
 	available := HasFTS5(dbs[0].DB, log)
 	if available {

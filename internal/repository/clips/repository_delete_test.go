@@ -73,7 +73,7 @@ func TestDeleteClip(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	err = repo.UpsertClip(ctx, &models.Clip{
+	err = repo.UpsertClip(ctx, &models.MediaAsset{
 		ID:        "clip_1",
 		Name:      "Test Clip",
 		Filename:  "test.mp4",
@@ -130,7 +130,7 @@ func TestRestoreClip(t *testing.T) {
 	_, _ = db.Exec(testSchema)
 	repo := NewRepository(db, zap.NewNop())
 
-	_ = repo.UpsertClip(ctx, &models.Clip{
+	_ = repo.UpsertClip(ctx, &models.MediaAsset{
 		ID:        "clip_res",
 		Name:      "Restore Clip",
 		Tags:      []string{"restore"},
@@ -174,7 +174,7 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	clip := &models.Clip{
+	clip := &models.MediaAsset{
 		ID:        "clip_2",
 		Name:      "Drive Clip",
 		DriveLink: "https://drive.google.com/file/d/123",

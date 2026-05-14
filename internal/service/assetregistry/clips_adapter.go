@@ -17,31 +17,31 @@ func NewClipsRegistry(repo *clips.Repository) *ClipsRegistry {
 }
 
 func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
-	clip := &models.Clip{
-		ID:           rec.ID,
-		Name:         rec.Name,
-		Filename:     rec.Filename,
-		FolderID:     rec.FolderID,
-		FolderPath:   rec.FolderPath,
-		Group:        rec.Group,
-		MediaType:    rec.MediaType,
-		DriveLink:    rec.DriveLink,
-		DriveFileID:  rec.DriveFileID,
-		DownloadLink: rec.DownloadLink,
-		Tags:         rec.Tags,
-		Source:       rec.Source,
-		Category:     rec.Category,
-		ExternalURL:  rec.ExternalURL,
-		Duration:     rec.Duration,
-		Metadata:     rec.Metadata,
-		FileHash:     rec.FileHash,
-		LocalPath:    rec.LocalPath,
-		Status:       rec.Status,
-		Error:        rec.Error,
-		PHash:        rec.PHash,
+	clip := &models.MediaAsset{
+		ID:                  rec.ID,
+		Name:                rec.Name,
+		Filename:            rec.Filename,
+		FolderID:            rec.FolderID,
+		FolderPath:          rec.FolderPath,
+		Group:               rec.Group,
+		MediaType:           rec.MediaType,
+		DriveLink:           rec.DriveLink,
+		DriveFileID:         rec.DriveFileID,
+		DownloadLink:        rec.DownloadLink,
+		Tags:                rec.Tags,
+		Source:              rec.Source,
+		Category:            rec.Category,
+		ExternalURL:         rec.ExternalURL,
+		Duration:            rec.Duration,
+		FileHash:            rec.FileHash,
+		LocalPath:           rec.LocalPath,
+		Status:              rec.Status,
+		Error:               rec.Error,
+		PHash:               rec.PHash,
 		VisualEmbeddingJSON: rec.VisualEmbeddingJSON,
-		UpdatedAt:    time.Now(),
+		UpdatedAt:           time.Now(),
 	}
+	clip.SetMetadataJSON(rec.Metadata)
 	return r.repo.UpsertClip(ctx, clip)
 }
 
@@ -76,29 +76,30 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 	return r.repo.FindByPHash(ctx, phash)
 }
 
-func clipToMediaRecord(clip *models.Clip) *MediaRecord {
-	return &MediaRecord{
-		ID:           clip.ID,
-		Name:         clip.Name,
-		Filename:     clip.Filename,
-		FolderID:     clip.FolderID,
-		FolderPath:   clip.FolderPath,
-		Group:        clip.Group,
-		MediaType:    clip.MediaType,
-		DriveLink:    clip.DriveLink,
-		DriveFileID:  clip.DriveFileID,
-		DownloadLink: clip.DownloadLink,
-		Tags:         clip.Tags,
-		Source:       clip.Source,
-		Category:     clip.Category,
-		ExternalURL:  clip.ExternalURL,
-		Duration:     clip.Duration,
-		Metadata:     clip.Metadata,
-		FileHash:     clip.FileHash,
-		LocalPath:    clip.LocalPath,
-		Status:       clip.Status,
-		Error:        clip.Error,
-		PHash:        clip.PHash,
+func clipToMediaRecord(clip *models.MediaAsset) *MediaRecord {
+	rec := &MediaRecord{
+		ID:                  clip.ID,
+		Name:                clip.Name,
+		Filename:            clip.Filename,
+		FolderID:            clip.FolderID,
+		FolderPath:          clip.FolderPath,
+		Group:               clip.Group,
+		MediaType:           clip.MediaType,
+		DriveLink:           clip.DriveLink,
+		DriveFileID:         clip.DriveFileID,
+		DownloadLink:        clip.DownloadLink,
+		Tags:                clip.Tags,
+		Source:              clip.Source,
+		Category:            clip.Category,
+		ExternalURL:         clip.ExternalURL,
+		Duration:            clip.Duration,
+		FileHash:            clip.FileHash,
+		LocalPath:           clip.LocalPath,
+		Status:              clip.Status,
+		Error:               clip.Error,
+		PHash:               clip.PHash,
 		VisualEmbeddingJSON: clip.VisualEmbeddingJSON,
 	}
+	rec.Metadata = clip.MetadataJSON()
+	return rec
 }

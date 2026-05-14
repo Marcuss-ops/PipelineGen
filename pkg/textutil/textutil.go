@@ -82,10 +82,6 @@ func TokenizeWithStopWords(text string) []string {
 	return result
 }
 
-
-
-
-
 // SanitizeFilename removes potentially dangerous characters from a filename.
 func SanitizeFilename(name string) string {
 	name = strings.ReplaceAll(name, "..", "")
@@ -226,9 +222,6 @@ func FirstNonEmpty(values ...string) string {
 	return ""
 }
 
-
-
-
 // ExtractSentences splits a text block into sentences by splitting on periods.
 func ExtractSentences(text string) []string {
 	if text == "" {
@@ -244,4 +237,3 @@ func ExtractSentences(text string) []string {
 	}
 	return res
 }
-

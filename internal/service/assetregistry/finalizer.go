@@ -11,10 +11,10 @@ import (
 )
 
 type Finalizer struct {
-	registry       Registry
-	driveVerifier  DriveVerifier
-	assetIndex     *assetindex.Service
-	log            *zap.Logger
+	registry      Registry
+	driveVerifier DriveVerifier
+	assetIndex    *assetindex.Service
+	log           *zap.Logger
 }
 
 func NewFinalizer(registry Registry, driveVerifier DriveVerifier, log *zap.Logger) *Finalizer {

@@ -3,23 +3,23 @@ package bootstrap
 import (
 	"go.uber.org/zap"
 
+	"fmt"
 	"velox/go-master/internal/api/handlers/sources"
+	"velox/go-master/internal/core/maintenance"
+	"velox/go-master/internal/module"
+	assettreerepo "velox/go-master/internal/repository/assettree"
+	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/service/artlist"
 	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/service/assettree"
 	"velox/go-master/internal/service/drivecleanup"
 	"velox/go-master/internal/service/foldermemory"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/internal/service/media"
-	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/service/voiceover"
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
-	"velox/go-master/internal/module"
-	"velox/go-master/internal/repository/catalog"
-	assettreerepo "velox/go-master/internal/repository/assettree"
-	"velox/go-master/internal/service/assettree"
 	"velox/go-master/pkg/config"
-	"fmt"
 )
 
 func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
@@ -108,7 +108,6 @@ func WireAssets(
 		maintenanceSvc,
 		log,
 	)
-
 
 	// Add voiceover and image repos
 	if coreDeps.VoiceoverRepo != nil {

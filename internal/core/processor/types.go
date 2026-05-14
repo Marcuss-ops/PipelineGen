@@ -13,21 +13,21 @@ type Processor interface {
 type ProcessInput struct {
 	ID               string
 	Name             string
-	SourceURL         string
+	SourceURL        string
 	Term             string
-	OutputDir         string
+	OutputDir        string
 	Filename         string
 	FolderID         string
 	Duration         int
-	ForceKeyframes    bool
-	StreamCopy        bool
-	DownloadSections  []string
-	Normalize         *bool
-	KeepAudio         bool
-	DisableDuration   bool
+	ForceKeyframes   bool
+	StreamCopy       bool
+	DownloadSections []string
+	Normalize        *bool
+	KeepAudio        bool
+	DisableDuration  bool
 	Width            int
 	Height           int
-	DriveFileID       string
+	DriveFileID      string
 	Metadata         map[string]interface{}
 }
 
