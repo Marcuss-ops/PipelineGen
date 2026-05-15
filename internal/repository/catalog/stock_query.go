@@ -35,7 +35,7 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 
 	// 2. Fallback to clips table using repository
 	if len(results) == 0 {
-		clips, err := r.stockRepo.SearchClipsByKeywords(context.Background(), []string{q}, 100)
+		clips, err := r.stockRepo.SearchClipsByKeywords(context.Background(), "stock", []string{q}, 100)
 		if err == nil {
 			for _, clip := range clips {
 				if clip.Source == "stock" || clip.MediaType == "stock" {

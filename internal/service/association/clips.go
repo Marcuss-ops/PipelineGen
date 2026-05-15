@@ -35,9 +35,9 @@ func (a *ClipDriveAssociation) Associate(ctx context.Context, input SegmentInput
 		searchTerm = input.Keywords[0]
 	}
 
-	clipsList, err := a.repo.SearchClips(ctx, searchTerm)
+	clipsList, err := a.repo.SearchClips(ctx, "artlist", searchTerm)
 	if err != nil {
-		clipsList, _ = a.repo.SearchClips(ctx, input.Subject)
+		clipsList, _ = a.repo.SearchClips(ctx, "artlist", input.Subject)
 	}
 
 	queryTokens := textutil.Tokenize(input.Subject)

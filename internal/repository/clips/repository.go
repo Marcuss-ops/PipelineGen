@@ -35,7 +35,7 @@ const (
 // buildClipFolderQuery builds a SELECT query for clip_folders
 func buildClipFolderQuery(source string) string {
 	query := "SELECT " + clipFolderColumns + " FROM clip_folders"
-	if source != "" {
+	if source != "" && source != "all" && source != "unified" {
 		query += " WHERE source = ?"
 	}
 	return query
@@ -347,7 +347,7 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 // excluding deleted clips (those with '$.deleted_at' in metadata_json).
 func buildMediaAssetQuery(source string) string {
 	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
-	if source != "" {
+	if source != "" && source != "all" && source != "unified" {
 		query += " AND source = ?"
 	}
 	return query
@@ -355,7 +355,7 @@ func buildMediaAssetQuery(source string) string {
 
 // ListClipsPaged returns clips with pagination and optional search.
 // If q is non-empty, performs a search; otherwise lists all clips with pagination.
-func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q string) ([]*models.MediaAsset, error) {
+func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*models.MediaAsset, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -367,16 +367,17 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 	}
 
 	if strings.TrimSpace(q) != "" {
-		return r.SearchClips(ctx, q)
+		return r.SearchClips(ctx, source, q)
 	}
 
-	query := `SELECT ` + mediaAssetColumns + `
-		FROM media_assets
-		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
-		ORDER BY created_at DESC
-		LIMIT ? OFFSET ?`
+	query := buildMediaAssetQuery(source) + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args := []interface{}{}
+	if source != "" && source != "all" && source != "unified" {
+		args = append(args, source)
+	}
+	args = append(args, limit, offset)
 
-	rows, err := r.db.QueryContext(ctx, query, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +395,7 @@ func (r *Repository) ListClipsPaged(ctx context.Context, limit, offset int, q st
 }
 
 // SearchClips searches clips by tag or name using LIKE on the media_assets table.
-func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.MediaAsset, error) {
+func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*models.MediaAsset, error) {
 	columns := []string{"tags", "name"}
 	keywords := strings.Fields(tag)
 	if len(keywords) == 0 {
@@ -406,8 +407,14 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Med
 		return []*models.MediaAsset{}, nil
 	}
 
-	query := buildMediaAssetQuery("") + " AND (" + conditionSQL + ")"
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	query := buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
+	finalArgs := []interface{}{}
+	if source != "" && source != "all" && source != "unified" {
+		finalArgs = append(finalArgs, source)
+	}
+	finalArgs = append(finalArgs, args...)
+
+	rows, err := r.db.QueryContext(ctx, query, finalArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +432,7 @@ func (r *Repository) SearchClips(ctx context.Context, tag string) ([]*models.Med
 }
 
 // SearchClipsByKeywords searches clips by keywords using LIKE on the media_assets table.
-func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.MediaAsset, error) {
+func (r *Repository) SearchClipsByKeywords(ctx context.Context, source string, keywords []string, limit int) ([]*models.MediaAsset, error) {
 	if len(keywords) == 0 {
 		return []*models.MediaAsset{}, nil
 	}
@@ -438,12 +445,17 @@ func (r *Repository) SearchClipsByKeywords(ctx context.Context, keywords []strin
 
 	query := fmt.Sprintf(
 		"%s AND (%s) LIMIT ?",
-		buildMediaAssetQuery(""),
+		buildMediaAssetQuery(source),
 		conditionSQL,
 	)
-	args = append(args, limit)
+	finalArgs := []interface{}{}
+	if source != "" && source != "all" && source != "unified" {
+		finalArgs = append(finalArgs, source)
+	}
+	finalArgs = append(finalArgs, args...)
+	finalArgs = append(finalArgs, limit)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, query, finalArgs...)
 	if err != nil {
 		return nil, err
 	}

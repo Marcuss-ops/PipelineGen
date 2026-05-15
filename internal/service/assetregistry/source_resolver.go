@@ -96,10 +96,13 @@ func (r *SourceResolver) ResolveRepo(source string) *clips.Repository {
 	switch canonical {
 	case "artlist":
 		return r.artlistRepo
-	case "clips":
+	case "clips", "youtube":
 		return r.clipsRepo
 	case "stock":
 		return r.stockRepo
+	case "all", "unified":
+		// Return clipsRepo as the primary access point for unified media_assets
+		return r.clipsRepo
 	default:
 		return nil
 	}

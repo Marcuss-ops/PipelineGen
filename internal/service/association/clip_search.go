@@ -91,7 +91,7 @@ func (a *ClipSearchAssociation) buildSearchTerms(input SegmentInput) []string {
 func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repository, topic string, terms []string, source string) ([]ScoredMatch, error) {
 	// Use up to 10 search terms
 	limit := 15
-	clips, err := repo.SearchClipsByKeywords(ctx, terms, limit)
+	clips, err := repo.SearchClipsByKeywords(ctx, "", terms, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -248,7 +248,7 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 		}
 
 		// Search in Artlist DB for these keywords
-		matches, err := ArtlistRepo.SearchClipsByKeywords(ctx, keywords, 5)
+		matches, err := ArtlistRepo.SearchClipsByKeywords(ctx, "artlist", keywords, 5)
 		if err == nil && len(matches) > 0 {
 			// Find the first match that isn't already used
 			var bestMatch *models.MediaAsset

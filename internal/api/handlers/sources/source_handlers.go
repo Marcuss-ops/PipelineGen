@@ -267,7 +267,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 			allClips = append(allClips, voiceoverRecordToClip(rec))
 		}
 	} else if repo != nil {
-		clips, err := repo.ListClipsPaged(ctx, 10000, 0, "")
+		clips, err := repo.ListClipsPaged(ctx, source, 10000, 0, "")
 		if err == nil {
 			allClips = clips
 		}

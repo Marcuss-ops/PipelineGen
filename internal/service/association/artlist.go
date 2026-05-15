@@ -49,7 +49,7 @@ func (a *ArtlistStockAssociation) Associate(ctx context.Context, input SegmentIn
 
 func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, topic string) []ScoredMatch {
 	// Use SearchClips which now falls back to LIKE when FTS5 returns 0 results
-	clipsList, err := a.repo.SearchClips(ctx, term)
+	clipsList, err := a.repo.SearchClips(ctx, "artlist", term)
 	if err != nil || len(clipsList) == 0 {
 		return nil
 	}

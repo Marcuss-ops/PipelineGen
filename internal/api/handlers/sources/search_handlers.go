@@ -93,6 +93,19 @@ func (h *Handler) Search(c *gin.Context) {
 		}
 	}
 
+	// Unified Local Search (media_assets table)
+	if h.clipsRepo != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
+		localClips, err := h.clipsRepo.SearchClips(c.Request.Context(), "all", req.Q)
+		if err != nil {
+			h.log.Warn("local unified search failed", zap.Error(err))
+		} else {
+			results["local"] = gin.H{
+				"count":   len(localClips),
+				"results": localClips,
+			}
+		}
+	}
+
 	apiutil.OK(c, gin.H{
 		"query":   req.Q,
 		"type":    req.Type,

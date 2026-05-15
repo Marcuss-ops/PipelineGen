@@ -57,7 +57,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 		return resp, nil
 	}
 
-	clipsList, err := s.artlistRepo.SearchClips(ctx, term)
+	clipsList, err := s.artlistRepo.SearchClips(ctx, "artlist", term)
 	if err != nil {
 		resp.Error = err.Error()
 		return resp, err

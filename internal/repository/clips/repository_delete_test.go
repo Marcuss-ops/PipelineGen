@@ -110,7 +110,7 @@ func TestDeleteClip(t *testing.T) {
 	}
 
 	// Test SearchClipsByKeywords excludes it
-	clips, err := repo.SearchClipsByKeywords(ctx, []string{"test"}, 10)
+	clips, err := repo.SearchClipsByKeywords(ctx, "", []string{"test"}, 10)
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}

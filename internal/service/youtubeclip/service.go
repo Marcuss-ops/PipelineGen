@@ -21,6 +21,7 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/service/assetdestination"
+	"velox/go-master/internal/service/clipindexer"
 	"velox/go-master/internal/service/foldermemory"
 	jobservice "velox/go-master/internal/service/jobs"
 	"velox/go-master/pkg/config"
@@ -40,6 +41,7 @@ type Service struct {
 	mediaProcessor    processor.Processor
 	folderMemory      *foldermemory.Service
 	lifecycleService  *lifecycle.Service
+	indexer           *clipindexer.Service
 }
 
 func NewService(
@@ -50,6 +52,7 @@ func NewService(
 	driveClient *driveapi.Service,
 	mediaProcessor processor.Processor,
 	lifecycleService *lifecycle.Service,
+	indexer *clipindexer.Service,
 ) *Service {
 	// Create asset destination resolver for unified destination resolution
 	assetDestResolver := assetdestination.NewResolver(cfg, log, driveClient)
@@ -64,6 +67,7 @@ func NewService(
 		mediaProcessor:    mediaProcessor,
 		folderMemory:      foldermemory.NewService(log, clipsRepo),
 		lifecycleService:  lifecycleService,
+		indexer:           indexer,
 	}
 }
 
@@ -485,6 +489,20 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 		resp.Items = append(resp.Items, item)
 		resp.Stats.Processed++
+
+		// Trigger automatic embedding/indexing if indexer is available
+		if s.indexer != nil && s.indexer.IsEnabled() {
+			go func(id string) {
+				// Use a background context for the goroutine
+				indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+
+				s.log.Info("triggering automatic indexing for YouTube clip", zap.String("clip_id", id))
+				if err := s.indexer.IndexClip(indexCtx, id); err != nil {
+					s.log.Error("failed to automatically index YouTube clip", zap.String("clip_id", id), zap.Error(err))
+				}
+			}(clipID)
+		}
 	}
 
 	// Update folder manifest (TXT + JSON)
@@ -834,6 +852,103 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	}
 
 	return results, nil
+}
+
+// GetVideoInfo retrieves full metadata for a YouTube video without downloading it
+func (s *Service) GetVideoInfo(ctx context.Context, videoURL string) (*VideoMetadata, error) {
+	if videoURL == "" {
+		return nil, fmt.Errorf("url is required")
+	}
+
+	if err := security.ValidateDownloadURL(videoURL); err != nil {
+		return nil, err
+	}
+
+	s.log.Info("Retrieving YouTube video info", zap.String("url", videoURL))
+
+	ytdlpPath := s.cfg.External.YtdlpPath
+	if ytdlpPath == "" {
+		ytdlpPath = "yt-dlp"
+	}
+
+	args := []string{
+		videoURL,
+		"--dump-json",
+		"--no-playlist",
+		"--no-warnings",
+	}
+
+	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		s.log.Error("yt-dlp info failed", zap.Error(err), zap.String("stderr", stderr.String()))
+		return nil, fmt.Errorf("failed to get video info: %w", err)
+	}
+
+	var raw struct {
+		ID          string  `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Duration    float64 `json:"duration"`
+		Uploader    string  `json:"uploader"`
+		UploadDate  string  `json:"upload_date"`
+		ViewCount   int64   `json:"view_count"`
+		Thumbnails  []struct {
+			URL    string `json:"url"`
+			Width  int    `json:"width"`
+			Height int    `json:"height"`
+		} `json:"thumbnails"`
+		Chapters []struct {
+			Title     string  `json:"title"`
+			StartTime float64 `json:"start_time"`
+			EndTime   float64 `json:"end_time"`
+		} `json:"chapters"`
+		Categories []string `json:"categories"`
+		Tags       []string `json:"tags"`
+	}
+
+	if err := json.Unmarshal([]byte(stdout.String()), &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse video info: %w", err)
+	}
+
+	metadata := &VideoMetadata{
+		ID:          raw.ID,
+		URL:         videoURL,
+		Title:       raw.Title,
+		Description: raw.Description,
+		Duration:    raw.Duration,
+		Uploader:    raw.Uploader,
+		UploadDate:  raw.UploadDate,
+		ViewCount:   raw.ViewCount,
+		Categories:  raw.Categories,
+		Tags:        raw.Tags,
+	}
+
+	// Process thumbnails
+	if len(raw.Thumbnails) > 0 {
+		metadata.ThumbnailURL = raw.Thumbnails[len(raw.Thumbnails)-1].URL
+		for _, t := range raw.Thumbnails {
+			metadata.Thumbnails = append(metadata.Thumbnails, VideoThumbnail{
+				URL:    t.URL,
+				Width:  t.Width,
+				Height: t.Height,
+			})
+		}
+	}
+
+	// Process chapters
+	for _, c := range raw.Chapters {
+		metadata.Chapters = append(metadata.Chapters, VideoChapter{
+			Title:     c.Title,
+			StartTime: c.StartTime,
+			EndTime:   c.EndTime,
+		})
+	}
+
+	return metadata, nil
 }
 
 // RegisterHandler registers this service as a handler for youtube_clip.extract jobs

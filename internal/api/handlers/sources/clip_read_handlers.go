@@ -134,7 +134,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			apiutil.BadRequest(c, "invalid source: "+source)
 			return
 		}
-		clips, err := repo.ListClipsPaged(ctx, limit, offset, q)
+		clips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
 		if err != nil {
 			apiutil.InternalError(c, err)
 			return

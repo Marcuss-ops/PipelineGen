@@ -82,6 +82,15 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		return nil, err
 	}
 
+	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
+		Enabled:               cfg.ClipIndexer.Enabled,
+		ServerURL:             cfg.ClipIndexer.ServerURL,
+		ScriptPath:            cfg.ClipIndexer.ScriptPath,
+		PythonBin:             cfg.ClipIndexer.PythonBin,
+		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
+		DBPath:                dbs.media.Path(),
+	}, dbs.media.DB, dbs.media.Path(), log)
+
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
 	// Create LifecycleService for youtubeclip using common factory
@@ -99,6 +108,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		driveClient,
 		mediaProcessor,
 		ytLifecycle,
+		clipIndexerService,
 	)
 
 	voDir := cfg.Storage.VoiceoversPath()
@@ -139,15 +149,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	}
 	assetResolver := assetindex.NewResolver(assetIndexService, resolverCfg, log)
 	log.Info("asset resolver initialized")
-
-	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
-		Enabled:               cfg.ClipIndexer.Enabled,
-		ServerURL:             cfg.ClipIndexer.ServerURL,
-		ScriptPath:            cfg.ClipIndexer.ScriptPath,
-		PythonBin:             cfg.ClipIndexer.PythonBin,
-		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
-		DBPath:                dbs.media.Path(),
-	}, dbs.media.DB, dbs.media.Path(), log)
 
 	indexingService := indexing.NewService(clipsRepo, clipIndexerService, log)
 	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)

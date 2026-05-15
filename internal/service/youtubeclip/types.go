@@ -68,3 +68,31 @@ type ExtractItem struct {
 	DriveFolderID   string `json:"drive_folder_id,omitempty"`
 	DriveFolderPath string `json:"drive_folder_path,omitempty"`
 }
+
+type VideoMetadata struct {
+	ID           string           `json:"id"`
+	URL          string           `json:"url"`
+	Title        string           `json:"title"`
+	Description  string           `json:"description"`
+	Duration     float64          `json:"duration"`
+	Uploader     string           `json:"uploader"`
+	ThumbnailURL string           `json:"thumbnail_url"`
+	Thumbnails   []VideoThumbnail `json:"thumbnails,omitempty"`
+	Chapters     []VideoChapter   `json:"chapters,omitempty"`
+	Categories   []string         `json:"categories,omitempty"`
+	Tags         []string         `json:"tags,omitempty"`
+	UploadDate   string           `json:"upload_date,omitempty"`
+	ViewCount    int64            `json:"view_count,omitempty"`
+}
+
+type VideoChapter struct {
+	Title     string  `json:"title"`
+	StartTime float64 `json:"start_time"`
+	EndTime   float64 `json:"end_time"`
+}
+
+type VideoThumbnail struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}

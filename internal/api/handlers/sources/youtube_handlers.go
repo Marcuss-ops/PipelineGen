@@ -28,6 +28,7 @@ func NewYouTubeClipHandler(service *youtubeclip.Service, log *zap.Logger, jobsSv
 
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/extract", h.Extract)
+	r.GET("/info", h.GetVideoInfo)
 	folders := r.Group("/folders")
 	{
 		folders.GET("/:id", h.GetFolder)
@@ -35,6 +36,22 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 		folders.GET("/search", h.SearchFolders)
 		folders.GET("", h.ListFolders)
 	}
+}
+
+func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
+	url := c.Query("url")
+	if url == "" {
+		apiutil.BadRequest(c, "url parameter is required")
+		return
+	}
+
+	metadata, err := h.service.GetVideoInfo(c.Request.Context(), url)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, metadata)
 }
 
 func (h *YouTubeClipHandler) GetFolder(c *gin.Context) {
