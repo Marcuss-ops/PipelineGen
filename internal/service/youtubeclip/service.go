@@ -798,7 +798,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			"--no-warnings",
 		}
 	}
-	}
+
 
 	cmd := exec.CommandContext(ctx, ytdlpPath, args...)
 	var stdout, stderr strings.Builder

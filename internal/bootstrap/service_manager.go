@@ -18,6 +18,8 @@ import (
 	"velox/go-master/internal/service/assetindex"
 	"velox/go-master/internal/service/association"
 	"velox/go-master/internal/service/media"
+	"velox/go-master/internal/repository/sketchfab"
+	sketchfabservice "velox/go-master/internal/service/sketchfab"
 
 	"velox/go-master/internal/service/assetregistry"
 	"velox/go-master/internal/service/catalogsync"
@@ -132,6 +134,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.media.DB)
+	sketchRepo := sketchfab.NewRepository(dbs.media.DB)
+	sketchService := sketchfabservice.NewService(cfg, sketchRepo, dbs.media.Path(), log)
 
 	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
@@ -236,5 +240,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		assetResolver:      assetResolver,
 		lifecycleScheduler: lifecycleScheduler,
 		maintenanceSvc:     maintenanceSvc,
+		sketchfabRepo:      sketchRepo,
+		sketchfabService:   sketchService,
 	}, nil
 }

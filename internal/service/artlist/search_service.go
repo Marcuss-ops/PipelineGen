@@ -270,9 +270,9 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 }
 
 // SearchClips searches clips in the database
-func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models.Clip {
+func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models.MediaAsset {
 	s := ss.service
-	clips, err := s.artlistRepo.SearchClips(ctx, term)
+	clips, err := s.artlistRepo.SearchClips(ctx, "artlist", term)
 	if err != nil {
 		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
 		return nil
@@ -281,7 +281,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models
 }
 
 // UpsertClip inserts or updates a clip in the database
-func (ss *SearchService) UpsertClip(ctx context.Context, clip *models.Clip) error {
+func (ss *SearchService) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
 	s := ss.service
 	return s.artlistRepo.UpsertClip(ctx, clip)
 }

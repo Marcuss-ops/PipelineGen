@@ -25,6 +25,8 @@ import (
 	"velox/go-master/internal/service/voiceoversync"
 	"velox/go-master/internal/service/youtubeclip"
 	"velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/repository/sketchfab"
+	sketchfabservice "velox/go-master/internal/service/sketchfab"
 )
 
 type services struct {
@@ -56,4 +58,6 @@ type services struct {
 	assetResolver      *assetindex.Resolver
 	lifecycleScheduler *scheduler.LifecycleScheduler
 	maintenanceSvc     *maintenance.Service
+	sketchfabRepo      *sketchfab.Repository
+	sketchfabService   *sketchfabservice.Service
 }

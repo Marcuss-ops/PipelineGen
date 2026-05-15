@@ -195,6 +195,12 @@ type ExternalConfig struct {
 	FfmpegPath           string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	NvidiaAPIKey         string `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
 	NvidiaModel          string `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	SketchfabConfig      SketchfabConfig `yaml:"sketchfab"`
+}
+
+// SketchfabConfig holds Sketchfab API configuration.
+type SketchfabConfig struct {
+	APIToken string `yaml:"api_token" env:"SKETCHFAB_API_TOKEN" default:""`
 }
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.
@@ -239,6 +245,7 @@ type FeaturesConfig struct {
 	VoiceoverEnabled   bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
 	WorkflowEnabled    bool `yaml:"workflow_enabled" env:"VELOX_FEATURE_WORKFLOW_ENABLED" default:"false"`
 	ImagesEnabled      bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
+	SketchfabEnabled   bool `yaml:"sketchfab_enabled" env:"VELOX_FEATURE_SKETCHFAB_ENABLED" default:"false"`
 }
 
 // ClipIndexerConfig holds settings for the clip metadata indexing service.

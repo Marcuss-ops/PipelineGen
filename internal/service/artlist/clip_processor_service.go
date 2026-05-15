@@ -24,7 +24,7 @@ func NewClipProcessorService(svc *Service) *ClipProcessorService {
 }
 
 // ProcessClip elabora un singolo clip
-func (p *ClipProcessorService) ProcessClip(ctx context.Context, clip *models.Clip, dest *DestinationInfo) error {
+func (p *ClipProcessorService) ProcessClip(ctx context.Context, clip *models.MediaAsset, dest *DestinationInfo) error {
 	if clip == nil {
 		return fmt.Errorf("clip is nil")
 	}
@@ -47,7 +47,7 @@ func (p *ClipProcessorService) ProcessClip(ctx context.Context, clip *models.Cli
 	return nil
 }
 
-func (p *ClipProcessorService) ensureClipFile(ctx context.Context, clip *models.Clip) error {
+func (p *ClipProcessorService) ensureClipFile(ctx context.Context, clip *models.MediaAsset) error {
 	if clip.LocalPath != "" {
 		if _, err := os.Stat(clip.LocalPath); err == nil {
 			return nil
@@ -81,7 +81,7 @@ func (p *ClipProcessorService) ensureClipFile(ctx context.Context, clip *models.
 	return nil
 }
 
-func (p *ClipProcessorService) uploadToDrive(ctx context.Context, clip *models.Clip, folderID string) error {
+func (p *ClipProcessorService) uploadToDrive(ctx context.Context, clip *models.MediaAsset, folderID string) error {
 	if clip.LocalPath == "" {
 		return fmt.Errorf("clip has no local path")
 	}
@@ -107,7 +107,7 @@ func (p *ClipProcessorService) uploadToDrive(ctx context.Context, clip *models.C
 	return nil
 }
 
-func (p *ClipProcessorService) indexClip(ctx context.Context, clip *models.Clip) error {
+func (p *ClipProcessorService) indexClip(ctx context.Context, clip *models.MediaAsset) error {
 	if p.svc.clipIndexer == nil {
 		return nil
 	}

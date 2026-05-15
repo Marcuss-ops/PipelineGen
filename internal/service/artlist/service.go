@@ -126,12 +126,12 @@ func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatus
 }
 
 // SearchClips cerca clip nel database locale.
-func (s *Service) SearchClips(ctx context.Context, term string) []*models.Clip {
+func (s *Service) SearchClips(ctx context.Context, term string) []*models.MediaAsset {
 	return s.searchService.SearchClips(ctx, term)
 }
 
 // UpsertClip inserisce o aggiorna una clip nel database.
-func (s *Service) UpsertClip(ctx context.Context, clip *models.Clip) error {
+func (s *Service) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
 	return s.searchService.UpsertClip(ctx, clip)
 }
 

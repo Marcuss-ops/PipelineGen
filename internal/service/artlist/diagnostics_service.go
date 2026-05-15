@@ -50,7 +50,7 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 	term = strings.TrimSpace(term)
 	if term != "" {
 		resp.SearchTerm = term
-		if matches, err := d.svc.artlistRepo.SearchClips(ctx, term); err == nil {
+		if matches, err := d.svc.artlistRepo.SearchClips(ctx, "artlist", term); err == nil {
 			resp.MatchingClips = len(matches)
 			resp.EstimatedSize = len(matches)
 		}

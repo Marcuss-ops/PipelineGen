@@ -1,16 +1,20 @@
-```
 # Dependencies
 go.sum
 vendor/
+node_modules/
+web-admin/node_modules/
 
 # Logs and temp files
 *.log
 *.tmp
+tmp/
 
 # Environment
 .env
 .env.local
 *.env.*
+token.json
+credentials.json
 
 # Editors
 .vscode/
@@ -21,4 +25,12 @@ bin/
 *.exe
 *.dll
 *.so
-```
+pipelinegen
+web-admin/dist/
+
+# Database
+data/
+*.db
+*.db.sqlite
+*.db.sqlite-wal
+*.db.sqlite-shm
