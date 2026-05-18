@@ -49,7 +49,7 @@ func WireScriptDocs(
 		cfg.Storage.DataDir,
 		cfg.Paths.ClipTextDir,
 		cfg.Paths.PythonScriptsDir,
-		cfg.Paths.NodeScraperDir,
+		"node-scraper",
 		coreDeps.ScriptsRepo,
 		coreDeps.StockDriveRepo,
 		coreDeps.ArtlistRepo,

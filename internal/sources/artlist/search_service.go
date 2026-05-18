@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -98,11 +99,10 @@ func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int)
 		limit = 50
 	}
 
-	if strings.TrimSpace(s.nodeScraperDir) == "" {
-		return nil, fmt.Errorf("node scraper directory is not configured")
+	scraperDir := os.Getenv("VELOX_NODE_SCRAPER_DIR")
+	if scraperDir == "" {
+		scraperDir = "node-scraper"
 	}
-
-	scraperDir := s.nodeScraperDir
 	if absDir, err := filepath.Abs(scraperDir); err == nil {
 		scraperDir = absDir
 	}

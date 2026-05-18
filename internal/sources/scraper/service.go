@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -32,8 +33,11 @@ type SearchResult struct {
 func (s *ScraperService) SearchArtlist(ctx context.Context, query string) ([]SearchResult, error) {
 	s.log.Info("starting artlist search", zap.String("query", query))
 
-	// Use NodeScraperDir from config
-	scriptPath := filepath.Join(s.cfg.Paths.NodeScraperDir, "artlist_search.js")
+	scraperDir := os.Getenv("VELOX_NODE_SCRAPER_DIR")
+	if scraperDir == "" {
+		scraperDir = "node-scraper"
+	}
+	scriptPath := filepath.Join(scraperDir, "artlist_search.js")
 	
 	// Prepare command
 	cmd := exec.CommandContext(ctx, "node", scriptPath, query)

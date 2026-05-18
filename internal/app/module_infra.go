@@ -25,7 +25,7 @@ func WireScraper(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ScraperWiring, error) {
-	handler := scraperhandler.NewHandler(cfg.Paths.NodeScraperDir)
+	handler := scraperhandler.NewHandler("node-scraper")
 	mod := module.NewScraperModule(log, handler)
 	log.Info("created Scraper module")
 

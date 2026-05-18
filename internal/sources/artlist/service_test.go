@@ -170,7 +170,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Create service with minimal dependencies
-	svc, err := NewService(cfg, nil, nil, "", artlistRepo, nil, nil, nil, nil, nil, nil, logger)
+	svc, err := NewService(cfg, nil, nil, artlistRepo, nil, nil, nil, nil, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	artlistRepo := clips.NewRepository(db, logger)
 
-	svc, err := NewService(cfg, nil, nil, "", artlistRepo, nil, nil, nil, nil, nil, nil, logger)
+	svc, err := NewService(cfg, nil, nil, artlistRepo, nil, nil, nil, nil, nil, nil, logger)
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
@@ -405,6 +405,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 			ClipPageURL: "https://artlist.io/clip/city-night",
 		},
 	})
+	t.Setenv("VELOX_NODE_SCRAPER_DIR", scraperDir)
 
 	processor := &fakeMediaProcessor{
 		err: errors.New("download failed"),
@@ -414,7 +415,6 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		cfg,
 		nil,
 		nil,
-		scraperDir,
 		artlistRepo,
 		processor,
 		nil,
@@ -482,6 +482,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 			ClipPageURL: "https://artlist.io/clip/city-night",
 		},
 	})
+	t.Setenv("VELOX_NODE_SCRAPER_DIR", scraperDir)
 
 	processor := &fakeMediaProcessor{}
 
@@ -489,7 +490,6 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		cfg,
 		nil,
 		nil,
-		scraperDir,
 		artlistRepo,
 		processor,
 		nil,
@@ -561,6 +561,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 			ClipPageURL: "https://artlist.io/clip/city-night",
 		},
 	})
+	t.Setenv("VELOX_NODE_SCRAPER_DIR", scraperDir)
 
 	processor := &fakeMediaProcessor{
 		err: errors.New("download failed"),
@@ -570,7 +571,6 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		cfg,
 		nil,
 		nil,
-		scraperDir,
 		artlistRepo,
 		processor,
 		nil,

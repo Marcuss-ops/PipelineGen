@@ -163,7 +163,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	indexingService := indexing.NewService(clipsRepo, clipIndexerService, log)
 	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)
 
-	assocService := association.NewService(cfg.Storage.DataDir, cfg.Paths.NodeScraperDir, cfg.Paths.PythonScriptsDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
+	assocService := association.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
 
 	// Build sync targets centrally
 	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)

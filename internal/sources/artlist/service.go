@@ -24,7 +24,6 @@ type Service struct {
 	cfg            *config.Config
 	mainDB         *sql.DB
 	artlistDB      *sql.DB
-	nodeScraperDir string
 	log            *zap.Logger
 
 	// Componenti delegati
@@ -46,12 +45,11 @@ type Service struct {
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScraperDir string, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service, log *zap.Logger) (*Service, error) {
 	s := &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
 		artlistDB:         artlistDB,
-		nodeScraperDir:    nodeScraperDir,
 		artlistRepo:       artlistRepo,
 		mediaProcessor:    mediaProcessor,
 		lifecycleService:  lifecycleService,

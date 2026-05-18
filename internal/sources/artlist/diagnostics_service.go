@@ -36,7 +36,7 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 		OK:             true,
 		RootFolderID:   ResolveRootFolderID(d.svc.cfg),
 		DriveFolderID:  ResolveRootFolderID(d.svc.cfg),
-		NodeScraperDir: d.svc.nodeScraperDir,
+		NodeScraperDir: "node-scraper",
 		HasDriveClient: d.svc.assetDestResolver != nil,
 		HasArtlistDB:   d.svc.artlistDB != nil,
 		MainDBReady:    d.svc.mainDB != nil,
