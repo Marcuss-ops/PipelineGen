@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"database/sql"
 	"net/http"
 	"sync"
 	"time"
@@ -10,22 +11,92 @@ import (
 	"velox/go-master/internal/logger"
 )
 
-// RequestLogEntry represents a logged API request
-type RequestLogEntry struct {
-	Timestamp  time.Time `json:"timestamp"`
-	Path       string    `json:"path"`
-	Status     int       `json:"status"`
-	DurationMS int64     `json:"duration_ms"`
-	ErrorType  string    `json:"error_type,omitempty"`
-	ClientIP   string    `json:"client_ip"`
-	Method     string    `json:"method"`
+// apiLog represents a logged API request for the database
+type apiLog struct {
+	RequestID string
+	Method    string
+	Path      string
+	Status    int
+	Duration  time.Duration
+	IP        string
+	UserID    string
+	BytesIn   int
+	BytesOut  int
+	UA        string
+	Err       string
 }
 
 var (
-	requestLogs []RequestLogEntry
-	logsMu      sync.RWMutex
-	maxLogs     = 1000
+	logDB   *sql.DB
+	logChan = make(chan apiLog, 5000)
 )
+
+// SetLogDB sets the database for persistent logging
+func SetLogDB(db *sql.DB) {
+	logDB = db
+	go apiLogWriter()
+}
+
+func apiLogWriter() {
+	if logDB == nil {
+		return
+	}
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	batch := make([]apiLog, 0, 200)
+
+	for {
+		select {
+		case l := <-logChan:
+			batch = append(batch, l)
+			if len(batch) >= 200 {
+				flushLogs(batch)
+				batch = batch[:0]
+			}
+		case <-ticker.C:
+			if len(batch) > 0 {
+				flushLogs(batch)
+				batch = batch[:0]
+			}
+		}
+	}
+}
+
+func flushLogs(batch []apiLog) {
+	if logDB == nil {
+		return
+	}
+
+	tx, err := logDB.Begin()
+	if err != nil {
+		logger.Error("Failed to start log transaction", zap.Error(err))
+		return
+	}
+
+	stmt, err := tx.Prepare(`
+      INSERT INTO api_requests 
+      (request_id, method, path, status, duration_ms, client_ip, user_id, bytes_in, bytes_out, user_agent, error)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		logger.Error("Failed to prepare log statement", zap.Error(err))
+		tx.Rollback()
+		return
+	}
+	defer stmt.Close()
+
+	for _, l := range batch {
+		_, err := stmt.Exec(l.RequestID, l.Method, l.Path, l.Status, float64(l.Duration.Microseconds())/1000.0,
+			l.IP, l.UserID, l.BytesIn, l.BytesOut, l.UA, l.Err)
+		if err != nil {
+			logger.Warn("Failed to execute log insert", zap.Error(err))
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		logger.Error("Failed to commit logs", zap.Error(err))
+	}
+}
 
 // Logger returns a gin middleware for logging requests
 func Logger() gin.HandlerFunc {
@@ -35,6 +106,9 @@ func Logger() gin.HandlerFunc {
 		raw := c.Request.URL.RawQuery
 
 		c.Next()
+
+		// Skip health check logging to database if desired, but keep in journal
+		isHealth := c.FullPath() == "/health" || c.FullPath() == "/api/health"
 
 		duration := time.Since(start)
 		status := c.Writer.Status()
@@ -52,15 +126,10 @@ func Logger() gin.HandlerFunc {
 		}
 
 		if len(c.Errors) > 0 {
-			// Convert string errors to error type
-			errs := make([]error, len(c.Errors))
-			for i, e := range c.Errors {
-				errs[i] = e
-			}
-			fields = append(fields, zap.Errors("errors", errs))
+			fields = append(fields, zap.Errors("errors", c.Errors.Errors()))
 		}
 
-		// Log based on status code
+		// Log to journal based on status code
 		switch {
 		case status >= 500:
 			logger.Error("Server error", fields...)
@@ -70,21 +139,25 @@ func Logger() gin.HandlerFunc {
 			logger.Info("Request completed", fields...)
 		}
 
-		// Add to request logs
-		entry := RequestLogEntry{
-			Timestamp:  time.Now(),
-			Path:       path,
-			Status:     status,
-			DurationMS: duration.Milliseconds(),
-			ClientIP:   c.ClientIP(),
-			Method:     c.Request.Method,
-		}
+		// Send to async persistent logger
+		if !isHealth && logDB != nil {
+			reqID, _ := c.Get("request_id")
+			reqIDStr, _ := reqID.(string)
 
-		if status >= 400 {
-			entry.ErrorType = http.StatusText(status)
+			logChan <- apiLog{
+				RequestID: reqIDStr,
+				Method:    c.Request.Method,
+				Path:      c.FullPath(),
+				Status:    status,
+				Duration:  duration,
+				IP:        c.ClientIP(),
+				UserID:    GetUserID(c),
+				BytesIn:   int(c.Request.ContentLength),
+				BytesOut:  c.Writer.Size(),
+				UA:        c.Request.UserAgent(),
+				Err:       c.Errors.String(),
+			}
 		}
-
-		addRequestLog(entry)
 	}
 }
 

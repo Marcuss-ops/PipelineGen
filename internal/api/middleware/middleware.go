@@ -17,6 +17,7 @@ import (
 func Auth(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !cfg.Security.EnableAuth {
+			c.Set("is_admin", true)
 			c.Next()
 			return
 		}
@@ -259,4 +260,36 @@ func Recovery() gin.HandlerFunc {
 			"error": "Internal server error",
 		})
 	})
+}
+
+// RequestID returns a gin middleware that adds a unique ID to each request
+func RequestID() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		reqID := c.GetHeader("X-Request-ID")
+		if reqID == "" {
+			reqID = time.Now().Format("20060102-150405") + "-" + randomString(8)
+		}
+		c.Set("request_id", reqID)
+		c.Header("X-Request-ID", reqID)
+		c.Next()
+	}
+}
+
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+	}
+	return string(b)
+}
+
+func GetUserID(c *gin.Context) string {
+	if admin, _ := c.Get("is_admin"); admin == true {
+		return "admin"
+	}
+	if worker, _ := c.Get("is_worker"); worker == true {
+		return "worker"
+	}
+	return "anonymous"
 }
