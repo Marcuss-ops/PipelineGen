@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -105,4 +106,62 @@ func TestPersistentLoggerMiddleware(t *testing.T) {
 	assert.Greater(t, durationMs, 0.0)
 	assert.Equal(t, "anonymous", userID)
 	assert.Equal(t, "GoTest-Agent", userAgent)
+}
+
+func TestLoggerBackpressure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// Ensure background writer is stopped
+	StopLogger()
+	
+	// Reset dropped counter
+	atomic.StoreUint64(&droppedLogs, 0)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("request_id", "test-id")
+		c.Next()
+	})
+	r.Use(Logger())
+	r.GET("/overflow", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	// Set a mock logDB directly WITHOUT calling SetLogDB (to not start writer)
+	dummyDB, _ := sql.Open("sqlite3", ":memory:")
+	defer dummyDB.Close()
+	logDB = dummyDB 
+
+	// Fill the channel completely until it blocks
+	for {
+		select {
+		case logChan <- apiLog{}:
+		default:
+			goto full
+		}
+	}
+full:
+
+	// Next request should be dropped
+	req, _ := http.NewRequest("GET", "/overflow", nil)
+	w := httptest.NewRecorder()
+	
+	start := time.Now()
+	r.ServeHTTP(w, req)
+	duration := time.Since(start)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Less(t, duration, 100*time.Millisecond, "Request should not block even when log queue is full")
+	assert.GreaterOrEqual(t, GetDroppedLogs(), uint64(1), "At least one log should have been dropped")
+
+	// Cleanup: drain the channel so other tests aren't affected
+drain:
+	for {
+		select {
+		case <-logChan:
+		default:
+			break drain
+		}
+	}
+	logDB = nil
 }

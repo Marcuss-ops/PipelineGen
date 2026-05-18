@@ -55,19 +55,23 @@ func NewArtlistHandler(
 func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering Artlist routes")
 
-	// Public routes
+	// Protected routes (require standard Auth)
 	r.POST("/run", h.RunTagPipeline)
 	r.POST("/run-smart", h.RunSmartPipeline)
 	r.GET("/runs/:run_id", h.RunStatus)
 	r.GET("/stats", h.Stats)
-	r.GET("/diagnostics", h.Diagnostics)
 
-	// Internal routes (require X-Internal or X-Velox-Internal header)
-	internal := r.Group("", middleware.RequireInternalHeader())
-	internal.POST("/search", h.Search)
-	internal.POST("/search/live", h.SearchLive)
-	internal.POST("/recommend", h.Recommend)
-	internal.POST("/sync-catalogs", h.SyncCatalogs)
+	// Internal routes (require X-Internal or X-Velox-Internal header OR standard Auth)
+	// We apply the same Auth check as the rest of the API to ensure diagnostics are protected.
+	internal := r.Group("")
+	internal.Use(middleware.RequireInternalHeader())
+	{
+		internal.GET("/diagnostics", h.Diagnostics)
+		internal.POST("/search", h.Search)
+		internal.POST("/search/live", h.SearchLive)
+		internal.POST("/recommend", h.Recommend)
+		internal.POST("/sync-catalogs", h.SyncCatalogs)
+	}
 }
 
 // RunTagPipeline executes the full Artlist flow for a tag

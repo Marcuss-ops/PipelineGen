@@ -93,8 +93,9 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 
 	// 4. API request logs retention cleanup (retention logic)
 	if s.db != nil && !dryRun {
-		s.log.Info("Running API request logs retention cleanup")
-		res, err := s.db.ExecContext(ctx, "DELETE FROM api_requests WHERE ts < datetime('now', '-30 days')")
+		s.log.Info("Running API request logs retention cleanup", zap.Int("days", s.cfg.Jobs.RetentionDays))
+		retentionQuery := fmt.Sprintf("DELETE FROM api_requests WHERE ts < datetime('now', '-%d days')", s.cfg.Jobs.RetentionDays)
+		res, err := s.db.ExecContext(ctx, retentionQuery)
 		if err != nil {
 			s.log.Error("API request logs retention cleanup failed", zap.Error(err))
 			results["api_requests_cleanup_error"] = err.Error()
@@ -103,11 +104,15 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 			s.log.Info("API request logs retention cleanup completed", zap.Int64("rows_deleted", rowsAffected))
 			results["api_requests_deleted"] = rowsAffected
 
-			// Run VACUUM to reclaim storage space if rows were deleted
+			// Run optimized vacuum if rows were deleted
 			if rowsAffected > 0 {
-				s.log.Info("Running VACUUM to reclaim space after pruning API requests")
-				if _, err := s.db.ExecContext(ctx, "VACUUM"); err != nil {
-					s.log.Warn("VACUUM failed", zap.Error(err))
+				s.log.Info("Running incremental space reclamation after pruning API requests")
+				// Try incremental vacuum first (requires PRAGMA auto_vacuum = INCREMENTAL to be set on DB)
+				if _, err := s.db.ExecContext(ctx, "PRAGMA incremental_vacuum(500)"); err != nil {
+					s.log.Warn("Incremental vacuum failed, falling back to full VACUUM", zap.Error(err))
+					if _, err := s.db.ExecContext(ctx, "VACUUM"); err != nil {
+						s.log.Warn("Full VACUUM failed", zap.Error(err))
+					}
 				}
 			}
 		}

@@ -33,20 +33,25 @@ var expectedTables = map[string][]string{
 		"asset_tree_nodes",
 	},
 	"stock/stock.db.sqlite": {
-		"clips",        // Stock-specific clips
-		"clip_folders", // Stock-specific folders
-		"schema_migrations",
+	        "media_assets", // Unified media table
+	        "clip_folders", // Stock-specific folders
+	        "schema_migrations",
 	},
 	"clips/clips.db.sqlite": {
-		"clips",              // YouTube-specific clips
-		"clip_folders",       // YouTube-specific folders
-		"segment_embeddings", // Timeline cache - appropriate here
-		"schema_migrations",
+	        "clips",              // YouTube-specific clips (still legacy or specific?)
+	        "clip_folders",       // YouTube-specific folders
+	        "segment_embeddings", // Timeline cache - appropriate here
+	        "schema_migrations",
 	},
 	"artlist/artlist.db.sqlite": {
-		"clips",        // Artlist-specific clips
-		"clip_folders", // Artlist-specific folders
-		"schema_migrations",
+	        "media_assets", // Unified media table
+	        "clip_folders", // Artlist-specific folders
+	        "clips_fts",    // FTS index
+	        "clips_fts_config",
+	        "clips_fts_data",
+	        "clips_fts_docsize",
+	        "clips_fts_idx",
+	        "schema_migrations",
 	},
 	"images/images.db.sqlite": {
 		"images",

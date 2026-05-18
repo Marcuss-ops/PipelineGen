@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"database/sql"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,17 +27,40 @@ type apiLog struct {
 }
 
 var (
-	logDB   *sql.DB
-	logChan = make(chan apiLog, 5000)
+	logDB       *sql.DB
+	logChan     = make(chan apiLog, 5000)
+	droppedLogs uint64
+	writerWG    sync.WaitGroup
+	stopChan    chan struct{}
 )
 
 // SetLogDB sets the database for persistent logging
 func SetLogDB(db *sql.DB) {
 	logDB = db
-	go apiLogWriter()
+	if stopChan == nil {
+		stopChan = make(chan struct{})
+		writerWG.Add(1)
+		go apiLogWriter()
+	}
+}
+
+// StopLogger flushes and stops the background log writer
+func StopLogger() {
+	if stopChan == nil {
+		return
+	}
+	close(stopChan)
+	writerWG.Wait()
+	stopChan = nil
+}
+
+// GetDroppedLogs returns the number of logs dropped due to backpressure
+func GetDroppedLogs() uint64 {
+	return atomic.LoadUint64(&droppedLogs)
 }
 
 func apiLogWriter() {
+	defer writerWG.Done()
 	if logDB == nil {
 		return
 	}
@@ -57,6 +82,26 @@ func apiLogWriter() {
 				flushLogs(batch)
 				batch = batch[:0]
 			}
+		case <-stopChan:
+			// Drain remaining logs without closing logChan (to allow restart/reuse in tests)
+			// In production, the process is exiting anyway.
+		drain:
+			for {
+				select {
+				case l := <-logChan:
+					batch = append(batch, l)
+					if len(batch) >= 200 {
+						flushLogs(batch)
+						batch = batch[:0]
+					}
+				default:
+					break drain
+				}
+			}
+			if len(batch) > 0 {
+				flushLogs(batch)
+			}
+			return
 		}
 	}
 }
@@ -111,13 +156,15 @@ func Logger() gin.HandlerFunc {
 		duration := time.Since(start)
 		status := c.Writer.Status()
 
-		fields := []zap.Field{
+		// Efficient fields allocation
+		fields := make([]zap.Field, 0, 8)
+		fields = append(fields,
 			zap.Int("status", status),
 			zap.Duration("duration", duration),
 			zap.String("path", path),
 			zap.String("method", c.Request.Method),
 			zap.String("client_ip", c.ClientIP()),
-		}
+		)
 
 		if raw != "" {
 			fields = append(fields, zap.String("query", raw))
@@ -146,7 +193,7 @@ func Logger() gin.HandlerFunc {
 			reqID, _ := c.Get("request_id")
 			reqIDStr, _ := reqID.(string)
 
-			logChan <- apiLog{
+			entry := apiLog{
 				RequestID: reqIDStr,
 				Method:    c.Request.Method,
 				Path:      c.FullPath(),
@@ -158,6 +205,13 @@ func Logger() gin.HandlerFunc {
 				BytesOut:  c.Writer.Size(),
 				UA:        c.Request.UserAgent(),
 				Err:       c.Errors.String(),
+			}
+
+			// Non-blocking send with backpressure tracking
+			select {
+			case logChan <- entry:
+			default:
+				atomic.AddUint64(&droppedLogs, 1)
 			}
 		}
 	}

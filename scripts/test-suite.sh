@@ -95,23 +95,36 @@ DATA_DIR="/tmp/pipelinegen-test-$(date +%s)"
 mkdir -p "$DATA_DIR"
 
 info "Starting server with auth ENABLED (default)..."
+# Find a random free port
+TEST_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("", 0)); print(s.getsockname()[1]); s.close()')
+info "Using test port: $TEST_PORT"
+
 VELOX_DATA_DIR="$DATA_DIR" \
 VELOX_ENABLE_AUTH=true \
+VELOX_FEATURE_ARTLIST_ENABLED=true \
 VELOX_ADMIN_TOKEN="test-admin-token" \
+VELOX_PORT="$TEST_PORT" \
 go run ./cmd/server &
 SERVER_PID=$!
 sleep 3
 
 info "Testing unauthenticated request (should fail)..."
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/artlist/diagnostics || echo "000")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$TEST_PORT/api/artlist/diagnostics || echo "000")
 if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
     pass "Unauthenticated request rejected (got $HTTP_CODE)"
 else
-    fail "Unauthenticated request should be rejected, got $HTTP_CODE"
+    # Check if we got 200 which is what we are seeing in failures
+    if [ "$HTTP_CODE" = "200" ]; then
+        fail "Unauthenticated request should be rejected, got $HTTP_CODE (AUTH BYPASS DETECTED)"
+    elif [ "$HTTP_CODE" = "404" ]; then
+        fail "Unauthenticated request got 404 - Artlist routes not registered. Check if VELOX_FEATURE_ARTLIST_ENABLED=true is working."
+    else
+        fail "Unauthenticated request should be rejected, got $HTTP_CODE"
+    fi
 fi
 
 info "Testing health endpoint (should work without auth)..."
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "000")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$TEST_PORT/health || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
     pass "Health endpoint is public (got $HTTP_CODE)"
 else
@@ -120,6 +133,8 @@ fi
 
 info "Stopping server..."
 kill $SERVER_PID 2>/dev/null || true
+# Also kill the binary that go run starts
+pkill -P $SERVER_PID 2>/dev/null || true
 wait $SERVER_PID 2>/dev/null || true
 rm -rf "$DATA_DIR"
 
@@ -133,9 +148,13 @@ DATA_DIR="/tmp/pipelinegen-test-$(date +%s)"
 mkdir -p "$DATA_DIR"
 
 info "Starting server with auth..."
+TEST_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("", 0)); print(s.getsockname()[1]); s.close()')
+info "Using test port: $TEST_PORT"
+
 VELOX_DATA_DIR="$DATA_DIR" \
 VELOX_ENABLE_AUTH=true \
 VELOX_ADMIN_TOKEN="test-admin-token" \
+VELOX_PORT="$TEST_PORT" \
 go run ./cmd/server &
 SERVER_PID=$!
 sleep 3
@@ -143,7 +162,7 @@ sleep 3
 info "Testing with valid token..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: Bearer test-admin-token" \
-    http://localhost:8080/api/artlist/diagnostics || echo "000")
+    http://localhost:$TEST_PORT/api/artlist/diagnostics || echo "000")
 if [ "$HTTP_CODE" != "401" ] && [ "$HTTP_CODE" != "403" ]; then
     pass "Valid token accepted (got $HTTP_CODE, not 401/403)"
 else
@@ -238,26 +257,37 @@ DATA_DIR="/tmp/pipelinegen-minimal-$(date +%s)"
 mkdir -p "$DATA_DIR"
 
 info "Starting server with ALL features disabled (minimal mode)..."
+TEST_PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("", 0)); print(s.getsockname()[1]); s.close()')
+info "Using test port: $TEST_PORT"
+
 VELOX_DATA_DIR="$DATA_DIR" \
 VELOX_ENABLE_AUTH=true \
 VELOX_ADMIN_TOKEN="test-admin-token" \
+VELOX_PORT="$TEST_PORT" \
 VELOX_FEATURE_ARTLIST_ENABLED=false \
 VELOX_FEATURE_YOUTUBE_ENABLED=false \
 VELOX_FEATURE_DRIVE_ENABLED=false \
 VELOX_FEATURE_HARVESTER_ENABLED=false \
 VELOX_FEATURE_SCRIPT_DOCS_ENABLED=false \
-timeout 10 go run ./cmd/server &
+timeout 15 go run ./cmd/server &
 SERVER_PID=$!
 sleep 5
 
 if kill -0 $SERVER_PID 2>/dev/null; then
-    pass "Server started in minimal mode (no external deps required)"
+    # Verify we can reach it
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$TEST_PORT/health || echo "000")
+    if [ "$HTTP_CODE" = "200" ]; then
+        pass "Server started and responding in minimal mode (port $TEST_PORT)"
+    else
+        fail "Server started but returned $HTTP_CODE in minimal mode"
+    fi
 else
     fail "Server failed to start in minimal mode - check bootstrap"
 fi
 
 info "Stopping server..."
 kill $SERVER_PID 2>/dev/null || true
+pkill -P $SERVER_PID 2>/dev/null || true
 wait $SERVER_PID 2>/dev/null || true
 rm -rf "$DATA_DIR"
 

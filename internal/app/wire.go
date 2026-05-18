@@ -31,6 +31,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 
 	cleanup := func() {
+		// Stop logger first to flush pending logs
+		middleware.StopLogger()
+
 		if registryWiring.ArtlistSvc != nil && registryWiring.ArtlistSvc.Service != nil {
 			registryWiring.ArtlistSvc.Service.Close()
 		}

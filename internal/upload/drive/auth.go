@@ -15,6 +15,8 @@ import (
 	"google.golang.org/api/option"
 )
 
+const defaultArtlistRootFolderID = "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
+
 // NewGoogleHTTPClient creates an OAuth2 HTTP client using credentials and token paths.
 // It uses a refreshing token source that saves the token to disk upon refresh.
 func NewGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string, scopes ...string) (*http.Client, error) {
@@ -73,7 +75,7 @@ func NewDriveServiceFromFiles(ctx context.Context, cfg *config.Config) (*drive.S
 // ResolveArtlistRootFolderID determines the appropriate Drive folder ID for Artlist uploads based on priority.
 func ResolveArtlistRootFolderID(cfg *config.Config) string {
 	if cfg == nil {
-		return ""
+		return defaultArtlistRootFolderID
 	}
 	if folderID := strings.TrimSpace(cfg.Harvester.DriveFolderID); folderID != "" {
 		return folderID
@@ -84,5 +86,5 @@ func ResolveArtlistRootFolderID(cfg *config.Config) string {
 	if folderID := strings.TrimSpace(cfg.Drive.StockRootFolder); folderID != "" {
 		return folderID
 	}
-	return ""
+	return defaultArtlistRootFolderID
 }

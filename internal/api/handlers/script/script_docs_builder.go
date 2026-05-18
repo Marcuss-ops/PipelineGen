@@ -357,8 +357,9 @@ func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
 				continue // Skip folders
 			}
 
-			key := strings.ToLower(m.Title + "|" + m.Link)
-			if seen[key] || m.Link == "" {
+			link := resolveAssociatedDisplayLink(m)
+			key := strings.ToLower(m.Title + "|" + link)
+			if seen[key] || link == "" {
 				continue
 			}
 			seen[key] = true
@@ -368,7 +369,7 @@ func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
 			if title == "" {
 				title = "Asset"
 			}
-			b.WriteString(fmt.Sprintf("🔗 %s: %s\n", title, m.Link))
+			b.WriteString(fmt.Sprintf("🔗 %s: %s\n", title, link))
 		}
 	}
 
@@ -380,4 +381,18 @@ func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
 		Title: "🎞️ CLIPS ASSOCIATED",
 		Body:  strings.TrimSpace(b.String()),
 	}
+}
+
+func resolveAssociatedDisplayLink(match association.ScoredMatch) string {
+	if link := strings.TrimSpace(match.Link); link != "" {
+		if !isDirectArtlistURL(link) {
+			return link
+		}
+	}
+
+	if folderLink := strings.TrimSpace(match.FolderLink); folderLink != "" {
+		return folderLink
+	}
+
+	return ""
 }

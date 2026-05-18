@@ -247,6 +247,7 @@ type JobsConfig struct {
 	MaintenanceInterval   string `yaml:"maintenance_interval" default:"24h"`
 	BackupInterval        string `yaml:"backup_interval" default:"6h"`
 	IndexingInterval      string `yaml:"indexing_interval" default:"15m"`
+	RetentionDays         int    `yaml:"retention_days" env:"VELOX_RETENTION_DAYS" default:"30"`
 }
 
 // WorkersConfig holds worker-related configuration.

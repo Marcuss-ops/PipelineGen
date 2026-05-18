@@ -76,11 +76,13 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 	seenLinks := make(map[string]bool)
 
 	for _, m := range matches {
-		if m.Score < 35 || (m.Link != "" && seenLinks[m.Link]) {
+		displayLink := resolveTimelineDisplayLink(m)
+		if m.Score < 35 || (displayLink != "" && seenLinks[displayLink]) {
 			continue
 		}
-		if m.Link != "" {
-			seenLinks[m.Link] = true
+
+		if displayLink != "" {
+			seenLinks[displayLink] = true
 		}
 
 		if m.FolderLink != "" {
@@ -156,13 +158,32 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 			b.WriteString("        - ")
 			b.WriteString(title)
 			b.WriteString("\n")
-			if m.Link != "" {
+			if link := resolveTimelineDisplayLink(m); link != "" {
 				b.WriteString("          Link: ")
-				b.WriteString(m.Link)
+				b.WriteString(link)
 				b.WriteString("\n")
 			}
 		}
 	}
 
 	return b.String()
+}
+
+func resolveTimelineDisplayLink(match association.ScoredMatch) string {
+	if link := strings.TrimSpace(match.Link); link != "" {
+		if !isDirectArtlistURL(link) {
+			return link
+		}
+	}
+	if folderLink := strings.TrimSpace(match.FolderLink); folderLink != "" {
+		return folderLink
+	}
+
+	return ""
+}
+
+func isDirectArtlistURL(link string) bool {
+	link = strings.ToLower(strings.TrimSpace(link))
+	return strings.Contains(link, "cms-public-artifacts.artlist.io") ||
+		strings.Contains(link, "artlist.io")
 }

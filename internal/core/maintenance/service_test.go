@@ -103,6 +103,7 @@ func TestMaintenancePruning(t *testing.T) {
 
 	// 4. Setup mock dependencies for Service
 	cfg := &config.Config{}
+	cfg.Jobs.RetentionDays = 30
 	
 	// Set up simple asset tree service
 	treeRepo, err := assettreerepo.NewRepository(db, logger)

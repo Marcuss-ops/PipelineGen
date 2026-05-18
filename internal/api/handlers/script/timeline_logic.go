@@ -151,22 +151,24 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 					}
 
 					for _, c := range liveResp.Clips {
-						link := c.DriveLink
-						if link == "" {
-							link = c.ExternalURL
-						}
-						if link == "" {
-							link = c.DownloadLink
-						}
-
-						seg.ArtlistMatches = append(seg.ArtlistMatches, association.ScoredMatch{
+						match := association.ScoredMatch{
 							Title:  c.Name,
 							Path:   c.LocalPath,
 							Score:  95 - (i * 5), // Slightly lower score for secondary suggestions
 							Source: "artlist_live_discovery",
-							Link:   link,
 							Reason: "live search: " + suggestion,
-						})
+						}
+
+						// Prefer true Drive links. If a clip has no Drive link yet, keep it out of the
+						// rendered output so the pipeline failure is visible instead of hiding it behind a folder.
+						if c.DriveLink != "" {
+							match.Link = c.DriveLink
+						}
+						if match.FolderName == "" {
+							match.FolderName = suggestion
+						}
+
+						seg.ArtlistMatches = append(seg.ArtlistMatches, match)
 					}
 					// If we found something, we can stop searching further suggestions for this segment
 					break

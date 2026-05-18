@@ -30,3 +30,71 @@ func TestRenderSegmentAssetsRendersBothStockAndArtlistBlocks(t *testing.T) {
 	}
 }
 
+func TestResolveTimelineDisplayLinkPrefersClipLinkOverFolderLink(t *testing.T) {
+	match := association.ScoredMatch{
+		Title:      "Artlist Clip",
+		Link:       "https://drive.google.com/file/d/clip-id/view",
+		FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
+		Source:     "artlist_live_discovery",
+	}
+
+	link := resolveTimelineDisplayLink(match)
+	if link != match.Link {
+		t.Fatalf("expected clip link, got %q", link)
+	}
+}
+
+func TestResolveTimelineDisplayLinkSuppressesDirectArtlistURL(t *testing.T) {
+	match := association.ScoredMatch{
+		Title:  "Artlist Clip",
+		Link:   "https://cms-public-artifacts.artlist.io/content/artgrid/footage-hls/song-123.m3u8",
+		Source: "artlist_live_discovery",
+	}
+
+	link := resolveTimelineDisplayLink(match)
+	if link != "" {
+		t.Fatalf("expected direct artlist URL to be suppressed, got %q", link)
+	}
+}
+
+func TestResolveAssociatedDisplayLinkPrefersClipLink(t *testing.T) {
+	match := association.ScoredMatch{
+		Title:      "Artlist Clip",
+		Link:       "https://drive.google.com/file/d/clip-id/view",
+		FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
+		Source:     "artlist_live_discovery",
+	}
+
+	link := resolveAssociatedDisplayLink(match)
+	if link != match.Link {
+		t.Fatalf("expected clip link, got %q", link)
+	}
+}
+
+func TestBuildClipsAssociatedSectionUsesClipLinkAndSkipsDirectArtlistURL(t *testing.T) {
+	plan := &TimelinePlan{
+		Segments: []TimelineSegment{
+			{
+				ArtlistMatches: []association.ScoredMatch{
+					{
+						Title:      "Artlist Clip",
+						Link:       "https://drive.google.com/file/d/clip-id/view",
+						FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
+						Source:     "artlist_live_discovery",
+					},
+				},
+			},
+		},
+	}
+
+	section := buildClipsAssociatedSection(plan)
+	if section.Body == "" {
+		t.Fatalf("expected associated section to be rendered")
+	}
+	if strings.Contains(section.Body, "cms-public-artifacts.artlist.io") {
+		t.Fatalf("expected direct artlist URL to be suppressed, got:\n%s", section.Body)
+	}
+	if !strings.Contains(section.Body, "drive.google.com/file/d/clip-id/view") {
+		t.Fatalf("expected clip link in output, got:\n%s", section.Body)
+	}
+}
