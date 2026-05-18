@@ -1,13 +1,17 @@
 package app
 
 import (
-	"velox/go-master/internal/media/tachyon"
-	"velox/go-master/internal/media/videomuscles"
 	"context"
 	"os"
+	"velox/go-master/internal/media/tachyon"
+	"velox/go-master/internal/media/videomuscles"
 
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/core/maintenance"
+	"velox/go-master/internal/media"
+	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/association"
+	sketchfabservice "velox/go-master/internal/media/sketchfab"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/catalog"
@@ -16,25 +20,21 @@ import (
 	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/association"
-	"velox/go-master/internal/media"
 	"velox/go-master/internal/repository/sketchfab"
-	sketchfabservice "velox/go-master/internal/media/sketchfab"
+	"velox/go-master/internal/repository/voiceovers"
 
+	"velox/go-master/internal/config"
+	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetregistry"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/media/voiceoversync"
 	"velox/go-master/internal/sources/youtube"
+	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/upload/drive"
-	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )
@@ -135,8 +135,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	clipsRepo := clips.NewRepository(dbs.media.DB, log)
-	artlistRepo := clips.NewRepository(dbs.media.DB, log)
+	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
+	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
 
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.media.DB)

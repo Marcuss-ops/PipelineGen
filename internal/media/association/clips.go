@@ -47,12 +47,18 @@ func (a *ClipDriveAssociation) Associate(ctx context.Context, input SegmentInput
 		score := matching.CalculateTokenScore(queryTokens, targetTokens)
 
 		if score > 30 {
+			link := c.DriveLink
+			if link == "" {
+				link = c.ExternalURL
+			}
+
 			matches = append(matches, ScoredMatch{
+				ClipID: c.ID,
 				Title:  c.Name,
 				Path:   c.LocalPath,
 				Score:  score,
 				Source: "clip_drive",
-				Link:   c.ExternalURL,
+				Link:   link,
 			})
 		}
 	}

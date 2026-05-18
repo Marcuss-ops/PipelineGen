@@ -30,8 +30,8 @@ external:
   ffmpeg_path: "ffmpeg"
 
 paths:
-  node_scraper_dir: "../node-scraper"
-  python_scripts_dir: "../../python"
+  node_scraper_dir: "node-scraper"
+  python_scripts_dir: "scripts"
   credentials_file: "credentials.json"
   token_file: "token.json"
 

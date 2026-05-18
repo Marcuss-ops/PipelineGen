@@ -1,0 +1,30 @@
+package script
+
+import (
+	"testing"
+
+	"velox/go-master/internal/media/models"
+)
+
+func TestResolveArtlistDisplayLinkPrefersDriveAndFolderFallback(t *testing.T) {
+	if got := resolveArtlistDisplayLink(&models.MediaAsset{
+		DriveLink: "https://drive.google.com/file/d/direct/view",
+		ExternalURL: "https://artlist.io/clip/ignored",
+	}); got != "https://drive.google.com/file/d/direct/view" {
+		t.Fatalf("expected direct drive link, got %q", got)
+	}
+
+	if got := resolveArtlistDisplayLink(&models.MediaAsset{
+		ExternalURL: "https://artlist.io/clip/ignored",
+		FolderID:    "folder-123",
+	}); got != "https://drive.google.com/drive/folders/folder-123" {
+		t.Fatalf("expected folder drive link fallback, got %q", got)
+	}
+
+	if got := resolveArtlistDisplayLink(&models.MediaAsset{
+		ExternalURL: "https://artlist.io/clip/only",
+	}); got != "" {
+		t.Fatalf("expected no artlist url fallback, got %q", got)
+	}
+}
+

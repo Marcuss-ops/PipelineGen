@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/storage/drive"
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/storage/drive"
+	driveutil "velox/go-master/internal/upload/drive"
 )
 
 // RunDefaults holds default values for request normalization.
@@ -110,4 +112,13 @@ func composeArtlistMetadata(existing, fileHash, driveChecksum string) string {
 		return strings.TrimSpace(existing)
 	}
 	return string(raw)
+}
+
+// ResolveRootFolderID determines the canonical root folder for Artlist jobs.
+// Priority is:
+// 1. harvester.drive_folder_id
+// 2. drive.clips_root_folder
+// 3. drive.stock_root_folder
+func ResolveRootFolderID(cfg *config.Config) string {
+	return driveutil.ResolveArtlistRootFolderID(cfg)
 }

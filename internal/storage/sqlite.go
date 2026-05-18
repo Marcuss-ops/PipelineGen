@@ -53,6 +53,12 @@ func NewSQLiteDBWithMaxConns(dataDir, dbName string, maxOpenConns int, log *zap.
 // OpenSQLiteDB creates a new SQLite connection from a full file path with WAL mode and connection pooling.
 // Use this for databases that are not in the standard data directory.
 func OpenSQLiteDB(dbPath string, log *zap.Logger) (*SQLiteDB, error) {
+	if dbPath != "" && dbPath != ":memory:" {
+		parentDir := filepath.Dir(dbPath)
+		if err := os.MkdirAll(parentDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create database directory %s: %w", parentDir, err)
+		}
+	}
 	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	return newSQLiteConnection(dbPath, dsn, 5, log)
 }

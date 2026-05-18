@@ -10,13 +10,13 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/config"
+	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipresolver"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/pkg/apiutil"
-	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/sources/artlist"
 )
 
 type ArtlistHandler struct {
@@ -84,9 +84,13 @@ func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 
 	// Normalize request before enqueue
 	req = artlist.NormalizeRunTagRequest(req, artlist.RunDefaults{
-		DefaultRootFolderID: h.cfg.Harvester.DriveFolderID,
+		DefaultRootFolderID: artlist.ResolveRootFolderID(h.cfg),
 		MaxLimit:            500,
 	})
+	if strings.TrimSpace(req.RootFolderID) == "" {
+		apiutil.BadRequest(c, "artlist root folder is not configured")
+		return
+	}
 
 	h.log.Info("artlist run requested",
 		zap.String("term", req.Term),
@@ -116,10 +120,14 @@ func (h *ArtlistHandler) RunSmartPipeline(c *gin.Context) {
 
 	// Normalize request
 	normalized := artlist.NormalizeRunTagRequest(*runReq, artlist.RunDefaults{
-		DefaultRootFolderID: h.cfg.Harvester.DriveFolderID,
+		DefaultRootFolderID: artlist.ResolveRootFolderID(h.cfg),
 		MaxLimit:            500,
 	})
 	runReq = &normalized
+	if strings.TrimSpace(runReq.RootFolderID) == "" {
+		apiutil.BadRequest(c, "artlist root folder is not configured")
+		return
+	}
 
 	h.log.Info("artlist smart run requested",
 		zap.String("term", req.Term),

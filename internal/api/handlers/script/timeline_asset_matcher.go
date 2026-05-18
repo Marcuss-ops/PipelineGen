@@ -23,10 +23,11 @@ func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *a
 		Narrative: seg.NarrativeText,
 	}
 
-	// 1. Try preferred stock match first based on primary focus
+	// 1. Try preferred stock matches first based on subjects/entities
 	var preferredPaths []string
-	if preferred, ok := assocService.ResolvePreferredStockMatch(ctx, input); ok {
-		seg.StockMatches = append(seg.StockMatches, *preferred)
+	preferredMatches := assocService.ResolveAllPreferredStockMatches(ctx, input)
+	for _, preferred := range preferredMatches {
+		seg.StockMatches = append(seg.StockMatches, preferred)
 		if preferred.Path != "" {
 			preferredPaths = append(preferredPaths, strings.ToLower(preferred.Path))
 		}

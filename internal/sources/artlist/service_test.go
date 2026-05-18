@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/jobs"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/core/processor"
+	"velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/security"
 )
 
@@ -33,37 +35,17 @@ func createTestDB(t *testing.T) *sql.DB {
 
 	// Create schema
 	schema := `
-	CREATE TABLE IF NOT EXISTS clips (
+	CREATE TABLE IF NOT EXISTS media_assets (
 		id TEXT PRIMARY KEY,
-		name TEXT,
-		filename TEXT,
-		folder_id TEXT,
-		parent_folder_id TEXT DEFAULT '',
-		depth INTEGER DEFAULT 0,
-		is_folder INTEGER DEFAULT 0,
-		folder_path TEXT,
-		group_name TEXT,
-		media_type TEXT,
-		drive_link TEXT,
-		drive_file_id TEXT DEFAULT '',
-		download_link TEXT,
-		tags TEXT,
-		source TEXT,
-		category TEXT,
-		external_url TEXT,
-		duration INTEGER,
-		metadata TEXT,
-		file_hash TEXT,
-		local_path TEXT,
-		status TEXT DEFAULT '',
-		error TEXT DEFAULT '',
-		search_terms TEXT NOT NULL DEFAULT '[]',
-		thumb_url TEXT DEFAULT '',
-		phash TEXT NOT NULL DEFAULT '',
-		visual_embedding_json TEXT NOT NULL DEFAULT '[]',
+		source TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL DEFAULT '',
+		tags TEXT NOT NULL DEFAULT '[]',
+		tags_norm TEXT NOT NULL DEFAULT '',
+		embedding_json TEXT NOT NULL DEFAULT '[]',
+		duration_ms INTEGER NOT NULL DEFAULT 0,
+		url TEXT NOT NULL DEFAULT '',
 		created_at TEXT,
-		updated_at TEXT,
-		deleted_at DATETIME
+		metadata_json TEXT NOT NULL DEFAULT '{}'
 	);
 	`
 	_, err = db.Exec(schema)
@@ -78,16 +60,100 @@ func createTestDB(t *testing.T) *sql.DB {
 func insertTestClip(t *testing.T, db *sql.DB, clip *models.MediaAsset) {
 	t.Helper()
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(`
-		INSERT OR REPLACE INTO clips 
-		(id, name, filename, folder_id, parent_folder_id, depth, is_folder, folder_path, group_name, media_type, drive_link, drive_file_id, download_link, tags, source, category, external_url, duration, metadata, file_hash, local_path, status, error, search_terms, thumb_url, phash, visual_embedding_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, clip.ID, clip.Name, clip.Filename, clip.FolderID, clip.ParentFolderID, clip.Depth, clip.IsFolder, clip.FolderPath, clip.Group, clip.MediaType, clip.DriveLink, clip.DriveFileID, clip.DownloadLink, "[]", clip.Source, clip.Category, clip.ExternalURL, clip.Duration, clip.MetadataJSON(), clip.FileHash, clip.LocalPath, clip.Status, clip.Error, "[]", "", "", "[]", now, now)
+	clip.CreatedAt = time.Now().UTC()
+	clip.UpdatedAt = clip.CreatedAt
+	if clip.Metadata == nil {
+		clip.Metadata = make(map[string]any)
+	}
+	if clip.Filename != "" {
+		clip.SetMetadataString("filename", clip.Filename)
+	}
+	if clip.FolderID != "" {
+		clip.SetMetadataString("folder_id", clip.FolderID)
+	}
+	if clip.FolderPath != "" {
+		clip.SetMetadataString("folder_path", clip.FolderPath)
+	}
+	if clip.Group != "" {
+		clip.SetMetadataString("group_name", clip.Group)
+	}
+	if clip.MediaType != "" {
+		clip.SetMetadataString("media_type", clip.MediaType)
+	}
+	if clip.DriveLink != "" {
+		clip.SetMetadataString("drive_link", clip.DriveLink)
+	}
+	if clip.DriveFileID != "" {
+		clip.SetMetadataString("drive_file_id", clip.DriveFileID)
+	}
+	if clip.DownloadLink != "" {
+		clip.SetMetadataString("download_link", clip.DownloadLink)
+	}
+	if clip.Category != "" {
+		clip.SetMetadataString("category", clip.Category)
+	}
+	if clip.ExternalURL != "" {
+		clip.SetMetadataString("external_url", clip.ExternalURL)
+	}
+	if clip.FileHash != "" {
+		clip.SetMetadataString("file_hash", clip.FileHash)
+	}
+	if clip.LocalPath != "" {
+		clip.SetMetadataString("local_path", clip.LocalPath)
+	}
+	if clip.Status != "" {
+		clip.SetMetadataString("status", clip.Status)
+	}
+	if clip.Error != "" {
+		clip.SetMetadataString("error", clip.Error)
+	}
+	if clip.ThumbURL != "" {
+		clip.SetMetadataString("thumb_url", clip.ThumbURL)
+	}
+	if clip.PHash != "" {
+		clip.SetMetadataString("phash", clip.PHash)
+	}
+	if clip.VisualEmbeddingJSON != "" {
+		clip.SetMetadataString("visual_embedding_json", clip.VisualEmbeddingJSON)
+	}
+	if clip.SearchText != "" {
+		clip.SetMetadataString("search_text", clip.SearchText)
+	}
 
-	if err != nil {
+	repo := clips.NewRepository(db, zap.NewNop())
+	if err := repo.UpsertClip(context.Background(), clip); err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
 	}
+}
+
+func writeFakeArtlistScraper(t *testing.T, clips []ScraperClip) string {
+	t.Helper()
+
+	scraperDir := filepath.Join(t.TempDir(), "node-scraper")
+	require.NoError(t, os.MkdirAll(scraperDir, 0o755))
+
+	clipsJSON, err := json.Marshal(clips)
+	require.NoError(t, err)
+
+	script := fmt.Sprintf(`const clips = %s;
+const args = process.argv.slice(2);
+const termIndex = args.indexOf('--term');
+const limitIndex = args.indexOf('--limit');
+const term = termIndex >= 0 && args[termIndex + 1] ? args[termIndex + 1] : '';
+const rawLimit = limitIndex >= 0 && args[limitIndex + 1] ? parseInt(args[limitIndex + 1], 10) : clips.length;
+const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : clips.length;
+const selected = clips.slice(0, Math.min(limit, clips.length));
+process.stdout.write(JSON.stringify({
+  ok: true,
+  term,
+  clips: selected,
+  search_url: 'https://example.invalid/search?q=' + encodeURIComponent(term),
+  saved: selected.length
+}));
+`, string(clipsJSON))
+
+	require.NoError(t, os.WriteFile(filepath.Join(scraperDir, "artlist_search.js"), []byte(script), 0o644))
+	return scraperDir
 }
 
 func TestArtlistServiceCreation(t *testing.T) {
@@ -171,7 +237,7 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 
 	// Verify clip is in database
 	var count int
-	err := db.QueryRow("SELECT COUNT(*) FROM clips WHERE id = ?", clip.ID).Scan(&count)
+	err := db.QueryRow("SELECT COUNT(*) FROM media_assets WHERE id = ?", clip.ID).Scan(&count)
 	if err != nil {
 		t.Fatalf("failed to query clip: %v", err)
 	}
@@ -182,7 +248,7 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 
 	// Verify drive link field exists (even if empty)
 	var driveLink string
-	err = db.QueryRow("SELECT drive_link FROM clips WHERE id = ?", clip.ID).Scan(&driveLink)
+	err = db.QueryRow("SELECT COALESCE(json_extract(metadata_json, '$.drive_link'), '') FROM media_assets WHERE id = ?", clip.ID).Scan(&driveLink)
 	if err != nil {
 		t.Fatalf("failed to query drive link: %v", err)
 	}
@@ -209,7 +275,7 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 
 	// Verify drive link is persisted
 	var driveLink string
-	err := db.QueryRow("SELECT drive_link FROM clips WHERE id = ?", clip.ID).Scan(&driveLink)
+	err := db.QueryRow("SELECT COALESCE(json_extract(metadata_json, '$.drive_link'), '') FROM media_assets WHERE id = ?", clip.ID).Scan(&driveLink)
 	if err != nil {
 		t.Fatalf("failed to query drive link: %v", err)
 	}
@@ -331,6 +397,15 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		Source:       "artlist",
 	})
 
+	scraperDir := writeFakeArtlistScraper(t, []ScraperClip{
+		{
+			ID:          "clip-1",
+			Title:       "City Night",
+			PrimaryURL:  "https://cdn.artlist.io/video.m3u8",
+			ClipPageURL: "https://artlist.io/clip/city-night",
+		},
+	})
+
 	processor := &fakeMediaProcessor{
 		err: errors.New("download failed"),
 	}
@@ -339,7 +414,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		cfg,
 		nil,
 		nil,
-		"",
+		scraperDir,
 		artlistRepo,
 		processor,
 		nil,
@@ -353,9 +428,10 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	defer svc.Close()
 
 	resp, err := svc.RunTag(ctx, &RunTagRequest{
-		Term:     "city",
-		Limit:    1,
-		Strategy: "replace",
+		Term:         "city",
+		Limit:        1,
+		Strategy:     "replace",
+		RootFolderID: "artlist-root",
 	})
 
 	require.NoError(t, err)
@@ -398,13 +474,22 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		Source:       "artlist",
 	})
 
+	scraperDir := writeFakeArtlistScraper(t, []ScraperClip{
+		{
+			ID:          "clip-1",
+			Title:       "City Night",
+			PrimaryURL:  "https://cdn.artlist.io/video.m3u8",
+			ClipPageURL: "https://artlist.io/clip/city-night",
+		},
+	})
+
 	processor := &fakeMediaProcessor{}
 
 	svc, err := NewService(
 		cfg,
 		nil,
 		nil,
-		"",
+		scraperDir,
 		artlistRepo,
 		processor,
 		nil,
@@ -421,7 +506,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		Term:         "city",
 		Limit:        1,
 		Strategy:     "replace",
-		RootFolderID: "",
+		RootFolderID: "artlist-root",
 	})
 
 	require.NoError(t, err)
@@ -468,6 +553,15 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		Source:       "artlist",
 	})
 
+	scraperDir := writeFakeArtlistScraper(t, []ScraperClip{
+		{
+			ID:          "clip-1",
+			Title:       "City Night",
+			PrimaryURL:  "https://cdn.artlist.io/video.m3u8",
+			ClipPageURL: "https://artlist.io/clip/city-night",
+		},
+	})
+
 	processor := &fakeMediaProcessor{
 		err: errors.New("download failed"),
 	}
@@ -476,7 +570,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		cfg,
 		nil,
 		nil,
-		"",
+		scraperDir,
 		artlistRepo,
 		processor,
 		nil,
@@ -494,7 +588,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		ID:        "test-job-1",
 		Type:      models.JobTypeArtlistRun,
 		Status:    models.StatusRunning,
-		Payload:   mustJSON(map[string]interface{}{"term": "city", "limit": 1, "strategy": "replace"}),
+		Payload:   mustJSON(map[string]interface{}{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"}),
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}

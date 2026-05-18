@@ -7,16 +7,16 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/repository/clips"
-	artlistSvc "velox/go-master/internal/sources/artlist"
 	"velox/go-master/internal/media/association"
 	clipresolver "velox/go-master/internal/media/clipresolver"
 	"velox/go-master/internal/media/visualquery"
+	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/pkg/sliceutil"
+	"velox/go-master/internal/repository/clips"
+	artlistSvc "velox/go-master/internal/sources/artlist"
 )
 
-const timelineCacheVersion = "v18"
+const timelineCacheVersion = "v19"
 
 func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service, clipResolver *clipresolver.Service) (*TimelinePlan, error) {
 	startedAt := time.Now()

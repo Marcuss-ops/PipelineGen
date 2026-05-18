@@ -120,7 +120,14 @@ type StorageConfig struct {
 	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"youtube-clips"`
 	ArtlistDir      string `yaml:"artlist_dir" default:"artlist"`
 	ImagesDir       string `yaml:"images_dir" default:"images"`
+	StockDBPath     string `yaml:"stock_db_path" env:"VELOX_STOCK_DB_PATH" default:"stock/stock.db.sqlite"`
+	ArtlistDBPath   string `yaml:"artlist_db_path" env:"VELOX_ARTLIST_DB_PATH" default:"artlist/artlist.db.sqlite"`
 }
+
+const (
+	defaultStockDBPath   = "stock/stock.db.sqlite"
+	defaultArtlistDBPath = "artlist/artlist.db.sqlite"
+)
 
 // FullPath returns the absolute path to a subdirectory within DataDir.
 func (s StorageConfig) FullPath(subDir string) string {
@@ -175,6 +182,24 @@ func (s StorageConfig) ImagesPath() string {
 	return s.FullPath(s.ImagesDir)
 }
 
+// StockDBFullPath returns the full path to the stock SQLite database.
+func (s StorageConfig) StockDBFullPath() string {
+	path := s.StockDBPath
+	if path == "" {
+		path = defaultStockDBPath
+	}
+	return s.FullPath(path)
+}
+
+// ArtlistDBFullPath returns the full path to the artlist SQLite database.
+func (s StorageConfig) ArtlistDBFullPath() string {
+	path := s.ArtlistDBPath
+	if path == "" {
+		path = defaultArtlistDBPath
+	}
+	return s.FullPath(path)
+}
+
 // SecurityConfig holds security-related configuration.
 type SecurityConfig struct {
 	AdminToken           string   `yaml:"admin_token" env:"VELOX_ADMIN_TOKEN" default:""`
@@ -188,13 +213,13 @@ type SecurityConfig struct {
 
 // ExternalConfig holds external service configuration.
 type ExternalConfig struct {
-	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
-	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
-	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
-	YtdlpPath            string `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
-	FfmpegPath           string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
-	NvidiaAPIKey         string `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
-	NvidiaModel          string `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	OllamaURL            string          `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaModel          string          `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
+	OllamaTimeoutSeconds int             `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
+	YtdlpPath            string          `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
+	FfmpegPath           string          `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
+	NvidiaAPIKey         string          `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
+	NvidiaModel          string          `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
 	SketchfabConfig      SketchfabConfig `yaml:"sketchfab"`
 }
 
@@ -208,8 +233,8 @@ type PathsConfig struct {
 	CredentialsFile  string `yaml:"credentials_file" env:"VELOX_CREDENTIALS_FILE" default:"credentials.json"`
 	TokenFile        string `yaml:"token_file" env:"VELOX_TOKEN_FILE" default:"token.json"`
 	ClipTextDir      string `yaml:"clip_text_dir" env:"VELOX_CLIP_TEXT_DIR" default:""`
-	PythonScriptsDir string `yaml:"python_scripts_dir" env:"VELOX_PYTHON_SCRIPTS_DIR" default:"../python"`
-	NodeScraperDir   string `yaml:"node_scraper_dir" env:"VELOX_NODE_SCRAPER_DIR" default:"../node-scraper"`
+	PythonScriptsDir string `yaml:"python_scripts_dir" env:"VELOX_PYTHON_SCRIPTS_DIR" default:"scripts"`
+	NodeScraperDir   string `yaml:"node_scraper_dir" env:"VELOX_NODE_SCRAPER_DIR" default:"node-scraper"`
 	WorkflowsDir     string `yaml:"workflows_dir" env:"VELOX_WORKFLOWS_DIR" default:"./workflows"`
 }
 

@@ -2,9 +2,13 @@ package association
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
+	"velox/go-master/internal/pkg/sliceutil"
+	"velox/go-master/internal/pkg/termutil"
+	"velox/go-master/internal/pkg/textutil"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
 	driveutil "velox/go-master/internal/storage/drive"
@@ -72,26 +76,100 @@ func (s *Service) ScoreMedia(ctx context.Context, query string, queryEmb []float
 
 // ResolvePreferredStockMatch checks for a high-priority exact stock folder match based on primary focus.
 func (s *Service) ResolvePreferredStockMatch(ctx context.Context, input SegmentInput) (*ScoredMatch, bool) {
-	focus := PrimaryFocus(input.Topic, input.Subject, input.Entities)
-	if focus == "" {
-		return nil, false
+	matches := s.ResolveAllPreferredStockMatches(ctx, input)
+	if len(matches) > 0 {
+		return &matches[0], true
+	}
+	return nil, false
+}
+
+// ResolveAllPreferredStockMatches checks for high-priority exact stock folder matches for all core subjects/entities.
+func (s *Service) ResolveAllPreferredStockMatches(ctx context.Context, input SegmentInput) []ScoredMatch {
+	var results []ScoredMatch
+	seenFolders := make(map[string]bool)
+
+	// Collect candidate terms: split the subject/topic into focused phrases as well.
+	terms := collectFocusTerms(input)
+
+	for _, term := range terms {
+		term = strings.TrimSpace(term)
+		if term == "" || len(term) < 3 {
+			continue
+		}
+
+		direct, ok, err := s.FindDirectStockFolderCandidate(ctx, input.Topic, term)
+		if err != nil || !ok || direct == nil {
+			continue
+		}
+
+		folderKey := strings.ToLower(direct.FolderID)
+		if folderKey == "" {
+			folderKey = strings.ToLower(direct.Path)
+		}
+		if seenFolders[folderKey] {
+			continue
+		}
+		seenFolders[folderKey] = true
+
+		link := driveutil.NormalizeDriveFolderLink(direct.Link, direct.FolderID)
+
+		results = append(results, ScoredMatch{
+			Title:      direct.Name,
+			Path:       direct.Path,
+			Score:      1000,
+			Source:     "drive_stock",
+			Link:       link,
+			FolderLink: link,
+			FolderName: direct.Name,
+			Reason:     fmt.Sprintf("direct protagonist stock folder match for '%s'", term),
+		})
 	}
 
-	direct, ok, err := s.FindDirectStockFolderCandidate(ctx, input.Topic, focus)
-	if err != nil || !ok || direct == nil {
-		return nil, false
+	return results
+}
+
+func collectFocusTerms(input SegmentInput) []string {
+	terms := make([]string, 0)
+	add := func(text string) {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return
+		}
+		terms = append(terms, text)
+
+		// Split compound subjects such as "Mike Tyson vs Jake Paul" into focused names.
+		text = strings.NewReplacer(
+			" vs ", "|",
+			" versus ", "|",
+			" and ", "|",
+			" & ", "|",
+			"/", "|",
+			",", "|",
+			"(", "|",
+			")", "|",
+		).Replace(text)
+		for _, part := range strings.Split(text, "|") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			terms = append(terms, part)
+		}
 	}
 
-	link := driveutil.NormalizeDriveFolderLink(direct.Link, direct.FolderID)
+	add(input.Subject)
+	add(input.Topic)
+	for _, entity := range input.Entities {
+		add(entity)
+	}
 
-	return &ScoredMatch{
-		Title:  direct.Name,
-		Path:   direct.Path,
-		Score:  1000,
-		Source: "drive_stock",
-		Link:   link,
-		Reason: "direct protagonist stock folder match",
-	}, true
+	// Include compact name-like phrases extracted from the raw fields.
+	terms = append(terms, termutil.ExtractLikelyNames(input.Subject)...)
+	terms = append(terms, termutil.ExtractLikelyNames(input.Topic)...)
+
+	// Normalize and deduplicate.
+	terms = textutil.NormalizeStringSlice(terms)
+	return sliceutil.UniqueStrings(terms)
 }
 
 func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*CandidatesResponse, error) {

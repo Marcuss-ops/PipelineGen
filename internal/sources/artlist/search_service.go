@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/models"
+	driveutil "velox/go-master/internal/upload/drive"
 )
-
 
 // SearchService gestisce tutte le operazioni di ricerca Artlist.
 type SearchService struct {
@@ -225,9 +225,10 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 
 	// Enqueue processing job through common jobs service
 	if s.jobsSvc != nil {
-		driveFolderID := ""
-		if s.cfg != nil {
-			driveFolderID = s.cfg.Harvester.DriveFolderID
+		driveFolderID := driveutil.ResolveArtlistRootFolderID(s.cfg)
+		if strings.TrimSpace(driveFolderID) == "" {
+			s.log.Warn("skipping artlist job enqueue because no root folder is configured", zap.String("term", term), zap.Int("limit", limit))
+			return liveResp, nil, nil
 		}
 
 		// Synchronously resolve destination folder so we can return the link immediately
@@ -243,7 +244,6 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, l
 		}
 
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-
 			Type:       models.JobTypeArtlistRun,
 			Payload:    (&RunTagRequest{Term: term, Limit: limit, RootFolderID: driveFolderID}).ToMap(),
 			MaxRetries: 3,

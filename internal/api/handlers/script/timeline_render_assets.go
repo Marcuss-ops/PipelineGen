@@ -9,7 +9,7 @@ import (
 // renderSegmentAssets renders all asset associations for a segment
 func renderSegmentAssets(seg TimelineSegment) string {
 	var b strings.Builder
-	assetRendered := false
+	renderedAny := false
 
 	// Priority 1: Stock Drive Association
 	if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, 35) {
@@ -18,11 +18,11 @@ func renderSegmentAssets(seg TimelineSegment) string {
 			label = "⚠️ Weak Stock Association"
 		}
 		b.WriteString(renderSpecificMatch(label, seg.StockMatches))
-		assetRendered = true
+		renderedAny = true
 	}
 
 	// Priority 2: Artlist Drive Association
-	if !assetRendered && len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
+	if len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
 		label := "📦 Artlist Drive Association"
 
 		// Check if it was a live discovery
@@ -40,10 +40,10 @@ func renderSegmentAssets(seg TimelineSegment) string {
 			label = "⚠️ Weak Artlist Association"
 		}
 		b.WriteString(renderSpecificMatch(label, seg.ArtlistMatches))
-		assetRendered = true
+		renderedAny = true
 	}
 
-	if !assetRendered {
+	if !renderedAny {
 		b.WriteString("\n   ⚠️ No Association Found\n")
 	}
 

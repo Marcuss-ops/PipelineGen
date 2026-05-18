@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/security"
 
 	"go.uber.org/zap"
@@ -35,6 +35,11 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	if err := runAllMigrations(dbs, log); err != nil {
 		cancel()
 		return nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
+	}
+
+	if err := runLegacyClipMigrations(dbs, log); err != nil {
+		cancel()
+		return nil, nil, fmt.Errorf("failed to migrate legacy clip databases: %w", err)
 	}
 
 	// 3. Core Services

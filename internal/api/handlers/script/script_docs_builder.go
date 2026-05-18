@@ -19,6 +19,7 @@ import (
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/textutil"
+	driveutil "velox/go-master/internal/storage/drive"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.
@@ -151,6 +152,12 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		sections = append(sections, artlistSection)
 	}
 
+	// Add Clips Associated section
+	clipsSection := buildClipsAssociatedSection(timeline)
+	if strings.TrimSpace(clipsSection.Body) != "" {
+		sections = append(sections, clipsSection)
+	}
+
 	sections = append(sections, importantPhrasesSection, specialNamesSection, importantWordsSection)
 
 	content := renderScriptDocument(req.Topic, sections)
@@ -279,10 +286,7 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 					}
 				}
 
-				link := finalClip.DriveLink
-				if link == "" {
-					link = finalClip.ExternalURL
-				}
+				link := resolveArtlistDisplayLink(finalClip)
 
 				if link != "" {
 					usedIDs[finalClip.ID] = true
@@ -310,6 +314,70 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 
 	return ScriptSection{
 		Title: "🎬 ARTLIST PHRASES",
+		Body:  strings.TrimSpace(b.String()),
+	}
+}
+
+func resolveArtlistDisplayLink(clip *models.MediaAsset) string {
+	if clip == nil {
+		return ""
+	}
+
+	if link := strings.TrimSpace(clip.DriveLink); link != "" {
+		return link
+	}
+	if link := strings.TrimSpace(clip.DownloadLink); strings.HasPrefix(link, "http") && driveutil.FileIDFromLink(link) != "" {
+		return link
+	}
+	if link := strings.TrimSpace(clip.ExternalURL); strings.HasPrefix(link, "http") && driveutil.FileIDFromLink(link) != "" {
+		return link
+	}
+	if link := driveutil.NormalizeDriveFolderLink("", clip.FolderID); link != "" {
+		return link
+	}
+	if link := driveutil.NormalizeDriveFolderLink("", clip.ParentFolderID); link != "" {
+		return link
+	}
+	return ""
+}
+
+func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
+	if plan == nil || len(plan.Segments) == 0 {
+		return ScriptSection{}
+	}
+
+	var b strings.Builder
+	seen := make(map[string]bool)
+	found := false
+
+	for _, seg := range plan.Segments {
+		allMatches := append(seg.StockMatches, seg.ArtlistMatches...)
+		for _, m := range allMatches {
+			if m.Source == "drive_stock" || m.Source == "stock_folder" {
+				continue // Skip folders
+			}
+
+			key := strings.ToLower(m.Title + "|" + m.Link)
+			if seen[key] || m.Link == "" {
+				continue
+			}
+			seen[key] = true
+			found = true
+
+			title := m.Title
+			if title == "" {
+				title = "Asset"
+			}
+			b.WriteString(fmt.Sprintf("🔗 %s: %s\n", title, m.Link))
+		}
+	}
+
+	if !found {
+		return ScriptSection{}
+	}
+
+	return ScriptSection{
+		Title: "🎞️ CLIPS ASSOCIATED",
 		Body:  strings.TrimSpace(b.String()),
 	}
 }

@@ -4,19 +4,20 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/handlers/sources"
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/module"
-	artlistPkg "velox/go-master/internal/sources/artlist"
-	"velox/go-master/internal/storage/assetdestination"
 	"velox/go-master/internal/media/assetregistry"
 	"velox/go-master/internal/media/clipcatalog"
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/clipresolver"
-	"velox/go-master/internal/media/ontology"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/pkg/matchingconfig"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/ontology"
+	"velox/go-master/internal/module"
+	"velox/go-master/internal/pkg/matchingconfig"
+	artlistPkg "velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/storage/assetdestination"
+	driveutil "velox/go-master/internal/upload/drive"
 )
 
 // ArtlistWiring holds the Artlist module wiring
@@ -55,7 +56,7 @@ func WireArtlist(
 	}
 
 	// 5. Clip Resolver
-	clipResolver := wireClipResolver(coreDeps, clipCatalogRepo, presetsConfig, log)
+	clipResolver := wireClipResolver(cfg, coreDeps, clipCatalogRepo, presetsConfig, log)
 	if clipResolver != nil {
 		coreDeps.ClipResolver = clipResolver
 	}
@@ -117,14 +118,14 @@ func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *z
 	return nil
 }
 
-func wireClipResolver(coreDeps *CoreDeps, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, log *zap.Logger) *clipresolver.Service {
+func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *clipcatalog.Repository, presetsConfig *artlistPkg.PresetsConfig, log *zap.Logger) *clipresolver.Service {
 	if clipCatalogRepo == nil {
 		return nil
 	}
 
 	var harvestSvc clipresolver.ArtlistHarvestService
 	if coreDeps.JobsService != nil {
-		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig)
+		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, driveutil.ResolveArtlistRootFolderID(cfg))
 	}
 
 	matchingCfg, err := matchingconfig.LoadMatchingConfig("config/matching.yaml")

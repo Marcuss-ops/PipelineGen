@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// SearchStock queries the stock database (and clips as fallback) for matching folders/assets.
+// SearchStock queries the stock database for matching folders/assets.
 func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 	if r.stockRepo == nil {
 		return nil, nil
@@ -14,17 +14,17 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 	db := r.stockRepo.DB()
 	var results []CatalogRecord
 
-	// 1. Try stock_folders table
+	// 1. Try clip_folders table
 	rows, err := db.Query(`
-		SELECT drive_id, full_path, topic_slug, drive_link 
-		FROM stock_folders 
-		WHERE LOWER(full_path) LIKE ? OR LOWER(topic_slug) LIKE ?
-	`, "%"+q+"%", "%"+q+"%")
+		SELECT folder_id, folder_path, group_name, source_url
+		FROM clip_folders
+		WHERE LOWER(COALESCE(folder_path, '')) LIKE ? OR LOWER(COALESCE(group_name, '')) LIKE ? OR LOWER(COALESCE(source_url, '')) LIKE ?
+	`, "%"+q+"%", "%"+q+"%", "%"+q+"%")
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var rec CatalogRecord
-			if err := rows.Scan(&rec.DriveID, &rec.Path, &rec.TopicSlug, &rec.Link); err == nil {
+			if err := rows.Scan(&rec.DriveID, &rec.Path, &rec.Group, &rec.Link); err == nil {
 				rec.Source = "stock_drive"
 				rec.Name = filepath.Base(rec.Path)
 				rec.ID = rec.DriveID
@@ -33,7 +33,7 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 		}
 	}
 
-	// 2. Fallback to clips table using repository
+	// 2. Fallback to media_assets via repository
 	if len(results) == 0 {
 		clips, err := r.stockRepo.SearchClipsByKeywords(context.Background(), "stock", []string{q}, 100)
 		if err == nil {
@@ -59,7 +59,7 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 	return results, nil
 }
 
-// LoadStockFolders loads all stock folders. Fallback to clips if needed.
+// LoadStockFolders loads all stock folders.
 func (r *Repository) LoadStockFolders() ([]StockClipRef, error) {
 	if r.stockRepo == nil {
 		return nil, nil
@@ -68,14 +68,14 @@ func (r *Repository) LoadStockFolders() ([]StockClipRef, error) {
 	db := r.stockRepo.DB()
 	rows, err := db.Query(`
 		SELECT
-			COALESCE(drive_id, ''),
-			COALESCE(full_path, ''),
-			COALESCE(topic_slug, ''),
-			COALESCE(drive_link, '')
-		FROM stock_folders
+			COALESCE(folder_id, ''),
+			COALESCE(folder_path, ''),
+			COALESCE(group_name, ''),
+			COALESCE(source_url, '')
+		FROM clip_folders
 	`)
 	if err != nil {
-		return r.loadStockFolderCatalogFromClipsTable()
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -91,99 +91,8 @@ func (r *Repository) LoadStockFolders() ([]StockClipRef, error) {
 	return folders, nil
 }
 
-func (r *Repository) loadStockFolderCatalogFromClipsTable() ([]StockClipRef, error) {
-	if r.stockRepo == nil {
-		return nil, nil
-	}
-
-	db := r.stockRepo.DB()
-	rows, err := db.Query(`
-		SELECT
-			COALESCE(id, ''),
-			COALESCE(name, ''),
-			COALESCE(json_extract(metadata_json, '$.filename'), ''),
-			COALESCE(json_extract(metadata_json, '$.folder_id'), ''),
-			COALESCE(json_extract(metadata_json, '$.folder_path'), ''),
-			COALESCE(json_extract(metadata_json, '$.group_name'), ''),
-			COALESCE(json_extract(metadata_json, '$.media_type'), 'stock'),
-			COALESCE(json_extract(metadata_json, '$.drive_link'), ''),
-			COALESCE(tags, ''),
-			COALESCE(source, 'stock')
-		FROM media_assets
-		WHERE LOWER(COALESCE(source, 'stock')) = 'stock' OR LOWER(COALESCE(json_extract(metadata_json, '$.media_type'), '')) = 'stock'
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var folders []StockClipRef
-	for rows.Next() {
-		var folder StockClipRef
-		var tagsRaw, source string
-		if err := rows.Scan(
-			&folder.ClipID,
-			&folder.Name,
-			&folder.Filename,
-			&folder.FolderID,
-			&folder.FolderPath,
-			&folder.Group,
-			&folder.MediaType,
-			&folder.DriveLink,
-			&tagsRaw,
-			&source,
-		); err != nil {
-			return nil, err
-		}
-		if tagsRaw != "" {
-			folder.Tags = ParseTags(tagsRaw)
-		}
-		if folder.MediaType == "" {
-			folder.MediaType = "stock"
-		}
-		if folder.TopicSlug == "" {
-			folder.TopicSlug = source
-		}
-		folders = append(folders, folder)
-	}
-	return folders, nil
-}
-
 // LoadStockCatalog loads individual stock clips.
 func (r *Repository) LoadStockCatalog() ([]StockClipRef, error) {
-	if r.stockRepo == nil {
-		return nil, nil
-	}
-
-	db := r.stockRepo.DB()
-	rows, err := db.Query(`
-		SELECT
-			COALESCE(clip_id, ''),
-			COALESCE(filename, ''),
-			COALESCE(topic_slug, ''),
-			COALESCE(tags, ''),
-			COALESCE(duration, 0)
-		FROM stock_clips
-	`)
-	if err != nil {
-		return r.loadStockCatalogFromClipsTable()
-	}
-	defer rows.Close()
-
-	var clips []StockClipRef
-	for rows.Next() {
-		var clip StockClipRef
-		var tagsStr string
-		if err := rows.Scan(&clip.ClipID, &clip.Filename, &clip.TopicSlug, &tagsStr, &clip.Duration); err != nil {
-			return nil, err
-		}
-		clip.Tags = ParseTags(tagsStr)
-		clips = append(clips, clip)
-	}
-	return clips, nil
-}
-
-func (r *Repository) loadStockCatalogFromClipsTable() ([]StockClipRef, error) {
 	if r.stockRepo == nil {
 		return nil, nil
 	}

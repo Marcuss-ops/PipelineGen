@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	jobservice "velox/go-master/internal/sources/artlist"
 	"velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/models"
+	jobservice "velox/go-master/internal/sources/artlist"
 )
 
 // JobHarvestService implements ArtlistHarvestService using the jobs service
@@ -15,14 +15,16 @@ type JobHarvestService struct {
 	jobsSvc       *jobs.Service
 	log           *zap.Logger
 	presetsConfig *jobservice.PresetsConfig
+	rootFolderID  string
 }
 
 // NewJobHarvestService creates a new JobHarvestService
-func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger, presetsConfig *jobservice.PresetsConfig) *JobHarvestService {
+func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger, presetsConfig *jobservice.PresetsConfig, rootFolderID string) *JobHarvestService {
 	return &JobHarvestService{
 		jobsSvc:       jobsSvc,
 		log:           log,
 		presetsConfig: presetsConfig,
+		rootFolderID:  rootFolderID,
 	}
 }
 
@@ -48,6 +50,15 @@ func (s *JobHarvestService) EnqueueHarvest(ctx context.Context, term string, lim
 			req.Height = p.Height
 			req.FPS = p.FPS
 		}
+	}
+
+	req.RootFolderID = s.rootFolderID
+	if req.RootFolderID == "" {
+		s.log.Warn("skipping artlist harvest enqueue because no root folder is configured",
+			zap.String("term", term),
+			zap.Int("limit", limit),
+			zap.String("preset", preset))
+		return "", nil
 	}
 
 	// Enqueue job

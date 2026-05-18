@@ -41,6 +41,16 @@ func buildClipFolderQuery(source string) string {
 	return query
 }
 
+// buildMediaAssetQuery builds a SELECT query using the media_assets table,
+// excluding deleted clips (those with '$.deleted_at' in metadata_json).
+func buildMediaAssetQuery(source string) string {
+	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
+	if source != "" && source != "all" && source != "unified" {
+		query += " AND source = ?"
+	}
+	return query
+}
+
 // Repository handles persistence for clips
 type Repository struct {
 	db  *sql.DB
@@ -223,7 +233,7 @@ func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string
 func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.MediaAsset, error) {
 	query := buildMediaAssetQuery(source)
 	args := []interface{}{}
-	if source != "" {
+	if source != "" && source != "all" && source != "unified" {
 		args = append(args, source)
 	}
 
@@ -343,16 +353,6 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 	return tx.Commit()
 }
 
-// buildMediaAssetQuery builds a SELECT query using the standard media_asset columns,
-// excluding deleted clips (those with '$.deleted_at' in metadata_json).
-func buildMediaAssetQuery(source string) string {
-	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
-	if source != "" && source != "all" && source != "unified" {
-		query += " AND source = ?"
-	}
-	return query
-}
-
 // ListClipsPaged returns clips with pagination and optional search.
 // If q is non-empty, performs a search; otherwise lists all clips with pagination.
 func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*models.MediaAsset, error) {
@@ -443,11 +443,7 @@ func (r *Repository) SearchClipsByKeywords(ctx context.Context, source string, k
 		return []*models.MediaAsset{}, nil
 	}
 
-	query := fmt.Sprintf(
-		"%s AND (%s) LIMIT ?",
-		buildMediaAssetQuery(source),
-		conditionSQL,
-	)
+	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildMediaAssetQuery(source), conditionSQL)
 	finalArgs := []interface{}{}
 	if source != "" && source != "all" && source != "unified" {
 		finalArgs = append(finalArgs, source)
@@ -667,9 +663,9 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 		return nil, fmt.Errorf("drive file id is required")
 	}
 
-	query := buildMediaAssetQuery("") + " AND (json_extract(COALESCE(metadata_json,'{}'), '$.drive_link') LIKE ? OR json_extract(COALESCE(metadata_json,'{}'), '$.download_link') LIKE ?) LIMIT 1"
 	pattern := "%" + fileID + "%"
-	row := r.db.QueryRowContext(ctx, query, pattern, pattern)
+	query := buildMediaAssetQuery("") + " AND (json_extract(COALESCE(metadata_json,'{}'), '$.drive_link') LIKE ? OR json_extract(COALESCE(metadata_json,'{}'), '$.download_link') LIKE ? OR json_extract(COALESCE(metadata_json,'{}'), '$.drive_file_id') LIKE ?) LIMIT 1"
+	row := r.db.QueryRowContext(ctx, query, pattern, pattern, pattern)
 	clip, err := r.scanMediaAssetRow(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -731,7 +727,8 @@ func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID strin
 
 // CountClips returns the total number of clips (excluding soft-deleted).
 func (r *Repository) CountClips(ctx context.Context) (int, error) {
-	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL")
+	query := "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
+	row := r.db.QueryRowContext(ctx, query)
 	var count int
 	err := row.Scan(&count)
 	return count, err
@@ -749,11 +746,12 @@ func (r *Repository) LastUpdatedAtForTerm(ctx context.Context, term string) (*st
 	term = strings.TrimSpace(term)
 
 	var lastUpdated sql.NullString
-	row := r.db.QueryRowContext(ctx, `
+	query := `
 		SELECT MAX(created_at)
 		FROM media_assets
 		WHERE source = 'artlist' AND tags LIKE ?
-	`, "%"+term+"%")
+	`
+	row := r.db.QueryRowContext(ctx, query, "%"+term+"%")
 
 	if err := row.Scan(&lastUpdated); err != nil {
 		return nil, err
@@ -898,7 +896,8 @@ func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath strin
 
 // CountClipsByFolderID returns the number of clips in a folder (folder_id stored in metadata_json).
 func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) (int, error) {
-	row := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ?", folderID)
+	query := "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ?"
+	row := r.db.QueryRowContext(ctx, query, folderID)
 	var count int
 	err := row.Scan(&count)
 	return count, err
@@ -996,7 +995,7 @@ func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*
 func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.MediaAsset, error) {
 	query := `SELECT ` + mediaAssetColumns + `
 		FROM media_assets
-		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.parent_folder_id') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL AND json_extract(COALESCE(metadata_json,'{}'), '$.parent_folder_id') = ?
 		ORDER BY name ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, parentID)
@@ -1025,9 +1024,8 @@ func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, err
 		return "", nil
 	}
 	var id string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT id FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.phash') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL LIMIT 1`, phash,
-	).Scan(&id)
+	query := `SELECT id FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.phash') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL LIMIT 1`
+	err := r.db.QueryRowContext(ctx, query, phash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}

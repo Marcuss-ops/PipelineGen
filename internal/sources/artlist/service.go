@@ -7,15 +7,15 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/jobs"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/clipindexer"
-	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/repository/clips"
 )
 
 // Service è un facade leggero che delega a componenti specializzati.
@@ -31,19 +31,18 @@ type Service struct {
 	searchService      *SearchService
 	runOrchestrator    *RunOrchestratorService
 	destinationService *DestinationService
-	clipProcessor      *ClipProcessorService
 	jobAdapter         *JobAdapter
 	diagnosticsService *DiagnosticsService
 	clipStatusService  *ClipStatusService
 
 	// Dipendenze condivise
-	artlistRepo      *clips.Repository
-	mediaProcessor   processor.Processor
-	lifecycleService *lifecycle.Service
+	artlistRepo       *clips.Repository
+	mediaProcessor    processor.Processor
+	lifecycleService  *lifecycle.Service
 	assetDestResolver destination.Resolver
-	jobsSvc          *jobservice.Service
-	clipIndexer      *clipindexer.Service
-	driveSvc         *driveapi.Service
+	jobsSvc           *jobservice.Service
+	clipIndexer       *clipindexer.Service
+	driveSvc          *driveapi.Service
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
@@ -67,7 +66,6 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, nodeScrap
 	s.searchService = NewSearchService(s)
 	s.runOrchestrator = NewRunOrchestratorService(s)
 	s.destinationService = NewDestinationService(s)
-	s.clipProcessor = NewClipProcessorService(s)
 	s.jobAdapter = NewJobAdapter(s)
 	s.diagnosticsService = NewDiagnosticsService(s)
 	s.clipStatusService = NewClipStatusService(s)

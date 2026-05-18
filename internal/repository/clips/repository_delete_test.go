@@ -12,49 +12,40 @@ import (
 )
 
 const testSchema = `
-	CREATE TABLE clips (
+	CREATE TABLE media_assets (
 		id TEXT PRIMARY KEY,
+		source TEXT NOT NULL DEFAULT '',
 		name TEXT NOT NULL DEFAULT '',
-		filename TEXT NOT NULL DEFAULT '',
+		tags TEXT NOT NULL DEFAULT '[]',
+		tags_norm TEXT NOT NULL DEFAULT '',
+		embedding_json TEXT NOT NULL DEFAULT '[]',
+		duration_ms INTEGER NOT NULL DEFAULT 0,
+		url TEXT NOT NULL DEFAULT '',
+		created_at TEXT,
+		metadata_json TEXT NOT NULL DEFAULT '{}'
+	);
+
+	CREATE TABLE clip_folders (
+		id TEXT PRIMARY KEY,
+		source TEXT NOT NULL DEFAULT '',
+		source_url TEXT NOT NULL DEFAULT '',
+		video_id TEXT NOT NULL DEFAULT '',
 		folder_id TEXT NOT NULL DEFAULT '',
 		folder_path TEXT NOT NULL DEFAULT '',
+		local_folder_path TEXT NOT NULL DEFAULT '',
 		group_name TEXT NOT NULL DEFAULT '',
-		media_type TEXT NOT NULL DEFAULT '',
-		drive_link TEXT NOT NULL DEFAULT '',
-		drive_file_id TEXT NOT NULL DEFAULT '',
-		download_link TEXT NOT NULL DEFAULT '',
-		tags TEXT NOT NULL DEFAULT '[]',
-		source TEXT NOT NULL DEFAULT '',
-		category TEXT NOT NULL DEFAULT '',
-		external_url TEXT NOT NULL DEFAULT '',
-		duration INTEGER NOT NULL DEFAULT 0,
+		manifest_txt_path TEXT NOT NULL DEFAULT '',
+		manifest_json_path TEXT NOT NULL DEFAULT '',
+		clip_count INTEGER NOT NULL DEFAULT 0,
+		processed_count INTEGER NOT NULL DEFAULT 0,
+		failed_count INTEGER NOT NULL DEFAULT 0,
+		skipped_count INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT NOT NULL DEFAULT '',
 		metadata TEXT NOT NULL DEFAULT '{}',
-		file_hash TEXT NOT NULL DEFAULT '',
-		local_path TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT '',
-		error TEXT NOT NULL DEFAULT '',
-		thumb_url TEXT NOT NULL DEFAULT '',
-		search_terms TEXT NOT NULL DEFAULT '[]',
-		phash TEXT NOT NULL DEFAULT '',
-		visual_embedding_json TEXT NOT NULL DEFAULT '[]',
-		parent_folder_id TEXT DEFAULT '',
-		depth INTEGER DEFAULT 0,
-		is_folder INTEGER DEFAULT 0,
-		duration_seconds REAL,
-		width INTEGER DEFAULT 0,
-		height INTEGER DEFAULT 0,
-		fps REAL DEFAULT 0,
-		codec TEXT DEFAULT '',
-		size_bytes INTEGER DEFAULT 0,
-		processing_stage TEXT,
-		error_message TEXT,
-		retry_count INTEGER DEFAULT 0,
-		last_attempt_at TEXT,
-		processed_at TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		deleted_at DATETIME
-		);
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		search_key TEXT
+	);
 `
 
 func TestDeleteClip(t *testing.T) {
@@ -93,15 +84,14 @@ func TestDeleteClip(t *testing.T) {
 		t.Fatalf("DeleteClip failed: %v", err)
 	}
 
-	// Verify that GetClip excludes it
 	clip, err := repo.GetClip(ctx, "clip_1")
 	if clip != nil {
 		t.Fatal("expected nil clip after deleting clip")
 	}
+	_ = err
 
-	// Verify the record is actually still in the DB (soft delete check)
 	var deletedAt sql.NullString
-	err = db.QueryRowContext(ctx, "SELECT deleted_at FROM clips WHERE id = 'clip_1'").Scan(&deletedAt)
+	err = db.QueryRowContext(ctx, "SELECT json_extract(metadata_json, '$.deleted_at') FROM media_assets WHERE id = 'clip_1'").Scan(&deletedAt)
 	if err != nil {
 		t.Fatalf("expected record to still exist in db, got err: %v", err)
 	}
@@ -109,7 +99,6 @@ func TestDeleteClip(t *testing.T) {
 		t.Fatal("expected deleted_at to be set")
 	}
 
-	// Test SearchClipsByKeywords excludes it
 	clips, err := repo.SearchClipsByKeywords(ctx, "", []string{"test"}, 10)
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
@@ -140,18 +129,15 @@ func TestRestoreClip(t *testing.T) {
 
 	_ = repo.DeleteClip(ctx, "clip_res")
 
-	// Ensure excluded
 	clip, _ := repo.GetClip(ctx, "clip_res")
 	if clip != nil {
 		t.Fatal("expected nil clip after soft delete")
 	}
 
-	// Restore
 	if err := repo.RestoreClip(ctx, "clip_res"); err != nil {
 		t.Fatalf("RestoreClip failed: %v", err)
 	}
 
-	// Ensure present
 	clip, err = repo.GetClip(ctx, "clip_res")
 	if err != nil || clip == nil {
 		t.Fatalf("expected clip to be present after restore, err: %v", err)
@@ -195,9 +181,8 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 		t.Fatal("expected nil clip after deleting by drive link")
 	}
 
-	// Verify the record is actually still in the DB (soft delete check)
 	var deletedAt sql.NullString
-	err = db.QueryRowContext(ctx, "SELECT deleted_at FROM clips WHERE id = 'clip_2'").Scan(&deletedAt)
+	err = db.QueryRowContext(ctx, "SELECT json_extract(metadata_json, '$.deleted_at') FROM media_assets WHERE id = 'clip_2'").Scan(&deletedAt)
 	if err != nil || !deletedAt.Valid || deletedAt.String == "" {
 		t.Fatalf("expected record to still exist with deleted_at set, got err: %v", err)
 	}

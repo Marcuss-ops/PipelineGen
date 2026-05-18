@@ -23,15 +23,22 @@ func (a *JobAdapter) HandleJob(ctx context.Context, job *models.Job, tools *jobs
 	req := jobCodec.RequestFromJob(job)
 
 	// Normalize the request (worker path)
-	rootFolderID := ""
-	if s.cfg != nil {
-		rootFolderID = strings.TrimSpace(s.cfg.Harvester.DriveFolderID)
-	}
 	normalized := NormalizeRunTagRequest(*req, RunDefaults{
-		DefaultRootFolderID: rootFolderID,
+		DefaultRootFolderID: ResolveRootFolderID(s.cfg),
 		MaxLimit:            500,
 	})
 	req = &normalized
+
+	if strings.TrimSpace(req.RootFolderID) == "" {
+		s.log.Warn("skipping artlist job because no root folder is configured", zap.String("job_id", job.ID), zap.String("term", req.Term))
+		tools.Event("warning", "artlist job skipped: no root folder configured", map[string]any{
+			"term": req.Term,
+		})
+		return map[string]any{
+			"skipped": 1,
+			"reason":  "no root folder configured",
+		}, nil
+	}
 
 	resp, err := s.RunTag(ctx, req)
 	if err != nil || (resp != nil && !resp.OK) {
