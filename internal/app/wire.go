@@ -3,6 +3,7 @@ package app
 import (
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/api/middleware"
 
 	"go.uber.org/zap"
 )
@@ -19,6 +20,9 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	if err != nil {
 		return nil, err
 	}
+
+	// Initialize persistent API request logging using the main database
+	middleware.SetLogDB(coreDeps.DB.DB)
 
 	// Wire up the registry with all modules
 	registryWiring, err := WireRegistry(cfg, log, coreDeps)

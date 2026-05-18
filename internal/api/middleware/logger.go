@@ -2,8 +2,6 @@ package middleware
 
 import (
 	"database/sql"
-	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -126,7 +124,11 @@ func Logger() gin.HandlerFunc {
 		}
 
 		if len(c.Errors) > 0 {
-			fields = append(fields, zap.Errors("errors", c.Errors.Errors()))
+			errs := make([]error, len(c.Errors))
+			for i, e := range c.Errors {
+				errs[i] = e
+			}
+			fields = append(fields, zap.Errors("errors", errs))
 		}
 
 		// Log to journal based on status code
@@ -158,25 +160,5 @@ func Logger() gin.HandlerFunc {
 				Err:       c.Errors.String(),
 			}
 		}
-	}
-}
-
-// GetRequestLogs returns the recent request logs
-func GetRequestLogs() []RequestLogEntry {
-	logsMu.RLock()
-	defer logsMu.RUnlock()
-
-	logs := make([]RequestLogEntry, len(requestLogs))
-	copy(logs, requestLogs)
-	return logs
-}
-
-func addRequestLog(entry RequestLogEntry) {
-	logsMu.Lock()
-	defer logsMu.Unlock()
-
-	requestLogs = append(requestLogs, entry)
-	if len(requestLogs) > maxLogs {
-		requestLogs = requestLogs[len(requestLogs)-maxLogs:]
 	}
 }

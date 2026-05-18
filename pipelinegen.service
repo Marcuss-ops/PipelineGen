@@ -1,0 +1,21 @@
+[Unit]
+Description=PipelineGen Service - Media processing pipelines
+After=network.target
+
+[Service]
+Type=simple
+User=pierone
+Group=pierone
+WorkingDirectory=/home/pierone/Pyt/PipelineGen
+ExecStart=/home/pierone/Pyt/PipelineGen/pipelinegen --mode all
+Restart=always
+RestartSec=5
+
+# Environment variables
+Environment=PORT=8081
+Environment=GIN_MODE=release
+
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

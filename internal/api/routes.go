@@ -79,6 +79,7 @@ func (r *Router) Setup() *gin.Engine {
 	engine := gin.New()
 
 	// Global middleware
+	engine.Use(middleware.RequestID())
 	engine.Use(middleware.Logger())
 	engine.Use(middleware.Recovery())
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
