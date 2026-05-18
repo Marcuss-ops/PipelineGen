@@ -13,11 +13,15 @@ type JobCodec struct{}
 
 // PayloadFromRequest converts RunTagRequest to a map suitable for job payload.
 func (c *JobCodec) PayloadFromRequest(req *RunTagRequest) map[string]any {
+	if req == nil {
+		return map[string]any{}
+	}
+
 	m := map[string]any{
 		"term":           strings.TrimSpace(req.Term),
 		"limit":          req.Limit,
-		"root_folder_id": req.RootFolderID,
-		"strategy":       req.Strategy,
+		"root_folder_id": strings.TrimSpace(req.RootFolderID),
+		"strategy":       strings.TrimSpace(req.Strategy),
 		"dry_run":        req.DryRun,
 	}
 	if req.ClipDuration > 0 {

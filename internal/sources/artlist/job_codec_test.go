@@ -214,3 +214,41 @@ func TestNormalizeRunTagRequestMaxLimit(t *testing.T) {
 		t.Fatalf("max limit not applied: got %d", normalized.Limit)
 	}
 }
+
+func TestJobCodecPayloadFromRequestNilSafe(t *testing.T) {
+	codec := &JobCodec{}
+
+	payload := codec.PayloadFromRequest(nil)
+
+	if payload == nil {
+		t.Fatal("expected empty payload map, got nil")
+	}
+
+	if len(payload) != 0 {
+		t.Fatalf("expected empty payload map, got %v", payload)
+	}
+}
+
+func TestJobCodecPayloadFromRequestTrimsCanonicalFields(t *testing.T) {
+	codec := &JobCodec{}
+
+	payload := codec.PayloadFromRequest(&RunTagRequest{
+		Term:         "  boxing highlights  ",
+		RootFolderID: "  root123  ",
+		Strategy:     "  verify  ",
+		Limit:        3,
+	})
+
+	if payload["term"] != "boxing highlights" {
+		t.Fatalf("expected trimmed term, got %q", payload["term"])
+	}
+
+	if payload["root_folder_id"] != "root123" {
+		t.Fatalf("expected trimmed root_folder_id, got %q", payload["root_folder_id"])
+	}
+
+	if payload["strategy"] != "verify" {
+		t.Fatalf("expected trimmed strategy, got %q", payload["strategy"])
+	}
+}
+
