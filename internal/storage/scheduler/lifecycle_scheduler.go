@@ -9,6 +9,7 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/upload/drive"
 )
 
 // LifecycleScheduler handles periodic system maintenance (Sync, Cleanup)
@@ -95,7 +96,7 @@ func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 	if s.cfg.Drive.ClipsRootFolder != "" {
 		sources = append(sources, "youtube")
 	}
-	if s.cfg.Harvester.DriveFolderID != "" {
+	if drive.ResolveArtlistRootFolderID(s.cfg) != "" {
 		sources = append(sources, "artlist")
 	}
 	if s.cfg.Drive.StockRootFolder != "" {
