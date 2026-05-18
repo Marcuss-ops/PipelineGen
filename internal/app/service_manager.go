@@ -210,7 +210,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	)
 
 	// Maintenance service
-	maintenanceSvc := maintenance.NewService(cfg, log, assetIndexService, assetTreeService, deletionSvc, jobsService)
+	maintenanceSvc := maintenance.NewService(cfg, log, assetIndexService, assetTreeService, deletionSvc, jobsService, dbs.main.DB)
 	maintenanceSvc.RegisterHandler()
 
 	// Lifecycle Scheduler

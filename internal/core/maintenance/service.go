@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ type Service struct {
 	assetTreeSvc  *assettree.Service
 	deletionSvc   *media.DeletionService
 	jobsSvc       *jobservice.Service
+	db            *sql.DB
 }
 
 // NewService creates a new maintenance service.
@@ -33,6 +35,7 @@ func NewService(
 	assetTreeSvc *assettree.Service,
 	deletionSvc *media.DeletionService,
 	jobsSvc *jobservice.Service,
+	db *sql.DB,
 ) *Service {
 	return &Service{
 		cfg:           cfg,
@@ -41,6 +44,7 @@ func NewService(
 		assetTreeSvc:  assetTreeSvc,
 		deletionSvc:   deletionSvc,
 		jobsSvc:       jobsSvc,
+		db:            db,
 	}
 }
 
@@ -85,6 +89,28 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 	if _, err := os.Stat(tempDir); err == nil {
 		// Basic temp cleanup logic could go here
 		results["temp_cleanup"] = "skipped"
+	}
+
+	// 4. API request logs retention cleanup (retention logic)
+	if s.db != nil && !dryRun {
+		s.log.Info("Running API request logs retention cleanup")
+		res, err := s.db.ExecContext(ctx, "DELETE FROM api_requests WHERE ts < datetime('now', '-30 days')")
+		if err != nil {
+			s.log.Error("API request logs retention cleanup failed", zap.Error(err))
+			results["api_requests_cleanup_error"] = err.Error()
+		} else {
+			rowsAffected, _ := res.RowsAffected()
+			s.log.Info("API request logs retention cleanup completed", zap.Int64("rows_deleted", rowsAffected))
+			results["api_requests_deleted"] = rowsAffected
+
+			// Run VACUUM to reclaim storage space if rows were deleted
+			if rowsAffected > 0 {
+				s.log.Info("Running VACUUM to reclaim space after pruning API requests")
+				if _, err := s.db.ExecContext(ctx, "VACUUM"); err != nil {
+					s.log.Warn("VACUUM failed", zap.Error(err))
+				}
+			}
+		}
 	}
 
 	return results, nil

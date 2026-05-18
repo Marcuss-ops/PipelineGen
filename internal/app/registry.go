@@ -148,7 +148,7 @@ func WireRegistry(
 	registry.Register(module.NewUtilityModule(cfg, log, coreDeps.Utility))
 
 	// Maintenance service (must be initialized before assets for registration)
-	maintenanceSvc := maintenance.NewService(cfg, log, coreDeps.AssetIndexService, coreDeps.AssetTreeService, coreDeps.DeletionService, coreDeps.JobsService)
+	maintenanceSvc := maintenance.NewService(cfg, log, coreDeps.AssetIndexService, coreDeps.AssetTreeService, coreDeps.DeletionService, coreDeps.JobsService, coreDeps.DB.DB)
 	maintenanceSvc.RegisterHandler()
 	coreDeps.MaintenanceService = maintenanceSvc
 
