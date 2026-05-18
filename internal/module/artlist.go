@@ -5,8 +5,8 @@ import (
 
 	"velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/api/middleware"
-	artlistService "velox/go-master/internal/service/artlist"
-	"velox/go-master/pkg/config"
+	artlistService "velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )

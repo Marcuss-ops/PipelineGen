@@ -3,7 +3,7 @@ package script
 import (
 	"math"
 
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 func roundSeconds(f float64) float64 {

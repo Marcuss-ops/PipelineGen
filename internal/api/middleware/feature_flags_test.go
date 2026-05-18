@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 func TestFeatureFlagCheckerDisabled(t *testing.T) {

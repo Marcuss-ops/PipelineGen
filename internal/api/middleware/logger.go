@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/logger"
 )
 
 // RequestLogEntry represents a logged API request

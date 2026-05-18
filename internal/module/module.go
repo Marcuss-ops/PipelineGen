@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 // Module is the common interface that all feature modules must implement.

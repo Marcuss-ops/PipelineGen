@@ -1,7 +1,7 @@
 package media
 
 import (
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/models"
 )
 
 // ClipToMediaAsset converts a models.MediaAsset to a core MediaAsset (legacy name).

@@ -3,7 +3,7 @@ package script
 import (
 	"strings"
 
-	"velox/go-master/internal/service/association"
+	"velox/go-master/internal/media/association"
 )
 
 // renderSegmentAssets renders all asset associations for a segment

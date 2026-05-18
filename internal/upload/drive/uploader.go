@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	drivequery "velox/go-master/pkg/drive"
+	drivequery "velox/go-master/internal/storage/drive"
 )
 
 // Uploader handles Google Drive file operations.

@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/api/handlers/script"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/pkg/apiutil"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 func (h *ScriptDocsHandler) generate(c *gin.Context) {

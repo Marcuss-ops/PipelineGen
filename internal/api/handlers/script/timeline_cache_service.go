@@ -10,7 +10,7 @@ import (
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/internal/pkg/sliceutil"
 )
 
 const cacheVersion = "v18"

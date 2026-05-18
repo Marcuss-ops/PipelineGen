@@ -10,6 +10,9 @@ import (
 // It queries PRAGMA compile_options and looks for "ENABLE_FTS5".
 // This check is done once at startup since it depends on the driver build, not the specific database.
 func HasFTS5(db *sql.DB, log *zap.Logger) bool {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	rows, err := db.Query("PRAGMA compile_options")
 	if err != nil {
 		log.Warn("Failed to query PRAGMA compile_options", zap.Error(err))

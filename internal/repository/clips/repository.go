@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/models"
-	"velox/go-master/pkg/sqlutil"
+	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/sqlutil"
 )
 
 // mediaAssetColumns defines the columns selected from media_assets table.

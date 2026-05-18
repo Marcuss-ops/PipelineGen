@@ -8,7 +8,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/models"
 )
 
 const testSchema = `

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // fallbackTimelinePlan creates a basic segment if LLM fails

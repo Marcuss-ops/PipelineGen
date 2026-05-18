@@ -3,8 +3,8 @@ package script
 import (
 	"regexp"
 	"strings"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/termutil"
+	"velox/go-master/internal/pkg/sliceutil"
+	"velox/go-master/internal/pkg/termutil"
 )
 
 type structuredTimelineBlock struct {

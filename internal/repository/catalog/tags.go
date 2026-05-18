@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // ParseTags parses a string of tags that might be JSON array or CSV.

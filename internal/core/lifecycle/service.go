@@ -7,8 +7,8 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/assetregistry"
 )
 
 // Service orchestrates the full asset lifecycle:

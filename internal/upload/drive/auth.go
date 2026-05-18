@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"

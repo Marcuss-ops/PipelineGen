@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 // BaseModule provides a simple default implementation of the Module interface.

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"velox/go-master/internal/api/handlers/sources"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/youtubeclip"
-	"velox/go-master/pkg/config"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/sources/youtube"
+	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )
@@ -15,7 +15,7 @@ import (
 func NewYouTubeClipModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	service *youtubeclip.Service,
+	service *youtube.Service,
 	handler *sources.YouTubeClipHandler,
 	jobsSvc *jobservice.Service,
 ) *RouteModule {

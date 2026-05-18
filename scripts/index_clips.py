@@ -16,25 +16,86 @@ except ImportError as e:
     exit(1)
 
 nlp = spacy.load("en_core_web_sm")
+nlp_it = None
+try:
+    nlp_it = spacy.load("it_core_news_sm")
+except:
+    pass
+
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
+def get_txt_content(local_path, name=None):
+    if not local_path and not name:
+        return ""
+    # 1. Try with_suffix(".txt") if local_path is specified
+    if local_path:
+        try:
+            p = Path(local_path)
+            txt_file = p.with_suffix(".txt")
+            if txt_file.exists():
+                with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
+                    return f.read().strip()
+        except Exception as e:
+            print(f"Error reading with_suffix txt: {e}")
+            
+    # 2. Try searching in same folder as local_path or download folders for {name}.txt
+    if name:
+        base_name = Path(name).stem
+        search_dirs = [Path("data/downloads"), Path("data/youtube-clips")]
+        if local_path:
+            search_dirs.insert(0, Path(local_path).parent)
+            
+        for s_dir in search_dirs:
+            if s_dir.exists():
+                txt_file = s_dir / f"{base_name}.txt"
+                if txt_file.exists():
+                    try:
+                        with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
+                            return f.read().strip()
+                    except:
+                        pass
+                try:
+                    for found_p in s_dir.rglob(f"{base_name}.txt"):
+                        if found_p.exists():
+                            with open(found_p, "r", encoding="utf-8", errors="ignore") as f:
+                                return f.read().strip()
+                except:
+                    pass
+    return ""
+
 def normalize_text(text):
-    doc = nlp(text.lower())
+    # Quick heuristic to detect Italian words
+    italian_stopwords = {"il", "la", "i", "gli", "le", "un", "una", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che"}
+    words = text.lower().split()
+    is_italian = any(w in italian_stopwords for w in words)
+    target_nlp = nlp_it if (is_italian and nlp_it) else nlp
+    
+    doc = target_nlp(text.lower())
     return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
 def generate_search_text(tags):
     return " ".join(tags)
 
+# In-memory deduplication cache for text -> embedding
+embedding_cache_text = {}
+
 def compute_embedding(text):
-    return json.dumps(model.encode(text).tolist())
+    if text in embedding_cache_text:
+        return embedding_cache_text[text]
+    emb = json.dumps(model.encode(text).tolist())
+    embedding_cache_text[text] = emb
+    return emb
 
 def process_db(db_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, tags FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
+    cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
     clips = cursor.fetchall()
     for clip in clips:
+        clip_id = clip["id"]
+        name = clip["name"] or ""
+        local_path = clip["local_path"] or ""
         tags_str = clip["tags"] or "[]"
         try:
             tags = json.loads(tags_str)
@@ -42,10 +103,18 @@ def process_db(db_path):
                 tags = []
         except (json.JSONDecodeError, TypeError):
             tags = []
-        search_text = generate_search_text(tags)
+        
+        # Get description from associated .txt file
+        txt_desc = get_txt_content(local_path, name)
+        search_parts = [name]
+        if txt_desc:
+            search_parts.append(txt_desc)
+        search_parts.extend(tags)
+
+        search_text = generate_search_text(search_parts)
         embedding = compute_embedding(normalize_text(search_text))
-        cursor.execute("UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?", (search_text, embedding, clip["id"]))
-        print(f"Updated {clip['clip_id']} in {db_path}")
+        cursor.execute("UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?", (search_text, embedding, clip_id))
+        print(f"Updated {clip_id} in {db_path}")
     conn.commit()
     conn.close()
 
@@ -73,8 +142,15 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
         except (json.JSONDecodeError, TypeError):
             tags = []
 
-        # Generate search_text from name and tags
-        search_text = generate_search_text([name] + tags)
+        # Get description from associated .txt file
+        txt_desc = get_txt_content(local_path, name)
+        search_parts = [name]
+        if txt_desc:
+            search_parts.append(txt_desc)
+        search_parts.extend(tags)
+
+        # Generate search_text from name, description and tags
+        search_text = generate_search_text(search_parts)
 
         # Compute embedding
         embedding = compute_embedding(search_text)

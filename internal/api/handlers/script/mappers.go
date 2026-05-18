@@ -1,8 +1,8 @@
 package script
 
 import (
-	"velox/go-master/internal/service/association"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/media/models"
 )
 
 func modelClipsToScoredMatches(clips []models.MediaAsset, details string, source string, link string) []association.ScoredMatch {

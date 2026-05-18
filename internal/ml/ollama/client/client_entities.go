@@ -10,7 +10,7 @@ import (
 
 	"velox/go-master/internal/ml/ollama/prompts"
 	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama

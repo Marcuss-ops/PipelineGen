@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"velox/go-master/internal/service/association"
-	"velox/go-master/internal/service/visualquery"
-	driveutil "velox/go-master/pkg/drive"
-	"velox/go-master/pkg/sliceutil"
+	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/media/visualquery"
+	driveutil "velox/go-master/internal/storage/drive"
+	"velox/go-master/internal/pkg/sliceutil"
 )
 
 func associateSegment(ctx context.Context, seg *TimelineSegment, assocService *association.Service, topic string) {

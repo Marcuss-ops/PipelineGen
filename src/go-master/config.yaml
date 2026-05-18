@@ -1,0 +1,42 @@
+server:
+  host: "127.0.0.1"
+  port: 8080
+  gin_mode: "debug"
+
+logging:
+  level: "debug"
+  format: "console"
+
+storage:
+  data_dir: "./data"
+  voiceovers_dir: "voiceovers"
+  assets_dir: "assets/subjects"
+  downloads_dir: "downloads"
+  backups_dir: "backups"
+  temp_dir: "tmp"
+
+security:
+  enable_auth: false
+  admin_token: "test"
+  worker_token: "test"
+  cors_origins: ["*"]
+  rate_limit_enabled: false
+
+external:
+  ollama_url: "http://localhost:11434"
+  ollama_model: "gemma3:4b"
+  ollama_timeout_seconds: 120
+  ytdlp_path: "yt-dlp"
+  ffmpeg_path: "ffmpeg"
+
+paths:
+  node_scraper_dir: "../node-scraper"
+  python_scripts_dir: "../../python"
+  credentials_file: "credentials.json"
+  token_file: "token.json"
+
+features:
+  artlist_enabled: true
+  youtube_enabled: true
+  drive_enabled: true
+  script_docs_enabled: true

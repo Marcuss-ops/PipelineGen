@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
-	"velox/go-master/pkg/drive"
+	"velox/go-master/internal/storage/drive"
 )
 
 // ReconcileService provides Drive reconciliation for asset records.

@@ -10,7 +10,7 @@ import (
 	"time"
 	"velox/go-master/internal/ml/ollama/types"
 
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/logger"
 
 	"go.uber.org/zap"
 )

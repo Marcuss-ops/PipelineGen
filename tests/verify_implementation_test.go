@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 
 	"github.com/stretchr/testify/assert"
 )

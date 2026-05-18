@@ -3,7 +3,7 @@ package script
 import (
 	"fmt"
 
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // buildTimelinePlanningPrompt creates the prompt for LLM timeline planning

@@ -16,7 +16,7 @@ import (
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/middleware"
 	"velox/go-master/internal/module"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 // Router holds the API router configuration

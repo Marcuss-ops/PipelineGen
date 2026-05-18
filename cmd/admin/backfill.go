@@ -17,10 +17,10 @@ import (
 	"golang.org/x/oauth2/google"
 	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/repository/assettree"
-	"velox/go-master/internal/service/assetindex"
+	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/storage"
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/logger"
 )
 
 func runBackfillHash(args []string) error {

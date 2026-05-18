@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 type catalogNormalizerService struct {

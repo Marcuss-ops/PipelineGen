@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 type Handler struct {

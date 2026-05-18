@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/association"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 func (h *ScriptDocsHandler) AssociationCandidates(c *gin.Context) {

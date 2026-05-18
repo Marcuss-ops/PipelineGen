@@ -4,17 +4,17 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/scripts"
-	artlistSvc "velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/association"
-	clipresolver "velox/go-master/internal/service/clipresolver"
-	imgservice "velox/go-master/internal/service/images"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/scriptdocs"
-	"velox/go-master/internal/service/voiceover"
+	artlistSvc "velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/media/association"
+	clipresolver "velox/go-master/internal/media/clipresolver"
+	imgservice "velox/go-master/internal/media/images"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/scriptdocs"
+	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/upload/drive"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 // ScriptDocsHandler generates modular script docs with Ollama and optionally uploads them to Google Docs.

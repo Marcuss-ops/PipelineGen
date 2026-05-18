@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/service/voiceover"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/media/voiceover"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 type Handler struct {

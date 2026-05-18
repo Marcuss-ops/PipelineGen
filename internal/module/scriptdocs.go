@@ -3,7 +3,7 @@ package module
 import (
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/api/middleware"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )

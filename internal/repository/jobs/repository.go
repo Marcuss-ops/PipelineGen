@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/models"
-	"velox/go-master/pkg/timeutil"
+	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/timeutil"
 )
 
 type Repository struct {

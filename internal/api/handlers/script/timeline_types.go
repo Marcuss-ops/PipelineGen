@@ -1,6 +1,6 @@
 package script
 
-import "velox/go-master/internal/service/association"
+import "velox/go-master/internal/media/association"
 
 // TimelinePlan is the structured timestamp/action breakdown for a generated script.
 type TimelinePlan struct {

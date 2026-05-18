@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/models"
 )
 
 type Repository struct {

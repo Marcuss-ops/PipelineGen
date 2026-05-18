@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"velox/go-master/internal/repository/catalog"
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 type CatalogHandler struct {

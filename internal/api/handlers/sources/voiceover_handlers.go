@@ -4,10 +4,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/voiceover"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/models"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/voiceover"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/media/models"
 )
 
 type VoiceoverHandler struct {
@@ -29,6 +29,11 @@ func (h *VoiceoverHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // Generate processes a single voiceover request (sync or async)
 func (h *VoiceoverHandler) Generate(c *gin.Context) {
+	if h.service == nil {
+		apiutil.BadRequest(c, "voiceover service not initialized")
+		return
+	}
+
 	var req struct {
 		Text     string `json:"text" binding:"required"`
 		Language string `json:"language"`
@@ -85,6 +90,11 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 
 // Batch processes multiple voiceover requests (always async)
 func (h *VoiceoverHandler) Batch(c *gin.Context) {
+	if h.service == nil {
+		apiutil.BadRequest(c, "voiceover service not initialized")
+		return
+	}
+
 	req, ok := apiutil.BindJSON[voiceover.BatchRequest](c)
 	if !ok {
 		return

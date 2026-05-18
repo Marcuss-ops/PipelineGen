@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/artlist"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 // SearchRequest represents a search request

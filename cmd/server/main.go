@@ -10,9 +10,9 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/api"
-	"velox/go-master/internal/bootstrap"
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/app"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/logger"
 )
 
 // Variables set via ldflags during build
@@ -63,7 +63,7 @@ func main() {
 		zap.String("data_dir", cfg.Storage.DataDir),
 	)
 
-	deps, err := bootstrap.WireServices(cfg, log, *mode)
+	deps, err := app.WireServices(cfg, log, *mode)
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
 		os.Exit(1)

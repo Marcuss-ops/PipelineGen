@@ -13,12 +13,12 @@ import (
 	"velox/go-master/internal/ml/ollama/prompts"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/clips"
-	artlistSvc "velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/association"
-	clipresolver "velox/go-master/internal/service/clipresolver"
-	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/pkg/models"
-	"velox/go-master/pkg/textutil"
+	artlistSvc "velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/media/association"
+	clipresolver "velox/go-master/internal/media/clipresolver"
+	imgservice "velox/go-master/internal/media/images"
+	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // BuildScriptDocument generates the modular script document using Ollama and the local catalogs.

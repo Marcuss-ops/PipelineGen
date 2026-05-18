@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/media/assetregistry"
 )
 
 type AssetKind string

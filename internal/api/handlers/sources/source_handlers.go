@@ -14,27 +14,27 @@ import (
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/images"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assettree"
-	"velox/go-master/internal/service/catalogsync"
-	"velox/go-master/internal/service/drivecleanup"
-	"velox/go-master/internal/service/foldermemory"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/media"
-	"velox/go-master/internal/service/voiceover"
-	"velox/go-master/internal/service/youtubeclip"
+	"velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/assettree"
+	"velox/go-master/internal/media/catalogsync"
+	"velox/go-master/internal/storage/drivecleanup"
+	"velox/go-master/internal/media/foldermemory"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media"
+	"velox/go-master/internal/media/voiceover"
+	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/models"
 )
 
 // Handler handles common media operations.
 type Handler struct {
 	cfg            *config.Config
 	artlistSvc     *artlist.Service
-	youtubeSvc     *youtubeclip.Service
+	youtubeSvc     *youtube.Service
 	voiceoverSvc   *voiceover.Service
 	jobsSvc        *jobservice.Service
 	catalogRepo    *catalog.Repository
@@ -62,7 +62,7 @@ type Handler struct {
 func NewHandler(
 	cfg *config.Config,
 	artlistSvc *artlist.Service,
-	youtubeSvc *youtubeclip.Service,
+	youtubeSvc *youtube.Service,
 	voiceoverSvc *voiceover.Service,
 	jobsSvc *jobservice.Service,
 	catalogRepo *catalog.Repository,

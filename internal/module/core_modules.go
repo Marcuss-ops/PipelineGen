@@ -8,7 +8,7 @@ import (
 	drivehandler "velox/go-master/internal/api/handlers/drive"
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
 	"velox/go-master/internal/api/handlers/system"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 // SystemModule handles system diagnostic routes

@@ -7,12 +7,12 @@ import (
 	"os"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/assetindex"
-	"velox/go-master/internal/service/assettree"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/media"
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/assettree"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/models"
 )
 
 // Service coordinates system-wide maintenance tasks.

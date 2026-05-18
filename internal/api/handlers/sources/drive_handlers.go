@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
-	driveutil "velox/go-master/pkg/drive"
+	"velox/go-master/internal/pkg/apiutil"
+	driveutil "velox/go-master/internal/storage/drive"
 )
 
 // DeleteDriveFileRequest represents a request to delete/trash a clip by Drive file ID or link.

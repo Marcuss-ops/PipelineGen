@@ -6,8 +6,8 @@ import (
 	"velox/go-master/internal/matching"
 	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/repository/catalog"
-	"velox/go-master/internal/service/association"
-	"velox/go-master/internal/service/match"
+	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/media/match"
 )
 
 func buildStockMatchingSection(repo *catalog.Repository, req ScriptDocsRequest, narrative string, analysis *types.FullEntityAnalysis) ScriptSection {

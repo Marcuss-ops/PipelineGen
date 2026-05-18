@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // extractDynamicKeywords chiede all'LLM di generare esattamente 3 keyword di ricerca efficaci

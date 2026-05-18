@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 func TestAssetsModule_Enabled(t *testing.T) {

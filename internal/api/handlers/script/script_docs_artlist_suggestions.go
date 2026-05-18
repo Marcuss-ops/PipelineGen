@@ -9,8 +9,8 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/sliceutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 type artlistTagSuggestion struct {

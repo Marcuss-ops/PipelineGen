@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 // ScriptHistoryHandler handles script history endpoints

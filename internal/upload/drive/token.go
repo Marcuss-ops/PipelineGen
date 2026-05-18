@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/logger"
 
 	"go.uber.org/zap"
 )

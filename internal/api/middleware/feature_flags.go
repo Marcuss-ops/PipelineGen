@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 // FeatureFlagChecker returns a gin.HandlerFunc that checks if a feature is enabled

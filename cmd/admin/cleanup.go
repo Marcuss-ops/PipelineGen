@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/bootstrap"
-	"velox/go-master/internal/service/media"
+	"velox/go-master/internal/app"
+	"velox/go-master/internal/media"
 	"velox/go-master/internal/upload/drive"
 )
 
@@ -29,7 +29,7 @@ func runCleanupOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := bootstrap.ExportInitCoreMinimal(cfg, log)
+	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -96,7 +96,7 @@ func runCleanupAllOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := bootstrap.ExportInitCoreMinimal(cfg, log)
+	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -190,7 +190,7 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := bootstrap.ExportInitCoreMinimal(cfg, log)
+	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -265,7 +265,7 @@ func runCleanupStockOrphans(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := bootstrap.ExportInitCoreMinimal(cfg, log)
+	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -332,7 +332,7 @@ func runDeleteSpecificFolders(args []string) error {
 	}
 	defer cleanup()
 
-	deps, coreCleanup, err := bootstrap.ExportInitCoreMinimal(cfg, log)
+	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -431,7 +431,7 @@ func runSyncAllDrive(args []string) error {
 
 	ctx := context.Background()
 
-	deps, coreCleanup, err := bootstrap.ExportInitCoreMinimal(cfg, log)
+	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {
 		log.Fatal("Failed to initialize core services", zap.Error(err))
 	}
@@ -482,7 +482,7 @@ func runTestYouTube(args []string) error {
 	}
 	defer cleanup()
 
-	deps, err := bootstrap.WireServices(cfg, log, "")
+	deps, err := app.WireServices(cfg, log, "")
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
 		return err

@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/pkg/llmjson"
+	"velox/go-master/internal/pkg/llmjson"
 )
 
 // callTimelineLLM calls the LLM to generate a timeline plan

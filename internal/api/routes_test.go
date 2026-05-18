@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"velox/go-master/internal/module"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {

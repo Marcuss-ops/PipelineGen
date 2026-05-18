@@ -3,7 +3,7 @@ package script
 import (
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 func topicTokens(topic string) []string {

@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/service/drivecleanup"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/storage/drivecleanup"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 type Handler struct {

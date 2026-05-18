@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/apiutil"
-	driveutil "velox/go-master/pkg/drive"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/pkg/apiutil"
+	driveutil "velox/go-master/internal/storage/drive"
+	"velox/go-master/internal/media/models"
 )
 
 // ReprocessClip reprocesses a clip (download/process/upload).

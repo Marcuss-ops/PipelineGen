@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"velox/go-master/internal/api/handlers/voiceover"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 
 	"github.com/gin-gonic/gin"
 

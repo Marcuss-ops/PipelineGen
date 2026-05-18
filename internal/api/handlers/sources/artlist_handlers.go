@@ -10,13 +10,13 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/catalogsync"
-	"velox/go-master/internal/service/clipresolver"
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/media/catalogsync"
+	"velox/go-master/internal/media/clipresolver"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/models"
 )
 
 type ArtlistHandler struct {

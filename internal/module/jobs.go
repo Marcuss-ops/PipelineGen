@@ -2,7 +2,7 @@ package module
 
 import (
 	"velox/go-master/internal/api/handlers/jobs"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )

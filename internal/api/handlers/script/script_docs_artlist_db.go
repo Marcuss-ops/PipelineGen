@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"velox/go-master/internal/service/association"
+	"velox/go-master/internal/media/association"
 	"velox/go-master/internal/storage"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/sqlutil"
+	"velox/go-master/internal/pkg/sliceutil"
+	"velox/go-master/internal/pkg/sqlutil"
 
 	"go.uber.org/zap"
 

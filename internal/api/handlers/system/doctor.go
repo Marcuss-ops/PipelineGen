@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/storage"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 )
 
 // Handler handles system diagnostic endpoints

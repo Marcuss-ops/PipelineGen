@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	imgservice "velox/go-master/internal/service/images"
-	"velox/go-master/pkg/apiutil"
+	imgservice "velox/go-master/internal/media/images"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 type Handler struct {

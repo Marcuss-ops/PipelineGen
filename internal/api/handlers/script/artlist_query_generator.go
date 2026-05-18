@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/service/visualquery"
+	"velox/go-master/internal/media/visualquery"
 )
 
 // GenerateArtlistSearchSuggestions generates visual search queries using LLM

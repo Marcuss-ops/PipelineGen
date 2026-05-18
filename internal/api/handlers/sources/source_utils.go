@@ -10,9 +10,9 @@ import (
 	assettreerepo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/service/assetregistry"
-	driveutil "velox/go-master/pkg/drive"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/assetregistry"
+	driveutil "velox/go-master/internal/storage/drive"
+	"velox/go-master/internal/media/models"
 )
 
 // resolveRepo returns the appropriate repository for the given source.

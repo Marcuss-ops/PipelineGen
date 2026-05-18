@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/service/association"
-	"velox/go-master/pkg/termutil"
+	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/pkg/termutil"
 )
 
 var partSuffixRegex = regexp.MustCompile(`(?i)\s*\(part\s+\d+\)\s*$`)

@@ -3,7 +3,7 @@ package matching
 import (
 	"path/filepath"
 	"strings"
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // ScoreAsset calculates a match score (0-100) between a search phrase and an asset

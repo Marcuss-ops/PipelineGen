@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 	"velox/go-master/tests/helpers"
 
 	"github.com/stretchr/testify/assert"

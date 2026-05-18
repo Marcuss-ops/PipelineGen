@@ -9,11 +9,11 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/clips"
-	artlistSvc "velox/go-master/internal/service/artlist"
-	"velox/go-master/internal/service/association"
-	clipresolver "velox/go-master/internal/service/clipresolver"
-	"velox/go-master/internal/service/visualquery"
-	"velox/go-master/pkg/sliceutil"
+	artlistSvc "velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/media/association"
+	clipresolver "velox/go-master/internal/media/clipresolver"
+	"velox/go-master/internal/media/visualquery"
+	"velox/go-master/internal/pkg/sliceutil"
 )
 
 const timelineCacheVersion = "v18"

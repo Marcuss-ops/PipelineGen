@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
+	"velox/go-master/internal/pkg/apiutil"
 )
 
 // RequireInternalHeader returns a middleware that checks for X-Internal or X-Velox-Internal header.

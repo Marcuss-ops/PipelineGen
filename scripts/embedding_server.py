@@ -22,6 +22,13 @@ except ImportError as e:
 # Load models once
 print("Loading NLP model (en_core_web_sm)...")
 nlp = spacy.load("en_core_web_sm")
+nlp_it = None
+try:
+    print("Loading Italian NLP model (it_core_news_sm)...")
+    nlp_it = spacy.load("it_core_news_sm")
+except Exception as e:
+    print(f"Italian NLP model it_core_news_sm not loaded (using English fallback): {e}")
+
 print("Loading SentenceTransformer model (all-MiniLM-L6-v2)...")
 model = SentenceTransformer("all-MiniLM-L6-v2")
 print("Loading CLIP model (clip-ViT-B-32)...")
@@ -37,11 +44,56 @@ class IndexRequest(BaseModel):
     clip_id: str
 
 def normalize_text(text: str) -> str:
-    doc = nlp(text.lower())
+    # Quick heuristic to detect Italian words
+    italian_stopwords = {"il", "la", "i", "gli", "le", "un", "una", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che"}
+    words = text.lower().split()
+    is_italian = any(w in italian_stopwords for w in words)
+    target_nlp = nlp_it if (is_italian and nlp_it) else nlp
+    
+    doc = target_nlp(text.lower())
     return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
 def generate_search_text(tags: List[str]) -> str:
     return " ".join(tags)
+
+def get_txt_content(local_path: Optional[str], name: Optional[str] = None) -> str:
+    if not local_path and not name:
+        return ""
+    # 1. Try with_suffix(".txt") if local_path is specified
+    if local_path:
+        try:
+            p = Path(local_path)
+            txt_file = p.with_suffix(".txt")
+            if txt_file.exists():
+                with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
+                    return f.read().strip()
+        except Exception as e:
+            print(f"Error reading with_suffix txt: {e}")
+            
+    # 2. Try searching in same folder as local_path or download folders for {name}.txt
+    if name:
+        base_name = Path(name).stem
+        search_dirs = [Path("data/downloads"), Path("data/youtube-clips")]
+        if local_path:
+            search_dirs.insert(0, Path(local_path).parent)
+            
+        for s_dir in search_dirs:
+            if s_dir.exists():
+                txt_file = s_dir / f"{base_name}.txt"
+                if txt_file.exists():
+                    try:
+                        with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
+                            return f.read().strip()
+                    except:
+                        pass
+                try:
+                    for found_p in s_dir.rglob(f"{base_name}.txt"):
+                        if found_p.exists():
+                            with open(found_p, "r", encoding="utf-8", errors="ignore") as f:
+                                return f.read().strip()
+                except:
+                    pass
+    return ""
 
 @app.get("/health")
 def health():
@@ -205,6 +257,7 @@ def index_clip(req: IndexRequest):
             raise HTTPException(status_code=404, detail=f"Clip not found: {req.clip_id}")
 
         name = clip["name"] or ""
+        local_path = clip["local_path"] or ""
         tags_str = clip["tags"] or "[]"
         try:
             tags = json.loads(tags_str)
@@ -213,7 +266,13 @@ def index_clip(req: IndexRequest):
         except:
             tags = []
 
-        search_text = " ".join([name] + tags)
+        txt_desc = get_txt_content(local_path, name)
+        search_parts = [name]
+        if txt_desc:
+            search_parts.append(txt_desc)
+        search_parts.extend(tags)
+
+        search_text = " ".join(search_parts)
         normalized = normalize_text(search_text)
         embedding_list = model.encode(normalized).tolist()
         embedding_json = json.dumps(embedding_list)
@@ -336,12 +395,13 @@ def index_bulk(req: BulkIndexRequest):
 
         indexed_count = 0
         for clip_id in req.clip_ids:
-            cursor.execute("SELECT id, name, tags FROM media_assets WHERE id = ?", (clip_id,))
+            cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path FROM media_assets WHERE id = ?", (clip_id,))
             clip = cursor.fetchone()
             if not clip:
                 continue
 
             name = clip["name"] or ""
+            local_path = clip["local_path"] or ""
             tags_str = clip["tags"] or "[]"
             try:
                 tags = json.loads(tags_str)
@@ -350,7 +410,13 @@ def index_bulk(req: BulkIndexRequest):
             except:
                 tags = []
 
-            search_text = " ".join([name] + tags)
+            txt_desc = get_txt_content(local_path, name)
+            search_parts = [name]
+            if txt_desc:
+                search_parts.append(txt_desc)
+            search_parts.extend(tags)
+
+            search_text = " ".join(search_parts)
             normalized = normalize_text(search_text)
             embedding_list = model.encode(normalized).tolist()
             embedding_json = json.dumps(embedding_list)

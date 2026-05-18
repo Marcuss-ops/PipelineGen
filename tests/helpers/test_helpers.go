@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/config"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"

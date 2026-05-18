@@ -6,19 +6,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "velox/go-master/internal/service/jobs"
-	"velox/go-master/internal/service/youtubeclip"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/models"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/sources/youtube"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/media/models"
 )
 
 type YouTubeClipHandler struct {
-	service *youtubeclip.Service
+	service *youtube.Service
 	log     *zap.Logger
 	jobsSvc *jobservice.Service
 }
 
-func NewYouTubeClipHandler(service *youtubeclip.Service, log *zap.Logger, jobsSvc *jobservice.Service) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service: service,
 		log:     log,
@@ -115,7 +115,7 @@ func (h *YouTubeClipHandler) ListFolders(c *gin.Context) {
 }
 
 func (h *YouTubeClipHandler) Extract(c *gin.Context) {
-	req, ok := apiutil.BindJSON[youtubeclip.ExtractRequest](c)
+	req, ok := apiutil.BindJSON[youtube.ExtractRequest](c)
 	if !ok {
 		return
 	}

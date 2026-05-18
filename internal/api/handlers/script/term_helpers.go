@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/termutil"
+	"velox/go-master/internal/pkg/sliceutil"
+	"velox/go-master/internal/pkg/termutil"
 
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/internal/service/association"
+	"velox/go-master/internal/media/association"
 )
 
 func buildSegmentKeywords(topic string, chunk string, entities []string) []string {

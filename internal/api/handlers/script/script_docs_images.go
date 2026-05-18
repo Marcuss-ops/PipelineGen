@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	imgservice "velox/go-master/internal/service/images"
+	imgservice "velox/go-master/internal/media/images"
 )
 
 type imagePlanItem struct {

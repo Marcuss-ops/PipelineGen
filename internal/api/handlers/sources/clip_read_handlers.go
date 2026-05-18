@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/media/models"
 )
 
 // GetClip returns a single clip.

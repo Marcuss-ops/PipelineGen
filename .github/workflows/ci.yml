@@ -1,0 +1,33 @@
+name: Go CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.25.x'
+        cache: true
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Run Architectural Checks
+      run: |
+        chmod +x scripts/ci-architectural-checks.sh
+        bash scripts/ci-architectural-checks.sh
+
+    - name: Run Unit Tests
+      run: go test -v ./internal/...

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"velox/go-master/internal/service/assetregistry"
+	"velox/go-master/internal/media/assetregistry"
 )
 
 // RegistryStoreAdapter adapts a assetregistry.Registry to the AssetRecordStore interface.

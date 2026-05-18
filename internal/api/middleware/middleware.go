@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/logger"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

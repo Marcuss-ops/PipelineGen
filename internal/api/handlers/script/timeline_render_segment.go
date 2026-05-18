@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 // renderSegmentHeader renders the segment header with timestamp and subject

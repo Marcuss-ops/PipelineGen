@@ -13,8 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"velox/go-master/internal/module"
-	"velox/go-master/pkg/config"
-	"velox/go-master/pkg/logger"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/logger"
 )
 
 // Server represents the HTTP server.

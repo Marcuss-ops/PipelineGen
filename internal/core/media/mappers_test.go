@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/pkg/models"
+	"velox/go-master/internal/media/models"
 )
 
 func TestClipToMediaAsset(t *testing.T) {

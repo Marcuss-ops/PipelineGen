@@ -14,8 +14,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/bootstrap"
-	"velox/go-master/pkg/config"
+	"velox/go-master/internal/app"
+	"velox/go-master/internal/config"
 )
 
 const (
@@ -64,7 +64,7 @@ func runVerifyArtlistPipeline(args []string) error {
 	}
 	defer cleanup()
 
-	deps, err := bootstrap.WireServices(cfg, log, "")
+	deps, err := app.WireServices(cfg, log, "")
 	if err != nil {
 		log.Error("Failed to wire services", zap.Error(err))
 		return err

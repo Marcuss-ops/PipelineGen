@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	artlist "velox/go-master/internal/service/artlist"
+	artlist "velox/go-master/internal/sources/artlist"
 )
 
 // attemptLiveSearchDecision tenta una ricerca live per la decisione dell'asset

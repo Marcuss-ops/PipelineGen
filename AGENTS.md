@@ -114,17 +114,17 @@ Generates a 1080p zoom-out video (MP4) from a stored image.
 ### Check Database Tables
 ```bash
 sqlite3 data/velox/velox.db.sqlite ".tables"
-sqlite3 data/jobs/jobs.db.sqlite ".schema jobs"
+sqlite3 data/velox/velox.db.sqlite ".schema jobs"
 ```
 
 ### Clipindexer Testing
 Test the Python script manually:
 ```bash
-python3 scripts/index_clips.py --db data/artlist/artlist.db.sqlite --clip-id <CLIP_ID>
+python3 scripts/index_clips.py --db data/media/media.db.sqlite --clip-id <CLIP_ID>
 ```
 Verify metadata updates:
 ```bash
-sqlite3 data/artlist/artlist.db.sqlite "SELECT search_text, embedding_json FROM clips WHERE id = <CLIP_ID>;"
+sqlite3 data/media/media.db.sqlite "SELECT search_text, embedding_json FROM clips WHERE id = <CLIP_ID>;"
 ```
 
 ## Known Issues & Fixes
@@ -180,7 +180,7 @@ When adding new tables to `velox.db.sqlite`, ensure:
 - Update the schema documentation here
 
 ### Job System
-- Jobs are stored in `jobs.db.sqlite`
+- Jobs are stored in `velox.db.sqlite` (under `jobs` table)
 - Job types: `media.artlist`, `media.youtube_clip`, etc.
 - Workers poll for queued jobs every few seconds
 - Jobs have max 3 retries by default
@@ -204,9 +204,9 @@ When adding new tables to `velox.db.sqlite`, ensure:
 - ✅ Fixed import paths (`internal/pkg/` → `pkg/`)
 - ✅ Centralized database migrations and connection pooling (WAL/busy_timeout)
 - ✅ Migrated harvester/catalog sync/db backup to job system
+- ✅ Integrated CI checks: `scripts/ci-architectural-checks.sh` is now executed in the GitHub Actions pipeline
 
 ### Pending
-- CI checks: `scripts/ci-architectural-checks.sh` must block violations
 - Remove any remaining duplicates in legacy doc folders
 
 ## Core Contracts
