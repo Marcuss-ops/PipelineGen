@@ -46,11 +46,6 @@ var expectedTables = map[string][]string{
 	"artlist/artlist.db.sqlite": {
 		"clips",        // Artlist-specific clips
 		"clip_folders", // Artlist-specific folders
-		"clips_fts",    // FTS tables
-		"clips_fts_config",
-		"clips_fts_data",
-		"clips_fts_docsize",
-		"clips_fts_idx",
 		"schema_migrations",
 	},
 	"images/images.db.sqlite": {

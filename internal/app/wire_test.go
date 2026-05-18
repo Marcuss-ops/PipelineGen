@@ -147,7 +147,7 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	}
 }
 
-func TestLegacyClipMigrationsSkip(t *testing.T) {
+func TestStartupIntegration(t *testing.T) {
 	// Change to project root so migration paths resolve correctly
 	projectRoot := filepath.Join("..", "..")
 	origDir, err := os.Getwd()
@@ -182,10 +182,10 @@ func TestLegacyClipMigrationsSkip(t *testing.T) {
 	}
 	log := zap.NewNop()
 
-	// Ensure runLegacyClipMigrations is executed safely during startup
+	// Ensure system starts up cleanly and registers all modules without error
 	deps, err := WireServices(cfg, log, "test")
 	if err != nil {
-		t.Fatalf("startup failed with legacy migration no-op: %v", err)
+		t.Fatalf("startup integration test failed: %v", err)
 	}
 	if deps == nil {
 		t.Fatal("expected non-nil deps")

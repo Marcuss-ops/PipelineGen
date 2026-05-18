@@ -37,10 +37,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		return nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
-	if err := runLegacyClipMigrations(dbs, log); err != nil {
-		cancel()
-		return nil, nil, fmt.Errorf("failed to migrate legacy clip databases: %w", err)
-	}
 
 	// 3. Core Services
 	svcs, err := initServices(ctx, cfg, dbs, log)
