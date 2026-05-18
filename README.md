@@ -66,6 +66,7 @@ PipelineGen uses a unified job system for all long-running operations. Jobs are 
 - `internal/service/`: Business logic and service implementations.
 - `internal/api/handlers/`: REST API handlers (modularized).
 - `pkg/models/`: Shared data models.
+- `src/tachyon/`: TACHYON high-performance rendering engine.
 - `scripts/`: Utility and AI processing scripts.
 
 ## 📝 Documentation

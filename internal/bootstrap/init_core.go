@@ -20,8 +20,9 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// 1. Security & Infrastructure - Set download host whitelist from config
-	security.SetAllowedHosts(cfg.Security.AllowedDownloadHosts)
-	log.Info("Configured download host whitelist", zap.Int("hosts_count", len(cfg.Security.AllowedDownloadHosts)))
+	hosts := append(cfg.Security.AllowedDownloadHosts, "youtube.com", "youtu.be", "www.youtube.com")
+	security.SetAllowedHosts(hosts)
+	log.Info("Configured download host whitelist", zap.Int("hosts_count", len(hosts)))
 
 	// 2. Databases
 	dbs, err := initDatabases(cfg, log)

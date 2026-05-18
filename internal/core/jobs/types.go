@@ -18,29 +18,46 @@ const (
 type JobStatus string
 
 const (
-	JobStatusPending   JobStatus = "pending"
-	JobStatusRunning   JobStatus = "running"
-	JobStatusCompleted JobStatus = "completed"
-	JobStatusFailed    JobStatus = "failed"
-	JobStatusCancelled JobStatus = "cancelled"
+	JobStatusPending    JobStatus = "pending"
+	JobStatusQueued     JobStatus = "queued"
+	JobStatusProcessing JobStatus = "processing"
+	JobStatusRunning    JobStatus = "running"
+	JobStatusCompleted  JobStatus = "completed"
+	JobStatusFailed     JobStatus = "failed"
+	JobStatusCancelled  JobStatus = "cancelled"
+	JobStatusPaused     JobStatus = "paused"
+	JobStatusZombie     JobStatus = "zombie"
+	JobStatusRetrying   JobStatus = "retrying"
 )
 
 func (s JobStatus) Valid() bool {
 	switch s {
-	case JobStatusPending, JobStatusRunning, JobStatusCompleted, JobStatusFailed, JobStatusCancelled:
+	case JobStatusPending, JobStatusQueued, JobStatusProcessing, JobStatusRunning,
+		JobStatusCompleted, JobStatusFailed, JobStatusCancelled, JobStatusPaused,
+		JobStatusZombie, JobStatusRetrying:
 		return true
 	default:
 		return false
 	}
 }
 
-type Job struct {
-	ID        string
-	Type      JobType
-	Status    JobStatus
-	Payload   string
-	Result    string
-	Error     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+func (s JobStatus) IsTerminal() bool {
+	return s == JobStatusCompleted || s == JobStatusFailed || s == JobStatusCancelled
 }
+
+type Job struct {
+	ID          string
+	Type        JobType
+	Status      JobStatus
+	Payload     string
+	Result      string
+	Error       string
+	Progress    int
+	RetryCount  int
+	MaxRetries  int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	StartedAt   *time.Time
+	CompletedAt *time.Time
+}
+

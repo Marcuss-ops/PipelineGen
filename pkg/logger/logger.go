@@ -31,6 +31,7 @@ func Init(level string, format string) {
 		WithEncoding(format),
 		WithForceSync(parseBoolEnv(os.Getenv("VELOX_LOG_FORCE_SYNC"))),
 	)
+	zap.ReplaceGlobals(instance)
 }
 
 // parseLevel converts a string log level to zapcore.Level

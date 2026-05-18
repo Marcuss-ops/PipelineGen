@@ -1,6 +1,8 @@
 package bootstrap
 
 import (
+	"velox/go-master/internal/service/tachyon"
+	"velox/go-master/internal/service/videomuscles"
 	"context"
 	"os"
 
@@ -102,6 +104,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		AssetIndex:  assetIndexService,
 	}, log)
 
+	tachyonSvc := tachyon.NewService("src/tachyon/build/release/src/tachyon", log)
+	videoPipeline := videomuscles.NewPipeline(cfg, log, tachyonSvc)
+
 	youtubeClipService := youtubeclip.NewService(
 		cfg,
 		log,
@@ -109,6 +114,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		monitorsRepo,
 		driveClient,
 		mediaProcessor,
+		videoPipeline,
 		ytLifecycle,
 		clipIndexerService,
 	)

@@ -162,6 +162,15 @@ func (h *Handler) checkExternalTools(ctx context.Context, resp *DoctorResponse) 
 	} else {
 		resp.Checks["python3"] = "ok"
 	}
+
+	// TACHYON
+	tachyonPath := filepath.Join("src/tachyon/build/dev/TachyonCLI") // Example path, adjust if needed
+	if _, err := os.Stat(tachyonPath); err != nil {
+		resp.Checks["tachyon"] = "not_built"
+		resp.Fixes = append(resp.Fixes, "make tachyon-build")
+	} else {
+		resp.Checks["tachyon"] = "ok"
+	}
 }
 
 func (h *Handler) checkGoogleToken(ctx context.Context, resp *DoctorResponse) {

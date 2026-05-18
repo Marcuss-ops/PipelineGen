@@ -13,7 +13,7 @@ Jobs are defined by the `JobType` enum in `pkg/models/job_types.go`:
 | `script_generation` | LLM-based script creation from source text or YouTube. |
 | `voiceover` | TTS generation for a given script. |
 | `stock_clip` | Matching and downloading stock footage. |
-| `video_generation` | Final assembly using the Rust Video Engine. |
+| `video_generation` | Final assembly using the TACHYON Rendering Engine. |
 | `upload` | Pushing results to Google Drive or YouTube. |
 
 ## Job States

@@ -1,20 +1,23 @@
 # Dependencies
-go.sum
 vendor/
 node_modules/
+**/node_modules/
 web-admin/node_modules/
 
 # Logs and temp files
 *.log
 *.tmp
 tmp/
+coverage.out
 
-# Environment
+# Environment and Secrets
 .env
 .env.local
 *.env.*
-token.json
 credentials.json
+token.json
+**/credentials.json
+**/token.json
 
 # Editors
 .vscode/
@@ -25,6 +28,7 @@ bin/
 *.exe
 *.dll
 *.so
+server
 pipelinegen
 web-admin/dist/
 

@@ -81,17 +81,15 @@ func isAllowedHost(host string) bool {
 	return false
 }
 
-// SanitizeTimestamp validates a timestamp string (e.g. "01:23" or "1:23:45")
+// SanitizeTimestamp validates a timestamp string (e.g. "01:23" or "1:23:45" or "*01:23-01:45")
 // to prevent injection when passed as a flag argument to ffmpeg/yt-dlp.
 func SanitizeTimestamp(ts string) error {
 	if ts == "" {
 		return fmt.Errorf("timestamp is empty")
 	}
-	if strings.HasPrefix(ts, "-") {
-		return fmt.Errorf("timestamp cannot start with dash")
-	}
+	// We allow dashes now, but maybe not at the very start unless it's followed by a number or *
 	for _, c := range ts {
-		if !((c >= '0' && c <= '9') || c == ':' || c == '.') {
+		if !((c >= '0' && c <= '9') || c == ':' || c == '.' || c == '*' || c == '-') {
 			return fmt.Errorf("timestamp contains invalid character %q", c)
 		}
 	}

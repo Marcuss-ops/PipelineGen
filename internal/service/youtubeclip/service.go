@@ -1,6 +1,7 @@
 package youtubeclip
 
 import (
+	"velox/go-master/internal/service/videomuscles"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,6 +33,7 @@ import (
 )
 
 type Service struct {
+<<<<<<< HEAD
 	cfg               *config.Config
 	log               *zap.Logger
 	clipsRepo         *clips.Repository
@@ -42,6 +44,18 @@ type Service struct {
 	folderMemory      *foldermemory.Service
 	lifecycleService  *lifecycle.Service
 	indexer           *clipindexer.Service
+=======
+	cfg                *config.Config
+	log                *zap.Logger
+	clipsRepo          *clips.Repository
+	monitoredRepo      *monitors.Repository
+	driveClient        *driveapi.Service
+	assetDestResolver  destination.Resolver
+	mediaProcessor     processor.Processor
+	videoPipeline      *videomuscles.Pipeline
+	folderMemory       *foldermemory.Service
+	lifecycleService   *lifecycle.Service
+>>>>>>> 61f9fa7 (feat: integrate TACHYON rendering engine and introduce videomuscles pipeline)
 }
 
 func NewService(
@@ -51,6 +65,7 @@ func NewService(
 	monitoredRepo *monitors.Repository,
 	driveClient *driveapi.Service,
 	mediaProcessor processor.Processor,
+	videoPipeline *videomuscles.Pipeline,
 	lifecycleService *lifecycle.Service,
 	indexer *clipindexer.Service,
 ) *Service {
@@ -65,6 +80,7 @@ func NewService(
 		driveClient:       driveClient,
 		assetDestResolver: assetdestination.ToCoreResolver(assetDestResolver),
 		mediaProcessor:    mediaProcessor,
+		videoPipeline:     videoPipeline,
 		folderMemory:      foldermemory.NewService(log, clipsRepo),
 		lifecycleService:  lifecycleService,
 		indexer:           indexer,
@@ -332,52 +348,21 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		clipID := fmt.Sprintf("yt_%s_%d_%d", videoID, startSec, endSec)
 		item.ID = clipID
 
-		// Build section for download
-		section := fmt.Sprintf("*%s-%s", item.Start, item.End)
-
 		// Determine normalize flag
 		shouldNormalize := req.Normalize == nil || *req.Normalize
 
-		// Use mediaasset processor for download/process/hash
-		normalize := shouldNormalize
-
-		processInput := &processor.ProcessInput{
-			ID:               clipID,
-			Name:             item.Name,
-			SourceURL:        resp.SourceURL,
-			Term:             "",
-			OutputDir:        outDir,
-			Filename:         "",
-			FolderID:         driveFolderID,
-			Duration:         duration,
-			ForceKeyframes:   req.ForceKeyframes,
-			StreamCopy:       !shouldNormalize, // Fast extraction if no normalization needed
-			DownloadSections: []string{section},
-			Normalize:        &normalize,
-			KeepAudio:        req.KeepAudio,
-			DisableDuration:  true, // Don't truncate YouTube clips to the global default duration
-			Metadata: map[string]interface{}{
-				"video_id":         videoID,
-				"start":            item.Start,
-				"end":              item.End,
-				"start_seconds":    startSec,
-				"end_seconds":      endSec,
-				"duration_seconds": duration,
-			},
-		}
-
-		result, err := s.mediaProcessor.Process(ctx, processInput)
+		// Download and cut using TACHYON
+		localPath, err := s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, resp.SourceURL, float64(startSec), float64(duration), item.Name)
 		if err != nil {
 			item.Status = "failed"
-			item.Error = fmt.Sprintf("media processing failed: %v", err)
+			item.Error = fmt.Sprintf("tachyon processing failed: %v", err)
 			resp.Items = append(resp.Items, item)
 			resp.Stats.Failed++
 			resp.OK = false
 			continue
 		}
 
-		localPath := result.LocalPath
-		fileHash := result.FileHash
+		fileHash, _ := hashutil.MD5File(localPath)
 
 		// Use LifecycleService for dedupe + upload + persist
 		metadataMap := map[string]interface{}{
@@ -410,14 +395,14 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			LocalPath:    localPath,
 			FolderID:     driveFolderID,
 			FolderPath:   folderPath,
-			DriveLink:    result.DriveLink,
-			DriveFileID:  result.DriveFileID,
-			DownloadLink: result.DownloadLink,
+			DriveLink:    "",
+			DriveFileID:  "",
+			DownloadLink: "",
 			FileHash:     fileHash,
 			Metadata:     metadata,
 			RequireLocal: true,
 			RequireHash:  true,
-			RequireDrive: result.DriveLink != "",
+			RequireDrive: false,
 			VerifyDB:     true,
 		}
 
@@ -449,9 +434,9 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		} else {
 			// Fallback if LifecycleService not available (tests)
 			item.LocalPath = localPath
-			item.DriveLink = result.DriveLink
-			item.DriveFileID = result.DriveFileID
-			item.DownloadLink = result.DownloadLink
+			item.DriveLink = ""
+			item.DriveFileID = ""
+			item.DownloadLink = ""
 			item.Status = "processed"
 		}
 
@@ -980,6 +965,34 @@ func extractVideoID(inputURL string) string {
 			return parsed.Query().Get("v")
 		}
 		// Shorts URLs: youtube.com/shorts/ID
+		if strings.HasPrefix(parsed.Path, "/shorts/") {
+			id := strings.TrimPrefix(parsed.Path, "/shorts/")
+			if idx := strings.Index(id, "?"); idx != -1 {
+				id = id[:idx]
+			}
+			return id
+		}
+		// Embed URLs: youtube.com/embed/ID
+		if strings.HasPrefix(parsed.Path, "/embed/") {
+			id := strings.TrimPrefix(parsed.Path, "/embed/")
+			if idx := strings.Index(id, "?"); idx != -1 {
+				id = id[:idx]
+			}
+			return id
+		}
+		// Live URLs: youtube.com/live/ID
+		if strings.HasPrefix(parsed.Path, "/live/") {
+			id := strings.TrimPrefix(parsed.Path, "/live/")
+			if idx := strings.Index(id, "?"); idx != -1 {
+				id = id[:idx]
+			}
+			return id
+		}
+	}
+
+	return ""
+}
+/ID
 		if strings.HasPrefix(parsed.Path, "/shorts/") {
 			id := strings.TrimPrefix(parsed.Path, "/shorts/")
 			if idx := strings.Index(id, "?"); idx != -1 {
