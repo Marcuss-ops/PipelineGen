@@ -2,6 +2,7 @@ package stockpipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -10,12 +11,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/config"
+	corejobs "velox/go-master/internal/core/jobs"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
 	driveup "velox/go-master/internal/upload/drive"
@@ -61,6 +67,8 @@ type Service struct {
 	ytdlp      *downloader.YTDLPDownloader
 	ffmpegProc *ffmpeg.Processor
 	pcfg       PipelineConfig
+	jobsSvc    *jobservice.Service
+	assetIndex *assetindex.Service
 }
 
 func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *Service {
@@ -73,6 +81,57 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 		ffmpegProc: ffmpeg.New(cfg),
 		pcfg:       DefaultPipelineConfig(),
 	}
+}
+
+func (s *Service) SetJobsSvc(jobsSvc *jobservice.Service) {
+	s.jobsSvc = jobsSvc
+}
+
+func (s *Service) SetAssetIndex(ai *assetindex.Service) {
+	s.assetIndex = ai
+}
+
+func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+	if jobsSvc != nil {
+		jobsSvc.RegisterHandler(models.JobTypeMediaStock, s.HandleJob)
+		s.log.Info("registered media.stock job handler", zap.String("type", string(models.JobTypeMediaStock)))
+	}
+}
+
+func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+	var payload corejobs.StockRunPayload
+	if len(job.Payload) > 0 {
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal stock payload: %w", err)
+		}
+	}
+
+	input := &RunInput{
+		SearchQueries: payload.SearchQueries,
+		DirectURLs:    payload.DirectURLs,
+		TotalMinutes:  payload.TotalMinutes,
+		Subfolder:     payload.Subfolder,
+		FolderName:    payload.FolderName,
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(5, "Starting stock pipeline")
+	}
+
+	result, err := s.Run(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	if tools.Progress != nil {
+		tools.Progress(100, "Stock pipeline complete")
+	}
+
+	return map[string]any{
+		"total_clips":  result.TotalClips,
+		"total_chunks": result.TotalChunks,
+		"chunks":       result.Chunks,
+	}, nil
 }
 
 type RunInput struct {
@@ -136,6 +195,16 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	var processedClips []string
 	var clipTitles []string
 
+	type videoResult struct {
+		clips  []string
+		titles []string
+		err    error
+	}
+
+	sem := make(chan struct{}, 3)
+	var wg sync.WaitGroup
+	results := make(chan videoResult, len(videoSources))
+
 	for i, vs := range videoSources {
 		select {
 		case <-ctx.Done():
@@ -143,101 +212,29 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		default:
 		}
 
-		s.log.Info("downloading from video",
-			zap.Int("index", i),
-			zap.String("url", vs.URL),
-			zap.String("title", vs.Title),
-		)
+		wg.Add(1)
+		go func(idx int, src VideoSource) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		rawPath := filepath.Join(tempDir, fmt.Sprintf("raw_%04d.mp4", i))
+			clips, titles, err := s.processSingleVideo(ctx, tempDir, src, idx, secsPerVideo)
+			results <- videoResult{clips, titles, err}
+		}(i, vs)
+	}
 
-		startTime := rng.Float64() * math.Max(0, vs.DurationSec-float64(secsPerVideo))
-		startStr := formatDuration(startTime)
-		endStr := formatDuration(startTime + float64(secsPerVideo))
-		section := fmt.Sprintf("*%s-%s", startStr, endStr)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
-		err := s.ytdlp.Download(ctx, &downloader.DownloadRequest{
-			URL:              vs.URL,
-			OutputPath:       rawPath,
-			MergeFormat:      "mp4",
-			DownloadSections: []string{section},
-			ForceKeyframes:   true,
-			Timeout:          10 * time.Minute,
-		})
-		if err != nil {
-			s.log.Warn("yt-dlp download failed", zap.String("url", vs.URL), zap.Error(err))
+	for res := range results {
+		if res.err != nil {
+			s.log.Warn("video processing failed", zap.Error(res.err))
 			continue
 		}
-
-		actualPath := resolveActualPath(rawPath)
-		if actualPath == "" {
-			s.log.Warn("downloaded file not found", zap.String("path", rawPath))
-			continue
-		}
-
-		numClips := secsPerVideo / clipDur
-		if numClips < 1 {
-			numClips = 1
-		}
-		if numClips > maxClipsPerVideo {
-			numClips = maxClipsPerVideo
-		}
-
-		usedOffsets := make(map[float64]bool)
-
-		for clipIdx := 0; clipIdx < numClips; clipIdx++ {
-			maxStart := float64(secsPerVideo) - float64(clipDur)
-			if maxStart < 1 {
-				maxStart = 1
-			}
-
-			var offset float64
-			for attempt := 0; attempt < 20; attempt++ {
-				offset = rng.Float64() * maxStart
-				rounded := math.Round(offset)
-				if !usedOffsets[rounded] {
-					usedOffsets[rounded] = true
-					break
-				}
-			}
-
-			cutStart := formatDuration(offset)
-			cutEnd := formatDuration(offset + float64(clipDur))
-
-			trimmedPath := filepath.Join(tempDir, fmt.Sprintf("seg_%04d_%04d.mp4", i, clipIdx))
-			err = s.ffmpegProc.CutSegment(ctx, actualPath, trimmedPath, cutStart, cutEnd, ffmpeg.CutOptions{
-				Codec:   "h264_nvenc",
-				Preset:  "p4",
-				CRF:     23,
-				NoAudio: true,
-			})
-			if err != nil {
-				s.log.Warn("cut failed", zap.Int("video", i), zap.Int("clip", clipIdx), zap.Error(err))
-				continue
-			}
-
-			normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", i, clipIdx))
-			err = s.ffmpegProc.Normalize(ctx, trimmedPath, normPath, ffmpeg.NormalizeOptions{
-				Width:     1920,
-				Height:    1080,
-				FPS:       30,
-				Codec:     "h264_nvenc",
-				Preset:    "p4",
-				CRF:       23,
-				KeepAudio: false,
-			})
-			if err != nil {
-				s.log.Warn("normalize failed", zap.Int("video", i), zap.Int("clip", clipIdx), zap.Error(err))
-				_ = os.Remove(trimmedPath)
-				continue
-			}
-
-			processedClips = append(processedClips, normPath)
-			clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
-			_ = os.Remove(trimmedPath)
-		}
-
-		_ = os.Remove(actualPath)
+		processedClips = append(processedClips, res.clips...)
+		clipTitles = append(clipTitles, res.titles...)
 	}
 
 	if len(processedClips) == 0 {
@@ -318,6 +315,39 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 			zap.Int("chunk", chunkIdx),
 			zap.String("drive_link", upResult.WebViewLink),
 		)
+
+		if s.assetIndex != nil {
+			meta := map[string]any{
+				"filename":    chunkTitle + ".mp4",
+				"folder_id":   folderID,
+				"folder_path": input.Subfolder + "/" + input.FolderName + "/" + chunkTitle + ".mp4",
+				"media_type":  "stock_clip",
+				"category":    "file",
+				"search_text": chunkTitle,
+			}
+			metaJSON, _ := json.Marshal(meta)
+			assetID := "stock_" + upResult.FileID
+			rec := &assetindex.AssetRecord{
+				AssetID:      assetID,
+				AssetType:    "stock_clip",
+				Source:       "stock",
+				SourceID:     upResult.FileID,
+				GroupName:    input.FolderName,
+				Subfolder:    input.Subfolder,
+				LocalPath:    chunkPath,
+				DriveLink:    upResult.WebViewLink,
+				DownloadLink: upResult.DownloadLink,
+				Status:       "ready",
+				Metadata:     string(metaJSON),
+				CreatedAt:    time.Now().UTC(),
+				UpdatedAt:    time.Now().UTC(),
+			}
+			if err := s.assetIndex.Upsert(ctx, rec); err != nil {
+				s.log.Warn("failed to save chunk to asset_index", zap.Int("chunk", chunkIdx), zap.Error(err))
+			} else {
+				s.log.Info("chunk saved to asset_index", zap.String("asset_id", assetID))
+			}
+		}
 	}
 
 	s.log.Info("compilation pipeline complete",
@@ -327,6 +357,118 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	)
 
 	return result, nil
+}
+
+func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs VideoSource, idx int, secsPerVideo int) ([]string, []string, error) {
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
+	}
+
+	s.log.Info("downloading from video",
+		zap.Int("index", idx),
+		zap.String("url", vs.URL),
+		zap.String("title", vs.Title),
+	)
+
+	rawPath := filepath.Join(tempDir, fmt.Sprintf("raw_%04d.mp4", idx))
+
+	startTime := rng.Float64() * math.Max(0, vs.DurationSec-float64(secsPerVideo))
+	startStr := formatDuration(startTime)
+	endStr := formatDuration(startTime + float64(secsPerVideo))
+	section := fmt.Sprintf("*%s-%s", startStr, endStr)
+
+	err := s.ytdlp.Download(ctx, &downloader.DownloadRequest{
+		URL:              vs.URL,
+		OutputPath:       rawPath,
+		MergeFormat:      "mp4",
+		DownloadSections: []string{section},
+		ForceKeyframes:   true,
+		Timeout:          10 * time.Minute,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("yt-dlp download failed for %q: %w", vs.URL, err)
+	}
+
+	actualPath := resolveActualPath(rawPath)
+	if actualPath == "" {
+		return nil, nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
+	}
+
+	numClips := secsPerVideo / clipDur
+	if numClips < 1 {
+		numClips = 1
+	}
+	if numClips > maxClipsPerVideo {
+		numClips = maxClipsPerVideo
+	}
+
+	var processedClips []string
+	var clipTitles []string
+	usedOffsets := make(map[float64]bool)
+
+	for clipIdx := 0; clipIdx < numClips; clipIdx++ {
+		select {
+		case <-ctx.Done():
+			_ = os.Remove(actualPath)
+			return processedClips, clipTitles, ctx.Err()
+		default:
+		}
+
+		maxStart := float64(secsPerVideo) - float64(clipDur)
+		if maxStart < 1 {
+			maxStart = 1
+		}
+
+		var offset float64
+		for attempt := 0; attempt < 20; attempt++ {
+			offset = rng.Float64() * maxStart
+			rounded := math.Round(offset)
+			if !usedOffsets[rounded] {
+				usedOffsets[rounded] = true
+				break
+			}
+		}
+
+		cutStart := formatDuration(offset)
+		cutEnd := formatDuration(offset + float64(clipDur))
+
+		trimmedPath := filepath.Join(tempDir, fmt.Sprintf("seg_%04d_%04d.mp4", idx, clipIdx))
+		err = s.ffmpegProc.CutSegment(ctx, actualPath, trimmedPath, cutStart, cutEnd, ffmpeg.CutOptions{
+			Codec:   "h264_nvenc",
+			Preset:  "p4",
+			CRF:     23,
+			NoAudio: true,
+		})
+		if err != nil {
+			s.log.Warn("cut failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
+			continue
+		}
+
+		normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
+		err = s.ffmpegProc.Normalize(ctx, trimmedPath, normPath, ffmpeg.NormalizeOptions{
+			Width:     1920,
+			Height:    1080,
+			FPS:       30,
+			Codec:     "h264_nvenc",
+			Preset:    "p4",
+			CRF:       23,
+			KeepAudio: false,
+		})
+		if err != nil {
+			s.log.Warn("normalize failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
+			_ = os.Remove(trimmedPath)
+			continue
+		}
+
+		processedClips = append(processedClips, normPath)
+		clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
+		_ = os.Remove(trimmedPath)
+	}
+
+	_ = os.Remove(actualPath)
+	return processedClips, clipTitles, nil
 }
 
 func (s *Service) resolveFolderTarget(ctx context.Context, subfolder, folderName string) (string, error) {

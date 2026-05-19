@@ -1,22 +1,29 @@
 package sources
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/pkg/apiutil"
+	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/stockpipeline"
 )
 
 type StockHandler struct {
 	service *stockpipeline.Service
+	jobsSvc *jobservice.Service
 	log     *zap.Logger
 }
 
-func NewStockHandler(service *stockpipeline.Service, log *zap.Logger) *StockHandler {
+func NewStockHandler(service *stockpipeline.Service, jobsSvc *jobservice.Service, log *zap.Logger) *StockHandler {
 	return &StockHandler{
 		service: service,
+		jobsSvc: jobsSvc,
 		log:     log,
 	}
 }
@@ -31,7 +38,6 @@ type StockPipelineRequest struct {
 	SearchQueries []string `json:"search_queries"`
 	DirectURLs    []string `json:"direct_urls"`
 	TotalMinutes  int      `json:"total_minutes"`
-	ChunkDuration int      `json:"chunk_duration"`
 	Subfolder     string   `json:"subfolder"`
 	FolderName    string   `json:"folder_name"`
 }
@@ -42,6 +48,8 @@ type StockPipelineResponse struct {
 	TotalChunks int                          `json:"total_chunks"`
 	Chunks      []stockpipeline.ChunkResult  `json:"chunks"`
 	Error       string                       `json:"error,omitempty"`
+	JobID       string                       `json:"job_id,omitempty"`
+	StatusURL   string                       `json:"status_url,omitempty"`
 }
 
 func (h *StockHandler) RunStockPipeline(c *gin.Context) {
@@ -59,11 +67,40 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 		req.TotalMinutes = 5
 	}
 
+	if h.jobsSvc != nil {
+		payloadBytes, err := json.Marshal(req)
+		if err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+			return
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to unmarshal request: %w", err))
+			return
+		}
+
+		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+			Type:    models.JobTypeMediaStock,
+			Payload: payload,
+		})
+		if err != nil {
+			h.log.Error("failed to enqueue stock pipeline job", zap.Error(err))
+			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+			return
+		}
+
+		apiutil.Accepted(c, gin.H{
+			"job_id":     job.ID,
+			"message":    "Stock pipeline job enqueued",
+			"status_url": "/api/jobs/" + job.ID + "/full",
+		})
+		return
+	}
+
 	input := &stockpipeline.RunInput{
 		SearchQueries: req.SearchQueries,
 		DirectURLs:    req.DirectURLs,
 		TotalMinutes:  req.TotalMinutes,
-		ChunkDuration: req.ChunkDuration,
 		Subfolder:     req.Subfolder,
 		FolderName:    req.FolderName,
 	}

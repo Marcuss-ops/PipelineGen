@@ -12,6 +12,7 @@ const (
 	JobTypeVoiceoverGenerate  JobType = "voiceover.generate"
 	JobTypeMediaMatch         JobType = "media.match"
 	JobTypeMediaImport        JobType = "media.import"
+	JobTypeMediaStock         JobType = "media.stock"
 	JobTypeWorkflowRun        JobType = "workflow.run"
 )
 

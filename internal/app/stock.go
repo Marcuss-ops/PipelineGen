@@ -26,9 +26,14 @@ func WireStockPipeline(
 	}
 
 	svc := stockpipeline.NewService(cfg, log, coreDeps.DriveClient)
-	handler := sources.NewStockHandler(svc, log)
+	svc.SetJobsSvc(coreDeps.JobsService)
+	svc.SetAssetIndex(coreDeps.AssetIndexService)
+
+	handler := sources.NewStockHandler(svc, coreDeps.JobsService, log)
 
 	mod := module.NewStockPipelineModule(cfg, log, handler)
+
+	svc.RegisterHandler(coreDeps.JobsService)
 
 	return &StockPipelineWiring{
 		Handler: handler,

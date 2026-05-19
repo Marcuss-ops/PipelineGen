@@ -114,6 +114,24 @@ func (p *MediaMatchPayload) Validate() error {
 	return nil
 }
 
+type StockRunPayload struct {
+	SearchQueries []string `json:"search_queries"`
+	DirectURLs    []string `json:"direct_urls"`
+	TotalMinutes  int      `json:"total_minutes"`
+	Subfolder     string   `json:"subfolder"`
+	FolderName    string   `json:"folder_name"`
+}
+
+func (p *StockRunPayload) Validate() error {
+	if len(p.SearchQueries) == 0 && len(p.DirectURLs) == 0 {
+		return fmt.Errorf("search_queries or direct_urls required")
+	}
+	if p.TotalMinutes <= 0 {
+		return fmt.Errorf("total_minutes must be > 0")
+	}
+	return nil
+}
+
 type MediaImportPayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`

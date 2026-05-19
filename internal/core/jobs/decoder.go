@@ -49,6 +49,12 @@ func DecodePayload(jobType JobType, raw json.RawMessage) (interface{}, error) {
 			return nil, err
 		}
 		return p, p.Validate()
+	case JobTypeMediaStock:
+		var p StockRunPayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, err
+		}
+		return p, p.Validate()
 	default:
 		return nil, fmt.Errorf("unsupported job type %s", jobType)
 	}

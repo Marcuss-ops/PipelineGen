@@ -203,6 +203,70 @@ func (p *Processor) CutSegment(ctx context.Context, input, output string, start,
 	return err
 }
 
+// CutAndNormalizeOptions configures combined cutting + normalization.
+type CutAndNormalizeOptions struct {
+	Width   int
+	Height  int
+	FPS     int
+	Codec   string
+	Preset  string
+	CRF     int
+	NoAudio bool
+}
+
+// CutAndNormalize cuts a segment and normalizes it in a single ffmpeg pass,
+// avoiding a double re-encode. Combines CutSegment + Normalize.
+func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts CutAndNormalizeOptions) error {
+	args := []string{
+		"-y", "-hide_banner", "-loglevel", "warning",
+	}
+
+	if strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-hwaccel", "cuda")
+	}
+
+	if start != "" {
+		args = append(args, "-ss", start)
+	}
+	args = append(args, "-i", input)
+	if end != "" {
+		args = append(args, "-to", end)
+	}
+
+	filter := fmt.Sprintf(
+		"scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d,setpts=PTS-STARTPTS",
+		opts.Width, opts.Height, opts.Width, opts.Height, opts.FPS,
+	)
+	args = append(args, "-vf", filter)
+
+	if opts.NoAudio {
+		args = append(args, "-an")
+	}
+
+	args = append(args, "-c:v", opts.Codec)
+	args = append(args, "-preset", opts.Preset)
+	args = append(args, "-g", fmt.Sprintf("%d", opts.FPS*2))
+
+	if strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-rc", "vbr")
+		args = append(args, "-cq", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-tune", "hq")
+		args = append(args, "-bf", "0")
+	} else {
+		args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-bf", "0")
+		args = append(args, "-refs", "1")
+	}
+
+	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-vsync", "cfr")
+	args = append(args, output)
+
+	_, err := executil.Run(ctx, p.path, args, executil.Options{
+		Timeout: 10 * time.Minute,
+	})
+	return err
+}
+
 // MediaInfo holds probed media information.
 type MediaInfo struct {
 	Duration float64 `json:"duration,omitempty"`
