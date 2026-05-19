@@ -50,6 +50,7 @@ features:
   workflow_enabled: true
   stock_enabled: true
   stock_pipeline_enabled: true
+  google_accounting_enabled: true
 
 google_accounting:
   enabled: true
