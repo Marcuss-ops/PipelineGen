@@ -338,6 +338,75 @@ func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) 
 	return info, nil
 }
 
+// OverlayOptions configures overlay effect compositing.
+type OverlayOptions struct {
+	Width    int
+	Height   int
+	FPS      int
+	Opacity  float64 // 0.0-1.0, e.g. 0.25 = 25%
+	Codec    string
+	Preset   string
+	CRF      int
+}
+
+// ApplyOverlay composites an effect video over a clip with reduced opacity.
+// The effect is looped if shorter than the clip and trimmed if longer.
+func (p *Processor) ApplyOverlay(ctx context.Context, clipPath, effectPath, output string, opts OverlayOptions) error {
+	if opts.Opacity <= 0 {
+		opts.Opacity = 0.25
+	}
+	if opts.Width <= 0 {
+		opts.Width = 1920
+	}
+	if opts.Height <= 0 {
+		opts.Height = 1080
+	}
+	if opts.FPS <= 0 {
+		opts.FPS = 30
+	}
+
+	alpha := fmt.Sprintf("%.2f", opts.Opacity)
+
+	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
+	if strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-hwaccel", "cuda")
+	}
+	args = append(args, "-i", clipPath)
+	args = append(args, "-stream_loop", "-1", "-i", effectPath)
+
+	filter := fmt.Sprintf(
+		"[1:v]setpts=PTS-STARTPTS,format=rgba,colorchannelmixer=aa=%s,"+
+			"scale=%d:%d:force_original_aspect_ratio=decrease,"+
+			"pad=%d:%d:(ow-iw)/2:(oh-ih)/2[fx];"+
+			"[0:v][fx]overlay=0:0:format=auto:shortest=1,"+
+			"format=yuv420p[out]",
+		alpha, opts.Width, opts.Height, opts.Width, opts.Height,
+	)
+	args = append(args, "-filter_complex", filter)
+	args = append(args, "-map", "[out]")
+	args = append(args, "-an")
+	args = append(args, "-c:v", opts.Codec)
+	args = append(args, "-preset", opts.Preset)
+	args = append(args, "-g", fmt.Sprintf("%d", opts.FPS*2))
+	if strings.Contains(opts.Codec, "nvenc") {
+		args = append(args, "-rc", "vbr")
+		args = append(args, "-cq", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-tune", "hq")
+		args = append(args, "-bf", "0")
+	} else {
+		args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+		args = append(args, "-bf", "0")
+		args = append(args, "-refs", "1")
+	}
+	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-vsync", "cfr")
+	args = append(args, output)
+
+	_, err := executil.Run(ctx, p.path, args, executil.Options{
+		Timeout: 5 * time.Minute,
+	})
+	return err
+}
+
 // MergeInputs concatenates multiple video files into one.
 func (p *Processor) MergeInputs(ctx context.Context, inputs []string, output string) error {
 	// Create a temporary file list for ffmpeg concat demuxer

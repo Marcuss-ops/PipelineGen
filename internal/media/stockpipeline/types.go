@@ -1,14 +1,18 @@
 package stockpipeline
 
 type PipelineConfig struct {
-	ChunkDuration int // max 25 seconds per output chunk
-	MaxResults    int // max videos to fetch per search query
+	ChunkDuration  int    // max 25 seconds per output chunk
+	MaxResults     int    // max videos to fetch per search query
+	EffectInterval int    // apply overlay effect every N clips (0 = disabled)
+	EffectsDir     string // directory containing effect overlay .mp4 files
 }
 
 func DefaultPipelineConfig() PipelineConfig {
 	return PipelineConfig{
-		ChunkDuration: 25,
-		MaxResults:    25,
+		ChunkDuration:  25,
+		MaxResults:     25,
+		EffectInterval: 4,
+		EffectsDir:     "assets/effects/EffettiVisiv",
 	}
 }
 

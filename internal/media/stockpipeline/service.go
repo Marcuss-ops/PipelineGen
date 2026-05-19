@@ -45,19 +45,7 @@ var transitionPresets = []string{
 	"squeezeh", "squeezev",
 }
 
-var fxPresets = []string{
-	"",
-	"colorbalance=rh=-0.3:gh=-0.2:bh=-0.2",
-	"colorbalance=rh=0.2:gh=0.1:bh=-0.2",
-	"hue=H=90",
-	"hue=H=-60",
-	"hue=s=0.5",
-	"eq=saturation=0.3:contrast=1.2",
-	"eq=saturation=1.6",
-	"eq=contrast=1.4",
-	"eq=brightness=0.08",
-	"colorchannelmixer=.33:.33:.34:0:.33:.33:.34",
-}
+
 
 type Service struct {
 	cfg        *config.Config
@@ -252,6 +240,31 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		processedClips[i], processedClips[j] = processedClips[j], processedClips[i]
 		clipTitles[i], clipTitles[j] = clipTitles[j], clipTitles[i]
 	})
+
+	if s.pcfg.EffectInterval > 0 {
+		effects, err := loadEffects(s.pcfg.EffectsDir)
+		if err != nil {
+			s.log.Warn("no overlay effects loaded", zap.String("dir", s.pcfg.EffectsDir), zap.Error(err))
+		} else {
+			s.log.Info("applying overlay effects", zap.Int("interval", s.pcfg.EffectInterval), zap.Int("effects_found", len(effects)))
+			for i := s.pcfg.EffectInterval - 1; i < len(processedClips); i += s.pcfg.EffectInterval {
+				effectPath := effects[rng.Intn(len(effects))]
+				outputPath := filepath.Join(tempDir, fmt.Sprintf("effected_%04d.mp4", i))
+				err := s.ffmpegProc.ApplyOverlay(ctx, processedClips[i], effectPath, outputPath, ffmpeg.OverlayOptions{
+					Width: 1920, Height: 1080, FPS: 30,
+					Opacity: 0.25,
+					Codec:   "h264_nvenc", Preset: "p4", CRF: 23,
+				})
+				if err != nil {
+					s.log.Warn("overlay effect failed", zap.Int("clip_idx", i), zap.Error(err))
+					continue
+				}
+				processedClips[i] = outputPath
+				clipTitles[i] = clipTitles[i] + "_FX"
+				s.log.Debug("overlay effect applied", zap.Int("clip_idx", i), zap.String("effect", effectPath))
+			}
+		}
+	}
 
 	clipsPerChunk := chunkDur / clipDur
 	if clipsPerChunk < 1 {
@@ -565,6 +578,26 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 	return sources, nil
 }
 
+func loadEffects(dir string) ([]string, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("effects dir is empty")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read effects dir %q: %w", dir, err)
+	}
+	var effects []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".mp4") {
+			effects = append(effects, filepath.Join(dir, e.Name()))
+		}
+	}
+	if len(effects) == 0 {
+		return nil, fmt.Errorf("no .mp4 effect files found in %s", dir)
+	}
+	return effects, nil
+}
+
 func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string) error {
 	if len(clips) == 0 {
 		return fmt.Errorf("no clips to render")
@@ -582,20 +615,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 			"[%d:v]setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30[v%d]",
 			i, i,
 		))
-	}
-
-	for i := range clips {
-		fx := fxPresets[rng.Intn(len(fxPresets))]
-		if fx != "" {
-			fxLabel := fmt.Sprintf("fx%d", i)
-			filterParts = append(filterParts, fmt.Sprintf(
-				"[v%d]%s[%s]",
-				i, fx, fxLabel,
-			))
-			clips[i] = fxLabel
-		} else {
-			clips[i] = fmt.Sprintf("v%d", i)
-		}
+		clips[i] = fmt.Sprintf("v%d", i)
 	}
 
 	lastLabel := clips[0]

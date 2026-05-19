@@ -18,6 +18,8 @@ credentials.json
 token.json
 **/credentials.json
 **/token.json
+**/token_full.json
+
 
 # Editors
 .vscode/
