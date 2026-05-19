@@ -60,6 +60,36 @@ class BaseAutomation:
 class GoogleVidsAutomation(BaseAutomation):
     """Engine per l'automazione di Google Vids."""
 
+    async def list_projects(self) -> list[dict]:
+        """List all Google Vids projects from the home page."""
+        page = await self.context.new_page()
+        await page.goto("https://vids.google.com", wait_until="networkidle")
+        await asyncio.sleep(5)
+        
+        projects = []
+        # Cerchiamo i contenitori dei progetti
+        items = await page.query_selector_all('div[role="gridcell"]')
+        for item in items:
+            name = await item.get_attribute("aria-label")
+            if not name:
+                # Prova a prendere il testo interno se aria-label manca
+                name_el = await item.query_selector('div[id*="name"]')
+                if name_el:
+                    name = await name_el.inner_text()
+            
+            if name:
+                link = await item.query_selector('a')
+                if link:
+                    href = await link.get_attribute("href")
+                    # Formato tipico: https://docs.google.com/videos/d/ID/edit
+                    if href and "/d/" in href:
+                        parts = href.split("/")
+                        vid_id = parts[parts.index("d") + 1]
+                        projects.append({"name": name, "id": vid_id, "url": href})
+        
+        await page.close()
+        return projects
+
     async def _get_page(self, video_id: str) -> Page:
         page = await self.context.new_page()
         url = f"{GOOGLE_VIDS_BASE_URL}/{video_id}/edit"
@@ -212,25 +242,6 @@ class ImageFXFlowAutomation(BaseAutomation):
             return []
         finally:
             await page.close()
-
-    async def list_projects(self) -> list[dict]:
-        """List all Google Vids projects from the home page."""
-        page = await self.context.new_page()
-        await page.goto("https://vids.google.com", wait_until="networkidle")
-        await asyncio.sleep(5)
-        
-        projects = []
-        items = await page.query_selector_all('div[role="gridcell"]')
-        for item in items:
-            name = await item.get_attribute("aria-label")
-            if name:
-                link = await item.query_selector('a')
-                href = await link.get_attribute("href") if link else ""
-                vid_id = href.split("/")[-2] if "/d/" in href else ""
-                projects.append({"name": name, "id": vid_id})
-        
-        await page.close()
-        return projects
 
     async def sync_project(self, video_id: str, file_type: str = "all") -> list[Path]:
         paths = []
