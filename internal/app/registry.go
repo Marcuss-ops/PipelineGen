@@ -28,6 +28,7 @@ type RegistryWiring struct {
 	ContentPkg  *ContentPackageWiring
 	Assets      *AssetsWiring
 	StockPipeline *StockPipelineWiring
+	GoogleAccounting *GoogleAccountingWiring
 }
 
 // WireRegistry creates and populates the module registry with all modules using factory pattern
@@ -51,6 +52,13 @@ func WireRegistry(
 			w := WireSystem(cfg, log)
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.System = w.(*SystemWiring) }},
+		{"GoogleAccounting", func() (module.Module, interface{}, error) {
+			w, err := WireGoogleAccounting(cfg, log)
+			if err != nil {
+				return nil, nil, err
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.GoogleAccounting = w.(*GoogleAccountingWiring) }},
 		{"Artlist", func() (module.Module, interface{}, error) {
 			w, err := WireArtlist(cfg, log, coreDeps)
 			if err != nil {

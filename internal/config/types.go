@@ -23,6 +23,16 @@ type Config struct {
 	Video       VideoConfig       `yaml:"video"`
 	Features    FeaturesConfig    `yaml:"features"`
 	ClipIndexer ClipIndexerConfig `yaml:"clip_indexer"`
+	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
+}
+
+// GoogleAccountingConfig holds settings for the Google Accounting FastAPI service.
+type GoogleAccountingConfig struct {
+	Enabled      bool   `yaml:"enabled" default:"false"`
+	ServerURL    string `yaml:"server_url" default:"http://localhost:8000"`
+	DownloadDir  string `yaml:"download_dir" default:"./data/google_vids"`
+	SessionsPath string `yaml:"sessions_path" default:"./google-accounting/sessions"`
+	ScheduleCron string `yaml:"schedule_cron" default:"0 2 * * *"`
 }
 
 // VideoConfig holds video processing configuration.
@@ -272,6 +282,7 @@ type FeaturesConfig struct {
 	ImagesEnabled            bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
 	SketchfabEnabled         bool `yaml:"sketchfab_enabled" env:"VELOX_FEATURE_SKETCHFAB_ENABLED" default:"false"`
 	StockPipelineEnabled     bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"false"`
+	GoogleAccountingEnabled  bool `yaml:"google_accounting_enabled" env:"VELOX_FEATURE_GOOGLE_ACCOUNTING_ENABLED" default:"false"`
 }
 
 // ClipIndexerConfig holds settings for the clip metadata indexing service.
