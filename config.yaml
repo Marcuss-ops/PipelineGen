@@ -50,3 +50,10 @@ features:
   workflow_enabled: true
   stock_enabled: true
   stock_pipeline_enabled: true
+
+google_accounting:
+  enabled: true
+  server_url: "http://localhost:8000"
+  download_dir: "./data/google_vids"
+  sessions_path: "./google-accounting/sessions"
+  schedule_cron: "0 2 * * *"

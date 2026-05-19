@@ -92,6 +92,11 @@ workflow:
 dev:
 	air
 
+# Run Google Accounting service
+# Usage: make google-accounting-run
+google-accounting-run:
+	cd google-accounting && uvicorn main:app --reload --port 8000
+
 # Install dependencies (download only, no go.mod modification)
 deps:
 	go mod download

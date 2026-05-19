@@ -82,3 +82,10 @@ features:
   script_docs_enabled: false
   script_clips_enabled: false
   stock_enabled: false
+
+google_accounting:
+  enabled: false
+  server_url: "http://localhost:8000"
+  download_dir: "./data/google_vids"
+  sessions_path: "./google-accounting/sessions"
+  schedule_cron: "0 2 * * *"

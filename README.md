@@ -10,11 +10,13 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
 - **🖼️ Image Generation**: Integration with NVIDIA NIM and Flux AI for high-quality image assets.
 - **🔄 Job System**: Robust, SQLite-backed asynchronous job queue with progress tracking and event logging.
 - **📂 Cloud Sync**: Deep integration with Google Drive for asset organization and synchronization.
+- **📈 Google Accounting**: Automated export and download of video assets from Google Vids Pro using Playwright.
 - **🛠️ Admin UI**: Real-time monitoring and control interface (located in `web-admin/`).
 
 ## 🛠 Tech Stack
 
 - **Backend**: Go (Gin Gonic)
+- **Scraper/Automation**: Python (FastAPI, Playwright)
 - **Database**: SQLite (WAL mode for high concurrency)
 - **External Tools**: `yt-dlp`, FFmpeg, Python scripts for AI processing
 - **Cloud**: Google Drive API (OAuth2)
@@ -27,6 +29,7 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
 - Python 3.10+
 - `yt-dlp` installed in your path
 - FFmpeg
+- Playwright (for Google Accounting)
 
 ### Installation
 1. Clone the repository:
@@ -41,7 +44,14 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
    # Edit config.yaml with your credentials and paths
    ```
 
-3. Build and Run:
+3. Install Python dependencies:
+   ```bash
+   pip install -r scripts/requirements.txt
+   pip install -r google-accounting/requirements.txt
+   playwright install chromium
+   ```
+
+4. Build and Run:
    ```bash
    go build -o pipelinegen ./cmd/server/
    ./pipelinegen --mode all
@@ -54,6 +64,7 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
 - **Job Status**: `GET /api/jobs/:id`
 - **Images**: `POST /api/images/generate/nvidia`
 - **Artlist**: `POST /api/artlist/run`
+- **Google Accounting**: `GET http://localhost:8000/list`
 
 ## 🧠 Job System
 
@@ -65,6 +76,7 @@ PipelineGen uses a unified job system for all long-running operations. Jobs are 
 - `internal/core/`: Canonical contracts and interfaces.
 - `internal/service/`: Business logic and service implementations.
 - `internal/api/handlers/`: REST API handlers (modularized).
+- `google-accounting/`: FastAPI service for Google Vids automation.
 - `pkg/models/`: Shared data models.
 - `src/tachyon/`: TACHYON high-performance rendering engine.
 - `scripts/`: Utility and AI processing scripts.
