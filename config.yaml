@@ -36,6 +36,10 @@ video:
   preset: "p4"
   crf: 18
 
+drive:
+  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+  clips_root_folder: ""
+
 features:
   artlist_enabled: true
   youtube_enabled: true

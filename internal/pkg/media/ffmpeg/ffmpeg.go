@@ -162,9 +162,10 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 
 // CutOptions configures segment cutting.
 type CutOptions struct {
-	Codec  string
-	Preset string
-	CRF    int
+	Codec   string
+	Preset  string
+	CRF     int
+	NoAudio bool
 }
 
 // CutSegment cuts a segment from input video and saves to output.
@@ -188,6 +189,10 @@ func (p *Processor) CutSegment(ctx context.Context, input, output string, start,
 	}
 	if opts.CRF > 0 {
 		args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+	}
+
+	if opts.NoAudio {
+		args = append(args, "-an")
 	}
 
 	args = append(args, output)

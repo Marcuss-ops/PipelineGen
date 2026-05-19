@@ -21,6 +21,10 @@ import (
 	driveup "velox/go-master/internal/upload/drive"
 )
 
+const clipDur = 5
+const maxClipsPerVideo = 30
+const defaultSearchCount = 25
+
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 var transitionPresets = []string{
@@ -29,7 +33,24 @@ var transitionPresets = []string{
 	"circleclose", "circleopen",
 	"horzclose", "horzopen", "vertclose", "vertopen",
 	"dissolve", "pixelize",
-	"zoomin", "glitch",
+	"wipeleft", "wiperight", "wipeup", "wipedown",
+	"smoothleft", "smoothright", "smoothup", "smoothdown",
+	"radial", "hblur", "fadegrays",
+	"squeezeh", "squeezev",
+}
+
+var fxPresets = []string{
+	"",
+	"colorbalance=rh=-0.3:gh=-0.2:bh=-0.2",
+	"colorbalance=rh=0.2:gh=0.1:bh=-0.2",
+	"hue=H=90",
+	"hue=H=-60",
+	"hue=s=0.5",
+	"eq=saturation=0.3:contrast=1.2",
+	"eq=saturation=1.6",
+	"eq=contrast=1.4",
+	"eq=brightness=0.08",
+	"colorchannelmixer=.33:.33:.34:0:.33:.33:.34",
 }
 
 type Service struct {
@@ -55,12 +76,12 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 }
 
 type RunInput struct {
-	SearchQueries     []string // "Elon Musk -25" or direct YouTube URLs
-	DirectURLs        []string // direct YouTube video URLs
-	TotalMinutes      int
-	SegmentDuration   int
-	ChunkDuration     int
-	OutputFolderID    string
+	SearchQueries []string // "Elon Musk -25" or direct YouTube URLs
+	DirectURLs    []string // direct YouTube video URLs
+	TotalMinutes  int
+	ChunkDuration int
+	Subfolder     string // Drive subfolder name (e.g. "Discovery")
+	FolderName    string // new folder to create inside subfolder
 }
 
 func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, error) {
@@ -70,16 +91,11 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		zap.Int("total_minutes", input.TotalMinutes),
 	)
 
-	segDur := input.SegmentDuration
-	if segDur <= 0 {
-		segDur = s.pcfg.SegmentDuration
-	}
 	chunkDur := input.ChunkDuration
 	if chunkDur <= 0 {
 		chunkDur = s.pcfg.ChunkDuration
 	}
 
-	// 1. Resolve all video URLs from queries + direct URLs
 	var videoSources []VideoSource
 
 	for _, q := range input.SearchQueries {
@@ -105,11 +121,10 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	s.log.Info("video sources resolved", zap.Int("count", len(videoSources)))
 
-	// 2. Calculate per-video download duration
 	totalSecs := input.TotalMinutes * 60
 	secsPerVideo := totalSecs / len(videoSources)
-	if secsPerVideo < segDur {
-		secsPerVideo = segDur
+	if secsPerVideo < clipDur*3 {
+		secsPerVideo = clipDur * 3
 	}
 
 	tempDir := filepath.Join(s.cfg.Storage.TempPath(), "yt_compile_"+fmt.Sprintf("%d", time.Now().UnixNano()))
@@ -118,7 +133,6 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	}
 	defer os.RemoveAll(tempDir)
 
-	// 3. Download sections from each video and trim to segments
 	var processedClips []string
 	var clipTitles []string
 
@@ -137,7 +151,6 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 		rawPath := filepath.Join(tempDir, fmt.Sprintf("raw_%04d.mp4", i))
 
-		// Download the whole section
 		startTime := rng.Float64() * math.Max(0, vs.DurationSec-float64(secsPerVideo))
 		startStr := formatDuration(startTime)
 		endStr := formatDuration(startTime + float64(secsPerVideo))
@@ -156,41 +169,54 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 			continue
 		}
 
-		// Check actual downloaded file (yt-dlp may add extension)
 		actualPath := resolveActualPath(rawPath)
 		if actualPath == "" {
 			s.log.Warn("downloaded file not found", zap.String("path", rawPath))
 			continue
 		}
 
-		// Cut segment(s) from downloaded portion
-		numSegments := secsPerVideo / segDur
-		if numSegments < 1 {
-			numSegments = 1
+		numClips := secsPerVideo / clipDur
+		if numClips < 1 {
+			numClips = 1
 		}
-		segStep := float64(secsPerVideo) / float64(numSegments)
+		if numClips > maxClipsPerVideo {
+			numClips = maxClipsPerVideo
+		}
 
-		for segIdx := 0; segIdx < numSegments; segIdx++ {
-			segStart := rng.Float64() * (segStep - float64(segDur))
-			if segStart < 0 {
-				segStart = 0
+		usedOffsets := make(map[float64]bool)
+
+		for clipIdx := 0; clipIdx < numClips; clipIdx++ {
+			maxStart := float64(secsPerVideo) - float64(clipDur)
+			if maxStart < 1 {
+				maxStart = 1
 			}
-			offsetStart := float64(segIdx) * segStep
-			cutStart := formatDuration(offsetStart + segStart)
-			cutEnd := formatDuration(offsetStart + segStart + float64(segDur))
 
-			trimmedPath := filepath.Join(tempDir, fmt.Sprintf("seg_%04d_%04d.mp4", i, segIdx))
+			var offset float64
+			for attempt := 0; attempt < 20; attempt++ {
+				offset = rng.Float64() * maxStart
+				rounded := math.Round(offset)
+				if !usedOffsets[rounded] {
+					usedOffsets[rounded] = true
+					break
+				}
+			}
+
+			cutStart := formatDuration(offset)
+			cutEnd := formatDuration(offset + float64(clipDur))
+
+			trimmedPath := filepath.Join(tempDir, fmt.Sprintf("seg_%04d_%04d.mp4", i, clipIdx))
 			err = s.ffmpegProc.CutSegment(ctx, actualPath, trimmedPath, cutStart, cutEnd, ffmpeg.CutOptions{
-				Codec:  "h264_nvenc",
-				Preset: "p4",
-				CRF:    23,
+				Codec:   "h264_nvenc",
+				Preset:  "p4",
+				CRF:     23,
+				NoAudio: true,
 			})
 			if err != nil {
-				s.log.Warn("cut failed", zap.Int("video", i), zap.Int("seg", segIdx), zap.Error(err))
+				s.log.Warn("cut failed", zap.Int("video", i), zap.Int("clip", clipIdx), zap.Error(err))
 				continue
 			}
 
-			normPath := filepath.Join(tempDir, fmt.Sprintf("norm_%04d_%04d.mp4", i, segIdx))
+			normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", i, clipIdx))
 			err = s.ffmpegProc.Normalize(ctx, trimmedPath, normPath, ffmpeg.NormalizeOptions{
 				Width:     1920,
 				Height:    1080,
@@ -198,16 +224,16 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 				Codec:     "h264_nvenc",
 				Preset:    "p4",
 				CRF:       23,
-				KeepAudio: true,
+				KeepAudio: false,
 			})
 			if err != nil {
-				s.log.Warn("normalize failed", zap.Int("video", i), zap.Int("seg", segIdx), zap.Error(err))
+				s.log.Warn("normalize failed", zap.Int("video", i), zap.Int("clip", clipIdx), zap.Error(err))
 				_ = os.Remove(trimmedPath)
 				continue
 			}
 
 			processedClips = append(processedClips, normPath)
-			clipTitles = append(clipTitles, fmt.Sprintf("%s_seg%d", vs.Title, segIdx))
+			clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
 			_ = os.Remove(trimmedPath)
 		}
 
@@ -220,13 +246,17 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	s.log.Info("processed clips", zap.Int("count", len(processedClips)))
 
-	// 4. Shuffle for variety, group into chunks
+	folderID, err := s.resolveFolderTarget(ctx, input.Subfolder, input.FolderName)
+	if err != nil {
+		return nil, fmt.Errorf("drive folder resolution: %w", err)
+	}
+
 	rng.Shuffle(len(processedClips), func(i, j int) {
 		processedClips[i], processedClips[j] = processedClips[j], processedClips[i]
 		clipTitles[i], clipTitles[j] = clipTitles[j], clipTitles[i]
 	})
 
-	clipsPerChunk := chunkDur / segDur
+	clipsPerChunk := chunkDur / clipDur
 	if clipsPerChunk < 1 {
 		clipsPerChunk = 1
 	}
@@ -258,21 +288,13 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 		chunkPath := filepath.Join(tempDir, fmt.Sprintf("chunk_%04d.mp4", chunkIdx))
 
-		err := s.renderChunk(ctx, chunkClips, chunkTitles, chunkPath, segDur)
+		err := s.renderChunk(ctx, chunkClips, chunkTitles, chunkPath)
 		if err != nil {
 			s.log.Error("failed to render chunk", zap.Int("chunk", chunkIdx), zap.Error(err))
 			continue
 		}
 
-		label := "compilation"
-		if len(input.SearchQueries) > 0 {
-			label = slugify(input.SearchQueries[0])
-		}
-		chunkTitle := fmt.Sprintf("yt_compile_%s_chunk_%d", label, chunkIdx)
-		folderID := input.OutputFolderID
-		if folderID == "" {
-			folderID = s.cfg.Drive.ClipsRootFolder
-		}
+		chunkTitle := fmt.Sprintf("timestamp_%d", chunkIdx)
 
 		upResult, err := s.driveUp.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
 		if err != nil {
@@ -307,6 +329,36 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	return result, nil
 }
 
+func (s *Service) resolveFolderTarget(ctx context.Context, subfolder, folderName string) (string, error) {
+	rootID := s.cfg.Drive.StockRootFolder
+	if rootID == "" {
+		rootID = s.cfg.Drive.ClipsRootFolder
+	}
+	if rootID == "" {
+		return "", fmt.Errorf("drive.stock_root_folder not configured in config.yaml")
+	}
+
+	currentID := rootID
+
+	if subfolder != "" {
+		id, err := s.driveUp.GetOrCreateFolder(ctx, subfolder, currentID)
+		if err != nil {
+			return "", fmt.Errorf("subfolder %q: %w", subfolder, err)
+		}
+		currentID = id
+	}
+
+	if folderName != "" {
+		id, err := s.driveUp.GetOrCreateFolder(ctx, folderName, currentID)
+		if err != nil {
+			return "", fmt.Errorf("folder %q: %w", folderName, err)
+		}
+		currentID = id
+	}
+
+	return currentID, nil
+}
+
 type VideoSource struct {
 	URL         string
 	Title       string
@@ -314,11 +366,9 @@ type VideoSource struct {
 	DurationSec float64
 }
 
-// resolveQuery parses a query like "Elon Musk -25" or a channel URL
 func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource, error) {
 	query = strings.TrimSpace(query)
 
-	// If it's already a YouTube URL, return as single source
 	if strings.HasPrefix(query, "http") && (strings.Contains(query, "youtube.com") || strings.Contains(query, "youtu.be")) {
 		return []VideoSource{{
 			URL:    query,
@@ -327,15 +377,14 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 		}}, nil
 	}
 
-	// Parse "SearchTerm -N" format (e.g., "Elon Musk -25")
-	numVideos := 10
+	numVideos := defaultSearchCount
 	searchTerm := query
 
 	if idx := strings.LastIndex(query, " -"); idx > 0 {
 		searchTerm = strings.TrimSpace(query[:idx])
 		countStr := strings.TrimSpace(query[idx+2:])
 		if c, err := fmt.Sscanf(countStr, "%d", &numVideos); err != nil || c == 0 {
-			numVideos = 10
+			numVideos = defaultSearchCount
 		}
 	}
 	if numVideos < 1 {
@@ -347,11 +396,9 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 
 	s.log.Info("searching YouTube", zap.String("term", searchTerm), zap.Int("count", numVideos))
 
-	// Use yt-dlp to search: ytsearch10:search term
 	searchURL := fmt.Sprintf("ytsearch%d:%s", numVideos, searchTerm)
 	videos, err := s.ytdlp.ListChannel(ctx, searchURL, numVideos)
 	if err != nil {
-		// Fallback: try as a channel URL
 		videos, err = s.ytdlp.ListChannel(ctx, query, numVideos)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list videos for query %q: %w", query, err)
@@ -376,7 +423,7 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 	return sources, nil
 }
 
-func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string, segDur int) error {
+func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string) error {
 	if len(clips) == 0 {
 		return fmt.Errorf("no clips to render")
 	}
@@ -393,58 +440,49 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 			"[%d:v]setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30[v%d]",
 			i, i,
 		))
-		filterParts = append(filterParts, fmt.Sprintf("[%d:a]asetpts=PTS-STARTPTS[a%d]", i, i))
 	}
 
-	lastVLabel := "v0"
-	lastALabel := "a0"
-	cumOffset := segDur
+	for i := range clips {
+		fx := fxPresets[rng.Intn(len(fxPresets))]
+		if fx != "" {
+			fxLabel := fmt.Sprintf("fx%d", i)
+			filterParts = append(filterParts, fmt.Sprintf(
+				"[v%d]%s[%s]",
+				i, fx, fxLabel,
+			))
+			clips[i] = fxLabel
+		} else {
+			clips[i] = fmt.Sprintf("v%d", i)
+		}
+	}
+
+	lastLabel := clips[0]
+	cumOffset := clipDur
 
 	for i := 1; i < len(clips); i++ {
 		trans := transitionPresets[rng.Intn(len(transitionPresets))]
-		vLabel := fmt.Sprintf("v%d", i)
-		aLabel := fmt.Sprintf("a%d", i)
-		outVLabel := fmt.Sprintf("vo%d", i)
-		outALabel := fmt.Sprintf("ao%d", i)
+		nextLabel := clips[i]
+		outLabel := fmt.Sprintf("c%d", i)
 
 		filterParts = append(filterParts, fmt.Sprintf(
 			"[%s][%s]xfade=transition=%s:duration=1:offset=%d[%s]",
-			lastVLabel, vLabel, trans, cumOffset-1, outVLabel,
+			lastLabel, nextLabel, trans, cumOffset-1, outLabel,
 		))
 
-		filterParts = append(filterParts, fmt.Sprintf(
-			"[%s][%s]acrossfade=duration=1[%s]",
-			lastALabel, aLabel, outALabel,
-		))
-
-		if i%3 == 0 {
-			bLabel := fmt.Sprintf("vb%d", i)
-			filterParts = append(filterParts, fmt.Sprintf(
-				"[%s]colorbalance=ah=%.2f:bh=%.2f:ch=%.2f[%s]",
-				outVLabel, 0.75, 0.75, 0.75, bLabel,
-			))
-			lastVLabel = bLabel
-		} else {
-			lastVLabel = outVLabel
-		}
-		lastALabel = outALabel
-
-		cumOffset += segDur - 1
+		lastLabel = outLabel
+		cumOffset += clipDur - 1
 	}
 
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 	args = append(args, inputArgs...)
 	args = append(args, "-filter_complex", joinFilterParts(filterParts))
-	args = append(args, "-map", fmt.Sprintf("[%s]", lastVLabel))
-	args = append(args, "-map", fmt.Sprintf("[%s]", lastALabel))
+	args = append(args, "-map", fmt.Sprintf("[%s]", lastLabel))
+	args = append(args, "-an")
 	args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23")
-	args = append(args, "-c:a", "aac", "-b:a", "128k")
 	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart")
 	args = append(args, outputPath)
 
-	s.log.Debug("ffmpeg render chunk",
-		zap.Int("clips", len(clips)),
-	)
+	s.log.Debug("ffmpeg render chunk", zap.Int("clips", len(clips)))
 	_ = titles
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
@@ -502,7 +540,6 @@ func formatDuration(sec float64) string {
 }
 
 func extractVideoID(url string) string {
-	// Extract a short ID from a YouTube URL
 	if strings.Contains(url, "v=") {
 		for _, part := range strings.Split(url, "&") {
 			if strings.HasPrefix(part, "v=") {
@@ -521,7 +558,6 @@ func extractVideoID(url string) string {
 }
 
 func resolveActualPath(basePath string) string {
-	// yt-dlp may append .mp4 extension
 	if _, err := os.Stat(basePath); err == nil {
 		return basePath
 	}

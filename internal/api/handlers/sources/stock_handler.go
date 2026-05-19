@@ -28,12 +28,12 @@ func (h *StockHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 type StockPipelineRequest struct {
-	SearchQueries   []string `json:"search_queries"`
-	DirectURLs      []string `json:"direct_urls"`
-	TotalMinutes    int      `json:"total_minutes"`
-	SegmentDuration int      `json:"segment_duration"`
-	ChunkDuration   int      `json:"chunk_duration"`
-	OutputFolderID  string   `json:"output_folder_id"`
+	SearchQueries []string `json:"search_queries"`
+	DirectURLs    []string `json:"direct_urls"`
+	TotalMinutes  int      `json:"total_minutes"`
+	ChunkDuration int      `json:"chunk_duration"`
+	Subfolder     string   `json:"subfolder"`
+	FolderName    string   `json:"folder_name"`
 }
 
 type StockPipelineResponse struct {
@@ -60,12 +60,12 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 	}
 
 	input := &stockpipeline.RunInput{
-		SearchQueries:   req.SearchQueries,
-		DirectURLs:      req.DirectURLs,
-		TotalMinutes:    req.TotalMinutes,
-		SegmentDuration: req.SegmentDuration,
-		ChunkDuration:   req.ChunkDuration,
-		OutputFolderID:  req.OutputFolderID,
+		SearchQueries: req.SearchQueries,
+		DirectURLs:    req.DirectURLs,
+		TotalMinutes:  req.TotalMinutes,
+		ChunkDuration: req.ChunkDuration,
+		Subfolder:     req.Subfolder,
+		FolderName:    req.FolderName,
 	}
 
 	result, err := h.service.Run(c.Request.Context(), input)
