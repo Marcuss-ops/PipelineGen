@@ -149,9 +149,9 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	repos := make(map[string]*clipcatalog.Repository)
 
 	// 1. Stock database (highest priority)
-	if coreDeps.MediaDB != nil && coreDeps.MediaDB.DB != nil {
-		repos["stock"] = clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
-		repos["stock"].SetServerInfo("http://127.0.0.1:8001", coreDeps.MediaDB.Path())
+	if coreDeps.StockDriveRepo != nil && coreDeps.StockDriveRepo.DB() != nil {
+		repos["stock"] = clipcatalog.NewRepository(coreDeps.StockDriveRepo.DB(), log)
+		repos["stock"].SetServerInfo("http://127.0.0.1:8001", cfg.Storage.StockDBFullPath())
 		repos["stock"].SetSource("stock")
 	}
 

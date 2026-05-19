@@ -1,0 +1,47 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  gin_mode: "release"
+
+logging:
+  level: "info"
+  format: "json"
+
+storage:
+  data_dir: "./data"
+
+security:
+  enable_auth: true
+  admin_token: "velox_master_key_2026"
+  rate_limit_enabled: true
+  rate_limit_requests: 100
+  allowed_download_hosts:
+    - "youtube.com"
+    - "www.youtube.com"
+    - "youtu.be"
+    - "artlist.com"
+    - "www.artlist.com"
+    - "artlist.io"
+    - "cdn.artlist.io"
+
+external:
+  ollama_url: "http://localhost:11434"
+  ollama_model: "gemma3:4b"
+
+video:
+  width: 1920
+  height: 1080
+  fps: 30
+  codec: "h264_nvenc"
+  preset: "p4"
+  crf: 18
+
+features:
+  artlist_enabled: true
+  youtube_enabled: true
+  drive_enabled: true
+  voiceover_enabled: true
+  script_docs_enabled: true
+  images_enabled: true
+  workflow_enabled: true
+  stock_enabled: true

@@ -104,7 +104,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		AssetIndex:  assetIndexService,
 	}, log)
 
-	tachyonSvc := tachyon.NewService("src/tachyon/build/release/src/tachyon", log)
+	tachyonSvc := tachyon.NewService("src/tachyon/build/dev-linux/src/tachyon", log)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, tachyonSvc)
 
 	youtubeClipService := youtube.NewService(

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -21,6 +22,9 @@ type Service struct {
 
 // NewService creates a new TACHYON service.
 func NewService(binaryPath string, log *zap.Logger) *Service {
+	if binaryPath == "" {
+		binaryPath = "src/tachyon/build/dev-linux/src/tachyon"
+	}
 	return &Service{
 		binaryPath: binaryPath,
 		log:        log,
@@ -35,7 +39,20 @@ func (s *Service) RenderScene(ctx context.Context, planPath string, outputPath s
 		if _, err := os.Stat(s.binaryPath); err == nil {
 			s.log.Info("calling tachyon", zap.String("plan", planPath), zap.String("output", outputPath))
 
-			cmd := exec.CommandContext(ctx, s.binaryPath, "--plan", planPath, "-o", outputPath)
+			// Prepare C++ scene file if planPath is JSON
+			finalPath := planPath
+			if strings.HasSuffix(planPath, ".json") {
+				cppPath, err := s.convertJsonToCpp(planPath)
+				if err != nil {
+					s.log.Error("failed to convert JSON plan to C++, using ffmpeg fallback", zap.Error(err))
+					return s.renderWithFFmpegFallback(ctx, planPath, outputPath)
+				}
+				finalPath = cppPath
+				defer os.Remove(cppPath)
+			}
+
+			// New CLI command: tachyon render --cpp <path> --out <path>
+			cmd := exec.CommandContext(ctx, s.binaryPath, "render", "--cpp", finalPath, "--out", outputPath)
 			output, err := cmd.CombinedOutput()
 
 			if len(output) > 0 {
@@ -57,6 +74,68 @@ func (s *Service) RenderScene(ctx context.Context, planPath string, outputPath s
 
 	// Fallback: parse plan JSON and use ffmpeg
 	return s.renderWithFFmpegFallback(ctx, planPath, outputPath)
+}
+
+func (s *Service) convertJsonToCpp(jsonPath string) (string, error) {
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return "", err
+	}
+
+	var plan tachyon_spec.MediaTimelinePlan
+	if err := json.Unmarshal(data, &plan); err != nil {
+		return "", err
+	}
+
+	cppPath := jsonPath + ".cpp"
+	var sb strings.Builder
+	sb.WriteString("#include \"tachyon/scene/builder.h\"\n\n")
+	sb.WriteString("extern \"C\" void build_scene(tachyon::SceneSpec& out) {\n")
+	sb.WriteString("    using namespace tachyon::scene;\n")
+	sb.WriteString("    out = SceneBuilder()\n")
+	sb.WriteString(fmt.Sprintf("        .composition(\"main\", [](CompositionBuilder& c) {\n"))
+	
+	width := plan.Output.Width
+	if width == 0 { width = 1920 }
+	height := plan.Output.Height
+	if height == 0 { height = 1080 }
+	fps := plan.Output.FPS
+	if fps == 0 { fps = 30 }
+	
+	sb.WriteString(fmt.Sprintf("            c.size(%d, %d).fps(%d).duration(%f);\n", 
+		width, height, fps, s.getPlanDuration(plan)))
+	
+	for i, track := range plan.Tracks {
+		for j, seg := range track.Segments {
+			layerID := fmt.Sprintf("l_%d_%d", i, j)
+			sb.WriteString(fmt.Sprintf("            c.layer(\"%s\", [](LayerBuilder& l) {\n", layerID))
+			sb.WriteString(fmt.Sprintf("                l.video(\"%s\").start(%f).duration(%f).in(%f);\n", 
+				seg.Path, seg.Start, seg.Duration, seg.TimelineStart))
+			sb.WriteString("            });\n")
+		}
+	}
+	
+	sb.WriteString("        })\n")
+	sb.WriteString("        .build();\n")
+	sb.WriteString("}\n")
+
+	if err := os.WriteFile(cppPath, []byte(sb.String()), 0644); err != nil {
+		return "", err
+	}
+	return cppPath, nil
+}
+
+func (s *Service) getPlanDuration(plan tachyon_spec.MediaTimelinePlan) float64 {
+	max := 0.0
+	for _, track := range plan.Tracks {
+		for _, seg := range track.Segments {
+			if seg.TimelineStart+seg.Duration > max {
+				max = seg.TimelineStart + seg.Duration
+			}
+		}
+	}
+	if max == 0 { return 1.0 }
+	return max
 }
 
 // renderWithFFmpegFallback parses the tachyon plan JSON and re-encodes the source video
@@ -108,8 +187,8 @@ func (s *Service) renderWithFFmpegFallback(ctx context.Context, planPath, output
 	if crf == 0 {
 		crf = 23
 	}
-	if videoCodec == "" {
-		videoCodec = "libx264"
+	if videoCodec == "" || videoCodec == "libx264" {
+		videoCodec = "h264_nvenc" // GPU Accelerated
 	}
 	if audioCodec == "" {
 		audioCodec = "aac"
@@ -122,6 +201,7 @@ func (s *Service) renderWithFFmpegFallback(ctx context.Context, planPath, output
 		"-t", fmt.Sprintf("%.3f", duration),
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d", width, height, width, height, fps),
 		"-c:v", videoCodec,
+		"-preset", "p4", // NVENC preset
 		"-crf", fmt.Sprintf("%d", crf),
 		"-c:a", audioCodec,
 		"-y",
