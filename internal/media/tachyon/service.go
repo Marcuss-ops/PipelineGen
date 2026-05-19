@@ -109,10 +109,29 @@ func (s *Service) convertJsonToCpp(jsonPath string) (string, error) {
 		for j, seg := range track.Segments {
 			layerID := fmt.Sprintf("l_%d_%d", i, j)
 			sb.WriteString(fmt.Sprintf("            c.layer(\"%s\", [](LayerBuilder& l) {\n", layerID))
+			if seg.Transition != nil {
+				sb.WriteString(fmt.Sprintf("                l.transition(\"%s\", %f);\n", 
+					seg.Transition.Type, seg.Transition.Duration))
+			}
 			sb.WriteString(fmt.Sprintf("                l.video(\"%s\").start(%f).duration(%f).in(%f);\n", 
 				seg.Path, seg.Start, seg.Duration, seg.TimelineStart))
 			sb.WriteString("            });\n")
 		}
+	}
+	
+	// Add effects
+	for _, effect := range plan.Effects {
+		sb.WriteString(fmt.Sprintf("            c.effect(\"%s\", %f, %f", 
+			effect.Type, effect.Start, effect.Duration))
+		// Add parameters if present
+		if len(effect.Parameters) > 0 {
+			sb.WriteString(", [](EffectParams& p) {\n")
+			for k, v := range effect.Parameters {
+				sb.WriteString(fmt.Sprintf("                p.set(\"%s\", \"%s\");\n", k, v))
+			}
+			sb.WriteString("            }")
+		}
+		sb.WriteString(");\n")
 	}
 	
 	sb.WriteString("        })\n")

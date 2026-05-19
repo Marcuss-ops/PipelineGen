@@ -27,6 +27,7 @@ type RegistryWiring struct {
 	Scraper     *ScraperWiring
 	ContentPkg  *ContentPackageWiring
 	Assets      *AssetsWiring
+	StockPipeline *StockPipelineWiring
 }
 
 // WireRegistry creates and populates the module registry with all modules using factory pattern
@@ -113,6 +114,16 @@ func WireRegistry(
 			}
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.Scraper = w.(*ScraperWiring) }},
+		{"StockPipeline", func() (module.Module, interface{}, error) {
+			w, err := WireStockPipeline(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			if w == nil {
+				return nil, nil, nil
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.StockPipeline = w.(*StockPipelineWiring) }},
 	}
 
 	for _, m := range modules {

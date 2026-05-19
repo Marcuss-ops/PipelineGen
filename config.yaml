@@ -45,3 +45,4 @@ features:
   images_enabled: true
   workflow_enabled: true
   stock_enabled: true
+  stock_pipeline_enabled: true
