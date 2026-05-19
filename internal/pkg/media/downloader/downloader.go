@@ -175,10 +175,13 @@ type VideoInfo struct {
 	Duration float64 `json:"duration"` // yt-dlp might return float
 }
 
-// ListChannel lists videos from a channel URL.
+// ListChannel lists videos from a channel URL or ytsearch query.
 func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, limit int) ([]VideoInfo, error) {
-	if err := security.ValidateDownloadURL(channelURL); err != nil {
-		return nil, fmt.Errorf("invalid URL: %w", err)
+	// ytsearch queries are internal yt-dlp features, not real URLs
+	if !strings.HasPrefix(channelURL, "ytsearch") {
+		if err := security.ValidateDownloadURL(channelURL); err != nil {
+			return nil, fmt.Errorf("invalid URL: %w", err)
+		}
 	}
 
 	args := []string{

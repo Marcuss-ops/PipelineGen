@@ -413,7 +413,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		))
 
 		filterParts = append(filterParts, fmt.Sprintf(
-			"[%s][%s]acrossfade=duration=1:curve=tri[%s]",
+			"[%s][%s]acrossfade=duration=1[%s]",
 			lastALabel, aLabel, outALabel,
 		))
 
