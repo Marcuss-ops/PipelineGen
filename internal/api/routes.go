@@ -15,8 +15,8 @@ import (
 
 	"velox/go-master/internal/api/handlers/common"
 	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/module"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/module"
 )
 
 // Router holds the API router configuration
@@ -104,6 +104,7 @@ func (r *Router) Setup() *gin.Engine {
 	// Serve static assets (images, etc.)
 	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")
 	engine.Static("/assets", assetsDir)
+	engine.Static("/media/google-accounting", r.cfg.GoogleAccounting.DownloadDir)
 
 	// Serve React admin frontend
 	adminDir := "web-admin/dist"

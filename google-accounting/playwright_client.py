@@ -5,6 +5,7 @@ import subprocess
 import random
 import os
 import re
+import urllib.parse
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -585,6 +586,23 @@ STYLE_MAP = {
 class ImageFXFlowAutomation(BaseAutomation):
     """Engine per l'automazione di Google Labs ImageFX Flow."""
 
+    PROMPT_SELECTORS = [
+        '[contenteditable="true"]',
+        'textarea',
+    ]
+
+    GENERATE_BUTTON_SELECTORS = [
+        'button:has-text("arrow_forward")',
+        'button:has-text("Crea")',
+        'button:has-text("Genera")',
+        'button:has-text("Generate")',
+    ]
+
+    GENERATED_IMAGE_SELECTORS = [
+        'img[alt="Immagine generata"]',
+        'img[src*="/fx/api/trpc/media.getMediaUrlRedirect"]',
+    ]
+
     async def generate_images(self, prompt: str, project_id: str = None, style: str = None) -> list[Path]:
         dest_dir = DOWNLOAD_DIR / "images" / (project_id or "general")
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -609,52 +627,159 @@ class ImageFXFlowAutomation(BaseAutomation):
         await human_scroll(page)
 
         new_saved_paths = []
+        captured_response_urls: set[str] = set()
         can_capture = False
 
         async def handle_response(response):
             nonlocal new_saved_paths
-            if not can_capture: return
-            
+            if not can_capture:
+                return
+
             content_type = response.headers.get("content-type", "")
-            if "image/" in content_type:
-                try:
-                    body = await response.body()
-                    if len(body) > 200000:
-                        timestamp = int(time.time())
-                        path = dest_dir / f"FLOW_IMG_{timestamp}_{len(new_saved_paths)}.jpg"
-                        path.write_bytes(body)
-                        new_saved_paths.append(path)
-                        log.info(f"Nuova immagine catturata: {path.name}")
-                except: pass
+            if "image/" not in content_type:
+                return
+
+            response_url = response.url
+            if "flow-content.google/image/" not in response_url and "media.getMediaUrlRedirect" not in response_url:
+                return
+            if response_url in captured_response_urls:
+                return
+
+            try:
+                body = await response.body()
+                if not body:
+                    return
+
+                ext = ".jpg"
+                if "png" in content_type:
+                    ext = ".png"
+
+                timestamp = int(time.time())
+                path = dest_dir / f"FLOW_IMG_{timestamp}_{len(new_saved_paths)}{ext}"
+                path.write_bytes(body)
+                captured_response_urls.add(response_url)
+                new_saved_paths.append(path)
+                log.info("Nuova immagine Flow catturata: %s url=%s", path.name, response_url)
+            except Exception as e:
+                log.warning("Failed to capture Flow image response url=%s err=%s", response_url, e)
 
         page.on("response", handle_response)
 
         try:
-            prompt_xpath = 'xpath=/html/body/div[2]/div[1]/div[5]/div/div/div[1]/div'
-            await page.wait_for_selector(prompt_xpath)
-            
+            prompt_locator = None
+            for selector in self.PROMPT_SELECTORS:
+                loc = page.locator(selector)
+                if await loc.count():
+                    prompt_locator = loc.first
+                    log.info("Found Flow prompt selector=%s", selector)
+                    break
+            if prompt_locator is None:
+                raise RuntimeError("Flow prompt field not found.")
+
             await human_delay(2000, 5000)
-            await page.click(prompt_xpath)
-            await human_delay(500, 1500)
-            
-            await page.type(prompt_xpath, full_prompt, delay=random.randint(40, 180))
+            tag_name = await prompt_locator.evaluate("(el) => el.tagName")
+            if tag_name == "TEXTAREA":
+                await prompt_locator.fill(full_prompt)
+            else:
+                await prompt_locator.click()
+                await human_delay(500, 1500)
+                await page.keyboard.type(full_prompt, delay=random.randint(40, 180))
             await human_delay(1000, 3000)
-            
-            await page.keyboard.press("Enter")
-            
-            await asyncio.sleep(5)
+
+            generate_locator = None
+            for selector in self.GENERATE_BUTTON_SELECTORS:
+                loc = page.locator(selector)
+                if await loc.count():
+                    generate_locator = loc.last
+                    log.info("Found Flow generate selector=%s count=%d", selector, await loc.count())
+                    break
+            if generate_locator is None:
+                raise RuntimeError("Flow generate button not found.")
+
+            existing_images = set()
+            for selector in self.GENERATED_IMAGE_SELECTORS:
+                loc = page.locator(selector)
+                for idx in range(await loc.count()):
+                    src = await loc.nth(idx).get_attribute("src")
+                    if src:
+                        existing_images.add(src)
+
             can_capture = True
-            
-            wait_time = 60
-            log.info(f"In attesa della generazione ({wait_time}s)...")
-            await asyncio.sleep(wait_time)
-            
+            await generate_locator.click()
+
+            wait_time = 90
+            deadline = time.monotonic() + wait_time
+            idle_rounds = 0
+            seen_any_image = False
+            log.info("In attesa della generazione Flow (%ss)...", wait_time)
+
+            while time.monotonic() < deadline:
+                current_new: list[str] = []
+                for selector in self.GENERATED_IMAGE_SELECTORS:
+                    loc = page.locator(selector)
+                    count = await loc.count()
+                    for idx in range(count):
+                        src = await loc.nth(idx).get_attribute("src")
+                        if src and src not in existing_images and src not in current_new:
+                            current_new.append(src)
+
+                if current_new:
+                    seen_any_image = True
+                    idle_rounds = 0
+                    for src in current_new:
+                        existing_images.add(src)
+                        absolute_src = urllib.parse.urljoin("https://labs.google", src)
+                        file_name = urllib.parse.unquote(urllib.parse.parse_qs(urllib.parse.urlparse(absolute_src).query).get("name", [f"flow_{int(time.time())}"])[0])
+                        file_name = Path(file_name).stem or f"FLOW_IMG_{int(time.time())}"
+                        path = dest_dir / f"{file_name}.jpg"
+                        if path.exists():
+                            continue
+                        cookie_pairs = [f"{cookie['name']}={cookie['value']}" for cookie in await self.context.cookies([absolute_src])]
+                        cookie_header = "; ".join(cookie_pairs) if cookie_pairs else None
+                        if self._download_direct_url(absolute_src, path, referer=page.url, cookie_header=cookie_header):
+                            new_saved_paths.append(path)
+                            log.info("Nuova immagine Flow salvata: %s", path)
+                        else:
+                            log.warning("Download immagine Flow fallito: %s", absolute_src)
+                else:
+                    if seen_any_image:
+                        idle_rounds += 1
+                        if idle_rounds >= 3:
+                            break
+
+                await asyncio.sleep(5)
+
             return new_saved_paths
         except Exception as e:
             log.error(f"Errore generazione ImageFX Flow: {e}")
             return []
         finally:
             await page.close()
+
+    @staticmethod
+    def _download_direct_url(
+        image_url: str,
+        dest_path: Path,
+        referer: str | None = None,
+        cookie_header: str | None = None,
+    ) -> bool:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Accept": "image/*,*/*;q=0.8",
+        }
+        if referer:
+            headers["Referer"] = referer
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+
+        request = urllib.request.Request(image_url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                dest_path.write_bytes(response.read())
+            return True
+        except Exception as e:
+            log.warning("Failed to download Flow image url=%s err=%s", image_url, e)
+            return False
 
 # Helper per mantenere compatibilità e pulizia
 async def list_projects(account: str = None, headless: bool = True):
