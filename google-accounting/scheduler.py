@@ -1,49 +1,35 @@
 import logging
-import os
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from config import SCHEDULE_CRON, SESSIONS_DIR
+from config import SCHEDULE_CRON
+from drive_client import list_vids_projects
 
 log = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 
 
 async def _sync_all():
-    from playwright_client import list_projects, download_video
+    from playwright_client import sync_project
 
     log.info("Scheduled sync started at %s", datetime.now().isoformat())
-    
-    if not SESSIONS_DIR.exists():
-        log.warning("No sessions directory found. Skipping sync.")
+
+    try:
+        projects = list_vids_projects()
+    except Exception as e:
+        log.error("Failed to list Vids projects from Drive: %s", e)
         return
 
-    session_files = list(SESSIONS_DIR.glob("*.json"))
-    if not session_files:
-        log.warning("No session files found. Skipping sync.")
-        return
-
-    for session_file in session_files:
-        account = session_file.stem
-        log.info("Syncing account: %s", account)
-        
+    downloaded = 0
+    for project in projects:
         try:
-            projects = await list_projects(account=account)
-            downloaded = 0
-
-            for project in projects:
-                try:
-                    path = await download_video(project["id"], account=account)
-                    log.info("[%s] Downloaded: %s -> %s", account, project.get("name"), path)
-                    downloaded += 1
-                except Exception as e:
-                    log.error("[%s] Error syncing project %s: %s", account, project.get("name"), e)
-
-            log.info("[%s] Sync complete. Downloaded %d files.", account, downloaded)
+            paths = await sync_project(project["id"], file_type="all")
+            log.info("Downloaded %d file(s) for %s", len(paths), project.get("name"))
+            downloaded += len(paths)
         except Exception as e:
-            log.error("Failed to sync account %s: %s", account, e)
+            log.error("Error syncing project %s: %s", project.get("name"), e)
 
-    log.info("Global scheduled sync complete.")
+    log.info("Global scheduled sync complete. Downloaded %d files.", downloaded)
 
 
 def start(custom_cron: str | None = None):

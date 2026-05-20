@@ -9,6 +9,8 @@ web-admin/node_modules/
 *.tmp
 tmp/
 coverage.out
+logs/
+**/__pycache__/
 
 # Environment and Secrets
 .env
@@ -40,3 +42,22 @@ data/
 *.db.sqlite
 *.db.sqlite-wal
 *.db.sqlite-shm
+
+# Google Accounting local state
+google-accounting/sessions/
+sessions/
+google-accounting/logs/
+google-accounting/deliverables/
+deliverables/
+
+# Local debug artifacts
+auth_check_flow.png
+dashboard_check.png
+dashboard_success.png
+debug_vids_ui.png
+flow_check.png
+flow_live_debug.png
+generation_live_check.png
+login_check.png
+login_step_1.png
+vids_content.html

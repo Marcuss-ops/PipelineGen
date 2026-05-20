@@ -2,17 +2,22 @@
 import os
 import json
 import argparse
+import urllib.parse
+from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
+ROOT = Path(__file__).resolve().parent.parent
+
 # Scopes required for Google Drive access
-SCOPES = ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.metadata.readonly']
+SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 def main():
     parser = argparse.ArgumentParser(description='Generate Google Drive token.json for PipelineGen')
-    parser.add_argument('--credentials', default='credentials.json', help='Path to credentials.json')
-    parser.add_argument('--token', default='token.json', help='Path to output token.json')
+    parser.add_argument('--credentials', default=str(ROOT / 'credentials.json'), help='Path to credentials.json')
+    parser.add_argument('--token', default=str(ROOT / 'token.json'), help='Path to output token.json')
+    parser.add_argument('--console', action='store_true', help='Use console auth instead of local server')
     args = parser.parse_args()
 
     creds = None
@@ -40,7 +45,20 @@ def main():
 
             print("Starting OAuth2 flow...")
             flow = InstalledAppFlow.from_client_secrets_file(args.credentials, SCOPES)
-            creds = flow.run_local_server(port=0)
+            if args.console:
+                auth_url, _ = flow.authorization_url(
+                    access_type="offline",
+                    prompt="consent",
+                    include_granted_scopes="true",
+                )
+                print("\nOpen this URL in your browser:\n")
+                print(auth_url)
+                print("\nPaste the authorization code here: ", end="", flush=True)
+                code = input().strip()
+                flow.fetch_token(code=code)
+                creds = flow.credentials
+            else:
+                creds = flow.run_local_server(port=0)
 
         # Save the credentials for the next run in the format expected by the Go app
         # Go app expects: access_token, token_type, refresh_token, expiry

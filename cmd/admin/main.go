@@ -22,6 +22,7 @@ func main() {
 		"backfill-hash-v2":              runBackfillHashV2,
 		"backfill-asset-index":          runBackfillAssetIndex,
 		"backfill-asset-tree":           runBackfillAssetTree,
+		"google-generate-video":         runGoogleGenerateVideo,
 		"cleanup-orphans":               runCleanupOrphans,
 		"cleanup-all-orphans":           runCleanupAllOrphans,
 		"cleanup-artlist-empty-folders": runCleanupArtlistEmptyFolders,
@@ -57,6 +58,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  backfill-hash-v2")
 	fmt.Fprintln(os.Stderr, "  backfill-asset-index")
 	fmt.Fprintln(os.Stderr, "  backfill-asset-tree")
+	fmt.Fprintln(os.Stderr, "  google-generate-video")
 	fmt.Fprintln(os.Stderr, "  cleanup-orphans")
 	fmt.Fprintln(os.Stderr, "  cleanup-all-orphans")
 	fmt.Fprintln(os.Stderr, "  cleanup-artlist-empty-folders")

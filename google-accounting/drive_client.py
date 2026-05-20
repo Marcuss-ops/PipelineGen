@@ -1,5 +1,6 @@
 import os
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from google.oauth2.credentials import Credentials
@@ -8,22 +9,50 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import aiofiles
-from config import GOOGLE_CREDENTIALS_PATH, DOWNLOAD_DIR, DRIVE_SCOPES, VIDS_MIME_TYPE
-
-TOKEN_PATH = "token.json"
+from config import GOOGLE_CREDENTIALS_PATH, TOKEN_PATH, DOWNLOAD_DIR, DRIVE_SCOPES, VIDS_MIME_TYPE
 
 
 def _get_credentials() -> Credentials:
     creds = None
-    if Path(TOKEN_PATH).exists():
-        creds = Credentials.from_authorized_user_file(TOKEN_PATH, DRIVE_SCOPES)
+    if TOKEN_PATH.exists():
+        try:
+            creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), DRIVE_SCOPES)
+        except ValueError:
+            import json
+
+            token_data = json.loads(TOKEN_PATH.read_text())
+            access_token = token_data.get("access_token")
+            refresh_token = token_data.get("refresh_token")
+            expiry = token_data.get("expiry")
+            if access_token and refresh_token:
+                client_data = json.loads(Path(GOOGLE_CREDENTIALS_PATH).read_text())
+                installed = client_data.get("installed") or client_data.get("web") or {}
+                expiry_dt = None
+                if expiry:
+                    try:
+                        expiry_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                        if expiry_dt.tzinfo is None:
+                            expiry_dt = expiry_dt.replace(tzinfo=timezone.utc)
+                    except ValueError:
+                        expiry_dt = None
+                creds = Credentials(
+                    token=access_token,
+                    refresh_token=refresh_token,
+                    token_uri=installed.get("token_uri", "https://oauth2.googleapis.com/token"),
+                    client_id=installed.get("client_id"),
+                    client_secret=installed.get("client_secret"),
+                    scopes=DRIVE_SCOPES,
+                    expiry=expiry_dt,
+                )
+            else:
+                raise
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                GOOGLE_CREDENTIALS_PATH, DRIVE_SCOPES
+                str(GOOGLE_CREDENTIALS_PATH), DRIVE_SCOPES
             )
             creds = flow.run_local_server(port=0)
         with open(TOKEN_PATH, "w") as f:

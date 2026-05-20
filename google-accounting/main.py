@@ -4,6 +4,7 @@ import time
 import asyncio
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
@@ -15,9 +16,9 @@ from playwright_client import (
     generate_flow_images
 )
 
-# NOTE: These will be implemented in playwright_client.py shortly
 from playwright_client import list_projects, sync_project
 
+Path("logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -49,13 +50,6 @@ class DownloadRequest(BaseModel):
     account: Optional[str] = None
 
 
-class BulkDownloadRequest(BaseModel):
-    video_ids: list[str]
-    file_type: Literal["video", "image", "all"] = "all"
-    headless: bool = False
-    account: Optional[str] = None
-
-
 class GenerateRequest(BaseModel):
     video_id: str
     prompt: str
@@ -68,6 +62,32 @@ class FlowImageRequest(BaseModel):
     style: Optional[str] = None
     headless: bool = True
     account: Optional[str] = None
+
+
+class SyncRequest(BaseModel):
+    video_id: str
+    file_type: Literal["video", "image", "all"] = "all"
+    headless: bool = True
+    account: Optional[str] = None
+
+
+async def _enqueue_download(req, background_tasks: BackgroundTasks):
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "pending", "video_id": req.video_id, "account": req.account}
+
+    async def _run():
+        _jobs[job_id]["status"] = "running"
+        try:
+            paths = await sync_project(req.video_id, req.file_type, account=req.account, headless=req.headless)
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["files"] = [str(p) for p in paths]
+        except Exception as e:
+            _jobs[job_id]["status"] = "failed"
+            _jobs[job_id]["error"] = str(e)
+            log.error("Download failed for %s: %s", req.video_id, e)
+
+    background_tasks.add_task(_run)
+    return {"job_id": job_id, "status": "pending"}
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -155,25 +175,16 @@ async def get_local_downloads():
     }
 
 
+@app.post("/sync")
+async def sync(req: SyncRequest, background_tasks: BackgroundTasks):
+    """Compatibility alias for downloading exported Google Vids assets."""
+    return await _enqueue_download(req, background_tasks)
+
+
 @app.post("/download")
 async def download(req: DownloadRequest, background_tasks: BackgroundTasks):
     """Download video and/or images from a Google Vids project."""
-    job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "video_id": req.video_id, "account": req.account}
-
-    async def _run():
-        _jobs[job_id]["status"] = "running"
-        try:
-            paths = await sync_project(req.video_id, req.file_type, account=req.account, headless=req.headless)
-            _jobs[job_id]["status"] = "done"
-            _jobs[job_id]["files"] = [str(p) for p in paths]
-        except Exception as e:
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(e)
-            log.error("Download failed for %s: %s", req.video_id, e)
-
-    background_tasks.add_task(_run)
-    return {"job_id": job_id, "status": "pending"}
+    return await _enqueue_download(req, background_tasks)
 
 
 @app.get("/status/{job_id}")

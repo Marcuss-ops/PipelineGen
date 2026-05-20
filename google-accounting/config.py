@@ -4,10 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json")
-SESSIONS_DIR = Path(os.getenv("SESSIONS_DIR", "sessions"))
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+GOOGLE_CREDENTIALS_PATH = Path(os.getenv("GOOGLE_CREDENTIALS_PATH", str(BASE_DIR / "credentials.json")))
+TOKEN_PATH = Path(os.getenv("GOOGLE_TOKEN_PATH", str(BASE_DIR / "token.json")))
+SESSIONS_DIR = Path(os.getenv("SESSIONS_DIR", str(BASE_DIR / "google-accounting" / "sessions")))
 DEFAULT_ACCOUNT = os.getenv("DEFAULT_ACCOUNT", "default")
-DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", "./downloads"))
+DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", str(BASE_DIR / "data" / "google_vids")))
 SCHEDULE_CRON = os.getenv("SCHEDULE_CRON", "0 2 * * *")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
