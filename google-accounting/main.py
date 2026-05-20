@@ -32,6 +32,30 @@ log = logging.getLogger(__name__)
 _jobs: dict[str, dict] = {}
 
 
+def _now_ts() -> float:
+    return time.time()
+
+
+def _new_job(job_id: str, **fields):
+    _jobs[job_id] = {
+        "status": "pending",
+        "progress": 0,
+        "current_step": "queued",
+        "attempts": 1,
+        "last_log": "",
+        "created_at": _now_ts(),
+        "updated_at": _now_ts(),
+        **fields,
+    }
+
+
+def _update_job(job_id: str, **fields):
+    job = _jobs.setdefault(job_id, {})
+    job.update(fields)
+    job["updated_at"] = _now_ts()
+    return job
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_dirs()
@@ -73,17 +97,15 @@ class SyncRequest(BaseModel):
 
 async def _enqueue_download(req, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "video_id": req.video_id, "account": req.account}
+    _new_job(job_id, video_id=req.video_id, account=req.account, file_type=req.file_type)
 
     async def _run():
-        _jobs[job_id]["status"] = "running"
+        _update_job(job_id, status="running", progress=5, current_step="listing_exported_files", last_log="Starting download sync")
         try:
             paths = await sync_project(req.video_id, req.file_type, account=req.account, headless=req.headless)
-            _jobs[job_id]["status"] = "done"
-            _jobs[job_id]["files"] = [str(p) for p in paths]
+            _update_job(job_id, status="done", progress=100, current_step="completed", files=[str(p) for p in paths], last_log="Download completed")
         except Exception as e:
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(e)
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
             log.error("Download failed for %s: %s", req.video_id, e)
 
     background_tasks.add_task(_run)
@@ -96,27 +118,19 @@ async def _enqueue_download(req, background_tasks: BackgroundTasks):
 async def generate_vids_video_endpoint(req: GenerateRequest, background_tasks: BackgroundTasks):
     """Generates and downloads a video via Google Vids."""
     job_id = f"vids-{str(uuid.uuid4())[:8]}"
-    _jobs[job_id] = {
-        "status": "pending", 
-        "video_id": req.video_id, 
-        "prompt": req.prompt,
-        "account": req.account,
-        "created_at": time.time()
-    }
+    _new_job(job_id, video_id=req.video_id, prompt=req.prompt, account=req.account, mode="vids")
 
     async def _run():
-        _jobs[job_id]["status"] = "running"
+        _update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids")
         try:
+            _update_job(job_id, progress=30, current_step="generating", last_log="Submitting Vids prompt")
             video_path = await generate_video_ai_v2(req.video_id, req.prompt, account=req.account, headless=req.headless)
             if video_path:
-                _jobs[job_id]["status"] = "done"
-                _jobs[job_id]["file_path"] = video_path
+                _update_job(job_id, status="done", progress=100, current_step="completed", file_path=video_path, last_log="Vids generation completed")
             else:
-                _jobs[job_id]["status"] = "failed"
-                _jobs[job_id]["error"] = "Generation/Download failed."
+                _update_job(job_id, status="failed", current_step="failed", error="Generation/Download failed.", last_log="Generation/Download failed.")
         except Exception as e:
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(e)
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "pending"}
@@ -125,16 +139,12 @@ async def generate_vids_video_endpoint(req: GenerateRequest, background_tasks: B
 async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks: BackgroundTasks):
     """Generates images via Google Labs ImageFX Flow."""
     job_id = f"flow-{str(uuid.uuid4())[:8]}"
-    _jobs[job_id] = {
-        "status": "pending", 
-        "prompt": req.prompt,
-        "account": req.account,
-        "created_at": time.time()
-    }
+    _new_job(job_id, prompt=req.prompt, account=req.account, project_id=req.project_id, style=req.style, mode="flow")
 
     async def _run():
-        _jobs[job_id]["status"] = "running"
+        _update_job(job_id, status="running", progress=10, current_step="opening_flow", last_log="Opening Google Flow")
         try:
+            _update_job(job_id, progress=35, current_step="generating", last_log="Submitting Flow prompt")
             paths = await generate_flow_images(
                 req.prompt, 
                 project_id=req.project_id, 
@@ -143,14 +153,11 @@ async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks:
                 headless=req.headless
             )
             if paths:
-                _jobs[job_id]["status"] = "done"
-                _jobs[job_id]["files"] = paths
+                _update_job(job_id, status="done", progress=100, current_step="completed", files=paths, last_log="Flow generation completed")
             else:
-                _jobs[job_id]["status"] = "failed"
-                _jobs[job_id]["error"] = "Generation failed or no images captured."
+                _update_job(job_id, status="failed", current_step="failed", error="Generation failed or no images captured.", last_log="Generation failed or no images captured.")
         except Exception as e:
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(e)
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "pending"}

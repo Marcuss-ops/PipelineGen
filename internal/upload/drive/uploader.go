@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/pkg/hashutil"
 	drivequery "velox/go-master/internal/storage/drive"
 )
 
@@ -25,6 +26,14 @@ type UploadResult struct {
 	WebViewLink  string `json:"web_view_link"`
 	DownloadLink string `json:"download_link"`
 	MD5Checksum  string `json:"md5_checksum"`
+}
+
+// RemoteFile describes a file already present on Google Drive.
+type RemoteFile struct {
+	FileID      string
+	Name        string
+	WebViewLink string
+	MD5Checksum string
 }
 
 // UploadFile uploads a file to the specified Drive folder.
@@ -78,6 +87,64 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 		DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
 		MD5Checksum:  created.Md5Checksum,
 	}, nil
+}
+
+// FindFileByName returns the first non-trashed file in a folder with the given name.
+func (u *Uploader) FindFileByName(ctx context.Context, folderID, filename string) (*RemoteFile, error) {
+	if u.Service == nil {
+		return nil, fmt.Errorf("drive service not configured")
+	}
+	if strings.TrimSpace(folderID) == "" || strings.TrimSpace(filename) == "" {
+		return nil, nil
+	}
+
+	query := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", strings.ReplaceAll(filename, "'", "\\'"), folderID)
+	list, err := u.Service.Files.List().
+		Q(query).
+		Fields("files(id, name, webViewLink, md5Checksum)").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return nil, err
+	}
+	if len(list.Files) == 0 {
+		return nil, nil
+	}
+
+	file := list.Files[0]
+	return &RemoteFile{
+		FileID:      file.Id,
+		Name:        file.Name,
+		WebViewLink: file.WebViewLink,
+		MD5Checksum: file.Md5Checksum,
+	}, nil
+}
+
+// UploadFileIfChanged uploads a file only when the Drive file does not already exist with the same hash.
+func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error) {
+	localHash, err := hashutil.MD5File(localPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to hash local file: %w", err)
+	}
+
+	existing, err := u.FindFileByName(ctx, folderID, filename)
+	if err != nil {
+		return nil, false, err
+	}
+	if existing != nil && existing.MD5Checksum != "" && strings.EqualFold(existing.MD5Checksum, localHash) {
+		return &UploadResult{
+			FileID:       existing.FileID,
+			WebViewLink:  existing.WebViewLink,
+			DownloadLink: "https://drive.google.com/uc?id=" + existing.FileID,
+			MD5Checksum:  existing.MD5Checksum,
+		}, true, nil
+	}
+
+	result, err := u.UploadFile(ctx, localPath, folderID, filename)
+	if err != nil {
+		return nil, false, err
+	}
+	return result, false, nil
 }
 
 // GetOrCreateFolder gets an existing folder or creates it.
