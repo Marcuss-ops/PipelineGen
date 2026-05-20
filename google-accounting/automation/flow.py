@@ -6,6 +6,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from playwright.async_api import Page
+
 from .base import (
     DOWNLOAD_DIR,
     BaseAutomation,

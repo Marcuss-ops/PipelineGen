@@ -5,15 +5,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	imgservice "velox/go-master/internal/media/images"
+	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/pkg/apiutil"
 )
 
 type Handler struct {
-	service *imgservice.Service
+	service   *imgservice.Service
+	ingestSvc *ingest.Service
 }
 
 func NewHandler(service *imgservice.Service) *Handler {
 	return &Handler{service: service}
+}
+
+func (h *Handler) SetIngestService(svc *ingest.Service) {
+	h.ingestSvc = svc
 }
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
@@ -58,6 +64,25 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 
 	slug := strings.ReplaceAll(strings.ToLower(req.Subject), " ", "-")
+
+	if h.ingestSvc != nil && req.URL != "" {
+		res, err := h.ingestSvc.Ingest(c.Request.Context(), &ingest.Request{
+			Kind:   string(ingest.KindImage),
+			URL:    req.URL,
+			Name:   req.Name,
+			Group:  slug,
+			Tags:   req.Tags,
+			Source: "upload",
+		})
+		if err != nil {
+			apiutil.InternalError(c, err)
+			return
+		}
+		apiutil.OK(c, res)
+		return
+	}
+
+	// Fallback
 	asset, err := h.service.SearchAndDownload(slug, req.Name, req.URL, req.Lang, req.Tags)
 	if err != nil {
 		apiutil.InternalError(c, err)

@@ -11,8 +11,9 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/repository/clips"
 )
 
 // Enricher defines the contract for AI-based metadata enrichment of clips.
@@ -23,9 +24,10 @@ type Enricher interface {
 
 // Service handles indexing of video assets
 type Service struct {
-	repo     *clips.Repository
-	enricher Enricher
-	log      *zap.Logger
+	repo      *clips.Repository
+	enricher  Enricher
+	log       *zap.Logger
+	ingestSvc *ingest.Service
 }
 
 // NewService creates a new indexing service
@@ -35,6 +37,10 @@ func NewService(repo *clips.Repository, enricher Enricher, log *zap.Logger) *Ser
 		enricher: enricher,
 		log:      log,
 	}
+}
+
+func (s *Service) SetIngestService(svc *ingest.Service) {
+	s.ingestSvc = svc
 }
 
 // IndexDirectory scans a directory and updates the database with found clips
@@ -103,7 +109,47 @@ func (s *Service) indexSingleFile(ctx context.Context, rootDir, path string) {
 
 	filename := filepath.Base(path)
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	tags := strings.Split(strings.ToLower(name), " ")
 
+	// Se l'ingest pipeline è disponibile, usala
+	if s.ingestSvc != nil {
+		s.indexViaIngest(ctx, path, name, filename, folderPath, tags)
+		return
+	}
+
+	// Fallback: path legacy
+	s.indexDirect(ctx, path, name, filename, folderPath, tags)
+}
+
+func (s *Service) indexViaIngest(ctx context.Context, path, name, filename, folderPath string, tags []string) {
+	result, err := s.ingestSvc.Ingest(ctx, &ingest.Request{
+		Kind:      string(ingest.KindStock),
+		LocalPath: path,
+		Name:      name,
+		Filename:  filename,
+		Group:     folderPath,
+		Subfolder: folderPath,
+		Source:    "local-filesystem",
+		Tags:      tags,
+	})
+	if err != nil {
+		s.log.Error("Ingest failed for indexed file", zap.String("path", path), zap.Error(err))
+		return
+	}
+
+	// Trigger enrichment using the ingest-generated ID
+	if s.enricher != nil && result != nil {
+		clipID := result.ID
+		if clipID == "" {
+			clipID = result.FileHash
+		}
+		if err := s.enricher.IndexClip(ctx, clipID); err != nil {
+			s.log.Warn("Enrichment failed for clip", zap.String("id", clipID), zap.Error(err))
+		}
+	}
+}
+
+func (s *Service) indexDirect(ctx context.Context, path, name, filename, folderPath string, tags []string) {
 	// Check if clip already exists by folder_path + filename to avoid duplicates
 	existingClip, err := s.repo.GetClipByFolderAndFilename(ctx, folderPath, filename)
 	if err != nil {
@@ -125,7 +171,7 @@ func (s *Service) indexSingleFile(ctx context.Context, rootDir, path string) {
 		Group:        folderPath,
 		MediaType:    "clip",
 		DownloadLink: "file://" + path,
-		Tags:         strings.Split(strings.ToLower(name), " "),
+		Tags:         tags,
 	}
 
 	if err := s.repo.UpsertClip(ctx, clip); err != nil {

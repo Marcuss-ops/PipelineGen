@@ -31,21 +31,7 @@ func NewHandler(cfg *config.Config, log *zap.Logger) *Handler {
 
 // ListProjects lists available Google Vids projects
 func (h *Handler) ListProjects(c *gin.Context) {
-	resp, err := http.Get(fmt.Sprintf("%s/list", strings.TrimRight(h.cfg.GoogleAccounting.ServerURL, "/")))
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var data interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		c.Data(resp.StatusCode, "application/json", body)
-		return
-	}
-	c.JSON(resp.StatusCode, data)
+	h.proxyGoogleAccounting(c, http.MethodGet, "/list", nil)
 }
 
 // SyncProject triggers export and download for a project
@@ -68,33 +54,7 @@ func (h *Handler) SyncProject(c *gin.Context) {
 		return
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("%s/download", strings.TrimRight(h.cfg.GoogleAccounting.ServerURL, "/")),
-		bytes.NewReader(payload),
-	)
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var data interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		c.Data(resp.StatusCode, "application/json", body)
-		return
-	}
-	c.JSON(resp.StatusCode, data)
+	h.proxyGoogleAccounting(c, http.MethodPost, "/download", payload)
 }
 
 // GenerateVideo triggers Google Vids AI video generation for a real project.
@@ -120,33 +80,7 @@ func (h *Handler) GenerateVideo(c *gin.Context) {
 		return
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("%s/generate-vids-video", strings.TrimRight(h.cfg.GoogleAccounting.ServerURL, "/")),
-		bytes.NewReader(payload),
-	)
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var data interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		c.Data(resp.StatusCode, "application/json", body)
-		return
-	}
-	c.JSON(resp.StatusCode, data)
+	h.proxyGoogleAccounting(c, http.MethodPost, "/generate-vids-video", payload)
 }
 
 // GenerateFlowImages triggers Google Labs Flow image generation.
@@ -168,33 +102,7 @@ func (h *Handler) GenerateFlowImages(c *gin.Context) {
 		return
 	}
 
-	req, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("%s/generate-flow-images", strings.TrimRight(h.cfg.GoogleAccounting.ServerURL, "/")),
-		bytes.NewReader(payload),
-	)
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var data interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		c.Data(resp.StatusCode, "application/json", body)
-		return
-	}
-	c.JSON(resp.StatusCode, data)
+	h.proxyGoogleAccounting(c, http.MethodPost, "/generate-flow-images", payload)
 }
 
 // JobStatus proxies the status of a Google Accounting background job.
@@ -205,21 +113,7 @@ func (h *Handler) JobStatus(c *gin.Context) {
 		return
 	}
 
-	resp, err := http.Get(fmt.Sprintf("%s/status/%s", strings.TrimRight(h.cfg.GoogleAccounting.ServerURL, "/"), jobID))
-	if err != nil {
-		h.log.Error("failed to call google accounting service", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var data interface{}
-	if err := json.Unmarshal(body, &data); err != nil {
-		c.Data(resp.StatusCode, "application/json", body)
-		return
-	}
-	c.JSON(resp.StatusCode, data)
+	h.proxyGoogleAccounting(c, http.MethodGet, "/status/"+jobID, nil)
 }
 
 // ListMedia exposes generated Google media files with browser-openable URLs.
@@ -245,7 +139,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 // RegisterRoutes registers the handler routes
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	group := rg.Group("/google-accounting")
+	group := rg
 	{
 		group.GET("/list", h.ListProjects)
 		group.POST("/sync", h.SyncProject)
@@ -255,4 +149,42 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/media", h.ListMedia)
 		group.GET("/status/:job_id", h.JobStatus)
 	}
+}
+
+func (h *Handler) proxyGoogleAccounting(c *gin.Context, method, path string, body []byte) {
+	contentType := ""
+	if len(body) > 0 {
+		contentType = "application/json"
+	}
+
+	resp, err := h.doGoogleAccountingRequest(c, method, path, body, contentType)
+	if err != nil {
+		h.log.Error("failed to call google accounting service", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call google accounting service"})
+		return
+	}
+	defer resp.Body.Close()
+
+	writeGoogleAccountingResponse(c, resp)
+}
+
+func (h *Handler) doGoogleAccountingRequest(c *gin.Context, method, path string, body []byte, contentType string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(c.Request.Context(), method, fmt.Sprintf("%s%s", strings.TrimRight(h.cfg.GoogleAccounting.ServerURL, "/"), path), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	return http.DefaultClient.Do(req)
+}
+
+func writeGoogleAccountingResponse(c *gin.Context, resp *http.Response) {
+	body, _ := io.ReadAll(resp.Body)
+	var data interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		c.Data(resp.StatusCode, "application/json", body)
+		return
+	}
+	c.JSON(resp.StatusCode, data)
 }

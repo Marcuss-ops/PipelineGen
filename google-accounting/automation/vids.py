@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from playwright.async_api import Page
+
 from drive_client import download_file, list_exported_files
 
 from .base import (

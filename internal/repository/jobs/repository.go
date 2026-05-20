@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -16,8 +17,9 @@ import (
 )
 
 type Repository struct {
-	db  *sql.DB
-	log *zap.Logger
+	db      *sql.DB
+	log     *zap.Logger
+	claimMu sync.Mutex
 }
 
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
@@ -186,6 +188,9 @@ func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*mo
 }
 
 func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []models.JobType) (*models.Job, error) {
+	r.claimMu.Lock()
+	defer r.claimMu.Unlock()
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)

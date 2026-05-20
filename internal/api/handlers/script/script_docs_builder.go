@@ -9,16 +9,16 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/ml/ollama/prompts"
-	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/internal/repository/clips"
-	artlistSvc "velox/go-master/internal/sources/artlist"
 	"velox/go-master/internal/media/association"
 	clipresolver "velox/go-master/internal/media/clipresolver"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/ml/ollama"
+	"velox/go-master/internal/ml/ollama/prompts"
+	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/pkg/textutil"
+	"velox/go-master/internal/repository/clips"
+	artlistSvc "velox/go-master/internal/sources/artlist"
 	driveutil "velox/go-master/internal/storage/drive"
 )
 
@@ -68,6 +68,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	var specialNames []string
 	var importantWords []string
 	var artlistPhrases []string
+	var importantWordImages map[string]string
 
 	if analysis != nil && len(analysis.SegmentEntities) > 0 {
 		entities := analysis.SegmentEntities[0]
@@ -114,7 +115,8 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	// 4. Resolve Images through section builder
 	var imageSection ScriptSection
 	if imgService != nil {
-		imageSection = buildImagePlanningSection(req, vPlan, imgService)
+		imageSection = buildImagePlanningSection(ctx, req, timeline, vPlan, phrases, importantWords, imgService)
+		importantWordImages = buildImportantWordImageMap(ctx, req, timeline, phrases, importantWords, imgService)
 	}
 
 	// 4b. Resolve Artlist Phrases
@@ -133,7 +135,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 	importantWordsSection := ScriptSection{
 		Title: "🗝️ IMPORTANT WORDS",
-		Body:  renderImportantWords(importantWords),
+		Body:  renderImportantWords(importantWords, importantWordImages),
 	}
 
 	sections := []ScriptSection{

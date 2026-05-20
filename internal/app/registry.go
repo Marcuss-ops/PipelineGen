@@ -22,6 +22,7 @@ type RegistryWiring struct {
 	ScriptDocs       *ScriptDocsWiring
 	Voiceover        *VoiceoverWiring
 	Images           *ImagesWiring
+	MediaIngest      *MediaIngestWiring
 	Drive            *DriveWiring
 	Scraper          *ScraperWiring
 	ContentPkg       *ContentPackageWiring
@@ -100,6 +101,16 @@ func WireRegistry(
 			}
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.Images = w.(*ImagesWiring) }},
+		{"MediaIngest", func() (module.Module, interface{}, error) {
+			w, err := WireMediaIngest(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			if w == nil {
+				return nil, nil, nil
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.MediaIngest = w.(*MediaIngestWiring) }},
 		{"Drive", func() (module.Module, interface{}, error) {
 			w, err := WireDrive(cfg, log, coreDeps)
 			if err != nil {
@@ -145,6 +156,22 @@ func WireRegistry(
 	if wiring.ScriptDocs != nil && wiring.ArtlistSvc != nil && wiring.ScriptDocs.Handler != nil {
 		wiring.ScriptDocs.Handler.SetArtlistService(wiring.ArtlistSvc.Service)
 		log.Info("injected ArtlistService into ScriptDocsHandler")
+	}
+
+	if wiring.Images != nil && wiring.MediaIngest != nil {
+		if wiring.Images.Handler != nil {
+			wiring.Images.Handler.SetIngestService(wiring.MediaIngest.Service)
+			log.Info("injected MediaIngest service into ImagesHandler")
+		}
+		if coreDeps.ImageService != nil {
+			coreDeps.ImageService.SetIngestService(wiring.MediaIngest.Service)
+			log.Info("injected MediaIngest service into ImagesService")
+		}
+	}
+
+	if coreDeps.IndexingService != nil && wiring.MediaIngest != nil {
+		coreDeps.IndexingService.SetIngestService(wiring.MediaIngest.Service)
+		log.Info("injected MediaIngest service into IndexingService")
 	}
 
 	// Remaining specific wiring

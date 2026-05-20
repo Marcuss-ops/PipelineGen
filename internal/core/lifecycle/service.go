@@ -139,8 +139,10 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			DriveFileID:  driveFileID,
 			DownloadLink: downloadLink,
 			FileHash:     fileHash,
+			ContentHash:  fileHash,
 			Metadata:     input.Metadata,
 			Status:       "processed",
+			Duration:     input.Duration,
 			SourceID:     input.SourceID,
 			Subfolder:    input.Subfolder,
 		}

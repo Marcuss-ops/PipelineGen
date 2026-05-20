@@ -36,6 +36,7 @@ type FinalizeInput struct {
 	FileHash     string
 	Metadata     string
 
+	Duration     int
 	RequireLocal bool
 	RequireHash  bool
 	RequireDrive bool

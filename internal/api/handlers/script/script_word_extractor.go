@@ -1,6 +1,7 @@
 package script
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -42,8 +43,8 @@ func extractImportantWords(narrative string, max int) []string {
 	return result
 }
 
-// renderImportantWords formats words with 🔹 prefix
-func renderImportantWords(words []string) string {
+// renderImportantWords formats words with 🔹 prefix and optional image links.
+func renderImportantWords(words []string, images map[string]string) string {
 	if len(words) == 0 {
 		return "Nessuna parola importante rilevata."
 	}
@@ -52,6 +53,9 @@ func renderImportantWords(words []string) string {
 		b.WriteString("   🔹 ")
 		b.WriteString(w)
 		b.WriteString("\n")
+		if link := strings.TrimSpace(images[strings.ToLower(strings.TrimSpace(w))]); link != "" {
+			b.WriteString(fmt.Sprintf("      🖼️ %s\n", link))
+		}
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

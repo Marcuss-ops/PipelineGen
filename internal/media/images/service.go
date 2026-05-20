@@ -21,28 +21,33 @@ import (
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/ingest"
+	"velox/go-master/internal/media/models"
 	clipsRepo "velox/go-master/internal/repository/clips"
 	imagesRepo "velox/go-master/internal/repository/images"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/models"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
 type Service struct {
-	repo          *imagesRepo.Repository
-	stockRepo     *clipsRepo.Repository
-	client        *http.Client
-	log           *zap.Logger
-	dataDir       string
-	imagesDir     string
-	animationsDir string
-	driveFolderID string
-	driveSvc      *driveapi.Service
-	nvidiaAPIKey  string
-	nvidiaModel   string
-	scriptsDir    string
-	mu            sync.Mutex
+	repo                *imagesRepo.Repository
+	stockRepo           *clipsRepo.Repository
+	client              *http.Client
+	log                 *zap.Logger
+	dataDir             string
+	imagesDir           string
+	animationsDir       string
+	driveFolderID       string
+	driveSvc            *driveapi.Service
+	googleAccountingURL string
+	googleAccountingDir string
+	nvidiaAPIKey        string
+	nvidiaModel         string
+	scriptsDir          string
+	tempDir             string
+	ingestSvc           *ingest.Service
+	mu                  sync.Mutex
 }
 
 func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger) *Service {
@@ -51,18 +56,21 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 	animationsDir := filepath.Join(dataDir, cfg.Storage.AnimationsDir)
 
 	return &Service{
-		repo:          repo,
-		stockRepo:     stockRepo,
-		client:        &http.Client{Timeout: 30 * time.Second},
-		log:           log,
-		dataDir:       dataDir,
-		imagesDir:     imagesDir,
-		animationsDir: animationsDir,
-		driveFolderID: cfg.Drive.ImagesRootFolder,
-		driveSvc:      driveSvc,
-		nvidiaAPIKey:  cfg.External.NvidiaAPIKey,
-		nvidiaModel:   cfg.External.NvidiaModel,
-		scriptsDir:    cfg.Paths.PythonScriptsDir,
+		repo:                repo,
+		stockRepo:           stockRepo,
+		client:              &http.Client{Timeout: 30 * time.Second},
+		log:                 log,
+		dataDir:             dataDir,
+		imagesDir:           imagesDir,
+		animationsDir:       animationsDir,
+		driveFolderID:       cfg.Drive.ImagesRootFolder,
+		driveSvc:            driveSvc,
+		googleAccountingURL: strings.TrimSpace(cfg.GoogleAccounting.ServerURL),
+		googleAccountingDir: strings.TrimSpace(cfg.GoogleAccounting.DownloadDir),
+		nvidiaAPIKey:        cfg.External.NvidiaAPIKey,
+		nvidiaModel:         cfg.External.NvidiaModel,
+		scriptsDir:          cfg.Paths.PythonScriptsDir,
+		tempDir:             cfg.Storage.TempPath(),
 	}
 }
 
@@ -75,6 +83,15 @@ func (s *Service) SetNvidiaConfig(apiKey, model string) {
 
 func (s *Service) SetScriptsDir(dir string) {
 	s.scriptsDir = dir
+}
+
+func (s *Service) SetIngestService(svc *ingest.Service) {
+	s.ingestSvc = svc
+}
+
+func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir string) {
+	s.googleAccountingURL = strings.TrimSpace(serverURL)
+	s.googleAccountingDir = strings.TrimSpace(downloadDir)
 }
 
 // Slugify crea uno slug URL-friendly
@@ -342,19 +359,62 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 		return nil, err
 	}
 
-	// 1. Calcola Hash
+	// Legacy dedup: SHA256 check per immagini già salvate col vecchio path
 	hasher := sha256.New()
 	hasher.Write(content)
-	hash := hex.EncodeToString(hasher.Sum(nil))
+	legacyHash := hex.EncodeToString(hasher.Sum(nil))
 
-	// 2. Verifica se esiste già per Hash
-	if existing, err := s.repo.GetImageByHash(hash); err == nil && existing != nil {
-		s.log.Info("Image with this hash already exists", zap.String("hash", hash))
-		// Se abbiamo nuovi tag, potremmo volerli aggiungere? Per ora restituiamo l'esistente.
+	if existing, err := s.repo.GetImageByHash(legacyHash); err == nil && existing != nil {
+		s.log.Info("Image with this hash already exists (legacy SHA256)", zap.String("hash", legacyHash))
 		return existing, nil
 	}
 
-	// 3. Trova Soggetto (o crealo)
+	// Se l'ingest pipeline è disponibile, usala
+	if s.ingestSvc != nil {
+		return s.ingestViaPipeline(slug, content, filename, sourceURL, description, tags)
+	}
+
+	// Fallback: path diretto legacy
+	return s.ingestDirect(slug, content, filename, sourceURL, description, tags, legacyHash)
+}
+
+func (s *Service) ingestViaPipeline(slug string, content []byte, filename, sourceURL, description string, tags []string) (*models.ImageAsset, error) {
+	tmpDir, err := os.MkdirTemp(s.tempDir, "image-ingest-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tmpPath := filepath.Join(tmpDir, filename)
+	if err := os.WriteFile(tmpPath, content, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write temp file: %w", err)
+	}
+
+	result, err := s.ingestSvc.Ingest(context.Background(), &ingest.Request{
+		Kind:     string(ingest.KindImage),
+		LocalPath: tmpPath,
+		Name:     description,
+		Group:    slug,
+		Source:   "image",
+		SourceID: sourceURL,
+		Tags:     tags,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	asset, err := s.repo.GetImageByHash(result.FileHash)
+	if err != nil {
+		asset, err = s.repo.GetImageByHash(result.ContentHash)
+		if err != nil {
+			return nil, fmt.Errorf("image not found after ingest: %w", err)
+		}
+	}
+	return asset, nil
+}
+
+func (s *Service) ingestDirect(slug string, content []byte, filename, sourceURL, description string, tags []string, hash string) (*models.ImageAsset, error) {
+	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
 	if err != nil || subject == nil {
 		subject = &models.Subject{
@@ -367,7 +427,7 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 		}
 	}
 
-	// 4. Prepara percorsi
+	// 2. Prepara percorsi
 	ext := filepath.Ext(filename)
 	if ext == "" {
 		ext = ".jpg"
@@ -376,12 +436,12 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 	fullPath := filepath.Join(s.imagesDir, relPath)
 	os.MkdirAll(filepath.Dir(fullPath), 0755)
 
-	// 5. Salva il file fisico
+	// 3. Salva il file fisico
 	if err := os.WriteFile(fullPath, content, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write image file: %w", err)
 	}
 
-	// 6. Upload to Drive if configured
+	// 4. Upload to Drive if configured
 	var driveFileID string
 	if s.driveSvc != nil && s.driveFolderID != "" {
 		s.log.Info("Uploading image to Google Drive", zap.String("filename", filename), zap.String("folder_id", s.driveFolderID))
@@ -391,7 +451,6 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 			Parents: []string{s.driveFolderID},
 		}
 
-		// Use a new reader for the content
 		res, err := s.driveSvc.Files.Create(driveFile).
 			Media(strings.NewReader(string(content))).
 			Fields("id").
@@ -405,7 +464,7 @@ func (s *Service) IngestImage(slug string, data io.Reader, filename, sourceURL, 
 		}
 	}
 
-	// 7. Crea record DB
+	// 5. Crea record DB
 	asset := &models.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
@@ -505,6 +564,7 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int, tags [
 	var payload map[string]interface{}
 	var useCloudAuth bool
 	var sourceLabel string
+	resolvedModel := strings.TrimSpace(model)
 
 	// Default resolution if not provided
 	if width <= 0 {
@@ -514,7 +574,15 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int, tags [
 		height = 1024
 	}
 
-	switch model {
+	if resolvedModel == "" {
+		if s.nvidiaAPIKey != "" && s.nvidiaAPIKey != "PASTE_YOUR_NVIDIA_API_KEY_HERE" {
+			resolvedModel = "flux-1-dev"
+		} else {
+			resolvedModel = "local-nim"
+		}
+	}
+
+	switch resolvedModel {
 	case "flux-1-dev":
 		invokeURL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev"
 		payload = map[string]interface{}{
@@ -551,7 +619,7 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int, tags [
 		}
 		useCloudAuth = false
 		sourceLabel = "nvidia-local"
-		model = "local-nim"
+		resolvedModel = "local-nim"
 
 	default:
 		return nil, fmt.Errorf("unsupported model: %s", model)
@@ -586,7 +654,7 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int, tags [
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s error (status %d): %s", model, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%s error (status %d): %s", resolvedModel, resp.StatusCode, string(body))
 	}
 
 	var responseBody struct {
@@ -623,7 +691,7 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int, tags [
 		slug = slug[:50]
 	}
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
-	description := fmt.Sprintf("AI generated image via %s for prompt: %s", model, prompt)
+	description := fmt.Sprintf("AI generated image via %s for prompt: %s", resolvedModel, prompt)
 
 	return s.IngestImage(slug, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags)
 }
@@ -665,7 +733,25 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	s.log.Info("Animation created", zap.String("path", outputPath))
 
-	// 4. Upload video to Drive
+	// 4. Se l'ingest pipeline è disponibile, usala per stock clip
+	if s.ingestSvc != nil {
+		_, err := s.ingestSvc.Ingest(ctx, &ingest.Request{
+			Kind:      string(ingest.KindStock),
+			LocalPath: outputPath,
+			Name:      "AI Animation: " + asset.SubjectID,
+			Filename:  outputName,
+			Group:     "ai-generated",
+			Source:    "nvidia-animation",
+			SourceID:  imageHash,
+			Duration:  duration,
+		})
+		if err != nil {
+			s.log.Warn("Ingest pipeline failed for animated clip", zap.Error(err))
+		}
+		return outputPath, nil
+	}
+
+	// 5. Fallback: upload manuale a Drive
 	var driveVideoID string
 	if s.driveSvc != nil && s.driveFolderID != "" {
 		s.log.Info("Uploading animated video to Google Drive", zap.String("filename", outputName))
@@ -693,7 +779,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 		}
 	}
 
-	// 5. Ingest into Stock DB (if repo available)
+	// 6. Salva nel DB stock (fallback)
 	if s.stockRepo != nil {
 		clip := &models.MediaAsset{
 			ID:          "ai_" + imageHash,
@@ -709,7 +795,7 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 			CreatedAt:   time.Now(),
 		}
 
-		if err := s.stockRepo.UpsertClip(context.Background(), clip); err != nil {
+		if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
 			s.log.Warn("Failed to ingest animated clip into stock DB", zap.Error(err))
 		} else {
 			s.log.Info("Animated clip ingested into stock DB", zap.String("clip_id", clip.ID))
