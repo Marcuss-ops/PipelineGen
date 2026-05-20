@@ -2,8 +2,8 @@ package app
 
 import (
 	scraperhandler "velox/go-master/internal/api/handlers/scraper"
-	"velox/go-master/internal/module"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/module"
 
 	"go.uber.org/zap"
 )

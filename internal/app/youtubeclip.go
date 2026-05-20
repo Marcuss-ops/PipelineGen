@@ -2,9 +2,9 @@ package app
 
 import (
 	"velox/go-master/internal/api/handlers/sources"
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )

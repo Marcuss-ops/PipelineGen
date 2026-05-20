@@ -2,9 +2,9 @@ package app
 
 import (
 	drivehandler "velox/go-master/internal/api/handlers/drive"
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/storage/drivecleanup"
-	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )

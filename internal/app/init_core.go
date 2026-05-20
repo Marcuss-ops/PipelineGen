@@ -37,7 +37,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		return nil, nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 
-
 	// 3. Core Services
 	svcs, err := initServices(ctx, cfg, dbs, log)
 	if err != nil {

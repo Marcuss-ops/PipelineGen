@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	jobrepo "velox/go-master/internal/repository/jobs"
-	"velox/go-master/internal/media/indexing"
-	svcjobs "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/monitor"
-	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/config"
+	svcjobs "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/indexing"
+	"velox/go-master/internal/media/monitor"
+	jobrepo "velox/go-master/internal/repository/jobs"
+	"velox/go-master/internal/storage/scheduler"
 
 	"go.uber.org/zap"
 )

@@ -2,9 +2,9 @@ package app
 
 import (
 	"velox/go-master/internal/api/handlers/script/handlers"
-	"velox/go-master/internal/module"
-	scriptdocssvc "velox/go-master/internal/media/scriptdocs"
 	"velox/go-master/internal/config"
+	scriptdocssvc "velox/go-master/internal/media/scriptdocs"
+	"velox/go-master/internal/module"
 
 	"go.uber.org/zap"
 )

@@ -57,7 +57,7 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 		case <-time.After(5 * time.Second):
 			log.Warn("Timeout waiting for background jobs to stop")
 		}
-		
+
 		if dbs.main != nil {
 			if err := dbs.main.Backup(); err != nil {
 				log.Warn("Failed to create main backup on shutdown", zap.Error(err))

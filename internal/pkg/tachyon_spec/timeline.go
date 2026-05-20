@@ -2,13 +2,13 @@ package tachyon_spec
 
 // MediaTimelinePlan represents the main scene plan for TACHYON
 type MediaTimelinePlan struct {
-	Tracks         []VideoTrack   `json:"tracks"`
-	Effects        []EffectNode   `json:"effects,omitempty"`
-	Overlays       []OverlayTrack `json:"overlays,omitempty"`
-	Output         OutputConfig   `json:"output"`
-	Threads        int            `json:"threads,omitempty"`
-	Timebase       Timebase       `json:"timebase,omitempty"`
-	EmergencyMode  bool           `json:"emergency_fallback_enabled,omitempty"`
+	Tracks        []VideoTrack   `json:"tracks"`
+	Effects       []EffectNode   `json:"effects,omitempty"`
+	Overlays      []OverlayTrack `json:"overlays,omitempty"`
+	Output        OutputConfig   `json:"output"`
+	Threads       int            `json:"threads,omitempty"`
+	Timebase      Timebase       `json:"timebase,omitempty"`
+	EmergencyMode bool           `json:"emergency_fallback_enabled,omitempty"`
 }
 
 type Timebase struct {

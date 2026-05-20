@@ -5,9 +5,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/clipcatalog"
 	"velox/go-master/internal/media/clipindexer"
-	"velox/go-master/internal/config"
 )
 
 func wireArtlistCatalog(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {

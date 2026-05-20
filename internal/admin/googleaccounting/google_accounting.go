@@ -9,40 +9,18 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/pkg/googleaccounting"
+	"velox/go-master/internal/pkg/mediascan"
 	"velox/go-master/internal/upload/drive"
 )
 
-type googleGenerateVideoResponse struct {
-	JobID  string `json:"job_id"`
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
-}
-
-type googleJobStatusResponse struct {
-	Status      string   `json:"status"`
-	Error       string   `json:"error,omitempty"`
-	FilePath    string   `json:"file_path,omitempty"`
-	Files       []string `json:"files,omitempty"`
-	Progress    int      `json:"progress,omitempty"`
-	CurrentStep string   `json:"current_step,omitempty"`
-	Attempts    int      `json:"attempts,omitempty"`
-	LastLog     string   `json:"last_log,omitempty"`
-}
-
-type googleGenerateFlowImagesResponse struct {
-	JobID  string `json:"job_id"`
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
-}
 type googlePublishMode string
 
 const (
@@ -63,12 +41,6 @@ type googlePublishOptions struct {
 	Timeout       time.Duration
 	PollInterval  time.Duration
 	APIBASE       string
-}
-
-type googleStartResponse struct {
-	JobID  string `json:"job_id"`
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
 }
 
 type googlePublishResult struct {
@@ -250,7 +222,7 @@ func buildGoogleStartPayload(opts *googlePublishOptions) (string, map[string]any
 	}
 }
 
-func startGoogleJob(baseURL, path string, payload map[string]any) (*googleStartResponse, error) {
+func startGoogleJob(baseURL, path string, payload map[string]any) (*googleaccounting.StartResponse, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request failed: %w", err)
@@ -269,7 +241,7 @@ func startGoogleJob(baseURL, path string, payload map[string]any) (*googleStartR
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	var startResp googleStartResponse
+	var startResp googleaccounting.StartResponse
 	if err := json.Unmarshal(respBody, &startResp); err != nil {
 		return nil, fmt.Errorf("decode start response failed: %w (body: %s)", err, string(respBody))
 	}
@@ -279,7 +251,7 @@ func startGoogleJob(baseURL, path string, payload map[string]any) (*googleStartR
 	return &startResp, nil
 }
 
-func waitForGoogleJob(baseURL, jobID string, timeout, pollInterval time.Duration) (*googleJobStatusResponse, error) {
+func waitForGoogleJob(baseURL, jobID string, timeout, pollInterval time.Duration) (*googleaccounting.Job, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	statusURL := fmt.Sprintf("%s/api/google-accounting/status/%s", strings.TrimRight(baseURL, "/"), url.PathEscape(jobID))
 	deadline := time.Now().Add(timeout)
@@ -297,13 +269,13 @@ func waitForGoogleJob(baseURL, jobID string, timeout, pollInterval time.Duration
 		statusBody, _ := io.ReadAll(statusResp.Body)
 		statusResp.Body.Close()
 
-		var job googleJobStatusResponse
+		var job googleaccounting.Job
 		if err := json.Unmarshal(statusBody, &job); err != nil {
 			return nil, fmt.Errorf("decode status response failed: %w (body: %s)", err, string(statusBody))
 		}
 
 		printGoogleStatus(job)
-		switch strings.ToLower(job.Status) {
+		switch strings.ToLower(string(job.Status)) {
 		case "done", "completed":
 			return &job, nil
 		case "failed":
@@ -319,7 +291,7 @@ func waitForGoogleJob(baseURL, jobID string, timeout, pollInterval time.Duration
 	return nil, fmt.Errorf("timeout waiting for job completion after %s", timeout.String())
 }
 
-func printGoogleStatus(job googleJobStatusResponse) {
+func printGoogleStatus(job googleaccounting.Job) {
 	fmt.Printf("Poll: status=%s", job.Status)
 	if job.Progress > 0 {
 		fmt.Printf(" progress=%d", job.Progress)
@@ -345,12 +317,12 @@ func printGoogleStatus(job googleJobStatusResponse) {
 	fmt.Println()
 }
 
-func publishGoogleJob(ctx context.Context, cfg *config.Config, log *zap.Logger, opts *googlePublishOptions, job *googleJobStatusResponse) error {
+func publishGoogleJob(ctx context.Context, cfg *config.Config, log *zap.Logger, opts *googlePublishOptions, job *googleaccounting.Job) error {
 	if job == nil {
 		return fmt.Errorf("missing job status")
 	}
 
-	switch strings.ToLower(job.Status) {
+	switch strings.ToLower(string(job.Status)) {
 	case "done", "completed":
 		switch opts.Mode {
 		case googlePublishModeVids:
@@ -432,33 +404,17 @@ func runGoogleUploadMedia(args []string) error {
 	}
 	uploader := &drive.Uploader{Service: driveSvc, Log: log}
 
-	absDir, err := filepath.Abs(*dir)
+	files, err := mediascan.ScanDirectory(*dir, "")
 	if err != nil {
-		return fmt.Errorf("resolve dir failed: %w", err)
+		return fmt.Errorf("scan dir failed: %w", err)
 	}
-
-	var files []string
-	walkErr := filepath.WalkDir(absDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d == nil || d.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(d.Name()))
-		switch ext {
-		case ".mp4", ".mov", ".mkv", ".webm", ".jpg", ".jpeg", ".png", ".webp":
-			files = append(files, path)
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return walkErr
-	}
-	sort.Strings(files)
 	if len(files) == 0 {
-		return fmt.Errorf("no uploadable media files found in %s", absDir)
+		return fmt.Errorf("no uploadable media files found in %s", *dir)
 	}
 
-	fmt.Printf("Uploading %d files from %s to Drive folder %s\n", len(files), absDir, *driveFolderID)
-	for _, filePath := range files {
+	fmt.Printf("Uploading %d files from %s to Drive folder %s\n", len(files), *dir, *driveFolderID)
+	for _, f := range files {
+		filePath := f.Path
 		filename := filepath.Base(filePath)
 		res, skipped, err := uploader.UploadFileIfChanged(ctx, filePath, *driveFolderID, filename)
 		if err != nil {

@@ -340,13 +340,13 @@ func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) 
 
 // OverlayOptions configures overlay effect compositing.
 type OverlayOptions struct {
-	Width    int
-	Height   int
-	FPS      int
-	Opacity  float64 // 0.0-1.0, e.g. 0.25 = 25%
-	Codec    string
-	Preset   string
-	CRF      int
+	Width   int
+	Height  int
+	FPS     int
+	Opacity float64 // 0.0-1.0, e.g. 0.25 = 25%
+	Codec   string
+	Preset  string
+	CRF     int
 }
 
 // ApplyOverlay composites an effect video over a clip with reduced opacity.

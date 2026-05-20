@@ -2,8 +2,8 @@ package app
 
 import (
 	imghandler "velox/go-master/internal/api/handlers/images"
-	"velox/go-master/internal/module"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/module"
 
 	"go.uber.org/zap"
 )

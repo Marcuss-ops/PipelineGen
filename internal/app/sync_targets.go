@@ -1,9 +1,9 @@
 package app
 
 import (
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/catalogsync"
+	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/upload/drive"
 )
 

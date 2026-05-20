@@ -2,32 +2,31 @@ package app
 
 import (
 	"velox/go-master/internal/api/handlers/script/handlers"
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/maintenance"
+	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/sources/artlist"
 	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/internal/media/voiceover"
-	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )
 
 // RegistryWiring holds the registry and all wired modules
 type RegistryWiring struct {
-	Registry    *module.Registry
-	System      *SystemWiring
-	ArtlistSvc  *ArtlistWiring
-	YouTubeClip *YouTubeClipWiring
-	Jobs        *JobsWiring
-	Media       *MediaWiring
-	ScriptDocs  *ScriptDocsWiring
-	Voiceover   *VoiceoverWiring
-	Images      *ImagesWiring
-	Drive       *DriveWiring
-	Scraper     *ScraperWiring
-	ContentPkg  *ContentPackageWiring
-	Assets      *AssetsWiring
-	StockPipeline *StockPipelineWiring
+	Registry         *module.Registry
+	System           *SystemWiring
+	ArtlistSvc       *ArtlistWiring
+	YouTubeClip      *YouTubeClipWiring
+	Jobs             *JobsWiring
+	ScriptDocs       *ScriptDocsWiring
+	Voiceover        *VoiceoverWiring
+	Images           *ImagesWiring
+	Drive            *DriveWiring
+	Scraper          *ScraperWiring
+	ContentPkg       *ContentPackageWiring
+	Assets           *AssetsWiring
+	StockPipeline    *StockPipelineWiring
 	GoogleAccounting *GoogleAccountingWiring
 }
 
@@ -94,13 +93,6 @@ func WireRegistry(
 			}
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.Jobs = w.(*JobsWiring) }},
-		{"Media", func() (module.Module, interface{}, error) {
-			w, err := WireMedia(cfg, log, coreDeps)
-			if err != nil {
-				return nil, nil, err
-			}
-			return w.Module, w, nil
-		}, func(w interface{}) { wiring.Media = w.(*MediaWiring) }},
 		{"Images", func() (module.Module, interface{}, error) {
 			w, err := WireImages(cfg, log, coreDeps)
 			if err != nil {

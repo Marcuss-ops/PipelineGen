@@ -2,9 +2,9 @@ package app
 
 import (
 	"velox/go-master/internal/api/handlers/voiceover"
-	"velox/go-master/internal/module"
-	voiceoverPkg "velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/config"
+	voiceoverPkg "velox/go-master/internal/media/voiceover"
+	"velox/go-master/internal/module"
 
 	"go.uber.org/zap"
 )

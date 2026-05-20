@@ -5,13 +5,13 @@ import (
 
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/media/assetregistry"
 	"velox/go-master/internal/media/mediaasset"
-	"velox/go-master/internal/config"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
+	"velox/go-master/internal/repository/clips"
 )
 
 // initMediaProcessor initializes the media processing engine.

@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/pkg/googleaccounting"
+	"velox/go-master/internal/pkg/mediascan"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -21,37 +19,6 @@ import (
 type Handler struct {
 	cfg *config.Config
 	log *zap.Logger
-}
-
-type downloadRequest struct {
-	VideoID  string `json:"video_id"`
-	FileType string `json:"file_type"`
-	Headless bool   `json:"headless"`
-	Account  string `json:"account,omitempty"`
-}
-
-type generateVideoRequest struct {
-	VideoID  string `json:"video_id"`
-	Prompt   string `json:"prompt"`
-	Headless bool   `json:"headless"`
-	Account  string `json:"account,omitempty"`
-}
-
-type generateFlowImagesRequest struct {
-	Prompt    string `json:"prompt"`
-	ProjectID string `json:"project_id,omitempty"`
-	Style     string `json:"style,omitempty"`
-	Headless  bool   `json:"headless"`
-	Account   string `json:"account,omitempty"`
-}
-
-type mediaFileResponse struct {
-	Name    string    `json:"name"`
-	Path    string    `json:"path"`
-	URL     string    `json:"url"`
-	Kind    string    `json:"kind"`
-	Size    int64     `json:"size"`
-	ModTime time.Time `json:"mod_time"`
 }
 
 // NewHandler creates a new Google Accounting handler
@@ -89,7 +56,7 @@ func (h *Handler) SyncProject(c *gin.Context) {
 		return
 	}
 
-	payload, err := json.Marshal(downloadRequest{
+	payload, err := json.Marshal(googleaccounting.DownloadRequest{
 		VideoID:  videoID,
 		FileType: c.DefaultQuery("file_type", "all"),
 		Headless: c.DefaultQuery("headless", "true") != "false",
@@ -132,7 +99,7 @@ func (h *Handler) SyncProject(c *gin.Context) {
 
 // GenerateVideo triggers Google Vids AI video generation for a real project.
 func (h *Handler) GenerateVideo(c *gin.Context) {
-	var reqBody generateVideoRequest
+	var reqBody googleaccounting.GenerateRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
@@ -184,7 +151,7 @@ func (h *Handler) GenerateVideo(c *gin.Context) {
 
 // GenerateFlowImages triggers Google Labs Flow image generation.
 func (h *Handler) GenerateFlowImages(c *gin.Context) {
-	var reqBody generateFlowImagesRequest
+	var reqBody googleaccounting.FlowImageRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
@@ -259,61 +226,16 @@ func (h *Handler) JobStatus(c *gin.Context) {
 func (h *Handler) ListMedia(c *gin.Context) {
 	root := h.cfg.GoogleAccounting.DownloadDir
 	if root == "" {
-		c.JSON(http.StatusOK, gin.H{"count": 0, "files": []mediaFileResponse{}})
+		c.JSON(http.StatusOK, gin.H{"count": 0, "files": []mediascan.MediaFile{}})
 		return
 	}
 
-	absRoot, err := filepath.Abs(root)
+	files, err := mediascan.ScanDirectory(root, "/media/google-accounting/")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve media directory"})
+		h.log.Error("failed to scan media directory", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to scan media directory"})
 		return
 	}
-
-	var files []mediaFileResponse
-	allowedExt := map[string]string{
-		".mp4":  "video",
-		".mov":  "video",
-		".mkv":  "video",
-		".webm": "video",
-		".jpg":  "image",
-		".jpeg": "image",
-		".png":  "image",
-		".webp": "image",
-	}
-
-	_ = filepath.WalkDir(absRoot, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil || d == nil || d.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(d.Name()))
-		kind, ok := allowedExt[ext]
-		if !ok {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-
-		rel, err := filepath.Rel(absRoot, path)
-		if err != nil {
-			return nil
-		}
-		urlPath := "/media/google-accounting/" + filepath.ToSlash(rel)
-		files = append(files, mediaFileResponse{
-			Name:    d.Name(),
-			Path:    path,
-			URL:     urlPath,
-			Kind:    kind,
-			Size:    info.Size(),
-			ModTime: info.ModTime().UTC(),
-		})
-		return nil
-	})
-
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].ModTime.After(files[j].ModTime)
-	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"count": len(files),
