@@ -40,7 +40,7 @@ The `Registry` acts as a central coordinator:
 
 The system includes several built-in modules defined in `core_modules.go`:
 - `ArtlistModule`: Handles integration with Artlist search and harvesting.
-- `YouTubeModule`: Manages YouTube clip extraction and processing.
+- `ClipsModule`: Manages YouTube clip download and processing.
 - `JobsModule`: Provides API access to background job status and logs.
 - `AssetsModule`: Unified search and management across all asset repositories.
 - `VoiceoverModule`: Integration with TTS and voiceover management.

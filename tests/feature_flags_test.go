@@ -27,7 +27,7 @@ func TestFeatureFlagsDefaultDisabled(t *testing.T) {
 		"Artlist run should be disabled, got %d", w.Code)
 
 	// Test YouTube endpoints - should return 404 or 403
-	w = helpers.PerformAuthRequest(router, "POST", "/api/youtube-clips/extract", token, nil)
+	w = helpers.PerformAuthRequest(router, "POST", "/api/clips/process", token, nil)
 	assert.True(t, w.Code == http.StatusNotFound || w.Code == http.StatusForbidden,
 		"YouTube clips should be disabled, got %d", w.Code)
 

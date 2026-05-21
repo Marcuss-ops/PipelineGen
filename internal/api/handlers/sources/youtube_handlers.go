@@ -7,9 +7,9 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/internal/pkg/apiutil"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/apiutil"
+	"velox/go-master/internal/sources/youtube"
 )
 
 type YouTubeClipHandler struct {
@@ -27,15 +27,8 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *j
 }
 
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/extract", h.Extract)
+	r.POST("/process", h.Extract)
 	r.GET("/info", h.GetVideoInfo)
-	folders := r.Group("/folders")
-	{
-		folders.GET("/:id", h.GetFolder)
-		folders.GET("/:id/clips", h.GetFolderClips)
-		folders.GET("/search", h.SearchFolders)
-		folders.GET("", h.ListFolders)
-	}
 }
 
 func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
@@ -52,66 +45,6 @@ func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 	}
 
 	apiutil.OK(c, metadata)
-}
-
-func (h *YouTubeClipHandler) GetFolder(c *gin.Context) {
-	folderID := c.Param("id")
-	if folderID == "" {
-		apiutil.BadRequest(c, "folder id required")
-		return
-	}
-
-	folder, err := h.service.GetFolder(c.Request.Context(), folderID)
-	if err != nil {
-		apiutil.NotFound(c, "folder not found")
-		return
-	}
-
-	apiutil.OK(c, gin.H{"folder": folder})
-}
-
-func (h *YouTubeClipHandler) GetFolderClips(c *gin.Context) {
-	folderID := c.Param("id")
-	if folderID == "" {
-		apiutil.BadRequest(c, "folder id required")
-		return
-	}
-
-	clips, err := h.service.ListFolderClips(c.Request.Context(), folderID)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{"folder_id": folderID, "clips": clips})
-}
-
-func (h *YouTubeClipHandler) SearchFolders(c *gin.Context) {
-	q := c.Query("q")
-	if q == "" {
-		apiutil.BadRequest(c, "query parameter 'q' required")
-		return
-	}
-
-	folders, err := h.service.SearchFolders(c.Request.Context(), q)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{"query": q, "folders": folders})
-}
-
-func (h *YouTubeClipHandler) ListFolders(c *gin.Context) {
-	source := c.Query("source")
-
-	folders, err := h.service.ListFolders(c.Request.Context(), source)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{"folders": folders})
 }
 
 func (h *YouTubeClipHandler) Extract(c *gin.Context) {

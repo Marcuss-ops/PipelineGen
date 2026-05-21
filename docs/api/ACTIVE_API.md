@@ -89,14 +89,12 @@ Internal endpoints require additional header: `X-Internal: true` or `X-Velox-Int
 
 ## YouTube Clips Endpoints
 
-**Group:** `/api/youtube-clips` (requires `YOUTUBE_ENABLED=true`)
+**Group:** `/api/clips` (requires `YOUTUBE_ENABLED=true`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/youtube-clips/extract` | Extract YouTube clip |
-| GET | `/api/youtube-clips/folders` | List folders |
-| POST | `/api/youtube-clips/folders` | Create folder |
-| GET | `/api/youtube-clips/folders/:id` | Get folder details |
+| POST | `/api/clips/process` | Download and process YouTube clips |
+| GET | `/api/clips/info` | Get YouTube video metadata |
 
 ## Voiceover Endpoints
 

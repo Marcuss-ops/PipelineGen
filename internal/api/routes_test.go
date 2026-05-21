@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
-	"velox/go-master/internal/module"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/module"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
@@ -25,7 +25,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 
 	// Create mock modules that simulate the FIXED behavior (creating sub-groups)
 	artlistModule := &mockModuleWithGroup{name: "artlist", prefix: "/artlist", enabled: true}
-	youtubeModule := &mockModuleWithGroup{name: "youtube-clips", prefix: "/youtube-clips", enabled: true}
+	youtubeModule := &mockModuleWithGroup{name: "clips", prefix: "/clips", enabled: true}
 	jobsModule := &mockModuleWithGroup{name: "jobs", prefix: "/jobs", enabled: true}
 	mediaModule := &mockModuleWithGroup{name: "media", prefix: "/media", enabled: true}
 
@@ -57,9 +57,9 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	assert.True(t, routeMap["GET /api/artlist/stats"], "GET /api/artlist/stats should be registered")
 	assert.True(t, routeMap["POST /api/artlist/search/live"], "POST /api/artlist/search/live should be registered")
 
-	// YouTube routes should be under /api/youtube-clips/
-	assert.True(t, routeMap["POST /api/youtube-clips/extract"], "POST /api/youtube-clips/extract should be registered")
-	assert.True(t, routeMap["GET /api/youtube-clips/folders"], "GET /api/youtube-clips/folders should be registered")
+	// Clips routes should be under /api/clips/
+	assert.True(t, routeMap["POST /api/clips/process"], "POST /api/clips/process should be registered")
+	assert.True(t, routeMap["GET /api/clips/info"], "GET /api/clips/info should be registered")
 
 	// Jobs routes should be under /api/jobs/
 	assert.True(t, routeMap["GET /api/jobs"], "GET /api/jobs should be registered")
@@ -71,7 +71,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 
 	// Ensure routes are NOT at wrong paths (without module prefix)
 	assert.False(t, routeMap["POST /api/run"], "POST /api/run should NOT be registered (missing artlist prefix)")
-	assert.False(t, routeMap["POST /api/extract"], "POST /api/extract should NOT be registered (missing youtube-clips prefix)")
+	assert.False(t, routeMap["POST /api/extract"], "POST /api/extract should NOT be registered (missing clips prefix)")
 	assert.False(t, routeMap["GET /api"], "GET /api should NOT be registered (missing jobs prefix)")
 }
 
@@ -101,9 +101,9 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/runs/:run_id", func(c *gin.Context) {})
 		group.GET("/stats", func(c *gin.Context) {})
 		group.POST("/search/live", func(c *gin.Context) {})
-	case "youtube-clips":
-		group.POST("/extract", func(c *gin.Context) {})
-		group.GET("/folders", func(c *gin.Context) {})
+	case "clips":
+		group.POST("/process", func(c *gin.Context) {})
+		group.GET("/info", func(c *gin.Context) {})
 	case "jobs":
 		group.GET("", func(c *gin.Context) {})
 		group.POST("", func(c *gin.Context) {})

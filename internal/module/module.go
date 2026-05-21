@@ -12,7 +12,7 @@ import (
 // Module is the common interface that all feature modules must implement.
 // This allows for clean registration and lifecycle management.
 type Module interface {
-	// Name returns the unique name of the module (e.g., "artlist", "youtube-clips")
+	// Name returns the unique name of the module (e.g., "artlist", "clips")
 	Name() string
 
 	// Enabled checks if this module should be enabled based on config

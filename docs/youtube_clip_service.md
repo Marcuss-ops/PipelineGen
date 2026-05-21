@@ -17,7 +17,7 @@ The `youtubeclip` service provides a robust and flexible solution for extracting
 
 The service is exposed through the following API endpoint:
 
-- **POST** `/api/youtube-clips/extract`
+- **POST** `/api/clips/process`
 
 ### Request Body
 

@@ -66,7 +66,8 @@ All SQLite connections should use:
 - `POST /api/artlist/search/live` - Perform live Artlist search
 
 ### YouTube Clips
-- `POST /api/youtube-clips/extract` - Extract YouTube clips
+- `POST /api/clips/process` - Download and process YouTube clips
+- `GET /api/clips/info` - Fetch YouTube metadata
 
 ### Diagnostics
 Check system health:

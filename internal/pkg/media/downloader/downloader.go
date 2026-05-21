@@ -50,6 +50,21 @@ type DownloadedSegment struct {
 	Index int
 }
 
+func resolveDownloadedSegmentPath(outputTemplate string) string {
+	base := strings.TrimSuffix(outputTemplate, ".%(ext)s")
+	candidates, _ := filepath.Glob(base + ".*")
+	for _, candidate := range candidates {
+		if strings.HasSuffix(candidate, ".part") {
+			continue
+		}
+		if strings.HasSuffix(candidate, ".ytdl") {
+			continue
+		}
+		return candidate
+	}
+	return base + ".mp4"
+}
+
 // Download downloads a full video.
 func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) error {
 	if err := security.ValidateDownloadURL(req.URL); err != nil {
@@ -158,7 +173,7 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		}
 
 		results = append(results, DownloadedSegment{
-			Path:  outputTemplate,
+			Path:  resolveDownloadedSegmentPath(outputTemplate),
 			Name:  fmt.Sprintf("segment_%03d", i+1),
 			Index: i,
 		})

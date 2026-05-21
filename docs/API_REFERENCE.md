@@ -78,7 +78,7 @@ curl -i -X POST "http://77.93.152.122:8080/api/artlist/search/live?term=nature&l
 ### 4.1 Estrai una clip da un video YouTube
 Invia un job per scaricare una specifica porzione di un video YouTube.
 ```bash
-curl -i -X POST http://77.93.152.122:8080/api/youtubeclip/extract \
+curl -i -X POST http://77.93.152.122:8080/api/clips/process \
   -H "Authorization: Bearer velox_master_key_2026" \
   -H "Content-Type: application/json" \
   -d '{

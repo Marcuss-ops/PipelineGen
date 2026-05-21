@@ -14,8 +14,8 @@ import (
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
 	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/pkg/pathutil"
 	"velox/go-master/internal/security"
 )
@@ -29,6 +29,9 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	videoID := extractVideoID(req.URL)
 	if videoID == "" {
 		videoID = hashutil.MD5String(req.URL)[:12]
+	}
+	if canonical := canonicalYouTubeURL(req.URL, videoID); canonical != "" {
+		req.URL = canonical
 	}
 
 	// Upsert MonitoredSource for the YouTube video
@@ -283,6 +286,33 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		// Create stable ID: yt_videoID_startSec_endSec
 		clipID := fmt.Sprintf("yt_%s_%d_%d", videoID, startSec, endSec)
 		item.ID = clipID
+
+		// Fast path: if we already have this exact clip ID persisted, reuse it instead of
+		// rendering/uploading again. This keeps the endpoint idempotent even if lifecycle
+		// dedupe misses a record for any reason.
+		if s.clipsRepo != nil {
+			existingClip, err := s.clipsRepo.GetClip(ctx, clipID)
+			if err == nil && existingClip != nil {
+				if ok, clipErr := usableCachedClip(existingClip.LocalPath); clipErr == nil && ok {
+					item.LocalPath = existingClip.LocalPath
+					item.DriveLink = existingClip.DriveLink
+					item.DriveFileID = existingClip.DriveFileID
+					item.DownloadLink = existingClip.DownloadLink
+					item.Status = "skipped"
+					resp.Items = append(resp.Items, item)
+					resp.Stats.Skipped++
+					continue
+				}
+
+				s.log.Warn("stale youtube clip record detected, removing it before reprocessing",
+					zap.String("clip_id", clipID),
+					zap.String("local_path", existingClip.LocalPath))
+				if existingClip.LocalPath != "" {
+					_ = os.Remove(existingClip.LocalPath)
+				}
+				_ = s.clipsRepo.DeleteClip(ctx, clipID)
+			}
+		}
 
 		// Determine normalize flag
 		shouldNormalize := req.Normalize == nil || *req.Normalize
@@ -611,6 +641,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		Segments    []Segment `json:"segments"`
 		UploadDrive bool      `json:"upload_drive"`
 		Normalize   *bool     `json:"normalize"`
+		Destination *DestinationRequest `json:"destination"`
 	}
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
@@ -628,9 +659,10 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 
 	// Convert to ExtractRequest
 	req := &ExtractRequest{
-		URL:       payload.URL,
-		Segments:  payload.Segments,
-		Normalize: payload.Normalize,
+		URL:         payload.URL,
+		Segments:    payload.Segments,
+		Normalize:   payload.Normalize,
+		Destination: payload.Destination,
 	}
 
 	if tools.Progress != nil {
@@ -654,6 +686,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		"video_id":        resp.VideoID,
 		"folder":          resp.Folder,
 		"stats":           resp.Stats,
+		"items":           resp.Items,
 		"drive_folder_id": resp.DriveFolderID,
 		"message":         "YouTube clip extraction completed",
 	}
@@ -712,4 +745,44 @@ func extractVideoID(inputURL string) string {
 	}
 
 	return ""
+}
+
+func canonicalYouTubeURL(inputURL, videoID string) string {
+	if videoID == "" {
+		return ""
+	}
+	parsed, err := url.Parse(inputURL)
+	if err != nil {
+		return ""
+	}
+
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return ""
+	}
+
+	if strings.Contains(host, "youtube.com") || host == "youtu.be" {
+		return "https://www.youtube.com/watch?v=" + videoID
+	}
+
+	return ""
+}
+
+func usableCachedClip(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = os.Remove(path)
+		return false, nil
+	}
+	if info.Size() <= 0 {
+		_ = os.Remove(path)
+		return false, nil
+	}
+	return true, nil
 }

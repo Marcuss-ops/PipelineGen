@@ -49,7 +49,7 @@ Database per gli asset Artlist:
 - `POST /api/artlist/search/live` - Ricerca live
 
 ### YouTube Clips
-- `POST /api/youtube-clips/extract` - Estrai clip YouTube
+- `POST /api/clips/process` - Scarica e processa clip YouTube
 
 ### Jobs
 - `GET /api/jobs` - Lista job

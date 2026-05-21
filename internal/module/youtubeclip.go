@@ -4,15 +4,15 @@ import (
 	"context"
 
 	"velox/go-master/internal/api/handlers/sources"
+	"velox/go-master/internal/config"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/internal/config"
 
 	"go.uber.org/zap"
 )
 
-// NewYouTubeClipModule creates a new YouTubeClip module using RouteModule
-func NewYouTubeClipModule(
+// NewClipsModule creates the canonical clips module for YouTube download and processing.
+func NewClipsModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *youtube.Service,
@@ -20,17 +20,17 @@ func NewYouTubeClipModule(
 	jobsSvc *jobservice.Service,
 ) *RouteModule {
 	return NewRouteModule(
-		"youtube-clips",
+		"clips",
 		func(cfg *config.Config) bool { return cfg.Features.YouTubeEnabled },
-		"/youtube-clips",
+		"/clips",
 		handler,
 		log,
 		WithStart(func(ctx context.Context) error {
-			log.Info("starting youtube-clips module")
+			log.Info("starting clips module")
 			return nil
 		}),
 		WithStop(func(ctx context.Context) error {
-			log.Info("stopping youtube-clips module")
+			log.Info("stopping clips module")
 			return nil
 		}),
 	)

@@ -43,7 +43,7 @@ Serve agli agenti per capire cosa è attivo, cosa è sperimentale e cosa deve mo
 - **Owner**: `internal/module/youtubeclip/`
 - **Service**: `internal/service/youtubeclip/`
 - **Processor**: `internal/service/mediaasset/processor.go` (condiviso)
-- **API**: `internal/api/handlers/youtube-clips/`
+- **API**: `internal/api/handlers/sources/youtube_handlers.go`
 - **Stato**: ATTIVO (feature flag OFF di default)
 
 ### Jobs Module

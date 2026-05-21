@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/config"
-	"velox/go-master/internal/pkg/metrics"
-	"velox/go-master/internal/pkg/media/downloader"
-	"velox/go-master/internal/pkg/video_spec"
 	"velox/go-master/internal/media/ffmpeg"
+	"velox/go-master/internal/pkg/media/downloader"
+	"velox/go-master/internal/pkg/metrics"
+	"velox/go-master/internal/pkg/video_spec"
 )
 
 // Pipeline represents the core video processing muscles.
@@ -41,9 +42,24 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 	startTimer := time.Now()
 	p.log.Info("starting youtube download and cut", zap.String("url", url))
 
+	videoID := extractYouTubeVideoID(url)
+	if videoID == "" {
+		videoID = "unknown"
+	}
+	videoDir := filepath.Join(p.cfg.Storage.YoutubeClipsPath(), "yt "+videoID)
+	if err := os.MkdirAll(videoDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create output dir: %w", err)
+	}
+
 	// 1. Check Cache
-	outputPath := filepath.Join(p.cfg.Storage.YoutubeClipsPath(), fmt.Sprintf("%s.mp4", outputName))
-	if _, err := os.Stat(outputPath); err == nil {
+	safeOutputName := filepath.Base(strings.TrimSpace(outputName))
+	if safeOutputName == "." || safeOutputName == string(filepath.Separator) || safeOutputName == "" {
+		safeOutputName = "clip"
+	}
+	outputPath := filepath.Join(videoDir, safeOutputName+".mp4")
+	if ok, err := usableCachedClip(outputPath); err != nil {
+		p.log.Warn("failed to inspect cached youtube clip", zap.String("path", outputPath), zap.Error(err))
+	} else if ok {
 		p.log.Info("cache hit for youtube clip", zap.String("path", outputPath))
 		return outputPath, nil
 	}
@@ -145,4 +161,36 @@ func (p *Pipeline) formatTime(sec float64) string {
 	s := d / time.Second
 	ms := (d - s*time.Second) / time.Millisecond
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, s, ms)
+}
+
+func extractYouTubeVideoID(inputURL string) string {
+	if idx := strings.Index(inputURL, "v="); idx != -1 {
+		rest := inputURL[idx+2:]
+		if amp := strings.Index(rest, "&"); amp != -1 {
+			rest = rest[:amp]
+		}
+		if rest != "" {
+			return rest
+		}
+	}
+	return ""
+}
+
+func usableCachedClip(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = os.Remove(path)
+		return false, nil
+	}
+	if info.Size() <= 0 {
+		_ = os.Remove(path)
+		return false, nil
+	}
+	return true, nil
 }
