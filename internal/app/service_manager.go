@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"os"
-	"velox/go-master/internal/media/tachyon"
+	"velox/go-master/internal/media/ffmpeg"
 	"velox/go-master/internal/media/videomuscles"
 
 	"velox/go-master/internal/api/handlers/common"
@@ -104,8 +104,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		AssetIndex:  assetIndexService,
 	}, log)
 
-	tachyonSvc := tachyon.NewService("src/tachyon/build/dev-linux/src/tachyon", cfg, log)
-	videoPipeline := videomuscles.NewPipeline(cfg, log, tachyonSvc)
+	renderer := ffmpeg.NewService(cfg, log)
+	videoPipeline := videomuscles.NewPipeline(cfg, log, renderer)
 
 	youtubeClipService := youtube.NewService(
 		cfg,

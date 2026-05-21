@@ -6,16 +6,16 @@ import (
 )
 
 var (
-	// Tachyon Metrics
-	TachyonRenderDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "tachyon_render_duration_seconds",
-		Help:    "Duration of Tachyon rendering jobs",
+	// Video Render Metrics
+	VideoRenderDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "video_render_duration_seconds",
+		Help:    "Duration of video rendering jobs",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"status", "fallback"})
 
-	TachyonRenderTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "tachyon_render_total",
-		Help: "Total number of Tachyon rendering attempts",
+	VideoRenderTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "video_render_total",
+		Help: "Total number of video rendering attempts",
 	}, []string{"status", "fallback"})
 
 	// Download Metrics

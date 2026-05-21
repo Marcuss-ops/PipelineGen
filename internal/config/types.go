@@ -36,7 +36,7 @@ type GoogleAccountingConfig struct {
 }
 
 // VideoConfig holds all video processing parameters shared across the clip, stock,
-// and tachyon rendering pipelines. Centralizing these values ensures that every
+// and video rendering pipelines. Centralizing these values ensures that every
 // stage uses the same codec, resolution, and preset so that ffmpeg can perform
 // fast stream-copy concatenation without re-encoding.
 type VideoConfig struct {

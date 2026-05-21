@@ -1,6 +1,6 @@
-package tachyon_spec
+package video_spec
 
-// MediaTimelinePlan represents the main scene plan for TACHYON
+// MediaTimelinePlan represents the main scene plan for video rendering.
 type MediaTimelinePlan struct {
 	Tracks        []VideoTrack   `json:"tracks"`
 	Effects       []EffectNode   `json:"effects,omitempty"`

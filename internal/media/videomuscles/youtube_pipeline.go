@@ -13,30 +13,30 @@ import (
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/pkg/metrics"
 	"velox/go-master/internal/pkg/media/downloader"
-	"velox/go-master/internal/pkg/tachyon_spec"
-	"velox/go-master/internal/media/tachyon"
+	"velox/go-master/internal/pkg/video_spec"
+	"velox/go-master/internal/media/ffmpeg"
 )
 
 // Pipeline represents the core video processing muscles.
-// It orchestrates downloading via yt-dlp and rendering via TACHYON.
+// It orchestrates downloading via yt-dlp and rendering via FFmpeg.
 type Pipeline struct {
-	cfg            *config.Config
-	log            *zap.Logger
-	ytdlp          *downloader.YTDLPDownloader
-	tachyonService *tachyon.Service
+	cfg      *config.Config
+	log      *zap.Logger
+	ytdlp    *downloader.YTDLPDownloader
+	renderer *ffmpeg.Service
 }
 
 // NewPipeline creates a new video processing pipeline.
-func NewPipeline(cfg *config.Config, log *zap.Logger, tachyonSvc *tachyon.Service) *Pipeline {
+func NewPipeline(cfg *config.Config, log *zap.Logger, renderer *ffmpeg.Service) *Pipeline {
 	return &Pipeline{
-		cfg:            cfg,
-		log:            log,
-		ytdlp:          downloader.NewYTDLP(cfg),
-		tachyonService: tachyonSvc,
+		cfg:      cfg,
+		log:      log,
+		ytdlp:    downloader.NewYTDLP(cfg),
+		renderer: renderer,
 	}
 }
 
-// DownloadAndCutYouTubeVideo downloads a specific section of a YouTube video and uses TACHYON to process it.
+// DownloadAndCutYouTubeVideo downloads a specific section of a YouTube video and uses FFmpeg to process it.
 func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, start, duration float64, outputName string) (string, error) {
 	startTimer := time.Now()
 	p.log.Info("starting youtube download and cut", zap.String("url", url))
@@ -81,12 +81,12 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 
 	rawFile := segments[0].Path
 
-	// 3. Prepare TACHYON Scene Plan
-	plan := tachyon_spec.MediaTimelinePlan{
-		Tracks: []tachyon_spec.VideoTrack{
+	// 3. Prepare video scene plan
+	plan := video_spec.MediaTimelinePlan{
+		Tracks: []video_spec.VideoTrack{
 			{
 				IsPrimary: true,
-				Segments: []tachyon_spec.VideoSegment{
+				Segments: []video_spec.VideoSegment{
 					{
 						Path:          rawFile,
 						Start:         0,
@@ -96,7 +96,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 				},
 			},
 		},
-		Output: tachyon_spec.OutputConfig{
+		Output: video_spec.OutputConfig{
 			Path:       outputPath,
 			Width:      1920,
 			Height:     1080,
@@ -111,21 +111,21 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 	planData, _ := json.MarshalIndent(plan, "", "  ")
 	_ = os.WriteFile(planPath, planData, 0644)
 
-	// 4. Run TACHYON rendering
+	// 4. Run FFmpeg rendering
 	renderTimer := time.Now()
-	err = p.tachyonService.RenderScene(ctx, planPath, outputPath)
-	
+	err = p.renderer.RenderScene(ctx, planPath, outputPath)
+
 	status := "success"
 	if err != nil {
 		status = "failed"
 	}
-	
-	metrics.TachyonRenderDuration.WithLabelValues(status, "false").Observe(time.Since(renderTimer).Seconds())
-	metrics.TachyonRenderTotal.WithLabelValues(status, "false").Inc()
+
+	metrics.VideoRenderDuration.WithLabelValues(status, "false").Observe(time.Since(renderTimer).Seconds())
+	metrics.VideoRenderTotal.WithLabelValues(status, "false").Inc()
 
 	if err != nil {
-		p.log.Error("tachyon execution failed", zap.Error(err))
-		return "", fmt.Errorf("tachyon processing failed: %w", err)
+		p.log.Error("ffmpeg execution failed", zap.Error(err))
+		return "", fmt.Errorf("video processing failed: %w", err)
 	}
 
 	// Cleanup

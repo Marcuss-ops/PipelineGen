@@ -210,7 +210,7 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 	require.Equal(t, 1, resp.Stats.Failed)
 	require.Len(t, resp.Items, 1)
 	require.Equal(t, "failed", resp.Items[0].Status)
-	require.Contains(t, resp.Items[0].Error, "tachyon processing failed: yt-dlp failed")
+	require.Contains(t, resp.Items[0].Error, "video processing failed: yt-dlp failed")
 	require.True(t, pipeline.called)
 }
 

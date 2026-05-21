@@ -26,7 +26,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 
 ### Core Components
 - **Server**: Go binary (`pipelinegen`) using Gin web framework
-- **Rendering Engine**: TACHYON (High-performance C++ engine located in `src/tachyon`)
+- **Rendering Engine**: FFmpeg (via Go media pipeline)
 - **Database**: SQLite with WAL mode
   - `data/velox/velox.db.sqlite` - Main database (Scripts, Jobs, Asset Index)
   - `data/media/media.db.sqlite` - Unified Media database (Artlist, YouTube, Stock, Images, Voiceovers)
@@ -81,11 +81,6 @@ curl http://127.0.0.1:8080/api/artlist/diagnostics | jq
 cd /home/pierone/Pyt/Pipeline\ Gen
 go build -o pipelinegen ./cmd/server/
 echo "ciao" | sudo -S systemctl restart pipelinegen
-```
-
-### Build TACHYON Rendering Engine
-```bash
-make tachyon-build
 ```
 
 ### Check Service Status

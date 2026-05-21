@@ -18,7 +18,7 @@ graph TD
     F -->|6. Aggiornamento Asset| C
     G[Script Narrativo Generato] -->|7. Associazione Segmenti| H[association.Service Go]
     H -->|8. Matching Semantico & Fallback LIKE| C
-    H -->|9. Timeline Risolto| I[Tachyon Video Engine C++]
+    H -->|9. Timeline Risolto| I[FFmpeg Video Processing]
 ```
 
 ---

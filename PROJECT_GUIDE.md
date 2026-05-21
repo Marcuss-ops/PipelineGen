@@ -1,6 +1,6 @@
 # Guida di Avvio Rapido - PipelineGen
 
-Benvenuto in **PipelineGen**, una potente piattaforma backend basata su Go e C++ (motore di rendering TACHYON) per l'automazione del media processing.
+Benvenuto in **PipelineGen**, una potente piattaforma backend basata su Go per l'automazione del media processing.
 
 ## 🛠 Requisiti di Sistema
 
@@ -9,7 +9,6 @@ Prima di iniziare, assicurati di avere installato:
 - **Python**: Versione 3.10+ (per script di embedding e indexing)
 - **yt-dlp**: Installato e disponibile nel PATH di sistema
 - **FFmpeg**: Per il taglio e la codifica audio/video
-- **GCC / G++**: Per la compilazione del motore TACHYON
 
 ## 🚀 Installazione e Avvio
 

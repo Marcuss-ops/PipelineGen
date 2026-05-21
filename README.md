@@ -78,7 +78,6 @@ PipelineGen uses a unified job system for all long-running operations. Jobs are 
 - `internal/api/handlers/`: REST API handlers (modularized).
 - `google-accounting/`: FastAPI service for Google Vids automation.
 - `pkg/models/`: Shared data models.
-- `src/tachyon/`: TACHYON high-performance rendering engine.
 - `scripts/`: Utility and AI processing scripts.
 
 ## 📝 Documentation

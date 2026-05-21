@@ -66,14 +66,6 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 	}
 }
 
-func (s *Service) SetJobsSvc(jobsSvc *jobservice.Service) {
-	s.jobsSvc = jobsSvc
-}
-
-func (s *Service) SetAssetIndex(ai *assetindex.Service) {
-	s.assetIndex = ai
-}
-
 // SetJobsSvc injects the jobs service dependency.
 func (s *Service) SetJobsSvc(jobsSvc *jobservice.Service) {
 	s.jobsSvc = jobsSvc

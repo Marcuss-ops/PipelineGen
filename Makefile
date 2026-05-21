@@ -114,13 +114,6 @@ vuln:
 bench:
 	go test -bench=. -benchmem ./...
 
-# Tachyon targets
-tachyon-build:
-	cd src/tachyon && scripts/build-linux.sh --debug
-
-tachyon-test:
-	cd src/tachyon && scripts/build-linux.sh --debug --test
-
 # Docker build
 docker-build:
 	docker build -t velox-go-master:latest .

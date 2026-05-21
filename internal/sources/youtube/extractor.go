@@ -287,11 +287,11 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		// Determine normalize flag
 		shouldNormalize := req.Normalize == nil || *req.Normalize
 
-		// Download and cut using TACHYON
+		// Download and cut using FFmpeg
 		localPath, err := s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, resp.SourceURL, float64(startSec), float64(duration), item.Name)
 		if err != nil {
 			item.Status = "failed"
-			item.Error = fmt.Sprintf("tachyon processing failed: %v", err)
+			item.Error = fmt.Sprintf("video processing failed: %v", err)
 			resp.Items = append(resp.Items, item)
 			resp.Stats.Failed++
 			resp.OK = false
