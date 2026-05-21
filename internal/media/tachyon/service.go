@@ -10,29 +10,36 @@ import (
 
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/pkg/tachyon_spec"
 )
 
-// Service provides an interface to the TACHYON rendering engine,
-// with a fallback to ffmpeg when Tachyon binary is not available.
+// Service provides an interface to the TACHYON rendering engine.
+// When the Tachyon binary is unavailable, it falls back to ffmpeg using
+// the unified video config (codec, preset, resolution, FPS) to ensure
+// consistent output across all rendering paths.
 type Service struct {
 	binaryPath string
+	cfg        *config.Config
 	log        *zap.Logger
 }
 
-// NewService creates a new TACHYON service.
-func NewService(binaryPath string, log *zap.Logger) *Service {
+// NewService creates a new TACHYON service. If binaryPath is empty,
+// a default development path is used.
+func NewService(binaryPath string, cfg *config.Config, log *zap.Logger) *Service {
 	if binaryPath == "" {
 		binaryPath = "src/tachyon/build/dev-linux/src/tachyon"
 	}
 	return &Service{
 		binaryPath: binaryPath,
+		cfg:        cfg,
 		log:        log,
 	}
 }
 
-// RenderScene renders a TACHYON scene file.
-// If the Tachyon binary is not available, it falls back to ffmpeg.
+// RenderScene renders a TACHYON scene file. It first attempts to use the
+// Tachyon native renderer; if that fails or the binary is missing, it falls
+// back to ffmpeg using the video settings from config for consistent encoding.
 func (s *Service) RenderScene(ctx context.Context, planPath string, outputPath string) error {
 	// Try Tachyon first
 	if s.binaryPath != "" {
@@ -95,12 +102,13 @@ func (s *Service) convertJsonToCpp(jsonPath string) (string, error) {
 	sb.WriteString("    out = SceneBuilder()\n")
 	sb.WriteString(fmt.Sprintf("        .composition(\"main\", [](CompositionBuilder& c) {\n"))
 	
+	v := s.cfg.Video.WithDefaults()
 	width := plan.Output.Width
-	if width == 0 { width = 1920 }
+	if width == 0 { width = v.Width }
 	height := plan.Output.Height
-	if height == 0 { height = 1080 }
+	if height == 0 { height = v.Height }
 	fps := plan.Output.FPS
-	if fps == 0 { fps = 30 }
+	if fps == 0 { fps = v.FPS }
 	
 	sb.WriteString(fmt.Sprintf("            c.size(%d, %d).fps(%d).duration(%f);\n", 
 		width, height, fps, s.getPlanDuration(plan)))
@@ -187,6 +195,7 @@ func (s *Service) renderWithFFmpegFallback(ctx context.Context, planPath, output
 	// We need: seek + trim + scale + fps
 	startTime := segment.Start
 	duration := segment.Duration
+	v := s.cfg.Video.WithDefaults()
 	width := plan.Output.Width
 	height := plan.Output.Height
 	fps := plan.Output.FPS
@@ -195,22 +204,22 @@ func (s *Service) renderWithFFmpegFallback(ctx context.Context, planPath, output
 	crf := plan.Output.CRF
 
 	if width == 0 {
-		width = 1920
+		width = v.Width
 	}
 	if height == 0 {
-		height = 1080
+		height = v.Height
 	}
 	if fps == 0 {
-		fps = 30
+		fps = v.FPS
 	}
 	if crf == 0 {
-		crf = 23
+		crf = v.CRF
 	}
-	if videoCodec == "" || videoCodec == "libx264" {
-		videoCodec = "h264_nvenc" // GPU Accelerated
+	if videoCodec == "" {
+		videoCodec = v.Codec
 	}
 	if audioCodec == "" {
-		audioCodec = "aac"
+		audioCodec = v.AudioCodec
 	}
 
 	// Build ffmpeg args
@@ -220,8 +229,10 @@ func (s *Service) renderWithFFmpegFallback(ctx context.Context, planPath, output
 		"-t", fmt.Sprintf("%.3f", duration),
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d", width, height, width, height, fps),
 		"-c:v", videoCodec,
-		"-preset", "p4", // NVENC preset
+		"-preset", v.Preset,
 		"-crf", fmt.Sprintf("%d", crf),
+		"-pix_fmt", "yuv420p",
+		"-movflags", "+faststart",
 		"-c:a", audioCodec,
 		"-y",
 		outputPath,
@@ -244,7 +255,7 @@ func (s *Service) renderWithFFmpegFallback(ctx context.Context, planPath, output
 	return nil
 }
 
-// BuildCmd returns a command to build TACHYON if it's not already built.
+// BuildCmd returns a shell command to build the TACHYON binary.
 func (s *Service) BuildCmd() *exec.Cmd {
 	return exec.Command("scripts/build-linux.sh", "--debug")
 }

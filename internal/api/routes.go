@@ -44,6 +44,8 @@ func (r *Router) SetContext(ctx context.Context) {
 	r.ctx = ctx
 }
 
+// buildCORSConfig builds a CORS configuration from the application security settings.
+// If no origins are configured, cross-origin requests are blocked entirely.
 func buildCORSConfig(cfg *config.Config) cors.Config {
 	corsCfg := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -71,7 +73,8 @@ func buildCORSConfig(cfg *config.Config) cors.Config {
 	return corsCfg
 }
 
-// Setup configures the gin router
+// Setup configures and returns the gin engine with all middleware, static routes,
+// health endpoints, and dynamically registered module routes.
 func (r *Router) Setup() *gin.Engine {
 	log := zap.L().Named("router")
 	gin.SetMode(r.cfg.Server.GinMode)

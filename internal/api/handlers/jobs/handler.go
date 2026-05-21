@@ -10,15 +10,18 @@ import (
 	"velox/go-master/internal/media/models"
 )
 
+// Handler exposes HTTP endpoints for job lifecycle management (enqueue, list, get, cancel, retry, events).
 type Handler struct {
 	service *jobs.Service
 	log     *zap.Logger
 }
 
+// NewHandler creates a new jobs HTTP handler.
 func NewHandler(service *jobs.Service, log *zap.Logger) *Handler {
 	return &Handler{service: service, log: log}
 }
 
+// RegisterRoutes mounts the job endpoints under the given router group.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("", h.Enqueue)
 	r.GET("", h.List)

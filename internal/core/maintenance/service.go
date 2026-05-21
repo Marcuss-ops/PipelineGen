@@ -77,10 +77,11 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 	// 2. Asset Tree / Index consistency check
 	if deep {
 		s.log.Info("Deep consistency check started")
-		// TODO: Implement deep consistency checks:
-		// - Missing local files (DB entry exists but file doesn't)
-		// - Missing Drive links
-		// - Asset Index vs Asset Tree reconciliation
+		// Deep consistency checks are not yet implemented.
+		// Planned checks:
+		//   - Detect DB entries whose local file no longer exists.
+		//   - Detect DB entries with missing or invalid Drive links.
+		//   - Reconcile Asset Index records against the Asset Tree.
 		results["deep_cleanup"] = "partially_implemented"
 	}
 

@@ -14,6 +14,9 @@ import (
 	driveutil "velox/go-master/internal/storage/drive"
 )
 
+// Service matches script segments against media assets (stock, artlist, clips, Drive)
+// using an extensible engine of association sources. It supports direct folder
+// matching, semantic scoring, and candidate building for the visual planner.
 type Service struct {
 	dataDir        string
 	nodeScraperDir string
@@ -26,6 +29,7 @@ type Service struct {
 	scriptsDir     string
 }
 
+// NewService creates an association service with the default engine and sources.
 func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository, catalogRepo *catalog.Repository) *Service {
 	s := &Service{
 		dataDir:        dataDir,
@@ -51,10 +55,13 @@ func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRe
 	return s
 }
 
+// RegisterAssociation adds an additional association source to the engine.
 func (s *Service) RegisterAssociation(a Association) {
 	s.engine.sources = append(s.engine.sources, a)
 }
 
+// Associate runs all registered association sources and returns scored matches.
+// Stock drive matches receive a priority boost over Artlist results.
 func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMatch {
 	matches := s.engine.AssociateAll(ctx, input)
 
@@ -69,12 +76,12 @@ func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMat
 	return matches
 }
 
-// ScoreMedia calcola i punteggi ibridi (Lineare + Semantico) usando l'Engine interno.
+// ScoreMedia re-scores candidates using a hybrid of linear and semantic scoring.
 func (s *Service) ScoreMedia(ctx context.Context, query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
 	return s.engine.ScoreMedia(query, queryEmb, candidates)
 }
 
-// ResolvePreferredStockMatch checks for a high-priority exact stock folder match based on primary focus.
+// ResolvePreferredStockMatch returns the best direct stock folder match for the primary focus entity.
 func (s *Service) ResolvePreferredStockMatch(ctx context.Context, input SegmentInput) (*ScoredMatch, bool) {
 	matches := s.ResolveAllPreferredStockMatches(ctx, input)
 	if len(matches) > 0 {
@@ -83,7 +90,7 @@ func (s *Service) ResolvePreferredStockMatch(ctx context.Context, input SegmentI
 	return nil, false
 }
 
-// ResolveAllPreferredStockMatches checks for high-priority exact stock folder matches for all core subjects/entities.
+// ResolveAllPreferredStockMatches returns all direct stock folder matches for every core subject/entity.
 func (s *Service) ResolveAllPreferredStockMatches(ctx context.Context, input SegmentInput) []ScoredMatch {
 	var results []ScoredMatch
 	seenFolders := make(map[string]bool)
@@ -128,6 +135,8 @@ func (s *Service) ResolveAllPreferredStockMatches(ctx context.Context, input Seg
 	return results
 }
 
+// collectFocusTerms extracts normalized focus phrases from a segment input,
+// splitting compound subjects such as "A vs B" into individual names.
 func collectFocusTerms(input SegmentInput) []string {
 	terms := make([]string, 0)
 	add := func(text string) {
@@ -172,6 +181,9 @@ func collectFocusTerms(input SegmentInput) []string {
 	return sliceutil.UniqueStrings(terms)
 }
 
+// BuildCandidates builds a ranked list of asset candidates for a script segment.
+// It first attempts an exact direct folder match; if none is found, it scores
+// stock and Artlist folders against the segment terms.
 func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*CandidatesResponse, error) {
 	req.Normalize()
 
@@ -233,6 +245,8 @@ func (s *Service) BuildCandidates(ctx context.Context, req CandidatesRequest) (*
 	}, nil
 }
 
+// FindDirectStockFolderCandidate searches for an exact stock folder matching
+// the topic or subject. It returns the best candidate and a boolean indicating success.
 func (s *Service) FindDirectStockFolderCandidate(ctx context.Context, topic, subject string) (*FolderCandidate, bool, error) {
 	folders, err := s.buildStockFolderCandidates(ctx)
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -22,31 +21,19 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
 	driveup "velox/go-master/internal/upload/drive"
 )
 
-const clipDur = 5
-const maxClipsPerVideo = 30
-const defaultSearchCount = 25
-
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-var transitionPresets = []string{
-	"fade", "fadeblack", "fadewhite",
-	"slideleft", "slideright", "slideup", "slidedown",
-	"circleclose", "circleopen",
-	"horzclose", "horzopen", "vertclose", "vertopen",
-	"dissolve", "pixelize",
-	"wipeleft", "wiperight", "wipeup", "wipedown",
-	"smoothleft", "smoothright", "smoothup", "smoothdown",
-	"radial", "hblur", "fadegrays",
-	"squeezeh", "squeezev",
-}
 
 
-
+// Service orchestrates the stock video pipeline: search, download, clip extraction,
+// effect overlay, chunk rendering, and Drive upload. All video parameters are read
+// from config.Video to ensure consistency with other media pipelines.
 type Service struct {
 	cfg        *config.Config
 	log        *zap.Logger
@@ -59,7 +46,10 @@ type Service struct {
 	assetIndex *assetindex.Service
 }
 
+// NewService creates a stock pipeline service using the provided config, logger,
+// and Google Drive service. Video processing defaults are loaded from cfg.Video.
 func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *Service {
+	v := cfg.Video.WithDefaults()
 	return &Service{
 		cfg:        cfg,
 		log:        log,
@@ -67,7 +57,12 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 		driveUp:    &driveup.Uploader{Service: driveSvc, Log: log},
 		ytdlp:      downloader.NewYTDLP(cfg),
 		ffmpegProc: ffmpeg.New(cfg),
-		pcfg:       DefaultPipelineConfig(),
+		pcfg: PipelineConfig{
+			ChunkDuration:  v.ChunkDuration,
+			MaxResults:     v.MaxClipsPerSource,
+			EffectInterval: v.EffectInterval,
+			EffectsDir:     "assets/effects/EffettiVisiv",
+		},
 	}
 }
 
@@ -79,6 +74,17 @@ func (s *Service) SetAssetIndex(ai *assetindex.Service) {
 	s.assetIndex = ai
 }
 
+// SetJobsSvc injects the jobs service dependency.
+func (s *Service) SetJobsSvc(jobsSvc *jobservice.Service) {
+	s.jobsSvc = jobsSvc
+}
+
+// SetAssetIndex injects the asset index service dependency.
+func (s *Service) SetAssetIndex(ai *assetindex.Service) {
+	s.assetIndex = ai
+}
+
+// RegisterHandler registers the stock pipeline job handler with the jobs system.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
 		jobsSvc.RegisterHandler(models.JobTypeMediaStock, s.HandleJob)
@@ -122,15 +128,26 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 	}, nil
 }
 
+// RunInput holds the parameters for a stock pipeline run.
 type RunInput struct {
-	SearchQueries []string // "Elon Musk -25" or direct YouTube URLs
-	DirectURLs    []string // direct YouTube video URLs
-	TotalMinutes  int
+	// SearchQueries are YouTube search terms. Append " -N" to limit results (e.g. "Elon Musk -25").
+	SearchQueries []string
+	// DirectURLs are direct YouTube video URLs to process.
+	DirectURLs []string
+	// TotalMinutes is the desired total duration of the output compilation.
+	TotalMinutes int
+	// ChunkDuration is the target duration of each output chunk in seconds.
+	// If zero, the value from config is used.
 	ChunkDuration int
-	Subfolder     string // Drive subfolder name (e.g. "Discovery")
-	FolderName    string // new folder to create inside subfolder
+	// Subfolder is the Drive subfolder name (e.g. "Discovery").
+	Subfolder string
+	// FolderName is a new folder to create inside the subfolder.
+	FolderName string
 }
 
+// Run executes the full stock pipeline: resolve sources, download, extract clips,
+// apply overlay effects, render chunks, upload to Drive, and index assets.
+// It reads all video parameters from cfg.Video for codec consistency.
 func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, error) {
 	start := time.Now()
 	s.log.Info("compilation pipeline start",
@@ -169,6 +186,8 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	s.log.Info("video sources resolved", zap.Int("count", len(videoSources)))
 
 	totalSecs := input.TotalMinutes * 60
+	videoCfg := s.cfg.Video.WithDefaults()
+	clipDur := videoCfg.ClipDuration
 	secsPerVideo := totalSecs / len(videoSources)
 	if secsPerVideo < clipDur*3 {
 		secsPerVideo = clipDur * 3
@@ -241,7 +260,7 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		clipTitles[i], clipTitles[j] = clipTitles[j], clipTitles[i]
 	})
 
-	if s.pcfg.EffectInterval > 0 {
+	if videoCfg.EffectInterval > 0 {
 		effects, err := loadEffects(s.pcfg.EffectsDir)
 		if err != nil {
 			s.log.Warn("no overlay effects loaded", zap.String("dir", s.pcfg.EffectsDir), zap.Error(err))
@@ -251,9 +270,13 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 				effectPath := effects[rng.Intn(len(effects))]
 				outputPath := filepath.Join(tempDir, fmt.Sprintf("effected_%04d.mp4", i))
 				err := s.ffmpegProc.ApplyOverlay(ctx, processedClips[i], effectPath, outputPath, ffmpeg.OverlayOptions{
-					Width: 1920, Height: 1080, FPS: 30,
-					Opacity: 0.25,
-					Codec:   "h264_nvenc", Preset: "p4", CRF: 23,
+					Width:   videoCfg.Width,
+					Height:  videoCfg.Height,
+					FPS:     videoCfg.FPS,
+					Opacity: videoCfg.OverlayOpacity,
+					Codec:   videoCfg.Codec,
+					Preset:  videoCfg.Preset,
+					CRF:     videoCfg.CRF,
 				})
 				if err != nil {
 					s.log.Warn("overlay effect failed", zap.Int("clip_idx", i), zap.Error(err))
@@ -372,6 +395,9 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	return result, nil
 }
 
+// processSingleVideo downloads a single video source, then extracts and normalizes
+// short clips using ffmpeg. The clip duration and max clips are controlled by
+// cfg.Video. It avoids double re-encoding by using CutAndNormalize.
 func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs VideoSource, idx int, secsPerVideo int) ([]string, []string, error) {
 	select {
 	case <-ctx.Done():
@@ -409,12 +435,16 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		return nil, nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
 	}
 
+	v := s.cfg.Video.WithDefaults()
+	clipDur := v.ClipDuration
+	maxClipsPerSource := v.MaxClipsPerSource
+
 	numClips := secsPerVideo / clipDur
 	if numClips < 1 {
 		numClips = 1
 	}
-	if numClips > maxClipsPerVideo {
-		numClips = maxClipsPerVideo
+	if numClips > maxClipsPerSource {
+		numClips = maxClipsPerSource
 	}
 
 	var processedClips []string
@@ -447,43 +477,32 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		cutStart := formatDuration(offset)
 		cutEnd := formatDuration(offset + float64(clipDur))
 
-		trimmedPath := filepath.Join(tempDir, fmt.Sprintf("seg_%04d_%04d.mp4", idx, clipIdx))
-		err = s.ffmpegProc.CutSegment(ctx, actualPath, trimmedPath, cutStart, cutEnd, ffmpeg.CutOptions{
-			Codec:   "h264_nvenc",
-			Preset:  "p4",
-			CRF:     23,
+		// Single-pass: cut + normalize in one ffmpeg call, avoiding double re-encode
+		normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
+		err = s.ffmpegProc.CutAndNormalize(ctx, actualPath, normPath, cutStart, cutEnd, ffmpeg.CutAndNormalizeOptions{
+			Width:   v.Width,
+			Height:  v.Height,
+			FPS:     v.FPS,
+			Codec:   v.Codec,
+			Preset:  v.Preset,
+			CRF:     v.CRF,
 			NoAudio: true,
 		})
 		if err != nil {
-			s.log.Warn("cut failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
-			continue
-		}
-
-		normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
-		err = s.ffmpegProc.Normalize(ctx, trimmedPath, normPath, ffmpeg.NormalizeOptions{
-			Width:     1920,
-			Height:    1080,
-			FPS:       30,
-			Codec:     "h264_nvenc",
-			Preset:    "p4",
-			CRF:       23,
-			KeepAudio: false,
-		})
-		if err != nil {
-			s.log.Warn("normalize failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
-			_ = os.Remove(trimmedPath)
+			s.log.Warn("cut+normalize failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
 			continue
 		}
 
 		processedClips = append(processedClips, normPath)
 		clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
-		_ = os.Remove(trimmedPath)
 	}
 
 	_ = os.Remove(actualPath)
 	return processedClips, clipTitles, nil
 }
 
+// resolveFolderTarget resolves the Google Drive folder ID for upload.
+// It walks from the configured stock root folder through subfolder and folderName.
 func (s *Service) resolveFolderTarget(ctx context.Context, subfolder, folderName string) (string, error) {
 	rootID := s.cfg.Drive.StockRootFolder
 	if rootID == "" {
@@ -514,6 +533,7 @@ func (s *Service) resolveFolderTarget(ctx context.Context, subfolder, folderName
 	return currentID, nil
 }
 
+// VideoSource represents a single video to be downloaded and processed.
 type VideoSource struct {
 	URL         string
 	Title       string
@@ -521,6 +541,9 @@ type VideoSource struct {
 	DurationSec float64
 }
 
+// resolveQuery converts a query string into a list of VideoSource entries.
+// If the query is a YouTube URL, it returns it directly. Otherwise it searches
+// YouTube using yt-dlp. The result count is read from cfg.Video.SearchCount.
 func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource, error) {
 	query = strings.TrimSpace(query)
 
@@ -532,14 +555,15 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 		}}, nil
 	}
 
-	numVideos := defaultSearchCount
+	vCfg := s.cfg.Video.WithDefaults()
+	numVideos := vCfg.SearchCount
 	searchTerm := query
 
 	if idx := strings.LastIndex(query, " -"); idx > 0 {
 		searchTerm = strings.TrimSpace(query[:idx])
 		countStr := strings.TrimSpace(query[idx+2:])
 		if c, err := fmt.Sscanf(countStr, "%d", &numVideos); err != nil || c == 0 {
-			numVideos = defaultSearchCount
+			numVideos = vCfg.SearchCount
 		}
 	}
 	if numVideos < 1 {
@@ -578,6 +602,7 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 	return sources, nil
 }
 
+// loadEffects scans the given directory for .mp4 overlay effect files.
 func loadEffects(dir string) ([]string, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("effects dir is empty")
@@ -598,13 +623,20 @@ func loadEffects(dir string) ([]string, error) {
 	return effects, nil
 }
 
+// renderChunk concatenates multiple clips into a single output video using ffmpeg.
+// It applies random xfade transitions between clips. All encoding parameters
+// (codec, preset, CRF, resolution, FPS) are read from cfg.Video.
 func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string) error {
 	if len(clips) == 0 {
 		return fmt.Errorf("no clips to render")
 	}
 	if len(clips) == 1 {
-		return copyFile(clips[0], outputPath)
+		return fileutil.CopyFile(clips[0], outputPath)
 	}
+
+	v := s.cfg.Video.WithDefaults()
+	clipDur := v.ClipDuration
+	transitionPresets := v.TransitionPresets
 
 	var inputArgs []string
 	var filterParts []string
@@ -612,8 +644,8 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 	for i, clip := range clips {
 		inputArgs = append(inputArgs, "-i", clip)
 		filterParts = append(filterParts, fmt.Sprintf(
-			"[%d:v]setpts=PTS-STARTPTS,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30[v%d]",
-			i, i,
+			"[%d:v]setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d[v%d]",
+			i, v.Width, v.Height, v.Width, v.Height, v.FPS, i,
 		))
 		clips[i] = fmt.Sprintf("v%d", i)
 	}
@@ -640,7 +672,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 	args = append(args, "-filter_complex", joinFilterParts(filterParts))
 	args = append(args, "-map", fmt.Sprintf("[%s]", lastLabel))
 	args = append(args, "-an")
-	args = append(args, "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23")
+	args = append(args, "-c:v", v.Codec, "-preset", v.Preset, "-cq", fmt.Sprintf("%d", v.CRF))
 	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart")
 	args = append(args, outputPath)
 
@@ -669,23 +701,7 @@ func joinFilterParts(parts []string) string {
 	return result
 }
 
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
 
-	out, err := os.Create(dst)
-	if err != nil {
-		in.Close()
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
-}
 
 func formatDuration(sec float64) string {
 	if sec < 0 {

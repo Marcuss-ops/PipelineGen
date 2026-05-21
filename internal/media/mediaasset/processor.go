@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/assetregistry"
+	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
@@ -25,6 +25,8 @@ type MediaProcessor interface {
 	DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error)
 }
 
+// Processor implements MediaProcessor. It orchestrates download via yt-dlp or HTTP,
+// optional ffmpeg normalization, perceptual deduplication, and file hashing.
 type Processor struct {
 	dl       YTDLP
 	httpDL   HTTPDownloader
@@ -36,12 +38,14 @@ type Processor struct {
 	registry assetregistry.Registry
 }
 
+// ProcessorConfig holds the constructor dependencies for Processor.
 type ProcessorConfig struct {
 	DataDir  string
 	TempDir  string
 	VideoCfg ffmpeg.NormalizeOptions
 }
 
+// NewProcessor creates a new media processor with the given dependencies.
 func NewProcessor(
 	dl YTDLP,
 	httpDL HTTPDownloader,
@@ -63,7 +67,8 @@ func NewProcessor(
 }
 
 // DownloadProcessUpload orchestrates the full pipeline: download, process, hash, upload.
-// This is a facade method that delegates to smaller internal methods.
+// It validates inputs, downloads the asset, optionally normalizes via ffmpeg,
+// checks for perceptual duplicates, computes the file hash, and returns metadata.
 func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error) {
 	result := &AssetResult{
 		ID:     input.ID,
@@ -256,36 +261,33 @@ func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, 
 	}
 
 	// ZERO-COPY OPTIMIZATION:
-	// If StreamCopy was used during download, and the file already matches target specs,
-	// we can skip normalization entirely.
-	if input.StreamCopy {
-		info, err := p.ffmpeg.Probe(ctx, rawPath)
-		if err == nil && info != nil {
-			target := p.videoCfg
-			// Check if properties match (with some tolerance for FPS)
-			fpsMatch := info.FPS >= float64(target.FPS)-0.1 && info.FPS <= float64(target.FPS)+0.1
-			resMatch := info.Width == target.Width && info.Height == target.Height
+	// Always probe the downloaded file to check if it already matches target specs.
+	// If so, skip the expensive re-encode entirely.
+	info, err := p.ffmpeg.Probe(ctx, rawPath)
+	if err == nil && info != nil {
+		target := p.videoCfg
+		// Check if properties match (with some tolerance for FPS)
+		fpsMatch := info.FPS >= float64(target.FPS)-0.1 && info.FPS <= float64(target.FPS)+0.1
+		resMatch := info.Width == target.Width && info.Height == target.Height
 
-			if resMatch && fpsMatch {
-				p.log.Info("Zero-Copy Optimization: properties match, skipping normalization",
-					zap.String("id", input.ID),
-					zap.Int("width", info.Width),
-					zap.Int("height", info.Height),
-					zap.Float64("fps", info.FPS))
-				return p.moveRawToProcessed(rawPath, processedPath)
-			} else {
-				p.log.Info("properties do not match target, proceeding with normalization",
-					zap.String("id", input.ID),
-					zap.Int("width", info.Width),
-					zap.Int("height", info.Height),
-					zap.Float64("fps", info.FPS),
-					zap.Int("target_width", target.Width),
-					zap.Int("target_height", target.Height),
-					zap.Int("target_fps", target.FPS))
-			}
-		} else if err != nil {
-			p.log.Warn("failed to probe file for zero-copy optimization", zap.Error(err))
+		if resMatch && fpsMatch {
+			p.log.Info("Zero-Copy Optimization: properties match, skipping normalization",
+				zap.String("id", input.ID),
+				zap.Int("width", info.Width),
+				zap.Int("height", info.Height),
+				zap.Float64("fps", info.FPS))
+			return p.moveRawToProcessed(rawPath, processedPath)
 		}
+		p.log.Info("properties do not match target, proceeding with normalization",
+			zap.String("id", input.ID),
+			zap.Int("width", info.Width),
+			zap.Int("height", info.Height),
+			zap.Float64("fps", info.FPS),
+			zap.Int("target_width", target.Width),
+			zap.Int("target_height", target.Height),
+			zap.Int("target_fps", target.FPS))
+	} else if err != nil {
+		p.log.Warn("failed to probe file for zero-copy optimization", zap.Error(err))
 	}
 
 	opts := p.videoCfg
@@ -304,7 +306,7 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 	if err := os.Rename(rawPath, processedPath); err != nil {
 		// If rename fails (cross-device), try copy
 		p.log.Warn("rename failed, attempting copy", zap.Error(err))
-		if err := copyFile(rawPath, processedPath); err != nil {
+		if err := fileutil.CopyFile(rawPath, processedPath); err != nil {
 			return "", fmt.Errorf("failed to move raw file to processed path: %w", err)
 		}
 	}
@@ -315,25 +317,6 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 func (p *Processor) hashStep(ctx context.Context, path string) (string, error) {
 	p.log.Info("calculating file hash", zap.String("path", path))
 	return hashutil.MD5File(path)
-}
-
-// copyFile copies a file from src to dst using streaming (io.Copy).
-// This avoids loading large files entirely into memory.
-func copyFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	return err
 }
 
 // checkPHashDeduplication checks if a similar clip already exists using perceptual hashing.

@@ -35,6 +35,44 @@ video:
   codec: "h264_nvenc"
   preset: "p4"
   crf: 18
+  keyframe_interval: 60
+  audio_codec: "aac"
+  audio_bitrate: "128k"
+  clip_duration: 5
+  chunk_duration: 25
+  max_clips_per_source: 30
+  search_count: 25
+  overlay_opacity: 0.25
+  effect_interval: 4
+  transition_presets:
+    - "fade"
+    - "fadeblack"
+    - "fadewhite"
+    - "slideleft"
+    - "slideright"
+    - "slideup"
+    - "slidedown"
+    - "circleclose"
+    - "circleopen"
+    - "horzclose"
+    - "horzopen"
+    - "vertclose"
+    - "vertopen"
+    - "dissolve"
+    - "pixelize"
+    - "wipeleft"
+    - "wiperight"
+    - "wipeup"
+    - "wipedown"
+    - "smoothleft"
+    - "smoothright"
+    - "smoothup"
+    - "smoothdown"
+    - "radial"
+    - "hblur"
+    - "fadegrays"
+    - "squeezeh"
+    - "squeezev"
 
 drive:
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
