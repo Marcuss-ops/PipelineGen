@@ -1,34 +1,79 @@
 package images
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
-func TestDiagnosticsReportsNvidiaAndAnimateScriptState(t *testing.T) {
-	scriptsDir := t.TempDir()
-	scriptPath := filepath.Join(scriptsDir, "animate_image.py")
-	if err := os.WriteFile(scriptPath, []byte("#!/usr/bin/env python3\n"), 0644); err != nil {
-		t.Fatalf("failed to write script fixture: %v", err)
+func TestNormalizeLookupTerm(t *testing.T) {
+	got := normalizeLookupTerm("Cus D’Amato")
+	if got != "cus d amato" {
+		t.Fatalf("unexpected normalized term: %q", got)
+	}
+}
+
+func TestLooksLikeProperName(t *testing.T) {
+	if !looksLikeProperName("Cus D’Amato") {
+		t.Fatal("expected proper name detection for Cus D’Amato")
+	}
+	if looksLikeProperName("boxing ring") {
+		t.Fatal("expected common phrase to not look like a proper name")
+	}
+}
+
+func TestSelectBestWikidataHitPrefersExactMatch(t *testing.T) {
+	hits := []struct {
+		ID          string `json:"id"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+	}{
+		{ID: "Q1", Label: "Rosa D'Amato", Description: "politician"},
+		{ID: "Q2", Label: "Cus D'Amato", Description: "boxing trainer"},
 	}
 
-	svc := &Service{
-		imagesDir:     filepath.Join(t.TempDir(), "images"),
-		animationsDir: filepath.Join(t.TempDir(), "animations"),
-		nvidiaAPIKey:  "real-key",
-		nvidiaModel:   "flux-1-dev",
-		scriptsDir:    scriptsDir,
+	label, id, desc := selectBestWikidataHit("Cus D'Amato", hits)
+	if id != "Q2" || label != "Cus D'Amato" || desc != "boxing trainer" {
+		t.Fatalf("expected exact match, got label=%q id=%q desc=%q", label, id, desc)
+	}
+}
+
+func TestSelectBestWikidataHitRejectsWeakSurnameMatch(t *testing.T) {
+	hits := []struct {
+		ID          string `json:"id"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+	}{
+		{ID: "Q1", Label: "Rosa D'Amato", Description: "politician"},
+		{ID: "Q2", Label: "Other Person", Description: "politician"},
 	}
 
-	diag := svc.Diagnostics()
-	if !diag.NvidiaConfigured {
-		t.Fatal("expected nvidia to be reported as configured")
+	label, id, desc := selectBestWikidataHit("Cus D'Amato", hits)
+	if label != "" || id != "" || desc != "" {
+		t.Fatalf("expected no weak match, got label=%q id=%q desc=%q", label, id, desc)
 	}
-	if !diag.AnimateScriptOK {
-		t.Fatal("expected animate script to be reported as present")
+}
+
+func TestSelectBestWikiTitlePrefersExactMatch(t *testing.T) {
+	hits := []struct {
+		Title string `json:"title"`
+	}{
+		{Title: "Rosa D'Amato"},
+		{Title: "Cus D'Amato"},
 	}
-	if diag.NvidiaModel != "flux-1-dev" {
-		t.Fatalf("unexpected model: %q", diag.NvidiaModel)
+
+	got := selectBestWikiTitle("Cus D'Amato", hits)
+	if got != "Cus D'Amato" {
+		t.Fatalf("expected exact wiki title, got %q", got)
+	}
+}
+
+func TestSelectBestWikiTitleRejectsWeakSurnameMatch(t *testing.T) {
+	hits := []struct {
+		Title string `json:"title"`
+	}{
+		{Title: "Rosa D'Amato"},
+		{Title: "Michael Jackson"},
+	}
+
+	got := selectBestWikiTitle("Cus D'Amato", hits)
+	if got != "" {
+		t.Fatalf("expected no weak wiki title, got %q", got)
 	}
 }

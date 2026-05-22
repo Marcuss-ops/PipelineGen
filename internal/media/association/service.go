@@ -132,6 +132,24 @@ func (s *Service) ResolveAllPreferredStockMatches(ctx context.Context, input Seg
 		})
 	}
 
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+
+		di := folderPathDepth(results[i].Path)
+		dj := folderPathDepth(results[j].Path)
+		if di != dj {
+			return di > dj
+		}
+
+		if len(results[i].Path) != len(results[j].Path) {
+			return len(results[i].Path) > len(results[j].Path)
+		}
+
+		return results[i].Title < results[j].Title
+	})
+
 	return results
 }
 
@@ -305,6 +323,8 @@ func (s *Service) directFolderMatch(folders []FolderCandidate, topic, subject st
 			default:
 				continue
 			}
+			// Favor more specific folders when the textual match is otherwise comparable.
+			score += folderDepth * 10
 			if score > bestScore || (score == bestScore && folderDepth > bestDepth) {
 				bestScore = score
 				bestDepth = folderDepth
@@ -318,6 +338,15 @@ func (s *Service) directFolderMatch(folders []FolderCandidate, topic, subject st
 		return FolderCandidate{}, false
 	}
 	return best, true
+}
+
+func folderPathDepth(path string) int {
+	path = strings.TrimSpace(strings.ReplaceAll(path, "\\", "/"))
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return 0
+	}
+	return strings.Count(path, "/")
 }
 
 func (s *Service) dedupe(candidates []Candidate) []Candidate {

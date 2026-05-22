@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -239,7 +241,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 }
 
 func (s *Service) searchWikidata(query, lang string) (string, string, string) {
-	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=1", url.QueryEscape(query), lang)
+	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=10", url.QueryEscape(query), lang)
 
 	req, _ := http.NewRequest("GET", apiURL, nil)
 	req.Header.Set("User-Agent", userAgent)
@@ -262,18 +264,26 @@ func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 		return "", "", ""
 	}
 
-	return payload.Search[0].Label, payload.Search[0].ID, payload.Search[0].Description
+	bestLabel, bestID, bestDescription := selectBestWikidataHit(query, payload.Search)
+	if bestID == "" {
+		return "", "", ""
+	}
+	return bestLabel, bestID, bestDescription
 }
 
 func (s *Service) searchWikipedia(query, lang string) (string, string) {
-	// Aggiungiamo un pizzico di contesto per evitare ambiguità
+	if imgURL, wikiTitle := s.wikipediaThumbnailByExactTitle(query, lang); imgURL != "" {
+		return imgURL, wikiTitle
+	}
+
+	// Aggiungiamo un pizzico di contesto per evitare ambiguità, ma non per i nomi propri.
 	searchQuery := query
-	if !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
+	if !looksLikeProperName(query) && !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
 		searchQuery = query + " " + lang
 	}
 
 	// Step 1: Search for the most relevant page
-	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=1", lang, url.QueryEscape(searchQuery))
+	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=10", lang, url.QueryEscape(searchQuery))
 
 	req, _ := http.NewRequest("GET", searchURL, nil)
 	req.Header.Set("User-Agent", userAgent)
@@ -303,7 +313,11 @@ func (s *Service) searchWikipedia(query, lang string) (string, string) {
 		return "", ""
 	}
 
-	bestTitle := searchPayload.Query.Search[0].Title
+	bestTitle := selectBestWikiTitle(query, searchPayload.Query.Search)
+	if bestTitle == "" {
+		s.log.Warn("Wikipedia search results did not meet confidence threshold", zap.String("query", searchQuery))
+		return "", ""
+	}
 	s.log.Info("Wikipedia best match found", zap.String("title", bestTitle))
 
 	// Step 2: Get thumbnail for the best match
@@ -337,6 +351,213 @@ func (s *Service) searchWikipedia(query, lang string) (string, string) {
 		}
 	}
 	return "", ""
+}
+
+func (s *Service) wikipediaThumbnailByExactTitle(title, lang string) (string, string) {
+	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(title))
+
+	req, _ := http.NewRequest("GET", apiURL, nil)
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", ""
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		Query struct {
+			Pages map[string]struct {
+				Title string `json:"title"`
+				Thumbnail struct {
+					Source string `json:"source"`
+				} `json:"thumbnail"`
+			} `json:"pages"`
+		} `json:"query"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", ""
+	}
+
+	for _, page := range payload.Query.Pages {
+		if page.Thumbnail.Source != "" {
+			return page.Thumbnail.Source, page.Title
+		}
+	}
+	return "", ""
+}
+
+type wikiSearchHit struct {
+	ID          string
+	Label       string
+	Description string
+}
+
+type wikipediaSearchHit struct {
+	Title string
+}
+
+func selectBestWikidataHit(query string, hits []struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}) (string, string, string) {
+	bestScore := 0
+	bestLabel := ""
+	bestID := ""
+	bestDescription := ""
+	for _, hit := range hits {
+		score := scoreWikiCandidate(query, hit.Label)
+		if score > bestScore {
+			bestScore = score
+			bestLabel = hit.Label
+			bestID = hit.ID
+			bestDescription = hit.Description
+		}
+	}
+	if bestScore < minWikiScore(query) {
+		return "", "", ""
+	}
+	return bestLabel, bestID, bestDescription
+}
+
+func selectBestWikiTitle(query string, hits []struct {
+	Title string `json:"title"`
+}) string {
+	bestScore := 0
+	bestTitle := ""
+	for _, hit := range hits {
+		score := scoreWikiCandidate(query, hit.Title)
+		if score > bestScore {
+			bestScore = score
+			bestTitle = hit.Title
+		}
+	}
+	if bestScore < minWikiScore(query) {
+		return ""
+	}
+	return bestTitle
+}
+
+func minWikiScore(query string) int {
+	if looksLikeProperName(query) {
+		return 80
+	}
+	return 50
+}
+
+func scoreWikiCandidate(query, candidate string) int {
+	qTokens := meaningfulLookupTokens(query)
+	cTokens := meaningfulLookupTokens(candidate)
+	if len(qTokens) == 0 || len(cTokens) == 0 {
+		return 0
+	}
+
+	qNorm := strings.Join(qTokens, " ")
+	cNorm := strings.Join(cTokens, " ")
+	if qNorm == cNorm {
+		return 100
+	}
+
+	if strings.HasPrefix(cNorm, qNorm) || strings.HasPrefix(qNorm, cNorm) {
+		return 95
+	}
+
+	cTokenSet := make(map[string]struct{}, len(cTokens))
+	for _, token := range cTokens {
+		cTokenSet[token] = struct{}{}
+	}
+
+	matched := 0
+	for _, token := range qTokens {
+		if _, ok := cTokenSet[token]; ok {
+			matched++
+		}
+	}
+
+	if matched == 0 {
+		return 0
+	}
+
+	score := matched * 20
+	if len(qTokens) == 1 {
+		if matched == 1 {
+			score += 25
+		}
+		return score
+	}
+
+	if matched == len(qTokens) {
+		score += 40
+	}
+	if qTokens[0] == cTokens[0] {
+		score += 10
+	}
+	return score
+}
+
+func meaningfulLookupTokens(value string) []string {
+	value = normalizeLookupTerm(value)
+	if value == "" {
+		return nil
+	}
+
+	stopwords := map[string]struct{}{
+		"d": {}, "de": {}, "di": {}, "da": {}, "del": {}, "della": {}, "dello": {}, "degli": {}, "delle": {},
+		"of": {}, "the": {}, "and": {}, "la": {}, "le": {}, "el": {}, "los": {}, "las": {}, "von": {}, "van": {},
+	}
+
+	parts := strings.Fields(value)
+	tokens := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if len(part) < 2 {
+			continue
+		}
+		if _, ok := stopwords[part]; ok {
+			continue
+		}
+		tokens = append(tokens, part)
+	}
+	return tokens
+}
+
+func normalizeLookupTerm(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.NewReplacer("’", "'", "‘", "'", "´", "'", "`", "'", "´", "'").Replace(value)
+	value = strings.ToLower(value)
+	value = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(value, " ")
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func looksLikeProperName(query string) bool {
+	query = strings.TrimSpace(strings.NewReplacer("’", "'", "‘", "'").Replace(query))
+	if query == "" {
+		return false
+	}
+
+	parts := strings.Fields(query)
+	if len(parts) == 0 || len(parts) > 5 {
+		return false
+	}
+
+	capitalized := 0
+	for _, part := range parts {
+		part = strings.Trim(part, `"'.,;:!?()[]{}<>`)
+		if part == "" {
+			continue
+		}
+		r, _ := utf8.DecodeRuneInString(part)
+		if unicode.IsUpper(r) {
+			capitalized++
+		}
+	}
+
+	if len(parts) == 1 {
+		return capitalized == 1 && len(parts[0]) >= 4
+	}
+
+	return capitalized >= 1 || strings.ContainsAny(query, "'’")
 }
 
 func (s *Service) searchDDG(query string) string {
