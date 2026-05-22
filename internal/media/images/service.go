@@ -50,6 +50,18 @@ type Service struct {
 	mu                  sync.Mutex
 }
 
+// DiagnosticsReport summarizes the local wiring for image generation and animation.
+type DiagnosticsReport struct {
+	OK                bool   `json:"ok"`
+	LocalNIMEndpoint  string `json:"local_nim_endpoint"`
+	NvidiaModel       string `json:"nvidia_model"`
+	NvidiaConfigured  bool   `json:"nvidia_configured"`
+	AnimateScriptPath string `json:"animate_script_path"`
+	AnimateScriptOK   bool   `json:"animate_script_ok"`
+	ImagesDir         string `json:"images_dir"`
+	AnimationsDir     string `json:"animations_dir"`
+}
+
 func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger) *Service {
 	dataDir := cfg.Storage.DataDir
 	imagesDir := filepath.Join(dataDir, cfg.Storage.ImagesDir)
@@ -83,6 +95,23 @@ func (s *Service) SetNvidiaConfig(apiKey, model string) {
 
 func (s *Service) SetScriptsDir(dir string) {
 	s.scriptsDir = dir
+}
+
+// Diagnostics reports whether the local AI/video wiring is present.
+func (s *Service) Diagnostics() DiagnosticsReport {
+	scriptPath := filepath.Join(s.scriptsDir, "animate_image.py")
+	_, scriptErr := os.Stat(scriptPath)
+
+	return DiagnosticsReport{
+		OK:                true,
+		LocalNIMEndpoint:  "http://localhost:8000/v1/infer",
+		NvidiaModel:       s.nvidiaModel,
+		NvidiaConfigured:  s.nvidiaAPIKey != "" && s.nvidiaAPIKey != "PASTE_YOUR_NVIDIA_API_KEY_HERE",
+		AnimateScriptPath: scriptPath,
+		AnimateScriptOK:   scriptErr == nil,
+		ImagesDir:         s.imagesDir,
+		AnimationsDir:     s.animationsDir,
+	}
 }
 
 func (s *Service) SetIngestService(svc *ingest.Service) {
@@ -391,13 +420,13 @@ func (s *Service) ingestViaPipeline(slug string, content []byte, filename, sourc
 	}
 
 	result, err := s.ingestSvc.Ingest(context.Background(), &ingest.Request{
-		Kind:     string(ingest.KindImage),
+		Kind:      string(ingest.KindImage),
 		LocalPath: tmpPath,
-		Name:     description,
-		Group:    slug,
-		Source:   "image",
-		SourceID: sourceURL,
-		Tags:     tags,
+		Name:      description,
+		Group:     slug,
+		Source:    "image",
+		SourceID:  sourceURL,
+		Tags:      tags,
 	})
 	if err != nil {
 		return nil, err

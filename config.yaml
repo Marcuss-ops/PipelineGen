@@ -27,6 +27,10 @@ security:
 external:
   ollama_url: "http://localhost:11434"
   ollama_model: "gemma3:4b"
+  pixabay_api_key: ""
+  pixabay_base_url: "https://pixabay.com/api"
+  pexels_api_key: ""
+  pexels_base_url: "https://api.pexels.com/v1"
 
 video:
   width: 1920
@@ -86,7 +90,6 @@ features:
   script_docs_enabled: true
   images_enabled: true
   workflow_enabled: true
-  stock_enabled: true
   stock_pipeline_enabled: true
   google_accounting_enabled: true
 

@@ -42,6 +42,12 @@ external:
   ollama_timeout_seconds: 120
   ytdlp_path: "yt-dlp"
   ffmpeg_path: "ffmpeg"
+  nvidia_api_key: ""
+  nvidia_model: "stabilityai/sdxl-turbo"
+  pixabay_api_key: ""
+  pixabay_base_url: "https://pixabay.com/api"
+  pexels_api_key: ""
+  pexels_base_url: "https://api.pexels.com/v1"
 
 paths:
   python_scripts_dir: "scripts"
@@ -116,10 +122,12 @@ features:
   youtube_enabled: false
   drive_enabled: false
   # Experimental modules - default to false
-  harvester_enabled: false
   script_docs_enabled: false
   script_clips_enabled: false
-  stock_enabled: false
+  stock_pipeline_enabled: false
+  google_accounting_enabled: false
+  images_enabled: false
+  workflow_enabled: false
 
 google_accounting:
   enabled: false

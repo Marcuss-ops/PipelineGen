@@ -1,6 +1,7 @@
 package images
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,7 @@ func (h *Handler) SetIngestService(svc *ingest.Service) {
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/search", h.Search)
+	r.GET("/diagnostics", h.Diagnostics)
 	r.POST("/upload", h.Upload) // Nuovo endpoint
 	r.POST("/sync", h.Sync)
 	r.POST("/generate/nvidia", h.GenerateNvidia)
@@ -193,4 +195,14 @@ func (h *Handler) Animate(c *gin.Context) {
 		"output_path": outputPath,
 		"message":     "Animation created successfully",
 	})
+}
+
+// Diagnostics reports the local state of the image generation and animation wiring.
+func (h *Handler) Diagnostics(c *gin.Context) {
+	if h.service == nil {
+		apiutil.InternalError(c, fmt.Errorf("image service not configured"))
+		return
+	}
+
+	apiutil.OK(c, h.service.Diagnostics())
 }

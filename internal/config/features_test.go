@@ -33,19 +33,27 @@ func TestFeaturesConfigDefaults(t *testing.T) {
 	if cfg.Features.ImagesEnabled {
 		t.Error("ImagesEnabled should default to false")
 	}
+	if cfg.Features.StockPipelineEnabled {
+		t.Error("StockPipelineEnabled should default to false")
+	}
+	if cfg.Features.GoogleAccountingEnabled {
+		t.Error("GoogleAccountingEnabled should default to false")
+	}
 }
 
 func TestFeaturesConfigDisabled(t *testing.T) {
 	cfg := &Config{
 		Features: FeaturesConfig{
-			ArtlistEnabled:     false,
-			YouTubeEnabled:     false,
-			DriveEnabled:       false,
-			ScriptDocsEnabled:  false,
-			ScriptClipsEnabled: false,
-			VoiceoverEnabled:   false,
-			WorkflowEnabled:    false,
-			ImagesEnabled:      false,
+			ArtlistEnabled:          false,
+			YouTubeEnabled:          false,
+			DriveEnabled:            false,
+			ScriptDocsEnabled:       false,
+			ScriptClipsEnabled:      false,
+			VoiceoverEnabled:        false,
+			WorkflowEnabled:         false,
+			ImagesEnabled:           false,
+			StockPipelineEnabled:    false,
+			GoogleAccountingEnabled: false,
 		},
 	}
 

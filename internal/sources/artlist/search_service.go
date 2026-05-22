@@ -1,16 +1,8 @@
 package artlist
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 	jobservice "velox/go-master/internal/jobs"
@@ -87,61 +79,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 
 // SearchLive esegue una ricerca live tramite scraper Node.js.
 func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
-	s := ss.service
-	term = normalizeSearchTerm(term)
-	if term == "" {
-		return nil, fmt.Errorf("term is required")
-	}
-	if limit <= 0 {
-		limit = 8
-	}
-	if limit > 50 {
-		limit = 50
-	}
-
-	scraperDir := os.Getenv("VELOX_NODE_SCRAPER_DIR")
-	if scraperDir == "" {
-		scraperDir = "node-scraper"
-	}
-	if absDir, err := filepath.Abs(scraperDir); err == nil {
-		scraperDir = absDir
-	}
-	scriptPath := filepath.Join(scraperDir, "artlist_search.js")
-
-	if _, err := exec.LookPath("node"); err != nil {
-		return nil, fmt.Errorf("node not found in PATH")
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
-	defer cancel()
-
-	args := []string{scriptPath, "--term", term, "--limit", strconv.Itoa(limit)}
-
-	cmd := exec.CommandContext(ctx, "node", args...)
-	cmd.Dir = scraperDir
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	s.log.Info("Running live Artlist search", zap.String("term", term), zap.Int("limit", limit), zap.String("script_path", scriptPath))
-
-	if err := cmd.Run(); err != nil {
-		s.log.Error("Artlist scraper failed", zap.Error(err), zap.String("stderr", stderr.String()))
-		return nil, fmt.Errorf("scraper failed: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
-	}
-
-	stdoutStr := stdout.String()
-	s.log.Info("Scraper raw output received", zap.Int("bytes", len(stdoutStr)))
-
-	var response ScraperResponse
-	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
-		s.log.Error("failed to decode scraper response", zap.Error(err), zap.String("output", stdoutStr))
-		return nil, fmt.Errorf("failed to decode scraper response: %w", err)
-	}
-
-	s.log.Info("Live Artlist search completed", zap.String("term", term), zap.Int("clips_found", len(response.Clips)))
-
-	return response.Clips, nil
+	return ss.searchLiveWithFallbacks(ctx, term, limit)
 }
 
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.

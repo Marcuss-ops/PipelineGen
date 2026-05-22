@@ -10,19 +10,19 @@ import (
 type Config struct {
 	mu sync.RWMutex
 
-	Server      ServerConfig      `yaml:"server"`
-	Logging     LoggingConfig     `yaml:"logging"`
-	Storage     StorageConfig     `yaml:"storage"`
-	Security    SecurityConfig    `yaml:"security"`
-	External    ExternalConfig    `yaml:"external"`
-	Paths       PathsConfig       `yaml:"paths"`
-	Drive       DriveConfig       `yaml:"drive"`
-	Harvester   HarvesterConfig   `yaml:"harvester"`
-	Jobs        JobsConfig        `yaml:"jobs"`
-	Workers     WorkersConfig     `yaml:"workers"`
-	Video       VideoConfig       `yaml:"video"`
-	Features    FeaturesConfig    `yaml:"features"`
-	ClipIndexer ClipIndexerConfig `yaml:"clip_indexer"`
+	Server           ServerConfig           `yaml:"server"`
+	Logging          LoggingConfig          `yaml:"logging"`
+	Storage          StorageConfig          `yaml:"storage"`
+	Security         SecurityConfig         `yaml:"security"`
+	External         ExternalConfig         `yaml:"external"`
+	Paths            PathsConfig            `yaml:"paths"`
+	Drive            DriveConfig            `yaml:"drive"`
+	Harvester        HarvesterConfig        `yaml:"harvester"`
+	Jobs             JobsConfig             `yaml:"jobs"`
+	Workers          WorkersConfig          `yaml:"workers"`
+	Video            VideoConfig            `yaml:"video"`
+	Features         FeaturesConfig         `yaml:"features"`
+	ClipIndexer      ClipIndexerConfig      `yaml:"clip_indexer"`
 	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
 }
 
@@ -256,6 +256,10 @@ type ExternalConfig struct {
 	FfmpegPath           string          `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	NvidiaAPIKey         string          `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
 	NvidiaModel          string          `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	PixabayAPIKey        string          `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
+	PixabayBaseURL       string          `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
+	PexelsAPIKey         string          `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
+	PexelsBaseURL        string          `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
 	SketchfabConfig      SketchfabConfig `yaml:"sketchfab"`
 }
 
@@ -298,17 +302,17 @@ type WorkersConfig struct {
 // Stable modules default to true only if their dependencies are available.
 // Experimental modules default to false.
 type FeaturesConfig struct {
-	ArtlistEnabled     bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"false"`
-	YouTubeEnabled     bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"false"`
-	DriveEnabled       bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"false"`
-	ScriptDocsEnabled  bool `yaml:"script_docs_enabled" env:"VELOX_FEATURE_SCRIPT_DOCS_ENABLED" default:"false"`
-	ScriptClipsEnabled bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
-	VoiceoverEnabled   bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
-	WorkflowEnabled          bool `yaml:"workflow_enabled" env:"VELOX_FEATURE_WORKFLOW_ENABLED" default:"false"`
-	ImagesEnabled            bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
-	SketchfabEnabled         bool `yaml:"sketchfab_enabled" env:"VELOX_FEATURE_SKETCHFAB_ENABLED" default:"false"`
-	StockPipelineEnabled     bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"false"`
-	GoogleAccountingEnabled  bool `yaml:"google_accounting_enabled" env:"VELOX_FEATURE_GOOGLE_ACCOUNTING_ENABLED" default:"false"`
+	ArtlistEnabled          bool `yaml:"artlist_enabled" env:"VELOX_FEATURE_ARTLIST_ENABLED" default:"false"`
+	YouTubeEnabled          bool `yaml:"youtube_enabled" env:"VELOX_FEATURE_YOUTUBE_ENABLED" default:"false"`
+	DriveEnabled            bool `yaml:"drive_enabled" env:"VELOX_FEATURE_DRIVE_ENABLED" default:"false"`
+	ScriptDocsEnabled       bool `yaml:"script_docs_enabled" env:"VELOX_FEATURE_SCRIPT_DOCS_ENABLED" default:"false"`
+	ScriptClipsEnabled      bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
+	VoiceoverEnabled        bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
+	WorkflowEnabled         bool `yaml:"workflow_enabled" env:"VELOX_FEATURE_WORKFLOW_ENABLED" default:"false"`
+	ImagesEnabled           bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
+	SketchfabEnabled        bool `yaml:"sketchfab_enabled" env:"VELOX_FEATURE_SKETCHFAB_ENABLED" default:"false"`
+	StockPipelineEnabled    bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"false"`
+	GoogleAccountingEnabled bool `yaml:"google_accounting_enabled" env:"VELOX_FEATURE_GOOGLE_ACCOUNTING_ENABLED" default:"false"`
 }
 
 // ClipIndexerConfig holds settings for the clip metadata indexing service.
