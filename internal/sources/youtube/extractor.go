@@ -564,22 +564,6 @@ func getGroupFromDestination(dest *DestinationRequest) string {
 	return dest.Group
 }
 
-// getSubfolderFromDestination extracts subfolder name from destination request
-func getSubfolderFromDestination(dest *DestinationRequest) string {
-	if dest == nil {
-		return ""
-	}
-	return dest.SubfolderName
-}
-
-func findFirstOutput(dir, prefix string) string {
-	matches, _ := filepath.Glob(filepath.Join(dir, prefix+".*"))
-	if len(matches) == 0 {
-		return ""
-	}
-	return matches[0]
-}
-
 // boolDefault returns the value of the bool pointer, or the default value if nil
 func boolDefault(v *bool, def bool) bool {
 	if v == nil {

@@ -327,79 +327,6 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 	return candidates, nil
 }
 
-// UpdateMetadata updates the metadata for a clip
-func (r *Repository) UpdateMetadata(ctx context.Context, clipID string, meta ClipMetadata) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	embeddingJSON, _ := json.Marshal(meta.Embedding)
-	usableForJSON, _ := json.Marshal(meta.UsableFor)
-	avoidForJSON, _ := json.Marshal(meta.AvoidFor)
-
-	sqlStmt := `
-		UPDATE media_assets
-		SET embedding_json = ?,
-			metadata_json = json_set(
-				json_set(
-					json_set(
-						json_set(
-							json_set(
-								json_set(
-									json_set(COALESCE(metadata_json, '{}'), '$.search_text', ?),
-									'$.category', ?
-								),
-								'$.scene_type', ?
-							),
-							'$.usable_for', ?
-						),
-						'$.avoid_for', ?
-					),
-					'$.quality_score', ?
-				),
-				'$.last_indexed_at', ?
-			)
-		WHERE id = ?
-	`
-
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = tx.ExecContext(ctx, sqlStmt,
-		string(embeddingJSON),
-		meta.SearchText,
-		meta.Category,
-		meta.SceneType,
-		string(usableForJSON),
-		string(avoidForJSON),
-		meta.QualityScore,
-		now,
-		clipID,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to update metadata for clip %s: %w", clipID, err)
-	}
-
-	// Update FTS table
-	tagsStr := ""
-	if len(meta.Tags) > 0 {
-		t, _ := json.Marshal(meta.Tags)
-		tagsStr = string(t)
-	}
-
-	// Delete old FTS entry
-	_, _ = tx.ExecContext(ctx, "DELETE FROM clips_fts WHERE clip_id = ?", clipID)
-
-	// Insert new FTS entry (fetching name from clips table)
-	ftsStmt := `
-		INSERT INTO clips_fts(clip_id, name, search_text, tags, category, scene_type)
-		SELECT id, name, ?, ?, ?, ? FROM media_assets WHERE id = ?
-	`
-	_, _ = tx.ExecContext(ctx, ftsStmt, meta.SearchText, tagsStr, meta.Category, meta.SceneType, clipID)
-
-	return tx.Commit()
-}
-
 // MarkUsed marks a clip as used and updates reuse count
 func (r *Repository) MarkUsed(ctx context.Context, clipID string, topic string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -479,29 +406,4 @@ func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.MediaA
 	return &clip, nil
 }
 
-// BuildSearchTextFromClip builds search text from clip metadata
-func BuildSearchTextFromClip(clip *models.MediaAsset) string {
-	parts := make([]string, 0)
 
-	// Add name tokens
-	parts = append(parts, textutil.Tokenize(clip.Name)...)
-
-	// Add search terms
-	parts = append(parts, clip.SearchTerms...)
-
-	// Add tags
-	parts = append(parts, clip.Tags...)
-
-	// Remove duplicates and join
-	seen := make(map[string]bool)
-	unique := make([]string, 0)
-	for _, p := range parts {
-		lower := strings.ToLower(p)
-		if !seen[lower] && lower != "" {
-			seen[lower] = true
-			unique = append(unique, p)
-		}
-	}
-
-	return strings.Join(unique, " ")
-}

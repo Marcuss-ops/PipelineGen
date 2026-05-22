@@ -78,11 +78,6 @@ func (s *LifecycleScheduler) Start(ctx context.Context) {
 	}
 }
 
-// Stop stops the lifecycle scheduler
-func (s *LifecycleScheduler) Stop() {
-	close(s.stopCh)
-}
-
 func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 	s.log.Info("Triggering periodic catalog sync via job system")
 

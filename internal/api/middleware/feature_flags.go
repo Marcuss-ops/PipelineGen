@@ -28,11 +28,6 @@ func ArtlistEnabled(cfg *config.Config) gin.HandlerFunc {
 	return FeatureFlagChecker(cfg, "Artlist", cfg.Features.ArtlistEnabled)
 }
 
-// YouTubeEnabled checks if the YouTube feature is enabled
-func YouTubeEnabled(cfg *config.Config) gin.HandlerFunc {
-	return FeatureFlagChecker(cfg, "YouTube", cfg.Features.YouTubeEnabled)
-}
-
 // ScriptDocsEnabled checks if the ScriptDocs feature is enabled
 func ScriptDocsEnabled(cfg *config.Config) gin.HandlerFunc {
 	return FeatureFlagChecker(cfg, "ScriptDocs", cfg.Features.ScriptDocsEnabled)
@@ -41,24 +36,4 @@ func ScriptDocsEnabled(cfg *config.Config) gin.HandlerFunc {
 // ScriptClipsEnabled checks if the ScriptClips feature is enabled
 func ScriptClipsEnabled(cfg *config.Config) gin.HandlerFunc {
 	return FeatureFlagChecker(cfg, "ScriptClips", cfg.Features.ScriptClipsEnabled)
-}
-
-// WorkflowEnabled checks if the Workflow feature is enabled
-func WorkflowEnabled(cfg *config.Config) gin.HandlerFunc {
-	return FeatureFlagChecker(cfg, "Workflow", cfg.Features.WorkflowEnabled)
-}
-
-// VoiceoverEnabled checks if the Voiceover feature is enabled
-func VoiceoverEnabled(cfg *config.Config) gin.HandlerFunc {
-	return FeatureFlagChecker(cfg, "Voiceover", cfg.Features.VoiceoverEnabled)
-}
-
-// DriveEnabled checks if the Drive feature is enabled
-func DriveEnabled(cfg *config.Config) gin.HandlerFunc {
-	return FeatureFlagChecker(cfg, "Drive", cfg.Features.DriveEnabled)
-}
-
-// ImagesEnabled checks if the Images feature is enabled
-func ImagesEnabled(cfg *config.Config) gin.HandlerFunc {
-	return FeatureFlagChecker(cfg, "Images", cfg.Features.ImagesEnabled)
 }
