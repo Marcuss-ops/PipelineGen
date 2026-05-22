@@ -95,6 +95,8 @@ Internal endpoints require additional header: `X-Internal: true` or `X-Velox-Int
 |--------|------|-------------|
 | POST | `/api/clips/process` | Download and process YouTube clips |
 | GET | `/api/clips/info` | Get YouTube video metadata |
+| GET | `/api/clips/search` | Search and rank YouTube videos by topic |
+| POST | `/api/clips/search` | Search and rank YouTube videos by topic |
 
 ## Voiceover Endpoints
 

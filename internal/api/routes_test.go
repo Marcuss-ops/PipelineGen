@@ -60,6 +60,8 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	// Clips routes should be under /api/clips/
 	assert.True(t, routeMap["POST /api/clips/process"], "POST /api/clips/process should be registered")
 	assert.True(t, routeMap["GET /api/clips/info"], "GET /api/clips/info should be registered")
+	assert.True(t, routeMap["GET /api/clips/search"], "GET /api/clips/search should be registered")
+	assert.True(t, routeMap["POST /api/clips/search"], "POST /api/clips/search should be registered")
 
 	// Jobs routes should be under /api/jobs/
 	assert.True(t, routeMap["GET /api/jobs"], "GET /api/jobs should be registered")
@@ -104,6 +106,8 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 	case "clips":
 		group.POST("/process", func(c *gin.Context) {})
 		group.GET("/info", func(c *gin.Context) {})
+		group.GET("/search", func(c *gin.Context) {})
+		group.POST("/search", func(c *gin.Context) {})
 	case "jobs":
 		group.GET("", func(c *gin.Context) {})
 		group.POST("", func(c *gin.Context) {})

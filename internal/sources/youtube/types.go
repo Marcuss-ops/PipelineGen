@@ -11,6 +11,12 @@ type ExtractRequest struct {
 	Destination    *DestinationRequest `json:"destination,omitempty"`
 }
 
+type TopicSearchRequest struct {
+	Q     string `form:"q" json:"q" binding:"required"`
+	Limit int    `form:"limit" json:"limit"`
+	Sort  string `form:"sort" json:"sort"`
+}
+
 type DestinationRequest struct {
 	Group           string `json:"group,omitempty"`
 	FolderID        string `json:"folder_id,omitempty"`

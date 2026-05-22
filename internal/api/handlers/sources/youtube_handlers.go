@@ -29,6 +29,35 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *j
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Extract)
 	r.GET("/info", h.GetVideoInfo)
+	r.GET("/search", h.SearchTopics)
+	r.POST("/search", h.SearchTopics)
+}
+
+func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
+	var req youtube.TopicSearchRequest
+	if err := c.ShouldBind(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	if req.Q == "" {
+		apiutil.BadRequest(c, "q parameter is required")
+		return
+	}
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Limit > 50 {
+		req.Limit = 50
+	}
+
+	resp, err := h.service.SearchTopicVideos(c.Request.Context(), req.Q, req.Limit, req.Sort)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	apiutil.OK(c, resp)
 }
 
 func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {

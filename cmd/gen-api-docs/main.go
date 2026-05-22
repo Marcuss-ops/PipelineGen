@@ -95,6 +95,7 @@ var routeDescriptions = map[string]string{
 	"/api/jobs/:id/action":                               "Perform action on job",
 	"/api/clips/process":                                 "Download and process clips",
 	"/api/clips/info":                                    "Get YouTube video metadata",
+	"/api/clips/search":                                  "Search and rank YouTube videos by topic (GET/POST)",
 	"/api/voiceover/generate":                            "Generate voiceover",
 	"/api/voiceover/batch":                               "Batch generate voiceovers",
 	"/api/voiceover/sync":                                "Sync voiceovers from Drive",
