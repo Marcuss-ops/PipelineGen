@@ -56,7 +56,7 @@ type VideoConfig struct {
 	SearchCount       int      `yaml:"search_count" default:"25"`
 	OverlayOpacity    float64  `yaml:"overlay_opacity" default:"0.25"`
 	EffectInterval    int      `yaml:"effect_interval" default:"4"`
-	TransitionPresets []string `yaml:"transition_presets" default:"[\"fade\",\"fadeblack\",\"fadewhite\",\"slideleft\",\"slideright\",\"slideup\",\"slidedown\",\"circleclose\",\"circleopen\",\"horzclose\",\"horzopen\",\"vertclose\",\"vertopen\",\"dissolve\",\"pixelize\",\"wipeleft\",\"wiperight\",\"wipeup\",\"wipedown\",\"smoothleft\",\"smoothright\",\"smoothup\",\"smoothdown\",\"radial\",\"hblur\",\"fadegrays\",\"squeezeh\",\"squeezev"]"`
+	TransitionPresets []string `yaml:"transition_presets"`
 }
 
 // WithDefaults returns a copy of VideoConfig with zero-values replaced by defaults.

@@ -160,7 +160,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	assetResolver := assetindex.NewResolver(assetIndexService, resolverCfg, log)
 	log.Info("asset resolver initialized")
 
-	indexingService := indexing.NewService(clipsRepo, clipIndexerService, log)
+	indexingService := indexing.NewService(log)
 	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)
 
 	assocService := association.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)

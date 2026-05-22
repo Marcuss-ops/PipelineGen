@@ -11,35 +11,24 @@ import (
 	"velox/go-master/internal/media/models"
 )
 
-// ScriptService interface for generating script docs
-type ScriptService interface {
-	GenerateScriptDoc(ctx context.Context, title string) (string, error)
-}
-
-// Service handles content package job processing.
 type Service struct {
-	log       *zap.Logger
-	scriptSvc ScriptService
-	jobsSvc   *jobservice.Service
+	log     *zap.Logger
+	jobsSvc *jobservice.Service
 }
 
-// NewService creates a new ContentPackageService.
-func NewService(log *zap.Logger, scriptSvc ScriptService, jobsSvc *jobservice.Service) *Service {
+func NewService(log *zap.Logger, jobsSvc *jobservice.Service) *Service {
 	return &Service{
-		log:       log,
-		scriptSvc: scriptSvc,
-		jobsSvc:   jobsSvc,
+		log:     log,
+		jobsSvc: jobsSvc,
 	}
 }
 
-// HandleJob processes a content package job.
 func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	s.log.Info("handling content package job",
 		zap.String("job_id", job.ID),
 		zap.String("type", string(job.Type)),
 	)
 
-	// Extract payload
 	var payload struct {
 		Title  string `json:"title"`
 		Style  string `json:"style"`
@@ -56,44 +45,32 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		return nil, fmt.Errorf("title is required in payload")
 	}
 
-	// Update progress
 	if tools.Progress != nil {
 		tools.Progress(10, "Starting content package creation")
 	}
 
-	// Step 1: Generate script doc from title
 	if tools.Progress != nil {
 		tools.Progress(20, "Generating script document")
 	}
 
 	var scriptDoc string
-	if s.scriptSvc != nil {
-		var err error
-		scriptDoc, err = s.scriptSvc.GenerateScriptDoc(ctx, payload.Title)
+	if s.jobsSvc != nil {
+		scriptJob, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+			Type:    models.JobType(jobs.JobTypeScriptGenerate),
+			Payload: map[string]any{"topic": payload.Title, "language": "it"},
+		})
 		if err != nil {
-			s.log.Warn("failed to generate script doc", zap.Error(err))
-			scriptDoc = fmt.Sprintf("Script for: %s (generation failed: %v)", payload.Title, err)
-		}
-	} else {
-		// Enqueue a script.generate job if jobsSvc is available
-		if s.jobsSvc != nil {
-			scriptJob, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-				Type:    models.JobType(jobs.JobTypeScriptGenerate),
-				Payload: map[string]any{"topic": payload.Title, "language": "it"},
-			})
-			if err != nil {
-				s.log.Warn("failed to enqueue script job", zap.Error(err))
-			} else {
-				s.log.Info("enqueued script job", zap.String("script_job_id", scriptJob.ID))
-				if tools.Event != nil {
-					tools.Event("script_job_enqueued", "Script generation job enqueued", map[string]any{
-						"script_job_id": scriptJob.ID,
-					})
-				}
+			s.log.Warn("failed to enqueue script job", zap.Error(err))
+		} else {
+			s.log.Info("enqueued script job", zap.String("script_job_id", scriptJob.ID))
+			if tools.Event != nil {
+				tools.Event("script_job_enqueued", "Script generation job enqueued", map[string]any{
+					"script_job_id": scriptJob.ID,
+				})
 			}
 		}
-		scriptDoc = fmt.Sprintf("Script for: %s (enqueued for generation)", payload.Title)
 	}
+	scriptDoc = fmt.Sprintf("Script for: %s (enqueued for generation)", payload.Title)
 
 	result := map[string]any{
 		"job_id":     job.ID,
@@ -123,7 +100,6 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 	return result, nil
 }
 
-// RegisterHandler registers this service as a handler for content.package jobs.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
 		jobsSvc.RegisterHandler(models.JobTypeContentPackage, s.HandleJob)

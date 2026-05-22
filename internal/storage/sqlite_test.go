@@ -2,7 +2,6 @@ package storage
 
 import (
 	"testing"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -44,43 +43,4 @@ func TestNewSQLiteDB_InMemory(t *testing.T) {
 	}
 }
 
-func TestMemoryCache(t *testing.T) {
-	cache := NewMemoryCache()
 
-	// Test Set and Get
-	cache.Set("key1", "value1", 1*time.Hour)
-	val, ok := cache.Get("key1")
-	if !ok || val != "value1" {
-		t.Fatalf("Failed to get cached value")
-	}
-
-	// Test expiration
-	cache.Set("key2", "value2", 1*time.Millisecond)
-	time.Sleep(2 * time.Millisecond)
-	_, ok = cache.Get("key2")
-	if ok {
-		t.Fatalf("Expected expired key to be removed")
-	}
-
-	// Test Delete
-	cache.Set("key3", "value3", 1*time.Hour)
-	cache.Delete("key3")
-	_, ok = cache.Get("key3")
-	if ok {
-		t.Fatalf("Expected deleted key to be gone")
-	}
-
-	// Test Len (including expired entries)
-	cache.Clear() // Start fresh
-	cache.Set("key4", "value4", 1*time.Hour)
-	cache.Set("key5", "value5", 1*time.Hour)
-	if cache.Len() != 2 {
-		t.Fatalf("Expected 2 entries, got %d", cache.Len())
-	}
-
-	// Test Clear
-	cache.Clear()
-	if cache.Len() != 0 {
-		t.Fatalf("Expected 0 entries after clear, got %d", cache.Len())
-	}
-}

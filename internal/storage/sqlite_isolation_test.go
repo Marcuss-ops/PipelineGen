@@ -31,6 +31,7 @@ var expectedTables = map[string][]string{
 		"asset_index",
 		"asset_links",
 		"asset_tree_nodes",
+		"api_requests",
 	},
 	"stock/stock.db.sqlite": {
 	        "media_assets", // Unified media table

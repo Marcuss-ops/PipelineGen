@@ -6,9 +6,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// HasFTS5 checks if the SQLite driver supports FTS5.
-// It queries PRAGMA compile_options and looks for "ENABLE_FTS5".
-// This check is done once at startup since it depends on the driver build, not the specific database.
 func HasFTS5(db *sql.DB, log *zap.Logger) bool {
 	if log == nil {
 		log = zap.NewNop()
@@ -30,20 +27,4 @@ func HasFTS5(db *sql.DB, log *zap.Logger) bool {
 		}
 	}
 	return false
-}
-
-// LogFTS5Status logs whether FTS5 is available.
-// Should be called once at startup with any database connection (driver-dependent).
-func LogFTS5Status(log *zap.Logger, dbs ...*SQLiteDB) {
-	if len(dbs) == 0 {
-		return
-	}
-
-	// Check using the first DB connection
-	available := HasFTS5(dbs[0].DB, log)
-	if available {
-		log.Info("SQLite FTS5 is available")
-	} else {
-		log.Warn("SQLite FTS5 not available; clips search will use LIKE fallback")
-	}
 }

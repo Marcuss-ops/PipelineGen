@@ -1,7 +1,5 @@
 package jobs
 
-import "fmt"
-
 type ArtlistRunPayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`
@@ -9,16 +7,6 @@ type ArtlistRunPayload struct {
 	Limit       int    `json:"limit"`
 	Strategy    string `json:"strategy"`
 	DryRun      bool   `json:"dry_run"`
-}
-
-func (p *ArtlistRunPayload) Validate() error {
-	if p.WorkspaceID == "" {
-		return fmt.Errorf("workspace_id is required")
-	}
-	if p.Term == "" {
-		return fmt.Errorf("term is required")
-	}
-	return nil
 }
 
 type YouTubeClipExtractPayload struct {
@@ -37,35 +25,12 @@ type YouTubeSegment struct {
 	Tags  []string `json:"tags"`
 }
 
-func (p *YouTubeClipExtractPayload) Validate() error {
-	if p.WorkspaceID == "" {
-		return fmt.Errorf("workspace_id is required")
-	}
-	if p.URL == "" {
-		return fmt.Errorf("url is required")
-	}
-	if len(p.Segments) == 0 {
-		return fmt.Errorf("at least one segment is required")
-	}
-	return nil
-}
-
 type ScriptGeneratePayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`
 	Topic       string `json:"topic"`
 	Style       string `json:"style"`
 	Language    string `json:"language"`
-}
-
-func (p *ScriptGeneratePayload) Validate() error {
-	if p.WorkspaceID == "" {
-		return fmt.Errorf("workspace_id is required")
-	}
-	if p.Topic == "" {
-		return fmt.Errorf("topic is required")
-	}
-	return nil
 }
 
 type ScriptPublishPayload struct {
@@ -75,28 +40,11 @@ type ScriptPublishPayload struct {
 	Target      string `json:"target"`
 }
 
-func (p *ScriptPublishPayload) Validate() error {
-	if p.ScriptID == "" {
-		return fmt.Errorf("script_id is required")
-	}
-	if p.Target == "" {
-		return fmt.Errorf("target is required")
-	}
-	return nil
-}
-
 type VoiceoverGeneratePayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`
 	ScriptID    string `json:"script_id"`
 	Voice       string `json:"voice"`
-}
-
-func (p *VoiceoverGeneratePayload) Validate() error {
-	if p.ScriptID == "" {
-		return fmt.Errorf("script_id is required")
-	}
-	return nil
 }
 
 type MediaMatchPayload struct {
@@ -107,13 +55,6 @@ type MediaMatchPayload struct {
 	Sources       []string `json:"sources"`
 }
 
-func (p *MediaMatchPayload) Validate() error {
-	if p.ScriptID == "" {
-		return fmt.Errorf("script_id is required")
-	}
-	return nil
-}
-
 type StockRunPayload struct {
 	SearchQueries []string `json:"search_queries"`
 	DirectURLs    []string `json:"direct_urls"`
@@ -122,29 +63,9 @@ type StockRunPayload struct {
 	FolderName    string   `json:"folder_name"`
 }
 
-func (p *StockRunPayload) Validate() error {
-	if len(p.SearchQueries) == 0 && len(p.DirectURLs) == 0 {
-		return fmt.Errorf("search_queries or direct_urls required")
-	}
-	if p.TotalMinutes <= 0 {
-		return fmt.Errorf("total_minutes must be > 0")
-	}
-	return nil
-}
-
 type MediaImportPayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`
 	Source      string `json:"source"`
 	DryRun      bool   `json:"dry_run"`
-}
-
-func (p *MediaImportPayload) Validate() error {
-	if p.WorkspaceID == "" {
-		return fmt.Errorf("workspace_id is required")
-	}
-	if p.Source == "" {
-		return fmt.Errorf("source is required")
-	}
-	return nil
 }
