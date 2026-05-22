@@ -2,6 +2,7 @@ package script
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,12 +14,14 @@ import (
 type imagePlanItem struct {
 	Subject string
 	URL     string
+	ImageURL string
 	Path    string
+	WikiURL string
 }
 
-func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timeline *TimelinePlan, plan *VisualPlan, importantPhrases, importantWords []string, imgService *imgservice.Service) ScriptSection {
+func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timeline *TimelinePlan, plan *VisualPlan, specialNames, importantPhrases, importantWords []string, imgService *imgservice.Service) (ScriptSection, []imagePlanItem) {
 	subjects := plan.GlobalImageSubjects(5)
-	subjects = append(subjects, extractStandaloneImageTerms(importantPhrases, importantWords)...)
+	subjects = append(subjects, specialNames...)
 	subjects = uniqueNonEmpty(subjects)
 	if len(subjects) > 7 {
 		subjects = subjects[:7]
@@ -33,7 +36,7 @@ func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timel
 		return ScriptSection{
 			Title: "📸 Entità con Immagine",
 			Body:  "Nessun soggetto identificato per le immagini.",
-		}
+		}, nil
 	}
 
 	var items []imagePlanItem
@@ -41,18 +44,29 @@ func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timel
 		if imgService != nil {
 			prompts := buildImagePromptCandidates(subject, req.Topic, timeline)
 			tags := buildImageTags(subject, req.Topic, timeline)
-			asset, err := resolveImageAsset(ctx, imgService, subject, req.Topic, req.Language, prompts, tags, "subject")
+			asset, err := resolveImageAsset(ctx, imgService, subject, req.Topic, req.Language, prompts, tags, "subject", shouldPreferSearchOnly(subject, specialNames))
 			if err != nil {
 				continue
 			}
 			if asset == nil {
 				continue
 			}
+			wikiURL := ""
+			if asset.MetadataJSON != "" {
+				var meta map[string]any
+				if err := json.Unmarshal([]byte(asset.MetadataJSON), &meta); err == nil {
+					if v, ok := meta["source_page_url"].(string); ok {
+						wikiURL = v
+					}
+				}
+			}
 
 			items = append(items, imagePlanItem{
 				Subject: subject,
 				URL:     resolveImageDisplayURL(asset),
+				ImageURL: resolveImageSourceURL(asset),
 				Path:    asset.PathRel,
+				WikiURL: wikiURL,
 			})
 		}
 	}
@@ -61,13 +75,13 @@ func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timel
 		return ScriptSection{
 			Title: "📸 Entità con Immagine",
 			Body:  "Ricerca completata: nessuna immagine trovata online.",
-		}
+		}, nil
 	}
 
 	return ScriptSection{
 		Title: "📸 Entità con Immagine",
 		Body:  renderImagePlans(items),
-	}
+	}, items
 }
 
 func buildImportantWordImageMap(ctx context.Context, req ScriptDocsRequest, timeline *TimelinePlan, importantPhrases, importantWords []string, imgService *imgservice.Service) map[string]string {
@@ -86,13 +100,16 @@ func buildImportantWordImageMap(ctx context.Context, req ScriptDocsRequest, time
 
 	result := make(map[string]string, len(selected))
 	for _, word := range selected {
+		if len(strings.Fields(word)) < 2 {
+			continue
+		}
 		prompts := buildImportantWordPrompts(word, req.Topic, timeline)
 		tags := buildImportantWordTags(word, req.Topic, timeline)
-		asset, err := resolveImageAsset(ctx, imgService, word, req.Topic, req.Language, prompts, tags, "important word")
+		asset, err := resolveImageAsset(ctx, imgService, word, req.Topic, req.Language, prompts, tags, "important word", false)
 		if err != nil || asset == nil {
 			continue
 		}
-		if link := resolveImageDisplayURL(asset); link != "" {
+		if link := resolveImageSourceURL(asset); link != "" {
 			result[strings.ToLower(strings.TrimSpace(word))] = link
 		}
 	}
@@ -182,16 +199,28 @@ func buildImportantWordTags(word, topic string, timeline *TimelinePlan) []string
 	return uniqueNonEmpty(tags)
 }
 
-func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subject, topic, language string, prompts, tags []string, label string) (*models.ImageAsset, error) {
+func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subject, topic, language string, prompts, tags []string, label string, preferSearchOnly bool) (*models.ImageAsset, error) {
+	logFields := []zap.Field{zap.String("subject", subject)}
+	if strings.TrimSpace(label) != "" {
+		logFields = append(logFields, zap.String("label", label))
+	}
+
+	if preferSearchOnly {
+		slug := Slugify(subject)
+		query := strings.TrimSpace(subject)
+		asset, err := imgService.SearchAndDownload(slug, subject, query, language, tags)
+		if err != nil {
+			zap.L().Warn("web image search failed", append(logFields, zap.Error(err))...)
+			return nil, err
+		}
+		return asset, nil
+	}
+
 	asset, err := imgService.GenerateSmartImage(ctx, subject, topic, prompts, tags, 1024, 1024, "")
 	if err == nil && asset != nil {
 		return asset, nil
 	}
 
-	logFields := []zap.Field{zap.String("subject", subject)}
-	if strings.TrimSpace(label) != "" {
-		logFields = append(logFields, zap.String("label", label))
-	}
 	zap.L().Warn("AI image generation failed, falling back to web search", append(logFields, zap.Error(err))...)
 
 	slug := Slugify(subject)
@@ -236,6 +265,23 @@ func extractStandaloneImageTerms(importantPhrases, importantWords []string) []st
 	return terms
 }
 
+func shouldPreferSearchOnly(subject string, specialNames []string) bool {
+	subjectLower := strings.ToLower(strings.TrimSpace(subject))
+	if subjectLower == "" {
+		return false
+	}
+	for _, name := range specialNames {
+		nameLower := strings.ToLower(strings.TrimSpace(name))
+		if nameLower == "" {
+			continue
+		}
+		if subjectLower == nameLower || strings.Contains(subjectLower, nameLower) || strings.Contains(nameLower, subjectLower) {
+			return true
+		}
+	}
+	return false
+}
+
 func resolveImageDisplayURL(asset *models.ImageAsset) string {
 	if asset == nil {
 		return ""
@@ -245,6 +291,24 @@ func resolveImageDisplayURL(asset *models.ImageAsset) string {
 	}
 	if strings.TrimSpace(asset.SourceURL) != "" {
 		return asset.SourceURL
+	}
+	return ""
+}
+
+func resolveImageSourceURL(asset *models.ImageAsset) string {
+	if asset == nil {
+		return ""
+	}
+	if link := strings.TrimSpace(asset.SourceURL); link != "" {
+		return link
+	}
+	if asset.MetadataJSON != "" {
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(asset.MetadataJSON), &meta); err == nil {
+			if link, ok := meta["source_image_url"].(string); ok {
+				return strings.TrimSpace(link)
+			}
+		}
 	}
 	return ""
 }
@@ -269,11 +333,26 @@ func uniqueNonEmpty(values []string) []string {
 
 func renderImagePlans(items []imagePlanItem) string {
 	var b strings.Builder
-	for i, item := range items {
-		if i > 0 {
+	rendered := 0
+	for _, item := range items {
+		link := strings.TrimSpace(item.ImageURL)
+		if link == "" {
+			link = strings.TrimSpace(item.URL)
+		}
+		if link == "" {
+			continue
+		}
+		if rendered > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(fmt.Sprintf("🖼️ \"%s\": %s", item.Subject, item.URL))
+		b.WriteString(fmt.Sprintf("🖼️ \"%s\": %s", item.Subject, link))
+		if wiki := strings.TrimSpace(item.WikiURL); wiki != "" {
+			b.WriteString(fmt.Sprintf(" (Wikipedia: %s)", wiki))
+		}
+		rendered++
+	}
+	if rendered == 0 {
+		return ""
 	}
 	return b.String()
 }

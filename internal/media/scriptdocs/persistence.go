@@ -2,6 +2,7 @@ package scriptdocs
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"go.uber.org/zap"
@@ -28,6 +29,35 @@ func NewPersistenceService(repo *scripts.ScriptRepository, jobsService *jobservi
 
 // SaveScriptToDB saves the generated script to the database.
 func (s *PersistenceService) SaveScriptToDB(ctx context.Context, req script.ScriptDocsRequest, document *script.ScriptDocument, modelName, baseURL string) (int64, error) {
+	var timelineJSON string
+	if document != nil && document.Timeline != nil {
+		if data, err := json.Marshal(document.Timeline); err == nil {
+			timelineJSON = string(data)
+		}
+	}
+
+	var metadataJSON string
+	if document != nil && document.Metadata != nil {
+		if data, err := json.Marshal(document.Metadata); err == nil {
+			metadataJSON = string(data)
+		}
+	}
+
+	var entitiesJSON string
+	if document != nil && document.Metadata != nil {
+		entities := map[string]any{}
+		for _, key := range []string{"special_names", "important_phrases", "important_words", "artlist_phrases"} {
+			if value, ok := document.Metadata[key]; ok {
+				entities[key] = value
+			}
+		}
+		if len(entities) > 0 {
+			if data, err := json.Marshal(entities); err == nil {
+				entitiesJSON = string(data)
+			}
+		}
+	}
+
 	sections := make([]scripts.ScriptSectionRecord, 0, len(document.Sections))
 	for i, sec := range document.Sections {
 		if sec.Title == "🧾 Metadata" {
@@ -48,9 +78,9 @@ func (s *PersistenceService) SaveScriptToDB(ctx context.Context, req script.Scri
 		Template:       req.Template,
 		Mode:           "modular",
 		NarrativeText:  document.Content,
-		TimelineJSON:   "",
-		EntitiesJSON:   "",
-		MetadataJSON:   "",
+		TimelineJSON:   timelineJSON,
+		EntitiesJSON:   entitiesJSON,
+		MetadataJSON:   metadataJSON,
 		FullDocument:   document.Content,
 		ModelUsed:      modelName,
 		OllamaBaseURL:  baseURL,

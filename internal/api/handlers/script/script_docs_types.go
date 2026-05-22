@@ -37,6 +37,7 @@ type ScriptDocument struct {
 	Content  string
 	Sections []ScriptSection
 	Timeline *TimelinePlan
+	Metadata map[string]any
 }
 
 type artlistIndex struct {

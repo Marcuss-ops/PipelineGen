@@ -44,6 +44,19 @@ func TestResolveTimelineDisplayLinkPrefersClipLinkOverFolderLink(t *testing.T) {
 	}
 }
 
+func TestResolveTimelineDisplayLinkIgnoresFolderLinkWhenClipMissing(t *testing.T) {
+	match := association.ScoredMatch{
+		Title:      "Artlist Clip",
+		FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
+		Source:     "artlist_live_discovery",
+	}
+
+	link := resolveTimelineDisplayLink(match)
+	if link != "" {
+		t.Fatalf("expected folder link to be ignored, got %q", link)
+	}
+}
+
 func TestResolveTimelineDisplayLinkSuppressesDirectArtlistURL(t *testing.T) {
 	match := association.ScoredMatch{
 		Title:  "Artlist Clip",

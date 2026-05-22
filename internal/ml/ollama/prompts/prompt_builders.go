@@ -126,10 +126,14 @@ RULES FOR VISUAL ENTITIES:
    - AVOID abstract or generic nouns.
    - AVOID ambiguous common words unless qualified (e.g., AVOID "Campana" alone, PREFER "Mozzarella di bufala campana").
    - PREFER concrete entities that have a dedicated Wikipedia page.
+   - Do not include the topic itself unless it is a real named entity that needs a visual reference.
 2. "parole_importanti": Extract a MAXIMUM of %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
-3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences.
+3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences or sentence fragments that appear in the TEXT.
 4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query.
-5. "artlist_phrases": Extract up to 5 short phrases (3-6 words) that describe a specific visual action or cinematic scene suitable for stock footage (e.g., "rain falling on pavement", "athlete training in gym").
+5. "artlist_phrases": Extract up to 5 short phrases (3-6 words) that describe a visual scene, mood, or action suitable for stock footage.
+   - These must be semantic visual cues, not proper names.
+   - Prefer phrases that can match stock footage terms like "rome estetic", "old film reel", "rainy street at night".
+   - Do NOT repeat the same entity already listed in "nomi_speciali".
 
 STRICT CONSTRAINTS:
 - Only extract spans that appear verbatim in the TEXT.

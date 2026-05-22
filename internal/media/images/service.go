@@ -198,8 +198,12 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 
 	// 3. Cerca URL Immagine
 	s.log.Info("Searching for image on Wikipedia", zap.String("query", finalQuery), zap.String("lang", lang))
-	imgURL := s.searchWikipedia(finalQuery, lang)
+	imgURL, wikiTitle := s.searchWikipedia(finalQuery, lang)
 	source := "wikipedia"
+	wikiURL := ""
+	if wikiTitle != "" {
+		wikiURL = fmt.Sprintf("https://%s.wikipedia.org/wiki/%s", lang, strings.ReplaceAll(wikiTitle, " ", "_"))
+	}
 
 	if imgURL == "" {
 		s.log.Info("Wikipedia failed, falling back to DuckDuckGo", zap.String("query", query))
@@ -215,6 +219,21 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
 	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
 	asset, err := s.downloadAndIngest(slug, imgURL, source, finalQuery, description, tags)
+	if err == nil && asset != nil {
+		meta := make(map[string]any)
+		if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {
+			_ = json.Unmarshal([]byte(asset.MetadataJSON), &meta)
+		}
+		meta["source_image_url"] = imgURL
+		if wikiURL != "" {
+			meta["source_page_url"] = wikiURL
+		}
+		meta["source_name"] = source
+		meta["source_query"] = finalQuery
+		metaJSON, _ := json.Marshal(meta)
+		asset.MetadataJSON = string(metaJSON)
+		_, _ = s.repo.AddImage(asset)
+	}
 
 	return asset, err
 }
@@ -246,7 +265,7 @@ func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 	return payload.Search[0].Label, payload.Search[0].ID, payload.Search[0].Description
 }
 
-func (s *Service) searchWikipedia(query, lang string) string {
+func (s *Service) searchWikipedia(query, lang string) (string, string) {
 	// Aggiungiamo un pizzico di contesto per evitare ambiguità
 	searchQuery := query
 	if !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
@@ -262,7 +281,7 @@ func (s *Service) searchWikipedia(query, lang string) string {
 	resp, err := s.client.Do(req)
 	if err != nil {
 		s.log.Error("Wikipedia search request failed", zap.Error(err))
-		return ""
+		return "", ""
 	}
 	defer resp.Body.Close()
 
@@ -276,12 +295,12 @@ func (s *Service) searchWikipedia(query, lang string) string {
 
 	if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
 		s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
-		return ""
+		return "", ""
 	}
 
 	if len(searchPayload.Query.Search) == 0 {
 		s.log.Warn("Wikipedia search returned no results", zap.String("query", searchQuery))
-		return ""
+		return "", ""
 	}
 
 	bestTitle := searchPayload.Query.Search[0].Title
@@ -294,7 +313,7 @@ func (s *Service) searchWikipedia(query, lang string) string {
 
 	resp, err = s.client.Do(req)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer resp.Body.Close()
 
@@ -309,15 +328,15 @@ func (s *Service) searchWikipedia(query, lang string) string {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return ""
+		return "", ""
 	}
 
 	for _, page := range payload.Query.Pages {
 		if page.Thumbnail.Source != "" {
-			return page.Thumbnail.Source
+			return page.Thumbnail.Source, bestTitle
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func (s *Service) searchDDG(query string) string {

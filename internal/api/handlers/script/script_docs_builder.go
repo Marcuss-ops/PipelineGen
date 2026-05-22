@@ -114,9 +114,27 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 
 	// 4. Resolve Images through section builder
 	var imageSection ScriptSection
+	var imageItems []imagePlanItem
 	if imgService != nil {
-		imageSection = buildImagePlanningSection(ctx, req, timeline, vPlan, phrases, importantWords, imgService)
+		imageSection, imageItems = buildImagePlanningSection(ctx, req, timeline, vPlan, specialNames, phrases, importantWords, imgService)
 		importantWordImages = buildImportantWordImageMap(ctx, req, timeline, phrases, importantWords, imgService)
+	}
+
+	specialNameImages := make(map[string]string)
+	specialNameWikis := make(map[string]string)
+	for _, name := range specialNames {
+		nameLower := strings.ToLower(strings.TrimSpace(name))
+		for _, item := range imageItems {
+			itemSubjLower := strings.ToLower(strings.TrimSpace(item.Subject))
+			if nameLower == itemSubjLower || (len(nameLower) > 3 && strings.Contains(itemSubjLower, nameLower)) || (len(itemSubjLower) > 3 && strings.Contains(nameLower, itemSubjLower)) {
+				specialNameImages[name] = item.ImageURL
+				if specialNameImages[name] == "" {
+					specialNameImages[name] = item.URL
+				}
+				specialNameWikis[name] = item.WikiURL
+				break
+			}
+		}
 	}
 
 	// 4b. Resolve Artlist Phrases
@@ -131,7 +149,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	}
 	specialNamesSection := ScriptSection{
 		Title: "⭐ SPECIAL NAMES",
-		Body:  renderSpecialNamesWithImages(specialNames, nil),
+		Body:  renderSpecialNamesWithWiki(specialNames, specialNameImages, specialNameWikis),
 	}
 	importantWordsSection := ScriptSection{
 		Title: "🗝️ IMPORTANT WORDS",
@@ -163,11 +181,23 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	sections = append(sections, importantPhrasesSection, specialNamesSection, importantWordsSection)
 
 	content := renderScriptDocument(req.Topic, sections)
+	metadata := map[string]any{
+		"special_names":       specialNames,
+		"important_phrases":   phrases,
+		"important_words":     importantWords,
+		"artlist_phrases":     artlistPhrases,
+		"special_name_images": specialNameImages,
+		"special_name_wikis":  specialNameWikis,
+	}
+	if len(imageItems) > 0 {
+		metadata["image_items"] = imageItems
+	}
 	return &ScriptDocument{
 		Title:    req.Topic,
 		Content:  content,
 		Sections: sections,
 		Timeline: timeline,
+		Metadata: metadata,
 	}, nil
 }
 
@@ -255,6 +285,7 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 		if len(keywords) == 0 {
 			continue
 		}
+		queryLabel := strings.Join(keywords, " ")
 
 		// Search in Artlist DB for these keywords
 		matches, err := ArtlistRepo.SearchClipsByKeywords(ctx, "artlist", keywords, 5)
@@ -284,7 +315,11 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 						}
 						if len(files) > 0 {
 							finalClip = files[rng.Intn(len(files))]
+						} else {
+							continue
 						}
+					} else {
+						continue
 					}
 				}
 
@@ -304,7 +339,11 @@ func buildArtlistPhrasesSection(ctx context.Context, phrases []string, ArtlistRe
 					displayName = strings.Split(displayName, " – ")[0]
 					displayName = strings.TrimSuffix(displayName, ".mp4")
 
-					b.WriteString(fmt.Sprintf("🎥 \"%s\": %s (%s)\n", phrase, displayName, link))
+					if queryLabel != "" {
+						b.WriteString(fmt.Sprintf("🎥 \"%s\" → %s: %s [query: %s]\n", phrase, displayName, link, queryLabel))
+					} else {
+						b.WriteString(fmt.Sprintf("🎥 \"%s\" → %s: %s\n", phrase, displayName, link))
+					}
 				}
 			}
 		}
@@ -334,12 +373,6 @@ func resolveArtlistDisplayLink(clip *models.MediaAsset) string {
 	if link := strings.TrimSpace(clip.ExternalURL); strings.HasPrefix(link, "http") && driveutil.FileIDFromLink(link) != "" {
 		return link
 	}
-	if link := driveutil.NormalizeDriveFolderLink("", clip.FolderID); link != "" {
-		return link
-	}
-	if link := driveutil.NormalizeDriveFolderLink("", clip.ParentFolderID); link != "" {
-		return link
-	}
 	return ""
 }
 
@@ -360,6 +393,9 @@ func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
 			}
 
 			link := resolveAssociatedDisplayLink(m)
+			if isDriveFolderURL(link) {
+				continue
+			}
 			key := strings.ToLower(m.Title + "|" + link)
 			if seen[key] || link == "" {
 				continue
@@ -387,14 +423,9 @@ func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
 
 func resolveAssociatedDisplayLink(match association.ScoredMatch) string {
 	if link := strings.TrimSpace(match.Link); link != "" {
-		if !isDirectArtlistURL(link) {
+		if !isDirectArtlistURL(link) && !isDriveFolderURL(link) {
 			return link
 		}
 	}
-
-	if folderLink := strings.TrimSpace(match.FolderLink); folderLink != "" {
-		return folderLink
-	}
-
 	return ""
 }
