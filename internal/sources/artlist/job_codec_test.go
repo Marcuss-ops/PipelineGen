@@ -36,71 +36,11 @@ func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
 	}
 }
 
-func TestArtlistRunTerminalStatuses(t *testing.T) {
-	terminal := []RunStatus{
-		RunCompleted,
-		RunCompletedDryRun,
-		RunFailed,
-		RunCancelled,
-	}
-
-	for _, status := range terminal {
-		if !IsTerminalRunStatus(status) {
-			t.Fatalf("expected %s to be terminal", status)
-		}
-	}
-
-	nonTerminal := []RunStatus{
-		RunQueued,
-		RunRunning,
-	}
-
-	for _, status := range nonTerminal {
-		if IsTerminalRunStatus(status) {
-			t.Fatalf("expected %s to be non-terminal", status)
-		}
-	}
-}
-
-func TestArtlistJobPayloadRoundTrip(t *testing.T) {
-	original := RunTagRequest{
-		Term:         "city",
-		Limit:        5,
-		RootFolderID: "folder123",
-		Strategy:     "verify",
-		DryRun:       true,
-	}
-
-	// Test codec PayloadFromRequest
-	codec := &JobCodec{}
-	payload := codec.PayloadFromRequest(&original)
-
-	// payload is already map[string]any
-	// Test codec RequestFromPayload
-	decoded := codec.RequestFromPayload(payload)
-
-	if decoded.Term != original.Term {
-		t.Fatalf("term mismatch: got %q want %q", decoded.Term, original.Term)
-	}
-	if decoded.Limit != original.Limit {
-		t.Fatalf("limit mismatch: got %d want %d", decoded.Limit, original.Limit)
-	}
-	if decoded.RootFolderID != original.RootFolderID {
-		t.Fatalf("root folder mismatch")
-	}
-	if decoded.Strategy != original.Strategy {
-		t.Fatalf("strategy mismatch")
-	}
-	if decoded.DryRun != original.DryRun {
-		t.Fatalf("dry run mismatch")
-	}
-}
-
 func TestArtlistJobResultRoundTrip(t *testing.T) {
 	resp := &RunTagResponse{
 		OK:          true,
 		Term:        "city",
-		Status:      string(RunCompleted),
+		Status:      "completed",
 		Found:       2,
 		Processed:   1,
 		Skipped:     1,
@@ -178,10 +118,10 @@ func TestNormalizeRunTagRequest(t *testing.T) {
 }
 
 func TestNormalizeSearchTermLimitsToTwoWords(t *testing.T) {
-	if got := NormalizeSearchTerm("  blue ocean sunset "); got != "blue ocean" {
-		t.Fatalf("expected first two words, got %q", got)
+	if got := normalizeSearchTerm("  blue ocean sunset "); got != "blue ocean" {
+		t.Fatalf("expected two words, got %q", got)
 	}
-	if got := NormalizeSearchTerm("single"); got != "single" {
+	if got := normalizeSearchTerm("single"); got != "single" {
 		t.Fatalf("expected single word unchanged, got %q", got)
 	}
 }

@@ -209,6 +209,28 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		plan.Segments = append(plan.Segments, seg)
 	}
 
+	// Track usage feedback for all matched clips in the finalized timeline
+	usedIDs := make([]string, 0, len(plan.Segments)*3)
+	for _, seg := range plan.Segments {
+		for _, m := range seg.StockMatches {
+			if m.ClipID != "" {
+				usedIDs = append(usedIDs, m.ClipID)
+			}
+		}
+		for _, m := range seg.ArtlistMatches {
+			if m.ClipID != "" {
+				usedIDs = append(usedIDs, m.ClipID)
+			}
+		}
+	}
+	if len(usedIDs) > 0 && clipsRepo != nil {
+		if err := clipsRepo.MarkClipsUsed(ctx, usedIDs); err != nil {
+			zap.L().Warn("failed to update clip usage stats", zap.Error(err))
+		} else {
+			zap.L().Info("updated usage stats for clips", zap.Int("count", len(usedIDs)))
+		}
+	}
+
 	zap.L().Info("timeline plan completed", zap.Duration("elapsed", time.Since(startedAt)))
 	return plan, nil
 }

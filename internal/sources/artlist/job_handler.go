@@ -40,7 +40,7 @@ func (a *JobAdapter) HandleJob(ctx context.Context, job *models.Job, tools *jobs
 		}, nil
 	}
 
-	resp, err := s.RunTag(ctx, req)
+	resp, err := s.runOrchestrator.RunTag(ctx, req)
 	if err != nil || (resp != nil && !resp.OK) {
 		errMsg := ""
 		if err != nil {

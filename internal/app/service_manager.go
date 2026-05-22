@@ -135,8 +135,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	clipsRepo := clips.NewRepository(dbs.stock.DB, log)
-	artlistRepo := clips.NewRepository(dbs.artlist.DB, log)
+	clipsRepo := clips.NewRepository(dbs.media.DB, log)
+	artlistRepo := clips.NewRepository(dbs.media.DB, log)
 
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.media.DB)

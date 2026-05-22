@@ -6,32 +6,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// RunTagRequest represents the full Artlist tag pipeline request.
-type RunTagRequest struct {
-	Term         string `json:"term"`
-	Limit        int    `json:"limit"`
-	RootFolderID string `json:"root_folder_id,omitempty"`
-	Strategy     string `json:"strategy,omitempty"`
-	DryRun       bool   `json:"dry_run,omitempty"`
-	ClipDuration int    `json:"clip_duration,omitempty"`
-	Width        int    `json:"width,omitempty"`
-	Height       int    `json:"height,omitempty"`
-	FPS          int    `json:"fps,omitempty"`
-}
-
-// ToMap converts RunTagRequest to a map for job payload.
-// Deprecated: Use JobCodec.PayloadFromRequest instead for consistency.
-func (r *RunTagRequest) ToMap() map[string]any {
-	return (&JobCodec{}).PayloadFromRequest(r)
-}
-
-// RunSmartRequest represents a simplified Artlist pipeline request with presets.
-type RunSmartRequest struct {
-	Term   string `json:"term" binding:"required"`
-	Limit  int    `json:"limit"`
-	Preset string `json:"preset"`
-}
-
 // PresetConfig defines the configuration for a preset.
 type PresetConfig struct {
 	ClipDuration int    `yaml:"clip_duration"`
@@ -61,26 +35,23 @@ func LoadPresets(path string) (*PresetsConfig, error) {
 	return cfg, nil
 }
 
-// ToRunTagRequest converts RunSmartRequest to RunTagRequest using preset.
-func (r *RunSmartRequest) ToRunTagRequest(presets *PresetsConfig) *RunTagRequest {
-	req := &RunTagRequest{
-		Term:     r.Term,
-		Limit:    r.Limit,
-		Strategy: "verify",
-	}
+// RunTagRequest represents the full Artlist tag pipeline request.
+type RunTagRequest struct {
+	Term         string `json:"term"`
+	Limit        int    `json:"limit"`
+	RootFolderID string `json:"root_folder_id,omitempty"`
+	Strategy     string `json:"strategy,omitempty"`
+	DryRun       bool   `json:"dry_run,omitempty"`
+	ClipDuration int    `json:"clip_duration,omitempty"`
+	Width        int    `json:"width,omitempty"`
+	Height       int    `json:"height,omitempty"`
+	FPS          int    `json:"fps,omitempty"`
+}
 
-	// Apply preset if specified
-	if r.Preset != "" && presets != nil {
-		if preset, ok := presets.Presets[r.Preset]; ok {
-			req.Strategy = preset.Strategy
-			req.ClipDuration = preset.ClipDuration
-			req.Width = preset.Width
-			req.Height = preset.Height
-			req.FPS = preset.FPS
-		}
-	}
-
-	return req
+// ToMap converts RunTagRequest to a map for job payload.
+// Deprecated: Use JobCodec.PayloadFromRequest instead for consistency.
+func (r *RunTagRequest) ToMap() map[string]any {
+	return (&JobCodec{}).PayloadFromRequest(r)
 }
 
 // RunDedupKey creates a deduplication key for artlist jobs.

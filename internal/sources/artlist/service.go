@@ -86,11 +86,6 @@ func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]Scr
 	return s.searchService.SearchLive(ctx, term, limit)
 }
 
-// SearchLiveAndSave esegue una ricerca live e salva i risultati.
-func (s *Service) SearchLiveAndSave(ctx context.Context, term string, limit int) (*SearchResponse, error) {
-	return s.searchService.SearchLiveAndSave(ctx, term, limit)
-}
-
 // DiscoverAndQueueRun scopre clip e accoda un'esecuzione.
 func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit int) (*SearchResponse, *RunTagResponse, error) {
 	return s.searchService.DiscoverAndQueueRun(ctx, term, limit)
@@ -99,11 +94,6 @@ func (s *Service) DiscoverAndQueueRun(ctx context.Context, term string, limit in
 // GetRunTag ottiene lo stato di un run.
 func (s *Service) GetRunTag(ctx context.Context, runID string) (*RunTagResponse, error) {
 	return s.runOrchestrator.GetRunTag(ctx, runID)
-}
-
-// RunTag esegue un tag su un insieme di clip.
-func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error) {
-	return s.runOrchestrator.RunTag(ctx, req)
 }
 
 // GetStats ottiene statistiche sul catalogo Artlist.
@@ -116,19 +106,9 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 	return s.diagnosticsService.Diagnostics(ctx, term)
 }
 
-// GetClipStatus ottiene lo stato di una clip specifica.
-func (s *Service) GetClipStatus(ctx context.Context, clipID string) (*ClipStatusResponse, error) {
-	return s.clipStatusService.GetClipStatus(ctx, clipID)
-}
-
 // SearchClips cerca clip nel database locale.
 func (s *Service) SearchClips(ctx context.Context, term string) []*models.MediaAsset {
 	return s.searchService.SearchClips(ctx, term)
-}
-
-// UpsertClip inserisce o aggiorna una clip nel database.
-func (s *Service) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
-	return s.searchService.UpsertClip(ctx, clip)
 }
 
 // HandleJob gestisce un job dalla coda.
@@ -136,17 +116,9 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobs.Jo
 	return s.jobAdapter.HandleJob(ctx, job, tools)
 }
 
-// UpdateJobRun aggiorna un job dopo l'esecuzione.
-func (s *Service) UpdateJobRun(ctx context.Context, job *models.Job, resp *RunTagResponse) error {
-	return s.jobAdapter.UpdateJobRun(ctx, job, resp)
-}
-
 // GetJobByRunID ottiene un job per run ID.
 func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
 }
 
-// FindActiveJob trova un job attivo per chiave.
-func (s *Service) FindActiveJob(ctx context.Context, activeKey string) (*models.Job, error) {
-	return s.jobAdapter.FindActiveJob(ctx, activeKey)
-}
+

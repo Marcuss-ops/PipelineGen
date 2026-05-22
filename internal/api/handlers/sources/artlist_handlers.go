@@ -26,7 +26,6 @@ type ArtlistHandler struct {
 	clipResolver   *clipresolver.Service
 	nodeScraperDir string
 	log            *zap.Logger
-	presetsConfig  *artlist.PresetsConfig
 	cfg            *config.Config
 }
 
@@ -37,7 +36,6 @@ func NewArtlistHandler(
 	clipResolver *clipresolver.Service,
 	nodeScraperDir string,
 	log *zap.Logger,
-	presetsConfig *artlist.PresetsConfig,
 	cfg *config.Config,
 ) *ArtlistHandler {
 	return &ArtlistHandler{
@@ -47,7 +45,6 @@ func NewArtlistHandler(
 		clipResolver:   clipResolver,
 		nodeScraperDir: nodeScraperDir,
 		log:            log,
-		presetsConfig:  presetsConfig,
 		cfg:            cfg,
 	}
 }
@@ -57,7 +54,6 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// Protected routes (require standard Auth)
 	r.POST("/run", h.RunTagPipeline)
-	r.POST("/run-smart", h.RunSmartPipeline)
 	r.GET("/runs/:run_id", h.RunStatus)
 	r.GET("/stats", h.Stats)
 
@@ -105,41 +101,6 @@ func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 	)
 
 	h.enqueueArtlistRun(c, req)
-}
-
-// RunSmartPipeline executes the Artlist flow with preset support
-func (h *ArtlistHandler) RunSmartPipeline(c *gin.Context) {
-	req, ok := apiutil.BindJSON[artlist.RunSmartRequest](c)
-	if !ok {
-		return
-	}
-
-	if strings.TrimSpace(req.Term) == "" {
-		apiutil.BadRequest(c, "term is required")
-		return
-	}
-
-	// Convert to RunTagRequest using preset
-	runReq := req.ToRunTagRequest(h.presetsConfig)
-
-	// Normalize request
-	normalized := artlist.NormalizeRunTagRequest(*runReq, artlist.RunDefaults{
-		DefaultRootFolderID: artlist.ResolveRootFolderID(h.cfg),
-		MaxLimit:            500,
-	})
-	runReq = &normalized
-	if strings.TrimSpace(runReq.RootFolderID) == "" {
-		apiutil.BadRequest(c, "artlist root folder is not configured")
-		return
-	}
-
-	h.log.Info("artlist smart run requested",
-		zap.String("term", req.Term),
-		zap.String("preset", req.Preset),
-		zap.Int("limit", runReq.Limit),
-	)
-
-	h.enqueueArtlistRun(c, *runReq)
 }
 
 // enqueueArtlistRun is the single enqueue path for all Artlist runs

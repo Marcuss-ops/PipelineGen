@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"velox/go-master/internal/core/scoring"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -98,18 +97,24 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 
 	matches := make([]ScoredMatch, 0, len(clips))
 	for _, clip := range clips {
-		score, topicMatched := a.calculateScore(clip, topic, terms)
+		result := scoring.Calculate(scoring.Params{
+			Query: strings.Join(terms, " "),
+			Topic: topic,
+			Name:  clip.Name,
+			Path:  clip.FolderPath,
+			Tags:  clip.Tags,
+		})
 
 		// STRICT FILTER: If we have a topic but it's not in the clip, and the score is low,
 		// it means we are just matching generic keywords. Better to show nothing than wrong stuff.
-		if topic != "" && !topicMatched && score < 45 { // Increased threshold
+		if topic != "" && !result.TopicMatched && result.Score < 45 {
 			continue
 		}
 
 		match := ScoredMatch{
 			Title:     clip.Name,
 			Path:      clip.FolderPath,
-			Score:     score,
+			Score:     result.Score,
 			Source:    source,
 			Link:      clip.DriveLink,
 			Reason:    "clip search match",
@@ -122,102 +127,6 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 	}
 
 	return matches, nil
-}
-
-func (a *ClipSearchAssociation) calculateScore(clip *models.MediaAsset, topic string, terms []string) (int, bool) {
-	score := 10 // Lower base score to allow for more differentiation
-
-	clipName := strings.ToLower(clip.Name)
-	clipPath := strings.ToLower(clip.FolderPath)
-	clipTags := strings.ToLower(strings.Join(clip.Tags, " "))
-
-	topic = strings.ToLower(topic)
-	topicMatched := false
-
-	// 1. Topic Boost (MASSIVE)
-	if topic != "" {
-		topicWords := strings.Fields(topic)
-		for _, tw := range topicWords {
-			if len(tw) <= 3 {
-				continue
-			}
-			if strings.Contains(clipName, tw) || strings.Contains(clipTags, tw) {
-				score += 50
-				topicMatched = true
-			}
-		}
-		if strings.Contains(clipName, topic) || strings.Contains(clipTags, topic) {
-			score += 100 // Exact topic match is gold
-			topicMatched = true
-		}
-	}
-
-	// 2. Term Matches
-	for i, term := range terms {
-		term = strings.ToLower(term)
-		weight := 10
-		if i < 2 {
-			weight = 20 // First two terms (usually subject/topic) have more weight
-		}
-
-		matched := false
-		if strings.Contains(clipName, term) {
-			score += weight * 2
-			matched = true
-		}
-		if strings.Contains(clipPath, term) {
-			score += weight
-			matched = true
-		}
-		if strings.Contains(clipTags, term) {
-			score += weight
-			matched = true
-		}
-
-		if matched && topicMatched {
-			score += 10 // Synergy bonus
-		}
-	}
-
-	// 3. Relevance Density Penalty (ALGORITHMIC)
-	// If a clip has many descriptive tokens that are NOT in our query,
-	// it means the clip is primarily about something else.
-	clipTokens := textutil.Tokenize(clipName + " " + clipTags)
-	unmatchedCount := 0
-	uniqueClipTokens := make(map[string]bool)
-	for _, ct := range clipTokens {
-		if len(ct) <= 3 {
-			continue
-		}
-		if !uniqueClipTokens[ct] {
-			uniqueClipTokens[ct] = true
-			foundInQuery := false
-			for _, t := range terms {
-				if strings.Contains(strings.ToLower(t), ct) {
-					foundInQuery = true
-					break
-				}
-			}
-			if !foundInQuery {
-				unmatchedCount++
-			}
-		}
-	}
-
-	// Penalty: if more than 60% of the clip's unique tokens are NOT in the query,
-	// and we didn't match the topic, penalize.
-	if len(uniqueClipTokens) > 0 && !topicMatched {
-		noiseRatio := float64(unmatchedCount) / float64(len(uniqueClipTokens))
-		if noiseRatio > 0.6 {
-			score -= int(noiseRatio * 60) // Increased penalty
-		}
-	}
-
-	if score < 0 {
-		score = 0
-	}
-
-	return score, topicMatched
 }
 
 func ParseEmbeddingJSON(jsonStr string) []float32 {

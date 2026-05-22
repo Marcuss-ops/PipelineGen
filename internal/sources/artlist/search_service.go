@@ -51,7 +51,7 @@ type ScraperResponse struct {
 // Search esegue una ricerca di clip nel database Artlist.
 func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error) {
 	s := ss.service
-	term := NormalizeSearchTerm(req.Term)
+	term := normalizeSearchTerm(req.Term)
 	resp := &SearchResponse{OK: true, Term: term}
 
 	if term == "" {
@@ -88,7 +88,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 // SearchLive esegue una ricerca live tramite scraper Node.js.
 func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
 	s := ss.service
-	term = NormalizeSearchTerm(term)
+	term = normalizeSearchTerm(term)
 	if term == "" {
 		return nil, fmt.Errorf("term is required")
 	}
@@ -147,7 +147,7 @@ func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int)
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, term string, limit int) (*SearchResponse, error) {
 	s := ss.service
-	term = NormalizeSearchTerm(term)
+	term = normalizeSearchTerm(term)
 	clips, err := ss.SearchLive(ctx, term, limit)
 	if err != nil {
 		return nil, err
@@ -213,7 +213,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, term string, lim
 // DiscoverAndQueueRun scopre clip e accoda un'esecuzione.
 func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, term string, limit int) (*SearchResponse, *RunTagResponse, error) {
 	s := ss.service
-	term = NormalizeSearchTerm(term)
+	term = normalizeSearchTerm(term)
 	liveResp, err := ss.SearchLiveAndSave(ctx, term, limit)
 	if err != nil {
 		return nil, nil, err

@@ -38,7 +38,27 @@ func (e *Engine) AssociateAll(ctx context.Context, input SegmentInput) []ScoredM
 			allMatches = append(allMatches, matches...)
 		}
 	}
-	return allMatches
+	return deduplicateMatches(allMatches)
+}
+
+func deduplicateMatches(matches []ScoredMatch) []ScoredMatch {
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(matches))
+	out := make([]ScoredMatch, 0, len(matches))
+	for _, m := range matches {
+		key := m.ClipID
+		if key == "" {
+			key = m.Title + "|" + m.Path + "|" + m.Link
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, m)
+	}
+	return out
 }
 
 // ScoreMedia ordina e valuta i candidati usando un approccio Hybrid Search (Lineare + Semantico).

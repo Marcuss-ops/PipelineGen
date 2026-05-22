@@ -36,14 +36,7 @@ func (o *RunOrchestratorService) GetRunTag(ctx context.Context, runID string) (*
 		return nil, fmt.Errorf("job not found for run %s", runID)
 	}
 
-	resp := &RunTagResponse{
-		OK:     true,
-		RunID:  runID,
-		Term:   job.ActiveKey,
-		Status: string(job.Status),
-	}
-
-	return resp, nil
+	return o.svc.jobAdapter.jobToResponse(job), nil
 }
 
 // RunTag esegue la pipeline Artlist per un termine di ricerca

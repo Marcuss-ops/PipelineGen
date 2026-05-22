@@ -181,14 +181,7 @@ type StorageConfig struct {
 	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"youtube-clips"`
 	ArtlistDir      string `yaml:"artlist_dir" default:"artlist"`
 	ImagesDir       string `yaml:"images_dir" default:"images"`
-	StockDBPath     string `yaml:"stock_db_path" env:"VELOX_STOCK_DB_PATH" default:"stock/stock.db.sqlite"`
-	ArtlistDBPath   string `yaml:"artlist_db_path" env:"VELOX_ARTLIST_DB_PATH" default:"artlist/artlist.db.sqlite"`
 }
-
-const (
-	defaultStockDBPath   = "stock/stock.db.sqlite"
-	defaultArtlistDBPath = "artlist/artlist.db.sqlite"
-)
 
 // FullPath returns the absolute path to a subdirectory within DataDir.
 func (s StorageConfig) FullPath(subDir string) string {
@@ -241,24 +234,6 @@ func (s StorageConfig) ArtlistPath() string {
 // ImagesPath returns the full path to the images directory.
 func (s StorageConfig) ImagesPath() string {
 	return s.FullPath(s.ImagesDir)
-}
-
-// StockDBFullPath returns the full path to the stock SQLite database.
-func (s StorageConfig) StockDBFullPath() string {
-	path := s.StockDBPath
-	if path == "" {
-		path = defaultStockDBPath
-	}
-	return s.FullPath(path)
-}
-
-// ArtlistDBFullPath returns the full path to the artlist SQLite database.
-func (s StorageConfig) ArtlistDBFullPath() string {
-	path := s.ArtlistDBPath
-	if path == "" {
-		path = defaultArtlistDBPath
-	}
-	return s.FullPath(path)
 }
 
 // SecurityConfig holds security-related configuration.

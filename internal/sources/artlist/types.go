@@ -1,29 +1,5 @@
 package artlist
 
-import "context"
-
-// CandidateSearcher defines the interface for searching clip candidates
-type CandidateSearcher interface {
-	Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
-}
-
-// RunOrchestrator defines the interface for orchestrating run execution
-type RunOrchestrator interface {
-	GetRunTag(ctx context.Context, runID string) (*RunTagResponse, error)
-	RunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error)
-}
-
-// nodeScraperResponse represents the response from the Node.js scraper
-type nodeScraperResponse struct {
-	OK    bool `json:"ok"`
-	Clips []struct {
-		Title       string `json:"title"`
-		ClipPageURL string `json:"clip_page_url"`
-		PrimaryURL  string `json:"primary_url"`
-		ClipID      string `json:"clip_id"`
-	} `json:"clips"`
-}
-
 // ClipStatusResponse represents the status of a clip
 type ClipStatusResponse struct {
 	ClipID       string `json:"clip_id"`
@@ -35,4 +11,15 @@ type ClipStatusResponse struct {
 	FileHash     string `json:"file_hash"`
 	Source       string `json:"source"`
 	ExternalURL  string `json:"external_url"`
+}
+
+// nodeScraperResponse represents the response from the Node.js scraper
+type nodeScraperResponse struct {
+	OK    bool `json:"ok"`
+	Clips []struct {
+		Title       string `json:"title"`
+		ClipPageURL string `json:"clip_page_url"`
+		PrimaryURL  string `json:"primary_url"`
+		ClipID      string `json:"clip_id"`
+	} `json:"clips"`
 }

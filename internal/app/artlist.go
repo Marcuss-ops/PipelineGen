@@ -62,7 +62,7 @@ func WireArtlist(
 	}
 
 	// 6. Handler
-	handler := wireArtlistHandler(cfg, artlistSvc, coreDeps, clipResolver, presetsConfig, log)
+	handler := wireArtlistHandler(cfg, artlistSvc, coreDeps, clipResolver, log)
 
 	// 7. Module
 	var mod module.Module
@@ -83,7 +83,6 @@ func wireArtlistHandler(
 	artlistSvc *artlistPkg.Service,
 	coreDeps *CoreDeps,
 	clipResolver *clipresolver.Service,
-	presetsConfig *artlistPkg.PresetsConfig,
 	log *zap.Logger,
 ) *sources.ArtlistHandler {
 	if artlistSvc == nil {
@@ -96,7 +95,6 @@ func wireArtlistHandler(
 		clipResolver,
 		"node-scraper",
 		log,
-		presetsConfig,
 		cfg,
 	)
 }
@@ -151,7 +149,7 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	// 1. Stock database (highest priority)
 	if coreDeps.StockDriveRepo != nil && coreDeps.StockDriveRepo.DB() != nil {
 		repos["stock"] = clipcatalog.NewRepository(coreDeps.StockDriveRepo.DB(), log)
-		repos["stock"].SetServerInfo("http://127.0.0.1:8001", cfg.Storage.StockDBFullPath())
+		repos["stock"].SetServerInfo("http://127.0.0.1:8001", coreDeps.MediaDB.Path())
 		repos["stock"].SetSource("stock")
 	}
 

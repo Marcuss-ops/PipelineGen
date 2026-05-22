@@ -3,7 +3,7 @@ package association
 import (
 	"context"
 
-	"velox/go-master/internal/matching"
+	"velox/go-master/internal/core/scoring"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/pkg/textutil"
 )
@@ -44,7 +44,7 @@ func (a *ClipDriveAssociation) Associate(ctx context.Context, input SegmentInput
 	var matches []ScoredMatch
 	for _, c := range clipsList {
 		targetTokens := textutil.Tokenize(c.Name)
-		score := matching.CalculateTokenScore(queryTokens, targetTokens)
+		score := scoring.TokenScore(queryTokens, targetTokens)
 
 		if score > 30 {
 			link := c.DriveLink

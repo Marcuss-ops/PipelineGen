@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"velox/go-master/internal/matching"
+	"velox/go-master/internal/core/scoring"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/pkg/textutil"
@@ -46,7 +46,7 @@ func (a *DriveStockAssociation) Associate(ctx context.Context, input SegmentInpu
 
 	for _, f := range folders {
 		targetTokens := textutil.Tokenize(f.TopicSlug)
-		score := matching.CalculateTokenScore(queryTokens, targetTokens)
+		score := scoring.TokenScore(queryTokens, targetTokens)
 
 		// Exact or strong match with segment subject
 		if strings.Contains(f.TopicSlug, slug) || strings.Contains(slug, f.TopicSlug) {

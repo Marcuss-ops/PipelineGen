@@ -18,6 +18,10 @@ logs/
 *.env.*
 credentials.json
 token.json
+
+# Binaries
+pipelinegen
+admin
 **/credentials.json
 **/token.json
 **/token_full.json

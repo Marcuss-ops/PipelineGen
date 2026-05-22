@@ -328,7 +328,7 @@ func TestSearchRequestValidation(t *testing.T) {
 }
 
 func TestSearchNormalizationLimitsToTwoWords(t *testing.T) {
-	if got := NormalizeSearchTerm("  mountain river sunrise "); got != "mountain river" {
+	if got := normalizeSearchTerm("  mountain river sunrise "); got != "mountain river" {
 		t.Fatalf("expected first two words, got %q", got)
 	}
 }
@@ -427,7 +427,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	require.NoError(t, err)
 	defer svc.Close()
 
-	resp, err := svc.RunTag(ctx, &RunTagRequest{
+	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "city",
 		Limit:        1,
 		Strategy:     "replace",
@@ -502,7 +502,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	require.NoError(t, err)
 	defer svc.Close()
 
-	resp, err := svc.RunTag(ctx, &RunTagRequest{
+	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "city",
 		Limit:        1,
 		Strategy:     "replace",

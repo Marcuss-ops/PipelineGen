@@ -36,6 +36,7 @@ func main() {
 		"sync-all-drive":                runSyncAllDrive,
 		"test-youtube":                  runTestYouTube,
 		"verify-artlist-pipeline":       runVerifyArtlistPipeline,
+		"unify-catalogs":               runUnifyCatalogs,
 	}
 
 	fn, ok := commands[cmdName]
