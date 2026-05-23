@@ -24,6 +24,7 @@ import (
 	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
+	"velox/go-master/internal/sources/youtube"
 	driveup "velox/go-master/internal/upload/drive"
 )
 
@@ -42,6 +43,7 @@ type Service struct {
 	pcfg       PipelineConfig
 	jobsSvc    *jobservice.Service
 	assetIndex *assetindex.Service
+	youtubeSvc *youtube.Service
 }
 
 // NewService creates a stock pipeline service using the provided config, logger,
@@ -72,6 +74,11 @@ func (s *Service) SetJobsSvc(jobsSvc *jobservice.Service) {
 // SetAssetIndex injects the asset index service dependency.
 func (s *Service) SetAssetIndex(ai *assetindex.Service) {
 	s.assetIndex = ai
+}
+
+// SetYoutubeService injects the YouTube metadata service used to enrich direct URL sources.
+func (s *Service) SetYoutubeService(svc *youtube.Service) {
+	s.youtubeSvc = svc
 }
 
 // RegisterHandler registers the stock pipeline job handler with the jobs system.
@@ -189,12 +196,26 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	}
 
 	for _, url := range input.DirectURLs {
-		s.log.Info("adding direct url source", zap.String("url", url), zap.String("video_id", extractVideoID(url)))
-		videoSources = append(videoSources, VideoSource{
+		src := VideoSource{
 			URL:    url,
 			Title:  extractVideoID(url),
 			Source: url,
-		})
+		}
+		if info, err := s.getDirectVideoInfo(ctx, url); err != nil {
+			s.log.Warn("failed to resolve direct video metadata", zap.String("url", url), zap.Error(err))
+		} else if info != nil {
+			if info.Title != "" {
+				src.Title = info.Title
+			}
+			src.DurationSec = info.Duration
+			s.log.Info("direct video metadata resolved",
+				zap.String("url", url),
+				zap.String("title", src.Title),
+				zap.Float64("duration_sec", src.DurationSec),
+			)
+		}
+		s.log.Info("adding direct url source", zap.String("url", url), zap.String("video_id", extractVideoID(url)))
+		videoSources = append(videoSources, src)
 	}
 
 	if len(videoSources) == 0 {
@@ -715,6 +736,13 @@ func (s *Service) resolveQuery(ctx context.Context, query string) ([]VideoSource
 	}
 
 	return sources, nil
+}
+
+func (s *Service) getDirectVideoInfo(ctx context.Context, videoURL string) (*youtube.VideoMetadata, error) {
+	if s.youtubeSvc == nil {
+		return nil, nil
+	}
+	return s.youtubeSvc.GetVideoInfo(ctx, videoURL)
 }
 
 // loadEffects scans the given directory for .mp4 overlay effect files.
