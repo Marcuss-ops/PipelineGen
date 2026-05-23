@@ -10,10 +10,10 @@ import (
 	"go.uber.org/zap"
 
 	corejobs "velox/go-master/internal/core/jobs"
-	"velox/go-master/internal/pkg/apiutil"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/stockpipeline"
+	"velox/go-master/internal/pkg/apiutil"
 	"velox/go-master/internal/sources/youtube"
 )
 
@@ -57,13 +57,13 @@ type StockSearchAndRunRequest struct {
 }
 
 type StockPipelineResponse struct {
-	Status      string                       `json:"status"`
-	TotalClips  int                          `json:"total_clips"`
-	TotalChunks int                          `json:"total_chunks"`
-	Chunks      []stockpipeline.ChunkResult  `json:"chunks"`
-	Error       string                       `json:"error,omitempty"`
-	JobID       string                       `json:"job_id,omitempty"`
-	StatusURL   string                       `json:"status_url,omitempty"`
+	Status      string                      `json:"status"`
+	TotalClips  int                         `json:"total_clips"`
+	TotalChunks int                         `json:"total_chunks"`
+	Chunks      []stockpipeline.ChunkResult `json:"chunks"`
+	Error       string                      `json:"error,omitempty"`
+	JobID       string                      `json:"job_id,omitempty"`
+	StatusURL   string                      `json:"status_url,omitempty"`
 }
 
 func (h *StockHandler) SearchAndRun(c *gin.Context) {
@@ -72,6 +72,14 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 		apiutil.BadRequest(c, err.Error())
 		return
 	}
+
+	h.log.Info("stock search-and-run request received",
+		zap.Int("queries", len(req.Queries)),
+		zap.Int("total_minutes", req.TotalMinutes),
+		zap.String("subfolder", req.Subfolder),
+		zap.String("folder_name", req.FolderName),
+		zap.String("folder_id", req.FolderID),
+	)
 
 	if len(req.Queries) == 0 {
 		apiutil.BadRequest(c, "queries required")
@@ -165,10 +173,10 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 		}
 
 		apiutil.Accepted(c, gin.H{
-			"job_id":       job.ID,
-			"message":      "Stock pipeline job enqueued",
-			"status_url":   "/api/jobs/" + job.ID + "/full",
-			"total_videos": len(directURLs),
+			"job_id":        job.ID,
+			"message":       "Stock pipeline job enqueued",
+			"status_url":    "/api/jobs/" + job.ID + "/full",
+			"total_videos":  len(directURLs),
 			"search_errors": searchErrors,
 		})
 		return
@@ -207,6 +215,15 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	h.log.Info("stock run request received",
+		zap.Int("search_queries", len(req.SearchQueries)),
+		zap.Int("direct_urls", len(req.DirectURLs)),
+		zap.Int("total_minutes", req.TotalMinutes),
+		zap.String("subfolder", req.Subfolder),
+		zap.String("folder_name", req.FolderName),
+		zap.String("folder_id", req.FolderID),
+	)
 
 	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "search_queries or direct_urls required"})

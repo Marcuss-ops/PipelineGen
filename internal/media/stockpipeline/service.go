@@ -90,6 +90,16 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		}
 	}
 
+	s.log.Info("stock job payload received",
+		zap.String("job_id", job.ID),
+		zap.Int("search_queries", len(payload.SearchQueries)),
+		zap.Int("direct_urls", len(payload.DirectURLs)),
+		zap.Int("total_minutes", payload.TotalMinutes),
+		zap.String("subfolder", payload.Subfolder),
+		zap.String("folder_name", payload.FolderName),
+		zap.String("folder_id", payload.FolderID),
+	)
+
 	input := &RunInput{
 		SearchQueries: payload.SearchQueries,
 		DirectURLs:    payload.DirectURLs,
@@ -145,7 +155,12 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	start := time.Now()
 	s.log.Info("compilation pipeline start",
 		zap.Strings("queries", input.SearchQueries),
+		zap.Strings("direct_urls", input.DirectURLs),
 		zap.Int("total_minutes", input.TotalMinutes),
+		zap.Int("chunk_duration_override", input.ChunkDuration),
+		zap.String("subfolder", input.Subfolder),
+		zap.String("folder_name", input.FolderName),
+		zap.String("folder_id", input.FolderID),
 	)
 
 	chunkDur := input.ChunkDuration
@@ -153,18 +168,28 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		chunkDur = s.pcfg.ChunkDuration
 	}
 
+	s.log.Info("stock timing config",
+		zap.Int("chunk_duration", chunkDur),
+		zap.Int("clip_duration", s.cfg.Video.WithDefaults().ClipDuration),
+		zap.Int("effect_interval", s.pcfg.EffectInterval),
+		zap.Int("max_clips_per_source", s.cfg.Video.WithDefaults().MaxClipsPerSource),
+	)
+
 	var videoSources []VideoSource
 
 	for _, q := range input.SearchQueries {
+		s.log.Info("resolving search query", zap.String("query", q))
 		videos, err := s.resolveQuery(ctx, q)
 		if err != nil {
 			s.log.Warn("failed to resolve query", zap.String("query", q), zap.Error(err))
 			continue
 		}
 		videoSources = append(videoSources, videos...)
+		s.log.Info("query resolved", zap.String("query", q), zap.Int("videos_found", len(videos)))
 	}
 
 	for _, url := range input.DirectURLs {
+		s.log.Info("adding direct url source", zap.String("url", url), zap.String("video_id", extractVideoID(url)))
 		videoSources = append(videoSources, VideoSource{
 			URL:    url,
 			Title:  extractVideoID(url),
@@ -176,7 +201,11 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		return nil, fmt.Errorf("no video sources found")
 	}
 
-	s.log.Info("video sources resolved", zap.Int("count", len(videoSources)))
+	s.log.Info("video sources resolved",
+		zap.Int("count", len(videoSources)),
+		zap.Int("search_queries", len(input.SearchQueries)),
+		zap.Int("direct_urls", len(input.DirectURLs)),
+	)
 
 	totalSecs := input.TotalMinutes * 60
 	videoCfg := s.cfg.Video.WithDefaults()
@@ -186,7 +215,16 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		secsPerVideo = clipDur * 3
 	}
 
+	s.log.Info("per-video budget computed",
+		zap.Int("total_seconds", totalSecs),
+		zap.Int("video_count", len(videoSources)),
+		zap.Int("seconds_per_video", secsPerVideo),
+		zap.Int("clip_duration", clipDur),
+		zap.Int("planned_clips_per_source", secsPerVideo/clipDur),
+	)
+
 	tempDir := filepath.Join(s.cfg.Storage.TempPath(), "yt_compile_"+fmt.Sprintf("%d", time.Now().UnixNano()))
+	s.log.Info("creating working directory", zap.String("temp_dir", tempDir))
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
@@ -196,6 +234,9 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	var clipTitles []string
 
 	type videoResult struct {
+		index  int
+		url    string
+		title  string
 		clips  []string
 		titles []string
 		err    error
@@ -215,11 +256,17 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		wg.Add(1)
 		go func(idx int, src VideoSource) {
 			defer wg.Done()
+			s.log.Info("video worker started",
+				zap.Int("video_index", idx),
+				zap.String("video_url", src.URL),
+				zap.String("video_title", src.Title),
+				zap.Float64("video_duration_sec", src.DurationSec),
+			)
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			clips, titles, err := s.processSingleVideo(ctx, tempDir, src, idx, secsPerVideo)
-			results <- videoResult{clips, titles, err}
+			results <- videoResult{index: idx, url: src.URL, title: src.Title, clips: clips, titles: titles, err: err}
 		}(i, vs)
 	}
 
@@ -230,9 +277,20 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	for res := range results {
 		if res.err != nil {
-			s.log.Warn("video processing failed", zap.Error(res.err))
+			s.log.Warn("video processing failed",
+				zap.Int("video_index", res.index),
+				zap.String("video_url", res.url),
+				zap.String("video_title", res.title),
+				zap.Error(res.err),
+			)
 			continue
 		}
+		s.log.Info("video processed",
+			zap.Int("video_index", res.index),
+			zap.String("video_url", res.url),
+			zap.String("video_title", res.title),
+			zap.Int("clips_created", len(res.clips)),
+		)
 		processedClips = append(processedClips, res.clips...)
 		clipTitles = append(clipTitles, res.titles...)
 	}
@@ -247,6 +305,11 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	if err != nil {
 		return nil, fmt.Errorf("drive folder resolution: %w", err)
 	}
+	s.log.Info("drive destination resolved",
+		zap.String("folder_id", folderID),
+		zap.String("subfolder", input.Subfolder),
+		zap.String("folder_name", input.FolderName),
+	)
 
 	rng.Shuffle(len(processedClips), func(i, j int) {
 		processedClips[i], processedClips[j] = processedClips[j], processedClips[i]
@@ -313,6 +376,14 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		chunkTitles := clipTitles[startClip:endClip]
 
 		chunkPath := filepath.Join(tempDir, fmt.Sprintf("chunk_%04d.mp4", chunkIdx))
+		s.log.Info("rendering chunk",
+			zap.Int("chunk", chunkIdx),
+			zap.Int("start_clip", startClip),
+			zap.Int("end_clip", endClip),
+			zap.Int("clip_count", len(chunkClips)),
+			zap.Strings("titles", chunkTitles),
+			zap.String("output_path", chunkPath),
+		)
 
 		err := s.renderChunk(ctx, chunkClips, chunkTitles, chunkPath)
 		if err != nil {
@@ -321,6 +392,12 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		}
 
 		chunkTitle := fmt.Sprintf("timestamp_%d", chunkIdx)
+		s.log.Info("uploading chunk to drive",
+			zap.Int("chunk", chunkIdx),
+			zap.String("chunk_title", chunkTitle),
+			zap.String("folder_id", folderID),
+			zap.String("local_path", chunkPath),
+		)
 
 		upResult, err := s.driveUp.UploadFile(ctx, chunkPath, folderID, chunkTitle+".mp4")
 		if err != nil {
@@ -346,6 +423,13 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		)
 
 		if s.assetIndex != nil {
+			assetID := "stock_" + upResult.FileID
+			s.log.Info("upserting chunk into asset_index",
+				zap.Int("chunk", chunkIdx),
+				zap.String("asset_id", assetID),
+				zap.String("group_name", input.FolderName),
+			)
+
 			meta := map[string]any{
 				"filename":    chunkTitle + ".mp4",
 				"folder_id":   folderID,
@@ -355,7 +439,6 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 				"search_text": chunkTitle,
 			}
 			metaJSON, _ := json.Marshal(meta)
-			assetID := "stock_" + upResult.FileID
 			rec := &assetindex.AssetRecord{
 				AssetID:      assetID,
 				AssetType:    "stock_clip",
@@ -402,6 +485,8 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		zap.Int("index", idx),
 		zap.String("url", vs.URL),
 		zap.String("title", vs.Title),
+		zap.Int("seconds_per_video", secsPerVideo),
+		zap.Float64("source_duration_sec", vs.DurationSec),
 	)
 
 	rawPath := filepath.Join(tempDir, fmt.Sprintf("raw_%04d.mp4", idx))
@@ -410,6 +495,12 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	startStr := formatDuration(startTime)
 	endStr := formatDuration(startTime + float64(secsPerVideo))
 	section := fmt.Sprintf("*%s-%s", startStr, endStr)
+	s.log.Info("video download window computed",
+		zap.Int("video_index", idx),
+		zap.String("download_section", section),
+		zap.String("start", startStr),
+		zap.String("end", endStr),
+	)
 
 	err := s.ytdlp.Download(ctx, &downloader.DownloadRequest{
 		URL:              vs.URL,
@@ -427,6 +518,13 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	if actualPath == "" {
 		return nil, nil, fmt.Errorf("downloaded file not found for %q", vs.URL)
 	}
+	if info, statErr := os.Stat(actualPath); statErr == nil {
+		s.log.Info("video downloaded",
+			zap.Int("video_index", idx),
+			zap.String("download_path", actualPath),
+			zap.Int64("download_size_bytes", info.Size()),
+		)
+	}
 
 	v := s.cfg.Video.WithDefaults()
 	clipDur := v.ClipDuration
@@ -439,6 +537,12 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	if numClips > maxClipsPerSource {
 		numClips = maxClipsPerSource
 	}
+	s.log.Info("clip plan computed",
+		zap.Int("video_index", idx),
+		zap.Int("clip_duration", clipDur),
+		zap.Int("max_clips_per_source", maxClipsPerSource),
+		zap.Int("planned_clips", numClips),
+	)
 
 	var processedClips []string
 	var clipTitles []string
@@ -469,6 +573,13 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 		cutStart := formatDuration(offset)
 		cutEnd := formatDuration(offset + float64(clipDur))
+		s.log.Info("extracting clip",
+			zap.Int("video_index", idx),
+			zap.Int("clip_index", clipIdx),
+			zap.String("input_path", actualPath),
+			zap.String("cut_start", cutStart),
+			zap.String("cut_end", cutEnd),
+		)
 
 		// Single-pass: cut + normalize in one ffmpeg call, avoiding double re-encode
 		normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
@@ -488,9 +599,19 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 		processedClips = append(processedClips, normPath)
 		clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
+		s.log.Info("clip extracted",
+			zap.Int("video_index", idx),
+			zap.Int("clip_index", clipIdx),
+			zap.String("output_path", normPath),
+		)
 	}
 
 	_ = os.Remove(actualPath)
+	s.log.Info("video processing finished",
+		zap.Int("video_index", idx),
+		zap.Int("clips_created", len(processedClips)),
+		zap.String("source_url", vs.URL),
+	)
 	return processedClips, clipTitles, nil
 }
 
@@ -625,6 +746,10 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		return fmt.Errorf("no clips to render")
 	}
 	if len(clips) == 1 {
+		s.log.Info("single clip chunk, copying without concat",
+			zap.String("output_path", outputPath),
+			zap.String("source_clip", clips[0]),
+		)
 		return fileutil.CopyFile(clips[0], outputPath)
 	}
 
@@ -672,6 +797,11 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 
 	s.log.Debug("ffmpeg render chunk", zap.Int("clips", len(clips)))
 	_ = titles
+	s.log.Info("ffmpeg chunk render starting",
+		zap.Int("clip_count", len(clips)),
+		zap.String("output_path", outputPath),
+		zap.Strings("titles", titles),
+	)
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	output, err := cmd.CombinedOutput()
@@ -681,6 +811,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 	if err != nil {
 		return fmt.Errorf("ffmpeg render failed: %w", err)
 	}
+	s.log.Info("ffmpeg chunk render finished", zap.String("output_path", outputPath))
 	return nil
 }
 
