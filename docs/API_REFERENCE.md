@@ -36,7 +36,7 @@ curl -i -X POST "http://77.93.152.122:8080/api/system/cleanup?deep=true" \
 
 ### 2.1 Genera un singolo Voiceover
 ```bash
-curl -i -X POST http://77.93.152.122:8080/api/voiceover/generate \
+curl -i -X POST http://77.93.152.122:8080/api/media/voiceover/generate \
   -H "Authorization: Bearer velox_master_key_2026" \
   -H "Content-Type: application/json" \
   -d '{

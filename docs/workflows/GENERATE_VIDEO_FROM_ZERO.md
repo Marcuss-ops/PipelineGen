@@ -113,7 +113,7 @@ Returns a timeline of events for the job:
 
 ## 4. Generate Voiceover
 
-**Endpoint:** `POST /api/voiceover/generate`
+**Endpoint:** `POST /api/media/voiceover/generate`
 
 **Input:**
 ```json

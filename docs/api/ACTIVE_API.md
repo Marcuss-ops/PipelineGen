@@ -100,12 +100,17 @@ Internal endpoints require additional header: `X-Internal: true` or `X-Velox-Int
 
 ## Voiceover Endpoints
 
-**Group:** `/api/voiceover`
+**Generate/Batch Group:** `/api/media/voiceover`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/voiceover/generate` | Generate voiceover |
-| POST | `/api/voiceover/batch` | Batch generate voiceovers |
+| POST | `/api/media/voiceover/generate` | Generate voiceover |
+| POST | `/api/media/voiceover/batch` | Batch generate voiceovers |
+
+**Sync Group:** `/api/voiceover`
+
+| Method | Path | Description |
+|--------|------|-------------|
 | POST | `/api/voiceover/sync` | Sync voiceovers from Drive |
 
 Note: `/api/voiceover/sync/status` was removed - was returning fake status (debt).
