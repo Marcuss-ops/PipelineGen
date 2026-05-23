@@ -562,17 +562,26 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 	var clipTitles []string
 	usedOffsets := make(map[float64]bool)
 
+	type clipJob struct {
+		clipIdx    int
+		cutStart   string
+		cutEnd     string
+		outputPath string
+		title      string
+	}
+	clipJobs := make([]clipJob, 0, numClips)
+
+	maxStart := float64(secsPerVideo) - float64(clipDur)
+	if maxStart < 1 {
+		maxStart = 1
+	}
+
 	for clipIdx := 0; clipIdx < numClips; clipIdx++ {
 		select {
 		case <-ctx.Done():
 			_ = os.Remove(actualPath)
 			return processedClips, clipTitles, ctx.Err()
 		default:
-		}
-
-		maxStart := float64(secsPerVideo) - float64(clipDur)
-		if maxStart < 1 {
-			maxStart = 1
 		}
 
 		var offset float64
@@ -587,35 +596,113 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 		cutStart := formatDuration(offset)
 		cutEnd := formatDuration(offset + float64(clipDur))
-		s.log.Info("extracting clip",
-			zap.Int("video_index", idx),
-			zap.Int("clip_index", clipIdx),
-			zap.String("input_path", actualPath),
-			zap.String("cut_start", cutStart),
-			zap.String("cut_end", cutEnd),
-		)
+		outputPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
+		clipJobs = append(clipJobs, clipJob{
+			clipIdx:    clipIdx,
+			cutStart:   cutStart,
+			cutEnd:     cutEnd,
+			outputPath: outputPath,
+			title:      fmt.Sprintf("%s_%04d", vs.Title, clipIdx),
+		})
+	}
 
-		normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
-		s.log.Info("fast cut starting",
-			zap.Int("video_index", idx),
-			zap.Int("clip_index", clipIdx),
-			zap.String("input_path", actualPath),
-			zap.String("output_path", normPath),
-		)
+	const maxParallelCutdown = 3
+	workers := maxParallelCutdown
+	if workers > len(clipJobs) {
+		workers = len(clipJobs)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	s.log.Info("fast cut worker pool configured",
+		zap.Int("video_index", idx),
+		zap.Int("workers", workers),
+		zap.Int("clip_jobs", len(clipJobs)),
+	)
 
-		err = s.ffmpegProc.CutCopy(ctx, actualPath, normPath, cutStart, cutEnd)
-		if err != nil {
-			s.log.Warn("fast cut failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
+	jobCh := make(chan clipJob)
+	type clipResult struct {
+		idx   int
+		path  string
+		title string
+		err   error
+	}
+	resultCh := make(chan clipResult, len(clipJobs))
+	var cutWG sync.WaitGroup
+
+	for workerIdx := 0; workerIdx < workers; workerIdx++ {
+		cutWG.Add(1)
+		go func(workerID int) {
+			defer cutWG.Done()
+			for job := range jobCh {
+				select {
+				case <-ctx.Done():
+					resultCh <- clipResult{idx: job.clipIdx, err: ctx.Err()}
+					continue
+				default:
+				}
+
+				s.log.Info("extracting clip",
+					zap.Int("video_index", idx),
+					zap.Int("clip_index", job.clipIdx),
+					zap.Int("worker_id", workerID),
+					zap.String("input_path", actualPath),
+					zap.String("cut_start", job.cutStart),
+					zap.String("cut_end", job.cutEnd),
+				)
+				s.log.Info("fast cut starting",
+					zap.Int("video_index", idx),
+					zap.Int("clip_index", job.clipIdx),
+					zap.Int("worker_id", workerID),
+					zap.String("input_path", actualPath),
+					zap.String("output_path", job.outputPath),
+				)
+
+				err := s.ffmpegProc.CutCopy(ctx, actualPath, job.outputPath, job.cutStart, job.cutEnd)
+				if err != nil {
+					resultCh <- clipResult{idx: job.clipIdx, err: err}
+					continue
+				}
+
+				resultCh <- clipResult{idx: job.clipIdx, path: job.outputPath, title: job.title}
+			}
+		}(workerIdx)
+	}
+
+	go func() {
+		for _, job := range clipJobs {
+			jobCh <- job
+		}
+		close(jobCh)
+		cutWG.Wait()
+		close(resultCh)
+	}()
+
+	orderedClips := make([]string, len(clipJobs))
+	orderedTitles := make([]string, len(clipJobs))
+	clipOK := make([]bool, len(clipJobs))
+
+	for res := range resultCh {
+		if res.err != nil {
+			s.log.Warn("fast cut failed", zap.Int("video", idx), zap.Int("clip", res.idx), zap.Error(res.err))
 			continue
 		}
-
-		processedClips = append(processedClips, normPath)
-		clipTitles = append(clipTitles, fmt.Sprintf("%s_%04d", vs.Title, clipIdx))
+		orderedClips[res.idx] = res.path
+		orderedTitles[res.idx] = res.title
+		clipOK[res.idx] = true
 		s.log.Info("clip extracted",
 			zap.Int("video_index", idx),
-			zap.Int("clip_index", clipIdx),
-			zap.String("output_path", normPath),
+			zap.Int("clip_index", res.idx),
+			zap.String("output_path", res.path),
 		)
+	}
+
+	for i := range orderedClips {
+		if !clipOK[i] {
+			continue
+		}
+		processedClips = append(processedClips, orderedClips[i])
+		clipTitles = append(clipTitles, orderedTitles[i])
 	}
 
 	_ = os.Remove(actualPath)
