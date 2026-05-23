@@ -80,11 +80,5 @@ func ResolveArtlistRootFolderID(cfg *config.Config) string {
 	if folderID := strings.TrimSpace(cfg.Harvester.DriveFolderID); folderID != "" {
 		return folderID
 	}
-	if folderID := strings.TrimSpace(cfg.Drive.ClipsRootFolder); folderID != "" {
-		return folderID
-	}
-	if folderID := strings.TrimSpace(cfg.Drive.StockRootFolder); folderID != "" {
-		return folderID
-	}
 	return defaultArtlistRootFolderID
 }

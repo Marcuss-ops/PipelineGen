@@ -29,3 +29,16 @@ func TestResolveArtlistRootFolderIDFallsBackToDocumentedDefault(t *testing.T) {
 		t.Fatalf("expected documented fallback root, got %q", got)
 	}
 }
+
+func TestResolveArtlistRootFolderIDIgnoresStockFallbacks(t *testing.T) {
+	cfg := &config.Config{
+		Drive: config.DriveConfig{
+			ClipsRootFolder: "clips-root",
+			StockRootFolder: "stock-root",
+		},
+	}
+
+	if got := ResolveArtlistRootFolderID(cfg); got != defaultArtlistRootFolderID {
+		t.Fatalf("expected documented artlist default, got %q", got)
+	}
+}
