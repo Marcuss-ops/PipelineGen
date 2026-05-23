@@ -51,6 +51,7 @@ type SearchQuery struct {
 type StockSearchAndRunRequest struct {
 	Queries      []SearchQuery `json:"queries"`
 	TotalMinutes int           `json:"total_minutes"`
+	MaxVideos    int           `json:"max_videos,omitempty"`
 	Subfolder    string        `json:"subfolder"`
 	FolderName   string        `json:"folder_name"`
 	FolderID     string        `json:"folder_id,omitempty"`
@@ -76,6 +77,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	h.log.Info("stock search-and-run request received",
 		zap.Int("queries", len(req.Queries)),
 		zap.Int("total_minutes", req.TotalMinutes),
+		zap.Int("max_videos", req.MaxVideos),
 		zap.String("subfolder", req.Subfolder),
 		zap.String("folder_name", req.FolderName),
 		zap.String("folder_id", req.FolderID),
@@ -157,6 +159,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 		payload := &corejobs.StockRunPayload{
 			DirectURLs:   directURLs,
 			TotalMinutes: req.TotalMinutes,
+			MaxVideos:    req.MaxVideos,
 			Subfolder:    req.Subfolder,
 			FolderName:   req.FolderName,
 			FolderID:     req.FolderID,
@@ -186,6 +189,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	input := &stockpipeline.RunInput{
 		DirectURLs:   directURLs,
 		TotalMinutes: req.TotalMinutes,
+		MaxVideos:    req.MaxVideos,
 		Subfolder:    req.Subfolder,
 		FolderName:   req.FolderName,
 		FolderID:     req.FolderID,
@@ -220,6 +224,7 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 		zap.Int("search_queries", len(req.SearchQueries)),
 		zap.Int("direct_urls", len(req.DirectURLs)),
 		zap.Int("total_minutes", req.TotalMinutes),
+		zap.Int("max_videos", req.MaxVideos),
 		zap.String("subfolder", req.Subfolder),
 		zap.String("folder_name", req.FolderName),
 		zap.String("folder_id", req.FolderID),
@@ -256,6 +261,7 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 		SearchQueries: req.SearchQueries,
 		DirectURLs:    req.DirectURLs,
 		TotalMinutes:  req.TotalMinutes,
+		MaxVideos:     req.MaxVideos,
 		Subfolder:     req.Subfolder,
 		FolderName:    req.FolderName,
 		FolderID:      req.FolderID,

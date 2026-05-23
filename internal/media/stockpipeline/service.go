@@ -111,6 +111,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		SearchQueries: payload.SearchQueries,
 		DirectURLs:    payload.DirectURLs,
 		TotalMinutes:  payload.TotalMinutes,
+		MaxVideos:     payload.MaxVideos,
 		Subfolder:     payload.Subfolder,
 		FolderName:    payload.FolderName,
 		FolderID:      payload.FolderID,
@@ -144,6 +145,9 @@ type RunInput struct {
 	DirectURLs []string
 	// TotalMinutes is the desired total duration of the output compilation.
 	TotalMinutes int
+	// MaxVideos limits the number of resolved video sources processed in a run.
+	// If zero, all resolved sources are processed.
+	MaxVideos int
 	// ChunkDuration is the target duration of each output chunk in seconds.
 	// If zero, the value from config is used.
 	ChunkDuration int
@@ -227,6 +231,17 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		zap.Int("search_queries", len(input.SearchQueries)),
 		zap.Int("direct_urls", len(input.DirectURLs)),
 	)
+
+	if input.MaxVideos > 0 && len(videoSources) > input.MaxVideos {
+		s.log.Info("limiting stock sources",
+			zap.Int("max_videos", input.MaxVideos),
+			zap.Int("before", len(videoSources)),
+		)
+		videoSources = videoSources[:input.MaxVideos]
+		s.log.Info("stock sources limited",
+			zap.Int("after", len(videoSources)),
+		)
+	}
 
 	totalSecs := input.TotalMinutes * 60
 	videoCfg := s.cfg.Video.WithDefaults()
