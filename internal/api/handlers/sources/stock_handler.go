@@ -49,12 +49,13 @@ type SearchQuery struct {
 }
 
 type StockSearchAndRunRequest struct {
-	Queries      []SearchQuery `json:"queries"`
-	TotalMinutes int           `json:"total_minutes"`
-	MaxVideos    int           `json:"max_videos,omitempty"`
-	Subfolder    string        `json:"subfolder"`
-	FolderName   string        `json:"folder_name"`
-	FolderID     string        `json:"folder_id,omitempty"`
+	Queries       []SearchQuery `json:"queries"`
+	TotalMinutes  int           `json:"total_minutes"`
+	ChunkDuration int           `json:"chunk_duration,omitempty"`
+	MaxVideos     int           `json:"max_videos,omitempty"`
+	Subfolder     string        `json:"subfolder"`
+	FolderName    string        `json:"folder_name"`
+	FolderID      string        `json:"folder_id,omitempty"`
 }
 
 type StockPipelineResponse struct {
@@ -77,6 +78,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	h.log.Info("stock search-and-run request received",
 		zap.Int("queries", len(req.Queries)),
 		zap.Int("total_minutes", req.TotalMinutes),
+		zap.Int("chunk_duration", req.ChunkDuration),
 		zap.Int("max_videos", req.MaxVideos),
 		zap.String("subfolder", req.Subfolder),
 		zap.String("folder_name", req.FolderName),
@@ -157,12 +159,13 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	// Enqueue or run the stock pipeline
 	if h.jobsSvc != nil {
 		payload := &corejobs.StockRunPayload{
-			DirectURLs:   directURLs,
-			TotalMinutes: req.TotalMinutes,
-			MaxVideos:    req.MaxVideos,
-			Subfolder:    req.Subfolder,
-			FolderName:   req.FolderName,
-			FolderID:     req.FolderID,
+			DirectURLs:    directURLs,
+			TotalMinutes:  req.TotalMinutes,
+			ChunkDuration: req.ChunkDuration,
+			MaxVideos:     req.MaxVideos,
+			Subfolder:     req.Subfolder,
+			FolderName:    req.FolderName,
+			FolderID:      req.FolderID,
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
@@ -187,12 +190,13 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 
 	// Fallback: run synchronously
 	input := &stockpipeline.RunInput{
-		DirectURLs:   directURLs,
-		TotalMinutes: req.TotalMinutes,
-		MaxVideos:    req.MaxVideos,
-		Subfolder:    req.Subfolder,
-		FolderName:   req.FolderName,
-		FolderID:     req.FolderID,
+		DirectURLs:    directURLs,
+		TotalMinutes:  req.TotalMinutes,
+		ChunkDuration: req.ChunkDuration,
+		MaxVideos:     req.MaxVideos,
+		Subfolder:     req.Subfolder,
+		FolderName:    req.FolderName,
+		FolderID:      req.FolderID,
 	}
 
 	result, err := h.service.Run(c.Request.Context(), input)
@@ -224,6 +228,7 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 		zap.Int("search_queries", len(req.SearchQueries)),
 		zap.Int("direct_urls", len(req.DirectURLs)),
 		zap.Int("total_minutes", req.TotalMinutes),
+		zap.Int("chunk_duration", req.ChunkDuration),
 		zap.Int("max_videos", req.MaxVideos),
 		zap.String("subfolder", req.Subfolder),
 		zap.String("folder_name", req.FolderName),
@@ -261,6 +266,7 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 		SearchQueries: req.SearchQueries,
 		DirectURLs:    req.DirectURLs,
 		TotalMinutes:  req.TotalMinutes,
+		ChunkDuration: req.ChunkDuration,
 		MaxVideos:     req.MaxVideos,
 		Subfolder:     req.Subfolder,
 		FolderName:    req.FolderName,

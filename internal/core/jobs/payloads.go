@@ -45,6 +45,7 @@ type StockRunPayload struct {
 	SearchQueries []string `json:"search_queries"`
 	DirectURLs    []string `json:"direct_urls"`
 	TotalMinutes  int      `json:"total_minutes"`
+	ChunkDuration int      `json:"chunk_duration,omitempty"`
 	MaxVideos     int      `json:"max_videos,omitempty"`
 	Subfolder     string   `json:"subfolder"`
 	FolderName    string   `json:"folder_name"`
