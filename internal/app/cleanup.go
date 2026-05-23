@@ -28,13 +28,6 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				jobs.channelMonitor.Stop()
 			}()
 		}
-		if jobs.stockScheduler != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				jobs.stockScheduler.Stop()
-			}()
-		}
 		if jobs.driveSyncSchedule != nil {
 			wg.Add(1)
 			go func() {

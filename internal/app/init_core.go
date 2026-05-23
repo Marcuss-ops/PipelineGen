@@ -77,7 +77,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		CatalogSyncService: svcs.catalogSync,
 		// NOTE: CatalogSyncJob removed (cron system eliminated)
 		ChannelMonitor:     jobs.channelMonitor,
-		StockScheduler:     jobs.stockScheduler,
 		CatalogRepo:        svcs.catalogRepo,
 		AssocService:       svcs.assocService,
 		JobsService:        svcs.jobsService,

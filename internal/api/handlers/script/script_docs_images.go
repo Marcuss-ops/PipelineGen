@@ -298,7 +298,6 @@ func resolveImageDisplayURL(asset *models.ImageAsset) string {
 func resolveImageSourceURL(asset *models.ImageAsset) string {
 	if asset == nil {
 		return ""
-
 	}
 	if link := strings.TrimSpace(asset.SourceURL); link != "" {
 		return link

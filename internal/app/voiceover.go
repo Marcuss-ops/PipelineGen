@@ -11,32 +11,30 @@ import (
 
 // VoiceoverWiring holds the Voiceover module wiring
 type VoiceoverWiring struct {
-	Handler     *voiceover.Handler
 	SyncHandler *voiceover.SyncHandler
 	Module      module.Module
 	Service     *voiceoverPkg.Service
 }
 
-// WireVoiceover creates the Voiceover handler and module
+// WireVoiceover creates the Voiceover module
 func WireVoiceover(
 	cfg *config.Config,
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*VoiceoverWiring, error) {
-	var handler *voiceover.Handler
 	var syncHandler *voiceover.SyncHandler
 	var mod module.Module
 
 	if coreDeps.VoiceoverService != nil {
 		coreDeps.VoiceoverService.RegisterHandler(coreDeps.JobsService)
-		handler = voiceover.NewHandler(coreDeps.VoiceoverService)
 		syncHandler = voiceover.NewSyncHandler(coreDeps.VoiceoverSync, log)
-		mod = module.NewVoiceoverModule(cfg, log, handler, syncHandler)
+		// Only /sync route; /generate and /batch are handled by Assets module
+		// which supports both sync and async via job queue
+		mod = module.NewVoiceoverModule(cfg, log, syncHandler)
 		log.Info("created Voiceover module")
 	}
 
 	return &VoiceoverWiring{
-		Handler:     handler,
 		SyncHandler: syncHandler,
 		Module:      mod,
 		Service:     coreDeps.VoiceoverService,

@@ -37,6 +37,8 @@ func main() {
 		"test-youtube":                  runTestYouTube,
 		"verify-artlist-pipeline":       runVerifyArtlistPipeline,
 		"unify-catalogs":               runUnifyCatalogs,
+		"reset-stock-drive":            runResetStockDrive,
+		"reset-stock-subfolders":       runResetStockSubfolders,
 	}
 
 	fn, ok := commands[cmdName]
@@ -76,4 +78,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  sync-all-drive")
 	fmt.Fprintln(os.Stderr, "  test-youtube")
 	fmt.Fprintln(os.Stderr, "  verify-artlist-pipeline")
+	fmt.Fprintln(os.Stderr, "  unify-catalogs")
+	fmt.Fprintln(os.Stderr, "  reset-stock-drive")
+	fmt.Fprintln(os.Stderr, "  reset-stock-subfolders")
 }

@@ -17,7 +17,6 @@ import (
 
 type backgroundJobs struct {
 	channelMonitor    *monitor.ChannelMonitor
-	stockScheduler    *scheduler.StockScheduler
 	driveSyncSchedule *scheduler.DriveSyncScheduler
 	indexingService   *indexing.Service
 	jobRunner         *svcjobs.Runner
@@ -44,7 +43,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	var jobRunner *svcjobs.Runner
 	var jobScanner *jobrepo.Scanner
 	var channelMon *monitor.ChannelMonitor
-	var stockSched *scheduler.StockScheduler
 	var driveSyncSched *scheduler.DriveSyncScheduler
 
 	if runWorker {
@@ -79,12 +77,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			channelMon = monitor.NewChannelMonitor(cfg, svcs.stockDriveRepo, log, svcs.youtubeClipService)
 			go channelMon.Start(ctx)
 			log.Info("Channel monitor started")
-		}
-
-		if os.Getenv("VELOX_ENABLE_STOCK_SCHEDULER") == "true" {
-			stockSched = scheduler.NewStockScheduler(cfg, log)
-			go stockSched.Start(ctx)
-			log.Info("Stock scheduler started")
 		}
 
 		// Periodic Drive sync scheduler - always enabled if sync services exist
@@ -127,7 +119,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 	return &backgroundJobs{
 		channelMonitor:    channelMon,
-		stockScheduler:    stockSched,
 		driveSyncSchedule: driveSyncSched,
 		indexingService:   svcs.indexingService,
 		jobRunner:         jobRunner,

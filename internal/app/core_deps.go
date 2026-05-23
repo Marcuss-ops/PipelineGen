@@ -30,7 +30,6 @@ import (
 	"velox/go-master/internal/media/voiceoversync"
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/storage"
-	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/upload/drive"
 )
 
@@ -57,7 +56,6 @@ type CoreDeps struct {
 	ClipIndexerService *clipindexer.Service
 	CatalogSyncService *catalogsync.Service
 	ChannelMonitor     *monitor.ChannelMonitor
-	StockScheduler     *scheduler.StockScheduler
 	CatalogRepo        *catalog.Repository
 	AssocService       *association.Service
 	JobsService        *jobservice.Service

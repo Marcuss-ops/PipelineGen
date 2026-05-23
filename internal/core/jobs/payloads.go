@@ -1,5 +1,7 @@
 package jobs
 
+import "encoding/json"
+
 type ArtlistRunPayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`
@@ -45,6 +47,14 @@ type StockRunPayload struct {
 	TotalMinutes  int      `json:"total_minutes"`
 	Subfolder     string   `json:"subfolder"`
 	FolderName    string   `json:"folder_name"`
+}
+
+// ToMap serializes the payload to map[string]any for job system compatibility.
+func (p *StockRunPayload) ToMap() map[string]any {
+	data, _ := json.Marshal(p)
+	var m map[string]any
+	_ = json.Unmarshal(data, &m)
+	return m
 }
 
 type MediaImportPayload struct {

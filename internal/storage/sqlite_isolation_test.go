@@ -18,7 +18,7 @@ var expectedTables = map[string][]string{
 		"media_items",
 		"media_files",
 		"media_tags",
-		"video_metadata",
+		"video_metadata", // transitional: dropped by migration 009_drop_video_metadata.sql
 		"script_stock_matches",
 		"video_stats_history",
 		"artlist_runs",

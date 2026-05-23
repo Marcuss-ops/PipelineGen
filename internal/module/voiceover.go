@@ -12,10 +12,11 @@ import (
 )
 
 // NewVoiceoverModule creates a new Voiceover module using RouteModule
+// Only registers /sync endpoint; /generate and /batch are handled by the Assets module,
+// which supports both sync and async generation via job queue.
 func NewVoiceoverModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *voiceover.Handler,
 	syncHandler *voiceover.SyncHandler,
 ) *RouteModule {
 	return NewRouteModule(
@@ -23,7 +24,6 @@ func NewVoiceoverModule(
 		func(cfg *config.Config) bool { return cfg.Features.VoiceoverEnabled },
 		"/voiceover",
 		&voiceoverHandlerWrapper{
-			handler:     handler,
 			syncHandler: syncHandler,
 		},
 		log,
@@ -38,16 +38,12 @@ func NewVoiceoverModule(
 	)
 }
 
-// voiceoverHandlerWrapper wraps both voiceover handlers to register all routes
+// voiceoverHandlerWrapper wraps the sync handler to register routes
 type voiceoverHandlerWrapper struct {
-	handler     *voiceover.Handler
 	syncHandler *voiceover.SyncHandler
 }
 
 func (w *voiceoverHandlerWrapper) RegisterRoutes(r *gin.RouterGroup) {
-	if w.handler != nil {
-		w.handler.RegisterRoutes(r)
-	}
 	if w.syncHandler != nil {
 		w.syncHandler.RegisterRoutes(r)
 	}
