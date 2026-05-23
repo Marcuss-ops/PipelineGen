@@ -30,6 +30,9 @@ func WireStockPipeline(
 	svc.SetAssetIndex(coreDeps.AssetIndexService)
 
 	handler := sources.NewStockHandler(svc, coreDeps.JobsService, log)
+	if coreDeps.YoutubeClipService != nil {
+		handler.SetYoutubeService(coreDeps.YoutubeClipService)
+	}
 
 	mod := module.NewStockPipelineModule(cfg, log, handler)
 

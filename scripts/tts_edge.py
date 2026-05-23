@@ -1,50 +1,42 @@
-import asyncio
-import argparse
-import json
-import os
-import sys
-from edge_tts import Communicate
+import asyncio, argparse, json, os, sys
+from edge_tts import Communicate, list_voices
+
+async def get_voice_for_lang(lang):
+    voices = await list_voices()
+    ll = lang.lower()
+    parts = ll.split('-')
+    base = parts[0]
+    region = parts[1].upper() if len(parts) > 1 else None
+    if region:
+        for v in voices:
+            if v['Locale'].lower() == ll:
+                return v['ShortName']
+    for v in voices:
+        if v['Locale'].lower().startswith(base + '-'):
+            if 'Multilingual' in v['ShortName']:
+                return v['ShortName']
+    for v in voices:
+        if v['Locale'].lower().startswith(base + '-'):
+            return v['ShortName']
+    return voices[0]['ShortName'] if voices else 'en-US-AriaNeural'
 
 async def main():
-    parser = argparse.ArgumentParser(description="Edge TTS Generator")
-    parser.add_argument("--text", required=True, help="Text to speak")
-    parser.add_argument("--lang", default="it", help="Language code (e.g., it, en-US)")
-    parser.add_argument("--out", required=True, help="Output file path")
-    parser.add_argument("--voice", help="Specific voice name")
-    
-    args = parser.parse_args()
-    
-    # Map simple lang codes to edge-tts voices if not provided
-    voice = args.voice
-    if not voice:
-        voice_map = {
-            "it": "it-IT-ElsaNeural",
-            "en": "en-US-AriaNeural",
-            "es": "es-ES-ElviraNeural",
-            "fr": "fr-FR-DeniseNeural",
-            "de": "de-DE-KatjaNeural"
-        }
-        # Try to find a match or use a default
-        base_lang = args.lang.split('-')[0].lower()
-        voice = voice_map.get(base_lang, "it-IT-ElsaNeural")
-
+    p = argparse.ArgumentParser(description='Edge TTS')
+    p.add_argument('--text', required=True)
+    p.add_argument('--lang', default='it')
+    p.add_argument('--out', required=True)
+    p.add_argument('--voice')
+    a = p.parse_args()
+    v = a.voice or await get_voice_for_lang(a.lang)
     try:
-        communicate = Communicate(args.text, voice)
-        await communicate.save(args.out)
-        
-        result = {
-            "ok": True,
-            "voice": voice,
-            "path": os.path.abspath(args.out)
-        }
-        print(json.dumps(result))
+        c = Communicate(a.text, v)
+        await c.save(a.out)
+        if not os.path.exists(a.out) or os.path.getsize(a.out) == 0:
+            print(json.dumps({'ok': False, 'error': 'Empty file'}))
+            sys.exit(1)
+        print(json.dumps({'ok': True, 'voice': v, 'path': os.path.abspath(a.out)}))
     except Exception as e:
-        result = {
-            "ok": False,
-            "error": str(e)
-        }
-        print(json.dumps(result))
+        print(json.dumps({'ok': False, 'error': str(e)}))
         sys.exit(1)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())

@@ -96,6 +96,7 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		TotalMinutes:  payload.TotalMinutes,
 		Subfolder:     payload.Subfolder,
 		FolderName:    payload.FolderName,
+		FolderID:      payload.FolderID,
 	}
 
 	if tools.Progress != nil {
@@ -129,10 +130,12 @@ type RunInput struct {
 	// ChunkDuration is the target duration of each output chunk in seconds.
 	// If zero, the value from config is used.
 	ChunkDuration int
-	// Subfolder is the Drive subfolder name (e.g. "Discovery").
+	// Subfolder is the Drive subfolder name (e.g. "Discovery"). Ignored if FolderID is set.
 	Subfolder string
-	// FolderName is a new folder to create inside the subfolder.
+	// FolderName is a new folder to create inside the subfolder (or inside FolderID).
 	FolderName string
+	// FolderID is an explicit Drive folder ID to use as parent. Overrides Subfolder.
+	FolderID string
 }
 
 // Run executes the full stock pipeline: resolve sources, download, extract clips,
@@ -240,7 +243,7 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	s.log.Info("processed clips", zap.Int("count", len(processedClips)))
 
-	folderID, err := s.resolveFolderTarget(ctx, input.Subfolder, input.FolderName)
+	folderID, err := s.resolveFolderTarget(ctx, input.FolderID, input.Subfolder, input.FolderName)
 	if err != nil {
 		return nil, fmt.Errorf("drive folder resolution: %w", err)
 	}
@@ -493,16 +496,17 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 
 // resolveFolderTarget resolves the Google Drive folder ID for upload.
 // It walks from the configured stock root folder through subfolder and folderName.
-func (s *Service) resolveFolderTarget(ctx context.Context, subfolder, folderName string) (string, error) {
-	rootID := s.cfg.Drive.StockRootFolder
-	if rootID == "" {
-		rootID = s.cfg.Drive.ClipsRootFolder
+func (s *Service) resolveFolderTarget(ctx context.Context, folderID, subfolder, folderName string) (string, error) {
+	currentID := folderID
+	if currentID == "" {
+		currentID = s.cfg.Drive.StockRootFolder
 	}
-	if rootID == "" {
-		return "", fmt.Errorf("drive.stock_root_folder not configured in config.yaml")
+	if currentID == "" {
+		currentID = s.cfg.Drive.ClipsRootFolder
 	}
-
-	currentID := rootID
+	if currentID == "" {
+		return "", fmt.Errorf("no drive folder configured (stock_root_folder or clips_root_folder)")
+	}
 
 	if subfolder != "" {
 		id, err := s.driveUp.GetOrCreateFolder(ctx, subfolder, currentID)

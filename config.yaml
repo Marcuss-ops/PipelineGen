@@ -81,6 +81,7 @@ video:
 drive:
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
   clips_root_folder: ""
+  voiceover_root_folder: "1yCnKt5tALjG4HNlmfw63V28Fd7-FuSwJ"
 
 features:
   artlist_enabled: true

@@ -47,6 +47,7 @@ type StockRunPayload struct {
 	TotalMinutes  int      `json:"total_minutes"`
 	Subfolder     string   `json:"subfolder"`
 	FolderName    string   `json:"folder_name"`
+	FolderID      string   `json:"folder_id,omitempty"`
 }
 
 // ToMap serializes the payload to map[string]any for job system compatibility.
