@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strings"
 
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/storage/assetdestination"
-	"velox/go-master/internal/media/audioasset"
 	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/audioasset"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/storage/assetdestination"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -106,10 +106,17 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	requestID := buildRequestID()
 	textHash := textToHash(req.Text)
 
+	destinationReq := req.Destination
+	if destinationReq == nil && strings.TrimSpace(s.cfg.Drive.VoiceoverRootFolder) != "" {
+		destinationReq = &DestinationRequest{
+			FolderID: s.cfg.Drive.VoiceoverRootFolder,
+		}
+	}
+
 	var dest *ResolvedDestination
-	if req.Destination != nil {
+	if destinationReq != nil {
 		var err error
-		dest, err = s.resolveDestination(ctx, req.Destination)
+		dest, err = s.resolveDestination(ctx, destinationReq)
 		if err != nil {
 			return nil, err
 		}
