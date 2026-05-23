@@ -20,7 +20,6 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
 	"velox/go-master/internal/sources/youtube"
@@ -354,32 +353,10 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	})
 
 	if videoCfg.EffectInterval > 0 {
-		effects, err := loadEffects(s.pcfg.EffectsDir)
-		if err != nil {
-			s.log.Warn("no overlay effects loaded", zap.String("dir", s.pcfg.EffectsDir), zap.Error(err))
-		} else {
-			s.log.Info("applying overlay effects", zap.Int("interval", s.pcfg.EffectInterval), zap.Int("effects_found", len(effects)))
-			for i := s.pcfg.EffectInterval - 1; i < len(processedClips); i += s.pcfg.EffectInterval {
-				effectPath := effects[rng.Intn(len(effects))]
-				outputPath := filepath.Join(tempDir, fmt.Sprintf("effected_%04d.mp4", i))
-				err := s.ffmpegProc.ApplyOverlay(ctx, processedClips[i], effectPath, outputPath, ffmpeg.OverlayOptions{
-					Width:   videoCfg.Width,
-					Height:  videoCfg.Height,
-					FPS:     videoCfg.FPS,
-					Opacity: videoCfg.OverlayOpacity,
-					Codec:   videoCfg.Codec,
-					Preset:  videoCfg.Preset,
-					CRF:     videoCfg.CRF,
-				})
-				if err != nil {
-					s.log.Warn("overlay effect failed", zap.Int("clip_idx", i), zap.Error(err))
-					continue
-				}
-				processedClips[i] = outputPath
-				clipTitles[i] = clipTitles[i] + "_FX"
-				s.log.Debug("overlay effect applied", zap.Int("clip_idx", i), zap.String("effect", effectPath))
-			}
-		}
+		s.log.Info("overlay effects skipped in fast stock path",
+			zap.Int("effect_interval", videoCfg.EffectInterval),
+			zap.String("reason", "keep single encode final"),
+		)
 	}
 
 	clipsPerChunk := chunkDur / clipDur
@@ -618,19 +595,17 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 			zap.String("cut_end", cutEnd),
 		)
 
-		// Single-pass: cut + normalize in one ffmpeg call, avoiding double re-encode
 		normPath := filepath.Join(tempDir, fmt.Sprintf("clip_%04d_%04d.mp4", idx, clipIdx))
-		err = s.ffmpegProc.CutAndNormalize(ctx, actualPath, normPath, cutStart, cutEnd, ffmpeg.CutAndNormalizeOptions{
-			Width:   v.Width,
-			Height:  v.Height,
-			FPS:     v.FPS,
-			Codec:   v.Codec,
-			Preset:  v.Preset,
-			CRF:     v.CRF,
-			NoAudio: false,
-		})
+		s.log.Info("fast cut starting",
+			zap.Int("video_index", idx),
+			zap.Int("clip_index", clipIdx),
+			zap.String("input_path", actualPath),
+			zap.String("output_path", normPath),
+		)
+
+		err = s.ffmpegProc.CutCopy(ctx, actualPath, normPath, cutStart, cutEnd)
 		if err != nil {
-			s.log.Warn("cut+normalize failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
+			s.log.Warn("fast cut failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
 			continue
 		}
 
@@ -782,32 +757,63 @@ func loadEffects(dir string) ([]string, error) {
 	return effects, nil
 }
 
-// renderChunk concatenates multiple clips into a single output video.
-// The clips are already normalized, so we can use ffmpeg concat demuxer
-// and avoid another full re-encode.
+// renderChunk concatenates copied clips into a single output video and then
+// normalizes the final chunk in one encode pass.
 func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string) error {
 	if len(clips) == 0 {
 		return fmt.Errorf("no clips to render")
 	}
+	videoCfg := s.cfg.Video.WithDefaults()
+	concatPath := outputPath + ".concat.mp4"
+	_ = os.Remove(concatPath)
+	defer os.Remove(concatPath)
+
 	if len(clips) == 1 {
-		s.log.Info("single clip chunk, copying without concat",
-			zap.String("output_path", outputPath),
+		s.log.Info("single clip chunk normalize starting",
 			zap.String("source_clip", clips[0]),
+			zap.String("output_path", outputPath),
 		)
-		return fileutil.CopyFile(clips[0], outputPath)
+		return s.ffmpegProc.Normalize(ctx, clips[0], outputPath, ffmpeg.NormalizeOptions{
+			Width:            videoCfg.Width,
+			Height:           videoCfg.Height,
+			FPS:              videoCfg.FPS,
+			Codec:            videoCfg.Codec,
+			Preset:           videoCfg.Preset,
+			CRF:              videoCfg.CRF,
+			KeyframeInterval: videoCfg.KeyframeInterval,
+			KeepAudio:        true,
+		})
 	}
 
 	s.log.Info("ffmpeg chunk concat starting",
 		zap.Int("clip_count", len(clips)),
+		zap.String("concat_path", concatPath),
 		zap.String("output_path", outputPath),
 		zap.Strings("titles", titles),
 	)
 
-	if err := s.ffmpegProc.MergeInputs(ctx, clips, outputPath); err != nil {
-		return err
+	if err := s.ffmpegProc.MergeInputs(ctx, clips, concatPath); err != nil {
+		return fmt.Errorf("concat chunk: %w", err)
 	}
+	s.log.Info("ffmpeg chunk concat finished", zap.String("concat_path", concatPath))
 
-	s.log.Info("ffmpeg chunk concat finished", zap.String("output_path", outputPath))
+	s.log.Info("ffmpeg chunk normalize starting",
+		zap.String("input_path", concatPath),
+		zap.String("output_path", outputPath),
+	)
+	if err := s.ffmpegProc.Normalize(ctx, concatPath, outputPath, ffmpeg.NormalizeOptions{
+		Width:            videoCfg.Width,
+		Height:           videoCfg.Height,
+		FPS:              videoCfg.FPS,
+		Codec:            videoCfg.Codec,
+		Preset:           videoCfg.Preset,
+		CRF:              videoCfg.CRF,
+		KeyframeInterval: videoCfg.KeyframeInterval,
+		KeepAudio:        true,
+	}); err != nil {
+		return fmt.Errorf("normalize chunk: %w", err)
+	}
+	s.log.Info("ffmpeg chunk normalize finished", zap.String("output_path", outputPath))
 	return nil
 }
 

@@ -171,6 +171,32 @@ type CutOptions struct {
 	NoAudio bool
 }
 
+// CutCopy cuts a segment using stream copy. It is much faster than re-encoding,
+// but the output is constrained by the source container/codec structure.
+func (p *Processor) CutCopy(ctx context.Context, input, output, start, end string) error {
+	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
+
+	if start != "" {
+		args = append(args, "-ss", start)
+	}
+	args = append(args, "-i", input)
+	if end != "" {
+		args = append(args, "-to", end)
+	}
+
+	args = append(args,
+		"-c", "copy",
+		"-avoid_negative_ts", "make_zero",
+		"-reset_timestamps", "1",
+		output,
+	)
+
+	_, err := executil.Run(ctx, p.path, args, executil.Options{
+		Timeout: 10 * time.Minute,
+	})
+	return err
+}
+
 // CutSegment cuts a segment from input video and saves to output.
 // start and end are timestamps like "00:01:23" or "01:23".
 func (p *Processor) CutSegment(ctx context.Context, input, output string, start, end string, opts CutOptions) error {
