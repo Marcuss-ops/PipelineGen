@@ -1,7 +1,8 @@
 package voiceover
 
 import (
-	"encoding/json"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 )
 
@@ -15,11 +16,33 @@ type BatchRequest struct {
 	Metadata         map[string]any      `json:"metadata,omitempty"`
 }
 
-func (r *BatchRequest) ToMap() map[string]any {
-	data, _ := json.Marshal(r)
-	var m map[string]any
-	json.Unmarshal(data, &m)
-	return m
+func (r *BatchRequest) PayloadMap() map[string]any {
+	if r == nil {
+		return map[string]any{}
+	}
+
+	payload := map[string]any{
+		"text":              r.Text,
+		"languages":         r.Languages,
+		"filename_template": r.FilenameTemplate,
+		"strategy":          r.Strategy,
+	}
+	if r.RemoveSilence != nil {
+		payload["remove_silence"] = *r.RemoveSilence
+	}
+	if r.Destination != nil {
+		payload["destination"] = map[string]any{
+			"group":            r.Destination.Group,
+			"folder_id":        r.Destination.FolderID,
+			"folder_path":      r.Destination.FolderPath,
+			"subfolder_name":   r.Destination.SubfolderName,
+			"create_subfolder": r.Destination.CreateSubfolder,
+		}
+	}
+	if len(r.Metadata) > 0 {
+		payload["metadata"] = r.Metadata
+	}
+	return payload
 }
 
 type DestinationRequest struct {
@@ -95,11 +118,13 @@ func buildRequestID() string {
 }
 
 func randomSuffix(n int) string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = chars[time.Now().UnixNano()%int64(len(chars))]
-		time.Sleep(1)
+	if n <= 0 {
+		return ""
 	}
-	return string(b)
+	size := (n + 1) / 2
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return time.Now().Format("150405")
+	}
+	return hex.EncodeToString(buf)[:n]
 }

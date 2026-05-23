@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"os"
-	"velox/go-master/internal/media/ffmpeg"
 	"velox/go-master/internal/media/videomuscles"
 
 	"velox/go-master/internal/api/handlers/common"
@@ -32,6 +31,7 @@ import (
 	"velox/go-master/internal/media/indexing"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/media/voiceoversync"
+	pkgffmpeg "velox/go-master/internal/pkg/media/ffmpeg"
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/upload/drive"
@@ -104,8 +104,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		AssetIndex:  assetIndexService,
 	}, log)
 
-	renderer := ffmpeg.NewService(cfg, log)
-	videoPipeline := videomuscles.NewPipeline(cfg, log, renderer)
+	clipProcessor := pkgffmpeg.New(cfg)
+	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 
 	youtubeClipService := youtube.NewService(
 		cfg,

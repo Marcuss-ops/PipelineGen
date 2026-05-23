@@ -241,6 +241,8 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 
 	if opts.NoAudio {
 		args = append(args, "-an")
+	} else {
+		args = append(args, "-c:a", "aac", "-b:a", "128k", "-af", "asetpts=PTS-STARTPTS")
 	}
 
 	args = append(args, "-c:v", opts.Codec)

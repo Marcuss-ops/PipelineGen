@@ -29,8 +29,6 @@ import (
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-
-
 // Service orchestrates the stock video pipeline: search, download, clip extraction,
 // effect overlay, chunk rendering, and Drive upload. All video parameters are read
 // from config.Video to ensure consistency with other media pipelines.
@@ -478,7 +476,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 			Codec:   v.Codec,
 			Preset:  v.Preset,
 			CRF:     v.CRF,
-			NoAudio: true,
+			NoAudio: false,
 		})
 		if err != nil {
 			s.log.Warn("cut+normalize failed", zap.Int("video", idx), zap.Int("clip", clipIdx), zap.Error(err))
@@ -692,8 +690,6 @@ func joinFilterParts(parts []string) string {
 	}
 	return result
 }
-
-
 
 func formatDuration(sec float64) string {
 	if sec < 0 {

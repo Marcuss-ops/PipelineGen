@@ -2,7 +2,6 @@ package videomuscles
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,11 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/ffmpeg"
 	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/media/downloader"
+	pkgffmpeg "velox/go-master/internal/pkg/media/ffmpeg"
 	"velox/go-master/internal/pkg/metrics"
-	"velox/go-master/internal/pkg/video_spec"
 )
 
 // YouTubeCutRequest contains all parameters for downloading and cutting a YouTube clip.
@@ -35,19 +33,19 @@ type YouTubeCutRequest struct {
 // Pipeline represents the core video processing muscles.
 // It orchestrates downloading via yt-dlp and rendering via FFmpeg.
 type Pipeline struct {
-	cfg      *config.Config
-	log      *zap.Logger
-	ytdlp    *downloader.YTDLPDownloader
-	renderer *ffmpeg.Service
+	cfg         *config.Config
+	log         *zap.Logger
+	ytdlp       *downloader.YTDLPDownloader
+	clipProcess *pkgffmpeg.Processor
 }
 
 // NewPipeline creates a new video processing pipeline.
-func NewPipeline(cfg *config.Config, log *zap.Logger, renderer *ffmpeg.Service) *Pipeline {
+func NewPipeline(cfg *config.Config, log *zap.Logger, clipProcess *pkgffmpeg.Processor) *Pipeline {
 	return &Pipeline{
-		cfg:      cfg,
-		log:      log,
-		ytdlp:    downloader.NewYTDLP(cfg),
-		renderer: renderer,
+		cfg:         cfg,
+		log:         log,
+		ytdlp:       downloader.NewYTDLP(cfg),
+		clipProcess: clipProcess,
 	}
 }
 
@@ -115,56 +113,38 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 
 	rawFile := segments[0].Path
 
-	// 3. Prepare video scene plan
-	plan := video_spec.MediaTimelinePlan{
-		Tracks: []video_spec.VideoTrack{
-			{
-				IsPrimary: true,
-				Segments: []video_spec.VideoSegment{
-					{
-						Path:          rawFile,
-						Start:         0,
-						Duration:      req.Duration,
-						TimelineStart: 0,
-					},
-				},
-			},
-		},
-		Output: video_spec.OutputConfig{
-			Path:       outputPath,
-			Width:      1920,
-			Height:     1080,
-			FPS:        30,
-			CRF:        23,
-			VideoCodec: "libx264",
-			AudioCodec: "aac",
-		},
+	// 3. Normalize the downloaded clip with the shared ffmpeg clip processor.
+	videoCfg := p.cfg.Video.WithDefaults()
+	if p.clipProcess == nil {
+		return "", fmt.Errorf("ffmpeg clip processor not configured")
 	}
 
-	planPath := filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("plan_%s.json", req.OutputName))
-	planData, _ := json.MarshalIndent(plan, "", "  ")
-	_ = os.WriteFile(planPath, planData, 0644)
-
-	// 4. Run FFmpeg rendering
 	renderTimer := time.Now()
-	err = p.renderer.RenderScene(ctx, planPath, outputPath)
+	normalizeErr := p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "", "", pkgffmpeg.CutAndNormalizeOptions{
+		Width:   videoCfg.Width,
+		Height:  videoCfg.Height,
+		FPS:     videoCfg.FPS,
+		Codec:   videoCfg.Codec,
+		Preset:  videoCfg.Preset,
+		CRF:     videoCfg.CRF,
+		NoAudio: !req.KeepAudio,
+	})
 
 	status := "success"
-	if err != nil {
+	if normalizeErr != nil {
 		status = "failed"
 	}
 
 	metrics.VideoRenderDuration.WithLabelValues(status, "false").Observe(time.Since(renderTimer).Seconds())
 	metrics.VideoRenderTotal.WithLabelValues(status, "false").Inc()
 
-	if err != nil {
-		p.log.Error("ffmpeg execution failed", zap.Error(err))
-		return "", fmt.Errorf("video processing failed: %w", err)
+	if normalizeErr != nil {
+		p.log.Error("ffmpeg clip processing failed", zap.Error(normalizeErr))
+		return "", fmt.Errorf("video processing failed: %w", normalizeErr)
 	}
 
 	// Cleanup
 	_ = os.Remove(rawFile)
-	_ = os.Remove(planPath)
 
 	p.log.Info("successfully processed youtube clip", zap.Duration("total_duration", time.Since(startTimer)))
 	return outputPath, nil
@@ -180,7 +160,3 @@ func (p *Pipeline) formatTime(sec float64) string {
 	ms := (d - s*time.Second) / time.Millisecond
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, s, ms)
 }
-
-
-
-

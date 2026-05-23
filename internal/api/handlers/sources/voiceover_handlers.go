@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/pkg/apiutil"
-	"velox/go-master/internal/media/models"
 )
 
 type VoiceoverHandler struct {
@@ -61,7 +61,7 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 			Type:    models.JobTypeVoiceoverBatch,
-			Payload: batchReq.ToMap(),
+			Payload: batchReq.PayloadMap(),
 		})
 		if err != nil {
 			apiutil.InternalError(c, err)
@@ -103,7 +103,7 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 	if h.jobsSvc != nil {
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 			Type:    models.JobTypeVoiceoverBatch,
-			Payload: req.ToMap(),
+			Payload: req.PayloadMap(),
 		})
 		if err != nil {
 			apiutil.InternalError(c, err)
