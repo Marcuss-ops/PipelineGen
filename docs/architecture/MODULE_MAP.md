@@ -41,7 +41,7 @@
 |--------|-------|--------------|-------------|----------|--------------|
 | **ScriptDocs** | ATTIVO | `SCRIPT_DOCS_ENABLED` | Generazione script via Ollama | `velox.db.sqlite` | `internal/api/handlers/script/` |
 | **Script History** | ATTIVO | `SCRIPT_CLIPS_ENABLED` | Storico script generati | `velox.db.sqlite` | `internal/module/script_history/` |
-| **Voiceover** | SPERIMENTALE | `VOICEOVER_ENABLED` | Generazione voiceover, sync | `voiceover.db.sqlite` | `internal/service/voiceover/` |
+| **Voiceover** | SPERIMENTALE | `VOICEOVER_ENABLED` | Generazione voiceover, sync | `media.db.sqlite` | `internal/service/voiceover/` |
 
 ### Asset Management
 
@@ -77,7 +77,7 @@
 | `clips.db.sqlite` | clips (YouTube), clip_folders, segment_embeddings | YouTube Clips |
 | `artlist.db.sqlite` | clips (Artlist), clip_folders, artlist_runs | Artlist |
 | `images.db.sqlite` | (vuoto o image tables) | Images |
-| `voiceover.db.sqlite` | (vuoto o voiceover tables) | Voiceover |
+| `media.db.sqlite` | Unified media tables, inclusi voiceovers | Voiceover, YouTube, Artlist, Stock, Images |
 | `jobs.db.sqlite` | jobs, job_events | Jobs, ContentPackage |
 
 ---

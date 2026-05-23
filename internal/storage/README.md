@@ -38,8 +38,5 @@ err = db.RunMigrations(log, "./migrations/sqlite")
 
 The project uses multiple isolated SQLite files to minimize blast radius and allow for independent scaling:
 - `velox.db.sqlite`: Core system state, jobs, and registry.
-- `artlist.db.sqlite`: Artlist-specific assets and cache.
-- `clips.db.sqlite`: General clip metadata and embeddings.
-- `images.db.sqlite`: Image assets and tagging metadata.
-- `voiceover.db.sqlite`: Voiceover records and status.
-- `assets.db.sqlite`: The unified `asset_index`.
+- `media.db.sqlite`: Unified media assets, including YouTube clips, Artlist, stock, images, and voiceovers.
+- `images.db.sqlite`: Legacy image assets and tagging metadata, if present in older data sets.

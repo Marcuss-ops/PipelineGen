@@ -60,7 +60,7 @@ var expectedTables = map[string][]string{
 		"image_tags",
 		"schema_migrations",
 	},
-	"voiceover/voiceover.db.sqlite": {
+	"media/media.db.sqlite": {
 		"voiceovers",
 		"schema_migrations",
 	},
