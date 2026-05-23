@@ -7,7 +7,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -783,9 +782,9 @@ func loadEffects(dir string) ([]string, error) {
 	return effects, nil
 }
 
-// renderChunk concatenates multiple clips into a single output video using ffmpeg.
-// It applies random xfade transitions between clips. All encoding parameters
-// (codec, preset, CRF, resolution, FPS) are read from cfg.Video.
+// renderChunk concatenates multiple clips into a single output video.
+// The clips are already normalized, so we can use ffmpeg concat demuxer
+// and avoid another full re-encode.
 func (s *Service) renderChunk(ctx context.Context, clips []string, titles []string, outputPath string) error {
 	if len(clips) == 0 {
 		return fmt.Errorf("no clips to render")
@@ -798,77 +797,18 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		return fileutil.CopyFile(clips[0], outputPath)
 	}
 
-	v := s.cfg.Video.WithDefaults()
-	clipDur := v.ClipDuration
-	transitionPresets := v.TransitionPresets
-
-	var inputArgs []string
-	var filterParts []string
-
-	for i, clip := range clips {
-		inputArgs = append(inputArgs, "-i", clip)
-		filterParts = append(filterParts, fmt.Sprintf(
-			"[%d:v]setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d[v%d]",
-			i, v.Width, v.Height, v.Width, v.Height, v.FPS, i,
-		))
-		clips[i] = fmt.Sprintf("v%d", i)
-	}
-
-	lastLabel := clips[0]
-	cumOffset := clipDur
-
-	for i := 1; i < len(clips); i++ {
-		trans := transitionPresets[rng.Intn(len(transitionPresets))]
-		nextLabel := clips[i]
-		outLabel := fmt.Sprintf("c%d", i)
-
-		filterParts = append(filterParts, fmt.Sprintf(
-			"[%s][%s]xfade=transition=%s:duration=1:offset=%d[%s]",
-			lastLabel, nextLabel, trans, cumOffset-1, outLabel,
-		))
-
-		lastLabel = outLabel
-		cumOffset += clipDur - 1
-	}
-
-	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
-	args = append(args, inputArgs...)
-	args = append(args, "-filter_complex", joinFilterParts(filterParts))
-	args = append(args, "-map", fmt.Sprintf("[%s]", lastLabel))
-	args = append(args, "-an")
-	args = append(args, "-c:v", v.Codec, "-preset", v.Preset, "-cq", fmt.Sprintf("%d", v.CRF))
-	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart")
-	args = append(args, outputPath)
-
-	s.log.Debug("ffmpeg render chunk", zap.Int("clips", len(clips)))
-	_ = titles
-	s.log.Info("ffmpeg chunk render starting",
+	s.log.Info("ffmpeg chunk concat starting",
 		zap.Int("clip_count", len(clips)),
 		zap.String("output_path", outputPath),
 		zap.Strings("titles", titles),
 	)
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	output, err := cmd.CombinedOutput()
-	if len(output) > 0 {
-		s.log.Debug("ffmpeg output", zap.String("stderr", string(output)))
+	if err := s.ffmpegProc.MergeInputs(ctx, clips, outputPath); err != nil {
+		return err
 	}
-	if err != nil {
-		return fmt.Errorf("ffmpeg render failed: %w", err)
-	}
-	s.log.Info("ffmpeg chunk render finished", zap.String("output_path", outputPath))
-	return nil
-}
 
-func joinFilterParts(parts []string) string {
-	result := ""
-	for _, p := range parts {
-		if result != "" {
-			result += ";"
-		}
-		result += p
-	}
-	return result
+	s.log.Info("ffmpeg chunk concat finished", zap.String("output_path", outputPath))
+	return nil
 }
 
 func formatDuration(sec float64) string {

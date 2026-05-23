@@ -7,11 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/pkg/executil"
+	"velox/go-master/internal/pkg/fileutil"
 )
 
 // Processor handles FFmpeg operations.
@@ -411,10 +414,57 @@ func (p *Processor) ApplyOverlay(ctx context.Context, clipPath, effectPath, outp
 
 // MergeInputs concatenates multiple video files into one.
 func (p *Processor) MergeInputs(ctx context.Context, inputs []string, output string) error {
-	// Create a temporary file list for ffmpeg concat demuxer
-	// Then run ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
-	// Implementation left for when needed
-	return fmt.Errorf("not implemented")
+	if len(inputs) == 0 {
+		return fmt.Errorf("no inputs provided")
+	}
+	if len(inputs) == 1 {
+		return fileutil.CopyFile(inputs[0], output)
+	}
+
+	listFile, err := os.CreateTemp("", "ffmpeg_concat_*.txt")
+	if err != nil {
+		return fmt.Errorf("create concat list: %w", err)
+	}
+	defer os.Remove(listFile.Name())
+
+	escapePath := func(path string) string {
+		absPath, err := filepath.Abs(path)
+		if err == nil && absPath != "" {
+			path = absPath
+		}
+		path = strings.ReplaceAll(path, "'", "'\\''")
+		return path
+	}
+
+	for _, input := range inputs {
+		if _, err := fmt.Fprintf(listFile, "file '%s'\n", escapePath(input)); err != nil {
+			_ = listFile.Close()
+			return fmt.Errorf("write concat list: %w", err)
+		}
+	}
+	if err := listFile.Close(); err != nil {
+		return fmt.Errorf("close concat list: %w", err)
+	}
+
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-f", "concat",
+		"-safe", "0",
+		"-i", listFile.Name(),
+		"-c", "copy",
+		"-movflags", "+faststart",
+		output,
+	}
+
+	_, err = executil.Run(ctx, p.path, args, executil.Options{
+		Timeout: 15 * time.Minute,
+	})
+	if err != nil {
+		return fmt.Errorf("ffmpeg concat failed: %w", err)
+	}
+	return nil
 }
 
 // Check checks if FFmpeg is available.
