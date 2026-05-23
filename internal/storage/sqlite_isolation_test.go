@@ -18,7 +18,6 @@ var expectedTables = map[string][]string{
 		"media_items",
 		"media_files",
 		"media_tags",
-		"video_metadata", // transitional: dropped by migration 009_drop_video_metadata.sql
 		"script_stock_matches",
 		"video_stats_history",
 		"artlist_runs",
@@ -34,25 +33,25 @@ var expectedTables = map[string][]string{
 		"api_requests",
 	},
 	"stock/stock.db.sqlite": {
-	        "media_assets", // Unified media table
-	        "clip_folders", // Stock-specific folders
-	        "schema_migrations",
+		"media_assets", // Unified media table
+		"clip_folders", // Stock-specific folders
+		"schema_migrations",
 	},
 	"clips/clips.db.sqlite": {
-	        "clips",              // YouTube-specific clips (still legacy or specific?)
-	        "clip_folders",       // YouTube-specific folders
-	        "segment_embeddings", // Timeline cache - appropriate here
-	        "schema_migrations",
+		"clips",              // YouTube-specific clips (still legacy or specific?)
+		"clip_folders",       // YouTube-specific folders
+		"segment_embeddings", // Timeline cache - appropriate here
+		"schema_migrations",
 	},
 	"artlist/artlist.db.sqlite": {
-	        "media_assets", // Unified media table
-	        "clip_folders", // Artlist-specific folders
-	        "clips_fts",    // FTS index
-	        "clips_fts_config",
-	        "clips_fts_data",
-	        "clips_fts_docsize",
-	        "clips_fts_idx",
-	        "schema_migrations",
+		"media_assets", // Unified media table
+		"clip_folders", // Artlist-specific folders
+		"clips_fts",    // FTS index
+		"clips_fts_config",
+		"clips_fts_data",
+		"clips_fts_docsize",
+		"clips_fts_idx",
+		"schema_migrations",
 	},
 	"images/images.db.sqlite": {
 		"images",
@@ -61,6 +60,11 @@ var expectedTables = map[string][]string{
 		"schema_migrations",
 	},
 	"media/media.db.sqlite": {
+		"clip_folders",
+		"media_assets",
+		"segment_embeddings",
+		"sketchfab_models",
+		"subjects",
 		"voiceovers",
 		"schema_migrations",
 	},
