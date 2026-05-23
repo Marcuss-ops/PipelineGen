@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// JobStatus rappresenta lo stato di un job
 type JobStatus string
 
 const (
@@ -21,30 +20,8 @@ const (
 	StatusRetrying   JobStatus = "retrying"
 )
 
-const (
-	JobTypeVideoGeneration = TypeVideoGeneration
-	JobTypeAudioProcessing = TypeAudioProcessing
-	JobTypeUpload          = TypeUpload
-	JobTypeVoiceover       = TypeVoiceover
-	JobTypeScript          = TypeScriptGen
-	JobTypeStockDownload   = TypeStockDownload
-	JobTypeStockClip       = TypeStockClip
-)
-
-// JobType rappresenta il tipo di job
 type JobType string
 
-const (
-	TypeVideoGeneration JobType = "video_generation"
-	TypeAudioProcessing JobType = "audio_processing"
-	TypeUpload          JobType = "upload"
-	TypeScriptGen       JobType = "script_generation"
-	TypeVoiceover       JobType = "voiceover"
-	TypeStockDownload   JobType = "stock_download"
-	TypeStockClip       JobType = "stock_clip"
-)
-
-// New job types for the unified job system
 const (
 	JobTypeMediaExtract       JobType = "media.extract"
 	JobTypeMediaStock         JobType = "media.stock"

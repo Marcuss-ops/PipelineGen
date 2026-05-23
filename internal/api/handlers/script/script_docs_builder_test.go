@@ -7,7 +7,7 @@ import (
 	"velox/go-master/internal/media/models"
 )
 
-func TestResolveArtlistDisplayLinkPrefersDriveAndFolderFallback(t *testing.T) {
+func TestResolveArtlistDisplayLinkPrefersDriveAndIgnoresFolderFallback(t *testing.T) {
 	if got := resolveArtlistDisplayLink(&models.MediaAsset{
 		DriveLink: "https://drive.google.com/file/d/direct/view",
 		ExternalURL: "https://artlist.io/clip/ignored",
@@ -41,3 +41,21 @@ func TestResolveAssociatedDisplayLinkIgnoresFolderFallback(t *testing.T) {
 	}
 }
 
+func TestFilterSpecialNamesDropsSentencesAndGenericDescriptors(t *testing.T) {
+	input := []string{
+		"Federico Fellini",
+		"Rimini",
+		"Hanno ucciso un uccellino",
+		"Old Key, Vintage Object",
+		"Film History, Cinematic Legacy",
+		"Federico Fellini",
+	}
+
+	got := filterSpecialNames(input, "")
+	if len(got) != 2 {
+		t.Fatalf("expected only the two real entities to remain, got %#v", got)
+	}
+	if got[0] != "Federico Fellini" || got[1] != "Rimini" {
+		t.Fatalf("unexpected filtered names: %#v", got)
+	}
+}

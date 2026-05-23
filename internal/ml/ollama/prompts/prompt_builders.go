@@ -121,8 +121,9 @@ Return ONLY valid JSON with exactly this shape:
 }
 
 RULES FOR VISUAL ENTITIES:
-1. "nomi_speciali": Extract a MAXIMUM of %d specific names of people, places, or identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei"). 
+1. "nomi_speciali": Extract a MAXIMUM of %d specific names of people, places, organizations, works, or clearly identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei").
    - STRICT LIMIT: Do NOT extract more than %d names under any circumstance. Only take the most important ones.
+   - ONLY include real named entities, not descriptions, scene labels, titles, dialogue, or sentence fragments.
    - AVOID abstract or generic nouns.
    - AVOID ambiguous common words unless qualified (e.g., AVOID "Campana" alone, PREFER "Mozzarella di bufala campana").
    - PREFER concrete entities that have a dedicated Wikipedia page.

@@ -24,7 +24,7 @@ func attemptLiveSearchDecision(ctx context.Context, req ScriptDocsRequest, segme
 		searchTerm = req.Topic
 	}
 
-	liveResp, runResp, err := artlistSvc.DiscoverAndQueueRun(ctx, searchTerm, 5)
+	liveResp, runResp, err := artlistSvc.DiscoverAndQueueRun(ctx, searchTerm, 10)
 	if err != nil || liveResp == nil || len(liveResp.Clips) == 0 {
 		return timelineAssetDecision{}, false
 	}
@@ -82,6 +82,18 @@ func buildLiveSearchMatches(
 	}
 
 	matches := make([]association.ScoredMatch, 0)
+
+	if strings.TrimSpace(folderLink) != "" {
+		matches = append(matches, association.ScoredMatch{
+			Title:      searchTerm,
+			Score:      100,
+			Source:     "artlist_live_run",
+			Link:       folderLink,
+			FolderLink: folderLink,
+			FolderName: searchTerm,
+			Reason:     "live artlist run folder for " + searchTerm,
+		})
+	}
 
 	if processedResp != nil && len(processedResp.Items) > 0 {
 		for _, item := range processedResp.Items {

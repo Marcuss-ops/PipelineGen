@@ -15,6 +15,8 @@ import (
 	"velox/go-master/internal/core/lifecycle"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/videomuscles"
+	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/pkg/pathutil"
 	"velox/go-master/internal/security"
@@ -26,36 +28,19 @@ const MaxSegmentDuration = 120
 func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractResponse, error) {
 	s.log.Info("YouTube Extract service called", zap.String("url", req.URL))
 
+	// Apply configurable timeout if no deadline is set
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && s.cfg.Jobs.YouTubeExtractTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Jobs.YouTubeExtractTimeout)*time.Second)
+		defer cancel()
+	}
+
 	videoID := extractVideoID(req.URL)
 	if videoID == "" {
 		videoID = hashutil.MD5String(req.URL)[:12]
 	}
 	if canonical := canonicalYouTubeURL(req.URL, videoID); canonical != "" {
 		req.URL = canonical
-	}
-
-	// Upsert MonitoredSource for the YouTube video
-	now := time.Now().UTC().Format(time.RFC3339)
-	monitoredSource := &models.MonitoredSource{
-		ID:           "youtube_" + videoID,
-		Source:       "youtube",
-		ExternalID:   videoID,
-		ExternalURL:  req.URL,
-		GroupName:    "",
-		Category:     "manual_extract",
-		Status:       "processing",
-		LastSeenAt:   now,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		MetadataJSON: "{}",
-	}
-	if req.Destination != nil {
-		monitoredSource.GroupName = req.Destination.Group
-	}
-	if s.monitoredRepo != nil {
-		if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
-			s.log.Error("Failed to upsert monitored source", zap.Error(err))
-		}
 	}
 
 	resp := &ExtractResponse{
@@ -89,6 +74,30 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		resp.OK = false
 		resp.Error = "too many segments, max 20"
 		return resp, fmt.Errorf("too many segments")
+	}
+
+	// Upsert MonitoredSource (after validation to avoid stale "processing" entries)
+	now := time.Now().UTC().Format(time.RFC3339)
+	monitoredSource := &models.MonitoredSource{
+		ID:           "youtube_" + videoID,
+		Source:       "youtube",
+		ExternalID:   videoID,
+		ExternalURL:  req.URL,
+		GroupName:    "",
+		Category:     "manual_extract",
+		Status:       "processing",
+		LastSeenAt:   now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		MetadataJSON: "{}",
+	}
+	if req.Destination != nil {
+		monitoredSource.GroupName = req.Destination.Group
+	}
+	if s.monitoredRepo != nil {
+		if err := s.monitoredRepo.UpsertSource(ctx, monitoredSource); err != nil {
+			s.log.Error("Failed to upsert monitored source", zap.Error(err))
+		}
 	}
 
 	// Create stable folder path using video ID instead of timestamp
@@ -287,13 +296,25 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		clipID := fmt.Sprintf("yt_%s_%d_%d", videoID, startSec, endSec)
 		item.ID = clipID
 
-		// Fast path: if we already have this exact clip ID persisted, reuse it instead of
-		// rendering/uploading again. This keeps the endpoint idempotent even if lifecycle
-		// dedupe misses a record for any reason.
-		if s.clipsRepo != nil {
+		// Strategy-aware fast path:
+		//   replace → skip cache entirely
+		//   skip    → reuse if DB record exists (no file check needed)
+		//   verify  → reuse only if DB + file are valid (default)
+		if req.Strategy != "replace" && s.clipsRepo != nil {
 			existingClip, err := s.clipsRepo.GetClip(ctx, clipID)
 			if err == nil && existingClip != nil {
-				if ok, clipErr := usableCachedClip(existingClip.LocalPath); clipErr == nil && ok {
+				if req.Strategy == "skip" {
+					item.LocalPath = existingClip.LocalPath
+					item.DriveLink = existingClip.DriveLink
+					item.DriveFileID = existingClip.DriveFileID
+					item.DownloadLink = existingClip.DownloadLink
+					item.Status = "skipped"
+					resp.Items = append(resp.Items, item)
+					resp.Stats.Skipped++
+					continue
+				}
+
+				if ok, clipErr := fileutil.UsableCachedClip(existingClip.LocalPath); clipErr == nil && ok {
 					item.LocalPath = existingClip.LocalPath
 					item.DriveLink = existingClip.DriveLink
 					item.DriveFileID = existingClip.DriveFileID
@@ -318,7 +339,17 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		shouldNormalize := req.Normalize == nil || *req.Normalize
 
 		// Download and cut using FFmpeg
-		localPath, err := s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, resp.SourceURL, float64(startSec), float64(duration), item.Name)
+		localPath, err := s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, videomuscles.YouTubeCutRequest{
+			URL:            resp.SourceURL,
+			VideoID:        videoID,
+			Start:          float64(startSec),
+			Duration:       float64(duration),
+			OutputName:     item.Name,
+			ForceKeyframes: req.ForceKeyframes,
+			KeepAudio:      req.KeepAudio,
+			Normalize:      shouldNormalize,
+			Strategy:       req.Strategy,
+		})
 		if err != nil {
 			item.Status = "failed"
 			item.Error = fmt.Sprintf("video processing failed: %v", err)
@@ -368,7 +399,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			Metadata:     metadata,
 			RequireLocal: true,
 			RequireHash:  true,
-			RequireDrive: false,
+			RequireDrive: driveFolderID != "",
 			VerifyDB:     true,
 		}
 
@@ -408,6 +439,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 		// Update manifest with this clip
 		if manifest != nil {
+			segTagsJSON, _ := json.Marshal(seg.Tags)
 			newMItem := models.ClipManifestItem{
 				ID:              clipID,
 				Name:            item.Name,
@@ -421,7 +453,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 				DriveLink:       item.DriveLink,
 				FileHash:        fileHash,
 				Status:          item.Status,
-				Tags:            fmt.Sprintf("%v", seg.Tags),
+				Tags:            string(segTagsJSON),
 			}
 
 			// Replace existing or append new
@@ -443,16 +475,15 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 		// Trigger automatic embedding/indexing if indexer is available
 		if s.indexer != nil && s.indexer.IsEnabled() {
-			go func(id string) {
-				// Use a background context for the goroutine
-				indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			go func(id string, parentCtx context.Context) {
+				indexCtx, cancel := context.WithTimeout(parentCtx, 2*time.Minute)
 				defer cancel()
 
 				s.log.Info("triggering automatic indexing for YouTube clip", zap.String("clip_id", id))
 				if err := s.indexer.IndexClip(indexCtx, id); err != nil {
 					s.log.Error("failed to automatically index YouTube clip", zap.String("clip_id", id), zap.Error(err))
 				}
-			}(clipID)
+			}(clipID, ctx)
 		}
 	}
 
@@ -488,10 +519,8 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 
 		// Upsert clip folder to DB
-		if clipFolder != nil {
-			if err := s.folderMemory.UpsertClipFolder(ctx, clipFolder); err != nil {
-				s.log.Warn("failed to upsert clip folder", zap.Error(err))
-			}
+		if err := s.folderMemory.UpsertClipFolder(ctx, clipFolder); err != nil {
+			s.log.Warn("failed to upsert clip folder", zap.Error(err))
 		}
 	}
 
@@ -617,44 +646,18 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		zap.String("job_id", job.ID),
 	)
 
-	// Decode payload using the same structure as YouTubeClipExtractPayload
-	var payload struct {
-		WorkspaceID string    `json:"workspace_id"`
-		ProjectID   string    `json:"project_id"`
-		URL         string    `json:"url"`
-		Segments    []Segment `json:"segments"`
-		UploadDrive bool      `json:"upload_drive"`
-		Normalize   *bool     `json:"normalize"`
-		Destination *DestinationRequest `json:"destination"`
-	}
+	var req ExtractRequest
 	if len(job.Payload) > 0 {
-		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		if err := json.Unmarshal(job.Payload, &req); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
 		}
-	}
-
-	if payload.URL == "" {
-		return nil, fmt.Errorf("url is required in payload")
-	}
-
-	if len(payload.Segments) == 0 {
-		return nil, fmt.Errorf("segments are required in payload")
-	}
-
-	// Convert to ExtractRequest
-	req := &ExtractRequest{
-		URL:         payload.URL,
-		Segments:    payload.Segments,
-		Normalize:   payload.Normalize,
-		Destination: payload.Destination,
 	}
 
 	if tools.Progress != nil {
 		tools.Progress(10, "Starting YouTube clip extraction")
 	}
 
-	// Call existing Extract method
-	resp, err := s.Extract(ctx, req)
+	resp, err := s.Extract(ctx, &req)
 	if err != nil {
 		return nil, fmt.Errorf("extraction failed: %w", err)
 	}
@@ -663,7 +666,6 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		tools.Progress(100, "YouTube clip extraction completed")
 	}
 
-	// Convert response to result map
 	result := map[string]any{
 		"ok":              resp.OK,
 		"source_url":      resp.SourceURL,
@@ -674,11 +676,9 @@ func (s *Service) HandleJob(ctx context.Context, job *models.Job, tools *jobserv
 		"drive_folder_id": resp.DriveFolderID,
 		"message":         "YouTube clip extraction completed",
 	}
-
 	if !resp.OK && resp.Error != "" {
 		result["error"] = resp.Error
 	}
-
 	return result, nil
 }
 
@@ -752,21 +752,4 @@ func canonicalYouTubeURL(inputURL, videoID string) string {
 	return ""
 }
 
-func usableCachedClip(path string) (bool, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !info.Mode().IsRegular() {
-		_ = os.Remove(path)
-		return false, nil
-	}
-	if info.Size() <= 0 {
-		_ = os.Remove(path)
-		return false, nil
-	}
-	return true, nil
-}
+

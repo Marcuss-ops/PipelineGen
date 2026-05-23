@@ -6,48 +6,9 @@ import (
 	"velox/go-master/internal/media/association"
 )
 
-// renderSegmentAssets renders all asset associations for a segment
+// renderSegmentAssets is intentionally disabled.
 func renderSegmentAssets(seg TimelineSegment) string {
-	var b strings.Builder
-	renderedAny := false
-
-	// Priority 1: Stock Drive Association
-	if len(seg.StockMatches) > 0 && hasStrongMatch(seg.StockMatches, 35) {
-		label := "📦 Stock Drive Association"
-		if !hasStrongMatch(seg.StockMatches, 50) {
-			label = "⚠️ Weak Stock Association"
-		}
-		b.WriteString(renderSpecificMatch(label, seg.StockMatches))
-		renderedAny = true
-	}
-
-	// Priority 2: Artlist Drive Association
-	if len(seg.ArtlistMatches) > 0 && hasStrongMatch(seg.ArtlistMatches, 35) {
-		label := "📦 Artlist Drive Association"
-
-		// Check if it was a live discovery
-		isLive := false
-		for _, m := range seg.ArtlistMatches {
-			if m.Source == "artlist_live_discovery" {
-				isLive = true
-				break
-			}
-		}
-
-		if isLive {
-			label = "🚀 Live Artlist Discovery"
-		} else if !hasStrongMatch(seg.ArtlistMatches, 50) {
-			label = "⚠️ Weak Artlist Association"
-		}
-		b.WriteString(renderSpecificMatch(label, seg.ArtlistMatches))
-		renderedAny = true
-	}
-
-	if !renderedAny {
-		b.WriteString("\n   ⚠️ No Association Found\n")
-	}
-
-	return b.String()
+	return ""
 }
 
 func hasStrongMatch(matches []association.ScoredMatch, minScore int) bool {
@@ -101,6 +62,94 @@ func renderSpecificMatch(label string, matches []association.ScoredMatch) string
 	}
 
 	return b.String()
+}
+
+func renderSegmentPrimaryAssociation(seg TimelineSegment) string {
+	label, link := selectPrimaryAssociation(seg)
+	if link == "" {
+		return ""
+	}
+
+	return "Primary Association: " + label + " " + link + "\n"
+}
+
+func selectPrimaryAssociation(seg TimelineSegment) (string, string) {
+	if link := primaryStockLink(seg); link != "" {
+		return "📦 Stock Drive Association", link
+	}
+	if label, link := primaryArtlistLink(seg); link != "" {
+		return label, link
+	}
+	return "", ""
+}
+
+func primaryStockLink(seg TimelineSegment) string {
+	if link := firstRenderableLink(seg.PreferredStockPaths); link != "" {
+		return link
+	}
+	for _, match := range seg.StockMatches {
+		if link := primaryMatchLink(match); link != "" {
+			return link
+		}
+	}
+	return ""
+}
+
+func primaryArtlistLink(seg TimelineSegment) (string, string) {
+	if strings.Contains(strings.ToLower(strings.TrimSpace(seg.PreferredStockGroup)), "artlist") {
+		if link := firstRenderableLink(seg.PreferredStockPaths); link != "" {
+			label := "📦 Artlist Drive Association"
+			if strings.Contains(strings.ToLower(strings.TrimSpace(seg.PreferredStockGroup)), "live") {
+				label = "🚀 Live Artlist Discovery"
+			}
+			return label, link
+		}
+	}
+	for _, match := range seg.ArtlistMatches {
+		if link := primaryMatchLink(match); link != "" {
+			label := "📦 Artlist Drive Association"
+			source := strings.ToLower(strings.TrimSpace(match.Source))
+			if strings.Contains(source, "live") {
+				label = "🚀 Live Artlist Discovery"
+			}
+			return label, link
+		}
+	}
+	return "", ""
+}
+
+func firstRenderableLink(values []string) string {
+	for _, value := range values {
+		if link := normalizeRenderableAssociationLink(value); link != "" {
+			return link
+		}
+	}
+	return ""
+}
+
+func primaryMatchLink(match association.ScoredMatch) string {
+	if link := normalizeRenderableAssociationLink(match.FolderLink); link != "" {
+		return link
+	}
+	if link := normalizeRenderableAssociationLink(match.Link); link != "" {
+		return link
+	}
+	return ""
+}
+
+func normalizeRenderableAssociationLink(link string) string {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return ""
+	}
+	lower := strings.ToLower(link)
+	if strings.Contains(lower, "docs.google.com/document/") {
+		return ""
+	}
+	if strings.HasPrefix(lower, "http") {
+		return link
+	}
+	return ""
 }
 
 func resolveTimelineDisplayLink(match association.ScoredMatch) string {

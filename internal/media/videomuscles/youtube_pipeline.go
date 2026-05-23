@@ -13,10 +13,24 @@ import (
 
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/ffmpeg"
+	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/metrics"
 	"velox/go-master/internal/pkg/video_spec"
 )
+
+// YouTubeCutRequest contains all parameters for downloading and cutting a YouTube clip.
+type YouTubeCutRequest struct {
+	URL            string
+	VideoID        string
+	Start          float64
+	Duration       float64
+	OutputName     string
+	ForceKeyframes bool
+	KeepAudio      bool
+	Normalize      bool
+	Strategy       string // verify (default), skip, replace
+}
 
 // Pipeline represents the core video processing muscles.
 // It orchestrates downloading via yt-dlp and rendering via FFmpeg.
@@ -38,11 +52,11 @@ func NewPipeline(cfg *config.Config, log *zap.Logger, renderer *ffmpeg.Service) 
 }
 
 // DownloadAndCutYouTubeVideo downloads a specific section of a YouTube video and uses FFmpeg to process it.
-func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, start, duration float64, outputName string) (string, error) {
+func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCutRequest) (string, error) {
 	startTimer := time.Now()
-	p.log.Info("starting youtube download and cut", zap.String("url", url))
+	p.log.Info("starting youtube download and cut", zap.String("url", req.URL), zap.String("video_id", req.VideoID))
 
-	videoID := extractYouTubeVideoID(url)
+	videoID := req.VideoID
 	if videoID == "" {
 		videoID = "unknown"
 	}
@@ -52,37 +66,41 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 	}
 
 	// 1. Check Cache
-	safeOutputName := filepath.Base(strings.TrimSpace(outputName))
+	safeOutputName := filepath.Base(strings.TrimSpace(req.OutputName))
 	if safeOutputName == "." || safeOutputName == string(filepath.Separator) || safeOutputName == "" {
 		safeOutputName = "clip"
 	}
 	outputPath := filepath.Join(videoDir, safeOutputName+".mp4")
-	if ok, err := usableCachedClip(outputPath); err != nil {
-		p.log.Warn("failed to inspect cached youtube clip", zap.String("path", outputPath), zap.Error(err))
-	} else if ok {
-		p.log.Info("cache hit for youtube clip", zap.String("path", outputPath))
-		return outputPath, nil
+
+	// Strategy: replace always skips cache
+	if req.Strategy != "replace" {
+		if ok, err := fileutil.UsableCachedClip(outputPath); err != nil {
+			p.log.Warn("failed to inspect cached youtube clip", zap.String("path", outputPath), zap.Error(err))
+		} else if ok {
+			p.log.Info("cache hit for youtube clip", zap.String("path", outputPath), zap.String("strategy", req.Strategy))
+			return outputPath, nil
+		}
 	}
 
 	// 2. Download the specific section using yt-dlp
-	tempVideoPath := filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("raw_%s.mp4", outputName))
+	tempVideoPath := filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("raw_%s.mp4", req.OutputName))
 
 	// Create section string like "*00:01:20-00:01:35"
-	startStr := p.formatTime(start)
-	endStr := p.formatTime(start + duration)
+	startStr := p.formatTime(req.Start)
+	endStr := p.formatTime(req.Start + req.Duration)
 	section := fmt.Sprintf("*%s-%s", startStr, endStr)
 
-	req := &downloader.DownloadRequest{
-		URL:              url,
+	dlReq := &downloader.DownloadRequest{
+		URL:              req.URL,
 		OutputPath:       tempVideoPath,
 		MergeFormat:      "mp4",
 		DownloadSections: []string{section},
-		ForceKeyframes:   true,
+		ForceKeyframes:   req.ForceKeyframes,
 		Timeout:          10 * time.Minute,
 	}
 
 	downloadTimer := time.Now()
-	segments, err := p.ytdlp.DownloadSections(ctx, req)
+	segments, err := p.ytdlp.DownloadSections(ctx, dlReq)
 	if err != nil {
 		metrics.DownloadTotal.WithLabelValues("youtube", "failed").Inc()
 		p.log.Error("ytdlp download failed", zap.Error(err))
@@ -106,7 +124,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 					{
 						Path:          rawFile,
 						Start:         0,
-						Duration:      duration,
+						Duration:      req.Duration,
 						TimelineStart: 0,
 					},
 				},
@@ -123,7 +141,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, s
 		},
 	}
 
-	planPath := filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("plan_%s.json", outputName))
+	planPath := filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("plan_%s.json", req.OutputName))
 	planData, _ := json.MarshalIndent(plan, "", "  ")
 	_ = os.WriteFile(planPath, planData, 0644)
 
@@ -163,34 +181,6 @@ func (p *Pipeline) formatTime(sec float64) string {
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, s, ms)
 }
 
-func extractYouTubeVideoID(inputURL string) string {
-	if idx := strings.Index(inputURL, "v="); idx != -1 {
-		rest := inputURL[idx+2:]
-		if amp := strings.Index(rest, "&"); amp != -1 {
-			rest = rest[:amp]
-		}
-		if rest != "" {
-			return rest
-		}
-	}
-	return ""
-}
 
-func usableCachedClip(path string) (bool, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !info.Mode().IsRegular() {
-		_ = os.Remove(path)
-		return false, nil
-	}
-	if info.Size() <= 0 {
-		_ = os.Remove(path)
-		return false, nil
-	}
-	return true, nil
-}
+
+

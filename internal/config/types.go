@@ -284,6 +284,7 @@ type JobsConfig struct {
 	MaxParallelPerProject int    `yaml:"max_parallel_per_project" default:"16"`
 	AutoCleanupHours      int    `yaml:"auto_cleanup_hours" default:"24"`
 	CatalogSyncInterval   string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
+	YouTubeExtractTimeout int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
 	MaintenanceInterval   string `yaml:"maintenance_interval" default:"24h"`
 	BackupInterval        string `yaml:"backup_interval" default:"6h"`
 	IndexingInterval      string `yaml:"indexing_interval" default:"15m"`

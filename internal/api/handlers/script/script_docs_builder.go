@@ -113,6 +113,8 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	vPlan := Build(req.Topic, narrative, analysis, vpSegments)
 
 	// 4. Resolve Images through section builder
+	specialNames = filterSpecialNames(specialNames, req.Topic)
+
 	var imageSection ScriptSection
 	var imageItems []imagePlanItem
 	if imgService != nil {
@@ -147,10 +149,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		Title: "📢 IMPORTANT PHRASES",
 		Body:  renderImportantPhrases(phrases),
 	}
-	specialNamesSection := ScriptSection{
-		Title: "⭐ SPECIAL NAMES",
-		Body:  renderSpecialNamesWithWiki(specialNames, specialNameImages, specialNameWikis),
-	}
+
 	importantWordsSection := ScriptSection{
 		Title: "🗝️ IMPORTANT WORDS",
 		Body:  renderImportantWords(importantWords, importantWordImages),
@@ -172,13 +171,17 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		sections = append(sections, artlistSection)
 	}
 
-	// Add Clips Associated section
-	clipsSection := buildClipsAssociatedSection(timeline)
-	if strings.TrimSpace(clipsSection.Body) != "" {
-		sections = append(sections, clipsSection)
+	if len(specialNames) > 0 {
+		specialNamesSection := ScriptSection{
+			Title: "⭐ SPECIAL NAMES",
+			Body:  renderSpecialNamesWithWiki(specialNames, specialNameImages, specialNameWikis),
+		}
+		if strings.TrimSpace(specialNamesSection.Body) != "" {
+			sections = append(sections, specialNamesSection)
+		}
 	}
 
-	sections = append(sections, importantPhrasesSection, specialNamesSection, importantWordsSection)
+	sections = append(sections, importantPhrasesSection, importantWordsSection)
 
 	content := renderScriptDocument(req.Topic, sections)
 	metadata := map[string]any{
@@ -376,50 +379,6 @@ func resolveArtlistDisplayLink(clip *models.MediaAsset) string {
 	return ""
 }
 
-func buildClipsAssociatedSection(plan *TimelinePlan) ScriptSection {
-	if plan == nil || len(plan.Segments) == 0 {
-		return ScriptSection{}
-	}
-
-	var b strings.Builder
-	seen := make(map[string]bool)
-	found := false
-
-	for _, seg := range plan.Segments {
-		allMatches := append(seg.StockMatches, seg.ArtlistMatches...)
-		for _, m := range allMatches {
-			if m.Source == "drive_stock" || m.Source == "stock_folder" {
-				continue // Skip folders
-			}
-
-			link := resolveAssociatedDisplayLink(m)
-			if isDriveFolderURL(link) {
-				continue
-			}
-			key := strings.ToLower(m.Title + "|" + link)
-			if seen[key] || link == "" {
-				continue
-			}
-			seen[key] = true
-			found = true
-
-			title := m.Title
-			if title == "" {
-				title = "Asset"
-			}
-			b.WriteString(fmt.Sprintf("🔗 %s: %s\n", title, link))
-		}
-	}
-
-	if !found {
-		return ScriptSection{}
-	}
-
-	return ScriptSection{
-		Title: "🎞️ CLIPS ASSOCIATED",
-		Body:  strings.TrimSpace(b.String()),
-	}
-}
 
 func resolveAssociatedDisplayLink(match association.ScoredMatch) string {
 	if link := strings.TrimSpace(match.Link); link != "" {

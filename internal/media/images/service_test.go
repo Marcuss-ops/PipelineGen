@@ -32,3 +32,36 @@ func TestDiagnosticsReportsNvidiaAndAnimateScriptState(t *testing.T) {
 		t.Fatalf("unexpected model: %q", diag.NvidiaModel)
 	}
 }
+
+func TestLooksLikeProperNameAndWikidataSelection(t *testing.T) {
+	if !looksLikeProperName("Cus D'Amato") {
+		t.Fatal("expected Cus D'Amato to be treated as a proper name")
+	}
+	if looksLikeProperName("boxing training") {
+		t.Fatal("expected generic phrase to not be treated as a proper name")
+	}
+
+	hits := []struct {
+		ID          string `json:"id"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+	}{
+		{ID: "Q1", Label: "Rosa D'Amato", Description: "politician"},
+		{ID: "Q2", Label: "Cus D'Amato", Description: "boxing trainer"},
+	}
+
+	best := selectBestWikidataHit("Cus D'Amato", hits)
+	if best == nil || best.Label != "Cus D'Amato" {
+		t.Fatalf("expected Cus D'Amato to win selection, got %#v", best)
+	}
+
+	wikiHits := []struct {
+		Title string `json:"title"`
+	}{
+		{Title: "Rosa D'Amato"},
+		{Title: "Cus D'Amato"},
+	}
+	if got := selectBestWikiTitle("Cus D'Amato", wikiHits); got != "Cus D'Amato" {
+		t.Fatalf("expected Cus D'Amato wiki title, got %q", got)
+	}
+}

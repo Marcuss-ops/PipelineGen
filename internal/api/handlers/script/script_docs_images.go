@@ -216,6 +216,7 @@ func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subj
 		return asset, nil
 	}
 
+
 	asset, err := imgService.GenerateSmartImage(ctx, subject, topic, prompts, tags, 1024, 1024, "")
 	if err == nil && asset != nil {
 		return asset, nil
@@ -282,6 +283,23 @@ func shouldPreferSearchOnly(subject string, specialNames []string) bool {
 	return false
 }
 
+func shouldPreferSearchOnly(subject string, specialNames []string) bool {
+	subjectLower := strings.ToLower(strings.TrimSpace(subject))
+	if subjectLower == "" {
+		return false
+	}
+	for _, name := range specialNames {
+		nameLower := strings.ToLower(strings.TrimSpace(name))
+		if nameLower == "" {
+			continue
+		}
+		if subjectLower == nameLower || strings.Contains(subjectLower, nameLower) || strings.Contains(nameLower, subjectLower) {
+			return true
+		}
+	}
+	return false
+}
+
 func resolveImageDisplayURL(asset *models.ImageAsset) string {
 	if asset == nil {
 		return ""
@@ -298,6 +316,7 @@ func resolveImageDisplayURL(asset *models.ImageAsset) string {
 func resolveImageSourceURL(asset *models.ImageAsset) string {
 	if asset == nil {
 		return ""
+
 	}
 	if link := strings.TrimSpace(asset.SourceURL); link != "" {
 		return link

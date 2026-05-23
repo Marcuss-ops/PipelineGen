@@ -129,6 +129,9 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 		MediaType:    target.MediaType,
 	}
 
+	seenFolderIDs := make(map[string]struct{})
+	markFolderSeen(seenFolderIDs, target.RootFolderID)
+
 	rootMeta, err := s.driveClient.Files.Get(target.RootFolderID).Fields("id, name, webViewLink").Context(ctx).Do()
 	if err != nil {
 		rootSummary.Failed++
@@ -189,14 +192,27 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 
 	rootSummary.Synced++
 
-	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.RootFolderID, target.RootFolderID, rootName, target)
+	requested, synced, failed, err := s.syncFolderRecursive(ctx, target.Repo, target.RootFolderID, target.RootFolderID, rootName, target, seenFolderIDs)
 	rootSummary.Requested = requested
 	rootSummary.Synced += synced
 	rootSummary.Failed += failed
+
+	if err == nil {
+		if pruneErr := s.pruneMissingFolders(ctx, target.Repo, target.Source, seenFolderIDs); pruneErr != nil {
+			rootSummary.Failed++
+			err = pruneErr
+		}
+	} else {
+		s.log.Warn("skipping folder prune because sync failed",
+			zap.String("source", target.Source),
+			zap.Error(err),
+		)
+	}
+
 	return rootSummary, err
 }
 
-func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repository, folderID, rootID, folderPath string, target Target) (int, int, int, error) {
+func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repository, folderID, rootID, folderPath string, target Target, seenFolderIDs map[string]struct{}) (int, int, int, error) {
 	children, err := s.listChildren(ctx, folderID)
 	if err != nil {
 		return 0, 0, 1, err
@@ -232,6 +248,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		category := "file"
 		if child.MimeType == folderMimeType {
 			category = "folder"
+			markFolderSeen(seenFolderIDs, child.Id)
 		}
 
 		record := &models.MediaAsset{
@@ -273,7 +290,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		synced++
 
 		if child.MimeType == folderMimeType {
-			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.Id, rootID, childPath, target)
+			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.Id, rootID, childPath, target, seenFolderIDs)
 			requested += subRequested
 			synced += subSynced
 			failed += subFailed
@@ -288,6 +305,50 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 	}
 
 	return requested, synced, failed, nil
+}
+
+func (s *Service) pruneMissingFolders(ctx context.Context, repo *clips.Repository, source string, seenFolderIDs map[string]struct{}) error {
+	if repo == nil {
+		return nil
+	}
+
+	folders, err := repo.ListClipFolders(ctx, source)
+	if err != nil {
+		return err
+	}
+
+	for _, folder := range folders {
+		if folder == nil {
+			continue
+		}
+		if folder.FolderID == "" {
+			continue
+		}
+		if _, ok := seenFolderIDs[folder.FolderID]; ok {
+			continue
+		}
+		if err := repo.DeleteClipFolder(ctx, folder.ID); err != nil {
+			return err
+		}
+		if s.assetTree != nil {
+			if err := s.assetTree.DeleteNode(ctx, folder.FolderID); err != nil {
+				s.log.Warn("failed to remove missing folder from asset tree",
+					zap.String("folder_id", folder.FolderID),
+					zap.Error(err),
+				)
+			}
+		}
+	}
+
+	return nil
+}
+
+func markFolderSeen(seen map[string]struct{}, folderID string) {
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" || seen == nil {
+		return
+	}
+	seen[folderID] = struct{}{}
 }
 
 func (s *Service) listChildren(ctx context.Context, folderID string) ([]*driveapi.File, error) {

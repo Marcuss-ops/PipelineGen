@@ -43,11 +43,16 @@ func FileIDFromLink(link string) string {
 func NormalizeDriveFolderLink(driveLink, folderID string) string {
 	driveLink = strings.TrimSpace(driveLink)
 	folderID = strings.TrimSpace(folderID)
-	if driveLink != "" {
+	if isDriveFolderLink(driveLink) {
 		return driveLink
 	}
 	if folderID != "" {
 		return "https://drive.google.com/drive/folders/" + folderID
 	}
 	return ""
+}
+
+func isDriveFolderLink(link string) bool {
+	link = strings.ToLower(strings.TrimSpace(link))
+	return strings.Contains(link, "drive.google.com/drive/folders/")
 }

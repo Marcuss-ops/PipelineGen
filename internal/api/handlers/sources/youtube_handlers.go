@@ -82,30 +82,27 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		return
 	}
 
-	// Enqueue a job for youtube_clip.extract
 	if h.jobsSvc != nil {
-		// Convert request to map[string]any for job payload
 		payloadBytes, err := json.Marshal(req)
 		if err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
 			return
 		}
-		var payload map[string]any
-		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to unmarshal request: %w", err))
+		var payloadMap map[string]any
+		if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
 			return
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobType("youtube_clip.extract"),
-			Payload: payload,
+			Type:    models.JobTypeYouTubeClipExtract,
+			Payload: payloadMap,
 		})
 		if err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 			return
 		}
 
-		// Return job ID immediately
 		apiutil.OK(c, gin.H{
 			"job_id":     job.ID,
 			"message":    "YouTube clip extraction job enqueued",

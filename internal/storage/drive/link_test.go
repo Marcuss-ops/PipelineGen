@@ -44,3 +44,13 @@ func TestFileIDFromLink(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeDriveFolderLink(t *testing.T) {
+	if got := NormalizeDriveFolderLink("https://docs.google.com/document/d/doc-id/edit", "folder-123"); got != "https://drive.google.com/drive/folders/folder-123" {
+		t.Fatalf("expected folder fallback for docs link, got %q", got)
+	}
+
+	if got := NormalizeDriveFolderLink("https://drive.google.com/drive/folders/folder-123", "fallback"); got != "https://drive.google.com/drive/folders/folder-123" {
+		t.Fatalf("expected existing folder link to win, got %q", got)
+	}
+}

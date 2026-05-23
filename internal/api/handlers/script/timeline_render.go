@@ -24,7 +24,6 @@ func RenderTimeline(plan *TimelinePlan) string {
 		} else {
 			seg := plan.Segments[i]
 			b.WriteString(renderSegmentHeader(seg))
-			b.WriteString(renderSegmentAssets(seg))
 		}
 
 		if j < len(plan.Segments) {
@@ -69,9 +68,7 @@ func renderGroupedSegments(segments []TimelineSegment) string {
 
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("   Subject: %s\n", NormalizeRepeatedSubject(first.Subject)))
-
-	// Assets from the first segment (as they are identical in the group)
-	b.WriteString(renderSegmentAssets(first))
+	b.WriteString(renderSegmentPrimaryAssociation(first))
 
 	return b.String()
 }

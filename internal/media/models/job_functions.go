@@ -24,11 +24,6 @@ func (j *Job) ParseArtlistRunPayload() (*ArtlistRunPayload, error) {
 	return parsePayload[ArtlistRunPayload](j, "artlist run")
 }
 
-// ParseYoutubeClipExtractPayload estrae il payload tipizzato per media.extract
-func (j *Job) ParseYoutubeClipExtractPayload() (*YoutubeClipExtractPayload, error) {
-	return parsePayload[YoutubeClipExtractPayload](j, "youtube clip extract")
-}
-
 // ParseVoiceoverPayload estrae il payload tipizzato per voiceover
 func (j *Job) ParseVoiceoverPayload() (*VoiceoverPayload, error) {
 	return parsePayload[VoiceoverPayload](j, "voiceover")

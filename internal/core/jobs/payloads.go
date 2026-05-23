@@ -9,22 +9,6 @@ type ArtlistRunPayload struct {
 	DryRun      bool   `json:"dry_run"`
 }
 
-type YouTubeClipExtractPayload struct {
-	WorkspaceID string           `json:"workspace_id"`
-	ProjectID   string           `json:"project_id"`
-	URL         string           `json:"url"`
-	Segments    []YouTubeSegment `json:"segments"`
-	UploadDrive bool             `json:"upload_drive"`
-	Normalize   bool             `json:"normalize"`
-}
-
-type YouTubeSegment struct {
-	Name  string   `json:"name"`
-	Start string   `json:"start"`
-	End   string   `json:"end"`
-	Tags  []string `json:"tags"`
-}
-
 type ScriptGeneratePayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`

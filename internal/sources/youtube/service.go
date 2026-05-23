@@ -6,21 +6,22 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/core/processor"
+	"velox/go-master/internal/media/clipindexer"
+	"velox/go-master/internal/media/foldermemory"
+	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/videomuscles"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/storage/assetdestination"
-	"velox/go-master/internal/media/clipindexer"
-	"velox/go-master/internal/media/foldermemory"
 	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/models"
 )
 
 type VideoPipeline interface {
-	DownloadAndCutYouTubeVideo(ctx context.Context, url string, start, duration float64, outputName string) (string, error)
+	DownloadAndCutYouTubeVideo(ctx context.Context, req videomuscles.YouTubeCutRequest) (string, error)
 }
 
 type Service struct {

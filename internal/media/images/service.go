@@ -239,7 +239,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 }
 
 func (s *Service) searchWikidata(query, lang string) (string, string, string) {
-	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=1", url.QueryEscape(query), lang)
+	apiURL := fmt.Sprintf("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=%s&language=%s&format=json&limit=10", url.QueryEscape(query), lang)
 
 	req, _ := http.NewRequest("GET", apiURL, nil)
 	req.Header.Set("User-Agent", userAgent)
@@ -262,60 +262,254 @@ func (s *Service) searchWikidata(query, lang string) (string, string, string) {
 		return "", "", ""
 	}
 
-	return payload.Search[0].Label, payload.Search[0].ID, payload.Search[0].Description
-}
-
-func (s *Service) searchWikipedia(query, lang string) (string, string) {
-	// Aggiungiamo un pizzico di contesto per evitare ambiguità
-	searchQuery := query
-	if !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
-		searchQuery = query + " " + lang
+	best := selectBestWikidataHit(query, payload.Search)
+	if best == nil {
+		return "", "", ""
 	}
 
-	// Step 1: Search for the most relevant page
-	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=1", lang, url.QueryEscape(searchQuery))
+	return best.Label, best.ID, best.Description
+}
 
-	req, _ := http.NewRequest("GET", searchURL, nil)
+func normalizeLookupTerm(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	prevSpace := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevSpace = false
+			continue
+		}
+		if strings.ContainsRune("'’`-", r) {
+			if !prevSpace {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			if !prevSpace {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func looksLikeProperName(value string) bool {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) < 2 || len(fields) > 4 {
+		return false
+	}
+	capCount := 0
+	for _, field := range fields {
+		runes := []rune(field)
+		if len(runes) == 0 {
+			continue
+		}
+		if strings.ContainsAny(field, ":,;!?/") {
+			return false
+		}
+		if runes[0] >= 'A' && runes[0] <= 'Z' {
+			capCount++
+		}
+	}
+	return capCount >= 1
+}
+
+func selectBestWikidataHit(query string, hits []struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}) *struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+} {
+	if len(hits) == 0 {
+		return nil
+	}
+	q := normalizeLookupTerm(query)
+	bestIdx := -1
+	bestScore := -1
+	for i := range hits {
+		label := normalizeLookupTerm(hits[i].Label)
+		score := 0
+		switch {
+		case label == q:
+			score = 100
+		case q != "" && strings.Contains(label, q):
+			score = 90
+		case q != "" && strings.Contains(q, label):
+			score = 80
+		default:
+			for _, token := range strings.Fields(q) {
+				if len(token) < 3 {
+					continue
+				}
+				if strings.Contains(label, token) {
+					score += 10
+				}
+			}
+		}
+		if score > bestScore {
+			bestScore = score
+			bestIdx = i
+		}
+	}
+	if bestIdx < 0 || bestScore < minWikiScore(query) {
+		return nil
+	}
+	return &hits[bestIdx]
+}
+
+func minWikiScore(query string) int {
+	if looksLikeProperName(query) {
+		return 80
+	}
+	return 50
+}
+
+func selectBestWikiTitle(query string, hits []struct {
+	Title string `json:"title"`
+}) string {
+	if len(hits) == 0 {
+		return ""
+	}
+	q := normalizeLookupTerm(query)
+	bestTitle := ""
+	bestScore := -1
+	for _, hit := range hits {
+		title := normalizeLookupTerm(hit.Title)
+		score := 0
+		switch {
+		case title == q:
+			score = 100
+		case q != "" && strings.Contains(title, q):
+			score = 90
+		case q != "" && strings.Contains(q, title):
+			score = 80
+		default:
+			for _, token := range strings.Fields(q) {
+				if len(token) < 3 {
+					continue
+				}
+				if strings.Contains(title, token) {
+					score += 10
+				}
+			}
+		}
+		if score > bestScore {
+			bestScore = score
+			bestTitle = hit.Title
+		}
+	}
+	if bestTitle == "" || bestScore < minWikiScore(query) {
+		return ""
+	}
+	return bestTitle
+}
+
+func (s *Service) wikipediaThumbnailByExactTitle(title, lang string) (string, string) {
+	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(title))
+
+	req, _ := http.NewRequest("GET", apiURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		s.log.Error("Wikipedia search request failed", zap.Error(err))
+
 		return "", ""
 	}
 	defer resp.Body.Close()
 
-	var searchPayload struct {
+	var payload struct {
 		Query struct {
-			Search []struct {
+			Pages map[string]struct {
 				Title string `json:"title"`
-			} `json:"search"`
+				Thumbnail struct {
+					Source string `json:"source"`
+				} `json:"thumbnail"`
+			} `json:"pages"`
 		} `json:"query"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
-		s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return "", ""
 	}
 
-	if len(searchPayload.Query.Search) == 0 {
-		s.log.Warn("Wikipedia search returned no results", zap.String("query", searchQuery))
-		return "", ""
+	for _, page := range payload.Query.Pages {
+		if page.Thumbnail.Source != "" {
+			return page.Thumbnail.Source, page.Title
+		}
+	}
+	return "", ""
+}
+
+func (s *Service) searchWikipedia(query, lang string) (string, string) {
+	if imgURL, wikiTitle := s.wikipediaThumbnailByExactTitle(query, lang); imgURL != "" {
+		return imgURL, wikiTitle
 	}
 
-	bestTitle := searchPayload.Query.Search[0].Title
-	s.log.Info("Wikipedia best match found", zap.String("title", bestTitle))
+	searchQueries := []string{strings.TrimSpace(query)}
+	if !looksLikeProperName(query) && !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
+		searchQueries = append(searchQueries, strings.TrimSpace(query+" "+lang))
+	}
+
+	bestTitle := ""
+	for _, searchQuery := range searchQueries {
+		if searchQuery == "" {
+			continue
+		}
+
+		searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=5", lang, url.QueryEscape(searchQuery))
+		req, _ := http.NewRequest("GET", searchURL, nil)
+		req.Header.Set("User-Agent", userAgent)
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			s.log.Error("Wikipedia search request failed", zap.Error(err))
+			continue
+		}
+
+		var searchPayload struct {
+			Query struct {
+				Search []struct {
+					Title string `json:"title"`
+				} `json:"search"`
+			} `json:"query"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
+			resp.Body.Close()
+			s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
+			continue
+		}
+		resp.Body.Close()
+
+		bestTitle = selectBestWikiTitle(query, searchPayload.Query.Search)
+		if bestTitle != "" {
+			s.log.Info("Wikipedia best match found", zap.String("title", bestTitle), zap.String("query", searchQuery))
+			break
+		}
+	}
+
+	if bestTitle == "" {
+		s.log.Warn("Wikipedia search returned no results", zap.String("query", query))
+		return "", ""
+	}
 
 	// Step 2: Get thumbnail for the best match
 	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(bestTitle))
-	req, _ = http.NewRequest("GET", apiURL, nil)
-	req.Header.Set("User-Agent", userAgent)
+	req2, _ := http.NewRequest("GET", apiURL, nil)
+	req2.Header.Set("User-Agent", userAgent)
 
-	resp, err = s.client.Do(req)
+	resp2, err := s.client.Do(req2)
 	if err != nil {
 		return "", ""
 	}
-	defer resp.Body.Close()
+	defer resp2.Body.Close()
 
 	var payload struct {
 		Query struct {
@@ -327,7 +521,7 @@ func (s *Service) searchWikipedia(query, lang string) (string, string) {
 		} `json:"query"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(resp2.Body).Decode(&payload); err != nil {
 		return "", ""
 	}
 

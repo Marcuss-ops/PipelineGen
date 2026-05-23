@@ -16,7 +16,7 @@ import (
 	artlistSvc "velox/go-master/internal/sources/artlist"
 )
 
-const timelineCacheVersion = "v19"
+const timelineCacheVersion = "v20"
 
 func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDocsRequest, dataDir, nodeScraperDir, sourceText, narrative string, stockRepo, artlistRepo, clipsRepo *clips.Repository, artlistService *artlistSvc.Service, assocService *association.Service, clipResolver *clipresolver.Service) (*TimelinePlan, error) {
 	startedAt := time.Now()
@@ -117,6 +117,15 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 				dir := filepath.Dir(m.Path)
 				if dir != "." && dir != "/" {
 					usedFolderIDs = append(usedFolderIDs, strings.ToLower(dir))
+				}
+			}
+		}
+
+		// If we still have no useful local matches, trigger a live Artlist discovery as a final fallback.
+		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 && artlistService != nil {
+			if decision, ok := attemptLiveSearchDecision(ctx, req, seg, artlistService); ok {
+				if len(decision.Matches) > 0 {
+					seg.ArtlistMatches = decision.Matches
 				}
 			}
 		}

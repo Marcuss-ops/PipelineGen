@@ -7,7 +7,7 @@ import (
 	"velox/go-master/internal/media/association"
 )
 
-func TestRenderSegmentAssetsRendersBothStockAndArtlistBlocks(t *testing.T) {
+func TestRenderSegmentAssetsIsDisabled(t *testing.T) {
 	seg := TimelineSegment{
 		StockMatches: []association.ScoredMatch{
 			{Title: "Stock Clip", Link: "https://drive.google.com/file/d/stock/view", Score: 90, Source: "drive_stock"},
@@ -18,15 +18,8 @@ func TestRenderSegmentAssetsRendersBothStockAndArtlistBlocks(t *testing.T) {
 	}
 
 	out := renderSegmentAssets(seg)
-
-	if !strings.Contains(out, "📦 Stock Drive Association") {
-		t.Fatalf("expected stock association block, got:\n%s", out)
-	}
-	if !strings.Contains(out, "📦 Artlist Drive Association") {
-		t.Fatalf("expected artlist association block, got:\n%s", out)
-	}
-	if !strings.Contains(out, "Stock Clip") || !strings.Contains(out, "Artlist Clip") {
-		t.Fatalf("expected both clip titles in output, got:\n%s", out)
+	if out != "" {
+		t.Fatalf("expected no rendered asset block, got:\n%s", out)
 	}
 }
 
@@ -70,44 +63,50 @@ func TestResolveTimelineDisplayLinkSuppressesDirectArtlistURL(t *testing.T) {
 	}
 }
 
-func TestResolveAssociatedDisplayLinkPrefersClipLink(t *testing.T) {
-	match := association.ScoredMatch{
-		Title:      "Artlist Clip",
-		Link:       "https://drive.google.com/file/d/clip-id/view",
-		FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
-		Source:     "artlist_live_discovery",
+func TestRenderSegmentPrimaryAssociationPrefersDriveFolder(t *testing.T) {
+	seg := TimelineSegment{
+		PreferredStockGroup: "stock_folder",
+		PreferredStockPaths: []string{"/ignored/path", "https://drive.google.com/drive/folders/stock-folder-id"},
 	}
 
-	link := resolveAssociatedDisplayLink(match)
-	if link != match.Link {
-		t.Fatalf("expected clip link, got %q", link)
+	out := renderSegmentPrimaryAssociation(seg)
+	if out == "" || !strings.Contains(out, "stock-folder-id") {
+		t.Fatalf("expected drive folder association, got:\n%s", out)
 	}
 }
 
-func TestBuildClipsAssociatedSectionUsesClipLinkAndSkipsDirectArtlistURL(t *testing.T) {
-	plan := &TimelinePlan{
-		Segments: []TimelineSegment{
-			{
-				ArtlistMatches: []association.ScoredMatch{
-					{
-						Title:      "Artlist Clip",
-						Link:       "https://drive.google.com/file/d/clip-id/view",
-						FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
-						Source:     "artlist_live_discovery",
-					},
-				},
-			},
-		},
+func TestRenderSegmentPrimaryAssociationPrefersArtlistFolder(t *testing.T) {
+	seg := TimelineSegment{
+		ArtlistMatches: []association.ScoredMatch{{
+			Title:      "Artlist Clip",
+			Link:       "https://drive.google.com/drive/folders/artlist-folder-id",
+			FolderLink: "https://drive.google.com/drive/folders/artlist-folder-id",
+			Score:      92,
+			Source:     "artlist_live_run",
+		}},
 	}
 
-	section := buildClipsAssociatedSection(plan)
-	if section.Body == "" {
-		t.Fatalf("expected associated section to be rendered")
+	out := renderSegmentPrimaryAssociation(seg)
+	if out == "" || !strings.Contains(out, "artlist-folder-id") {
+		t.Fatalf("expected artlist folder association, got:\n%s", out)
 	}
-	if strings.Contains(section.Body, "cms-public-artifacts.artlist.io") {
-		t.Fatalf("expected direct artlist URL to be suppressed, got:\n%s", section.Body)
+}
+
+func TestRenderSegmentHeaderIncludesPrimaryAssociation(t *testing.T) {
+	seg := TimelineSegment{
+		Timestamp: "0-15",
+		Subject:   "Mike Tyson",
+		StockMatches: []association.ScoredMatch{{
+			Title:      "Mike Tyson",
+			Link:       "https://drive.google.com/drive/folders/stock-folder-id",
+			FolderLink: "https://drive.google.com/drive/folders/stock-folder-id",
+			Score:      100,
+			Source:     "drive_stock",
+		}},
 	}
-	if !strings.Contains(section.Body, "drive.google.com/file/d/clip-id/view") {
-		t.Fatalf("expected clip link in output, got:\n%s", section.Body)
+
+	out := renderSegmentHeader(seg)
+	if !strings.Contains(out, "stock-folder-id") {
+		t.Fatalf("expected primary association in segment header, got:\n%s", out)
 	}
 }
