@@ -68,6 +68,7 @@ func renderGroupedSegments(segments []TimelineSegment) string {
 
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("   Subject: %s\n", NormalizeRepeatedSubject(first.Subject)))
+	b.WriteString(renderSegmentPrimaryAssociation(first))
 
 	return b.String()
 }

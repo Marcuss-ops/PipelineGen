@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"velox/go-master/internal/pkg/fileutil"
 )
 
 func TestUsableCachedClipIgnoresEmptyFiles(t *testing.T) {
@@ -13,7 +14,7 @@ func TestUsableCachedClipIgnoresEmptyFiles(t *testing.T) {
 	path := filepath.Join(dir, "clip.mp4")
 	require.NoError(t, os.WriteFile(path, []byte{}, 0644))
 
-	ok, err := usableCachedClip(path)
+	ok, err := fileutil.UsableCachedClip(path)
 	require.NoError(t, err)
 	require.False(t, ok)
 
@@ -26,7 +27,7 @@ func TestUsableCachedClipAcceptsNonEmptyRegularFiles(t *testing.T) {
 	path := filepath.Join(dir, "clip.mp4")
 	require.NoError(t, os.WriteFile(path, []byte("video-bytes"), 0644))
 
-	ok, err := usableCachedClip(path)
+	ok, err := fileutil.UsableCachedClip(path)
 	require.NoError(t, err)
 	require.True(t, ok)
 }

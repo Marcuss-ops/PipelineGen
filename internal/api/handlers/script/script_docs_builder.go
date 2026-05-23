@@ -113,6 +113,8 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 	vPlan := Build(req.Topic, narrative, analysis, vpSegments)
 
 	// 4. Resolve Images through section builder
+	specialNames = filterSpecialNames(specialNames, req.Topic)
+
 	var imageSection ScriptSection
 	var imageItems []imagePlanItem
 	if imgService != nil {
@@ -147,10 +149,7 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		Title: "📢 IMPORTANT PHRASES",
 		Body:  renderImportantPhrases(phrases),
 	}
-	specialNamesSection := ScriptSection{
-		Title: "⭐ SPECIAL NAMES",
-		Body:  renderSpecialNamesWithWiki(specialNames, specialNameImages, specialNameWikis),
-	}
+
 	importantWordsSection := ScriptSection{
 		Title: "🗝️ IMPORTANT WORDS",
 		Body:  renderImportantWords(importantWords, importantWordImages),
@@ -172,7 +171,17 @@ func BuildScriptDocument(ctx context.Context, gen *ollama.Generator, req ScriptD
 		sections = append(sections, artlistSection)
 	}
 
-	sections = append(sections, importantPhrasesSection, specialNamesSection, importantWordsSection)
+	if len(specialNames) > 0 {
+		specialNamesSection := ScriptSection{
+			Title: "⭐ SPECIAL NAMES",
+			Body:  renderSpecialNamesWithWiki(specialNames, specialNameImages, specialNameWikis),
+		}
+		if strings.TrimSpace(specialNamesSection.Body) != "" {
+			sections = append(sections, specialNamesSection)
+		}
+	}
+
+	sections = append(sections, importantPhrasesSection, importantWordsSection)
 
 	content := renderScriptDocument(req.Topic, sections)
 	metadata := map[string]any{
@@ -366,6 +375,15 @@ func resolveArtlistDisplayLink(clip *models.MediaAsset) string {
 	}
 	if link := strings.TrimSpace(clip.ExternalURL); strings.HasPrefix(link, "http") && driveutil.FileIDFromLink(link) != "" {
 		return link
+	}
+	return ""
+}
+
+func resolveAssociatedDisplayLink(match association.ScoredMatch) string {
+	if link := strings.TrimSpace(match.Link); link != "" {
+		if !isDirectArtlistURL(link) && !isDriveFolderURL(link) {
+			return link
+		}
 	}
 	return ""
 }

@@ -9,16 +9,6 @@ type ArtlistRunPayload struct {
 	DryRun       bool   `json:"dry_run,omitempty"`
 }
 
-// YoutubeClipExtractPayload rappresenta il payload per media.extract
-type YoutubeClipExtractPayload struct {
-	URL         string `json:"url"`
-	FolderID    string `json:"folder_id,omitempty"`
-	Download    bool   `json:"download,omitempty"`
-	UploadDrive bool   `json:"upload_drive,omitempty"`
-	StartTime   string `json:"start_time,omitempty"`
-	EndTime     string `json:"end_time,omitempty"`
-}
-
 // VoiceoverPayload rappresenta il payload per voiceover
 type VoiceoverPayload struct {
 	Text     string `json:"text"`

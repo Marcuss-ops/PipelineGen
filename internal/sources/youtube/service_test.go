@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/videomuscles"
 	"velox/go-master/internal/security"
 )
 
@@ -332,12 +333,12 @@ type fakeVideoPipeline struct {
 	outputName string
 }
 
-func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, url string, start, duration float64, outputName string) (string, error) {
+func (f *fakeVideoPipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req videomuscles.YouTubeCutRequest) (string, error) {
 	f.called = true
-	f.url = url
-	f.start = start
-	f.duration = duration
-	f.outputName = outputName
+	f.url = req.URL
+	f.start = req.Start
+	f.duration = req.Duration
+	f.outputName = req.OutputName
 	if f.err != nil {
 		return "", f.err
 	}

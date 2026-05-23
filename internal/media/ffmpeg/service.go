@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -83,6 +84,7 @@ func (s *Service) RenderScene(ctx context.Context, planPath string, outputPath s
 	if audioCodec == "" {
 		audioCodec = v.AudioCodec
 	}
+	preset := normalizePresetForCodec(videoCodec, v.Preset)
 
 	// Build ffmpeg args
 	args := []string{
@@ -91,7 +93,7 @@ func (s *Service) RenderScene(ctx context.Context, planPath string, outputPath s
 		"-t", fmt.Sprintf("%.3f", duration),
 		"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,fps=%d", width, height, width, height, fps),
 		"-c:v", videoCodec,
-		"-preset", v.Preset,
+		"-preset", preset,
 		"-crf", fmt.Sprintf("%d", crf),
 		"-pix_fmt", "yuv420p",
 		"-movflags", "+faststart",
@@ -115,4 +117,26 @@ func (s *Service) RenderScene(ctx context.Context, planPath string, outputPath s
 
 	s.log.Info("ffmpeg render successful", zap.String("output", outputPath))
 	return nil
+}
+
+func normalizePresetForCodec(videoCodec, preset string) string {
+	preset = strings.TrimSpace(preset)
+	if preset == "" {
+		return "veryfast"
+	}
+
+	normalizedCodec := strings.ToLower(strings.TrimSpace(videoCodec))
+	if normalizedCodec == "" {
+		return preset
+	}
+
+	if strings.Contains(normalizedCodec, "nvenc") {
+		return preset
+	}
+
+	if len(preset) == 2 && preset[0] == 'p' && preset[1] >= '1' && preset[1] <= '7' {
+		return "veryfast"
+	}
+
+	return preset
 }

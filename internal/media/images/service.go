@@ -276,62 +276,66 @@ func (s *Service) searchWikipedia(query, lang string) (string, string) {
 		return imgURL, wikiTitle
 	}
 
-	// Aggiungiamo un pizzico di contesto per evitare ambiguità, ma non per i nomi propri.
-	searchQuery := query
+	searchQueries := []string{strings.TrimSpace(query)}
 	if !looksLikeProperName(query) && !strings.Contains(strings.ToLower(query), "pizza") && !strings.Contains(strings.ToLower(query), "italia") {
-		searchQuery = query + " " + lang
+		searchQueries = append(searchQueries, strings.TrimSpace(query+" "+lang))
 	}
 
-	// Step 1: Search for the most relevant page
-	searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=10", lang, url.QueryEscape(searchQuery))
+	bestTitle := ""
+	for _, searchQuery := range searchQueries {
+		if searchQuery == "" {
+			continue
+		}
 
-	req, _ := http.NewRequest("GET", searchURL, nil)
-	req.Header.Set("User-Agent", userAgent)
+		searchURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&list=search&srsearch=%s&format=json&srlimit=5", lang, url.QueryEscape(searchQuery))
+		req, _ := http.NewRequest("GET", searchURL, nil)
+		req.Header.Set("User-Agent", userAgent)
 
-	resp, err := s.client.Do(req)
-	if err != nil {
-		s.log.Error("Wikipedia search request failed", zap.Error(err))
-		return "", ""
+		resp, err := s.client.Do(req)
+		if err != nil {
+			s.log.Error("Wikipedia search request failed", zap.Error(err))
+			continue
+		}
+
+		var searchPayload struct {
+			Query struct {
+				Search []struct {
+					Title string `json:"title"`
+				} `json:"search"`
+			} `json:"query"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
+			resp.Body.Close()
+			s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
+			continue
+		}
+		resp.Body.Close()
+
+		bestTitle = selectBestWikiTitle(query, searchPayload.Query.Search)
+		if bestTitle != "" {
+			s.log.Info("Wikipedia best match found", zap.String("title", bestTitle), zap.String("query", searchQuery))
+			break
+		}
 	}
-	defer resp.Body.Close()
 
-	var searchPayload struct {
-		Query struct {
-			Search []struct {
-				Title string `json:"title"`
-			} `json:"search"`
-		} `json:"query"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&searchPayload); err != nil {
-		s.log.Error("Failed to decode Wikipedia search response", zap.Error(err))
-		return "", ""
-	}
-
-	if len(searchPayload.Query.Search) == 0 {
-		s.log.Warn("Wikipedia search returned no results", zap.String("query", searchQuery))
-		return "", ""
-	}
-
-	bestTitle := selectBestWikiTitle(query, searchPayload.Query.Search)
 	if bestTitle == "" {
-		s.log.Warn("Wikipedia search results did not meet confidence threshold", zap.String("query", searchQuery))
+		s.log.Warn("Wikipedia search returned no results", zap.String("query", query))
 		return "", ""
 	}
-	s.log.Info("Wikipedia best match found", zap.String("title", bestTitle))
 
 	// Step 2: Get thumbnail for the best match
 	apiURL := fmt.Sprintf("https://%s.wikipedia.org/w/api.php?action=query&prop=pageimages&titles=%s&pithumbsize=1000&format=json&redirects=1", lang, url.QueryEscape(bestTitle))
-	req, _ = http.NewRequest("GET", apiURL, nil)
-	req.Header.Set("User-Agent", userAgent)
+	req2, _ := http.NewRequest("GET", apiURL, nil)
+	req2.Header.Set("User-Agent", userAgent)
 
-	resp, err = s.client.Do(req)
+	resp2, err := s.client.Do(req2)
 	if err != nil {
 		return "", ""
 	}
-	defer resp.Body.Close()
+	defer resp2.Body.Close()
 
-	var payload struct {
+	var payload2 struct {
 		Query struct {
 			Pages map[string]struct {
 				Thumbnail struct {
@@ -341,11 +345,11 @@ func (s *Service) searchWikipedia(query, lang string) (string, string) {
 		} `json:"query"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+	if err := json.NewDecoder(resp2.Body).Decode(&payload2); err != nil {
 		return "", ""
 	}
 
-	for _, page := range payload.Query.Pages {
+	for _, page := range payload2.Query.Pages {
 		if page.Thumbnail.Source != "" {
 			return page.Thumbnail.Source, bestTitle
 		}
@@ -368,7 +372,7 @@ func (s *Service) wikipediaThumbnailByExactTitle(title, lang string) (string, st
 	var payload struct {
 		Query struct {
 			Pages map[string]struct {
-				Title string `json:"title"`
+				Title     string `json:"title"`
 				Thumbnail struct {
 					Source string `json:"source"`
 				} `json:"thumbnail"`
@@ -388,14 +392,42 @@ func (s *Service) wikipediaThumbnailByExactTitle(title, lang string) (string, st
 	return "", ""
 }
 
-type wikiSearchHit struct {
-	ID          string
-	Label       string
-	Description string
+func normalizeLookupTerm(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.NewReplacer("’", "'", "‘", "'", "´", "'", "`", "'", "´", "'").Replace(value)
+	value = strings.ToLower(value)
+	value = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(value, " ")
+	return strings.Join(strings.Fields(value), " ")
 }
 
-type wikipediaSearchHit struct {
-	Title string
+func looksLikeProperName(query string) bool {
+	query = strings.TrimSpace(strings.NewReplacer("’", "'", "‘", "'").Replace(query))
+	if query == "" {
+		return false
+	}
+
+	parts := strings.Fields(query)
+	if len(parts) == 0 || len(parts) > 5 {
+		return false
+	}
+
+	capitalized := 0
+	for _, part := range parts {
+		part = strings.Trim(part, `"'.,;:!?()[]{}<>`)
+		if part == "" {
+			continue
+		}
+		r, _ := utf8.DecodeRuneInString(part)
+		if unicode.IsUpper(r) {
+			capitalized++
+		}
+	}
+
+	if len(parts) == 1 {
+		return capitalized == 1 && len(parts[0]) >= 4
+	}
+
+	return capitalized >= 1 || strings.ContainsAny(query, "'’")
 }
 
 func selectBestWikidataHit(query string, hits []struct {
@@ -520,44 +552,6 @@ func meaningfulLookupTokens(value string) []string {
 		tokens = append(tokens, part)
 	}
 	return tokens
-}
-
-func normalizeLookupTerm(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.NewReplacer("’", "'", "‘", "'", "´", "'", "`", "'", "´", "'").Replace(value)
-	value = strings.ToLower(value)
-	value = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(value, " ")
-	return strings.Join(strings.Fields(value), " ")
-}
-
-func looksLikeProperName(query string) bool {
-	query = strings.TrimSpace(strings.NewReplacer("’", "'", "‘", "'").Replace(query))
-	if query == "" {
-		return false
-	}
-
-	parts := strings.Fields(query)
-	if len(parts) == 0 || len(parts) > 5 {
-		return false
-	}
-
-	capitalized := 0
-	for _, part := range parts {
-		part = strings.Trim(part, `"'.,;:!?()[]{}<>`)
-		if part == "" {
-			continue
-		}
-		r, _ := utf8.DecodeRuneInString(part)
-		if unicode.IsUpper(r) {
-			capitalized++
-		}
-	}
-
-	if len(parts) == 1 {
-		return capitalized == 1 && len(parts[0]) >= 4
-	}
-
-	return capitalized >= 1 || strings.ContainsAny(query, "'’")
 }
 
 func (s *Service) searchDDG(query string) string {

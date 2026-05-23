@@ -3,10 +3,11 @@ package script
 import (
 	"testing"
 
+	"velox/go-master/internal/media/association"
 	"velox/go-master/internal/media/models"
 )
 
-func TestResolveArtlistDisplayLinkPrefersDriveAndFolderFallback(t *testing.T) {
+func TestResolveArtlistDisplayLinkPrefersDriveAndIgnoresFolderFallback(t *testing.T) {
 	if got := resolveArtlistDisplayLink(&models.MediaAsset{
 		DriveLink:   "https://drive.google.com/file/d/direct/view",
 		ExternalURL: "https://artlist.io/clip/ignored",
@@ -25,5 +26,36 @@ func TestResolveArtlistDisplayLinkPrefersDriveAndFolderFallback(t *testing.T) {
 		ExternalURL: "https://artlist.io/clip/only",
 	}); got != "" {
 		t.Fatalf("expected no artlist url fallback, got %q", got)
+	}
+}
+
+func TestResolveAssociatedDisplayLinkIgnoresFolderFallback(t *testing.T) {
+	match := association.ScoredMatch{
+		Title:      "Artlist Clip",
+		FolderLink: "https://drive.google.com/drive/folders/drive-folder-id",
+		Source:     "artlist_live_discovery",
+	}
+
+	if got := resolveAssociatedDisplayLink(match); got != "" {
+		t.Fatalf("expected no folder fallback, got %q", got)
+	}
+}
+
+func TestFilterSpecialNamesDropsSentencesAndGenericDescriptors(t *testing.T) {
+	input := []string{
+		"Federico Fellini",
+		"Rimini",
+		"Hanno ucciso un uccellino",
+		"Old Key, Vintage Object",
+		"Film History, Cinematic Legacy",
+		"Federico Fellini",
+	}
+
+	got := filterSpecialNames(input, "")
+	if len(got) != 2 {
+		t.Fatalf("expected only the two real entities to remain, got %#v", got)
+	}
+	if got[0] != "Federico Fellini" || got[1] != "Rimini" {
+		t.Fatalf("unexpected filtered names: %#v", got)
 	}
 }

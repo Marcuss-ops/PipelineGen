@@ -18,7 +18,7 @@ func NewAssetsModule(
 	return NewRouteModule(
 		"assets",
 		func(cfg *config.Config) bool { return handler != nil },
-		"/assets",
+		"/media",
 		handler,
 		log,
 		WithStart(func(ctx context.Context) error {

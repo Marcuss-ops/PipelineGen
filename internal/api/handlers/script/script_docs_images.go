@@ -12,11 +12,11 @@ import (
 )
 
 type imagePlanItem struct {
-	Subject string
-	URL     string
+	Subject  string
+	URL      string
 	ImageURL string
-	Path    string
-	WikiURL string
+	Path     string
+	WikiURL  string
 }
 
 func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timeline *TimelinePlan, plan *VisualPlan, specialNames, importantPhrases, importantWords []string, imgService *imgservice.Service) (ScriptSection, []imagePlanItem) {
@@ -62,11 +62,11 @@ func buildImagePlanningSection(ctx context.Context, req ScriptDocsRequest, timel
 			}
 
 			items = append(items, imagePlanItem{
-				Subject: subject,
-				URL:     resolveImageDisplayURL(asset),
+				Subject:  subject,
+				URL:      resolveImageDisplayURL(asset),
 				ImageURL: resolveImageSourceURL(asset),
-				Path:    asset.PathRel,
-				WikiURL: wikiURL,
+				Path:     asset.PathRel,
+				WikiURL:  wikiURL,
 			})
 		}
 	}
@@ -298,6 +298,7 @@ func resolveImageDisplayURL(asset *models.ImageAsset) string {
 func resolveImageSourceURL(asset *models.ImageAsset) string {
 	if asset == nil {
 		return ""
+
 	}
 	if link := strings.TrimSpace(asset.SourceURL); link != "" {
 		return link

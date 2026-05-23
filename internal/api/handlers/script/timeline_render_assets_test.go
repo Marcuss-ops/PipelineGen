@@ -1,6 +1,7 @@
 package script
 
 import (
+	"strings"
 	"testing"
 
 	"velox/go-master/internal/media/association"
@@ -59,5 +60,53 @@ func TestResolveTimelineDisplayLinkSuppressesDirectArtlistURL(t *testing.T) {
 	link := resolveTimelineDisplayLink(match)
 	if link != "" {
 		t.Fatalf("expected direct artlist URL to be suppressed, got %q", link)
+	}
+}
+
+func TestRenderSegmentPrimaryAssociationPrefersDriveFolder(t *testing.T) {
+	seg := TimelineSegment{
+		PreferredStockGroup: "stock_folder",
+		PreferredStockPaths: []string{"/ignored/path", "https://drive.google.com/drive/folders/stock-folder-id"},
+	}
+
+	out := renderSegmentPrimaryAssociation(seg)
+	if out == "" || !strings.Contains(out, "stock-folder-id") {
+		t.Fatalf("expected drive folder association, got:\n%s", out)
+	}
+}
+
+func TestRenderSegmentPrimaryAssociationPrefersArtlistFolder(t *testing.T) {
+	seg := TimelineSegment{
+		ArtlistMatches: []association.ScoredMatch{{
+			Title:      "Artlist Clip",
+			Link:       "https://drive.google.com/drive/folders/artlist-folder-id",
+			FolderLink: "https://drive.google.com/drive/folders/artlist-folder-id",
+			Score:      92,
+			Source:     "artlist_live_run",
+		}},
+	}
+
+	out := renderSegmentPrimaryAssociation(seg)
+	if out == "" || !strings.Contains(out, "artlist-folder-id") {
+		t.Fatalf("expected artlist folder association, got:\n%s", out)
+	}
+}
+
+func TestRenderSegmentHeaderIncludesPrimaryAssociation(t *testing.T) {
+	seg := TimelineSegment{
+		Timestamp: "0-15",
+		Subject:   "Mike Tyson",
+		StockMatches: []association.ScoredMatch{{
+			Title:      "Mike Tyson",
+			Link:       "https://drive.google.com/drive/folders/stock-folder-id",
+			FolderLink: "https://drive.google.com/drive/folders/stock-folder-id",
+			Score:      100,
+			Source:     "drive_stock",
+		}},
+	}
+
+	out := renderSegmentHeader(seg)
+	if !strings.Contains(out, "stock-folder-id") {
+		t.Fatalf("expected primary association in segment header, got:\n%s", out)
 	}
 }

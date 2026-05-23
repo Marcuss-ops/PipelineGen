@@ -392,7 +392,8 @@ func (s *Service) resolveDriveFolder(ctx context.Context, kind Kind, rootFolderI
 	}
 
 	if strings.TrimSpace(rootFolderID) == "" {
-		return "", "", fmt.Errorf("drive root folder not configured for kind %s", kind)
+		zap.L().Warn("Drive root folder not configured, skipping Drive upload", zap.String("kind", string(kind)))
+		return "", "", nil
 	}
 
 	folderID := strings.TrimSpace(rootFolderID)
