@@ -11,7 +11,7 @@ storage:
   data_dir: "./data"
 
 security:
-  enable_auth: true
+  enable_auth: false
   admin_token: ""
   rate_limit_enabled: true
   rate_limit_requests: 100
