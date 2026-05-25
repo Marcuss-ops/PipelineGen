@@ -4,7 +4,6 @@ import (
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/upload/drive"
 )
 
 // buildSyncTargets creates the catalog sync targets from configuration.
@@ -32,7 +31,7 @@ func buildSyncTargets(
 		},
 		{
 			Name:         "artlist",
-			RootFolderID: drive.ResolveArtlistRootFolderID(cfg),
+			RootFolderID: cfg.Drive.RootFolder(),
 			Source:       "artlist",
 			MediaType:    "artlist",
 			Repo:         artlistRepo,

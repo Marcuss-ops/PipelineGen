@@ -142,16 +142,46 @@ type HarvesterConfig struct {
 }
 
 // DriveConfig holds Google Drive configuration.
+// MediaRootFolder is the single root for ALL media on Drive.
+// Legacy per-service folders (StockRootFolder, ClipsRootFolder, etc.) are deprecated
+// and fall back to MediaRootFolder when empty.
 type DriveConfig struct {
+	// MediaRootFolder is the single Drive root folder for all PipelineGen media.
+	// Example: "1ABCdef..." points to "PipelineGen Media" at Drive root.
+	MediaRootFolder string `yaml:"media_root_folder" env:"PIPELINEGEN_DRIVE_MEDIA_ROOT" default:""`
+
+	// Deprecated: use MediaRootFolder instead.
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
+	// Deprecated: use MediaRootFolder instead.
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
-	// ImagesRootFolder is the root folder ID for image files on Drive.
+	// Deprecated: use MediaRootFolder instead.
 	ImagesRootFolder string `yaml:"images_root_folder" env:"VELOX_DRIVE_IMAGES_ROOT" default:""`
-	// VoiceoverRootFolder is the root folder ID for voiceover files on Drive.
+	// Deprecated: use MediaRootFolder instead.
 	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
-	// ClipRootFolders maps group names to Drive folder IDs for clip organization.
-	// Example: map[string]string{"group1": "DRIVE_ID_1", "group2": "DRIVE_ID_2"}
+	// Deprecated: use MediaRootFolder + hierarchical paths instead.
 	ClipRootFolders map[string]string `yaml:"clip_root_folders" env:"VELOX_DRIVE_CLIP_ROOT_FOLDERS" default:"{}"`
+}
+
+// RootFolder returns the effective media root folder.
+// If MediaRootFolder is set, it takes priority.
+// Legacy fallback: StockRootFolder (first old root).
+func (d DriveConfig) RootFolder() string {
+	if d.MediaRootFolder != "" {
+		return d.MediaRootFolder
+	}
+	if d.StockRootFolder != "" {
+		return d.StockRootFolder
+	}
+	if d.ImagesRootFolder != "" {
+		return d.ImagesRootFolder
+	}
+	if d.ClipsRootFolder != "" {
+		return d.ClipsRootFolder
+	}
+	if d.VoiceoverRootFolder != "" {
+		return d.VoiceoverRootFolder
+	}
+	return ""
 }
 
 // LoggingConfig holds logger-specific configuration.
@@ -170,8 +200,14 @@ type ServerConfig struct {
 }
 
 // StorageConfig holds storage configuration.
+// MediaDir is the single root for ALL media files on disk (under DataDir).
+// Legacy per-service dirs (VoiceoversDir, ImagesDir, etc.) are deprecated
+// and fall back to MediaDir when empty.
 type StorageConfig struct {
-	DataDir         string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	DataDir  string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	MediaDir string `yaml:"media_dir" env:"PIPELINEGEN_MEDIA_DIR" default:"media"`
+
+	// Deprecated: use MediaDir instead.
 	VoiceoversDir   string `yaml:"voiceovers_dir" env:"VELOX_VOICEOVERS_DIR" default:"voiceovers"`
 	AssetsDir       string `yaml:"assets_dir" env:"VELOX_ASSETS_DIR" default:"assets/subjects"`
 	DownloadsDir    string `yaml:"downloads_dir" env:"VELOX_DOWNLOADS_DIR" default:"downloads"`
@@ -181,6 +217,11 @@ type StorageConfig struct {
 	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"youtube-clips"`
 	ArtlistDir      string `yaml:"artlist_dir" default:"artlist"`
 	ImagesDir       string `yaml:"images_dir" default:"images"`
+}
+
+// MediaPath returns the full path to the unified media directory.
+func (s StorageConfig) MediaPath() string {
+	return s.FullPath(s.MediaDir)
 }
 
 // FullPath returns the absolute path to a subdirectory within DataDir.

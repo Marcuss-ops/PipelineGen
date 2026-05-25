@@ -7,32 +7,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/core/destination"
 	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/pkg/media/audio"
+	"velox/go-master/internal/upload/drive"
 )
 
 type Processor struct {
 	pythonScriptsDir  string
-	driveClient       *driveapi.Service
+	driveUploader     *drive.Uploader
 	assetDestResolver destination.Resolver
 	log               *zap.Logger
 }
 
 func NewProcessor(
 	pythonScriptsDir string,
-	driveClient *driveapi.Service,
+	driveUploader *drive.Uploader,
 	assetDestResolver destination.Resolver,
 	log *zap.Logger,
 ) *Processor {
 	return &Processor{
 		pythonScriptsDir:  pythonScriptsDir,
-		driveClient:       driveClient,
+		driveUploader:     driveUploader,
 		assetDestResolver: assetDestResolver,
 		log:               log,
 	}
@@ -95,7 +94,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 	}
 
 	// 4. Upload to Drive if destination is provided
-	if input.Destination != nil && p.driveClient != nil {
+	if input.Destination != nil && p.driveUploader != nil {
 		resolved, err := p.assetDestResolver.Resolve(ctx, input.Destination)
 		if err != nil {
 			p.log.Warn("destination resolution failed", zap.Error(err))
@@ -119,35 +118,18 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 }
 
 func (p *Processor) uploadToDrive(ctx context.Context, filePath, folderID, filename string) (string, string, error) {
-	if p.driveClient == nil {
-		return "", "", fmt.Errorf("drive client not configured")
+	if p.driveUploader == nil {
+		return "", "", fmt.Errorf("drive uploader not configured")
 	}
 
-	file := &driveapi.File{
-		Name:    filename,
-		Parents: []string{folderID},
-	}
-
-	f, err := os.Open(filePath)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to open file: %w", err)
-	}
-	defer f.Close()
-
-	start := time.Now()
-	created, err := p.driveClient.Files.Create(file).
-		Media(f).
-		Fields("id", "webViewLink", "webContentLink").
-		Context(ctx).
-		Do()
+	result, err := p.driveUploader.UploadFile(ctx, filePath, folderID, filename)
 	if err != nil {
 		return "", "", fmt.Errorf("drive upload failed: %w", err)
 	}
 
 	p.log.Info("audio file uploaded to drive",
-		zap.String("file_id", created.Id),
-		zap.Duration("duration", time.Since(start)),
+		zap.String("file_id", result.FileID),
 	)
 
-	return created.WebViewLink, created.Id, nil
+	return result.WebViewLink, result.FileID, nil
 }

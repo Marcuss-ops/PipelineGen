@@ -17,7 +17,7 @@ type ImageToVideoOptions struct {
 	Codec       string
 	Preset      string
 	CRF         int
-	Zoom        bool // If true, apply slow zoom-in effect (Ken Burns)
+	Zoom        bool // If true, apply a subtle zoom-in (no pan, just light zoom)
 }
 
 // ImageToVideo converts a still image to an MP4 video with the specified duration.
@@ -48,11 +48,12 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 	// Build filter: scale to fill, crop to exact dimensions
 	var filter string
 	if opts.Zoom {
-		// Ken Burns zoom-in effect: start at scale=1.0, end at scale=1.15
+		// Light zoom-in: subtle 5% zoom over the duration, no pan (no Ken Burns).
+		// This gives a gentle sense of motion without the dynamic centering.
 		filter = fmt.Sprintf(
 			"scale=%d:%d:force_original_aspect_ratio=increase,"+
 				"crop=%d:%d,setsar=1,"+
-				"zoompan=z='min(zoom+0.0015,1.15)':d=%d:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=%dx%d",
+				"zoompan=z='min(zoom+0.0005,1.05)':d=%d:s=%dx%d",
 			opts.Width*2, opts.Height*2, // oversize input for zoom room
 			opts.Width, opts.Height,
 			opts.FPS*opts.Duration,

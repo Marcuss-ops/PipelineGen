@@ -3,6 +3,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -294,9 +295,85 @@ func (u *Uploader) GetFileMD5(ctx context.Context, fileID string) (string, error
 	return file.Md5Checksum, nil
 }
 
+// FileMeta holds metadata about a Drive file.
+type FileMeta struct {
+	ID       string
+	Name     string
+	MimeType string
+	Size     int64
+}
+
+// GetFileMeta retrieves metadata for a Drive file.
+func (u *Uploader) GetFileMeta(ctx context.Context, fileID string) (*FileMeta, error) {
+	if u.Service == nil {
+		return nil, fmt.Errorf("drive service not configured")
+	}
+	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size").Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+	return &FileMeta{
+		ID:       f.Id,
+		Name:     f.Name,
+		MimeType: f.MimeType,
+		Size:     f.Size,
+	}, nil
+}
+
+// DownloadFile downloads a file from Drive and returns the response body and content type.
+// The caller must close the returned io.ReadCloser.
+func (u *Uploader) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
+	if u.Service == nil {
+		return nil, "", fmt.Errorf("drive service not configured")
+	}
+	resp, err := u.Service.Files.Get(fileID).Context(ctx).Download()
+	if err != nil {
+		return nil, "", err
+	}
+	return resp.Body, resp.Header.Get("Content-Type"), nil
+}
+
 // openFile is a helper to open a file (easily mockable for tests).
 var openFile = func(path string) (*os.File, error) {
 	return os.Open(path)
+}
+
+// DriveFileInfo holds summary info for a file in a Drive listing.
+type DriveFileInfo struct {
+	ID             string
+	Name           string
+	MimeType       string
+	WebViewLink    string
+	WebContentLink string
+}
+
+// ListFiles lists all non-trashed files in a Drive folder.
+func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileInfo, error) {
+	if u.Service == nil {
+		return nil, fmt.Errorf("drive service not configured")
+	}
+	query := fmt.Sprintf("'%s' in parents and trashed=false", parentID)
+	list, err := u.Service.Files.List().
+		Q(query).
+		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
+		PageSize(1000).
+		Context(ctx).
+		Do()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]DriveFileInfo, 0, len(list.Files))
+	for _, f := range list.Files {
+		result = append(result, DriveFileInfo{
+			ID:             f.Id,
+			Name:           f.Name,
+			MimeType:       f.MimeType,
+			WebViewLink:    f.WebViewLink,
+			WebContentLink: f.WebContentLink,
+		})
+	}
+	return result, nil
 }
 
 // FileExists checks if a file exists on Google Drive.

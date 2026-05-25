@@ -32,19 +32,32 @@ class ImageFXFlowAutomation(BaseAutomation):
     """Engine per l'automazione di Google Labs ImageFX Flow."""
 
     PROMPT_SELECTORS = [
-        '[contenteditable="true"]',
+        # Selettori specifici per il campo prompt di Flow (div contenteditable con ruolo textbox)
+        'div[contenteditable="true"][role="textbox"]',
+        'div[contenteditable="true"][aria-label*="prompt" i]',
+        'div[contenteditable="true"][aria-label*="descrivi" i]',
+        'textarea[aria-label*="prompt" i]',
         'textarea',
+        # Fallback generico — ultima spiaggia
+        '[contenteditable="true"]',
     ]
 
     GENERATE_BUTTON_SELECTORS = [
-        'button:has-text("arrow_forward")',
+        'button[aria-label*="genera" i]',
+        'button[aria-label*="create" i]',
+        'button[aria-label*="generate" i]',
         'button:has-text("Crea")',
         'button:has-text("Genera")',
         'button:has-text("Generate")',
+        # Material Icons "arrow_forward" è una ligatura, non testo visibile
+        # Il pulsante con l'icona freccia è spesso l'ultimo nell'angolo
+        'button:has(.material-icons:has-text("arrow_forward"))',
+        'button:has(i:has-text("arrow_forward"))',
     ]
 
     GENERATED_IMAGE_SELECTORS = [
         'img[alt="Immagine generata"]',
+        'img[alt*="generata" i]',
         'img[src*="/fx/api/trpc/media.getMediaUrlRedirect"]',
     ]
 
@@ -79,9 +92,52 @@ class ImageFXFlowAutomation(BaseAutomation):
         await asyncio.sleep(5)
         await human_scroll(page)
 
+        # Clicca il pulsante "Create with Google Flow" o "Try Google Flow"
+        # per passare dalla landing page al workspace vero e proprio.
+        cta_selectors = [
+            'button:has-text("Create with Google Flow")',
+            'button:has-text("Try Google Flow")',
+            'button:has-text("Try in Google Flow")',
+            'a:has-text("Create with Google Flow")',
+        ]
+        for cta_sel in cta_selectors:
+            cta_btn = page.locator(cta_sel).first
+            if await cta_btn.count() > 0 and await cta_btn.is_visible():
+                log.info("Click su CTA: %s", cta_sel)
+                await cta_btn.click()
+                await asyncio.sleep(5)
+                await page.wait_for_load_state("networkidle", timeout=30000)
+                break
+
+        # Dopo il CTA si arriva al dashboard. Clicca "+ Nuovo progetto"
+        # per entrare nel workspace con il campo prompt.
+        new_project_selectors = [
+            'button:has-text("Nuovo progetto")',
+            'button:has-text("New project")',
+            'button:has-text("+ Nuovo progetto")',
+            'a:has-text("Nuovo progetto")',
+            '[aria-label*="nuovo progetto" i]',
+            '[aria-label*="new project" i]',
+        ]
+        for np_sel in new_project_selectors:
+            np_btn = page.locator(np_sel).first
+            if await np_btn.count() > 0 and await np_btn.is_visible():
+                log.info("Click su nuovo progetto: %s", np_sel)
+                await np_btn.click()
+                await asyncio.sleep(5)
+                await page.wait_for_load_state("networkidle", timeout=30000)
+                break
+
         new_saved_paths = []
         captured_response_urls: set[str] = set()
+        # Dedup basato sul contenuto: traccia MD5 delle immagini salvate
+        # Funziona anche quando response.url e img src sono URL diversi
+        saved_content_digests: set[str] = set()
         can_capture = False
+
+        def _compute_digest(data: bytes) -> str:
+            import hashlib
+            return hashlib.md5(data).hexdigest()
 
         async def handle_response(response):
             nonlocal new_saved_paths
@@ -108,11 +164,18 @@ class ImageFXFlowAutomation(BaseAutomation):
                     ext = ".png"
 
                 timestamp = int(time.time())
+                digest = _compute_digest(body)
+                if digest in saved_content_digests:
+                    log.debug("Response handler: contenuto già salvato (digest=%s), skip", digest[:12])
+                    captured_response_urls.add(response_url)
+                    return
+                saved_content_digests.add(digest)
+
                 path = dest_dir / f"FLOW_IMG_{timestamp}_{len(new_saved_paths)}{ext}"
                 path.write_bytes(body)
                 captured_response_urls.add(response_url)
                 new_saved_paths.append(path)
-                log.info("Nuova immagine Flow catturata: %s url=%s", path.name, response_url)
+                log.info("📸 RESPONSE HANDLER: salvata %s (%d byte, digest=%s, url=%s)", path.name, len(body), digest[:12], response_url[:120])
             except Exception as e:
                 log.warning("Failed to capture Flow image response url=%s err=%s", response_url, e)
 
@@ -212,11 +275,19 @@ class ImageFXFlowAutomation(BaseAutomation):
                             continue
                         cookie_pairs = [f"{cookie['name']}={cookie['value']}" for cookie in await self.context.cookies([absolute_src])]
                         cookie_header = "; ".join(cookie_pairs) if cookie_pairs else None
-                        if self._download_direct_url(absolute_src, path, referer=page.url, cookie_header=cookie_header):
-                            new_saved_paths.append(path)
-                            log.info("Nuova immagine Flow salvata: %s", path)
-                        else:
+                        raw_data = await self._download_direct_url_raw(absolute_src, referer=page.url, cookie_header=cookie_header)
+                        if raw_data is None:
                             log.warning("Download immagine Flow fallito: %s", absolute_src)
+                            continue
+                        # Dedup basato sul contenuto (cross-meccanismo)
+                        digest = _compute_digest(raw_data)
+                        if digest in saved_content_digests:
+                            log.info("✅ POLLING: contenuto già salvato (digest=%s), saltato", digest[:12])
+                            continue
+                        saved_content_digests.add(digest)
+                        path.write_bytes(raw_data)
+                        new_saved_paths.append(path)
+                        log.info("📸 Nuova immagine Flow salvata: %s (%d byte, digest=%s)", path, len(raw_data), digest[:12])
                 else:
                     if seen_any_image:
                         idle_rounds += 1
@@ -261,42 +332,31 @@ class ImageFXFlowAutomation(BaseAutomation):
             log.warning("Failed to download Flow image url=%s err=%s", image_url, e)
             return False
 
-# Helper per mantenere compatibilità e pulizia
-async def list_projects(account: str = None, headless: bool = True):
-    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
-        return await engine.list_projects()
+    @staticmethod
+    async def _download_direct_url_raw(
+        image_url: str,
+        referer: str | None = None,
+        cookie_header: str | None = None,
+    ) -> bytes | None:
+        """Scarica i byte grezzi di un'immagine. Usato per dedup basato sul contenuto."""
+        import urllib.request
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+            "Accept": "image/*,*/*;q=0.8",
+        }
+        if referer:
+            headers["Referer"] = referer
+        if cookie_header:
+            headers["Cookie"] = cookie_header
 
-async def sync_project(video_id: str, file_type: str = "all", account: str = None, headless: bool = True):
-    exported_files = list_exported_files(video_id)
-    if not exported_files:
-        log.warning("No exported Drive files found for project %s", video_id)
-        return []
+        request = urllib.request.Request(image_url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return response.read()
+        except Exception as e:
+            log.warning("Failed to download Flow image raw url=%s err=%s", image_url, e)
+            return None
 
-    allowed_file_types = {"video", "image", "all"}
-    if file_type not in allowed_file_types:
-        raise ValueError(f"Unsupported file_type: {file_type}")
-
-    paths: list[Path] = []
-    for file_meta in exported_files:
-        mime_type = file_meta.get("mimeType", "")
-        if file_type == "video" and mime_type != "video/mp4":
-            continue
-        if file_type == "image" and not mime_type.startswith("image/"):
-            continue
-        if file_type == "all" and mime_type != "video/mp4" and not mime_type.startswith("image/"):
-            continue
-
-        sub_type = "video" if mime_type == "video/mp4" else "image"
-        downloaded = await download_file(file_meta["id"], file_meta["name"], sub_type)
-        paths.append(downloaded)
-        log.info("Downloaded exported file: %s", downloaded)
-
-    return paths
-
-async def generate_video_ai_v2(video_id: str, prompt: str, account: str = None, headless: bool = True):
-    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
-        result = await engine.generate_video(video_id, prompt)
-        return str(result) if result else None
 
 async def generate_flow_images(prompt: str, project_id: str = None, style: str = None, account: str = None, headless: bool = True):
     async with ImageFXFlowAutomation(account=account, headless=headless) as engine:

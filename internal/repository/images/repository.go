@@ -275,3 +275,13 @@ func (r *Repository) UpdateSubject(s *models.Subject) error {
 	_, err := r.db.Exec("UPDATE subjects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", s.DisplayName, s.Slug)
 	return err
 }
+
+// UpdateImageMetadata aggiorna i metadati JSON di un'immagine esistente.
+func (r *Repository) UpdateImageMetadata(hash, metadataJSON string) error {
+	_, err := r.db.Exec(`
+		UPDATE media_assets
+		SET metadata_json = ?, updated_at = ?
+		WHERE source = 'image' AND json_extract(metadata_json, '$.hash') = ?
+	`, metadataJSON, time.Now().Format(time.RFC3339), hash)
+	return err
+}

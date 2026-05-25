@@ -53,6 +53,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if err != nil {
 		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
+	var driveUploader *drive.Uploader
+	if driveClient != nil {
+		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
+	}
 
 	// 4. Media Processing
 	clipsOnlyRepo := clips.NewRepository(dbs.media.DB, log)
@@ -142,7 +146,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		AssetIndex:  assetIndexService,
 	}, log)
 
-	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle, destResolver)
+	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveUploader, voLifecycle, destResolver)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	clipsRepo := clips.NewRepository(dbs.media.DB, log)
@@ -201,12 +205,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	catalogSync.RegisterHandler(jobsService)
 	youtubeClipService.RegisterHandler(jobsService)
 	voService.RegisterHandler(jobsService)
-
-	// Create drive uploader
-	var driveUploader *drive.Uploader
-	if driveClient != nil {
-		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
-	}
 
 	// Create deletion service
 	deletionSvc := media.NewDeletionService(

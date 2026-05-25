@@ -6,12 +6,13 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/storage/drive"
+	driveupload "velox/go-master/internal/upload/drive"
 )
 
 // ReconcileService provides Drive reconciliation for asset records.
 type ReconcileService struct {
 	store    AssetRecordStore
-	driveSvc *gdrive.Service
+	uploader *driveupload.Uploader
 	policy   ReconcilePolicy
 	log      *zap.Logger
 }
@@ -23,9 +24,13 @@ func NewReconcileService(
 	policy ReconcilePolicy,
 	log *zap.Logger,
 ) *ReconcileService {
+	var uploader *driveupload.Uploader
+	if driveSvc != nil {
+		uploader = &driveupload.Uploader{Service: driveSvc, Log: log}
+	}
 	return &ReconcileService{
 		store:    store,
-		driveSvc: driveSvc,
+		uploader: uploader,
 		policy:   policy,
 		log:      log,
 	}
@@ -91,15 +96,11 @@ func (s *ReconcileService) ReconcileDriveMissing(ctx context.Context, source str
 
 // checkDriveFileExists checks if a file exists in Drive.
 func (s *ReconcileService) checkDriveFileExists(ctx context.Context, fileID string) (bool, error) {
-	if s.driveSvc == nil {
+	if s.uploader == nil {
 		return false, nil
 	}
 
-	_, err := s.driveSvc.Files.Get(fileID).Context(ctx).Fields("id").Do()
-	if err != nil {
-		return false, nil
-	}
-	return true, nil
+	return s.uploader.FileExists(ctx, fileID)
 }
 
 // SyncDriveFileID synces Drive file IDs from Drive to DB for all records.

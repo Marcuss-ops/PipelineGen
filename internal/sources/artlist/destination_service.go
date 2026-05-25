@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	driveapi "google.golang.org/api/drive/v3"
+	"velox/go-master/internal/upload/drive"
 )
 
 // DestinationInfo rappresenta una destinazione risolta per i clip
@@ -17,12 +17,16 @@ type DestinationInfo struct {
 
 // DestinationService risolve le destinazioni Drive per i clip
 type DestinationService struct {
-	svc *Service
+	uploader *drive.Uploader
 }
 
 // NewDestinationService crea un nuovo servizio di destinazione
 func NewDestinationService(svc *Service) *DestinationService {
-	return &DestinationService{svc: svc}
+	var uploader *drive.Uploader
+	if svc.driveSvc != nil {
+		uploader = &drive.Uploader{Service: svc.driveSvc, Log: svc.log}
+	}
+	return &DestinationService{uploader: uploader}
 }
 
 // ResolveDestination risolve la cartella Drive per un termine
@@ -38,65 +42,22 @@ func (d *DestinationService) ResolveDestination(ctx context.Context, term, rootF
 	folderName := sanitizeFolderName(term)
 	folderPath := path.Join("/Artlist", folderName)
 
-	if d == nil || d.svc == nil || d.svc.driveSvc == nil {
+	if d.uploader == nil {
 		return &DestinationInfo{
 			FolderID:   rootFolderID,
 			FolderPath: folderPath,
 		}, nil
 	}
 
-	existingID, err := d.findExistingFolder(ctx, rootFolderID, folderName)
+	folderID, err := d.uploader.GetOrCreateFolder(ctx, folderName, rootFolderID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search for folder: %w", err)
-	}
-
-	if existingID != "" {
-		return &DestinationInfo{
-			FolderID:   existingID,
-			FolderPath: folderPath,
-		}, nil
-	}
-
-	newID, err := d.createFolder(ctx, rootFolderID, folderName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create folder: %w", err)
+		return nil, fmt.Errorf("failed to get or create folder: %w", err)
 	}
 
 	return &DestinationInfo{
-		FolderID:   newID,
+		FolderID:   folderID,
 		FolderPath: folderPath,
 	}, nil
-}
-
-func (d *DestinationService) findExistingFolder(ctx context.Context, parentID, name string) (string, error) {
-	query := fmt.Sprintf("name='%s' and mimeType='application/vnd.google-apps.folder' and '%s' in parents and trashed=false",
-		strings.ReplaceAll(name, "'", "\\'"), parentID)
-
-	files, err := d.svc.driveSvc.Files.List().Q(query).Fields("files(id)").Context(ctx).Do()
-	if err != nil {
-		return "", err
-	}
-
-	if len(files.Files) > 0 {
-		return files.Files[0].Id, nil
-	}
-
-	return "", nil
-}
-
-func (d *DestinationService) createFolder(ctx context.Context, parentID, name string) (string, error) {
-	folder := &driveapi.File{
-		Name:     name,
-		MimeType: "application/vnd.google-apps.folder",
-		Parents:  []string{parentID},
-	}
-
-	result, err := d.svc.driveSvc.Files.Create(folder).Fields("id").Context(ctx).Do()
-	if err != nil {
-		return "", err
-	}
-
-	return result.Id, nil
 }
 
 func sanitizeFolderName(name string) string {

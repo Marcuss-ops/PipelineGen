@@ -9,11 +9,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/storage"
 )
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, source, query, description string, tags []string) (*models.ImageAsset, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
@@ -62,10 +61,10 @@ func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, 
 		zap.Bool("skip_drive", skipDrive),
 	)
 
-	return s.ingestDirect(slug, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
+	return s.ingestDirect(ctx, slug, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
 }
 
-func (s *Service) ingestDirect(slug string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
 	if err != nil || subject == nil {
@@ -97,24 +96,20 @@ func (s *Service) ingestDirect(slug string, content []byte, filename, sourceURL,
 
 	// 4. Upload to Drive if configured (skip if disabled by fullimages pipeline)
 	var driveFileID string
-	if s.driveSvc != nil && s.driveFolderID != "" && !skipDrive {
-		s.log.Info("Uploading image to Google Drive", zap.String("filename", filename), zap.String("folder_id", s.driveFolderID))
-
-		driveFile := &driveapi.File{
-			Name:    filename,
-			Parents: []string{s.driveFolderID},
-		}
-
-		res, err := s.driveSvc.Files.Create(driveFile).
-			Media(strings.NewReader(string(content))).
-			Fields("id").
-			Do()
-
+	if s.mediaStore != nil && !skipDrive {
+		fileID, _, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
+			Source:    storage.SourceImage,
+			MediaType: storage.MediaTypeImage,
+			Subject:   slug,
+			Hash:      hash,
+			Ext:       ext,
+			Style:     slug,
+		}, fullPath)
 		if err != nil {
-			s.log.Error("Drive upload failed", zap.Error(err))
+			s.log.Warn("Drive upload failed", zap.Error(err))
 		} else {
-			driveFileID = res.Id
-			s.log.Info("Drive upload successful", zap.String("file_id", driveFileID))
+			driveFileID = fileID
+			s.log.Info("Drive upload successful", zap.String("file_id", fileID))
 		}
 	}
 

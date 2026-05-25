@@ -12,9 +12,9 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/audioasset"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/upload/drive"
 
 	"go.uber.org/zap"
-	gdrive "google.golang.org/api/drive/v3"
 )
 
 type Service struct {
@@ -22,7 +22,7 @@ type Service struct {
 	pythonScriptsDir  string
 	outputDir         string
 	log               *zap.Logger
-	driveClient       *gdrive.Service
+	driveUploader     *drive.Uploader
 	assetDestResolver destination.Resolver
 	audioProcessor    *audioasset.Processor
 	lifecycleService  *lifecycle.Service
@@ -33,14 +33,14 @@ func NewService(
 	pythonScriptsDir string,
 	outputDir string,
 	log *zap.Logger,
-	driveClient *gdrive.Service,
+	driveUploader *drive.Uploader,
 	lifecycleService *lifecycle.Service,
 	assetDestResolver destination.Resolver,
 ) *Service {
 	// Create audio asset processor
 	audioProcessor := audioasset.NewProcessor(
 		pythonScriptsDir,
-		driveClient,
+		driveUploader,
 		assetDestResolver,
 		log,
 	)
@@ -50,7 +50,7 @@ func NewService(
 		pythonScriptsDir:  pythonScriptsDir,
 		outputDir:         outputDir,
 		log:               log,
-		driveClient:       driveClient,
+		driveUploader:     driveUploader,
 		assetDestResolver: assetDestResolver,
 		audioProcessor:    audioProcessor,
 		lifecycleService:  lifecycleService,

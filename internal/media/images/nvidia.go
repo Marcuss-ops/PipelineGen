@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/storage"
+	driveupload "velox/go-master/internal/upload/drive"
 )
 func (s *Service) SyncAssets() error {
 	return nil
@@ -32,22 +33,17 @@ func (s *Service) SyncFromDrive(ctx context.Context) error {
 }
 
 func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath string) error {
-	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
-	fl, err := s.driveSvc.Files.List().
-		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
-		PageSize(1000).
-		Context(ctx).
-		Do()
+	uploader := &driveupload.Uploader{Service: s.driveSvc}
+	files, err := uploader.ListFiles(ctx, folderID)
 	if err != nil {
 		return err
 	}
 
-	for _, file := range fl.Files {
+	for _, file := range files {
 		if file.MimeType == "application/vnd.google-apps.folder" {
 			newPath := filepath.Join(folderPath, file.Name)
-			if err := s.syncFolderRecursive(ctx, file.Id, newPath); err != nil {
-				s.log.Warn("failed to sync subfolder", zap.String("id", file.Id), zap.Error(err))
+			if err := s.syncFolderRecursive(ctx, file.ID, newPath); err != nil {
+				s.log.Warn("failed to sync subfolder", zap.String("id", file.ID), zap.Error(err))
 			}
 			continue
 		}
@@ -60,7 +56,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 		}
 
 		// Check if already exists by Drive ID
-		existing, err := s.repo.GetByDriveFileID(ctx, file.Id)
+		existing, err := s.repo.GetByDriveFileID(ctx, file.ID)
 		if err == nil && existing != nil {
 			continue
 		}
@@ -72,11 +68,11 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 
 		asset := &models.ImageAsset{
 			SubjectID:    Slugify(file.Name),
-			Hash:         "drive_" + file.Id, // Placeholder hash
+			Hash:         "drive_" + file.ID, // Placeholder hash
 			PathRel:      "",                 // No local path yet
 			SourceURL:    file.WebViewLink,
 			Description:  "Synced from Drive: " + file.Name,
-			DriveFileID:  file.Id,
+			DriveFileID:  file.ID,
 			Status:       "ready",
 			MetadataJSON: "{}",
 		}
@@ -295,29 +291,20 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 5. Fallback: upload manuale a Drive
 	var driveVideoID string
-	if s.driveSvc != nil && s.driveFolderID != "" {
-		s.log.Info("Uploading animated video to Google Drive", zap.String("filename", outputName))
-
-		videoFile, err := os.Open(outputPath)
-		if err == nil {
-			driveFile := &driveapi.File{
-				Name:    outputName,
-				Parents: []string{s.driveFolderID},
-			}
-
-			res, err := s.driveSvc.Files.Create(driveFile).
-				Media(videoFile).
-				Fields("id").
-				Do()
-
-			videoFile.Close()
-
-			if err != nil {
-				s.log.Error("Drive video upload failed", zap.Error(err))
-			} else {
-				driveVideoID = res.Id
-				s.log.Info("Drive video upload successful", zap.String("file_id", driveVideoID))
-			}
+	if s.mediaStore != nil {
+		fileID, _, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
+			Source:    storage.SourceImage,
+			MediaType: storage.MediaTypeImageVideo,
+			Subject:   asset.SubjectID,
+			Hash:      imageHash,
+			Ext:       ".mp4",
+			Style:     asset.SubjectID,
+		}, outputPath)
+		if err != nil {
+			s.log.Warn("Drive video upload failed", zap.Error(err))
+		} else {
+			driveVideoID = fileID
+			s.log.Info("Drive video upload successful", zap.String("file_id", fileID))
 		}
 	}
 

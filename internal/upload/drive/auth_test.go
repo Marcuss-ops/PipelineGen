@@ -11,10 +11,6 @@ func TestResolveArtlistRootFolderIDUsesConfiguredHarvesterRoot(t *testing.T) {
 		Harvester: config.HarvesterConfig{
 			DriveFolderID: "harvester-root",
 		},
-		Drive: config.DriveConfig{
-			ClipsRootFolder: "clips-root",
-			StockRootFolder: "stock-root",
-		},
 	}
 
 	if got := ResolveArtlistRootFolderID(cfg); got != "harvester-root" {
@@ -30,15 +26,15 @@ func TestResolveArtlistRootFolderIDFallsBackToDocumentedDefault(t *testing.T) {
 	}
 }
 
-func TestResolveArtlistRootFolderIDIgnoresStockFallbacks(t *testing.T) {
+func TestResolveArtlistRootFolderIDPrefersMediaRoot(t *testing.T) {
 	cfg := &config.Config{
 		Drive: config.DriveConfig{
-			ClipsRootFolder: "clips-root",
+			MediaRootFolder: "media-root",
 			StockRootFolder: "stock-root",
 		},
 	}
 
-	if got := ResolveArtlistRootFolderID(cfg); got != defaultArtlistRootFolderID {
-		t.Fatalf("expected documented artlist default, got %q", got)
+	if got := ResolveArtlistRootFolderID(cfg); got != "media-root" {
+		t.Fatalf("expected media root, got %q", got)
 	}
 }

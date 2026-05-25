@@ -6,8 +6,8 @@ import (
 	"time"
 
 	driveapi "google.golang.org/api/drive/v3"
-
 	"velox/go-master/internal/storage/drive"
+	driveupload "velox/go-master/internal/upload/drive"
 )
 
 type DriveVerifier interface {
@@ -48,15 +48,19 @@ func (v *HTTPDriveVerifier) VerifyDriveLink(ctx context.Context, driveLink strin
 // APIDriveVerifier verifies Drive links using the Google Drive API.
 // This is more reliable than HTTP HEAD requests for Google Drive links.
 type APIDriveVerifier struct {
-	driveSvc *driveapi.Service
+	uploader *driveupload.Uploader
 }
 
 func NewAPIDriveVerifier(driveSvc *driveapi.Service) *APIDriveVerifier {
-	return &APIDriveVerifier{driveSvc: driveSvc}
+	var uploader *driveupload.Uploader
+	if driveSvc != nil {
+		uploader = &driveupload.Uploader{Service: driveSvc}
+	}
+	return &APIDriveVerifier{uploader: uploader}
 }
 
 func (v *APIDriveVerifier) VerifyDriveLink(ctx context.Context, driveLink string) (bool, error) {
-	if driveLink == "" || v.driveSvc == nil {
+	if driveLink == "" || v.uploader == nil {
 		return false, nil
 	}
 
@@ -65,10 +69,5 @@ func (v *APIDriveVerifier) VerifyDriveLink(ctx context.Context, driveLink string
 		return false, nil
 	}
 
-	file, err := v.driveSvc.Files.Get(fileID).Fields("id").Context(ctx).Do()
-	if err != nil {
-		return false, nil
-	}
-
-	return file != nil && file.Id != "", nil
+	return v.uploader.FileExists(ctx, fileID)
 }

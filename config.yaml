@@ -81,6 +81,10 @@ video:
     - "squeezev"
 
 drive:
+  # Single root — gerarchia unificata PipelineGen Media
+  # Se vuoto, usa i legacy roots come fallback
+  media_root_folder: ""
+  # Legacy roots (deprecati — restano per retrocompatibilità)
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
   clips_root_folder: ""
   images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"

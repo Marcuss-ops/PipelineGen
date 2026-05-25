@@ -91,8 +91,8 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 	}
 
 	if imgURL == "" {
-		s.log.Info("Wikipedia failed, falling back to DuckDuckGo", zap.String("query", query))
-		imgURL = s.searchDDG(query)
+		s.log.Info("Wikipedia failed, falling back to DuckDuckGo (wide)", zap.String("query", query))
+		imgURL = s.searchDDGWide(query)
 		source = "duckduckgo"
 	}
 
@@ -100,7 +100,7 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 		return nil, fmt.Errorf("no image found for query: %s", query)
 	}
 
-	// 4. Scarica e Ingest
+	// 4. Scarica e Ingest (già chiama AddImage internamente)
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
 	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
 	asset, err := s.downloadAndIngest(ctx, slug, imgURL, source, finalQuery, description, tags)
@@ -116,8 +116,9 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 		meta["source_name"] = source
 		meta["source_query"] = finalQuery
 		metaJSON, _ := json.Marshal(meta)
+		// Aggiorna i metadati senza duplicare l'inserimento (già fatto da downloadAndIngest)
+		_ = s.repo.UpdateImageMetadata(asset.Hash, string(metaJSON))
 		asset.MetadataJSON = string(metaJSON)
-		_, _ = s.repo.AddImage(asset)
 	}
 
 	return asset, err
