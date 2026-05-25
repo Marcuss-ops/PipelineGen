@@ -208,7 +208,7 @@ func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subj
 	if preferSearchOnly {
 		slug := Slugify(subject)
 		query := strings.TrimSpace(subject)
-		asset, err := imgService.SearchAndDownload(slug, subject, query, language, tags)
+		asset, err := imgService.SearchAndDownload(ctx, slug, subject, query, language, tags)
 		if err != nil {
 			zap.L().Warn("web image search failed", append(logFields, zap.Error(err))...)
 			return nil, err
@@ -225,7 +225,7 @@ func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subj
 
 	slug := Slugify(subject)
 	query := buildImageSearchQuery(subject, topic)
-	asset, err = imgService.SearchAndDownload(slug, subject, query, language, tags)
+	asset, err = imgService.SearchAndDownload(ctx, slug, subject, query, language, tags)
 	if err != nil {
 		zap.L().Warn("web image search failed", append(logFields, zap.Error(err))...)
 		return nil, err

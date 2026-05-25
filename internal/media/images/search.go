@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
 )
-func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string, tags []string) (*models.ImageAsset, error) {
+func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*models.ImageAsset, error) {
 	// Normalizziamo lo slug
 	slug := Slugify(subjectSlug)
 	if slug == "" {
@@ -103,7 +103,7 @@ func (s *Service) SearchAndDownload(subjectSlug, displayName, query, lang string
 	// 4. Scarica e Ingest
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
 	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
-	asset, err := s.downloadAndIngest(context.Background(), slug, imgURL, source, finalQuery, description, tags)
+	asset, err := s.downloadAndIngest(ctx, slug, imgURL, source, finalQuery, description, tags)
 	if err == nil && asset != nil {
 		meta := make(map[string]any)
 		if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {

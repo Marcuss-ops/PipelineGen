@@ -85,7 +85,7 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 
 	// Fallback
-	asset, err := h.service.SearchAndDownload(slug, req.Name, req.URL, req.Lang, req.Tags)
+	asset, err := h.service.SearchAndDownload(c.Request.Context(), slug, req.Name, req.URL, req.Lang, req.Tags)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
@@ -105,7 +105,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	// Proviamo a cercare/scaricare
 	slug := strings.ReplaceAll(strings.ToLower(query), " ", "-")
-	asset, err := h.service.SearchAndDownload(slug, query, query, lang, nil)
+	asset, err := h.service.SearchAndDownload(c.Request.Context(), slug, query, query, lang, nil)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
@@ -151,7 +151,7 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 		return
 	}
 
-	asset, err := h.service.GenerateAImage(req.Prompt, req.Model, req.Width, req.Height, req.Tags)
+	asset, err := h.service.GenerateAImage(c.Request.Context(), req.Prompt, req.Model, req.Width, req.Height, req.Tags)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return

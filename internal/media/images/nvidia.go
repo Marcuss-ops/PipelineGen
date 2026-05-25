@@ -89,7 +89,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 	return nil
 }
 
-func (s *Service) GenerateAImage(prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
+func (s *Service) GenerateAImage(ctx context.Context, prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
 	var invokeURL string
 	var payload map[string]interface{}
 	var useCloudAuth bool
@@ -223,7 +223,7 @@ func (s *Service) GenerateAImage(prompt, model string, width, height int, tags [
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", resolvedModel, prompt)
 
-	return s.IngestImage(context.Background(), slug, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags)
+	return s.IngestImage(ctx, slug, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags)
 }
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {
