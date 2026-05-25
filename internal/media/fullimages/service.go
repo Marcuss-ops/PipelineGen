@@ -185,7 +185,7 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 
 	// === Step 3: Convert image to MP4 video ===
 	videoName := slug + ".mp4"
-	videoDir := filepath.Join(s.imagesDir, style)
+	videoDir := filepath.Join(s.imagesDir, style, slug)
 	if err := os.MkdirAll(videoDir, 0755); err != nil {
 		s.log.Error("fullimages: failed to create video dir", zap.String("dir", videoDir), zap.Error(err))
 		return SectionVideo{
@@ -232,6 +232,14 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		} else {
 			folderID = fid
 		}
+	}
+
+	// Create a subfolder for the specific prompt inside the style folder.
+	slugFolderID, err := s.driveUp.GetOrCreateFolder(ctx, slug, folderID)
+	if err != nil {
+		s.log.Warn("fullimages: failed to create Drive slug folder", zap.String("slug", slug), zap.Error(err))
+	} else {
+		folderID = slugFolderID
 	}
 
 	upResult, err := s.driveUp.UploadFile(ctx, videoPath, folderID, videoName)
