@@ -1,0 +1,68 @@
+package handlers
+
+import (
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"velox/go-master/internal/media/fullimages"
+	"velox/go-master/internal/pkg/apiutil"
+)
+
+// FullImagesHandler exposes the FullImages endpoint under /images/generate/fullimages.
+type FullImagesHandler struct {
+	service *fullimages.Service
+}
+
+// NewFullImagesHandler creates a FullImages HTTP handler.
+func NewFullImagesHandler(svc *fullimages.Service) *FullImagesHandler {
+	return &FullImagesHandler{service: svc}
+}
+
+// RegisterRoutes registers the route on the provided RouterGroup.
+func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
+	r.POST("/generate/fullimages", h.GenerateFullImages)
+}
+
+// GenerateFullImagesRequest is the JSON body for the endpoint.
+type GenerateFullImagesRequest struct {
+	Sections []fullimages.Section `json:"sections" binding:"required,min=1"`
+	Topic    string               `json:"topic" example:"Italian Renaissance"`
+	Language string               `json:"language" example:"it"`
+}
+
+// GenerateFullImagesResponse is returned on success.
+type GenerateFullImagesResponse struct {
+	OK     bool                     `json:"ok"`
+	Images []fullimages.SectionImage `json:"images"`
+}
+
+// GenerateFullImages handles POST /images/generate/fullimages.
+// It generates one image per section — no entity extraction, no asset
+// association. Pure image generation per section using Google/NVIDIA AI.
+func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
+	req, ok := apiutil.BindJSON[GenerateFullImagesRequest](c)
+	if !ok {
+		return
+	}
+
+	zap.L().Info("fullimages: request received",
+		zap.Int("sections", len(req.Sections)),
+		zap.String("topic", req.Topic),
+		zap.String("language", req.Language),
+	)
+
+	result, err := h.service.GenerateForSections(c.Request.Context(), req.Sections, req.Topic, req.Language)
+	if err != nil {
+		zap.L().Error("fullimages: generation failed", zap.Error(err))
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	zap.L().Info("fullimages: response sent",
+		zap.Int("total", len(result.Images)),
+	)
+
+	apiutil.OK(c, GenerateFullImagesResponse{
+		OK:     true,
+		Images: result.Images,
+	})
+}

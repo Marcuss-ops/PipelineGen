@@ -27,6 +27,7 @@ type RegistryWiring struct {
 	Scraper          *ScraperWiring
 	ContentPkg       *ContentPackageWiring
 	Assets           *AssetsWiring
+	FullImages       *FullImagesWiring
 	StockPipeline    *StockPipelineWiring
 	GoogleAccounting *GoogleAccountingWiring
 }
@@ -125,6 +126,16 @@ func WireRegistry(
 			}
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.Scraper = w.(*ScraperWiring) }},
+		{"FullImages", func() (module.Module, interface{}, error) {
+			w, err := WireFullImages(cfg, log, coreDeps)
+			if err != nil {
+				return nil, nil, err
+			}
+			if w == nil {
+				return nil, nil, nil
+			}
+			return w.Module, w, nil
+		}, func(w interface{}) { wiring.FullImages = w.(*FullImagesWiring) }},
 		{"StockPipeline", func() (module.Module, interface{}, error) {
 			w, err := WireStockPipeline(cfg, log, coreDeps)
 			if err != nil {
