@@ -2,6 +2,7 @@ package fullimages
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,13 +39,7 @@ type Result struct {
 	Videos []SectionVideo `json:"videos"`
 }
 
-// Service generates one video per text section:
-//  1. Generate 1920×1080 image via NVIDIA AI
-//  2. Convert image to MP4 video with Ken Burns zoom (ffmpeg)
-//  3. Upload video to Drive → {ImagesRoot}/{style}/{title-slug}.mp4
-//
-// No entity extraction or asset association. Each style gets its own
-// Drive subfolder for clean organization.
+// Service generates one video per text section.
 type Service struct {
 	imgService *imgservice.Service
 	ffmpegProc *ffmpeg.Processor
@@ -67,11 +62,15 @@ func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, dr
 }
 
 const (
-	videoGenTimeout   = 5 * time.Minute
-	imageGenWidth     = 1024
-	imageGenHeight    = 1024
-	videoDuration     = 7
-	videoMaxWorkers   = 3
+	videoGenTimeout = 5 * time.Minute
+	imageGenWidth   = 1024
+	imageGenHeight  = 1024
+	videoDuration   = 7
+	videoMaxWorkers = 3
+
+	// Output resolution for the final MP4 video (1920x1080)
+	videoOutWidth  = 1920
+	videoOutHeight = 1080
 )
 
 // GenerateForSections produces one video per section in parallel.
@@ -132,27 +131,53 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 	prompts := buildSectionPrompts(sec, topic)
 	prompt := pickBestPrompt(prompts, subject, topic)
 
-	// === Step 1: Generate 1920×1080 image ===
-	s.log.Info("fullimages: generating image",
-		zap.Int("section", idx),
-		zap.String("prompt", prompt),
-		zap.String("style", style),
-	)
+	// Precompute paths
+	videoDir := filepath.Join(s.imagesDir, style, slug)
+	videoName := slug + ".mp4"
+	videoPath := filepath.Join(videoDir, videoName)
 
-	// Use style/title as slug so image lands in right folder.
+	// === Step 0: Cache check — return existing video if found ===
+	if _, err := os.Stat(videoPath); err == nil {
+		s.log.Info("fullimages: video already exists, returning cached",
+			zap.Int("section", idx),
+			zap.String("video_path", videoPath),
+		)
+		driveLink, driveFileID := loadCacheSidecar(videoPath)
+		return SectionVideo{
+			SectionIndex: idx,
+			Title:        sec.Title,
+			Style:        style,
+			DriveLink:    driveLink,
+			DriveFileID:  driveFileID,
+			VideoPath:    videoPath,
+		}
+	}
+
+	// === Step 1: Find image — try web search first, fall back to NVIDIA ===
+	s.log.Info("fullimages: finding image", zap.Int("section", idx), zap.String("prompt", prompt))
+
 	imgSlug := slug
 	if style != "" {
 		imgSlug = style + "/" + slug
 	}
 	tags := []string{subject, "style:" + style}
 
-	asset, err := s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "", imageGenWidth, imageGenHeight, tags)
+	// Try DuckDuckGo / web search for a real, high-resolution image first
+	asset, err := s.imgService.SearchWebImage(ctx, prompt, imgSlug, tags)
+	if err != nil {
+		s.log.Info("fullimages: web search failed, falling back to NVIDIA",
+			zap.Int("section", idx),
+			zap.Error(err),
+		)
+		asset, err = s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "", imageGenWidth, imageGenHeight, tags)
+	}
+
 	if err != nil || asset == nil {
-		errMsg := "image generation failed"
+		errMsg := "all image sources failed"
 		if err != nil {
 			errMsg = err.Error()
 		}
-		s.log.Error("fullimages: image gen failed", zap.Int("section", idx), zap.Error(err))
+		s.log.Error("fullimages: no image could be obtained", zap.Int("section", idx), zap.Error(err))
 		return SectionVideo{SectionIndex: idx, Title: sec.Title, Style: style, Error: errMsg}
 	}
 
@@ -160,19 +185,14 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		zap.Int("section", idx),
 		zap.String("hash", asset.Hash),
 		zap.String("path_rel", asset.PathRel),
+		zap.String("source", asset.SourceURL),
 	)
 
 	// === Step 2: Locate image on disk ===
-	// The image is stored in {imagesDir}/{slug}/{hash}.png. Since the ingest
-	// pipeline may not populate PathRel reliably, resolve the file by searching
-	// for the hash in the image storage area.
 	imagePath := resolveImagePath(s.imagesDir, asset.Hash)
-
-	// Fallback: try PathRel directly from the asset.
 	if imagePath == "" && asset.PathRel != "" {
 		imagePath = filepath.Join(s.imagesDir, asset.PathRel)
 	}
-
 	if imagePath == "" {
 		s.log.Error("fullimages: image file not found on disk", zap.Int("section", idx), zap.String("hash", asset.Hash))
 		return SectionVideo{
@@ -183,9 +203,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// === Step 3: Convert image to MP4 video ===
-	videoName := slug + ".mp4"
-	videoDir := filepath.Join(s.imagesDir, style, slug)
+	// === Step 3: Convert image to 1920x1080 MP4 video with Ken Burns zoom ===
+	s.log.Info("fullimages: converting image to 1920x1080 video",
+		zap.Int("section", idx),
+		zap.String("image", imagePath),
+		zap.String("video", videoPath),
+	)
 	if err := os.MkdirAll(videoDir, 0755); err != nil {
 		s.log.Error("fullimages: failed to create video dir", zap.String("dir", videoDir), zap.Error(err))
 		return SectionVideo{
@@ -195,11 +218,10 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 			Error:        fmt.Sprintf("failed to create video directory: %v", err),
 		}
 	}
-	videoPath := filepath.Join(videoDir, videoName)
 	if err := s.ffmpegProc.ImageToVideo(ctx, imagePath, videoPath, ffmpeg.ImageToVideoOptions{
 		Duration: videoDuration,
-		Width:    imageGenWidth,
-		Height:   imageGenHeight,
+		Width:    videoOutWidth,
+		Height:   videoOutHeight,
 		Zoom:     true,
 	}); err != nil {
 		s.log.Error("fullimages: video conversion failed", zap.Int("section", idx), zap.Error(err))
@@ -211,7 +233,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	s.log.Info("fullimages: video created", zap.Int("section", idx), zap.String("video_path", videoPath))
+	s.log.Info("fullimages: video created",
+		zap.Int("section", idx),
+		zap.String("video_path", videoPath),
+		zap.Int("width", videoOutWidth),
+		zap.Int("height", videoOutHeight),
+	)
 
 	// === Step 4: Upload video to Drive ===
 	if s.driveUp == nil || s.driveRoot == "" {
@@ -234,7 +261,7 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// Create a subfolder for the specific prompt inside the style folder.
+	// Create subfolder for the specific prompt inside the style folder
 	slugFolderID, err := s.driveUp.GetOrCreateFolder(ctx, slug, folderID)
 	if err != nil {
 		s.log.Warn("fullimages: failed to create Drive slug folder", zap.String("slug", slug), zap.Error(err))
@@ -245,6 +272,7 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 	upResult, err := s.driveUp.UploadFile(ctx, videoPath, folderID, videoName)
 	if err != nil {
 		s.log.Error("fullimages: Drive upload failed", zap.Int("section", idx), zap.Error(err))
+		saveCacheSidecar(videoPath, "", "")
 		return SectionVideo{
 			SectionIndex: idx,
 			Title:        sec.Title,
@@ -253,6 +281,9 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 			Error:        fmt.Sprintf("Drive upload failed: %v", err),
 		}
 	}
+
+	// Save Drive link in sidecar for future cache hits
+	saveCacheSidecar(videoPath, upResult.WebViewLink, upResult.FileID)
 
 	s.log.Info("fullimages: video uploaded to Drive",
 		zap.Int("section", idx),
@@ -271,20 +302,51 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 }
 
 // safeFolderName creates a clean folder name without hyphens or underscores.
-// It strips non-alphanumeric characters and collapses whitespace to spaces.
 func safeFolderName(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "untitled"
 	}
-	// Replace runs of non-alphanumeric (except spaces) with nothing
 	cleaned := strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == ' ' {
 			return r
 		}
-		return -1 // drop
+		return -1
 	}, s)
-	// Collapse multiple spaces
 	parts := strings.Fields(cleaned)
 	return strings.Join(parts, " ")
+}
+
+// --- Cache sidecar helpers ---
+// A tiny JSON file next to the video remembers the Drive link for fast cache hits.
+
+type cacheMeta struct {
+	DriveLink   string `json:"drive_link,omitempty"`
+	DriveFileID string `json:"drive_file_id,omitempty"`
+}
+
+func cachePath(videoPath string) string {
+	return videoPath + ".cache.json"
+}
+
+func saveCacheSidecar(videoPath, driveLink, driveFileID string) {
+	p := cachePath(videoPath)
+	data, err := json.Marshal(cacheMeta{DriveLink: driveLink, DriveFileID: driveFileID})
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(p, data, 0644)
+}
+
+func loadCacheSidecar(videoPath string) (string, string) {
+	p := cachePath(videoPath)
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return "", ""
+	}
+	var m cacheMeta
+	if err := json.Unmarshal(data, &m); err != nil {
+		return "", ""
+	}
+	return m.DriveLink, m.DriveFileID
 }
