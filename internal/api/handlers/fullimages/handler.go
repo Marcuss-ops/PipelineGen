@@ -19,7 +19,7 @@ func NewFullImagesHandler(svc *fullimages.Service) *FullImagesHandler {
 
 // RegisterRoutes registers the route on the provided RouterGroup.
 func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/generate/fullimages", h.GenerateFullImages)
+	r.POST("/generate", h.GenerateFullImages)
 }
 
 // GenerateFullImagesRequest is the JSON body for the endpoint.
