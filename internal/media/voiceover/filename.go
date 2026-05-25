@@ -21,6 +21,7 @@ func toSlug(text string, maxLen int) string {
 	if len(text) > maxLen {
 		text = text[:maxLen]
 	}
+	text = strings.TrimRight(text, "-")
 	return text
 }
 
@@ -39,23 +40,34 @@ func (s *Service) buildFilename(req *BatchRequest, language, textHash string) st
 	return filename
 }
 
-func (s *Service) buildVoiceoverID(textHash, language, folderID string) string {
+func buildVoiceoverID(textHash, language, folderID string) string {
 	data := fmt.Sprintf("%s:%s:%s", textHash, language, folderID)
 	return "vo_" + hashutil.SHA256Bytes([]byte(data))[:16]
 }
 
-func (s *Service) sanitizeFilename(outputDir, filename string) (string, error) {
+func sanitizeFilename(outputDir, filename string) (string, error) {
 	if filepath.Ext(filename) == "" {
 		filename += ".mp3"
 	}
 
-	// Prevent path traversal
-	filename = filepath.Base(filename)
-	finalPath := filepath.Join(outputDir, filename)
-
-	// Verify the final path is inside outputDir
-	if !strings.HasPrefix(finalPath, outputDir+string(filepath.Separator)) && finalPath != outputDir {
+	// Prevent path traversal: reject if filename contains path separators
+	if strings.ContainsAny(filename, "/\\") {
 		return "", fmt.Errorf("invalid filename: path traversal detected")
+	}
+
+	// Get clean base name
+	cleanName := filepath.Base(filename)
+	if cleanName != filename {
+		return "", fmt.Errorf("invalid filename: path traversal detected")
+	}
+
+	finalPath := filepath.Join(outputDir, cleanName)
+
+	// If outputDir is set, verify the final path is inside outputDir
+	if outputDir != "" {
+		if !strings.HasPrefix(finalPath, outputDir+string(filepath.Separator)) && finalPath != outputDir {
+			return "", fmt.Errorf("invalid filename: path traversal detected")
+		}
 	}
 
 	return finalPath, nil

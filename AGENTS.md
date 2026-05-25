@@ -158,11 +158,13 @@ sqlite3 data/media/media.db.sqlite "SELECT search_text, embedding_json FROM clip
 
 ### Recurring Issues
 1. **Artlist search is slow** (30-50 seconds per search via node-scraper)
-2. **Binary and scripts in source dir** - Need proper `.gitignore`
-3. **Backup loop fuori controllo** - Oltre 150 backup di `artlist.db.sqlite` in `data/artlist/backups/` per un totale di ~3.7 GB. I file hanno timestamp a distanza di 3-4 secondi l'uno dall'altro per ore, segno di un backup scheduler in loop o malconfigurato. Da pulire e sistemare lo scheduling.
-4. **Doc outdated vs codice reale** - `MODULE_MAP.md` e vari docs referenziano path come `internal/service/artlist/` o `internal/service/youtubeclip/` che potrebbero non corrispondere più alla struttura attuale dopo i refactor. I docs sono utili ma vanno verificati contro il codice.
-5. **Mixed italiano/inglese nei docs** - La documentazione alterna italiano e inglese anche nello stesso file. Non blocca nulla ma rende la navigazione confusionaria. Scegliere una lingua.
-6. **Heavy AI-generated codebase** - 322/403 commit (80%) arrivano da AI agent ("Gemini CLI"). Il codice funziona ma bug subtili sono più difficili da diagnosticare se nessuno ha scritto/supervisionato direttamente quella logica. Mantenere test coverage alta e documentare scelte architetturali non ovvie.
+2. **Binary and scripts in source dir** - Needs proper `.gitignore` rules
+3. **Admin token must be set via `VELOX_ADMIN_TOKEN` env var** - The `config.yaml` in the repo must NOT contain the production token. The server reads from `VELOX_ADMIN_TOKEN` at runtime.
+4. **Tests in `internal/media/voiceover/` had compilation errors** - Functions `sanitizeFilename` and `buildVoiceoverID` were `*Service` methods but tests called them as package-level functions. Fixed by removing the receiver. Also fixed `toSlug` trailing-dash bug and path traversal detection in `sanitizeFilename`.
+5. **context.Background() in production code** - `cmd/admin/*`, `internal/api/handlers/sources/stock_handler.go`, `internal/repository/catalog/*`, `internal/media/images/service.go`, `internal/media/clipindexer/service.go` still use `context.Background()` instead of propagating request contexts. The stock_handler.go handler was fixed; the others need a larger refactor to add context parameters.
+6. **Large files (God Objects)** - `internal/media/images/service.go` (1069 lines), `internal/repository/clips/repository.go` (1066 lines), `internal/media/stockpipeline/service.go` (968 lines) are too large and should be split into smaller modules.
+7. **`data/` directory not gitignored per-database** - The whole `data/` dir is gitignored but individual DB backup files at root level (`data/*.bak`) can leak between ignores.
+8. **Heavy AI-generated codebase** - ~80% of commits from AI agents. Code works but subtle bugs are harder to diagnose without human oversight. Keep test coverage high and document non-obvious architectural decisions.
 
 ### Drive Token Regeneration
 If Google Drive authentication fails, regenerate the token:

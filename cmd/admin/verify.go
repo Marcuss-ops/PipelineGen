@@ -267,7 +267,7 @@ func verifyJobInDB(runID string, cfg *config.Config) error {
 		}
 	}
 
-	cmd := exec.Command("sqlite3", dbPath, fmt.Sprintf("SELECT status FROM jobs WHERE id='%s'", runID))
+	cmd := exec.Command("sqlite3", dbPath, "SELECT status FROM jobs WHERE id = ?", runID)
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("sqlite query failed: %w", err)
@@ -315,7 +315,7 @@ func verifyClipIndexing(cfg *config.Config) error {
 		return fmt.Errorf("index_clips.py failed: %w (output: %s)", err, string(pythonOutput))
 	}
 
-	verifyCmd := exec.Command("sqlite3", artlistDB, fmt.Sprintf("SELECT search_text FROM clips WHERE id='%s'", clipID))
+	verifyCmd := exec.Command("sqlite3", artlistDB, "SELECT search_text FROM clips WHERE id = ?", clipID)
 	verifyOutput, err := verifyCmd.Output()
 	if err != nil {
 		return fmt.Errorf("verify search_text failed: %w", err)

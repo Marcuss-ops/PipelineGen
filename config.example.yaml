@@ -19,7 +19,7 @@ security:
   # IMPORTANT: Enable auth and set admin_token for production use.
   # Default is true - you MUST set an admin_token.
   enable_auth: true
-  admin_token: "YOUR_SECURE_TOKEN_HERE"
+  admin_token: "YOUR_SECURE_TOKEN_HERE"  # Or set VELOX_ADMIN_TOKEN env var
   worker_token: "YOUR_WORKER_TOKEN_HERE"
   # CORS origins - leave empty to block all cross-origin requests
   cors_origins: []

@@ -1,7 +1,6 @@
 package sources
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -108,6 +107,8 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	ch := make(chan searchResult, len(req.Queries))
 	var wg sync.WaitGroup
 
+	reqCtx := c.Request.Context()
+
 	for _, q := range req.Queries {
 		wg.Add(1)
 		q := q
@@ -117,7 +118,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 			if limit <= 0 {
 				limit = 10
 			}
-			resp, err := h.youtubeService.SearchTopicVideos(context.Background(), q.Q, limit, "")
+			resp, err := h.youtubeService.SearchTopicVideos(reqCtx, q.Q, limit, "")
 			ch <- searchResult{query: q.Q, resp: resp, err: err}
 		}()
 	}

@@ -12,7 +12,7 @@ storage:
 
 security:
   enable_auth: true
-  admin_token: "velox_master_key_2026"
+  admin_token: ""
   rate_limit_enabled: true
   rate_limit_requests: 100
   allowed_download_hosts:

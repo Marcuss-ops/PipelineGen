@@ -168,7 +168,7 @@ func (s *Service) processLanguage(
 		folderID = dest.FolderID
 	}
 
-	id := s.buildVoiceoverID(textHash, language, folderID)
+	id := buildVoiceoverID(textHash, language, folderID)
 
 	item := BatchItem{
 		ID:       id,

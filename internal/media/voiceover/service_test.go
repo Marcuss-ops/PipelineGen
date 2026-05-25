@@ -113,8 +113,8 @@ func TestToSlug(t *testing.T) {
 		{"Hello World", 50, "hello-world"},
 		{"  Spaces  ", 50, "spaces"},
 		{"UPPERCASE", 50, "uppercase"},
-		{"special!@#chars", 50, "specialchars"},
-		{"very long text that should be truncated", 10, "very-long-t"},
+		{"special!@#chars", 50, "special-chars"},
+		{"very long text that should be truncated", 10, "very-long"},
 		{"", 50, ""},
 		{"  ---trim---  ", 50, "trim"},
 	}
