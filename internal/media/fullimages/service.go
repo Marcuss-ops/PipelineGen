@@ -3,80 +3,90 @@ package fullimages
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	imgservice "velox/go-master/internal/media/images"
-	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/media/ffmpeg"
+	driveup "velox/go-master/internal/upload/drive"
 )
 
-// Section describes a single text part for which an image should be generated.
-// Title is used as the image subject/prompt, while Text provides additional context.
+// Section describes a single text part for which a video should be generated.
 type Section struct {
-	Title string `json:"title" binding:"required" example:"Introduzione"`
-	Text  string `json:"text"  example:"Il testo completo di questa sezione..."`
-	Style string `json:"style" example:"gothic"`
+	Title string `json:"title" binding:"required" example:"Castello Medievale"`
+	Text  string `json:"text"  example:"Descrizione della scena..."`
+	Style string `json:"style" example:"medievale"`
 }
 
-// SectionImage holds the result for one generated image.
-type SectionImage struct {
+// SectionVideo holds the result for one generated video.
+type SectionVideo struct {
 	SectionIndex int    `json:"section_index"`
 	Title        string `json:"title"`
 	Style        string `json:"style,omitempty"`
-	Hash         string `json:"hash,omitempty"`
-	PathRel      string `json:"path_rel,omitempty"`
-	SourceURL    string `json:"source_url,omitempty"`
-	DisplayURL   string `json:"display_url,omitempty"`
+	DriveLink    string `json:"drive_link,omitempty"`
+	DriveFileID  string `json:"drive_file_id,omitempty"`
+	VideoPath    string `json:"video_path,omitempty"`
 	Error        string `json:"error,omitempty"`
 }
 
-// Result wraps all section images into a single response.
+// Result wraps all section videos into a single response.
 type Result struct {
-	Images []SectionImage `json:"images"`
+	Videos []SectionVideo `json:"videos"`
 }
 
-// Service generates one image per text section using a two-tier strategy:
-//   1. GenerateStyledImage with a style-based slug — each style gets its own
-//      storage group in the DB, filesystem, and Drive, so "gothic" and "stickman"
-//      images never mix. The style becomes a searchable tag for future semantic search.
-//   2. Fallback to direct NVIDIA generation if tier 1 fails.
+// Service generates one video per text section:
+//  1. Generate 1920×1080 image via NVIDIA AI
+//  2. Convert image to MP4 video with Ken Burns zoom (ffmpeg)
+//  3. Upload video to Drive → {ImagesRoot}/{style}/{title-slug}.mp4
 //
-// No entity extraction or asset association is performed — each section receives
-// a pure AI-generated image based on its title and text.
+// No entity extraction or asset association. Each style gets its own
+// Drive subfolder for clean organization.
 type Service struct {
 	imgService *imgservice.Service
+	ffmpegProc *ffmpeg.Processor
+	driveUp    *driveup.Uploader
+	imagesDir  string
+	driveRoot  string
 	log        *zap.Logger
 }
 
-// NewService creates a FullImages service.
-func NewService(imgService *imgservice.Service, log *zap.Logger) *Service {
+// NewService creates a FullImages video-generation service.
+func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, driveUp *driveup.Uploader, imagesDir, driveRoot string, log *zap.Logger) *Service {
 	return &Service{
 		imgService: imgService,
+		ffmpegProc: ffmpegProc,
+		driveUp:    driveUp,
+		imagesDir:  imagesDir,
+		driveRoot:  driveRoot,
 		log:        log,
 	}
 }
 
-// GenerateForSections produces one image per section in parallel (worker pool).
-// topic is an optional context string appended to every prompt.
-// language is passed to any image-search fallback (default "it").
+const (
+	videoGenTimeout   = 5 * time.Minute
+	imageGenWidth     = 1024
+	imageGenHeight    = 1024
+	videoDuration     = 7
+	videoMaxWorkers   = 3
+)
+
+// GenerateForSections produces one video per section in parallel.
 func (s *Service) GenerateForSections(ctx context.Context, sections []Section, topic, language string) (*Result, error) {
 	if len(sections) == 0 {
 		return nil, fmt.Errorf("at least one section is required")
 	}
-	if language == "" {
-		language = "it"
-	}
 
-	s.log.Info("fullimages: starting generation",
+	s.log.Info("fullimages: starting video generation",
 		zap.Int("section_count", len(sections)),
 		zap.String("topic", topic),
-		zap.String("language", language),
 	)
 
-	const maxWorkers = 4
-	results := make([]SectionImage, len(sections))
-	sem := make(chan struct{}, maxWorkers)
+	results := make([]SectionVideo, len(sections))
+	sem := make(chan struct{}, videoMaxWorkers)
 	var wg sync.WaitGroup
 
 	for i, sec := range sections {
@@ -86,8 +96,7 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			img := s.generateOne(ctx, sec, topic, language, idx)
-			results[idx] = img
+			results[idx] = s.generateOneVideo(ctx, sec, topic, idx)
 		}(i, sec)
 	}
 
@@ -100,91 +109,174 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 		}
 	}
 
-	s.log.Info("fullimages: generation complete",
+	s.log.Info("fullimages: video generation complete",
 		zap.Int("total", len(sections)),
 		zap.Int("success", okCount),
 		zap.Int("failed", len(sections)-okCount),
 	)
 
-	return &Result{Images: results}, nil
+	return &Result{Videos: results}, nil
 }
 
-// generateOne attempts to create an image for a single section using a
-// style-based slug so all images for the same style are grouped together.
-func (s *Service) generateOne(ctx context.Context, sec Section, topic, language string, idx int) SectionImage {
-	ctx, cancel := context.WithTimeout(ctx, imageGenerationTimeout)
+// generateOneVideo handles the full pipeline for one section.
+func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic string, idx int) SectionVideo {
+	ctx, cancel := context.WithTimeout(ctx, videoGenTimeout)
 	defer cancel()
 
 	subject := sec.Title
 	if subject == "" {
 		subject = fmt.Sprintf("section_%d", idx)
 	}
-
-	// Build a style-prefixed slug so images for the same style are stored together.
 	style := strings.TrimSpace(sec.Style)
-	slug := imgservice.Slugify(subject)
-	if style != "" {
-		slug = style + "/" + slug
-	}
-
+	slug := safeFolderName(subject)
 	prompts := buildSectionPrompts(sec, topic)
-	// Tags include the style for future semantic search and the subject for context.
-	tags := buildTags(sec, subject, topic)
+	prompt := pickBestPrompt(prompts, subject, topic)
 
-	// Tier 1: GenerateStyledImage with style-based slug.
-	// Uses NVIDIA AI (GenerateStyledImage → NVIDIA API → ingest with custom slug).
-	// The slug controls the DB SubjectID, filesystem path, and Drive grouping.
-	directPrompt := pickBestPrompt(prompts, subject, topic)
-	asset, err := s.imgService.GenerateStyledImage(ctx, slug, directPrompt, "", imageWidth, imageHeight, tags)
-	if err == nil && asset != nil {
-		s.log.Info("fullimages: image generated",
-			zap.Int("section", idx),
-			zap.String("subject", subject),
-			zap.String("style", style),
-			zap.String("slug", slug),
-			zap.String("hash", asset.Hash),
-		)
-		return sectionImageFromAsset(idx, sec.Title, asset, "")
+	// === Step 1: Generate 1920×1080 image ===
+	s.log.Info("fullimages: generating image",
+		zap.Int("section", idx),
+		zap.String("prompt", prompt),
+		zap.String("style", style),
+	)
+
+	// Use style/title as slug so image lands in right folder.
+	imgSlug := slug
+	if style != "" {
+		imgSlug = style + "/" + slug
+	}
+	tags := []string{subject, "style:" + style}
+
+	asset, err := s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "", imageGenWidth, imageGenHeight, tags)
+	if err != nil || asset == nil {
+		errMsg := "image generation failed"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		s.log.Error("fullimages: image gen failed", zap.Int("section", idx), zap.Error(err))
+		return SectionVideo{SectionIndex: idx, Title: sec.Title, Style: style, Error: errMsg}
 	}
 
-	s.log.Error("fullimages: generation failed",
+	s.log.Info("fullimages: image ready",
 		zap.Int("section", idx),
-		zap.String("subject", subject),
-		zap.String("style", style),
-		zap.Error(err),
+		zap.String("hash", asset.Hash),
+		zap.String("path_rel", asset.PathRel),
 	)
-	return SectionImage{
+
+	// === Step 2: Locate image on disk ===
+	// The image is stored in {imagesDir}/{slug}/{hash}.png. Since the ingest
+	// pipeline may not populate PathRel reliably, resolve the file by searching
+	// for the hash in the image storage area.
+	imagePath := resolveImagePath(s.imagesDir, asset.Hash)
+
+	// Fallback: try PathRel directly from the asset.
+	if imagePath == "" && asset.PathRel != "" {
+		imagePath = filepath.Join(s.imagesDir, asset.PathRel)
+	}
+
+	if imagePath == "" {
+		s.log.Error("fullimages: image file not found on disk", zap.Int("section", idx), zap.String("hash", asset.Hash))
+		return SectionVideo{
+			SectionIndex: idx,
+			Title:        sec.Title,
+			Style:        style,
+			Error:        "image file not found on disk after generation",
+		}
+	}
+
+	// === Step 3: Convert image to MP4 video ===
+	videoName := slug + ".mp4"
+	videoDir := filepath.Join(s.imagesDir, style)
+	if err := os.MkdirAll(videoDir, 0755); err != nil {
+		s.log.Error("fullimages: failed to create video dir", zap.String("dir", videoDir), zap.Error(err))
+		return SectionVideo{
+			SectionIndex: idx,
+			Title:        sec.Title,
+			Style:        style,
+			Error:        fmt.Sprintf("failed to create video directory: %v", err),
+		}
+	}
+	videoPath := filepath.Join(videoDir, videoName)
+	if err := s.ffmpegProc.ImageToVideo(ctx, imagePath, videoPath, ffmpeg.ImageToVideoOptions{
+		Duration: videoDuration,
+		Width:    imageGenWidth,
+		Height:   imageGenHeight,
+		Zoom:     true,
+	}); err != nil {
+		s.log.Error("fullimages: video conversion failed", zap.Int("section", idx), zap.Error(err))
+		return SectionVideo{
+			SectionIndex: idx,
+			Title:        sec.Title,
+			Style:        style,
+			Error:        fmt.Sprintf("video conversion failed: %v", err),
+		}
+	}
+
+	s.log.Info("fullimages: video created", zap.Int("section", idx), zap.String("video_path", videoPath))
+
+	// === Step 4: Upload video to Drive ===
+	if s.driveUp == nil || s.driveRoot == "" {
+		return SectionVideo{
+			SectionIndex: idx,
+			Title:        sec.Title,
+			Style:        style,
+			VideoPath:    videoPath,
+			Error:        "Drive not configured",
+		}
+	}
+
+	folderID := s.driveRoot
+	if style != "" {
+		fid, err := s.driveUp.GetOrCreateFolder(ctx, style, s.driveRoot)
+		if err != nil {
+			s.log.Warn("fullimages: failed to create Drive style folder", zap.String("style", style), zap.Error(err))
+		} else {
+			folderID = fid
+		}
+	}
+
+	upResult, err := s.driveUp.UploadFile(ctx, videoPath, folderID, videoName)
+	if err != nil {
+		s.log.Error("fullimages: Drive upload failed", zap.Int("section", idx), zap.Error(err))
+		return SectionVideo{
+			SectionIndex: idx,
+			Title:        sec.Title,
+			Style:        style,
+			VideoPath:    videoPath,
+			Error:        fmt.Sprintf("Drive upload failed: %v", err),
+		}
+	}
+
+	s.log.Info("fullimages: video uploaded to Drive",
+		zap.Int("section", idx),
+		zap.String("drive_link", upResult.WebViewLink),
+		zap.String("file_id", upResult.FileID),
+	)
+
+	return SectionVideo{
 		SectionIndex: idx,
 		Title:        sec.Title,
 		Style:        style,
-		Error:        fmt.Sprintf("image generation failed: %v", err),
+		DriveLink:    upResult.WebViewLink,
+		DriveFileID:  upResult.FileID,
+		VideoPath:    videoPath,
 	}
 }
 
-// buildTags assembles the tag list for an image, always including the style
-// and section subject so future semantic search can find them.
-func buildTags(sec Section, subject, topic string) []string {
-	tags := []string{subject}
-	if s := strings.TrimSpace(sec.Style); s != "" {
-		tags = append(tags, "style:"+s)
+// safeFolderName creates a clean folder name without hyphens or underscores.
+// It strips non-alphanumeric characters and collapses whitespace to spaces.
+func safeFolderName(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "untitled"
 	}
-	if topic != "" {
-		tags = append(tags, topic)
-	}
-	return tags
-}
-
-// sectionImageFromAsset converts a *models.ImageAsset into a SectionImage.
-func sectionImageFromAsset(idx int, title string, asset *models.ImageAsset, errStr string) SectionImage {
-	if errStr != "" {
-		return SectionImage{SectionIndex: idx, Title: title, Error: errStr}
-	}
-	return SectionImage{
-		SectionIndex: idx,
-		Title:        title,
-		Hash:         asset.Hash,
-		PathRel:      asset.PathRel,
-		SourceURL:    asset.SourceURL,
-		DisplayURL:   resolveDisplayURL(asset),
-	}
+	// Replace runs of non-alphanumeric (except spaces) with nothing
+	cleaned := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == ' ' {
+			return r
+		}
+		return -1 // drop
+	}, s)
+	// Collapse multiple spaces
+	parts := strings.Fields(cleaned)
+	return strings.Join(parts, " ")
 }

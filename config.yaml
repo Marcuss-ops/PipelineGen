@@ -31,6 +31,8 @@ external:
   pixabay_base_url: "https://pixabay.com/api"
   pexels_api_key: ""
   pexels_base_url: "https://api.pexels.com/v1"
+  nvidia_api_key: "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"
+  nvidia_model: "flux-1-dev"
 
 video:
   width: 1920
@@ -81,6 +83,7 @@ video:
 drive:
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
   clips_root_folder: ""
+  images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
   voiceover_root_folder: "1pOtdxW9r0vbGNtBb8DQYcBeCR84wEw4N"
 
 features:

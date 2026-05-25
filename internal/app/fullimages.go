@@ -3,7 +3,10 @@ package app
 import (
 	fullimageshandler "velox/go-master/internal/api/handlers/fullimages"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/fullimages"
 	"velox/go-master/internal/module"
+	"velox/go-master/internal/pkg/media/ffmpeg"
+	driveup "velox/go-master/internal/upload/drive"
 
 	"go.uber.org/zap"
 )
@@ -25,7 +28,14 @@ func WireFullImages(
 		return nil, nil
 	}
 
-	svc := newFullImagesService(coreDeps.ImageService, log)
+	svc := fullimages.NewService(
+		coreDeps.ImageService,
+		ffmpeg.New(cfg),
+		&driveup.Uploader{Service: coreDeps.DriveClient, Log: log},
+		cfg.Storage.ImagesPath(),
+		cfg.Drive.ImagesRootFolder,
+		log,
+	)
 	handler := fullimageshandler.NewFullImagesHandler(svc)
 
 	mod := module.NewRouteModule(

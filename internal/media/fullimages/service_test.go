@@ -1,102 +1,92 @@
 package fullimages
 
 import (
-	"strings"
 	"testing"
 )
 
-func TestBuildTags_IncludesStyle(t *testing.T) {
-	sec := Section{Title: "Castle", Style: "gothic"}
-	tags := buildTags(sec, "Castle", "Medieval")
-	if !containsTag(tags, "style:gothic") {
-		t.Fatalf("expected 'style:gothic' in tags, got %v", tags)
+func TestSafeFolderName_RemovesSpecialChars(t *testing.T) {
+	got := safeFolderName("old stone house with a man!!!")
+	if got != "old stone house with a man" {
+		t.Fatalf("expected 'old stone house with a man', got %q", got)
 	}
 }
 
-func TestBuildTags_NoStyle(t *testing.T) {
-	sec := Section{Title: "Castle", Style: ""}
-	tags := buildTags(sec, "Castle", "Medieval")
-	for _, tag := range tags {
-		if strings.HasPrefix(tag, "style:") {
-			t.Fatalf("expected no style tag when style is empty, got %v", tags)
-		}
+func TestSafeFolderName_CollapsesSpaces(t *testing.T) {
+	got := safeFolderName("knight   on   horse")
+	if got != "knight on horse" {
+		t.Fatalf("expected 'knight on horse', got %q", got)
 	}
 }
 
-func TestBuildTags_IncludesSubject(t *testing.T) {
-	sec := Section{Title: "Dragon", Style: "fantasy"}
-	tags := buildTags(sec, "Dragon", "")
-	if !containsTag(tags, "Dragon") {
-		t.Fatalf("expected subject 'Dragon' in tags, got %v", tags)
+func TestSafeFolderName_NoHyphens(t *testing.T) {
+	got := safeFolderName("medievale-castle")
+	if got != "medievalecastle" {
+		t.Fatalf("expected no hyphens, got %q", got)
 	}
 }
 
-func TestBuildTags_IncludesTopic(t *testing.T) {
-	sec := Section{Title: "Castle", Style: "gothic"}
-	tags := buildTags(sec, "Castle", "Renaissance")
-	if !containsTag(tags, "Renaissance") {
-		t.Fatalf("expected topic 'Renaissance' in tags, got %v", tags)
+func TestSafeFolderName_NoUnderscores(t *testing.T) {
+	got := safeFolderName("stone_cottage")
+	if got != "stonecottage" {
+		t.Fatalf("expected no underscores, got %q", got)
 	}
 }
 
-func TestBuildTags_StyleTagFormat(t *testing.T) {
-	sec := Section{Title: "Dragon", Style: "stickman"}
-	tags := buildTags(sec, "Dragon", "")
-	if !containsTag(tags, "style:stickman") {
-		t.Fatalf("expected 'style:stickman' in tags, got %v", tags)
+func TestSafeFolderName_OnlyAlphanumeric(t *testing.T) {
+	got := safeFolderName("Cus D'Amato!")
+	if got != "Cus DAmato" {
+		t.Fatalf("expected 'Cus DAmato', got %q", got)
 	}
 }
 
-func TestSectionImage_StyleFieldPreserved(t *testing.T) {
-	img := SectionImage{
-		SectionIndex: 0,
-		Title:        "Castle",
-		Style:        "gothic",
-		Error:        "something went wrong",
-	}
-	if img.Style != "gothic" {
-		t.Fatalf("expected style 'gothic' in error response, got %q", img.Style)
+func TestSafeFolderName_Empty(t *testing.T) {
+	got := safeFolderName("")
+	if got != "untitled" {
+		t.Fatalf("expected 'untitled' for empty, got %q", got)
 	}
 }
 
-func TestSectionImage_EmptyStyleInResponse(t *testing.T) {
-	img := SectionImage{
-		SectionIndex: 0,
-		Title:        "Castle",
-		Error:        "failed",
+func TestSafeFolderName_PreservesSpaces(t *testing.T) {
+	got := safeFolderName("a knight on a white horse")
+	if got != "a knight on a white horse" {
+		t.Fatalf("expected spaces preserved, got %q", got)
 	}
-	if img.Style != "" {
-		t.Fatalf("expected empty style, got %q", img.Style)
+}
+
+func TestSectionVideo_StyleField(t *testing.T) {
+	v := SectionVideo{SectionIndex: 0, Title: "Castle", Style: "medievale", DriveLink: "https://drive.google.com/"}
+	if v.Style != "medievale" {
+		t.Fatalf("expected style 'medievale', got %q", v.Style)
+	}
+}
+
+func TestSectionVideo_Error(t *testing.T) {
+	v := SectionVideo{SectionIndex: 0, Title: "Castle", Style: "medievale", Error: "NVIDIA API failed"}
+	if v.Error != "NVIDIA API failed" {
+		t.Fatalf("expected error preserved, got %q", v.Error)
 	}
 }
 
 func TestSection_StyleField(t *testing.T) {
-	sec := Section{Title: "Warrior", Style: "medievale"}
+	sec := Section{Title: "Knight", Style: "medievale"}
 	if sec.Style != "medievale" {
 		t.Fatalf("expected style 'medievale', got %q", sec.Style)
 	}
 }
 
-func TestSection_StyleFieldEmpty(t *testing.T) {
-	sec := Section{Title: "Warrior"}
-	if sec.Style != "" {
-		t.Fatalf("expected empty style, got %q", sec.Style)
+func TestResult_Videos(t *testing.T) {
+	r := Result{Videos: []SectionVideo{
+		{SectionIndex: 0, Title: "Castle", Style: "medievale"},
+		{SectionIndex: 1, Title: "Knight", Style: "medievale"},
+	}}
+	if len(r.Videos) != 2 {
+		t.Fatalf("expected 2 videos, got %d", len(r.Videos))
 	}
 }
 
-func TestBuildTags_AlwaysIncludesSubject(t *testing.T) {
-	sec := Section{Title: "Knight", Style: "medievale"}
-	tags := buildTags(sec, "Knight", "")
-	if len(tags) < 2 {
-		t.Fatalf("expected at least 2 tags (subject + style), got %v", tags)
+func TestSafeFolderName_DropsNonAlphanumericCompletely(t *testing.T) {
+	got := safeFolderName("test@#$%^&*()folder")
+	if got != "testfolder" {
+		t.Fatalf("expected 'testfolder', got %q", got)
 	}
-}
-
-func containsTag(tags []string, target string) bool {
-	for _, tag := range tags {
-		if tag == target {
-			return true
-		}
-	}
-	return false
 }

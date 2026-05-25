@@ -2,6 +2,8 @@ package fullimages
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -77,6 +79,43 @@ func resolveDisplayURL(asset *models.ImageAsset) string {
 	}
 	if asset.SourceURL != "" {
 		return asset.SourceURL
+	}
+	return ""
+}
+
+// resolveImagePath searches the images directory for a file whose name starts
+// with the given hash. This is needed because the ingest pipeline may not
+// reliably populate PathRel on the returned asset.
+func resolveImagePath(imagesDir, hash string) string {
+	if imagesDir == "" || hash == "" {
+		return ""
+	}
+	entries, err := os.ReadDir(imagesDir)
+	if err != nil {
+		return ""
+	}
+	// Walk one level deep — images are stored in {imagesDir}/{slug}/{hash}.ext
+	for _, dir := range entries {
+		if !dir.IsDir() {
+			continue
+		}
+		subEntries, err := os.ReadDir(filepath.Join(imagesDir, dir.Name()))
+		if err != nil {
+			continue
+		}
+		for _, f := range subEntries {
+			if f.IsDir() {
+				continue
+			}
+			name := f.Name()
+			// Strip extension and compare
+			if ext := filepath.Ext(name); ext != "" {
+				name = name[:len(name)-len(ext)]
+			}
+			if name == hash {
+				return filepath.Join(imagesDir, dir.Name(), f.Name())
+			}
+		}
 	}
 	return ""
 }

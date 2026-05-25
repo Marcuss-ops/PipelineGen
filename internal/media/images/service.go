@@ -78,6 +78,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		repo:      repo,
 		stockRepo: stockRepo,
 		driveSvc:  driveSvc,
+		driveFolderID: cfg.Drive.ImagesRootFolder,
 		log:       log,
 		tempDir:   cfg.Storage.TempPath(),
 		client: &http.Client{

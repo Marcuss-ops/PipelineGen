@@ -7,7 +7,7 @@ import (
 	"velox/go-master/internal/pkg/apiutil"
 )
 
-// FullImagesHandler exposes the FullImages endpoint under /images/generate/fullimages.
+// FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
 type FullImagesHandler struct {
 	service *fullimages.Service
 }
@@ -19,22 +19,22 @@ func NewFullImagesHandler(svc *fullimages.Service) *FullImagesHandler {
 
 // RegisterRoutes registers the route on the provided RouterGroup.
 func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/generate", h.GenerateFullImages)
+	r.POST("/video/generate", h.GenerateFullImages)
 }
 
 // GenerateFullImagesRequest is the JSON body for the endpoint.
 type GenerateFullImagesRequest struct {
 	Sections []fullimages.Section `json:"sections" binding:"required,min=1"`
-	Topic    string               `json:"topic" example:"Italian Renaissance"`
-	Language string               `json:"language" example:"it"`
+	Topic    string               `json:"topic" example:"Medieval Europe"`
+	Language string               `json:"language" example:"en"`
 	// DefaultStyle is applied to every section that doesn't specify its own style.
-	DefaultStyle string `json:"default_style" example:"gothic"`
+	DefaultStyle string `json:"default_style" example:"medievale"`
 }
 
 // GenerateFullImagesResponse is returned on success.
 type GenerateFullImagesResponse struct {
 	OK     bool                     `json:"ok"`
-	Images []fullimages.SectionImage `json:"images"`
+	Videos []fullimages.SectionVideo `json:"videos"`
 }
 
 // GenerateFullImages handles POST /images/generate/fullimages.
@@ -70,11 +70,11 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 	}
 
 	zap.L().Info("fullimages: response sent",
-		zap.Int("total", len(result.Images)),
+		zap.Int("total", len(result.Videos)),
 	)
 
 	apiutil.OK(c, GenerateFullImagesResponse{
 		OK:     true,
-		Images: result.Images,
+		Videos: result.Videos,
 	})
 }
