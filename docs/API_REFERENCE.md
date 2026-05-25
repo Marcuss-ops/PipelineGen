@@ -1,8 +1,8 @@
 # PipelineGen API Reference
 
-Questa guida contiene esempi pronti all'uso (callable) per interagire con il backend di PipelineGen da qualsiasi computer nella rete.
+This guide contains ready-to-use examples for interacting with the PipelineGen backend from any computer on the network.
 
-## 🛠️ Configurazione Iniziale
+## 🛠️ Initial Setup
 
 Tutte le chiamate richiedono l'autenticazione tramite Bearer Token.
 **Token attivo:** `velox_master_key_2026`
@@ -18,7 +18,7 @@ curl -i http://77.93.152.122:8080/api/health \
   -H "Authorization: Bearer velox_master_key_2026"
 ```
 
-### 1.2 System Doctor (Stato dettagliato dei moduli)
+### 1.2 System Doctor (Module status details)
 ```bash
 curl -i http://77.93.152.122:8080/api/system/doctor \
   -H "Authorization: Bearer velox_master_key_2026"
@@ -48,13 +48,13 @@ curl -i -X POST http://77.93.152.122:8080/api/media/voiceover/generate \
 
 ---
 
-## 🎬 3. Artlist (Ricerca Clip)
+## 🎬 3. Artlist (Clip Search)
 
-### 3.1 Ricerca Intelligente (Smart Pipeline)
-Scarica le clip corrispondenti usando un preset. Restituisce l'ID del Job (vedi sezione Jobs).
+### 3.1 Smart Search (Smart Pipeline)
+Downloads matching clips using a preset. Returns the Job ID (see Jobs section).
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/artlist/run-smart \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer velox_...026" \
   -H "Content-Type: application/json" \
   -d '{
     "term": "cyberpunk city",
@@ -63,8 +63,8 @@ curl -i -X POST http://77.93.152.122:8080/api/artlist/run-smart \
   }'
 ```
 
-### 3.2 Ricerca Live (Senza scaricare)
-Restituisce i metadati direttamente dal sito tramite lo scraper Node.js.
+### 3.2 Live Search (No download)
+Returns metadata directly from the website via Node.js scraper.
 ```bash
 curl -i -X POST "http://77.93.152.122:8080/api/artlist/search/live?term=nature&limit=5" \
   -H "Authorization: Bearer velox_master_key_2026" \

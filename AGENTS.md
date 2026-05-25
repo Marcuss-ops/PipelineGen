@@ -38,7 +38,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 - **YouTube Clip Service**: Extract and process YouTube clips
 - **Job Service**: Queue and process background jobs
 - **Drive Destination Service**: Manage Google Drive folders and uploads
-- **Clipindexer Service**: Generates `search_text` and `embedding_json` metadata for Artlist clips via `scripts/index_clips.py`. Integrates Go service with Python script, passes database path/clip details, handles `None` tags, and updates `artlist.db.sqlite`.
+- **Clipindexer Service**: Generates `search_text` and `embedding_json` metadata for Artlist clips via `scripts/index_clips.py`. Integrates Go service with Python script, passes database path/clip details, handles `None` tags, and updates `media.db.sqlite`.
 
 ## Configuration
 
@@ -159,6 +159,10 @@ sqlite3 data/media/media.db.sqlite "SELECT search_text, embedding_json FROM clip
 ### Recurring Issues
 1. **Artlist search is slow** (30-50 seconds per search via node-scraper)
 2. **Binary and scripts in source dir** - Need proper `.gitignore`
+3. **Backup loop fuori controllo** - Oltre 150 backup di `artlist.db.sqlite` in `data/artlist/backups/` per un totale di ~3.7 GB. I file hanno timestamp a distanza di 3-4 secondi l'uno dall'altro per ore, segno di un backup scheduler in loop o malconfigurato. Da pulire e sistemare lo scheduling.
+4. **Doc outdated vs codice reale** - `MODULE_MAP.md` e vari docs referenziano path come `internal/service/artlist/` o `internal/service/youtubeclip/` che potrebbero non corrispondere più alla struttura attuale dopo i refactor. I docs sono utili ma vanno verificati contro il codice.
+5. **Mixed italiano/inglese nei docs** - La documentazione alterna italiano e inglese anche nello stesso file. Non blocca nulla ma rende la navigazione confusionaria. Scegliere una lingua.
+6. **Heavy AI-generated codebase** - 322/403 commit (80%) arrivano da AI agent ("Gemini CLI"). Il codice funziona ma bug subtili sono più difficili da diagnosticare se nessuno ha scritto/supervisionato direttamente quella logica. Mantenere test coverage alta e documentare scelte architetturali non ovvie.
 
 ### Drive Token Regeneration
 If Google Drive authentication fails, regenerate the token:

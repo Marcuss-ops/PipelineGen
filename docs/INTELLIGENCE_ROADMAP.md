@@ -1,63 +1,65 @@
 # PipelineGen: Future Intelligent Implementations
 
-Questo documento delinea le evoluzioni proposte per rendere PipelineGen un sistema di media processing più intelligente, autonomo e "creativo", sfruttando il nuovo database unificato e le capacità di Hybrid Search.
+This document outlines proposed evolutions to make PipelineGen a smarter, more autonomous and "creative" media processing system, leveraging the unified database and Hybrid Search capabilities.
 
 ---
 
 ## 1. Vision-Based Auto-Tagging & Enrichment
-**Obiettivo**: Arricchire automaticamente i metadati degli asset che hanno descrizioni scarse o assenti.
+**Goal**: Automatically enrich metadata for assets with sparse or missing descriptions.
 
-*   **Logica**: Utilizzare il server di embedding (CLIP) per analizzare il frame centrale delle clip video e delle immagini.
-*   **Azione**: Estrarre tag descrittivi (es. "drone shot", "urban sunset", "high contrast") e salvarli nel campo `tags` del DB.
-*   **Impatto**: Miglioramento drastico della ricerca semantica senza intervento manuale.
+*   **Logic**: Use the embedding server (CLIP) to analyze the center frame of video clips and images.
+*   **Action**: Extract descriptive tags (e.g., "drone shot", "urban sunset", "high contrast") and save them in the `tags` DB field.
+*   **Impact**: Drastic improvement in semantic search without manual intervention.
 
 ## 2. Narrative Continuity & Diversity Scoring
-**Obiettivo**: Migliorare la qualità del "montaggio" automatico evitando ripetizioni visive e garantendo coerenza stilistica.
+**Goal**: Improve automatic "editing" quality by avoiding visual repetition and ensuring stylistic consistency.
 
-*   **Diversity Penalty**: Se una clip ha un `phash` (visual hash) troppo simile a una clip già selezionata per il video corrente, il suo punteggio viene penalizzato per favorire la varietà.
-*   **Style Matching**: Analizzare la palette cromatica o lo stile (es. "dark", "vibrant") delle clip precedenti per suggerire asset che mantengano una continuità estetica nel video.
+*   **Diversity Penalty**: If a clip has a `phash` (visual hash) too similar to an already selected clip, its score is penalized to favor variety.
+*   **Style Matching**: Analyze the color palette or style (e.g., "dark", "vibrant") of previous clips to suggest assets that maintain aesthetic continuity.
 
 ## 3. Predictive Harvesting (Smart Scraper)
-**Obiettivo**: Anticipare le necessità dell'utente popolando il database in modo proattivo.
+**Goal**: Anticipate user needs by proactively populating the database.
 
-*   **Trend Analysis**: Analizzare i termini di ricerca più frequenti e gli script generati negli ultimi 7 giorni.
-*   **Gap Detection**: Se il sistema rileva un alto interesse per un tema (es. "AI Robotics") ma una bassa disponibilità di asset nel DB unificato, avvia automaticamente job di scraping su Artlist/YouTube in background.
+*   **Trend Analysis**: Analyze the most frequent search terms and generated scripts from the last 7 days.
+*   **Gap Detection**: If the system detects high interest in a topic (e.g., "AI Robotics") but low asset availability in the unified DB, it automatically starts Artlist/YouTube scraping jobs in the background.
 
 ## 4. Automated B-Roll Sequence Engine
-**Obiettivo**: Passare dalla selezione di singole clip alla creazione di "sequenze" logiche.
+**Goal**: Move from single clip selection to creating logical "sequences".
 
-*   **Storytelling Logic**: Implementare schemi di montaggio predefiniti (es. *Wide Shot -> Medium Shot -> Close Up*).
-*   **Action Matching**: Se lo script parla di un'azione specifica (es. "running"), cercare sequenze di clip che mostrano progressione nell'azione.
+*   **Storytelling Logic**: Implement predefined editing patterns (e.g., *Wide Shot -> Medium Shot -> Close Up*).
+*   **Action Matching**: If the script mentions a specific action (e.g., "running"), search for clip sequences showing progression in that action.
 
 ## 5. Smart Deduplication & Resolution Upscaling
-**Obiettivo**: Ottimizzare lo spazio e garantire la massima qualità visiva.
+**Goal**: Optimize storage and guarantee maximum visual quality.
 
-*   **Cross-Source Deduplication**: Usare il `phash` e gli embedding per identificare se lo stesso asset è presente sia come clip YouTube che come Artlist.
-*   **Auto-Selection**: In caso di duplicati, il sistema sceglie automaticamente la versione con risoluzione/bitrate maggiore e segna le altre come "mirror".
+*   **Cross-Source Deduplication**: Use `phash` and embeddings to identify if the same asset exists both as a YouTube clip and Artlist asset.
+*   **Auto-Selection**: In case of duplicates, the system automatically picks the highest resolution/bitrate version and marks others as "mirror".
 
 ---
 
-## Stato dell'Infrastruttura
-Tutte queste feature sono ora possibili grazie alla consolidazione del database:
-- [x] Database Unificato (`media.db.sqlite`)
-- [x] Schema flessibile (`metadata_json`)
-- [x] Supporto per Embedding Semantici
-- [x] Supporto per Perceptual Hashing (phash)
-12. Generative Gap-Filling
+## Infrastructure Status
+All these features are now possible thanks to database consolidation:
+- [x] Unified Database (`media.db.sqlite`)
+- [x] Flexible schema (`metadata_json`)
+- [x] Semantic Embedding support
+- [x] Perceptual Hashing (phash) support
 
-Come Instagram con AI Backdrops
+## 6. Generative Gap-Filling
 
-    Obiettivo: se non hai la clip, la crei.
-    Logica: quando Predictive Harvesting trova un gap (es. "drone shot of Tokyo at night" manca), invece di solo scrapare, lancia SDXL-Turbo o AnimateDiff per generare 3s di B-roll sintetico.
-    Azione: salva con source: "gen" e prompt. Usa lo stesso embedding per cercarlo dopo.
-    Impatto: database mai vuoto.
-13. Social Feedback Loop
+Like Instagram with AI Backdrops
 
-Come il ranking di Meta
+**Goal**: if you don't have the clip, you create it.
+**Logic**: when Predictive Harvesting finds a gap (e.g., "drone shot of Tokyo at night" is missing), instead of just scraping, launch SDXL-Turbo or AnimateDiff to generate 3s of synthetic B-roll.
+**Action**: save with source: "gen" and prompt. Use the same embedding to find it later.
+**Impact**: database never empty.
 
-    Obiettivo: PipelineGen impara da cosa funziona.
-    Logica: ogni video esportato riceve metriche (watch time, CTR). Salvale in una tabella performance.
-    Azione: fai fine-tuning del tuo scoring: le clip usate in video con alta retention ottengono un boost permanente nel DB.
-    Impatto: il sistema diventa più intelligente ogni settimana, senza riaddestramenti manuali.
+## 7. Social Feedback Loop
 
-Quando PipelineGen vede che un long-form ha un picco di retention tra 4:12 e 4:27, il Harvester estrae automaticamente quel segmento, lo indicizza come nuovo asset type='short_candidate', genera 3 varianti di hook con il tuo Generative Gap-Filling, e te le propone già pronte per Shorts.
+Like Meta's ranking
+
+**Goal**: PipelineGen learns from what works.
+**Logic**: every exported video receives metrics (watch time, CTR). Save them in a `performance` table.
+**Action**: fine-tune your scoring: clips used in high-retention videos get a permanent boost in the DB.
+**Impact**: the system gets smarter every week, without manual retraining.
+
+When PipelineGen sees that a long-form video has a retention spike between 4:12 and 4:27, the Harvester automatically extracts that segment, indexes it as a new asset type `short_candidate`, generates 3 hook variants with Generative Gap-Filling, and proposes them ready for Shorts.

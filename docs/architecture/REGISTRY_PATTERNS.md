@@ -1,29 +1,29 @@
-# REGISTRY_PATTERNS.md - Pattern Canonici per Registry e Resolver
+# REGISTRY_PATTERNS.md - Canonical Patterns for Registry and Resolver
 
-**Ultimo aggiornamento**: 2026-05-06
-**Scopo**: Definire i pattern canonici per evitare duplicazione di logica. Tutte le nuove feature devono usare questi pattern.
-
----
-
-## Regola d'Oro
-
-> **Niente duplicazione di logica. Ogni nuova feature deve entrare in un registry, resolver o sampler comune.**
+**Last updated**: 2026-05-25
+**Purpose**: Define canonical patterns to avoid logic duplication. All new features must use these patterns.
 
 ---
 
-## Pattern Canonici
+## Golden Rule
 
-### 1. Module Registry (Registrazione Moduli)
+> **No logic duplication. Every new feature must hook into a shared registry, resolver, or sampler.**
+
+---
+
+## Canonical Patterns
+
+### 1. Module Registry
 
 **Interface**: `module.Module` in `internal/module/module.go`
 
-**Registry**: `module.Registry` - gestisce il ciclo di vita dei moduli
+**Registry**: `module.Registry` - manages module lifecycle
 
-**Quando usare**: Per ogni nuova funzionalità che espone API o ha un ciclo di vita (Start/Stop)
+**When to use**: For every new feature that exposes APIs or has a lifecycle (Start/Stop)
 
-**Esempio**:
+**Example**:
 ```go
-// 1. Implementa module.Module
+// 1. Implement module.Module
 type MyModule struct {
     cfg *config.Config
 }
@@ -34,19 +34,19 @@ func (m *MyModule) RegisterRoutes(rg *gin.RouterGroup) { ... }
 func (m *MyModule) Start(ctx context.Context) error { ... }
 func (m *MyModule) Stop(ctx context.Context) error { ... }
 
-// 2. Registra nel bootstrap/registry.go
+// 2. Register in internal/app/registry.go
 func WireRegistry(...) {
     registry.Register(myModule)
 }
 ```
 
-**Antipattern**: Creare handler diretti nel router senza passare da `module.Module`
+**Antipattern**: Creating direct handlers in the router without going through `module.Module`
 
 ---
 
-### 2. Destination Resolver (Risoluzione Destinazioni)
+### 2. Destination Resolver
 
-**Interface Canonica**: `core/destination.Resolver` in `internal/core/destination/types.go`
+**Canonical Interface**: `core/destination.Resolver` in `internal/core/destination/types.go`
 
 ```go
 type Resolver interface {
@@ -54,13 +54,13 @@ type Resolver interface {
 }
 ```
 
-**Implementazione**: `assetdestination.Resolver` -> adatta a `core/destination.Resolver` via `assetdestination.ToCoreResolver()`
+**Implementation**: `assetdestination.Resolver` -> adapts to `core/destination.Resolver` via `assetdestination.ToCoreResolver()`
 
-**Quando usare**: Per risolvere destinazioni di asset (Drive, locale, S3, etc.)
+**When to use**: To resolve asset destinations (Drive, local, S3, etc.)
 
-**Esempio**:
+**Example**:
 ```go
-// Usa il resolver canonico
+// Use the canonical resolver
 var resolver destination.Resolver
 
 result, err := resolver.Resolve(ctx, &destination.ResolveRequest{
@@ -70,22 +70,22 @@ result, err := resolver.Resolve(ctx, &destination.ResolveRequest{
 })
 ```
 
-**Antipattern**: Usare direttamente `drivedestination.Service` invece del resolver canonico
+**Antipattern**: Using `drivedestination.Service` directly instead of the canonical resolver
 
-**Migrazione**: Sostituire usi diretti di `drivedestination.Service` con `core/destination.Resolver`:
-- `internal/service/youtubeclip/service.go` - usa `drivedestination.Service` direttamente
-- `internal/service/artlist/drive_service.go` - espone `GetDriveDestination()`
-- `internal/service/assetops/destination.go` - usa `drivedestination.Service` direttamente
+**Migration**: Replace direct `drivedestination.Service` usage with `core/destination.Resolver`:
+- `internal/sources/youtube/service.go` - uses `drivedestination.Service` directly
+- `internal/sources/artlist/drive_service.go` - exposes `GetDriveDestination()`
+- `internal/media/assetops/destination.go` - uses `drivedestination.Service` directly
 
 ---
 
-### 3. Asset Registry (Registro Asset)
+### 3. Asset Registry
 
-**Interface**: `assetregistry.Registry` in `internal/service/assetregistry/registry.go`
+**Interface**: `assetregistry.Registry` in `internal/media/assetregistry/registry.go`
 
-**Quando usare**: Per operazioni CRUD su asset (clips, immagini, voiceover)
+**When to use**: For CRUD operations on assets (clips, images, voiceovers)
 
-**Esempio**:
+**Example**:
 ```go
 type ClipRegistry interface {
     SearchClips(ctx context.Context, term string) ([]*models.Clip, error)
@@ -94,42 +94,40 @@ type ClipRegistry interface {
 }
 ```
 
-**Registrazione**:
+**Registration**:
 ```go
 registry := assetregistry.NewRegistry(log)
 registry.RegisterClipSource(assetSourceYouTube, youtubeRepo)
 registry.RegisterClipSource(assetSourceArtlist, artlistRepo)
 ```
 
-**Note**: `assetregistry.Registry` è SPERIMENTALE e potrebbe essere rimosso. Usare `assetregistry.Registry` per nuovi codici.
+---
+
+### 4. Media Processor
+
+**Canonical Interface**: `mediaasset.MediaProcessor` in `internal/media/mediaasset/processor.go`
+
+**When to use**: To process media (download, upload, transcode, etc.)
+
+**Status**: **CANONICAL** - Only approved media processor
+
+**Used by**: Artlist, YouTube, Voiceover, Stock
+
+**Antipattern**: Creating custom processors for each module
 
 ---
 
-### 4. Media Processor (Processore Media)
+### 5. Job System
 
-**Interface Canonica**: `mediaasset.MediaProcessor` in `internal/service/mediaasset/processor.go`
+**Canonical Interface**: `internal/jobs/` + `internal/repository/jobs/`
 
-**Quando usare**: Per processare media (download, upload, transcode, etc.)
+**When to use**: For async or long-running operations (> 3 seconds)
 
-**Status**: **CANONICO** - Unico processore media approvato
+**Status**: **CANONICAL SYSTEM** - All async must go through here
 
-**Usato da**: Artlist, YouTube, (future) Voiceover
+**Database**: `velox.db.sqlite` (table `jobs`)
 
-**Antipattern**: Creare processor custom per ogni modulo
-
----
-
-### 5. Job System (Sistema Job)
-
-**Interface Canonica**: `internal/core/jobs/` + `internal/service/jobs/`
-
-**Quando usare**: Per operazioni asincrone o lunghe (> 3 secondi)
-
-**Status**: **SISTEMA CANONICO** - Tutto l'async deve passare da qui
-
-**Database**: `jobs.db.sqlite`
-
-**Esempio**:
+**Example**:
 ```go
 // Enqueue job
 err := jobService.Enqueue(ctx, &models.Job{
@@ -138,60 +136,50 @@ err := jobService.Enqueue(ctx, &models.Job{
 })
 ```
 
-**Antipattern**: Usare `context.Background()` negli handler o goroutine scollegate
+**Antipattern**: Using `context.Background()` in handlers or detached goroutines
 
 ---
 
-## Matrice delle Decisioni
+## Decision Matrix
 
-| Nuova Feature | Usa Pattern | Perché |
-|---------------|-------------|---------|
-| Nuovo modulo API | `module.Module` | Gestione ciclo vita, route registration |
-| Nuova destinazione | `core/destination.Resolver` | Unificato, supporta Drive/locale/S3 |
-| Nuovo asset type | `assetregistry.Registry` | CRUD comune, source-based |
-| Nuovo processor | `mediaasset.MediaProcessor` | Processore canonico media |
-| Nuova operazione async | `jobs.Service` | Job system canonico |
-
----
-
-## Checklist per Nuove Feature
-
-Prima di aggiungere una nuova feature, controlla:
-
-- [ ] Esiste già un registry/resolver per questa funzione?
-- [ ] Se sì, posso estendere quello esistente?
-- [ ] Se no, devo creare un nuovo registry o usare uno dei pattern canonici?
-- [ ] Il codice usa `context.Background()` negli handler? (NO!)
-- [ ] Il codice usa il job system per operazioni > 3 secondi?
-- [ ] Ho registrato il modulo in `bootstrap/registry.go`?
-- [ ] Ho aggiornato `docs/architecture/MODULE_MAP.md`?
+| New Feature | Use Pattern | Why |
+|-------------|-------------|-----|
+| New API module | `module.Module` | Lifecycle management, route registration |
+| New destination | `core/destination.Resolver` | Unified, supports Drive/local/S3 |
+| New asset type | `assetregistry.Registry` | Common CRUD, source-based |
+| New processor | `mediaasset.MediaProcessor` | Canonical media processor |
+| New async operation | `jobs.Service` | Canonical job system |
 
 ---
 
-## Da Eliminare (Quarantena)
+## Checklist for New Features
 
-| Pattern/Sistema | Motivo | Sostituire Con |
-|------------------|--------|----------------|
-| `assetregistry.Registry` | SPERIMENTALE, non usato | `assetregistry.Registry` o rimuovere |
-| `internal/service/assetpipeline/` | Thin wrapper inutile | Chiamate dirette ai componenti |
-| Usi diretti di `drivedestination.Service` | Bypassa resolver canonico | `core/destination.Resolver` |
+Before adding a new feature, check:
+
+- [ ] Does a registry/resolver already exist for this function?
+- [ ] If yes, can I extend the existing one?
+- [ ] If no, should I create a new registry or use one of the canonical patterns?
+- [ ] Does the code use `context.Background()` in handlers? (NO!)
+- [ ] Does the code use the job system for operations > 3 seconds?
+- [ ] Did I register the module in `internal/app/registry.go`?
+- [ ] Did I update `docs/architecture/MODULE_MAP.md`?
 
 ---
 
 ## CI Checks
 
-Eseguire `scripts/ci-architectural-checks.sh` per validare:
-- Nessun `context.Background()` negli handler
-- Uso dei pattern canonici
-- Nessun thin wrapper inutile
-- Nessun codice morto
+Run `scripts/ci-architectural-checks.sh` to validate:
+- No `context.Background()` in handlers
+- Usage of canonical patterns
+- No unnecessary thin wrappers
+- No dead code
 
 ---
 
-## Note per Agenti
+## Notes for Agents
 
-1. Prima di creare nuovo codice, controllare se esiste già un pattern per quella funzione
-2. Usare sempre le interface canoniche in `internal/core/`
-3. Registrare nuovi moduli tramite `module.Registry`
-4. Usare il job system per operazioni asincrone
-5. Non creare duplicati "perché è più veloce" - usa il pattern comune
+1. Before writing new code, check if a pattern already exists for that function
+2. Always use canonical interfaces from `internal/core/`
+3. Register new modules via `module.Registry`
+4. Use the job system for async operations
+5. Don't create duplicates "because it's faster" - use the shared pattern

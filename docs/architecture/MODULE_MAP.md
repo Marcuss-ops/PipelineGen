@@ -1,145 +1,141 @@
-# MODULE_MAP.md - PipelineGen Module Map Ufficiale
+# MODULE_MAP.md - PipelineGen Official Module Map
 
-**Ultimo aggiornamento**: 2026-05-06
-**Scopo**: Mappa ufficiale dei moduli attivi, sperimentali e deprecati. Single source of truth per agenti e sviluppatori.
-
----
-
-## Legenda Stato
-
-| Stato | Significato | Azione |
-|-------|-------------|--------|
-| **ATTIVO** | Modulo stabile, in produzione | Mantenere, testare |
-| **SPERIMENTALE** | In sviluppo, feature flag OFF | Valutare, completare o rimuovere |
-| **DEPRECATO** | Da eliminare, non estendere | Migrare e rimuovere |
-| **DISABILITATO** | Feature flag OFF, in quarantena | Riscrivere o eliminare |
+**Last updated**: 2026-05-25
+**Purpose**: Official map of active, experimental and deprecated modules. Single source of truth for agents and developers.
 
 ---
 
-## Module Map Ufficiale
+## Status Legend
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| **ACTIVE** | Stable module, in production | Maintain, test |
+| **EXPERIMENTAL** | In development, feature flag OFF | Evaluate, complete or remove |
+| **DEPRECATED** | To be deleted, do not extend | Migrate and remove |
+| **DISABLED** | Feature flag OFF, in quarantine | Rewrite or delete |
+
+---
+
+## Official Module Map
 
 ### Core System
 
-| Modulo | Stato | Feature Flag | Descrizione | Database | Modulo Path |
-|--------|-------|--------------|-------------|----------|--------------|
-| **System** | ATTIVO | sempre ON | Health, diagnostics, doctor endpoint | nessuno | `internal/module/system/` |
-| **Jobs** | ATTIVO | sempre ON | Coda job, worker, eventi | `jobs.db.sqlite` | `internal/service/jobs/` + `internal/core/jobs/` |
+| Module | Status | Feature Flag | Description | Database | Module Path |
+|--------|--------|--------------|-------------|----------|-------------|
+| **System** | ACTIVE | always ON | Health, diagnostics, doctor endpoint | none | `internal/app/` (SystemWiring) |
+| **Jobs** | ACTIVE | always ON | Job queue, workers, events | `velox.db.sqlite` (`jobs` table) | `internal/jobs/` + `internal/repository/jobs/` |
+| **Registry** | ACTIVE | always ON | Module wiring, dependency injection | none | `internal/app/registry.go` |
 
 ### Media Processing
 
-| Modulo | Stato | Feature Flag | Descrizione | Database | Modulo Path |
-|--------|-------|--------------|-------------|----------|--------------|
-| **Artlist** | ATTIVO | `ARTLIST_ENABLED` | Pipeline Artlist (search, download, upload) | `artlist.db.sqlite`, `velox.db.sqlite` | `internal/service/artlist/` |
-| **YouTube Clips** | ATTIVO | `YOUTUBE_ENABLED` | Estrazione clip YouTube | `clips.db.sqlite` | `internal/service/youtubeclip/` |
-| **Media** | ATTIVO | sempre ON | Manifest export, asset management | `velox.db.sqlite` | `internal/module/media/` |
-| **MediaAsset Processor** | ATTIVO | sempre ON | Processore canonico media (condiviso) | varie | `internal/service/mediaasset/` |
-| **AssetRegistry** | SPERIMENTALE | n/a | Finalizer, registry pattern | varie | `internal/service/assetregistry/` |
+| Module | Status | Feature Flag | Description | Database | Module Path |
+|--------|--------|--------------|-------------|----------|-------------|
+| **Artlist** | ACTIVE | `ARTLIST_ENABLED` | Artlist pipeline (search, download, upload) | `media.db.sqlite` | `internal/sources/artlist/` |
+| **YouTube Clips** | ACTIVE | `YOUTUBE_ENABLED` | YouTube clip extraction | `media.db.sqlite` | `internal/sources/youtube/` |
+| **Media** | ACTIVE | always ON | Manifest export, asset management | `velox.db.sqlite` | `internal/module/media.go` |
+| **MediaAsset Processor** | ACTIVE | always ON | Canonical media processor (shared) | varies | `internal/media/mediaasset/` |
+| **AssetRegistry** | EXPERIMENTAL | n/a | Finalizer, registry pattern | varies | `internal/media/assetregistry/` |
+| **Stock Pipeline** | ACTIVE | always ON | Stock footage pipeline | `media.db.sqlite` | `internal/module/stock.go` |
 
 ### Content Generation
 
-| Modulo | Stato | Feature Flag | Descrizione | Database | Modulo Path |
-|--------|-------|--------------|-------------|----------|--------------|
-| **ScriptDocs** | ATTIVO | `SCRIPT_DOCS_ENABLED` | Generazione script via Ollama | `velox.db.sqlite` | `internal/api/handlers/script/` |
-| **Script History** | ATTIVO | `SCRIPT_CLIPS_ENABLED` | Storico script generati | `velox.db.sqlite` | `internal/module/script_history/` |
-| **Voiceover** | SPERIMENTALE | `VOICEOVER_ENABLED` | Generazione voiceover, sync | `media.db.sqlite` | `internal/service/voiceover/` |
+| Module | Status | Feature Flag | Description | Database | Module Path |
+|--------|--------|--------------|-------------|----------|-------------|
+| **ScriptDocs** | ACTIVE | `SCRIPT_DOCS_ENABLED` | Script generation via Ollama | `velox.db.sqlite` | `internal/api/handlers/script/` |
+| **Script History** | ACTIVE | `SCRIPT_CLIPS_ENABLED` | Generated script history | `velox.db.sqlite` | `internal/module/scripthistory.go` |
+| **Voiceover** | EXPERIMENTAL | `VOICEOVER_ENABLED` | Voiceover generation, sync | `media.db.sqlite` | `internal/media/voiceover/` |
+| **Images** | EXPERIMENTAL | `IMAGES_ENABLED` | Image search, sync and generation (NVIDIA AI) | `media.db.sqlite` | `internal/media/images/` |
 
 ### Asset Management
 
-| Modulo | Stato | Feature Flag | Descrizione | Database | Modulo Path |
-|--------|-------|--------------|-------------|----------|--------------|
-| **Assets** | ATTIVO | sempre ON | Ricerca unificata asset | `velox.db.sqlite`, `artlist.db.sqlite` | `internal/module/assets/` |
-| **Images** | ATTIVO | `IMAGES_ENABLED` | Ricerca e sync immagini | `images.db.sqlite` | `internal/service/images/` |
-| **Drive Destination** | ATTIVO | sempre ON | Upload Drive, resolver dest. | nessuno (API) | `internal/upload/drive/` + `internal/service/assetdestination/` |
-| **Asset Destination** | ATTIVO | sempre ON | Resolver unificato destinazioni | nessuno | `internal/service/assetdestination/` |
+| Module | Status | Feature Flag | Description | Database | Module Path |
+|--------|--------|--------------|-------------|----------|-------------|
+| **Assets** | ACTIVE | always ON | Unified asset search | `velox.db.sqlite`, `media.db.sqlite` | `internal/module/assets.go` |
+| **Asset Index** | ACTIVE | always ON | Asset index for fast search | `velox.db.sqlite` (`asset_index` table) | `internal/media/assetindex/` |
+| **Asset Tree** | ACTIVE | always ON | Hierarchical asset tree | `velox.db.sqlite` (`asset_tree_nodes` table) | `internal/media/assettree/` |
+| **Drive Destination** | ACTIVE | always ON | Drive upload, destination resolver | none (API) | `internal/upload/drive/` + `internal/storage/assetdestination/` |
+| **Asset Destination** | ACTIVE | always ON | Unified destination resolver | none | `internal/storage/assetdestination/` |
+| **Deletion Service** | ACTIVE | always ON | Multi-source asset deletion | various DBs | `internal/media/deletion.go` |
 
-### Automation
+### Automation & Sync
 
-| Modulo | Stato | Feature Flag | Descrizione | Database | Modulo Path |
-|--------|-------|--------------|-------------|----------|--------------|
-| **Workflow** | DISABILITATO | `WORKFLOW_ENABLED` | Workflow runner, goroutine | `velox.db.sqlite` | `internal/service/workflowrunner/` |
-| **Scraper** | ATTIVO | sempre ON | Node.js scraper integration | nessuno | `internal/module/scraper/` |
+| Module | Status | Feature Flag | Description | Database | Module Path |
+|--------|--------|--------------|-------------|----------|-------------|
+| **Catalog Sync** | ACTIVE | always ON | Catalog sync from Drive | `media.db.sqlite` | `internal/media/catalogsync/` |
+| **Voiceover Sync** | ACTIVE | always ON | Voiceover sync from Drive | `media.db.sqlite` | `internal/media/voiceoversync/` |
+| **Lifecycle Scheduler** | ACTIVE | always ON | Periodic maintenance scheduler | `velox.db.sqlite` | `internal/storage/scheduler/` |
+| **Channel Monitor** | ACTIVE | `VELOX_ENABLE_CHANNEL_MONITOR` | YouTube channel monitoring | `media.db.sqlite` | `internal/media/monitor/` |
 
-### Utilities
+### Maintenance
 
-| Modulo | Stato | Feature Flag | Descrizione | Database | Modulo Path |
-|--------|-------|--------------|-------------|----------|--------------|
-| **Utility** | ATTIVO | sempre ON | Utilità varie, slug generation | nessuno | `internal/module/utility/` |
-| **ContentPackage** | ATTIVO | sempre ON | Job handler per content.package | `jobs.db.sqlite` | `internal/service/contentpackage/` |
-
----
-
-## Database Boundaries (Desired Schema)
-
-| Database | Tabelle | Moduli che lo usano |
-|----------|---------|---------------------|
-| `velox.db.sqlite` | scripts, monitored_sources, harvester_jobs, media_items, media_files, media_tags, video_metadata, script_stock_matches, video_stats_history, artlist_runs | System, ScriptDocs, Artlist, Media, Assets |
-| `stock.db.sqlite` | clips (stock), clip_folders (stock) | Assets |
-| `clips.db.sqlite` | clips (YouTube), clip_folders, segment_embeddings | YouTube Clips |
-| `artlist.db.sqlite` | clips (Artlist), clip_folders, artlist_runs | Artlist |
-| `images.db.sqlite` | (vuoto o image tables) | Images |
-| `media.db.sqlite` | Unified media tables, inclusi voiceovers | Voiceover, YouTube, Artlist, Stock, Images |
-| `jobs.db.sqlite` | jobs, job_events | Jobs, ContentPackage |
+| Module | Status | Feature Flag | Description | Database | Module Path |
+|--------|--------|--------------|-------------|----------|-------------|
+| **Maintenance** | ACTIVE | always ON | DB maintenance (VACUUM, cleanup) | `velox.db.sqlite` | `internal/core/maintenance/` |
+| **Admin CLI** | ACTIVE | always ON | One-shot admin commands via `go run ./cmd/admin` | various DBs | `cmd/admin/` |
 
 ---
 
-## Da Eliminare (Quarantena)
+## Database Boundaries (Current)
 
-| Sistema Vecchio | Motivo | Sostituito Da | Azione |
-|-----------------|--------|---------------|--------|
-| `internal/cron/*` | Job system legacy | `internal/service/jobs/` | Eliminare dopo migrazione harvester |
-| `internal/repository/harvester/` | Usa cron legacy | Job system | Migrare o eliminare |
-| `internal/service/workflowrunner/` | Pericoloso (context.Background) | N/A | Spostare in experimental o eliminare |
-| `internal/service/assetpipeline/` | Thin wrapper inutile | Chiamate dirette | Eliminare |
-| `pkg/idutil`, `pkg/jsonutil` | Wrap inutili | Inlineare | Inlineare funzioni |
+| Database | Path | Tables | Used By |
+|----------|------|--------|---------|
+| `velox.db.sqlite` | `data/velox/velox.db.sqlite` | scripts, jobs, job_events, asset_index, asset_links, asset_tree_nodes, artlist_runs, pipeline_runs, pipeline_run_items, monitored_sources, harvester_jobs, media_items, media_files, media_tags, script_stock_matches, video_stats_history, script_sections, schema_migrations, api_requests | System, ScriptDocs, Artlist, Media, Assets, Jobs, AssetIndex, AssetTree |
+| `media.db.sqlite` | `data/media/media.db.sqlite` | media_assets, clip_folders, segment_embeddings, voiceovers, subjects, sketchfab_models, schema_migrations | YouTube, Artlist, Stock, Voiceover, Images, CatalogSync, Sketchfab |
 
----
+### Database Notes
 
-## Regole di Sopravvivenza
-
-### Moduli ATTIVI
-1. Devono avere test
-2. Devono usare job system per operazioni > 3 secondi
-3. Non possono usare `context.Background()` negli handler
-4. Devono propagare il context correttamente
-
-### Moduli SPERIMENTALI
-1. Devono stare in `internal/experimental/` (se non già)
-2. Feature flag OFF di default
-3. Non possono essere usati da moduli attivi senza review
-4. Piano di uscita obbligatorio (completamento o eliminazione)
-
-### Moduli DEPRECATI
-1. Non ricevono nuove feature
-2. Vengono eliminati gradualmente
-3. Codice rimosso, non lasciato a marcire
+- **Separate databases** for `artlist.db.sqlite`, `stock.db.sqlite`, `clips.db.sqlite`, `images.db.sqlite` **no longer exist**. All unified into `media.db.sqlite`.
+- The old `data/artlist/artlist.db.sqlite` file is **legacy** and no longer opened by the active server.
+- The `jobs` table lives in `velox.db.sqlite`, not in a separate `jobs.db.sqlite`.
 
 ---
 
-## Contract Architetturale
+## Architectural Contracts
 
-### Unico Processore Media
-- **Canonico**: `mediaasset.MediaProcessor`
+### Single Media Processor
+- **Canonical**: `mediaasset.MediaProcessor` in `internal/media/mediaasset/`
 - **Input**: `AssetInput`
 - **Output**: `AssetResult`
-- **Usato da**: Artlist, YouTube, (future) Voiceover
+- **Used by**: Artlist, YouTube, Voiceover, Stock
 
-### Unico Job System
-- **Canonico**: `internal/service/jobs/` + `internal/core/jobs/`
-- **Storage**: `jobs.db.sqlite`
-- **Worker**: 2 background workers
-- **Retry**: Max 3 di default
+### Single Job System
+- **Canonical**: `internal/jobs/` + `internal/repository/jobs/`
+- **Storage**: `velox.db.sqlite` (`jobs` table)
+- **Worker**: Configurable runner, polls every 2s, lease TTL 5min
+- **Retry**: Max 3 by default
 
-### Unico Module Registry
-- **Registry**: `internal/module/registry.go`
+### Single Module Registry
+- **Registry**: `internal/app/registry.go`
 - **Interface**: `module.Module`
-- **Lifecycle**: `Start()`, `Stop()`, `RegisterRoutes()`
+- **Wiring**: `WireRegistry()` in `internal/app/`
+- **Lifecycle**: `RegisterRoutes()`, cleanup on shutdown
 
 ---
 
-## Note per Agenti
+## Survival Rules
 
-1. Prima di aggiungere un nuovo modulo, controllare se esiste già funzionalità simile
-2. Usare sempre `module.Module` interface per nuovi moduli
-3. Registrare nuovi moduli in `internal/bootstrap/registry.go`
-4. Aggiornare questa mappa ad ogni cambiamento architetturale
-5. Eseguire `scripts/ci-architectural-checks.sh` per validare
+### ACTIVE Modules
+1. Must have tests
+2. Must use job system for operations > 3 seconds
+3. Cannot use `context.Background()` in handlers
+4. Must propagate context correctly
+
+### EXPERIMENTAL Modules
+1. Feature flag OFF by default
+2. Cannot be used by active modules without review
+3. Required exit plan (completion or removal)
+
+### DEPRECATED Modules
+1. No new features
+2. Gradually removed
+3. Code deleted, not left to rot
+
+---
+
+## Notes for Agents
+
+1. Before adding a new module, check if similar functionality already exists
+2. Always use the `module.Module` interface for new modules
+3. Register new modules in `internal/app/registry.go`
+4. Update this map on every architectural change
+5. Run `scripts/ci-architectural-checks.sh` to validate

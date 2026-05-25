@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -153,6 +155,7 @@ func (s *SQLiteDB) RunMigrations(log *zap.Logger, migrationsDir string) error {
 }
 
 // Backup creates a backup of the database file in a 'backups' subdirectory.
+// Keeps only the last MaxBackups (5) backups, auto-pruning older ones.
 func (s *SQLiteDB) Backup() error {
 	if s.dbPath == "" || s.dbPath == ":memory:" {
 		return nil
@@ -168,7 +171,45 @@ func (s *SQLiteDB) Backup() error {
 
 	dbName := filepath.Base(s.dbPath)
 	backupPath := filepath.Join(backupDir, dbName+time.Now().Format(".20060102_150405.bak"))
-	return s.BackupTo(backupPath)
+
+	if err := s.BackupTo(backupPath); err != nil {
+		return err
+	}
+
+	// Prune old backups: keep only the last MaxBackups
+	s.pruneOldBackups(backupDir, dbName)
+
+	return nil
+}
+
+const MaxBackups = 5
+
+// pruneOldBackups removes excess backup files, keeping only the most recent MaxBackups.
+func (s *SQLiteDB) pruneOldBackups(backupDir, dbName string) {
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return
+	}
+
+	// Collect backup files matching this DB
+	var backups []string
+	prefix := dbName + "."
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), prefix) && strings.HasSuffix(e.Name(), ".bak") {
+			backups = append(backups, filepath.Join(backupDir, e.Name()))
+		}
+	}
+
+	if len(backups) <= MaxBackups {
+		return
+	}
+
+	// Sort by name (which includes timestamp) ascending, remove oldest
+	sort.Strings(backups)
+	toRemove := backups[:len(backups)-MaxBackups]
+	for _, path := range toRemove {
+		os.Remove(path)
+	}
 }
 
 // BackupTo creates a backup of the database using VACUUM INTO (safe with WAL mode).

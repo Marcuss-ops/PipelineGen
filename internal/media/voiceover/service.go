@@ -69,13 +69,19 @@ func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 }
 
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
-	resp, err := s.GenerateBatch(ctx, &BatchRequest{
+	req := &BatchRequest{
 		Text:             text,
 		Languages:        []string{language},
 		FilenameTemplate: filename,
 		RemoveSilence:    boolPtr(false),
 		Strategy:         "replace",
-	})
+	}
+	if s.cfg.Drive.VoiceoverRootFolder != "" {
+		req.Destination = &DestinationRequest{
+			FolderID: s.cfg.Drive.VoiceoverRootFolder,
+		}
+	}
+	resp, err := s.GenerateBatch(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +131,10 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	// Ensure dest is not nil to avoid panics when accessing fields
 	if dest == nil {
 		dest = &ResolvedDestination{}
+	}
+
+	if dest.FolderID == "" && s.cfg.Drive.VoiceoverRootFolder != "" {
+		dest.FolderID = s.cfg.Drive.VoiceoverRootFolder
 	}
 
 	resp := &BatchResponse{
@@ -206,6 +216,11 @@ func (s *Service) processLanguage(
 	}
 	metaJSON, _ := json.Marshal(meta)
 
+	localPath := item.CleanedPath
+	if localPath == "" {
+		localPath = item.LocalPath
+	}
+
 	// Create FinalizeInput for LifecycleService
 	input := &lifecycle.FinalizeInput{
 		ID:           item.ID,
@@ -215,7 +230,7 @@ func (s *Service) processLanguage(
 		Source:       "voiceover",
 		Group:        dest.Group,
 		Subfolder:    "",
-		LocalPath:    item.CleanedPath,
+		LocalPath:    localPath,
 		FolderID:     dest.FolderID,
 		FolderPath:   dest.FolderPath,
 		DriveLink:    item.DriveLink,

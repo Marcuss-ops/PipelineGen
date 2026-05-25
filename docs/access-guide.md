@@ -1,89 +1,86 @@
-# PipelineGen - Guida di Accesso e Funzionamento
+# PipelineGen - Access Guide
 
-## Informazioni di Accesso
+## Access Info
 
-- **URL Pubblico**: http://77.93.152.122:8080
-- **URL Locale**: http://127.0.0.1:8080
-- **Password Admin**: (salvata in `data/password.txt`)
+- **Public URL**: http://77.93.152.122:8080
+- **Local URL**: http://127.0.0.1:8080
+- **Admin Password**: (stored in `data/password.txt`)
 
-## Configurazione Server
+## Server Configuration
 
 ### Bind Address
-Il server è configurato per ascoltare su tutte le interfacce:
+The server listens on all interfaces:
 ```bash
 Environment=VELOX_HOST=0.0.0.0
 ```
 
-### Porte
-- **8080**: API backend principale
-- **5173**: Frontend React (solo sviluppo)
+### Ports
+- **8080**: Main API backend
+- **5173**: React frontend (dev only)
 
-## Database Collegati
+## Databases
 
-### velox.db.sqlite
-Contiene le tabelle principali:
-- `scripts` - Script di generazione video
-- `monitored_sources` - Canali YouTube monitorati
-- `harvester_jobs` - Job di raccolta contenuti
-- `media_items` - Elementi media elaborati
-- `media_files` - File associati ai media
-- `media_tags` - Tag per categorizzazione
-- `video_metadata` - Metadati video
-- `script_stock_matches` - Corrispondenze script/stock
-- `video_stats_history` - Storico statistiche
-- `artlist_runs` - Esecuzioni pipeline Artlist
+### velox.db.sqlite (`data/velox/velox.db.sqlite`)
+Main database:
+- `scripts` - Video generation scripts
+- `monitored_sources` - Monitored YouTube channels
+- `harvester_jobs` - Content harvesting jobs
+- `media_items` - Processed media items
+- `media_files` - Files associated with media
+- `media_tags` - Categorization tags
+- `video_metadata` - Video metadata
+- `script_stock_matches` - Script-to-stock matches
+- `video_stats_history` - Statistics history
+- `artlist_runs` - Artlist pipeline runs
 
-### artlist.db.sqlite
-Database per gli asset Artlist:
-- `clips` - Clip Artlist con metadati
-- `clip_folders` - Cartelle organizzative
-- `clips_fts` - Full-text search (fallback LIKE)
-- `schema_migrations` - Versioning schema
+### media.db.sqlite (`data/media/media.db.sqlite`)
+Unified media database:
+- `media_assets` - All assets (YouTube, Artlist, Stock, Voiceovers)
 
-## API Endpoints Principali
+## Key API Endpoints
 
 ### Artlist
-- `POST /api/artlist/run` - Avvia pipeline Artlist
-- `GET /api/artlist/runs/:run_id` - Stato esecuzione
-- `GET /api/artlist/diagnostics` - Diagnostica sistema
-- `POST /api/artlist/search/live` - Ricerca live
+- `POST /api/artlist/run` - Start Artlist pipeline
+- `GET /api/artlist/runs/:run_id` - Run status
+- `GET /api/artlist/diagnostics` - System diagnostics
+- `POST /api/artlist/search/live` - Live search
 
 ### YouTube Clips
-- `POST /api/clips/process` - Scarica e processa clip YouTube
+- `POST /api/clips/process` - Download and process YouTube clips
 
 ### Jobs
-- `GET /api/jobs` - Lista job
-- `GET /api/jobs/:id` - Dettaglio job
-- `POST /api/jobs` - Crea nuovo job
+- `GET /api/jobs` - List jobs
+- `GET /api/jobs/:id` - Job details
+- `POST /api/jobs` - Create new job
 
-## Autenticazione
+## Authentication
 
-Il sistema usa token di sicurezza:
-- `VELOX_ADMIN_TOKEN` - Token amministratore
-- `VELOX_WORKER_TOKEN` - Token per worker
+The system uses security tokens:
+- `VELOX_ADMIN_TOKEN` - Admin token
+- `VELOX_WORKER_TOKEN` - Worker token
 
-Se `VELOX_ENABLE_AUTH=true`, le API richiedono autenticazione.
+If `VELOX_ENABLE_AUTH=true`, all APIs require authentication.
 
-## Gestione Servizio
+## Service Management
 
-### Avvio/Stop/Restart
+### Start/Stop/Restart
 ```bash
 sudo systemctl start pipelinegen
 sudo systemctl stop pipelinegen
 sudo systemctl restart pipelinegen
 ```
 
-### Stato servizio
+### Service Status
 ```bash
 systemctl status pipelinegen --no-pager -l
 ```
 
-### Log in tempo reale
+### Live Logs
 ```bash
 journalctl -u pipelinegen -f
 ```
 
-### Ricarica configurazione
+### Reload Configuration
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl restart pipelinegen
@@ -91,7 +88,7 @@ sudo systemctl restart pipelinegen
 
 ## Firewall
 
-Se non riesci ad accedere dall'esterno:
+If you can't access from outside:
 
 ### UFW (Ubuntu)
 ```bash
@@ -100,44 +97,44 @@ sudo ufw reload
 sudo ufw status
 ```
 
-### Verifica porta aperta
+### Verify open port
 ```bash
 ss -tlnp | grep 8080
 ```
-Dovresti vedere: `0.0.0.0:8080`
+Expected: `0.0.0.0:8080`
 
-## Workflow Tipico
+## Typical Workflow
 
-1. **Inserimento script** → `scripts` table
-2. **Ricerca stock** → Artlist API o ricerca stock
-3. **Download asset** → Salvataggio in `data/downloads`
-4. **Generazione clip** → Elaborazione video
-5. **Upload Drive** → Caricamento su Google Drive
+1. **Script input** → `scripts` table
+2. **Stock search** → Artlist API or stock search
+3. **Asset download** → Save to `data/downloads`
+4. **Clip generation** → Video processing
+5. **Drive upload** → Upload to Google Drive
 
-## Diagnostica Rapida
+## Quick Diagnostics
 
 ```bash
-# Verifica servizio attivo
+# Check service status
 systemctl status pipelinegen --no-pager
 
-# Test connessione locale
+# Test local connection
 curl -I http://localhost:8080
 
-# Test connessione pubblica (dal VPS)
+# Test public connection (from VPS)
 curl -I http://77.93.152.122:8080
 
-# Verifica database
-sqlite3 data/velox.db.sqlite ".tables"
-sqlite3 data/artlist.db.sqlite ".tables"
+# Check databases
+sqlite3 data/velox/velox.db.sqlite ".tables"
+sqlite3 data/media/media.db.sqlite ".tables"
 
-# Log errori
+# Error logs
 journalctl -u pipelinegen --since "1 hour ago" | grep -i error
 ```
 
-## File Importanti
+## Important Files
 
-- **Configurazione**: `pkg/config/types.go`, `config.yaml`
-- **Service systemd**: `/etc/systemd/system/pipelinegen.service`
-- **Database**: `data/*.db.sqlite`
-- **Log**: `journalctl -u pipelinegen`
-- **Binario**: `pipelinegen` (nella root del progetto)
+- **Config**: `internal/config/types.go`, `config.yaml`
+- **systemd service**: `/etc/systemd/system/pipelinegen.service`
+- **Databases**: `data/velox/velox.db.sqlite`, `data/media/media.db.sqlite`
+- **Logs**: `journalctl -u pipelinegen`
+- **Binary**: `pipelinegen` (project root)

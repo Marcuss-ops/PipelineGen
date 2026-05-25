@@ -36,8 +36,8 @@ video:
   width: 1920
   height: 1080
   fps: 30
-  codec: "h264_nvenc"
-  preset: "p4"
+  codec: "libx264"
+  preset: "medium"
   crf: 18
   keyframe_interval: 60
   audio_codec: "aac"
@@ -81,7 +81,7 @@ video:
 drive:
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
   clips_root_folder: ""
-  voiceover_root_folder: "1yCnKt5tALjG4HNlmfw63V28Fd7-FuSwJ"
+  voiceover_root_folder: "1pOtdxW9r0vbGNtBb8DQYcBeCR84wEw4N"
 
 features:
   artlist_enabled: true

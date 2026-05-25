@@ -1,67 +1,74 @@
+# ============================================
 # Dependencies
+# ============================================
 vendor/
 node_modules/
 **/node_modules/
 web-admin/node_modules/
 
+# ============================================
 # Logs and temp files
+# ============================================
 *.log
 *.tmp
 tmp/
-coverage.out
 logs/
 **/__pycache__/
 
+# ============================================
 # Environment and Secrets
+# ============================================
 .env
 .env.local
 *.env.*
 credentials.json
 token.json
+token_full.json
 
+# ============================================
 # Binaries
+# ============================================
 pipelinegen
+server
 admin
-**/credentials.json
-**/token.json
-**/token_full.json
-
-
-# Editors
-.vscode/
-.idea/
-
-# Build artifacts
-bin/
 *.exe
 *.dll
 *.so
-server
-pipelinegen
+
+# ============================================
+# Editors
+# ============================================
+.vscode/
+.idea/
+
+# ============================================
+# Build artifacts
+# ============================================
+bin/
+build/
+coverage.out
+*.test
 web-admin/dist/
 
+# ============================================
 # Database
+# ============================================
 data/
 *.db
 *.db.sqlite
 *.db.sqlite-wal
 *.db.sqlite-shm
 
+# ============================================
 # Google Accounting local state
+# ============================================
 google-accounting/sessions/
-sessions/
 google-accounting/logs/
 google-accounting/deliverables/
+sessions/
 deliverables/
 
-# Local debug artifacts
-auth_check_flow.png
-dashboard_check.png
-dashboard_success.png
-debug_vids_ui.png
-flow_check.png
-flow_live_debug.png
-generation_live_check.png
-login_check.png
-login_step_1.png
-vids_content.html
+# ============================================
+# Screenshots (moved to docs/screenshots/)
+# ============================================
+docs/screenshots/

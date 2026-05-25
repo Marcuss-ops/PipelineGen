@@ -1,36 +1,36 @@
-# Guida di Avvio Rapido - PipelineGen
+# Quick Start Guide - PipelineGen
 
-Benvenuto in **PipelineGen**, una potente piattaforma backend basata su Go per l'automazione del media processing.
+Welcome to **PipelineGen**, a powerful Go-based backend platform for media processing automation.
 
-## 🛠 Requisiti di Sistema
+## 🛠 System Requirements
 
-Prima di iniziare, assicurati di avere installato:
-- **Go**: Versione 1.25 o superiore (consigliato 1.25.9+)
-- **Python**: Versione 3.10+ (per script di embedding e indexing)
-- **yt-dlp**: Installato e disponibile nel PATH di sistema
-- **FFmpeg**: Per il taglio e la codifica audio/video
+Before starting, make sure you have installed:
+- **Go**: Version 1.25 or higher (recommended 1.25.9+)
+- **Python**: Version 3.10+ (for embedding and indexing scripts)
+- **yt-dlp**: Installed and available in your system PATH
+- **FFmpeg**: For audio/video cutting and encoding
 
-## 🚀 Installazione e Avvio
+## 🚀 Installation and Startup
 
-1. **Configura l'ambiente**:
-   Crea una copia del file di configurazione e inserisci le tue chiavi e credenziali (es. Google Drive API):
+1. **Configure the environment**:
+   Copy the configuration file and fill in your keys and credentials (e.g., Google Drive API):
    ```bash
    cp config.example.yaml config.yaml
    ```
 
-2. **Compila il server**:
+2. **Build the server**:
    ```bash
    go build -o pipelinegen ./cmd/server/
    ```
 
-3. **Avvia PipelineGen**:
-   Esegui il backend in modalità completa (Server HTTP + Workers asincroni):
+3. **Start PipelineGen**:
+   Run the backend in full mode (HTTP Server + Async Workers):
    ```bash
    ./pipelinegen --mode all
    ```
 
-## 📂 Struttura del Database
+## 📂 Database Structure
 
-PipelineGen utilizza SQLite centralizzato in WAL mode con due database:
-- `data/velox/velox.db.sqlite`: Database principale per Script, Job e Asset Index.
-- `data/media/media.db.sqlite`: Database unificato per i file multimediali (YouTube, Artlist, Stock, Immagini, Voiceovers).
+PipelineGen uses centralized SQLite in WAL mode with two databases:
+- `data/velox/velox.db.sqlite`: Main database for Scripts, Jobs and Asset Index.
+- `data/media/media.db.sqlite`: Unified media database (YouTube, Artlist, Stock, Images, Voiceovers).
