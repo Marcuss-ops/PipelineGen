@@ -29,6 +29,7 @@ import (
 	"velox/go-master/internal/media/clipindexer"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
+	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/media/voiceoversync"
 	pkgffmpeg "velox/go-master/internal/pkg/media/ffmpeg"
@@ -97,6 +98,14 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
+	// Unified media storage + destination resolver (replaces assetdestination)
+	storageResolver := storage.NewResolver(
+		storage.MediaRoot(cfg.Storage.MediaPath()),
+		storage.DriveRoot(cfg.Drive.RootFolder()),
+	)
+	mediaStore := storage.NewStore(storageResolver, driveClient, cfg.Drive.RootFolder(), log)
+	destResolver := storage.NewDestinationResolver(mediaStore)
+
 	// Create LifecycleService for youtubeclip using common factory
 	ytLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
@@ -117,6 +126,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		videoPipeline,
 		ytLifecycle,
 		clipIndexerService,
+		destResolver,
 	)
 
 	voDir := cfg.Storage.VoiceoversPath()
@@ -132,7 +142,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		AssetIndex:  assetIndexService,
 	}, log)
 
-	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle)
+	voService := voiceover.NewService(cfg, cfg.Paths.PythonScriptsDir, voDir, log, driveClient, voLifecycle, destResolver)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	clipsRepo := clips.NewRepository(dbs.media.DB, log)
@@ -145,6 +155,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
+	imageService.SetGoogleAccountingConfig(cfg.GoogleAccounting.ServerURL, cfg.GoogleAccounting.DownloadDir)
+	imageService.SetMediaStore(mediaStore)
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
 	clipsRepos := map[string]*clips.Repository{

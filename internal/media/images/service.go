@@ -2,6 +2,8 @@ package images
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -11,6 +13,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/ingest"
+	"velox/go-master/internal/media/storage"
 	clipsRepo "velox/go-master/internal/repository/clips"
 	imagesRepo "velox/go-master/internal/repository/images"
 )
@@ -55,6 +58,9 @@ type Service struct {
 
 	// Animations directory
 	animationsDir string
+
+	// Unified media store for Drive operations (replaces raw driveSvc calls)
+	mediaStore *storage.Store
 }
 
 type wikiCacheEntry struct {
@@ -80,6 +86,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		driveSvc:  driveSvc,
 		driveFolderID: cfg.Drive.ImagesRootFolder,
 		log:       log,
+		imagesDir: cfg.Storage.ImagesPath(),
 		tempDir:   cfg.Storage.TempPath(),
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -115,9 +122,32 @@ func (s *Service) SetIngestService(svc *ingest.Service) {
 	s.ingestSvc = svc
 }
 
+// SetMediaStore sets the unified media store for Drive operations.
+func (s *Service) SetMediaStore(store *storage.Store) {
+	s.mediaStore = store
+}
+
+// Log restituisce il logger interno per logging da altre componenti.
+func (s *Service) Log() *zap.Logger {
+	return s.log
+}
+
 func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir string) {
 	s.gaServerURL = serverURL
 	s.gaDownloadDir = downloadDir
+	s.googleAccountingURL = serverURL // allinea anche googleAccountingURL per generateGoogleFlowImages
+	// Usa downloadDir come base per risolvere path relativi restituiti dal server Python.
+	// downloadDir è relativo al project root (es. "./data/google_vids"), non a imagesDir.
+	absDir := downloadDir
+	if absDir != "" && !filepath.IsAbs(absDir) {
+		// Assolutizza usando il working directory (coincide col project root)
+		if wd, err := os.Getwd(); err == nil {
+			absDir = filepath.Join(wd, absDir)
+		}
+	}
+	// Resolve eventuali elementi ".." o "." nel path
+	absDir = filepath.Clean(absDir)
+	s.googleAccountingDir = absDir
 }
 
 func Slugify(s string) string {

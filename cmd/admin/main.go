@@ -39,6 +39,8 @@ func main() {
 		"unify-catalogs":               runUnifyCatalogs,
 		"reset-stock-drive":            runResetStockDrive,
 		"reset-stock-subfolders":       runResetStockSubfolders,
+		"list-drive-folder":            runListDriveFolder,
+		"reset-video-ai":               runResetVideoAI,
 	}
 
 	fn, ok := commands[cmdName]

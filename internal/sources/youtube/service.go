@@ -16,7 +16,6 @@ import (
 	"velox/go-master/internal/media/videomuscles"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
-	"velox/go-master/internal/storage/assetdestination"
 	jobservice "velox/go-master/internal/jobs"
 )
 
@@ -48,10 +47,8 @@ func NewService(
 	videoPipeline VideoPipeline,
 	lifecycleService *lifecycle.Service,
 	indexer *clipindexer.Service,
+	assetDestResolver destination.Resolver,
 ) *Service {
-	// Create asset destination resolver for unified destination resolution
-	assetDestResolver := assetdestination.ToCoreResolver(assetdestination.NewResolver(cfg, log, driveClient))
-
 	// Create folder memory service
 	folderMemory := foldermemory.NewService(log, clipsRepo)
 

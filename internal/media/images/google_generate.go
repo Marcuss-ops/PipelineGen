@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/pkg/googleaccounting"
 )
 
@@ -28,6 +29,7 @@ func (s *Service) GenerateSmartImage(
 	tags []string,
 	width, height int,
 	model string,
+	skipDrive bool,
 ) (*models.ImageAsset, error) {
 	prompt := pickImagePrompt(subject, topic, prompts)
 	if prompt == "" {
@@ -46,7 +48,7 @@ func (s *Service) GenerateSmartImage(
 		)
 	}
 
-	asset, err := s.GenerateAImage(ctx, prompt, model, width, height, tags)
+	asset, err := s.GenerateAImage(ctx, prompt, model, width, height, tags, skipDrive)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +144,16 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject 
 			continue
 		}
 		if !filepath.IsAbs(resolved) {
+			// Prova googleAccountingDir (dovrebbe essere la dir absolute del download)
 			if s.googleAccountingDir != "" {
 				resolved = filepath.Join(s.googleAccountingDir, resolved)
+			} else if s.gaDownloadDir != "" {
+				// Fallback: gaDownloadDir senza googleAccountingDir
+				baseDir := s.gaDownloadDir
+				if !filepath.IsAbs(baseDir) && s.imagesDir != "" {
+					baseDir = filepath.Join(s.imagesDir, baseDir)
+				}
+				resolved = filepath.Join(baseDir, resolved)
 			}
 		}
 
@@ -153,7 +163,7 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject 
 			continue
 		}
 
-		asset, ingestErr := s.IngestImage(ctx, slug, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags)
+		asset, ingestErr := s.IngestImage(ctx, slug, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, false)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue
@@ -170,16 +180,15 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject 
 
 func (s *Service) waitForGoogleJob(ctx context.Context, jobID string) (*googleaccounting.Job, error) {
 	statusURL := strings.TrimRight(s.googleAccountingURL, "/") + "/status/" + url.PathEscape(jobID)
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
 
-	deadlineCtx := ctx
-	if deadline, ok := ctx.Deadline(); ok {
-		var cancel context.CancelFunc
-		deadlineCtx, cancel = context.WithDeadline(ctx, deadline)
-		defer cancel()
-		_ = deadline
-	}
+	// Timeout globale di sicurezza: massimo 5 minuti
+	const maxWait = 5 * time.Minute
+	deadlineCtx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
+
+	// Poll ogni 5 secondi invece di 2 per non stressare il server Python
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		req, err := http.NewRequestWithContext(deadlineCtx, http.MethodGet, statusURL, nil)
@@ -222,4 +231,36 @@ func (s *Service) waitForGoogleJob(ctx context.Context, jobID string) (*googleac
 		case <-ticker.C:
 		}
 	}
+}
+
+// UploadToStyleDrive carica un'immagine su Drive in una subfolder per stile.
+// Crea la struttura: {driveRoot}/{style}/{subject}/
+func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAsset, style string) (string, string, error) {
+	if s.mediaStore == nil {
+		return "", "", fmt.Errorf("media store not configured")
+	}
+	if style == "" {
+		return "", "", fmt.Errorf("style is required")
+	}
+
+	req := storage.AssetDestinationRequest{
+		Source:    storage.SourceImage,
+		MediaType: storage.MediaTypeImage,
+		Style:     style,
+		Subject:   asset.SubjectID,
+		Hash:      asset.Hash,
+		Ext:       filepath.Ext(asset.PathRel),
+	}
+	imagePath := filepath.Join(s.imagesDir, asset.PathRel)
+
+	fileID, webLink, err := s.mediaStore.UploadToDrive(ctx, req, imagePath)
+	if err != nil {
+		return "", "", fmt.Errorf("style-based Drive upload: %w", err)
+	}
+
+	s.log.Info("image uploaded to Drive with style",
+		zap.String("file_id", fileID),
+		zap.String("style", style),
+	)
+	return webLink, fileID, nil
 }

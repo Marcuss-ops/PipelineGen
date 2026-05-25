@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/pkg/apiutil"
@@ -28,7 +29,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/diagnostics", h.Diagnostics)
 	r.POST("/upload", h.Upload) // Nuovo endpoint
 	r.POST("/sync", h.Sync)
-	r.POST("/generate/nvidia", h.GenerateNvidia)
+	r.POST("/generate", h.Generate)       // Smart: Google Flow -> NVIDIA fallback
+	r.POST("/generate/nvidia", h.GenerateNvidia) // Legacy: solo NVIDIA
 	r.POST("/animate", h.Animate)
 }
 
@@ -45,6 +47,7 @@ type GenerateNvidiaRequest struct {
 	Model  string   `json:"model"`
 	Width  int      `json:"width"`
 	Height int      `json:"height"`
+	Style  string   `json:"style" example:"medievale"`
 	Tags   []string `json:"tags"`
 }
 
@@ -143,7 +146,64 @@ func (h *Handler) Sync(c *gin.Context) {
 	apiutil.OK(c, gin.H{"message": "Synchronization complete (Local + Drive)"})
 }
 
-// GenerateNvidia genera un'immagine AI tramite NVIDIA NIM
+// Generate genera un'immagine AI: prova Google Flow (primario), fallback NVIDIA.
+func (h *Handler) Generate(c *gin.Context) {
+	var req GenerateNvidiaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
+
+	skipDrive := req.Style != ""
+	asset, err := h.service.GenerateSmartImage(
+		c.Request.Context(),
+		req.Prompt,       // subject
+		"",               // topic (vuoto, usiamo solo il prompt)
+		[]string{req.Prompt}, // prompts
+		req.Tags,
+		req.Width,
+		req.Height,
+		req.Model,
+		skipDrive,
+	)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+
+	// Se è specificato uno stile, carica in subfolder style su Drive
+	var driveLink, driveFileID string
+	if req.Style != "" {
+		link, fileID, err := h.service.UploadToStyleDrive(c.Request.Context(), asset, req.Style)
+		if err != nil {
+			h.service.Log().Warn("style-based Drive upload failed (non fatale)",
+				zap.String("style", req.Style),
+				zap.Error(err),
+			)
+		} else {
+			driveLink = link
+			driveFileID = fileID
+		}
+	}
+
+	apiutil.OK(c, gin.H{
+		"prompt": req.Prompt,
+		"model":  req.Model,
+		"style":  req.Style,
+		"image": gin.H{
+			"hash":          asset.Hash,
+			"path_rel":      asset.PathRel,
+			"source_url":    asset.SourceURL,
+			"url_full":      "/assets/" + asset.PathRel,
+			"desc":          asset.Description,
+			"tags":          asset.Tags,
+			"drive_link":    driveLink,
+			"drive_file_id": driveFileID,
+		},
+	})
+}
+
+// GenerateNvidia è l'endpoint legacy che usa solo NVIDIA diretto.
 func (h *Handler) GenerateNvidia(c *gin.Context) {
 	var req GenerateNvidiaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -151,22 +211,40 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 		return
 	}
 
-	asset, err := h.service.GenerateAImage(c.Request.Context(), req.Prompt, req.Model, req.Width, req.Height, req.Tags)
+	skipDrive := req.Style != ""
+	asset, err := h.service.GenerateAImage(c.Request.Context(), req.Prompt, req.Model, req.Width, req.Height, req.Tags, skipDrive)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
 
+	var driveLink, driveFileID string
+	if req.Style != "" {
+		link, fileID, err := h.service.UploadToStyleDrive(c.Request.Context(), asset, req.Style)
+		if err != nil {
+			h.service.Log().Warn("style-based Drive upload failed (non fatale)",
+				zap.String("style", req.Style),
+				zap.Error(err),
+			)
+		} else {
+			driveLink = link
+			driveFileID = fileID
+		}
+	}
+
 	apiutil.OK(c, gin.H{
 		"prompt": req.Prompt,
 		"model":  req.Model,
+		"style":  req.Style,
 		"image": gin.H{
-			"hash":       asset.Hash,
-			"path_rel":   asset.PathRel,
-			"source_url": asset.SourceURL,
-			"url_full":   "/assets/" + asset.PathRel,
-			"desc":       asset.Description,
-			"tags":       asset.Tags,
+			"hash":          asset.Hash,
+			"path_rel":      asset.PathRel,
+			"source_url":    asset.SourceURL,
+			"url_full":      "/assets/" + asset.PathRel,
+			"desc":          asset.Description,
+			"tags":          asset.Tags,
+			"drive_link":    driveLink,
+			"drive_file_id": driveFileID,
 		},
 	})
 }

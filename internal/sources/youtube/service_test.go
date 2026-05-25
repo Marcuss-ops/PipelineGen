@@ -192,6 +192,7 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 		pipeline,
 		nil, // lifecycle
 		nil, // indexer
+		nil, // asset dest resolver
 	)
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
@@ -242,6 +243,7 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 		nil,
 		nil,
 		pipeline,
+		nil,
 		nil,
 		nil,
 	)

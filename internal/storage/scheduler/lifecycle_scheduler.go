@@ -9,7 +9,6 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/upload/drive"
 )
 
 // LifecycleScheduler handles periodic system maintenance (Sync, Cleanup)
@@ -86,28 +85,12 @@ func (s *LifecycleScheduler) triggerSync(ctx context.Context) {
 		return
 	}
 
-	// Sources to sync - only those with configured root folders
-	var sources []string
-	if s.cfg.Drive.ClipsRootFolder != "" {
-		sources = append(sources, "youtube")
-	}
-	if drive.ResolveArtlistRootFolderID(s.cfg) != "" {
-		sources = append(sources, "artlist")
-	}
-	if s.cfg.Drive.StockRootFolder != "" {
-		sources = append(sources, "stock")
-	}
-	if s.cfg.Drive.VoiceoverRootFolder != "" {
-		sources = append(sources, "voiceover")
-	}
-	if s.cfg.Drive.ImagesRootFolder != "" {
-		sources = append(sources, "images")
-	}
-
-	if len(sources) == 0 {
-		s.log.Info("No sources configured for periodic sync")
+	// With unified media root, all sources are available
+	if s.cfg.Drive.RootFolder() == "" {
+		s.log.Info("No media root folder configured, skipping periodic sync")
 		return
 	}
+	sources := []string{"youtube", "artlist", "stock", "voiceover", "images"}
 
 	for _, src := range sources {
 		payload := map[string]any{

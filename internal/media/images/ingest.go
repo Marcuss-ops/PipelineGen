@@ -13,7 +13,6 @@ import (
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
-	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/media/models"
 )
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, source, query, description string, tags []string) (*models.ImageAsset, error) {
@@ -30,10 +29,10 @@ func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, source, q
 		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
-	return s.IngestImage(ctx, slug, resp.Body, filepath.Base(imgURL), imgURL, description, tags)
+	return s.IngestImage(ctx, slug, resp.Body, filepath.Base(imgURL), imgURL, description, tags, false)
 }
 
-func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, filename, sourceURL, description string, tags []string) (*models.ImageAsset, error) {
+func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
 	content, err := io.ReadAll(data)
 	if err != nil {
 		return nil, err
@@ -45,55 +44,28 @@ func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, 
 	legacyHash := hex.EncodeToString(hasher.Sum(nil))
 
 	if existing, err := s.repo.GetImageByHash(legacyHash); err == nil && existing != nil {
-		s.log.Info("Image with this hash already exists (legacy SHA256)", zap.String("hash", legacyHash))
-		return existing, nil
-	}
-
-	// If ingest pipeline is available, use it
-	if s.ingestSvc != nil {
-		return s.ingestViaPipeline(ctx, slug, content, filename, sourceURL, description, tags)
-	}
-
-	// Fallback: legacy direct path
-	return s.ingestDirect(slug, content, filename, sourceURL, description, tags, legacyHash)
-}
-
-func (s *Service) ingestViaPipeline(ctx context.Context, slug string, content []byte, filename, sourceURL, description string, tags []string) (*models.ImageAsset, error) {
-	tmpDir, err := os.MkdirTemp(s.tempDir, "image-ingest-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	tmpPath := filepath.Join(tmpDir, filename)
-	if err := os.WriteFile(tmpPath, content, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write temp file: %w", err)
-	}
-
-	result, err := s.ingestSvc.Ingest(ctx, &ingest.Request{
-		Kind:      string(ingest.KindImage),
-		LocalPath: tmpPath,
-		Name:      description,
-		Group:     slug,
-		Source:    "image",
-		SourceID:  sourceURL,
-		Tags:      tags,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	asset, err := s.repo.GetImageByHash(result.FileHash)
-	if err != nil {
-		asset, err = s.repo.GetImageByHash(result.ContentHash)
-		if err != nil {
-			return nil, fmt.Errorf("image not found after ingest: %w", err)
+		// Verify the file actually exists on disk (may have been cleaned up)
+		filePath := filepath.Join(s.imagesDir, existing.PathRel)
+		if _, statErr := os.Stat(filePath); statErr == nil {
+			s.log.Info("IngestImage: hash dedup hit, returning existing", zap.String("hash", legacyHash))
+			return existing, nil
 		}
+		s.log.Warn("IngestImage: hash dedup stale, re-ingesting",
+			zap.String("hash", legacyHash),
+			zap.String("old_path", filePath),
+		)
 	}
-	return asset, nil
+
+	s.log.Info("IngestImage: ingesting image",
+		zap.String("slug", slug),
+		zap.String("hash", legacyHash),
+		zap.Bool("skip_drive", skipDrive),
+	)
+
+	return s.ingestDirect(slug, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
 }
 
-func (s *Service) ingestDirect(slug string, content []byte, filename, sourceURL, description string, tags []string, hash string) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(slug string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
 	if err != nil || subject == nil {
@@ -118,12 +90,14 @@ func (s *Service) ingestDirect(slug string, content []byte, filename, sourceURL,
 
 	// 3. Salva il file fisico
 	if err := os.WriteFile(fullPath, content, 0644); err != nil {
+		s.log.Error("ingestDirect: failed to write file", zap.String("path", fullPath), zap.Error(err))
 		return nil, fmt.Errorf("failed to write image file: %w", err)
 	}
+	s.log.Info("ingestDirect: file saved", zap.String("path", fullPath), zap.Int("bytes", len(content)))
 
-	// 4. Upload to Drive if configured
+	// 4. Upload to Drive if configured (skip if disabled by fullimages pipeline)
 	var driveFileID string
-	if s.driveSvc != nil && s.driveFolderID != "" {
+	if s.driveSvc != nil && s.driveFolderID != "" && !skipDrive {
 		s.log.Info("Uploading image to Google Drive", zap.String("filename", filename), zap.String("folder_id", s.driveFolderID))
 
 		driveFile := &driveapi.File{

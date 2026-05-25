@@ -67,7 +67,7 @@ func (s *Service) SearchWebImage(ctx context.Context, prompt, slug string, tags 
 	description := fmt.Sprintf("Web image for: %s", prompt)
 
 	// 4. Ingest via the pipeline (dedup by hash built-in)
-	asset, err := s.IngestImage(ctx, slug, strings.NewReader(string(body)), filename, imgURL, description, tags)
+	asset, err := s.IngestImage(ctx, slug, strings.NewReader(string(body)), filename, imgURL, description, tags, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ingest image: %w", err)
 	}

@@ -216,7 +216,7 @@ func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subj
 		return asset, nil
 	}
 
-	asset, err := imgService.GenerateSmartImage(ctx, subject, topic, prompts, tags, 1024, 1024, "")
+	asset, err := imgService.GenerateSmartImage(ctx, subject, topic, prompts, tags, 1024, 1024, "", false)
 	if err == nil && asset != nil {
 		return asset, nil
 	}

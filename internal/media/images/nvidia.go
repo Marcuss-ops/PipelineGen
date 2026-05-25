@@ -91,12 +91,12 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 
 // GenerateAImage generates an AI image using NVIDIA NIM and stores it under a
 // prompt-derived slug. Equivalent to GenerateStyledImage(ctx, Slugify(prompt), ...).
-func (s *Service) GenerateAImage(ctx context.Context, prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
+func (s *Service) GenerateAImage(ctx context.Context, prompt, model string, width, height int, tags []string, skipDrive bool) (*models.ImageAsset, error) {
 	slug := Slugify(prompt)
 	if len(slug) > 50 {
 		slug = slug[:50]
 	}
-	return s.GenerateStyledImage(ctx, slug, prompt, model, width, height, tags)
+	return s.GenerateStyledImage(ctx, slug, prompt, model, width, height, tags, skipDrive)
 }
 
 // GenerateStyledImage generates an AI image and stores it under the given slug
@@ -105,7 +105,7 @@ func (s *Service) GenerateAImage(ctx context.Context, prompt, model string, widt
 //
 // The slug is used as SubjectID in the DB and as the filesystem directory for the image.
 // All other parameters match GenerateAImage.
-func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
+func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, model string, width, height int, tags []string, skipDrive bool) (*models.ImageAsset, error) {
 	var invokeURL string
 	var payload map[string]interface{}
 	var useCloudAuth bool
@@ -235,7 +235,7 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, model s
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", resolvedModel, prompt)
 
-	return s.IngestImage(ctx, slug, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags)
+	return s.IngestImage(ctx, slug, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags, skipDrive)
 }
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {

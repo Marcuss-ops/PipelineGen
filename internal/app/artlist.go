@@ -13,10 +13,10 @@ import (
 	"velox/go-master/internal/media/clipresolver"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/ontology"
+	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/pkg/matchingconfig"
 	artlistPkg "velox/go-master/internal/sources/artlist"
-	"velox/go-master/internal/storage/assetdestination"
 	driveutil "velox/go-master/internal/upload/drive"
 )
 
@@ -110,8 +110,12 @@ func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Servic
 
 func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) destination.Resolver {
 	if coreDeps.DriveClient != nil {
-		assetDest := assetdestination.NewResolver(cfg, log, coreDeps.DriveClient)
-		return assetdestination.ToCoreResolver(assetDest)
+		storageResolver := storage.NewResolver(
+			storage.MediaRoot(cfg.Storage.MediaPath()),
+			storage.DriveRoot(cfg.Drive.RootFolder()),
+		)
+		mediaStore := storage.NewStore(storageResolver, coreDeps.DriveClient, cfg.Drive.RootFolder(), log)
+		return storage.NewDestinationResolver(mediaStore)
 	}
 	return nil
 }

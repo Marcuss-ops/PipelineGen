@@ -63,8 +63,8 @@ func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, dr
 
 const (
 	videoGenTimeout = 5 * time.Minute
-	imageGenWidth   = 1024
-	imageGenHeight  = 1024
+	imageGenWidth   = 1344
+	imageGenHeight  = 768
 	videoDuration   = 7
 	videoMaxWorkers = 3
 
@@ -153,31 +153,28 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// === Step 1: Find image — try web search first, fall back to NVIDIA ===
-	s.log.Info("fullimages: finding image", zap.Int("section", idx), zap.String("prompt", prompt))
+	// === Step 1: Generate image via NVIDIA AI (no web search) ===
+	s.log.Info("fullimages: generating image with NVIDIA flux-1-dev", zap.Int("section", idx), zap.String("prompt", prompt))
 
 	imgSlug := slug
-	if style != "" {
-		imgSlug = style + "/" + slug
-	}
 	tags := []string{subject, "style:" + style}
 
-	// Try DuckDuckGo / web search for a real, high-resolution image first
-	asset, err := s.imgService.SearchWebImage(ctx, prompt, imgSlug, tags)
+	// Primary: flux-1-dev (NVIDIA cloud) — skipDrive=true because these are intermediate images
+	asset, err := s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "flux-1-dev", imageGenWidth, imageGenHeight, tags, true)
 	if err != nil {
-		s.log.Info("fullimages: web search failed, falling back to NVIDIA",
+		s.log.Info("fullimages: flux-1-dev failed, falling back to flux-2-klein",
 			zap.Int("section", idx),
 			zap.Error(err),
 		)
-		asset, err = s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "", imageGenWidth, imageGenHeight, tags)
+		asset, err = s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "flux-2-klein", imageGenWidth, imageGenHeight, tags, true)
 	}
 
 	if err != nil || asset == nil {
-		errMsg := "all image sources failed"
+		errMsg := "all NVIDIA models failed"
 		if err != nil {
 			errMsg = err.Error()
 		}
-		s.log.Error("fullimages: no image could be obtained", zap.Int("section", idx), zap.Error(err))
+		s.log.Error("fullimages: no image could be generated", zap.Int("section", idx), zap.Error(err))
 		return SectionVideo{SectionIndex: idx, Title: sec.Title, Style: style, Error: errMsg}
 	}
 
