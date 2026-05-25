@@ -6,12 +6,12 @@ import (
 )
 
 // SearchClips queries the clips database for matching media.
-func (r *Repository) SearchClips(q string) ([]CatalogRecord, error) {
+func (r *Repository) SearchClips(ctx context.Context, q string) ([]CatalogRecord, error) {
 	if r.clipsRepo == nil {
 		return nil, nil
 	}
 
-	clips, err := r.clipsRepo.SearchClipsByKeywords(context.Background(), "", strings.Fields(q), 100)
+	clips, err := r.clipsRepo.SearchClipsByKeywords(ctx, "", strings.Fields(q), 100)
 	if err != nil {
 		return nil, err
 	}

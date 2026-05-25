@@ -1,11 +1,12 @@
 package catalog
 
 import (
+	"context"
 	"strings"
 )
 
 // SearchArtlist queries the artlist database for matching folders.
-func (r *Repository) SearchArtlist(q string) ([]CatalogRecord, error) {
+func (r *Repository) SearchArtlist(ctx context.Context, q string) ([]CatalogRecord, error) {
 	if r.artlistRepo == nil {
 		return nil, nil
 	}

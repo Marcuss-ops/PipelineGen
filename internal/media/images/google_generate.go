@@ -153,7 +153,7 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject 
 			continue
 		}
 
-		asset, ingestErr := s.IngestImage(slug, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags)
+		asset, ingestErr := s.IngestImage(context.Background(), slug, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue

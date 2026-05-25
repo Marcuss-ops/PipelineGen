@@ -6,7 +6,7 @@ import (
 )
 
 // SearchStock queries the stock database for matching folders/assets.
-func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
+func (r *Repository) SearchStock(ctx context.Context, q string) ([]CatalogRecord, error) {
 	if r.stockRepo == nil {
 		return nil, nil
 	}
@@ -35,7 +35,7 @@ func (r *Repository) SearchStock(q string) ([]CatalogRecord, error) {
 
 	// 2. Fallback to media_assets via repository
 	if len(results) == 0 {
-		clips, err := r.stockRepo.SearchClipsByKeywords(context.Background(), "stock", []string{q}, 100)
+		clips, err := r.stockRepo.SearchClipsByKeywords(ctx, "stock", []string{q}, 100)
 		if err == nil {
 			for _, clip := range clips {
 				if clip.Source == "stock" || clip.MediaType == "stock" {

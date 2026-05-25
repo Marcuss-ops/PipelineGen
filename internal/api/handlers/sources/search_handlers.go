@@ -82,7 +82,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 	// Search Catalog folders
 	if h.catalogRepo != nil {
-		catalogResults, err := h.catalogRepo.SearchAll(req.Q)
+		catalogResults, err := h.catalogRepo.SearchAll(c.Request.Context(), req.Q)
 		if err != nil {
 			h.log.Warn("catalog search failed", zap.Error(err))
 		} else {

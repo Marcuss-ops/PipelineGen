@@ -25,7 +25,7 @@ func (h *CatalogHandler) SearchFolders(c *gin.Context) {
 		return
 	}
 
-	results, err := h.repo.SearchAll(q)
+	results, err := h.repo.SearchAll(c.Request.Context(), q)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
