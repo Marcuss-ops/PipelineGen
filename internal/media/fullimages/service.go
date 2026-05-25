@@ -3,6 +3,7 @@ package fullimages
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -15,12 +16,14 @@ import (
 type Section struct {
 	Title string `json:"title" binding:"required" example:"Introduzione"`
 	Text  string `json:"text"  example:"Il testo completo di questa sezione..."`
+	Style string `json:"style" example:"gothic"`
 }
 
 // SectionImage holds the result for one generated image.
 type SectionImage struct {
 	SectionIndex int    `json:"section_index"`
 	Title        string `json:"title"`
+	Style        string `json:"style,omitempty"`
 	Hash         string `json:"hash,omitempty"`
 	PathRel      string `json:"path_rel,omitempty"`
 	SourceURL    string `json:"source_url,omitempty"`
@@ -34,8 +37,10 @@ type Result struct {
 }
 
 // Service generates one image per text section using a two-tier strategy:
-//   1. GenerateSmartImage — Google Accounting AI (if configured) with NVIDIA fallback
-//   2. GenerateAImage    — direct NVIDIA API (fallback if tier 1 produces nothing)
+//   1. GenerateStyledImage with a style-based slug — each style gets its own
+//      storage group in the DB, filesystem, and Drive, so "gothic" and "stickman"
+//      images never mix. The style becomes a searchable tag for future semantic search.
+//   2. Fallback to direct NVIDIA generation if tier 1 fails.
 //
 // No entity extraction or asset association is performed — each section receives
 // a pure AI-generated image based on its title and text.
@@ -104,7 +109,8 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 	return &Result{Images: results}, nil
 }
 
-// generateOne attempts to create an image for a single section.
+// generateOne attempts to create an image for a single section using a
+// style-based slug so all images for the same style are grouped together.
 func (s *Service) generateOne(ctx context.Context, sec Section, topic, language string, idx int) SectionImage {
 	ctx, cancel := context.WithTimeout(ctx, imageGenerationTimeout)
 	defer cancel()
@@ -114,49 +120,58 @@ func (s *Service) generateOne(ctx context.Context, sec Section, topic, language 
 		subject = fmt.Sprintf("section_%d", idx)
 	}
 
-	prompts := buildSectionPrompts(sec, topic)
-	tags := []string{subject, topic}
+	// Build a style-prefixed slug so images for the same style are stored together.
+	style := strings.TrimSpace(sec.Style)
+	slug := imgservice.Slugify(subject)
+	if style != "" {
+		slug = style + "/" + slug
+	}
 
-	// Tier 1: GenerateSmartImage (Google Accounting AI → NVIDIA fallback)
-	asset, err := s.imgService.GenerateSmartImage(ctx, subject, topic, prompts, tags, imageWidth, imageHeight, "")
+	prompts := buildSectionPrompts(sec, topic)
+	// Tags include the style for future semantic search and the subject for context.
+	tags := buildTags(sec, subject, topic)
+
+	// Tier 1: GenerateStyledImage with style-based slug.
+	// Uses NVIDIA AI (GenerateStyledImage → NVIDIA API → ingest with custom slug).
+	// The slug controls the DB SubjectID, filesystem path, and Drive grouping.
+	directPrompt := pickBestPrompt(prompts, subject, topic)
+	asset, err := s.imgService.GenerateStyledImage(ctx, slug, directPrompt, "", imageWidth, imageHeight, tags)
 	if err == nil && asset != nil {
-		s.log.Info("fullimages: smart image generated",
+		s.log.Info("fullimages: image generated",
 			zap.Int("section", idx),
 			zap.String("subject", subject),
+			zap.String("style", style),
+			zap.String("slug", slug),
 			zap.String("hash", asset.Hash),
 		)
 		return sectionImageFromAsset(idx, sec.Title, asset, "")
 	}
 
-	s.log.Warn("fullimages: smart image failed, trying NVIDIA direct",
+	s.log.Error("fullimages: generation failed",
 		zap.Int("section", idx),
 		zap.String("subject", subject),
+		zap.String("style", style),
 		zap.Error(err),
 	)
-
-	// Tier 2: Fallback to NVIDIA direct generation
-	directPrompt := pickBestPrompt(prompts, subject, topic)
-	asset, err = s.imgService.GenerateAImage(ctx, directPrompt, "", imageWidth, imageHeight, tags)
-	if err != nil {
-		s.log.Error("fullimages: all generation methods failed",
-			zap.Int("section", idx),
-			zap.String("subject", subject),
-			zap.Error(err),
-		)
-		return SectionImage{
-			SectionIndex: idx,
-			Title:        sec.Title,
-			Error:        fmt.Sprintf("image generation failed: %v", err),
-		}
+	return SectionImage{
+		SectionIndex: idx,
+		Title:        sec.Title,
+		Style:        style,
+		Error:        fmt.Sprintf("image generation failed: %v", err),
 	}
+}
 
-	s.log.Info("fullimages: nvidia direct image generated",
-		zap.Int("section", idx),
-		zap.String("subject", subject),
-		zap.String("hash", asset.Hash),
-	)
-
-	return sectionImageFromAsset(idx, sec.Title, asset, "")
+// buildTags assembles the tag list for an image, always including the style
+// and section subject so future semantic search can find them.
+func buildTags(sec Section, subject, topic string) []string {
+	tags := []string{subject}
+	if s := strings.TrimSpace(sec.Style); s != "" {
+		tags = append(tags, "style:"+s)
+	}
+	if topic != "" {
+		tags = append(tags, topic)
+	}
+	return tags
 }
 
 // sectionImageFromAsset converts a *models.ImageAsset into a SectionImage.

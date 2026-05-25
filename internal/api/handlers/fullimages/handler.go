@@ -27,6 +27,8 @@ type GenerateFullImagesRequest struct {
 	Sections []fullimages.Section `json:"sections" binding:"required,min=1"`
 	Topic    string               `json:"topic" example:"Italian Renaissance"`
 	Language string               `json:"language" example:"it"`
+	// DefaultStyle is applied to every section that doesn't specify its own style.
+	DefaultStyle string `json:"default_style" example:"gothic"`
 }
 
 // GenerateFullImagesResponse is returned on success.
@@ -44,10 +46,20 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 		return
 	}
 
+	// Apply default style to sections that don't specify their own.
+	if req.DefaultStyle != "" {
+		for i := range req.Sections {
+			if req.Sections[i].Style == "" {
+				req.Sections[i].Style = req.DefaultStyle
+			}
+		}
+	}
+
 	zap.L().Info("fullimages: request received",
 		zap.Int("sections", len(req.Sections)),
 		zap.String("topic", req.Topic),
 		zap.String("language", req.Language),
+		zap.String("default_style", req.DefaultStyle),
 	)
 
 	result, err := h.service.GenerateForSections(c.Request.Context(), req.Sections, req.Topic, req.Language)

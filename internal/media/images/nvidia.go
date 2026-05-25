@@ -89,7 +89,23 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 	return nil
 }
 
+// GenerateAImage generates an AI image using NVIDIA NIM and stores it under a
+// prompt-derived slug. Equivalent to GenerateStyledImage(ctx, Slugify(prompt), ...).
 func (s *Service) GenerateAImage(ctx context.Context, prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
+	slug := Slugify(prompt)
+	if len(slug) > 50 {
+		slug = slug[:50]
+	}
+	return s.GenerateStyledImage(ctx, slug, prompt, model, width, height, tags)
+}
+
+// GenerateStyledImage generates an AI image and stores it under the given slug
+// rather than deriving the slug from the prompt. This lets callers control
+// the storage group (e.g., "gothic/introduction" instead of "cinematic-documentary...").
+//
+// The slug is used as SubjectID in the DB and as the filesystem directory for the image.
+// All other parameters match GenerateAImage.
+func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, model string, width, height int, tags []string) (*models.ImageAsset, error) {
 	var invokeURL string
 	var payload map[string]interface{}
 	var useCloudAuth bool
@@ -215,11 +231,7 @@ func (s *Service) GenerateAImage(ctx context.Context, prompt, model string, widt
 		return nil, fmt.Errorf("failed to decode base64 image: %w", err)
 	}
 
-	// Ingest image
-	slug := Slugify(prompt)
-	if len(slug) > 50 {
-		slug = slug[:50]
-	}
+	// Ingest image — slug is provided by the caller (style-based)
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", resolvedModel, prompt)
 
