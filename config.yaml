@@ -90,9 +90,9 @@ drive:
   images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
   voiceover_root_folder: "1iifOcR4ZrZAep8y1lT3qc1Ku0Z9XwbaZ"
   artlist_root_folder: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
-  # Per-group folder mapping per clip YouTube
-  clip_root_folders:
-    discovery: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
+  video_ai_root_folder: "1t5z5_q-twcHRtZtG-3muCVFKz8rz2cJi"
+  copertine_root_folder: "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
+  sound_effects_root_folder: ""
 
 features:
   artlist_enabled: true
