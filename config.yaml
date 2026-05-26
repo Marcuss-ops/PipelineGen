@@ -84,11 +84,14 @@ drive:
   # Single root — gerarchia unificata PipelineGen Media
   # Se vuoto, usa i legacy roots come fallback
   media_root_folder: ""
-  # Legacy roots (deprecati — restano per retrocompatibilità)
+  # Legacy roots (restano fino a migrazione completa)
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
-  clips_root_folder: ""
+  clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
   images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  voiceover_root_folder: "1pOtdxW9r0vbGNtBb8DQYcBeCR84wEw4N"
+  voiceover_root_folder: "1iifOcR4ZrZAep8y1lT3qc1Ku0Z9XwbaZ"
+  # Per-group folder mapping per clip YouTube
+  clip_root_folders:
+    discovery: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
 
 features:
   artlist_enabled: true
