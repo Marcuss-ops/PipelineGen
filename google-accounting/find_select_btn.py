@@ -10,17 +10,17 @@ async def run():
         await page.goto('https://docs.google.com/videos/d/1QOY4nINvvf5kOB4uG50DrrpLa92KIqrhglvvyriptC4/edit', wait_until='domcontentloaded')
         await asyncio.sleep(20)
         
-        print('Clicking Avatar button...')
         await page.locator('#content-library-rail-avatars-element').click()
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         
-        print('Sidebar after click:')
-        sidebar = page.locator('.appsFlixScriptsSidebarAvatarMode')
-        print(f'Sidebar visible: {await sidebar.is_visible()}')
+        await page.locator('div[role="button"]:has-text("Cambia")').click()
+        await asyncio.sleep(5)
         
-        tas = await sidebar.locator('div[contenteditable="true"], textarea, [role="textbox"]').all()
-        for i, ta in enumerate(tas):
-            print(f'INPUT {i}: HTML={await ta.evaluate("el => el.outerHTML")}')
+        btns = await page.locator('div[role="button"]').all()
+        for i, b in enumerate(btns):
+            t = await b.inner_text()
+            html = await b.evaluate("el => el.outerHTML")
+            print(f'BTN {i}: {t} | HTML={html[:100]}')
             
     finally:
         await browser.close()

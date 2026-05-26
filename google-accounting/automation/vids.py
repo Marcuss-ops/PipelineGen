@@ -613,7 +613,7 @@ class GoogleVidsAutomation(BaseAutomation):
 
 
     async def generate_avatar(self, video_id: str, script: str, avatar_id: str = "James") -> Path | None:
-        """Generates an AI Talking Head (Avatar) in Google Vids using robust selectors and retries."""
+        """Generates an AI Talking Head (Avatar) in Google Vids using finalized selectors."""
         from storage import get_project_id, save_project_id, get_structured_path, save_media_asset, save_generation_metadata
 
         dest_folder = get_structured_path(media_type="avatar", style="ai", sub_style=avatar_id)
@@ -638,48 +638,47 @@ class GoogleVidsAutomation(BaseAutomation):
             log.info("Waiting for editor to stabilize (30s)...")
             await asyncio.sleep(30)
 
-            # 1. Clicca tasto Avatar
-            avatar_xpath = "/html/body/div[4]/div/div/div[3]/div[2]/div[2]"
-            avatar_btn = page.locator(f"xpath={avatar_xpath}").first
-            if await avatar_btn.count() == 0:
-                avatar_btn = page.locator('div[aria-label="Avatar AI"]').first
+            # 1. Clicca tasto Avatar (ID Fisso trovato nel dump: BTN 79)
+            avatar_btn = page.locator('#content-library-rail-avatars-element').first
             
             if not avatar_btn or await avatar_btn.count() == 0:
                 raise RuntimeError("Avatar button not found")
                 
             log.info("Clicking Avatar button...")
             await avatar_btn.click(timeout=15000)
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
 
             # 2. Seleziona l'avatar specifico
-            change_xpath = "/html/body/div[32]/div[4]/div[4]/div[1]/div[2]/div"
-            change_btn = page.locator(f"xpath={change_xpath}").first
-            if await change_btn.count() == 0:
-                change_btn = page.locator('div[role="button"]:has-text("Change")').first
-            
+            # Cambia è BTN 105
+            change_btn = page.locator('div[role="button"]:has-text("Cambia")').first
             if await change_btn.count() > 0:
-                log.info("Clicking 'Change' avatar button...")
+                log.info("Clicking 'Cambia' avatar button...")
                 await change_btn.click()
                 await asyncio.sleep(5)
+                # Selezione avatar per nome
                 avatar_choice = page.locator(f'div[role="radio"][aria-label*="{avatar_id}"]').first
                 if await avatar_choice.count() > 0:
                     log.info(f"Selecting avatar: {avatar_id}")
                     await avatar_choice.click()
                     await asyncio.sleep(2)
-                    select_btn = page.locator('div[role="button"]:has-text("Select")').first
+                    # Pulsante Seleziona è BTN 125
+                    select_btn = page.locator('div[role="button"]:has-text("Seleziona")').first
                     await select_btn.click()
                     await asyncio.sleep(3)
 
             # 3. Inserisci lo script
-            # Utilizziamo il selettore specifico del body della sidebar che contiene il testo dello script
-            textarea = page.locator('.appsFlixScriptsSidebarBody [role="textbox"]').first
-            if await textarea.count() == 0:
-                textarea = page.locator('.appsFlixScriptsSidebarBody div[contenteditable="true"]').first
+            # In Vids, l'input è spesso nel body della sidebar, proviamo ad intercettarlo tramite testo
+            # O usiamo il selettore generico textbox
+            log.info("Filling script area...")
+            textarea = page.locator('[aria-label="Script video"] [role="textbox"]').first
             
+            # Se fallisce, usiamo un fallback generico
+            if not textarea or await textarea.count() == 0:
+                textarea = page.locator('.appsFlixScriptsSidebarWorkspace [role="textbox"]').first
+
             if not textarea or await textarea.count() == 0:
                 raise RuntimeError("Script textarea not found")
 
-            log.info("Filling script textarea...")
             await textarea.click()
             await page.keyboard.press("Control+A")
             await page.keyboard.press("Backspace")
@@ -687,24 +686,17 @@ class GoogleVidsAutomation(BaseAutomation):
             await asyncio.sleep(3)
 
             # 4. Genera Preview
-            preview_xpath = "/html/body/div[32]/div[4]/div[4]/div[3]"
-            preview_btn = page.locator(f"xpath={preview_xpath}").first
-            if await preview_btn.count() == 0:
-                preview_btn = page.locator('div[role="button"]:has-text("Preview")').first
-            if await preview_btn.count() == 0:
-                preview_btn = page.locator('.appsFlixVoiceoversSidebarGenerateMediaCardPrimaryActionButton').first
+            preview_btn = page.locator('div[role="button"]:has-text("Anteprima")').first
             
             if await preview_btn.count() > 0:
-                log.info("Clicking Preview button...")
+                log.info("Clicking Anteprima button...")
                 await preview_btn.click()
                 log.info("Waiting 30 seconds for preview...")
                 await asyncio.sleep(30)
 
-            # 5. Genera con Lip Sync
-            generate_xpath = "/html/body/div[32]/div[4]/div[5]/div[4]/div[1]/div"
-            generate_btn = page.locator(f"xpath={generate_xpath}").first
-            if await generate_btn.count() == 0:
-                generate_btn = page.locator('div[role="button"]:has-text("Genera")').first
+            # 5. Genera finale
+            # Genera è BTN 108
+            generate_btn = page.locator('div[role="button"]:has-text("Genera")').first
             
             if not generate_btn or await generate_btn.count() == 0:
                 raise RuntimeError("Generate button not found")

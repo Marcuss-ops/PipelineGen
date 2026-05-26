@@ -161,6 +161,8 @@ type DriveConfig struct {
 	ImagesRootFolder string `yaml:"images_root_folder" env:"VELOX_DRIVE_IMAGES_ROOT" default:""`
 	// Deprecated: use MediaRootFolder instead.
 	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
+	// Deprecated: use MediaRootFolder instead.
+	ArtlistRootFolder string `yaml:"artlist_root_folder" env:"VELOX_DRIVE_ARTLIST_ROOT" default:""`
 	// Deprecated: use MediaRootFolder + hierarchical paths instead.
 	ClipRootFolders map[string]string `yaml:"clip_root_folders" env:"VELOX_DRIVE_CLIP_ROOT_FOLDERS" default:"{}"`
 }

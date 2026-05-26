@@ -31,7 +31,7 @@ func buildSyncTargets(
 		},
 		{
 			Name:         "artlist",
-			RootFolderID: cfg.Drive.RootFolder(),
+			RootFolderID: cfg.Drive.ArtlistRootFolder,
 			Source:       "artlist",
 			MediaType:    "artlist",
 			Repo:         artlistRepo,

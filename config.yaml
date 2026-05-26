@@ -89,6 +89,7 @@ drive:
   clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
   images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
   voiceover_root_folder: "1iifOcR4ZrZAep8y1lT3qc1Ku0Z9XwbaZ"
+  artlist_root_folder: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
   # Per-group folder mapping per clip YouTube
   clip_root_folders:
     discovery: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
