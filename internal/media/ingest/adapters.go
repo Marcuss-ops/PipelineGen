@@ -41,12 +41,12 @@ func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.Media
 	if asset.Description == "" {
 		asset.Description = rec.Filename
 	}
-	_, err := a.repo.AddImage(asset)
+	_, err := a.repo.AddImage(ctx, asset)
 	return err
 }
 
 func (a *imageStoreAdapter) Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
-	img, err := a.repo.GetImageByHash(stripKindPrefix(id))
+	img, err := a.repo.GetImageByHash(ctx, stripKindPrefix(id))
 	if err != nil || img == nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (a *imageStoreAdapter) FindExisting(ctx context.Context, query assetop.Exis
 	}
 
 	if query.FileHash != "" {
-		img, err := a.repo.GetImageByHash(query.FileHash)
+		img, err := a.repo.GetImageByHash(ctx, query.FileHash)
 		if err != nil {
 			return nil, err
 		}

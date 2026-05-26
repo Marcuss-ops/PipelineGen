@@ -70,8 +70,8 @@ func WireAssets(
 
 	// Create drive cleanup service
 	var driveCleanupSvc *drivecleanup.Service
-	if coreDeps.DriveClient != nil {
-		driveCleanupSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log, true)
+	if driveUploader != nil {
+		driveCleanupSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, driveUploader, log, true)
 	}
 
 	// Create deletion service

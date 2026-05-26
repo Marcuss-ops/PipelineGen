@@ -5,6 +5,7 @@ import (
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/storage/drivecleanup"
+	"velox/go-master/internal/upload/drive"
 
 	"go.uber.org/zap"
 )
@@ -22,10 +23,16 @@ func WireDrive(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*DriveWiring, error) {
+	// Create drive uploader
+	var driveUploader *drive.Uploader
+	if coreDeps.DriveClient != nil {
+		driveUploader = &drive.Uploader{Service: coreDeps.DriveClient, Log: log}
+	}
+
 	// Create drive reconcile service
 	var reconcileSvc *drivecleanup.Service
-	if coreDeps.DriveClient != nil {
-		reconcileSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, coreDeps.DriveClient, log, true)
+	if driveUploader != nil {
+		reconcileSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, driveUploader, log, true)
 		log.Info("drive reconcile service initialized")
 	}
 

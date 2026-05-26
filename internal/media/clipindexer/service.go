@@ -233,13 +233,13 @@ func (s *Service) IsEnabled() bool {
 }
 
 // StartServer starts the Python embedding server as a background process
-func (s *Service) StartServer() error {
+func (s *Service) StartServer(ctx context.Context) error {
 	if !s.cfg.Enabled || s.cfg.ServerURL == "" {
 		return nil
 	}
 
 	// Check if server is already running
-	if s.checkServer() {
+	if s.checkServer(ctx) {
 		s.log.Info("embedding server already running")
 		return nil
 	}
@@ -261,26 +261,32 @@ func (s *Service) StartServer() error {
 }
 
 // StartWatchdog starts a background goroutine to monitor and restart the server if it fails
-func (s *Service) StartWatchdog() {
+func (s *Service) StartWatchdog(ctx context.Context) {
 	if !s.cfg.Enabled || s.cfg.ServerURL == "" {
 		return
 	}
 
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
-		for range ticker.C {
-			if !s.checkServer() {
-				s.log.Warn("embedding server health check failed, restarting...")
-				if err := s.StartServer(); err != nil {
-					s.log.Error("watchdog failed to restart server", zap.Error(err))
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !s.checkServer(ctx) {
+					s.log.Warn("embedding server health check failed, restarting...")
+					if err := s.StartServer(ctx); err != nil {
+						s.log.Error("watchdog failed to restart server", zap.Error(err))
+					}
 				}
 			}
 		}
 	}()
 }
 
-func (s *Service) checkServer() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func (s *Service) checkServer(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	url := fmt.Sprintf("%s/health", strings.TrimSuffix(s.cfg.ServerURL, "/"))

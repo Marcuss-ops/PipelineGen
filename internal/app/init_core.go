@@ -54,6 +54,7 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
 
 	return &CoreDeps{
+		Context:            ctx,
 		ScriptGen:          svcs.scriptGen,
 		DocClient:          svcs.docClient,
 		DriveClient:        svcs.driveClient,

@@ -36,9 +36,9 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 	}
 
 	// 1. Cerca nel DB locale
-	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
+	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err == nil && subject != nil {
-		if images, err := s.repo.ListImagesBySubject(subject.Slug); err == nil && len(images) > 0 {
+		if images, err := s.repo.ListImagesBySubject(ctx, subject.Slug); err == nil && len(images) > 0 {
 			s.log.Info("Images found in local database", zap.String("subject", subject.Slug), zap.Int("count", len(images)))
 
 			// SCELTA CASUALE: Se abbiamo più immagini, ne prendiamo una a caso
@@ -59,7 +59,7 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 			Slug:        slug,
 			DisplayName: displayName,
 		}
-		_, err := s.repo.CreateSubject(subject)
+		_, err := s.repo.CreateSubject(ctx, subject)
 		if err != nil {
 			s.log.Warn("Ingest: subject might already exist", zap.String("slug", slug))
 		}
@@ -117,7 +117,7 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 		meta["source_query"] = finalQuery
 		metaJSON, _ := json.Marshal(meta)
 		// Aggiorna i metadati senza duplicare l'inserimento (già fatto da downloadAndIngest)
-		_ = s.repo.UpdateImageMetadata(asset.Hash, string(metaJSON))
+		_ = s.repo.UpdateImageMetadata(ctx, asset.Hash, string(metaJSON))
 		asset.MetadataJSON = string(metaJSON)
 	}
 

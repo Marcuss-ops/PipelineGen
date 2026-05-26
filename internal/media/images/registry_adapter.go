@@ -49,12 +49,12 @@ func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *assetregistry.Me
 		asset.Description = filepath.Base(rec.Filename)
 	}
 
-	_, err := a.repo.AddImage(asset)
+	_, err := a.repo.AddImage(ctx, asset)
 	return err
 }
 
 func (a *registryAdapter) GetMedia(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
-	img, err := a.repo.GetImageByHash(imageRecordHash(id, ""))
+	img, err := a.repo.GetImageByHash(ctx, imageRecordHash(id, ""))
 	if err != nil || img == nil {
 		return nil, err
 	}

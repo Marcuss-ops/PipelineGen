@@ -14,7 +14,7 @@ func (r *Repository) SearchArtlist(ctx context.Context, q string) ([]CatalogReco
 	db := r.artlistRepo.DB()
 	// Normalize query: lowercase, remove spaces
 	normalizedQ := strings.ReplaceAll(strings.ToLower(q), " ", "")
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(ctx, `
 		SELECT folder_id, group_name, folder_path, folder_id 
 		FROM clip_folders 
 		WHERE search_key LIKE ?

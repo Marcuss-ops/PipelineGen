@@ -25,9 +25,9 @@ func (r *Repository) DB() *sql.DB {
 }
 
 // GetSubjectBySlugOrAlias recupera un soggetto tramite ID (slug)
-func (r *Repository) GetSubjectBySlugOrAlias(id string) (*models.Subject, error) {
+func (r *Repository) GetSubjectBySlugOrAlias(ctx context.Context, id string) (*models.Subject, error) {
 	var s models.Subject
-	err := r.db.QueryRow(`
+	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name, COALESCE(description, ''), created_at, updated_at
 		FROM subjects WHERE id = ?
 	`, id).Scan(&s.Slug, &s.DisplayName, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
@@ -39,8 +39,8 @@ func (r *Repository) GetSubjectBySlugOrAlias(id string) (*models.Subject, error)
 }
 
 // CreateSubject crea un nuovo soggetto
-func (r *Repository) CreateSubject(s *models.Subject) (int64, error) {
-	_, err := r.db.Exec(`
+func (r *Repository) CreateSubject(ctx context.Context, s *models.Subject) (int64, error) {
+	_, err := r.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO subjects (id, name, description, metadata_json)
 		VALUES (?, ?, ?, ?)
 	`, s.Slug, s.DisplayName, s.Notes, "{}")
@@ -48,7 +48,7 @@ func (r *Repository) CreateSubject(s *models.Subject) (int64, error) {
 }
 
 // AddImage aggiunge un record immagine nella tabella media_assets
-func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
+func (r *Repository) AddImage(ctx context.Context, img *models.ImageAsset) (int64, error) {
 	id := img.Hash
 	if id == "" {
 		id = fmt.Sprintf("img_%d", img.CreatedAt.UnixNano())
@@ -70,7 +70,7 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 	
 	metaJSON, _ := json.Marshal(metaMap)
 
-	_, err := r.db.Exec(`
+	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO media_assets (id, source, name, url, tags, metadata_json, created_at)
 		VALUES (?, 'image', ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -84,14 +84,14 @@ func (r *Repository) AddImage(img *models.ImageAsset) (int64, error) {
 }
 
 // GetImageByHash recupera un'immagine tramite il suo hash
-func (r *Repository) GetImageByHash(hash string) (*models.ImageAsset, error) {
+func (r *Repository) GetImageByHash(ctx context.Context, hash string) (*models.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at
 		FROM media_assets 
 		WHERE source = 'image' AND json_extract(metadata_json, '$.hash') = ?
 		LIMIT 1
 	`
-	row := r.db.QueryRow(query, hash)
+	row := r.db.QueryRowContext(ctx, query, hash)
 	return scanImageAsset(row)
 }
 
@@ -125,15 +125,16 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 	return scanImageAsset(row)
 }
 
-// ListImagesBySubject elenca le immagini di un soggetto
-func (r *Repository) ListImagesBySubject(subjectID interface{}) ([]models.ImageAsset, error) {
+// ListImagesBySubject recupera tutte le immagini per un soggetto
+func (r *Repository) ListImagesBySubject(ctx context.Context, subjectID string) ([]models.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at
 		FROM media_assets 
 		WHERE source = 'image' AND json_extract(metadata_json, '$.subject_id') = ?
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query, subjectID)
+	rows, err := r.db.QueryContext(ctx, query, subjectID)
+
 	if err != nil {
 		return nil, err
 	}
@@ -271,17 +272,17 @@ func scanImageAssetRows(rows *sql.Rows) (*models.ImageAsset, error) {
 	return &img, nil
 }
 
-func (r *Repository) UpdateSubject(s *models.Subject) error {
-	_, err := r.db.Exec("UPDATE subjects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", s.DisplayName, s.Slug)
+func (r *Repository) UpdateSubject(ctx context.Context, s *models.Subject) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE subjects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", s.DisplayName, s.Slug)
 	return err
 }
 
 // UpdateImageMetadata aggiorna i metadati JSON di un'immagine esistente.
-func (r *Repository) UpdateImageMetadata(hash, metadataJSON string) error {
-	_, err := r.db.Exec(`
+func (r *Repository) UpdateImageMetadata(ctx context.Context, hash, metadataJSON string) error {
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
-		SET metadata_json = ?, updated_at = ?
+		SET metadata_json = ?
 		WHERE source = 'image' AND json_extract(metadata_json, '$.hash') = ?
-	`, metadataJSON, time.Now().Format(time.RFC3339), hash)
+	`, metadataJSON, hash)
 	return err
 }

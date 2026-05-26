@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
+	driveupload "velox/go-master/internal/upload/drive"
 	driveutil "velox/go-master/internal/storage/drive"
 )
 
@@ -77,7 +77,7 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 		}
 	}
 
-	if rootFolderID != "" && s.driveSvc != nil {
+	if rootFolderID != "" && s.uploader != nil {
 		driveFiles, err := s.listDriveFilesRecursive(ctx, rootFolderID)
 		if err != nil {
 			s.log.Warn("failed to list drive files",
@@ -89,9 +89,9 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 				if file.MimeType == "application/vnd.google-apps.folder" {
 					continue
 				}
-				if !sqliteClipIDs[file.Id] {
+				if !sqliteClipIDs[file.ID] {
 					result.DriveMissingInSQLite++
-					result.OrphanedDriveFileIDs = append(result.OrphanedDriveFileIDs, file.Id)
+					result.OrphanedDriveFileIDs = append(result.OrphanedDriveFileIDs, file.ID)
 				}
 			}
 		}
@@ -100,31 +100,27 @@ func (s *Service) Reconcile(ctx context.Context, source, rootFolderID string, dr
 	return result, nil
 }
 
-func (s *Service) listDriveFilesRecursive(ctx context.Context, folderID string) ([]*driveapi.File, error) {
-	var allFiles []*driveapi.File
+func (s *Service) listDriveFilesRecursive(ctx context.Context, folderID string) ([]driveupload.DriveFileInfo, error) {
+	var allFiles []driveupload.DriveFileInfo
 	err := s.listDriveFilesRecursiveHelper(ctx, folderID, &allFiles)
 	return allFiles, err
 }
 
-func (s *Service) listDriveFilesRecursiveHelper(ctx context.Context, folderID string, allFiles *[]*driveapi.File) error {
-	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
-	call := s.driveSvc.Files.List().
-		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType)").
-		PageSize(1000).
-		Context(ctx)
+func (s *Service) listDriveFilesRecursiveHelper(ctx context.Context, folderID string, allFiles *[]driveupload.DriveFileInfo) error {
+	files, err := s.uploader.ListFiles(ctx, folderID)
+	if err != nil {
+		return err
+	}
 
-	return call.Pages(ctx, func(fl *driveapi.FileList) error {
-		for _, file := range fl.Files {
-			*allFiles = append(*allFiles, file)
-			if file.MimeType == "application/vnd.google-apps.folder" {
-				if err := s.listDriveFilesRecursiveHelper(ctx, file.Id, allFiles); err != nil {
-					return err
-				}
+	for _, file := range files {
+		*allFiles = append(*allFiles, file)
+		if file.MimeType == "application/vnd.google-apps.folder" {
+			if err := s.listDriveFilesRecursiveHelper(ctx, file.ID, allFiles); err != nil {
+				return err
 			}
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (s *Service) fileExistsAndNotTrashed(ctx context.Context, fileID string) (bool, error) {
@@ -133,10 +129,9 @@ func (s *Service) fileExistsAndNotTrashed(ctx context.Context, fileID string) (b
 		return false, nil
 	}
 
-	file, err := s.driveSvc.Files.Get(fileID).Fields("id", "trashed").Context(ctx).Do()
-	if err != nil {
-		return false, nil
+	if s.uploader == nil {
+		return false, fmt.Errorf("uploader not configured")
 	}
 
-	return !file.Trashed, nil
+	return s.uploader.FileExists(ctx, fileID)
 }

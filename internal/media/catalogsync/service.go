@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/assettree"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/repository/clips"
-	drivequery "velox/go-master/internal/storage/drive"
+	"velox/go-master/internal/upload/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
@@ -52,7 +51,7 @@ type Summary struct {
 }
 
 type Service struct {
-	driveClient *driveapi.Service
+	uploader    *drive.Uploader
 	log         *zap.Logger
 	targets     []Target
 	assetIndex  *assetindex.Service
@@ -60,9 +59,9 @@ type Service struct {
 	mu          sync.Mutex
 }
 
-func NewService(driveClient *driveapi.Service, targets []Target, assetIndex *assetindex.Service, assetTree *assettree.Service, log *zap.Logger) *Service {
+func NewService(uploader *drive.Uploader, targets []Target, assetIndex *assetindex.Service, assetTree *assettree.Service, log *zap.Logger) *Service {
 	return &Service{
-		driveClient: driveClient,
+		uploader:    uploader,
 		log:         log,
 		targets:     targets,
 		assetIndex:  assetIndex,
@@ -80,10 +79,10 @@ func (s *Service) SyncAll(ctx context.Context) (*Summary, error) {
 		Roots:     make([]RootSummary, 0, len(s.targets)),
 	}
 
-	if s.driveClient == nil {
+	if s.uploader == nil {
 		summary.OK = false
-		summary.Error = "drive client not configured"
-		return summary, fmt.Errorf("drive client not configured")
+		summary.Error = "drive uploader not configured"
+		return summary, fmt.Errorf("drive uploader not configured")
 	}
 
 	for _, target := range s.targets {
@@ -132,7 +131,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	seenFolderIDs := make(map[string]struct{})
 	markFolderSeen(seenFolderIDs, target.RootFolderID)
 
-	rootMeta, err := s.driveClient.Files.Get(target.RootFolderID).Fields("id, name, webViewLink").Context(ctx).Do()
+	rootMeta, err := s.uploader.GetFileMeta(ctx, target.RootFolderID)
 	if err != nil {
 		rootSummary.Failed++
 		return rootSummary, err
@@ -151,7 +150,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 		rootLink = strings.TrimSpace(rootMeta.WebViewLink)
 	}
 	if rootLink == "" {
-		rootLink = "https://driveapi.google.com/drive/folders/" + target.RootFolderID
+		rootLink = "https://drive.google.com/drive/folders/" + target.RootFolderID
 	}
 
 	now := time.Now().UTC()
@@ -223,13 +222,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 	failed := 0
 
 	for _, child := range children {
-		if child == nil {
-			continue
-		}
-
 		childName := strings.TrimSpace(child.Name)
 		if childName == "" {
-			childName = child.Id
+			childName = child.ID
 		}
 
 		childPath := path.Join(folderPath, childName)
@@ -239,25 +234,26 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		}
 		if link == "" {
 			if child.MimeType == folderMimeType {
-				link = "https://drive.google.com/drive/folders/" + child.Id
+				link = "https://drive.google.com/drive/folders/" + child.ID
 			} else {
-				link = "https://drive.google.com/file/d/" + child.Id
+				link = "https://drive.google.com/file/d/" + child.ID
 			}
 		}
 
 		category := "file"
 		if child.MimeType == folderMimeType {
 			category = "folder"
-			markFolderSeen(seenFolderIDs, child.Id)
+			markFolderSeen(seenFolderIDs, child.ID)
 		}
 
-		record := &models.MediaAsset{
-			ID:             child.Id,
+		now := time.Now().UTC()
+		clip := &models.MediaAsset{
+			ID:             child.ID,
 			Name:           childName,
 			Filename:       childName,
-			FolderID:       folderID,
+			FolderID:       child.ID,
 			ParentFolderID: folderID,
-			Depth:          strings.Count(childPath, "/"),
+			Depth:          0, // depth non calcolato qui
 			IsFolder:       child.MimeType == folderMimeType,
 			FolderPath:     childPath,
 			Group:          target.Source,
@@ -268,11 +264,14 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 			Category:       category,
 			ExternalURL:    link,
 			Tags:           []string{},
-			CreatedAt:      time.Now().UTC(),
-			UpdatedAt:      time.Now().UTC(),
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
+		clip.SetMetadataString("mime_type", child.MimeType)
 
-		if err := s.upsertPreservingExisting(ctx, repo, record); err != nil {
+
+		if err := s.upsertPreservingExisting(ctx, repo, clip); err != nil {
+			s.log.Warn("failed to upsert clip", zap.String("id", child.ID), zap.Error(err))
 			failed++
 			continue
 		}
@@ -280,23 +279,23 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 		// Save to common AssetTree
 		if s.assetTree != nil {
 			node := s.assetTree.NormalizeDriveNode(
-				child.Id, childName, child.MimeType, child.WebViewLink, child.WebContentLink, folderID, rootID, folderPath, target.Source, child.Id,
+				child.ID, childName, child.MimeType, link, link, folderID, rootID, folderPath, target.Source, child.ID,
 			)
 			if err := s.assetTree.UpsertNode(ctx, node); err != nil {
-				s.log.Warn("failed to save node to asset tree", zap.Error(err), zap.String("id", child.Id))
+				s.log.Warn("failed to save node to asset tree", zap.Error(err), zap.String("id", child.ID))
 			}
 		}
 
 		synced++
 
 		if child.MimeType == folderMimeType {
-			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.Id, rootID, childPath, target, seenFolderIDs)
+			subRequested, subSynced, subFailed, err := s.syncFolderRecursive(ctx, repo, child.ID, rootID, childPath, target, seenFolderIDs)
 			requested += subRequested
 			synced += subSynced
 			failed += subFailed
 			if err != nil {
 				s.log.Warn("recursive sync folder failed",
-					zap.String("folder_id", child.Id),
+					zap.String("folder_id", child.ID),
 					zap.String("path", childPath),
 					zap.Error(err),
 				)
@@ -351,23 +350,8 @@ func markFolderSeen(seen map[string]struct{}, folderID string) {
 	seen[folderID] = struct{}{}
 }
 
-func (s *Service) listChildren(ctx context.Context, folderID string) ([]*driveapi.File, error) {
-	query := drivequery.BuildQuery(folderID)
-	call := s.driveClient.Files.List().
-		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
-		PageSize(1000).
-		Context(ctx)
-
-	var files []*driveapi.File
-	err := call.Pages(ctx, func(fl *driveapi.FileList) error {
-		files = append(files, fl.Files...)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
+func (s *Service) listChildren(ctx context.Context, folderID string) ([]drive.DriveFileInfo, error) {
+	return s.uploader.ListFiles(ctx, folderID)
 }
 
 func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *models.MediaAsset) error {

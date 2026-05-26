@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 
 	"velox/go-master/internal/api/handlers/common"
@@ -35,6 +36,7 @@ import (
 
 // CoreDeps holds the core dependencies of the system.
 type CoreDeps struct {
+	Context            context.Context
 	ScriptGen          *ollama.Generator
 	DocClient          drive.DocClient
 	DriveClient        *gdrive.Service

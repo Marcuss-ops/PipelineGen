@@ -8,25 +8,25 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/media/assettree"
+	driveup "velox/go-master/internal/upload/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
 
 type Service struct {
-	driveClient  *drive.Service
+	uploader     *driveup.Uploader
 	log          *zap.Logger
 	repo         *voiceovers.Repository
 	assetTreeSvc *assettree.Service
 	rootFolderID string
 }
 
-func NewService(driveClient *drive.Service, repo *voiceovers.Repository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
+func NewService(uploader *driveup.Uploader, repo *voiceovers.Repository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
 	return &Service{
-		driveClient:  driveClient,
+		uploader:     uploader,
 		log:          log,
 		repo:         repo,
 		assetTreeSvc: assetTreeSvc,
@@ -51,10 +51,10 @@ func (s *Service) Sync(ctx context.Context) (*Summary, error) {
 		StartedAt: time.Now().UTC(),
 	}
 
-	if s.driveClient == nil {
+	if s.uploader == nil {
 		summary.OK = false
-		summary.Error = "drive client not configured"
-		return summary, fmt.Errorf("drive client not configured")
+		summary.Error = "drive uploader not configured"
+		return summary, fmt.Errorf("drive uploader not configured")
 	}
 
 	if s.repo == nil {
@@ -100,13 +100,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 	failed := 0
 
 	for _, child := range children {
-		if child == nil {
-			continue
-		}
-
 		childName := strings.TrimSpace(child.Name)
 		if childName == "" {
-			childName = child.Id
+			childName = child.ID
 		}
 
 		childPath := path.Join(folderPath, childName)
@@ -115,16 +111,16 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 			// Upsert folder to tree
 			if s.assetTreeSvc != nil {
 				node := s.assetTreeSvc.NormalizeDriveNode(
-					child.Id, child.Name, child.MimeType, child.WebViewLink, child.WebContentLink,
+					child.ID, child.Name, child.MimeType, child.WebViewLink, child.WebContentLink,
 					folderID, s.rootFolderID, folderPath, "voiceover", "",
 				)
 				s.assetTreeSvc.UpsertNode(ctx, node)
 			}
 
-			subSynced, subFailed, err := s.syncFolderRecursive(ctx, child.Id, childPath)
+			subSynced, subFailed, err := s.syncFolderRecursive(ctx, child.ID, childPath)
 			if err != nil {
 				s.log.Warn("failed to sync subfolder",
-					zap.String("folder_id", child.Id),
+					zap.String("folder_id", child.ID),
 					zap.Error(err),
 				)
 			}
@@ -133,7 +129,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 		} else if s.isAudioFile(child.Name) {
 			if err := s.syncFile(ctx, child, childPath); err != nil {
 				s.log.Warn("failed to sync voiceover file",
-					zap.String("file_id", child.Id),
+					zap.String("file_id", child.ID),
 					zap.String("name", child.Name),
 					zap.Error(err),
 				)
@@ -147,20 +143,20 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 	return synced, failed, nil
 }
 
-func (s *Service) syncFile(ctx context.Context, file *drive.File, filePath string) error {
+func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, filePath string) error {
 	link := strings.TrimSpace(file.WebViewLink)
 	if link == "" {
 		link = strings.TrimSpace(file.WebContentLink)
 	}
 	if link == "" {
-		link = "https://drive.google.com/file/d/" + file.Id
+		link = "https://drive.google.com/file/d/" + file.ID
 	}
 
 	// Extract language from filename or path (e.g., test_it.mp3 -> it)
 	language := s.extractLanguage(file.Name)
 
 	// Generate an ID based on file hash or drive file ID
-	id := "vo_sync_" + file.Id
+	id := "vo_sync_" + file.ID
 
 	// Check if already exists
 	existing, err := s.repo.GetByID(ctx, id)
@@ -179,7 +175,7 @@ func (s *Service) syncFile(ctx context.Context, file *drive.File, filePath strin
 	rec := &voiceovers.Record{
 		ID:           id,
 		RequestID:    "sync_" + time.Now().Format("20060102"),
-		TextHash:     file.Id, // Use drive file ID as hash for synced files
+		TextHash:     file.ID, // Use drive file ID as hash for synced files
 		TextPreview:  file.Name,
 		Language:     language,
 		Voice:        "", // Unknown for synced files
@@ -188,9 +184,9 @@ func (s *Service) syncFile(ctx context.Context, file *drive.File, filePath strin
 		CleanedPath:  "",
 		FolderID:     folderID,
 		FolderPath:   filePath,
-		DriveFileID:  file.Id,
+		DriveFileID:  file.ID,
 		DriveLink:    link,
-		DownloadLink: "https://drive.google.com/uc?id=" + file.Id,
+		DownloadLink: "https://drive.google.com/uc?id=" + file.ID,
 		FileHash:     "",
 		Status:       "processed",
 		Strategy:     "sync",
@@ -224,7 +220,7 @@ func (s *Service) syncFile(ctx context.Context, file *drive.File, filePath strin
 	// Upsert file to tree
 	if s.assetTreeSvc != nil {
 		node := s.assetTreeSvc.NormalizeDriveNode(
-			file.Id, file.Name, file.MimeType, file.WebViewLink, file.WebContentLink,
+			file.ID, file.Name, file.MimeType, file.WebViewLink, file.WebContentLink,
 			folderID, s.rootFolderID, filePath, "voiceover", id,
 		)
 		return s.assetTreeSvc.UpsertNode(ctx, node)
@@ -233,33 +229,8 @@ func (s *Service) syncFile(ctx context.Context, file *drive.File, filePath strin
 	return nil
 }
 
-// buildDriveQuery builds a Drive API query string.
-// All Drive queries should use this helper to ensure consistent formatting.
-func buildDriveQuery(folderID string, extraConditions ...string) string {
-	query := fmt.Sprintf("'%s' in parents and trashed=false", folderID)
-	for _, cond := range extraConditions {
-		query += " and " + cond
-	}
-	return query
-}
-
-func (s *Service) listChildren(ctx context.Context, folderID string) ([]*drive.File, error) {
-	query := buildDriveQuery(folderID)
-	call := s.driveClient.Files.List().
-		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink, parents)").
-		PageSize(1000).
-		Context(ctx)
-
-	var files []*drive.File
-	err := call.Pages(ctx, func(fl *drive.FileList) error {
-		files = append(files, fl.Files...)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
+func (s *Service) listChildren(ctx context.Context, folderID string) ([]driveup.DriveFileInfo, error) {
+	return s.uploader.ListFiles(ctx, folderID)
 }
 
 func (s *Service) isAudioFile(filename string) bool {

@@ -297,10 +297,12 @@ func (u *Uploader) GetFileMD5(ctx context.Context, fileID string) (string, error
 
 // FileMeta holds metadata about a Drive file.
 type FileMeta struct {
-	ID       string
-	Name     string
-	MimeType string
-	Size     int64
+	ID          string
+	Name        string
+	MimeType    string
+	Size        int64
+	WebViewLink string
+	Parents     []string
 }
 
 // GetFileMeta retrieves metadata for a Drive file.
@@ -308,15 +310,17 @@ func (u *Uploader) GetFileMeta(ctx context.Context, fileID string) (*FileMeta, e
 	if u.Service == nil {
 		return nil, fmt.Errorf("drive service not configured")
 	}
-	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size").Context(ctx).Do()
+	f, err := u.Service.Files.Get(fileID).Fields("id, name, mimeType, size, webViewLink, parents").Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
 	return &FileMeta{
-		ID:       f.Id,
-		Name:     f.Name,
-		MimeType: f.MimeType,
-		Size:     f.Size,
+		ID:          f.Id,
+		Name:        f.Name,
+		MimeType:    f.MimeType,
+		Size:        f.Size,
+		WebViewLink: f.WebViewLink,
+		Parents:     f.Parents,
 	}, nil
 }
 
@@ -345,6 +349,7 @@ type DriveFileInfo struct {
 	MimeType       string
 	WebViewLink    string
 	WebContentLink string
+	Parents        []string
 }
 
 // ListFiles lists all non-trashed files in a Drive folder.
@@ -355,7 +360,7 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 	query := fmt.Sprintf("'%s' in parents and trashed=false", parentID)
 	list, err := u.Service.Files.List().
 		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink)").
+		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink, parents)").
 		PageSize(1000).
 		Context(ctx).
 		Do()
@@ -371,6 +376,7 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 			MimeType:       f.MimeType,
 			WebViewLink:    f.WebViewLink,
 			WebContentLink: f.WebContentLink,
+			Parents:        f.Parents,
 		})
 	}
 	return result, nil

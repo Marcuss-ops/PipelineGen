@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/api/handlers/sources"
@@ -29,6 +31,7 @@ type ArtlistWiring struct {
 
 // WireArtlist creates the Artlist service, handler, and module
 func WireArtlist(
+	ctx context.Context,
 	cfg *config.Config,
 	log *zap.Logger,
 	coreDeps *CoreDeps,
@@ -37,7 +40,7 @@ func WireArtlist(
 	artlistLifecycle := wireArtlistLifecycle(coreDeps, log)
 
 	// 2. Catalog & Indexer
-	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(cfg, coreDeps, log)
+	clipCatalogRepo, clipIndexerSvc := wireArtlistCatalog(ctx, cfg, coreDeps, log)
 
 	// 3. Resolvers
 	assetDestResolver := wireAssetDestinationResolver(cfg, coreDeps, log)

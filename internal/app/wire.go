@@ -25,7 +25,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	middleware.SetLogDB(coreDeps.DB.DB)
 
 	// Wire up the registry with all modules
-	registryWiring, err := WireRegistry(cfg, log, coreDeps)
+	registryWiring, err := WireRegistry(coreDeps.Context, cfg, log, coreDeps)
 	if err != nil {
 		return nil, err
 	}

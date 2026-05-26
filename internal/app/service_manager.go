@@ -184,12 +184,12 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Build sync targets centrally
 	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)
 
-	catalogSync := catalogsync.NewService(driveClient, syncTargets, assetIndexService, assetTreeService, log)
+	catalogSync := catalogsync.NewService(driveUploader, syncTargets, assetIndexService, assetTreeService, log)
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
 	if cfg.Drive.VoiceoverRootFolder != "" && voRepo != nil {
-		voiceoverSync = voiceoversync.NewService(driveClient, voRepo, assetTreeService, cfg.Drive.VoiceoverRootFolder, log)
+		voiceoverSync = voiceoversync.NewService(driveUploader, voRepo, assetTreeService, cfg.Drive.VoiceoverRootFolder, log)
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", cfg.Drive.VoiceoverRootFolder))
 	}
 

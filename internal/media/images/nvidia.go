@@ -77,7 +77,7 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 			MetadataJSON: "{}",
 		}
 
-		if _, err := s.repo.AddImage(asset); err != nil {
+		if _, err := s.repo.AddImage(ctx, asset); err != nil {
 			s.log.Warn("failed to add synced image", zap.String("name", file.Name), zap.Error(err))
 		}
 	}
@@ -236,7 +236,7 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, model s
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {
 	// 1. Get image from repo
-	asset, err := s.repo.GetImageByHash(imageHash)
+	asset, err := s.repo.GetImageByHash(ctx, imageHash)
 	if err != nil {
 		return "", fmt.Errorf("image not found: %w", err)
 	}

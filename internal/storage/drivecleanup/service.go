@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	driveapi "google.golang.org/api/drive/v3"
 
 	"velox/go-master/internal/repository/clips"
 	driveupload "velox/go-master/internal/upload/drive"
@@ -15,22 +14,20 @@ import (
 
 // Service handles synchronized deletion between SQLite and Google Drive.
 type Service struct {
-	repo      *clips.Repository
-	driveSvc  *driveapi.Service
-	log       *zap.Logger
-	useTrash  bool
-	folderSvc *driveupload.Uploader
+	repo     *clips.Repository
+	uploader *driveupload.Uploader
+	log      *zap.Logger
+	useTrash bool
 }
 
 // NewService creates a new drive cleanup service.
 // If useTrash is true, files are moved to trash instead of being permanently deleted.
-func NewService(repo *clips.Repository, driveSvc *driveapi.Service, log *zap.Logger, useTrash bool) *Service {
+func NewService(repo *clips.Repository, uploader *driveupload.Uploader, log *zap.Logger, useTrash bool) *Service {
 	return &Service{
-		repo:      repo,
-		driveSvc:  driveSvc,
-		log:       log,
-		useTrash:  useTrash,
-		folderSvc: &driveupload.Uploader{Service: driveSvc, Log: log},
+		repo:     repo,
+		uploader: uploader,
+		log:      log,
+		useTrash: useTrash,
 	}
 }
 
@@ -52,19 +49,14 @@ func (s *Service) DeleteClipAndDriveFile(ctx context.Context, clipID string, use
 		fileID = driveutil.FileIDFromLink(clip.DownloadLink)
 	}
 
-	if fileID != "" && s.driveSvc != nil {
-		uploader := &driveupload.Uploader{
-			Service: s.driveSvc,
-			Log:     s.log,
-		}
-
+	if fileID != "" && s.uploader != nil {
 		if useTrash {
-			if err := uploader.TrashFile(ctx, fileID); err != nil {
+			if err := s.uploader.TrashFile(ctx, fileID); err != nil {
 				s.log.Error("failed to trash drive file", zap.String("file_id", fileID), zap.Error(err))
 				// Continue to delete from DB even if Drive operation fails
 			}
 		} else {
-			if err := uploader.DeleteFile(ctx, fileID); err != nil {
+			if err := s.uploader.DeleteFile(ctx, fileID); err != nil {
 				s.log.Error("failed to delete drive file", zap.String("file_id", fileID), zap.Error(err))
 				// Continue to delete from DB even if Drive operation fails
 			}
@@ -116,13 +108,13 @@ func (s *Service) DeleteFolderAndClips(ctx context.Context, folderID string, use
 	}
 
 	// Delete the folder from Drive
-	if s.driveSvc != nil {
+	if s.uploader != nil {
 		if useTrash {
-			if err := s.folderSvc.TrashFolder(ctx, folderID); err != nil {
+			if err := s.uploader.TrashFolder(ctx, folderID); err != nil {
 				s.log.Error("failed to trash drive folder", zap.String("folder_id", folderID), zap.Error(err))
 			}
 		} else {
-			if err := s.folderSvc.DeleteFolder(ctx, folderID); err != nil {
+			if err := s.uploader.DeleteFolder(ctx, folderID); err != nil {
 				s.log.Error("failed to delete drive folder", zap.String("folder_id", folderID), zap.Error(err))
 			}
 		}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/maintenance"
@@ -34,6 +35,7 @@ type RegistryWiring struct {
 
 // WireRegistry creates and populates the module registry with all modules using factory pattern
 func WireRegistry(
+	ctx context.Context,
 	cfg *config.Config,
 	log *zap.Logger,
 	coreDeps *CoreDeps,
@@ -61,7 +63,7 @@ func WireRegistry(
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.GoogleAccounting = w.(*GoogleAccountingWiring) }},
 		{"Artlist", func() (module.Module, interface{}, error) {
-			w, err := WireArtlist(cfg, log, coreDeps)
+			w, err := WireArtlist(ctx, cfg, log, coreDeps)
 			if err != nil {
 				return nil, nil, err
 			}

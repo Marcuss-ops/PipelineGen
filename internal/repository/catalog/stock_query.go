@@ -15,7 +15,7 @@ func (r *Repository) SearchStock(ctx context.Context, q string) ([]CatalogRecord
 	var results []CatalogRecord
 
 	// 1. Try clip_folders table
-	rows, err := db.Query(`
+	rows, err := db.QueryContext(ctx, `
 		SELECT folder_id, folder_path, group_name, source_url
 		FROM clip_folders
 		WHERE LOWER(COALESCE(folder_path, '')) LIKE ? OR LOWER(COALESCE(group_name, '')) LIKE ? OR LOWER(COALESCE(source_url, '')) LIKE ?

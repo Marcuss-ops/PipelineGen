@@ -42,7 +42,7 @@ func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, 
 	hasher.Write(content)
 	legacyHash := hex.EncodeToString(hasher.Sum(nil))
 
-	if existing, err := s.repo.GetImageByHash(legacyHash); err == nil && existing != nil {
+	if existing, err := s.repo.GetImageByHash(ctx, legacyHash); err == nil && existing != nil {
 		// Verify the file actually exists on disk (may have been cleaned up)
 		filePath := filepath.Join(s.imagesDir, existing.PathRel)
 		if _, statErr := os.Stat(filePath); statErr == nil {
@@ -66,13 +66,13 @@ func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, 
 
 func (s *Service) ingestDirect(ctx context.Context, slug string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
 	// 1. Trova Soggetto (o crealo)
-	subject, err := s.repo.GetSubjectBySlugOrAlias(slug)
+	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err != nil || subject == nil {
 		subject = &models.Subject{
 			Slug:        slug,
 			DisplayName: slug,
 		}
-		_, err := s.repo.CreateSubject(subject)
+		_, err := s.repo.CreateSubject(ctx, subject)
 		if err != nil {
 			s.log.Warn("Ingest: subject might exist", zap.String("slug", slug))
 		}
@@ -126,9 +126,9 @@ func (s *Service) ingestDirect(ctx context.Context, slug string, content []byte,
 		Tags:         tags,
 	}
 
-	if _, err := s.repo.AddImage(asset); err != nil {
+	if _, err := s.repo.AddImage(ctx, asset); err != nil {
 		// Final safety check for UNIQUE constraint
-		if existing, exErr := s.repo.GetImageByHash(hash); exErr == nil && existing != nil {
+		if existing, exErr := s.repo.GetImageByHash(ctx, hash); exErr == nil && existing != nil {
 			return existing, nil
 		}
 		return nil, fmt.Errorf("failed to add image to repository: %w", err)
