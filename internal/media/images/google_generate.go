@@ -266,6 +266,20 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAss
 		return "", "", fmt.Errorf("style-based Drive upload: %w", err)
 	}
 
+	// Recuperiamo la descrizione originale o usiamo un prompt fallback se non c'è.
+	prompt := asset.Description
+	if strings.HasPrefix(prompt, "AI generated image") {
+		parts := strings.SplitN(prompt, "for prompt: ", 2)
+		if len(parts) == 2 {
+			prompt = parts[1]
+		}
+	}
+	if prompt == "" {
+		prompt = asset.SubjectID // Fallback to subject
+	}
+	
+	s.uploadImageMetadata(ctx, req, prompt, style, "nvidia", fileID, webLink, asset.Hash, imagePath, asset.Width, asset.Height)
+
 	s.log.Info("image uploaded to Drive with style",
 		zap.String("file_id", fileID),
 		zap.String("style", style),

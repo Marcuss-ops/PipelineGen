@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -14,6 +15,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
@@ -103,23 +106,36 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 	// 4. Upload to Drive if configured (skip if disabled by fullimages pipeline)
 	var driveFileID string
 	if s.mediaStore != nil && !skipDrive {
-		fileID, _, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
+		req := storage.AssetDestinationRequest{
 			Source:    storage.SourceImage,
 			MediaType: storage.MediaTypeImage,
 			Subject:   slug, // Prompt slug
 			Hash:      hash,
 			Ext:       ext,
 			Style:     style, // Chosen style
-		}, fullPath)
+		}
+		fileID, link, err := s.mediaStore.UploadToDrive(ctx, req, fullPath)
 		if err != nil {
 			s.log.Warn("Drive upload failed", zap.Error(err))
 		} else {
 			driveFileID = fileID
 			s.log.Info("Drive upload successful", zap.String("file_id", fileID))
+			
+			// 5. Estrai dimensioni reali dell'immagine
+			imgWidth, imgHeight := decodeImageDimensions(content)
+
+			// Upload metadata.json
+			generator := "unknown"
+			prompt := description // Usiamo description come prompt o info
+			s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, link, hash, fullPath, imgWidth, imgHeight)
 		}
+	} else {
+		// Se salta il Drive upload, calcola comunque le dimensioni
+		imgWidth, _ := decodeImageDimensions(content)
+		_ = imgWidth // suppress unused
 	}
 
-	// 5. Estrai dimensioni reali dell'immagine
+	// 5. Estrai dimensioni reali dell'immagine (per DB)
 	imgWidth, imgHeight := decodeImageDimensions(content)
 
 	// 6. Crea record DB con dimensioni reali
@@ -158,3 +174,50 @@ func decodeImageDimensions(data []byte) (int, int) {
 	}
 	return cfg.Width, cfg.Height
 }
+
+// uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
+func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink, hash, localPath string, width, height int) {
+	subject, tags := extractSubjectAndTags(prompt)
+	
+	styleList := []string{}
+	if style != "" {
+		styleList = append(styleList, style)
+	}
+
+	meta := SemanticMetadataPayload{
+		AssetID:             req.Hash,
+		AssetType:           "image",
+		PromptOriginal:      prompt,
+		SemanticDescription: prompt, // Basic fallback, would be better to call LLM here
+		Subjects:            []string{subject},
+		Actions:             []string{}, // Placeholder
+		Mood:                []string{}, // Placeholder
+		Style:               styleList,
+		SearchText:          strings.Join(append([]string{subject, style}, tags...), " "),
+		EmbeddingReady:      true,
+		Generator:           generator,
+		CreatedAt:           time.Now().Format(time.RFC3339),
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		s.log.Warn("uploadImageMetadata: failed to marshal metadata", zap.Error(err))
+		return
+	}
+
+	tmpPath := filepath.Join(s.tempDir, "img_metadata_"+req.Hash+".json")
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		s.log.Warn("uploadImageMetadata: failed to write temp metadata file", zap.Error(err))
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	metaReq := req
+	metaReq.Hash = "metadata"
+	metaReq.Ext = ".json"
+	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, tmpPath); err != nil {
+		s.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
+		return
+	}
+	s.log.Info("uploadImageMetadata: metadata.json uploaded", zap.String("prompt", prompt), zap.String("style", style))
+}
+

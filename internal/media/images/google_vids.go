@@ -19,22 +19,21 @@ import (
 	"velox/go-master/internal/pkg/googleaccounting"
 )
 
-// metadataPayload contains fields for the metadata.json uploaded alongside generated videos.
-// Più campi = migliore ricerca semantica quando attiveremo il vector store.
-type metadataPayload struct {
-	Prompt      string   `json:"prompt"`
-	Subject     string   `json:"subject"`
-	Style       string   `json:"style"`
-	Generator   string   `json:"generator"`
-	Tags        []string `json:"tags"`
-	FileID      string   `json:"file_id"`
-	DriveLink   string   `json:"drive_link"`
-	Hash        string   `json:"hash"`
-	FileSize    int64    `json:"file_size"`
-	Width       int      `json:"width"`
-	Height      int      `json:"height"`
-	DurationSec int      `json:"duration_sec"`
-	CreatedAt   string   `json:"created_at"`
+// SemanticMetadataPayload contains fields for the metadata.json uploaded alongside generated assets.
+// It acts as a semantic passport for the asset, separating it from storage/logistics data.
+type SemanticMetadataPayload struct {
+	AssetID             string   `json:"asset_id"`
+	AssetType           string   `json:"asset_type"` // "video" or "image"
+	PromptOriginal      string   `json:"prompt_original"`
+	SemanticDescription string   `json:"semantic_description"`
+	Subjects            []string `json:"subjects"`
+	Actions             []string `json:"actions,omitempty"`
+	Mood                []string `json:"mood,omitempty"`
+	Style               []string `json:"style"`
+	SearchText          string   `json:"search_text"`
+	EmbeddingReady      bool     `json:"embedding_ready"`
+	Generator           string   `json:"generator"`
+	CreatedAt           string   `json:"created_at"`
 }
 
 // GenerateVideoAI generates a video via Google Vids automation
@@ -296,26 +295,25 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 // uploadVideoMetadata scrive un file metadata.json nella stessa cartella Drive del video.
 func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath string) {
 	subject, tags := extractSubjectAndTags(prompt)
-	fi, err := os.Stat(localPath)
-	fileSize := int64(0)
-	if err == nil {
-		fileSize = fi.Size()
+	
+	styleList := []string{}
+	if style != "" {
+		styleList = append(styleList, style)
 	}
 
-	meta := metadataPayload{
-		Prompt:      prompt,
-		Subject:     subject,
-		Style:       style,
-		Generator:   generator,
-		Tags:        tags,
-		FileID:      fileID,
-		DriveLink:   driveLink,
-		Hash:        hash,
-		FileSize:    fileSize,
-		Width:       1920,
-		Height:      1080,
-		DurationSec: durationSec,
-		CreatedAt:   time.Now().Format(time.RFC3339),
+	meta := SemanticMetadataPayload{
+		AssetID:             req.Hash,
+		AssetType:           "video",
+		PromptOriginal:      prompt,
+		SemanticDescription: prompt, // Basic fallback, would be better to call LLM here
+		Subjects:            []string{subject},
+		Actions:             []string{}, // Placeholder
+		Mood:                []string{}, // Placeholder
+		Style:               styleList,
+		SearchText:          strings.Join(append([]string{subject, style}, tags...), " "),
+		EmbeddingReady:      true,
+		Generator:           generator,
+		CreatedAt:           time.Now().Format(time.RFC3339),
 	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
