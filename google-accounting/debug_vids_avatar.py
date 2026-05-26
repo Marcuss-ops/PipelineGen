@@ -7,50 +7,44 @@ async def run():
     try:
         context = await browser.new_context(storage_state='google-accounting/sessions/favamassimo.json')
         page = await context.new_page()
-        print("Navigating to Google Vids Home...")
-        await page.goto("https://docs.google.com/videos/u/0/?usp=direct_url", wait_until="networkidle")
-        await asyncio.sleep(5)
+        print("Navigating to existing Vids project...")
+        await page.goto("https://docs.google.com/videos/d/1QOY4nINvvf5kOB4uG50DrrpLa92KIqrhglvvyriptC4/edit", wait_until="domcontentloaded")
+        await asyncio.sleep(20)
         
-        # Prova a cliccare su un video esistente se presente, altrimenti nuovo
-        print("Looking for any project link...")
-        projects = await page.locator('a[href*="/videos/d/"]').all()
-        if projects:
-            print(f"Found {len(projects)} projects. Clicking the first one...")
-            await projects[0].click()
-        else:
-            print("No projects found. Clicking 'Inizia un nuovo video'...")
-            # Spesso è un div con aria-label o testo
-            btn = page.locator('div[aria-label="Inizia un nuovo video"], [role="button"]:has-text("Inizia un nuovo video")').first
-            await btn.click()
+        print("Clicking 'Inserisci'...")
+        # A volte è un pulsante con id docs-insert-menu o simile
+        insert_btn = page.locator('.docs-primary-menu-item:has-text("Inserisci"), button:has-text("Inserisci")').first
+        await insert_btn.click()
+        await asyncio.sleep(3)
+        
+        print("Searching for 'Avatar AI'...")
+        avatar_item = page.locator('.goog-menuitem:has-text("Avatar AI"), [role="menuitem"]:has-text("Avatar AI")').first
+        if await avatar_item.count() > 0:
+            print("Clicking 'Avatar AI'...")
+            await avatar_item.click()
+            await asyncio.sleep(8)
+            await page.screenshot(path="google-accounting/debug_vids_avatar_panel.png")
             
-        print("Waiting for editor to load...")
-        # Aspettiamo che l'URL cambi in /videos/d/
-        for _ in range(20):
-            await asyncio.sleep(1)
-            if "/videos/d/" in page.url:
-                print(f"Editor loaded: {page.url}")
-                break
+            # Ispezione del pannello Avatar
+            print("Inspecting Sidebar/Panel for script input...")
+            # Spesso i pannelli laterali di Google hanno classi specifiche
+            sidebars = await page.locator('.apps-docs-ai-sidebar, .vids-side-panel, div[role="complementary"]').all()
+            for i, sb in enumerate(sidebars):
+                text = await sb.inner_text()
+                print(f"Sidebar {i} text: {text[:200]}")
+            
+            textareas = await page.locator('textarea').all()
+            for i, ta in enumerate(textareas):
+                placeholder = await ta.get_attribute("placeholder") or ""
+                print(f"Textarea {i}: Placeholder='{placeholder}'")
+                
+            btns = await page.locator('button').all()
+            for i, btn in enumerate(btns):
+                btn_text = await btn.inner_text()
+                if btn_text.strip():
+                    print(f"Button {i}: '{btn_text.strip()}'")
         else:
-            print(f"Timeout waiting for editor. Current URL: {page.url}")
-            await page.screenshot(path="google-accounting/debug_vids_home_after_click.png")
-            return
-
-        await asyncio.sleep(10) # Caricamento pesante dell'editor
-        
-        # Ispezione top bar per "Inserisci"
-        print("Searching for 'Inserisci' in the top menu bar...")
-        # Google Docs/Vids menus are often in a specific container
-        menus = await page.locator('.docs-menubar .docs-primary-menu-item, button').all()
-        for i, m in enumerate(menus):
-            text = await m.inner_text()
-            if text: print(f"Menu {i}: '{text.strip()}'")
-            if "Inserisci" in text or "Insert" in text:
-                print(f"Target menu found: {text.strip()}. Clicking...")
-                await m.click()
-                await asyncio.sleep(2)
-                break
-        
-        await page.screenshot(path="google-accounting/debug_vids_editor.png")
+            print("'Avatar AI' not found.")
 
     finally:
         await browser.close()

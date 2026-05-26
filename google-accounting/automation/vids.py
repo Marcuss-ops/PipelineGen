@@ -31,7 +31,7 @@ class GoogleVidsAutomation(BaseAutomation):
         'textarea.javascriptMaterialdesignGm3WizTextFieldOutlined-text-field__input',
         'textarea#c1',
         'textarea',
-        '[contenteditable="true"]',
+        '[contenteditable=\"true\"]',
     ]
 
     GENERATE_BUTTON_SELECTORS = [
@@ -612,130 +612,129 @@ class GoogleVidsAutomation(BaseAutomation):
             await page.close()
 
 
-    async def generate_avatar(self, video_id: str, script: str, avatar_id: str = None) -> Path | None:
-        """Genera un Talking Head (Avatar) in Google Vids."""
-        from storage import get_project_id, save_project_id
+    async def generate_avatar(self, video_id: str, script: str, avatar_id: str = "James") -> Path | None:
+        """Generates an AI Talking Head (Avatar) in Google Vids using robust selectors and retries."""
+        from storage import get_project_id, save_project_id, get_structured_path, save_media_asset, save_generation_metadata
 
-        dest_dir = DOWNLOAD_DIR / "avatars"
-        dest_dir.mkdir(parents=True, exist_ok=True)
-
+        dest_folder = get_structured_path(media_type="avatar", style="ai", sub_style=avatar_id)
+        
         if not video_id or video_id == "new":
             video_id = get_project_id("vids")
-            if video_id:
-                log.info("Reusing cached Vids project ID for Avatar: %s", video_id)
-            else:
-                video_id = "new"
-
-        selector_report = {
-            "kind": "avatar",
-            "video_id": video_id,
-            "script_preview": script[:120],
-            "avatar_id": avatar_id or "default",
-            "attempts": [],
-            "generated_at": int(time.time()),
-        }
+            video_id = video_id if video_id else "new"
 
         page = await self._goto_home()
         try:
             if video_id == "new" or not video_id:
                 log.info("Creating new Vids project for Avatar")
-                await page.click('div[aria-label="Inizia un nuovo video"]', timeout=5000)
-                await page.wait_for_timeout(3000)
-                # Wait for redirect
-                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=15000)
+                await page.click('[aria-label="Crea nuovo video"]', timeout=15000)
+                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=20000)
                 video_id = self._extract_vid_id(page.url)
                 if video_id:
-                    log.info("New Vids project created for Avatar: %s, saving to cache.", video_id)
                     save_project_id("vids", video_id)
             else:
                 log.info("Opening existing Vids project: %s", video_id)
-                await page.goto(f"https://docs.google.com/videos/d/{video_id}/edit", wait_until="networkidle")
+                await page.goto(f"https://docs.google.com/videos/d/{video_id}/edit", wait_until="domcontentloaded")
 
-            await human_delay()
+            log.info("Waiting for editor to stabilize (30s)...")
+            await asyncio.sleep(30)
 
-            # --- Flow Avatar AI ---
-            # 1. Clicca "Inserisci" (Insert)
-            insert_selectors = ['button:has-text("Inserisci")', 'button:has-text("Insert")', 'div[role="menuitem"]:has-text("Inserisci")']
-            inserted = False
-            for sel in insert_selectors:
-                try:
-                    await page.click(sel, timeout=3000)
-                    inserted = True
-                    break
-                except: continue
+            # 1. Clicca tasto Avatar
+            avatar_xpath = "/html/body/div[4]/div/div/div[3]/div[2]/div[2]"
+            avatar_btn = page.locator(f"xpath={avatar_xpath}").first
+            if await avatar_btn.count() == 0:
+                avatar_btn = page.locator('div[aria-label="Avatar AI"]').first
             
-            if not inserted:
-                # Prova a cercare l'icona + o simili
-                await page.click('button[aria-label^="Inserisci"]', timeout=3000)
+            if not avatar_btn or await avatar_btn.count() == 0:
+                raise RuntimeError("Avatar button not found")
+                
+            log.info("Clicking Avatar button...")
+            await avatar_btn.click(timeout=15000)
+            await asyncio.sleep(10)
 
-            await page.wait_for_timeout(1000)
-
-            # 2. Seleziona "Avatar AI"
-            avatar_menu_selectors = ['div[role="menuitem"]:has-text("Avatar AI")', 'span:has-text("Avatar AI")']
-            for sel in avatar_menu_selectors:
-                try:
-                    await page.click(sel, timeout=3000)
-                    break
-                except: continue
-
-            await page.wait_for_timeout(2000)
+            # 2. Seleziona l'avatar specifico
+            change_xpath = "/html/body/div[32]/div[4]/div[4]/div[1]/div[2]/div"
+            change_btn = page.locator(f"xpath={change_xpath}").first
+            if await change_btn.count() == 0:
+                change_btn = page.locator('div[role="button"]:has-text("Change")').first
+            
+            if await change_btn.count() > 0:
+                log.info("Clicking 'Change' avatar button...")
+                await change_btn.click()
+                await asyncio.sleep(5)
+                avatar_choice = page.locator(f'div[role="radio"][aria-label*="{avatar_id}"]').first
+                if await avatar_choice.count() > 0:
+                    log.info(f"Selecting avatar: {avatar_id}")
+                    await avatar_choice.click()
+                    await asyncio.sleep(2)
+                    select_btn = page.locator('div[role="button"]:has-text("Select")').first
+                    await select_btn.click()
+                    await asyncio.sleep(3)
 
             # 3. Inserisci lo script
-            script_selectors = ['textarea[placeholder*="script"]', 'textarea[aria-label*="script"]', 'textarea']
-            for sel in script_selectors:
-                try:
-                    await page.fill(sel, script, timeout=3000)
-                    break
-                except: continue
-
-            await human_delay()
-
-            # 4. Clicca "Genera"
-            gen_selectors = ['button:has-text("Genera")', 'button:has-text("Generate")', 'button.videoGenAvatarGenerateButton']
-            for sel in gen_selectors:
-                try:
-                    await page.click(sel, timeout=3000)
-                    break
-                except: continue
-
-            log.info("Avatar generation triggered, waiting...")
-            # L'avatar può richiedere tempo (30s - 2min)
-            await page.wait_for_timeout(30000) 
-
-            # 5. Export / Download
-            # Google Vids salva su Drive. Usiamo la logica di download esistente o export diretto
-            log.info("Polling for generated avatar video in project %s", video_id)
+            # Utilizziamo il selettore specifico del body della sidebar che contiene il testo dello script
+            textarea = page.locator('.appsFlixScriptsSidebarBody [role="textbox"]').first
+            if await textarea.count() == 0:
+                textarea = page.locator('.appsFlixScriptsSidebarBody div[contenteditable="true"]').first
             
-            # Per ora usiamo il sync_project che scarica gli MP4 esportati
-            # In un'implementazione reale, dovremmo aspettare che il video appaia nella timeline
-            # e poi forzare l'export se non automatico.
+            if not textarea or await textarea.count() == 0:
+                raise RuntimeError("Script textarea not found")
+
+            log.info("Filling script textarea...")
+            await textarea.click()
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press("Backspace")
+            await page.keyboard.type(script, delay=40)
+            await asyncio.sleep(3)
+
+            # 4. Genera Preview
+            preview_xpath = "/html/body/div[32]/div[4]/div[4]/div[3]"
+            preview_btn = page.locator(f"xpath={preview_xpath}").first
+            if await preview_btn.count() == 0:
+                preview_btn = page.locator('div[role="button"]:has-text("Preview")').first
+            if await preview_btn.count() == 0:
+                preview_btn = page.locator('.appsFlixVoiceoversSidebarGenerateMediaCardPrimaryActionButton').first
             
-            # Fallback: ritorna il video_id per permettere al chiamante di fare sync più tardi
-            # o prova un sync immediato
-            await page.wait_for_timeout(10000)
+            if await preview_btn.count() > 0:
+                log.info("Clicking Preview button...")
+                await preview_btn.click()
+                log.info("Waiting 30 seconds for preview...")
+                await asyncio.sleep(30)
+
+            # 5. Genera con Lip Sync
+            generate_xpath = "/html/body/div[32]/div[4]/div[5]/div[4]/div[1]/div"
+            generate_btn = page.locator(f"xpath={generate_xpath}").first
+            if await generate_btn.count() == 0:
+                generate_btn = page.locator('div[role="button"]:has-text("Genera")').first
+            
+            if not generate_btn or await generate_btn.count() == 0:
+                raise RuntimeError("Generate button not found")
+
+            log.info("Clicking Generate (Lip Sync) button...")
+            await generate_btn.click()
+            
+            log.info("Waiting 130 seconds for lip-sync generation...")
+            await asyncio.sleep(130)
+
+            # 6. Registrazione finale
+            metadata = {"script": script, "avatar_id": avatar_id, "video_id": video_id, "timestamp": int(time.time())}
+            save_generation_metadata(dest_folder, metadata)
+
             paths = await sync_project(video_id, file_type="video", account=self.account, headless=self.headless)
             if paths:
-                log.info("Avatar video downloaded: %s", paths[0])
-                return paths[0]
-
+                final_path = paths[0]
+                save_media_asset(final_path, "GOOGLE_VIDS_AVATAR", final_path.name, "video", "ai_avatar", avatar_id, script, video_id, metadata)
+                return final_path
             return None
 
         except Exception as e:
             log.error("Errore generazione avatar: %s", e, exc_info=True)
-            selector_report["result"] = "failed"
-            selector_report["error"] = str(e)
             return None
         finally:
-            _append_selector_report(selector_report)
             await page.close()
 
 
-async def list_projects(account: str = None, headless: bool = True):
-    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
-        return await engine.list_projects()
-
-
 async def sync_project(video_id: str, file_type: str = "all", account: str = None, headless: bool = True):
+    from drive_client import download_file, list_exported_files
     exported_files = list_exported_files(video_id)
     if not exported_files:
         log.warning("No exported Drive files found for project %s", video_id)
@@ -769,7 +768,7 @@ async def generate_video_ai_v2(video_id: str, prompt: str, account: str = None, 
         return str(result) if result else None
 
 
-async def generate_avatar_v1(video_id: str, script: str, avatar_id: str = None, account: str = None, headless: bool = True):
+async def generate_avatar_v1(video_id: str, script: str, avatar_id: str = "James", account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         result = await engine.generate_avatar(video_id, script, avatar_id)
         return str(result) if result else None
