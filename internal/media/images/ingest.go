@@ -103,7 +103,19 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 	}
 	s.log.Info("ingestDirect: file saved", zap.String("path", fullPath), zap.Int("bytes", len(content)))
 
-	// 4. Upload to Drive if configured (skip if disabled by fullimages pipeline)
+	// 4. Resolve generator dynamically from sourceURL
+	generator := sourceURL
+	if strings.HasPrefix(sourceURL, "http://") || strings.HasPrefix(sourceURL, "https://") {
+		if strings.Contains(sourceURL, "wikipedia.org") {
+			generator = "wikipedia"
+		} else if strings.Contains(sourceURL, "duckduckgo") {
+			generator = "duckduckgo"
+		} else {
+			generator = "web-download"
+		}
+	}
+
+	// 5. Upload to Drive if configured (skip if disabled by fullimages pipeline)
 	var driveFileID string
 	if s.mediaStore != nil && !skipDrive {
 		req := storage.AssetDestinationRequest{
@@ -121,24 +133,33 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 			driveFileID = fileID
 			s.log.Info("Drive upload successful", zap.String("file_id", fileID))
 			
-			// 5. Estrai dimensioni reali dell'immagine
+			// Estrai dimensioni reali dell'immagine
 			imgWidth, imgHeight := decodeImageDimensions(content)
 
 			// Upload metadata.json
-			generator := "unknown"
 			prompt := description // Usiamo description come prompt o info
 			s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, link, hash, fullPath, imgWidth, imgHeight)
 		}
-	} else {
-		// Se salta il Drive upload, calcola comunque le dimensioni
-		imgWidth, _ := decodeImageDimensions(content)
-		_ = imgWidth // suppress unused
 	}
 
-	// 5. Estrai dimensioni reali dell'immagine (per DB)
+	// 6. Estrai dimensioni reali dell'immagine (per DB)
 	imgWidth, imgHeight := decodeImageDimensions(content)
 
-	// 6. Crea record DB con dimensioni reali
+	// Prepare metadata for DB
+	metaMap := map[string]any{
+		"prompt":    description,
+		"style":     style,
+		"generator": generator,
+	}
+	if strings.Contains(description, "for prompt: ") {
+		parts := strings.SplitN(description, "for prompt: ", 2)
+		if len(parts) == 2 {
+			metaMap["prompt"] = parts[1]
+		}
+	}
+	metaJSON, _ := json.Marshal(metaMap)
+
+	// 7. Crea record DB con dimensioni reali
 	asset := &models.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
@@ -150,7 +171,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 		Height:       imgHeight,
 		SizeBytes:    int64(len(content)),
 		Status:       "ready",
-		MetadataJSON: "{}",
+		MetadataJSON: string(metaJSON),
 		Tags:         tags,
 	}
 
@@ -212,7 +233,6 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 	defer os.Remove(tmpPath)
 
 	metaReq := req
-	metaReq.Hash = "metadata"
 	metaReq.Ext = ".json"
 	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, tmpPath); err != nil {
 		s.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))

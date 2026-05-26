@@ -170,8 +170,10 @@ func (r *Resolver) clipDriveFolder(req AssetDestinationRequest, genID string) st
 
 func (r *Resolver) imageDriveFolder(req AssetDestinationRequest, genID string) string {
 	style := slugify(nonEmpty(req.Style, "general"))
-	subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
-	return filepath.Join("images", style, subStyle, genID)
+	if req.SubStyle != "" && req.SubStyle != "standard" {
+		return filepath.Join("images", style, slugify(req.SubStyle), genID)
+	}
+	return filepath.Join("images", style, genID)
 }
 
 // videoDriveFolder: Drive path = <style>/<subject> (no image_videos prefix).
@@ -186,6 +188,9 @@ func (r *Resolver) resolveDriveFilename(req AssetDestinationRequest) string {
 	ext := ensureDot(req.Ext)
 	switch req.MediaType {
 	case MediaTypeImage:
+		if ext == ".json" {
+			return "metadata.json"
+		}
 		return req.Hash + ext
 	case MediaTypeImageVideo:
 		return req.Hash + ext

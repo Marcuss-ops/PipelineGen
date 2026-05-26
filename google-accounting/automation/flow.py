@@ -90,42 +90,60 @@ class ImageFXFlowAutomation(BaseAutomation):
         url = f"https://labs.google/fx/it/tools/flow/project/{project_id}" if project_id else "https://labs.google/fx/it/tools/flow"
             
         page = await self.context.new_page()
-        log.info(f"Navigazione verso: {url}")
-        await page.goto(url)
-        log.info("Attesa rendering (15s)...")
-        await asyncio.sleep(15) 
-
+        
         new_saved_paths = []
         captured_response_urls: set[str] = set()
         saved_content_digests: set[str] = set()
+        pre_existing_urls: set[str] = set()
         can_capture = False
+
+        # Blacklist pre-existing images in the DOM to avoid capturing/downloading them
+        try:
+            existing_imgs = await page.locator('img[src*="googleusercontent.com"]').all()
+            for img in existing_imgs:
+                src = await img.get_attribute("src")
+                if src:
+                    captured_response_urls.add(src)
+                    log.info("Blacklisted pre-existing image URL in DOM: %s", src[:120])
+        except Exception as e:
+            log.warning("Failed to blacklist existing images: %s", e)
 
         def _compute_digest(data: bytes) -> str:
             return hashlib.md5(data).hexdigest()
 
         async def handle_response(response):
             nonlocal new_saved_paths
-            if not can_capture: return
             response_url = response.url
             
-            if response_url in captured_response_urls: return
-            content_type = response.headers.get("content-type", "")
+            if not can_capture:
+                pre_existing_urls.add(response_url)
+                return
             
+            if response_url in pre_existing_urls:
+                return
+            if response_url in captured_response_urls:
+                return
+                
+            content_type = response.headers.get("content-type", "")
             is_image = "image/" in content_type
             is_redirect = "media.getMediaUrlRedirect" in response_url
             
-            if not (is_image or is_redirect): return
+            if not (is_image or is_redirect):
+                return
 
             try:
                 if is_redirect:
                     log.info("📸 Intercettato REDIRECT immagine: %s", response_url[:120])
                     return
 
-                if not response.ok: return
+                if not response.ok:
+                    return
                 body = await response.body()
-                if not body or len(body) < 1000: return
+                if not body or len(body) < 1000:
+                    return
                 digest = _compute_digest(body)
-                if digest in saved_content_digests: return
+                if digest in saved_content_digests:
+                    return
                 saved_content_digests.add(digest)
                 ext = ".png" if "png" in content_type else ".jpg"
                 filename = f"FLOW_{int(time.time())}_{len(new_saved_paths)}{ext}"
@@ -150,6 +168,10 @@ class ImageFXFlowAutomation(BaseAutomation):
                 log.debug(f"Errore handle_response: {e}")
 
         page.on("response", handle_response)
+        
+        log.info(f"Navigazione verso: {url}")
+        await page.goto(url)
+        await asyncio.sleep(15)
 
         try:
             prompt_locator = None

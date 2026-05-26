@@ -3,6 +3,8 @@ package images
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,17 +34,18 @@ func (s *Service) GenerateSmartImage(
 	model string,
 	skipDrive bool,
 ) (*models.ImageAsset, error) {
-	prompt := pickImagePrompt(subject, topic, prompts)
-	if prompt == "" {
+	cleanPrompt := pickImagePrompt(subject, topic, prompts)
+	if cleanPrompt == "" {
 		return nil, fmt.Errorf("missing image prompt")
 	}
 
 	// Apply style from registry if provided
+	styledPrompt := cleanPrompt
 	if s.styleRegistry != nil && style != "" {
-		prompt = s.styleRegistry.ApplyStyle(prompt, style)
+		styledPrompt = s.styleRegistry.ApplyStyle(cleanPrompt, style)
 	}
 
-	assets, err := s.generateGoogleFlowImages(ctx, prompt, subject, style, tags)
+	assets, err := s.generateGoogleFlowImages(ctx, cleanPrompt, styledPrompt, subject, style, tags)
 	if err == nil && len(assets) > 0 {
 		return assets[0], nil
 	}
@@ -54,7 +57,7 @@ func (s *Service) GenerateSmartImage(
 		)
 	}
 
-	asset, err := s.GenerateAImage(ctx, prompt, style, model, width, height, tags, skipDrive)
+	asset, err := s.GenerateAImage(ctx, styledPrompt, style, model, width, height, tags, skipDrive)
 	if err != nil {
 		return nil, err
 	}
@@ -83,13 +86,13 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	}
 }
 
-func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject, style string, tags []string) ([]*models.ImageAsset, error) {
+func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string) ([]*models.ImageAsset, error) {
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
 
 	reqBody := googleaccounting.FlowImageRequest{
-		Prompt:    prompt,
+		Prompt:    styledPrompt,
 		ProjectID: s.flowProjectID,
 		Style:     style,
 		Headless:  true,
@@ -142,9 +145,9 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject,
 	assets := make([]*models.ImageAsset, 0, len(files))
 	slug := Slugify(subject)
 	if slug == "" {
-		slug = Slugify(prompt)
+		slug = Slugify(cleanPrompt)
 	}
-	description := fmt.Sprintf("AI generated image via Google Flow for prompt: %s", prompt)
+	description := fmt.Sprintf("AI generated image via Google Flow for prompt: %s", cleanPrompt)
 
 	for _, filePath := range files {
 		resolved := strings.TrimSpace(filePath)
@@ -171,12 +174,23 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject,
 			continue
 		}
 
+		// Calcola hash SHA-256 e salta se esiste già (è un'immagine vecchia catturata dal DOM)
+		hasher := sha256.New()
+		hasher.Write(content)
+		hash := hex.EncodeToString(hasher.Sum(nil))
+
+		if existing, err := s.repo.GetImageByHash(ctx, hash); err == nil && existing != nil {
+			s.log.Info("google flow image already exists in DB, skipping from this run", zap.String("hash", hash))
+			continue
+		}
+
 		asset, ingestErr := s.IngestImage(ctx, slug, style, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, false)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue
 		}
 		assets = append(assets, asset)
+		break // Only ingest and upload a single image
 	}
 
 	if len(assets) == 0 {
@@ -268,6 +282,18 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAss
 
 	// Recuperiamo la descrizione originale o usiamo un prompt fallback se non c'è.
 	prompt := asset.Description
+	generator := "nvidia"
+	if asset.SourceURL == "google-flow" || strings.Contains(strings.ToLower(prompt), "google flow") {
+		generator = "google-flow"
+	} else if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(asset.MetadataJSON), &meta); err == nil {
+			if genVal, ok := meta["generator"].(string); ok && genVal != "" {
+				generator = genVal
+			}
+		}
+	}
+
 	if strings.HasPrefix(prompt, "AI generated image") {
 		parts := strings.SplitN(prompt, "for prompt: ", 2)
 		if len(parts) == 2 {
@@ -278,7 +304,7 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAss
 		prompt = asset.SubjectID // Fallback to subject
 	}
 	
-	s.uploadImageMetadata(ctx, req, prompt, style, "nvidia", fileID, webLink, asset.Hash, imagePath, asset.Width, asset.Height)
+	s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, webLink, asset.Hash, imagePath, asset.Width, asset.Height)
 
 	s.log.Info("image uploaded to Drive with style",
 		zap.String("file_id", fileID),

@@ -87,7 +87,7 @@ drive:
   # Legacy roots (restano fino a migrazione completa)
   stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
   clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
-  images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  images_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
   voiceover_root_folder: "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A"
   artlist_root_folder: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
   video_ai_root_folder: "1t5z5_q-twcHRtZtG-3muCVFKz8rz2cJi"

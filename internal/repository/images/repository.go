@@ -127,9 +127,9 @@ func normalizeTags(tags []string) string {
 // GetImageByHash recupera un'immagine tramite il suo hash
 func (r *Repository) GetImageByHash(ctx context.Context, hash string) (*models.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
-		WHERE source = 'image' AND json_extract(metadata_json, '$.hash') = ?
+		WHERE source = 'image' AND file_hash = ?
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query, hash)
@@ -139,7 +139,7 @@ func (r *Repository) GetImageByHash(ctx context.Context, hash string) (*models.I
 // GetByID recupera un'immagine tramite il suo ID stringa
 func (r *Repository) GetByID(ctx context.Context, id interface{}) (*models.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
 		WHERE source = 'image' AND id = ?
 		LIMIT 1
@@ -157,7 +157,7 @@ func (r *Repository) Delete(ctx context.Context, id interface{}) error {
 // GetByDriveFileID recupera un'immagine tramite Drive file ID
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
 		WHERE source = 'image' AND (json_extract(metadata_json, '$.drive_file_id') = ? OR url LIKE ?)
 		LIMIT 1
@@ -169,7 +169,7 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 // ListImagesBySubject recupera tutte le immagini per un soggetto
 func (r *Repository) ListImagesBySubject(ctx context.Context, subjectID string) ([]models.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
 		WHERE source = 'image' AND json_extract(metadata_json, '$.subject_id') = ?
 		ORDER BY created_at DESC
@@ -195,7 +195,7 @@ func (r *Repository) ListImagesBySubject(ctx context.Context, subjectID string) 
 // ListAll lists all image assets
 func (r *Repository) ListAll(ctx context.Context) ([]*models.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
 		WHERE source = 'image'
 		ORDER BY created_at DESC
@@ -224,14 +224,18 @@ func scanImageAsset(row interface {
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
 	var name sql.NullString
 	var url sql.NullString
+	var fileHash, localPath, driveFileID sql.NullString
 
-	err := row.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr)
+	err := row.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID)
 	if err != nil {
 		return nil, err
 	}
 
 	img.Description = name.String
 	img.SourceURL = url.String
+	img.Hash = fileHash.String
+	img.PathRel = localPath.String
+	img.DriveFileID = driveFileID.String
 	
 	if createdAtStr.Valid {
 		img.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr.String)
@@ -249,17 +253,8 @@ func scanImageAsset(row interface {
 		if v, ok := metaMap["subject_id"].(string); ok {
 			img.SubjectID = v
 		}
-		if v, ok := metaMap["local_path"].(string); ok {
-			img.PathRel = v
-		}
-		if v, ok := metaMap["drive_file_id"].(string); ok {
-			img.DriveFileID = v
-		}
 		if v, ok := metaMap["status"].(string); ok {
 			img.Status = v
-		}
-		if v, ok := metaMap["hash"].(string); ok {
-			img.Hash = v
 		}
 	}
 
@@ -271,14 +266,18 @@ func scanImageAssetRows(rows *sql.Rows) (*models.ImageAsset, error) {
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
 	var name sql.NullString
 	var url sql.NullString
+	var fileHash, localPath, driveFileID sql.NullString
 
-	err := rows.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr)
+	err := rows.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID)
 	if err != nil {
 		return nil, err
 	}
 
 	img.Description = name.String
 	img.SourceURL = url.String
+	img.Hash = fileHash.String
+	img.PathRel = localPath.String
+	img.DriveFileID = driveFileID.String
 	
 	if createdAtStr.Valid {
 		img.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr.String)
@@ -296,17 +295,8 @@ func scanImageAssetRows(rows *sql.Rows) (*models.ImageAsset, error) {
 		if v, ok := metaMap["subject_id"].(string); ok {
 			img.SubjectID = v
 		}
-		if v, ok := metaMap["local_path"].(string); ok {
-			img.PathRel = v
-		}
-		if v, ok := metaMap["drive_file_id"].(string); ok {
-			img.DriveFileID = v
-		}
 		if v, ok := metaMap["status"].(string); ok {
 			img.Status = v
-		}
-		if v, ok := metaMap["hash"].(string); ok {
-			img.Hash = v
 		}
 	}
 
