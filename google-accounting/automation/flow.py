@@ -173,6 +173,15 @@ class ImageFXFlowAutomation(BaseAutomation):
         await page.goto(url)
         await asyncio.sleep(15)
 
+        # Se siamo sulla dashboard con il pulsante "+ Nuovo progetto", clicchiamolo per iniziare un nuovo progetto
+        for btn_text in ["Nuovo progetto", "New project", "Nuovo", "New"]:
+            loc = page.get_by_text(btn_text, exact=False).first
+            if await loc.count() > 0:
+                log.info(f"Rilevata dashboard di Flow, clic su '{btn_text}'...")
+                await loc.click()
+                await asyncio.sleep(5)
+                break
+
         try:
             prompt_locator = None
             for selector in self.PROMPT_SELECTORS:
