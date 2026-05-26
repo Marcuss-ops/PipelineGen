@@ -20,15 +20,21 @@ import (
 )
 
 // metadataPayload contains fields for the metadata.json uploaded alongside generated videos.
+// Più campi = migliore ricerca semantica quando attiveremo il vector store.
 type metadataPayload struct {
-	Prompt      string `json:"prompt"`
-	Style       string `json:"style"`
-	Generator   string `json:"generator"`
-	FileID      string `json:"file_id"`
-	DriveLink   string `json:"drive_link"`
-	DurationSec int    `json:"duration_sec"`
-	LocalPath   string `json:"local_path"`
-	CreatedAt   string `json:"created_at"`
+	Prompt      string   `json:"prompt"`
+	Subject     string   `json:"subject"`
+	Style       string   `json:"style"`
+	Generator   string   `json:"generator"`
+	Tags        []string `json:"tags"`
+	FileID      string   `json:"file_id"`
+	DriveLink   string   `json:"drive_link"`
+	Hash        string   `json:"hash"`
+	FileSize    int64    `json:"file_size"`
+	Width       int      `json:"width"`
+	Height      int      `json:"height"`
+	DurationSec int      `json:"duration_sec"`
+	CreatedAt   string   `json:"created_at"`
 }
 
 // GenerateVideoAI generates a video via Google Vids automation
@@ -228,6 +234,7 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 
 	// Upload to Drive solo se non abbiamo già driveFileID
 	var driveFileID, driveLink string
+	uploaded := false
 	if existingDriveFileID != "" {
 		driveFileID = existingDriveFileID
 		driveLink = existingDriveLink
@@ -246,10 +253,11 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		} else {
 			driveFileID = fid
 			driveLink = wl
+			uploaded = true
 			s.log.Info("RegisterVideoAsset: Drive upload successful", zap.String("file_id", fid))
 
 			// Upload metadata.json to the same Drive folder
-			s.uploadVideoMetadata(ctx, req, description, style, source, fid, wl, durationSec, filePath)
+			s.uploadVideoMetadata(ctx, req, description, style, source, fid, wl, durationSec, id, filePath)
 		}
 	}
 
@@ -269,19 +277,44 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 	clip.SetMetadataString("style", style)
 	clip.SetMetadataString("generator", source)
 
-	return s.stockRepo.UpsertClip(ctx, clip)
+	if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
+		return err
+	}
+
+	// Delete local file after successful Drive upload + DB registration
+	if uploaded && filePath != "" {
+		if err := os.Remove(filePath); err != nil {
+			s.log.Warn("RegisterVideoAsset: failed to remove local file", zap.String("path", filePath), zap.Error(err))
+		} else {
+			s.log.Info("RegisterVideoAsset: local file removed after Drive upload", zap.String("path", filePath))
+		}
+	}
+
+	return nil
 }
 
 // uploadVideoMetadata scrive un file metadata.json nella stessa cartella Drive del video.
-func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, localPath string) {
+func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath string) {
+	subject, tags := extractSubjectAndTags(prompt)
+	fi, err := os.Stat(localPath)
+	fileSize := int64(0)
+	if err == nil {
+		fileSize = fi.Size()
+	}
+
 	meta := metadataPayload{
 		Prompt:      prompt,
+		Subject:     subject,
 		Style:       style,
 		Generator:   generator,
+		Tags:        tags,
 		FileID:      fileID,
 		DriveLink:   driveLink,
+		Hash:        hash,
+		FileSize:    fileSize,
+		Width:       1920,
+		Height:      1080,
 		DurationSec: durationSec,
-		LocalPath:   localPath,
 		CreatedAt:   time.Now().Format(time.RFC3339),
 	}
 	data, err := json.MarshalIndent(meta, "", "  ")
@@ -305,6 +338,35 @@ func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDest
 		return
 	}
 	s.log.Info("uploadVideoMetadata: metadata.json uploaded", zap.String("prompt", prompt), zap.String("style", style))
+}
+
+// extractSubjectAndTags estrae subject e tags dal prompt per la ricerca semantica.
+func extractSubjectAndTags(prompt string) (subject string, tags []string) {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return "unknown", nil
+	}
+
+	parts := strings.Split(prompt, ",")
+	subject = strings.TrimSpace(parts[0])
+	if len(subject) > 60 {
+		subject = subject[:60]
+	}
+
+	seen := make(map[string]bool)
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			continue
+		}
+		lower := strings.ToLower(t)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		tags = append(tags, t)
+	}
+	return subject, tags
 }
 
 // sha256Hash calcola l'hash SHA256 di una stringa (es. percorso file).
