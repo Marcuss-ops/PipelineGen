@@ -174,29 +174,32 @@ class ImageFXFlowAutomation(BaseAutomation):
         # Polling per attendere il textbox o il pulsante della dashboard
         log.info("In attesa del caricamento della pagina (editor o dashboard)...")
         for _ in range(30):
-            # 1. Verifica se il textbox è già presente (siamo già nell'editor)
-            found_textbox = False
-            for selector in self.PROMPT_SELECTORS:
-                if await page.locator(selector).first.count() > 0:
-                    found_textbox = True
+            try:
+                # 1. Verifica se il textbox è già presente (siamo già nell'editor)
+                found_textbox = False
+                for selector in self.PROMPT_SELECTORS:
+                    if await page.locator(selector).first.count() > 0:
+                        found_textbox = True
+                        break
+                if found_textbox:
+                    log.info("Rilevato textbox dell'editor, procedo...")
                     break
-            if found_textbox:
-                log.info("Rilevato textbox dell'editor, procedo...")
-                break
 
-            # 2. Verifica se siamo sulla dashboard con il pulsante "+ Nuovo progetto"
-            found_btn = None
-            for btn_text in ["Nuovo progetto", "New project", "Nuovo", "New"]:
-                loc = page.locator(f"text={btn_text}").first
-                if await loc.count() > 0:
-                    found_btn = loc
-                    btn_text_found = btn_text
+                # 2. Verifica se siamo sulla dashboard con il pulsante "+ Nuovo progetto"
+                found_btn = None
+                for btn_text in ["Nuovo progetto", "New project", "Nuovo", "New"]:
+                    loc = page.locator(f"text={btn_text}").first
+                    if await loc.count() > 0:
+                        found_btn = loc
+                        btn_text_found = btn_text
+                        break
+                if found_btn:
+                    log.info(f"Rilevata dashboard di Flow, clic su '{btn_text_found}'...")
+                    await found_btn.click()
+                    await asyncio.sleep(5)
                     break
-            if found_btn:
-                log.info(f"Rilevata dashboard di Flow, clic su '{btn_text_found}'...")
-                await found_btn.click()
-                await asyncio.sleep(5)
-                break
+            except Exception as e:
+                log.debug(f"Errore durante il polling (navigazione/redirect in corso): {e}")
                 
             await asyncio.sleep(0.5)
 

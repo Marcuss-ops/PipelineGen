@@ -46,22 +46,13 @@ func (s *Service) GenerateSmartImage(
 	}
 
 	assets, err := s.generateGoogleFlowImages(ctx, cleanPrompt, styledPrompt, subject, style, tags)
-	if err == nil && len(assets) > 0 {
-		return assets[0], nil
-	}
-
-	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "not configured") {
-		s.log.Warn("google image generation failed, falling back to NVIDIA",
-			zap.String("subject", subject),
-			zap.Error(err),
-		)
-	}
-
-	asset, err := s.GenerateAImage(ctx, styledPrompt, style, model, width, height, tags, skipDrive)
 	if err != nil {
 		return nil, err
 	}
-	return asset, nil
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("no assets returned from Google Flow")
+	}
+	return assets[0], nil
 }
 
 func pickImagePrompt(subject, topic string, prompts []string) string {
