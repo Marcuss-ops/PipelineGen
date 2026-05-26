@@ -45,14 +45,28 @@ func (s *Service) GenerateSmartImage(
 		styledPrompt = s.styleRegistry.ApplyStyle(cleanPrompt, style)
 	}
 
+	// Step 1: Try Google Flow
 	assets, err := s.generateGoogleFlowImages(ctx, cleanPrompt, styledPrompt, subject, style, tags, skipDrive)
+	if err == nil && len(assets) > 0 {
+		return assets[0], nil
+	}
 	if err != nil {
-		return nil, err
+		s.log.Warn("google image generation failed, falling back to NVIDIA",
+			zap.String("subject", subject),
+			zap.Error(err),
+		)
 	}
-	if len(assets) == 0 {
-		return nil, fmt.Errorf("no assets returned from Google Flow")
+
+	// Step 2: Fallback to NVIDIA
+	slug := Slugify(cleanPrompt)
+	if len(slug) > 50 {
+		slug = slug[:50]
 	}
-	return assets[0], nil
+	nvidiaModel := model
+	if nvidiaModel == "" {
+		nvidiaModel = "flux-1-dev"
+	}
+	return s.GenerateStyledImage(ctx, slug, cleanPrompt, style, nvidiaModel, width, height, tags, skipDrive)
 }
 
 func pickImagePrompt(subject, topic string, prompts []string) string {

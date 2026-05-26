@@ -171,9 +171,9 @@ func (r *Resolver) clipDriveFolder(req AssetDestinationRequest, genID string) st
 func (r *Resolver) imageDriveFolder(req AssetDestinationRequest, genID string) string {
 	style := slugify(nonEmpty(req.Style, "general"))
 	if req.SubStyle != "" && req.SubStyle != "standard" {
-		return filepath.Join("images", style, slugify(req.SubStyle), genID)
+		return filepath.Join(style, slugify(req.SubStyle), genID)
 	}
-	return filepath.Join("images", style, genID)
+	return filepath.Join(style, genID)
 }
 
 // videoDriveFolder: Drive path = <style>/<subject> (no image_videos prefix).
