@@ -3,6 +3,7 @@ package images
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,10 +11,25 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
+	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/pkg/googleaccounting"
 )
+
+// metadataPayload contains fields for the metadata.json uploaded alongside generated videos.
+type metadataPayload struct {
+	Prompt      string `json:"prompt"`
+	Style       string `json:"style"`
+	Generator   string `json:"generator"`
+	FileID      string `json:"file_id"`
+	DriveLink   string `json:"drive_link"`
+	DurationSec int    `json:"duration_sec"`
+	LocalPath   string `json:"local_path"`
+	CreatedAt   string `json:"created_at"`
+}
 
 // GenerateVideoAI generates a video via Google Vids automation
 func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (string, error) {
@@ -35,6 +51,7 @@ func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (st
 	reqBody := googleaccounting.GenerateRequest{
 		VideoID:  videoID,
 		Prompt:   prompt,
+		Style:    style,
 		Headless: true,
 	}
 
@@ -100,6 +117,12 @@ func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (st
 	}
 
 	s.log.Info("Google Vids video generated and verified", zap.String("path", resolved))
+
+	// Upload su Drive e registra in media_assets
+	if err := s.RegisterVideoAsset(ctx, resolved, prompt, "google-vids", style, 8, "", ""); err != nil {
+		s.log.Warn("failed to register video asset in DB", zap.Error(err))
+	}
+
 	return resolved, nil
 }
 
@@ -174,5 +197,118 @@ func (s *Service) GenerateAvatarVideo(ctx context.Context, script, avatarID stri
 		}
 	}
 
+	// Registra l'avatar video in media_assets
+	if err := s.RegisterVideoAsset(ctx, resolved, script, "google-vids-avatar", avatarID, 30, "", ""); err != nil {
+		s.log.Warn("failed to register avatar video asset in DB", zap.Error(err))
+	}
+
 	return resolved, nil
+}
+
+// RegisterVideoAsset uploada su Drive e crea un record in media_assets per un video generato.
+// Se driveFileID e driveLink sono già noti (es. da fullimages), li usa senza ri-uploadare.
+// Sul Drive crea la struttura: <videoRoot>/<style>/<subject>/<hash>.mp4 + metadata.json
+func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description, source, style string, durationSec int, existingDriveFileID, existingDriveLink string) error {
+	if s.stockRepo == nil {
+		return fmt.Errorf("stock repo not configured")
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		return fmt.Errorf("video file not found: %w", err)
+	}
+
+	id := fmt.Sprintf("vid_%x_%d", sha256Hash(filePath), time.Now().Unix())
+	subject := Slugify(description)
+	name := description
+	if len(name) > 80 {
+		name = name[:80]
+	}
+	if style != "" {
+		name = fmt.Sprintf("[%s] %s", style, name)
+	}
+
+	// Upload to Drive solo se non abbiamo già driveFileID
+	var driveFileID, driveLink string
+	if existingDriveFileID != "" {
+		driveFileID = existingDriveFileID
+		driveLink = existingDriveLink
+	} else if s.mediaStore != nil {
+		req := storage.AssetDestinationRequest{
+			Source:    storage.SourceImage,
+			MediaType: storage.MediaTypeImageVideo,
+			Subject:   subject,
+			Hash:      id,
+			Ext:       ".mp4",
+			Style:     style,
+		}
+		fid, wl, err := s.mediaStore.UploadToDrive(ctx, req, filePath)
+		if err != nil {
+			s.log.Warn("RegisterVideoAsset: Drive upload failed (non fatale)", zap.Error(err))
+		} else {
+			driveFileID = fid
+			driveLink = wl
+			s.log.Info("RegisterVideoAsset: Drive upload successful", zap.String("file_id", fid))
+
+			// Upload metadata.json to the same Drive folder
+			s.uploadVideoMetadata(ctx, req, description, style, source, fid, wl, durationSec, filePath)
+		}
+	}
+
+	clip := &models.MediaAsset{
+		ID:          id,
+		Name:        name,
+		Source:      source,
+		MediaType:   "video",
+		LocalPath:   filePath,
+		DriveFileID: driveFileID,
+		DriveLink:   driveLink,
+		Status:      "ready",
+		Duration:    durationSec,
+		CreatedAt:   time.Now(),
+	}
+	clip.SetMetadataString("prompt", description)
+	clip.SetMetadataString("style", style)
+	clip.SetMetadataString("generator", source)
+
+	return s.stockRepo.UpsertClip(ctx, clip)
+}
+
+// uploadVideoMetadata scrive un file metadata.json nella stessa cartella Drive del video.
+func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, localPath string) {
+	meta := metadataPayload{
+		Prompt:      prompt,
+		Style:       style,
+		Generator:   generator,
+		FileID:      fileID,
+		DriveLink:   driveLink,
+		DurationSec: durationSec,
+		LocalPath:   localPath,
+		CreatedAt:   time.Now().Format(time.RFC3339),
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		s.log.Warn("uploadVideoMetadata: failed to marshal metadata", zap.Error(err))
+		return
+	}
+
+	tmpPath := filepath.Join(s.tempDir, "metadata_"+req.Hash+".json")
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		s.log.Warn("uploadVideoMetadata: failed to write temp metadata file", zap.Error(err))
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	metaReq := req
+	metaReq.Hash = "metadata"
+	metaReq.Ext = ".json"
+	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, tmpPath); err != nil {
+		s.log.Warn("uploadVideoMetadata: failed to upload metadata.json", zap.Error(err))
+		return
+	}
+	s.log.Info("uploadVideoMetadata: metadata.json uploaded", zap.String("prompt", prompt), zap.String("style", style))
+}
+
+// sha256Hash calcola l'hash SHA256 di una stringa (es. percorso file).
+func sha256Hash(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h[:8])
 }

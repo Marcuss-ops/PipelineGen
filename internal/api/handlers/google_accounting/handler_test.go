@@ -35,7 +35,7 @@ func TestSyncProjectCallsDownloadEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop())
+	}, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -80,7 +80,7 @@ func TestListProjectsCallsListEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop())
+	}, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -103,52 +103,22 @@ func TestListProjectsCallsListEndpoint(t *testing.T) {
 	}
 }
 
-func TestGenerateVideoCallsGenerateEndpoint(t *testing.T) {
-	t.Helper()
-
-	var gotMethod string
-	var gotPath string
-	var gotBody map[string]any
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		body, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(body, &gotBody)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"job_id":"gen-123","status":"pending"}`))
-	}))
-	defer srv.Close()
-
-	h := NewHandler(&config.Config{
-		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop())
+func TestGenerateVideo_NoService_ReturnsError(t *testing.T) {
+	h := NewHandler(&config.Config{}, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	req := httptest.NewRequest(http.MethodPost, "/api/google-accounting/generate-video", strings.NewReader(`{"video_id":"vid-123","prompt":"make a cinematic shot","headless":true,"account":"user"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/google-accounting/generate-video", strings.NewReader(`{"prompt":"test prompt"}`))
 	req.Header.Set("Content-Type", "application/json")
 	c.Request = req
 
 	h.GenerateVideo(c)
 
-	if gotMethod != http.MethodPost {
-		t.Fatalf("expected POST, got %s", gotMethod)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
-	if gotPath != "/generate-vids-video" {
-		t.Fatalf("expected /generate-vids-video, got %s", gotPath)
-	}
-	if gotBody["video_id"] != "vid-123" {
-		t.Fatalf("expected video_id vid-123, got %#v", gotBody["video_id"])
-	}
-	if gotBody["prompt"] != "make a cinematic shot" {
-		t.Fatalf("expected prompt, got %#v", gotBody["prompt"])
-	}
-	if gotBody["headless"] != true {
-		t.Fatalf("expected headless true, got %#v", gotBody["headless"])
-	}
-	if gotBody["account"] != "user" {
-		t.Fatalf("expected account user, got %#v", gotBody["account"])
+	if !strings.Contains(w.Body.String(), "image service not available") {
+		t.Fatalf("expected image service error, got: %s", w.Body.String())
 	}
 }
 
@@ -168,7 +138,7 @@ func TestJobStatusCallsStatusEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop())
+	}, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -211,7 +181,7 @@ func TestGenerateFlowImagesCallsGenerateEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop())
+	}, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -259,7 +229,7 @@ func TestListMediaBuildsUrls(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{DownloadDir: tmpDir},
-	}, zap.NewNop())
+	}, zap.NewNop(), nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

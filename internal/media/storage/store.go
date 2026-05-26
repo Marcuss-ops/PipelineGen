@@ -21,20 +21,41 @@ import (
 //
 // All services should use Store instead of managing paths/Drive/DB directly.
 type Store struct {
-	resolver  *Resolver
-	driveUp   *driveup.Uploader
-	driveRoot string
-	log       *zap.Logger
+	resolver       *Resolver
+	driveUp        *driveup.Uploader
+	driveRoot      string // default/legacy root
+	imageDriveRoot string // per-type root for MediaTypeImage
+	videoDriveRoot string // per-type root for MediaTypeImageVideo
+	log            *zap.Logger
 }
 
 // NewStore creates a unified media store.
-func NewStore(resolver *Resolver, driveUp *driveup.Uploader, driveRoot string, log *zap.Logger) *Store {
+// driveRoot is the default root; imageDriveRoot and videoDriveRoot override for their media types.
+func NewStore(resolver *Resolver, driveUp *driveup.Uploader, driveRoot, imageDriveRoot, videoDriveRoot string, log *zap.Logger) *Store {
 	return &Store{
-		resolver:  resolver,
-		driveUp:   driveUp,
-		driveRoot: driveRoot,
-		log:       log,
+		resolver:       resolver,
+		driveUp:        driveUp,
+		driveRoot:      driveRoot,
+		imageDriveRoot: imageDriveRoot,
+		videoDriveRoot: videoDriveRoot,
+		log:            log,
 	}
+}
+
+// rootForMediaType returns the Drive root folder ID for the given media type.
+// Falls back to the default driveRoot if no per-type root is configured.
+func (s *Store) rootForMediaType(mediaType string) string {
+	switch mediaType {
+	case MediaTypeImageVideo:
+		if s.videoDriveRoot != "" {
+			return s.videoDriveRoot
+		}
+	case MediaTypeImage:
+		if s.imageDriveRoot != "" {
+			return s.imageDriveRoot
+		}
+	}
+	return s.driveRoot
 }
 
 // ResolveDest returns the storage destination for an asset without saving anything.
@@ -77,7 +98,8 @@ func (s *Store) SaveFile(ctx context.Context, req AssetDestinationRequest, data 
 // EnsureDriveFolder creates the full Drive folder hierarchy for an asset.
 // Returns the final folder ID (or empty if Drive not configured).
 func (s *Store) EnsureDriveFolder(ctx context.Context, req AssetDestinationRequest) (string, error) {
-	if s.driveUp == nil || s.driveRoot == "" {
+	rootID := s.rootForMediaType(req.MediaType)
+	if s.driveUp == nil || rootID == "" {
 		return "", nil
 	}
 
@@ -87,12 +109,12 @@ func (s *Store) EnsureDriveFolder(ctx context.Context, req AssetDestinationReque
 	}
 
 	if dest.DriveFolderPath == "" {
-		return s.driveRoot, nil
+		return rootID, nil
 	}
 
 	// Walk the path hierarchy under root, creating folders as needed
 	parts := splitPath(dest.DriveFolderPath)
-	currentID := s.driveRoot
+	currentID := rootID
 	for _, part := range parts {
 		if part == "" {
 			continue
@@ -109,7 +131,8 @@ func (s *Store) EnsureDriveFolder(ctx context.Context, req AssetDestinationReque
 // UploadToDrive uploads a local file to the resolved Drive folder.
 // Returns the Drive file ID and link, or empty strings if Drive not configured.
 func (s *Store) UploadToDrive(ctx context.Context, req AssetDestinationRequest, localPath string) (fileID, webLink string, err error) {
-	if s.driveUp == nil || s.driveRoot == "" {
+	rootID := s.rootForMediaType(req.MediaType)
+	if s.driveUp == nil || rootID == "" {
 		return "", "", nil
 	}
 

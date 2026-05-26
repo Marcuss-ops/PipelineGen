@@ -45,7 +45,18 @@ func createTestDB(t *testing.T) *sql.DB {
 		duration_ms INTEGER NOT NULL DEFAULT 0,
 		url TEXT NOT NULL DEFAULT '',
 		created_at TEXT,
-		metadata_json TEXT NOT NULL DEFAULT '{}'
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		media_type TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'ready',
+		local_path TEXT,
+		relative_path TEXT,
+		drive_file_id TEXT,
+		drive_link TEXT,
+		download_link TEXT,
+		file_hash TEXT,
+		width INTEGER NOT NULL DEFAULT 0,
+		height INTEGER NOT NULL DEFAULT 0,
+		updated_at TEXT
 	);
 	`
 	_, err = db.Exec(schema)

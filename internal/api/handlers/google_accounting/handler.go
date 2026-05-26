@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/pkg/googleaccounting"
 	"velox/go-master/internal/pkg/mediascan"
 
@@ -17,15 +18,17 @@ import (
 
 // Handler handles requests to the Google Accounting service
 type Handler struct {
-	cfg *config.Config
-	log *zap.Logger
+	cfg         *config.Config
+	log         *zap.Logger
+	imgService  *images.Service
 }
 
 // NewHandler creates a new Google Accounting handler
-func NewHandler(cfg *config.Config, log *zap.Logger) *Handler {
+func NewHandler(cfg *config.Config, log *zap.Logger, imgService *images.Service) *Handler {
 	return &Handler{
-		cfg: cfg,
-		log: log.Named("google_accounting"),
+		cfg:        cfg,
+		log:        log.Named("google_accounting"),
+		imgService: imgService,
 	}
 }
 
@@ -57,15 +60,11 @@ func (h *Handler) SyncProject(c *gin.Context) {
 	h.proxyGoogleAccounting(c, http.MethodPost, "/download", payload)
 }
 
-// GenerateVideo triggers Google Vids AI video generation for a real project.
+// GenerateVideo generates a video via Google Vids, uploads to Drive, registers in DB.
 func (h *Handler) GenerateVideo(c *gin.Context) {
 	var reqBody googleaccounting.GenerateRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
-		return
-	}
-	if reqBody.VideoID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "video_id is required"})
 		return
 	}
 	if reqBody.Prompt == "" {
@@ -73,14 +72,24 @@ func (h *Handler) GenerateVideo(c *gin.Context) {
 		return
 	}
 
-	payload, err := json.Marshal(reqBody)
-	if err != nil {
-		h.log.Error("failed to marshal google accounting request", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare request"})
+	if h.imgService == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "image service not available"})
 		return
 	}
 
-	h.proxyGoogleAccounting(c, http.MethodPost, "/generate-vids-video", payload)
+	// Use the full GenerateVideoAI pipeline: Python → wait → Drive upload → DB registration
+	videoPath, err := h.imgService.GenerateVideoAI(c.Request.Context(), reqBody.Prompt, reqBody.Style)
+	if err != nil {
+		h.log.Error("Google Vids generation failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("video generation failed: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "done",
+		"file_path": videoPath,
+		"message":   "Video generated, uploaded to Drive, and registered in DB",
+	})
 }
 
 // GenerateFlowImages triggers Google Labs Flow image generation.

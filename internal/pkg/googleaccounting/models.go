@@ -34,6 +34,7 @@ type Job struct {
 type GenerateRequest struct {
 	VideoID  string `json:"video_id,omitempty"`
 	Prompt   string `json:"prompt"`
+	Style    string `json:"style,omitempty"`
 	Headless bool   `json:"headless"`
 	Account  string `json:"account,omitempty"`
 }

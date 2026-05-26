@@ -318,6 +318,12 @@ func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, vid
 	}
 
 	saveCacheSidecar(videoPath, upResult.WebViewLink, upResult.FileID)
+
+	// Registra il video in media_assets (salta Drive upload, già fatto sopra)
+	if err := s.imgService.RegisterVideoAsset(ctx, videoPath, prompt, "ken-burns", style, videoDuration, upResult.FileID, upResult.WebViewLink); err != nil {
+		s.log.Warn("fullimages: failed to register video asset in DB", zap.Error(err))
+	}
+
 	return SectionVideo{
 		SectionIndex: idx,
 		Title:        sec.Title,

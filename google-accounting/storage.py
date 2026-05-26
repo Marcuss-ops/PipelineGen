@@ -5,8 +5,8 @@ from pathlib import Path
 from datetime import datetime
 from config import BASE_DIR, DOWNLOAD_DIR
 
-# Database path (relative to BASE_DIR)
-DB_PATH = BASE_DIR / "data" / "media.db.sqlite"
+# Database path (unificato in velox.db.sqlite)
+DB_PATH = BASE_DIR / "data" / "velox" / "velox.db.sqlite"
 PROJECTS_FILE = DOWNLOAD_DIR.parent / "projects_cache.json"
 
 def ensure_dirs():
@@ -39,17 +39,44 @@ def save_media_asset(
     except ValueError:
         relative_path = str(file_path)
     
+    # Normalizza i tag in tags_norm per ricerca full-text
+    tags_list = []
+    if metadata and "tags" in metadata:
+        ts = metadata["tags"]
+        if isinstance(ts, list):
+            tags_list = ts
+        elif isinstance(ts, str):
+            tags_list = [t.strip() for t in ts.split(",") if t.strip()]
+    tags_json = json.dumps(tags_list)
+    tags_norm = " ".join(
+        t.lower().replace("à", "a").replace("è", "e").replace("é", "e")
+        .replace("ì", "i").replace("ò", "o").replace("ù", "u")
+        for t in tags_list
+    )
+
+    now = datetime.now().isoformat()
     try:
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO media_assets (
-                id, source, name, local_path, relative_path, 
-                media_type, metadata_json, created_at, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, source, name, tags, tags_norm, local_path, relative_path,
+                media_type, metadata_json, created_at, status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name,
+                tags=excluded.tags,
+                tags_norm=excluded.tags_norm,
+                local_path=excluded.local_path,
+                relative_path=excluded.relative_path,
+                media_type=excluded.media_type,
+                metadata_json=excluded.metadata_json,
+                status=excluded.status,
+                updated_at=excluded.updated_at
         """, (
-            asset_id, source, name, str(file_path), relative_path,
-            media_type, metadata_json, datetime.now().isoformat(), "ready"
+            asset_id, source, name, tags_json, tags_norm,
+            str(file_path), relative_path,
+            media_type, metadata_json, now, "ready", now
         ))
         conn.commit()
         conn.close()

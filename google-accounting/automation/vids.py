@@ -31,15 +31,22 @@ class GoogleVidsAutomation(BaseAutomation):
         'textarea.javascriptMaterialdesignGm3WizTextFieldOutlined-text-field__input',
         'textarea#c1',
         'textarea',
-        '[contenteditable=\"true\"]',
+        '[contenteditable="true"]',
+        'div[role="textbox"]',
+        'input[type="text"]',
+        '[placeholder*="video"]',
+        '[placeholder*="prompt"]',
+        '[placeholder*="Descrivi"]',
     ]
 
     GENERATE_BUTTON_SELECTORS = [
-        'xpath=/html/body/div[6]/div/div[2]/div/div[2]/span/div/div/div/div[1]/div/div[2]/div[5]/span/div[1]/button',
+        'button.videoGenCreationViewGenerateButton',
+        'button[data-view-id="videoGenCreationViewGenerateButton"]',
+        'button:has-text("Genera"):not([data-view-id*="getting-started"])',
         'button:has-text("Genera")',
         'button:has-text("Generate")',
         'button:has-text("Crea")',
-        'button.videoGenCreationViewGenerateButton',
+        'xpath=/html/body/div[6]/div/div[2]/div/div[2]/span/div/div/div/div[1]/div/div[2]/div[5]/span/div[1]/button',
     ]
 
     PREVIEW_CONTAINER_SELECTORS = [
@@ -327,12 +334,29 @@ class GoogleVidsAutomation(BaseAutomation):
         
         if video_id == "new" or not video_id:
             log.info("Creating new Vids project for Video Generation")
-            page = await self._goto_home()
+            page = await self.context.new_page()
             try:
-                await page.click('div[aria-label="Inizia un nuovo video"]', timeout=5000)
-                await page.wait_for_timeout(3000)
+                # Navigate directly to the Vids create URL (bypass FAB click)
+                await page.goto("https://docs.google.com/videos/create", wait_until="domcontentloaded")
+                await asyncio.sleep(8)
                 # Wait for redirect to /videos/d/ID/edit
-                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=15000)
+                try:
+                    await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
+                except Exception:
+                    log.info("wait_for_url failed, current url=%s, page title=%s", page.url, await page.title())
+                    body = await page.locator("body").inner_text()
+                    log.info("Page body (first 2000 chars): %s", body[:2000])
+                    raise
+                video_id = self._extract_vid_id(page.url)
+                if video_id:
+                    log.info("New Vids project created: %s, saving to cache.", video_id)
+                    save_project_id("vids", video_id)
+            except Exception as e:
+                log.error("Failed to create new Vids project: %s", e)
+                video_id = self._extract_vid_id(page.url)
+                if not video_id:
+                    await page.close()
+                    raise
                 video_id = self._extract_vid_id(page.url)
                 if video_id:
                     log.info("New Vids project created: %s, saving to cache.", video_id)
@@ -352,12 +376,43 @@ class GoogleVidsAutomation(BaseAutomation):
             poll_interval_ms = 5000
             log.info("Starting Vids generation for video_id=%s (timeout=%sms)", video_id, generation_timeout_ms)
             await human_delay(1500, 4000)
+            # Dismiss any modal/dialog that might be blocking clicks
+            for attempt in range(3):
+                try:
+                    await page.keyboard.press("Escape")
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+                try:
+                    btns = page.locator(
+                        '[aria-label="Chiudi"], [aria-label="Close"], [aria-label="Dismiss"], '
+                        '.modal-dialog-close, .docs-material-dialog-close, button:has-text("Chiudi"), '
+                        'button:has-text("Close"), button:has-text("OK"), button:has-text("Ho capito"), '
+                        '[data-view-id*="getting-started"] button, [data-view-id*="dialog"] button'
+                    )
+                    if await btns.count() > 0:
+                        await btns.first.click(force=True, timeout=3000)
+                        await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+            # Dismiss "Getting Started" dialog specifically
             try:
-                await page.locator('#content-library-rail-video-generation-element').click(timeout=10000)
+                gs = page.locator('[data-view-id*="getting-started"]')
+                if await gs.count() > 0:
+                    log.info("Dismissing Getting Started dialog")
+                    await page.keyboard.press("Escape")
+                    await asyncio.sleep(1)
+                    # Click outside the dialog to dismiss
+                    await page.mouse.click(10, 10)
+                    await asyncio.sleep(1)
+            except Exception:
+                pass
+            try:
+                await page.locator('#content-library-rail-video-generation-element').click(force=True, timeout=10000)
                 log.info("Opened Veo generation rail for video_id=%s", video_id)
             except Exception:
-                await page.get_by_text("Veo", exact=False).click(timeout=10000)
-                log.info("Opened Veo generation rail via text fallback for video_id=%s", video_id)
+                await page.get_by_label("Genera un video clip AI", exact=True).click(force=True, timeout=10000)
+                log.info("Opened Veo generation rail via force-click for video_id=%s", video_id)
             await human_delay(1000, 2500)
             
             input_candidates = [
@@ -378,10 +433,17 @@ class GoogleVidsAutomation(BaseAutomation):
                     input_loc = loc.first
                     break
             if input_loc is None:
+                log.info("Prompt input not found, dumping selector inventory for debugging")
+                await self._selector_inventory(page, [
+                    'textarea', '[contenteditable]', 'div[role="textbox"]',
+                    'input[type="text"]', 'input', '[placeholder]',
+                    '[aria-label*="video"]', '[aria-label*="prompt"]',
+                    '[aria-label*="Descrivi"]', '[aria-label*="descri"]',
+                ])
                 raise RuntimeError("Prompt input not found in Google Vids UI.")
             
             # Digitazione umana
-            await input_loc.click()
+            await input_loc.click(force=True)
             await input_loc.type(prompt, delay=random.randint(50, 150))
             await human_delay(800, 2000)
             
@@ -398,7 +460,7 @@ class GoogleVidsAutomation(BaseAutomation):
                     "elapsed_ms": int((time.time() - attempt_started) * 1000),
                 })
                 if matched:
-                    await loc.first.click(timeout=10000)
+                    await loc.first.click(force=True, timeout=10000)
                     clicked = True
                     selector_report["attempts"].append({
                         "stage": "generate_button_selected",
@@ -764,3 +826,8 @@ async def generate_avatar_v1(video_id: str, script: str, avatar_id: str = "James
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         result = await engine.generate_avatar(video_id, script, avatar_id)
         return str(result) if result else None
+
+
+async def list_projects(account: str = None, headless: bool = True):
+    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
+        return await engine.list_projects()

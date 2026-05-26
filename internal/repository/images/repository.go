@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"velox/go-master/internal/media/models"
@@ -55,32 +56,72 @@ func (r *Repository) AddImage(ctx context.Context, img *models.ImageAsset) (int6
 	}
 
 	tagsJSON, _ := json.Marshal(img.Tags)
+	tagsNorm := normalizeTags(img.Tags)
 	
-	// Prepara metadata_json con campi specifici per le immagini
+	// Prepara metadata_json con campi extra non dedicati
 	metaMap := make(map[string]any)
 	if img.MetadataJSON != "" && img.MetadataJSON != "{}" {
 		_ = json.Unmarshal([]byte(img.MetadataJSON), &metaMap)
 	}
 	metaMap["subject_id"] = img.SubjectID
-	metaMap["local_path"] = img.PathRel
-	metaMap["drive_file_id"] = img.DriveFileID
-	metaMap["status"] = img.Status
 	metaMap["description"] = img.Description
-	metaMap["hash"] = img.Hash
+	if img.License != "" {
+		metaMap["license"] = img.License
+	}
+	if img.QualityScore != 0 {
+		metaMap["quality_score"] = img.QualityScore
+	}
+	if img.Error != "" {
+		metaMap["error"] = img.Error
+	}
 	
 	metaJSON, _ := json.Marshal(metaMap)
 
+	now := time.Now().Format(time.RFC3339)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, url, tags, metadata_json, created_at)
-		VALUES (?, 'image', ?, ?, ?, ?, ?)
+		INSERT INTO media_assets (id, source, name, url, tags, tags_norm, media_type, width, height, file_hash, local_path, relative_path, drive_file_id, status, metadata_json, created_at, updated_at)
+		VALUES (?, 'image', ?, ?, ?, ?, 'image', ?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name,
 			url=excluded.url,
 			tags=excluded.tags,
-			metadata_json=excluded.metadata_json
-	`, id, img.Description, img.SourceURL, string(tagsJSON), string(metaJSON), time.Now().Format(time.RFC3339))
+			tags_norm=excluded.tags_norm,
+			media_type=excluded.media_type,
+			width=excluded.width,
+			height=excluded.height,
+			file_hash=excluded.file_hash,
+			local_path=excluded.local_path,
+			relative_path=excluded.relative_path,
+			drive_file_id=excluded.drive_file_id,
+			status=excluded.status,
+			metadata_json=excluded.metadata_json,
+			updated_at=excluded.updated_at
+	`, id, img.Description, img.SourceURL, string(tagsJSON), tagsNorm,
+		img.Width, img.Height, img.Hash, img.PathRel, img.PathRel, img.DriveFileID,
+		string(metaJSON), now, now)
 
 	return 0, err
+}
+
+// normalizeTags converte una lista di tag in una stringa normalizzata per ricerca full-text.
+func normalizeTags(tags []string) string {
+	var b strings.Builder
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		low := strings.ToLower(t)
+		// rimuovi accenti/base
+		low = strings.NewReplacer(
+			"à", "a", "è", "e", "é", "e", "ì", "i", "ò", "o", "ù", "u",
+		).Replace(low)
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(low)
+	}
+	return b.String()
 }
 
 // GetImageByHash recupera un'immagine tramite il suo hash

@@ -57,7 +57,7 @@ func WireRegistry(
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.System = w.(*SystemWiring) }},
 		{"GoogleAccounting", func() (module.Module, interface{}, error) {
-			w, err := WireGoogleAccounting(cfg, log)
+			w, err := WireGoogleAccounting(cfg, log, coreDeps.ImageService)
 			if err != nil {
 				return nil, nil, err
 			}

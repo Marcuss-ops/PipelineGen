@@ -168,17 +168,37 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.MediaAsset) er
 	// Serialize Metadata map to JSON for the metadata_json column
 	metadataJSON := clip.MetadataJSON()
 
+	// Normalizza tags per ricerca full-text
+	tagsNorm := normalizeTags(clip.Tags)
+
+	nowStr := now.Format(time.RFC3339)
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, tags, duration_ms, url, metadata_json, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO media_assets (id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_link, download_link, file_hash, embedding_json, metadata_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source=excluded.source,
 			name=excluded.name,
 			tags=excluded.tags,
+			tags_norm=excluded.tags_norm,
 			duration_ms=excluded.duration_ms,
 			url=excluded.url,
-			metadata_json=excluded.metadata_json
-		`, clip.ID, clip.Source, clip.Name, string(tagsJSON), clip.Duration, clip.ExternalURL, metadataJSON, now.Format(time.RFC3339))
+			media_type=excluded.media_type,
+			status=excluded.status,
+			local_path=excluded.local_path,
+			relative_path=excluded.relative_path,
+			drive_file_id=excluded.drive_file_id,
+			drive_link=excluded.drive_link,
+			download_link=excluded.download_link,
+			file_hash=excluded.file_hash,
+			embedding_json=excluded.embedding_json,
+			metadata_json=excluded.metadata_json,
+			updated_at=excluded.updated_at
+		`, clip.ID, clip.Source, clip.Name, string(tagsJSON), tagsNorm,
+		clip.Duration, clip.ExternalURL,
+		clip.MediaType, clip.Status, clip.LocalPath, clip.LocalPath,
+		clip.DriveFileID, clip.DriveLink, clip.DownloadLink,
+		clip.FileHash, clip.EmbeddingJSON,
+		metadataJSON, nowStr, nowStr)
 
 	return err
 }
@@ -226,6 +246,26 @@ func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string
 	now := time.Now().Format(time.RFC3339)
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?) WHERE json_extract(metadata_json, '$.drive_link') = ? OR json_extract(metadata_json, '$.download_link') = ?", now, driveLink, driveLink)
 	return err
+}
+
+// normalizeTags converte una lista di tag in stringa normalizzata per ricerca full-text.
+func normalizeTags(tags []string) string {
+	var b strings.Builder
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		low := strings.ToLower(t)
+		low = strings.NewReplacer(
+			"à", "a", "è", "e", "é", "e", "ì", "i", "ò", "o", "ù", "u",
+		).Replace(low)
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(low)
+	}
+	return b.String()
 }
 
 // ListClips returns all clips, optionally filtered by source

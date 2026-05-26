@@ -135,26 +135,11 @@ func (r *Resolver) resolveDriveFolder(req AssetDestinationRequest) string {
 
 	switch req.MediaType {
 	case MediaTypeClip:
-		group := slugify(nonEmpty(req.Group, "general"))
-		switch req.Source {
-		case SourceYouTube:
-			return filepath.Join("youtube", group, genID)
-		case SourceArtlist:
-			return filepath.Join("artlist", group, genID)
-		case SourceStock:
-			provider := slugify(nonEmpty(req.Provider, "unknown"))
-			return filepath.Join("stock", provider, group, genID)
-		default:
-			return filepath.Join(req.Source, group, genID)
-		}
+		return r.clipDriveFolder(req, genID)
 	case MediaTypeImage:
-		style := slugify(nonEmpty(req.Style, "general"))
-		subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
-		return filepath.Join("images", style, subStyle, genID)
+		return r.imageDriveFolder(req, genID)
 	case MediaTypeImageVideo:
-		style := slugify(nonEmpty(req.Style, "general"))
-		subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
-		return filepath.Join("image_videos", style, subStyle, genID)
+		return r.videoDriveFolder(req, genID)
 	case MediaTypeVoiceover:
 		provider := slugify(nonEmpty(req.Provider, "default"))
 		voice := slugify(nonEmpty(req.Voice, "default"))
@@ -166,6 +151,34 @@ func (r *Resolver) resolveDriveFolder(req AssetDestinationRequest) string {
 	default:
 		return filepath.Join("other", req.MediaType, req.Source, genID)
 	}
+}
+
+func (r *Resolver) clipDriveFolder(req AssetDestinationRequest, genID string) string {
+	group := slugify(nonEmpty(req.Group, "general"))
+	switch req.Source {
+	case SourceYouTube:
+		return filepath.Join("youtube", group, genID)
+	case SourceArtlist:
+		return filepath.Join("artlist", group, genID)
+	case SourceStock:
+		provider := slugify(nonEmpty(req.Provider, "unknown"))
+		return filepath.Join("stock", provider, group, genID)
+	default:
+		return filepath.Join(req.Source, group, genID)
+	}
+}
+
+func (r *Resolver) imageDriveFolder(req AssetDestinationRequest, genID string) string {
+	style := slugify(nonEmpty(req.Style, "general"))
+	subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
+	return filepath.Join("images", style, subStyle, genID)
+}
+
+// videoDriveFolder: Drive path = <style>/<subject> (no image_videos prefix).
+func (r *Resolver) videoDriveFolder(req AssetDestinationRequest, genID string) string {
+	style := slugify(nonEmpty(req.Style, "general"))
+	subject := slugify(nonEmpty(req.Subject, genID))
+	return filepath.Join(style, subject)
 }
 
 // resolveDriveFilename builds the filename for Drive.

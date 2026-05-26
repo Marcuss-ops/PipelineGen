@@ -1,10 +1,15 @@
 package images
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
@@ -114,7 +119,10 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 		}
 	}
 
-	// 5. Crea record DB
+	// 5. Estrai dimensioni reali dell'immagine
+	imgWidth, imgHeight := decodeImageDimensions(content)
+
+	// 6. Crea record DB con dimensioni reali
 	asset := &models.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
@@ -122,6 +130,9 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 		SourceURL:    sourceURL,
 		Description:  description,
 		DriveFileID:  driveFileID,
+		Width:        imgWidth,
+		Height:       imgHeight,
+		SizeBytes:    int64(len(content)),
 		Status:       "ready",
 		MetadataJSON: "{}",
 		Tags:         tags,
@@ -136,4 +147,14 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 	}
 
 	return asset, nil
+}
+
+// decodeImageDimensions estrae larghezza e altezza da bytes immagine.
+// Supporta JPEG, PNG, GIF. Per altri formati (webp, etc.) restituisce 0,0.
+func decodeImageDimensions(data []byte) (int, int) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
 }

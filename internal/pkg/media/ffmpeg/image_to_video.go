@@ -48,14 +48,15 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 	// Build filter: scale to fill, crop to exact dimensions
 	var filter string
 	if opts.Zoom {
-		// Light zoom-in: subtle 5% zoom over the duration, no pan (no Ken Burns).
-		// This gives a gentle sense of motion without the dynamic centering.
+		// Slow, gradual zoom-in: 5% over the full duration, no cap hit before end.
+		zoomRate := 0.05 / float64(opts.FPS*opts.Duration)
 		filter = fmt.Sprintf(
 			"scale=%d:%d:force_original_aspect_ratio=increase,"+
 				"crop=%d:%d,setsar=1,"+
-				"zoompan=z='min(zoom+0.0005,1.05)':d=%d:s=%dx%d",
-			opts.Width*2, opts.Height*2, // oversize input for zoom room
+				"zoompan=z='min(zoom+%.6f,1.05)':d=%d:s=%dx%d",
+			opts.Width*2, opts.Height*2,
 			opts.Width, opts.Height,
+			zoomRate,
 			opts.FPS*opts.Duration,
 			opts.Width, opts.Height,
 		)

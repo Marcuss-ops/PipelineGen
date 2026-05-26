@@ -19,14 +19,14 @@ func TestResolver_ClipYoutube(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantRel := filepath.Join("clips", "youtube", "travel", "abc123.mp4")
+	wantRel := filepath.Join("youtube", "travel", "abc123", "abc123.mp4")
 	if dest.RelativePath != wantRel {
 		t.Errorf("RelativePath = %q, want %q", dest.RelativePath, wantRel)
 	}
 	if dest.LocalPath != filepath.Join("data/media", wantRel) {
 		t.Errorf("LocalPath = %q", dest.LocalPath)
 	}
-	if dest.DriveFolderPath != filepath.Join("clips", "youtube", "travel") {
+	if dest.DriveFolderPath != filepath.Join("youtube", "travel", "abc123") {
 		t.Errorf("DriveFolderPath = %q", dest.DriveFolderPath)
 	}
 	if dest.DriveFileName != "abc123.mp4" {
@@ -48,7 +48,7 @@ func TestResolver_ClipArtlist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantRel := filepath.Join("clips", "artlist", "medieval", "def456.mp4")
+	wantRel := filepath.Join("artlist", "medieval", "def456", "def456.mp4")
 	if dest.RelativePath != wantRel {
 		t.Errorf("RelativePath = %q, want %q", dest.RelativePath, wantRel)
 	}
@@ -69,7 +69,7 @@ func TestResolver_ClipStock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantRel := filepath.Join("clips", "stock", "pexels", "nature", "ghi789.mp4")
+	wantRel := filepath.Join("stock", "pexels", "nature", "ghi789", "ghi789.mp4")
 	if dest.RelativePath != wantRel {
 		t.Errorf("RelativePath = %q, want %q", dest.RelativePath, wantRel)
 	}
@@ -90,7 +90,7 @@ func TestResolver_ImageGenerated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantRel := filepath.Join("images", "generated", "medievale", "castello-medievale", "hash123.png")
+	wantRel := filepath.Join("images", "generated", "medievale", "standard", "hash123", "hash123.png")
 	if dest.RelativePath != wantRel {
 		t.Errorf("RelativePath = %q, want %q", dest.RelativePath, wantRel)
 	}
@@ -110,7 +110,7 @@ func TestResolver_ImageDownloaded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantRel := filepath.Join("images", "downloaded", "wikimedia", "mona-lisa", "hash456.jpg")
+	wantRel := filepath.Join("images", "downloaded", "wikimedia", "general", "standard", "hash456", "hash456.jpg")
 	if dest.RelativePath != wantRel {
 		t.Errorf("RelativePath = %q, want %q", dest.RelativePath, wantRel)
 	}
@@ -131,7 +131,7 @@ func TestResolver_ImageVideo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantRel := filepath.Join("image_videos", "fullscreen", "gothic", "cattedrale", "vid123.mp4")
+	wantRel := filepath.Join("image_videos", "gothic", "standard", "vid123", "vid123.mp4")
 	if dest.RelativePath != wantRel {
 		t.Errorf("RelativePath = %q, want %q", dest.RelativePath, wantRel)
 	}
