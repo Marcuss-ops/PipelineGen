@@ -83,9 +83,46 @@ class ImageFXFlowAutomation(BaseAutomation):
 
         # ── Navigazione ────────────────────────────────────────────────────────
         log.info(f"🌐 Navigazione verso: {url}")
-        await page.goto(url)
-        await asyncio.sleep(POST_GOTO_WAIT)
-        log.info(f"✅ Navigazione completata, attesa di {POST_GOTO_WAIT}s conclusa")
+        await page.goto(url, wait_until="networkidle")
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except:
+            log.info("Timeout attesa networkidle, continuo comunque...")
+        await asyncio.sleep(2)
+        
+        # ── Polling: dashboard? → Nuovo progetto / editor? → prosegui ─────────
+        log.info("In attesa del caricamento della pagina (editor o dashboard)...")
+        for _ in range(30):
+            try:
+                # 1. Già nell'editor? C'è il textbox?
+                for sel in self.PROMPT_SELECTORS:
+                    if await page.locator(sel).first.count() > 0:
+                        log.info(f"✅ Rilevato textbox dell'editor, procedo...")
+                        break
+                else:
+                    # Nessun textbox trovato, continua a cercare
+                    pass
+                if await page.locator(self.PROMPT_SELECTORS[0]).first.count() > 0:
+                    break
+                
+                # 2. Dashboard? C'è "Nuovo progetto"?
+                found_btn = None
+                for btn_text in NEW_PROJECT_BUTTON_TEXTS:
+                    loc = page.locator(f"text={btn_text}").first
+                    if await loc.count() > 0:
+                        found_btn = loc
+                        btn_text_found = btn_text
+                        break
+                if found_btn:
+                    log.info(f"🖱️ Rilevata dashboard, clic su '{btn_text_found}'...")
+                    await found_btn.click()
+                    await asyncio.sleep(5)
+                    break
+            except Exception as e:
+                log.debug(f"Polling error (navigazione in corso): {e}")
+            await asyncio.sleep(0.5)
+        
+        log.info(f"✅ Pagina caricata: {page.url}")
 
         # ── Trova textbox prompt ───────────────────────────────────────────────
         try:
@@ -105,6 +142,9 @@ class ImageFXFlowAutomation(BaseAutomation):
 
             # ── Invio ad Agente ────────────────────────────────────────────────
             log.info("⏎ Invio prompt all'Agente (Enter)...")
+            # Attiva network capture PRIMA di inviare — le immagini arrivano subito dopo l'Enter!
+            capturer.can_capture = True
+            log.info("✅ Network capture attivato PRIMA dell'Enter")
             await page.keyboard.press("Enter")
             await asyncio.sleep(POST_ENTER_WAIT)
             log.info(f"✅ Enter premuto, attesa di {POST_ENTER_WAIT}s conclusa")
@@ -114,13 +154,46 @@ class ImageFXFlowAutomation(BaseAutomation):
 
             await asyncio.sleep(1)
 
-            # ── Trova e clicca pulsante Genera/Crea ────────────────────────────
-            await self._click_generate_button(page)
-
-            # ── Attiva network capture ─────────────────────────────────────────
-            capturer.can_capture = True
-            log.info("✅ Network capture attivato (can_capture=True)")
-
+            # ── Clicca "Approva" per avviare la generazione ───────────────────
+            # Dopo l'Enter, l'Agente mostra: "Vuoi che avvii questa generazione
+            # di immagini (1), che costa 0 crediti?" con [Rifiuta] [Approva]
+            log.info("🔍 Cerco pulsante 'Approva' per avviare generazione...")
+            approve_clicked = False
+            # Solo "Approva"/"Approve" — NON "Genera" che matcha testi sbagliati
+            for lbl in ["Approva", "Approve"]:
+                loc = page.locator(f'button:has-text("{lbl}")').first
+                count = await loc.count()
+                if count > 0:
+                    txt = (await loc.inner_text())[:80]
+                    visible = await loc.is_visible()
+                    log.info(f"  Trovato '{lbl}': count={count} visible={visible} text='{txt.strip()}'")
+                    box = await loc.bounding_box()
+                    if box:
+                        log.info(f"  box=({box['x']:.0f},{box['y']:.0f}) {box['width']:.0f}x{box['height']:.0f}")
+                    await loc.click(force=True)
+                    log.info(f"✅ Clickato '{lbl}'")
+                    approve_clicked = True
+                    await asyncio.sleep(2)
+                    break
+            if not approve_clicked:
+                log.warning("⚠️ Pulsante Approva non trovato. Cerco altri bottoni azione...")
+                # Try scanning ALL buttons on the page
+                all_btns = page.locator('button')
+                btn_count = await all_btns.count()
+                for i in range(btn_count):
+                    try:
+                        btn = all_btns.nth(i)
+                        txt = (await btn.inner_text())[:80]
+                        if txt.strip():
+                            box = await btn.bounding_box()
+                            if box and box['width'] > 20:
+                                log.info(f"  Btn[{i}]: '{txt.strip()}' at ({box['x']:.0f},{box['y']:.0f}) {box['width']:.0f}x{box['height']:.0f}")
+                    except:
+                        pass
+            
+            # ❌ NON cliccare "Crea" — apre l'asset browser come OVERLAY
+            # Le immagini vengono catturate via network listener + DOM polling.
+            
             # Screenshot verifica
             debug_path = debug_dir / f"GEN_START_{int(time.time())}.png"
             await page.screenshot(path=str(debug_path))

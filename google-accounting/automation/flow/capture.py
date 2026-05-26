@@ -105,7 +105,10 @@ class ImageCapturer:
             content_type = response.headers.get("content-type", "")
             is_image = "image/" in content_type
             is_redirect = MEDIA_REDIRECT_PATTERN in response_url
-
+            
+            # DEBUG: log EVERYTHING after can_capture
+            log.info(f"📡 RESP: status={response.status} ct={content_type} url={response_url[:180]}")
+            
             if not (is_image or is_redirect):
                 return
 
