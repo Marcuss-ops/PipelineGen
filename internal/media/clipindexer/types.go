@@ -1,6 +1,17 @@
 package clipindexer
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+// VectorStoreIndexer defines the interface for upserting indexed assets into a vector store.
+// This keeps the clipindexer decoupled from the actual Qdrant implementation.
+type VectorStoreIndexer interface {
+	// UpsertFromClip reads the clip's updated data (search_text, embeddings) from DB
+	// and pushes it to the vector index.
+	UpsertFromClip(ctx context.Context, clipID string) error
+}
 
 // IndexResult represents the result of an indexing operation
 type IndexResult struct {

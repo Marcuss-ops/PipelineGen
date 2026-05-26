@@ -349,29 +349,29 @@ func publishGoogleJob(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 }
 
 func publishGoogleFiles(ctx context.Context, cfg *config.Config, log *zap.Logger, opts *googlePublishOptions, files []string, mimeHint string) error {
-	if len(files) == 0 {
-		return fmt.Errorf("no files to publish")
-	}
+        if len(files) == 0 {
+                return fmt.Errorf("no files to publish")
+        }
 
-	kindLabel := "video"
-	if strings.HasPrefix(mimeHint, "image/") {
-		kindLabel = "image"
-	}
-	fmt.Printf("✅ %s files ready:\n", strings.Title(kindLabel))
-	for _, filePath := range files {
-		fmt.Printf(" - %s\n", filePath)
-		printMediaURL(cfg.GoogleAccounting.DownloadDir, filePath)
-		if opts.UploadDrive {
-			link, err := uploadGeneratedMedia(ctx, cfg, log, filePath, opts.DriveFolderID, mimeHint)
-			if err != nil {
-				return err
-			}
-			if link != "" {
-				fmt.Printf("   drive=%s\n", link)
-			}
-		}
-	}
-	return nil
+        kindLabel := "video"
+        if strings.HasPrefix(mimeHint, "image/") {
+                kindLabel = "image"
+        }
+        fmt.Printf("✅ %s files ready:\n", strings.Title(kindLabel))
+        for _, filePath := range files {
+                fmt.Printf(" - %s\n", filePath)
+                printMediaURL(cfg.GoogleAccounting.DownloadDir, filePath)
+                if opts.UploadDrive {
+                        link, err := uploadGeneratedMedia(ctx, cfg, log, filePath, opts.DriveFolderID, mimeHint, opts.Style, opts.Prompt)
+                        if err != nil {
+                                return err
+                        }
+                        if link != "" {
+                                fmt.Printf("   drive=%s\n", link)
+                        }
+                }
+        }
+        return nil
 }
 
 func runGoogleUploadMedia(args []string) error {
@@ -439,48 +439,75 @@ func RunUploadMedia(args []string) error {
 	return runGoogleUploadMedia(args)
 }
 
-func uploadGeneratedMedia(ctx context.Context, cfg *config.Config, log *zap.Logger, localPath, overrideFolderID, mimeHint string) (string, error) {
-	driveSvc, err := drive.NewDriveServiceFromFiles(ctx, cfg)
-	if err != nil {
-		return "", fmt.Errorf("initializing drive service failed: %w", err)
-	}
+func uploadGeneratedMedia(ctx context.Context, cfg *config.Config, log *zap.Logger, localPath, overrideFolderID, mimeHint, style, prompt string) (string, error) {
+        driveSvc, err := drive.NewDriveServiceFromFiles(ctx, cfg)
+        if err != nil {
+                return "", fmt.Errorf("initializing drive service failed: %w", err)
+        }
 
-	uploader := &drive.Uploader{Service: driveSvc, Log: log}
-	resolvedPath, err := filepath.Abs(localPath)
-	if err != nil {
-		return "", fmt.Errorf("resolve media path failed: %w", err)
-	}
+        uploader := &drive.Uploader{Service: driveSvc, Log: log}
+        resolvedPath, err := filepath.Abs(localPath)
+        if err != nil {
+                return "", fmt.Errorf("resolve media path failed: %w", err)
+        }
 
-	folderID := strings.TrimSpace(overrideFolderID)
-	if folderID == "" {
-		switch {
-		case strings.HasPrefix(mimeHint, "image/"):
-			folderID = strings.TrimSpace(cfg.Drive.ImagesRootFolder)
-		default:
-			folderID = strings.TrimSpace(cfg.Drive.ClipsRootFolder)
-			if folderID == "" {
-				folderID = strings.TrimSpace(cfg.Drive.StockRootFolder)
-			}
-		}
-	}
+        folderID := strings.TrimSpace(overrideFolderID)
+        if folderID == "" {
+                switch {
+                case strings.HasPrefix(mimeHint, "image/"):
+                        folderID = strings.TrimSpace(cfg.Drive.ImagesRootFolder)
+                default:
+                        folderID = strings.TrimSpace(cfg.Drive.ClipsRootFolder)
+                        if folderID == "" {
+                                folderID = strings.TrimSpace(cfg.Drive.StockRootFolder)
+                        }
+                }
+        }
 
-	if folderID == "" {
-		return "", fmt.Errorf("drive folder id is required for upload")
-	}
+        if folderID == "" {
+                return "", fmt.Errorf("drive folder id is required for upload")
+        }
 
-	filename := filepath.Base(resolvedPath)
-	result, skipped, err := uploader.UploadFileIfChanged(ctx, resolvedPath, folderID, filename)
-	if err != nil {
-		return "", err
-	}
-	if skipped {
-		log.Info("drive upload skipped, matching file already exists", zap.String("file_path", resolvedPath), zap.String("folder_id", folderID), zap.String("filename", filename))
-	}
+        // Apply Style -> Prompt hierarchy if using default root
+        if overrideFolderID == "" {
+                if style != "" {
+                        fid, err := uploader.GetOrCreateFolder(ctx, style, folderID)
+                        if err == nil {
+                                folderID = fid
+                        }
+                }
+                if prompt != "" {
+                        promptSlug := slugify(prompt)
+                        if len(promptSlug) > 100 {
+                                promptSlug = promptSlug[:100]
+                        }
+                        fid, err := uploader.GetOrCreateFolder(ctx, promptSlug, folderID)
+                        if err == nil {
+                                folderID = fid
+                        }
+                }
+        }
 
-	if result.WebViewLink != "" {
-		return result.WebViewLink, nil
-	}
-	return result.DownloadLink, nil
+        filename := filepath.Base(resolvedPath)
+        result, skipped, err := uploader.UploadFileIfChanged(ctx, resolvedPath, folderID, filename)
+        if err != nil {
+                return "", err
+        }
+        if skipped {
+                log.Info("drive upload skipped, matching file already exists", zap.String("file_path", resolvedPath), zap.String("folder_id", folderID), zap.String("filename", filename))
+        }
+
+        if result.WebViewLink != "" {
+                return result.WebViewLink, nil
+        }
+        return result.DownloadLink, nil
+}
+
+func slugify(s string) string {
+        s = strings.ToLower(s)
+        s = strings.TrimSpace(s)
+        parts := strings.Fields(s)
+        return strings.Join(parts, "-")
 }
 
 func printMediaURL(downloadDir string, filePath string) {

@@ -103,7 +103,7 @@ func (s *Service) SearchAndDownload(ctx context.Context, subjectSlug, displayNam
 	// 4. Scarica e Ingest (già chiama AddImage internamente)
 	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
 	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
-	asset, err := s.downloadAndIngest(ctx, slug, imgURL, source, finalQuery, description, tags)
+	asset, err := s.downloadAndIngest(ctx, slug, imgURL, "", source, finalQuery, description, tags)
 	if err == nil && asset != nil {
 		meta := make(map[string]any)
 		if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {

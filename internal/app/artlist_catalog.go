@@ -13,7 +13,6 @@ import (
 func wireArtlistCatalog(ctx context.Context, cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) (*clipcatalog.Repository, *clipindexer.Service) {
 	if coreDeps.ClipIndexerService != nil {
 		clipCatalogRepo := clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
-		clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.MediaDB.Path())
 		return clipCatalogRepo, coreDeps.ClipIndexerService
 	}
 
@@ -24,7 +23,6 @@ func wireArtlistCatalog(ctx context.Context, cfg *config.Config, coreDeps *CoreD
 	}
 
 	clipCatalogRepo := clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
-	clipCatalogRepo.SetServerInfo(cfg.ClipIndexer.ServerURL, coreDeps.MediaDB.Path())
 
 	clipIndexerSvc := clipindexer.NewService(&clipindexer.Config{
 		Enabled:               cfg.ClipIndexer.Enabled,

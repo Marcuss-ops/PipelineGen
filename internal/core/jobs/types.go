@@ -12,6 +12,8 @@ const (
 	JobTypeMediaImport        JobType = "media.import"
 	JobTypeMediaStock         JobType = "media.stock"
 	JobTypeWorkflowRun        JobType = "workflow.run"
+	JobTypeMediaGenerate      JobType = "media.generate_missing_asset"
+	JobTypeMediaReindex       JobType = "media.reindex"
 )
 
 

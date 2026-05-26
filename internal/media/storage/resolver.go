@@ -58,71 +58,68 @@ func (r *Resolver) Resolve(req AssetDestinationRequest) (*AssetDestination, erro
 // resolveRelative builds the relative path under data/media/.
 //
 // Rules:
-//
-//	clip + youtube  -> clips/youtube/<group>/<hash><ext>
-//	clip + artlist  -> clips/artlist/<group>/<hash><ext>
-//	clip + stock    -> clips/stock/<provider>/<group>/<hash><ext>
-//	image + any     -> images/<style>/<subject>/<hash><ext>
-//	image_video     -> image_videos/fullscreen/<style>/<subject>/<hash><ext>
+//	clip + youtube  -> youtube/<group>/<gen_id>/<hash><ext>
+//	clip + artlist  -> artlist/<group>/<gen_id>/<hash><ext>
+//	clip + stock    -> stock/<provider>/<group>/<gen_id>/<hash><ext>
+//	image + any     -> images/<style>/<sub_style>/<gen_id>/<hash><ext>
+//	image_video     -> image_videos/<style>/<sub_style>/<gen_id>/<hash><ext>
 //	voiceover       -> voiceovers/<provider>/<voice>/<hash><ext>
 //	export_video    -> exports/videos/<project>/<date>/<hash><ext>
 func (r *Resolver) resolveRelative(req AssetDestinationRequest) string {
 	ext := ensureDot(req.Ext)
+	genID := nonEmpty(req.GenerationID, req.Hash)
 
 	switch req.MediaType {
 	case MediaTypeClip:
-		return r.clipRelative(req, ext)
+		return r.clipRelative(req, ext, genID)
 	case MediaTypeImage:
-		return r.imageRelative(req, ext)
+		return r.imageRelative(req, ext, genID)
 	case MediaTypeImageVideo:
-		return r.imageVideoRelative(req, ext)
+		return r.imageVideoRelative(req, ext, genID)
 	case MediaTypeVoiceover:
 		return r.voiceoverRelative(req, ext)
 	case MediaTypeExportVideo:
 		return r.exportRelative(req, ext)
 	default:
 		// Fallback: source/type based
-		slug := slugify(req.Subject)
-		if slug == "" {
-			slug = req.Hash
-		}
-		return filepath.Join(req.Source, slug, req.Hash+ext)
+		style := nonEmpty(req.Style, "general")
+		return filepath.Join(req.Source, style, genID, req.Hash+ext)
 	}
 }
 
-func (r *Resolver) clipRelative(req AssetDestinationRequest, ext string) string {
-	group := nonEmpty(req.Group, "general")
+func (r *Resolver) clipRelative(req AssetDestinationRequest, ext, genID string) string {
+	group := slugify(nonEmpty(req.Group, "general"))
 	switch req.Source {
 	case SourceYouTube:
-		return filepath.Join("clips", "youtube", group, req.Hash+ext)
+		return filepath.Join("youtube", group, genID, req.Hash+ext)
 	case SourceArtlist:
-		return filepath.Join("clips", "artlist", group, req.Hash+ext)
+		return filepath.Join("artlist", group, genID, req.Hash+ext)
 	case SourceStock:
-		provider := nonEmpty(req.Provider, "unknown")
-		return filepath.Join("clips", "stock", provider, group, req.Hash+ext)
+		provider := slugify(nonEmpty(req.Provider, "unknown"))
+		return filepath.Join("stock", provider, group, genID, req.Hash+ext)
 	default:
-		return filepath.Join("clips", req.Source, group, req.Hash+ext)
+		return filepath.Join(req.Source, group, genID, req.Hash+ext)
 	}
 }
 
-func (r *Resolver) imageRelative(req AssetDestinationRequest, ext string) string {
-	style := nonEmpty(req.Style, "general")
-	subject := slugify(nonEmpty(req.Subject, req.Hash))
+func (r *Resolver) imageRelative(req AssetDestinationRequest, ext, genID string) string {
+	style := slugify(nonEmpty(req.Style, "general"))
+	subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
 	if req.Source == "" || req.Source == SourceImage {
-		return filepath.Join("images", "generated", style, subject, req.Hash+ext)
+		return filepath.Join("images", "generated", style, subStyle, genID, req.Hash+ext)
 	}
-	return filepath.Join("images", "downloaded", req.Source, subject, req.Hash+ext)
+	return filepath.Join("images", "downloaded", req.Source, style, subStyle, genID, req.Hash+ext)
 }
 
-func (r *Resolver) imageVideoRelative(req AssetDestinationRequest, ext string) string {
-	style := nonEmpty(req.Style, "general")
-	subject := slugify(nonEmpty(req.Subject, req.Hash))
-	return filepath.Join("image_videos", "fullscreen", style, subject, req.Hash+ext)
+func (r *Resolver) imageVideoRelative(req AssetDestinationRequest, ext, genID string) string {
+	style := slugify(nonEmpty(req.Style, "general"))
+	subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
+	return filepath.Join("image_videos", style, subStyle, genID, req.Hash+ext)
 }
 
 func (r *Resolver) voiceoverRelative(req AssetDestinationRequest, ext string) string {
-	provider := nonEmpty(req.Provider, "default")
-	voice := nonEmpty(req.Voice, "default")
+	provider := slugify(nonEmpty(req.Provider, "default"))
+	voice := slugify(nonEmpty(req.Voice, "default"))
 	return filepath.Join("voiceovers", provider, voice, req.Hash+ext)
 }
 
@@ -134,38 +131,40 @@ func (r *Resolver) exportRelative(req AssetDestinationRequest, ext string) strin
 
 // resolveDriveFolder builds the Drive folder path (relative to media_root_folder).
 func (r *Resolver) resolveDriveFolder(req AssetDestinationRequest) string {
+	genID := nonEmpty(req.GenerationID, req.Hash)
+
 	switch req.MediaType {
 	case MediaTypeClip:
-		group := nonEmpty(req.Group, "general")
+		group := slugify(nonEmpty(req.Group, "general"))
 		switch req.Source {
 		case SourceYouTube:
-			return filepath.Join("clips", "youtube", group)
+			return filepath.Join("youtube", group, genID)
 		case SourceArtlist:
-			return filepath.Join("clips", "artlist", group)
+			return filepath.Join("artlist", group, genID)
 		case SourceStock:
-			provider := nonEmpty(req.Provider, "unknown")
-			return filepath.Join("clips", "stock", provider, group)
+			provider := slugify(nonEmpty(req.Provider, "unknown"))
+			return filepath.Join("stock", provider, group, genID)
 		default:
-			return filepath.Join("clips", req.Source, group)
+			return filepath.Join(req.Source, group, genID)
 		}
 	case MediaTypeImage:
-		style := nonEmpty(req.Style, "general")
-		subject := slugify(nonEmpty(req.Subject, req.Hash))
-		return filepath.Join("images", style, subject)
+		style := slugify(nonEmpty(req.Style, "general"))
+		subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
+		return filepath.Join("images", style, subStyle, genID)
 	case MediaTypeImageVideo:
-		style := nonEmpty(req.Style, "general")
-		subject := slugify(nonEmpty(req.Subject, req.Hash))
-		return filepath.Join("image_videos", "fullscreen", style, subject)
+		style := slugify(nonEmpty(req.Style, "general"))
+		subStyle := slugify(nonEmpty(req.SubStyle, "standard"))
+		return filepath.Join("image_videos", style, subStyle, genID)
 	case MediaTypeVoiceover:
-		provider := nonEmpty(req.Provider, "default")
-		voice := nonEmpty(req.Voice, "default")
+		provider := slugify(nonEmpty(req.Provider, "default"))
+		voice := slugify(nonEmpty(req.Voice, "default"))
 		return filepath.Join("voiceovers", provider, voice)
 	case MediaTypeExportVideo:
 		project := slugify(nonEmpty(req.Project, "unknown"))
 		date := nonEmpty(req.Date, "unknown")
 		return filepath.Join("exports", "videos", project, date)
 	default:
-		return filepath.Join("other", req.MediaType, req.Source)
+		return filepath.Join("other", req.MediaType, req.Source, genID)
 	}
 }
 

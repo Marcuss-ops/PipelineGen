@@ -20,6 +20,7 @@ type Service struct {
 	embedProvider  EmbeddingProvider
 	ontologyScorer OntologyScorer
 	matchingConfig *matchingconfig.MatchingConfig
+	vectorStore    VectorStoreSearcher
 }
 
 // ArtlistHarvestService interface for enqueueing harvest jobs
@@ -34,6 +35,7 @@ func NewService(
 	embedProvider EmbeddingProvider,
 	ontologyScorer OntologyScorer,
 	matchingConfig *matchingconfig.MatchingConfig,
+	vectorStore VectorStoreSearcher,
 ) *Service {
 	return &Service{
 		repos:          repos,
@@ -41,7 +43,14 @@ func NewService(
 		embedProvider:  embedProvider,
 		ontologyScorer: ontologyScorer,
 		matchingConfig: matchingConfig,
+		vectorStore:    vectorStore,
 	}
+}
+
+// SetVectorStore sets the vector store searcher for primary ANN search.
+// This is the main entry point for Qdrant integration in the resolver.
+func (s *Service) SetVectorStore(vs VectorStoreSearcher) {
+	s.vectorStore = vs
 }
 
 // Recommend provides clip recommendations based on segment context
@@ -147,18 +156,36 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 	for _, wq := range weightedQueries {
 		term := wq.Term
 		for source, repo := range s.repos {
-			// Try semantic search first
-			candidates, err := repo.SearchSemantic(ctx, term, limit*2)
+			// Step 1: Qdrant ANN search (primary, if configured)
+			var candidates []clipcatalog.ClipCandidate
+			if s.vectorStore != nil {
+				if emb, ok := queryEmbeddings[term]; ok && len(emb) > 0 {
+					emb32 := float64To32(emb)
+					results, err := s.vectorStore.Search(ctx, SearchRequest{
+						QueryVector: emb32,
+						VectorName:  "text",
+						Limit:       limit * 2,
+						MinScore:    s.matchingConfig.Matching.MinScore,
+						Source:      source,
+					})
+					if err == nil && len(results) > 0 {
+						// Map Qdrant results to candidates
+						for _, r := range results {
+							candidates = append(candidates, qdrantResultToCandidate(r))
+						}
+					}
+				}
+			}
 
-			// Fallback to FTS matching if semantic search fails or returns no results
-			if err != nil || len(candidates) == 0 {
+			// Step 2: FTS fallback if Qdrant returned nothing
+			if len(candidates) == 0 {
 				ftsCandidates, ftsErr := repo.FindCandidatesFTS(ctx, term, limit*2)
 				if ftsErr == nil && len(ftsCandidates) > 0 {
 					candidates = ftsCandidates
 				}
 			}
 
-			// Final fallback to simple text matching if FTS also fails
+			// Step 3: Text matching fallback if FTS also fails
 			if len(candidates) == 0 {
 				textCandidates, textErr := repo.FindCandidates(ctx, term, limit*2)
 				if textErr == nil {
@@ -318,20 +345,6 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 	textScore := s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45) * queryWeight
 	bd.TextScore = textScore
 	entry.Score += textScore
-
-	// 2. Vector score (weighted by query importance)
-	if len(queryEmbedding) > 0 && s.embedProvider != nil {
-		clipEmb, err := s.embedProvider.GetClipEmbedding(ctx, c.ID)
-		if err == nil && len(clipEmb) > 0 {
-			vectorWeight := s.matchingConfig.Matching.VectorScoreWeight
-			if vectorWeight == 0 {
-				vectorWeight = 0.40
-			}
-			vectorScore := CalculateVectorScore(clipEmb, queryEmbedding) * vectorWeight * queryWeight
-			bd.VectorScore = vectorScore
-			entry.Score += vectorScore
-		}
-	}
 
 	// Update matched query and terms
 	if entry.MatchedQuery == "" {

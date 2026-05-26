@@ -25,6 +25,7 @@ func (s *Service) GenerateSmartImage(
 	ctx context.Context,
 	subject string,
 	topic string,
+	style string,
 	prompts []string,
 	tags []string,
 	width, height int,
@@ -36,7 +37,12 @@ func (s *Service) GenerateSmartImage(
 		return nil, fmt.Errorf("missing image prompt")
 	}
 
-	assets, err := s.generateGoogleFlowImages(ctx, prompt, subject, tags)
+	// Apply style from registry if provided
+	if s.styleRegistry != nil && style != "" {
+		prompt = s.styleRegistry.ApplyStyle(prompt, style)
+	}
+
+	assets, err := s.generateGoogleFlowImages(ctx, prompt, subject, style, tags)
 	if err == nil && len(assets) > 0 {
 		return assets[0], nil
 	}
@@ -48,7 +54,7 @@ func (s *Service) GenerateSmartImage(
 		)
 	}
 
-	asset, err := s.GenerateAImage(ctx, prompt, model, width, height, tags, skipDrive)
+	asset, err := s.GenerateAImage(ctx, prompt, style, model, width, height, tags, skipDrive)
 	if err != nil {
 		return nil, err
 	}
@@ -77,14 +83,16 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	}
 }
 
-func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject string, tags []string) ([]*models.ImageAsset, error) {
+func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject, style string, tags []string) ([]*models.ImageAsset, error) {
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
 
 	reqBody := googleaccounting.FlowImageRequest{
-		Prompt:   prompt,
-		Headless: true,
+		Prompt:    prompt,
+		ProjectID: s.flowProjectID,
+		Style:     style,
+		Headless:  true,
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -163,7 +171,7 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, prompt, subject 
 			continue
 		}
 
-		asset, ingestErr := s.IngestImage(ctx, slug, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, false)
+		asset, ingestErr := s.IngestImage(ctx, slug, style, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, false)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue

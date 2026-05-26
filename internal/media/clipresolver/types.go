@@ -5,10 +5,38 @@ import (
 	"velox/go-master/internal/media/models"
 )
 
-// EmbeddingProvider defines the interface for obtaining text and clip embeddings.
+// EmbeddingProvider defines the interface for obtaining text embeddings.
 type EmbeddingProvider interface {
 	EmbedText(ctx context.Context, text string) ([]float64, error)
-	GetClipEmbedding(ctx context.Context, clipID string) ([]float64, error)
+}
+
+// VectorStoreSearcher defines the interface for ANN vector search.
+// Used as the primary search step before SQLite/FTS fallback.
+type VectorStoreSearcher interface {
+	Search(ctx context.Context, req SearchRequest) ([]SearchResult, error)
+}
+
+// SearchRequest mirrors vectorstore.SearchRequest for the resolver's needs.
+type SearchRequest struct {
+	QueryVector []float32
+	VectorName  string
+	Limit       int
+	MinScore    float64
+	Source      string
+	Category    string
+	MediaType   string
+}
+
+// SearchResult mirrors vectorstore.SearchResult for the resolver's needs.
+type SearchResult struct {
+	AssetID   string
+	Score     float64
+	Source    string
+	Name      string
+	LocalPath string
+	DriveLink string
+	Category  string
+	MediaType string
 }
 
 // OntologyScorer defines the interface for applying ontology-based scoring.

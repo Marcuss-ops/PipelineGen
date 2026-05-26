@@ -66,3 +66,13 @@ type MediaImportPayload struct {
 	Source      string `json:"source"`
 	DryRun      bool   `json:"dry_run"`
 }
+
+// MediaGeneratePayload is the payload for generating a missing media asset.
+type MediaGeneratePayload struct {
+	WorkspaceID string `json:"workspace_id"`
+	ProjectID   string `json:"project_id"`
+	Query       string `json:"query"`
+	Source      string `json:"source"`
+	Mode        string `json:"mode"` // "text", "visual"
+	Priority    int    `json:"priority"`
+}

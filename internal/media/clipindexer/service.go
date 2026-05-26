@@ -38,11 +38,12 @@ func DefaultConfig() *Config {
 
 // Service provides clip indexing functionality
 type Service struct {
-	db         *sql.DB
-	cfg        *Config
-	log        *zap.Logger
-	scriptPath string
-	dbPath     string
+	db           *sql.DB
+	cfg          *Config
+	log          *zap.Logger
+	scriptPath   string
+	dbPath       string
+	vectorStore  VectorStoreIndexer
 }
 
 // NewService creates a new clipindexer service
@@ -79,12 +80,18 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if s.cfg.ServerURL != "" {
 		err := s.indexViaAPI(ctx, clipID)
 		if err == nil {
+			s.upsertVectorStore(ctx, clipID)
 			return nil
 		}
 		s.log.Warn("failed to index via API, falling back to script", zap.Error(err))
 	}
 
-	return s.indexViaScript(ctx, clipID)
+	err := s.indexViaScript(ctx, clipID)
+	if err != nil {
+		return err
+	}
+	s.upsertVectorStore(ctx, clipID)
+	return nil
 }
 
 func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
@@ -225,6 +232,26 @@ func (s *Service) indexBulkAPI(ctx context.Context, clipIDs []string) error {
 
 	s.log.Info("bulk indexing completed via API", zap.Int("count", len(clipIDs)))
 	return nil
+}
+
+// SetVectorStore sets the vector store indexer for Qdrant upsert after indexing.
+func (s *Service) SetVectorStore(vs VectorStoreIndexer) {
+	s.vectorStore = vs
+}
+
+// upsertVectorStore pushes the newly indexed clip to Qdrant if a vector store is configured.
+func (s *Service) upsertVectorStore(ctx context.Context, clipID string) {
+	if s.vectorStore == nil {
+		return
+	}
+	if err := s.vectorStore.UpsertFromClip(ctx, clipID); err != nil {
+		s.log.Warn("failed to upsert clip to vector store",
+			zap.String("clip_id", clipID),
+			zap.Error(err))
+	} else {
+		s.log.Debug("vector store upserted clip",
+			zap.String("clip_id", clipID))
+	}
 }
 
 // IsEnabled returns whether the service is enabled

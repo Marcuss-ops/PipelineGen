@@ -107,3 +107,19 @@ google_accounting:
   download_dir: "./data/google_vids"
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
+  vids_project_id: "" # ID of an existing Google Vids project to reuse
+  flow_project_id: "" # ID of an existing Google Flow project to reuse
+
+vector_search:
+  enabled: false
+  provider: "qdrant"
+  url: "http://127.0.0.1:6333"
+  collection: "pipelinegen_assets"
+  text_vector_name: "text"
+  visual_vector_name: "visual"
+  text_dimensions: 384
+  visual_dimensions: 512
+  min_instant_score: 0.85
+  timeout_ms: 5000
+  realtime_enabled: false
+  allow_background_generation: false

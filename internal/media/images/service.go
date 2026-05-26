@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/generation"
 	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/media/storage"
 	clipsRepo "velox/go-master/internal/repository/clips"
@@ -37,10 +38,12 @@ type Service struct {
 	ingestSvc *ingest.Service
 
 	// Google Accounting integration
-	gaServerURL       string
-	gaDownloadDir     string
+	gaServerURL         string
+	gaDownloadDir       string
 	googleAccountingURL string
 	googleAccountingDir string
+	vidsProjectID       string
+	flowProjectID       string
 
 	// Image storage
 	imagesDir     string
@@ -61,6 +64,9 @@ type Service struct {
 
 	// Unified media store for Drive operations (replaces raw driveSvc calls)
 	mediaStore *storage.Store
+
+	// Centralized style registry
+	styleRegistry *generation.StyleRegistry
 }
 
 type wikiCacheEntry struct {
@@ -78,7 +84,7 @@ type DiagnosticsReport struct {
 	WikidataWorks     bool     `json:"wikidata_works"`
 }
 
-func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, log *zap.Logger) *Service {
+func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
 	return &Service{
 		cfg:       cfg,
 		repo:      repo,
@@ -95,6 +101,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		scriptsDir: cfg.Paths.PythonScriptsDir,
 		nvidiaModel: cfg.External.NvidiaModel,
 		animationsDir: cfg.Storage.AnimationsPath(),
+		styleRegistry: styleRegistry,
 	}
 }
 
@@ -132,10 +139,13 @@ func (s *Service) Log() *zap.Logger {
 	return s.log
 }
 
-func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir string) {
+func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectID, flowProjectID string) {
 	s.gaServerURL = serverURL
 	s.gaDownloadDir = downloadDir
 	s.googleAccountingURL = serverURL // allinea anche googleAccountingURL per generateGoogleFlowImages
+	s.vidsProjectID = vidsProjectID
+	s.flowProjectID = flowProjectID
+
 	// Usa downloadDir come base per risolvere path relativi restituiti dal server Python.
 	// downloadDir è relativo al project root (es. "./data/google_vids"), non a imagesDir.
 	absDir := downloadDir

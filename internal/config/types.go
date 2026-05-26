@@ -24,15 +24,18 @@ type Config struct {
 	Features         FeaturesConfig         `yaml:"features"`
 	ClipIndexer      ClipIndexerConfig      `yaml:"clip_indexer"`
 	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
+	VectorSearch     VectorSearchConfig     `yaml:"vector_search"`
 }
 
 // GoogleAccountingConfig holds settings for the Google Accounting FastAPI service.
 type GoogleAccountingConfig struct {
-	Enabled      bool   `yaml:"enabled" default:"false"`
-	ServerURL    string `yaml:"server_url" default:"http://localhost:8000"`
-	DownloadDir  string `yaml:"download_dir" default:"./data/google_vids"`
-	SessionsPath string `yaml:"sessions_path" default:"./google-accounting/sessions"`
-	ScheduleCron string `yaml:"schedule_cron" default:"0 2 * * *"`
+	Enabled       bool   `yaml:"enabled" default:"false"`
+	ServerURL     string `yaml:"server_url" default:"http://localhost:8000"`
+	DownloadDir   string `yaml:"download_dir" default:"./data/google_vids"`
+	SessionsPath  string `yaml:"sessions_path" default:"./google-accounting/sessions"`
+	ScheduleCron  string `yaml:"schedule_cron" default:"0 2 * * *"`
+	VidsProjectID string `yaml:"vids_project_id" default:""`
+	FlowProjectID string `yaml:"flow_project_id" default:""`
 }
 
 // VideoConfig holds all video processing parameters shared across the clip, stock,
@@ -208,15 +211,15 @@ type StorageConfig struct {
 	MediaDir string `yaml:"media_dir" env:"PIPELINEGEN_MEDIA_DIR" default:"media"`
 
 	// Deprecated: use MediaDir instead.
-	VoiceoversDir   string `yaml:"voiceovers_dir" env:"VELOX_VOICEOVERS_DIR" default:"voiceovers"`
-	AssetsDir       string `yaml:"assets_dir" env:"VELOX_ASSETS_DIR" default:"assets/subjects"`
-	DownloadsDir    string `yaml:"downloads_dir" env:"VELOX_DOWNLOADS_DIR" default:"downloads"`
+	VoiceoversDir   string `yaml:"voiceovers_dir" env:"VELOX_VOICEOVERS_DIR" default:"media/voiceovers"`
+	AssetsDir       string `yaml:"assets_dir" env:"VELOX_ASSETS_DIR" default:"media/assets"`
+	DownloadsDir    string `yaml:"downloads_dir" env:"VELOX_DOWNLOADS_DIR" default:"media/downloads"`
 	BackupsDir      string `yaml:"backups_dir" env:"VELOX_BACKUPS_DIR" default:"backups"`
 	TempDir         string `yaml:"temp_dir" env:"VELOX_TEMP_DIR" default:"tmp"`
-	AnimationsDir   string `yaml:"animations_dir" default:"animations"`
-	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"youtube-clips"`
-	ArtlistDir      string `yaml:"artlist_dir" default:"artlist"`
-	ImagesDir       string `yaml:"images_dir" default:"images"`
+	AnimationsDir   string `yaml:"animations_dir" default:"media/animations"`
+	YoutubeClipsDir string `yaml:"youtube_clips_dir" default:"media/youtube"`
+	ArtlistDir      string `yaml:"artlist_dir" default:"media/artlist"`
+	ImagesDir       string `yaml:"images_dir" default:"media/images"`
 }
 
 // MediaPath returns the full path to the unified media directory.
@@ -357,6 +360,22 @@ type FeaturesConfig struct {
 	GoogleAccountingEnabled bool `yaml:"google_accounting_enabled" env:"VELOX_FEATURE_GOOGLE_ACCOUNTING_ENABLED" default:"false"`
 }
 
+// VectorSearchConfig holds settings for the vector search (Qdrant) integration.
+type VectorSearchConfig struct {
+	Enabled             bool    `yaml:"enabled" default:"false"`
+	Provider            string  `yaml:"provider" default:"qdrant"`
+	URL                 string  `yaml:"url" default:"http://127.0.0.1:6333"`
+	Collection          string  `yaml:"collection" default:"pipelinegen_assets"`
+	TextVectorName      string  `yaml:"text_vector_name" default:"text"`
+	VisualVectorName    string  `yaml:"visual_vector_name" default:"visual"`
+	TextDimensions      int     `yaml:"text_dimensions" default:"384"`
+	VisualDimensions    int     `yaml:"visual_dimensions" default:"512"`
+	MinInstantScore     float64 `yaml:"min_instant_score" default:"0.85"`
+	TimeoutMs           int     `yaml:"timeout_ms" default:"5000"`
+	GRPCPort            int     `yaml:"grpc_port" default:"6334"`
+	RealtimeEnabled     bool    `yaml:"realtime_enabled" default:"false"`
+	AllowBackgroundGen  bool    `yaml:"allow_background_generation" default:"false"`
+}
 // ClipIndexerConfig holds settings for the clip metadata indexing service.
 type ClipIndexerConfig struct {
 	Enabled               bool   `yaml:"enabled" default:"true"`

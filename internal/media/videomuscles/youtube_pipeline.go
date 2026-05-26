@@ -58,7 +58,9 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	if videoID == "" {
 		videoID = "unknown"
 	}
-	videoDir := filepath.Join(p.cfg.Storage.YoutubeClipsPath(), "yt "+videoID)
+	// Follow the new pattern: youtube/<group>/<gen_id>
+	// We use "general" as the default group for now.
+	videoDir := filepath.Join(p.cfg.Storage.DataDir, "media", "youtube", "general", videoID)
 	if err := os.MkdirAll(videoDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create output dir: %w", err)
 	}

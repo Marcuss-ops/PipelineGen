@@ -101,12 +101,13 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 	}
 
 	// Create stable folder path using video ID instead of timestamp
-	folderSlug := "yt " + videoID
-	if req.Destination != nil && req.Destination.SubfolderName != "" {
-		folderSlug = pathutil.SafeFolderName(req.Destination.SubfolderName)
+	folderSlug := videoID
+	group := "general"
+	if req.Destination != nil && req.Destination.Group != "" {
+		group = req.Destination.Group
 	}
 
-	outDir := filepath.Join(s.cfg.Storage.DataDir, "youtube-clips", folderSlug)
+	outDir := filepath.Join(s.cfg.Storage.DataDir, "media", "youtube", group, folderSlug)
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		resp.OK = false
 		resp.Error = err.Error()

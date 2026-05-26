@@ -120,41 +120,51 @@ def run_diagnostics():
         print("  -> Assicurati che 'python scripts/embedding_server.py' sia avviato.")
         sys.exit(1)
 
-    # --- 3. TEST DI RICERCA SEMANTICA (RECALL TEST) ---
-    print_section("3. TEST DI RICERCA SEMANTICA (Cosine Similarity Test)")
+    # --- 3. TEST DI RICERCA VETTORIALE (Qdrant) ---
+    print_section("3. TEST DI RICERCA VETTORIALE (Qdrant / Custom Search)")
     test_queries = ["cane", "dog running", "battery", "camera exploded", "tecnologia"]
-    
+
+    # Verifica Qdrant
+    qdrant_url = "http://127.0.0.1:6333"
+    try:
+        q_resp = requests.get(f"{qdrant_url}/collections", timeout=3)
+        if q_resp.status_code == 200:
+            collections = q_resp.json().get("result", {}).get("collections", [])
+            print_result("PASS", f"Qdrant ONLINE. Collection trovate: {len(collections)}")
+            for col in collections:
+                print(f"    - {col.get('name', 'unnamed')}")
+        else:
+            print_result("WARN", "Qdrant non disponibile (fallback a FTS/LIKE)")
+    except Exception:
+        print_result("WARN", "Qdrant non raggiungibile su :6333 (fallback a FTS/LIKE)")
+
+    # Test embedding server (solo /embed)
     successful_searches = 0
     for query in test_queries:
         try:
             start_s = time.time()
-            search_resp = requests.post(f"{server_url}/search", json={
-                "db_path": str(db_path.absolute()),
-                "query": query,
-                "limit": 3
+            emb_resp = requests.post(f"{server_url}/embed", json={
+                "text": query,
             }, timeout=4)
             lat = (time.time() - start_s) * 1000
-            
-            if search_resp.status_code == 200:
-                data = search_resp.json()
-                clips = data.get("clips", [])
-                if clips:
-                    best_match = clips[0]
-                    score = best_match['score']
-                    clip_id = best_match['clip_id']
-                    print_result("PASS", f"Query '{query}': Match migliore '{clip_id}' con score {score:.3f} (Latenza: {lat:.1f}ms)")
+
+            if emb_resp.status_code == 200:
+                data = emb_resp.json()
+                emb = data.get("embedding", [])
+                if emb:
+                    print_result("PASS", f"Query '{query}': Embedding {len(emb)} dimensionale generato (Latenza: {lat:.1f}ms)")
                     successful_searches += 1
                 else:
-                    print_result("WARN", f"Query '{query}': Nessun risultato trovato (Latenza: {lat:.1f}ms)")
+                    print_result("WARN", f"Query '{query}': Embedding vuoto (Latenza: {lat:.1f}ms)")
             else:
-                print_result("FAIL", f"Query '{query}' fallita con status: {search_resp.status_code}")
+                print_result("FAIL", f"Query '{query}' fallita con status: {emb_resp.status_code}")
         except Exception as e:
-            print_result("FAIL", f"Errore durante la ricerca per '{query}': {e}")
-            
+            print_result("FAIL", f"Errore durante l'embedding per '{query}': {e}")
+
     if successful_searches == len(test_queries):
-        print_result("PASS", f"Richiamo semantico verificato su {successful_searches}/{len(test_queries)} query campione!")
+        print_result("PASS", f"Embedding server verificato su {successful_searches}/{len(test_queries)} query campione!")
     else:
-        print_result("WARN", f"Verifica completata con parziali anomalie di richiamo ({successful_searches}/{len(test_queries)} query ok).")
+        print_result("WARN", f"Verifica completata con parziali anomalie ({successful_searches}/{len(test_queries)} query ok).")
 
     # --- 4. VERIFICA MONITORAGGIO FALLBACK ---
     print_section("4. MONITORAGGIO FALLBACK & LOG DI RICERCA")

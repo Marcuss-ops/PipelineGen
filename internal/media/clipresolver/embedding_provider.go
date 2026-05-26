@@ -8,21 +8,17 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"velox/go-master/internal/media/clipcatalog"
 )
 
 // PythonEmbeddingProvider implements EmbeddingProvider by calling the Python embedding server.
 type PythonEmbeddingProvider struct {
-	serverURL   string
-	catalogRepo *clipcatalog.Repository
+	serverURL string
 }
 
 // NewPythonEmbeddingProvider creates a new provider that uses the Python embedding server.
-func NewPythonEmbeddingProvider(serverURL string, catalogRepo *clipcatalog.Repository) *PythonEmbeddingProvider {
+func NewPythonEmbeddingProvider(serverURL string) *PythonEmbeddingProvider {
 	return &PythonEmbeddingProvider{
-		serverURL:   serverURL,
-		catalogRepo: catalogRepo,
+		serverURL: serverURL,
 	}
 }
 
@@ -65,10 +61,3 @@ func (p *PythonEmbeddingProvider) EmbedText(ctx context.Context, text string) ([
 	return result.Embedding, nil
 }
 
-// GetClipEmbedding returns the embedding for a given clip ID from the catalog.
-func (p *PythonEmbeddingProvider) GetClipEmbedding(ctx context.Context, clipID string) ([]float64, error) {
-	if p.catalogRepo == nil {
-		return nil, fmt.Errorf("catalog repository not configured")
-	}
-	return p.catalogRepo.GetEmbedding(ctx, clipID)
-}

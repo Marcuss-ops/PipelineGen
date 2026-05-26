@@ -14,7 +14,7 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/storage"
 )
-func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, source, query, description string, tags []string) (*models.ImageAsset, error) {
+func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*models.ImageAsset, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
 	req.Header.Set("User-Agent", userAgent)
 
@@ -28,10 +28,10 @@ func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, source, q
 		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
-	return s.IngestImage(ctx, slug, resp.Body, filepath.Base(imgURL), imgURL, description, tags, false)
+	return s.IngestImage(ctx, slug, style, resp.Body, filepath.Base(imgURL), imgURL, description, tags, false)
 }
 
-func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) IngestImage(ctx context.Context, slug, style string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
 	content, err := io.ReadAll(data)
 	if err != nil {
 		return nil, err
@@ -57,14 +57,15 @@ func (s *Service) IngestImage(ctx context.Context, slug string, data io.Reader, 
 
 	s.log.Info("IngestImage: ingesting image",
 		zap.String("slug", slug),
+		zap.String("style", style),
 		zap.String("hash", legacyHash),
 		zap.Bool("skip_drive", skipDrive),
 	)
 
-	return s.ingestDirect(ctx, slug, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
+	return s.ingestDirect(ctx, slug, style, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
 }
 
-func (s *Service) ingestDirect(ctx context.Context, slug string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug, style string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err != nil || subject == nil {
@@ -100,10 +101,10 @@ func (s *Service) ingestDirect(ctx context.Context, slug string, content []byte,
 		fileID, _, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
 			Source:    storage.SourceImage,
 			MediaType: storage.MediaTypeImage,
-			Subject:   slug,
+			Subject:   slug, // Prompt slug
 			Hash:      hash,
 			Ext:       ext,
-			Style:     slug,
+			Style:     style, // Chosen style
 		}, fullPath)
 		if err != nil {
 			s.log.Warn("Drive upload failed", zap.Error(err))

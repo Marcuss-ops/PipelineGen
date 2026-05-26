@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	realtimehandler "velox/go-master/internal/api/handlers/realtime"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/maintenance"
@@ -148,6 +149,14 @@ func WireRegistry(
 			}
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.StockPipeline = w.(*StockPipelineWiring) }},
+		{"Realtime", func() (module.Module, interface{}, error) {
+			if coreDeps.RealtimeService == nil {
+				return nil, nil, nil
+			}
+			handler := realtimehandler.NewMatchHandler(coreDeps.RealtimeService, log)
+			mod := module.NewRealtimeModule(cfg, log, handler)
+			return mod, nil, nil
+		}, nil},
 	}
 
 	for _, m := range modules {

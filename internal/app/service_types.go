@@ -11,9 +11,12 @@ import (
 	"velox/go-master/internal/media/association"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
+	"velox/go-master/internal/media/generation"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
+	"velox/go-master/internal/media/realtime"
 	sketchfabservice "velox/go-master/internal/media/sketchfab"
+	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/media/voiceoversync"
 	"velox/go-master/internal/ml/ollama"
@@ -60,4 +63,7 @@ type services struct {
 	maintenanceSvc     *maintenance.Service
 	sketchfabRepo      *sketchfab.Repository
 	sketchfabService   *sketchfabservice.Service
+	styleRegistry      *generation.StyleRegistry
+	vectorSvc          *vectorstore.Service
+	realtimeSvc        *realtime.Service
 }

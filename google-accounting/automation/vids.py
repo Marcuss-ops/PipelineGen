@@ -304,8 +304,19 @@ class GoogleVidsAutomation(BaseAutomation):
                     log.debug("Selector inventory failed selector=%s idx=%d err=%s", selector, idx, exc)
 
     async def generate_video(self, video_id: str, prompt: str, zoom_centered: bool = True) -> Path:
+        from storage import get_project_id, save_project_id
+        
         dest_dir = DOWNLOAD_DIR / "videos"
         dest_dir.mkdir(parents=True, exist_ok=True)
+
+        # Se video_id è nullo o "new", prova a caricare dalla cache
+        if not video_id or video_id == "new":
+            video_id = get_project_id("vids")
+            if video_id:
+                log.info("Reusing cached Vids project ID: %s", video_id)
+            else:
+                video_id = "new"
+
         selector_report = {
             "kind": "vids",
             "video_id": video_id,
@@ -314,7 +325,28 @@ class GoogleVidsAutomation(BaseAutomation):
             "generated_at": int(time.time()),
         }
         
-        page = await self._get_page(video_id)
+        if video_id == "new" or not video_id:
+            log.info("Creating new Vids project for Video Generation")
+            page = await self._goto_home()
+            try:
+                await page.click('div[aria-label="Inizia un nuovo video"]', timeout=5000)
+                await page.wait_for_timeout(3000)
+                # Wait for redirect to /videos/d/ID/edit
+                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=15000)
+                video_id = self._extract_vid_id(page.url)
+                if video_id:
+                    log.info("New Vids project created: %s, saving to cache.", video_id)
+                    save_project_id("vids", video_id)
+            except Exception as e:
+                log.error("Failed to create new Vids project: %s", e)
+                # Try fallback to direct open if redirect happened but wait failed
+                video_id = self._extract_vid_id(page.url)
+                if not video_id:
+                    await page.close()
+                    raise
+        else:
+            page = await self._get_page(video_id)
+
         try:
             generation_timeout_ms = 900000
             poll_interval_ms = 5000
@@ -580,6 +612,124 @@ class GoogleVidsAutomation(BaseAutomation):
             await page.close()
 
 
+    async def generate_avatar(self, video_id: str, script: str, avatar_id: str = None) -> Path | None:
+        """Genera un Talking Head (Avatar) in Google Vids."""
+        from storage import get_project_id, save_project_id
+
+        dest_dir = DOWNLOAD_DIR / "avatars"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
+        if not video_id or video_id == "new":
+            video_id = get_project_id("vids")
+            if video_id:
+                log.info("Reusing cached Vids project ID for Avatar: %s", video_id)
+            else:
+                video_id = "new"
+
+        selector_report = {
+            "kind": "avatar",
+            "video_id": video_id,
+            "script_preview": script[:120],
+            "avatar_id": avatar_id or "default",
+            "attempts": [],
+            "generated_at": int(time.time()),
+        }
+
+        page = await self._goto_home()
+        try:
+            if video_id == "new" or not video_id:
+                log.info("Creating new Vids project for Avatar")
+                await page.click('div[aria-label="Inizia un nuovo video"]', timeout=5000)
+                await page.wait_for_timeout(3000)
+                # Wait for redirect
+                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=15000)
+                video_id = self._extract_vid_id(page.url)
+                if video_id:
+                    log.info("New Vids project created for Avatar: %s, saving to cache.", video_id)
+                    save_project_id("vids", video_id)
+            else:
+                log.info("Opening existing Vids project: %s", video_id)
+                await page.goto(f"https://docs.google.com/videos/d/{video_id}/edit", wait_until="networkidle")
+
+            await human_delay()
+
+            # --- Flow Avatar AI ---
+            # 1. Clicca "Inserisci" (Insert)
+            insert_selectors = ['button:has-text("Inserisci")', 'button:has-text("Insert")', 'div[role="menuitem"]:has-text("Inserisci")']
+            inserted = False
+            for sel in insert_selectors:
+                try:
+                    await page.click(sel, timeout=3000)
+                    inserted = True
+                    break
+                except: continue
+            
+            if not inserted:
+                # Prova a cercare l'icona + o simili
+                await page.click('button[aria-label^="Inserisci"]', timeout=3000)
+
+            await page.wait_for_timeout(1000)
+
+            # 2. Seleziona "Avatar AI"
+            avatar_menu_selectors = ['div[role="menuitem"]:has-text("Avatar AI")', 'span:has-text("Avatar AI")']
+            for sel in avatar_menu_selectors:
+                try:
+                    await page.click(sel, timeout=3000)
+                    break
+                except: continue
+
+            await page.wait_for_timeout(2000)
+
+            # 3. Inserisci lo script
+            script_selectors = ['textarea[placeholder*="script"]', 'textarea[aria-label*="script"]', 'textarea']
+            for sel in script_selectors:
+                try:
+                    await page.fill(sel, script, timeout=3000)
+                    break
+                except: continue
+
+            await human_delay()
+
+            # 4. Clicca "Genera"
+            gen_selectors = ['button:has-text("Genera")', 'button:has-text("Generate")', 'button.videoGenAvatarGenerateButton']
+            for sel in gen_selectors:
+                try:
+                    await page.click(sel, timeout=3000)
+                    break
+                except: continue
+
+            log.info("Avatar generation triggered, waiting...")
+            # L'avatar può richiedere tempo (30s - 2min)
+            await page.wait_for_timeout(30000) 
+
+            # 5. Export / Download
+            # Google Vids salva su Drive. Usiamo la logica di download esistente o export diretto
+            log.info("Polling for generated avatar video in project %s", video_id)
+            
+            # Per ora usiamo il sync_project che scarica gli MP4 esportati
+            # In un'implementazione reale, dovremmo aspettare che il video appaia nella timeline
+            # e poi forzare l'export se non automatico.
+            
+            # Fallback: ritorna il video_id per permettere al chiamante di fare sync più tardi
+            # o prova un sync immediato
+            await page.wait_for_timeout(10000)
+            paths = await sync_project(video_id, file_type="video", account=self.account, headless=self.headless)
+            if paths:
+                log.info("Avatar video downloaded: %s", paths[0])
+                return paths[0]
+
+            return None
+
+        except Exception as e:
+            log.error("Errore generazione avatar: %s", e, exc_info=True)
+            selector_report["result"] = "failed"
+            selector_report["error"] = str(e)
+            return None
+        finally:
+            _append_selector_report(selector_report)
+            await page.close()
+
+
 async def list_projects(account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         return await engine.list_projects()
@@ -616,4 +766,10 @@ async def sync_project(video_id: str, file_type: str = "all", account: str = Non
 async def generate_video_ai_v2(video_id: str, prompt: str, account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         result = await engine.generate_video(video_id, prompt)
+        return str(result) if result else None
+
+
+async def generate_avatar_v1(video_id: str, script: str, avatar_id: str = None, account: str = None, headless: bool = True):
+    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
+        result = await engine.generate_avatar(video_id, script, avatar_id)
         return str(result) if result else None

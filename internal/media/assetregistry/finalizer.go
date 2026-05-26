@@ -2,7 +2,9 @@ package assetregistry
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"time"
 
 	"velox/go-master/internal/media/assetindex"
@@ -93,6 +95,11 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 	}
 	result.DBSaved = true
 
+	// Write metadata.json in the same folder as the local file
+	if rec.LocalPath != "" {
+		f.writeMetadataJSON(rec)
+	}
+
 	// Write to asset_index if enabled
 	if f.assetIndex != nil {
 		assetRec := &assetindex.AssetRecord{
@@ -155,4 +162,56 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 		zap.Bool("drive_uploaded", result.DriveUploaded))
 
 	return result, nil
+}
+
+func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
+	dir := filepath.Dir(rec.LocalPath)
+	metaPath := filepath.Join(dir, "metadata.json")
+
+	// Prepare metadata structure
+	var existingMeta map[string]interface{}
+	if data, err := os.ReadFile(metaPath); err == nil {
+		_ = json.Unmarshal(data, &existingMeta)
+	}
+
+	if existingMeta == nil {
+		existingMeta = make(map[string]interface{})
+	}
+
+	// Update fields
+	existingMeta["generation_id"] = filepath.Base(dir)
+	existingMeta["timestamp"] = time.Now().UTC().Format(time.RFC3339)
+	existingMeta["source"] = rec.Source
+	existingMeta["media_type"] = rec.MediaType
+
+	// Parse internal metadata if present
+	if rec.Metadata != "" {
+		var internalMeta map[string]interface{}
+		if err := json.Unmarshal([]byte(rec.Metadata), &internalMeta); err == nil {
+			for k, v := range internalMeta {
+				existingMeta[k] = v
+			}
+		}
+	}
+
+	// Add asset to list
+	assets, _ := existingMeta["assets"].([]interface{})
+	found := false
+	filename := filepath.Base(rec.LocalPath)
+	for _, a := range assets {
+		if a == filename {
+			found = true
+			break
+		}
+	}
+	if !found {
+		assets = append(assets, filename)
+	}
+	existingMeta["assets"] = assets
+	existingMeta["embedding_ready"] = rec.PHash != "" || rec.VisualEmbeddingJSON != ""
+
+	// Write back to file
+	if data, err := json.MarshalIndent(existingMeta, "", "  "); err == nil {
+		_ = os.WriteFile(metaPath, data, 0644)
+	}
 }

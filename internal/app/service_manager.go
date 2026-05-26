@@ -27,9 +27,12 @@ import (
 	"velox/go-master/internal/media/assetregistry"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
+	"velox/go-master/internal/media/generation"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
+	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/media/storage"
+	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/media/voiceoversync"
 	pkgffmpeg "velox/go-master/internal/pkg/media/ffmpeg"
@@ -41,6 +44,8 @@ import (
 )
 
 func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*services, error) {
+	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
+
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
 	scriptGen := ollama.NewGenerator(ollamaClient)
 
@@ -100,6 +105,35 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		DBPath:                dbs.media.Path(),
 	}, dbs.media.DB, dbs.media.Path(), log)
 
+	// Vector store (Qdrant) and real-time matching
+	var vectorSvc *vectorstore.Service
+	var realtimeSvc *realtime.Service
+
+	if cfg.VectorSearch.Enabled {
+		qdrantCfg := vectorstore.Config{
+			URL:              cfg.VectorSearch.URL,
+			Collection:       cfg.VectorSearch.Collection,
+			TextVectorName:   cfg.VectorSearch.TextVectorName,
+			VisualVectorName: cfg.VectorSearch.VisualVectorName,
+			TextDimensions:   cfg.VectorSearch.TextDimensions,
+			VisualDimensions: cfg.VectorSearch.VisualDimensions,
+			MinInstantScore:  cfg.VectorSearch.MinInstantScore,
+			TimeoutMs:        cfg.VectorSearch.TimeoutMs,
+		}
+		qdrantClient := vectorstore.NewQdrantClient(qdrantCfg)
+		vectorSvc = vectorstore.NewService(qdrantClient, qdrantCfg, log)
+		if err := vectorSvc.EnsureCollection(ctx); err != nil {
+			log.Warn("vector store collection setup failed (will retry on upsert)", zap.Error(err))
+		}
+
+		// Wire vector store into clipindexer
+		clipIndexerAdapter := vectorstore.NewClipIndexerAdapter(dbs.media.DB, vectorSvc, qdrantCfg, log)
+		if clipIndexerAdapter != nil {
+			clipIndexerService.SetVectorStore(clipIndexerAdapter)
+			log.Info("vector store enabled for clip indexer")
+		}
+	}
+
 	monitorsRepo := monitors.NewRepository(dbs.main.DB)
 
 	// Unified media storage + destination resolver (replaces assetdestination)
@@ -157,9 +191,14 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	sketchRepo := sketchfab.NewRepository(dbs.media.DB)
 	sketchService := sketchfabservice.NewService(cfg, sketchRepo, dbs.media.Path(), log)
 
-	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, log)
+	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, styleRegistry, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
-	imageService.SetGoogleAccountingConfig(cfg.GoogleAccounting.ServerURL, cfg.GoogleAccounting.DownloadDir)
+	imageService.SetGoogleAccountingConfig(
+		cfg.GoogleAccounting.ServerURL,
+		cfg.GoogleAccounting.DownloadDir,
+		cfg.GoogleAccounting.VidsProjectID,
+		cfg.GoogleAccounting.FlowProjectID,
+	)
 	imageService.SetMediaStore(mediaStore)
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
@@ -200,6 +239,14 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		jobservice.RegisterTestHandlers(jobsDispatcher, log)
 	}
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
+
+	// Create real-time matching service (needs jobsService, so done after it)
+	if cfg.VectorSearch.Enabled && cfg.VectorSearch.RealtimeEnabled && vectorSvc != nil {
+		embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
+		jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
+		realtimeSvc = realtime.NewService(vectorSvc, embedder, jobAdapter, &cfg.VectorSearch, log)
+		log.Info("real-time matching service enabled")
+	}
 
 	// Register job handlers
 	catalogSync.RegisterHandler(jobsService)
@@ -258,5 +305,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		maintenanceSvc:     maintenanceSvc,
 		sketchfabRepo:      sketchRepo,
 		sketchfabService:   sketchService,
+		styleRegistry:      styleRegistry,
+		vectorSvc:          vectorSvc,
+		realtimeSvc:        realtimeSvc,
 	}, nil
 }

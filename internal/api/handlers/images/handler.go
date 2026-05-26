@@ -159,6 +159,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		c.Request.Context(),
 		req.Prompt,       // subject
 		"",               // topic (vuoto, usiamo solo il prompt)
+		req.Style,        // style
 		[]string{req.Prompt}, // prompts
 		req.Tags,
 		req.Width,
@@ -212,7 +213,7 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 	}
 
 	skipDrive := req.Style != ""
-	asset, err := h.service.GenerateAImage(c.Request.Context(), req.Prompt, req.Model, req.Width, req.Height, req.Tags, skipDrive)
+	asset, err := h.service.GenerateAImage(c.Request.Context(), req.Prompt, req.Style, req.Model, req.Width, req.Height, req.Tags, skipDrive)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return

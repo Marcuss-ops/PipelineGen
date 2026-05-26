@@ -80,6 +80,13 @@ class GenerateRequest(BaseModel):
     headless: bool = True
     account: Optional[str] = None
 
+class AvatarRequest(BaseModel):
+    video_id: str = "new"
+    script: str
+    avatar_id: Optional[str] = None  # e.g., "professional_male", "friendly_female"
+    headless: bool = True
+    account: Optional[str] = None
+
 class FlowImageRequest(BaseModel):
     prompt: str
     project_id: Optional[str] = None
@@ -129,6 +136,34 @@ async def generate_vids_video_endpoint(req: GenerateRequest, background_tasks: B
                 _update_job(job_id, status="done", progress=100, current_step="completed", file_path=video_path, last_log="Vids generation completed")
             else:
                 _update_job(job_id, status="failed", current_step="failed", error="Generation/Download failed.", last_log="Generation/Download failed.")
+        except Exception as e:
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
+
+    background_tasks.add_task(_run)
+    return {"job_id": job_id, "status": "pending"}
+
+@app.post("/generate-avatar-video")
+async def generate_avatar_video_endpoint(req: AvatarRequest, background_tasks: BackgroundTasks):
+    """Generates an AI Talking Head (Avatar) video."""
+    job_id = f"avatar-{str(uuid.uuid4())[:8]}"
+    _new_job(job_id, video_id=req.video_id, script=req.script, avatar_id=req.avatar_id, account=req.account, mode="avatar")
+
+    async def _run():
+        _update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids for Avatar")
+        try:
+            from playwright_client import generate_avatar_v1
+            _update_job(job_id, progress=30, current_step="generating", last_log="Starting Avatar flow")
+            video_path = await generate_avatar_v1(
+                req.video_id, 
+                req.script, 
+                avatar_id=req.avatar_id, 
+                account=req.account, 
+                headless=req.headless
+            )
+            if video_path:
+                _update_job(job_id, status="done", progress=100, current_step="completed", file_path=video_path, last_log="Avatar generation completed")
+            else:
+                _update_job(job_id, status="failed", current_step="failed", error="Avatar generation/download failed.", last_log="Avatar generation/download failed.")
         except Exception as e:
             _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
 

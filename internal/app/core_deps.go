@@ -15,9 +15,12 @@ import (
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/clipresolver"
+	"velox/go-master/internal/media/generation"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
 	"velox/go-master/internal/media/monitor"
+	"velox/go-master/internal/media/realtime"
+	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
@@ -66,7 +69,10 @@ type CoreDeps struct {
 	YoutubeClipService *youtube.Service
 	AssetIndexService  *assetindex.Service
 	AssetTreeService   *assettree.Service
+	StyleRegistry      *generation.StyleRegistry
 	ClipResolver       *clipresolver.Service
+	VectorStore        *vectorstore.Service
+	RealtimeService    *realtime.Service
 	DeletionService    *media.DeletionService
 	MaintenanceService *maintenance.Service
 }

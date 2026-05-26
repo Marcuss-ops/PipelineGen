@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/generation"
 	"velox/go-master/internal/repository/voiceovers"
 	"velox/go-master/internal/security"
 
@@ -53,6 +54,8 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
 
+	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
+
 	return &CoreDeps{
 		Context:            ctx,
 		ScriptGen:          svcs.scriptGen,
@@ -86,6 +89,9 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		YoutubeClipService: svcs.youtubeClipService,
 		AssetIndexService:  svcs.assetIndexService,
 		AssetTreeService:   svcs.assetTreeService,
+		StyleRegistry:      styleRegistry,
 		MaintenanceService: svcs.maintenanceSvc,
+		VectorStore:        svcs.vectorSvc,
+		RealtimeService:    svcs.realtimeSvc,
 	}, cleanup, nil
 }

@@ -38,6 +38,15 @@ type GenerateRequest struct {
 	Account  string `json:"account,omitempty"`
 }
 
+// AvatarRequest is the shared request structure for AI Avatar generation
+type AvatarRequest struct {
+	VideoID  string `json:"video_id,omitempty"`
+	Script   string `json:"script"`
+	AvatarID string `json:"avatar_id,omitempty"`
+	Headless bool   `json:"headless"`
+	Account  string `json:"account,omitempty"`
+}
+
 // FlowImageRequest is the shared request structure for Flow image generation
 type FlowImageRequest struct {
 	Prompt    string `json:"prompt"`

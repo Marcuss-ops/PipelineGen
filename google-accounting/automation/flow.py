@@ -1,9 +1,14 @@
 import asyncio
+import hashlib
+import logging
 import os
 import random
+import re
+import sys
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 from playwright.async_api import Page
@@ -14,7 +19,6 @@ from .base import (
     _append_selector_report,
     human_delay,
     human_scroll,
-    log,
 )
 
 STYLE_MAP = {
@@ -28,335 +32,263 @@ STYLE_MAP = {
     "cinematic": "cinematic lighting, movie shot, 35mm lens, highly detailed, dramatic",
 }
 
+log = logging.getLogger("AutomationEngine")
+if not log.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+
 class ImageFXFlowAutomation(BaseAutomation):
     """Engine per l'automazione di Google Labs ImageFX Flow."""
 
     PROMPT_SELECTORS = [
-        # Selettori specifici per il campo prompt di Flow (div contenteditable con ruolo textbox)
-        'div[contenteditable="true"][role="textbox"]',
-        'div[contenteditable="true"][aria-label*="prompt" i]',
-        'div[contenteditable="true"][aria-label*="descrivi" i]',
-        'textarea[aria-label*="prompt" i]',
-        'textarea',
-        # Fallback generico — ultima spiaggia
-        '[contenteditable="true"]',
+        'div[role="textbox"]',
+        'div[contenteditable="true"]',
+        'xpath=/html/body/div[2]/div[1]/div[5]/div/div/div/div/div[1]/div/p',
     ]
 
     GENERATE_BUTTON_SELECTORS = [
-        'button[aria-label*="genera" i]',
-        'button[aria-label*="create" i]',
-        'button[aria-label*="generate" i]',
+        'xpath=/html/body/div[2]/div[1]/div[5]/div/div/div/div/div[2]/div[2]/button[2]',
         'button:has-text("Crea")',
-        'button:has-text("Genera")',
         'button:has-text("Generate")',
-        # Material Icons "arrow_forward" è una ligatura, non testo visibile
-        # Il pulsante con l'icona freccia è spesso l'ultimo nell'angolo
-        'button:has(.material-icons:has-text("arrow_forward"))',
-        'button:has(i:has-text("arrow_forward"))',
-    ]
-
-    GENERATED_IMAGE_SELECTORS = [
-        'img[alt="Immagine generata"]',
-        'img[alt*="generata" i]',
-        'img[src*="/fx/api/trpc/media.getMediaUrlRedirect"]',
+        'button[aria-label*="genera" i]',
     ]
 
     async def generate_images(self, prompt: str, project_id: str = None, style: str = None) -> list[Path]:
-        dest_dir = DOWNLOAD_DIR / "images" / (project_id or "general")
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        selector_report = {
-            "kind": "flow",
-            "project_id": project_id,
-            "prompt_preview": prompt[:120],
-            "style": style or "",
-            "attempts": [],
-            "generated_at": int(time.time()),
-        }
+        from storage import (
+            get_project_id, 
+            get_structured_path, 
+            save_generation_metadata, 
+            save_media_asset
+        )
         
-        # Applichiamo lo stile se presente
-        if style and style.lower() in STYLE_MAP:
-            full_prompt = f"{prompt}, {STYLE_MAP[style.lower()]}"
-            log.info(f"Stile '{style}' applicato al prompt.")
+        if not project_id or project_id == "new":
+            project_id = get_project_id("flow")
+
+        # Split style for structure
+        main_style = "default"
+        sub_style = "general"
+        if style:
+            parts = style.split(maxsplit=1)
+            main_style = parts[0]
+            if len(parts) > 1:
+                sub_style = parts[1]
+        
+        dest_dir = get_structured_path(main_style, sub_style)
+        log.info(f"Cartella di destinazione strutturata: {dest_dir}")
+        
+        debug_dir = DOWNLOAD_DIR / "debug"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        
+        if style:
+            full_prompt = f"style {style} {prompt}"
+            log.info(f"Prompt finale: {full_prompt}")
         else:
             full_prompt = prompt
         
-        if project_id:
-            url = f"https://labs.google/fx/it/tools/flow/project/{project_id}"
-        else:
-            url = "https://labs.google/fx/it/tools/flow"
+        url = f"https://labs.google/fx/it/tools/flow/project/{project_id}" if project_id else "https://labs.google/fx/it/tools/flow"
             
         page = await self.context.new_page()
-        await human_delay(1000, 3000)
         log.info(f"Navigazione verso: {url}")
-        await page.goto(url, wait_until="networkidle")
-        await asyncio.sleep(5)
-        await human_scroll(page)
-
-        # Clicca il pulsante "Create with Google Flow" o "Try Google Flow"
-        # per passare dalla landing page al workspace vero e proprio.
-        cta_selectors = [
-            'button:has-text("Create with Google Flow")',
-            'button:has-text("Try Google Flow")',
-            'button:has-text("Try in Google Flow")',
-            'a:has-text("Create with Google Flow")',
-        ]
-        for cta_sel in cta_selectors:
-            cta_btn = page.locator(cta_sel).first
-            if await cta_btn.count() > 0 and await cta_btn.is_visible():
-                log.info("Click su CTA: %s", cta_sel)
-                await cta_btn.click()
-                await asyncio.sleep(5)
-                await page.wait_for_load_state("networkidle", timeout=30000)
-                break
-
-        # Dopo il CTA si arriva al dashboard. Clicca "+ Nuovo progetto"
-        # per entrare nel workspace con il campo prompt.
-        new_project_selectors = [
-            'button:has-text("Nuovo progetto")',
-            'button:has-text("New project")',
-            'button:has-text("+ Nuovo progetto")',
-            'a:has-text("Nuovo progetto")',
-            '[aria-label*="nuovo progetto" i]',
-            '[aria-label*="new project" i]',
-        ]
-        for np_sel in new_project_selectors:
-            np_btn = page.locator(np_sel).first
-            if await np_btn.count() > 0 and await np_btn.is_visible():
-                log.info("Click su nuovo progetto: %s", np_sel)
-                await np_btn.click()
-                await asyncio.sleep(5)
-                await page.wait_for_load_state("networkidle", timeout=30000)
-                break
+        await page.goto(url)
+        log.info("Attesa rendering (15s)...")
+        await asyncio.sleep(15) 
 
         new_saved_paths = []
         captured_response_urls: set[str] = set()
-        # Dedup basato sul contenuto: traccia MD5 delle immagini salvate
-        # Funziona anche quando response.url e img src sono URL diversi
         saved_content_digests: set[str] = set()
         can_capture = False
 
         def _compute_digest(data: bytes) -> str:
-            import hashlib
             return hashlib.md5(data).hexdigest()
 
         async def handle_response(response):
             nonlocal new_saved_paths
-            if not can_capture:
-                return
-
-            content_type = response.headers.get("content-type", "")
-            if "image/" not in content_type:
-                return
-
+            if not can_capture: return
             response_url = response.url
-            if "flow-content.google/image/" not in response_url and "media.getMediaUrlRedirect" not in response_url:
-                return
-            if response_url in captured_response_urls:
-                return
+            
+            if response_url in captured_response_urls: return
+            content_type = response.headers.get("content-type", "")
+            
+            is_image = "image/" in content_type
+            is_redirect = "media.getMediaUrlRedirect" in response_url
+            
+            if not (is_image or is_redirect): return
 
             try:
+                if is_redirect:
+                    log.info("📸 Intercettato REDIRECT immagine: %s", response_url[:120])
+                    return
+
+                if not response.ok: return
                 body = await response.body()
-                if not body:
-                    return
-
-                ext = ".jpg"
-                if "png" in content_type:
-                    ext = ".png"
-
-                timestamp = int(time.time())
+                if not body or len(body) < 1000: return
                 digest = _compute_digest(body)
-                if digest in saved_content_digests:
-                    log.debug("Response handler: contenuto già salvato (digest=%s), skip", digest[:12])
-                    captured_response_urls.add(response_url)
-                    return
+                if digest in saved_content_digests: return
                 saved_content_digests.add(digest)
-
-                path = dest_dir / f"FLOW_IMG_{timestamp}_{len(new_saved_paths)}{ext}"
+                ext = ".png" if "png" in content_type else ".jpg"
+                filename = f"FLOW_{int(time.time())}_{len(new_saved_paths)}{ext}"
+                path = dest_dir / filename
                 path.write_bytes(body)
                 captured_response_urls.add(response_url)
                 new_saved_paths.append(path)
-                log.info("📸 RESPONSE HANDLER: salvata %s (%d byte, digest=%s, url=%s)", path.name, len(body), digest[:12], response_url[:120])
+                log.info("📸 Salvata immagine via Network: %s", path.name)
+                
+                # Salva nel DB
+                save_media_asset(
+                    file_path=path,
+                    source="google_flow",
+                    name=filename,
+                    style=main_style,
+                    sub_style=sub_style,
+                    prompt=prompt,
+                    project_id=project_id,
+                    metadata={"full_prompt": full_prompt, "style": style}
+                )
             except Exception as e:
-                log.warning("Failed to capture Flow image response url=%s err=%s", response_url, e)
+                log.debug(f"Errore handle_response: {e}")
 
         page.on("response", handle_response)
 
         try:
             prompt_locator = None
             for selector in self.PROMPT_SELECTORS:
-                attempt_started = time.time()
-                loc = page.locator(selector)
-                matched = await loc.count() > 0
-                selector_report["attempts"].append({
-                    "stage": "prompt",
-                    "selector": selector,
-                    "matched": matched,
-                    "elapsed_ms": int((time.time() - attempt_started) * 1000),
-                })
-                if matched:
-                    prompt_locator = loc.first
-                    log.info("Found Flow prompt selector=%s", selector)
+                loc = page.locator(selector).first
+                if await loc.count() > 0:
+                    prompt_locator = loc
+                    log.info(f"Found Flow prompt: {selector}")
                     break
-            if prompt_locator is None:
-                raise RuntimeError("Flow prompt field not found.")
 
-            await human_delay(2000, 5000)
-            tag_name = await prompt_locator.evaluate("(el) => el.tagName")
-            if tag_name == "TEXTAREA":
-                await prompt_locator.fill(full_prompt)
-            else:
-                await prompt_locator.click()
-                await human_delay(500, 1500)
-                await page.keyboard.type(full_prompt, delay=random.randint(40, 180))
-            await human_delay(1000, 3000)
+            if prompt_locator is None:
+                debug_path = debug_dir / f"FAIL_{int(time.time())}.png"
+                await page.screenshot(path=str(debug_path))
+                raise RuntimeError(f"Prompt field not found. Screenshot: {debug_path}")
+
+            log.info("Inserimento prompt...")
+            await prompt_locator.click()
+            await asyncio.sleep(1)
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press("Backspace")
+            await page.keyboard.type(full_prompt, delay=80)
+            await asyncio.sleep(1)
+            await page.keyboard.press("Enter")
+            log.info("Prompt digitato e confermato con Enter.")
+
+            # === Imposta il numero di immagini a 4 (massimo) con RETRY ===
+            try:
+                for attempt in range(3):
+                    toggle = page.locator('button[id^="radix-"]:has-text("x1"), button[id^="radix-"]:has-text("x2"), button[id^="radix-"]:has-text("x3"), button:has-text("x1"), button:has-text("x2"), button:has-text("x3")').first
+                    if await toggle.count() > 0:
+                        current_text = await toggle.inner_text()
+                        if "x4" in current_text:
+                            log.info("Numero immagini già impostato a 4.")
+                            break
+                            
+                        log.info(f"Tentativo {attempt+1}: Apertura menu conteggio (attuale: {current_text.strip()})...")
+                        await toggle.click()
+                        await asyncio.sleep(2)
+                        
+                        four_btn = page.locator('button[id$="trigger-4"], button[role="tab"]:has-text("x4"), button:has-text("x4")').first
+                        if await four_btn.count() > 0:
+                            await four_btn.click(force=True)
+                            await asyncio.sleep(2)
+                            
+                            new_text = await toggle.inner_text()
+                            if "x4" in new_text:
+                                log.info("Impostato numero immagini a 4 (x4).")
+                                break
+                            else:
+                                log.warning(f"Selezione x4 non riuscita (testo: {new_text.strip()}), riprovo...")
+                        else:
+                            log.warning("Pulsante x4 non trovato nel menu.")
+                            # Forza chiusura menu se bloccato
+                            await page.keyboard.press("Escape")
+                            await asyncio.sleep(1)
+                    else:
+                        log.debug("Toggle conteggio non trovato in questo step.")
+                        break
+            except Exception as e:
+                log.debug(f"Errore critico impostazione numero immagini: {e}")
+
+            await asyncio.sleep(1)
 
             generate_locator = None
             for selector in self.GENERATE_BUTTON_SELECTORS:
-                attempt_started = time.time()
-                loc = page.locator(selector)
-                matched = await loc.count() > 0
-                selector_report["attempts"].append({
-                    "stage": "generate_button",
-                    "selector": selector,
-                    "matched": matched,
-                    "elapsed_ms": int((time.time() - attempt_started) * 1000),
-                })
-                if matched:
-                    generate_locator = loc.last
-                    log.info("Found Flow generate selector=%s count=%d", selector, await loc.count())
+                loc = page.locator(selector).first
+                if await loc.count() > 0:
+                    generate_locator = loc
+                    log.info(f"Found generate button: {selector}")
                     break
-            if generate_locator is None:
-                raise RuntimeError("Flow generate button not found.")
-
-            existing_images = set()
-            for selector in self.GENERATED_IMAGE_SELECTORS:
-                loc = page.locator(selector)
-                for idx in range(await loc.count()):
-                    src = await loc.nth(idx).get_attribute("src")
-                    if src:
-                        existing_images.add(src)
-
+            
             can_capture = True
-            await generate_locator.click()
+            if generate_locator:
+                await generate_locator.click(force=True)
+                log.info("Pulsante Genera cliccato (force=True).")
+            else:
+                log.warning("Pulsante Genera non trovato, confido nell'Enter già premuto.")
 
-            wait_time = 90
-            deadline = time.monotonic() + wait_time
-            idle_rounds = 0
-            seen_any_image = False
-            log.info("In attesa della generazione Flow (%ss)...", wait_time)
+            # Screenshot di verifica post-clic
+            await page.screenshot(path=str(debug_dir / f"GEN_START_{int(time.time())}.png"))
 
+            # Attesa cattura immagini
+            log.info("In attesa delle immagini (60s)...")
+            deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
-                current_new: list[str] = []
-                for selector in self.GENERATED_IMAGE_SELECTORS:
-                    loc = page.locator(selector)
-                    count = await loc.count()
-                    for idx in range(count):
-                        src = await loc.nth(idx).get_attribute("src")
-                        if src and src not in existing_images and src not in current_new:
-                            selector_report["attempts"].append({
-                                "stage": "generated_image",
-                                "selector": selector,
-                                "matched": True,
-                                "elapsed_ms": 0,
-                                "src": src,
-                            })
-                            current_new.append(src)
-
-                if current_new:
-                    seen_any_image = True
-                    idle_rounds = 0
-                    for src in current_new:
-                        existing_images.add(src)
-                        absolute_src = urllib.parse.urljoin("https://labs.google", src)
-                        file_name = urllib.parse.unquote(urllib.parse.parse_qs(urllib.parse.urlparse(absolute_src).query).get("name", [f"flow_{int(time.time())}"])[0])
-                        file_name = Path(file_name).stem or f"FLOW_IMG_{int(time.time())}"
-                        path = dest_dir / f"{file_name}.jpg"
-                        if path.exists():
-                            continue
-                        cookie_pairs = [f"{cookie['name']}={cookie['value']}" for cookie in await self.context.cookies([absolute_src])]
-                        cookie_header = "; ".join(cookie_pairs) if cookie_pairs else None
-                        raw_data = await self._download_direct_url_raw(absolute_src, referer=page.url, cookie_header=cookie_header)
-                        if raw_data is None:
-                            log.warning("Download immagine Flow fallito: %s", absolute_src)
-                            continue
-                        # Dedup basato sul contenuto (cross-meccanismo)
-                        digest = _compute_digest(raw_data)
-                        if digest in saved_content_digests:
-                            log.info("✅ POLLING: contenuto già salvato (digest=%s), saltato", digest[:12])
-                            continue
-                        saved_content_digests.add(digest)
-                        path.write_bytes(raw_data)
-                        new_saved_paths.append(path)
-                        log.info("📸 Nuova immagine Flow salvata: %s (%d byte, digest=%s)", path, len(raw_data), digest[:12])
-                else:
-                    if seen_any_image:
-                        idle_rounds += 1
-                        if idle_rounds >= 3:
-                            break
-
+                if len(new_saved_paths) >= 4: break 
+                
+                imgs = await page.locator('img[src*="googleusercontent.com"]').all()
+                for img in imgs:
+                    src = await img.get_attribute("src")
+                    if src and src not in captured_response_urls:
+                        try:
+                            log.info("🔍 Trovata immagine nel DOM, provo download diretto...")
+                            resp = await page.request.get(src)
+                            if resp.ok:
+                                body = await resp.body()
+                                if len(body) > 2000:
+                                    digest = _compute_digest(body)
+                                    if digest not in saved_content_digests:
+                                        saved_content_digests.add(digest)
+                                        captured_response_urls.add(src)
+                                        filename = f"FLOW_DOM_{int(time.time())}_{len(new_saved_paths)}.jpg"
+                                        path = dest_dir / filename
+                                        path.write_bytes(body)
+                                        new_saved_paths.append(path)
+                                        log.info("📸 Salvata immagine via DOM: %s", path.name)
+                                        
+                                        # Salva nel DB
+                                        save_media_asset(
+                                            file_path=path,
+                                            source="google_flow",
+                                            name=filename,
+                                            style=main_style,
+                                            sub_style=sub_style,
+                                            prompt=prompt,
+                                            project_id=project_id,
+                                            metadata={"full_prompt": full_prompt, "style": style, "method": "DOM"}
+                                        )
+                        except: pass
+                
                 await asyncio.sleep(5)
+
+            # Salva metadata.json finale
+            save_generation_metadata(dest_dir, {
+                "generation_id": dest_dir.name,
+                "timestamp": datetime.now().isoformat(),
+                "style": {"main": main_style, "sub": sub_style},
+                "prompt": prompt,
+                "full_prompt": full_prompt,
+                "project_id": project_id,
+                "assets": [p.name for p in new_saved_paths]
+            })
 
             return new_saved_paths
         except Exception as e:
-            log.error(f"Errore generazione ImageFX Flow: {e}")
-            selector_report["result"] = "failed"
-            selector_report["error"] = str(e)
+            log.error(f"Errore: {e}")
             return []
         finally:
-            selector_report.setdefault("result", "empty" if not new_saved_paths else "success")
-            _append_selector_report(selector_report)
             await page.close()
-
-    @staticmethod
-    def _download_direct_url(
-        image_url: str,
-        dest_path: Path,
-        referer: str | None = None,
-        cookie_header: str | None = None,
-    ) -> bool:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-            "Accept": "image/*,*/*;q=0.8",
-        }
-        if referer:
-            headers["Referer"] = referer
-        if cookie_header:
-            headers["Cookie"] = cookie_header
-
-        request = urllib.request.Request(image_url, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                dest_path.write_bytes(response.read())
-            return True
-        except Exception as e:
-            log.warning("Failed to download Flow image url=%s err=%s", image_url, e)
-            return False
-
-    @staticmethod
-    async def _download_direct_url_raw(
-        image_url: str,
-        referer: str | None = None,
-        cookie_header: str | None = None,
-    ) -> bytes | None:
-        """Scarica i byte grezzi di un'immagine. Usato per dedup basato sul contenuto."""
-        import urllib.request
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-            "Accept": "image/*,*/*;q=0.8",
-        }
-        if referer:
-            headers["Referer"] = referer
-        if cookie_header:
-            headers["Cookie"] = cookie_header
-
-        request = urllib.request.Request(image_url, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                return response.read()
-        except Exception as e:
-            log.warning("Failed to download Flow image raw url=%s err=%s", image_url, e)
-            return None
-
 
 async def generate_flow_images(prompt: str, project_id: str = None, style: str = None, account: str = None, headless: bool = True):
     async with ImageFXFlowAutomation(account=account, headless=headless) as engine:

@@ -12,15 +12,17 @@ import (
 
 	"go.uber.org/zap"
 	imgservice "velox/go-master/internal/media/images"
+	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/pkg/media/ffmpeg"
 	driveup "velox/go-master/internal/upload/drive"
 )
 
 // Section describes a single text part for which a video should be generated.
 type Section struct {
-	Title string `json:"title" binding:"required" example:"Castello Medievale"`
-	Text  string `json:"text"  example:"Descrizione della scena..."`
-	Style string `json:"style" example:"medievale"`
+	Title  string `json:"title" binding:"required" example:"Castello Medievale"`
+	Text   string `json:"text"  example:"Descrizione della scena..."`
+	Style  string `json:"style" example:"medievale"`
+	Engine string `json:"engine" example:"google-vids"` // "ken-burns" or "google-vids"
 }
 
 // SectionVideo holds the result for one generated video.
@@ -127,13 +129,13 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		subject = fmt.Sprintf("section_%d", idx)
 	}
 	style := strings.TrimSpace(sec.Style)
-	slug := safeFolderName(subject)
 	prompts := buildSectionPrompts(sec, topic)
 	prompt := pickBestPrompt(prompts, subject, topic)
+	genID := hashutil.MD5String(prompt)[:12]
 
 	// Precompute paths
-	videoDir := filepath.Join(s.imagesDir, style, slug)
-	videoName := slug + ".mp4"
+	videoDir := filepath.Join(s.imagesDir, style, genID)
+	videoName := genID + ".mp4"
 	videoPath := filepath.Join(videoDir, videoName)
 
 	// === Step 0: Cache check — return existing video if found ===
@@ -153,21 +155,28 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// === Step 1: Generate image via NVIDIA AI (no web search) ===
-	s.log.Info("fullimages: generating image with NVIDIA flux-1-dev", zap.Int("section", idx), zap.String("prompt", prompt))
+	// === Step 1: Generate video/image via selected Engine ===
+	engine := strings.ToLower(strings.TrimSpace(sec.Engine))
+	if engine == "" {
+		engine = "ken-burns" // Default
+	}
 
-	imgSlug := slug
+	if engine == "google-vids" {
+		s.log.Info("fullimages: generating full AI video via Google Vids", zap.Int("section", idx), zap.String("prompt", prompt))
+		videoPath, err := s.imgService.GenerateVideoAI(ctx, prompt, style)
+		if err == nil && videoPath != "" {
+			// Video generated directly!
+			return s.processGeneratedVideo(ctx, sec, idx, videoPath, genID, style, prompt)
+		}
+		s.log.Warn("fullimages: google-vids failed, falling back to ken-burns", zap.Error(err))
+	}
+
+	s.log.Info("fullimages: generating smart image for ken-burns", zap.Int("section", idx), zap.String("subject", subject), zap.String("style", style))
+
 	tags := []string{subject, "style:" + style}
 
-	// Primary: flux-1-dev (NVIDIA cloud) — skipDrive=true because these are intermediate images
-	asset, err := s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "flux-1-dev", imageGenWidth, imageGenHeight, tags, true)
-	if err != nil {
-		s.log.Info("fullimages: flux-1-dev failed, falling back to flux-2-klein",
-			zap.Int("section", idx),
-			zap.Error(err),
-		)
-		asset, err = s.imgService.GenerateStyledImage(ctx, imgSlug, prompt, "flux-2-klein", imageGenWidth, imageGenHeight, tags, true)
-	}
+	// Use GenerateSmartImage which handles styles and fallback
+	asset, err := s.imgService.GenerateSmartImage(ctx, subject, topic, style, prompts, tags, imageGenWidth, imageGenHeight, "flux-1-dev", true)
 
 	if err != nil || asset == nil {
 		errMsg := "all NVIDIA models failed"
@@ -238,32 +247,61 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 	)
 
 	// === Step 4: Upload video to Drive ===
+	return s.uploadAndFinish(ctx, sec, idx, videoPath, videoName, genID, style, prompt)
+}
+
+// processGeneratedVideo handles a video file already generated (e.g. via Google Vids)
+func (s *Service) processGeneratedVideo(ctx context.Context, sec Section, idx int, tempPath, genID, style, prompt string) SectionVideo {
+	// Precompute paths
+	videoDir := filepath.Join(s.imagesDir, style, genID)
+	videoName := genID + ".mp4"
+	videoPath := filepath.Join(videoDir, videoName)
+
+	if err := os.MkdirAll(videoDir, 0755); err != nil {
+		return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to create dir: %v", err)}
+	}
+
+	// Move if different
+	if tempPath != videoPath {
+		if err := os.Rename(tempPath, videoPath); err != nil {
+			// Try copy if rename fails (e.g. cross-device)
+			input, err := os.ReadFile(tempPath)
+			if err != nil {
+				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to move video: %v", err)}
+			}
+			if err := os.WriteFile(videoPath, input, 0644); err != nil {
+				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to write video: %v", err)}
+			}
+		}
+	}
+
+	// Upload to Drive (re-using Step 4 logic)
+	return s.uploadAndFinish(ctx, sec, idx, videoPath, videoName, genID, style, prompt)
+}
+
+// uploadAndFinish handles the final Drive upload and result packaging.
+func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, videoPath, videoName, genID, style, prompt string) SectionVideo {
 	if s.driveUp == nil || s.driveRoot == "" {
 		return SectionVideo{
 			SectionIndex: idx,
 			Title:        sec.Title,
 			Style:        style,
 			VideoPath:    videoPath,
-			Error:        "Drive not configured",
 		}
 	}
 
+	// Hierarchy: Root -> Style -> genID -> File
 	folderID := s.driveRoot
 	if style != "" {
 		fid, err := s.driveUp.GetOrCreateFolder(ctx, style, s.driveRoot)
-		if err != nil {
-			s.log.Warn("fullimages: failed to create Drive style folder", zap.String("style", style), zap.Error(err))
-		} else {
+		if err == nil {
 			folderID = fid
 		}
 	}
 
-	// Create subfolder for the specific prompt inside the style folder
-	slugFolderID, err := s.driveUp.GetOrCreateFolder(ctx, slug, folderID)
-	if err != nil {
-		s.log.Warn("fullimages: failed to create Drive slug folder", zap.String("slug", slug), zap.Error(err))
-	} else {
-		folderID = slugFolderID
+	genFolderID, err := s.driveUp.GetOrCreateFolder(ctx, genID, folderID)
+	if err == nil {
+		folderID = genFolderID
 	}
 
 	upResult, err := s.driveUp.UploadFile(ctx, videoPath, folderID, videoName)
@@ -279,15 +317,7 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	// Save Drive link in sidecar for future cache hits
 	saveCacheSidecar(videoPath, upResult.WebViewLink, upResult.FileID)
-
-	s.log.Info("fullimages: video uploaded to Drive",
-		zap.Int("section", idx),
-		zap.String("drive_link", upResult.WebViewLink),
-		zap.String("file_id", upResult.FileID),
-	)
-
 	return SectionVideo{
 		SectionIndex: idx,
 		Title:        sec.Title,

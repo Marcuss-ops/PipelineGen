@@ -31,3 +31,23 @@ func candidateToClip(c clipcatalog.ClipCandidate) *models.MediaAsset {
 		Tags:        c.Tags,
 	}
 }
+
+// qdrantResultToCandidate converts a vector store SearchResult to ClipCandidate.
+func qdrantResultToCandidate(r SearchResult) clipcatalog.ClipCandidate {
+	return clipcatalog.ClipCandidate{
+		ID:        r.AssetID,
+		Name:      r.Name,
+		DriveLink: r.DriveLink,
+		LocalPath: r.LocalPath,
+		Category:  r.Category,
+	}
+}
+
+// float64To32 converts a float64 slice to float32.
+func float64To32(in []float64) []float32 {
+	out := make([]float32, len(in))
+	for i, v := range in {
+		out[i] = float32(v)
+	}
+	return out
+}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"velox/go-master/internal/core/processor"
+	"velox/go-master/internal/pkg/hashutil"
 	driveutil "velox/go-master/internal/upload/drive"
 )
 
@@ -118,7 +119,13 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 
 		outputDir := ""
 		if o.svc.cfg != nil {
-			outputDir = filepath.Join(o.svc.cfg.Storage.DataDir, "artlist", sanitizeFolderName(resp.Term))
+			termSlug := sanitizeFolderName(resp.Term)
+			if len(termSlug) > 20 {
+				termSlug = termSlug[:20]
+			}
+			// Use a combination of a short slug and a hash to keep it unique but short
+			genID := fmt.Sprintf("%s_%s", termSlug, hashutil.MD5String(resp.Term)[:8])
+			outputDir = filepath.Join(o.svc.cfg.Storage.DataDir, "media", "artlist", "general", genID)
 		}
 
 		processInput := &processor.ProcessInput{

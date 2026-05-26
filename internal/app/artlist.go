@@ -148,7 +148,14 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	}
 
 	// Create embedding provider (points to the Python server started by clipindexer)
-	embedProvider := clipresolver.NewPythonEmbeddingProvider("http://127.0.0.1:8001", clipCatalogRepo)
+	embedProvider := clipresolver.NewPythonEmbeddingProvider("http://127.0.0.1:8001")
+
+	// Build vector store searcher adapter if vector store is configured
+	var vectorStoreSearcher clipresolver.VectorStoreSearcher
+	if coreDeps.VectorStore != nil && coreDeps.VectorStore.Enabled() {
+		vectorStoreSearcher = clipresolver.NewVectorStoreAdapter(coreDeps.VectorStore)
+		log.Info("vector store searcher enabled for clip resolver")
+	}
 
 	// Build map of prioritized repositories
 	repos := make(map[string]*clipcatalog.Repository)
@@ -156,14 +163,12 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	// 1. Stock database (highest priority)
 	if coreDeps.StockDriveRepo != nil && coreDeps.StockDriveRepo.DB() != nil {
 		repos["stock"] = clipcatalog.NewRepository(coreDeps.StockDriveRepo.DB(), log)
-		repos["stock"].SetServerInfo("http://127.0.0.1:8001", coreDeps.MediaDB.Path())
 		repos["stock"].SetSource("stock")
 	}
 
 	// 2. YouTube clips database
 	if coreDeps.MediaDB != nil && coreDeps.MediaDB.DB != nil {
 		repos["youtube"] = clipcatalog.NewRepository(coreDeps.MediaDB.DB, log)
-		repos["youtube"].SetServerInfo("http://127.0.0.1:8001", coreDeps.MediaDB.Path())
 		repos["youtube"].SetSource("youtube")
 	}
 
@@ -171,7 +176,7 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	repos["artlist"] = clipCatalogRepo
 	repos["artlist"].SetSource("artlist")
 
-	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg)
+	return clipresolver.NewService(repos, harvestSvc, embedProvider, ontologyScorer, matchingCfg, vectorStoreSearcher)
 }
 
 func wireArtlistService(

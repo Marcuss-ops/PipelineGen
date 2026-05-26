@@ -41,8 +41,10 @@ func main() {
 		"reset-stock-subfolders":       runResetStockSubfolders,
 		"list-drive-folder":            runListDriveFolder,
 		"reset-video-ai":               runResetVideoAI,
-	}
-
+		"list-styles":                  runListStyles,
+		"generate-avatar":              runGenerateAvatar,
+		"generate-ai-video":            runGenerateAIVideo,
+		}
 	fn, ok := commands[cmdName]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "unknown admin command: %s\n\n", os.Args[1])
@@ -83,4 +85,8 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  unify-catalogs")
 	fmt.Fprintln(os.Stderr, "  reset-stock-drive")
 	fmt.Fprintln(os.Stderr, "  reset-stock-subfolders")
-}
+	fmt.Fprintln(os.Stderr, "  list-styles")
+	fmt.Fprintln(os.Stderr, "  generate-avatar")
+	fmt.Fprintln(os.Stderr, "  generate-ai-video")
+	}
+

@@ -23,17 +23,19 @@ const (
 
 // AssetDestinationRequest specifies WHAT to store.
 type AssetDestinationRequest struct {
-	Source    string // youtube, artlist, stock, image, voiceover
-	MediaType string // clip, image, image_video, voiceover, export_video
-	Group     string // term/tag/query group
-	Subject   string // subject name or slug
-	Style     string // style qualifier (for images)
-	Provider  string // sub-source (pexels, pixabay, flux-1-dev, etc.)
-	Voice     string // voice name (for voiceovers)
-	Hash      string // content hash
-	Ext       string // file extension (with or without dot)
-	Project   string // project slug (for exports)
-	Date      string // date string (for exports)
+	Source       string // youtube, artlist, stock, image, voiceover
+	MediaType    string // clip, image, image_video, voiceover, export_video
+	Group        string // term/tag/query group
+	Subject      string // subject name or slug
+	Style        string // style qualifier (for images)
+	SubStyle     string // sub-style qualifier (for images/videos)
+	GenerationID string // unique generation ID (UUID or hash)
+	Provider     string // sub-source (pexels, pixabay, flux-1-dev, etc.)
+	Voice        string // voice name (for voiceovers)
+	Hash         string // content hash
+	Ext          string // file extension (with or without dot)
+	Project      string // project slug (for exports)
+	Date         string // date string (for exports)
 }
 
 // AssetDestination says WHERE to store it.

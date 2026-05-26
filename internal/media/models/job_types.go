@@ -34,6 +34,7 @@ const (
 	JobTypeArtlistRun         JobType = "media.artlist"
 	JobTypeContentPackage     JobType = "content.package"
 	JobTypeSystemCleanup      JobType = "system.cleanup"
+	JobTypeMediaGenerate      JobType = "media.generate_missing_asset"
 )
 
 // Job rappresenta un job nel sistema

@@ -41,7 +41,7 @@ def get_txt_content(local_path, name=None):
     # 2. Try searching in same folder as local_path or download folders for {name}.txt
     if name:
         base_name = Path(name).stem
-        search_dirs = [Path("data/downloads"), Path("data/youtube-clips")]
+        search_dirs = [Path("data/media"), Path("data/downloads"), Path("data/youtube-clips")]
         if local_path:
             search_dirs.insert(0, Path(local_path).parent)
             
