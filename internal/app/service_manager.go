@@ -141,7 +141,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		storage.MediaRoot(cfg.Storage.MediaPath()),
 		storage.DriveRoot(cfg.Drive.RootFolder()),
 	)
-	mediaStore := storage.NewStore(storageResolver, driveClient, cfg.Drive.RootFolder(), log)
+	mediaStore := storage.NewStore(storageResolver, driveUploader, cfg.Drive.RootFolder(), log)
 	destResolver := storage.NewDestinationResolver(mediaStore)
 
 	// Create LifecycleService for youtubeclip using common factory
