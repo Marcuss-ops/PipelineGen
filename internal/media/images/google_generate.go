@@ -45,7 +45,7 @@ func (s *Service) GenerateSmartImage(
 		styledPrompt = s.styleRegistry.ApplyStyle(cleanPrompt, style)
 	}
 
-	assets, err := s.generateGoogleFlowImages(ctx, cleanPrompt, styledPrompt, subject, style, tags)
+	assets, err := s.generateGoogleFlowImages(ctx, cleanPrompt, styledPrompt, subject, style, tags, skipDrive)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	}
 }
 
-func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string) ([]*models.ImageAsset, error) {
+func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, skipDrive bool) ([]*models.ImageAsset, error) {
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
@@ -175,7 +175,7 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 			continue
 		}
 
-		asset, ingestErr := s.IngestImage(ctx, slug, style, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, false)
+		asset, ingestErr := s.IngestImage(ctx, slug, style, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, skipDrive)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue
