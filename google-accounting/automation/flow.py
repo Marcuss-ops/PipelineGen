@@ -63,8 +63,8 @@ class ImageFXFlowAutomation(BaseAutomation):
             save_media_asset
         )
         
-        if not project_id or project_id == "new":
-            project_id = get_project_id("flow")
+        # Always use a new project session to avoid project history and duplicate asset extraction
+        project_id = None
 
         # Split style for structure
         main_style = "default"
