@@ -7,9 +7,10 @@ L'unica differenza è la suddivisione in moduli + log estesi.
 import asyncio
 import logging
 import time
+import random
 from pathlib import Path
 
-from ..base import DOWNLOAD_DIR, BaseAutomation
+from ..base import DOWNLOAD_DIR, BaseAutomation, human_delay, human_scroll
 
 from .capture import ImageCapturer
 from .config import (
@@ -89,7 +90,10 @@ class ImageFXFlowAutomation(BaseAutomation):
             await page.wait_for_load_state("networkidle", timeout=15000)
         except:
             log.info("Timeout attesa networkidle, continuo comunque...")
-        await asyncio.sleep(2)
+        
+        # Ritardo umano dopo caricamento
+        await human_delay(1500, 4000)
+        await human_scroll(page)
         
         # ── Polling: dashboard? → Nuovo progetto / editor? → prosegui ─────────
         log.info("In attesa del caricamento della pagina (editor o dashboard)...")
@@ -116,6 +120,7 @@ class ImageFXFlowAutomation(BaseAutomation):
                         break
                 if found_btn:
                     log.info(f"🖱️ Rilevata dashboard, clic su '{btn_text_found}'...")
+                    await human_delay(800, 2000)
                     await found_btn.click()
                     await asyncio.sleep(5)
                     break
@@ -130,6 +135,7 @@ class ImageFXFlowAutomation(BaseAutomation):
 
         # ── Imposta conteggio immagini x4 (NUOVO) ─────────────────────────────
         await self._set_image_count_to_four(page)
+        await human_delay(1000, 3000)
 
         # ── Trova textbox prompt ───────────────────────────────────────────────
         try:
@@ -139,15 +145,25 @@ class ImageFXFlowAutomation(BaseAutomation):
 
             # ── Digita prompt ──────────────────────────────────────────────────
             log.info(f"⌨️ KEYBOARD: CLICK su textbox {prompt_selector}")
+            await human_delay(500, 1500)
             await prompt_locator.click(force=True)
-            await asyncio.sleep(1)
+            await human_delay(500, 1200)
+            
             log.info("⌨️ KEYBOARD: PRESS Control+A")
             await page.keyboard.press("Control+A")
+            await human_delay(200, 600)
             log.info("⌨️ KEYBOARD: PRESS Backspace")
             await page.keyboard.press("Backspace")
+            await human_delay(300, 1000)
+            
             log.info(f"⌨️ KEYBOARD: TYPE '{full_prompt}'")
-            await page.keyboard.type(full_prompt, delay=TYPE_DELAY_MS)
-            await asyncio.sleep(1)
+            # Variamo leggermente il delay di digitazione per ogni carattere
+            import random
+            for char in full_prompt:
+                await page.keyboard.type(char)
+                await asyncio.sleep(random.uniform(0.04, 0.15))
+                
+            await human_delay(800, 2000)
             log.info(f"✅ Prompt digitato: '{full_prompt}'")
 
             # ── Invio ad Agente ────────────────────────────────────────────────
@@ -155,13 +171,16 @@ class ImageFXFlowAutomation(BaseAutomation):
             capturer.can_capture = True
             log.info("✅ Network capture attivato PRIMA dell'Enter")
             await page.keyboard.press("Enter")
-            await asyncio.sleep(POST_ENTER_WAIT)
-            log.info(f"✅ Enter premuto, attesa di {POST_ENTER_WAIT}s conclusa")
+            
+            # Attesa variabile post-enter
+            await human_delay(2000, 5000)
+            log.info(f"✅ Enter premuto, attesa conclusa")
 
             # ── Gestione Approvazione Agente (NUOVO) ───────────────────────────
             await self._handle_agent_approval(page, debug_dir)
 
-            await asyncio.sleep(1)
+            await human_delay(1000, 2500)
+            await human_scroll(page)
 
             # Screenshot verifica
             debug_path = debug_dir / f"GEN_START_{int(time.time())}.png"
