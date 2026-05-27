@@ -101,7 +101,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		imagesDir: cfg.Storage.ImagesPath(),
 		tempDir:   cfg.Storage.TempPath(),
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 5 * time.Minute, // AI generation and browser automation can be slow
 		},
 		wikiCache:    make(map[string]wikiCacheEntry),
 		scriptsDir:   cfg.Paths.PythonScriptsDir,

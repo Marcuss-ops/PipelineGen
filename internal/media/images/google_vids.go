@@ -23,18 +23,25 @@ import (
 // SemanticMetadataPayload contains fields for the metadata.json uploaded alongside generated assets.
 // It acts as a semantic passport for the asset, separating it from storage/logistics data.
 type SemanticMetadataPayload struct {
-	AssetID             string   `json:"asset_id"`
-	AssetType           string   `json:"asset_type"`
-	PromptOriginal      string   `json:"prompt_original"`
-	SemanticDescription string   `json:"semantic_description"`
-	Subjects            []string `json:"subjects"`
-	Actions             []string `json:"actions,omitempty"`
-	Mood                []string `json:"mood,omitempty"`
-	Style               []string `json:"style"`
-	SearchText          string   `json:"search_text"`
-	EmbeddingReady      bool     `json:"embedding_ready"`
-	Generator           string   `json:"generator"`
-	CreatedAt           string   `json:"created_at"`
+	AssetID             string           `json:"asset_id,omitempty"`
+	AssetType           string           `json:"asset_type"`
+	SemanticTier        string           `json:"semantic_tier"`
+	Source              string           `json:"source"`
+	MediaType           string           `json:"media_type"`
+	Generator           string           `json:"generator"`
+	PromptOriginal      string           `json:"prompt_original"`
+	SemanticDescription string           `json:"semantic_description"`
+	SearchText          string           `json:"search_text"`
+	Subjects            []string         `json:"subjects"`
+	SubjectSlugs       []string         `json:"subject_slugs"`
+	Tags                []string         `json:"tags"`
+	Categories          []string         `json:"categories"`
+	Mood                []string         `json:"mood,omitempty"`
+	Style               []string         `json:"style"`
+	Confidence          float64          `json:"confidence"`
+	EmbeddingStatus     string           `json:"embedding_status"`
+	CreatedAt           string           `json:"created_at"`
+	Assets              []map[string]any `json:"assets,omitempty"`
 }
 
 // VideoEntryMetadata is metadata for a single video inside the aggregated folder metadata.

@@ -1,0 +1,184 @@
+entities:
+  roman colosseum:
+    canonical: Roman Colosseum
+    aliases:
+      - Colosseum
+      - Coliseum
+      - Colosseo
+      - il colosseo
+      - anfiteatro flavio
+    tags:
+      - rome
+      - italy
+      - ancient rome
+      - roman empire
+      - amphitheater
+      - architecture
+      - ruins
+      - historic landmark
+      - gladiator arena
+    categories:
+      - history
+      - architecture
+      - landmark
+      - travel
+    mood:
+      - historic
+      - epic
+      - ancient
+
+  eiffel tower:
+    canonical: Eiffel Tower
+    aliases:
+      - Tour Eiffel
+      - Iron Lady
+      - torre eiffel
+    tags:
+      - paris
+      - france
+      - landmark
+      - architecture
+      - wrought iron
+      - tourist attraction
+    categories:
+      - travel
+      - architecture
+      - landmark
+    mood:
+      - romantic
+      - iconic
+      - elegant
+
+  batman:
+    canonical: Batman
+    aliases:
+      - Bruce Wayne
+      - Dark Knight
+      - cavaliere oscuro
+      - uomo pipistrello
+    tags:
+      - superhero
+      - dc comics
+      - gotham
+      - vigilante
+      - justice league
+    categories:
+      - entertainment
+      - comics
+      - superhero
+    mood:
+      - dark
+      - brooding
+      - heroic
+
+  joker:
+    canonical: Joker
+    aliases:
+      - The Joker
+      - clown prince of crime
+    tags:
+      - villain
+      - dc comics
+      - gotham
+      - clown
+      - nemesis
+    categories:
+      - entertainment
+      - comics
+      - villain
+    mood:
+      - chaotic
+      - sinister
+      - mad
+
+actions:
+  attack:
+    aliases:
+      - attacks
+      - attacking
+      - hit
+      - punch
+      - strike
+      - fight
+      - combat
+      - attacca
+      - colpisce
+      - combatte
+    tags:
+      - action
+      - aggression
+      - violence
+    categories:
+      - action
+      - combat
+
+  block:
+    aliases:
+      - blocks
+      - repel
+      - counter
+      - parry
+      - defend
+      - defense
+      - respinge
+      - blocca
+      - para
+      - difende
+    tags:
+      - defense
+      - protection
+      - parry
+    categories:
+      - action
+      - defense
+
+styles:
+  landscape:
+    tags:
+      - wide shot
+      - cinematic
+      - environment
+      - background
+      - panorama
+      - panoramic
+    categories:
+      - composition
+
+  portrait:
+    tags:
+      - close up
+      - face
+      - character study
+    categories:
+      - composition
+
+  cyberpunk:
+    tags:
+      - futuristic
+      - neon
+      - high tech
+      - low life
+      - sci-fi
+      - dystopia
+      - night city
+    categories:
+      - aesthetic
+      - sci-fi
+    mood:
+      - moody
+      - vibrant
+      - urban
+
+  futuristic:
+    tags:
+      - sci-fi
+      - advanced technology
+      - clean
+      - minimal
+      - space age
+    categories:
+      - aesthetic
+      - sci-fi
+    mood:
+      - high-tech
+      - sleek

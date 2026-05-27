@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,6 +23,30 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/storage"
 )
+
+func (s *Service) callSemanticTagger(ctx context.Context, prompt, style, mediaType, generator string) (*SemanticMetadataPayload, error) {
+	scriptPath := filepath.Join(s.scriptsDir, "semantic_tagger.py")
+	args := []string{
+		scriptPath,
+		"--prompt", prompt,
+		"--style", style,
+		"--media-type", mediaType,
+		"--generator", generator,
+	}
+
+	cmd := exec.CommandContext(ctx, "python3", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("semantic_tagger failed: %w (output: %s)", err, string(output))
+	}
+
+	var payload SemanticMetadataPayload
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return nil, fmt.Errorf("decode semantic_tagger output: %w", err)
+	}
+
+	return &payload, nil
+}
 
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*models.ImageAsset, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
@@ -75,7 +100,7 @@ func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, da
 	return s.ingestDirect(ctx, slug, style, genID, content, filename, sourceURL, description, tags, legacyHash, skipDrive, skipMetadata)
 }
 
-func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {
 	// Enrich tags and subject from prompt if needed
 	promptSubject, promptTags := extractSubjectAndTags(description)
 	if slug == "" || slug == "unknown" {
@@ -106,7 +131,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	
 	// Create request for resolver
 	req := storage.AssetDestinationRequest{
-		Source:       storage.SourceImage,
+		Source:       source, // Use the provided source (e.g. google-flow)
 		MediaType:    storage.MediaTypeImage,
 		Subject:      slug, // Prompt slug
 		Hash:         hash,
@@ -131,12 +156,12 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 	s.log.Info("ingestDirect: file saved", zap.String("path", fullPath), zap.Int("bytes", len(content)))
 
-	// 4. Resolve generator dynamically from sourceURL
-	generator := sourceURL
-	if strings.HasPrefix(sourceURL, "http://") || strings.HasPrefix(sourceURL, "https://") {
-		if strings.Contains(sourceURL, "wikipedia.org") {
+	// 4. Resolve generator dynamically from source
+	generator := source
+	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+		if strings.Contains(source, "wikipedia.org") {
 			generator = "wikipedia"
-		} else if strings.Contains(sourceURL, "duckduckgo") {
+		} else if strings.Contains(source, "duckduckgo") {
 			generator = "duckduckgo"
 		} else {
 			generator = "web-download"
@@ -167,26 +192,37 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	// 6. Estrai dimensioni reali dell'immagine (per DB)
 	imgWidth, imgHeight := decodeImageDimensions(content)
 
-	// Prepare metadata for DB
-	metaMap := map[string]any{
-		"prompt":    description,
-		"style":     style,
-		"generator": generator,
-	}
+	// Call Python tagger for rich metadata for DB record
+	cleanPrompt := description
 	if strings.Contains(description, "for prompt: ") {
 		parts := strings.SplitN(description, "for prompt: ", 2)
 		if len(parts) == 2 {
-			metaMap["prompt"] = parts[1]
+			cleanPrompt = parts[1]
 		}
 	}
-	metaJSON, _ := json.Marshal(metaMap)
+	meta, err := s.callSemanticTagger(ctx, cleanPrompt, style, "image", generator)
+	var metaJSON []byte
+	if err == nil {
+		meta.AssetID = hash
+		metaJSON, _ = json.Marshal(meta)
+		// Enrich tags from rich metadata
+		tags = uniqueAppend(tags, meta.Tags...)
+	} else {
+		// Fallback to basic metadata if tagger fails
+		metaMap := map[string]any{
+			"prompt":    description,
+			"style":     style,
+			"generator": generator,
+		}
+		metaJSON, _ = json.Marshal(metaMap)
+	}
 
 	// 7. Crea record DB con dimensioni reali
 	asset := &models.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      relPath,
-		SourceURL:    sourceURL,
+		SourceURL:    source,
 		Description:  description,
 		DriveFileID:  driveFileID,
 		Width:        imgWidth,
@@ -218,29 +254,59 @@ func decodeImageDimensions(data []byte) (int, int) {
 	return cfg.Width, cfg.Height
 }
 
+func uniqueAppend(slice []string, items ...string) []string {
+	seen := make(map[string]bool)
+	for _, s := range slice {
+		seen[s] = true
+	}
+	for _, item := range items {
+		if !seen[item] {
+			slice = append(slice, item)
+			seen[item] = true
+		}
+	}
+	return slice
+}
+
 // uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
 func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink, hash, localPath string, width, height int) {
-	subject, tags := extractSubjectAndTags(prompt)
-	
-	styleList := []string{}
-	if style != "" {
-		styleList = append(styleList, style)
+	// Call Python tagger for rich metadata
+	cleanPrompt := prompt
+	if strings.Contains(prompt, "for prompt: ") {
+		parts := strings.SplitN(prompt, "for prompt: ", 2)
+		if len(parts) == 2 {
+			cleanPrompt = parts[1]
+		}
+	}
+	meta, err := s.callSemanticTagger(ctx, cleanPrompt, style, "image", generator)
+	if err != nil {
+		s.log.Warn("uploadImageMetadata: semantic tagger failed, using fallback", zap.Error(err))
+		// Fallback to basic metadata
+		fSubject, fTags := extractSubjectAndTags(prompt)
+		styleList := []string{}
+		if style != "" {
+			styleList = append(styleList, style)
+		}
+		meta = &SemanticMetadataPayload{
+			AssetID:             hash,
+			AssetType:           "image",
+			SemanticTier:        "generated_light",
+			Source:              "generated",
+			MediaType:           "image",
+			Generator:           generator,
+			PromptOriginal:      prompt,
+			SemanticDescription: prompt,
+			Subjects:            []string{fSubject},
+			Tags:                fTags,
+			Style:               styleList,
+			SearchText:          prompt,
+			EmbeddingStatus:     "pending",
+			CreatedAt:           time.Now().Format(time.RFC3339),
+		}
+	} else {
+		meta.AssetID = hash
 	}
 
-	meta := SemanticMetadataPayload{
-		AssetID:             req.Hash,
-		AssetType:           "image",
-		PromptOriginal:      prompt,
-		SemanticDescription: prompt, // Basic fallback, would be better to call LLM here
-		Subjects:            []string{subject},
-		Actions:             []string{}, // Placeholder
-		Mood:                []string{}, // Placeholder
-		Style:               styleList,
-		SearchText:          strings.Join(append([]string{subject, style}, tags...), " "),
-		EmbeddingReady:      true,
-		Generator:           generator,
-		CreatedAt:           time.Now().Format(time.RFC3339),
-	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		s.log.Warn("uploadImageMetadata: failed to marshal metadata", zap.Error(err))
@@ -256,6 +322,23 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 
 	metaReq := req
 	metaReq.Ext = ".json"
+	metaReq.Hash = "metadata" // Standard name for metadata inside the folder
+	if metaReq.GenerationID == "" && hash != "" {
+		metaReq.GenerationID = hash
+	}
+
+	// Resolve local destination to save it locally too
+	dest, err := s.mediaStore.ResolveDest(metaReq)
+	if err == nil {
+		localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
+		os.MkdirAll(filepath.Dir(localMetaPath), 0755)
+		if err := os.WriteFile(localMetaPath, data, 0644); err != nil {
+			s.log.Warn("uploadImageMetadata: failed to save local metadata", zap.Error(err))
+		} else {
+			s.log.Info("uploadImageMetadata: local metadata saved", zap.String("path", localMetaPath))
+		}
+	}
+
 	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, tmpPath); err != nil {
 		s.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
 		return
@@ -265,46 +348,62 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 
 // UploadBatchMetadata writes a single metadata.json for a group of assets.
 func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*models.ImageAsset) {
-	if s.mediaStore == nil || genID == "" {
+	s.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
+	if s.mediaStore == nil {
+		s.log.Warn("UploadBatchMetadata: mediaStore is nil")
+		return
+	}
+	if genID == "" {
+		s.log.Warn("UploadBatchMetadata: genID is empty")
 		return
 	}
 
-	styleList := []string{}
-	if style != "" {
-		styleList = append(styleList, style)
+	// 1. Call Python tagger for rich metadata base
+	meta, err := s.callSemanticTagger(ctx, prompt, style, "image", generator)
+	if err != nil {
+		s.log.Warn("UploadBatchMetadata: semantic tagger failed, using fallback", zap.Error(err))
+		// Fallback to basic metadata
+		fSubject, fTags := extractSubjectAndTags(prompt)
+		styleList := []string{}
+		if style != "" {
+			styleList = append(styleList, style)
+		}
+		meta = &SemanticMetadataPayload{
+			AssetID:             genID,
+			AssetType:           "image_group",
+			SemanticTier:        "generated_light",
+			Source:              "generated",
+			MediaType:           "image",
+			Generator:           generator,
+			PromptOriginal:      prompt,
+			SemanticDescription: prompt,
+			Subjects:            []string{fSubject},
+			Tags:                fTags,
+			Style:               styleList,
+			SearchText:          prompt,
+			EmbeddingStatus:     "pending",
+			CreatedAt:           time.Now().Format(time.RFC3339),
+		}
+	} else {
+		meta.AssetID = genID
+		meta.AssetType = "image_group"
 	}
 
+	// 2. Add individual asset info
 	assetInfos := make([]map[string]any, len(assets))
 	for i, a := range assets {
 		assetInfos[i] = map[string]any{
-			"hash":      a.Hash,
-			"path":      a.PathRel,
-			"width":     a.Width,
-			"height":    a.Height,
-			"drive_id":  a.DriveFileID,
+			"hash":           a.Hash,
+			"path":           a.PathRel,
+			"width":          a.Width,
+			"height":         a.Height,
+			"drive_id":       a.DriveFileID,
+			"variant_index": i + 1,
 		}
 	}
+	meta.Assets = assetInfos
 
-	meta := SemanticMetadataPayload{
-		AssetID:             genID,
-		AssetType:           "image_group",
-		PromptOriginal:      prompt,
-		SemanticDescription: prompt,
-		Subjects:            []string{slug},
-		Style:               styleList,
-		SearchText:          prompt + " " + slug + " " + style,
-		EmbeddingReady:      true,
-		Generator:           generator,
-		CreatedAt:           time.Now().Format(time.RFC3339),
-	}
-	
-	// Convert to map to add dynamic fields (like the asset list)
-	finalMeta := make(map[string]any)
-	metaBytes, _ := json.Marshal(meta)
-	_ = json.Unmarshal(metaBytes, &finalMeta)
-	finalMeta["assets"] = assetInfos
-
-	data, err := json.MarshalIndent(finalMeta, "", "  ")
+	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		s.log.Warn("UploadBatchMetadata: failed to marshal metadata", zap.Error(err))
 		return
@@ -321,8 +420,27 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 		MediaType:    storage.MediaTypeImage,
 		Subject:      slug,
 		GenerationID: genID,
+		Style:        style,
 		Ext:          ".json",
-		Hash:         genID,
+		Hash:         "metadata",
+	}
+
+	dest, err := s.mediaStore.ResolveDest(req)
+	if err == nil {
+		s.log.Info("UploadBatchMetadata: resolved destination",
+			zap.String("gen_id", genID),
+			zap.String("style", style),
+			zap.String("drive_path", dest.DriveFolderPath),
+			zap.String("local_path", dest.LocalPath),
+		)
+		localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
+
+		os.MkdirAll(filepath.Dir(localMetaPath), 0755)
+		if err := os.WriteFile(localMetaPath, data, 0644); err != nil {
+			s.log.Warn("UploadBatchMetadata: failed to save local metadata", zap.Error(err))
+		} else {
+			s.log.Info("UploadBatchMetadata: local metadata saved", zap.String("path", localMetaPath))
+		}
 	}
 
 	if _, _, err := s.mediaStore.UploadToDrive(ctx, req, tmpPath); err != nil {

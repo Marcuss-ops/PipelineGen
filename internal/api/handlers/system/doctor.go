@@ -81,6 +81,9 @@ func (h *Handler) Doctor(c *gin.Context) {
 	// Check Voiceover service specifically
 	h.checkVoiceover(ctx, resp)
 
+	// Check Google Accounting service
+	h.checkGoogleAccounting(ctx, resp)
+
 	// Determine overall status
 	for _, status := range resp.Checks {
 		if status != "ok" {
@@ -223,5 +226,35 @@ func (h *Handler) checkVoiceover(ctx context.Context, resp *DoctorResponse) {
 		resp.Fixes = append(resp.Fixes, "pip install edge-tts")
 	} else {
 		resp.Checks["voiceover_library"] = "ok"
+	}
+}
+
+func (h *Handler) checkGoogleAccounting(ctx context.Context, resp *DoctorResponse) {
+	if !h.cfg.GoogleAccounting.Enabled {
+		resp.Checks["google_accounting"] = "disabled"
+		return
+	}
+
+	url := h.cfg.GoogleAccounting.ServerURL
+	if url == "" {
+		resp.Checks["google_accounting"] = "misconfigured"
+		resp.Fixes = append(resp.Fixes, "Set google_accounting.server_url in config.yaml")
+		return
+	}
+
+	// Try to reach uvicorn server
+	client := &http.Client{Timeout: 2 * time.Second}
+	req, _ := http.NewRequestWithContext(ctx, "GET", url+"/status/list", nil)
+	hResp, err := client.Do(req)
+	if err != nil {
+		resp.Checks["google_accounting"] = "offline"
+		resp.Fixes = append(resp.Fixes, "Start Google Accounting worker: cd google-accounting && uvicorn main:app --port 8000")
+	} else {
+		defer hResp.Body.Close()
+		if hResp.StatusCode == http.StatusOK {
+			resp.Checks["google_accounting"] = "ok"
+		} else {
+			resp.Checks["google_accounting"] = fmt.Sprintf("error_%d", hResp.StatusCode)
+		}
 	}
 }

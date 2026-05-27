@@ -51,10 +51,14 @@ func (s *Service) GenerateSmartImage(
 		return assets[0], nil
 	}
 	if err != nil {
-		s.log.Warn("google image generation failed, falling back to NVIDIA",
+		s.log.Error("CRITICAL: Google Flow generation FAILED",
 			zap.String("subject", subject),
+			zap.String("error_type", fmt.Sprintf("%T", err)),
 			zap.Error(err),
 		)
+		s.log.Info("Switching to NVIDIA fallback due to Google Flow failure")
+	} else if len(assets) == 0 {
+		s.log.Warn("Google Flow returned zero assets, falling back to NVIDIA")
 	}
 
 	// Step 2: Fallback to NVIDIA
@@ -81,11 +85,11 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 
 	switch {
 	case subject != "" && topic != "":
-		return fmt.Sprintf("cinematic documentary image of %s related to %s", subject, topic)
+		return fmt.Sprintf("%s, %s, cinematic landscape", subject, topic)
 	case subject != "":
-		return fmt.Sprintf("cinematic documentary image of %s", subject)
+		return fmt.Sprintf("%s, cinematic landscape", subject)
 	case topic != "":
-		return fmt.Sprintf("cinematic documentary image of %s", topic)
+		return fmt.Sprintf("%s, cinematic landscape", topic)
 	default:
 		return ""
 	}
@@ -95,9 +99,16 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 	s.log.Info("generateGoogleFlowImages: entering function", zap.String("googleAccountingURL", s.googleAccountingURL))
 
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
-		s.log.Warn("generateGoogleFlowImages: google accounting server url not configured")
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
+
+	// NEW: Quick health check before starting long job
+	pingReq, _ := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(s.googleAccountingURL, "/")+"/status/list", nil)
+	pingResp, pingErr := s.client.Do(pingReq)
+	if pingErr != nil {
+		return nil, fmt.Errorf("GOOGLE FLOW SERVICE OFFLINE (is uvicorn running on port 8000?): %w", pingErr)
+	}
+	pingResp.Body.Close()
 
 	// For YouTube format (16:9), add it to the prompt as a hint for Google Flow
 	// since direct UI selection is unstable.
@@ -224,10 +235,16 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 		return nil, fmt.Errorf("google flow generated no ingestible images")
 	}
 
+	s.log.Info("google flow generation finished", zap.Int("assets", len(assets)), zap.Bool("skip_drive", skipDrive))
+
 	// 8. Upload unified metadata.json for the entire group
 	if !skipDrive && len(assets) > 0 {
-		genID := filepath.Base(filepath.Dir(strings.TrimSpace(files[0])))
-		s.UploadBatchMetadata(ctx, genID, slug, style, cleanPrompt, "google-flow", assets)
+		// Use the genID from the first asset's directory structure
+		firstPath := assets[0].PathRel
+		dirName := filepath.Base(filepath.Dir(firstPath))
+		
+		s.log.Info("triggering batch metadata upload", zap.String("gen_id", dirName), zap.String("style", style))
+		s.UploadBatchMetadata(ctx, dirName, slug, style, cleanPrompt, "google-flow", assets)
 	}
 
 	return assets, nil

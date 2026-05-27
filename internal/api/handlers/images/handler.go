@@ -1,8 +1,10 @@
 package images
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	imgservice "velox/go-master/internal/media/images"
@@ -153,6 +155,10 @@ func (h *Handler) Generate(c *gin.Context) {
 		return
 	}
 
+	// Create a long-lived context for AI generation
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 6*time.Minute)
+	defer cancel()
+
 	// Default to 1920x1080 for YouTube format if not specified
 	if req.Width == 0 {
 		req.Width = 1920
@@ -164,7 +170,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	// Always upload to Drive via the common pipeline
 	skipDrive := false
 	asset, err := h.service.GenerateSmartImage(
-		c.Request.Context(),
+		ctx,
 		req.Prompt,       // subject
 		"",               // topic (vuoto, usiamo solo il prompt)
 		req.Style,        // style
