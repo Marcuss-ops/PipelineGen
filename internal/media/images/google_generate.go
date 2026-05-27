@@ -92,7 +92,10 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 }
 
 func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, skipDrive bool) ([]*models.ImageAsset, error) {
+	s.log.Info("generateGoogleFlowImages: entering function", zap.String("googleAccountingURL", s.googleAccountingURL))
+
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
+		s.log.Warn("generateGoogleFlowImages: google accounting server url not configured")
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
 
@@ -208,7 +211,8 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 		// Extract GenerationID from the parent folder (e.g. "gen_20260527_...")
 		genID := filepath.Base(filepath.Dir(resolved))
 
-		asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, skipDrive)
+		// Ingest with skipMetadata=true as we will upload a group metadata file at the end
+		asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, skipDrive, true)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue
@@ -218,6 +222,12 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 
 	if len(assets) == 0 {
 		return nil, fmt.Errorf("google flow generated no ingestible images")
+	}
+
+	// 8. Upload unified metadata.json for the entire group
+	if !skipDrive && len(assets) > 0 {
+		genID := filepath.Base(filepath.Dir(strings.TrimSpace(files[0])))
+		s.UploadBatchMetadata(ctx, genID, slug, style, cleanPrompt, "google-flow", assets)
 	}
 
 	return assets, nil

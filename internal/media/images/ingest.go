@@ -22,6 +22,7 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/storage"
 )
+
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*models.ImageAsset, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
 	req.Header.Set("User-Agent", userAgent)
@@ -36,10 +37,10 @@ func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, so
 		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
-	return s.IngestImage(ctx, slug, style, "", resp.Body, filepath.Base(imgURL), imgURL, description, tags, false)
+	return s.IngestImage(ctx, slug, style, "", resp.Body, filepath.Base(imgURL), imgURL, description, tags, false, false)
 }
 
-func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {
 	content, err := io.ReadAll(data)
 	if err != nil {
 		return nil, err
@@ -71,10 +72,19 @@ func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, da
 		zap.Bool("skip_drive", skipDrive),
 	)
 
-	return s.ingestDirect(ctx, slug, style, genID, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
+	return s.ingestDirect(ctx, slug, style, genID, content, filename, sourceURL, description, tags, legacyHash, skipDrive, skipMetadata)
 }
 
-func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {
+	// Enrich tags and subject from prompt if needed
+	promptSubject, promptTags := extractSubjectAndTags(description)
+	if slug == "" || slug == "unknown" {
+		slug = Slugify(promptSubject)
+	}
+	if len(tags) == 0 {
+		tags = promptTags
+	}
+
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err != nil || subject == nil {
@@ -143,12 +153,14 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 			driveFileID = fileID
 			s.log.Info("Drive upload successful", zap.String("file_id", fileID))
 			
-			// Estrai dimensioni reali dell'immagine
-			imgWidth, imgHeight := decodeImageDimensions(content)
+			if !skipMetadata {
+				// Estrai dimensioni reali dell'immagine
+				imgWidth, imgHeight := decodeImageDimensions(content)
 
-			// Upload metadata.json
-			prompt := description // Usiamo description come prompt o info
-			s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, link, hash, fullPath, imgWidth, imgHeight)
+				// Upload metadata.json
+				prompt := description // Usiamo description come prompt o info
+				s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, link, hash, fullPath, imgWidth, imgHeight)
+			}
 		}
 	}
 
@@ -251,3 +263,71 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 	s.log.Info("uploadImageMetadata: metadata.json uploaded", zap.String("prompt", prompt), zap.String("style", style))
 }
 
+// UploadBatchMetadata writes a single metadata.json for a group of assets.
+func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*models.ImageAsset) {
+	if s.mediaStore == nil || genID == "" {
+		return
+	}
+
+	styleList := []string{}
+	if style != "" {
+		styleList = append(styleList, style)
+	}
+
+	assetInfos := make([]map[string]any, len(assets))
+	for i, a := range assets {
+		assetInfos[i] = map[string]any{
+			"hash":      a.Hash,
+			"path":      a.PathRel,
+			"width":     a.Width,
+			"height":    a.Height,
+			"drive_id":  a.DriveFileID,
+		}
+	}
+
+	meta := SemanticMetadataPayload{
+		AssetID:             genID,
+		AssetType:           "image_group",
+		PromptOriginal:      prompt,
+		SemanticDescription: prompt,
+		Subjects:            []string{slug},
+		Style:               styleList,
+		SearchText:          prompt + " " + slug + " " + style,
+		EmbeddingReady:      true,
+		Generator:           generator,
+		CreatedAt:           time.Now().Format(time.RFC3339),
+	}
+	
+	// Convert to map to add dynamic fields (like the asset list)
+	finalMeta := make(map[string]any)
+	metaBytes, _ := json.Marshal(meta)
+	_ = json.Unmarshal(metaBytes, &finalMeta)
+	finalMeta["assets"] = assetInfos
+
+	data, err := json.MarshalIndent(finalMeta, "", "  ")
+	if err != nil {
+		s.log.Warn("UploadBatchMetadata: failed to marshal metadata", zap.Error(err))
+		return
+	}
+
+	tmpPath := filepath.Join(s.tempDir, "group_metadata_"+genID+".json")
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	req := storage.AssetDestinationRequest{
+		Source:       storage.SourceImage,
+		MediaType:    storage.MediaTypeImage,
+		Subject:      slug,
+		GenerationID: genID,
+		Ext:          ".json",
+		Hash:         genID,
+	}
+
+	if _, _, err := s.mediaStore.UploadToDrive(ctx, req, tmpPath); err != nil {
+		s.log.Warn("UploadBatchMetadata: failed to upload metadata.json", zap.Error(err))
+		return
+	}
+	s.log.Info("UploadBatchMetadata: metadata.json uploaded for group", zap.String("gen_id", genID), zap.Int("assets_count", len(assets)))
+}

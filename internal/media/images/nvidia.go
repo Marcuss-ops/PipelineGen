@@ -135,6 +135,7 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, 
 	var payload map[string]interface{}
 	var useCloudAuth bool
 	var sourceLabel string
+	var invokeURL string
 	resolvedModel := strings.TrimSpace(model)
 
 	// Default resolution if not provided
@@ -260,7 +261,7 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, 
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", resolvedModel, prompt)
 
-	return s.IngestImage(ctx, slug, style, "", strings.NewReader(string(imageData)), filename, sourceLabel, description, tags, skipDrive)
+	return s.IngestImage(ctx, slug, style, "", strings.NewReader(string(imageData)), filename, sourceLabel, description, tags, skipDrive, false)
 }
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {

@@ -217,22 +217,11 @@ class ImageCapturer:
             log.debug(f"Errore download DOM img: {e}")
 
     async def _save_to_db(self, path: Path, filename: str, method: str):
-        """Salva metadati dell'immagine nel database locale."""
-        try:
-            from storage import save_media_asset
-            save_media_asset(
-                file_path=path,
-                source="google_flow",
-                name=filename,
-                style=self.main_style,
-                sub_style=self.sub_style,
-                prompt=self.prompt,
-                project_id=self.project_id,
-                metadata={"full_prompt": self.full_prompt, "style": self.style, "method": method}
-            )
-            log.info(f"  → DB: salvato {filename}")
-        except Exception as e:
-            log.warning(f"  → DB: errore salvataggio {filename}: {e}")
+        """
+        Disabilitato: Il servizio Go gestisce l'ingestion finale con Hash e metadati ricchi.
+        Manteniamo il log per tracciare la cattura locale.
+        """
+        log.info(f"📸 Immagine catturata localmente ({method}): {filename}")
 
     def get_results(self) -> list[Path]:
         return self.new_saved_paths
