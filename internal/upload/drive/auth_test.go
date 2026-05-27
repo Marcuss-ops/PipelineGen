@@ -30,7 +30,6 @@ func TestResolveArtlistRootFolderIDPrefersMediaRoot(t *testing.T) {
 	cfg := &config.Config{
 		Drive: config.DriveConfig{
 			MediaRootFolder: "media-root",
-			StockRootFolder: "stock-root",
 		},
 	}
 

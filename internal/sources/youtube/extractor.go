@@ -18,6 +18,8 @@ import (
 	"velox/go-master/internal/pkg/fileutil"
 	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/pkg/pathutil"
+	"velox/go-master/internal/pkg/ptrutil"
+	"velox/go-master/internal/pkg/urlutil"
 	"velox/go-master/internal/security"
 )
 
@@ -35,8 +37,8 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		defer cancel()
 	}
 
-	videoID := extractVideoID(req.URL)
-	if videoID == "" {
+	videoID, err := urlutil.ExtractVideoID(req.URL)
+	if err != nil || videoID == "" {
 		videoID = hashutil.MD5String(req.URL)[:12]
 	}
 	if canonical := canonicalYouTubeURL(req.URL, videoID); canonical != "" {
@@ -510,7 +512,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 		}
 
 		// Save manifest TXT (respect WriteSummary flag)
-		writeSummary := boolDefault(req.WriteSummary, true)
+		writeSummary := ptrutil.BoolDefault(req.WriteSummary, true)
 		if writeSummary && clipFolder.ManifestTXTPath != "" {
 			if err := s.folderMemory.UpdateManifestTXT(clipFolder, manifest); err != nil {
 				s.log.Warn("failed to write manifest TXT", zap.Error(err))

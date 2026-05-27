@@ -42,7 +42,7 @@ func runResetVideoAI(args []string) error {
 	}
 
 	ctx := context.Background()
-	stockRootFolder := cfg.Drive.StockRootFolder
+	stockRootFolder := cfg.Drive.RootFolder()
 
 	// Step 1: List and delete all items in the source folder
 	fmt.Printf("📂 Source folder: %s\n", *sourceFolder)

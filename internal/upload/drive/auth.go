@@ -73,16 +73,12 @@ func NewDriveServiceFromFiles(ctx context.Context, cfg *config.Config) (*drive.S
 }
 
 // ResolveArtlistRootFolderID returns the Drive folder ID for Artlist.
-// Priority: cfg.Drive.ArtlistRootFolder > MediaRootFolder > Harvester.DriveFolderID > legacy default.
+// Priority: MediaRootFolder > Harvester.DriveFolderID > legacy default.
 func ResolveArtlistRootFolderID(cfg *config.Config) string {
 	if cfg == nil {
 		return defaultArtlistRootFolderID
 	}
-	// Nuovo: Artlist root esplicito
-	if root := strings.TrimSpace(cfg.Drive.ArtlistRootFolder); root != "" {
-		return root
-	}
-	// Fallback: media root unificato
+	// Media root unificato
 	if root := cfg.Drive.RootFolder(); root != "" {
 		return root
 	}

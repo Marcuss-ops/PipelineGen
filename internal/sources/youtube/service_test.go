@@ -13,6 +13,8 @@ import (
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/videomuscles"
+	"velox/go-master/internal/pkg/ptrutil"
+	"velox/go-master/internal/pkg/urlutil"
 	"velox/go-master/internal/security"
 )
 
@@ -147,19 +149,26 @@ func TestExtractVideoID(t *testing.T) {
 	testCases := []struct {
 		input    string
 		expected string
+		wantErr  bool
 	}{
-		{"https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"},
-		{"https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ"},
-		{"https://www.youtube.com/shorts/abc123", "abc123"},
-		{"https://www.youtube.com/embed/xyz789", "xyz789"},
-		{"https://www.youtube.com/live/def456", "def456"},
-		{"not-a-url", ""},
-		{"", ""},
+		{"https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ", false},
+		{"https://youtu.be/dQw4w9WgXcQ", "dQw4w9WgXcQ", false},
+		{"https://www.youtube.com/shorts/abc123", "abc123", false},
+		{"https://www.youtube.com/embed/xyz789", "xyz789", false},
+		{"https://www.youtube.com/live/def456", "def456", false},
+		{"not-a-url", "", true},
+		{"", "", true},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.input, func(t *testing.T) {
-			result := extractVideoID(tc.input)
+			result, err := urlutil.ExtractVideoID(tc.input)
+			if tc.wantErr && err == nil {
+				t.Errorf("For input %s: expected error, got none", tc.input)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("For input %s: unexpected error: %v", tc.input, err)
+			}
 			if result != tc.expected {
 				t.Errorf("For input %s: expected %s, got %s", tc.input, tc.expected, result)
 			}
@@ -307,9 +316,9 @@ func TestBoolDefault(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := boolDefault(tc.input, tc.def)
+		result := ptrutil.BoolDefault(tc.input, tc.def)
 		if result != tc.expected {
-			t.Errorf("boolDefault(%v, %v) = %v, expected %v", tc.input, tc.def, result, tc.expected)
+			t.Errorf("BoolDefault(%v, %v) = %v, expected %v", tc.input, tc.def, result, tc.expected)
 		}
 	}
 }

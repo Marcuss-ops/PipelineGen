@@ -5,9 +5,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"sync"
+	"velox/go-master/internal/pkg/textutil"
 	"time"
 
 	"go.uber.org/zap"
@@ -102,7 +101,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		repo:      repo,
 		stockRepo: stockRepo,
 		driveSvc:  driveSvc,
-		driveFolderID: cfg.Drive.ImagesRootFolder,
+		driveFolderID: cfg.Drive.RootFolder(),
 		log:       log,
 		imagesDir: cfg.Storage.ImagesPath(),
 		tempDir:   cfg.Storage.TempPath(),
@@ -230,12 +229,5 @@ func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectI
 }
 
 func Slugify(s string) string {
-	s = strings.ToLower(s)
-	s = strings.TrimSpace(s)
-	re := regexp.MustCompile(`[^a-z0-9]+`)
-	s = re.ReplaceAllString(s, "-")
-	s = strings.Trim(s, "-")
-	return s
+	return textutil.Slugify(s)
 }
-
-var slugRegex = regexp.MustCompile(`[^a-z0-9]+`)

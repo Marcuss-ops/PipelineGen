@@ -62,25 +62,25 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		ingest.KindImage: {
 			Kind:          ingest.KindImage,
 			DefaultSource: "image",
-			RootFolderID:  cfg.Drive.ImagesRootFolder,
+			RootFolderID:  cfg.Drive.RootFolder(),
 			Lifecycle:     imagesLifecycle,
 		},
 		ingest.KindVoiceover: {
 			Kind:          ingest.KindVoiceover,
 			DefaultSource: "voiceover",
-			RootFolderID:  cfg.Drive.VoiceoverRootFolder,
+			RootFolderID:  cfg.Drive.RootFolder(),
 			Lifecycle:     voiceoverLifecycle,
 		},
 		ingest.KindClip: {
 			Kind:          ingest.KindClip,
 			DefaultSource: "youtube",
-			RootFolderID:  cfg.Drive.ClipsRootFolder,
+			RootFolderID:  cfg.Drive.RootFolder(),
 			Lifecycle:     clipLifecycle,
 		},
 		ingest.KindStock: {
 			Kind:          ingest.KindStock,
 			DefaultSource: "stock",
-			RootFolderID:  cfg.Drive.StockRootFolder,
+			RootFolderID:  cfg.Drive.RootFolder(),
 			Lifecycle:     stockLifecycle,
 		},
 	})

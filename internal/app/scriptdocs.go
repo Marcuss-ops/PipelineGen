@@ -54,7 +54,7 @@ func WireScriptDocs(
 		coreDeps.StockDriveRepo,
 		coreDeps.ArtlistRepo,
 		coreDeps.ClipsOnlyRepo,
-		cfg.Drive.StockRootFolder,
+		cfg.Drive.RootFolder(),
 		nil, // artlistSvc - will be set later if available
 		coreDeps.AssocService,
 		coreDeps.JobsService,

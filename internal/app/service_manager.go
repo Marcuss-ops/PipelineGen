@@ -139,7 +139,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		storage.MediaRoot(cfg.Storage.MediaPath()),
 		storage.DriveRoot(cfg.Drive.RootFolder()),
 	)
-	mediaStore := storage.NewStore(storageResolver, driveUploader, cfg.Drive.RootFolder(), cfg.Drive.ImagesRootFolder, cfg.Drive.VideoAIRootFolder, cfg.Drive.SoundEffectsRootFolder, log)
+	mediaStore := storage.NewStore(storageResolver, driveUploader, cfg.Drive.RootFolder(), "", cfg.Drive.VideoAIRootFolder, cfg.Drive.SoundEffectsRootFolder, log)
 	destResolver := storage.NewDestinationResolver(mediaStore)
 
 	// Create LifecycleService for youtubeclip using common factory
@@ -227,9 +227,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
-	if cfg.Drive.VoiceoverRootFolder != "" && voRepo != nil {
-		voiceoverSync = voiceoversync.NewService(driveUploader, voRepo, assetTreeService, cfg.Drive.VoiceoverRootFolder, log)
-		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", cfg.Drive.VoiceoverRootFolder))
+	if cfg.Drive.RootFolder() != "" && voRepo != nil {
+		voiceoverSync = voiceoversync.NewService(driveUploader, voRepo, assetTreeService, cfg.Drive.RootFolder(), log)
+		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", cfg.Drive.RootFolder()))
 	}
 
 	// Jobs system

@@ -17,39 +17,25 @@ func buildSyncTargets(
 	targets := []catalogsync.Target{
 		{
 			Name:         "stock",
-			RootFolderID: cfg.Drive.StockRootFolder,
+			RootFolderID: cfg.Drive.RootFolder(),
 			Source:       "stock",
 			MediaType:    "stock",
 			Repo:         clipsRepo,
 		},
 		{
 			Name:         "youtube",
-			RootFolderID: cfg.Drive.ClipsRootFolder,
+			RootFolderID: cfg.Drive.RootFolder(),
 			Source:       "youtube",
 			MediaType:    "clip",
 			Repo:         clipsOnlyRepo,
 		},
 		{
 			Name:         "artlist",
-			RootFolderID: cfg.Drive.ArtlistRootFolder,
+			RootFolderID: cfg.Drive.RootFolder(),
 			Source:       "artlist",
 			MediaType:    "artlist",
 			Repo:         artlistRepo,
 		},
-	}
-
-	if cfg.Drive.ClipRootFolders != nil {
-		for group, folderID := range cfg.Drive.ClipRootFolders {
-			if folderID != "" {
-				targets = append(targets, catalogsync.Target{
-					Name:         "youtube_" + group,
-					RootFolderID: folderID,
-					Source:       "youtube",
-					MediaType:    "clip",
-					Repo:         clipsOnlyRepo,
-				})
-			}
-		}
 	}
 
 	return targets

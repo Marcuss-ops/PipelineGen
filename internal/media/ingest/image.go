@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"velox/go-master/internal/pkg/hashutil"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 func (s *Service) materializeImage(sourcePath, filename string, req *Request) (string, string, func(), error) {
@@ -20,7 +21,7 @@ func (s *Service) materializeImage(sourcePath, filename string, req *Request) (s
 		filename = filepath.Base(sourcePath)
 	}
 
-	slug := slugify(firstNonEmpty(req.Group, req.Name, req.SourceID, "image"))
+	slug := textutil.Slugify(firstNonEmpty(req.Group, req.Name, req.SourceID, "image"))
 	if slug == "" {
 		slug = "image"
 	}

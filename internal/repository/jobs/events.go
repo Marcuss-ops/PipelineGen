@@ -2,17 +2,16 @@ package jobs
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/media/models"
 )
 
 func (r *Repository) AddEvent(ctx context.Context, jobID string, eventType string, message string, data map[string]any) error {
-	id := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), randomString(6))
+	id := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
 
 	dataJSON, _ := json.Marshal(data)
 	if dataJSON == nil {
@@ -54,11 +53,4 @@ func (r *Repository) ListEvents(ctx context.Context, jobID string) ([]models.Job
 	return events, nil
 }
 
-// randomString generates a random hex string of length n.
-func randomString(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%0*x", n, time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)[:n]
-}
+

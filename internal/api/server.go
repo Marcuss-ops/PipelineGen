@@ -56,6 +56,17 @@ func (s *Server) Start() error {
 		zap.String("addr", s.httpServer.Addr),
 	)
 
+	// Create cancellable context for module lifecycle
+	moduleCtx, moduleCancel := context.WithCancel(context.Background())
+	defer moduleCancel()
+
+	// Start all enabled modules (background processes, watchers, etc.)
+	if s.appRouter != nil && s.appRouter.registry != nil {
+		if err := s.appRouter.registry.StartAll(moduleCtx, s.cfg); err != nil {
+			return fmt.Errorf("module startup failed: %w", err)
+		}
+	}
+
 	// Start server in a goroutine
 	srvErr := make(chan error, 1)
 	go func() {
@@ -77,6 +88,9 @@ func (s *Server) Start() error {
 		logger.Info("Shutting down server...")
 	}
 
+	// Cancel module context (signals watchdog goroutines to stop)
+	moduleCancel()
+
 	// Stop rate limiter cleanup goroutine
 	if s.appRouter != nil {
 		s.appRouter.Stop()
@@ -89,6 +103,15 @@ func (s *Server) Start() error {
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		logger.Error("Server forced to shutdown", zap.Error(err))
 		return fmt.Errorf("server shutdown error: %w", err)
+	}
+
+	// Stop all enabled modules
+	if s.appRouter != nil && s.appRouter.registry != nil {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stopCancel()
+		if err := s.appRouter.registry.StopAll(stopCtx, s.cfg); err != nil {
+			logger.Error("module shutdown error", zap.Error(err))
+		}
 	}
 
 	logger.Info("Server exited gracefully")

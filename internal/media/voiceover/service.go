@@ -12,6 +12,7 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/audioasset"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/pkg/ptrutil"
 	"velox/go-master/internal/upload/drive"
 
 	"go.uber.org/zap"
@@ -73,9 +74,9 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 		RemoveSilence:    boolPtr(false),
 		Strategy:         "replace",
 	}
-	if s.cfg.Drive.VoiceoverRootFolder != "" {
+	if s.cfg.Drive.RootFolder() != "" {
 		req.Destination = &DestinationRequest{
-			FolderID: s.cfg.Drive.VoiceoverRootFolder,
+			FolderID: s.cfg.Drive.RootFolder(),
 		}
 	}
 	resp, err := s.GenerateBatch(ctx, req)
@@ -110,9 +111,9 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	textHash := textToHash(req.Text)
 
 	destinationReq := req.Destination
-	if destinationReq == nil && strings.TrimSpace(s.cfg.Drive.VoiceoverRootFolder) != "" {
+	if destinationReq == nil && strings.TrimSpace(s.cfg.Drive.RootFolder()) != "" {
 		destinationReq = &DestinationRequest{
-			FolderID: s.cfg.Drive.VoiceoverRootFolder,
+			FolderID: s.cfg.Drive.RootFolder(),
 		}
 	}
 
@@ -130,8 +131,8 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		dest = &ResolvedDestination{}
 	}
 
-	if dest.FolderID == "" && s.cfg.Drive.VoiceoverRootFolder != "" {
-		dest.FolderID = s.cfg.Drive.VoiceoverRootFolder
+	if dest.FolderID == "" && s.cfg.Drive.RootFolder() != "" {
+		dest.FolderID = s.cfg.Drive.RootFolder()
 	}
 
 	resp := &BatchResponse{
@@ -180,7 +181,7 @@ func (s *Service) processLanguage(
 		Language:      language,
 		OutputDir:     s.outputDir,
 		Filename:      filename,
-		RemoveSilence: boolDefault(req.RemoveSilence, false),
+		RemoveSilence: ptrutil.BoolDefault(req.RemoveSilence, false),
 	}
 
 	// Generate audio via audioasset processor
@@ -280,14 +281,6 @@ func (s *Service) resolveDestination(ctx context.Context, dest *DestinationReque
 		FolderPath: resolved.FolderPath,
 		DriveLink:  resolved.DriveLink,
 	}, nil
-}
-
-// boolDefault returns the value of the bool pointer, or the default value if nil
-func boolDefault(v *bool, def bool) bool {
-	if v == nil {
-		return def
-	}
-	return *v
 }
 
 // boolPtr returns a pointer to the bool value

@@ -2,6 +2,9 @@ package youtube
 
 import (
 	"testing"
+
+	"velox/go-master/internal/pkg/ptrutil"
+	"velox/go-master/internal/pkg/urlutil"
 )
 
 // ===== getGroupFromDestination tests =====
@@ -29,24 +32,24 @@ func TestGetGroupFromDestination_EmptyGroup(t *testing.T) {
 // ===== boolDefault tests =====
 
 func TestBoolDefault_Nil(t *testing.T) {
-	if got := boolDefault(nil, true); got != true {
+	if got := ptrutil.BoolDefault(nil, true); got != true {
 		t.Fatalf("expected true (default), got %v", got)
 	}
-	if got := boolDefault(nil, false); got != false {
+	if got := ptrutil.BoolDefault(nil, false); got != false {
 		t.Fatalf("expected false (default), got %v", got)
 	}
 }
 
 func TestBoolDefault_SetTrue(t *testing.T) {
 	v := true
-	if got := boolDefault(&v, false); got != true {
+	if got := ptrutil.BoolDefault(&v, false); got != true {
 		t.Fatalf("expected true (set), got %v", got)
 	}
 }
 
 func TestBoolDefault_SetFalse(t *testing.T) {
 	v := false
-	if got := boolDefault(&v, true); got != false {
+	if got := ptrutil.BoolDefault(&v, true); got != false {
 		t.Fatalf("expected false (set), got %v", got)
 	}
 }
@@ -134,66 +137,87 @@ func TestParseTimestamp_FourParts(t *testing.T) {
 	}
 }
 
-// ===== extractVideoID tests =====
+// ===== ExtractVideoID tests =====
 
 func TestYouTubeExtractVideoID_StandardWatch(t *testing.T) {
-	got := extractVideoID("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+	got, err := urlutil.ExtractVideoID("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "dQw4w9WgXcQ" {
 		t.Fatalf("expected dQw4w9WgXcQ, got %q", got)
 	}
 }
 
 func TestYouTubeExtractVideoID_ShortURL(t *testing.T) {
-	got := extractVideoID("https://youtu.be/dQw4w9WgXcQ")
+	got, err := urlutil.ExtractVideoID("https://youtu.be/dQw4w9WgXcQ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "dQw4w9WgXcQ" {
 		t.Fatalf("expected dQw4w9WgXcQ, got %q", got)
 	}
 }
 
 func TestYouTubeExtractVideoID_ShortsURL(t *testing.T) {
-	got := extractVideoID("https://www.youtube.com/shorts/abc123")
+	got, err := urlutil.ExtractVideoID("https://www.youtube.com/shorts/abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "abc123" {
 		t.Fatalf("expected abc123, got %q", got)
 	}
 }
 
 func TestYouTubeExtractVideoID_EmbedURL(t *testing.T) {
-	got := extractVideoID("https://www.youtube.com/embed/dQw4w9WgXcQ")
+	got, err := urlutil.ExtractVideoID("https://www.youtube.com/embed/dQw4w9WgXcQ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "dQw4w9WgXcQ" {
 		t.Fatalf("expected dQw4w9WgXcQ, got %q", got)
 	}
 }
 
 func TestYouTubeExtractVideoID_LiveURL(t *testing.T) {
-	got := extractVideoID("https://www.youtube.com/live/dQw4w9WgXcQ")
+	got, err := urlutil.ExtractVideoID("https://www.youtube.com/live/dQw4w9WgXcQ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "dQw4w9WgXcQ" {
 		t.Fatalf("expected dQw4w9WgXcQ, got %q", got)
 	}
 }
 
 func TestYouTubeExtractVideoID_MobilePrefix(t *testing.T) {
-	got := extractVideoID("https://m.youtube.com/watch?v=abc123")
+	got, err := urlutil.ExtractVideoID("https://m.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "abc123" {
 		t.Fatalf("expected abc123, got %q", got)
 	}
 }
 
 func TestYouTubeExtractVideoID_InvalidURL(t *testing.T) {
-	got := extractVideoID("")
-	if got != "" {
-		t.Fatalf("expected empty, got %q", got)
+	_, err := urlutil.ExtractVideoID("")
+	if err == nil {
+		t.Fatal("expected error for empty URL")
 	}
 }
 
 func TestYouTubeExtractVideoID_NonYouTubeURL(t *testing.T) {
-	got := extractVideoID("https://example.com/video")
-	if got != "" {
-		t.Fatalf("expected empty for non-youtube URL, got %q", got)
+	_, err := urlutil.ExtractVideoID("https://example.com/video")
+	if err == nil {
+		t.Fatal("expected error for non-youtube URL")
 	}
 }
 
 func TestYouTubeExtractVideoID_ShortsWithExtraParams(t *testing.T) {
-	got := extractVideoID("https://www.youtube.com/shorts/abc123?feature=share")
+	got, err := urlutil.ExtractVideoID("https://www.youtube.com/shorts/abc123?feature=share")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if got != "abc123" {
 		t.Fatalf("expected abc123, got %q", got)
 	}

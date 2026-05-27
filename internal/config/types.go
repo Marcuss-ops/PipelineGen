@@ -146,53 +146,22 @@ type HarvesterConfig struct {
 
 // DriveConfig holds Google Drive configuration.
 // MediaRootFolder is the single root for ALL media on Drive.
-// Legacy per-service folders (StockRootFolder, ClipsRootFolder, etc.) are deprecated
-// and fall back to MediaRootFolder when empty.
 type DriveConfig struct {
 	// MediaRootFolder is the single Drive root folder for all PipelineGen media.
 	// Example: "1ABCdef..." points to "PipelineGen Media" at Drive root.
 	MediaRootFolder string `yaml:"media_root_folder" env:"PIPELINEGEN_DRIVE_MEDIA_ROOT" default:""`
 
-	// Deprecated: use MediaRootFolder instead.
-	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
-	// Deprecated: use MediaRootFolder instead.
-	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
-	// Deprecated: use MediaRootFolder instead.
-	ImagesRootFolder string `yaml:"images_root_folder" env:"VELOX_DRIVE_IMAGES_ROOT" default:""`
-	// Deprecated: use MediaRootFolder instead.
-	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
-	// Deprecated: use MediaRootFolder instead.
-	ArtlistRootFolder string `yaml:"artlist_root_folder" env:"VELOX_DRIVE_ARTLIST_ROOT" default:""`
 	// Video AI generated assets root folder
 	VideoAIRootFolder string `yaml:"video_ai_root_folder" env:"VELOX_DRIVE_VIDEO_AI_ROOT" default:""`
 	// Copertine/thumbnails root folder
 	CopertineRootFolder string `yaml:"copertine_root_folder" env:"VELOX_DRIVE_COPERTINE_ROOT" default:""`
 	// Sound effects root folder
 	SoundEffectsRootFolder string `yaml:"sound_effects_root_folder" env:"VELOX_DRIVE_SOUND_EFFECTS_ROOT" default:""`
-	// Deprecated: use MediaRootFolder + hierarchical paths instead.
-	ClipRootFolders map[string]string `yaml:"clip_root_folders" env:"VELOX_DRIVE_CLIP_ROOT_FOLDERS" default:"{}"`
 }
 
-// RootFolder returns the effective media root folder.
-// If MediaRootFolder is set, it takes priority.
-// Legacy fallback: StockRootFolder (first old root).
+// RootFolder returns the MediaRootFolder.
 func (d DriveConfig) RootFolder() string {
-	if d.MediaRootFolder != "" {
-		return d.MediaRootFolder
-	}
-	if d.StockRootFolder != "" {
-		return d.StockRootFolder
-	}
-	if d.ImagesRootFolder != "" {
-		return d.ImagesRootFolder
-	}
-	if d.ClipsRootFolder != "" {
-		return d.ClipsRootFolder
-	}
-	if d.VoiceoverRootFolder != "" {
-		return d.VoiceoverRootFolder
-	}
-	return ""
+	return d.MediaRootFolder
 }
 
 // LoggingConfig holds logger-specific configuration.

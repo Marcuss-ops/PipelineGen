@@ -14,14 +14,6 @@ func getGroupFromDestination(dest *DestinationRequest) string {
 	return dest.Group
 }
 
-// boolDefault returns the value of the bool pointer, or the default value if nil
-func boolDefault(v *bool, def bool) bool {
-	if v == nil {
-		return def
-	}
-	return *v
-}
-
 // parseTimestamp parses a timestamp string (e.g., "10:31", "1:23:45", "45") to seconds
 func parseTimestamp(ts string) (int, error) {
 	ts = strings.TrimSpace(ts)
@@ -59,56 +51,6 @@ func parseTimestamp(ts string) (int, error) {
 	}
 
 	return totalSeconds, nil
-}
-
-// extractVideoID extracts the video ID from a YouTube URL.
-func extractVideoID(inputURL string) string {
-	parsed, err := url.Parse(inputURL)
-	if err != nil {
-		return ""
-	}
-
-	// Handle youtu.be short links
-	if parsed.Hostname() == "youtu.be" {
-		path := strings.TrimPrefix(parsed.Path, "/")
-		if path != "" {
-			return path
-		}
-	}
-
-	// Handle youtube.com URLs
-	if strings.Contains(parsed.Hostname(), "youtube.com") {
-		// Standard watch URLs: youtube.com/watch?v=ID
-		if parsed.Path == "/watch" {
-			return parsed.Query().Get("v")
-		}
-		// Shorts URLs: youtube.com/shorts/ID
-		if strings.HasPrefix(parsed.Path, "/shorts/") {
-			id := strings.TrimPrefix(parsed.Path, "/shorts/")
-			if idx := strings.Index(id, "?"); idx != -1 {
-				id = id[:idx]
-			}
-			return id
-		}
-		// Embed URLs: youtube.com/embed/ID
-		if strings.HasPrefix(parsed.Path, "/embed/") {
-			id := strings.TrimPrefix(parsed.Path, "/embed/")
-			if idx := strings.Index(id, "?"); idx != -1 {
-				id = id[:idx]
-			}
-			return id
-		}
-		// Live URLs: youtube.com/live/ID
-		if strings.HasPrefix(parsed.Path, "/live/") {
-			id := strings.TrimPrefix(parsed.Path, "/live/")
-			if idx := strings.Index(id, "?"); idx != -1 {
-				id = id[:idx]
-			}
-			return id
-		}
-	}
-
-	return ""
 }
 
 // canonicalYouTubeURL normalizes a YouTube URL to the standard watch format.

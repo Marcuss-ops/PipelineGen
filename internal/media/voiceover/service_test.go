@@ -1,9 +1,11 @@
 package voiceover
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"velox/go-master/internal/pkg/ptrutil"
 )
 
 func TestNormalizeBatchRequestDefaults(t *testing.T) {
@@ -71,7 +73,7 @@ func TestBoolDefault(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := boolDefault(tc.input, tc.def)
+			got := ptrutil.BoolDefault(tc.input, tc.def)
 			assert.Equal(t, tc.expected, got)
 		})
 	}
@@ -128,6 +130,7 @@ func TestToSlug(t *testing.T) {
 }
 
 func TestSanitizeFilename(t *testing.T) {
+	outputDir := filepath.Join("tmp", "vo")
 	tests := []struct {
 		name        string
 		outputDir   string
@@ -135,10 +138,10 @@ func TestSanitizeFilename(t *testing.T) {
 		wantErr     bool
 		contains    string
 	}{
-		{"normal mp3", "/tmp/vo", "hello.mp3", false, "/tmp/vo/hello.mp3"},
-		{"no extension adds mp3", "/tmp/vo", "hello", false, "/tmp/vo/hello.mp3"},
-		{"path traversal blocked", "/tmp/vo", "../../etc/passwd", true, ""},
-		{"nested path blocked", "/tmp/vo", "subdir/file.mp3", true, ""},
+		{"normal mp3", outputDir, "hello.mp3", false, filepath.Join("tmp", "vo", "hello.mp3")},
+		{"no extension adds mp3", outputDir, "hello", false, filepath.Join("tmp", "vo", "hello.mp3")},
+		{"path traversal blocked", outputDir, "../../etc/passwd", true, ""},
+		{"nested path blocked", outputDir, "subdir/file.mp3", true, ""},
 		{"empty output dir", "", "file.mp3", false, "file.mp3"},
 	}
 

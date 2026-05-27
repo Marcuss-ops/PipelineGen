@@ -13,13 +13,10 @@ import (
 func (s *Service) resolveFolderTarget(ctx context.Context, folderID, subfolder, folderName string) (string, error) {
 	currentID := folderID
 	if currentID == "" {
-		currentID = s.cfg.Drive.StockRootFolder
+		currentID = s.cfg.Drive.RootFolder()
 	}
 	if currentID == "" {
-		currentID = s.cfg.Drive.ClipsRootFolder
-	}
-	if currentID == "" {
-		return "", fmt.Errorf("no drive folder configured (stock_root_folder or clips_root_folder)")
+		return "", fmt.Errorf("no drive folder configured (media_root_folder)")
 	}
 
 	if subfolder != "" {

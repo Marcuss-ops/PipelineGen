@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"path/filepath"
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
@@ -9,6 +10,7 @@ import (
 	"velox/go-master/internal/core/assetop"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/assetregistry"
+	"velox/go-master/internal/upload/drive"
 )
 
 // Service orchestrates the full asset lifecycle:
@@ -17,7 +19,7 @@ type Service struct {
 	store         AssetRecordStore
 	dedupe        *assetop.DedupeService
 	reconcile     *assetop.ReconcileService
-	uploader      *assetop.Uploader
+	driveUploader *drive.Uploader
 	finalizer     *assetregistry.Finalizer
 	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
@@ -55,7 +57,7 @@ func NewService(
 		store:         store,
 		dedupe:        dedupe,
 		reconcile:     reconcile,
-		uploader:      assetop.NewUploader(driveSvc, log),
+		driveUploader: &drive.Uploader{Service: driveSvc, Log: log},
 		finalizer:     finalizer,
 		uploadPolicy:  cfg.UploadPolicy,
 		persistPolicy: cfg.PersistPolicy,
@@ -108,17 +110,17 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	downloadLink := input.DownloadLink
 
 	if s.uploadPolicy.Enabled && driveLink == "" && input.FolderID != "" {
-		if s.uploader != nil {
-			link, dlink, fileID, err := s.uploader.Upload(ctx, input.LocalPath, input.FolderID)
+		if s.driveUploader != nil && s.driveUploader.Service != nil {
+			result, err := s.driveUploader.UploadFile(ctx, input.LocalPath, input.FolderID, filepath.Base(input.LocalPath))
 			if err != nil {
 				s.log.Warn("drive upload failed", zap.Error(err))
 			} else {
-				driveLink = link
-				downloadLink = dlink
-				driveFileID = fileID
+				driveLink = result.WebViewLink
+				downloadLink = "https://drive.google.com/uc?id=" + result.FileID
+				driveFileID = result.FileID
 				s.log.Info("asset uploaded to drive",
 					zap.String("id", input.ID),
-					zap.String("file_id", fileID))
+					zap.String("file_id", result.FileID))
 			}
 		}
 	}

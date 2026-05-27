@@ -2,10 +2,10 @@ package ingest
 
 import (
 	"os"
-	"regexp"
 	"strings"
 
 	"velox/go-master/internal/core/lifecycle"
+	"velox/go-master/internal/pkg/textutil"
 )
 
 func buildAssetID(kind Kind, hash string) string {
@@ -64,18 +64,11 @@ func slugOrFallback(value string) string {
 	if value == "" {
 		return ""
 	}
-	slug := slugify(value)
+	slug := textutil.Slugify(value)
 	if slug == "" {
 		return value
 	}
 	return slug
-}
-
-func slugify(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	re := regexp.MustCompile("[^a-z0-9]+")
-	s = re.ReplaceAllString(s, "-")
-	return strings.Trim(s, "-")
 }
 
 func splitFolderPath(p string) []string {

@@ -33,7 +33,7 @@ func WireFullImages(
 		ffmpeg.New(cfg),
 		&driveup.Uploader{Service: coreDeps.DriveClient, Log: log},
 		cfg.Storage.ImagesPath(),
-		cfg.Drive.ImagesRootFolder,
+		cfg.Drive.RootFolder(),
 		log,
 	)
 	handler := fullimageshandler.NewFullImagesHandler(svc)

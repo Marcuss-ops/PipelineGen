@@ -2,15 +2,14 @@ package jobs
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/repository/jobs"
+	"velox/go-master/internal/pkg/hashutil"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/repository/jobs"
 )
 
 type Service struct {
@@ -146,13 +145,5 @@ func (s *Service) MarkStaleRunningJobsFailed(ctx context.Context, olderThan time
 }
 
 func generateJobID() string {
-	return fmt.Sprintf("job_%d_%s", time.Now().UnixNano(), randomString(8))
-}
-
-func randomString(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%0*x", n, time.Now().UnixNano())
-	}
-	return hex.EncodeToString(b)[:n]
+	return fmt.Sprintf("job_%d_%s", time.Now().UnixNano(), hashutil.RandomString(8))
 }

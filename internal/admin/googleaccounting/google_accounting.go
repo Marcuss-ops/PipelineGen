@@ -451,18 +451,10 @@ func uploadGeneratedMedia(ctx context.Context, cfg *config.Config, log *zap.Logg
                 return "", fmt.Errorf("resolve media path failed: %w", err)
         }
 
-        folderID := strings.TrimSpace(overrideFolderID)
-        if folderID == "" {
-                switch {
-                case strings.HasPrefix(mimeHint, "image/"):
-                        folderID = strings.TrimSpace(cfg.Drive.ImagesRootFolder)
-                default:
-                        folderID = strings.TrimSpace(cfg.Drive.ClipsRootFolder)
-                        if folderID == "" {
-                                folderID = strings.TrimSpace(cfg.Drive.StockRootFolder)
-                        }
-                }
-        }
+	folderID := strings.TrimSpace(overrideFolderID)
+	if folderID == "" {
+		folderID = strings.TrimSpace(cfg.Drive.RootFolder())
+	}
 
         if folderID == "" {
                 return "", fmt.Errorf("drive folder id is required for upload")

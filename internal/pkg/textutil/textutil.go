@@ -5,9 +5,19 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 )
+
+var slugRegex = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Slugify converts a string to a lowercase slug with hyphens.
+func Slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = slugRegex.ReplaceAllString(s, "-")
+	return strings.Trim(s, "-")
+}
 
 var stopwords map[string]bool
 
