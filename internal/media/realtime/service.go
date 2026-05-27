@@ -15,6 +15,8 @@ import (
 // EmbeddingClient is the interface for calling the embedding server.
 type EmbeddingClient interface {
 	EmbedText(ctx context.Context, text string) ([]float64, error)
+	EmbedVisual(ctx context.Context, text string) ([]float64, error)
+	EmbedAudio(ctx context.Context, text string) ([]float64, error)
 }
 
 // JobService is the interface for enqueueing background generation jobs.
@@ -80,15 +82,18 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 	if mode == "" {
 		mode = "text"
 	}
-	if mode == "visual" {
+	switch mode {
+	case "visual":
 		vectorName = s.cfg.VisualVectorName
+	case "audio":
+		vectorName = s.cfg.AudioVectorName
 	}
 
 	// Step 1: Get query embedding (cached if seen before)
-	queryVec, err := s.getEmbedding(ctx, req.Query)
+	queryVec, err := s.getEmbeddingForVector(ctx, req.Query, mode)
 	if err != nil {
 		s.log.Warn("failed to get query embedding, falling back",
-			zap.Error(err))
+			zap.String("mode", mode), zap.Error(err))
 		resp.Status = "embedding_failed"
 		resp.LatencyMs = time.Since(start).Milliseconds()
 		return resp, nil
@@ -169,10 +174,11 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 	return resp, nil
 }
 
-// getEmbedding returns a cached or fresh query embedding.
-func (s *Service) getEmbedding(ctx context.Context, query string) ([]float32, error) {
+// getEmbeddingForVector returns a cached or fresh query embedding for a specific vector space.
+func (s *Service) getEmbeddingForVector(ctx context.Context, query string, mode string) ([]float32, error) {
+	cacheKey := mode + ":" + query
 	// Check cache
-	if cached, ok := s.embeddingCache[query]; ok {
+	if cached, ok := s.embeddingCache[cacheKey]; ok {
 		return cached, nil
 	}
 
@@ -180,10 +186,21 @@ func (s *Service) getEmbedding(ctx context.Context, query string) ([]float32, er
 		return nil, fmt.Errorf("embedding client not configured")
 	}
 
-	// Call Python embedding server
-	emb64, err := s.embedder.EmbedText(ctx, query)
+	var emb64 []float64
+	var err error
+
+	// Call appropriate Python embedding server endpoint
+	switch mode {
+	case "visual":
+		emb64, err = s.embedder.EmbedVisual(ctx, query)
+	case "audio":
+		emb64, err = s.embedder.EmbedAudio(ctx, query)
+	default:
+		emb64, err = s.embedder.EmbedText(ctx, query)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("embedding failed: %w", err)
+		return nil, fmt.Errorf("embedding failed for mode %s: %w", mode, err)
 	}
 
 	// Convert float64 → float32 for Qdrant
@@ -193,14 +210,34 @@ func (s *Service) getEmbedding(ctx context.Context, query string) ([]float32, er
 	}
 
 	// Cache
-	s.embeddingCache[query] = emb32
+	s.embeddingCache[cacheKey] = emb32
 
 	return emb32, nil
+}
+
+// getEmbedding returns a cached or fresh query embedding.
+func (s *Service) getEmbedding(ctx context.Context, query string) ([]float32, error) {
+	return s.getEmbeddingForVector(ctx, query, "text")
 }
 
 // ClearEmbeddingCache resets the in-memory query embedding cache.
 func (s *Service) ClearEmbeddingCache() {
 	s.embeddingCache = make(map[string][]float32)
+}
+
+// EmbedText computes the embedding vector for the text using the Python server.
+func (s *Service) EmbedText(ctx context.Context, text string) ([]float32, error) {
+	return s.getEmbedding(ctx, text)
+}
+
+// EmbedTextForVector computes the embedding vector for the text using the specified vector space.
+func (s *Service) EmbedTextForVector(ctx context.Context, text string, mode string) ([]float32, error) {
+	return s.getEmbeddingForVector(ctx, text, mode)
+}
+
+// VectorStore returns the underlying vector store service.
+func (s *Service) VectorStore() *vectorstore.Service {
+	return s.vectorSvc
 }
 
 // toJSON is a helper for serialisation.

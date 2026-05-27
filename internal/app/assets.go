@@ -116,6 +116,9 @@ func WireAssets(
 	if coreDeps.ImageRepo != nil {
 		handler.SetImagesRepo(coreDeps.ImageRepo)
 	}
+	if coreDeps.RealtimeService != nil {
+		handler.SetRealtimeService(coreDeps.RealtimeService)
+	}
 
 	mod := module.NewAssetsModule(cfg, log, handler)
 	log.Info("created unified Assets module")

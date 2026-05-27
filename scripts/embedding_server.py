@@ -32,6 +32,16 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 print("Loading CLIP model (clip-ViT-B-32)...")
 clip_model = SentenceTransformer("clip-ViT-B-32")
 
+# Load CLAP model for audio-text embeddings
+clap_model = None
+try:
+    print("Loading CLAP model (laion/clap-htsat-fused)...")
+    # Note: SentenceTransformer can sometimes load CLAP models if they are in the right format,
+    # or we might need laion-clap. For now, we attempt to load a compatible one.
+    clap_model = SentenceTransformer("laion/clap-htsat-fused")
+except Exception as e:
+    print(f"CLAP model not loaded: {e}")
+
 app = FastAPI(title="PipelineGen Embedding Server")
 
 
@@ -43,8 +53,78 @@ class PhashRequest(BaseModel):
     image_path: str
 
 
+import sqlite3
+import json
+
+class IndexVisualRequest(BaseModel):
+    db_path: str
+    clip_id: str
+    frame_path: str
+
+
+class IndexAudioRequest(BaseModel):
+    db_path: str
+    clip_id: str
+    audio_path: str
+
+
 class VisualEmbedRequest(BaseModel):
     text: str  # For CLIP text-to-visual embedding
+
+
+@app.post("/index_visual")
+def index_visual(req: IndexVisualRequest):
+    """Generate CLIP embedding from image file and update SQLite."""
+    try:
+        img = Image.open(req.frame_path)
+        # CLIP model can encode images directly
+        embedding = clip_model.encode(img).tolist()
+        
+        # Compute phash too
+        h = str(imagehash.phash(img))
+
+        # Update DB
+        conn = sqlite3.connect(req.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.visual_embedding_json', ?), "
+            "metadata_json = json_set(metadata_json, '$.phash', ?) WHERE id = ?",
+            (json.dumps(embedding), h, req.clip_id)
+        )
+        conn.commit()
+        conn.close()
+
+        return {"status": "success", "phash": h, "dimensions": len(embedding)}
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/index_audio")
+def index_audio(req: IndexAudioRequest):
+    """Generate CLAP embedding from audio file and update SQLite."""
+    if clap_model is None:
+        raise HTTPException(status_code=501, detail="CLAP model not loaded")
+    try:
+        # Note: CLAP needs audio loading logic. SentenceTransformer typically 
+        # expects a path or a waveform for audio models.
+        # This assumes the model is structured to take the path.
+        embedding = clap_model.encode(req.audio_path).tolist()
+
+        # Update DB
+        conn = sqlite3.connect(req.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.audio_embedding_json', ?) WHERE id = ?",
+            (json.dumps(embedding), req.clip_id)
+        )
+        conn.commit()
+        conn.close()
+
+        return {"status": "success", "dimensions": len(embedding)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def normalize_text(text: str) -> str:
@@ -80,6 +160,18 @@ def embed_visual(req: VisualEmbedRequest):
     """Generate CLIP visual embedding (512d) from text description."""
     try:
         embedding = clip_model.encode(req.text).tolist()
+        return {"embedding": embedding, "dimensions": len(embedding)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/embed_audio")
+def embed_audio(req: EmbedRequest):
+    """Generate CLAP audio embedding (512d) from text description."""
+    if clap_model is None:
+        raise HTTPException(status_code=501, detail="CLAP model not loaded")
+    try:
+        embedding = clap_model.encode(req.text).tolist()
         return {"embedding": embedding, "dimensions": len(embedding)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

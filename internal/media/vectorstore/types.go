@@ -52,6 +52,9 @@ type VectorAsset struct {
 	// VisualEmbedding is the 512d visual embedding vector (clip-ViT-B-32)
 	VisualEmbedding []float32 `json:"-"`
 
+	// AudioEmbedding is the 512d audio embedding vector (CLAP)
+	AudioEmbedding []float32 `json:"-"`
+
 	// Tags are searchable metadata tags
 	Tags []string `json:"tags,omitempty"`
 

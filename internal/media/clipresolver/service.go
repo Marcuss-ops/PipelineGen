@@ -380,11 +380,13 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 		textWeight = 0.35
 	}
 	
+	// Try to get rich metadata
+	// Note: Clip catalog candidate doesn't have metadata_json yet, but we'll add it to candidateToClip later
+	// For now we check if cand has it via repository lookup or assume it's in SearchText
+	
 	// Fusion Scorer: Combine text, visual and audio vector scores
-	// We use the breakdown fields populated during the parallel search
 	vFusionScore := (bd.TextScore * 0.40) + (bd.VisualScore * 0.40) + (bd.AudioScore * 0.20)
 	
-	// Fallback to traditional text score calculation if no vector scores are present
 	finalTextScore := 0.0
 	if vFusionScore > 0 {
 		finalTextScore = vFusionScore * textWeight
@@ -392,8 +394,14 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 		finalTextScore = s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45) * queryWeight
 	}
 	
+	// Tiered Boost
+	tierBoost := 0.0
+	if strings.Contains(c.SearchText, "generated_light") || strings.Contains(c.Name, "generated") {
+		tierBoost = 0.15 // Generated images are very accurate to prompt
+	}
+	
 	bd.TextScore = finalTextScore
-	entry.Score += finalTextScore
+	entry.Score += finalTextScore + tierBoost
 
 	// Update matched query and terms
 	if entry.MatchedQuery == "" {

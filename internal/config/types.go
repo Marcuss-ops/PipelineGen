@@ -376,8 +376,10 @@ type VectorSearchConfig struct {
 	Collection          string  `yaml:"collection" default:"pipelinegen_assets"`
 	TextVectorName      string  `yaml:"text_vector_name" default:"text"`
 	VisualVectorName    string  `yaml:"visual_vector_name" default:"visual"`
+	AudioVectorName     string  `yaml:"audio_vector_name" default:"audio"`
 	TextDimensions      int     `yaml:"text_dimensions" default:"384"`
 	VisualDimensions    int     `yaml:"visual_dimensions" default:"512"`
+	AudioDimensions     int     `yaml:"audio_dimensions" default:"512"`
 	MinInstantScore     float64 `yaml:"min_instant_score" default:"0.85"`
 	TimeoutMs           int     `yaml:"timeout_ms" default:"5000"`
 	GRPCPort            int     `yaml:"grpc_port" default:"6334"`

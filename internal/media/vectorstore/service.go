@@ -62,7 +62,7 @@ func (s *Service) UpsertAsset(ctx context.Context, asset VectorAsset) error {
 		return nil
 	}
 
-	if len(asset.TextEmbedding) == 0 && len(asset.VisualEmbedding) == 0 {
+	if len(asset.TextEmbedding) == 0 && len(asset.VisualEmbedding) == 0 && len(asset.AudioEmbedding) == 0 {
 		s.log.Debug("no embeddings to upsert, skipping",
 			zap.String("asset_id", asset.AssetID))
 		return nil
@@ -75,7 +75,8 @@ func (s *Service) UpsertAsset(ctx context.Context, asset VectorAsset) error {
 	s.log.Debug("vectorstore upserted asset",
 		zap.String("asset_id", asset.AssetID),
 		zap.Int("text_dim", len(asset.TextEmbedding)),
-		zap.Int("visual_dim", len(asset.VisualEmbedding)))
+		zap.Int("visual_dim", len(asset.VisualEmbedding)),
+		zap.Int("audio_dim", len(asset.AudioEmbedding)))
 
 	return nil
 }

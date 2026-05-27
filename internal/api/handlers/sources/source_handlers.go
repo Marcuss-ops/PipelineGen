@@ -27,6 +27,7 @@ import (
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/pkg/apiutil"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/media/models"
 )
 
@@ -52,10 +53,16 @@ type Handler struct {
 	deletionSvc    *media.DeletionService
 	catalogSync    *catalogsync.Service
 	maintenanceSvc *maintenance.Service
+	realtimeSvc    *realtime.Service
 	log            *zap.Logger
 
 	// Sub-handlers
 	Voiceover *VoiceoverHandler
+}
+
+// SetRealtimeService sets the realtime service for semantic search.
+func (h *Handler) SetRealtimeService(svc *realtime.Service) {
+	h.realtimeSvc = svc
 }
 
 // NewHandler creates a new common media handler.
@@ -136,6 +143,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 	// Source-level endpoints
 	r.GET("/search", h.Search)
+	r.GET("/semantic-search", h.SemanticSearch)
 	r.GET("/:source/clips", h.ListClips)
 	r.POST("/:source/reconcile", h.Reconcile)
 	r.POST("/:source/cleanup", h.Cleanup)

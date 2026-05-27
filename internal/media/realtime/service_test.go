@@ -39,6 +39,14 @@ func (m *mockEmbedder) EmbedText(ctx context.Context, text string) ([]float64, e
 	return m.embedding, m.err
 }
 
+func (m *mockEmbedder) EmbedVisual(ctx context.Context, text string) ([]float64, error) {
+	return m.embedding, m.err
+}
+
+func (m *mockEmbedder) EmbedAudio(ctx context.Context, text string) ([]float64, error) {
+	return m.embedding, m.err
+}
+
 type mockJobService struct {
 	enqueued bool
 	query    string
@@ -259,8 +267,8 @@ func TestMatch_CacheSpeedsUpRepeatedQuery(t *testing.T) {
 	// Second call with same query — should use cache, not call embedder
 	embedder2 := &mockEmbedder{embedding: nil, err: fmt.Errorf("should not be called")}
 	svc2 := newTestService(t, store, embedder2, jobSvc, 0.85)
-	// Manually populate cache
-	svc2.embeddingCache["same query"] = makeFloat32(384)
+	// Manually populate cache (key format: mode + ":" + query)
+	svc2.embeddingCache["text:same query"] = makeFloat32(384)
 
 	resp2, err := svc2.Match(context.Background(), &MatchRequest{Query: "same query", MinScore: 0.85})
 	require.NoError(t, err)

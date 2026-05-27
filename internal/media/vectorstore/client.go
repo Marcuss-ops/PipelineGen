@@ -28,8 +28,10 @@ type Config struct {
 	Collection       string
 	TextVectorName   string
 	VisualVectorName string
+	AudioVectorName  string
 	TextDimensions   int
 	VisualDimensions int
+	AudioDimensions  int
 	MinInstantScore  float64
 	TimeoutMs        int
 }
@@ -97,18 +99,26 @@ func (c *QdrantClient) EnsureCollection(ctx context.Context) error {
 	}
 
 	// Create collection with named vectors
-	createReq := map[string]interface{}{
-		"name": c.collection,
-		"vectors": map[string]interface{}{
-			c.cfg.TextVectorName: map[string]interface{}{
-				"size":     c.cfg.TextDimensions,
-				"distance": "Cosine",
-			},
-			c.cfg.VisualVectorName: map[string]interface{}{
-				"size":     c.cfg.VisualDimensions,
-				"distance": "Cosine",
-			},
+	vectorsConfig := map[string]interface{}{
+		c.cfg.TextVectorName: map[string]interface{}{
+			"size":     c.cfg.TextDimensions,
+			"distance": "Cosine",
 		},
+		c.cfg.VisualVectorName: map[string]interface{}{
+			"size":     c.cfg.VisualDimensions,
+			"distance": "Cosine",
+		},
+	}
+	if c.cfg.AudioVectorName != "" {
+		vectorsConfig[c.cfg.AudioVectorName] = map[string]interface{}{
+			"size":     c.cfg.AudioDimensions,
+			"distance": "Cosine",
+		}
+	}
+
+	createReq := map[string]interface{}{
+		"name":    c.collection,
+		"vectors": vectorsConfig,
 	}
 
 	_, err = c.qdrantRequest(ctx, "PUT", fmt.Sprintf("/collections/%s", c.collection), createReq)
@@ -128,6 +138,9 @@ func (c *QdrantClient) UpsertAsset(ctx context.Context, asset VectorAsset) error
 	}
 	if len(asset.VisualEmbedding) > 0 {
 		vectors[c.cfg.VisualVectorName] = asset.VisualEmbedding
+	}
+	if len(asset.AudioEmbedding) > 0 && c.cfg.AudioVectorName != "" {
+		vectors[c.cfg.AudioVectorName] = asset.AudioEmbedding
 	}
 
 	if len(vectors) == 0 {

@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -43,26 +42,4 @@ func simpleSlug(s string) string {
 		}
 	}
 	return strings.Trim(b.String(), "_")
-}
-
-// ParseFloatQuery helper: parse float query parameter
-func ParseFloatQuery(c *gin.Context, key string, defaultVal float64) float64 {
-	if val := c.Query(key); val != "" {
-		var result float64
-		if _, err := fmt.Sscanf(val, "%f", &result); err == nil {
-			return result
-		}
-	}
-	return defaultVal
-}
-
-// ParseIntQuery helper: parse int query parameter
-func ParseIntQuery(c *gin.Context, key string, defaultVal int) int {
-	if val := c.Query(key); val != "" {
-		var result int
-		if _, err := fmt.Sscanf(val, "%d", &result); err == nil {
-			return result
-		}
-	}
-	return defaultVal
 }

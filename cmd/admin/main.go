@@ -36,14 +36,14 @@ func main() {
 		"sync-all-drive":                runSyncAllDrive,
 		"test-youtube":                  runTestYouTube,
 		"verify-artlist-pipeline":       runVerifyArtlistPipeline,
-		"unify-catalogs":               runUnifyCatalogs,
-		"reset-stock-drive":            runResetStockDrive,
-		"reset-stock-subfolders":       runResetStockSubfolders,
+		// "unify-catalogs":               runUnifyCatalogs,
+		// "reset-stock-drive":            runResetStockDrive,
+		// "reset-stock-subfolders":       runResetStockSubfolders,
 		"list-drive-folder":            runListDriveFolder,
 		"reset-video-ai":               runResetVideoAI,
-		"list-styles":                  runListStyles,
-		"generate-avatar":              runGenerateAvatar,
-		"generate-ai-video":            runGenerateAIVideo,
+		// "list-styles":                  runListStyles,
+		// "generate-avatar":              runGenerateAvatar,
+		// "generate-ai-video":            runGenerateAIVideo,
 		}
 	fn, ok := commands[cmdName]
 	if !ok {

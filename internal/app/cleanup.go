@@ -60,7 +60,7 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 			}
 		}
 
-		if dbs.media != nil {
+		if dbs.media != nil && dbs.media != dbs.main {
 			if err := dbs.media.Backup(); err != nil {
 				log.Warn("Failed to create media backup on shutdown", zap.Error(err))
 			}
@@ -68,7 +68,7 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 				log.Error("Failed to close media database", zap.Error(err))
 			}
 		}
-		if dbs.jobs != nil {
+		if dbs.jobs != nil && dbs.jobs != dbs.main && dbs.jobs != dbs.media {
 			if err := dbs.jobs.Backup(); err != nil {
 				log.Warn("Failed to create jobs backup on shutdown", zap.Error(err))
 			}

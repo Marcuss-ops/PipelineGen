@@ -33,11 +33,11 @@ def run_diagnostics():
     print(f"{BOLD}{GREEN}    PIPELINEGEN INTEGRATION DIAGNOSTICS SUITE       {RESET}")
     print(f"{BOLD}{GREEN}==================================================={RESET}")
 
-    db_path = Path("data/media/media.db.sqlite")
+    db_path = Path("data/velox/velox.db.sqlite")
     server_url = "http://127.0.0.1:8001"
 
     # --- 1. VERIFICA DATABASE ---
-    print_section("1. STATO DEL DATABASE UNIFICATO (media.db.sqlite)")
+    print_section("1. STATO DEL DATABASE UNIFICATO (velox.db.sqlite)")
     if not db_path.exists():
         print_result("FAIL", f"Database non trovato in: {db_path.absolute()}")
         sys.exit(1)

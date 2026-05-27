@@ -2,43 +2,12 @@ package jobs
 
 import "encoding/json"
 
-type ArtlistRunPayload struct {
-	WorkspaceID string `json:"workspace_id"`
-	ProjectID   string `json:"project_id"`
-	Term        string `json:"term"`
-	Limit       int    `json:"limit"`
-	Strategy    string `json:"strategy"`
-	DryRun      bool   `json:"dry_run"`
-}
-
 type ScriptGeneratePayload struct {
 	WorkspaceID string `json:"workspace_id"`
 	ProjectID   string `json:"project_id"`
 	Topic       string `json:"topic"`
 	Style       string `json:"style"`
 	Language    string `json:"language"`
-}
-
-type ScriptPublishPayload struct {
-	WorkspaceID string `json:"workspace_id"`
-	ProjectID   string `json:"project_id"`
-	ScriptID    string `json:"script_id"`
-	Target      string `json:"target"`
-}
-
-type VoiceoverGeneratePayload struct {
-	WorkspaceID string `json:"workspace_id"`
-	ProjectID   string `json:"project_id"`
-	ScriptID    string `json:"script_id"`
-	Voice       string `json:"voice"`
-}
-
-type MediaMatchPayload struct {
-	WorkspaceID   string   `json:"workspace_id"`
-	ProjectID     string   `json:"project_id"`
-	ScriptID      string   `json:"script_id"`
-	MaxPerSegment int      `json:"max_per_segment"`
-	Sources       []string `json:"sources"`
 }
 
 type StockRunPayload struct {
@@ -58,13 +27,6 @@ func (p *StockRunPayload) ToMap() map[string]any {
 	var m map[string]any
 	_ = json.Unmarshal(data, &m)
 	return m
-}
-
-type MediaImportPayload struct {
-	WorkspaceID string `json:"workspace_id"`
-	ProjectID   string `json:"project_id"`
-	Source      string `json:"source"`
-	DryRun      bool   `json:"dry_run"`
 }
 
 // MediaGeneratePayload is the payload for generating a missing media asset.

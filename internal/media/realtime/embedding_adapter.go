@@ -27,13 +27,27 @@ func NewPythonEmbeddingAdapter(serverURL string) *PythonEmbeddingAdapter {
 
 // EmbedText calls the Python embedding server's /embed endpoint with the given text.
 func (a *PythonEmbeddingAdapter) EmbedText(ctx context.Context, text string) ([]float64, error) {
+	return a.callEmbedder(ctx, "/embed", text)
+}
+
+// EmbedVisual calls the Python embedding server's /embed_visual endpoint.
+func (a *PythonEmbeddingAdapter) EmbedVisual(ctx context.Context, text string) ([]float64, error) {
+	return a.callEmbedder(ctx, "/embed_visual", text)
+}
+
+// EmbedAudio calls the Python embedding server's /embed_audio endpoint.
+func (a *PythonEmbeddingAdapter) EmbedAudio(ctx context.Context, text string) ([]float64, error) {
+	return a.callEmbedder(ctx, "/embed_audio", text)
+}
+
+func (a *PythonEmbeddingAdapter) callEmbedder(ctx context.Context, endpoint, text string) ([]float64, error) {
 	body := map[string]string{"text": text}
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", a.serverURL+"/embed", bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, "POST", a.serverURL+endpoint, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

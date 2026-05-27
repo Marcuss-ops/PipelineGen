@@ -1,13 +1,5 @@
 package sources
 
-import (
-	"strings"
-
-	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/pkg/apiutil"
-	driveutil "velox/go-master/internal/storage/drive"
-)
-
 // DeleteDriveFileRequest represents a request to delete/trash a clip by Drive file ID or link.
 type DeleteDriveFileRequest struct {
 	Source    string `json:"source,omitempty"`
@@ -31,48 +23,4 @@ type DeleteDriveFileResult struct {
 	DriveDeleted bool   `json:"drive_deleted,omitempty"`
 	DBDeleted    bool   `json:"db_deleted,omitempty"`
 	Error        string `json:"error,omitempty"`
-}
-
-// TrashByDriveFile trashes a clip by Drive file ID or link.
-func (h *Handler) TrashByDriveFile(c *gin.Context) {
-	source := c.Param("source")
-
-	var req DeleteDriveFileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request body")
-		return
-	}
-
-	fileID := strings.TrimSpace(req.FileID)
-	if fileID == "" && req.DriveLink != "" {
-		fileID = driveutil.FileIDFromLink(req.DriveLink)
-	}
-
-	if err := h.deletionSvc.DeleteByDriveFile(c.Request.Context(), fileID, source, false); err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-	apiutil.OK(c, gin.H{"ok": true, "action": "trashed", "file_id": fileID})
-}
-
-// DeleteByDriveFile permanently deletes a clip by Drive file ID or link.
-func (h *Handler) DeleteByDriveFile(c *gin.Context) {
-	source := c.Param("source")
-
-	var req DeleteDriveFileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request body")
-		return
-	}
-
-	fileID := strings.TrimSpace(req.FileID)
-	if fileID == "" && req.DriveLink != "" {
-		fileID = driveutil.FileIDFromLink(req.DriveLink)
-	}
-
-	if err := h.deletionSvc.DeleteByDriveFile(c.Request.Context(), fileID, source, true); err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-	apiutil.OK(c, gin.H{"ok": true, "action": "deleted", "file_id": fileID})
 }

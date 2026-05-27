@@ -40,7 +40,7 @@ func (a *ClipIndexerAdapter) UpsertFromClip(ctx context.Context, clipID string) 
 		return fmt.Errorf("read clip %s: %w", clipID, err)
 	}
 
-	if len(asset.TextEmbedding) == 0 && len(asset.VisualEmbedding) == 0 {
+	if len(asset.TextEmbedding) == 0 && len(asset.VisualEmbedding) == 0 && len(asset.AudioEmbedding) == 0 {
 		a.log.Debug("clip has no embeddings to index in vector store",
 			zap.String("clip_id", clipID))
 		return nil
@@ -55,6 +55,7 @@ func (a *ClipIndexerAdapter) readClipFromDB(ctx context.Context, clipID string) 
 		SELECT id, name, source, tags,
 			COALESCE(embedding_json, '[]') as embedding_json,
 			COALESCE(json_extract(metadata_json, '$.visual_embedding_json'), '') as visual_embedding_json,
+			COALESCE(json_extract(metadata_json, '$.audio_embedding_json'), '') as audio_embedding_json,
 			COALESCE(json_extract(metadata_json, '$.drive_link'), '') as drive_link,
 			COALESCE(json_extract(metadata_json, '$.local_path'), '') as local_path,
 			COALESCE(json_extract(metadata_json, '$.category'), '') as category,
@@ -65,13 +66,13 @@ func (a *ClipIndexerAdapter) readClipFromDB(ctx context.Context, clipID string) 
 	`
 
 	var id, name, source string
-	var tagsStr, embeddingJSON, visualEmbeddingJSON string
+	var tagsStr, embeddingJSON, visualEmbeddingJSON, audioEmbeddingJSON string
 	var driveLink, localPath, category, style, mediaType string
 	var durationMs int
 
 	err := a.db.QueryRowContext(ctx, query, clipID).Scan(
 		&id, &name, &source, &tagsStr,
-		&embeddingJSON, &visualEmbeddingJSON,
+		&embeddingJSON, &visualEmbeddingJSON, &audioEmbeddingJSON,
 		&driveLink, &localPath, &category, &style, &mediaType, &durationMs,
 	)
 	if err != nil {
@@ -106,6 +107,14 @@ func (a *ClipIndexerAdapter) readClipFromDB(ctx context.Context, clipID string) 
 		var visualEmb []float64
 		if err := json.Unmarshal([]byte(visualEmbeddingJSON), &visualEmb); err == nil && len(visualEmb) > 0 {
 			asset.VisualEmbedding = float64To32(visualEmb)
+		}
+	}
+
+	// Parse audio embedding
+	if audioEmbeddingJSON != "" {
+		var audioEmb []float64
+		if err := json.Unmarshal([]byte(audioEmbeddingJSON), &audioEmb); err == nil && len(audioEmb) > 0 {
+			asset.AudioEmbedding = float64To32(audioEmb)
 		}
 	}
 

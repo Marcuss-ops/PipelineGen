@@ -21,7 +21,7 @@ func (d *databases) Close() {
 	if d.main != nil {
 		d.main.Close()
 	}
-	if d.media != nil {
+	if d.media != nil && d.media != d.main {
 		d.media.Close()
 	}
 }
@@ -32,9 +32,14 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		return nil, fmt.Errorf("failed to initialize main database: %w", err)
 	}
 
-	mediaDB, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBMedia, log)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize media database: %w", err)
+	var mediaDB *storage.SQLiteDB
+	if storage.DBMedia == storage.DBVelox {
+		mediaDB = mainDB
+	} else {
+		mediaDB, err = storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBMedia, log)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize media database: %w", err)
+		}
 	}
 
 	return &databases{

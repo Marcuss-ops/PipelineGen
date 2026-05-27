@@ -8,34 +8,13 @@ import (
 	"time"
 )
 
-// MediaKind represents the type of media (video, image, etc.)
-type MediaKind string
-
-const (
-	KindVideo MediaKind = "video"
-	KindImage MediaKind = "image"
-	KindOther MediaKind = "other"
-)
-
 // MediaFile represents a scanned media file
 type MediaFile struct {
 	Name    string    `json:"name"`
 	Path    string    `json:"path"`
 	URL     string    `json:"url,omitempty"`
-	Kind    MediaKind `json:"kind"`
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"mod_time"`
-}
-
-var allowedExtensions = map[string]MediaKind{
-	".mp4":  KindVideo,
-	".mov":  KindVideo,
-	".mkv":  KindVideo,
-	".webm": KindVideo,
-	".jpg":  KindImage,
-	".jpeg": KindImage,
-	".png":  KindImage,
-	".webp": KindImage,
 }
 
 // ScanDirectory scans a directory for media files
@@ -48,12 +27,6 @@ func ScanDirectory(root string, urlPrefix string) ([]MediaFile, error) {
 	var files []MediaFile
 	err = filepath.WalkDir(absRoot, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil || d == nil || d.IsDir() {
-			return nil
-		}
-
-		ext := strings.ToLower(filepath.Ext(d.Name()))
-		kind, ok := allowedExtensions[ext]
-		if !ok {
 			return nil
 		}
 
@@ -76,7 +49,6 @@ func ScanDirectory(root string, urlPrefix string) ([]MediaFile, error) {
 			Name:    d.Name(),
 			Path:    path,
 			URL:     url,
-			Kind:    kind,
 			Size:    info.Size(),
 			ModTime: info.ModTime().UTC(),
 		})
@@ -93,20 +65,4 @@ func ScanDirectory(root string, urlPrefix string) ([]MediaFile, error) {
 	})
 
 	return files, nil
-}
-
-// IsMediaFile checks if a file extension is supported
-func IsMediaFile(filename string) bool {
-	ext := strings.ToLower(filepath.Ext(filename))
-	_, ok := allowedExtensions[ext]
-	return ok
-}
-
-// GetMediaKind returns the kind of media based on extension
-func GetMediaKind(filename string) MediaKind {
-	ext := strings.ToLower(filepath.Ext(filename))
-	if kind, ok := allowedExtensions[ext]; ok {
-		return kind
-	}
-	return KindOther
 }

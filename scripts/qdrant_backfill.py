@@ -53,7 +53,7 @@ def qdrant_request(url, method="GET", body=None, timeout=10):
         return None
 
 
-def ensure_collection(qdrant_url, collection, text_dim, visual_dim, text_vector, visual_vector):
+def ensure_collection(qdrant_url, collection, text_dim, visual_dim, audio_dim, text_vector, visual_vector, audio_vector):
     """Create the Qdrant collection with named vectors if it doesn't exist."""
     # Check if exists
     url = f"{qdrant_url}/collections/{collection}"
@@ -68,6 +68,7 @@ def ensure_collection(qdrant_url, collection, text_dim, visual_dim, text_vector,
         "vectors": {
             text_vector: {"size": text_dim, "distance": "Cosine"},
             visual_vector: {"size": visual_dim, "distance": "Cosine"},
+            audio_vector: {"size": audio_dim, "distance": "Cosine"},
         },
     }
     result = qdrant_request(url, method="PUT", body=body, timeout=30)
@@ -100,6 +101,7 @@ def fetch_assets(db_path, limit=None, offset=0):
         SELECT id, name, source, tags,
                COALESCE(embedding_json, '[]') as embedding_json,
                json_extract(metadata_json, '$.visual_embedding_json') as visual_embedding_json,
+               json_extract(metadata_json, '$.audio_embedding_json') as audio_embedding_json,
                json_extract(metadata_json, '$.drive_link') as drive_link,
                json_extract(metadata_json, '$.local_path') as local_path,
                json_extract(metadata_json, '$.category') as category,
@@ -110,6 +112,7 @@ def fetch_assets(db_path, limit=None, offset=0):
         FROM media_assets
         WHERE (embedding_json IS NOT NULL AND embedding_json != '[]')
            OR json_extract(metadata_json, '$.visual_embedding_json') IS NOT NULL
+           OR json_extract(metadata_json, '$.audio_embedding_json') IS NOT NULL
     """
     params = []
 
@@ -131,7 +134,7 @@ def fetch_assets(db_path, limit=None, offset=0):
     return rows
 
 
-def build_payload(row, text_vector, visual_vector):
+def build_payload(row, text_vector, visual_vector, audio_vector):
     """Build a Qdrant point with named vectors and payload."""
     asset_id = row["id"]
     name = row["name"] or ""
@@ -157,12 +160,25 @@ def build_payload(row, text_vector, visual_vector):
     except (json.JSONDecodeError, TypeError):
         visual_emb = []
 
+    # Parse audio embedding
+    audio_emb = []
+    try:
+        aej = row["audio_embedding_json"]
+        if aej:
+            audio_emb = json.loads(aej)
+            if not isinstance(audio_emb, list) or len(audio_emb) == 0:
+                audio_emb = []
+    except (json.JSONDecodeError, TypeError):
+        audio_emb = []
+
     # Build named vectors
     vectors = {}
     if text_emb:
         vectors[text_vector] = text_emb
     if visual_emb:
         vectors[visual_vector] = visual_emb
+    if audio_emb:
+        vectors[audio_vector] = audio_emb
 
     if not vectors:
         return None  # No embeddings to index
@@ -243,8 +259,10 @@ def main():
     parser.add_argument("--collection", default="pipelinegen_assets", help="Qdrant collection name")
     parser.add_argument("--text-dim", type=int, default=384)
     parser.add_argument("--visual-dim", type=int, default=512)
+    parser.add_argument("--audio-dim", type=int, default=512)
     parser.add_argument("--text-vector", default="text")
     parser.add_argument("--visual-vector", default="visual")
+    parser.add_argument("--audio-vector", default="audio")
     parser.add_argument("--limit", type=int, default=0, help="Max assets to process (0 = all)")
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--dry-run", action="store_true", help="Print without writing")
@@ -258,8 +276,8 @@ def main():
     print(f"Connecting to Qdrant at {args.qdrant}...")
     if not ensure_collection(
         args.qdrant, args.collection,
-        args.text_dim, args.visual_dim,
-        args.text_vector, args.visual_vector,
+        args.text_dim, args.visual_dim, args.audio_dim,
+        args.text_vector, args.visual_vector, args.audio_vector,
     ):
         sys.exit(1)
 
@@ -278,7 +296,7 @@ def main():
     batch = []
 
     for i, row in enumerate(rows):
-        point = build_payload(row, args.text_vector, args.visual_vector)
+        point = build_payload(row, args.text_vector, args.visual_vector, args.audio_vector)
         if point is None:
             skipped += 1
             if args.verbose:
