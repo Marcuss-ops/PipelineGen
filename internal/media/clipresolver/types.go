@@ -104,7 +104,9 @@ type RejectedClip struct {
 // ScoreBreakdown provides explainable scoring
 type ScoreBreakdown struct {
 	TextScore        float64 `json:"text_score,omitempty"`
-	VectorScore      float64 `json:"vector_score,omitempty"`
+	VisualScore      float64 `json:"visual_score,omitempty"`
+	AudioScore       float64 `json:"audio_score,omitempty"`
+	VectorScore      float64 `json:"vector_score,omitempty"` // Legacy/Aggregate
 	TopicBoost       float64 `json:"topic_boost,omitempty"`
 	CategoryBoost    float64 `json:"category_boost,omitempty"`
 	UsableForBoost   float64 `json:"usable_for_boost,omitempty"`

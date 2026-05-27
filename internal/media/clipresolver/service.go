@@ -159,19 +159,56 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 			// Step 1: Qdrant ANN search (primary, if configured)
 			var candidates []clipcatalog.ClipCandidate
 			if s.vectorStore != nil {
-				if emb, ok := queryEmbeddings[term]; ok && len(emb) > 0 {
+				emb, ok := queryEmbeddings[term]
+				if ok && len(emb) > 0 {
 					emb32 := float64To32(emb)
-					results, err := s.vectorStore.Search(ctx, SearchRequest{
-						QueryVector: emb32,
-						VectorName:  "text",
-						Limit:       limit * 2,
-						MinScore:    s.matchingConfig.Matching.MinScore,
-						Source:      source,
-					})
-					if err == nil && len(results) > 0 {
-						// Map Qdrant results to candidates
-						for _, r := range results {
-							candidates = append(candidates, qdrantResultToCandidate(r))
+					
+					// Parallel search across text, visual, and audio vectors
+					vectorSpaces := []string{"text", "visual", "audio"}
+					for _, vSpace := range vectorSpaces {
+						results, err := s.vectorStore.Search(ctx, SearchRequest{
+							QueryVector: emb32,
+							VectorName:  vSpace,
+							Limit:       limit * 2,
+							MinScore:    s.matchingConfig.Matching.MinScore,
+							Source:      source,
+						})
+						if err == nil && len(results) > 0 {
+							for _, r := range results {
+								cand := qdrantResultToCandidate(r)
+								// Assign vector-specific score to candidate temporarily
+								// We'll fuse them in scoreClipWeighted
+								candidates = append(candidates, cand)
+								
+								globalID := fmt.Sprintf("%s:%s", source, cand.ID)
+								if clipScores[globalID] == nil {
+									clipScores[globalID] = &ClipScore{
+										Clip:         s.candidateToClip(cand),
+										Score:        0,
+										Breakdown:    &ScoreBreakdown{},
+										MatchedTerms: make([]string, 0),
+									}
+									clipScores[globalID].Clip.MediaType = source
+								}
+								
+								// Accumulate vector scores into breakdown
+								entry := clipScores[globalID]
+								vScore := r.Score * wq.Weight
+								switch vSpace {
+								case "text":
+									if vScore > entry.Breakdown.TextScore {
+										entry.Breakdown.TextScore = vScore
+									}
+								case "visual":
+									if vScore > entry.Breakdown.VisualScore {
+										entry.Breakdown.VisualScore = vScore
+									}
+								case "audio":
+									if vScore > entry.Breakdown.AudioScore {
+										entry.Breakdown.AudioScore = vScore
+									}
+								}
+							}
 						}
 					}
 				}
@@ -340,11 +377,23 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 	// 1. Text score (weighted by query importance)
 	textWeight := s.matchingConfig.Matching.TextScoreWeight
 	if textWeight == 0 {
-		textWeight = 0.45
+		textWeight = 0.35
 	}
-	textScore := s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45) * queryWeight
-	bd.TextScore = textScore
-	entry.Score += textScore
+	
+	// Fusion Scorer: Combine text, visual and audio vector scores
+	// We use the breakdown fields populated during the parallel search
+	vFusionScore := (bd.TextScore * 0.40) + (bd.VisualScore * 0.40) + (bd.AudioScore * 0.20)
+	
+	// Fallback to traditional text score calculation if no vector scores are present
+	finalTextScore := 0.0
+	if vFusionScore > 0 {
+		finalTextScore = vFusionScore * textWeight
+	} else {
+		finalTextScore = s.calculateTextScore(c, matchedQuery) * (textWeight / 0.45) * queryWeight
+	}
+	
+	bd.TextScore = finalTextScore
+	entry.Score += finalTextScore
 
 	// Update matched query and terms
 	if entry.MatchedQuery == "" {

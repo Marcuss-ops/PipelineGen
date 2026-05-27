@@ -161,29 +161,42 @@ def process_clip(db_path, clip_id, clip_name="", clip_path=""):
         )
         print(f"Updated clip {clip_id}: search_text='{search_text[:50]}...'")
 
-        # Visual Indexing
+        # Visual Indexing - Multi-frame extraction (25%, 50%, 75%)
         if local_path and Path(local_path).exists():
             try:
-                frame_path = Path(local_path).parent / f"{clip_id}_thumb.png"
-                # Extract frame at 1s
-                subprocess.run([
-                    "ffmpeg", "-y", "-ss", "1", "-i", local_path, 
-                    "-frames:v", "1", "-q:v", "2", str(frame_path)
-                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Get video duration using ffprobe
+                probe_cmd = [
+                    "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1", local_path
+                ]
+                duration = float(subprocess.check_output(probe_cmd).decode().strip())
                 
-                # Call embedding server for visual indexing
-                resp = requests.post("http://127.0.0.1:8001/index_visual", json={
-                    "db_path": str(Path(db_path).absolute()),
-                    "clip_id": clip_id,
-                    "frame_path": str(frame_path.absolute())
-                })
-                if resp.status_code == 200:
-                    data = resp.json()
-                    print(f"Visual indexing success: phash={data.get('phash')}")
+                # Frames to extract at 25%, 50%, 75%
+                timestamps = [duration * 0.25, duration * 0.50, duration * 0.75]
+                
+                for i, ts in enumerate(timestamps):
+                    frame_path = Path(local_path).parent / f"{clip_id}_thumb_{i}.png"
+                    subprocess.run([
+                        "ffmpeg", "-y", "-ss", str(ts), "-i", local_path, 
+                        "-frames:v", "1", "-q:v", "2", str(frame_path)
+                    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    # Call embedding server for visual indexing
+                    resp = requests.post("http://127.0.0.1:8001/index_visual", json={
+                        "db_path": str(Path(db_path).absolute()),
+                        "clip_id": clip_id,
+                        "frame_path": str(frame_path.absolute())
+                    })
+                    
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        print(f"Visual indexing success (frame {i}): phash={data.get('phash')}")
+                    else:
+                        print(f"Visual indexing failed (frame {i}): {resp.text}")
+                    
                     # Cleanup frame
-                    frame_path.unlink()
-                else:
-                    print(f"Visual indexing failed: {resp.text}")
+                    if frame_path.exists():
+                        frame_path.unlink()
             except Exception as e:
                 print(f"Visual indexing error: {e}")
 
