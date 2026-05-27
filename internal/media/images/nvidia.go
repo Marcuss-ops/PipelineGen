@@ -102,7 +102,36 @@ func (s *Service) GenerateAImage(ctx context.Context, prompt, style, model strin
 // The slug is used as SubjectID in the DB and as the filesystem directory for the image.
 // All other parameters match GenerateAImage.
 func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*models.ImageAsset, error) {
-	var invokeURL string
+	// ... (omitted) ...
+
+	// Validate or clamp dimensions for flux-1-dev
+	if model == "flux-1-dev" || model == "" {
+		// Supported: 768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280 or 1344
+		if width > 1344 {
+			width = 1344
+		} else if width < 768 {
+			width = 768
+		} else {
+			// Find closest valid
+			width = (width / 64) * 64
+		}
+
+		if height > 1344 {
+			height = 1344
+		} else if height < 768 {
+			height = 768
+		} else {
+			height = (height / 64) * 64
+		}
+
+		// Ensure specifically supported wide format for YouTube-like aspect ratio
+		if width == 1344 && height == 1088 {
+			// fine
+		} else if width == 1344 && height > 768 {
+			height = 768 // 1344x768 is ~1.75:1 (close to 16:9)
+		}
+	}
+
 	var payload map[string]interface{}
 	var useCloudAuth bool
 	var sourceLabel string
@@ -231,7 +260,7 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, 
 	filename := fmt.Sprintf("%s_%d.png", sourceLabel, time.Now().Unix())
 	description := fmt.Sprintf("AI generated image via %s for prompt: %s", resolvedModel, prompt)
 
-	return s.IngestImage(ctx, slug, style, strings.NewReader(string(imageData)), filename, sourceLabel, description, tags, skipDrive)
+	return s.IngestImage(ctx, slug, style, "", strings.NewReader(string(imageData)), filename, sourceLabel, description, tags, skipDrive)
 }
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {

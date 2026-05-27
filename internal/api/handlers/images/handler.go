@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/pkg/apiutil"
@@ -154,7 +153,16 @@ func (h *Handler) Generate(c *gin.Context) {
 		return
 	}
 
-	skipDrive := req.Style != ""
+	// Default to 1920x1080 for YouTube format if not specified
+	if req.Width == 0 {
+		req.Width = 1920
+	}
+	if req.Height == 0 {
+		req.Height = 1080
+	}
+
+	// Always upload to Drive via the common pipeline
+	skipDrive := false
 	asset, err := h.service.GenerateSmartImage(
 		c.Request.Context(),
 		req.Prompt,       // subject
@@ -172,21 +180,6 @@ func (h *Handler) Generate(c *gin.Context) {
 		return
 	}
 
-	// Se è specificato uno stile, carica in subfolder style su Drive
-	var driveLink, driveFileID string
-	if req.Style != "" {
-		link, fileID, err := h.service.UploadToStyleDrive(c.Request.Context(), asset, req.Style)
-		if err != nil {
-			h.service.Log().Warn("style-based Drive upload failed (non fatale)",
-				zap.String("style", req.Style),
-				zap.Error(err),
-			)
-		} else {
-			driveLink = link
-			driveFileID = fileID
-		}
-	}
-
 	apiutil.OK(c, gin.H{
 		"prompt": req.Prompt,
 		"model":  req.Model,
@@ -198,8 +191,8 @@ func (h *Handler) Generate(c *gin.Context) {
 			"url_full":      "/assets/" + asset.PathRel,
 			"desc":          asset.Description,
 			"tags":          asset.Tags,
-			"drive_link":    driveLink,
-			"drive_file_id": driveFileID,
+			"drive_link":    fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID),
+			"drive_file_id": asset.DriveFileID,
 		},
 	})
 }
@@ -212,25 +205,11 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 		return
 	}
 
-	skipDrive := req.Style != ""
+	skipDrive := false
 	asset, err := h.service.GenerateAImage(c.Request.Context(), req.Prompt, req.Style, req.Model, req.Width, req.Height, req.Tags, skipDrive)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
-	}
-
-	var driveLink, driveFileID string
-	if req.Style != "" {
-		link, fileID, err := h.service.UploadToStyleDrive(c.Request.Context(), asset, req.Style)
-		if err != nil {
-			h.service.Log().Warn("style-based Drive upload failed (non fatale)",
-				zap.String("style", req.Style),
-				zap.Error(err),
-			)
-		} else {
-			driveLink = link
-			driveFileID = fileID
-		}
 	}
 
 	apiutil.OK(c, gin.H{
@@ -244,8 +223,8 @@ func (h *Handler) GenerateNvidia(c *gin.Context) {
 			"url_full":      "/assets/" + asset.PathRel,
 			"desc":          asset.Description,
 			"tags":          asset.Tags,
-			"drive_link":    driveLink,
-			"drive_file_id": driveFileID,
+			"drive_link":    fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID),
+			"drive_file_id": asset.DriveFileID,
 		},
 	})
 }

@@ -21,23 +21,25 @@ import (
 //
 // All services should use Store instead of managing paths/Drive/DB directly.
 type Store struct {
-	resolver       *Resolver
-	driveUp        *driveup.Uploader
-	driveRoot      string // default/legacy root
-	imageDriveRoot string // per-type root for MediaTypeImage
-	videoDriveRoot string // per-type root for MediaTypeImageVideo
-	log            *zap.Logger
+	resolver         *Resolver
+	driveUp          *driveup.Uploader
+	driveRoot        string // default/legacy root
+	imageDriveRoot   string // per-type root for MediaTypeImage
+	videoDriveRoot   string // per-type root for MediaTypeImageVideo
+	soundDriveRoot   string // per-type root for MediaTypeSoundEffect
+	log              *zap.Logger
 }
 
 // NewStore creates a unified media store.
 // driveRoot is the default root; imageDriveRoot and videoDriveRoot override for their media types.
-func NewStore(resolver *Resolver, driveUp *driveup.Uploader, driveRoot, imageDriveRoot, videoDriveRoot string, log *zap.Logger) *Store {
+func NewStore(resolver *Resolver, driveUp *driveup.Uploader, driveRoot, imageDriveRoot, videoDriveRoot, soundDriveRoot string, log *zap.Logger) *Store {
 	return &Store{
 		resolver:       resolver,
 		driveUp:        driveUp,
 		driveRoot:      driveRoot,
 		imageDriveRoot: imageDriveRoot,
 		videoDriveRoot: videoDriveRoot,
+		soundDriveRoot: soundDriveRoot,
 		log:            log,
 	}
 }
@@ -53,6 +55,10 @@ func (s *Store) rootForMediaType(mediaType string) string {
 	case MediaTypeImage:
 		if s.imageDriveRoot != "" {
 			return s.imageDriveRoot
+		}
+	case MediaTypeSoundEffect:
+		if s.soundDriveRoot != "" {
+			return s.soundDriveRoot
 		}
 	}
 	return s.driveRoot

@@ -25,7 +25,10 @@ def save_media_asset(
     sub_style: str = "", 
     prompt: str = "", 
     project_id: str = "",
-    metadata: dict = None
+    metadata: dict = None,
+    drive_file_id: str = "",
+    drive_link: str = "",
+    drive_folder_id: str = ""
 ):
     """Saves media asset metadata to the SQLite database."""
     if not DB_PATH.exists():
@@ -61,8 +64,9 @@ def save_media_asset(
         cursor.execute("""
             INSERT INTO media_assets (
                 id, source, name, tags, tags_norm, local_path, relative_path,
-                media_type, metadata_json, created_at, status, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                media_type, metadata_json, created_at, status, updated_at,
+                drive_file_id, drive_link, drive_folder_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
                 tags=excluded.tags,
@@ -72,11 +76,15 @@ def save_media_asset(
                 media_type=excluded.media_type,
                 metadata_json=excluded.metadata_json,
                 status=excluded.status,
-                updated_at=excluded.updated_at
+                updated_at=excluded.updated_at,
+                drive_file_id=excluded.drive_file_id,
+                drive_link=excluded.drive_link,
+                drive_folder_id=excluded.drive_folder_id
         """, (
             asset_id, source, name, tags_json, tags_norm,
             str(file_path), relative_path,
-            media_type, metadata_json, now, "ready", now
+            media_type, metadata_json, now, "ready", now,
+            drive_file_id, drive_link, drive_folder_id
         ))
         conn.commit()
         conn.close()

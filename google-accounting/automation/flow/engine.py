@@ -6,7 +6,6 @@ L'unica differenza è la suddivisione in moduli + log estesi.
 """
 import asyncio
 import logging
-import sys
 import time
 from pathlib import Path
 
@@ -14,13 +13,17 @@ from ..base import DOWNLOAD_DIR, BaseAutomation
 
 from .capture import ImageCapturer
 from .config import (
-    GENERATE_BUTTON_SELECTORS,
+    AGENT_ACTIVE_INDICATOR_XPATHS,
+    AGENT_CLOSE_BUTTON_SELECTOR,
+    AGENT_INSTRUCTIONS_BUTTON_TEXT,
+    AGENT_STRUMENTI_BUTTON_TEXT,
+    AGENT_TOGGLE_XPATHS,
+    APPROVE_BUTTON_SELECTORS,
+    DONT_ASK_AGAIN_SELECTOR,
     IMAGE_COUNT_FOUR_SELECTOR,
     IMAGE_COUNT_TOGGLE_SELECTOR,
     IMAGE_WAIT_TIMEOUT,
-    MAX_IMAGES,
     NEW_PROJECT_BUTTON_TEXTS,
-    POST_CLICK_WAIT,
     POST_ENTER_WAIT,
     POST_GOTO_WAIT,
     PROMPT_SELECTORS,
@@ -37,18 +40,16 @@ class ImageFXFlowAutomation(BaseAutomation):
     
     FLOW:
     1. Naviga a labs.google/fx/it/tools/flow
-    2. Attende caricamento (15s sleep — stabile, testato)
+    2. Attende caricamento (dashboard o editor)
     3. Trova textbox prompt (div[role="textbox"])
-    4. Digita prompt con delay umano
-    5. Preme Enter → invia all'Agente (che genera le immagini)
-    6. Imposta conteggio immagini a x4
-    7. Clicca pulsante "Crea" (appare dopo generazione Agente)
-    8. Cattura immagini via network + DOM polling
-    9. Salva su disco + DB
+    4. Imposta conteggio immagini a x4
+    5. Digita prompt con delay umano
+    6. Preme Enter → invia all'Agente (che genera le immagini)
+    7. Cattura immagini via network + DOM polling
+    8. Salva su disco + DB
     """
 
     PROMPT_SELECTORS = PROMPT_SELECTORS
-    GENERATE_BUTTON_SELECTORS = GENERATE_BUTTON_SELECTORS
 
     async def generate_images(self, prompt: str, project_id: str = None, style: str = None) -> list[Path]:
         import_storage()
@@ -124,6 +125,12 @@ class ImageFXFlowAutomation(BaseAutomation):
         
         log.info(f"✅ Pagina caricata: {page.url}")
 
+        # ── Disabilita Agente se attivo (NUOVO) ────────────────────────────────
+        await self._disable_agent_if_active(page)
+
+        # ── Imposta conteggio immagini x4 (NUOVO) ─────────────────────────────
+        await self._set_image_count_to_four(page)
+
         # ── Trova textbox prompt ───────────────────────────────────────────────
         try:
             prompt_locator, prompt_selector = await self._find_prompt_textbox(page, debug_dir)
@@ -131,69 +138,31 @@ class ImageFXFlowAutomation(BaseAutomation):
                 raise RuntimeError(f"Prompt field not found after {POST_GOTO_WAIT}s wait")
 
             # ── Digita prompt ──────────────────────────────────────────────────
-            log.info(f"⌨️ Digito prompt nel textbox (selector: {prompt_selector})...")
-            await prompt_locator.click()
+            log.info(f"⌨️ KEYBOARD: CLICK su textbox {prompt_selector}")
+            await prompt_locator.click(force=True)
             await asyncio.sleep(1)
+            log.info("⌨️ KEYBOARD: PRESS Control+A")
             await page.keyboard.press("Control+A")
+            log.info("⌨️ KEYBOARD: PRESS Backspace")
             await page.keyboard.press("Backspace")
+            log.info(f"⌨️ KEYBOARD: TYPE '{full_prompt}'")
             await page.keyboard.type(full_prompt, delay=TYPE_DELAY_MS)
             await asyncio.sleep(1)
             log.info(f"✅ Prompt digitato: '{full_prompt}'")
 
             # ── Invio ad Agente ────────────────────────────────────────────────
-            log.info("⏎ Invio prompt all'Agente (Enter)...")
-            # Attiva network capture PRIMA di inviare — le immagini arrivano subito dopo l'Enter!
+            log.info("⌨️ KEYBOARD: PRESS Enter")
             capturer.can_capture = True
             log.info("✅ Network capture attivato PRIMA dell'Enter")
             await page.keyboard.press("Enter")
             await asyncio.sleep(POST_ENTER_WAIT)
             log.info(f"✅ Enter premuto, attesa di {POST_ENTER_WAIT}s conclusa")
 
-            # ── Imposta conteggio immagini a x4 ────────────────────────────────
-            await self._set_image_count_to_4(page)
+            # ── Gestione Approvazione Agente (NUOVO) ───────────────────────────
+            await self._handle_agent_approval(page, debug_dir)
 
             await asyncio.sleep(1)
 
-            # ── Clicca "Approva" per avviare la generazione ───────────────────
-            # Dopo l'Enter, l'Agente mostra: "Vuoi che avvii questa generazione
-            # di immagini (1), che costa 0 crediti?" con [Rifiuta] [Approva]
-            log.info("🔍 Cerco pulsante 'Approva' per avviare generazione...")
-            approve_clicked = False
-            # Solo "Approva"/"Approve" — NON "Genera" che matcha testi sbagliati
-            for lbl in ["Approva", "Approve"]:
-                loc = page.locator(f'button:has-text("{lbl}")').first
-                count = await loc.count()
-                if count > 0:
-                    txt = (await loc.inner_text())[:80]
-                    visible = await loc.is_visible()
-                    log.info(f"  Trovato '{lbl}': count={count} visible={visible} text='{txt.strip()}'")
-                    box = await loc.bounding_box()
-                    if box:
-                        log.info(f"  box=({box['x']:.0f},{box['y']:.0f}) {box['width']:.0f}x{box['height']:.0f}")
-                    await loc.click(force=True)
-                    log.info(f"✅ Clickato '{lbl}'")
-                    approve_clicked = True
-                    await asyncio.sleep(2)
-                    break
-            if not approve_clicked:
-                log.warning("⚠️ Pulsante Approva non trovato. Cerco altri bottoni azione...")
-                # Try scanning ALL buttons on the page
-                all_btns = page.locator('button')
-                btn_count = await all_btns.count()
-                for i in range(btn_count):
-                    try:
-                        btn = all_btns.nth(i)
-                        txt = (await btn.inner_text())[:80]
-                        if txt.strip():
-                            box = await btn.bounding_box()
-                            if box and box['width'] > 20:
-                                log.info(f"  Btn[{i}]: '{txt.strip()}' at ({box['x']:.0f},{box['y']:.0f}) {box['width']:.0f}x{box['height']:.0f}")
-                    except:
-                        pass
-            
-            # ❌ NON cliccare "Crea" — apre l'asset browser come OVERLAY
-            # Le immagini vengono catturate via network listener + DOM polling.
-            
             # Screenshot verifica
             debug_path = debug_dir / f"GEN_START_{int(time.time())}.png"
             await page.screenshot(path=str(debug_path))
@@ -201,9 +170,10 @@ class ImageFXFlowAutomation(BaseAutomation):
 
             # ── Attesa e cattura immagini ──────────────────────────────────────
             log.info(f"⏳ In attesa delle immagini ({IMAGE_WAIT_TIMEOUT}s)...")
-            
-            # 1. Polling DOM immagini
             await capturer.poll_dom_for_images()
+
+            # ── Attesa caricamenti Drive/DB ─────────────────────────────────────
+            await capturer.wait_for_uploads()
 
             results = capturer.get_results()
             log.info(f"📊 Risultato: {len(results)} immagini catturate")
@@ -227,6 +197,207 @@ class ImageFXFlowAutomation(BaseAutomation):
         finally:
             await page.close()
             log.info("🔒 Pagina chiusa")
+
+    async def _disable_agent_if_active(self, page):
+        """Disabilita l'agente se attivo, come da istruzioni utente."""
+        log.info("⏳ Attesa iniziale di 12s prima di controllare l'Agente...")
+        await asyncio.sleep(12)
+        
+        debug_dir = DOWNLOAD_DIR / "debug"
+        await page.screenshot(path=str(debug_dir / f"AGENT_CHECK_START_{int(time.time())}.png"))
+        
+        # Debug: lista tutti i bottoni e controlla XPaths
+        await self._debug_list_elements(page)
+        for i, xpath in enumerate(AGENT_ACTIVE_INDICATOR_XPATHS):
+            await self._debug_xpath(page, xpath, f"INDICATOR_{i}")
+        for i, xpath in enumerate(AGENT_TOGGLE_XPATHS):
+            await self._debug_xpath(page, xpath, f"TOGGLE_{i}")
+        
+        log.info("🕵️ Controllo se l'Agente è attivo...")
+        try:
+            # 1. Cerca indicatore tramite XPaths forniti
+            indicator = None
+            for xpath in AGENT_ACTIVE_INDICATOR_XPATHS:
+                loc = page.locator(xpath).first
+                if await loc.count() > 0:
+                    log.info(f"✅ Trovato indicatore Agente via XPath: {xpath}")
+                    indicator = loc
+                    break
+            
+            # 2. Fallback se gli XPath falliscono: cerca per testo "Istruzioni agente"
+            if indicator is None:
+                log.info(f"🔍 Provo fallback per testo: '{AGENT_INSTRUCTIONS_BUTTON_TEXT}'")
+                loc = page.locator(f'button:has-text("{AGENT_INSTRUCTIONS_BUTTON_TEXT}")').first
+                if await loc.count() > 0:
+                    indicator = loc
+                    log.info("✅ Trovato indicatore Agente via testo 'Istruzioni agente'")
+
+            if indicator is not None:
+                log.info(f"⚠️ Agente rilevato come ATTIVO.")
+                
+                # 3. Premi l'indicatore dell'agente per aprire il pannello
+                log.info(f"🖱️ CLICK: indicatore agente...")
+                await indicator.click()
+                await asyncio.sleep(3)
+                await page.screenshot(path=str(debug_dir / f"AGENT_PANEL_OPENED_{int(time.time())}.png"))
+                
+                # Debug post-click: lista bottoni nel pannello
+                log.info("🔍 [DEBUG] Bottoni dopo apertura pannello agente:")
+                await self._debug_list_elements(page)
+
+                # 4. Premi il tasto toggle dell'agente (prova vari XPaths)
+                found_toggle = False
+                for xpath in AGENT_TOGGLE_XPATHS:
+                    toggle = page.locator(xpath).first
+                    if await toggle.count() > 0:
+                        log.info(f"🖱️ CLICK: tasto toggle agente ({xpath}) per disattivarlo...")
+                        await toggle.click()
+                        await asyncio.sleep(2)
+                        await page.screenshot(path=str(debug_dir / f"AGENT_TOGGLE_CLICKED_{int(time.time())}.png"))
+                        found_toggle = True
+                        break
+                
+                if not found_toggle:
+                    log.warning(f"⚠️ Nessun tasto toggle agnete trovato tra i selettori forniti nel pannello.")
+                    # Prova fallback nel pannello: cerca bottoni con 'Agente' o 'Agent'
+                    log.info("🔍 Cerco toggle nel pannello tramite testo...")
+                    toggles = await page.locator('button:has-text("Agente"), button:has-text("Agent")').all()
+                    for t in toggles:
+                        if await t.is_visible():
+                            log.info(f"🖱️ CLICK (fallback testo): toggle '{await t.inner_text()}'")
+                            await t.click()
+                            await asyncio.sleep(2)
+                            found_toggle = True
+                            break
+                
+                # 5. Chiudi il pannello per liberare il textbox prompt
+                log.info("🖱️ Tentativo di CHIUSURA pannello agente...")
+                close_btn = page.locator(AGENT_CLOSE_BUTTON_SELECTOR).first
+                if await close_btn.count() > 0:
+                    await close_btn.click()
+                    await asyncio.sleep(1)
+                    log.info("✅ Pannello agente chiuso.")
+                else:
+                    log.info("ℹ️ Tasto chiusura non trovato, provo tasto Escape.")
+                    await page.keyboard.press("Escape")
+                    await asyncio.sleep(1)
+
+                log.info("✅ Procedura disattivazione Agente conclusa.")
+            else:
+                log.info("✅ Agente non attivo (indicatore non trovato).")
+        except Exception as e:
+            log.warning(f"⚠️ Errore durante il controllo/disattivazione Agente: {e}")
+            await page.screenshot(path=str(debug_dir / f"AGENT_ERROR_{int(time.time())}.png"))
+
+    async def _debug_xpath(self, page, xpath, label):
+        """Debug per verificare la presenza di un XPath e loggare l'HTML."""
+        try:
+            # Rimuove prefisso xpath= se presente
+            xp = xpath.replace("xpath=", "")
+            found = await page.evaluate(f"""
+                (xpath) => {{
+                    const el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                    return el ? el.outerHTML : null;
+                }}
+            """, xp)
+            if found:
+                log.info(f"  [DEBUG] XPath {label} TROVATO: {found[:200]}...")
+                return True
+            else:
+                log.info(f"  [DEBUG] XPath {label} NON TROVATO")
+                return False
+        except Exception as e:
+            log.debug(f"  [DEBUG] Errore verifica XPath {label}: {e}")
+            return False
+
+    async def _debug_list_elements(self, page):
+        """Lista tutti i bottoni e altri elementi interattivi per debug."""
+        log.info("🔍 [DEBUG] Elenco bottoni visibili nella pagina:")
+        try:
+            buttons = await page.locator('button, div[role="button"]').all()
+            for i, btn in enumerate(buttons):
+                if await btn.is_visible():
+                    text = (await btn.inner_text()).strip().replace("\n", " ")
+                    role = await btn.get_attribute("role") or "button"
+                    log.info(f"  [{i}] ROLE={role} TEXT='{text[:50]}'")
+        except Exception as e:
+            log.warning(f"  [DEBUG] Errore durante listing elementi: {e}")
+
+    async def _set_image_count_to_four(self, page):
+        """Imposta il conteggio immagini a x4."""
+        log.info("🔍 Controllo impostazione conteggio immagini (x4)...")
+        try:
+            # Prova a cercare il toggle direttamente
+            toggle = page.locator(IMAGE_COUNT_TOGGLE_SELECTOR).first
+            
+            # Se non trovato, prova ad aprire "Impostazioni" prima
+            if await toggle.count() == 0:
+                log.info("ℹ️ Toggle x1/x2/x3 non trovato, provo ad aprire 'Impostazioni'...")
+                settings_btn = page.locator('button:has-text("Impostazioni"), button:has-text("Settings"), button:has-text("tune")').first
+                if await settings_btn.count() > 0:
+                    log.info("🖱️ CLICK: Impostazioni")
+                    await settings_btn.click()
+                    await asyncio.sleep(2)
+                    toggle = page.locator(IMAGE_COUNT_TOGGLE_SELECTOR).first
+
+            if await toggle.count() > 0:
+                log.info(f"🖱️ CLICK: toggle conteggio immagini ({IMAGE_COUNT_TOGGLE_SELECTOR})...")
+                await toggle.click()
+                await asyncio.sleep(1)
+                
+                # 3. Clicca su x4 nel menu a comparsa
+                four_btn = page.locator(IMAGE_COUNT_FOUR_SELECTOR).first
+                if await four_btn.count() > 0:
+                    log.info(f"🖱️ CLICK: selezione 'x4' ({IMAGE_COUNT_FOUR_SELECTOR})...")
+                    await four_btn.click()
+                    await asyncio.sleep(1)
+                    log.info("✅ Conteggio immagini impostato a x4")
+                    
+                    # Chiudi il menu premendo Escape
+                    await page.keyboard.press("Escape")
+                    await asyncio.sleep(0.5)
+                else:
+                    log.warning("⚠️ Opzione 'x4' non trovata nel menu")
+            else:
+                log.info("ℹ️ Toggle conteggio immagini non trovato.")
+        except Exception as e:
+            log.warning(f"⚠️ Errore durante impostazione x4: {e}")
+
+    async def _handle_agent_approval(self, page, debug_dir):
+        """Gestisce il pannello dell'agente che chiede conferma per la generazione."""
+        log.info("🕵️ Controllo eventuale richiesta di approvazione Agente...")
+        
+        # 1. Cerca il checkbox "non chiedermelo più"
+        try:
+            checkbox = page.locator(DONT_ASK_AGAIN_SELECTOR).first
+            if await checkbox.count() > 0 and await checkbox.is_visible():
+                log.info("🔘 Trovato checkbox 'Non chiedermelo più', clicco...")
+                await checkbox.click()
+                await asyncio.sleep(0.5)
+        except Exception as e:
+            log.debug(f"Checkbox 'non chiedermelo' non trovato o non cliccabile: {e}")
+
+        # 2. Cerca il pulsante "Approva" / "Genera"
+        found_approve = False
+        for selector in APPROVE_BUTTON_SELECTORS:
+            try:
+                btn = page.locator(selector).first
+                if await btn.count() > 0 and await btn.is_visible():
+                    log.info(f"✅ Trovato pulsante approvazione con selettore '{selector}', clicco...")
+                    await btn.click()
+                    found_approve = True
+                    # Screenshot dopo il clic
+                    await page.screenshot(path=str(debug_dir / f"APPROVE_CLICKED_{int(time.time())}.png"))
+                    break
+            except Exception as e:
+                log.debug(f"Errore durante ricerca/clic pulsante '{selector}': {e}")
+                continue
+        
+        if not found_approve:
+            log.info("ℹ️ Nessun pulsante di approvazione rilevato (potrebbe non essere apparso).")
+        else:
+            log.info("🚀 Approvazione inviata, attesa avvio generazione...")
+            await asyncio.sleep(2)
 
     async def _find_prompt_textbox(self, page, debug_dir):
         """Trova il textbox del prompt tra i selettori disponibili con log dettagliato."""
@@ -254,88 +425,6 @@ class ImageFXFlowAutomation(BaseAutomation):
         except:
             pass
         return None, None
-
-    async def _set_image_count_to_4(self, page):
-        """Imposta il numero di immagini a 4 (massimo) con retry e log dettagliato."""
-        log.info("🔢 Impostazione conteggio immagini a x4...")
-        
-        for attempt in range(3):
-            try:
-                toggle = page.locator(IMAGE_COUNT_TOGGLE_SELECTOR).first
-                toggle_count = await toggle.count()
-                log.info(f"  Tentativo {attempt+1}: toggle count={toggle_count}")
-                
-                if toggle_count == 0:
-                    log.info("  Toggle conteggio non trovato, probabilmente già a 4")
-                    break
-                    
-                current_text = await toggle.inner_text()
-                log.info(f"  Testo attuale: '{current_text.strip()}'")
-                
-                if "x4" in current_text:
-                    log.info("  ✅ Già impostato a x4")
-                    break
-
-                log.info(f"  Apro menu conteggio...")
-                await toggle.click()
-                await asyncio.sleep(2)
-
-                four_btn = page.locator(IMAGE_COUNT_FOUR_SELECTOR).first
-                four_count = await four_btn.count()
-                log.info(f"  Pulsante x4: count={four_count}")
-                
-                if four_count > 0:
-                    await four_btn.click(force=True)
-                    await asyncio.sleep(2)
-                    
-                    new_text = await toggle.inner_text()
-                    log.info(f"  Dopo click: testo='{new_text.strip()}'")
-                    
-                    if "x4" in new_text:
-                        log.info("  ✅ Conteggio impostato a x4")
-                        break
-                    else:
-                        log.warning(f"  ⚠️ Click x4 non生效, riprovo...")
-                else:
-                    log.warning("  ⚠️ Pulsante x4 non trovato, Escape...")
-                    await page.keyboard.press("Escape")
-                    await asyncio.sleep(1)
-                    
-            except Exception as e:
-                log.debug(f"Errore impostazione conteggio: {e}")
-
-    async def _click_generate_button(self, page):
-        """Trova e clicca il pulsante Genera/Crea con log dettagliato."""
-        log.info("🔍 Ricerca pulsante Genera/Crea...")
-        
-        found = False
-        for selector in self.GENERATE_BUTTON_SELECTORS:
-            try:
-                loc = page.locator(selector).first
-                count = await loc.count()
-                log.info(f"  Selector '{selector}': count={count}")
-                
-                if count > 0:
-                    tag = await loc.evaluate("el => el.tagName")
-                    text = (await loc.inner_text())[:60] if await loc.inner_text() else ""
-                    visible = await loc.is_visible()
-                    box = await loc.bounding_box()
-                    log.info(f"  ✅ TROVATO: tag={tag} visible={visible} text='{text.strip()}'")
-                    if box:
-                        log.info(f"     box=({box['x']:.0f},{box['y']:.0f}) {box['width']:.0f}x{box['height']:.0f}")
-                    
-                    await loc.click(force=True)
-                    log.info(f"  ✅ Clickato con force=True: {selector}")
-                    found = True
-                    await asyncio.sleep(POST_CLICK_WAIT)
-                    break
-            except Exception as e:
-                log.warning(f"  ⚠️ Selector '{selector}' error: {e}")
-                continue
-
-        if not found:
-            log.warning("⚠️ Nessun pulsante Genera/Crea trovato. Confido nell'Enter già premuto.")
-
 
 def parse_style(style: str | None):
     """Divide style in main/sub per struttura cartelle."""

@@ -25,15 +25,6 @@ PROMPT_SELECTORS = [
     'xpath=/html/body/div[2]/div[1]/div[5]/div/div/div/div/div[1]/div/p',  # Hardcoded fallback
 ]
 
-# ── Selettori pulsante Genera/Crea ─────────────────────────────────────────────
-# Questi pulsanti appaiono DOPO che l'Agente ha generato le immagini
-GENERATE_BUTTON_SELECTORS = [
-    'xpath=/html/body/div[2]/div[1]/div[5]/div/div/div/div/div[2]/div[2]/button[2]',
-    'button:has-text("Crea")',
-    'button:has-text("Generate")',
-    'button[aria-label*="genera" i]',
-]
-
 # ── Selettori conteggio immagini ───────────────────────────────────────────────
 IMAGE_COUNT_TOGGLE_SELECTOR = (
     'button[id^="radix-"]:has-text("x1"), '
@@ -52,10 +43,37 @@ IMAGE_COUNT_FOUR_SELECTOR = (
 # ── Selettori dashboard ────────────────────────────────────────────────────────
 NEW_PROJECT_BUTTON_TEXTS = ["Nuovo progetto", "New project", "Nuovo", "New"]
 
+# ── Selettori Agente / Approvazione ───────────────────────────────────────────
+# Aggiornati con le ultime indicazioni dell'utente (proviamo varianti)
+AGENT_TOGGLE_XPATHS = [
+    "xpath=/html/body/div[2]/div[1]/div[5]/div/div/div/div/div[2]/div[1]/div/button[2]",
+    "xpath=/html/body/div[2]/div[1]/div[5]/div/div/div/div/div[2]/div[1]/div/button[1]",
+    "xpath=/html/body/div[1]/div[1]/div[5]/div/div/div/div/div[2]/div[1]/div/button[2]",
+    "xpath=/html/body/div[1]/div[1]/div[5]/div/div/div/div/div[2]/div[1]/div/button[1]",
+]
+AGENT_ACTIVE_INDICATOR_XPATHS = [
+    "xpath=/html/body/div[2]/div[1]/div[4]/div[1]/div[2]/div/div/div[2]/div[1]/div[1]/div[2]/button[2]",
+    "xpath=/html/body/div[1]/div[1]/div[4]/div[1]/div[2]/div/div/div[2]/div[1]/div[1]/div[2]/button[2]",
+    "xpath=/html/body/div[1]/div[1]/div[4]/div[2]/div[2]/div[1]/div[1]/div[2]/div[1]/div[1]/div[2]/button[2]",
+]
+AGENT_INSTRUCTIONS_BUTTON_TEXT = "Istruzioni agente"
+AGENT_STRUMENTI_BUTTON_TEXT = "Strumenti"
+AGENT_CLOSE_BUTTON_SELECTOR = 'button:has-text("Chiudi"), button:has-text("Close"), button[aria-label="Chiudi"], button[aria-label="Close"]'
+
+APPROVE_BUTTON_SELECTORS = [
+    'button:has-text("Approva")',
+    'button:has-text("Approve")',
+    'button:has-text("Genera")',
+    'button:has-text("Generate")',
+    'div[role="button"]:has-text("Approva")',
+    'div[role="button"]:has-text("Approve")',
+]
+
+DONT_ASK_AGAIN_SELECTOR = 'label:has-text("Approva e non chiedermelo più"), span:has-text("Approva e non chiedermelo più")'
+
 # ── Limiti temporali ───────────────────────────────────────────────────────────
 IMAGE_WAIT_TIMEOUT = 60           # secondi massimi attesa immagini
 POST_GOTO_WAIT = 15               # attesa dopo navigazione (versione stabile)
-POST_CLICK_WAIT = 3               # attesa dopo click Crea
 POST_ENTER_WAIT = 3               # attesa dopo invio prompt
 TYPE_DELAY_MS = 80                # delay tra caratteri durante digitazione
 DOM_POLL_INTERVAL = 5             # secondi tra polling DOM

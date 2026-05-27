@@ -35,7 +35,7 @@ func TestSyncProjectCallsDownloadEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop(), nil)
+	}, zap.NewNop(), nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -80,7 +80,7 @@ func TestListProjectsCallsListEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop(), nil)
+	}, zap.NewNop(), nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -104,7 +104,7 @@ func TestListProjectsCallsListEndpoint(t *testing.T) {
 }
 
 func TestGenerateVideo_NoService_ReturnsError(t *testing.T) {
-	h := NewHandler(&config.Config{}, zap.NewNop(), nil)
+	h := NewHandler(&config.Config{}, zap.NewNop(), nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -138,7 +138,7 @@ func TestJobStatusCallsStatusEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop(), nil)
+	}, zap.NewNop(), nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -181,7 +181,7 @@ func TestGenerateFlowImagesCallsGenerateEndpoint(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{ServerURL: srv.URL},
-	}, zap.NewNop(), nil)
+	}, zap.NewNop(), nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -229,7 +229,7 @@ func TestListMediaBuildsUrls(t *testing.T) {
 
 	h := NewHandler(&config.Config{
 		GoogleAccounting: config.GoogleAccountingConfig{DownloadDir: tmpDir},
-	}, zap.NewNop(), nil)
+	}, zap.NewNop(), nil, nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

@@ -4,21 +4,23 @@ import "fmt"
 
 // Source constants for asset origin.
 const (
-	SourceYouTube   = "youtube"
-	SourceArtlist   = "artlist"
-	SourceStock     = "stock"
-	SourceImage     = "image"
-	SourceVoiceover = "voiceover"
-	SourceExport    = "export"
+	SourceYouTube        = "youtube"
+	SourceArtlist        = "artlist"
+	SourceStock          = "stock"
+	SourceImage          = "image"
+	SourceVoiceover      = "voiceover"
+	SourceExport         = "export"
+	SourceSoundEffect    = "sound_effect"
 )
 
 // MediaType constants.
 const (
-	MediaTypeClip        = "clip"
-	MediaTypeImage       = "image"
-	MediaTypeImageVideo  = "image_video"
-	MediaTypeVoiceover   = "voiceover"
-	MediaTypeExportVideo = "export_video"
+	MediaTypeClip          = "clip"
+	MediaTypeImage         = "image"
+	MediaTypeImageVideo    = "image_video"
+	MediaTypeVoiceover     = "voiceover"
+	MediaTypeExportVideo   = "export_video"
+	MediaTypeSoundEffect   = "sound_effect"
 )
 
 // AssetDestinationRequest specifies WHAT to store.

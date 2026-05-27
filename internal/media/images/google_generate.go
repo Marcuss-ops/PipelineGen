@@ -96,17 +96,27 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
 
+	// For YouTube format (16:9), add it to the prompt as a hint for Google Flow
+	// since direct UI selection is unstable.
+	flowPrompt := styledPrompt
+	if !strings.Contains(strings.ToLower(flowPrompt), "16:9") {
+		flowPrompt += ", 16:9 aspect ratio, wide format"
+	}
+
 	reqBody := googleaccounting.FlowImageRequest{
-		Prompt:    styledPrompt,
+		Prompt:    flowPrompt,
 		ProjectID: s.flowProjectID,
 		Style:     style,
 		Headless:  true,
+		Account:   "favamassimo", // Default to favamassimo
 	}
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("marshal google flow request failed: %w", err)
 	}
+
+	s.log.Info("triggering google flow generation", zap.String("prompt", flowPrompt), zap.String("account", reqBody.Account))
 
 	startURL := strings.TrimRight(s.googleAccountingURL, "/") + "/generate-flow-images"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, startURL, bytes.NewReader(body))
@@ -117,12 +127,14 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		s.log.Error("google flow POST failed", zap.Error(err))
 		return nil, fmt.Errorf("google flow start request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
+		s.log.Error("google flow start failed", zap.Int("code", resp.StatusCode), zap.String("body", string(respBody)))
 		return nil, fmt.Errorf("google flow start failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
@@ -134,8 +146,11 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 		return nil, fmt.Errorf("google flow start response missing job_id")
 	}
 
+	s.log.Info("google flow job started", zap.String("job_id", startResp.JobID))
+
 	job, err := s.waitForGoogleJob(ctx, startResp.JobID)
 	if err != nil {
+		s.log.Error("google flow job failed or timed out", zap.String("job_id", startResp.JobID), zap.Error(err))
 		return nil, err
 	}
 
@@ -186,16 +201,19 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 
 		if existing, err := s.repo.GetImageByHash(ctx, hash); err == nil && existing != nil {
 			s.log.Info("google flow image already exists in DB, skipping from this run", zap.String("hash", hash))
+			assets = append(assets, existing)
 			continue
 		}
 
-		asset, ingestErr := s.IngestImage(ctx, slug, style, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, skipDrive)
+		// Extract GenerationID from the parent folder (e.g. "gen_20260527_...")
+		genID := filepath.Base(filepath.Dir(resolved))
+
+		asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, skipDrive)
 		if ingestErr != nil {
 			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
 			continue
 		}
 		assets = append(assets, asset)
-		break // Only ingest and upload a single image
 	}
 
 	if len(assets) == 0 {

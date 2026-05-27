@@ -3,33 +3,34 @@ package google_accounting
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 	"velox/go-master/internal/config"
+	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/images"
+	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/googleaccounting"
 	"velox/go-master/internal/pkg/mediascan"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
-// VideoGenJob tracks the async state of a video generation pipeline.
-type VideoGenJob struct {
-	JobID    string    `json:"job_id"`
-	Status   string    `json:"status"` // pending, running, done, failed
-	Prompt   string    `json:"prompt"`
-	Style    string    `json:"style,omitempty"`
-	FilePath string    `json:"file_path,omitempty"`
-	Error    string    `json:"error,omitempty"`
-	Created  time.Time `json:"created_at"`
-	Updated  time.Time `json:"updated_at"`
+// VideoGenJobResponse is the JSON response returned by the status endpoint.
+type VideoGenJobResponse struct {
+	JobID    string `json:"job_id"`
+	Status   string `json:"status"`
+	Prompt   string `json:"prompt"`
+	Style    string `json:"style,omitempty"`
+	FilePath string `json:"file_path,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Created  string `json:"created_at"`
+	Updated  string `json:"updated_at"`
 }
 
 // Handler handles requests to the Google Accounting service
@@ -37,31 +38,49 @@ type Handler struct {
 	cfg         *config.Config
 	log         *zap.Logger
 	imgService  *images.Service
-	videoJobs   map[string]*VideoGenJob
-	jobsMu      sync.Mutex
+	jobsService *jobservice.Service
+	veloxDB     *sql.DB
 }
 
 // NewHandler creates a new Google Accounting handler
-func NewHandler(cfg *config.Config, log *zap.Logger, imgService *images.Service) *Handler {
+func NewHandler(cfg *config.Config, log *zap.Logger, imgService *images.Service, jobsService *jobservice.Service, veloxDB *sql.DB) *Handler {
 	return &Handler{
-		cfg:        cfg,
-		log:        log.Named("google_accounting"),
-		imgService: imgService,
-		videoJobs:  make(map[string]*VideoGenJob),
+		cfg:         cfg,
+		log:         log.Named("google_accounting"),
+		imgService:  imgService,
+		jobsService: jobsService,
+		veloxDB:     veloxDB,
 	}
 }
 
-func (h *Handler) setJob(job *VideoGenJob) {
-	h.jobsMu.Lock()
-	job.Updated = time.Now()
-	h.videoJobs[job.JobID] = job
-	h.jobsMu.Unlock()
-}
+// jobToResponse maps a models.Job to the external VideoGenJobResponse.
+func jobToResponse(job *models.Job) *VideoGenJobResponse {
+	resp := &VideoGenJobResponse{
+		JobID:   job.ID,
+		Status:  string(job.Status),
+		Created: job.CreatedAt.Format(time.RFC3339),
+		Updated: job.UpdatedAt.Format(time.RFC3339),
+	}
 
-func (h *Handler) getJob(jobID string) *VideoGenJob {
-	h.jobsMu.Lock()
-	defer h.jobsMu.Unlock()
-	return h.videoJobs[jobID]
+	var payload struct {
+		Prompt string `json:"prompt"`
+		Style  string `json:"style"`
+	}
+	if len(job.Payload) > 0 {
+		json.Unmarshal(job.Payload, &payload)
+	}
+	resp.Prompt = payload.Prompt
+	resp.Style = payload.Style
+
+	if job.Result != nil {
+		if fp, ok := job.Result["file_path"].(string); ok {
+			resp.FilePath = fp
+		}
+	}
+	if job.Error != "" {
+		resp.Error = job.Error
+	}
+	return resp
 }
 
 // ListProjects lists available Google Vids projects
@@ -92,7 +111,7 @@ func (h *Handler) SyncProject(c *gin.Context) {
 	h.proxyGoogleAccounting(c, http.MethodPost, "/download", payload)
 }
 
-// GenerateVideo avvia la generazione video in background e ritorna subito.
+// GenerateVideo avvia la generazione video in background, crea un job persistente su SQLite e ritorna subito.
 // Usa GET /api/google-accounting/generate-video/status/:job_id per il risultato.
 func (h *Handler) GenerateVideo(c *gin.Context) {
 	var reqBody googleaccounting.GenerateRequest
@@ -110,51 +129,48 @@ func (h *Handler) GenerateVideo(c *gin.Context) {
 		return
 	}
 
-	jobID := fmt.Sprintf("go-vid-%s", uuid.NewString()[:8])
-	now := time.Now()
-	job := &VideoGenJob{
-		JobID:   jobID,
-		Status:  "pending",
-		Prompt:  reqBody.Prompt,
-		Style:   reqBody.Style,
-		Created: now,
-		Updated: now,
+	payload := map[string]any{
+		"prompt": reqBody.Prompt,
+		"style":  reqBody.Style,
 	}
-	h.setJob(job)
+
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+		Type:    models.JobTypeVideoGenerate,
+		Payload: payload,
+	})
+	if err != nil {
+		h.log.Error("failed to create video job", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create job"})
+		return
+	}
 
 	// Background pipeline: Python → wait → Drive upload → DB registration
 	go func(ctx context.Context, svc *images.Service, prompt, style, jid string) {
-		h.jobsMu.Lock()
-		job.Status = "running"
-		job.Updated = time.Now()
-		h.jobsMu.Unlock()
+		if err := h.jobsService.SetRunning(ctx, jid); err != nil {
+			h.log.Error("failed to mark job running", zap.String("job_id", jid), zap.Error(err))
+		}
 
 		filePath, err := svc.GenerateVideoAI(ctx, prompt, style)
-		h.jobsMu.Lock()
 		if err != nil {
 			h.log.Error("background video generation failed", zap.String("job_id", jid), zap.Error(err))
-			job.Status = "failed"
-			job.Error = err.Error()
-		} else {
-			job.Status = "done"
-			job.FilePath = filePath
+			h.jobsService.Fail(ctx, jid, err)
+			return
 		}
-		job.Updated = time.Now()
-		h.jobsMu.Unlock()
 
-		if err == nil {
-			h.log.Info("background video generation completed", zap.String("job_id", jid), zap.String("file_path", filePath))
-		}
-	}(context.Background(), h.imgService, reqBody.Prompt, reqBody.Style, jobID)
+		h.jobsService.Complete(ctx, jid, map[string]any{
+			"file_path": filePath,
+		})
+		h.log.Info("background video generation completed", zap.String("job_id", jid), zap.String("file_path", filePath))
+	}(context.Background(), h.imgService, reqBody.Prompt, reqBody.Style, job.ID)
 
 	c.JSON(http.StatusAccepted, gin.H{
-		"job_id":  jobID,
+		"job_id":  job.ID,
 		"status":  "pending",
-		"message": "Video generation started. Poll /api/google-accounting/generate-video/status/" + jobID + " for result.",
+		"message": "Video generation started. Poll /api/google-accounting/generate-video/status/" + job.ID + " for result.",
 	})
 }
 
-// GenerateVideoStatus returns the status of an async video generation job.
+// GenerateVideoStatus returns the status of an async video generation job from the persistent jobs table.
 func (h *Handler) GenerateVideoStatus(c *gin.Context) {
 	jobID := c.Param("job_id")
 	if jobID == "" {
@@ -162,12 +178,78 @@ func (h *Handler) GenerateVideoStatus(c *gin.Context) {
 		return
 	}
 
-	job := h.getJob(jobID)
-	if job == nil {
+	job, err := h.jobsService.Get(c.Request.Context(), jobID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
-	c.JSON(http.StatusOK, job)
+
+	c.JSON(http.StatusOK, jobToResponse(job))
+}
+
+// ListVideos returns all generated videos from media_assets with google-vids sources.
+func (h *Handler) ListVideos(c *gin.Context) {
+	rows, err := h.veloxDB.QueryContext(c.Request.Context(),
+		`SELECT id, name, source, drive_link, drive_file_id, metadata_json, created_at
+		 FROM media_assets
+		 WHERE source IN ('google-vids', 'google-vids-avatar')
+		 ORDER BY created_at DESC`)
+	if err != nil {
+		h.log.Error("failed to query video assets", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list videos"})
+		return
+	}
+	defer rows.Close()
+
+	type VideoItem struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Source    string `json:"source"`
+		DriveLink string `json:"drive_link"`
+		Prompt    string `json:"prompt"`
+		Style     string `json:"style,omitempty"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	var videos []VideoItem
+	for rows.Next() {
+		var id, name, source, driveLink, driveFileID, metaJSON, createdAt string
+		if err := rows.Scan(&id, &name, &source, &driveLink, &driveFileID, &metaJSON, &createdAt); err != nil {
+			h.log.Warn("failed to scan video row", zap.Error(err))
+			continue
+		}
+
+		item := VideoItem{
+			ID:        id,
+			Name:      name,
+			Source:    source,
+			DriveLink: driveLink,
+			CreatedAt: createdAt,
+		}
+
+		if metaJSON != "" && metaJSON != "{}" {
+			var meta map[string]any
+			if err := json.Unmarshal([]byte(metaJSON), &meta); err == nil {
+				if p, ok := meta["prompt"].(string); ok {
+					item.Prompt = p
+				}
+				if s, ok := meta["style"].(string); ok {
+					item.Style = s
+				}
+			}
+		}
+
+		videos = append(videos, item)
+	}
+
+	if videos == nil {
+		videos = []VideoItem{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"count":  len(videos),
+		"videos": videos,
+	})
 }
 
 // GenerateFlowImages triggers Google Labs Flow image generation.
@@ -233,6 +315,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		group.POST("/download", h.SyncProject)
 		group.POST("/generate-video", h.GenerateVideo)
 		group.GET("/generate-video/status/:job_id", h.GenerateVideoStatus)
+		group.GET("/videos", h.ListVideos)
 		group.POST("/generate-flow-images", h.GenerateFlowImages)
 		group.GET("/media", h.ListMedia)
 		group.GET("/status/:job_id", h.JobStatus)

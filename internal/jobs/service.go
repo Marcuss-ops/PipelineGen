@@ -112,6 +112,10 @@ func (s *Service) Retry(ctx context.Context, id string) (*models.Job, error) {
 	return s.repo.Retry(ctx, id)
 }
 
+func (s *Service) SetRunning(ctx context.Context, id string) error {
+	return s.repo.SetStatusRunning(ctx, id)
+}
+
 func (s *Service) Progress(ctx context.Context, id string, progress int, message string) error {
 	return s.repo.SetProgress(ctx, id, progress, message)
 }

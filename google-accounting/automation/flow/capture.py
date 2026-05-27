@@ -5,10 +5,9 @@ Responsabile di:
 - Ascoltare le risposte di rete (network listener)
 - Polling del DOM per immagini googleusercontent.com
 - Salvare immagini su disco
-- Salvare metadati nel DB
-
-Basato sulla versione STABILE funzionante (commit c10c6f5).
+- Salvare metadati nel DB e Google Drive
 """
+import asyncio
 import hashlib
 import logging
 import time
@@ -54,11 +53,19 @@ class ImageCapturer:
         self.saved_content_digests: set[str] = set()
         self.pre_existing_urls: set[str] = set()
         self.can_capture = False
+        self._pending_tasks = set()
 
         # Log iniziale
         log.info(f"ImageCapturer inizializzato → {dest_dir}")
         log.info(f"  main_style={main_style}, sub_style={sub_style}")
         log.info(f"  prompt='{prompt}'")
+
+    async def wait_for_uploads(self):
+        """Attende che tutti i caricamenti pendenti su Drive/DB siano completati."""
+        if self._pending_tasks:
+            log.info(f"⏳ In attesa di {len(self._pending_tasks)} caricamenti pendenti...")
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+            log.info("✅ Tutti i caricamenti completati.")
 
     def _compute_digest(self, data: bytes) -> str:
         return hashlib.md5(data).hexdigest()
@@ -84,79 +91,67 @@ class ImageCapturer:
         Cattura immagini via risposte HTTP di rete.
         """
         async def handle_response(response):
-            response_url = response.url
-
-            # STEP 1: Pre-capture — accumula URL per deduplicazione
+            # STEP 1: Pre-capture check
             if not self.can_capture:
-                self.pre_existing_urls.add(response_url)
-                if "image" in response.headers.get("content-type", ""):
-                    log.debug(f"  [pre-capture] URL immagine: {response_url[:120]}")
+                self.pre_existing_urls.add(response.url)
                 return
 
-            # STEP 2: Deduplicazione
-            if response_url in self.pre_existing_urls:
-                log.debug(f"  [SKIP] pre-existing: {response_url[:80]}")
-                return
-            if response_url in self.captured_response_urls:
-                log.debug(f"  [SKIP] già catturato: {response_url[:80]}")
-                return
-
-            # STEP 3: Filtra per content-type
-            content_type = response.headers.get("content-type", "")
-            is_image = "image/" in content_type
-            is_redirect = MEDIA_REDIRECT_PATTERN in response_url
-            
-            # DEBUG: log EVERYTHING after can_capture
-            log.info(f"📡 RESP: status={response.status} ct={content_type} url={response_url[:180]}")
-            
-            if not (is_image or is_redirect):
-                return
-
-            log.info(f"📸 NETWORK EVENT: content_type={content_type} url={response_url[:150]}")
-
-            if is_redirect:
-                log.info(f"  → Redirect immagine (salta): {response_url[:120]}")
-                return
-
-            # STEP 4: Scarica e salva
-            try:
-                if not response.ok:
-                    log.warning(f"  → Response NOT OK: {response.status}")
-                    return
-
-                body = await response.body()
-                if not body:
-                    log.warning(f"  → Body vuoto")
-                    return
-
-                log.info(f"  → Body size: {len(body)} bytes, content_type: {content_type}")
-
-                if len(body) < MIN_DOM_IMAGE_BYTES:
-                    log.info(f"  → Body troppo piccolo (< {MIN_DOM_IMAGE_BYTES}), salto")
-                    return
-
-                digest = self._compute_digest(body)
-                if digest in self.saved_content_digests:
-                    log.info(f"  → Digest già salvato, salto")
-                    return
-
-                self.saved_content_digests.add(digest)
-                ext = ".png" if "png" in content_type else ".jpg"
-                filename = f"FLOW_{int(time.time())}_{len(self.new_saved_paths)}{ext}"
-                path = self.dest_dir / filename
-                path.write_bytes(body)
-
-                self.captured_response_urls.add(response_url)
-                self.new_saved_paths.append(path)
-                log.info(f"📸 ✅ Salvata immagine via Network: {path.name} ({len(body)} bytes)")
-
-                # Salva nel DB
-                await self._save_to_db(path, filename, "network")
-
-            except Exception as e:
-                log.debug(f"Errore handle_response: {e}")
+            # Aggiunge il task di salvataggio al set dei pendenti
+            task = asyncio.create_task(self._process_response(response))
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
 
         return handle_response
+
+    async def _process_response(self, response):
+        """Logica interna di processamento risposta separata per essere taskable."""
+        response_url = response.url
+
+        # Deduplicazione
+        if response_url in self.pre_existing_urls:
+            return
+        if response_url in self.captured_response_urls:
+            return
+
+        # Filtra per content-type
+        content_type = response.headers.get("content-type", "")
+        is_image = "image/" in content_type
+        is_redirect = MEDIA_REDIRECT_PATTERN in response_url
+        
+        if not (is_image or is_redirect):
+            return
+
+        if is_redirect:
+            return
+
+        # Scarica e salva
+        try:
+            if not response.ok:
+                return
+
+            body = await response.body()
+            if not body or len(body) < MIN_DOM_IMAGE_BYTES:
+                return
+
+            digest = self._compute_digest(body)
+            if digest in self.saved_content_digests:
+                return
+
+            self.saved_content_digests.add(digest)
+            ext = ".png" if "png" in content_type else ".jpg"
+            filename = f"FLOW_{int(time.time())}_{len(self.new_saved_paths)}{ext}"
+            path = self.dest_dir / filename
+            path.write_bytes(body)
+
+            self.captured_response_urls.add(response_url)
+            self.new_saved_paths.append(path)
+            log.info(f"📸 ✅ Salvata immagine via Network: {path.name} ({len(body)} bytes)")
+
+            # Salva nel DB e Drive
+            await self._save_to_db(path, filename, "network")
+
+        except Exception as e:
+            log.debug(f"Errore process_response: {e}")
 
     async def poll_dom_for_images(self):
         """
@@ -172,62 +167,57 @@ class ImageCapturer:
                 break
 
             imgs = await self.page.locator(f'img[src*="{IMAGE_DOM_PATTERN}"]').all()
-            found_new = 0
             
             for img in imgs:
                 src = await img.get_attribute("src")
                 if not src or src in self.captured_response_urls:
                     continue
 
-                try:
-                    log.info(f"🔍 DOM new img: {src[:120]}...")
-                    resp = await self.page.request.get(src)
-                    
-                    if not resp.ok:
-                        log.warning(f"  → GET fallito: {resp.status}")
-                        continue
-
-                    body = await resp.body()
-                    log.info(f"  → Body size: {len(body)} bytes")
-
-                    if len(body) < MIN_DOM_IMAGE_BYTES:
-                        log.info(f"  → Body troppo piccolo (< {MIN_DOM_IMAGE_BYTES}), salto")
-                        self.captured_response_urls.add(src)
-                        continue
-
-                    digest = self._compute_digest(body)
-                    if digest in self.saved_content_digests:
-                        log.info(f"  → Digest duplicato, salto")
-                        self.captured_response_urls.add(src)
-                        continue
-
-                    self.saved_content_digests.add(digest)
-                    self.captured_response_urls.add(src)
-
-                    filename = f"FLOW_DOM_{int(time.time())}_{len(self.new_saved_paths)}.jpg"
-                    path = self.dest_dir / filename
-                    path.write_bytes(body)
-                    self.new_saved_paths.append(path)
-                    found_new += 1
-                    log.info(f"📸 ✅ Salvata immagine via DOM: {path.name} ({len(body)} bytes)")
-
-                    # Salva nel DB
-                    await self._save_to_db(path, filename, "DOM")
-
-                except Exception as e:
-                    log.debug(f"Errore download DOM img: {e}")
-
-            if found_new > 0:
-                log.info(f"Trovate e salvate {found_new} nuove immagini via DOM")
-            else:
-                log.debug("Polling DOM: nessuna nuova immagine trovata")
+                # Processa come task asincrono
+                task = asyncio.create_task(self._process_dom_image(src))
+                self._pending_tasks.add(task)
+                task.add_done_callback(self._pending_tasks.discard)
 
             await asyncio.sleep(DOM_POLL_INTERVAL)
 
-        log.info(f"Polling DOM terminato. Totale immagini catturate: {len(self.new_saved_paths)}")
+        log.info(f"Polling DOM terminato. Totale immagini catturate finora: {len(self.new_saved_paths)}")
+
+    async def _process_dom_image(self, src):
+        """Scarica e salva un'immagine trovata nel DOM."""
+        try:
+            log.info(f"🔍 DOM new img: {src[:120]}...")
+            resp = await self.page.request.get(src)
+            
+            if not resp.ok:
+                return
+
+            body = await resp.body()
+            if not body or len(body) < MIN_DOM_IMAGE_BYTES:
+                self.captured_response_urls.add(src)
+                return
+
+            digest = self._compute_digest(body)
+            if digest in self.saved_content_digests:
+                self.captured_response_urls.add(src)
+                return
+
+            self.saved_content_digests.add(digest)
+            self.captured_response_urls.add(src)
+
+            filename = f"FLOW_DOM_{int(time.time())}_{len(self.new_saved_paths)}.jpg"
+            path = self.dest_dir / filename
+            path.write_bytes(body)
+            self.new_saved_paths.append(path)
+            log.info(f"📸 ✅ Salvata immagine via DOM: {path.name} ({len(body)} bytes)")
+
+            # Salva nel DB e Drive
+            await self._save_to_db(path, filename, "DOM")
+
+        except Exception as e:
+            log.debug(f"Errore download DOM img: {e}")
 
     async def _save_to_db(self, path: Path, filename: str, method: str):
-        """Salva metadati dell'immagine nel database."""
+        """Salva metadati dell'immagine nel database locale."""
         try:
             from storage import save_media_asset
             save_media_asset(
@@ -246,7 +236,3 @@ class ImageCapturer:
 
     def get_results(self) -> list[Path]:
         return self.new_saved_paths
-
-
-# Import needed by poll_dom_for_images
-import asyncio

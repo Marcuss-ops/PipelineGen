@@ -17,13 +17,14 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/pkg/googleaccounting"
+	"velox/go-master/internal/pkg/media/audio"
 )
 
 // SemanticMetadataPayload contains fields for the metadata.json uploaded alongside generated assets.
 // It acts as a semantic passport for the asset, separating it from storage/logistics data.
 type SemanticMetadataPayload struct {
 	AssetID             string   `json:"asset_id"`
-	AssetType           string   `json:"asset_type"` // "video" or "image"
+	AssetType           string   `json:"asset_type"`
 	PromptOriginal      string   `json:"prompt_original"`
 	SemanticDescription string   `json:"semantic_description"`
 	Subjects            []string `json:"subjects"`
@@ -34,6 +35,27 @@ type SemanticMetadataPayload struct {
 	EmbeddingReady      bool     `json:"embedding_ready"`
 	Generator           string   `json:"generator"`
 	CreatedAt           string   `json:"created_at"`
+}
+
+// VideoEntryMetadata is metadata for a single video inside the aggregated folder metadata.
+type VideoEntryMetadata struct {
+	AssetID     string   `json:"asset_id"`
+	Prompt      string   `json:"prompt"`
+	Style       string   `json:"style"`
+	Generator   string   `json:"generator"`
+	FileID      string   `json:"file_id"`
+	DriveLink   string   `json:"drive_link"`
+	DurationSec int      `json:"duration_sec"`
+	Subjects    []string `json:"subjects,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	CreatedAt   string   `json:"created_at"`
+}
+
+// VideoFolderMetadata is the aggregated metadata.json structure for all videos sharing the same Drive folder.
+type VideoFolderMetadata struct {
+	FolderStyle   string               `json:"folder_style"`
+	FolderSubject string               `json:"folder_subject"`
+	Videos        []VideoEntryMetadata `json:"videos"`
 }
 
 // GenerateVideoAI generates a video via Google Vids automation
@@ -234,6 +256,7 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 	// Upload to Drive solo se non abbiamo già driveFileID
 	var driveFileID, driveLink string
 	uploaded := false
+	var folderID string
 	if existingDriveFileID != "" {
 		driveFileID = existingDriveFileID
 		driveLink = existingDriveLink
@@ -246,6 +269,10 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 			Ext:       ".mp4",
 			Style:     style,
 		}
+
+		// Get the Drive folder ID before uploading (needed for metadata aggregation)
+		folderID, _ = s.mediaStore.EnsureDriveFolder(ctx, req)
+
 		fid, wl, err := s.mediaStore.UploadToDrive(ctx, req, filePath)
 		if err != nil {
 			s.log.Warn("RegisterVideoAsset: Drive upload failed (non fatale)", zap.Error(err))
@@ -255,8 +282,8 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 			uploaded = true
 			s.log.Info("RegisterVideoAsset: Drive upload successful", zap.String("file_id", fid))
 
-			// Upload metadata.json to the same Drive folder
-			s.uploadVideoMetadata(ctx, req, description, style, source, fid, wl, durationSec, id, filePath)
+			// Upload aggregated metadata.json to the same Drive folder
+			s.uploadVideoMetadata(ctx, req, description, style, source, fid, wl, durationSec, id, filePath, folderID)
 		}
 	}
 
@@ -280,6 +307,11 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		return err
 	}
 
+	// Estrai audio dal video, taglia a 3 secondi, carica su Drive e registra in DB
+	if uploaded && s.mediaStore != nil {
+		s.registerAudioClip(ctx, filePath, description, style, source, durationSec, id, subject)
+	}
+
 	// Delete local file after successful Drive upload + DB registration
 	if uploaded && filePath != "" {
 		if err := os.Remove(filePath); err != nil {
@@ -292,30 +324,51 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 	return nil
 }
 
-// uploadVideoMetadata scrive un file metadata.json nella stessa cartella Drive del video.
-func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath string) {
+// uploadVideoMetadata carica o aggrega metadata.json nella cartella Drive del video.
+// Usa un cache in-memory protetta da mutex per evitare race condition con Drive eventual consistency.
+func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) {
 	subject, tags := extractSubjectAndTags(prompt)
-	
-	styleList := []string{}
-	if style != "" {
-		styleList = append(styleList, style)
+
+	entry := VideoEntryMetadata{
+		AssetID:     req.Hash,
+		Prompt:      prompt,
+		Style:       style,
+		Generator:   generator,
+		FileID:      fileID,
+		DriveLink:   driveLink,
+		DurationSec: durationSec,
+		Subjects:    []string{subject},
+		Tags:        tags,
+		CreatedAt:   time.Now().Format(time.RFC3339),
 	}
 
-	meta := SemanticMetadataPayload{
-		AssetID:             req.Hash,
-		AssetType:           "video",
-		PromptOriginal:      prompt,
-		SemanticDescription: prompt, // Basic fallback, would be better to call LLM here
-		Subjects:            []string{subject},
-		Actions:             []string{}, // Placeholder
-		Mood:                []string{}, // Placeholder
-		Style:               styleList,
-		SearchText:          strings.Join(append([]string{subject, style}, tags...), " "),
-		EmbeddingReady:      true,
-		Generator:           generator,
-		CreatedAt:           time.Now().Format(time.RFC3339),
+	// Aggrega usando cache in-memory per evitare race condition su Drive
+	var entries []VideoEntryMetadata
+	s.metadataCacheMu.Lock()
+	if cached, ok := s.metadataCache[folderID]; ok {
+		entries = append(entries, cached...)
+	} else if s.driveSvc != nil && folderID != "" {
+		// Primo accesso: prova a caricare da Drive
+		existing, err := s.loadExistingVideoMetadata(ctx, folderID)
+		if err == nil && existing != nil {
+			entries = existing
+			s.log.Info("uploadVideoMetadata: loaded existing from Drive",
+				zap.Int("existing_entries", len(entries)),
+				zap.String("folder_id", folderID),
+			)
+		}
 	}
-	data, err := json.MarshalIndent(meta, "", "  ")
+	entries = append(entries, entry)
+	s.metadataCache[folderID] = entries
+	s.metadataCacheMu.Unlock()
+
+	collection := VideoFolderMetadata{
+		FolderStyle:   style,
+		FolderSubject: Slugify(subject),
+		Videos:        entries,
+	}
+
+	data, err := json.MarshalIndent(collection, "", "  ")
 	if err != nil {
 		s.log.Warn("uploadVideoMetadata: failed to marshal metadata", zap.Error(err))
 		return
@@ -335,7 +388,49 @@ func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDest
 		s.log.Warn("uploadVideoMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}
-	s.log.Info("uploadVideoMetadata: metadata.json uploaded", zap.String("prompt", prompt), zap.String("style", style))
+	s.log.Info("uploadVideoMetadata: metadata.json uploaded",
+		zap.Int("total_videos", len(entries)),
+		zap.String("style", style),
+		zap.String("folder_id", folderID),
+	)
+
+	// Persisti la cache su disco per sopravvivere a restart
+	s.saveMetadataCache()
+}
+
+// loadExistingVideoMetadata cerca metadata.json nella folderID Drive e lo restituisce come slice di entry.
+// Restituisce nil senza errore se il file non esiste.
+func (s *Service) loadExistingVideoMetadata(ctx context.Context, folderID string) ([]VideoEntryMetadata, error) {
+	q := fmt.Sprintf("'%s' in parents and name='metadata.json' and trashed=false", folderID)
+	list, err := s.driveSvc.Files.List().Q(q).PageSize(1).Fields("files(id)").Do()
+	if err != nil {
+		return nil, fmt.Errorf("search metadata.json in folder %s: %w", folderID, err)
+	}
+	if len(list.Files) == 0 {
+		return nil, nil
+	}
+
+	resp, err := s.driveSvc.Files.Get(list.Files[0].Id).Download()
+	if err != nil {
+		return nil, fmt.Errorf("download metadata.json: %w", err)
+	}
+	defer resp.Body.Close()
+	body := resp.Body
+
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return nil, fmt.Errorf("read metadata.json: %w", err)
+	}
+
+	var col VideoFolderMetadata
+	if err := json.Unmarshal(raw, &col); err != nil {
+		return nil, fmt.Errorf("parse metadata.json: %w", err)
+	}
+
+	if col.Videos == nil {
+		return []VideoEntryMetadata{}, nil
+	}
+	return col.Videos, nil
 }
 
 // extractSubjectAndTags estrae subject e tags dal prompt per la ricerca semantica.
@@ -365,6 +460,64 @@ func extractSubjectAndTags(prompt string) (subject string, tags []string) {
 		tags = append(tags, t)
 	}
 	return subject, tags
+}
+
+// registerAudioClip estrae l'audio dal video, carica su Drive (suono_effetti) e registra in DB.
+func (s *Service) registerAudioClip(ctx context.Context, videoPath, description, style, source string, durationSec int, videoID, subject string) {
+	audioPath := filepath.Join(s.tempDir, videoID+"_audio.mp3")
+	if err := audio.ExtractClip(ctx, "", videoPath, audioPath, 3); err != nil {
+		s.log.Warn("registerAudioClip: audio extraction failed", zap.String("video_id", videoID), zap.Error(err))
+		return
+	}
+	defer os.Remove(audioPath)
+
+	req := storage.AssetDestinationRequest{
+		Source:    storage.SourceSoundEffect,
+		MediaType: storage.MediaTypeSoundEffect,
+		Subject:   subject,
+		Hash:      videoID + "_audio",
+		Ext:       ".mp3",
+		Style:     style,
+	}
+
+	folderID, err := s.mediaStore.EnsureDriveFolder(ctx, req)
+	if err != nil {
+		s.log.Warn("registerAudioClip: EnsureDriveFolder failed", zap.Error(err))
+		return
+	}
+
+	fileID, webLink, err := s.mediaStore.UploadToDrive(ctx, req, audioPath)
+	if err != nil {
+		s.log.Warn("registerAudioClip: Drive upload failed", zap.Error(err))
+		return
+	}
+
+	clip := &models.MediaAsset{
+		ID:          videoID + "_audio",
+		Name:        description + " (audio)",
+		Source:      source,
+		MediaType:   "sound_effect",
+		LocalPath:   audioPath,
+		DriveFileID: fileID,
+		DriveLink:   webLink,
+		FolderID:    folderID,
+		Status:      "ready",
+		Duration:    3,
+		CreatedAt:   time.Now(),
+	}
+	if style != "" {
+		clip.Group = style
+	}
+
+	if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
+		s.log.Warn("registerAudioClip: DB upsert failed", zap.Error(err))
+		return
+	}
+	s.log.Info("registerAudioClip: audio extracted, uploaded, and registered",
+		zap.String("video_id", videoID),
+		zap.String("audio_id", clip.ID),
+		zap.String("drive_link", webLink),
+	)
 }
 
 // sha256Hash calcola l'hash SHA256 di una stringa (es. percorso file).

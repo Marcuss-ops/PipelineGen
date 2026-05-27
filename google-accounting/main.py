@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import scheduler as sched
 from storage import ensure_dirs, list_downloaded_videos, list_downloaded_images
 from playwright_client import (
-    generate_video_ai_v2, 
+    generate_video_ai_v2,
     generate_flow_images
 )
 
@@ -87,6 +87,7 @@ class AvatarRequest(BaseModel):
     headless: bool = True
     account: Optional[str] = None
 
+
 class FlowImageRequest(BaseModel):
     prompt: str
     project_id: Optional[str] = None
@@ -104,77 +105,79 @@ class SyncRequest(BaseModel):
 
 async def _enqueue_download(req, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
-    _new_job(job_id, video_id=req.video_id, account=req.account, file_type=req.file_type)
+    account = req.account or "favamassimo"
+    _new_job(job_id, video_id=req.video_id, account=account, file_type=req.file_type)
 
     async def _run():
         _update_job(job_id, status="running", progress=5, current_step="listing_exported_files", last_log="Starting download sync")
         try:
-            paths = await sync_project(req.video_id, req.file_type, account=req.account, headless=req.headless)
-            _update_job(job_id, status="done", progress=100, current_step="completed", files=[str(p) for p in paths], last_log="Download completed")
+            files = await sync_project(req.video_id, file_type=req.file_type, account=account, headless=req.headless)
+            if files:
+                _update_job(job_id, status="done", progress=100, current_step="completed", files=files, last_log=f"Downloaded {len(files)} files")
+            else:
+                _update_job(job_id, status="done", progress=100, current_step="completed", files=[], last_log="No files to download or already synced")
         except Exception as e:
+            log.exception("Sync failed")
             _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
-            log.error("Download failed for %s: %s", req.video_id, e)
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "pending"}
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+@app.get("/health")
+async def health():
+    return {"status": "ok", "timestamp": time.time()}
 
-@app.post("/generate-vids-video")
-async def generate_vids_video_endpoint(req: GenerateRequest, background_tasks: BackgroundTasks):
-    """Generates and downloads a video via Google Vids."""
-    job_id = f"vids-{str(uuid.uuid4())[:8]}"
-    _new_job(job_id, video_id=req.video_id, prompt=req.prompt, account=req.account, mode="vids")
+
+@app.get("/list")
+async def list_projects_endpoint(account: Optional[str] = None):
+    return await list_projects(account=account or "favamassimo")
+
+
+@app.post("/download")
+async def download_endpoint(req: DownloadRequest, background_tasks: BackgroundTasks):
+    return await _enqueue_download(req, background_tasks)
+
+
+@app.post("/sync")
+async def sync_endpoint(req: SyncRequest, background_tasks: BackgroundTasks):
+    return await _enqueue_download(req, background_tasks)
+
+
+@app.post("/generate-video")
+async def generate_video_ai_endpoint(req: GenerateRequest, background_tasks: BackgroundTasks):
+    """Generates AI video via Google Vids."""
+    job_id = f"video-{str(uuid.uuid4())[:8]}"
+    account = req.account or "favamassimo"
+    _new_job(job_id, prompt=req.prompt, video_id=req.video_id, account=account)
 
     async def _run():
         _update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids")
         try:
-            _update_job(job_id, progress=30, current_step="generating", last_log="Submitting Vids prompt")
-            video_path = await generate_video_ai_v2(req.video_id, req.prompt, account=req.account, headless=req.headless)
-            if video_path:
-                _update_job(job_id, status="done", progress=100, current_step="completed", file_path=video_path, last_log="Vids generation completed")
-            else:
-                _update_job(job_id, status="failed", current_step="failed", error="Generation/Download failed.", last_log="Generation/Download failed.")
-        except Exception as e:
-            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
-
-    background_tasks.add_task(_run)
-    return {"job_id": job_id, "status": "pending"}
-
-@app.post("/generate-avatar-video")
-async def generate_avatar_video_endpoint(req: AvatarRequest, background_tasks: BackgroundTasks):
-    """Generates an AI Talking Head (Avatar) video."""
-    job_id = f"avatar-{str(uuid.uuid4())[:8]}"
-    _new_job(job_id, video_id=req.video_id, script=req.script, avatar_id=req.avatar_id, account=req.account, mode="avatar")
-
-    async def _run():
-        _update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids for Avatar")
-        try:
-            from playwright_client import generate_avatar_v1
-            _update_job(job_id, progress=30, current_step="generating", last_log="Starting Avatar flow")
-            video_path = await generate_avatar_v1(
-                req.video_id, 
-                req.script, 
-                avatar_id=req.avatar_id, 
-                account=req.account, 
+            _update_job(job_id, progress=35, current_step="generating", last_log="Submitting AI request")
+            video_id = await generate_video_ai_v2(
+                req.prompt, 
+                video_id=req.video_id, 
+                account=account, 
                 headless=req.headless
             )
-            if video_path:
-                _update_job(job_id, status="done", progress=100, current_step="completed", file_path=video_path, last_log="Avatar generation completed")
+            if video_id:
+                _update_job(job_id, status="done", progress=100, current_step="completed", video_id=video_id, last_log="Video generation completed")
             else:
-                _update_job(job_id, status="failed", current_step="failed", error="Avatar generation/download failed.", last_log="Avatar generation/download failed.")
+                _update_job(job_id, status="failed", current_step="failed", error="Generation failed, no video ID returned.")
         except Exception as e:
             _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "pending"}
+
 
 @app.post("/generate-flow-images")
 async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks: BackgroundTasks):
     """Generates images via Google Labs ImageFX Flow."""
     job_id = f"flow-{str(uuid.uuid4())[:8]}"
-    _new_job(job_id, prompt=req.prompt, account=req.account, project_id=req.project_id, style=req.style, mode="flow")
+    account = req.account or "favamassimo"
+    _new_job(job_id, prompt=req.prompt, account=account, project_id=req.project_id, style=req.style, mode="flow")
 
     async def _run():
         _update_job(job_id, status="running", progress=10, current_step="opening_flow", last_log="Opening Google Flow")
@@ -184,7 +187,7 @@ async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks:
                 req.prompt, 
                 project_id=req.project_id, 
                 style=req.style, 
-                account=req.account, 
+                account=account, 
                 headless=req.headless
             )
             if paths:
@@ -196,37 +199,6 @@ async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks:
 
     background_tasks.add_task(_run)
     return {"job_id": job_id, "status": "pending"}
-
-
-@app.get("/list")
-async def get_projects(account: Optional[str] = None, headless: bool = True):
-    """List all Google Vids projects."""
-    try:
-        projects = await list_projects(account=account, headless=headless)
-        return {"projects": projects, "count": len(projects)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/downloads")
-async def get_local_downloads():
-    """List files already downloaded locally."""
-    return {
-        "videos": list_downloaded_videos(),
-        "images": list_downloaded_images(),
-    }
-
-
-@app.post("/sync")
-async def sync(req: SyncRequest, background_tasks: BackgroundTasks):
-    """Compatibility alias for downloading exported Google Vids assets."""
-    return await _enqueue_download(req, background_tasks)
-
-
-@app.post("/download")
-async def download(req: DownloadRequest, background_tasks: BackgroundTasks):
-    """Download video and/or images from a Google Vids project."""
-    return await _enqueue_download(req, background_tasks)
 
 
 @app.get("/status/{job_id}")

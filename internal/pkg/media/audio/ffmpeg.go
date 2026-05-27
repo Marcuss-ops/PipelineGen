@@ -11,6 +11,30 @@ import (
 	"velox/go-master/internal/pkg/executil"
 )
 
+// ExtractClip estrae la traccia audio da un file video e la taglia a maxDur secondi.
+// output è il percorso del file audio risultante (es. .mp3).
+func ExtractClip(ctx context.Context, ffmpegPath, input, output string, maxDur int) error {
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+
+	args := []string{
+		"-y",
+		"-i", input,
+		"-t", fmt.Sprintf("%d", maxDur),
+		"-vn",
+		"-c:a", "libmp3lame",
+		"-q:a", "2",
+		output,
+	}
+
+	_, err := executil.Run(ctx, ffmpegPath, args, executil.Options{
+		Timeout:        10 * time.Minute,
+		CombinedOutput: true,
+	})
+	return err
+}
+
 func RemoveSilence(ctx context.Context, ffmpegPath, input, output string) error {
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"

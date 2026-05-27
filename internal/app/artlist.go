@@ -117,7 +117,7 @@ func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *z
 			storage.MediaRoot(cfg.Storage.MediaPath()),
 			storage.DriveRoot(cfg.Drive.RootFolder()),
 		)
-		mediaStore := storage.NewStore(storageResolver, &driveutil.Uploader{Service: coreDeps.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", log)
+		mediaStore := storage.NewStore(storageResolver, &driveutil.Uploader{Service: coreDeps.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsRootFolder, log)
 		return storage.NewDestinationResolver(mediaStore)
 	}
 	return nil

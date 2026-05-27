@@ -36,10 +36,10 @@ func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, so
 		return nil, fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
 
-	return s.IngestImage(ctx, slug, style, resp.Body, filepath.Base(imgURL), imgURL, description, tags, false)
+	return s.IngestImage(ctx, slug, style, "", resp.Body, filepath.Base(imgURL), imgURL, description, tags, false)
 }
 
-func (s *Service) IngestImage(ctx context.Context, slug, style string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
 	content, err := io.ReadAll(data)
 	if err != nil {
 		return nil, err
@@ -66,14 +66,15 @@ func (s *Service) IngestImage(ctx context.Context, slug, style string, data io.R
 	s.log.Info("IngestImage: ingesting image",
 		zap.String("slug", slug),
 		zap.String("style", style),
+		zap.String("gen_id", genID),
 		zap.String("hash", legacyHash),
 		zap.Bool("skip_drive", skipDrive),
 	)
 
-	return s.ingestDirect(ctx, slug, style, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
+	return s.ingestDirect(ctx, slug, style, genID, content, filename, sourceURL, description, tags, legacyHash, skipDrive)
 }
 
-func (s *Service) ingestDirect(ctx context.Context, slug, style string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, sourceURL, description string, tags []string, hash string, skipDrive bool) (*models.ImageAsset, error) {
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err != nil || subject == nil {
@@ -92,8 +93,25 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 	if ext == "" {
 		ext = ".jpg"
 	}
-	relPath := filepath.Join(slug, hash+ext)
-	fullPath := filepath.Join(s.imagesDir, relPath)
+	
+	// Create request for resolver
+	req := storage.AssetDestinationRequest{
+		Source:       storage.SourceImage,
+		MediaType:    storage.MediaTypeImage,
+		Subject:      slug, // Prompt slug
+		Hash:         hash,
+		Ext:          ext,
+		Style:        style, // Chosen style
+		GenerationID: genID,
+	}
+
+	dest, err := s.mediaStore.ResolveDest(req)
+	if err != nil {
+		return nil, fmt.Errorf("resolve destination: %w", err)
+	}
+
+	relPath := dest.RelativePath
+	fullPath := dest.LocalPath
 	os.MkdirAll(filepath.Dir(fullPath), 0755)
 
 	// 3. Salva il file fisico
@@ -118,14 +136,6 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style string, content 
 	// 5. Upload to Drive if configured (skip if disabled by fullimages pipeline)
 	var driveFileID string
 	if s.mediaStore != nil && !skipDrive {
-		req := storage.AssetDestinationRequest{
-			Source:    storage.SourceImage,
-			MediaType: storage.MediaTypeImage,
-			Subject:   slug, // Prompt slug
-			Hash:      hash,
-			Ext:       ext,
-			Style:     style, // Chosen style
-		}
 		fileID, link, err := s.mediaStore.UploadToDrive(ctx, req, fullPath)
 		if err != nil {
 			s.log.Warn("Drive upload failed", zap.Error(err))
