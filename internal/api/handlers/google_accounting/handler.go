@@ -187,6 +187,68 @@ func (h *Handler) GenerateVideoStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, jobToResponse(job))
 }
 
+// GenerateAvatar avvia la generazione avatar in background, crea un job persistente su SQLite e ritorna subito.
+func (h *Handler) GenerateAvatar(c *gin.Context) {
+	var reqBody googleaccounting.AvatarRequest
+	if err := c.ShouldBindJSON(&reqBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+		return
+	}
+	if reqBody.Script == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "script is required"})
+		return
+	}
+
+	if h.imgService == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "image service not available"})
+		return
+	}
+
+	avatarID := reqBody.AvatarID
+	if avatarID == "" {
+		avatarID = "James"
+	}
+
+	payload := map[string]any{
+		"script":    reqBody.Script,
+		"avatar_id": avatarID,
+	}
+
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+		Type:    models.JobTypeVideoGenerate,
+		Payload: payload,
+	})
+	if err != nil {
+		h.log.Error("failed to create avatar job", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create job"})
+		return
+	}
+
+	go func(ctx context.Context, svc *images.Service, script, avatarID, jid string) {
+		if err := h.jobsService.SetRunning(ctx, jid); err != nil {
+			h.log.Error("failed to mark job running", zap.String("job_id", jid), zap.Error(err))
+		}
+
+		filePath, err := svc.GenerateAvatarVideo(ctx, script, avatarID)
+		if err != nil {
+			h.log.Error("background avatar generation failed", zap.String("job_id", jid), zap.Error(err))
+			h.jobsService.Fail(ctx, jid, err)
+			return
+		}
+
+		h.jobsService.Complete(ctx, jid, map[string]any{
+			"file_path": filePath,
+		})
+		h.log.Info("background avatar generation completed", zap.String("job_id", jid), zap.String("file_path", filePath))
+	}(context.Background(), h.imgService, reqBody.Script, avatarID, job.ID)
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"job_id":  job.ID,
+		"status":  "pending",
+		"message": "Avatar generation started. Poll /api/google-accounting/avatar/status/" + job.ID + " for result.",
+	})
+}
+
 // ListVideos returns all generated videos from media_assets with google-vids sources.
 func (h *Handler) ListVideos(c *gin.Context) {
 	rows, err := h.veloxDB.QueryContext(c.Request.Context(),
@@ -315,6 +377,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		group.POST("/download", h.SyncProject)
 		group.POST("/generate-video", h.GenerateVideo)
 		group.GET("/generate-video/status/:job_id", h.GenerateVideoStatus)
+		group.POST("/generate-avatar-video", h.GenerateAvatar)
+		group.GET("/avatar/status/:job_id", h.GenerateVideoStatus)
 		group.GET("/videos", h.ListVideos)
 		group.POST("/generate-flow-images", h.GenerateFlowImages)
 		group.GET("/media", h.ListMedia)

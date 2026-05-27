@@ -115,7 +115,7 @@ google_accounting:
   flow_project_id: "" # ID of an existing Google Flow project to reuse
 
 vector_search:
-  enabled: false
+  enabled: true
   provider: "qdrant"
   url: "http://127.0.0.1:6333"
   collection: "pipelinegen_assets"

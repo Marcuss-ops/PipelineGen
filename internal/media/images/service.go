@@ -16,6 +16,8 @@ import (
 	"velox/go-master/internal/media/generation"
 	"velox/go-master/internal/media/ingest"
 	"velox/go-master/internal/media/storage"
+	"velox/go-master/internal/media/vectorstore"
+	"velox/go-master/internal/ml/ollama"
 	clipsRepo "velox/go-master/internal/repository/clips"
 	imagesRepo "velox/go-master/internal/repository/images"
 )
@@ -70,6 +72,10 @@ type Service struct {
 
 	// Unified media store for Drive operations (replaces raw driveSvc calls)
 	mediaStore *storage.Store
+
+	// NEW: Intelligence & Search
+	llmGen    *ollama.Generator
+	vectorSvc *vectorstore.Service
 
 	// Centralized style registry
 	styleRegistry *generation.StyleRegistry
@@ -185,6 +191,16 @@ func (s *Service) SetIngestService(svc *ingest.Service) {
 // SetMediaStore sets the unified media store for Drive operations.
 func (s *Service) SetMediaStore(store *storage.Store) {
 	s.mediaStore = store
+}
+
+// SetLLMGenerator sets the Ollama generator for rich descriptions.
+func (s *Service) SetLLMGenerator(gen *ollama.Generator) {
+	s.llmGen = gen
+}
+
+// SetVectorStore sets the vector store service for indexing.
+func (s *Service) SetVectorStore(svc *vectorstore.Service) {
+	s.vectorSvc = svc
 }
 
 // Log restituisce il logger interno per logging da altre componenti.

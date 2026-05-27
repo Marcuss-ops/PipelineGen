@@ -13,7 +13,9 @@ import scheduler as sched
 from storage import ensure_dirs, list_downloaded_videos, list_downloaded_images
 from playwright_client import (
     generate_video_ai_v2,
-    generate_flow_images
+    generate_avatar_v1,
+    generate_flow_images,
+    generate_character_video_v1
 )
 
 from playwright_client import list_projects, sync_project
@@ -80,6 +82,13 @@ class GenerateRequest(BaseModel):
     headless: bool = True
     account: Optional[str] = None
 
+class CharacterVideoRequest(BaseModel):
+    video_id: str = "new"
+    character_id: str
+    prompt: Optional[str] = None
+    headless: bool = True
+    account: Optional[str] = None
+
 class AvatarRequest(BaseModel):
     video_id: str = "new"
     script: str
@@ -143,6 +152,65 @@ async def download_endpoint(req: DownloadRequest, background_tasks: BackgroundTa
 @app.post("/sync")
 async def sync_endpoint(req: SyncRequest, background_tasks: BackgroundTasks):
     return await _enqueue_download(req, background_tasks)
+
+
+@app.post("/generate-character-video")
+async def generate_character_video_endpoint(req: CharacterVideoRequest, background_tasks: BackgroundTasks):
+    """Generates AI video using a character's reference image."""
+    job_id = f"char-video-{str(uuid.uuid4())[:8]}"
+    account = req.account or "favamassimo"
+    _new_job(job_id, character_id=req.character_id, video_id=req.video_id, account=account)
+
+    async def _run():
+        _update_job(job_id, status="running", progress=10, current_step="processing", last_log="Starting character video generation")
+        try:
+            file_path = await generate_character_video_v1(
+                video_id=req.video_id,
+                character_id=req.character_id,
+                prompt=req.prompt,
+                account=account,
+                headless=req.headless
+            )
+            if file_path:
+                _update_job(job_id, status="done", progress=100, current_step="completed", file_path=file_path, last_log="Character video generation completed")
+            else:
+                _update_job(job_id, status="failed", current_step="failed", error="Generation failed, no file path returned.")
+        except Exception as e:
+            log.exception("Character video generation failed")
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
+
+    background_tasks.add_task(_run)
+    return {"job_id": job_id, "status": "pending"}
+
+
+@app.post("/generate-avatar-video")
+async def generate_avatar_video_endpoint(req: AvatarRequest, background_tasks: BackgroundTasks):
+    """Generates AI Talking Head (Avatar) video via Google Vids using the Lip Sync feature."""
+    job_id = f"avatar-{str(uuid.uuid4())[:8]}"
+    account = req.account or "favamassimo"
+    avatar_id = req.avatar_id or "James"
+    _new_job(job_id, script=req.script, avatar_id=avatar_id, video_id=req.video_id, account=account)
+
+    async def _run():
+        _update_job(job_id, status="running", progress=10, current_step="processing", last_log="Starting avatar video generation")
+        try:
+            file_path = await generate_avatar_v1(
+                video_id=req.video_id,
+                script=req.script,
+                avatar_id=avatar_id,
+                account=account,
+                headless=req.headless
+            )
+            if file_path:
+                _update_job(job_id, status="done", progress=100, current_step="completed", file_path=str(file_path), last_log="Avatar generation completed")
+            else:
+                _update_job(job_id, status="failed", current_step="failed", error="Generation failed, no file path returned.")
+        except Exception as e:
+            log.exception("Avatar video generation failed")
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
+
+    background_tasks.add_task(_run)
+    return {"job_id": job_id, "status": "pending"}
 
 
 @app.post("/generate-video")

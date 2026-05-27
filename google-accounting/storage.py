@@ -134,6 +134,66 @@ def save_project_id(kind: str, project_id: str):
     except Exception as e:
         print(f"Error writing projects file: {e}")
 
+def save_character(
+    char_id: str,
+    name: str,
+    image_drive_id: str = "",
+    image_drive_link: str = "",
+    voice_id: str = "",
+    metadata: dict = None
+):
+    """Saves or updates a character in the registry."""
+    if not DB_PATH.exists():
+        print(f"Warning: Database {DB_PATH} not found.")
+        return False
+    
+    metadata_json = json.dumps(metadata or {})
+    now = datetime.now().isoformat()
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO characters (
+                id, name, image_drive_id, image_drive_link, voice_id, metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name,
+                image_drive_id=excluded.image_drive_id,
+                image_drive_link=excluded.image_drive_link,
+                voice_id=excluded.voice_id,
+                metadata_json=excluded.metadata_json,
+                updated_at=excluded.updated_at
+        """, (
+            char_id, name, image_drive_id, image_drive_link, voice_id, metadata_json, now, now
+        ))
+        conn.commit()
+        conn.close()
+        print(f"Character '{char_id}' ({name}) saved to DB.")
+        return True
+    except Exception as e:
+        print(f"Error saving character to DB: {e}")
+        return False
+
+def get_character(char_id: str) -> dict:
+    """Retrieves a character from the registry."""
+    if not DB_PATH.exists():
+        return None
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM characters WHERE id = ?", (char_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            char = dict(row)
+            char["metadata"] = json.loads(char["metadata_json"])
+            return char
+        return None
+    except Exception as e:
+        print(f"Error retrieving character: {e}")
+        return None
+
 def get_project_id(kind: str) -> str:
     """Retrieves a project ID from the local cache."""
     if not PROJECTS_FILE.exists():

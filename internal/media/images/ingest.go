@@ -21,7 +21,9 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/media/storage"
+	"velox/go-master/internal/media/vectorstore"
 )
 
 func (s *Service) callSemanticTagger(ctx context.Context, prompt, style, mediaType, generator string) (*SemanticMetadataPayload, error) {
@@ -46,6 +48,64 @@ func (s *Service) callSemanticTagger(ctx context.Context, prompt, style, mediaTy
 	}
 
 	return &payload, nil
+}
+
+func (s *Service) callLLMFallback(ctx context.Context, mediaType, prompt, style string) string {
+	if s.llmGen == nil {
+		return prompt
+	}
+	desc, err := s.llmGen.GenerateDescription(ctx, mediaType, prompt, style)
+	if err != nil {
+		s.log.Warn("LLM fallback failed", zap.Error(err))
+		return prompt
+	}
+	return desc
+}
+
+func (s *Service) indexAssetInVectorStore(ctx context.Context, assetID, source, name, localPath, driveLink, style, mediaType, searchText string, tags []string) {
+	if s.vectorSvc == nil {
+		return
+	}
+
+	// 1. Get embedding from Python server
+	adapter := realtime.NewPythonEmbeddingAdapter(s.cfg.ClipIndexer.ServerURL)
+	embedding, err := adapter.EmbedText(ctx, searchText)
+	if err != nil {
+		s.log.Warn("Failed to generate embedding for search_text", zap.String("asset_id", assetID), zap.Error(err))
+		return
+	}
+
+	// Convert to float32
+	vec := make([]float32, len(embedding))
+	for i, f := range embedding {
+		vec[i] = float32(f)
+	}
+
+	// 2. Upsert to Qdrant
+	vAsset := vectorstore.VectorAsset{
+		AssetID:       assetID,
+		Source:        source,
+		Name:          name,
+		LocalPath:     localPath,
+		DriveLink:     driveLink,
+		Style:         style,
+		MediaType:     mediaType,
+		TextEmbedding: vec,
+		Tags:          tags,
+		CreatedAt:     time.Now(),
+	}
+
+	if err := s.vectorSvc.UpsertAsset(ctx, vAsset); err != nil {
+		s.log.Warn("Failed to upsert to vector store", zap.String("asset_id", assetID), zap.Error(err))
+		return
+	}
+
+	// 3. Update DB status if it's an image
+	if mediaType == "image" {
+		_ = s.repo.UpdateEmbeddingStatus(ctx, assetID, "ready")
+	}
+
+	s.log.Info("Asset indexed in vector store", zap.String("asset_id", assetID), zap.String("media_type", mediaType))
 }
 
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*models.ImageAsset, error) {
@@ -201,6 +261,13 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		}
 	}
 	meta, err := s.callSemanticTagger(ctx, cleanPrompt, style, "image", generator)
+	
+	// NEW: LLM Fallback if confidence is low
+	if err == nil && meta.Confidence < 0.6 {
+		s.log.Info("Semantic confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
+		meta.SemanticDescription = s.callLLMFallback(ctx, "image", cleanPrompt, style)
+	}
+
 	var metaJSON []byte
 	if err == nil {
 		meta.AssetID = hash
@@ -239,6 +306,18 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 			return existing, nil
 		}
 		return nil, fmt.Errorf("failed to add image to repository: %w", err)
+	}
+
+	// NEW: Asynchronous Vector Indexing
+	if s.vectorSvc != nil && err == nil {
+		go func() {
+			driveLink := ""
+			if driveFileID != "" {
+				driveLink = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID)
+			}
+			// Use a background context for async task
+			s.indexAssetInVectorStore(context.Background(), hash, source, cleanPrompt, relPath, driveLink, style, "image", meta.SearchText, tags)
+		}()
 	}
 
 	return asset, nil
@@ -305,6 +384,11 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 		}
 	} else {
 		meta.AssetID = hash
+		// NEW: LLM Fallback if confidence is low
+		if meta.Confidence < 0.6 {
+			s.log.Info("uploadImageMetadata: confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
+			meta.SemanticDescription = s.callLLMFallback(ctx, "image", cleanPrompt, style)
+		}
 	}
 
 	data, err := json.MarshalIndent(meta, "", "  ")
@@ -387,6 +471,11 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 	} else {
 		meta.AssetID = genID
 		meta.AssetType = "image_group"
+		// NEW: LLM Fallback if confidence is low
+		if meta.Confidence < 0.6 {
+			s.log.Info("UploadBatchMetadata: confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
+			meta.SemanticDescription = s.callLLMFallback(ctx, "image", prompt, style)
+		}
 	}
 
 	// 2. Add individual asset info
@@ -448,4 +537,17 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 		return
 	}
 	s.log.Info("UploadBatchMetadata: metadata.json uploaded for group", zap.String("gen_id", genID), zap.Int("assets_count", len(assets)))
+
+	// NEW: Asynchronous Vector Indexing for each asset in the group
+	if s.vectorSvc != nil {
+		for _, a := range assets {
+			go func(asset *models.ImageAsset) {
+				driveLink := ""
+				if asset.DriveFileID != "" {
+					driveLink = fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID)
+				}
+				s.indexAssetInVectorStore(context.Background(), asset.Hash, generator, prompt, asset.PathRel, driveLink, style, "image", meta.SearchText, asset.Tags)
+			}(a)
+		}
+	}
 }

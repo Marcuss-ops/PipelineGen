@@ -200,6 +200,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		cfg.GoogleAccounting.FlowProjectID,
 	)
 	imageService.SetMediaStore(mediaStore)
+	imageService.SetLLMGenerator(scriptGen)
+	if vectorSvc != nil {
+		imageService.SetVectorStore(vectorSvc)
+	}
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
 	clipsRepos := map[string]*clips.Repository{

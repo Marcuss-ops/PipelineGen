@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -195,12 +196,36 @@ class GoogleVidsAutomation(GoogleVidsVideoMixin, GoogleVidsAvatarMixin, BaseAuto
     async def _get_page(self, video_id: str) -> Page:
         page = await self.context.new_page()
         url = f"{GOOGLE_VIDS_BASE_URL}/{video_id}/edit"
-        await human_delay(1000, 3000)
-        log.info("Opening Vids page for video_id=%s url=%s", video_id, url)
-        await page.goto(url, wait_until="domcontentloaded")
-        await asyncio.sleep(8)
+        
+        log.info("Opening Vids project: %s", url)
+        # Use a longer timeout and wait for load state
+        await page.goto(url, wait_until="load", timeout=60000)
+        await asyncio.sleep(5)
+        
+        # Handle account chooser if it still appears
+        if "accounts.google.com" in page.url:
+            # Look for the account button more carefully
+            account_btn = page.locator('[data-email*="favamassimo"], [role="button"]:has-text("favamassimo")').first
+            if await account_btn.count() > 0:
+                await account_btn.click(force=True)
+                await asyncio.sleep(5)
+            
+            # If still on accounts, try one more time with direct home then back
+            if "accounts.google.com" in page.url:
+                await page.goto("https://docs.google.com/videos/u/0/", wait_until="load")
+                await asyncio.sleep(5)
+                await page.goto(url, wait_until="load")
+
+        await asyncio.sleep(10)
         await human_scroll(page)
-        log.info("Vids page ready for video_id=%s page_url=%s", video_id, page.url)
+        
+        # One last check: if we are still not on docs.google.com/videos, we failed
+        if "docs.google.com/videos" not in page.url:
+            log.error("Failed to reach Vids Editor. Current URL: %s", page.url)
+            await page.screenshot(path=f"logs/failed_login_{int(time.time())}.png")
+        else:
+            log.info("Vids page ready: %s", page.url)
+            
         return page
 
     @staticmethod
@@ -320,6 +345,14 @@ async def generate_video_ai_v2(video_id: str, prompt: str, account: str = None, 
 async def generate_avatar_v1(video_id: str, script: str, avatar_id: str = "James", account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         result = await engine.generate_avatar(video_id, script, avatar_id)
+        return str(result) if result else None
+
+
+async def generate_character_video_v1(video_id: str, character_id: str, prompt: str = None, account: str = None, headless: bool = True):
+    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
+        if not prompt:
+            prompt = "youtuber talking and gesturing while looking at camera"
+        result = await engine.generate_character_video(video_id, character_id, prompt)
         return str(result) if result else None
 
 

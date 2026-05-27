@@ -313,7 +313,16 @@ func (r *Repository) UpdateImageMetadata(ctx context.Context, hash, metadataJSON
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
 		SET metadata_json = ?
-		WHERE source = 'image' AND json_extract(metadata_json, '$.hash') = ?
+		WHERE source = 'image' AND file_hash = ?
 	`, metadataJSON, hash)
+	return err
+}
+
+func (r *Repository) UpdateEmbeddingStatus(ctx context.Context, hash, status string) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE media_assets
+		SET metadata_json = json_set(metadata_json, '$.embedding_status', ?)
+		WHERE source = 'image' AND file_hash = ?
+	`, status, hash)
 	return err
 }

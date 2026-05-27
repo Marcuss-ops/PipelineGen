@@ -1,127 +1,244 @@
 import asyncio
+import random
 import re
 import time
 from pathlib import Path
 
 from drive_client import download_file, list_exported_files
+from reupload_drive_assets import upload_file_to_drive
 from .base import (
     BaseAutomation,
+    _append_selector_report,
+    human_delay,
     log,
 )
 
+
 class GoogleVidsAvatarMixin:
-    """Mixin class for Google Vids Lip Sync Avatar generation logic."""
+    """Mixin class for Google Vids Avatar lip-sync generation using Veo rail with reference image."""
+
+    async def _avatar_selector_inventory(self, page) -> None:
+        """Dump all potentially relevant selectors for debugging avatar issues."""
+        interesting = [
+            "#content-library-rail-video-generation-element",
+            "#content-library-rail-avatars-element",
+            'div[aria-label="Avatar AI"]',
+            "div[role='radio']",
+            "video",
+            "button",
+            "textarea",
+            'div[role="textbox"]',
+            '[class*="VideoGeneration"]',
+            '[class*="videoGenCreation"]',
+        ]
+        for selector in interesting:
+            loc = page.locator(selector)
+            try:
+                count = await loc.count()
+            except Exception:
+                continue
+            if count == 0:
+                continue
+            for idx in range(min(count, 8)):
+                item = loc.nth(idx)
+                try:
+                    tag = await item.evaluate("(el) => el.tagName.toLowerCase()")
+                    el_id = await item.get_attribute("id")
+                    cls = await item.get_attribute("class")
+                    aria = await item.get_attribute("aria-label")
+                    role = await item.get_attribute("role")
+                    text = ""
+                    try:
+                        text = (await item.inner_text())[:160]
+                    except Exception:
+                        text = ""
+                    log.info(
+                        "Avatar inventory selector=%s idx=%d tag=%s id=%s class=%s aria=%s role=%s text=%s",
+                        selector, idx, tag, el_id or "", (cls or "")[:120], aria or "",
+                        role or "", text.replace("\n", " ") if text else "",
+                    )
+                except Exception as exc:
+                    log.debug("Avatar inventory failed selector=%s idx=%d err=%s", selector, idx, exc)
+
+    async def _find_first(self, page, selectors: list[str], timeout: int = 5000):
+        """Try each selector and return the first that matches."""
+        for selector in selectors:
+            loc = page.locator(selector).first
+            try:
+                if await loc.count() > 0:
+                    return loc
+            except Exception:
+                continue
+        return None
+
+    async def _dismiss_dialogs(self, page):
+        """Dismiss any dialogs or modals that might block interaction."""
+        for _ in range(3):
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.5)
+            except Exception:
+                pass
+            try:
+                btns = page.locator(
+                    '[aria-label="Chiudi"], [aria-label="Close"], [aria-label="Dismiss"], '
+                    '.modal-dialog-close, .docs-material-dialog-close, button:has-text("Chiudi"), '
+                    'button:has-text("Close"), button:has-text("OK"), button:has-text("Ho capito"), '
+                    '[data-view-id*="getting-started"] button'
+                )
+                if await btns.count() > 0:
+                    await btns.first.click(force=True, timeout=3000)
+                    await asyncio.sleep(0.5)
+            except Exception:
+                pass
+        try:
+            gs = page.locator('[data-view-id*="getting-started"]')
+            if await gs.count() > 0:
+                log.info("Dismissing Getting Started dialog")
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(1)
+                await page.mouse.click(10, 10)
+                await asyncio.sleep(1)
+        except Exception:
+            pass
 
     async def generate_avatar(self, video_id: str, script: str, avatar_id: str = "James") -> Path | None:
-        """Generates an AI Talking Head (Avatar) in Google Vids using finalized selectors."""
-        from storage import get_project_id, save_project_id, get_structured_path, save_media_asset, save_generation_metadata
+        """Generates an AI Talking Head video using character reference image via Veo rail."""
+        from storage import (
+            get_project_id, save_project_id, get_structured_path,
+            save_media_asset, save_generation_metadata, get_character,
+        )
 
+        char = get_character(avatar_id)
+        if not char:
+            log.error("Character '%s' not found in database", avatar_id)
+            return None
+        image_drive_id = char.get("image_drive_id")
+        video_folder_id = char.get("metadata", {}).get("video_folder_id")
+        if not image_drive_id:
+            log.error("Character '%s' has no image_drive_id", avatar_id)
+            return None
+
+        temp_img_path = await download_file(image_drive_id, f"ref_{avatar_id}.png", "image")
         dest_folder = get_structured_path(media_type="avatar", style="ai", sub_style=avatar_id)
-        
+
         if not video_id or video_id == "new":
             video_id = get_project_id("vids")
             video_id = video_id if video_id else "new"
+
+        selector_report = {
+            "kind": "vids_avatar",
+            "video_id": video_id,
+            "avatar_id": avatar_id,
+            "script_preview": script[:120],
+            "attempts": [],
+            "generated_at": int(time.time()),
+        }
 
         page = await self._goto_home()
         try:
             if video_id == "new" or not video_id:
                 log.info("Creating new Vids project for Avatar")
                 await page.click('[aria-label="Crea nuovo video"]', timeout=15000)
-                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=20000)
+                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
                 video_id = self._extract_vid_id(page.url)
                 if video_id:
                     save_project_id("vids", video_id)
             else:
                 log.info("Opening existing Vids project: %s", video_id)
-                await page.goto(f"https://docs.google.com/videos/d/{video_id}/edit", wait_until="domcontentloaded")
+                await page.goto(
+                    f"https://docs.google.com/videos/d/{video_id}/edit",
+                    wait_until="domcontentloaded",
+                )
 
-            log.info("Waiting for editor to stabilize (30s)...")
-            await asyncio.sleep(30)
+            log.info("Waiting for editor to stabilize...")
+            await asyncio.sleep(15)
+            await self._dismiss_dialogs(page)
 
-            # 1. Clicca tasto Avatar (ID Fisso trovato nel dump: BTN 79)
-            avatar_btn = page.locator('#content-library-rail-avatars-element').first
-            
-            if not avatar_btn or await avatar_btn.count() == 0:
-                raise RuntimeError("Avatar button not found")
-                
-            log.info("Clicking Avatar button...")
-            await avatar_btn.click(timeout=15000)
+            # Open Veo generation rail
+            try:
+                await page.locator(
+                    '#content-library-rail-video-generation-element'
+                ).click(force=True, timeout=10000)
+            except Exception:
+                await page.get_by_label(
+                    "Genera un video clip AI", exact=True
+                ).click(force=True, timeout=10000)
+            await asyncio.sleep(3)
+            selector_report["attempts"].append({"stage": "open_veo_rail", "found": True})
+
+            # Upload reference image
+            upload_selectors = [
+                ".videoGenCreationViewFileInputsInputSelectButton",
+                "button[aria-label='Ingredienti']",
+            ]
+            upload_btn = None
+            for sel in upload_selectors:
+                loc = page.locator(sel).first
+                if await loc.count() > 0:
+                    upload_btn = loc
+                    break
+            if not upload_btn:
+                raise RuntimeError("Reference image upload button not found")
+            selector_report["attempts"].append({"stage": "upload_btn", "found": True})
+
+            log.info("Uploading reference image...")
+            async with page.expect_file_chooser() as fc_info:
+                await upload_btn.click()
+            file_chooser = await fc_info.value
+            await file_chooser.set_files(temp_img_path)
+            log.info("Reference image uploaded.")
             await asyncio.sleep(5)
 
-            # 2. Seleziona l'avatar specifico
-            # Cambia è BTN 105
-            change_btn = page.locator('div[role="button"]:has-text("Cambia")').first
-            if await change_btn.count() > 0:
-                log.info("Clicking 'Cambia' avatar button...")
-                await change_btn.click()
-                await asyncio.sleep(5)
-                # Selezione avatar per nome
-                avatar_choice = page.locator(f'div[role="radio"][aria-label*="{avatar_id}"]').first
-                if await avatar_choice.count() > 0:
-                    log.info(f"Selecting avatar: {avatar_id}")
-                    await avatar_choice.click()
-                    await asyncio.sleep(2)
-                    # Pulsante Seleziona è BTN 125
-                    select_btn = page.locator('div[role="button"]:has-text("Seleziona")').first
-                    await select_btn.click()
-                    await asyncio.sleep(3)
+            # Fill prompt with script text
+            input_loc = page.locator(
+                'textarea, [contenteditable="true"], div[role="textbox"]'
+            ).first
+            await input_loc.fill(script)
+            await asyncio.sleep(2)
+            selector_report["attempts"].append({"stage": "fill_script", "found": True})
 
-            # 3. Inserisci lo script
-            # In Vids, l'input è spesso nel body della sidebar, proviamo ad intercettarlo tramite testo
-            # O usiamo il selettore generico textbox
-            log.info("Filling script area...")
-            textarea = page.locator('[aria-label="Script video"] [role="textbox"]').first
-            
-            # Se fallisce, usiamo un fallback generico
-            if not textarea or await textarea.count() == 0:
-                textarea = page.locator('.appsFlixScriptsSidebarWorkspace [role="textbox"]').first
-
-            if not textarea or await textarea.count() == 0:
-                raise RuntimeError("Script textarea not found")
-
-            await textarea.click()
-            await page.keyboard.press("Control+A")
-            await page.keyboard.press("Backspace")
-            await page.keyboard.type(script, delay=40)
-            await asyncio.sleep(3)
-
-            # 4. Genera Preview
-            preview_btn = page.locator('div[role="button"]:has-text("Anteprima")').first
-            
-            if await preview_btn.count() > 0:
-                log.info("Clicking Anteprima button...")
-                await preview_btn.click()
-                log.info("Waiting 30 seconds for preview...")
-                await asyncio.sleep(30)
-
-            # 5. Genera finale
-            # Genera è BTN 108
-            generate_btn = page.locator('div[role="button"]:has-text("Genera")').first
-            
-            if not generate_btn or await generate_btn.count() == 0:
-                raise RuntimeError("Generate button not found")
-
-            log.info("Clicking Generate (Lip Sync) button...")
+            # Generate
+            generate_btn = page.locator(
+                'button:has-text("Genera"), button:has-text("Generate")'
+            ).first
             await generate_btn.click()
-            
-            log.info("Waiting 130 seconds for lip-sync generation...")
-            await asyncio.sleep(130)
+            log.info("Avatar generation started for %s", avatar_id)
+            selector_report["attempts"].append({"stage": "generate", "found": True})
 
-            # 6. Registrazione finale
-            metadata = {"script": script, "avatar_id": avatar_id, "video_id": video_id, "timestamp": int(time.time())}
-            save_generation_metadata(dest_folder, metadata)
+            # Poll and download generated video
+            final_path = await self._poll_and_download_video(page, video_id)
 
-            paths = await sync_project(video_id, file_type="video", account=self.account, headless=self.headless)
-            if paths:
-                final_path = paths[0]
-                save_media_asset(final_path, "GOOGLE_VIDS_AVATAR", final_path.name, "video", "ai_avatar", avatar_id, script, video_id, metadata)
-                return final_path
-            return None
+            if final_path and video_folder_id:
+                log.info("Uploading generated avatar video to character folder: %s", video_folder_id)
+                upload_file_to_drive(video_folder_id, final_path, final_path.name, "video/mp4")
+
+            if final_path:
+                metadata = {
+                    "script": script,
+                    "avatar_id": avatar_id,
+                    "video_id": video_id,
+                    "timestamp": int(time.time()),
+                }
+                save_generation_metadata(dest_folder, metadata)
+                save_media_asset(
+                    final_path, "GOOGLE_VIDS_AVATAR", final_path.name,
+                    "video", "ai_avatar", avatar_id, script, video_id, metadata,
+                )
+                log.info("Avatar video saved: %s", final_path)
+
+            return final_path
 
         except Exception as e:
             log.error("Errore generazione avatar: %s", e, exc_info=True)
+            selector_report["result"] = "failed"
+            selector_report["error"] = str(e)
             return None
         finally:
+            selector_report.setdefault("result", "success")
+            _append_selector_report(selector_report)
+            if temp_img_path.exists():
+                temp_img_path.unlink()
             await page.close()
 
 
@@ -149,5 +266,10 @@ async def sync_project(video_id: str, file_type: str = "all", account: str = Non
         downloaded = await download_file(file_meta["id"], file_meta["name"], sub_type)
         paths.append(downloaded)
         log.info("Downloaded exported file: %s", downloaded)
+
+    if paths:
+        paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        log.info("sync_project: returning newest file: %s", paths[0])
+        return [paths[0]]
 
     return paths
