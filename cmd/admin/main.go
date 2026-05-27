@@ -35,16 +35,10 @@ func main() {
 		"delete-specific-folders":       runDeleteSpecificFolders,
 		"sync-all-drive":                runSyncAllDrive,
 		"test-youtube":                  runTestYouTube,
-		"verify-artlist-pipeline":       runVerifyArtlistPipeline,
-		// "unify-catalogs":               runUnifyCatalogs,
-		// "reset-stock-drive":            runResetStockDrive,
-		// "reset-stock-subfolders":       runResetStockSubfolders,
-		"list-drive-folder":            runListDriveFolder,
-		"reset-video-ai":               runResetVideoAI,
-		// "list-styles":                  runListStyles,
-		// "generate-avatar":              runGenerateAvatar,
-		// "generate-ai-video":            runGenerateAIVideo,
-		}
+		"verify-artlist-pipeline": runVerifyArtlistPipeline,
+		"list-drive-folder":      runListDriveFolder,
+		"reset-video-ai":         runResetVideoAI,
+	}
 	fn, ok := commands[cmdName]
 	if !ok {
 		fmt.Fprintf(os.Stderr, "unknown admin command: %s\n\n", os.Args[1])
@@ -82,11 +76,5 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  sync-all-drive")
 	fmt.Fprintln(os.Stderr, "  test-youtube")
 	fmt.Fprintln(os.Stderr, "  verify-artlist-pipeline")
-	fmt.Fprintln(os.Stderr, "  unify-catalogs")
-	fmt.Fprintln(os.Stderr, "  reset-stock-drive")
-	fmt.Fprintln(os.Stderr, "  reset-stock-subfolders")
-	fmt.Fprintln(os.Stderr, "  list-styles")
-	fmt.Fprintln(os.Stderr, "  generate-avatar")
-	fmt.Fprintln(os.Stderr, "  generate-ai-video")
 	}
 

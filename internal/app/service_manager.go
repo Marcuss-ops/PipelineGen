@@ -10,7 +10,6 @@ import (
 	"velox/go-master/internal/media"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/association"
-	sketchfabservice "velox/go-master/internal/media/sketchfab"
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/catalog"
@@ -19,7 +18,6 @@ import (
 	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/repository/sketchfab"
 	"velox/go-master/internal/repository/voiceovers"
 
 	"velox/go-master/internal/config"
@@ -188,8 +186,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.media.DB)
-	sketchRepo := sketchfab.NewRepository(dbs.media.DB)
-	sketchService := sketchfabservice.NewService(cfg, sketchRepo, dbs.media.Path(), log)
 
 	imageService := imgservice.NewService(cfg, imageRepo, clipsRepo, driveClient, styleRegistry, log)
 	imageService.SetNvidiaConfig(cfg.External.NvidiaAPIKey, cfg.External.NvidiaModel)
@@ -307,8 +303,6 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		assetResolver:      assetResolver,
 		lifecycleScheduler: lifecycleScheduler,
 		maintenanceSvc:     maintenanceSvc,
-		sketchfabRepo:      sketchRepo,
-		sketchfabService:   sketchService,
 		styleRegistry:      styleRegistry,
 		vectorSvc:          vectorSvc,
 		realtimeSvc:        realtimeSvc,

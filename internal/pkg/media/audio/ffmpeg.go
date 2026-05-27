@@ -55,28 +55,3 @@ func RemoveSilence(ctx context.Context, ffmpegPath, input, output string) error 
 	})
 	return err
 }
-
-func ProbeDuration(ctx context.Context, ffmpegPath, input string) (float64, error) {
-	if ffmpegPath == "" {
-		ffmpegPath = "ffprobe"
-	}
-
-	args := []string{
-		"-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		input,
-	}
-
-	result, err := executil.Run(ctx, ffmpegPath, args, executil.Options{
-		Timeout:        30 * time.Second,
-		CombinedOutput: true,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	var duration float64
-	fmt.Sscanf(result.Output, "%f", &duration)
-	return duration, nil
-}

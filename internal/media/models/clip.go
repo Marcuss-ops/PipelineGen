@@ -102,12 +102,6 @@ func (m *MediaAsset) SetMetadataString(key, value string) {
 	m.Metadata[key] = value
 }
 
-// MetadataString returns the Metadata map as a JSON string.
-// Deprecated: use MetadataJSON() instead. Kept for backward compatibility.
-func (m *MediaAsset) MetadataString() string {
-	return m.MetadataJSON()
-}
-
 // IndexingCheckpoint represents a checkpoint for the indexing process
 type IndexingCheckpoint struct {
 	ID            string    `json:"id"`

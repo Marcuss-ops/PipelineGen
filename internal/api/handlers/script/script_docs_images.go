@@ -206,7 +206,7 @@ func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subj
 	}
 
 	if preferSearchOnly {
-		slug := Slugify(subject)
+		slug := imgservice.Slugify(subject)
 		query := strings.TrimSpace(subject)
 		asset, err := imgService.SearchAndDownload(ctx, slug, subject, query, language, tags)
 		if err != nil {
@@ -223,7 +223,7 @@ func resolveImageAsset(ctx context.Context, imgService *imgservice.Service, subj
 
 	zap.L().Warn("AI image generation failed, falling back to web search", append(logFields, zap.Error(err))...)
 
-	slug := Slugify(subject)
+	slug := imgservice.Slugify(subject)
 	query := buildImageSearchQuery(subject, topic)
 	asset, err = imgService.SearchAndDownload(ctx, slug, subject, query, language, tags)
 	if err != nil {
@@ -357,16 +357,3 @@ func renderImagePlans(items []imagePlanItem) string {
 	return b.String()
 }
 
-// Local slugify
-func Slugify(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	return strings.Trim(b.String(), "-")
-}

@@ -15,7 +15,6 @@ import (
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
 	"velox/go-master/internal/media/realtime"
-	sketchfabservice "velox/go-master/internal/media/sketchfab"
 	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/media/voiceoversync"
@@ -26,7 +25,6 @@ import (
 	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/repository/sketchfab"
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/upload/drive"
@@ -61,8 +59,6 @@ type services struct {
 	assetResolver      *assetindex.Resolver
 	lifecycleScheduler *scheduler.LifecycleScheduler
 	maintenanceSvc     *maintenance.Service
-	sketchfabRepo      *sketchfab.Repository
-	sketchfabService   *sketchfabservice.Service
 	styleRegistry      *generation.StyleRegistry
 	vectorSvc          *vectorstore.Service
 	realtimeSvc        *realtime.Service

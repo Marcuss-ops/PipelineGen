@@ -34,7 +34,6 @@ var expectedTables = map[string][]string{
 		"media_assets",
 		"clip_folders",
 		"segment_embeddings",
-		"sketchfab_models",
 		"subjects",
 		"voiceovers",
 	},
