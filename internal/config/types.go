@@ -312,12 +312,6 @@ type ExternalConfig struct {
 	PixabayBaseURL       string          `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
 	PexelsAPIKey         string          `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
 	PexelsBaseURL        string          `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
-	SketchfabConfig      SketchfabConfig `yaml:"sketchfab"`
-}
-
-// SketchfabConfig holds Sketchfab API configuration.
-type SketchfabConfig struct {
-	APIToken string `yaml:"api_token" env:"SKETCHFAB_API_TOKEN" default:""`
 }
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.
@@ -363,7 +357,6 @@ type FeaturesConfig struct {
 	VoiceoverEnabled        bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
 	WorkflowEnabled         bool `yaml:"workflow_enabled" env:"VELOX_FEATURE_WORKFLOW_ENABLED" default:"false"`
 	ImagesEnabled           bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
-	SketchfabEnabled        bool `yaml:"sketchfab_enabled" env:"VELOX_FEATURE_SKETCHFAB_ENABLED" default:"false"`
 	StockPipelineEnabled    bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"false"`
 	GoogleAccountingEnabled bool `yaml:"google_accounting_enabled" env:"VELOX_FEATURE_GOOGLE_ACCOUNTING_ENABLED" default:"false"`
 }
