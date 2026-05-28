@@ -17,6 +17,7 @@ from .base import (
     human_delay,
     human_scroll,
     log,
+    retry_async,
 )
 
 from .vids_video import GoogleVidsVideoMixin
@@ -336,18 +337,21 @@ class GoogleVidsAutomation(GoogleVidsVideoMixin, GoogleVidsAvatarMixin, BaseAuto
                     log.debug("Selector inventory failed selector=%s idx=%d err=%s", selector, idx, exc)
 
 
+@retry_async(max_retries=2, base_delay=10.0)
 async def generate_video_ai_v2(video_id: str, prompt: str, account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         result = await engine.generate_video(video_id, prompt)
         return str(result) if result else None
 
 
+@retry_async(max_retries=2, base_delay=10.0)
 async def generate_avatar_v1(video_id: str, script: str, avatar_id: str = "James", account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         result = await engine.generate_avatar(video_id, script, avatar_id)
         return str(result) if result else None
 
 
+@retry_async(max_retries=2, base_delay=10.0)
 async def generate_character_video_v1(video_id: str, character_id: str, prompt: str = None, account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         if not prompt:
@@ -359,3 +363,4 @@ async def generate_character_video_v1(video_id: str, character_id: str, prompt: 
 async def list_projects(account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         return await engine.list_projects()
+

@@ -1,15 +1,57 @@
 import asyncio
+import functools
 import json
 import logging
 import time
 import random
 import os
 from pathlib import Path
+from typing import Callable, TypeVar
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from config import get_session_path, DOWNLOAD_DIR, GOOGLE_VIDS_BASE_URL
 
 log = logging.getLogger("AutomationEngine")
 SELECTOR_REPORT_FILE = os.getenv("GOOGLE_ACCOUNTING_SELECTOR_REPORT_FILE", "").strip()
+
+
+# ---------------------------------------------------------------------------
+# Retry decorator with exponential backoff
+# ---------------------------------------------------------------------------
+def retry_async(max_retries: int = 3, base_delay: float = 5.0, max_delay: float = 60.0, jitter: bool = True):
+    """Decorator that retries an async function with exponential backoff.
+    
+    Args:
+        max_retries: Maximum number of retry attempts (total calls = max_retries + 1).
+        base_delay: Initial delay in seconds between retries.
+        max_delay: Maximum delay cap in seconds.
+        jitter: If True, adds random jitter to prevent thundering herd.
+    """
+    def decorator(func: Callable):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        delay = min(base_delay * (2 ** attempt), max_delay)
+                        if jitter:
+                            delay = delay * (0.5 + random.random())
+                        log.warning(
+                            "Attempt %d/%d for %s failed: %s — retrying in %.1fs",
+                            attempt + 1, max_retries + 1, func.__name__, e, delay
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        log.error(
+                            "All %d attempts for %s exhausted. Last error: %s",
+                            max_retries + 1, func.__name__, e
+                        )
+            raise last_exception
+        return wrapper
+    return decorator
 
 
 def _append_selector_report(entry: dict) -> None:
