@@ -14,9 +14,12 @@ DB_PATH = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data
 IMAGES_DIR = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/images"
 PARENT_ROOT_ID = "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
 
-service = _build_service()
+service = None
 
 def get_or_create_drive_folder(parent_id, name):
+    global service
+    if service is None:
+        service = _build_service()
     # Search for folder
     query = f"'{parent_id}' in parents and name = '{name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     response = service.files().list(q=query, fields="files(id)").execute()
@@ -35,6 +38,9 @@ def get_or_create_drive_folder(parent_id, name):
     return folder["id"]
 
 def upload_file_to_drive(parent_id, local_path, filename, mimetype):
+    global service
+    if service is None:
+        service = _build_service()
     # Check if file already exists in folder
     query = f"'{parent_id}' in parents and name = '{filename}' and trashed = false"
     response = service.files().list(q=query, fields="files(id, webViewLink)").execute()

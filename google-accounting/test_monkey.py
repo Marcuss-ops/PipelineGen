@@ -1,19 +1,21 @@
 import asyncio
 import logging
-from playwright_client import generate_flow_images
+from playwright_client import (
+    generate_monkey_flow_image, 
+    generate_monkey_character_video,
+    generate_monkey_avatar_video
+)
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
     prompt = "a monkey eating a cheesburger"
     style = "realistic"
-    account = "favamassimo"
     
-    print(f"Starting generation for: {prompt} (style: {style})")
-    paths = await generate_flow_images(
+    print(f"--- [TEST] Generazione Immagine con metodo semplificato ---")
+    paths = await generate_monkey_flow_image(
         prompt=prompt,
         style=style,
-        account=account,
         headless=True
     )
     
@@ -23,6 +25,15 @@ async def main():
             print(f"  - {p}")
     else:
         print("FAILURE: No images generated.")
+
+    # Esempio d'uso per i video (facile da decommentare ed eseguire):
+    # print(f"\n--- [TEST] Esempio Generazione Video Character ---")
+    # video_path = await generate_monkey_character_video(
+    #     character_id="alex",
+    #     prompt="smiling at the camera",
+    #     headless=False
+    # )
+    # print(f"Video generato: {video_path}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -84,18 +84,13 @@ class ImageFXFlowAutomation(BaseAutomation):
         # Network listener
         page.on("response", capturer.make_network_handler())
         
-        # DEBUG: Log della risposta di generazione
-        async def on_response_debug(response):
+        # Log sintetico per le risposte di generazione (solo status)
+        async def on_response_status(response):
             if "batchGenerateImages" in response.url and response.request.method == "POST":
-                log.info(f"🎯 [DEBUG RESPONSE] {response.url} | Status: {response.status}")
-                try:
-                    body = await response.json()
-                    import json
-                    log.info(f"📦 [DEBUG BODY]: {json.dumps(body, indent=2)}")
-                except Exception as e:
-                    log.error(f"❌ [DEBUG] Errore parsing body generazione: {e}")
+                log.debug(f"batchGenerateImages status={response.status} url={response.url[:80]}")
         
-        page.on("response", on_response_debug)
+        page.on("response", on_response_status)
+
 
         # ── Navigazione ────────────────────────────────────────────────────────
         log.info(f"🌐 Navigazione verso: {url}")
@@ -130,7 +125,8 @@ class ImageFXFlowAutomation(BaseAutomation):
                 # 1. Già nell'editor? C'è il textbox?
                 # Controlliamo prima gli XPath specifici forniti dall'utente
                 for sel in self.PROMPT_SELECTORS:
-                    if await page.locator(sel).first.count() > 0:
+                    loc = page.locator(sel).first
+                    if await loc.count() > 0 and await loc.is_visible():
                         log.info(f"✅ Rilevato textbox dell'editor via '{sel}', procedo...")
                         return await self._execute_generation_flow(page, capturer, debug_dir, full_prompt, project_id, dest_dir, prompt, main_style, sub_style)
 
@@ -162,76 +158,77 @@ class ImageFXFlowAutomation(BaseAutomation):
 
     async def _execute_generation_flow(self, page, capturer, debug_dir, full_prompt, project_id, dest_dir, prompt, main_style, sub_style):
         """Sottoprocesso di inserimento prompt e invio."""
-        # ── Controlla Agente ───────────────────────────────────
-        await self._check_agent_status(page)
+        try:
+            # ── Controlla Agente ───────────────────────────────────
+            await self._check_agent_status(page)
 
-        # ── Imposta conteggio immagini x4 ─────────────────────────────
-        await self._set_image_count_to_four(page)
-        await human_delay(1000, 2000)
+            # ── Imposta conteggio immagini x4 ─────────────────────────────
+            await self._set_image_count_to_four(page)
+            await human_delay(1000, 2000)
 
-        # ── Trova textbox prompt ───────────────────────────────────────────────
-        prompt_locator, prompt_selector = await self._find_prompt_textbox(page, debug_dir)
-        if prompt_locator is None:
-            raise RuntimeError("Prompt field not found")
+            # ── Trova textbox prompt ───────────────────────────────────────────────
+            prompt_locator, prompt_selector = await self._find_prompt_textbox(page, debug_dir)
+            if prompt_locator is None:
+                raise RuntimeError("Prompt field not found")
 
-        log.info(f"⌨️ Focus su {prompt_selector}")
-        await prompt_locator.click(force=True)
-        await human_delay(500, 1000)
-        
-        # Pulizia e scrittura
-        await page.keyboard.press("Control+A")
-        await page.keyboard.press("Backspace")
-        await human_delay(300, 600)
-        await page.keyboard.type(full_prompt, delay=TYPE_DELAY_MS)
-        await asyncio.sleep(0.5)
-        
-        log.info(f"✅ Prompt digitato: '{full_prompt}'")
-        await page.screenshot(path=str(debug_dir / f"PROMPT_READY_{int(time.time())}.png"))
+            log.info(f"⌨️ Focus su {prompt_selector}")
+            await prompt_locator.click(force=True)
+            await human_delay(500, 1000)
+            
+            # Pulizia e scrittura
+            await page.keyboard.press("Control+A")
+            await page.keyboard.press("Backspace")
+            await human_delay(300, 600)
+            await page.keyboard.type(full_prompt, delay=TYPE_DELAY_MS)
+            await asyncio.sleep(0.5)
+            
+            log.info(f"✅ Prompt digitato: '{full_prompt}'")
+            await page.screenshot(path=str(debug_dir / f"PROMPT_READY_{int(time.time())}.png"))
 
-        # ── Invio ────────────────────────────────────────────────
-        capturer.can_capture = True
-        log.info("🚀 Invio generazione...")
-        
-        # Proviamo Enter + Send Button
-        await page.keyboard.press("Enter")
-        await asyncio.sleep(0.5)
-        
-        found_send = False
-        for sel in SEND_BUTTON_SELECTORS:
-            try:
-                btn = page.locator(sel).first
-                if await btn.count() > 0 and await btn.is_visible():
-                    log.info(f"🖱️ CLICK (Send Button): {sel}")
-                    await btn.click(force=True)
-                    found_send = True
-                    break
-            except: continue
-        
-        if not found_send:
-            log.info("ℹ️ Pulsante invio non trovato, spero in Enter.")
+            # ── Invio ────────────────────────────────────────────────
+            capturer.can_capture = True
+            log.info("🚀 Invio generazione...")
+            
+            # Proviamo Enter + Send Button
+            await page.keyboard.press("Enter")
+            await asyncio.sleep(0.5)
+            
+            found_send = False
+            for sel in SEND_BUTTON_SELECTORS:
+                try:
+                    btn = page.locator(sel).first
+                    if await btn.count() > 0 and await btn.is_visible():
+                        log.info(f"🖱️ CLICK (Send Button): {sel}")
+                        await btn.click(force=True)
+                        found_send = True
+                        break
+                except: continue
+            
+            if not found_send:
+                log.info("ℹ️ Pulsante invio non trovato, spero in Enter.")
 
-        await human_delay(3000, 5000)
+            await human_delay(3000, 5000)
 
-        # Screenshot post-invio
-        await page.screenshot(path=str(debug_dir / f"GEN_START_{int(time.time())}.png"))
+            # Screenshot post-invio
+            await page.screenshot(path=str(debug_dir / f"GEN_START_{int(time.time())}.png"))
 
-        # ── Gestione Approvazione Agente ───────────────────────────
-        await self._handle_agent_approval(page, debug_dir)
+            # ── Gestione Approvazione Agente ───────────────────────────
+            await self._handle_agent_approval(page, debug_dir)
 
-        # ── Attesa Immagini ──────────────────────────────────────────────────
-        log.info(f"⏳ In attesa delle immagini ({IMAGE_WAIT_TIMEOUT}s)...")
-        await capturer.poll_dom_for_images()
-        
-        # ── Attesa caricamenti Drive/DB ─────────────────────────────────────
-        await capturer.wait_for_uploads()
+            # ── Attesa Immagini ──────────────────────────────────────────────────
+            log.info(f"⏳ In attesa delle immagini ({IMAGE_WAIT_TIMEOUT}s)...")
+            await capturer.poll_dom_for_images()
+            
+            # ── Attesa caricamenti Drive/DB ─────────────────────────────────────
+            await capturer.wait_for_uploads()
 
-        results = capturer.get_results()
-        log.info(f"📊 Risultato: {len(results)} immagini catturate")
+            results = capturer.get_results()
+            log.info(f"📊 Risultato: {len(results)} immagini catturate")
 
-        # ── Salva metadata.json ────────────────────────────────────────────
-        _save_metadata(dest_dir, main_style, sub_style, prompt, full_prompt, project_id, results)
+            # ── Salva metadata.json ────────────────────────────────────────────
+            _save_metadata(dest_dir, main_style, sub_style, prompt, full_prompt, project_id, results)
 
-        return results
+            return results
 
         except Exception as e:
             log.error(f"❌ ERRORE: {e}")
@@ -269,39 +266,7 @@ class ImageFXFlowAutomation(BaseAutomation):
         except Exception as e:
             log.debug(f"Errore controllo Agente: {e}")
 
-    async def _debug_xpath(self, page, xpath, label):
-        """Debug per verificare la presenza di un XPath e loggare l'HTML."""
-        try:
-            # Rimuove prefisso xpath= se presente
-            xp = xpath.replace("xpath=", "")
-            found = await page.evaluate(f"""
-                (xpath) => {{
-                    const el = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    return el ? el.outerHTML : null;
-                }}
-            """, xp)
-            if found:
-                log.info(f"  [DEBUG] XPath {label} TROVATO: {found[:200]}...")
-                return True
-            else:
-                log.info(f"  [DEBUG] XPath {label} NON TROVATO")
-                return False
-        except Exception as e:
-            log.debug(f"  [DEBUG] Errore verifica XPath {label}: {e}")
-            return False
 
-    async def _debug_list_elements(self, page):
-        """Lista tutti i bottoni e altri elementi interattivi per debug."""
-        log.info("🔍 [DEBUG] Elenco bottoni visibili nella pagina:")
-        try:
-            buttons = await page.locator('button, div[role="button"]').all()
-            for i, btn in enumerate(buttons):
-                if await btn.is_visible():
-                    text = (await btn.inner_text()).strip().replace("\n", " ")
-                    role = await btn.get_attribute("role") or "button"
-                    log.info(f"  [{i}] ROLE={role} TEXT='{text[:50]}'")
-        except Exception as e:
-            log.warning(f"  [DEBUG] Errore durante listing elementi: {e}")
 
     async def _set_image_count_to_four(self, page):
         """Imposta il conteggio immagini a x4."""
@@ -380,69 +345,17 @@ class ImageFXFlowAutomation(BaseAutomation):
             await asyncio.sleep(2)
 
     async def _find_prompt_textbox(self, page, debug_dir):
-        """Trova il textbox del prompt con debug profondo di tutti i candidati."""
-        log.info("🔍 [DEEP DEBUG] Ricerca di TUTTI i possibili campi prompt...")
-        
-        # 1. Cerca TUTTI gli elementi potenzialmente interessanti
-        potential_selectors = [
-            'div[data-slate-editor="true"]',
-            'div[role="textbox"]',
-            'div[contenteditable="true"]',
-            'textarea',
-            'p[data-slate-node="element"]'
-        ]
-        
-        all_candidates = []
-        for sel in potential_selectors:
-            locs = await page.locator(sel).all()
-            for i, loc in enumerate(locs):
-                try:
-                    is_visible = await loc.is_visible()
-                    if not is_visible: continue
-                    
-                    # Genera un mini-report per ogni candidato
-                    info = await loc.evaluate("""el => {
-                        function getXPath(element) {
-                            if (element.id !== '') return 'id("' + element.id + '")';
-                            if (element === document.body) return element.tagName;
-                            var ix = 0;
-                            var siblings = element.parentNode.childNodes;
-                            for (var i = 0; i < siblings.length; i++) {
-                                var sibling = siblings[i];
-                                if (sibling === element) return getXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1) + ']';
-                                if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
-                            }
-                        }
-                        return {
-                            tag: el.tagName,
-                            role: el.getAttribute('role'),
-                            id: el.id,
-                            cls: el.className,
-                            xpath: getXPath(el),
-                            text: el.innerText.substring(0, 50),
-                            rect: el.getBoundingClientRect()
-                        };
-                    }""")
-                    all_candidates.append(info)
-                    log.info(f"  [CANDIDATO] SEL={sel}[{i}] TAG={info['tag']} ROLE={info['role']} TEXT='{info['text']}'")
-                    log.info(f"               XPATH={info['xpath']}")
-                except:
-                    continue
-
-        # Prova a selezionare quello "giusto" escludendo zone sospette
-        # Se c'è un elemento che contiene "Che cosa vuoi creare", è quello buono.
+        """Trova il textbox del prompt."""
         best_loc = None
         best_sel = None
         
         for sel in self.PROMPT_SELECTORS:
             loc = page.locator(sel).first
-            if await loc.count() > 0:
+            if await loc.count() > 0 and await loc.is_visible():
                 text = await loc.inner_text()
-                # Se il testo contiene il placeholder standard, siamo quasi certi
                 if "creare" in text.lower() or "create" in text.lower() or "prompt" in text.lower():
-                    log.info(f"🎯 TROVATO PROMPT OTTIMALE via '{sel}': {text[:40]}")
+                    log.info(f"🎯 Prompt field trovato via '{sel}'")
                     return loc, sel
-                
                 if best_loc is None:
                     best_loc = loc
                     best_sel = sel
@@ -450,6 +363,8 @@ class ImageFXFlowAutomation(BaseAutomation):
         if best_loc:
             log.info(f"⚠️ Usando miglior candidato trovato via '{best_sel}'")
             return best_loc, best_sel
+        
+        return None, None
 
 def parse_style(style: str | None):
     """Divide style in main/sub per struttura cartelle."""

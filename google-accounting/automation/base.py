@@ -56,7 +56,17 @@ class BaseAutomation:
     async def __aenter__(self):
         log.info("Starting browser context for account=%s headless=%s", self.account or "default", self.headless)
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=self.headless)
+        
+        # Argomenti anti-rilevamento robot
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+        ]
+        
+        self.browser = await self.playwright.chromium.launch(
+            headless=self.headless,
+            args=launch_args,
+            channel="chrome"
+        )
         
         # Stealth: User agent reale e viewport standard
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
@@ -68,10 +78,19 @@ class BaseAutomation:
             device_scale_factor=1,
         )
         
-        # Aggiungi script per nascondere Playwright
+        # Aggiungi script per nascondere Playwright (stealth potenziato)
         await self.context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
+            });
+            window.chrome = {
+                runtime: {}
+            };
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['it-IT', 'it', 'en-US', 'en']
+            });
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3]
             });
         """)
         

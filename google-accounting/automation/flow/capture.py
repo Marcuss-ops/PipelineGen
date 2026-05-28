@@ -165,20 +165,18 @@ class ImageCapturer:
     async def poll_dom_for_images(self):
         """
         Polling del DOM per immagini con src contenente 'googleusercontent.com' o fallback.
-        Fallback quando il network listener non cattura immagini.
+        Gestisce anche i redirect URL relativi di Google Flow.
         """
         log.info("Avvio polling DOM per immagini...")
         deadline = time.monotonic() + IMAGE_WAIT_TIMEOUT
+        BASE_URL = "https://labs.google"
         
         while time.monotonic() < deadline:
             if len(self.new_saved_paths) >= MAX_IMAGES:
                 log.info(f"Raggiunto limite di {MAX_IMAGES} immagini, fermo polling DOM")
                 break
 
-            # Cerca con pattern principale e fallback
-            selectors = [
-                'img'  # Cerca TUTTE le immagini per debug
-            ]
+            selectors = ['img']
             
             for selector in selectors:
                 imgs = await self.page.locator(selector).all()
@@ -187,18 +185,26 @@ class ImageCapturer:
                     if not src:
                         continue
                     
-                    # Logga sempre per debug se non è già stato visto
-                    if src not in self.captured_response_urls and src not in self.pre_existing_urls:
-                        log.info(f"🕵️ DEBUG DOM img found: {src[:150]}")
+                    # Converte URL relativi in assoluti
+                    abs_src = src if src.startswith("http") else f"{BASE_URL}{src}"
+                    
+                    # Log per debug (solo URL non ancora visti)
+                    if abs_src not in self.captured_response_urls and abs_src not in self.pre_existing_urls:
+                        log.debug(f"DOM img found: {src[:150]}")
 
-                    if IMAGE_DOM_PATTERN not in src and IMAGE_DOM_PATTERN_FALLBACK not in src:
+                    # Filtra: accetta googleusercontent, fallback, e redirect di Flow
+                    is_flow_redirect = MEDIA_REDIRECT_PATTERN in src
+                    is_gusercontent = IMAGE_DOM_PATTERN in src
+                    is_fallback = IMAGE_DOM_PATTERN_FALLBACK in src
+                    
+                    if not (is_gusercontent or is_fallback or is_flow_redirect):
                         continue
                         
-                    if src in self.captured_response_urls:
+                    if abs_src in self.captured_response_urls:
                         continue
 
                     # Processa come task asincrono
-                    task = asyncio.create_task(self._process_dom_image(src))
+                    task = asyncio.create_task(self._process_dom_image(abs_src))
                     self._pending_tasks.add(task)
                     task.add_done_callback(self._pending_tasks.discard)
 
@@ -207,13 +213,21 @@ class ImageCapturer:
         log.info(f"Polling DOM terminato. Totale immagini catturate finora: {len(self.new_saved_paths)}")
 
     async def _process_dom_image(self, src):
-        """Scarica e salva un'immagine trovata nel DOM."""
+        """Scarica e salva un'immagine trovata nel DOM, seguendo i redirect."""
         try:
-            log.info(f"🔍 DOM new img detected: {src[:120]}...")
-            resp = await self.page.request.get(src)
+            log.info(f"🔍 DOM img detected, downloading: {src[:120]}...")
+            
+            # Segui i redirect manualmente per ottenere l'URL finale dell'immagine
+            resp = await self.page.request.get(src, max_redirects=10)
             
             if not resp.ok:
                 log.debug(f"DOM request not ok ({resp.status}): {src[:100]}...")
+                return
+
+            # Controlla il content-type per assicurarsi che sia un'immagine
+            content_type = resp.headers.get("content-type", "")
+            if "image/" not in content_type and "octet-stream" not in content_type:
+                log.debug(f"DOM non-image content-type ({content_type}): {src[:100]}...")
                 return
 
             body = await resp.body()
@@ -235,11 +249,12 @@ class ImageCapturer:
             self.saved_content_digests.add(digest)
             self.captured_response_urls.add(src)
 
-            filename = f"FLOW_DOM_{int(time.time())}_{len(self.new_saved_paths)}.jpg"
+            ext = ".png" if "png" in content_type else ".jpg"
+            filename = f"FLOW_DOM_{int(time.time())}_{len(self.new_saved_paths)}{ext}"
             path = self.dest_dir / filename
             path.write_bytes(body)
             self.new_saved_paths.append(path)
-            log.info(f"📸 ✅ Salvata immagine via DOM: {path.name} ({len(body)} bytes)")
+            log.info(f"📸 ✅ Salvata immagine via DOM redirect: {path.name} ({len(body)} bytes)")
 
             # Salva nel DB e Drive
             await self._save_to_db(path, filename, "DOM")
