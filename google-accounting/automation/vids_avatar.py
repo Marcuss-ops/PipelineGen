@@ -113,13 +113,26 @@ class GoogleVidsAvatarMixin:
         if not char:
             log.error("Character '%s' not found in database", avatar_id)
             return None
+        log.info("Character loaded: %s, keys=%s", avatar_id, list(char.keys()))
         image_drive_id = char.get("image_drive_id")
-        video_folder_id = char.get("metadata", {}).get("video_folder_id")
-        if not image_drive_id:
-            log.error("Character '%s' has no image_drive_id", avatar_id)
+        video_folder_id = char.get("metadata", {}).get("video_folder_id") if char.get("metadata") else None
+        local_image = char.get("metadata", {}).get("local_image_path") if char.get("metadata") else None
+        log.info("local_image=%s, image_drive_id=%s", local_image, image_drive_id)
+        
+        # Use local image if available, otherwise download from Drive
+        is_local_image = False
+        if local_image:
+            temp_img_path = Path(local_image)
+            if not temp_img_path.exists():
+                log.error("Local image not found: %s", local_image)
+                return None
+            log.info("Using local reference image: %s", temp_img_path)
+            is_local_image = True
+        elif image_drive_id:
+            temp_img_path = await download_file(image_drive_id, f"ref_{avatar_id}.png", "image")
+        else:
+            log.error("Character '%s' has no image_drive_id or local_image_path", avatar_id)
             return None
-
-        temp_img_path = await download_file(image_drive_id, f"ref_{avatar_id}.png", "image")
         dest_folder = get_structured_path(media_type="avatar", style="ai", sub_style=avatar_id)
 
         if not video_id or video_id == "new":
@@ -139,10 +152,31 @@ class GoogleVidsAvatarMixin:
         try:
             if video_id == "new" or not video_id:
                 log.info("Creating new Vids project for Avatar")
-                await page.click('[aria-label="Crea nuovo video"]', timeout=15000)
-                await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
+                created = False
+                for sel in [
+                    '[aria-label="Inizia un nuovo video"]',
+                    '[aria-label="Crea nuovo video"]',
+                ]:
+                    try:
+                        loc = page.locator(sel).first
+                        if await loc.count() > 0:
+                            await loc.click(timeout=10000)
+                            created = True
+                            log.info("Clicked new video button: %s", sel)
+                            break
+                    except Exception:
+                        continue
+                if not created:
+                    await page.goto(
+                        "https://docs.google.com/videos/d/new/edit",
+                        wait_until="domcontentloaded",
+                    )
+                try:
+                    await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
+                except Exception:
+                    pass
                 video_id = self._extract_vid_id(page.url)
-                if video_id:
+                if video_id and video_id != "new":
                     save_project_id("vids", video_id)
             else:
                 log.info("Opening existing Vids project: %s", video_id)
@@ -153,61 +187,107 @@ class GoogleVidsAvatarMixin:
 
             log.info("Waiting for editor to stabilize...")
             await asyncio.sleep(15)
+            # Dismiss dialogs and proactively remove any hanging modal backdrops from previous runs
+            log.info("Removing hanging/stuck dialog backdrops via JS injection...")
+            try:
+                await page.evaluate("""() => {
+                    const bgs = document.querySelectorAll('.docs-material-gm-dialog-bg, [class*="dialog-bg"], .modal-backdrop');
+                    bgs.forEach(el => el.remove());
+                    const dialogs = document.querySelectorAll('div[role="dialog"], .docs-material-gm-dialog, .modal-dialog');
+                    dialogs.forEach(el => el.remove());
+                }""")
+                await asyncio.sleep(2)
+            except Exception as e:
+                log.warning("Failed to remove dialog backdrops via JS: %s", e)
             await self._dismiss_dialogs(page)
 
-            # Open Veo generation rail
+            # Open the Veo (Video clip AI) rail from the sidebar
+            log.info("Opening Veo rail from sidebar...")
             try:
                 await page.locator(
                     '#content-library-rail-video-generation-element'
                 ).click(force=True, timeout=10000)
             except Exception:
-                await page.get_by_label(
-                    "Genera un video clip AI", exact=True
-                ).click(force=True, timeout=10000)
-            await asyncio.sleep(3)
+                try:
+                    await page.get_by_label(
+                        "Genera un video clip AI", exact=True
+                    ).click(force=True, timeout=10000)
+                except Exception:
+                    log.warning("Could not click Veo rail, trying sidebar xpath")
+                    await page.locator('xpath=//*[@id="content-library-rail-video-generation-element"]').click(force=True, timeout=10000)
+            await asyncio.sleep(5)
             selector_report["attempts"].append({"stage": "open_veo_rail", "found": True})
 
-            # Upload reference image
-            upload_selectors = [
-                ".videoGenCreationViewFileInputsInputSelectButton",
-                "button[aria-label='Ingredienti']",
-            ]
-            upload_btn = None
-            for sel in upload_selectors:
-                loc = page.locator(sel).first
-                if await loc.count() > 0:
-                    upload_btn = loc
-                    break
-            if not upload_btn:
-                raise RuntimeError("Reference image upload button not found")
-            selector_report["attempts"].append({"stage": "upload_btn", "found": True})
+            # Now upload the reference image directly to all available file inputs (without clicking the Avatar box!)
+            log.info("Uploading reference image directly to file inputs...")
+            uploaded = False
+            try:
+                file_inputs = page.locator('input[type="file"]')
+                fi_count = await file_inputs.count()
+                if fi_count > 0:
+                    for idx in range(fi_count):
+                        await file_inputs.nth(idx).set_input_files(str(temp_img_path))
+                    uploaded = True
+                    log.info("Reference image uploaded successfully to %d file inputs.", fi_count)
+            except Exception as e:
+                log.warning("Upload via input[type=file] failed: %s", e)
 
-            log.info("Uploading reference image...")
-            async with page.expect_file_chooser() as fc_info:
-                await upload_btn.click()
-            file_chooser = await fc_info.value
-            await file_chooser.set_files(temp_img_path)
-            log.info("Reference image uploaded.")
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
+            selector_report["attempts"].append({"stage": "upload_image", "found": uploaded})
 
             # Fill prompt with script text
-            input_loc = page.locator(
-                'textarea, [contenteditable="true"], div[role="textbox"]'
-            ).first
-            await input_loc.fill(script)
+            log.info("Filling prompt...")
+            prompt_filled = False
+            try:
+                textarea = page.locator('textarea').first
+                if await textarea.count() > 0 and await textarea.is_visible():
+                    await textarea.fill(script)
+                    prompt_filled = True
+                    log.info("Prompt filled in textarea.")
+            except Exception as e:
+                log.warning("Failed to fill prompt in textarea: %s", e)
+
+            if not prompt_filled:
+                # Fallback to editable div
+                for sel in [
+                    'div[role="textbox"][contenteditable="true"]',
+                    '[contenteditable="true"]',
+                    'div[role="textbox"]',
+                ]:
+                    loc = page.locator(sel).first
+                    try:
+                        if await loc.count() > 0 and await loc.is_visible():
+                            await loc.fill(script)
+                            prompt_filled = True
+                            log.info("Prompt filled in contenteditable: %s", sel)
+                            break
+                    except Exception:
+                        continue
+
             await asyncio.sleep(2)
-            selector_report["attempts"].append({"stage": "fill_script", "found": True})
+            selector_report["attempts"].append({"stage": "fill_script", "found": prompt_filled})
 
-            # Generate
-            generate_btn = page.locator(
-                'button:has-text("Genera"), button:has-text("Generate")'
-            ).first
-            await generate_btn.click()
-            log.info("Avatar generation started for %s", avatar_id)
-            selector_report["attempts"].append({"stage": "generate", "found": True})
+            # Click Genera button
+            log.info("Clicking Genera button...")
+            generate_btn_clicked = False
+            for sel in [
+                'button:has-text("Genera")',
+                '#elptr_19',
+                'button:has-text("Generate")',
+            ]:
+                loc = page.locator(sel).first
+                try:
+                    if await loc.count() > 0 and await loc.is_visible():
+                        await loc.click(force=True)
+                        generate_btn_clicked = True
+                        log.info("Successfully clicked Genera button: %s", sel)
+                        break
+                except Exception:
+                    continue
+            selector_report["attempts"].append({"stage": "generate", "found": generate_btn_clicked})
 
-            # Poll and download generated video
-            final_path = await self._poll_and_download_video(page, video_id)
+            # Poll and download generated video (with a 10 minutes timeout to allow full rendering)
+            final_path = await self._poll_and_download_video(page, video_id, timeout_ms=600000)
 
             if final_path and video_folder_id:
                 log.info("Uploading generated avatar video to character folder: %s", video_folder_id)
@@ -237,7 +317,7 @@ class GoogleVidsAvatarMixin:
         finally:
             selector_report.setdefault("result", "success")
             _append_selector_report(selector_report)
-            if temp_img_path.exists():
+            if temp_img_path.exists() and not is_local_image:
                 temp_img_path.unlink()
             await page.close()
 
