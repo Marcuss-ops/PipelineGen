@@ -1,7 +1,6 @@
 package images
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,11 +60,6 @@ type Service struct {
 	// Mutex per evitare download duplicati dello stesso soggetto
 	mu sync.Mutex
 
-	// Metadata cache for Drive metadata.json aggregation (avoids eventual-consistency races)
-	metadataCacheMu   sync.Mutex
-	metadataCache     map[string][]VideoEntryMetadata
-	metadataCachePath string
-
 	// Animations directory
 	animationsDir string
 
@@ -113,11 +107,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		nvidiaModel:  cfg.External.NvidiaModel,
 		animationsDir: cfg.Storage.AnimationsPath(),
 		styleRegistry: styleRegistry,
-		metadataCache: make(map[string][]VideoEntryMetadata),
 	}
-
-	s.metadataCachePath = filepath.Join(cfg.Storage.TempPath(), "vid_metadata_cache.json")
-	s.loadMetadataCache()
 
 	return s
 }
@@ -142,46 +132,6 @@ func (s *Service) Diagnostics() DiagnosticsReport {
 	}
 }
 
-// loadMetadataCache carica la cache persistente da disco all'avvio.
-func (s *Service) loadMetadataCache() {
-	if s.metadataCachePath == "" {
-		return
-	}
-	data, err := os.ReadFile(s.metadataCachePath)
-	if err != nil {
-		return
-	}
-	var cached map[string][]VideoEntryMetadata
-	if err := json.Unmarshal(data, &cached); err != nil {
-		s.log.Warn("failed to parse persisted metadata cache", zap.Error(err))
-		return
-	}
-	s.metadataCacheMu.Lock()
-	for k, v := range cached {
-		s.metadataCache[k] = v
-	}
-	s.metadataCacheMu.Unlock()
-	if len(cached) > 0 {
-		s.log.Info("loaded metadata cache from disk", zap.Int("folders", len(cached)))
-	}
-}
-
-// saveMetadataCache scrive la cache su disco per persistenza tra restart.
-func (s *Service) saveMetadataCache() {
-	if s.metadataCachePath == "" {
-		return
-	}
-	s.metadataCacheMu.Lock()
-	data, err := json.Marshal(s.metadataCache)
-	s.metadataCacheMu.Unlock()
-	if err != nil {
-		s.log.Warn("failed to marshal metadata cache", zap.Error(err))
-		return
-	}
-	if err := os.WriteFile(s.metadataCachePath, data, 0644); err != nil {
-		s.log.Warn("failed to write metadata cache to disk", zap.Error(err))
-	}
-}
 
 func (s *Service) SetIngestService(svc *ingest.Service) {
 	s.ingestSvc = svc

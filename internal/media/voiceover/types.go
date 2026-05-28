@@ -73,6 +73,7 @@ type BatchItem struct {
 	FileHash     string `json:"file_hash,omitempty"`
 	Status       string `json:"status"`
 	Error        string `json:"error,omitempty"`
+	SearchText   string `json:"search_text,omitempty"`
 }
 
 type VoiceoverResult struct {

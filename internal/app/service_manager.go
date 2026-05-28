@@ -29,6 +29,7 @@ import (
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
 	"velox/go-master/internal/media/realtime"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/media/voiceover"
@@ -200,6 +201,21 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if vectorSvc != nil {
 		imageService.SetVectorStore(vectorSvc)
 	}
+
+	// Wire up semantic tagger for voiceover metadata enrichment
+	pythonScriptsDir := cfg.Paths.PythonScriptsDir
+	voService.SetSemanticTagger(func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {
+		payload, err := semantic.Tagger(ctx, pythonScriptsDir, prompt, style, mediaType, generator)
+		if err != nil {
+			return nil, err
+		}
+		return &voiceover.SemanticTaggerResult{
+			SearchText: payload.SearchText,
+			Tags:       payload.Tags,
+			Subjects:   payload.Subjects,
+			Mood:       payload.Mood,
+		}, nil
+	})
 
 	// Asset resolver (queries asset_index first, then falls back to specific DBs)
 	clipsRepos := map[string]*clips.Repository{

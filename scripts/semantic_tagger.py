@@ -107,6 +107,21 @@ def match_taxonomy(prompt, taxonomy):
             hits["categories"].extend(data.get("categories", []))
             hits["mood"].extend(data.get("mood", []))
 
+    # Match audio sounds
+    for key, data in taxonomy.get("audio", {}).get("sounds", {}).items():
+        aliases = data.get("aliases", []) + [key]
+        found = False
+        for alias in aliases:
+            if re.search(r'\b' + re.escape(normalize(alias)) + r'\b', prompt_norm):
+                found = True
+                break
+        if found:
+            hits["subjects"].append(canonical if "canonical" in data else key.title())
+            hits["subject_slugs"].append(key.replace(" ", "-"))
+            hits["tags"].extend(data.get("tags", []))
+            hits["categories"].extend(data.get("categories", []))
+            hits["mood"].extend(data.get("mood", []))
+
     return hits
 
 def extract_keywords(prompt):
@@ -127,7 +142,8 @@ def extract_entities(prompt):
     return entities
 
 def build_description(prompt, subjects, categories, media_type):
-    media_label = "image" if media_type == "image" else "video"
+    media_labels = {"image": "image", "video": "video", "audio": "sound effect", "voiceover": "voiceover"}
+    media_label = media_labels.get(media_type, "asset")
     if not subjects:
         return f"A generated {media_label} based on the prompt: '{prompt}'."
     
@@ -143,7 +159,7 @@ def main():
     parser = argparse.ArgumentParser(description="Semantic tagger for generated assets")
     parser.add_argument("--prompt", required=True, help="Original generation prompt")
     parser.add_argument("--style", default="", help="Generation style")
-    parser.add_argument("--media-type", default="image", help="image or video")
+    parser.add_argument("--media-type", default="image", help="image, video, audio, or voiceover")
     parser.add_argument("--generator", default="unknown", help="google-flow, nvidia, etc.")
     parser.add_argument("--taxonomy", default="config/semantic_taxonomy.yaml", help="Path to taxonomy YAML")
     
@@ -196,9 +212,8 @@ def main():
     if confidence > 0.95: confidence = 0.95
     
     # Adjust for media type in asset_type if needed
-    asset_type = "image"
-    if args.media_type == "video":
-        asset_type = "video"
+    asset_type_map = {"image": "image", "video": "video", "audio": "sound_effect", "voiceover": "voiceover"}
+    asset_type = asset_type_map.get(args.media_type, "image")
     
     result = {
         "asset_id": "", # To be filled by caller

@@ -182,3 +182,218 @@ styles:
     mood:
       - high-tech
       - sleek
+
+# Audio-specific taxonomy for sound effects, voiceovers, and ambient sounds
+audio:
+  sounds:
+    thunder:
+      aliases:
+        - thunderclap
+        - thunder sound
+        - tuono
+      tags:
+        - weather
+        - storm
+        - rumble
+        - nature
+      categories:
+        - nature
+        - weather
+      mood:
+        - dramatic
+        - powerful
+        - ominous
+
+    rain:
+      aliases:
+        - rainfall
+        - rain sound
+        - pioggia
+        - drizzle
+      tags:
+        - weather
+        - nature
+        - water
+        - ambient
+      categories:
+        - nature
+        - weather
+      mood:
+        - calming
+        - melancholic
+        - peaceful
+
+    explosion:
+      aliases:
+        - blast
+        - detonation
+        - esplosione
+      tags:
+        - action
+        - impact
+        - destruction
+        - war
+      categories:
+        - action
+        - combat
+      mood:
+        - intense
+        - chaotic
+        - violent
+
+    sword:
+      aliases:
+        - sword clash
+        - blade
+        - spada
+        - metal clash
+      tags:
+        - combat
+        - medieval
+        - weapon
+        - fight
+      categories:
+        - action
+        - combat
+      mood:
+        - intense
+        - medieval
+        - dramatic
+
+    footsteps:
+      aliases:
+        - walking
+        - steps
+        - passi
+      tags:
+        - movement
+        - human
+        - ambient
+      categories:
+        - movement
+        - human
+      mood:
+        - neutral
+        - suspenseful
+
+    heartbeat:
+      aliases:
+        - heart beat
+        - battito cardiaco
+      tags:
+        - human
+        - body
+        - tension
+      categories:
+        - human
+        - tension
+      mood:
+        - tense
+        - anxious
+        - dramatic
+
+    wind:
+      aliases:
+        - wind sound
+        - breeze
+        - vento
+      tags:
+        - weather
+        - nature
+        - ambient
+      categories:
+        - nature
+        - weather
+      mood:
+        - eerie
+        - cold
+        - desolate
+
+    ocean waves:
+      aliases:
+        - waves
+        - sea
+        - mare
+        - surf
+      tags:
+        - nature
+        - water
+        - beach
+        - ambient
+      categories:
+        - nature
+        - water
+      mood:
+        - peaceful
+        - calming
+        - vast
+
+    engine:
+      aliases:
+        - motor
+        - motor sound
+        - motore
+      tags:
+        - mechanical
+        - vehicle
+        - industrial
+      categories:
+        - mechanical
+        - vehicle
+      mood:
+        - powerful
+        - industrial
+        - energetic
+
+    crowd:
+      aliases:
+        - people talking
+        - crowd noise
+        - folla
+        - audience
+      tags:
+        - human
+        - social
+        - ambient
+      categories:
+        - human
+        - social
+      mood:
+        - lively
+        - chaotic
+        - social
+
+    door creak:
+      aliases:
+        - creaking door
+        - squeaky door
+      tags:
+        - horror
+        - ambient
+        - suspense
+      categories:
+        - horror
+        - ambient
+      mood:
+        - eerie
+        - suspenseful
+        - creepy
+
+    fire:
+      aliases:
+        - burning
+        - flames
+        - fuoco
+        - crackling fire
+      tags:
+        - nature
+        - destruction
+        - warmth
+        - ambient
+      categories:
+        - nature
+        - ambient
+      mood:
+        - warm
+        - destructive
+        - cozy

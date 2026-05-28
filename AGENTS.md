@@ -192,6 +192,27 @@ When adding new tables to `velox.db.sqlite`, ensure:
 - Subfolders are created per term/tag
 - Dry-run mode simulates uploads without actual Drive operations
 
+### Unified Semantic Metadata Architecture
+All media types (images, videos, audio, voiceovers) use a single metadata format and pipeline:
+- **One Python script**: `scripts/semantic_tagger.py` handles all media types via `--media-type` flag
+- **One Go struct**: `SemanticMetadataPayload` (defined in `google_vids.go`) — same format for all media
+- **One shared package**: `internal/media/semantic/tagger.go` — callable from any service without circular imports
+- **One taxonomy**: `config/semantic_taxonomy.yaml` with `entities`, `actions`, `styles`, and `audio.sounds` sections
+
+Flow for all media types:
+1. Call `semantic.Tagger(ctx, scriptsDir, prompt, style, mediaType, generator)` or `callSemanticTagger()`
+2. If confidence < 0.6, call LLM fallback via `callLLMFallback()`
+3. Build `SemanticMetadataPayload` and upload as `metadata.json` to Drive
+4. Populate `search_text`, `tags`, `subjects` on the `MediaAsset` DB record
+
+Media type-specific notes:
+- **Images**: `mediaType: "image"`, uploaded via `uploadImageMetadata()` / `UploadBatchMetadata()`
+- **Videos**: `mediaType: "video"`, uploaded via `uploadVideoMetadata()` — returns `*SemanticMetadataPayload`
+- **Audio/SFX**: `mediaType: "audio"`, extracted from video via `registerAudioClip()` — calls tagger, uploads `metadata.json`
+- **Voiceovers**: `mediaType: "voiceover"`, enriched via `SetSemanticTagger()` callback — adds `search_text` to metadata
+
+Voiceover integration uses a callback pattern (`SemanticTaggerFunc`) to avoid circular imports between `voiceover` and `images` packages.
+
 ## Migration Status (Brutal Care Plan)
 
 ### Completed

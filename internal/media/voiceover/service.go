@@ -18,6 +18,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// SemanticTaggerFunc is a function that calls the Python semantic tagger.
+// Defined as a callback to avoid circular imports with the images package.
+type SemanticTaggerFunc func(ctx context.Context, prompt, style, mediaType, generator string) (*SemanticTaggerResult, error)
+
+// SemanticTaggerResult mirrors the semantic tagger output for voiceover use.
+type SemanticTaggerResult struct {
+	SearchText string   `json:"search_text"`
+	Tags       []string `json:"tags"`
+	Subjects   []string `json:"subjects"`
+	Mood       []string `json:"mood"`
+}
+
 type Service struct {
 	cfg               *config.Config
 	pythonScriptsDir  string
@@ -27,6 +39,7 @@ type Service struct {
 	assetDestResolver destination.Resolver
 	audioProcessor    *audioasset.Processor
 	lifecycleService  *lifecycle.Service
+	semanticTagger    SemanticTaggerFunc
 }
 
 func NewService(
@@ -64,6 +77,12 @@ func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 		jobsSvc.RegisterHandler(models.JobTypeVoiceoverBatch, s.HandleJob)
 		s.log.Info("registered voiceover job handler")
 	}
+}
+
+// SetSemanticTagger sets the callback function for semantic metadata enrichment.
+// Must be called after construction to enable search_text/tags on voiceovers.
+func (s *Service) SetSemanticTagger(fn SemanticTaggerFunc) {
+	s.semanticTagger = fn
 }
 
 func (s *Service) Generate(ctx context.Context, text, language, filename string) (*VoiceoverResult, error) {
@@ -211,6 +230,20 @@ func (s *Service) processLanguage(
 		"strategy":     req.Strategy,
 		"request_id":   requestID,
 		"cleaned_path": item.CleanedPath,
+	}
+
+	// Call semantic tagger for rich metadata (search_text, tags)
+	if s.semanticTagger != nil {
+		semResult, err := s.semanticTagger(ctx, req.Text, "", "voiceover", "voiceover")
+		if err != nil {
+			s.log.Warn("processLanguage: semantic tagger failed", zap.Error(err))
+		} else {
+			meta["search_text"] = semResult.SearchText
+			meta["semantic_tags"] = semResult.Tags
+			meta["semantic_subjects"] = semResult.Subjects
+			meta["semantic_mood"] = semResult.Mood
+			item.SearchText = semResult.SearchText
+		}
 	}
 	metaJSON, _ := json.Marshal(meta)
 
