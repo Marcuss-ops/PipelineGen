@@ -109,11 +109,6 @@ func (r *Router) Setup() *gin.Engine {
 	engine.Static("/assets", assetsDir)
 	engine.Static("/media/google-accounting", r.cfg.GoogleAccounting.DownloadDir)
 
-	// Serve React admin frontend
-	adminDir := "web-admin/dist"
-	engine.Static("/admin", adminDir)
-	engine.StaticFile("/admin", filepath.Join(adminDir, "index.html"))
-
 	// API routes
 	api := engine.Group("/api")
 	{

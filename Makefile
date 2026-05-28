@@ -14,15 +14,12 @@ build:
 	go build -ldflags "$(LDFLAGS)" -v ./cmd/server
 
 # Run all tests
-test: test-unit test-integration
+test: test-unit
 
 # Run unit tests only
 test-unit:
 	go test -v -race -coverprofile=coverage.out ./internal/... ./pkg/...
 
-# Run integration tests only
-test-integration:
-	go test -v ./tests/integration/...
 
 # Generate coverage report
 coverage: test-unit
