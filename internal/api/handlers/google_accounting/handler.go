@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/googleaccounting"
 	"velox/go-master/internal/pkg/mediascan"
+	"velox/go-master/internal/pkg/ptrutil"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -99,7 +100,7 @@ func (h *Handler) SyncProject(c *gin.Context) {
 	payload, err := json.Marshal(googleaccounting.DownloadRequest{
 		VideoID:  videoID,
 		FileType: c.DefaultQuery("file_type", "all"),
-		Headless: c.DefaultQuery("headless", "true") != "false",
+		Headless: ptrutil.Bool(c.DefaultQuery("headless", "true") != "false"),
 		Account:  c.Query("account"),
 	})
 	if err != nil {

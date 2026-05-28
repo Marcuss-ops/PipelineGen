@@ -225,13 +225,13 @@ async def generate_video_ai_endpoint(req: GenerateRequest, background_tasks: Bac
         try:
             _update_job(job_id, progress=35, current_step="generating", last_log="Submitting AI request")
             video_id = await generate_video_ai_v2(
-                req.prompt, 
-                video_id=req.video_id, 
+                video_id=req.video_id,
+                prompt=req.prompt, 
                 account=account, 
                 headless=req.headless
             )
             if video_id:
-                _update_job(job_id, status="done", progress=100, current_step="completed", video_id=video_id, last_log="Video generation completed")
+                _update_job(job_id, status="done", progress=100, current_step="completed", video_id=video_id, file_path=str(video_id), last_log="Video generation completed")
             else:
                 _update_job(job_id, status="failed", current_step="failed", error="Generation failed, no video ID returned.")
         except Exception as e:

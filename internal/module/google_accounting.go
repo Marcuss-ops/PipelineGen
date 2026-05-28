@@ -42,7 +42,8 @@ func NewGoogleAccountingModule(
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			if err := cmd.Start(); err != nil {
-				return fmt.Errorf("google-accounting server start failed: %w", err)
+				log.Warn("google-accounting server start failed (non-fatal, external server may be running)", zap.Error(err))
+				return nil
 			}
 			log.Info("google-accounting server started", zap.Int("pid", cmd.Process.Pid))
 
@@ -88,7 +89,7 @@ func NewGoogleAccountingModule(
 }
 
 func checkGAServer(serverURL string) bool {
-	url := strings.TrimRight(serverURL, "/") + "/status/list"
+	url := strings.TrimRight(serverURL, "/") + "/health"
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)

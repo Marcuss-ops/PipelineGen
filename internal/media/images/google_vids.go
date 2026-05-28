@@ -86,7 +86,6 @@ func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (st
 		VideoID:  videoID,
 		Prompt:   prompt,
 		Style:    style,
-		Headless: true,
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -94,7 +93,7 @@ func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (st
 		return "", fmt.Errorf("marshal google vids request failed: %w", err)
 	}
 
-	startURL := strings.TrimRight(s.googleAccountingURL, "/") + "/generate-vids-video"
+	startURL := strings.TrimRight(s.googleAccountingURL, "/") + "/generate-video"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, startURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("create google vids request failed: %w", err)
@@ -175,7 +174,6 @@ func (s *Service) GenerateAvatarVideo(ctx context.Context, script, avatarID stri
 		VideoID:  videoID,
 		Script:   script,
 		AvatarID: avatarID,
-		Headless: true,
 	}
 
 	body, err := json.Marshal(reqBody)

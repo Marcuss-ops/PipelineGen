@@ -8,3 +8,8 @@ func BoolDefault(v *bool, def bool) bool {
 	}
 	return *v
 }
+
+// Bool returns a pointer to the given bool value.
+func Bool(v bool) *bool {
+	return &v
+}

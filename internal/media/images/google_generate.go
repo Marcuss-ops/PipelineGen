@@ -103,7 +103,7 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 	}
 
 	// NEW: Quick health check before starting long job
-	pingReq, _ := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(s.googleAccountingURL, "/")+"/status/list", nil)
+	pingReq, _ := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(s.googleAccountingURL, "/")+"/health", nil)
 	pingResp, pingErr := s.client.Do(pingReq)
 	if pingErr != nil {
 		return nil, fmt.Errorf("GOOGLE FLOW SERVICE OFFLINE (is uvicorn running on port 8000?): %w", pingErr)
@@ -116,12 +116,10 @@ func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, sty
 	if !strings.Contains(strings.ToLower(flowPrompt), "16:9") {
 		flowPrompt += ", 16:9 aspect ratio, wide format"
 	}
-
 	reqBody := googleaccounting.FlowImageRequest{
 		Prompt:    flowPrompt,
 		ProjectID: s.flowProjectID,
 		Style:     style,
-		Headless:  true,
 		Account:   "favamassimo", // Default to favamassimo
 	}
 

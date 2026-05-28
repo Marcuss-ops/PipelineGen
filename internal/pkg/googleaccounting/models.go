@@ -35,7 +35,7 @@ type GenerateRequest struct {
 	VideoID  string `json:"video_id,omitempty"`
 	Prompt   string `json:"prompt"`
 	Style    string `json:"style,omitempty"`
-	Headless bool   `json:"headless"`
+	Headless *bool `json:"headless,omitempty"`
 	Account  string `json:"account,omitempty"`
 }
 
@@ -44,7 +44,7 @@ type AvatarRequest struct {
 	VideoID  string `json:"video_id,omitempty"`
 	Script   string `json:"script"`
 	AvatarID string `json:"avatar_id,omitempty"`
-	Headless bool   `json:"headless"`
+	Headless *bool `json:"headless,omitempty"`
 	Account  string `json:"account,omitempty"`
 }
 
@@ -53,7 +53,7 @@ type FlowImageRequest struct {
 	Prompt    string `json:"prompt"`
 	ProjectID string `json:"project_id,omitempty"`
 	Style     string `json:"style,omitempty"`
-	Headless  bool   `json:"headless"`
+	Headless  *bool  `json:"headless,omitempty"`
 	Account   string `json:"account,omitempty"`
 }
 
@@ -61,7 +61,7 @@ type FlowImageRequest struct {
 type DownloadRequest struct {
 	VideoID  string `json:"video_id"`
 	FileType string `json:"file_type"` // "video", "image", "all"
-	Headless bool   `json:"headless"`
+	Headless *bool `json:"headless,omitempty"`
 	Account  string `json:"account,omitempty"`
 }
 

@@ -244,7 +244,7 @@ func (h *Handler) checkGoogleAccounting(ctx context.Context, resp *DoctorRespons
 
 	// Try to reach uvicorn server
 	client := &http.Client{Timeout: 2 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, "GET", url+"/status/list", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", url+"/health", nil)
 	hResp, err := client.Do(req)
 	if err != nil {
 		resp.Checks["google_accounting"] = "offline"
