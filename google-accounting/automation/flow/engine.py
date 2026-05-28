@@ -28,6 +28,7 @@ from .config import (
     POST_ENTER_WAIT,
     POST_GOTO_WAIT,
     PROMPT_SELECTORS,
+    SEND_BUTTON_SELECTORS,
     TYPE_DELAY_MS,
     log,
 )
@@ -82,6 +83,19 @@ class ImageFXFlowAutomation(BaseAutomation):
 
         # Network listener
         page.on("response", capturer.make_network_handler())
+        
+        # DEBUG: Log della risposta di generazione
+        async def on_response_debug(response):
+            if "batchGenerateImages" in response.url and response.request.method == "POST":
+                log.info(f"🎯 [DEBUG RESPONSE] {response.url} | Status: {response.status}")
+                try:
+                    body = await response.json()
+                    import json
+                    log.info(f"📦 [DEBUG BODY]: {json.dumps(body, indent=2)}")
+                except Exception as e:
+                    log.error(f"❌ [DEBUG] Errore parsing body generazione: {e}")
+        
+        page.on("response", on_response_debug)
 
         # ── Navigazione ────────────────────────────────────────────────────────
         log.info(f"🌐 Navigazione verso: {url}")
@@ -94,113 +108,130 @@ class ImageFXFlowAutomation(BaseAutomation):
         # Ritardo umano dopo caricamento
         await human_delay(1500, 4000)
         await human_scroll(page)
+
+        # ── Se landing page, clicca "Create with Google Flow" ──────────────────
+        create_btn = page.locator('text=Create with Google Flow').first
+        if await create_btn.count() > 0:
+            log.info("🖱️ Landing page rilevata, clicco 'Create with Google Flow'...")
+            await human_delay(800, 2000)
+            await create_btn.click()
+            await asyncio.sleep(5)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except:
+                pass
+            await human_delay(1000, 3000)
         
         # ── Polling: dashboard? → Nuovo progetto / editor? → prosegui ─────────
         log.info("In attesa del caricamento della pagina (editor o dashboard)...")
+        dashboard_clicked = False
         for _ in range(30):
             try:
                 # 1. Già nell'editor? C'è il textbox?
+                # Controlliamo prima gli XPath specifici forniti dall'utente
                 for sel in self.PROMPT_SELECTORS:
                     if await page.locator(sel).first.count() > 0:
-                        log.info(f"✅ Rilevato textbox dell'editor, procedo...")
-                        break
-                else:
-                    # Nessun textbox trovato, continua a cercare
-                    pass
-                if await page.locator(self.PROMPT_SELECTORS[0]).first.count() > 0:
-                    break
-                
-                # 2. Dashboard? C'è "Nuovo progetto"?
-                found_btn = None
-                for btn_text in NEW_PROJECT_BUTTON_TEXTS:
-                    loc = page.locator(f"text={btn_text}").first
-                    if await loc.count() > 0:
-                        found_btn = loc
-                        btn_text_found = btn_text
-                        break
-                if found_btn:
-                    log.info(f"🖱️ Rilevata dashboard, clic su '{btn_text_found}'...")
-                    await human_delay(800, 2000)
-                    await found_btn.click()
-                    await asyncio.sleep(5)
-                    break
+                        log.info(f"✅ Rilevato textbox dell'editor via '{sel}', procedo...")
+                        return await self._execute_generation_flow(page, capturer, debug_dir, full_prompt, project_id, dest_dir, prompt, main_style, sub_style)
+
+                # 2. Dashboard? Cerca pulsante per nuovo progetto (se non l'abbiamo già cliccato)
+                if not dashboard_clicked:
+                    found_btn = None
+                    for btn_text in NEW_PROJECT_BUTTON_TEXTS:
+                        loc = page.locator(f"text={btn_text}").first
+                        if await loc.count() > 0:
+                            # Filtro personaggi
+                            context_text = await loc.evaluate("el => el.parentElement.innerText")
+                            if "character" in context_text.lower() or "personaggi" in context_text.lower():
+                                continue
+                            found_btn = loc
+                            break
+                    
+                    if found_btn:
+                        log.info(f"🖱️ Dashboard rilevata, clic su '{await found_btn.inner_text()}'")
+                        await found_btn.click(force=True)
+                        dashboard_clicked = True
+                        await asyncio.sleep(5)
+                        continue
+
             except Exception as e:
-                log.debug(f"Polling error (navigazione in corso): {e}")
-            await asyncio.sleep(0.5)
+                log.debug(f"Polling error: {e}")
+            await asyncio.sleep(1)
         
-        log.info(f"✅ Pagina caricata: {page.url}")
+        raise RuntimeError("Impostazione editor fallita (timeout 30s)")
 
-        # ── Disabilita Agente se attivo (NUOVO) ────────────────────────────────
-        await self._disable_agent_if_active(page)
+    async def _execute_generation_flow(self, page, capturer, debug_dir, full_prompt, project_id, dest_dir, prompt, main_style, sub_style):
+        """Sottoprocesso di inserimento prompt e invio."""
+        # ── Controlla Agente ───────────────────────────────────
+        await self._check_agent_status(page)
 
-        # ── Imposta conteggio immagini x4 (NUOVO) ─────────────────────────────
+        # ── Imposta conteggio immagini x4 ─────────────────────────────
         await self._set_image_count_to_four(page)
-        await human_delay(1000, 3000)
+        await human_delay(1000, 2000)
 
         # ── Trova textbox prompt ───────────────────────────────────────────────
-        try:
-            prompt_locator, prompt_selector = await self._find_prompt_textbox(page, debug_dir)
-            if prompt_locator is None:
-                raise RuntimeError(f"Prompt field not found after {POST_GOTO_WAIT}s wait")
+        prompt_locator, prompt_selector = await self._find_prompt_textbox(page, debug_dir)
+        if prompt_locator is None:
+            raise RuntimeError("Prompt field not found")
 
-            # ── Digita prompt ──────────────────────────────────────────────────
-            log.info(f"⌨️ KEYBOARD: CLICK su textbox {prompt_selector}")
-            await human_delay(500, 1500)
-            await prompt_locator.click(force=True)
-            await human_delay(500, 1200)
-            
-            log.info("⌨️ KEYBOARD: PRESS Control+A")
-            await page.keyboard.press("Control+A")
-            await human_delay(200, 600)
-            log.info("⌨️ KEYBOARD: PRESS Backspace")
-            await page.keyboard.press("Backspace")
-            await human_delay(300, 1000)
-            
-            log.info(f"⌨️ KEYBOARD: TYPE '{full_prompt}'")
-            # Variamo leggermente il delay di digitazione per ogni carattere
-            import random
-            for char in full_prompt:
-                await page.keyboard.type(char)
-                await asyncio.sleep(random.uniform(0.04, 0.15))
-                
-            await human_delay(800, 2000)
-            log.info(f"✅ Prompt digitato: '{full_prompt}'")
+        log.info(f"⌨️ Focus su {prompt_selector}")
+        await prompt_locator.click(force=True)
+        await human_delay(500, 1000)
+        
+        # Pulizia e scrittura
+        await page.keyboard.press("Control+A")
+        await page.keyboard.press("Backspace")
+        await human_delay(300, 600)
+        await page.keyboard.type(full_prompt, delay=TYPE_DELAY_MS)
+        await asyncio.sleep(0.5)
+        
+        log.info(f"✅ Prompt digitato: '{full_prompt}'")
+        await page.screenshot(path=str(debug_dir / f"PROMPT_READY_{int(time.time())}.png"))
 
-            # ── Invio ad Agente ────────────────────────────────────────────────
-            log.info("⌨️ KEYBOARD: PRESS Enter")
-            capturer.can_capture = True
-            log.info("✅ Network capture attivato PRIMA dell'Enter")
-            await page.keyboard.press("Enter")
-            
-            # Attesa variabile post-enter
-            await human_delay(2000, 5000)
-            log.info(f"✅ Enter premuto, attesa conclusa")
+        # ── Invio ────────────────────────────────────────────────
+        capturer.can_capture = True
+        log.info("🚀 Invio generazione...")
+        
+        # Proviamo Enter + Send Button
+        await page.keyboard.press("Enter")
+        await asyncio.sleep(0.5)
+        
+        found_send = False
+        for sel in SEND_BUTTON_SELECTORS:
+            try:
+                btn = page.locator(sel).first
+                if await btn.count() > 0 and await btn.is_visible():
+                    log.info(f"🖱️ CLICK (Send Button): {sel}")
+                    await btn.click(force=True)
+                    found_send = True
+                    break
+            except: continue
+        
+        if not found_send:
+            log.info("ℹ️ Pulsante invio non trovato, spero in Enter.")
 
-            # ── Gestione Approvazione Agente (NUOVO) ───────────────────────────
-            await self._handle_agent_approval(page, debug_dir)
+        await human_delay(3000, 5000)
 
-            await human_delay(1000, 2500)
-            await human_scroll(page)
+        # Screenshot post-invio
+        await page.screenshot(path=str(debug_dir / f"GEN_START_{int(time.time())}.png"))
 
-            # Screenshot verifica
-            debug_path = debug_dir / f"GEN_START_{int(time.time())}.png"
-            await page.screenshot(path=str(debug_path))
-            log.info(f"📸 Screenshot verifica: {debug_path}")
+        # ── Gestione Approvazione Agente ───────────────────────────
+        await self._handle_agent_approval(page, debug_dir)
 
-            # ── Attesa e cattura immagini ──────────────────────────────────────
-            log.info(f"⏳ In attesa delle immagini ({IMAGE_WAIT_TIMEOUT}s)...")
-            await capturer.poll_dom_for_images()
+        # ── Attesa Immagini ──────────────────────────────────────────────────
+        log.info(f"⏳ In attesa delle immagini ({IMAGE_WAIT_TIMEOUT}s)...")
+        await capturer.poll_dom_for_images()
+        
+        # ── Attesa caricamenti Drive/DB ─────────────────────────────────────
+        await capturer.wait_for_uploads()
 
-            # ── Attesa caricamenti Drive/DB ─────────────────────────────────────
-            await capturer.wait_for_uploads()
+        results = capturer.get_results()
+        log.info(f"📊 Risultato: {len(results)} immagini catturate")
 
-            results = capturer.get_results()
-            log.info(f"📊 Risultato: {len(results)} immagini catturate")
+        # ── Salva metadata.json ────────────────────────────────────────────
+        _save_metadata(dest_dir, main_style, sub_style, prompt, full_prompt, project_id, results)
 
-            # ── Salva metadata.json ────────────────────────────────────────────
-            _save_metadata(dest_dir, main_style, sub_style, prompt, full_prompt, project_id, results)
-
-            return results
+        return results
 
         except Exception as e:
             log.error(f"❌ ERRORE: {e}")
@@ -217,96 +248,26 @@ class ImageFXFlowAutomation(BaseAutomation):
             await page.close()
             log.info("🔒 Pagina chiusa")
 
-    async def _disable_agent_if_active(self, page):
-        """Disabilita l'agente se attivo, come da istruzioni utente."""
-        log.info("⏳ Attesa iniziale di 12s prima di controllare l'Agente...")
-        await asyncio.sleep(12)
-        
-        debug_dir = DOWNLOAD_DIR / "debug"
-        await page.screenshot(path=str(debug_dir / f"AGENT_CHECK_START_{int(time.time())}.png"))
-        
-        # Debug: lista tutti i bottoni e controlla XPaths
-        await self._debug_list_elements(page)
-        for i, xpath in enumerate(AGENT_ACTIVE_INDICATOR_XPATHS):
-            await self._debug_xpath(page, xpath, f"INDICATOR_{i}")
-        for i, xpath in enumerate(AGENT_TOGGLE_XPATHS):
-            await self._debug_xpath(page, xpath, f"TOGGLE_{i}")
-        
-        log.info("🕵️ Controllo se l'Agente è attivo...")
+    async def _check_agent_status(self, page):
+        """Controlla lo stato dell'agente senza modificarlo."""
+        log.info("🕵️ Controllo stato Agente...")
         try:
-            # 1. Cerca indicatore tramite XPaths forniti
-            indicator = None
-            for xpath in AGENT_ACTIVE_INDICATOR_XPATHS:
-                loc = page.locator(xpath).first
-                if await loc.count() > 0:
-                    log.info(f"✅ Trovato indicatore Agente via XPath: {xpath}")
-                    indicator = loc
+            buttons = await page.locator('button, div[role="button"]').all()
+            agent_btn = None
+            for btn in buttons:
+                text = (await btn.inner_text()).strip()
+                if "Agente" in text or "Agent" in text:
+                    agent_btn = btn
                     break
             
-            # 2. Fallback se gli XPath falliscono: cerca per testo "Istruzioni agente"
-            if indicator is None:
-                log.info(f"🔍 Provo fallback per testo: '{AGENT_INSTRUCTIONS_BUTTON_TEXT}'")
-                loc = page.locator(f'button:has-text("{AGENT_INSTRUCTIONS_BUTTON_TEXT}")').first
-                if await loc.count() > 0:
-                    indicator = loc
-                    log.info("✅ Trovato indicatore Agente via testo 'Istruzioni agente'")
-
-            if indicator is not None:
-                log.info(f"⚠️ Agente rilevato come ATTIVO.")
-                
-                # 3. Premi l'indicatore dell'agente per aprire il pannello
-                log.info(f"🖱️ CLICK: indicatore agente...")
-                await indicator.click()
-                await asyncio.sleep(3)
-                await page.screenshot(path=str(debug_dir / f"AGENT_PANEL_OPENED_{int(time.time())}.png"))
-                
-                # Debug post-click: lista bottoni nel pannello
-                log.info("🔍 [DEBUG] Bottoni dopo apertura pannello agente:")
-                await self._debug_list_elements(page)
-
-                # 4. Premi il tasto toggle dell'agente (prova vari XPaths)
-                found_toggle = False
-                for xpath in AGENT_TOGGLE_XPATHS:
-                    toggle = page.locator(xpath).first
-                    if await toggle.count() > 0:
-                        log.info(f"🖱️ CLICK: tasto toggle agente ({xpath}) per disattivarlo...")
-                        await toggle.click()
-                        await asyncio.sleep(2)
-                        await page.screenshot(path=str(debug_dir / f"AGENT_TOGGLE_CLICKED_{int(time.time())}.png"))
-                        found_toggle = True
-                        break
-                
-                if not found_toggle:
-                    log.warning(f"⚠️ Nessun tasto toggle agnete trovato tra i selettori forniti nel pannello.")
-                    # Prova fallback nel pannello: cerca bottoni con 'Agente' o 'Agent'
-                    log.info("🔍 Cerco toggle nel pannello tramite testo...")
-                    toggles = await page.locator('button:has-text("Agente"), button:has-text("Agent")').all()
-                    for t in toggles:
-                        if await t.is_visible():
-                            log.info(f"🖱️ CLICK (fallback testo): toggle '{await t.inner_text()}'")
-                            await t.click()
-                            await asyncio.sleep(2)
-                            found_toggle = True
-                            break
-                
-                # 5. Chiudi il pannello per liberare il textbox prompt
-                log.info("🖱️ Tentativo di CHIUSURA pannello agente...")
-                close_btn = page.locator(AGENT_CLOSE_BUTTON_SELECTOR).first
-                if await close_btn.count() > 0:
-                    await close_btn.click()
-                    await asyncio.sleep(1)
-                    log.info("✅ Pannello agente chiuso.")
-                else:
-                    log.info("ℹ️ Tasto chiusura non trovato, provo tasto Escape.")
-                    await page.keyboard.press("Escape")
-                    await asyncio.sleep(1)
-
-                log.info("✅ Procedura disattivazione Agente conclusa.")
+            if agent_btn:
+                pressed = await agent_btn.get_attribute("aria-pressed")
+                status = "ATTIVO" if pressed == "true" else "DISATTIVO"
+                log.info(f"ℹ️ Stato Agente: {status}")
             else:
-                log.info("✅ Agente non attivo (indicatore non trovato).")
+                log.info("ℹ️ Pulsante Agente non trovato.")
         except Exception as e:
-            log.warning(f"⚠️ Errore durante il controllo/disattivazione Agente: {e}")
-            await page.screenshot(path=str(debug_dir / f"AGENT_ERROR_{int(time.time())}.png"))
+            log.debug(f"Errore controllo Agente: {e}")
 
     async def _debug_xpath(self, page, xpath, label):
         """Debug per verificare la presenza di un XPath e loggare l'HTML."""
@@ -419,31 +380,76 @@ class ImageFXFlowAutomation(BaseAutomation):
             await asyncio.sleep(2)
 
     async def _find_prompt_textbox(self, page, debug_dir):
-        """Trova il textbox del prompt tra i selettori disponibili con log dettagliato."""
-        log.info("🔍 Ricerca textbox prompt...")
+        """Trova il textbox del prompt con debug profondo di tutti i candidati."""
+        log.info("🔍 [DEEP DEBUG] Ricerca di TUTTI i possibili campi prompt...")
         
-        for selector in self.PROMPT_SELECTORS:
-            try:
-                loc = page.locator(selector).first
-                count = await loc.count()
-                log.info(f"  Selector '{selector}': count={count}")
-                
-                if count > 0:
-                    tag = await loc.evaluate("el => el.tagName")
-                    role = await loc.get_attribute("role")
-                    inner = (await loc.inner_text())[:80] if await loc.inner_text() else "(vuoto)"
-                    log.info(f"  ✅ TROVATO: tag={tag} role={role} text='{inner}'")
-                    return loc, selector
-            except Exception as e:
-                log.warning(f"  ⚠️ Selector '{selector}' error: {e}")
-                continue
+        # 1. Cerca TUTTI gli elementi potenzialmente interessanti
+        potential_selectors = [
+            'div[data-slate-editor="true"]',
+            'div[role="textbox"]',
+            'div[contenteditable="true"]',
+            'textarea',
+            'p[data-slate-node="element"]'
+        ]
+        
+        all_candidates = []
+        for sel in potential_selectors:
+            locs = await page.locator(sel).all()
+            for i, loc in enumerate(locs):
+                try:
+                    is_visible = await loc.is_visible()
+                    if not is_visible: continue
+                    
+                    # Genera un mini-report per ogni candidato
+                    info = await loc.evaluate("""el => {
+                        function getXPath(element) {
+                            if (element.id !== '') return 'id("' + element.id + '")';
+                            if (element === document.body) return element.tagName;
+                            var ix = 0;
+                            var siblings = element.parentNode.childNodes;
+                            for (var i = 0; i < siblings.length; i++) {
+                                var sibling = siblings[i];
+                                if (sibling === element) return getXPath(element.parentNode) + '/' + element.tagName.toLowerCase() + '[' + (ix + 1) + ']';
+                                if (sibling.nodeType === 1 && sibling.tagName === element.tagName) ix++;
+                            }
+                        }
+                        return {
+                            tag: el.tagName,
+                            role: el.getAttribute('role'),
+                            id: el.id,
+                            cls: el.className,
+                            xpath: getXPath(el),
+                            text: el.innerText.substring(0, 50),
+                            rect: el.getBoundingClientRect()
+                        };
+                    }""")
+                    all_candidates.append(info)
+                    log.info(f"  [CANDIDATO] SEL={sel}[{i}] TAG={info['tag']} ROLE={info['role']} TEXT='{info['text']}'")
+                    log.info(f"               XPATH={info['xpath']}")
+                except:
+                    continue
 
-        log.error("❌ NESSUN textbox trovato tra i selettori!")
-        try:
-            await page.screenshot(path=str(debug_dir / f"NO_TEXTBOX_{int(time.time())}.png"))
-        except:
-            pass
-        return None, None
+        # Prova a selezionare quello "giusto" escludendo zone sospette
+        # Se c'è un elemento che contiene "Che cosa vuoi creare", è quello buono.
+        best_loc = None
+        best_sel = None
+        
+        for sel in self.PROMPT_SELECTORS:
+            loc = page.locator(sel).first
+            if await loc.count() > 0:
+                text = await loc.inner_text()
+                # Se il testo contiene il placeholder standard, siamo quasi certi
+                if "creare" in text.lower() or "create" in text.lower() or "prompt" in text.lower():
+                    log.info(f"🎯 TROVATO PROMPT OTTIMALE via '{sel}': {text[:40]}")
+                    return loc, sel
+                
+                if best_loc is None:
+                    best_loc = loc
+                    best_sel = sel
+
+        if best_loc:
+            log.info(f"⚠️ Usando miglior candidato trovato via '{best_sel}'")
+            return best_loc, best_sel
 
 def parse_style(style: str | None):
     """Divide style in main/sub per struttura cartelle."""

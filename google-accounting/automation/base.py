@@ -57,9 +57,24 @@ class BaseAutomation:
         log.info("Starting browser context for account=%s headless=%s", self.account or "default", self.headless)
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=self.headless)
+        
+        # Stealth: User agent reale e viewport standard
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+        
         self.context = await self.browser.new_context(
-            storage_state=str(self.session_path)
+            storage_state=str(self.session_path),
+            user_agent=user_agent,
+            viewport={'width': 1920, 'height': 1080},
+            device_scale_factor=1,
         )
+        
+        # Aggiungi script per nascondere Playwright
+        await self.context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
+        
         log.info("Browser context ready for account=%s", self.account or "default")
         return self
 

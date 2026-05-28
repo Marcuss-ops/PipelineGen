@@ -18,6 +18,7 @@ from playwright.async_api import Page
 from .config import (
     DOM_POLL_INTERVAL,
     IMAGE_DOM_PATTERN,
+    IMAGE_DOM_PATTERN_FALLBACK,
     IMAGE_WAIT_TIMEOUT,
     MAX_IMAGES,
     MEDIA_REDIRECT_PATTERN,
@@ -122,19 +123,27 @@ class ImageCapturer:
             return
 
         if is_redirect:
+            log.debug(f"Ignoro redirect: {response_url}")
             return
 
         # Scarica e salva
         try:
             if not response.ok:
+                log.debug(f"Response not ok ({response.status}): {response_url}")
                 return
 
             body = await response.body()
-            if not body or len(body) < MIN_DOM_IMAGE_BYTES:
+            if not body:
+                log.debug(f"Empty body: {response_url}")
+                return
+                
+            if len(body) < MIN_DOM_IMAGE_BYTES:
+                log.debug(f"Body too small ({len(body)} bytes) < {MIN_DOM_IMAGE_BYTES}: {response_url[:100]}...")
                 return
 
             digest = self._compute_digest(body)
             if digest in self.saved_content_digests:
+                log.debug(f"Duplicate content (digest {digest}): {response_url[:100]}...")
                 return
 
             self.saved_content_digests.add(digest)
@@ -155,7 +164,7 @@ class ImageCapturer:
 
     async def poll_dom_for_images(self):
         """
-        Polling del DOM per immagini con src contenente 'googleusercontent.com'.
+        Polling del DOM per immagini con src contenente 'googleusercontent.com' o fallback.
         Fallback quando il network listener non cattura immagini.
         """
         log.info("Avvio polling DOM per immagini...")
@@ -166,17 +175,32 @@ class ImageCapturer:
                 log.info(f"Raggiunto limite di {MAX_IMAGES} immagini, fermo polling DOM")
                 break
 
-            imgs = await self.page.locator(f'img[src*="{IMAGE_DOM_PATTERN}"]').all()
+            # Cerca con pattern principale e fallback
+            selectors = [
+                'img'  # Cerca TUTTE le immagini per debug
+            ]
             
-            for img in imgs:
-                src = await img.get_attribute("src")
-                if not src or src in self.captured_response_urls:
-                    continue
+            for selector in selectors:
+                imgs = await self.page.locator(selector).all()
+                for img in imgs:
+                    src = await img.get_attribute("src")
+                    if not src:
+                        continue
+                    
+                    # Logga sempre per debug se non è già stato visto
+                    if src not in self.captured_response_urls and src not in self.pre_existing_urls:
+                        log.info(f"🕵️ DEBUG DOM img found: {src[:150]}")
 
-                # Processa come task asincrono
-                task = asyncio.create_task(self._process_dom_image(src))
-                self._pending_tasks.add(task)
-                task.add_done_callback(self._pending_tasks.discard)
+                    if IMAGE_DOM_PATTERN not in src and IMAGE_DOM_PATTERN_FALLBACK not in src:
+                        continue
+                        
+                    if src in self.captured_response_urls:
+                        continue
+
+                    # Processa come task asincrono
+                    task = asyncio.create_task(self._process_dom_image(src))
+                    self._pending_tasks.add(task)
+                    task.add_done_callback(self._pending_tasks.discard)
 
             await asyncio.sleep(DOM_POLL_INTERVAL)
 
@@ -185,19 +209,26 @@ class ImageCapturer:
     async def _process_dom_image(self, src):
         """Scarica e salva un'immagine trovata nel DOM."""
         try:
-            log.info(f"🔍 DOM new img: {src[:120]}...")
+            log.info(f"🔍 DOM new img detected: {src[:120]}...")
             resp = await self.page.request.get(src)
             
             if not resp.ok:
+                log.debug(f"DOM request not ok ({resp.status}): {src[:100]}...")
                 return
 
             body = await resp.body()
-            if not body or len(body) < MIN_DOM_IMAGE_BYTES:
+            if not body:
+                log.debug(f"DOM empty body: {src[:100]}...")
+                return
+                
+            if len(body) < MIN_DOM_IMAGE_BYTES:
+                log.debug(f"DOM body too small ({len(body)} bytes) < {MIN_DOM_IMAGE_BYTES}: {src[:100]}...")
                 self.captured_response_urls.add(src)
                 return
 
             digest = self._compute_digest(body)
             if digest in self.saved_content_digests:
+                log.debug(f"DOM duplicate content: {src[:100]}...")
                 self.captured_response_urls.add(src)
                 return
 
