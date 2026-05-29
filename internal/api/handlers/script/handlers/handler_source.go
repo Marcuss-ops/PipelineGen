@@ -1,14 +1,12 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,7 +16,6 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/pkg/apiutil"
 )
 
@@ -126,7 +123,7 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 	}
 	outputName := strings.TrimSpace(req.OutputName)
 	if outputName == "" {
-		outputName = Slugify(title)
+		outputName = images.Slugify(title)
 	}
 	if outputName == "" {
 		outputName = "generated-script"
@@ -179,11 +176,6 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 		return
 	}
 
-	var result map[string]any
-	if len(job.Result) > 0 {
-		_ = json.Unmarshal(job.Result, &result)
-	}
-
 	apiutil.OK(c, gin.H{
 		"ok":           true,
 		"job_id":       job.ID,
@@ -191,7 +183,7 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 		"progress":     job.Progress,
 		"current_step": job.CurrentStep,
 		"error":        job.Error,
-		"result":       result,
+		"result":       job.Result,
 	})
 }
 

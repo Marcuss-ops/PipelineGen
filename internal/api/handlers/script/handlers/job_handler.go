@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/core/jobs"
 	jobservice "velox/go-master/internal/jobs"
+	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/ml/ollama/types"
 )
@@ -39,7 +38,7 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 	}
 	outputName := strings.TrimSpace(req.OutputName)
 	if outputName == "" {
-		outputName = Slugify(title)
+		outputName = images.Slugify(title)
 	}
 	if outputName == "" {
 		outputName = "generated-script"
