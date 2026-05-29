@@ -223,11 +223,10 @@ class GoogleVidsImagesMixin:
             log.error("Could not find prompt textarea")
             return False
 
-        # Click + type (usa type() invece di fill() per non selezionare tutto)
+        # Click + fill (evita timeout con prompt lunghi)
         await self._human_click(page, ta)
         await human_delay(200, 500)
-        # type() inserisce al cursore (non seleziona/replace come fill())
-        await ta.type(prompt, delay=random.randint(60, 150))
+        await ta.fill(prompt)
         log.info("Prompt filled via %s", selector_used)
 
         # ── ANTI-BOT FINGERPRINT: applica a TUTTI i path ──
