@@ -705,9 +705,9 @@ class GoogleVidsImagesMixin:
                     '[data-view-id*="image-generation"]',
                     '[data-view-id*="image"]',
                     # Esclude 'Ritaglia'
-                    '[aria-label*="immagin" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i])',
+                    '[aria-label*="immagin" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i]):not([aria-label*="mask" i]):not([aria-label*="maschera" i]):not([class*="toolbar" i]):not([id*="mask" i])',
                     '[aria-label="Images"]',
-                    '[aria-label*="image" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i])',
+                    '[aria-label*="image" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i]):not([aria-label*="mask" i]):not([aria-label*="maschera" i]):not([class*="toolbar" i]):not([id*="mask" i])',
                 ]
                 for sel in immagini_selectors:
                     try:
