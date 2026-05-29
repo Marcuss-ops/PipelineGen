@@ -3,10 +3,10 @@ import json
 
 url = "http://127.0.0.1:8081/api/script/generate-from-source"
 data = {
-    "source_text": "A majestic spaceship entered the orbit of a mysterious alien planet. The ship lowered its thrusters and slowly descended through the thick violet atmosphere. Below lay a glowing crystal city, reflecting the light of two moons. As the doors opened, an astronaut stepped out onto the metallic landing pad, looking at the towering alien spires.",
+    "source_text": "In the rain-slicked streets of Neo-Tokyo, towering holographic advertisements illuminated the dark alleys. Cybernetically enhanced citizens walked under neon billboards, carrying glowing datapads. A rogue netrunner in a dark leather jacket slipped past security drones, plugging a glowing shard into the main mainframe terminal.",
     "language": "en",
-    "style": "documentary",
-    "visual_style": "realistic",
+    "style": "cyberpunk",
+    "visual_style": "cyberpunk",
     "scene_count": 2,
     "width": 1024,
     "height": 1024
