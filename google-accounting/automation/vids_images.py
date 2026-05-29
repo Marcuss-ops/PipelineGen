@@ -708,7 +708,7 @@ class GoogleVidsImagesMixin:
                     # Esclude 'Ritaglia'
                     '[aria-label*="immagin" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i])',
                     '[aria-label="Images"]',
-                    '[aria-label*="image" i]',
+                    '[aria-label*="image" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i])',
                 ]
                 for sel in immagini_selectors:
                     try:

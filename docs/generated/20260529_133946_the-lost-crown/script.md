@@ -35,8 +35,8 @@ In a moonlit kingdom, a knight rode through the forest to seek the lost crown. T
     }
   ],
   "files": {
-    "markdown": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_133946_the-lost-crown/script.md",
-    "json": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_133946_the-lost-crown/script.json"
+    "markdown": "C:\\Users\\pater\\Pyt\\PipelineGen\\docs\\generated\\20260529_133946_the-lost-crown\\script.md",
+    "json": "C:\\Users\\pater\\Pyt\\PipelineGen\\docs\\generated\\20260529_133946_the-lost-crown\\script.json"
   },
   "generated_at": "2026-05-29T13:39:46Z"
 }
