@@ -97,15 +97,51 @@ req = urllib.request.Request(
     headers={"Content-Type": "application/json"}
 )
 
-print("Triggering Go pipeline endpoint with Sleep Routine in Whiteboard Style...")
+print("Triggering Go pipeline endpoint with Sleep Routine (Async)...")
 try:
-    with urllib.request.urlopen(req, timeout=1200) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:
         res = json.loads(resp.read().decode())
-        print("Pipeline Execution Success!")
-        print("Document URL:", res.get("doc_url"))
-        print("Markdown Path:", res.get("markdown_path"))
-        print("JSON Path:", res.get("json_path"))
-        print("Generated scenes count:", len(res.get("scenes", [])))
+        if not res.get("ok"):
+            print("Failed to trigger job:", res)
+            sys.exit(1)
+        
+        job_id = res.get("job_id")
+        print(f"Job successfully enqueued! ID: {job_id}")
+        
+        # Start polling
+        import time
+        poll_url = f"http://127.0.0.1:8081/api/script/jobs/{job_id}"
+        print(f"Polling job status at: {poll_url} ...")
+        
+        while True:
+            poll_req = urllib.request.Request(poll_url)
+            try:
+                with urllib.request.urlopen(poll_req) as poll_resp:
+                    job_status = json.loads(poll_resp.read().decode())
+                    status = job_status.get("status")
+                    progress = job_status.get("progress")
+                    err_msg = job_status.get("error")
+                    
+                    print(f"[{time.strftime('%H:%M:%S')}] Status: {status} | Progress: {progress}%")
+                    
+                    if status in ["completed", "done", "success"]:
+                        result = job_status.get("result", {})
+                        print("\n=== Pipeline Execution Success! ===")
+                        print("Document ID:", result.get("doc_id"))
+                        print("Document URL:", result.get("doc_url"))
+                        print("Markdown Path:", result.get("markdown_path"))
+                        print("JSON Path:", result.get("json_path"))
+                        print("Generated scenes count:", result.get("scenes_count"))
+                        break
+                    elif status in ["failed", "cancelled", "error"]:
+                        print(f"\n=== Pipeline Execution Failed! ===")
+                        print("Error:", err_msg)
+                        break
+            except Exception as pe:
+                print("Polling error:", pe)
+            
+            time.sleep(10)
+            
 except Exception as e:
     print("Error:", e)
     if hasattr(e, "read"):
