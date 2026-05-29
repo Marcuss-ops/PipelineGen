@@ -1,0 +1,38 @@
+# Generated Script
+
+## Title
+The Lost Crown
+
+## Full Script
+The wind tasted of iron and impending doom. It clawed at the stone walls of Blackwood Castle, a relentless assault mirroring the tempest raging across the frozen fields. Behind him, the last, mournful clang of the castle bells echoed, a desperate farewell to a kingdom slipping into shadow. Sir Kaelan, barely twenty summers old, pressed onward, his breath a white plume against the bruised purple of the sky. He was a knight, yes, but tonight, he felt like a lone ember against a consuming darkness. The snow, driven by the gale, blurred the path, each flake a tiny, accusing finger pointing towards the forgotten valley. He’d been tasked with a singular, impossible mission: retrieve the Crown of Aethelred before the first light.
+
+It wasn’t merely a symbol of power; it was a vessel, they said, containing a protective ward against the encroaching blight. The blight that withered crops, poisoned wells, and whispered madness into the minds of men. The king, desperate, had entrusted Kaelan with this desperate gamble. He moved with a grim determination, the weight of the kingdom, and perhaps the world, pressing down on his young shoulders. Every rustle of the snow, every snap of a frozen branch, sounded like the footsteps of something watching him. The forest, ancient and brooding, felt less like a landscape and more like a living entity, breathing with a malevolent intelligence. He passed a skeletal oak, its branches reaching like clawing hands, and glimpsed a fleeting shadow beneath its twisted form. The valley beckoned, a dark, silent promise of either salvation or utter annihilation. The crown wasn’t just lost; it was hunted, and Kaelan knew, with a chilling certainty, that he was not merely searching for an artifact, but entering a fight for the very soul of his kingdom. He tightened his grip on the battered shield, his resolve hardening with each step, a single, defiant light against the encroaching night.
+
+## Scenes JSON
+```json
+{
+  "source_text": "In a storm-wrapped medieval kingdom, a young knight crossed the frozen fields to recover the lost crown before dawn. Behind him, the castle bells rang like warnings, and every shadow in the forest seemed to breathe.",
+  "rewritten_script": "The wind tasted of iron and impending doom. It clawed at the stone walls of Blackwood Castle, a relentless assault mirroring the tempest raging across the frozen fields. Behind him, the last, mournful clang of the castle bells echoed, a desperate farewell to a kingdom slipping into shadow. Sir Kaelan, barely twenty summers old, pressed onward, his breath a white plume against the bruised purple of the sky. He was a knight, yes, but tonight, he felt like a lone ember against a consuming darkness. The snow, driven by the gale, blurred the path, each flake a tiny, accusing finger pointing towards the forgotten valley. He’d been tasked with a singular, impossible mission: retrieve the Crown of Aethelred before the first light.\n\nIt wasn’t merely a symbol of power; it was a vessel, they said, containing a protective ward against the encroaching blight. The blight that withered crops, poisoned wells, and whispered madness into the minds of men. The king, desperate, had entrusted Kaelan with this desperate gamble. He moved with a grim determination, the weight of the kingdom, and perhaps the world, pressing down on his young shoulders. Every rustle of the snow, every snap of a frozen branch, sounded like the footsteps of something watching him. The forest, ancient and brooding, felt less like a landscape and more like a living entity, breathing with a malevolent intelligence. He passed a skeletal oak, its branches reaching like clawing hands, and glimpsed a fleeting shadow beneath its twisted form. The valley beckoned, a dark, silent promise of either salvation or utter annihilation. The crown wasn’t just lost; it was hunted, and Kaelan knew, with a chilling certainty, that he was not merely searching for an artifact, but entering a fight for the very soul of his kingdom. He tightened his grip on the battered shield, his resolve hardening with each step, a single, defiant light against the encroaching night.",
+  "language": "en",
+  "style": "storytelling",
+  "visual_style": "medieval",
+  "title": "The Lost Crown",
+  "output_name": "the-lost-crown",
+  "word_count": 319,
+  "estimated_duration": 136,
+  "scenes": [
+    {
+      "id": "scene_001",
+      "index": 0,
+      "text": "The wind tasted of iron and impending doom.",
+      "query": "The wind tasted of iron and impending doom. | The Lost Crown | medieval | en",
+      "error": "NVIDIA API key not configured (required for cloud models)"
+    }
+  ],
+  "files": {
+    "markdown": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_140320_the-lost-crown/script.md",
+    "json": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_140320_the-lost-crown/script.json"
+  },
+  "generated_at": "2026-05-29T14:03:20.041226253Z"
+}
+```

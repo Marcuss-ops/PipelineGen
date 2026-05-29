@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "project_id": null,
+    "generated_at": "2026-05-29T13:39:46.636165+00:00",
+    "backend": "ollama",
+    "model": "gemma2:9b",
+    "style": "deep_dive",
+    "language": "EN",
+    "source_prompt": "Explain how a storyboard works"
+  },
+  "content": {
+    "title": "Test Script",
+    "style": "deep_dive",
+    "language": "EN",
+    "script": "Intro. Detail. Wrap-up.",
+    "scenes": [
+      {
+        "id": "scene_001",
+        "speaker": "Narrator",
+        "text": "Intro",
+        "image_hint": "opening shot"
+      },
+      {
+        "id": "scene_002",
+        "speaker": "Narrator",
+        "text": "Detail",
+        "image_hint": "diagram"
+      }
+    ]
+  }
+}

@@ -19,6 +19,7 @@ import (
 	"velox/go-master/internal/media/storage"
 	driveupload "velox/go-master/internal/upload/drive"
 )
+
 func (s *Service) SyncAssets() error {
 	return nil
 }
@@ -136,7 +137,7 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, 
 	var useCloudAuth bool
 	var sourceLabel string
 	var invokeURL string
-	resolvedModel := strings.TrimSpace(model)
+	resolvedModel := strings.ToLower(strings.TrimSpace(model))
 
 	// Default resolution if not provided
 	if width <= 0 {
@@ -168,6 +169,18 @@ func (s *Service) GenerateStyledImage(ctx context.Context, slug, prompt, style, 
 		}
 		useCloudAuth = true
 		sourceLabel = "flux-1-dev"
+
+	case "flux.1-schnell", "flux-1-schnell", "flux1-schnell":
+		invokeURL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell"
+		payload = map[string]interface{}{
+			"prompt": prompt,
+			"width":  width,
+			"height": height,
+			"seed":   0,
+			"steps":  4,
+		}
+		useCloudAuth = true
+		sourceLabel = "flux.1-schnell"
 
 	case "flux-2-klein":
 		invokeURL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.2-klein-4b"

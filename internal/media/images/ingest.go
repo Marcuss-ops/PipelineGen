@@ -188,7 +188,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	if ext == "" {
 		ext = ".jpg"
 	}
-	
+
 	// Create request for resolver
 	req := storage.AssetDestinationRequest{
 		Source:       source, // Use the provided source (e.g. google-flow)
@@ -237,7 +237,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		} else {
 			driveFileID = fileID
 			s.log.Info("Drive upload successful", zap.String("file_id", fileID))
-			
+
 			if !skipMetadata {
 				// Estrai dimensioni reali dell'immagine
 				imgWidth, imgHeight := decodeImageDimensions(content)
@@ -261,7 +261,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		}
 	}
 	meta, err := s.callSemanticTagger(ctx, cleanPrompt, style, "image", generator)
-	
+
 	// NEW: LLM Fallback if confidence is low
 	if err == nil && meta.Confidence < 0.6 {
 		s.log.Info("Semantic confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
@@ -482,11 +482,11 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 	assetInfos := make([]map[string]any, len(assets))
 	for i, a := range assets {
 		assetInfos[i] = map[string]any{
-			"hash":           a.Hash,
-			"path":           a.PathRel,
-			"width":          a.Width,
-			"height":         a.Height,
-			"drive_id":       a.DriveFileID,
+			"hash":          a.Hash,
+			"path":          a.PathRel,
+			"width":         a.Width,
+			"height":        a.Height,
+			"drive_id":      a.DriveFileID,
 			"variant_index": i + 1,
 		}
 	}

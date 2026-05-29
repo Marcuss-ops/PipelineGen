@@ -71,6 +71,9 @@ class IndexAudioRequest(BaseModel):
 class VisualEmbedRequest(BaseModel):
     text: str  # For CLIP text-to-visual embedding
 
+class VisualAnalyzeRequest(BaseModel):
+    image_path: str
+
 
 @app.post("/index_visual")
 def index_visual(req: IndexVisualRequest):
@@ -161,6 +164,24 @@ def embed_visual(req: VisualEmbedRequest):
     try:
         embedding = clip_model.encode(req.text).tolist()
         return {"embedding": embedding, "dimensions": len(embedding)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/visual_analyze")
+def visual_analyze(req: VisualAnalyzeRequest):
+    """Generate CLIP image embedding and perceptual hash for a local image file."""
+    try:
+        img = Image.open(req.image_path).convert("RGB")
+        embedding = clip_model.encode(img).tolist()
+        h = str(imagehash.phash(img))
+        width, height = img.size
+        return {
+            "embedding": embedding,
+            "phash": h,
+            "dimensions": len(embedding),
+            "width": width,
+            "height": height,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -40,6 +40,45 @@ func (a *PythonEmbeddingAdapter) EmbedAudio(ctx context.Context, text string) ([
 	return a.callEmbedder(ctx, "/embed_audio", text)
 }
 
+// VisualAnalysisResult contains the image fingerprint returned by the embedding server.
+type VisualAnalysisResult struct {
+	Embedding  []float64 `json:"embedding"`
+	PHash      string    `json:"phash"`
+	Dimensions int       `json:"dimensions"`
+	Width      int       `json:"width"`
+	Height     int       `json:"height"`
+}
+
+func (a *PythonEmbeddingAdapter) AnalyzeImage(ctx context.Context, imagePath string) (*VisualAnalysisResult, error) {
+	body := map[string]string{"image_path": imagePath}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", a.serverURL+"/visual_analyze", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("visual analyze request: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("visual analyze returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	var result VisualAnalysisResult
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+	return &result, nil
+}
+
 func (a *PythonEmbeddingAdapter) callEmbedder(ctx context.Context, endpoint, text string) ([]float64, error) {
 	body := map[string]string{"text": text}
 	data, err := json.Marshal(body)

@@ -45,20 +45,18 @@ func (s *Service) GenerateSmartImage(
 		styledPrompt = s.styleRegistry.ApplyStyle(cleanPrompt, style)
 	}
 
-	// Step 1: Try Google Flow
-	assets, err := s.generateGoogleFlowImages(ctx, cleanPrompt, styledPrompt, subject, style, tags, skipDrive)
-	if err == nil && len(assets) > 0 {
-		return assets[0], nil
+	// Step 1: Try Google Vids image synthesis
+	asset, err := s.generateGoogleVidsImage(ctx, cleanPrompt, styledPrompt, subject, style, tags, skipDrive)
+	if err == nil && asset != nil {
+		return asset, nil
 	}
 	if err != nil {
-		s.log.Error("CRITICAL: Google Flow generation FAILED",
+		s.log.Error("CRITICAL: Google Vids image generation FAILED",
 			zap.String("subject", subject),
 			zap.String("error_type", fmt.Sprintf("%T", err)),
 			zap.Error(err),
 		)
-		s.log.Info("Switching to NVIDIA fallback due to Google Flow failure")
-	} else if len(assets) == 0 {
-		s.log.Warn("Google Flow returned zero assets, falling back to NVIDIA")
+		s.log.Info("Switching to NVIDIA fallback due to Google Vids failure")
 	}
 
 	// Step 2: Fallback to NVIDIA
@@ -95,157 +93,121 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	}
 }
 
-func (s *Service) generateGoogleFlowImages(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, skipDrive bool) ([]*models.ImageAsset, error) {
-	s.log.Info("generateGoogleFlowImages: entering function", zap.String("googleAccountingURL", s.googleAccountingURL))
+func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
+	s.log.Info("generateGoogleVidsImage: entering function", zap.String("googleAccountingURL", s.googleAccountingURL))
 
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
 		return nil, fmt.Errorf("google accounting server url not configured")
 	}
 
-	// NEW: Quick health check before starting long job
+	// Quick health check before starting long job
 	pingReq, _ := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(s.googleAccountingURL, "/")+"/health", nil)
 	pingResp, pingErr := s.client.Do(pingReq)
 	if pingErr != nil {
-		return nil, fmt.Errorf("GOOGLE FLOW SERVICE OFFLINE (is uvicorn running on port 8000?): %w", pingErr)
+		return nil, fmt.Errorf("google vids service offline: %w", pingErr)
 	}
 	pingResp.Body.Close()
 
-	// For YouTube format (16:9), add it to the prompt as a hint for Google Flow
-	// since direct UI selection is unstable.
-	flowPrompt := styledPrompt
-	if !strings.Contains(strings.ToLower(flowPrompt), "16:9") {
-		flowPrompt += ", 16:9 aspect ratio, wide format"
+	// For YouTube vertical format (9:16), add it to the prompt as a hint for Google Vids.
+	vidsPrompt := styledPrompt
+	if !strings.Contains(strings.ToLower(vidsPrompt), "9:16") {
+		vidsPrompt += ", 9:16 aspect ratio, vertical format, youtube shorts format"
 	}
-	reqBody := googleaccounting.FlowImageRequest{
-		Prompt:    flowPrompt,
-		ProjectID: s.flowProjectID,
-		Style:     style,
-		Account:   "favamassimo", // Default to favamassimo
+	reqBody := googleaccounting.VidsImageRequest{
+		VideoID: "new",
+		Prompt:  vidsPrompt,
+		Account: "favamassimo", // Default to favamassimo
 	}
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("marshal google flow request failed: %w", err)
+		return nil, fmt.Errorf("marshal google vids request failed: %w", err)
 	}
 
-	s.log.Info("triggering google flow generation", zap.String("prompt", flowPrompt), zap.String("account", reqBody.Account))
+	s.log.Info("triggering google vids image generation", zap.String("prompt", vidsPrompt), zap.String("account", reqBody.Account))
 
-	startURL := strings.TrimRight(s.googleAccountingURL, "/") + "/generate-flow-images"
+	startURL := strings.TrimRight(s.googleAccountingURL, "/") + "/generate-vids-images"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, startURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("create google flow request failed: %w", err)
+		return nil, fmt.Errorf("create google vids request failed: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		s.log.Error("google flow POST failed", zap.Error(err))
-		return nil, fmt.Errorf("google flow start request failed: %w", err)
+		s.log.Error("google vids POST failed", zap.Error(err))
+		return nil, fmt.Errorf("google vids start request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		s.log.Error("google flow start failed", zap.Int("code", resp.StatusCode), zap.String("body", string(respBody)))
-		return nil, fmt.Errorf("google flow start failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		s.log.Error("google vids start failed", zap.Int("code", resp.StatusCode), zap.String("body", string(respBody)))
+		return nil, fmt.Errorf("google vids start failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
 	var startResp googleaccounting.StartResponse
 	if err := json.Unmarshal(respBody, &startResp); err != nil {
-		return nil, fmt.Errorf("decode google flow start response failed: %w", err)
+		return nil, fmt.Errorf("decode google vids start response failed: %w", err)
 	}
 	if strings.TrimSpace(startResp.JobID) == "" {
-		return nil, fmt.Errorf("google flow start response missing job_id")
+		return nil, fmt.Errorf("google vids start response missing job_id")
 	}
 
-	s.log.Info("google flow job started", zap.String("job_id", startResp.JobID))
+	s.log.Info("google vids job started", zap.String("job_id", startResp.JobID))
 
 	job, err := s.waitForGoogleJob(ctx, startResp.JobID)
 	if err != nil {
-		s.log.Error("google flow job failed or timed out", zap.String("job_id", startResp.JobID), zap.Error(err))
+		s.log.Error("google vids job failed or timed out", zap.String("job_id", startResp.JobID), zap.Error(err))
 		return nil, err
 	}
 
-	files := job.Files
-	if len(files) == 0 && strings.TrimSpace(job.FilePath) != "" {
-		files = []string{job.FilePath}
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("google flow completed without files")
-	}
-
-	assets := make([]*models.ImageAsset, 0, len(files))
 	slug := Slugify(subject)
 	if slug == "" {
 		slug = Slugify(cleanPrompt)
 	}
-	description := fmt.Sprintf("AI generated image via Google Flow for prompt: %s", cleanPrompt)
+	description := fmt.Sprintf("AI generated image via Google Vids for prompt: %s", cleanPrompt)
 
-	for _, filePath := range files {
-		resolved := strings.TrimSpace(filePath)
-		if resolved == "" {
-			continue
-		}
-		if !filepath.IsAbs(resolved) {
-			// Prova googleAccountingDir (dovrebbe essere la dir absolute del download)
-			if s.googleAccountingDir != "" {
-				resolved = filepath.Join(s.googleAccountingDir, resolved)
-			} else if s.gaDownloadDir != "" {
-				// Fallback: gaDownloadDir senza googleAccountingDir
-				baseDir := s.gaDownloadDir
-				if !filepath.IsAbs(baseDir) && s.imagesDir != "" {
-					baseDir = filepath.Join(s.imagesDir, baseDir)
-				}
-				resolved = filepath.Join(baseDir, resolved)
+	resolved := job.FilePath
+	if !filepath.IsAbs(resolved) {
+		if s.googleAccountingDir != "" {
+			resolved = filepath.Join(s.googleAccountingDir, resolved)
+		} else if s.gaDownloadDir != "" {
+			baseDir := s.gaDownloadDir
+			if !filepath.IsAbs(baseDir) && s.imagesDir != "" {
+				baseDir = filepath.Join(s.imagesDir, baseDir)
 			}
+			resolved = filepath.Join(baseDir, resolved)
 		}
-
-		content, readErr := os.ReadFile(resolved)
-		if readErr != nil {
-			s.log.Warn("failed to read google flow image", zap.String("path", resolved), zap.Error(readErr))
-			continue
-		}
-
-		// Calcola hash SHA-256 e salta se esiste già (è un'immagine vecchia catturata dal DOM)
-		hasher := sha256.New()
-		hasher.Write(content)
-		hash := hex.EncodeToString(hasher.Sum(nil))
-
-		if existing, err := s.repo.GetImageByHash(ctx, hash); err == nil && existing != nil {
-			s.log.Info("google flow image already exists in DB, skipping from this run", zap.String("hash", hash))
-			assets = append(assets, existing)
-			continue
-		}
-
-		// Extract GenerationID from the parent folder (e.g. "gen_20260527_...")
-		genID := filepath.Base(filepath.Dir(resolved))
-
-		// Ingest with skipMetadata=true as we will upload a group metadata file at the end
-		asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-flow", description, tags, skipDrive, true)
-		if ingestErr != nil {
-			s.log.Warn("failed to ingest google flow image", zap.String("path", resolved), zap.Error(ingestErr))
-			continue
-		}
-		assets = append(assets, asset)
 	}
 
-	if len(assets) == 0 {
-		return nil, fmt.Errorf("google flow generated no ingestible images")
+	content, readErr := os.ReadFile(resolved)
+	if readErr != nil {
+		s.log.Warn("failed to read google vids image", zap.String("path", resolved), zap.Error(readErr))
+		return nil, fmt.Errorf("google vids image read failed: %w", readErr)
 	}
 
-	s.log.Info("google flow generation finished", zap.Int("assets", len(assets)), zap.Bool("skip_drive", skipDrive))
+	hasher := sha256.New()
+	hasher.Write(content)
+	hash := hex.EncodeToString(hasher.Sum(nil))
 
-	// 8. Upload unified metadata.json for the entire group
-	if !skipDrive && len(assets) > 0 {
-		// Use the genID from the first asset's directory structure
-		firstPath := assets[0].PathRel
-		dirName := filepath.Base(filepath.Dir(firstPath))
-		
-		s.log.Info("triggering batch metadata upload", zap.String("gen_id", dirName), zap.String("style", style))
-		s.UploadBatchMetadata(ctx, dirName, slug, style, cleanPrompt, "google-flow", assets)
+	if existing, err := s.repo.GetImageByHash(ctx, hash); err == nil && existing != nil {
+		s.log.Info("google vids image already exists in DB, skipping from this run", zap.String("hash", hash))
+		return existing, nil
 	}
 
-	return assets, nil
+	genID := filepath.Base(filepath.Dir(resolved))
+	asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-vids", description, tags, skipDrive, true)
+	if ingestErr != nil {
+		s.log.Warn("failed to ingest google vids image", zap.String("path", resolved), zap.Error(ingestErr))
+		return nil, ingestErr
+	}
+
+	if !skipDrive {
+		s.log.Info("google vids generation finished", zap.String("gen_id", genID), zap.Bool("skip_drive", skipDrive))
+	}
+
+	return asset, nil
 }
 
 func (s *Service) waitForGoogleJob(ctx context.Context, jobID string) (*googleaccounting.Job, error) {
@@ -331,8 +293,8 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAss
 	// Recuperiamo la descrizione originale o usiamo un prompt fallback se non c'è.
 	prompt := asset.Description
 	generator := "nvidia"
-	if asset.SourceURL == "google-flow" || strings.Contains(strings.ToLower(prompt), "google flow") {
-		generator = "google-flow"
+	if asset.SourceURL == "google-vids" || strings.Contains(strings.ToLower(prompt), "google vids") {
+		generator = "google-vids"
 	} else if asset.MetadataJSON != "" && asset.MetadataJSON != "{}" {
 		var meta map[string]any
 		if err := json.Unmarshal([]byte(asset.MetadataJSON), &meta); err == nil {
@@ -351,7 +313,7 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAss
 	if prompt == "" {
 		prompt = asset.SubjectID // Fallback to subject
 	}
-	
+
 	s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, webLink, asset.Hash, imagePath, asset.Width, asset.Height)
 
 	s.log.Info("image uploaded to Drive with style",

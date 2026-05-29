@@ -1,0 +1,25 @@
+{
+  "source_text": "A young knight crossed the frozen bridge at dawn to recover a stolen crown from the old castle. The wind howled through the towers while the river below remained silent and black.",
+  "rewritten_script": "The air tasted of frost and regret. It was before the sun truly broke, only a bruised grey clinging to the horizon, painting the snow in shades of mourning. The wind, a relentless sculptor, howled through the skeletal remains of Blackwood Castle’s towers, a mournful cry echoing across the frozen expanse. Below, the River Wyvern lay still, a black mirror reflecting the storm above, utterly silent. Sir Kaelan, barely twenty summers old, stood at the foot of the bridge – a precarious span of ice and shattered stone, the last barrier between him and a stolen legacy. He’d ridden for three days, his armor heavy with the chill, fueled by a single, burning resolve. The crown, the ancestral Crown of Northwood, had been pilfered by a rogue baron, Lord Vorlag, a man driven by ambition and shadowed by whispers of dark magic.\n\nKaelan’s breath plumed white in the frigid air as he took his first step onto the bridge. Each footfall crunched, a stark punctuation in the overwhelming silence. The ice groaned beneath his weight, a low, unsettling rumble that spoke of instability, of a fragile peace hanging on a razor’s edge. He adjusted the grip on his ancestral blade, Dawnbreaker, its polished steel glinting faintly in the pre-dawn light. He remembered his father’s words: “Courage isn't the absence of fear, Kaelan, but the willingness to face it.” Vorlag hadn't simply stolen a crown; he’d challenged the very foundations of Northwood’s honor.\n\nThe castle loomed ahead, a jagged silhouette against the gloom, its windows like vacant eyes staring down upon him. A single raven circled overhead, a dark omen carried on the wind. Kaelan moved with a quiet determination, his pace deliberate, measured. This wasn't a battle of steel and fury; it was a reckoning. A silent promise to restore what had been lost. He knew, with a chilling certainty, that he wasn’t just pursuing a thief. He was chasing a shadow, a corruption that threatened to consume not just a kingdom, but the soul of Northwood itself. The frozen bridge seemed to lengthen with every step, and Kaelan pressed onward, a lone sentinel against the encroaching darkness.",
+  "language": "en",
+  "style": "storytelling",
+  "visual_style": "medieval",
+  "title": "The Frozen Crown",
+  "output_name": "the-frozen-crown",
+  "word_count": 358,
+  "estimated_duration": 153,
+  "scenes": [
+    {
+      "id": "scene_001",
+      "index": 0,
+      "text": "The air tasted of frost and regret.",
+      "query": "The air tasted of frost and regret. | The Frozen Crown | medieval | en",
+      "error": "NVIDIA API key not configured (required for cloud models)"
+    }
+  ],
+  "files": {
+    "markdown": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_141031_the-frozen-crown/script.md",
+    "json": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_141031_the-frozen-crown/script.json"
+  },
+  "generated_at": "2026-05-29T14:10:31.890893332Z"
+}

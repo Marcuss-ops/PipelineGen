@@ -1,0 +1,38 @@
+# Generated Script
+
+## Title
+The Northern Tower
+
+## Full Script
+The rain began as a hesitant whisper, a grey stain spreading across the bruised purple of the sky. It wasn’t the first storm, not for Oakhaven, but something about this one…this felt different. The villagers huddled in the square, faces pale in the deepening gloom, their silence a tangible thing, thicker than the rising mist rolling off the Black River. Sir Kaelen, Knight of the Silver Hand, stood at the edge of the square, his armor gleaming faintly beneath the last vestiges of twilight. He was a man carved from granite and sorrow, his eyes holding the weight of countless battles, and tonight, a heavier burden than any he’d borne before. The crown – the Sunstone, a beacon of Oakhaven’s prosperity – had been stolen. Taken by the Shadow King’s men, a brutal raid that left the village fractured and terrified.
+
+He adjusted the worn leather of his gauntlets, the silver hand etched into its surface a silent prayer. The Black River, dark and unforgiving, snaked through the valley, mirroring the turbulent clouds. The storm was building, a monstrous hand reaching down to crush Oakhaven. He knew the northern tower, the Shadow King’s stronghold, was a fortress of nightmares, perched precariously on the cliff’s edge. A single, defiant point against the impending darkness. A knight’s duty was clear: retrieve what was lost, even if it cost him everything.  He took a slow, deliberate breath, the damp air filling his lungs, and began to cross the river.  Each step was a commitment, a promise whispered into the wind. The villagers watched, holding their breath, their hope clinging to the armor of the knight as he disappeared into the swirling grey, swallowed by the approaching storm, a solitary figure against the backdrop of a kingdom on the brink.  The Northern Tower awaited, and with it, a reckoning.
+
+## Scenes JSON
+```json
+{
+  "source_text": "At dusk, a knight crossed the black river to retrieve the stolen crown from the northern tower. The village held its breath as the storm gathered over the walls.",
+  "rewritten_script": "The rain began as a hesitant whisper, a grey stain spreading across the bruised purple of the sky. It wasn’t the first storm, not for Oakhaven, but something about this one…this felt different. The villagers huddled in the square, faces pale in the deepening gloom, their silence a tangible thing, thicker than the rising mist rolling off the Black River. Sir Kaelen, Knight of the Silver Hand, stood at the edge of the square, his armor gleaming faintly beneath the last vestiges of twilight. He was a man carved from granite and sorrow, his eyes holding the weight of countless battles, and tonight, a heavier burden than any he’d borne before. The crown – the Sunstone, a beacon of Oakhaven’s prosperity – had been stolen. Taken by the Shadow King’s men, a brutal raid that left the village fractured and terrified.\n\nHe adjusted the worn leather of his gauntlets, the silver hand etched into its surface a silent prayer. The Black River, dark and unforgiving, snaked through the valley, mirroring the turbulent clouds. The storm was building, a monstrous hand reaching down to crush Oakhaven. He knew the northern tower, the Shadow King’s stronghold, was a fortress of nightmares, perched precariously on the cliff’s edge. A single, defiant point against the impending darkness. A knight’s duty was clear: retrieve what was lost, even if it cost him everything.  He took a slow, deliberate breath, the damp air filling his lungs, and began to cross the river.  Each step was a commitment, a promise whispered into the wind. The villagers watched, holding their breath, their hope clinging to the armor of the knight as he disappeared into the swirling grey, swallowed by the approaching storm, a solitary figure against the backdrop of a kingdom on the brink.  The Northern Tower awaited, and with it, a reckoning.",
+  "language": "en",
+  "style": "storytelling",
+  "visual_style": "medieval",
+  "title": "The Northern Tower",
+  "output_name": "the-northern-tower",
+  "word_count": 305,
+  "estimated_duration": 130,
+  "scenes": [
+    {
+      "id": "scene_001",
+      "index": 0,
+      "text": "The rain began as a hesitant whisper, a grey stain spreading across the bruised purple of the sky.",
+      "query": "The rain began as a hesitant whisper, a grey stain spreading across the bruised purple of the sky. | The Northern Tower | medieval | en",
+      "error": "NVIDIA API key not configured (required for cloud models)"
+    }
+  ],
+  "files": {
+    "markdown": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_141402_the-northern-tower/script.md",
+    "json": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_141402_the-northern-tower/script.json"
+  },
+  "generated_at": "2026-05-29T14:14:02.92194409Z"
+}
+```

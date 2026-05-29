@@ -1,20 +1,32 @@
 import json
 import sqlite3
 import uuid
+import logging
 from pathlib import Path
 from datetime import datetime
 from config import BASE_DIR, DOWNLOAD_DIR
+from style_presets import STYLE_FOLDER_NAMES
+
+log = logging.getLogger(__name__)
 
 # Database path (unificato in velox.db.sqlite)
 DB_PATH = BASE_DIR / "data" / "velox" / "velox.db.sqlite"
 PROJECTS_FILE = DOWNLOAD_DIR.parent / "projects_cache.json"
 
+def _safe_mkdir(path: Path) -> None:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        log.warning("Unable to create directory %s: %s", path, exc)
+
 def ensure_dirs():
-    (DOWNLOAD_DIR / "videos").mkdir(parents=True, exist_ok=True)
-    (DOWNLOAD_DIR / "images").mkdir(parents=True, exist_ok=True)
-    (DOWNLOAD_DIR / "avatars").mkdir(parents=True, exist_ok=True)
-    Path("logs").mkdir(exist_ok=True)
-    PROJECTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _safe_mkdir(DOWNLOAD_DIR / "videos")
+    _safe_mkdir(DOWNLOAD_DIR / "images")
+    _safe_mkdir(DOWNLOAD_DIR / "avatars")
+    _safe_mkdir(Path("logs"))
+    _safe_mkdir(PROJECTS_FILE.parent)
+    for style in STYLE_FOLDER_NAMES:
+        _safe_mkdir(DOWNLOAD_DIR / style / "general" / "general")
 
 def save_media_asset(
     file_path: Path, 
@@ -94,12 +106,16 @@ def save_media_asset(
         return False
 
 def get_structured_path(media_type: str, style: str = "", sub_style: str = "", generation_id: str = None) -> Path:
-    """Returns a structured path: root/{media_type}s/{style}/{sub_style}/{gen_id}/"""
+    """Returns a structured path for media types or style-rooted generations."""
     gen_id = generation_id or f"gen_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
     
     # Sanitize names
-    m = f"{media_type}s" if not media_type.endswith("s") else media_type
-    if m == "images": m = "images" # consistent
+    if media_type in STYLE_FOLDER_NAMES:
+        m = media_type
+    else:
+        m = f"{media_type}s" if not media_type.endswith("s") else media_type
+        if m == "images":
+            m = "images"  # consistent
     
     s = style.replace(" ", "_") or "default"
     ss = sub_style.replace(" ", "_") or "general"

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/semantic"
 
 	"go.uber.org/zap"
 )
@@ -168,50 +170,252 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	dir := filepath.Dir(rec.LocalPath)
 	metaPath := filepath.Join(dir, "metadata.json")
 
-	// Prepare metadata structure
-	var existingMeta map[string]interface{}
-	if data, err := os.ReadFile(metaPath); err == nil {
-		_ = json.Unmarshal(data, &existingMeta)
-	}
-
-	if existingMeta == nil {
-		existingMeta = make(map[string]interface{})
-	}
-
-	// Update fields
-	existingMeta["generation_id"] = filepath.Base(dir)
-	existingMeta["timestamp"] = time.Now().UTC().Format(time.RFC3339)
-	existingMeta["source"] = rec.Source
-	existingMeta["media_type"] = rec.MediaType
-
-	// Parse internal metadata if present
+	existingMeta := semantic.MetadataMapFromJSON(readFileAsString(metaPath))
 	if rec.Metadata != "" {
-		var internalMeta map[string]interface{}
-		if err := json.Unmarshal([]byte(rec.Metadata), &internalMeta); err == nil {
-			for k, v := range internalMeta {
-				existingMeta[k] = v
+		for k, v := range semantic.MetadataMapFromJSON(rec.Metadata) {
+			existingMeta[k] = v
+		}
+	}
+
+	filename := filepath.Base(rec.LocalPath)
+	assets := existingAssetList(existingMeta)
+	if filename != "" {
+		assets = appendAssetFile(assets, filename)
+	}
+
+	subjects := uniqueStrings(append(existingStringSlice(existingMeta, "subjects"), rec.Group, rec.Category, rec.Source)...)
+	tags := uniqueStrings(append(existingStringSlice(existingMeta, "tags"), rec.Tags...)...)
+	categories := uniqueStrings(append(existingStringSlice(existingMeta, "categories"), rec.Category, rec.Group, rec.MediaType)...)
+	style := existingStringSlice(existingMeta, "style")
+	mood := existingStringSlice(existingMeta, "mood")
+	searchText := firstString(existingMeta, "search_text", semantic.MergeMetadataSearchText(rec.Name, rec.Filename, rec.Source, rec.Category, rec.Group, rec.FolderPath, strings.Join(rec.Tags, " ")))
+	semanticDesc := firstString(existingMeta, "semantic_description", rec.Name, rec.Filename, rec.Category, rec.Group)
+	generator := firstString(existingMeta, "generator", rec.Source, rec.Category, rec.MediaType)
+	assetType := firstString(existingMeta, "asset_type", semantic.AssetTypeForMediaType(rec.MediaType))
+	if assetType == "" {
+		assetType = semantic.AssetTypeForMediaType(rec.MediaType)
+	}
+
+	metadata := semantic.BuildAssetMetadata(semantic.AssetSemanticInput{
+		AssetID:             rec.ID,
+		AssetType:           assetType,
+		Source:              rec.Source,
+		MediaType:           rec.MediaType,
+		Generator:           generator,
+		PromptOriginal:      firstString(existingMeta, "prompt_original", rec.Name, rec.Filename),
+		SemanticDescription: semanticDesc,
+		SearchText:          searchText,
+		Subjects:            subjects,
+		SubjectSlugs:        existingStringSlice(existingMeta, "subject_slugs"),
+		Tags:                tags,
+		Categories:          categories,
+		Mood:                mood,
+		Style:               style,
+		Confidence:          floatOrDefault(existingMeta, "confidence", defaultConfidence(rec)),
+		EmbeddingStatus:     firstString(existingMeta, "embedding_status", embeddingStatus(rec)),
+		VisualEmbeddingJSON: firstString(existingMeta, "visual_embedding_json", rec.VisualEmbeddingJSON),
+		PHash:               firstString(existingMeta, "phash", rec.PHash),
+		VisualDimensions:    intOrDefault(existingMeta, "visual_dimensions", 0),
+		Assets:              assets,
+		Extra: map[string]any{
+			"generation_id":   filepath.Base(dir),
+			"timestamp":       time.Now().UTC().Format(time.RFC3339),
+			"source":          rec.Source,
+			"media_type":      rec.MediaType,
+			"filename":        filename,
+			"folder_id":       rec.FolderID,
+			"folder_path":     rec.FolderPath,
+			"group_name":      rec.Group,
+			"external_url":    rec.ExternalURL,
+			"duration":        rec.Duration,
+			"drive_link":      rec.DriveLink,
+			"drive_file_id":   rec.DriveFileID,
+			"download_link":   rec.DownloadLink,
+			"file_hash":       rec.FileHash,
+			"source_id":       rec.SourceID,
+			"subfolder":       rec.Subfolder,
+			"embedding_ready": rec.PHash != "" || rec.VisualEmbeddingJSON != "" || firstString(existingMeta, "embedding_status", "") == "ready",
+		},
+	}, existingMeta)
+	metadataJSON := semantic.MetadataMapToJSON(metadata)
+	rec.Metadata = metadataJSON
+
+	if data, err := json.MarshalIndent(metadata, "", "  "); err == nil {
+		_ = os.WriteFile(metaPath, data, 0644)
+	}
+}
+
+func readFileAsString(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func firstString(meta map[string]any, key string, fallbacks ...string) string {
+	if meta != nil {
+		if v, ok := meta[key]; ok {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
 			}
 		}
 	}
-
-	// Add asset to list
-	assets, _ := existingMeta["assets"].([]interface{})
-	found := false
-	filename := filepath.Base(rec.LocalPath)
-	for _, a := range assets {
-		if a == filename {
-			found = true
-			break
+	for _, fallback := range fallbacks {
+		if strings.TrimSpace(fallback) != "" {
+			return strings.TrimSpace(fallback)
 		}
 	}
-	if !found {
-		assets = append(assets, filename)
-	}
-	existingMeta["assets"] = assets
-	existingMeta["embedding_ready"] = rec.PHash != "" || rec.VisualEmbeddingJSON != ""
+	return ""
+}
 
-	// Write back to file
-	if data, err := json.MarshalIndent(existingMeta, "", "  "); err == nil {
-		_ = os.WriteFile(metaPath, data, 0644)
+func existingStringSlice(meta map[string]any, key string) []string {
+	if meta == nil {
+		return nil
 	}
+	v, ok := meta[key]
+	if !ok {
+		return nil
+	}
+	switch arr := v.(type) {
+	case []any:
+		out := make([]string, 0, len(arr))
+		for _, item := range arr {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+		return out
+	case []string:
+		out := make([]string, 0, len(arr))
+		for _, item := range arr {
+			if strings.TrimSpace(item) != "" {
+				out = append(out, strings.TrimSpace(item))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func floatOrDefault(meta map[string]any, key string, fallback float64) float64 {
+	if meta == nil {
+		return fallback
+	}
+	if v, ok := meta[key]; ok {
+		switch n := v.(type) {
+		case float64:
+			return n
+		case float32:
+			return float64(n)
+		case int:
+			return float64(n)
+		case int64:
+			return float64(n)
+		case json.Number:
+			if f, err := n.Float64(); err == nil {
+				return f
+			}
+		}
+	}
+	return fallback
+}
+
+func intOrDefault(meta map[string]any, key string, fallback int) int {
+	if meta == nil {
+		return fallback
+	}
+	if v, ok := meta[key]; ok {
+		switch n := v.(type) {
+		case float64:
+			return int(n)
+		case float32:
+			return int(n)
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case json.Number:
+			if i, err := n.Int64(); err == nil {
+				return int(i)
+			}
+		}
+	}
+	return fallback
+}
+
+func existingAssetList(meta map[string]any) []map[string]any {
+	if meta == nil {
+		return nil
+	}
+	v, ok := meta["assets"]
+	if !ok {
+		return nil
+	}
+	switch arr := v.(type) {
+	case []map[string]any:
+		return append([]map[string]any{}, arr...)
+	case []any:
+		out := make([]map[string]any, 0, len(arr))
+		for _, item := range arr {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func appendAssetFile(existing []map[string]any, filename string) []map[string]any {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return existing
+	}
+	for _, asset := range existing {
+		if s, ok := asset["filename"].(string); ok && strings.TrimSpace(s) == filename {
+			return existing
+		}
+		if s, ok := asset["path"].(string); ok && filepath.Base(strings.TrimSpace(s)) == filename {
+			return existing
+		}
+	}
+	return append(existing, map[string]any{"filename": filename})
+}
+
+func uniqueStrings(items ...string) []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func defaultConfidence(rec *MediaRecord) float64 {
+	if rec.PHash != "" || rec.VisualEmbeddingJSON != "" {
+		return 0.9
+	}
+	if strings.TrimSpace(rec.FileHash) != "" {
+		return 0.7
+	}
+	return 0.5
+}
+
+func embeddingStatus(rec *MediaRecord) string {
+	if rec.PHash != "" || rec.VisualEmbeddingJSON != "" {
+		return "ready"
+	}
+	return "pending"
 }

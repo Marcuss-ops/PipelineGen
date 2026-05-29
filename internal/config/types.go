@@ -10,6 +10,77 @@ import (
 type Config struct {
 	mu sync.RWMutex
 
+	// Legacy flat fields kept for compatibility with the older env-based bootstrap
+	MasterPort               int
+	StudioPort               int
+	StaticDir                string
+	VideosDir                string
+	RedisHost                string
+	RedisPort                string
+	RedisDB                  int
+	RedisPassword            string
+	QueuePrefix              string
+	DataDir                  string
+	JobQueueFile             string
+	AllowedWorkers           string
+	ForceSingleWorker        string
+	AllowlistAllowRegistered bool
+	MaxJobAttempts           int
+	MasterServerURL          string
+	JobMasterURL             string
+	GradioAppURL             string
+	SPADir                   string
+	DarkEditorDir            string
+	DarkEditorProxyURL       string
+	WorkerBundleDir          string
+	CodeVersion              string
+	VersionNumber            string
+	WorkerHeartbeatTimeout   int
+
+	DBDriver          string
+	DBDSN             string
+	DBMaxOpenConns    int
+	DBMaxIdleConns    int
+	DBConnMaxLifetime int
+	DBConnMaxIdleTime int
+
+	S3Endpoint        string
+	S3Region          string
+	S3Bucket          string
+	S3AccessKeyID     string
+	S3SecretAccessKey string
+	S3UseSSL          bool
+
+	EnterpriseEnabled bool
+
+	RemoteEngineURL       string
+	RemoteEngineToken     string
+	RemoteEngineTimeoutMS int
+	RemoteEngineRetries   int
+
+	DriveClientID     string
+	DriveClientSecret string
+	DriveRedirectURI  string
+	DriveTokensDir    string
+
+	NVIDIAAPIKey      string
+	SemanticSearchURL string
+
+	YouTubeAPIKey      string
+	YouTubeTokensDir   string
+	YouTubePostingPath string
+	RemoteFallbackURL  string
+
+	SecretsDir            string
+	DriveCredentialsDir   string
+	YouTubeCredentialsDir string
+
+	ScriptDir            string
+	MasterURL            string
+	AllowedWorkerIPs     []string
+	AdminToken           string
+	AllowLocalhostMaster bool
+
 	Server           ServerConfig           `yaml:"server"`
 	Logging          LoggingConfig          `yaml:"logging"`
 	Storage          StorageConfig          `yaml:"storage"`
@@ -272,17 +343,17 @@ type SecurityConfig struct {
 
 // ExternalConfig holds external service configuration.
 type ExternalConfig struct {
-	OllamaURL            string          `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
-	OllamaModel          string          `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
-	OllamaTimeoutSeconds int             `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
-	YtdlpPath            string          `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
-	FfmpegPath           string          `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
-	NvidiaAPIKey         string          `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
-	NvidiaModel          string          `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
-	PixabayAPIKey        string          `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
-	PixabayBaseURL       string          `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
-	PexelsAPIKey         string          `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
-	PexelsBaseURL        string          `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
+	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma3:4b"`
+	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"120"`
+	YtdlpPath            string `yaml:"ytdlp_path" env:"YTDLP_PATH" default:"yt-dlp"`
+	FfmpegPath           string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
+	NvidiaAPIKey         string `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
+	NvidiaModel          string `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	PixabayAPIKey        string `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
+	PixabayBaseURL       string `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
+	PexelsAPIKey         string `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
+	PexelsBaseURL        string `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
 }
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.
@@ -334,22 +405,23 @@ type FeaturesConfig struct {
 
 // VectorSearchConfig holds settings for the vector search (Qdrant) integration.
 type VectorSearchConfig struct {
-	Enabled             bool    `yaml:"enabled" default:"false"`
-	Provider            string  `yaml:"provider" default:"qdrant"`
-	URL                 string  `yaml:"url" default:"http://127.0.0.1:6333"`
-	Collection          string  `yaml:"collection" default:"pipelinegen_assets"`
-	TextVectorName      string  `yaml:"text_vector_name" default:"text"`
-	VisualVectorName    string  `yaml:"visual_vector_name" default:"visual"`
-	AudioVectorName     string  `yaml:"audio_vector_name" default:"audio"`
-	TextDimensions      int     `yaml:"text_dimensions" default:"384"`
-	VisualDimensions    int     `yaml:"visual_dimensions" default:"512"`
-	AudioDimensions     int     `yaml:"audio_dimensions" default:"512"`
-	MinInstantScore     float64 `yaml:"min_instant_score" default:"0.85"`
-	TimeoutMs           int     `yaml:"timeout_ms" default:"5000"`
-	GRPCPort            int     `yaml:"grpc_port" default:"6334"`
-	RealtimeEnabled     bool    `yaml:"realtime_enabled" default:"false"`
-	AllowBackgroundGen  bool    `yaml:"allow_background_generation" default:"false"`
+	Enabled            bool    `yaml:"enabled" default:"false"`
+	Provider           string  `yaml:"provider" default:"qdrant"`
+	URL                string  `yaml:"url" default:"http://127.0.0.1:6333"`
+	Collection         string  `yaml:"collection" default:"pipelinegen_assets"`
+	TextVectorName     string  `yaml:"text_vector_name" default:"text"`
+	VisualVectorName   string  `yaml:"visual_vector_name" default:"visual"`
+	AudioVectorName    string  `yaml:"audio_vector_name" default:"audio"`
+	TextDimensions     int     `yaml:"text_dimensions" default:"384"`
+	VisualDimensions   int     `yaml:"visual_dimensions" default:"512"`
+	AudioDimensions    int     `yaml:"audio_dimensions" default:"512"`
+	MinInstantScore    float64 `yaml:"min_instant_score" default:"0.85"`
+	TimeoutMs          int     `yaml:"timeout_ms" default:"5000"`
+	GRPCPort           int     `yaml:"grpc_port" default:"6334"`
+	RealtimeEnabled    bool    `yaml:"realtime_enabled" default:"false"`
+	AllowBackgroundGen bool    `yaml:"allow_background_generation" default:"false"`
 }
+
 // ClipIndexerConfig holds settings for the clip metadata indexing service.
 type ClipIndexerConfig struct {
 	Enabled               bool   `yaml:"enabled" default:"true"`

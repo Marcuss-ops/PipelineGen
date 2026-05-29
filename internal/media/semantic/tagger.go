@@ -21,7 +21,7 @@ type Payload struct {
 	SemanticDescription string           `json:"semantic_description"`
 	SearchText          string           `json:"search_text"`
 	Subjects            []string         `json:"subjects"`
-	SubjectSlugs       []string         `json:"subject_slugs"`
+	SubjectSlugs        []string         `json:"subject_slugs"`
 	Tags                []string         `json:"tags"`
 	Categories          []string         `json:"categories"`
 	Mood                []string         `json:"mood,omitempty"`
@@ -29,6 +29,9 @@ type Payload struct {
 	Confidence          float64          `json:"confidence"`
 	EmbeddingStatus     string           `json:"embedding_status"`
 	CreatedAt           string           `json:"created_at"`
+	VisualEmbeddingJSON string           `json:"visual_embedding_json,omitempty"`
+	PHash               string           `json:"phash,omitempty"`
+	VisualDimensions    int              `json:"visual_dimensions,omitempty"`
 	Assets              []map[string]any `json:"assets,omitempty"`
 }
 

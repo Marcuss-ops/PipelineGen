@@ -29,6 +29,7 @@ from .config import (
     POST_GOTO_WAIT,
     PROMPT_SELECTORS,
     SEND_BUTTON_SELECTORS,
+    STYLE_MAP,
     TYPE_DELAY_MS,
     log,
 )
@@ -63,7 +64,8 @@ class ImageFXFlowAutomation(BaseAutomation):
         debug_dir = DOWNLOAD_DIR / "debug"
         debug_dir.mkdir(parents=True, exist_ok=True)
         
-        full_prompt = f"style {style} {prompt}" if style else prompt
+        style_suffix = STYLE_MAP.get(style or "")
+        full_prompt = f"{prompt}, {style_suffix}" if style_suffix else (f"style {style} {prompt}" if style else prompt)
         
         log.info("=" * 80)
         log.info(f"NUOVA GENERAZIONE FLOW")

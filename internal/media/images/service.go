@@ -160,7 +160,7 @@ func (s *Service) Log() *zap.Logger {
 func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectID, flowProjectID string) {
 	s.gaServerURL = serverURL
 	s.gaDownloadDir = downloadDir
-	s.googleAccountingURL = serverURL // allinea anche googleAccountingURL per generateGoogleFlowImages
+	s.googleAccountingURL = serverURL // allinea anche googleAccountingURL per le immagini Google Vids
 	s.vidsProjectID = vidsProjectID
 	s.flowProjectID = flowProjectID
 

@@ -7,12 +7,14 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/semantic"
 )
 
 // Run executes the full stock pipeline: resolve sources, download, extract clips,
@@ -300,14 +302,28 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 				zap.String("group_name", input.FolderName),
 			)
 
-			meta := map[string]any{
-				"filename":    chunkTitle + ".mp4",
-				"folder_id":   folderID,
-				"folder_path": input.Subfolder + "/" + input.FolderName + "/" + chunkTitle + ".mp4",
-				"media_type":  "stock_clip",
-				"category":    "file",
-				"search_text": chunkTitle,
-			}
+			meta := semantic.BuildAssetMetadata(semantic.AssetSemanticInput{
+				AssetID:             assetID,
+				AssetType:           "stock_clip",
+				Source:              "stock",
+				MediaType:           "stock_clip",
+				Generator:           "stock-pipeline",
+				PromptOriginal:      strings.Join(append(append([]string{}, input.SearchQueries...), input.DirectURLs...), " | "),
+				SemanticDescription: semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder),
+				SearchText:          semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " ")),
+				Subjects:            semantic.AppendUniqueStrings(nil, input.FolderName, input.Subfolder),
+				Tags:                semantic.AppendUniqueStrings(nil, chunkTitle, input.FolderName, input.Subfolder, "stock", "clip"),
+				Categories:          semantic.AppendUniqueStrings(nil, "file", "stock", "clip"),
+				Confidence:          0.75,
+				EmbeddingStatus:     "ready",
+				Extra: map[string]any{
+					"filename":    chunkTitle + ".mp4",
+					"folder_id":   folderID,
+					"folder_path": input.Subfolder + "/" + input.FolderName + "/" + chunkTitle + ".mp4",
+					"media_type":  "stock_clip",
+					"category":    "file",
+				},
+			}, nil)
 			metaJSON, _ := json.Marshal(meta)
 			rec := &assetindex.AssetRecord{
 				AssetID:      assetID,

@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/pkg/googleaccounting"
 	"velox/go-master/internal/pkg/media/audio"
@@ -23,27 +24,7 @@ import (
 // SemanticMetadataPayload contains fields for the metadata.json uploaded alongside generated assets.
 // It acts as a semantic passport for the asset, separating it from storage/logistics data.
 // Used for images, videos, and audio — one format, no duplication.
-type SemanticMetadataPayload struct {
-	AssetID             string           `json:"asset_id,omitempty"`
-	AssetType           string           `json:"asset_type"`
-	SemanticTier        string           `json:"semantic_tier"`
-	Source              string           `json:"source"`
-	MediaType           string           `json:"media_type"`
-	Generator           string           `json:"generator"`
-	PromptOriginal      string           `json:"prompt_original"`
-	SemanticDescription string           `json:"semantic_description"`
-	SearchText          string           `json:"search_text"`
-	Subjects            []string         `json:"subjects"`
-	SubjectSlugs       []string         `json:"subject_slugs"`
-	Tags                []string         `json:"tags"`
-	Categories          []string         `json:"categories"`
-	Mood                []string         `json:"mood,omitempty"`
-	Style               []string         `json:"style"`
-	Confidence          float64          `json:"confidence"`
-	EmbeddingStatus     string           `json:"embedding_status"`
-	CreatedAt           string           `json:"created_at"`
-	Assets              []map[string]any `json:"assets,omitempty"`
-}
+type SemanticMetadataPayload = semantic.Payload
 
 // GenerateVideoAI generates a video via Google Vids automation
 func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (string, error) {
@@ -63,9 +44,9 @@ func (s *Service) GenerateVideoAI(ctx context.Context, prompt, style string) (st
 	}
 
 	reqBody := googleaccounting.GenerateRequest{
-		VideoID:  videoID,
-		Prompt:   prompt,
-		Style:    style,
+		VideoID: videoID,
+		Prompt:  prompt,
+		Style:   style,
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -356,7 +337,7 @@ func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDest
 		meta.AssetID = hash
 		meta.AssetType = "video"
 		// LLM fallback if confidence is low
-		if meta.Confidence < 0.6 {
+		if semantic.ShouldUseLLMFallback(meta.Confidence, 0.6) {
 			s.log.Info("uploadVideoMetadata: confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
 			meta.SemanticDescription = s.callLLMFallback(ctx, "video", prompt, style)
 		}
@@ -401,7 +382,6 @@ func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDest
 
 	return meta
 }
-
 
 // GenerateVidsImage generates an image via Google Vids Image Synthesis
 func (s *Service) GenerateVidsImage(ctx context.Context, prompt string) (string, error) {

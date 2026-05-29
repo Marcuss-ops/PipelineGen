@@ -77,6 +77,14 @@ func WireRegistry(
 			}
 			return w.Module, w, nil
 		}, func(w interface{}) { wiring.ScriptDocs = w.(*ScriptDocsWiring) }},
+		{"ScriptFlow", func() (module.Module, interface{}, error) {
+			if coreDeps.ScriptGen == nil || coreDeps.ImageService == nil {
+				return nil, nil, nil
+			}
+			handler := handlers.NewScriptFlowHandler(coreDeps.ScriptGen, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.DocClient, cfg, log)
+			mod := module.NewScriptFlowModule(cfg, log, handler)
+			return mod, nil, nil
+		}, nil},
 		{"Voiceover", func() (module.Module, interface{}, error) {
 			w, err := WireVoiceover(cfg, log, coreDeps)
 			if err != nil {

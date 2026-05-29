@@ -5,17 +5,10 @@ Tutti i selettori CSS/XPath sono centralizzati qui per facilitare debug e modifi
 """
 import logging
 
+from style_presets import STYLE_PRESETS
+
 # ── Stili immagine ─────────────────────────────────────────────────────────────
-STYLE_MAP = {
-    "realistic": "extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
-    "cartoon": "cartoon style, 2d, colorful, high quality animation, vibrant",
-    "medieval": "medieval style, fantasy, historical, detailed oil painting, epic atmosphere",
-    "cyberpunk": "cyberpunk aesthetic, neon lights, futuristic, dark atmosphere, high tech",
-    "watercolor": "watercolor painting style, soft colors, artistic, fluid textures",
-    "3d-render": "3d render, octane render, unreal engine 5 style, volumetric lighting, masterpiece",
-    "sketch": "hand-drawn sketch, pencil drawing, monochrome, detailed lines, artistic",
-    "cinematic": "cinematic lighting, movie shot, 35mm lens, highly detailed, dramatic",
-}
+STYLE_MAP = dict(STYLE_PRESETS)
 
 # ── Selettori prompt textbox ───────────────────────────────────────────────────
 # Ordine: dal più specifico al meno specifico

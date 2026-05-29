@@ -1,0 +1,32 @@
+{
+  "source_text": "In a moonlit kingdom, a knight rode through the forest to seek the lost crown.",
+  "rewritten_script": "In a moonlit kingdom, a knight rode through the forest to seek the lost crown. The old castle waited beyond the river.",
+  "language": "en",
+  "style": "storytelling",
+  "visual_style": "medieval",
+  "title": "The Lost Crown",
+  "output_name": "the-lost-crown",
+  "scenes": [
+    {
+      "id": "scene_001",
+      "index": 0,
+      "text": "In a moonlit kingdom, a knight rode through the forest to seek the lost crown.",
+      "query": "In a moonlit kingdom, a knight rode through the forest to seek the lost crown. | The Lost Crown | medieval | en"
+    },
+    {
+      "id": "scene_002",
+      "index": 1,
+      "text": "The old castle waited beyond the river.",
+      "query": "The old castle waited beyond the river. | The Lost Crown | medieval | en",
+      "image": {
+        "drive_file_id": "testdrive123",
+        "drive_link": "https://drive.google.com/file/d/testdrive123/view"
+      }
+    }
+  ],
+  "files": {
+    "markdown": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_133946_the-lost-crown/script.md",
+    "json": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/docs/generated/20260529_133946_the-lost-crown/script.json"
+  },
+  "generated_at": "2026-05-29T13:39:46Z"
+}

@@ -9,6 +9,7 @@ from googleapiclient.http import MediaFileUpload
 # Append path to import drive_client
 sys.path.append(str(Path(__file__).parent))
 from drive_client import _build_service
+from style_presets import STYLE_FOLDER_NAMES
 
 DB_PATH = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/velox/velox.db.sqlite"
 IMAGES_DIR = "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/images"
@@ -58,6 +59,12 @@ def upload_file_to_drive(parent_id, local_path, filename, mimetype):
     print(f"Uploaded file '{filename}' (ID: {file_obj['id']}) under folder '{parent_id}'")
     return file_obj["id"], file_obj["webViewLink"]
 
+def ensure_style_folders(parent_id, style_names):
+    folders = {}
+    for style in style_names:
+        folders[style] = get_or_create_drive_folder(parent_id, style)
+    return folders
+
 def slugify(text):
     if not text:
         return ""
@@ -79,6 +86,10 @@ def main():
     # 2. Get or create Video AI root folder
     video_ai_root_id = get_or_create_drive_folder(PARENT_ROOT_ID, "Video Ai ")
     print(f"Video AI Root ID: {video_ai_root_id}")
+
+    # 2b. Seed all notebook-style folders upfront so the tree exists even before first upload.
+    ensure_style_folders(images_root_id, STYLE_FOLDER_NAMES)
+    ensure_style_folders(video_ai_root_id, STYLE_FOLDER_NAMES)
 
     # 3. Retrieve all records from media_assets
     cursor.execute("SELECT id, media_type, source, local_path, metadata_json, drive_file_id FROM media_assets")
