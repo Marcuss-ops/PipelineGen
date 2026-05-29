@@ -60,6 +60,13 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	var driveUploader *drive.Uploader
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
+		imageRoot := cfg.Drive.ImagesRootFolder
+		if imageRoot == "" {
+			imageRoot = cfg.Drive.RootFolder()
+		}
+		if imageRoot != "" {
+			go ensureStyleDriveFolders(ctx, driveUploader, imageRoot, styleRegistry, log)
+		}
 	}
 
 	// 4. Media Processing
