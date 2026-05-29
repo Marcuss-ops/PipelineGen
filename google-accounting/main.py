@@ -368,6 +368,7 @@ async def lifespan(app: FastAPI):
     await session_pool_instance.start()
     log.info("Session pool initialized — warm contexts ready")
     cleanup_task = asyncio.create_task(_cleanup_expired_jobs())
+    asyncio.create_task(session_pool_instance.warmup_account("favamassimo"))
     yield
     cleanup_task.cancel()
     await session_pool_instance.stop()

@@ -104,7 +104,7 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 		req.Tone = req.Style
 	}
 	if req.SceneCount <= 0 {
-		req.SceneCount = 5
+		req.SceneCount = 100
 	}
 	if req.Width <= 0 {
 		req.Width = 768
@@ -299,9 +299,19 @@ func renderGeneratedMarkdown(pkg GeneratedScriptPackage, jsonData []byte) []byte
 		b.WriteString(pkg.Title)
 		b.WriteString("\n\n")
 	}
-	b.WriteString("## Full Script\n")
-	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
-	b.WriteString("\n\n")
+	b.WriteString("## Storyboard Scenes\n\n")
+	for _, scene := range pkg.Scenes {
+		b.WriteString(fmt.Sprintf("### Scene %s\n", scene.ID))
+		b.WriteString(fmt.Sprintf("Text: %s\n\n", scene.Text))
+		if scene.Image != nil && scene.Image.DriveLink != "" {
+			b.WriteString(fmt.Sprintf("Image Drive Link: %s\n\n", scene.Image.DriveLink))
+		} else if scene.Image != nil && scene.Image.LocalPath != "" {
+			b.WriteString(fmt.Sprintf("Image Local Path: %s\n\n", scene.Image.LocalPath))
+		}
+		if scene.Error != "" {
+			b.WriteString(fmt.Sprintf("Error: %s\n\n", scene.Error))
+		}
+	}
 	b.WriteString("## Scenes JSON\n")
 	b.WriteString("```json\n")
 	b.Write(jsonData)

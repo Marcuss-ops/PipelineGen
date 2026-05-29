@@ -163,6 +163,27 @@ class SessionPool:
                 pass
             return False
 
+    async def warmup_account(self, account: str):
+        """Pre-warm a browser context for the given account at startup."""
+        if not self._started:
+            await self.start()
+        log.info("Pre-warming context for account=%s at startup...", account)
+        async with self._lock:
+            sessions = self._sessions.setdefault(account, [])
+            if len(sessions) < MAX_WARM_CONTEXTS:
+                try:
+                    context = await self._create_context(account)
+                    ready = await self._warmup_context(context)
+                    if ready:
+                        session = WarmSession(context, account, time.time())
+                        sessions.append(session)
+                        log.info("Pre-warmed context ready for account=%s", account)
+                    else:
+                        await context.close()
+                        log.warning("Pre-warm failed for account=%s", account)
+                except Exception as e:
+                    log.error("Failed to pre-warm account %s: %s", account, e)
+
     async def acquire(self, account: str) -> WarmSession:
         """Acquire a warm session for the given account.
 

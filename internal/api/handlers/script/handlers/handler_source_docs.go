@@ -39,10 +39,6 @@ func buildGeneratedDocContent(pkg GeneratedScriptPackage) string {
 		b.WriteString(strings.TrimSpace(pkg.Title))
 		b.WriteString("\n\n")
 	}
-	b.WriteString("Full Script:\n")
-	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
-	b.WriteString("\n\n")
-	
 	b.WriteString("Storyboard Scenes:\n\n")
 	for _, scene := range pkg.Scenes {
 		b.WriteString(fmt.Sprintf("Scene %s:\n", scene.ID))
