@@ -85,18 +85,23 @@ async def human_scroll(page: Page):
     except: pass
 
 class BaseAutomation:
-    def __init__(self, account: str = None, headless: bool = True, external_context: BrowserContext = None):
+    def __init__(self, account: str = None, headless: bool = True, external_context: BrowserContext = None, external_page: Page = None):
         self.account = account
         self.headless = headless
         self.browser: Browser = None
         self.context: BrowserContext = external_context
-        self._external_context = external_context is not None
+        self.page: Page = external_page
+        self._external_page = external_page is not None
+        self._external_context = external_context is not None or self._external_page
         self.session_path = get_session_path(account)
         
         if not self._external_context and not self.session_path.exists():
             raise FileNotFoundError(f"Sessione non trovata per account '{account or 'default'}' in {self.session_path}. Eseguire prima il login.")
 
     async def __aenter__(self):
+        if self._external_page:
+            log.info("Using external page for account=%s", self.account or "default")
+            return self
         if self._external_context:
             log.info("Using external context for account=%s", self.account or "default")
             return self
@@ -145,8 +150,8 @@ class BaseAutomation:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self._external_context:
-            return  # Don't close external context
+        if self._external_context or self._external_page:
+            return  # Don't close external context or page
         if self.context:
             await self.context.close()
         if self.browser:

@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"velox/go-master/internal/config"
+	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/realtime"
@@ -27,17 +28,19 @@ type ScriptFlowHandler struct {
 	imgService  *images.Service
 	realtimeSvc *realtime.Service
 	docClient   drive.DocClient
+	jobsSvc     *jobservice.Service
 	cfg         *config.Config
 	log         *zap.Logger
 }
 
 // NewScriptFlowHandler creates the handler for text and visual flows.
-func NewScriptFlowHandler(gen *ollama.Generator, imgSvc *images.Service, realtimeSvc *realtime.Service, docClient drive.DocClient, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
+func NewScriptFlowHandler(gen *ollama.Generator, imgSvc *images.Service, realtimeSvc *realtime.Service, docClient drive.DocClient, jobsSvc *jobservice.Service, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
 	return &ScriptFlowHandler{
 		generator:   gen,
 		imgService:  imgSvc,
 		realtimeSvc: realtimeSvc,
 		docClient:   docClient,
+		jobsSvc:     jobsSvc,
 		cfg:         cfg,
 		log:         log,
 	}
@@ -50,6 +53,7 @@ func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate-from-source", h.GenerateFromSource)
 	r.POST("/from-source", h.GenerateFromSource)
 	r.POST("/visualize", h.Visualize)
+	r.GET("/jobs/:job_id", h.GetJobStatus)
 }
 
 // GenerateTextRequest is the input for the text-only generation endpoint.

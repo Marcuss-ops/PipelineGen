@@ -6,6 +6,7 @@ const (
 	JobTypeArtlistRun         JobType = "artlist.run"
 	JobTypeYouTubeClipExtract JobType = "youtube_clip.extract"
 	JobTypeScriptGenerate     JobType = "script.generate"
+	JobTypeSourceScriptGenerate JobType = "script.generate_from_source"
 	JobTypeScriptPublish      JobType = "script.publish"
 	JobTypeVoiceoverGenerate  JobType = "voiceover.generate"
 	JobTypeMediaMatch         JobType = "media.match"

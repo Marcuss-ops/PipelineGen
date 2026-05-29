@@ -513,64 +513,72 @@ class GoogleVidsImagesMixin:
             "generated_at": int(time.time()),
         }
 
-        page = await self._goto_home()
-        try:
-            if video_id == "new" or not video_id:
-                log.info("Creating new Vids project for Image Generation")
-                created = False
-                # Prova il metodo diretto /videos/create (funziona in generate_video)
-                try:
-                    await page.goto(
-                        "https://docs.google.com/videos/create",
-                        wait_until="domcontentloaded",
-                    )
-                    await asyncio.sleep(8)
+        if self._external_page:
+            page = self.page
+            log.info("Using preloaded external page for image generation, bypassing navigation")
+        else:
+            page = await self._goto_home()
+            try:
+                if video_id == "new" or not video_id:
+                    log.info("Creating new Vids project for Image Generation")
+                    created = False
+                    # Prova il metodo diretto /videos/create (funziona in generate_video)
                     try:
-                        await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
-                        created = True
-                        log.info("Created Vids project via /videos/create")
-                    except Exception:
-                        log.info("wait_for_url failed for /videos/create, current url: %s", page.url)
-                except Exception as e:
-                    log.warning("Failed to create via /videos/create: %s", e)
-                
-                if not created:
-                    # Fallback: clicca pulsante nuovo video
-                    for sel in [
-                        '[aria-label="Inizia un nuovo video"]',
-                        '[aria-label="Crea nuovo video"]',
-                    ]:
+                        await page.goto(
+                            "https://docs.google.com/videos/create",
+                            wait_until="domcontentloaded",
+                        )
+                        await asyncio.sleep(8)
                         try:
-                            loc = page.locator(sel).first
-                            if await loc.count() > 0:
-                                await self._human_click(page, loc, timeout=10000)
-                                created = True
-                                log.info("Clicked new video button: %s", sel)
-                                break
+                            await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
+                            created = True
+                            log.info("Created Vids project via /videos/create")
                         except Exception:
-                            continue
-                if not created:
-                    # Ultimo fallback: naviga direttamente
+                            log.info("wait_for_url failed for /videos/create, current url: %s", page.url)
+                    except Exception as e:
+                        log.warning("Failed to create via /videos/create: %s", e)
+                    
+                    if not created:
+                        # Fallback: clicca pulsante nuovo video
+                        for sel in [
+                            '[aria-label="Inizia un nuovo video"]',
+                            '[aria-label="Crea nuovo video"]',
+                        ]:
+                            try:
+                                loc = page.locator(sel).first
+                                if await loc.count() > 0:
+                                    await self._human_click(page, loc, timeout=10000)
+                                    created = True
+                                    log.info("Clicked new video button: %s", sel)
+                                    break
+                            except Exception:
+                                continue
+                    if not created:
+                        # Ultimo fallback: naviga direttamente
+                        await page.goto(
+                            "https://docs.google.com/videos/create",
+                            wait_until="domcontentloaded",
+                        )
+                        try:
+                            await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
+                        except Exception:
+                            pass
+                    video_id = self._extract_vid_id(page.url)
+                    if video_id and video_id != "new":
+                        save_project_id("vids", video_id)
+                else:
+                    log.info("Opening existing Vids project: %s", video_id)
                     await page.goto(
-                        "https://docs.google.com/videos/create",
+                        f"https://docs.google.com/videos/d/{video_id}/edit",
                         wait_until="domcontentloaded",
                     )
-                    try:
-                        await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
-                    except Exception:
-                        pass
-                video_id = self._extract_vid_id(page.url)
-                if video_id and video_id != "new":
-                    save_project_id("vids", video_id)
-            else:
-                log.info("Opening existing Vids project: %s", video_id)
-                await page.goto(
-                    f"https://docs.google.com/videos/d/{video_id}/edit",
-                    wait_until="domcontentloaded",
-                )
 
-            log.info("Waiting for editor to stabilize...")
-            await asyncio.sleep(15)
+                log.info("Waiting for editor to stabilize...")
+                await asyncio.sleep(15)
+            except Exception as e:
+                log.error("Navigation setup failed: %s", e)
+
+        try:
 
             # Rimuovi dialoghi bloccanti
             log.info("Removing hanging/stuck dialog backdrops via JS injection...")

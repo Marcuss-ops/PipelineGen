@@ -26,6 +26,7 @@ from playwright_client import (
     generate_flow_images,
     generate_character_video_v1,
     generate_vids_image_v1,
+    generate_vids_image_v1_pooled,
 )
 from script_routes import router as script_router
 
@@ -746,11 +747,10 @@ async def generate_vids_image_endpoint(req: VidsImageRequest, background_tasks: 
         _update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids for image generation")
         try:
             _update_job(job_id, progress=35, current_step="generating_image", last_log="Generating image via Vids Image Synthesis")
-            file_path = await generate_vids_image_v1(
+            file_path = await generate_vids_image_v1_pooled(
                 video_id=req.video_id,
                 prompt=styled_prompt,
                 account=account,
-                headless=req.headless
             )
             if file_path:
                 result_fields = {"file_path": str(file_path)}

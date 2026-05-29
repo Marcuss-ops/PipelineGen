@@ -1,7 +1,8 @@
 """Warm session pool for Google Vids automation.
 
-Pre-opens browser contexts at startup so image/video generation
-requests can reuse them instead of spinning up fresh browsers each time.
+Pre-opens browser contexts and pre-loads tabs (pages) at startup/on-demand
+so image/video generation requests can reuse them instead of spinning up
+fresh browsers and loading heavy video editor pages each time.
 """
 
 import asyncio
@@ -48,12 +49,14 @@ class WarmSession:
 
 
 class SessionPool:
-    """Pool of warm Playwright browser contexts for Google Vids."""
+    """Pool of warm Playwright browser contexts and loaded Pages for Google Vids."""
 
     def __init__(self):
         self._playwright = None
         self._browser: Optional[Browser] = None
         self._sessions: dict[str, list[WarmSession]] = {}  # account -> sessions
+        self._warm_pages: dict[tuple[str, str], list[Page]] = {}  # (account, video_id) -> pages
+        self._active_pages: set[Page] = set()
         self._lock = asyncio.Lock()
         self._started = False
 
@@ -78,12 +81,28 @@ class SessionPool:
         log.info("Session pool started (browser launched)")
 
     async def stop(self):
-        """Close all warm sessions and the browser."""
+        """Close all warm sessions, loaded pages and the browser."""
         if not self._started:
             return
 
         log.info("Stopping session pool...")
         async with self._lock:
+            # Close active and warm pages
+            for page in list(self._active_pages):
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            self._active_pages.clear()
+
+            for pages in self._warm_pages.values():
+                for page in pages:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+            self._warm_pages.clear()
+
             for account, sessions in self._sessions.items():
                 for session in sessions:
                     await session.close()
@@ -138,10 +157,7 @@ class SessionPool:
         return context
 
     async def _warmup_context(self, context: BrowserContext) -> bool:
-        """Navigate to Google Vids home to warm up the context.
-
-        Returns True if the context is ready, False if it needs recycling.
-        """
+        """Navigate to Google Vids home to warm up the context."""
         try:
             page = await context.new_page()
             await page.goto(
@@ -185,10 +201,7 @@ class SessionPool:
                     log.error("Failed to pre-warm account %s: %s", account, e)
 
     async def acquire(self, account: str) -> WarmSession:
-        """Acquire a warm session for the given account.
-
-        Creates new contexts if the pool is empty or all are in use.
-        """
+        """Acquire a warm session for the given account."""
         if not self._started:
             await self.start()
 
@@ -252,6 +265,65 @@ class SessionPool:
                 log.info("Expired session closed for account=%s", session.account)
             else:
                 log.info("Session released for account=%s (age=%.0fs)", session.account, session.age)
+
+    # ── Page/Tab pooling ──────────────────────────────────────────────────────
+    async def acquire_page(self, account: str, video_id: str) -> Page:
+        """Acquire an already loaded Google Vids page for the given account/video."""
+        if not self._started:
+            await self.start()
+
+        account = account or "favamassimo"
+        key = (account, video_id)
+
+        async with self._lock:
+            pages = self._warm_pages.setdefault(key, [])
+            while pages:
+                page = pages.pop(0)
+                if not page.is_closed():
+                    self._active_pages.add(page)
+                    log.info("Acquired warm preloaded page for account=%s video=%s", account, video_id)
+                    return page
+
+            # No warm page: acquire a context to spawn a new page
+            log.info("No warm page for account=%s video=%s, creating new...", account, video_id)
+            
+            # Find or create a session
+            sessions = self._sessions.setdefault(account, [])
+            session = None
+            for s in sessions:
+                if not s.is_expired:
+                    session = s
+                    break
+            
+            if not session:
+                context = await self._create_context(account)
+                session = WarmSession(context, account, time.time())
+                sessions.append(session)
+
+            page = await session.context.new_page()
+            url = f"https://docs.google.com/videos/d/{video_id}/edit"
+            log.info("Loading heavy Google Vids editor URL: %s", url)
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(4000)  # Wait for UI stabilization
+
+            self._active_pages.add(page)
+            return page
+
+    async def release_page(self, account: str, video_id: str, page: Page):
+        """Release a page back to the warm page pool."""
+        account = account or "favamassimo"
+        key = (account, video_id)
+
+        async with self._lock:
+            if page in self._active_pages:
+                self._active_pages.remove(page)
+
+            if not page.is_closed():
+                # Store page back in the pool
+                self._warm_pages.setdefault(key, []).append(page)
+                log.info("Page released back to warm pool for account=%s video=%s", account, video_id)
+            else:
+                log.warning("Released page was closed, discarding")
 
 
 # Global singleton

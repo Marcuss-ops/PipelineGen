@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
+	"velox/go-master/internal/core/jobs"
+	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/ml/ollama/types"
@@ -79,12 +82,8 @@ type GeneratedScriptPackage struct {
 
 // GenerateFromSource takes inline source_text, rewrites it, builds a scene JSON and generates images.
 func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
-	if h.generator == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "script generator not initialized")
-		return
-	}
-	if h.imgService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "image service not initialized")
+	if h.jobsSvc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
 		return
 	}
 
@@ -127,179 +126,72 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 	}
 	outputName := strings.TrimSpace(req.OutputName)
 	if outputName == "" {
-		outputName = images.Slugify(title)
+		outputName = Slugify(title)
 	}
 	if outputName == "" {
 		outputName = "generated-script"
 	}
+	req.Title = title
+	req.OutputName = outputName
 
-	textDuration := types.EstimateDuration(types.CountWords(req.SourceText))
-	if textDuration < 60 {
-		textDuration = 60
-	}
-	textModel := ""
-	if h.cfg != nil {
-		textModel = strings.TrimSpace(h.cfg.External.OllamaModel)
-	}
-	textReq := types.TextGenerationRequest{
-		Language:   req.Language,
-		Duration:   textDuration,
-		Tone:       req.Tone,
-		Model:      textModel,
-		Prompt:     req.SourceText,
-		SourceText: req.SourceText,
-		Title:      title,
-	}
-	if strings.TrimSpace(textReq.Model) == "" {
-		textReq.Model = req.Model
+	var payloadMap map[string]any
+	reqBytes, err := json.Marshal(req)
+	if err == nil {
+		_ = json.Unmarshal(reqBytes, &payloadMap)
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Minute)
-	defer cancel()
+	h.log.Info("enqueuing script.generate_from_source job", zap.String("title", title))
 
-	generated, err := h.generator.GenerateScript(ctx, textReq)
+	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+		Type:       models.JobType(jobs.JobTypeSourceScriptGenerate),
+		Payload:    payloadMap,
+		MaxRetries: 3,
+	})
 	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	rewritten := strings.TrimSpace(generated.Script)
-	if rewritten == "" {
-		rewritten = strings.TrimSpace(req.SourceText)
-	}
-	rewritten = types.CleanScript(rewritten)
-
-	sentences := splitScriptSentences(rewritten)
-	if len(sentences) == 0 {
-		sentences = []string{rewritten}
-	}
-	sentences = groupSentences(sentences, 5)
-	if req.SceneCount > 0 && len(sentences) > req.SceneCount {
-		sentences = sentences[:req.SceneCount]
-	}
-
-	packageData := GeneratedScriptPackage{
-		SourceText:        req.SourceText,
-		RewrittenScript:   rewritten,
-		Language:          req.Language,
-		Style:             req.Style,
-		VisualStyle:       req.VisualStyle,
-		Title:             title,
-		OutputName:        outputName,
-		WordCount:         generated.WordCount,
-		EstimatedDuration: generated.EstDuration,
-		Scenes:            make([]GeneratedScene, 0, len(sentences)),
-		GeneratedAt:       time.Now().UTC(),
-	}
-
-	visualStyle := strings.TrimSpace(req.VisualStyle)
-	if visualStyle == "" {
-		visualStyle = req.Style
-	}
-	imageModel := strings.TrimSpace(req.Model)
-	if imageModel == "" {
-		imageModel = "FLUX.1-schnell"
-	}
-
-	type result struct {
-		index int
-		scene GeneratedScene
-	}
-
-	resChan := make(chan result, len(sentences))
-	sem := make(chan struct{}, 7) // Concurrency semaphore limit = 7
-	var wg sync.WaitGroup
-
-	for idx, sentence := range sentences {
-		wg.Add(1)
-		go func(idx int, sentence string) {
-			defer wg.Done()
-			sem <- struct{}{}        // Acquire token
-			defer func() { <-sem }() // Release token
-
-			sceneID := fmt.Sprintf("scene_%03d", idx+1)
-			query := buildVisualQuery(sentence, title, visualStyle, req.Language)
-			scene := GeneratedScene{
-				ID:    sceneID,
-				Index: idx,
-				Text:  sentence,
-				Query: query,
-			}
-
-			asset, genErr := h.imgService.GenerateSmartImage(
-				ctx,
-				sentence,
-				title,
-				visualStyle,
-				[]string{sentence},
-				[]string{req.Style, req.VisualStyle, req.Language},
-				req.Width,
-				req.Height,
-				imageModel,
-				false,
-			)
-			if genErr != nil {
-				scene.Error = genErr.Error()
-			} else {
-				scene.Image = generatedImageFromAsset(asset)
-			}
-			resChan <- result{index: idx, scene: scene}
-		}(idx, sentence)
-	}
-
-	wg.Wait()
-	close(resChan)
-
-	scenesList := make([]GeneratedScene, len(sentences))
-	for res := range resChan {
-		scenesList[res.index] = res.scene
-	}
-	packageData.Scenes = scenesList
-
-	videoScenes := make([]VideoScene, 0, len(packageData.Scenes))
-	for _, s := range packageData.Scenes {
-		link := ""
-		if s.Image != nil {
-			if s.Image.DriveLink != "" {
-				link = s.Image.DriveLink
-			} else {
-				link = s.Image.LocalPath
-			}
-		}
-		videoScenes = append(videoScenes, VideoScene{
-			Text:      s.Text,
-			ImageLink: link,
-		})
-	}
-
-	outputDir, packageData, err := h.writeGeneratedScriptFiles(packageData, videoScenes)
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	doc, err := h.createGeneratedGoogleDoc(ctx, packageData, videoScenes)
-	if err != nil {
+		h.log.Error("failed to enqueue script generate job", zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":            true,
-		"output_dir":    outputDir,
-		"doc_id":        doc.ID,
-		"doc_url":       doc.URL,
-		"docs_url":      doc.URL,
-		"markdown_path": packageData.Files.Markdown,
-		"json_path":     packageData.Files.JSON,
-		"script":        packageData.RewrittenScript,
-		"word_count":    packageData.WordCount,
-		"est_duration":  packageData.EstimatedDuration,
-		"language":      packageData.Language,
-		"style":         packageData.Style,
-		"visual_style":  packageData.VisualStyle,
-		"scenes":        packageData.Scenes,
-		"files":         packageData.Files,
+		"ok":     true,
+		"job_id": job.ID,
+		"status": job.Status,
+	})
+}
+
+// GetJobStatus returns the progress and results of a background script generation job
+func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
+	if h.jobsSvc == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "jobs service not initialized")
+		return
+	}
+
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		apiutil.BadRequest(c, "job_id is required")
+		return
+	}
+
+	job, err := h.jobsSvc.Get(c.Request.Context(), jobID)
+	if err != nil {
+		apiutil.NotFound(c, fmt.Sprintf("job not found: %v", err))
+		return
+	}
+
+	var result map[string]any
+	if len(job.Result) > 0 {
+		_ = json.Unmarshal(job.Result, &result)
+	}
+
+	apiutil.OK(c, gin.H{
+		"ok":           true,
+		"job_id":       job.ID,
+		"status":       job.Status,
+		"progress":     job.Progress,
+		"current_step": job.CurrentStep,
+		"error":        job.Error,
+		"result":       result,
 	})
 }
 

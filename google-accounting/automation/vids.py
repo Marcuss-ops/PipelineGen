@@ -369,17 +369,17 @@ async def generate_vids_image_v1(video_id: str, prompt: str, account: str = None
 
 
 async def generate_vids_image_v1_pooled(video_id: str, prompt: str, account: str = None) -> str | None:
-    """Generate image using warm session pool (faster, no browser restart)."""
+    """Generate image using warm page/tab pool (extremely fast, no browser restart, no page load)."""
     from session_pool import pool
 
     account = account or "favamassimo"
-    warm_session = await pool.acquire(account)
+    page = await pool.acquire_page(account, video_id)
     try:
-        async with GoogleVidsAutomation(account=account, external_context=warm_session.context) as engine:
+        async with GoogleVidsAutomation(account=account, external_page=page) as engine:
             result = await engine.generate_vids_image(video_id, prompt)
             return str(result) if result else None
     finally:
-        await pool.release(warm_session)
+        await pool.release_page(account, video_id, page)
 
 
 async def list_projects(account: str = None, headless: bool = True):

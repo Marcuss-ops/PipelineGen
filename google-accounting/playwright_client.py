@@ -43,6 +43,7 @@ __all__ = [
     "generate_avatar_v1",
     "generate_character_video_v1",
     "generate_vids_image_v1",
+    "generate_vids_image_v1_pooled",
     "human_delay",
     "human_scroll",
     "list_projects",
