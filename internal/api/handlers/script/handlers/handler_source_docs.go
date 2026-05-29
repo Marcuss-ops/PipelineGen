@@ -9,7 +9,7 @@ import (
 	"velox/go-master/internal/upload/drive"
 )
 
-func (h *ScriptFlowHandler) createGeneratedGoogleDoc(ctx context.Context, pkg GeneratedScriptPackage) (*drive.Doc, error) {
+func (h *ScriptFlowHandler) createGeneratedGoogleDoc(ctx context.Context, pkg GeneratedScriptPackage, videoScenes []VideoScene) (*drive.Doc, error) {
 	if h.docClient == nil {
 		return nil, fmt.Errorf("google docs client not initialized")
 	}
@@ -22,7 +22,7 @@ func (h *ScriptFlowHandler) createGeneratedGoogleDoc(ctx context.Context, pkg Ge
 		title = "Generated Script"
 	}
 
-	return h.docClient.CreateDoc(ctx, title, buildGeneratedDocContent(pkg), h.googleDocsFolderID())
+	return h.docClient.CreateDoc(ctx, title, buildGeneratedDocContent(pkg, videoScenes), h.googleDocsFolderID())
 }
 
 func (h *ScriptFlowHandler) googleDocsFolderID() string {
@@ -32,7 +32,7 @@ func (h *ScriptFlowHandler) googleDocsFolderID() string {
 	return strings.TrimSpace(h.cfg.Drive.RootFolder())
 }
 
-func buildGeneratedDocContent(pkg GeneratedScriptPackage) string {
+func buildGeneratedDocContent(pkg GeneratedScriptPackage, videoScenes []VideoScene) string {
 	var b strings.Builder
 	if strings.TrimSpace(pkg.Title) != "" {
 		b.WriteString("Title:\n")
@@ -55,13 +55,13 @@ func buildGeneratedDocContent(pkg GeneratedScriptPackage) string {
 	}
 
 	b.WriteString("Scenes JSON:\n")
-	b.WriteString(renderGeneratedJSONBlock(pkg))
+	b.WriteString(renderGeneratedJSONBlock(videoScenes))
 	b.WriteString("\n")
 	return b.String()
 }
 
-func renderGeneratedJSONBlock(pkg GeneratedScriptPackage) string {
-	jsonData := renderGeneratedJSON(pkg)
+func renderGeneratedJSONBlock(videoScenes []VideoScene) string {
+	jsonData := renderGeneratedJSON(videoScenes)
 	var b strings.Builder
 	b.WriteString("```json\n")
 	b.WriteString(jsonData)
@@ -72,10 +72,10 @@ func renderGeneratedJSONBlock(pkg GeneratedScriptPackage) string {
 	return b.String()
 }
 
-func renderGeneratedJSON(pkg GeneratedScriptPackage) string {
-	data, err := json.MarshalIndent(pkg, "", "  ")
+func renderGeneratedJSON(videoScenes []VideoScene) string {
+	data, err := json.MarshalIndent(videoScenes, "", "  ")
 	if err != nil {
-		return "{}"
+		return "[]"
 	}
 	return string(data)
 }

@@ -51,6 +51,11 @@ type GeneratedScene struct {
 	Error string          `json:"error,omitempty"`
 }
 
+type VideoScene struct {
+	Text      string `json:"text"`
+	ImageLink string `json:"image_link"`
+}
+
 type GeneratedScriptFileInfo struct {
 	Markdown string `json:"markdown"`
 	JSON     string `json:"json"`
@@ -227,13 +232,29 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 		packageData.Scenes = append(packageData.Scenes, scene)
 	}
 
-	outputDir, packageData, err := h.writeGeneratedScriptFiles(packageData)
+	videoScenes := make([]VideoScene, 0, len(packageData.Scenes))
+	for _, s := range packageData.Scenes {
+		link := ""
+		if s.Image != nil {
+			if s.Image.DriveLink != "" {
+				link = s.Image.DriveLink
+			} else {
+				link = s.Image.LocalPath
+			}
+		}
+		videoScenes = append(videoScenes, VideoScene{
+			Text:      s.Text,
+			ImageLink: link,
+		})
+	}
+
+	outputDir, packageData, err := h.writeGeneratedScriptFiles(packageData, videoScenes)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	doc, err := h.createGeneratedGoogleDoc(ctx, packageData)
+	doc, err := h.createGeneratedGoogleDoc(ctx, packageData, videoScenes)
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
@@ -258,7 +279,7 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 	})
 }
 
-func (h *ScriptFlowHandler) writeGeneratedScriptFiles(pkg GeneratedScriptPackage) (string, GeneratedScriptPackage, error) {
+func (h *ScriptFlowHandler) writeGeneratedScriptFiles(pkg GeneratedScriptPackage, videoScenes []VideoScene) (string, GeneratedScriptPackage, error) {
 	baseDir := "."
 	if h.cfg != nil && strings.TrimSpace(h.cfg.Storage.DataDir) != "" {
 		baseDir = filepath.Dir(h.cfg.Storage.DataDir)
@@ -275,7 +296,7 @@ func (h *ScriptFlowHandler) writeGeneratedScriptFiles(pkg GeneratedScriptPackage
 		Markdown: mdPath,
 		JSON:     jsonPath,
 	}
-	jsonData, err := json.MarshalIndent(pkg, "", "  ")
+	jsonData, err := json.MarshalIndent(videoScenes, "", "  ")
 	if err != nil {
 		return "", pkg, fmt.Errorf("marshal generated json with files: %w", err)
 	}
