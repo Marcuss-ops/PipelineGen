@@ -3,11 +3,11 @@ import json
 
 url = "http://127.0.0.1:8081/api/script/generate-from-source"
 data = {
-    "source_text": "In a quiet forest, a tiny squirrel found a golden acorn. The squirrel hid the acorn under a large oak tree. A curious owl watched the squirrel from above. The next day, the acorn started to glow. The squirrel and the owl realized it was a magical acorn.",
+    "source_text": "A majestic spaceship entered the orbit of a mysterious alien planet. The ship lowered its thrusters and slowly descended through the thick violet atmosphere. Below lay a glowing crystal city, reflecting the light of two moons. As the doors opened, an astronaut stepped out onto the metallic landing pad, looking at the towering alien spires.",
     "language": "en",
     "style": "documentary",
     "visual_style": "realistic",
-    "scene_count": 1,
+    "scene_count": 2,
     "width": 1024,
     "height": 1024
 }

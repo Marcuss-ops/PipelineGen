@@ -197,7 +197,7 @@ func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styl
 	}
 
 	genID := filepath.Base(filepath.Dir(resolved))
-	asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-vids", description, tags, skipDrive, true)
+	asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-vids", description, tags, skipDrive, false)
 	if ingestErr != nil {
 		s.log.Warn("failed to ingest google vids image", zap.String("path", resolved), zap.Error(ingestErr))
 		return nil, ingestErr
