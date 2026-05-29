@@ -39,20 +39,9 @@ func buildGeneratedDocContent(pkg GeneratedScriptPackage, videoScenes []VideoSce
 		b.WriteString(strings.TrimSpace(pkg.Title))
 		b.WriteString("\n\n")
 	}
-	b.WriteString("Storyboard Scenes:\n\n")
-	for _, scene := range pkg.Scenes {
-		b.WriteString(fmt.Sprintf("Scene %s:\n", scene.ID))
-		b.WriteString(fmt.Sprintf("Text: %s\n", scene.Text))
-		if scene.Image != nil && scene.Image.DriveLink != "" {
-			b.WriteString(fmt.Sprintf("Image Drive Link: %s\n", scene.Image.DriveLink))
-		} else if scene.Image != nil && scene.Image.LocalPath != "" {
-			b.WriteString(fmt.Sprintf("Image Local Path: %s\n", scene.Image.LocalPath))
-		}
-		if scene.Error != "" {
-			b.WriteString(fmt.Sprintf("Error: %s\n", scene.Error))
-		}
-		b.WriteString("\n")
-	}
+	b.WriteString("Script:\n")
+	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
+	b.WriteString("\n\n")
 
 	b.WriteString("Scenes JSON:\n")
 	b.WriteString(renderGeneratedJSONBlock(videoScenes))
