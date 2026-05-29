@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -200,37 +201,60 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 		imageModel = "FLUX.1-schnell"
 	}
 
-	for idx, sentence := range sentences {
-		sceneID := fmt.Sprintf("scene_%03d", idx+1)
-		query := buildVisualQuery(sentence, title, visualStyle, req.Language)
-		scene := GeneratedScene{
-			ID:    sceneID,
-			Index: idx,
-			Text:  sentence,
-			Query: query,
-		}
-
-		asset, genErr := h.imgService.GenerateSmartImage(
-			ctx,
-			sentence,
-			title,
-			visualStyle,
-			[]string{sentence},
-			[]string{req.Style, req.VisualStyle, req.Language},
-			req.Width,
-			req.Height,
-			imageModel,
-			false,
-		)
-		if genErr != nil {
-			scene.Error = genErr.Error()
-			packageData.Scenes = append(packageData.Scenes, scene)
-			continue
-		}
-
-		scene.Image = generatedImageFromAsset(asset)
-		packageData.Scenes = append(packageData.Scenes, scene)
+	type result struct {
+		index int
+		scene GeneratedScene
 	}
+
+	resChan := make(chan result, len(sentences))
+	sem := make(chan struct{}, 5) // Concurrency semaphore limit = 5
+	var wg sync.WaitGroup
+
+	for idx, sentence := range sentences {
+		wg.Add(1)
+		go func(idx int, sentence string) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire token
+			defer func() { <-sem }() // Release token
+
+			sceneID := fmt.Sprintf("scene_%03d", idx+1)
+			query := buildVisualQuery(sentence, title, visualStyle, req.Language)
+			scene := GeneratedScene{
+				ID:    sceneID,
+				Index: idx,
+				Text:  sentence,
+				Query: query,
+			}
+
+			asset, genErr := h.imgService.GenerateSmartImage(
+				ctx,
+				sentence,
+				title,
+				visualStyle,
+				[]string{sentence},
+				[]string{req.Style, req.VisualStyle, req.Language},
+				req.Width,
+				req.Height,
+				imageModel,
+				false,
+			)
+			if genErr != nil {
+				scene.Error = genErr.Error()
+			} else {
+				scene.Image = generatedImageFromAsset(asset)
+			}
+			resChan <- result{index: idx, scene: scene}
+		}(idx, sentence)
+	}
+
+	wg.Wait()
+	close(resChan)
+
+	scenesList := make([]GeneratedScene, len(sentences))
+	for res := range resChan {
+		scenesList[res.index] = res.scene
+	}
+	packageData.Scenes = scenesList
 
 	videoScenes := make([]VideoScene, 0, len(packageData.Scenes))
 	for _, s := range packageData.Scenes {
