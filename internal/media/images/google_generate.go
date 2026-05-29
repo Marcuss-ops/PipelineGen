@@ -114,7 +114,7 @@ func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styl
 		vidsPrompt += ", 9:16 aspect ratio, vertical format, youtube shorts format"
 	}
 	reqBody := googleaccounting.VidsImageRequest{
-		VideoID: "new",
+		VideoID: "1QOY4nINvvf5kOB4uG50DrrpLa92KIqrhglvvyriptC4",
 		Prompt:  vidsPrompt,
 		Account: "favamassimo", // Default to favamassimo
 	}

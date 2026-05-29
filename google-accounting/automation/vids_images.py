@@ -872,6 +872,11 @@ class GoogleVidsImagesMixin:
 
         except Exception as e:
             log.error("Error generating Vids image: %s", e, exc_info=True)
+            try:
+                await page.screenshot(path="logs/vids_img_error.png", full_page=True)
+                log.info("Saved error screenshot to logs/vids_img_error.png")
+            except Exception as se:
+                log.warning("Failed to save error screenshot: %s", se)
             selector_report["result"] = "failed"
             selector_report["error"] = str(e)
             return None
