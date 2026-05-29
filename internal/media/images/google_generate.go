@@ -166,6 +166,10 @@ func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styl
 	if slug == "" {
 		slug = Slugify(cleanPrompt)
 	}
+	if len(slug) > 60 {
+		slug = slug[:60]
+		slug = strings.TrimRight(slug, "-")
+	}
 	description := fmt.Sprintf("AI generated image via Google Vids for prompt: %s", cleanPrompt)
 
 	resolved := job.FilePath
@@ -196,7 +200,7 @@ func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styl
 		return existing, nil
 	}
 
-	genID := filepath.Base(filepath.Dir(resolved))
+	genID := slug
 	asset, ingestErr := s.IngestImage(ctx, slug, style, genID, bytes.NewReader(content), filepath.Base(resolved), "google-vids", description, tags, skipDrive, false)
 	if ingestErr != nil {
 		s.log.Warn("failed to ingest google vids image", zap.String("path", resolved), zap.Error(ingestErr))
