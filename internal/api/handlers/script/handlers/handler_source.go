@@ -177,13 +177,12 @@ func (h *ScriptFlowHandler) GetJobStatus(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":           true,
-		"job_id":       job.ID,
-		"status":       job.Status,
-		"progress":     job.Progress,
-		"current_step": job.CurrentStep,
-		"error":        job.Error,
-		"result":       job.Result,
+		"ok":       true,
+		"job_id":   job.ID,
+		"status":   job.Status,
+		"progress": job.Progress,
+		"error":    job.Error,
+		"result":   job.Result,
 	})
 }
 
