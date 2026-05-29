@@ -167,7 +167,8 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 	if len(sentences) == 0 {
 		sentences = []string{rewritten}
 	}
-	if len(sentences) > req.SceneCount {
+	sentences = groupSentences(sentences, 5)
+	if req.SceneCount > 0 && len(sentences) > req.SceneCount {
 		sentences = sentences[:req.SceneCount]
 	}
 
@@ -344,3 +345,27 @@ func buildTimestampedSlug(name string, t time.Time) string {
 	}
 	return fmt.Sprintf("%s_%s", t.Format("20060102_150405"), slug)
 }
+
+func groupSentences(sentences []string, size int) []string {
+	if size <= 0 {
+		size = 5
+	}
+	var grouped []string
+	var current []string
+	for _, s := range sentences {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		current = append(current, s)
+		if len(current) == size {
+			grouped = append(grouped, strings.Join(current, " "))
+			current = nil
+		}
+	}
+	if len(current) > 0 {
+		grouped = append(grouped, strings.Join(current, " "))
+	}
+	return grouped
+}
+
