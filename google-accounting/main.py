@@ -19,7 +19,8 @@ from playwright_client import (
     generate_video_ai_v2,
     generate_avatar_v1,
     generate_flow_images,
-    generate_character_video_v1
+    generate_character_video_v1,
+    generate_vids_image_v1,
 )
 
 from playwright_client import list_projects, sync_project
@@ -218,6 +219,15 @@ class FlowImageRequest(BaseModel):
     drive_folder_id: Optional[str] = None
 
 
+class VidsImageRequest(BaseModel):
+    video_id: str = "new"
+    prompt: str
+    headless: bool = True
+    account: Optional[str] = None
+    callback_url: Optional[str] = None
+    drive_folder_id: Optional[str] = None
+
+
 class SyncRequest(BaseModel):
     video_id: str
     file_type: Literal["video", "image", "all"] = "all"
@@ -385,33 +395,36 @@ async def generate_video_ai_endpoint(req: GenerateRequest, background_tasks: Bac
 
 @app.post("/generate-flow-images")
 async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks: BackgroundTasks):
-    """Generates images via Google Labs ImageFX Flow with parallel instances."""
+    """Generates images via Google Vids Image Synthesis with parallel instances (replacing legacy Flow)."""
     job_id = f"flow-{str(uuid.uuid4())[:8]}"
     account = req.account or "favamassimo"
-    num_images = req.num_images or 4
-    num_instances = math.ceil(num_images / 4)
+    num_images = req.num_images or 3  # Default to 3 images per request
+    num_instances = num_images
     
     _new_job(job_id, prompt=req.prompt, account=account, project_id=req.project_id, 
-             style=req.style, mode="flow", num_images=num_images, instances=num_instances,
+             style=req.style, mode="vids-images", num_images=num_images, instances=num_instances,
              callback_url=req.callback_url, drive_folder_id=req.drive_folder_id)
 
     async def _run_instance(instance_idx: int):
-        # Ritardo casuale per evitare di sembrare un bot sincronizzato
-        delay = random.uniform(2, 10) * instance_idx
+        # Ritardo casuale per evitare conflitti e apparire più umano
+        delay = random.uniform(3, 8) * instance_idx
         log.info(f"Instance {instance_idx} waiting {delay:.2f}s before starting...")
         await asyncio.sleep(delay)
         
-        return await generate_flow_images(
-            req.prompt, 
-            project_id=req.project_id, 
-            style=req.style, 
+        video_id = req.project_id
+        if not video_id or video_id == "new":
+            video_id = "1QOY4nINvvf5kOB4uG50DrrpLa92KIqrhglvvyriptC4"
+            
+        return await generate_vids_image_v1(
+            video_id=video_id,
+            prompt=req.prompt, 
             account=account, 
             headless=req.headless
         )
 
     async def _run():
         _update_job(job_id, status="running", progress=10, current_step="starting_instances", 
-                   last_log=f"Starting {num_instances} parallel instances")
+                   last_log=f"Starting {num_instances} parallel Vids image generation instances")
         try:
             tasks = [_run_instance(i) for i in range(num_instances)]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -422,8 +435,10 @@ async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks:
                 if isinstance(res, Exception):
                     log.error(f"Instance {i} failed: {res}")
                     errors.append(str(res))
+                elif res:
+                    all_paths.append(res)
                 else:
-                    all_paths.extend(res)
+                    errors.append(f"Instance {i} returned no path")
             
             if all_paths:
                 result_fields = {"files": all_paths, "errors": errors if errors else None}
@@ -437,12 +452,49 @@ async def generate_flow_images_endpoint(req: FlowImageRequest, background_tasks:
                     if drive_results:
                         result_fields["drive_uploads"] = drive_results
                 _update_job(job_id, status="done", progress=100, current_step="completed",
-                           last_log=f"Flow generation completed: {len(all_paths)} images generated", **result_fields)
+                           last_log=f"Vids image generation completed: {len(all_paths)} images generated", **result_fields)
             else:
                 error_msg = f"Generation failed. Errors: {', '.join(errors)}" if errors else "No images captured."
                 _update_job(job_id, status="failed", current_step="failed", error=error_msg, last_log=error_msg)
         except Exception as e:
-            log.exception("Flow generation orchestrator failed")
+            log.exception("Vids image generation orchestrator failed")
+            _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
+
+    background_tasks.add_task(_run)
+    return {"job_id": job_id, "status": "pending"}
+
+
+@app.post("/generate-vids-images")
+async def generate_vids_image_endpoint(req: VidsImageRequest, background_tasks: BackgroundTasks):
+    """Genera immagini via Google Vids Image Synthesis."""
+    job_id = f"vids-img-{str(uuid.uuid4())[:8]}"
+    account = req.account or "favamassimo"
+    _new_job(job_id, prompt=req.prompt, video_id=req.video_id, account=account,
+             callback_url=req.callback_url, drive_folder_id=req.drive_folder_id)
+
+    async def _run():
+        _update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids for image generation")
+        try:
+            _update_job(job_id, progress=35, current_step="generating_image", last_log="Generating image via Vids Image Synthesis")
+            file_path = await generate_vids_image_v1(
+                video_id=req.video_id,
+                prompt=req.prompt,
+                account=account,
+                headless=req.headless
+            )
+            if file_path:
+                result_fields = {"file_path": str(file_path)}
+                # Auto-upload to Drive
+                if req.drive_folder_id:
+                    drive_result = await _auto_upload_to_drive(str(file_path), req.drive_folder_id, "image")
+                    if drive_result:
+                        result_fields.update(drive_result)
+                _update_job(job_id, status="done", progress=100, current_step="completed",
+                            last_log="Vids image generation completed", **result_fields)
+            else:
+                _update_job(job_id, status="failed", current_step="failed", error="Image generation failed, no file path returned.")
+        except Exception as e:
+            log.exception("Vids image generation failed")
             _update_job(job_id, status="failed", current_step="failed", error=str(e), last_log=str(e))
 
     background_tasks.add_task(_run)

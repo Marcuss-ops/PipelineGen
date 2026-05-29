@@ -403,6 +403,87 @@ func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDest
 }
 
 
+// GenerateVidsImage generates an image via Google Vids Image Synthesis
+func (s *Service) GenerateVidsImage(ctx context.Context, prompt string) (string, error) {
+	if strings.TrimSpace(s.googleAccountingURL) == "" {
+		return "", fmt.Errorf("google accounting server url not configured")
+	}
+
+	videoID := s.vidsProjectID
+	if videoID == "" {
+		videoID = "new"
+	}
+
+	reqBody := googleaccounting.VidsImageRequest{
+		VideoID: videoID,
+		Prompt:  prompt,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal vids image request failed: %w", err)
+	}
+
+	startURL := strings.TrimRight(s.googleAccountingURL, "/") + "/generate-vids-images"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, startURL, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create vids image request failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("vids image start request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("vids image start failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	var startResp googleaccounting.StartResponse
+	if err := json.Unmarshal(respBody, &startResp); err != nil {
+		return "", fmt.Errorf("decode vids image start response failed: %w", err)
+	}
+	if strings.TrimSpace(startResp.JobID) == "" {
+		return "", fmt.Errorf("vids image start response missing job_id")
+	}
+
+	s.log.Info("Vids image job started", zap.String("job_id", startResp.JobID), zap.String("prompt", prompt[:min(len(prompt), 80)]))
+
+	job, err := s.waitForGoogleJob(ctx, startResp.JobID)
+	if err != nil {
+		return "", err
+	}
+
+	if strings.TrimSpace(job.FilePath) == "" {
+		return "", fmt.Errorf("vids image completed without file path")
+	}
+
+	// Resolve the absolute path
+	resolved := job.FilePath
+	if !filepath.IsAbs(resolved) {
+		if s.googleAccountingDir != "" {
+			resolved = filepath.Join(s.googleAccountingDir, resolved)
+		} else if s.gaDownloadDir != "" {
+			baseDir := s.gaDownloadDir
+			if !filepath.IsAbs(baseDir) && s.imagesDir != "" {
+				baseDir = filepath.Join(s.imagesDir, baseDir)
+			}
+			resolved = filepath.Join(baseDir, resolved)
+		}
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(resolved); err != nil {
+		return "", fmt.Errorf("generated image file not found at %s: %w", resolved, err)
+	}
+
+	s.log.Info("Vids image generated and verified", zap.String("path", resolved))
+
+	return resolved, nil
+}
 
 // extractSubjectAndTags estrae subject e tags dal prompt per la ricerca semantica.
 func extractSubjectAndTags(prompt string) (subject string, tags []string) {

@@ -30,6 +30,11 @@ class GoogleVidsVideoMixin:
         selected_idx = -1
         
         while (time.time() - started_at) * 1000 < timeout_ms:
+            try:
+                Path("logs").mkdir(exist_ok=True)
+                await page.screenshot(path="logs/poll_current.png")
+            except Exception as e:
+                log.warning("Failed to take polling screenshot: %s", e)
             await page.wait_for_timeout(poll_interval_ms)
             
             # Find preview container
@@ -107,6 +112,12 @@ class GoogleVidsVideoMixin:
             save_project_id("vids", video_id)
         else:
             page = await self._get_page(video_id)
+            try:
+                Path("logs").mkdir(exist_ok=True)
+                await page.screenshot(path="logs/char_step1_open.png")
+                log.info("Saved screenshot: logs/char_step1_open.png")
+            except Exception as e:
+                log.warning("Failed to save step1 screenshot: %s", e)
 
         try:
             await page.keyboard.press("Escape")
@@ -115,6 +126,11 @@ class GoogleVidsVideoMixin:
             except Exception:
                 await page.get_by_label("Genera un video clip AI", exact=True).click(force=True, timeout=10000)
             await asyncio.sleep(3)
+            try:
+                await page.screenshot(path="logs/char_step2_generation_clicked.png")
+                log.info("Saved screenshot: logs/char_step2_generation_clicked.png")
+            except Exception as e:
+                log.warning("Failed to save step2 screenshot: %s", e)
 
             # Upload Reference Image
             # Using robust selector found via inspection
@@ -140,15 +156,30 @@ class GoogleVidsVideoMixin:
             file_chooser = await fc_info.value
             await file_chooser.set_files(temp_img_path)
             log.info("Reference image uploaded.")
+            try:
+                await page.screenshot(path="logs/char_step3_image_uploaded.png")
+                log.info("Saved screenshot: logs/char_step3_image_uploaded.png")
+            except Exception as e:
+                log.warning("Failed to save step3 screenshot: %s", e)
             await asyncio.sleep(5)
 
             # Prompt
             input_loc = page.locator('textarea, [contenteditable="true"], div[role="textbox"]').first
             await input_loc.fill(prompt)
+            try:
+                await page.screenshot(path="logs/char_step4_prompt_filled.png")
+                log.info("Saved screenshot: logs/char_step4_prompt_filled.png")
+            except Exception as e:
+                log.warning("Failed to save step4 screenshot: %s", e)
             
             # Generate
             await page.locator('button:has-text("Genera"), button:has-text("Generate")').first.click()
             log.info("Character video generation started for %s", character_id)
+            try:
+                await page.screenshot(path="logs/char_step5_generate_clicked.png")
+                log.info("Saved screenshot: logs/char_step5_generate_clicked.png")
+            except Exception as e:
+                log.warning("Failed to save step5 screenshot: %s", e)
 
             final_path = await self._poll_and_download_video(page, video_id)
             
@@ -223,6 +254,12 @@ class GoogleVidsVideoMixin:
                     raise
         else:
             page = await self._get_page(video_id)
+            try:
+                Path("logs").mkdir(exist_ok=True)
+                await page.screenshot(path="logs/vids_step1_open.png")
+                log.info("Saved screenshot: logs/vids_step1_open.png")
+            except Exception as e:
+                log.warning("Failed to save step1 screenshot: %s", e)
 
         try:
             generation_timeout_ms = 900000
@@ -267,6 +304,11 @@ class GoogleVidsVideoMixin:
                 await page.get_by_label("Genera un video clip AI", exact=True).click(force=True, timeout=10000)
                 log.info("Opened Veo generation rail via force-click for video_id=%s", video_id)
             await human_delay(1000, 2500)
+            try:
+                await page.screenshot(path="logs/vids_step2_veo_opened.png")
+                log.info("Saved screenshot: logs/vids_step2_veo_opened.png")
+            except Exception as e:
+                log.warning("Failed to save step2 screenshot: %s", e)
             
             input_candidates = [
                 *self.PROMPT_TEXTAREA_SELECTORS,
@@ -299,6 +341,11 @@ class GoogleVidsVideoMixin:
             await input_loc.click(force=True)
             await input_loc.type(prompt, delay=random.randint(50, 150))
             await human_delay(800, 2000)
+            try:
+                await page.screenshot(path="logs/vids_step3_prompt_filled.png")
+                log.info("Saved screenshot: logs/vids_step3_prompt_filled.png")
+            except Exception as e:
+                log.warning("Failed to save step3 screenshot: %s", e)
             
             log.info("Submitting generation prompt for video_id=%s prompt=%s", video_id, prompt[:80])
             clicked = False
@@ -322,6 +369,11 @@ class GoogleVidsVideoMixin:
                         "elapsed_ms": 0,
                     })
                     log.info("Clicked generate button via selector=%s for video_id=%s", selector, video_id)
+                    try:
+                        await page.screenshot(path="logs/vids_step4_generate_clicked.png")
+                        log.info("Saved screenshot: logs/vids_step4_generate_clicked.png")
+                    except Exception as e:
+                        log.warning("Failed to save step4 screenshot: %s", e)
                     break
             if not clicked:
                 raise RuntimeError("Generate button not found in Google Vids UI.")

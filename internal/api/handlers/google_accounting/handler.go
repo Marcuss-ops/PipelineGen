@@ -369,6 +369,28 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	})
 }
 
+// GenerateVidsImage generates an image via Google Vids Image Synthesis
+func (h *Handler) GenerateVidsImage(c *gin.Context) {
+	var reqBody googleaccounting.VidsImageRequest
+	if err := c.ShouldBindJSON(&reqBody); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+		return
+	}
+	if reqBody.Prompt == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
+		return
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		h.log.Error("failed to marshal vids image request", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare request"})
+		return
+	}
+
+	h.proxyGoogleAccounting(c, http.MethodPost, "/generate-vids-images", payload)
+}
+
 // RegisterRoutes registers the handler routes
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	group := rg
@@ -382,6 +404,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 		group.GET("/avatar/status/:job_id", h.GenerateVideoStatus)
 		group.GET("/videos", h.ListVideos)
 		group.POST("/generate-flow-images", h.GenerateFlowImages)
+		group.POST("/generate-vids-images", h.GenerateVidsImage)
 		group.GET("/media", h.ListMedia)
 		group.GET("/status/:job_id", h.JobStatus)
 	}

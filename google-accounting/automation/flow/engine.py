@@ -187,27 +187,11 @@ class ImageFXFlowAutomation(BaseAutomation):
 
             # ── Invio ────────────────────────────────────────────────
             capturer.can_capture = True
-            log.info("🚀 Invio generazione...")
-            
-            # Proviamo Enter + Send Button
+            # ── Invio ────────────────────────────────────────────────
+            capturer.can_capture = True
+            log.info("🚀 Invio generazione via tasto Enter...")
             await page.keyboard.press("Enter")
-            await asyncio.sleep(0.5)
-            
-            found_send = False
-            for sel in SEND_BUTTON_SELECTORS:
-                try:
-                    btn = page.locator(sel).first
-                    if await btn.count() > 0 and await btn.is_visible():
-                        log.info(f"🖱️ CLICK (Send Button): {sel}")
-                        await btn.click(force=True)
-                        found_send = True
-                        break
-                except: continue
-            
-            if not found_send:
-                log.info("ℹ️ Pulsante invio non trovato, spero in Enter.")
-
-            await human_delay(3000, 5000)
+            await human_delay(1500, 3000)
 
             # Screenshot post-invio
             await page.screenshot(path=str(debug_dir / f"GEN_START_{int(time.time())}.png"))
@@ -274,16 +258,6 @@ class ImageFXFlowAutomation(BaseAutomation):
         try:
             # Prova a cercare il toggle direttamente
             toggle = page.locator(IMAGE_COUNT_TOGGLE_SELECTOR).first
-            
-            # Se non trovato, prova ad aprire "Impostazioni" prima
-            if await toggle.count() == 0:
-                log.info("ℹ️ Toggle x1/x2/x3 non trovato, provo ad aprire 'Impostazioni'...")
-                settings_btn = page.locator('button:has-text("Impostazioni"), button:has-text("Settings"), button:has-text("tune")').first
-                if await settings_btn.count() > 0:
-                    log.info("🖱️ CLICK: Impostazioni")
-                    await settings_btn.click()
-                    await asyncio.sleep(2)
-                    toggle = page.locator(IMAGE_COUNT_TOGGLE_SELECTOR).first
 
             if await toggle.count() > 0:
                 log.info(f"🖱️ CLICK: toggle conteggio immagini ({IMAGE_COUNT_TOGGLE_SELECTOR})...")

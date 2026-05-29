@@ -57,6 +57,14 @@ type FlowImageRequest struct {
 	Account   string `json:"account,omitempty"`
 }
 
+// VidsImageRequest is the shared request structure for Vids image generation
+type VidsImageRequest struct {
+	VideoID  string `json:"video_id,omitempty"`
+	Prompt   string `json:"prompt"`
+	Headless *bool  `json:"headless,omitempty"`
+	Account  string `json:"account,omitempty"`
+}
+
 // DownloadRequest is the shared request structure for asset downloads
 type DownloadRequest struct {
 	VideoID  string `json:"video_id"`

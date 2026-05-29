@@ -153,6 +153,8 @@ type DriveConfig struct {
 
 	// Video AI generated assets root folder
 	VideoAIRootFolder string `yaml:"video_ai_root_folder" env:"VELOX_DRIVE_VIDEO_AI_ROOT" default:""`
+	// Images root folder
+	ImagesRootFolder string `yaml:"images_root_folder" env:"VELOX_DRIVE_IMAGES_ROOT" default:""`
 	// Copertine/thumbnails root folder
 	CopertineRootFolder string `yaml:"copertine_root_folder" env:"VELOX_DRIVE_COPERTINE_ROOT" default:""`
 	// Sound effects root folder

@@ -9,14 +9,14 @@ from playwright_client import (
 logging.basicConfig(level=logging.INFO)
 
 async def main():
-    prompt = "a monkey eating a cheesburger"
+    prompt = "a small cute yellow cat sleeping"
     style = "realistic"
     
     print(f"--- [TEST] Generazione Immagine con metodo semplificato ---")
     paths = await generate_monkey_flow_image(
         prompt=prompt,
         style=style,
-        headless=True
+        headless=False
     )
     
     if paths:

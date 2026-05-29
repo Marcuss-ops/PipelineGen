@@ -80,3 +80,9 @@ Crociata/
 Epica Medievale/
 Notte Gotica/
 Rosone Cattedrale/
+
+# Google session cookies (contain auth tokens - DO NOT COMMIT)
+google-accounting/sessions/*.json
+\n# Python cache
+*.pyc
+__pycache__/

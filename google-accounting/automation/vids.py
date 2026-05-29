@@ -22,8 +22,9 @@ from .base import (
 
 from .vids_video import GoogleVidsVideoMixin
 from .vids_avatar import GoogleVidsAvatarMixin, sync_project
+from .vids_images import GoogleVidsImagesMixin
 
-class GoogleVidsAutomation(GoogleVidsVideoMixin, GoogleVidsAvatarMixin, BaseAutomation):
+class GoogleVidsAutomation(GoogleVidsVideoMixin, GoogleVidsAvatarMixin, GoogleVidsImagesMixin, BaseAutomation):
     """Engine per l'automazione di Google Vids."""
 
     PROMPT_TEXTAREA_SELECTORS = [
@@ -357,6 +358,13 @@ async def generate_character_video_v1(video_id: str, character_id: str, prompt: 
         if not prompt:
             prompt = "youtuber talking and gesturing while looking at camera"
         result = await engine.generate_character_video(video_id, character_id, prompt)
+        return str(result) if result else None
+
+
+@retry_async(max_retries=2, base_delay=10.0)
+async def generate_vids_image_v1(video_id: str, prompt: str, account: str = None, headless: bool = True):
+    async with GoogleVidsAutomation(account=account, headless=headless) as engine:
+        result = await engine.generate_vids_image(video_id, prompt)
         return str(result) if result else None
 
 
