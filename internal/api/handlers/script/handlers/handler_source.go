@@ -207,7 +207,7 @@ func (h *ScriptFlowHandler) GenerateFromSource(c *gin.Context) {
 	}
 
 	resChan := make(chan result, len(sentences))
-	sem := make(chan struct{}, 5) // Concurrency semaphore limit = 5
+	sem := make(chan struct{}, 7) // Concurrency semaphore limit = 7
 	var wg sync.WaitGroup
 
 	for idx, sentence := range sentences {
