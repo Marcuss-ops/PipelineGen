@@ -1,7 +1,7 @@
 import urllib.request
 import json
 
-url = "http://127.0.0.1:8080/api/script/generate-from-source"
+url = "http://127.0.0.1:8081/api/script/generate-from-source"
 data = {
     "source_text": "In a quiet forest, a tiny squirrel found a golden acorn. The squirrel hid the acorn under a large oak tree. A curious owl watched the squirrel from above. The next day, the acorn started to glow. The squirrel and the owl realized it was a magical acorn.",
     "language": "en",
