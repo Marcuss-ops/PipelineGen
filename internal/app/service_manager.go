@@ -38,6 +38,7 @@ import (
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/upload/drive"
+	"velox/go-master/internal/api/handlers/script/handlers"
 
 	"go.uber.org/zap"
 )
@@ -275,6 +276,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	catalogSync.RegisterHandler(jobsService)
 	youtubeClipService.RegisterHandler(jobsService)
 	voService.RegisterHandler(jobsService)
+
+	scriptFlowHandler := handlers.NewScriptFlowHandler(scriptGen, imageService, realtimeSvc, docClient, jobsService, cfg, log)
+	scriptFlowHandler.RegisterJobHandlers(jobsService)
 
 	// Create deletion service
 	deletionSvc := media.NewDeletionService(
