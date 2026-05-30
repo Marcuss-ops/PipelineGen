@@ -90,7 +90,7 @@ class GoogleVidsVideoMixin:
         from storage import get_project_id, save_project_id, get_character
         from drive_client import download_file, _build_service
         from googleapiclient.http import MediaFileUpload
-        from reupload_drive_assets import upload_file_to_drive
+        from drive_client import upload_file_to_drive
 
         char = get_character(character_id)
         if not char: return None

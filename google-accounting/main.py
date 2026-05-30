@@ -113,7 +113,7 @@ async def _fire_webhook(url: str, payload: dict):
 async def _auto_upload_to_drive(file_path: str, drive_folder_id: str, media_type: str = "video"):
     """Upload a generated file to Google Drive folder."""
     try:
-        from reupload_drive_assets import upload_file_to_drive
+        from drive_client import upload_file_to_drive
         p = Path(file_path)
         if not p.exists():
             log.warning("Auto-upload skipped: file not found %s", file_path)

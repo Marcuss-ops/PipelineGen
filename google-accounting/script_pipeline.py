@@ -13,7 +13,7 @@ import httpx
 import yaml
 
 from playwright_client import generate_vids_image_v1_pooled
-from reupload_drive_assets import upload_file_to_drive
+from drive_client import upload_file_to_drive
 from style_presets import STYLE_PRESETS
 
 
@@ -186,12 +186,13 @@ async def _generate_images(
         drive_link = ""
         drive_file_id = ""
         if local_path and req.drive_folder_id:
-            drive_file_id, drive_link = upload_file_to_drive(
+            drive_file_id = upload_file_to_drive(
                 req.drive_folder_id,
                 Path(local_path),
                 Path(local_path).name,
                 "image/png" if str(local_path).lower().endswith(".png") else "image/jpeg",
             )
+            drive_link = f"https://drive.google.com/file/d/{drive_file_id}/view" if drive_file_id else ""
         results.append(
             {
                 **scene,
