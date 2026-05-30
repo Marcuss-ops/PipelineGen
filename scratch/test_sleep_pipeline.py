@@ -82,6 +82,7 @@ If you wake to use the bathroom, use a nightlight, not the bright overhead. Avoi
 data = {
     "source_text": source_text.strip(),
     "language": "en",
+    "languages": ["en", "it", "es", "fr"],
     "style": "whiteboard",
     "visual_style": "whiteboard",
     "scene_count": 100,

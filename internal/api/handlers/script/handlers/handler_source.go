@@ -20,17 +20,18 @@ import (
 )
 
 type GenerateFromSourceRequest struct {
-	SourceText  string `json:"source_text" binding:"required"`
-	Language    string `json:"language,omitempty"`
-	Style       string `json:"style,omitempty"`
-	VisualStyle string `json:"visual_style,omitempty"`
-	Tone        string `json:"tone,omitempty"`
-	Title       string `json:"title,omitempty"`
-	OutputName  string `json:"output_name,omitempty"`
-	SceneCount  int    `json:"scene_count,omitempty"`
-	Width       int    `json:"width,omitempty"`
-	Height      int    `json:"height,omitempty"`
-	Model       string `json:"model,omitempty"`
+	SourceText  string   `json:"source_text" binding:"required"`
+	Language    string   `json:"language,omitempty"`
+	Languages   []string `json:"languages,omitempty"`
+	Style       string   `json:"style,omitempty"`
+	VisualStyle string   `json:"visual_style,omitempty"`
+	Tone        string   `json:"tone,omitempty"`
+	Title       string   `json:"title,omitempty"`
+	OutputName  string   `json:"output_name,omitempty"`
+	SceneCount  int      `json:"scene_count,omitempty"`
+	Width       int      `json:"width,omitempty"`
+	Height      int      `json:"height,omitempty"`
+	Model       string   `json:"model,omitempty"`
 }
 
 type GeneratedImage struct {
@@ -70,20 +71,28 @@ type GeneratedScriptFileInfo struct {
 	JSON     string `json:"json"`
 }
 
+type ScriptTranslation struct {
+	Language        string              `json:"language"`
+	RewrittenScript string              `json:"rewritten_script"`
+	Scenes          []GeneratedScene    `json:"scenes"`
+	Voiceover       *GeneratedVoiceover `json:"voiceover,omitempty"`
+}
+
 type GeneratedScriptPackage struct {
-	SourceText        string                  `json:"source_text"`
-	RewrittenScript   string                  `json:"rewritten_script"`
-	Language          string                  `json:"language"`
-	Style             string                  `json:"style,omitempty"`
-	VisualStyle       string                  `json:"visual_style,omitempty"`
-	Title             string                  `json:"title,omitempty"`
-	OutputName        string                  `json:"output_name,omitempty"`
-	WordCount         int                     `json:"word_count,omitempty"`
-	EstimatedDuration int                     `json:"estimated_duration,omitempty"`
-	Scenes            []GeneratedScene        `json:"scenes"`
-	Files             GeneratedScriptFileInfo `json:"files"`
-	Voiceover         *GeneratedVoiceover     `json:"voiceover,omitempty"`
-	GeneratedAt       time.Time               `json:"generated_at"`
+	SourceText        string                       `json:"source_text"`
+	RewrittenScript   string                       `json:"rewritten_script"`
+	Language          string                       `json:"language"`
+	Style             string                       `json:"style,omitempty"`
+	VisualStyle       string                       `json:"visual_style,omitempty"`
+	Title             string                       `json:"title,omitempty"`
+	OutputName        string                       `json:"output_name,omitempty"`
+	WordCount         int                          `json:"word_count,omitempty"`
+	EstimatedDuration int                          `json:"estimated_duration,omitempty"`
+	Scenes            []GeneratedScene             `json:"scenes"`
+	Files             GeneratedScriptFileInfo      `json:"files"`
+	Voiceover         *GeneratedVoiceover          `json:"voiceover,omitempty"`
+	Translations      map[string]ScriptTranslation `json:"translations,omitempty"`
+	GeneratedAt       time.Time                    `json:"generated_at"`
 }
 
 // GenerateFromSource takes inline source_text, rewrites it, builds a scene JSON and generates images.
@@ -236,13 +245,23 @@ func renderGeneratedMarkdown(pkg GeneratedScriptPackage, jsonData []byte) []byte
 		b.WriteString(pkg.Title)
 		b.WriteString("\n\n")
 	}
-	b.WriteString("## Script\n\n")
+	b.WriteString("## Script (Base)\n\n")
 	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
 	b.WriteString("\n\n")
 	
 	if pkg.Voiceover != nil && pkg.Voiceover.DriveLink != "" {
-		b.WriteString("## Voiceover\n")
+		b.WriteString("## Voiceover (Base)\n")
 		b.WriteString(fmt.Sprintf("[Unified Voiceover Audio](%s)\n\n", pkg.Voiceover.DriveLink))
+	}
+
+	for lang, trans := range pkg.Translations {
+		b.WriteString(fmt.Sprintf("## Script (%s)\n\n", strings.ToUpper(lang)))
+		b.WriteString(strings.TrimSpace(trans.RewrittenScript))
+		b.WriteString("\n\n")
+		if trans.Voiceover != nil && trans.Voiceover.DriveLink != "" {
+			b.WriteString(fmt.Sprintf("## Voiceover (%s)\n", strings.ToUpper(lang)))
+			b.WriteString(fmt.Sprintf("[Unified Voiceover Audio - %s](%s)\n\n", strings.ToUpper(lang), trans.Voiceover.DriveLink))
+		}
 	}
 	
 	b.WriteString("## Scenes JSON\n")

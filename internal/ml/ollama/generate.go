@@ -94,3 +94,24 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 		Prompt:      req.OriginalScript,
 	}, nil
 }
+
+func (g *Generator) TranslateText(ctx context.Context, text, targetLanguage string) (string, error) {
+	if g.client == nil {
+		return "", fmt.Errorf("ollama client not initialized")
+	}
+
+	systemPrompt := "You are a professional translator. Translate the text EXCLUSIVELY into the requested target language. Preserve formatting, paragraphs, tone, and do NOT add any introductions, explanations or metadata. Return only the translated text."
+	userPrompt := fmt.Sprintf("Translate the following text to target language: %s\n\nTEXT:\n%s", targetLanguage, text)
+
+	messages := []types.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	result, err := g.client.Chat(ctx, messages, nil)
+	if err != nil {
+		return "", fmt.Errorf("translation failed: %w", err)
+	}
+
+	return strings.TrimSpace(result), nil
+}

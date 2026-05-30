@@ -41,14 +41,25 @@ func buildGeneratedDocContent(pkg GeneratedScriptPackage, videoScenes []VideoSce
 	}
 	
 	if pkg.Voiceover != nil && pkg.Voiceover.DriveLink != "" {
-		b.WriteString("Unified Voiceover Link:\n")
+		b.WriteString("Unified Voiceover Link (Base):\n")
 		b.WriteString(pkg.Voiceover.DriveLink)
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString("Script:\n")
+	b.WriteString("Script (Base):\n")
 	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
 	b.WriteString("\n\n")
+
+	for lang, trans := range pkg.Translations {
+		if trans.Voiceover != nil && trans.Voiceover.DriveLink != "" {
+			b.WriteString(fmt.Sprintf("Unified Voiceover Link (%s):\n", strings.ToUpper(lang)))
+			b.WriteString(trans.Voiceover.DriveLink)
+			b.WriteString("\n\n")
+		}
+		b.WriteString(fmt.Sprintf("Script (%s):\n", strings.ToUpper(lang)))
+		b.WriteString(strings.TrimSpace(trans.RewrittenScript))
+		b.WriteString("\n\n")
+	}
 
 	b.WriteString("Scenes JSON:\n")
 	b.WriteString(renderGeneratedJSONBlock(videoScenes))

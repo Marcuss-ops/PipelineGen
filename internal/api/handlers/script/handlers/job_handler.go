@@ -27,6 +27,13 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 		return nil, fmt.Errorf("failed to unmarshal job payload: %w", err)
 	}
 
+	if len(req.Languages) > 0 && req.Language == "" {
+		req.Language = req.Languages[0]
+	}
+	if req.Language == "" {
+		req.Language = "en"
+	}
+
 	if tools.Progress != nil {
 		tools.Progress(5, "Generating rewritten script with Ollama")
 	}
@@ -248,6 +255,79 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 				Voice:     voRes.Voice,
 			}
 			h.log.Info("unified voiceover generated successfully", zap.String("drive_link", voRes.DriveLink))
+		}
+	}
+
+	// 4. Translate rewritten script and scenes for all other requested languages
+	packageData.Translations = make(map[string]ScriptTranslation)
+	for _, lang := range req.Languages {
+		if lang == req.Language {
+			continue // Already base language
+		}
+
+		h.log.Info("translating script to target language", zap.String("lang", lang))
+		translatedScript, transErr := h.generator.TranslateText(ctx, rewritten, lang)
+		if transErr != nil {
+			h.log.Error("failed to translate script", zap.String("lang", lang), zap.Error(transErr))
+			continue
+		}
+
+		// Translate scene texts
+		translatedScenes := make([]GeneratedScene, len(packageData.Scenes))
+		for sIdx, baseScene := range packageData.Scenes {
+			transSceneText, sceneTransErr := h.generator.TranslateText(ctx, baseScene.Text, lang)
+			if sceneTransErr != nil {
+				transSceneText = baseScene.Text // Fallback
+			}
+			translatedScenes[sIdx] = GeneratedScene{
+				ID:        baseScene.ID,
+				Index:     baseScene.Index,
+				Text:      transSceneText,
+				Query:     baseScene.Query,
+				Image:     baseScene.Image, // Reuse the same image mapping!
+				Error:     baseScene.Error,
+			}
+		}
+
+		// Generate unified voiceover for this translation
+		var transVo *GeneratedVoiceover
+		if h.voService != nil {
+			voFilename := fmt.Sprintf("%s-%s", outputName, lang)
+			h.log.Info("generating translated voiceover for script", zap.String("lang", lang), zap.String("filename", voFilename))
+
+			var destReq *voiceover.DestinationRequest
+			dbConn := h.voService.DB()
+			if dbConn != nil {
+				var folderID string
+				err := dbConn.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
+				if err == nil && folderID != "" {
+					destReq = &voiceover.DestinationRequest{
+						FolderID:        folderID,
+						Group:           "explainatory",
+						SubfolderName:   outputName,
+						CreateSubfolder: true,
+					}
+				}
+			}
+
+			voRes, voErr := h.voService.GenerateWithDestination(ctx, translatedScript, lang, voFilename, destReq)
+			if voErr != nil {
+				h.log.Error("translated voiceover generation failed", zap.String("lang", lang), zap.Error(voErr))
+			} else if voRes != nil {
+				transVo = &GeneratedVoiceover{
+					LocalPath: voRes.Path,
+					DriveLink: voRes.DriveLink,
+					Voice:     voRes.Voice,
+				}
+				h.log.Info("translated voiceover generated successfully", zap.String("lang", lang), zap.String("drive_link", voRes.DriveLink))
+			}
+		}
+
+		packageData.Translations[lang] = ScriptTranslation{
+			Language:        lang,
+			RewrittenScript: translatedScript,
+			Scenes:          translatedScenes,
+			Voiceover:       transVo,
 		}
 	}
 
