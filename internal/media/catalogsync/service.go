@@ -14,6 +14,7 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/assettree"
+	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/upload/drive"
@@ -56,16 +57,18 @@ type Service struct {
 	targets     []Target
 	assetIndex  *assetindex.Service
 	assetTree   *assettree.Service
+	clipIndexer *clipindexer.Service
 	mu          sync.Mutex
 }
 
-func NewService(uploader *drive.Uploader, targets []Target, assetIndex *assetindex.Service, assetTree *assettree.Service, log *zap.Logger) *Service {
+func NewService(uploader *drive.Uploader, targets []Target, assetIndex *assetindex.Service, assetTree *assettree.Service, clipIndexer *clipindexer.Service, log *zap.Logger) *Service {
 	return &Service{
 		uploader:    uploader,
 		log:         log,
 		targets:     targets,
 		assetIndex:  assetIndex,
 		assetTree:   assetTree,
+		clipIndexer: clipIndexer,
 	}
 }
 
@@ -398,6 +401,18 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 		if err := s.assetIndex.Upsert(ctx, assetRec); err != nil {
 			s.log.Warn("failed to write stock clip to asset_index", zap.Error(err))
 		}
+	}
+
+	// Trigger automatic vector indexing asynchronously if enabled and it's a file
+	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder {
+		go func(id string) {
+			indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			s.log.Debug("triggering automatic vector indexing for synced catalog asset", zap.String("id", id))
+			if err := s.clipIndexer.IndexClip(indexCtx, id); err != nil {
+				s.log.Error("failed to automatically index catalog asset", zap.String("id", id), zap.Error(err))
+			}
+		}(clip.ID)
 	}
 
 	return nil

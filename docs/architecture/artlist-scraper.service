@@ -1,0 +1,33 @@
+[Unit]
+Description=Artlist Scraper Persistent Server (Level 3 optimization)
+Documentation=https://github.com/Marcuss-ops/PipelineGen
+After=network.target pipelinegen.service
+Wants=pipelinegen.service
+
+[Service]
+Type=simple
+User=pierone
+WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/node-scraper
+ExecStart=/usr/bin/node artlist_server.js --port 9123
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment="ARTLIST_SCRAPER_PORT=9123"
+Environment="CHROME_PROFILE_DIR=/home/pierone/.config/chromium-artlist"
+Environment="NODE_ENV=production"
+# Puppeteer needs a display — use virtual framebuffer if no display
+Environment="DISPLAY=:99"
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=2G
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=artlist-scraper
+
+[Install]
+WantedBy=multi-user.target

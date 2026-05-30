@@ -14,6 +14,7 @@ import (
 	corejobs "velox/go-master/internal/core/jobs"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetindex"
+	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
@@ -45,16 +46,17 @@ func DefaultPipelineConfig() PipelineConfig {
 // effect overlay, chunk rendering, and Drive upload. All video parameters are read
 // from config.Video to ensure consistency with other media pipelines.
 type Service struct {
-	cfg        *config.Config
-	log        *zap.Logger
-	driveSvc   *gdrive.Service
-	driveUp    *driveup.Uploader
-	ytdlp      *downloader.YTDLPDownloader
-	ffmpegProc *ffmpeg.Processor
-	pcfg       PipelineConfig
-	jobsSvc    *jobservice.Service
-	assetIndex *assetindex.Service
-	youtubeSvc *youtube.Service
+	cfg         *config.Config
+	log         *zap.Logger
+	driveSvc    *gdrive.Service
+	driveUp     *driveup.Uploader
+	ytdlp       *downloader.YTDLPDownloader
+	ffmpegProc  *ffmpeg.Processor
+	pcfg        PipelineConfig
+	jobsSvc     *jobservice.Service
+	assetIndex  *assetindex.Service
+	youtubeSvc  *youtube.Service
+	clipIndexer *clipindexer.Service
 }
 
 // NewService creates a stock pipeline service using the provided config, logger,
@@ -90,6 +92,11 @@ func (s *Service) SetAssetIndex(ai *assetindex.Service) {
 // SetYoutubeService injects the YouTube metadata service used to enrich direct URL sources.
 func (s *Service) SetYoutubeService(svc *youtube.Service) {
 	s.youtubeSvc = svc
+}
+
+// SetClipIndexer injects the clip indexer service dependency.
+func (s *Service) SetClipIndexer(indexer *clipindexer.Service) {
+	s.clipIndexer = indexer
 }
 
 // RegisterHandler registers the stock pipeline job handler with the jobs system.

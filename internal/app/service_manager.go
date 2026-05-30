@@ -248,7 +248,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Build sync targets centrally
 	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)
 
-	catalogSync := catalogsync.NewService(driveUploader, syncTargets, assetIndexService, assetTreeService, log)
+	catalogSync := catalogsync.NewService(driveUploader, syncTargets, assetIndexService, assetTreeService, clipIndexerService, log)
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
