@@ -2,6 +2,7 @@ package voiceover
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -32,6 +33,7 @@ type SemanticTaggerResult struct {
 
 type Service struct {
 	cfg               *config.Config
+	db                *sql.DB
 	pythonScriptsDir  string
 	outputDir         string
 	log               *zap.Logger
@@ -44,6 +46,7 @@ type Service struct {
 
 func NewService(
 	cfg *config.Config,
+	db *sql.DB,
 	pythonScriptsDir string,
 	outputDir string,
 	log *zap.Logger,
@@ -61,6 +64,7 @@ func NewService(
 
 	return &Service{
 		cfg:               cfg,
+		db:                db,
 		pythonScriptsDir:  pythonScriptsDir,
 		outputDir:         outputDir,
 		log:               log,
@@ -132,9 +136,43 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	textHash := textToHash(req.Text)
 
 	destinationReq := req.Destination
-	if destinationReq == nil && strings.TrimSpace(s.cfg.Drive.RootFolder()) != "" {
-		destinationReq = &DestinationRequest{
-			FolderID: s.cfg.Drive.RootFolder(),
+	expFolderID := s.getExplainatoryFolderID(ctx)
+
+	if destinationReq == nil {
+		if expFolderID != "" {
+			subfolderName := "general"
+			if req.FilenameTemplate != "" {
+				if idx := strings.Index(req.FilenameTemplate, "-scene-"); idx != -1 {
+					subfolderName = req.FilenameTemplate[:idx]
+				} else if idx := strings.LastIndex(req.FilenameTemplate, "-"); idx != -1 {
+					subfolderName = req.FilenameTemplate[:idx]
+				}
+			}
+			destinationReq = &DestinationRequest{
+				FolderID:        expFolderID,
+				Group:           "explainatory",
+				SubfolderName:   subfolderName,
+				CreateSubfolder: true,
+			}
+		} else if strings.TrimSpace(s.cfg.Drive.RootFolder()) != "" {
+			destinationReq = &DestinationRequest{
+				FolderID: s.cfg.Drive.RootFolder(),
+			}
+		}
+	} else if destinationReq.FolderID == s.cfg.Drive.RootFolder() || destinationReq.FolderID == "" {
+		if expFolderID != "" {
+			destinationReq.FolderID = expFolderID
+			destinationReq.Group = "explainatory"
+			destinationReq.CreateSubfolder = true
+			if destinationReq.SubfolderName == "" && req.FilenameTemplate != "" {
+				subfolderName := "general"
+				if idx := strings.Index(req.FilenameTemplate, "-scene-"); idx != -1 {
+					subfolderName = req.FilenameTemplate[:idx]
+				} else if idx := strings.LastIndex(req.FilenameTemplate, "-"); idx != -1 {
+					subfolderName = req.FilenameTemplate[:idx]
+				}
+				destinationReq.SubfolderName = subfolderName
+			}
 		}
 	}
 
@@ -328,4 +366,16 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen]
+}
+
+func (s *Service) getExplainatoryFolderID(ctx context.Context) string {
+	if s.db == nil {
+		return ""
+	}
+	var folderID string
+	err := s.db.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
+	if err != nil {
+		return ""
+	}
+	return folderID
 }
