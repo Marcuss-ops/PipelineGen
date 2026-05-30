@@ -313,10 +313,21 @@ class SessionPool:
                 sessions.append(session)
 
             page = await session.context.new_page()
-            url = f"https://docs.google.com/videos/d/{video_id}/edit"
-            log.info("Loading heavy Google Vids editor URL: %s", url)
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(4000)  # Wait for UI stabilization
+            if video_id == "new":
+                url = "https://docs.google.com/videos/create"
+                log.info("Creating new Google Vids project via URL: %s", url)
+                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                try:
+                    import re as _re
+                    await page.wait_for_url(_re.compile(r"/videos/d/"), timeout=30000)
+                    log.info("Redirected successfully to new project: %s", page.url)
+                except Exception as e:
+                    log.warning("Redirect wait failed or timed out: %s", e)
+            else:
+                url = f"https://docs.google.com/videos/d/{video_id}/edit"
+                log.info("Loading heavy Google Vids editor URL: %s", url)
+                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(6000)  # Wait for UI stabilization
 
             self._active_pages.add(page)
             return page
