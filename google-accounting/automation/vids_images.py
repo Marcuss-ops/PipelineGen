@@ -646,39 +646,40 @@ class GoogleVidsImagesMixin:
                 log.info("No entry button found (maybe already in Vids editor)")
 
             # ── Step 0b: Chiudi dialog "Inizia" / getting-started ────────────
-            if entry_clicked:
-                log.info("Step 0b: Checking for getting-started dialog to close...")
-                dialog_closed = False
-                # Prima: X button di chiusura
-                for sel in self.GETTING_STARTED_CLOSE_SELECTORS:
+            log.info("Step 0b: Checking for getting-started dialog to close (unconditional)...")
+            dialog_closed = False
+            # Prima: X button di chiusura
+            for sel in self.GETTING_STARTED_CLOSE_SELECTORS + ['[aria-label="Chiudi"]', '[aria-label="Close"]', '.docs-material-gm-dialog-title-close', '.getting-started-dialog-close']:
+                try:
+                    btn = page.locator(sel).first
+                    if await btn.count() > 0 and await btn.is_visible():
+                        await self._human_click(page, btn, timeout=5000)
+                        await human_delay(500, 1200)
+                        dialog_closed = True
+                        log.info("Closed getting-started dialog via: %s", sel)
+                        break
+                except Exception as e:
+                    log.warning("Getting-started close selector %s failed: %s", sel, e)
+            # Fallback: clicca il backdrop per chiudere
+            if not dialog_closed:
+                for sel in self.GETTING_STARTED_BACKDROP_SELECTORS:
                     try:
-                        btn = page.locator(sel).first
-                        if await btn.count() > 0 and await btn.is_visible():
-                            await self._human_click(page, btn, timeout=5000)
+                        backdrop = page.locator(sel).first
+                        if await backdrop.count() > 0:
+                            await self._human_click(page, backdrop, timeout=5000)
                             await human_delay(500, 1200)
                             dialog_closed = True
-                            log.info("Closed getting-started dialog via: %s", sel)
+                            log.info("Closed dialog via backdrop: %s", sel)
                             break
                     except Exception as e:
-                        log.warning("Getting-started close selector %s failed: %s", sel, e)
-                # Fallback: clicca il backdrop per chiudere
-                if not dialog_closed:
-                    for sel in self.GETTING_STARTED_BACKDROP_SELECTORS:
-                        try:
-                            backdrop = page.locator(sel).first
-                            if await backdrop.count() > 0:
-                                await self._human_click(page, backdrop, timeout=5000)
-                                await human_delay(500, 1200)
-                                dialog_closed = True
-                                log.info("Closed dialog via backdrop: %s", sel)
-                                break
-                        except Exception as e:
-                            log.warning("Backdrop selector %s failed: %s", sel, e)
+                        log.warning("Backdrop selector %s failed: %s", sel, e)
+
             # Deselect any active elements (Escape + backdrop click) to ensure contextual toolbars (e.g. Image Options) are closed
             try:
                 log.info("Deselecting active elements to show main toolbar...")
-                await page.keyboard.press("Escape")
-                await human_delay(300, 600)
+                for _ in range(3):
+                    await page.keyboard.press("Escape")
+                    await human_delay(200, 400)
                 backdrop_sel = '.sketchy-desktop-viewport, .docs-editor-container, .apps-layer-front'
                 backdrop = page.locator(backdrop_sel).first
                 if await backdrop.count() > 0:
