@@ -296,11 +296,11 @@ class BaseAutomation:
         
         user_agent = _get_realistic_user_agent()
         
-        # If legacy session JSON exists but persistent profile is empty, import it once
-        storage_state = None
+        # If legacy session JSON exists but persistent profile is empty, we'll import cookies after launch
+        legacy_state_path = None
         if self.session_path.exists() and not (self.profile_path.exists() and any(self.profile_path.iterdir())):
-            log.info("Migrating legacy storage state JSON to persistent context profile")
-            storage_state = str(self.session_path)
+            log.info("Legacy storage state JSON found — will import cookies after context launch")
+            legacy_state_path = self.session_path
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_path),
@@ -312,8 +312,19 @@ class BaseAutomation:
             device_scale_factor=1,
             locale="it-IT",
             timezone_id="Europe/Rome",
-            storage_state=storage_state
         )
+
+        # Import legacy cookies if needed
+        if legacy_state_path:
+            try:
+                import json as _json
+                state = _json.loads(legacy_state_path.read_text(encoding="utf-8"))
+                cookies = state.get("cookies", [])
+                if cookies:
+                    await self.context.add_cookies(cookies)
+                    log.info("Imported %d cookies from legacy session JSON", len(cookies))
+            except Exception as e:
+                log.warning("Failed to import legacy cookies: %s", e)
         
         await self.context.add_init_script(_STEALTH_INIT_SCRIPT)
         

@@ -133,11 +133,11 @@ class SessionPool:
             "--window-size=1920,1080",
         ]
 
-        # Migrate JSON if needed
-        storage_state = None
+        # Migrate JSON if needed - load cookies after context is created
+        legacy_state_path = None
         if session_path.exists() and not (profile_path.exists() and any(profile_path.iterdir())):
-            log.info("Migrating legacy storage state JSON to persistent context profile in session pool")
-            storage_state = str(session_path)
+            log.info("Legacy storage state JSON found - will import cookies after context launch")
+            legacy_state_path = session_path
 
         context = await self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(profile_path),
@@ -149,8 +149,19 @@ class SessionPool:
             device_scale_factor=1,
             locale="it-IT",
             timezone_id="Europe/Rome",
-            storage_state=storage_state
         )
+
+        # Import legacy cookies if needed
+        if legacy_state_path:
+            try:
+                import json as _json
+                state = _json.loads(legacy_state_path.read_text(encoding="utf-8"))
+                cookies = state.get("cookies", [])
+                if cookies:
+                    await context.add_cookies(cookies)
+                    log.info("Imported %d cookies from legacy session JSON", len(cookies))
+            except Exception as e:
+                log.warning("Failed to import legacy cookies: %s", e)
 
         # Stealth scripts (shared from base.py)
         await context.add_init_script(_STEALTH_INIT_SCRIPT)
