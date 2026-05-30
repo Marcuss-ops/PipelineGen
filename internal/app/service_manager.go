@@ -213,7 +213,8 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// Wire up semantic tagger for voiceover metadata enrichment
 	pythonScriptsDir := cfg.Paths.PythonScriptsDir
 	voService.SetSemanticTagger(func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {
-		payload, err := semantic.Tagger(ctx, pythonScriptsDir, prompt, style, mediaType, generator)
+		payload, err := semantic.Tagger(ctx, pythonScriptsDir, prompt, style, mediaType, generator,
+			cfg.External.OllamaURL, cfg.External.OllamaModel)
 		if err != nil {
 			return nil, err
 		}

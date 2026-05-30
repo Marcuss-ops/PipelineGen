@@ -31,7 +31,40 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 		limit = 50
 	}
 
+	// ─── LEVEL 1: In-memory cache check ─────────────────────────────────────
+	ttlHours := 24
+	if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
+		ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours
+	}
+	ttl := time.Duration(ttlHours) * time.Hour
+
+	if s.liveCache.isFresh(term, ttl) {
+		cached, _ := s.liveCache.get(term)
+		s.log.Info("artlist live search: cache HIT", zap.String("term", term), zap.Int("clips", len(cached)))
+
+		// ─── LEVEL 2: Background refresh if cache is > 75% of TTL ────────────
+		if s.liveCache.isGettingStale(term, ttl) {
+			s.log.Info("artlist live search: cache getting stale, scheduling background refresh", zap.String("term", term))
+			go func() {
+				bgCtx := context.WithoutCancel(ctx)
+				if freshClips, err := ss.searchArtlistLive(bgCtx, term, limit); err == nil && len(freshClips) > 0 {
+					s.liveCache.set(term, freshClips)
+					s.log.Info("artlist background refresh: cache updated", zap.String("term", term), zap.Int("clips", len(freshClips)))
+				} else if err != nil {
+					s.log.Warn("artlist background refresh: live search failed", zap.String("term", term), zap.Error(err))
+				}
+			}()
+		}
+
+		if len(cached) > limit {
+			cached = cached[:limit]
+		}
+		return cached, nil
+	}
+
+	// ─── CACHE MISS: Run live search ─────────────────────────────────────────
 	if clips, err := ss.searchArtlistLive(ctx, term, limit); err == nil && len(clips) > 0 {
+		s.liveCache.set(term, clips) // populate cache for next call
 		return clips, nil
 	} else if err != nil {
 		s.log.Warn("artlist live search failed, trying fallbacks", zap.String("term", term), zap.Error(err))
@@ -62,6 +95,60 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 func (ss *SearchService) searchArtlistLive(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
 	s := ss.service
 
+	// ─── LEVEL 3: Use persistent Node.js HTTP server if configured ───────────
+	// This avoids cold-starting Chromium on every request (saves 20-40s).
+	// To enable: set external.artlist_scraper_server_url = "http://localhost:9123"
+	// and run: node node-scraper/artlist_search.js --server --port 9123
+	if s.cfg != nil && strings.TrimSpace(s.cfg.External.ArtlistScraperServerURL) != "" {
+		return ss.searchArtlistViaServer(ctx, term, limit, s.cfg.External.ArtlistScraperServerURL)
+	}
+
+	// ─── Fallback: Legacy exec.Command (cold start, slower) ──────────────────
+	return ss.searchArtlistViaExec(ctx, term, limit)
+}
+
+// searchArtlistViaServer calls the persistent Node.js scraper HTTP server.
+// The server keeps Chromium alive between requests, reducing latency from 30-50s to 5-10s.
+func (ss *SearchService) searchArtlistViaServer(ctx context.Context, term string, limit int, serverURL string) ([]ScraperClip, error) {
+	s := ss.service
+
+	type searchRequest struct {
+		Term  string `json:"term"`
+		Limit int    `json:"limit"`
+	}
+	body, err := json.Marshal(searchRequest{Term: term, Limit: limit})
+	if err != nil {
+		return nil, fmt.Errorf("artlist server: marshal request: %w", err)
+	}
+
+	reqURL := strings.TrimRight(serverURL, "/") + "/search"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("artlist server: build request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		s.log.Warn("artlist scraper server unreachable, falling back to exec", zap.String("url", reqURL), zap.Error(err))
+		return ss.searchArtlistViaExec(ctx, term, limit) // graceful fallback
+	}
+	defer resp.Body.Close()
+
+	var response ScraperResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("artlist server: decode response: %w", err)
+	}
+
+	s.log.Info("artlist server search completed", zap.String("term", term), zap.Int("clips", len(response.Clips)))
+	return response.Clips, nil
+}
+
+// searchArtlistViaExec is the legacy cold-start approach (spawns a new Node process per call).
+func (ss *SearchService) searchArtlistViaExec(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
+	s := ss.service
+
 	scraperDir := os.Getenv("VELOX_NODE_SCRAPER_DIR")
 	if scraperDir == "" {
 		scraperDir = "node-scraper"
@@ -79,14 +166,13 @@ func (ss *SearchService) searchArtlistLive(ctx context.Context, term string, lim
 	defer cancel()
 
 	args := []string{scriptPath, "--term", term, "--limit", strconv.Itoa(limit)}
-
 	cmd := exec.CommandContext(ctx, "node", args...)
 	cmd.Dir = scraperDir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	s.log.Info("Running live Artlist search", zap.String("term", term), zap.Int("limit", limit), zap.String("script_path", scriptPath))
+	s.log.Info("Running live Artlist search (exec)", zap.String("term", term), zap.Int("limit", limit), zap.String("script_path", scriptPath))
 
 	if err := cmd.Run(); err != nil {
 		s.log.Error("Artlist scraper failed", zap.Error(err), zap.String("stderr", stderr.String()))
@@ -102,10 +188,10 @@ func (ss *SearchService) searchArtlistLive(ctx context.Context, term string, lim
 		return nil, fmt.Errorf("failed to decode scraper response: %w", err)
 	}
 
-	s.log.Info("Live Artlist search completed", zap.String("term", term), zap.Int("clips_found", len(response.Clips)))
-
+	s.log.Info("Live Artlist search completed (exec)", zap.String("term", term), zap.Int("clips_found", len(response.Clips)))
 	return response.Clips, nil
 }
+
 
 func (ss *SearchService) searchPixabayVideos(ctx context.Context, term string, limit int) ([]ScraperClip, error) {
 	cfg := ss.service.cfg

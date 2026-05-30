@@ -23,6 +23,20 @@ import (
 
 type googlePublishMode string
 
+var rootCmdCtx context.Context = context.Background()
+
+// SetContext allows setting the parent context for all admin commands in this package.
+func SetContext(ctx context.Context) {
+	rootCmdCtx = ctx
+}
+
+func getCtx() context.Context {
+	if rootCmdCtx == nil {
+		return context.Background()
+	}
+	return rootCmdCtx
+}
+
 const (
 	googlePublishModeVids googlePublishMode = "vids"
 	googlePublishModeFlow googlePublishMode = "flow"
@@ -157,7 +171,7 @@ func executeGooglePublish(opts *googlePublishOptions) error {
 		return err
 	}
 	defer cleanup()
-	ctx := context.Background()
+	ctx := getCtx()
 
 	baseURL := strings.TrimRight(opts.APIBASE, "/")
 	if baseURL == "" {
@@ -397,7 +411,7 @@ func runGoogleUploadMedia(args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := getCtx()
 	driveSvc, err := drive.NewDriveServiceFromFiles(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("initializing drive service failed: %w", err)

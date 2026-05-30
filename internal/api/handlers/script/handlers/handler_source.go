@@ -20,18 +20,19 @@ import (
 )
 
 type GenerateFromSourceRequest struct {
-	SourceText  string   `json:"source_text" binding:"required"`
-	Language    string   `json:"language,omitempty"`
-	Languages   []string `json:"languages,omitempty"`
-	Style       string   `json:"style,omitempty"`
-	VisualStyle string   `json:"visual_style,omitempty"`
-	Tone        string   `json:"tone,omitempty"`
-	Title       string   `json:"title,omitempty"`
-	OutputName  string   `json:"output_name,omitempty"`
-	SceneCount  int      `json:"scene_count,omitempty"`
-	Width       int      `json:"width,omitempty"`
-	Height      int      `json:"height,omitempty"`
-	Model       string   `json:"model,omitempty"`
+	SourceText    string   `json:"source_text" binding:"required"`
+	Language      string   `json:"language,omitempty"`
+	Languages     []string `json:"languages,omitempty"`
+	Style         string   `json:"style,omitempty"`
+	VisualStyle   string   `json:"visual_style,omitempty"`
+	Tone          string   `json:"tone,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	OutputName    string   `json:"output_name,omitempty"`
+	SceneCount    int      `json:"scene_count,omitempty"`
+	ImagesPerScene int     `json:"images_per_scene,omitempty"` // how many image variants to generate per scene (default 1)
+	Width         int      `json:"width,omitempty"`
+	Height        int      `json:"height,omitempty"`
+	Model         string   `json:"model,omitempty"`
 }
 
 type GeneratedImage struct {
@@ -56,14 +57,16 @@ type GeneratedScene struct {
 	Index     int                 `json:"index"`
 	Text      string              `json:"text"`
 	Query     string              `json:"query"`
-	Image     *GeneratedImage     `json:"image,omitempty"`
+	Image     *GeneratedImage     `json:"image,omitempty"`  // primary image (first generated)
+	Images    []GeneratedImage    `json:"images,omitempty"` // all generated variants (images_per_scene)
 	Voiceover *GeneratedVoiceover `json:"voiceover,omitempty"`
 	Error     string              `json:"error,omitempty"`
 }
 
 type VideoScene struct {
-	Text      string `json:"text"`
-	ImageLink string `json:"image_link"`
+	Text       string   `json:"text"`
+	ImageLink  string   `json:"image_link"`            // primary image (backward compat)
+	ImageLinks []string `json:"image_links,omitempty"` // all generated variants
 }
 
 type GeneratedScriptFileInfo struct {

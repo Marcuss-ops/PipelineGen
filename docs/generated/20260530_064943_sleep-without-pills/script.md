@@ -1,0 +1,154 @@
+# Generated Script
+
+## Title
+Sleep Without Pills
+
+## Script
+
+The rain in Campania falls with a relentless, ancient rhythm, a silver curtain drawn across the terracotta rooftops. It’s a sound that has witnessed centuries of dreams, of sleepless nights, of the quiet desperation for rest. The camera slowly pans across the scene – a narrow, cobbled street, a small bakery with warm light spilling onto the pavement, a lone figure, a man named Marco, staring out into the rain. He’s 48, a software engineer, and for the last six months, sleep has been a luxury he can barely afford. The rain continues, a constant, insistent whisper.
+
+He sits on a weathered stone bench, a half-empty cup of espresso beside him. The rain reflects in the dark surface of the cup, mirroring the turmoil in his mind. He’s tried everything – meditation apps, herbal teas, warm milk. Nothing seems to stick. The problem isn’t necessarily that he’s tired; it’s the relentless, almost obsessive, checking. *Am I asleep yet?* He runs the thought through his mind like a broken record.
+
+This is a story about reclaiming sleep, about understanding the intricate dance between your mind and body. It's about building a system, a habit, not relying on a pill to magically erase the anxieties that keep you awake. It starts long before you turn out the light. It’s built in daylight, in the small choices about caffeine and screens, in the way you teach your brain that bed means sleep and nothing else.
+
+The science behind it is surprisingly simple. Your circadian rhythm – your body’s internal clock – wants a clear morning signal and a clear evening signal. This isn't a switch you flip; it’s a delicate, finely-tuned process. And disrupting it, even unintentionally, can throw the whole system off balance.
+
+In the morning, get outside within 30 to 60 minutes of waking, even on cloudy days in Campania. Ten minutes of real daylight tells the suprachiasmatic nucleus – the master clock in your brain – to drop melatonin and raise cortisol at the right time. No sunglasses, no window glass if you can help it. If you wake before sunrise, turn on bright, warm-white lights and move. The goal isn't to force sleep, but to signal to your body that it’s time to be awake, alert, and productive.
+
+In the evening, do the opposite. Two to three hours before bed, dim overheads to lamp level. Phones and laptops are the main problem because of blue light and because they keep your brain solving. Use night mode, but better, put them in another room at a set time. Your brain reads darkness as permission to make melatonin.  Keep wake time boringly consistent, even on weekends. Bedtime can flex, wake time should not. A stable wake time does more for insomnia than any supplement.
+
+This isn't about relaxation as a feeling; it’s about repetition as a cue. It’s about building a predictable ritual that trains your brain to associate bed with sleep.
+
+Sleep is not an on-off switch. You need a ramp. Pick a 60 to 90 minute sequence and do it in the same order. The predictability is the point. Light stretch or slow breathing for five minutes.  Warm shower, the drop in skin temperature afterward mimics the natural evening dip. Change into sleep clothes, brush teeth, same playlist or podcast at low volume. Write tomorrow’s to-dos on paper, not your phone, so your brain stops rehearsing them.
+
+If you watch something, make it familiar and low stakes. New plots keep you alert. The goal is not relaxation as a feeling, it is repetition as a cue.
+
+Make the room a cave. Temperature matters more than mattress price. Core body temperature needs to fall about 1°C to initiate sleep. Aim for 17 to 19°C, use breathable cotton or linen, socks if your feet run cold. Darkness: blackout curtains or a soft eye mask. Even small LEDs register. Cover them. Sound: steady is better than silent. A fan, brown noise, or earplugs beats a street that spikes at 2 a.m. In Castellammare, summer scooters will test you. Plan for it.
+
+Reserve the bed for two things only: sleep and intimacy. No work emails, no scrolling, no arguing. Your brain learns associations fast. If bed equals alert, you will stay alert.
+
+Caffeine, alcohol, and food timing. Caffeine has a half-life of about five to seven hours. That 4 p.m. espresso is still a quarter strength at midnight. Set a hard stop eight hours before bed. Switch to decaf or, better, water and a walk.
+
+Alcohol helps you fall asleep but fragments the second half of the night. It suppresses REM, raises heart rate, and you wake at 3 a.m. thirsty. If you drink, finish two to three hours before bed and keep it to one.
+
+Big late dinners raise core temperature and reflux. Finish your main meal three hours before sleep. A small carb-plus-protein snack like yogurt or a banana is fine if you are genuinely hungry.
+
+Move in the day, calm at night. Physical fatigue is honest. Aim for 30 minutes of movement that raises your heart rate, ideally in daylight. Morning or early afternoon workouts advance your clock in a helpful way.
+
+Avoid hard training within three hours of bedtime. The adrenaline and heat linger. If evenings are your only window, keep it to zone 2, then follow with a cool shower and longer wind-down.
+
+Even on rest days, get steps. The body that sits all day often lies awake all night.
+
+Unstick the mental loop. Most sleeplessness is not a lack of tiredness, it is a loop of monitoring. You check, am I asleep yet, and that checking wakes you.
+
+Three tools work without pills: Worry download: at 8 p.m., set a timer for ten minutes. Write every open loop, then write the next tiny action for each. Close the notebook. When worries pop up later, remind yourself they have a place tomorrow. Cognitive shuffle: instead of counting sheep, picture random neutral objects, apple, mountain, spoon, for five seconds each. The brain cannot ruminate and generate images at once. It is shadow-free. NSDR or slow breathing: lie down, inhale 4 seconds, exhale 6 seconds, for five minutes. Longer exhales activate the parasympathetic system. Non-sleep deep rest tracks on YouTube or apps are fine, just keep the screen dark.
+
+If anxiety about sleep persists for weeks, or you notice snoring, gasping, leg jerks, or severe daytime sleepiness, talk with a clinician. Sleep apnea and other conditions need medical assessment, not better habits alone.
+
+Naps without wrecking the night. Naps are useful if you keep them short and early. Twenty minutes, before 3 p.m., set an alarm. Longer or later naps steal pressure from the night. If you are in a debt cycle, skip naps for a week to rebuild drive, then reintroduce them carefully.
+
+What to do at 3 a.m. Do not stay in bed awake. After about 20 minutes, get up, keep lights dim, go to another room, and do something dull: read a paper book you have read before, fold laundry, listen to a calm podcast at low volume. No phone, no clock watching. Return to bed only when sleepy, not just tired. This retrains the bed-sleep link, the core of CBT-I, the gold standard for insomnia.
+
+If you wake to use the bathroom, use a nightlight, not the bright overhead. Avoid checking the time. The number adds pressure.
+
+## Scenes JSON
+```json
+[
+  {
+    "text": "The rain in Campania falls with a relentless, ancient rhythm, a silver curtain drawn across the terracotta rooftops. It’s a sound that has witnessed centuries of dreams, of sleepless nights, of the quiet desperation for rest. The camera slowly pans across the scene – a narrow, cobbled street, a small bakery with warm light spilling onto the pavement, a lone figure, a man named Marco, staring out into the rain. He’s 48, a software engineer, and for the last six months, sleep has been a luxury he can barely afford. The rain continues, a constant, insistent whisper.",
+    "image_link": ""
+  },
+  {
+    "text": "He sits on a weathered stone bench, a half-empty cup of espresso beside him. The rain reflects in the dark surface of the cup, mirroring the turmoil in his mind. He’s tried everything – meditation apps, herbal teas, warm milk. Nothing seems to stick. The problem isn’t necessarily that he’s tired; it’s the relentless, almost obsessive, checking.",
+    "image_link": ""
+  },
+  {
+    "text": "Am I asleep yet? He runs the thought through his mind like a broken record. This is a story about reclaiming sleep, about understanding the intricate dance between your mind and body. It's about building a system, a habit, not relying on a pill to magically erase the anxieties that keep you awake. It starts long before you turn out the light.",
+    "image_link": ""
+  },
+  {
+    "text": "It’s built in daylight, in the small choices about caffeine and screens, in the way you teach your brain that bed means sleep and nothing else. The science behind it is surprisingly simple. Your circadian rhythm – your body’s internal clock – wants a clear morning signal and a clear evening signal. This isn't a switch you flip; it’s a delicate, finely-tuned process. And disrupting it, even unintentionally, can throw the whole system off balance.",
+    "image_link": ""
+  },
+  {
+    "text": "In the morning, get outside within 30 to 60 minutes of waking, even on cloudy days in Campania. Ten minutes of real daylight tells the suprachiasmatic nucleus – the master clock in your brain – to drop melatonin and raise cortisol at the right time. No sunglasses, no window glass if you can help it. If you wake before sunrise, turn on bright, warm-white lights and move. The goal isn't to force sleep, but to signal to your body that it’s time to be awake, alert, and productive.",
+    "image_link": "https://drive.google.com/file/d/1jcAJXcUyZ9U8B-rJ6AbBRrIdLxh3-PzI/view"
+  },
+  {
+    "text": "In the evening, do the opposite. Two to three hours before bed, dim overheads to lamp level. Phones and laptops are the main problem because of blue light and because they keep your brain solving. Use night mode, but better, put them in another room at a set time. Your brain reads darkness as permission to make melatonin.",
+    "image_link": "https://drive.google.com/file/d/1vxpgn2JrZvT0pWKWQPw-DFFpMgZjL1HN/view"
+  },
+  {
+    "text": "Keep wake time boringly consistent, even on weekends. Bedtime can flex, wake time should not. A stable wake time does more for insomnia than any supplement. This isn't about relaxation as a feeling; it’s about repetition as a cue. It’s about building a predictable ritual that trains your brain to associate bed with sleep.",
+    "image_link": ""
+  },
+  {
+    "text": "Sleep is not an on-off switch. You need a ramp. Pick a 60 to 90 minute sequence and do it in the same order. The predictability is the point. Light stretch or slow breathing for five minutes.",
+    "image_link": ""
+  },
+  {
+    "text": "Warm shower, the drop in skin temperature afterward mimics the natural evening dip. Change into sleep clothes, brush teeth, same playlist or podcast at low volume. Write tomorrow’s to-dos on paper, not your phone, so your brain stops rehearsing them. If you watch something, make it familiar and low stakes. New plots keep you alert.",
+    "image_link": ""
+  },
+  {
+    "text": "The goal is not relaxation as a feeling, it is repetition as a cue. Make the room a cave. Temperature matters more than mattress price. Core body temperature needs to fall about 1°C to initiate sleep. Aim for 17 to 19°C, use breathable cotton or linen, socks if your feet run cold.",
+    "image_link": ""
+  },
+  {
+    "text": "Darkness: blackout curtains or a soft eye mask. Even small LEDs register. Cover them. Sound: steady is better than silent. A fan, brown noise, or earplugs beats a street that spikes at 2 a.",
+    "image_link": ""
+  },
+  {
+    "text": "m. In Castellammare, summer scooters will test you. Plan for it. Reserve the bed for two things only: sleep and intimacy. No work emails, no scrolling, no arguing.",
+    "image_link": ""
+  },
+  {
+    "text": "Your brain learns associations fast. If bed equals alert, you will stay alert. Caffeine, alcohol, and food timing. Caffeine has a half-life of about five to seven hours. That 4 p.",
+    "image_link": ""
+  },
+  {
+    "text": "m. espresso is still a quarter strength at midnight. Set a hard stop eight hours before bed. Switch to decaf or, better, water and a walk. Alcohol helps you fall asleep but fragments the second half of the night.",
+    "image_link": "https://drive.google.com/file/d/1UWtuOh8c23h6P4P7ypFhSU4-ofWcbmhQ/view"
+  },
+  {
+    "text": "It suppresses REM, raises heart rate, and you wake at 3 a. m. thirsty. If you drink, finish two to three hours before bed and keep it to one. Big late dinners raise core temperature and reflux.",
+    "image_link": ""
+  },
+  {
+    "text": "Finish your main meal three hours before sleep. A small carb-plus-protein snack like yogurt or a banana is fine if you are genuinely hungry. Move in the day, calm at night. Physical fatigue is honest. Aim for 30 minutes of movement that raises your heart rate, ideally in daylight.",
+    "image_link": "https://drive.google.com/file/d/1pj-9eL5oXqzvDGCeH7RCFSAjurkhW4Jp/view"
+  },
+  {
+    "text": "Morning or early afternoon workouts advance your clock in a helpful way. Avoid hard training within three hours of bedtime. The adrenaline and heat linger. If evenings are your only window, keep it to zone 2, then follow with a cool shower and longer wind-down. Even on rest days, get steps.",
+    "image_link": ""
+  },
+  {
+    "text": "The body that sits all day often lies awake all night. Unstick the mental loop. Most sleeplessness is not a lack of tiredness, it is a loop of monitoring. You check, am I asleep yet, and that checking wakes you. Three tools work without pills: Worry download: at 8 p.",
+    "image_link": ""
+  },
+  {
+    "text": "m. , set a timer for ten minutes. Write every open loop, then write the next tiny action for each. Close the notebook. When worries pop up later, remind yourself they have a place tomorrow.",
+    "image_link": "https://drive.google.com/file/d/1wxM7cTuCBREbEpEIjmaNRpOHkwVjKrbA/view"
+  },
+  {
+    "text": "Cognitive shuffle: instead of counting sheep, picture random neutral objects, apple, mountain, spoon, for five seconds each. The brain cannot ruminate and generate images at once. It is shadow-free. NSDR or slow breathing: lie down, inhale 4 seconds, exhale 6 seconds, for five minutes. Longer exhales activate the parasympathetic system.",
+    "image_link": "https://drive.google.com/file/d/1m83XVSU7GuGQjmB-ZR0oTEnjxPoljAiS/view"
+  },
+  {
+    "text": "Non-sleep deep rest tracks on YouTube or apps are fine, just keep the screen dark. If anxiety about sleep persists for weeks, or you notice snoring, gasping, leg jerks, or severe daytime sleepiness, talk with a clinician. Sleep apnea and other conditions need medical assessment, not better habits alone. Naps without wrecking the night. Naps are useful if you keep them short and early.",
+    "image_link": "https://drive.google.com/file/d/1yN8CLrxXIG9sOIdV5ueu4q-DvgBmQ6ds/view"
+  },
+  {
+    "text": "Twenty minutes, before 3 p. m. , set an alarm. Longer or later naps steal pressure from the night. If you are in a debt cycle, skip naps for a week to rebuild drive, then reintroduce them carefully.",
+    "image_link": "https://drive.google.com/file/d/1Ss80BF8D19uGdKlJzcKR-xWlRb7fNjF8/view"
+  },
+  {
+    "text": "What to do at 3 a. m. Do not stay in bed awake. After about 20 minutes, get up, keep lights dim, go to another room, and do something dull: read a paper book you have read before, fold laundry, listen to a calm podcast at low volume. No phone, no clock watching.",
+    "image_link": "https://drive.google.com/file/d/1_ag4OJvDZ9_3vNxt8_1QDTyMwIsn7ieP/view"
+  },
+  {
+    "text": "Return to bed only when sleepy, not just tired. This retrains the bed-sleep link, the core of CBT-I, the gold standard for insomnia. If you wake to use the bathroom, use a nightlight, not the bright overhead. Avoid checking the time. The number adds pressure.",
+    "image_link": "https://drive.google.com/file/d/11ykEnGluObuwIM_JzEk2PSfsn6GVSLnC/view"
+  }
+]
+```

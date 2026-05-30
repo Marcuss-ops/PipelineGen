@@ -1,0 +1,184 @@
+# Generated Script
+
+## Title
+Sleep Without Pills
+
+## Script
+
+The rain in Campania fell with a hushed insistence, each drop a tiny drumbeat against the ancient stone walls of a villa overlooking the Tyrrhenian Sea. The air smelled of damp earth and wild rosemary, a scent that, for centuries, had been intertwined with the rhythm of sleep. This wasn’t a story about pills, about chasing a chemical solution to a frustratingly complex problem. This was about something far more fundamental, a return to the ancient wisdom of how the human body naturally craves rest. It began long before you turned out the light, built in daylight, in the small, almost imperceptible choices about caffeine and screens, in the way you taught your brain that bed meant sleep and nothing else. Pills could knock you out, but they rarely taught your nervous system how to fall asleep on its own. The work was less dramatic and more reliable: anchor your body clock, cool the room, empty the mind just enough, and repeat.
+
+The camera slowly pans across a beautifully arranged bedroom, sunlight filtering through sheer linen curtains. A young woman, Elara, sits on the edge of the bed, her brow furrowed in frustration. She’s surrounded by a chaotic sprawl of discarded sleep trackers, half-empty bottles of melatonin, and a stack of books on sleep hygiene. The scene is beautifully lit, but there’s a palpable sense of unease.  A gentle, almost melancholic piano melody underscores the scene. “For years, I chased the perfect solution,” her voice, soft and measured, fills the space, “I tried every supplement, every meditation app, every sleep technique. Nothing seemed to work. I was trapped in a cycle of anxiety, desperately trying to force my body to obey.”
+
+The camera focuses on a close-up of Elara’s hands, nervously tracing the edge of a worn journal. "I was convinced that sleep was a battle to be won, a problem to be solved with willpower and technology. But sleep isn’t about willpower; it’s about biology.” We see a montage of images: a manikin in a lab, scientists studying circadian rhythms, a vast expanse of the night sky. "Our bodies are wired for a natural sleep-wake cycle, a 24-hour rhythm known as the circadian rhythm. And that rhythm needs to be anchored, carefully cultivated.”
+
+The camera shifts back to Elara, now standing in a sun-drenched field overlooking the sea. “It all starts with light,” she explains, her voice gaining confidence. “Your circadian rhythm wants a clear morning signal and a clear evening signal.”  We see her stepping out into the sunshine, shielding her eyes momentarily, then raising them to the brilliant blue. “Get outside within 30 to 60 minutes of waking, even on cloudy days in Campania. Ten minutes of real daylight tells the suprachiasmatic nucleus – that little clock in your brain – to drop melatonin and raise cortisol at the right time. No sunglasses, no window glass if you can help it. If you wake before sunrise, turn on bright, warm-white lights and move.”
+
+The scene shifts to a time-lapse of the sun rising over the Mediterranean, captured through a slow-motion lens. The soundscape is dominated by the gentle lapping of waves and the distant calls of seabirds. “This isn’t about feeling sleepy; it’s about resetting your internal clock,” Elara continues, her voice a calming presence. “It’s about acknowledging that your body is designed for a natural rhythm, and respecting that rhythm is the key to unlocking restful sleep.”
+
+Now, the camera focuses on a meticulously prepared evening routine. A man, Liam, is dimming the overhead lights in his apartment. “The opposite is true in the evening,” he narrates, his voice measured and precise. “Two to three hours before bed, dim overheads to lamp level. Phones and laptops are the main problem because of blue light and because they keep your brain solving. Use night mode, but better, put them in another room at a set time. Your brain reads darkness as permission to make melatonin.”
+
+The camera shows Liam placing his laptop in a darkened hallway. “Keep wake time boringly consistent, even on weekends. Bedtime can flex, wake time should not. A stable wake time does more for insomnia than any supplement.” The visual is of a simple, uncluttered desk with a digital clock displaying 6:30 AM – always.
+
+The next scene depicts a warm shower, the water cascading over Liam’s skin. “Build a wind-down you will actually keep,” he says. “Sleep is not an on-off switch. You need a ramp.” He demonstrates a gentle stretch, his movements fluid and deliberate. “Pick a 60 to 90 minute sequence and do it in the same order. The predictability is the point.” He lists the steps: “Light stretch or slow breathing for five minutes, warm shower, the drop in skin temperature afterward mimics the natural evening dip, change into sleep clothes, brush teeth, same playlist or podcast at low volume, write tomorrow’s to-dos on paper, not your phone, so your brain stops rehearsing them.”
+
+The camera focuses on a close-up of a notepad filled with neatly written tasks. The scene shifts to Elara, now writing in her journal. “The goal is not relaxation as a feeling, it is repetition as a cue.” The soundscape is dominated by the gentle scratching of a pen on paper.
+
+We then see Liam entering his bedroom, the lights dimmed to a soft amber glow. “Make the room a cave,” he explains. “Temperature matters more than mattress price.” The camera shows him adjusting the thermostat, the room settling to a comfortable 18 degrees Celsius. “Core body temperature needs to fall about 1°C to initiate sleep. Aim for 17 to 19°C, use breathable cotton or linen, socks if your feet run cold.”
+
+The camera focuses on the darkness of the room, punctuated only by the soft glow of a salt lamp. “Darkness: blackout curtains or a soft eye mask. Even small LEDs register. Cover them.” The scene shifts to a close-up of Liam adjusting his eye mask. "Sound: steady is better than silent. A fan, brown noise, or earplugs beats a street that spikes at 2 a.m. In Castellammare, summer scooters will test you. Plan for it.”  We see him placing earplugs in his ears.
+
+Finally, the camera shows Liam’s bedroom, transformed into a sanctuary of calm. “Reserve the bed for two things only: sleep and intimacy,” he narrates. “No work emails, no scrolling, no arguing. Your brain learns associations fast. If bed equals alert, you will stay alert.”  The scene is serene, emphasizing the importance of creating a space dedicated solely to rest.
+
+The camera then focuses on Elara, demonstrating her understanding of the principles. “Caffeine, alcohol, and food timing,” she says. “Caffeine has a half-life of about five to seven hours. That 4 p.m. espresso is still a quarter strength at midnight. Set a hard stop eight hours before bed. Switch to decaf or, better, water and a walk.” The camera shows her discarding a half-empty coffee cup.
+
+“Alcohol helps you fall asleep but fragments the second half of the night,” she continues. “It suppresses REM, raises heart rate, and you wake at 3 a.m. thirsty. If you drink, finish two to three hours before bed and keep it to one.”  We see Liam meticulously measuring out a small glass of water.
+
+“Big late dinners raise core temperature and reflux. Finish your main meal three hours before sleep. A small carb-plus-protein snack like yogurt or a banana is fine if you are genuinely hungry.” The camera shows a close-up of a bowl of yogurt.
+
+“Move in the day, calm at night,” Elara explains. “Physical fatigue is honest. Aim for 30 minutes of movement that raises your heart rate, ideally in daylight. Morning or early afternoon workouts advance your clock in a helpful way.” We see Liam running on a beach at sunrise.
+
+“Avoid hard training within three hours of bedtime. The adrenaline and heat linger. If evenings are your only window, keep it to zone 2, then follow with a cool shower and longer wind-down.”  The camera shows Liam cooling down after a workout.
+
+“Even on rest days, get steps. The body that sits all day often lies awake all night.”  We see Elara walking along the shoreline.
+
+“Unstick the mental loop,” Elara says. “Most sleeplessness is not a lack of tiredness, it is a loop of monitoring. You check, am I asleep yet, and that checking wakes you.”  The camera shows Elara demonstrating the "worry download" technique. "Three tools work without pills: Worry download: at 8 p.m., set a timer for ten minutes. Write every open loop, then write the next tiny action for each. Close the notebook. When worries pop up later, remind yourself they have a place tomorrow. Cognitive shuffle: instead of counting sheep, picture random neutral objects, apple, mountain, spoon, for five seconds each. The brain cannot ruminate and generate images at once. It is shadow-free. NSDR or slow breathing: lie down, inhale 4 seconds, exhale 6 seconds, for five minutes. Longer exhales activate the parasympathetic system.”  The camera shows Elara practicing the slow breathing technique.
+
+“If anxiety about sleep persists for weeks, or you notice snoring, gasping, leg jerks, or severe daytime sleepiness, talk with a clinician. Sleep apnea and other conditions need medical assessment, not better habits alone.” The camera shows a doctor examining a patient.
+
+“Naps without wrecking the night,” Elara explains. “Naps are useful if you keep them short and early. Twenty minutes, before 3 p.m., set an alarm. Longer or later naps steal pressure from the night. If you are in a debt cycle, skip naps for a week to rebuild drive, then reintroduce them carefully.” We see Elara taking a short nap.
+
+“Do not stay in bed awake. After about 20 minutes, get up, keep lights dim, go to another room, and do something dull: read a paper book you have read before, fold laundry, listen to a calm podcast at low volume. No phone, no clock watching. Return to bed only when sleepy, not just tired. This retrains the bed-sleep link, the core of CBT-I, the gold standard for insomnia.”  The camera shows Liam folding laundry.
+
+“If you wake to use the bathroom, use a nightlight, not the bright overhead. Avoid checking the time. The number adds pressure.” The camera focuses on a soft nightlight.
+
+The final scene returns to Elara and Liam, side-by-side, in their bedroom. The room is dark, peaceful, and filled with a sense of calm. "It’s not about the perfect technique," Elara says, her voice filled with quiet confidence. "It’s about understanding your body, respecting its natural rhythms, and creating a space where sleep can thrive."  The camera slowly pans out, showcasing the serene beauty of the room and the tranquility of the night. The piano melody swells, then fades to silence.
+
+## Scenes JSON
+```json
+[
+  {
+    "text": "The rain in Campania fell with a hushed insistence, each drop a tiny drumbeat against the ancient stone walls of a villa overlooking the Tyrrhenian Sea. The air smelled of damp earth and wild rosemary, a scent that, for centuries, had been intertwined with the rhythm of sleep. This wasn’t a story about pills, about chasing a chemical solution to a frustratingly complex problem. This was about something far more fundamental, a return to the ancient wisdom of how the human body naturally craves rest. It began long before you turned out the light, built in daylight, in the small, almost imperceptible choices about caffeine and screens, in the way you taught your brain that bed meant sleep and nothing else.",
+    "image_link": ""
+  },
+  {
+    "text": "Pills could knock you out, but they rarely taught your nervous system how to fall asleep on its own. The work was less dramatic and more reliable: anchor your body clock, cool the room, empty the mind just enough, and repeat. The camera slowly pans across a beautifully arranged bedroom, sunlight filtering through sheer linen curtains. A young woman, Elara, sits on the edge of the bed, her brow furrowed in frustration. She’s surrounded by a chaotic sprawl of discarded sleep trackers, half-empty bottles of melatonin, and a stack of books on sleep hygiene.",
+    "image_link": ""
+  },
+  {
+    "text": "The scene is beautifully lit, but there’s a palpable sense of unease. A gentle, almost melancholic piano melody underscores the scene. “For years, I chased the perfect solution,” her voice, soft and measured, fills the space, “I tried every supplement, every meditation app, every sleep technique. Nothing seemed to work. I was trapped in a cycle of anxiety, desperately trying to force my body to obey.",
+    "image_link": ""
+  },
+  {
+    "text": "”  The camera focuses on a close-up of Elara’s hands, nervously tracing the edge of a worn journal. \"I was convinced that sleep was a battle to be won, a problem to be solved with willpower and technology. But sleep isn’t about willpower; it’s about biology. ” We see a montage of images: a manikin in a lab, scientists studying circadian rhythms, a vast expanse of the night sky. \"Our bodies are wired for a natural sleep-wake cycle, a 24-hour rhythm known as the circadian rhythm.",
+    "image_link": ""
+  },
+  {
+    "text": "And that rhythm needs to be anchored, carefully cultivated. ”  The camera shifts back to Elara, now standing in a sun-drenched field overlooking the sea. “It all starts with light,” she explains, her voice gaining confidence. “Your circadian rhythm wants a clear morning signal and a clear evening signal. ”  We see her stepping out into the sunshine, shielding her eyes momentarily, then raising them to the brilliant blue.",
+    "image_link": ""
+  },
+  {
+    "text": "“Get outside within 30 to 60 minutes of waking, even on cloudy days in Campania. Ten minutes of real daylight tells the suprachiasmatic nucleus – that little clock in your brain – to drop melatonin and raise cortisol at the right time. No sunglasses, no window glass if you can help it. If you wake before sunrise, turn on bright, warm-white lights and move. ”  The scene shifts to a time-lapse of the sun rising over the Mediterranean, captured through a slow-motion lens.",
+    "image_link": "https://drive.google.com/file/d/1jcAJXcUyZ9U8B-rJ6AbBRrIdLxh3-PzI/view"
+  },
+  {
+    "text": "The soundscape is dominated by the gentle lapping of waves and the distant calls of seabirds. “This isn’t about feeling sleepy; it’s about resetting your internal clock,” Elara continues, her voice a calming presence. “It’s about acknowledging that your body is designed for a natural rhythm, and respecting that rhythm is the key to unlocking restful sleep. ”  Now, the camera focuses on a meticulously prepared evening routine. A man, Liam, is dimming the overhead lights in his apartment.",
+    "image_link": ""
+  },
+  {
+    "text": "“The opposite is true in the evening,” he narrates, his voice measured and precise. “Two to three hours before bed, dim overheads to lamp level. Phones and laptops are the main problem because of blue light and because they keep your brain solving. Use night mode, but better, put them in another room at a set time. Your brain reads darkness as permission to make melatonin.",
+    "image_link": ""
+  },
+  {
+    "text": "”  The camera shows Liam placing his laptop in a darkened hallway. “Keep wake time boringly consistent, even on weekends. Bedtime can flex, wake time should not. A stable wake time does more for insomnia than any supplement. ” The visual is of a simple, uncluttered desk with a digital clock displaying 6:30 AM – always.",
+    "image_link": ""
+  },
+  {
+    "text": "The next scene depicts a warm shower, the water cascading over Liam’s skin. “Build a wind-down you will actually keep,” he says. “Sleep is not an on-off switch. You need a ramp. ” He demonstrates a gentle stretch, his movements fluid and deliberate.",
+    "image_link": ""
+  },
+  {
+    "text": "“Pick a 60 to 90 minute sequence and do it in the same order. The predictability is the point. ” He lists the steps: “Light stretch or slow breathing for five minutes, warm shower, the drop in skin temperature afterward mimics the natural evening dip, change into sleep clothes, brush teeth, same playlist or podcast at low volume, write tomorrow’s to-dos on paper, not your phone, so your brain stops rehearsing them. ”  The camera focuses on a close-up of a notepad filled with neatly written tasks. The scene shifts to Elara, now writing in her journal.",
+    "image_link": ""
+  },
+  {
+    "text": "“The goal is not relaxation as a feeling, it is repetition as a cue. ” The soundscape is dominated by the gentle scratching of a pen on paper. We then see Liam entering his bedroom, the lights dimmed to a soft amber glow. “Make the room a cave,” he explains. “Temperature matters more than mattress price.",
+    "image_link": ""
+  },
+  {
+    "text": "” The camera shows him adjusting the thermostat, the room settling to a comfortable 18 degrees Celsius. “Core body temperature needs to fall about 1°C to initiate sleep. Aim for 17 to 19°C, use breathable cotton or linen, socks if your feet run cold. ”  The camera focuses on the darkness of the room, punctuated only by the soft glow of a salt lamp. “Darkness: blackout curtains or a soft eye mask.",
+    "image_link": "https://drive.google.com/file/d/1mFom_NaGmB63LM4uf-Ec0PhFr1amv_lq/view"
+  },
+  {
+    "text": "Even small LEDs register. Cover them. ” The scene shifts to a close-up of Liam adjusting his eye mask. \"Sound: steady is better than silent. A fan, brown noise, or earplugs beats a street that spikes at 2 a.",
+    "image_link": ""
+  },
+  {
+    "text": "m. In Castellammare, summer scooters will test you. Plan for it. ”  We see him placing earplugs in his ears. Finally, the camera shows Liam’s bedroom, transformed into a sanctuary of calm.",
+    "image_link": ""
+  },
+  {
+    "text": "“Reserve the bed for two things only: sleep and intimacy,” he narrates. “No work emails, no scrolling, no arguing. Your brain learns associations fast. If bed equals alert, you will stay alert. ”  The scene is serene, emphasizing the importance of creating a space dedicated solely to rest.",
+    "image_link": ""
+  },
+  {
+    "text": "The camera then focuses on Elara, demonstrating her understanding of the principles. “Caffeine, alcohol, and food timing,” she says. “Caffeine has a half-life of about five to seven hours. That 4 p. m.",
+    "image_link": ""
+  },
+  {
+    "text": "espresso is still a quarter strength at midnight. Set a hard stop eight hours before bed. Switch to decaf or, better, water and a walk. ” The camera shows her discarding a half-empty coffee cup. “Alcohol helps you fall asleep but fragments the second half of the night,” she continues.",
+    "image_link": "https://drive.google.com/file/d/1UWtuOh8c23h6P4P7ypFhSU4-ofWcbmhQ/view"
+  },
+  {
+    "text": "“It suppresses REM, raises heart rate, and you wake at 3 a. m. thirsty. If you drink, finish two to three hours before bed and keep it to one. ”  We see Liam meticulously measuring out a small glass of water.",
+    "image_link": ""
+  },
+  {
+    "text": "“Big late dinners raise core temperature and reflux. Finish your main meal three hours before sleep. A small carb-plus-protein snack like yogurt or a banana is fine if you are genuinely hungry. ” The camera shows a close-up of a bowl of yogurt. “Move in the day, calm at night,” Elara explains.",
+    "image_link": "https://drive.google.com/file/d/1rsJfwonloR0EHxsQsHtaGyNIoGs2KmDJ/view"
+  },
+  {
+    "text": "“Physical fatigue is honest. Aim for 30 minutes of movement that raises your heart rate, ideally in daylight. Morning or early afternoon workouts advance your clock in a helpful way. ” We see Liam running on a beach at sunrise. “Avoid hard training within three hours of bedtime.",
+    "image_link": ""
+  },
+  {
+    "text": "The adrenaline and heat linger. If evenings are your only window, keep it to zone 2, then follow with a cool shower and longer wind-down. ”  The camera shows Liam cooling down after a workout. “Even on rest days, get steps. The body that sits all day often lies awake all night.",
+    "image_link": ""
+  },
+  {
+    "text": "”  We see Elara walking along the shoreline. “Unstick the mental loop,” Elara says. “Most sleeplessness is not a lack of tiredness, it is a loop of monitoring. You check, am I asleep yet, and that checking wakes you. ”  The camera shows Elara demonstrating the \"worry download\" technique.",
+    "image_link": ""
+  },
+  {
+    "text": "\"Three tools work without pills: Worry download: at 8 p. m. , set a timer for ten minutes. Write every open loop, then write the next tiny action for each. Close the notebook.",
+    "image_link": ""
+  },
+  {
+    "text": "When worries pop up later, remind yourself they have a place tomorrow. Cognitive shuffle: instead of counting sheep, picture random neutral objects, apple, mountain, spoon, for five seconds each. The brain cannot ruminate and generate images at once. It is shadow-free. NSDR or slow breathing: lie down, inhale 4 seconds, exhale 6 seconds, for five minutes.",
+    "image_link": ""
+  },
+  {
+    "text": "Longer exhales activate the parasympathetic system. ”  The camera shows Elara practicing the slow breathing technique. “If anxiety about sleep persists for weeks, or you notice snoring, gasping, leg jerks, or severe daytime sleepiness, talk with a clinician. Sleep apnea and other conditions need medical assessment, not better habits alone. ” The camera shows a doctor examining a patient.",
+    "image_link": ""
+  },
+  {
+    "text": "“Naps without wrecking the night,” Elara explains. “Naps are useful if you keep them short and early. Twenty minutes, before 3 p. m. , set an alarm.",
+    "image_link": ""
+  },
+  {
+    "text": "Longer or later naps steal pressure from the night. If you are in a debt cycle, skip naps for a week to rebuild drive, then reintroduce them carefully. ” We see Elara taking a short nap. “Do not stay in bed awake. After about 20 minutes, get up, keep lights dim, go to another room, and do something dull: read a paper book you have read before, fold laundry, listen to a calm podcast at low volume.",
+    "image_link": "https://drive.google.com/file/d/1HF5YvobRl_r76e059Vs6KudMPU8V9ljQ/view"
+  },
+  {
+    "text": "No phone, no clock watching. Return to bed only when sleepy, not just tired. This retrains the bed-sleep link, the core of CBT-I, the gold standard for insomnia. ”  The camera shows Liam folding laundry. “If you wake to use the bathroom, use a nightlight, not the bright overhead.",
+    "image_link": ""
+  },
+  {
+    "text": "Avoid checking the time. The number adds pressure. ” The camera focuses on a soft nightlight. The final scene returns to Elara and Liam, side-by-side, in their bedroom. The room is dark, peaceful, and filled with a sense of calm.",
+    "image_link": ""
+  },
+  {
+    "text": "\"It’s not about the perfect technique,\" Elara says, her voice filled with quiet confidence. \"It’s about understanding your body, respecting its natural rhythms, and creating a space where sleep can thrive. \"  The camera slowly pans out, showcasing the serene beauty of the room and the tranquility of the night. The piano melody swells, then fades to silence.",
+    "image_link": ""
+  }
+]
+```

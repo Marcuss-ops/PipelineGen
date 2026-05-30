@@ -1,0 +1,30 @@
+# Generated Script
+
+## Title
+Generated Script
+
+## Storyboard Scenes
+
+### Scene scene_001
+Text: The sensors confirmed it – a vessel of unparalleled design, the ‘Icarus’, had successfully achieved orbital lock around Xylos, a planet shrouded in scientific enigma. For decades, Xylos had been dismissed as a statistical anomaly, a cosmic blip. Now, it was undeniably real. The Icarus, a culmination of fifty years of theoretical physics and desperate ambition, had arrived. The ship’s primary thrusters, after a sustained period of controlled deceleration, were brought to a silent halt.
+
+Image Drive Link: https://drive.google.com/file/d/1hKWMT-bcsmEHW_3QLPuQlYSx5RPk490x/view
+
+### Scene scene_002
+Text: A profound stillness descended as the Icarus began its slow, deliberate descent through an atmosphere unlike any known to humankind – a viscous, saturated violet. Below, through the thickening haze, a spectacle unfolded that defied immediate comprehension. A city bloomed into view, constructed entirely of crystalline structures. Towering spires, geometrically complex and radiating an internal luminescence, dominated the landscape. The light, cast by two prominent moons – one a stark, obsidian black, the other a pulsating crimson – refracted through the crystalline architecture, creating a kaleidoscopic effect.
+
+Image Drive Link: https://drive.google.com/file/d/1vAlbfWS6t2vEEd9tdlAsPW0cu-ENrJfA/view
+
+## Scenes JSON
+```json
+[
+  {
+    "text": "The sensors confirmed it – a vessel of unparalleled design, the ‘Icarus’, had successfully achieved orbital lock around Xylos, a planet shrouded in scientific enigma. For decades, Xylos had been dismissed as a statistical anomaly, a cosmic blip. Now, it was undeniably real. The Icarus, a culmination of fifty years of theoretical physics and desperate ambition, had arrived. The ship’s primary thrusters, after a sustained period of controlled deceleration, were brought to a silent halt.",
+    "image_link": "https://drive.google.com/file/d/1hKWMT-bcsmEHW_3QLPuQlYSx5RPk490x/view"
+  },
+  {
+    "text": "A profound stillness descended as the Icarus began its slow, deliberate descent through an atmosphere unlike any known to humankind – a viscous, saturated violet. Below, through the thickening haze, a spectacle unfolded that defied immediate comprehension. A city bloomed into view, constructed entirely of crystalline structures. Towering spires, geometrically complex and radiating an internal luminescence, dominated the landscape. The light, cast by two prominent moons – one a stark, obsidian black, the other a pulsating crimson – refracted through the crystalline architecture, creating a kaleidoscopic effect.",
+    "image_link": "https://drive.google.com/file/d/1vAlbfWS6t2vEEd9tdlAsPW0cu-ENrJfA/view"
+  }
+]
+```

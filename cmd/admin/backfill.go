@@ -118,7 +118,7 @@ func runBackfillHashV2(args []string) error {
 	defer sqliteDB.Close()
 	db := sqliteDB.DB
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	client, err := google.DefaultClient(ctx, driveapi.DriveScope)
 	if err != nil {
 		return fmt.Errorf("failed to create drive client: %w", err)
@@ -181,7 +181,7 @@ func runBackfillAssetIndex(args []string) error {
 	dataDir := cfg.Storage.DataDir
 	log.Info("Starting asset index backfill", zap.String("data_dir", dataDir))
 
-	ctx := context.Background()
+	ctx := cmdContext()
 
 	assetsDBPath := filepath.Join(dataDir, "assets.db.sqlite")
 	assetsSQLiteDB, err := storage.OpenSQLiteDB(assetsDBPath, log)
@@ -246,7 +246,7 @@ func runBackfillAssetTree(args []string) error {
 		{file: "stock.db.sqlite", source: "stock"},
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	for _, d := range clipDBs {
 		syncSourceWithNesting(ctx, dataDir, d.file, d.source, repo)
 	}
@@ -388,7 +388,7 @@ func backfillClips(ctx context.Context, log *zap.Logger, dataDir string, svc *as
 }
 
 func checkColumnExists(db *sql.DB, tableName, columnName string) bool {
-	rows, err := db.QueryContext(context.Background(), fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	rows, err := db.QueryContext(cmdContext(), fmt.Sprintf("PRAGMA table_info(%s)", tableName))
 	if err != nil {
 		return false
 	}

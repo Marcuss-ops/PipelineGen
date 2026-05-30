@@ -35,6 +35,13 @@ func (s *Service) callSemanticTagger(ctx context.Context, prompt, style, mediaTy
 		"--media-type", mediaType,
 		"--generator", generator,
 	}
+	// Pass Ollama config for LLM enrichment at ingest time (one-shot, not at search time)
+	if s.cfg != nil && s.cfg.External.OllamaURL != "" {
+		args = append(args, "--ollama-url", s.cfg.External.OllamaURL)
+	}
+	if s.cfg != nil && s.cfg.External.OllamaModel != "" {
+		args = append(args, "--ollama-model", s.cfg.External.OllamaModel)
+	}
 
 	cmd := exec.CommandContext(ctx, "python3", args...)
 	output, err := cmd.CombinedOutput()
@@ -49,6 +56,7 @@ func (s *Service) callSemanticTagger(ctx context.Context, prompt, style, mediaTy
 
 	return &payload, nil
 }
+
 
 func (s *Service) callLLMFallback(ctx context.Context, mediaType, prompt, style string) string {
 	if s.llmGen == nil {
@@ -309,14 +317,16 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 
 	// NEW: Asynchronous Vector Indexing
+	// Use WithoutCancel so the goroutine inherits ctx values (trace, logger)
+	// but is NOT cancelled when the HTTP request ends.
 	if s.vectorSvc != nil && err == nil {
+		asyncCtx := context.WithoutCancel(ctx)
 		go func() {
 			driveLink := ""
 			if driveFileID != "" {
 				driveLink = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID)
 			}
-			// Use a background context for async task
-			s.indexAssetInVectorStore(context.Background(), hash, source, cleanPrompt, relPath, driveLink, style, "image", meta.SearchText, tags)
+			s.indexAssetInVectorStore(asyncCtx, hash, source, cleanPrompt, relPath, driveLink, style, "image", meta.SearchText, tags)
 		}()
 	}
 
@@ -539,14 +549,16 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 	s.log.Info("UploadBatchMetadata: metadata.json uploaded for group", zap.String("gen_id", genID), zap.Int("assets_count", len(assets)))
 
 	// NEW: Asynchronous Vector Indexing for each asset in the group
+	// Use WithoutCancel so goroutines inherit ctx values but outlive the HTTP request.
 	if s.vectorSvc != nil {
+		asyncCtx := context.WithoutCancel(ctx)
 		for _, a := range assets {
 			go func(asset *models.ImageAsset) {
 				driveLink := ""
 				if asset.DriveFileID != "" {
 					driveLink = fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID)
 				}
-				s.indexAssetInVectorStore(context.Background(), asset.Hash, generator, prompt, asset.PathRel, driveLink, style, "image", meta.SearchText, asset.Tags)
+				s.indexAssetInVectorStore(asyncCtx, asset.Hash, generator, prompt, asset.PathRel, driveLink, style, "image", meta.SearchText, asset.Tags)
 			}(a)
 		}
 	}

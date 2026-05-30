@@ -80,7 +80,7 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if s.cfg.ServerURL != "" {
 		err := s.indexViaAPI(ctx, clipID)
 		if err == nil {
-			s.upsertVectorStore(ctx, clipID)
+			s.UpsertVectorStore(ctx, clipID)
 			return nil
 		}
 		s.log.Warn("failed to index via API, falling back to script", zap.Error(err))
@@ -90,7 +90,7 @@ func (s *Service) IndexClip(ctx context.Context, clipID string) error {
 	if err != nil {
 		return err
 	}
-	s.upsertVectorStore(ctx, clipID)
+	s.UpsertVectorStore(ctx, clipID)
 	return nil
 }
 
@@ -239,8 +239,8 @@ func (s *Service) SetVectorStore(vs VectorStoreIndexer) {
 	s.vectorStore = vs
 }
 
-// upsertVectorStore pushes the newly indexed clip to Qdrant if a vector store is configured.
-func (s *Service) upsertVectorStore(ctx context.Context, clipID string) {
+// UpsertVectorStore pushes the newly indexed clip to Qdrant if a vector store is configured.
+func (s *Service) UpsertVectorStore(ctx context.Context, clipID string) {
 	if s.vectorStore == nil {
 		return
 	}

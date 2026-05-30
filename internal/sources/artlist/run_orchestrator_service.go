@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"velox/go-master/internal/core/processor"
+	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/hashutil"
 	driveutil "velox/go-master/internal/upload/drive"
 )
@@ -179,6 +180,20 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 		resp.Processed++
 		processedCount++
 		resp.Items = append(resp.Items, item)
+
+		// Arricchimento semantico sul clip finale (con nome definitivo e local path)
+		if o.svc.semanticEnricher != nil {
+			enrichClip := &models.MediaAsset{
+				ID:           item.ClipID,
+				Name:         item.Name,
+				LocalPath:    item.LocalPath,
+				DriveLink:    item.DriveLink,
+				DriveFileID:  item.DriveFileID,
+				DownloadLink: item.DownloadLink,
+				Tags:         []string{resp.Term},
+			}
+			o.svc.semanticEnricher.EnrichAsync(enrichClip, resp.Term)
+		}
 	}
 
 	if processedCount == 0 && resp.Failed > 0 && resp.Skipped == 0 {

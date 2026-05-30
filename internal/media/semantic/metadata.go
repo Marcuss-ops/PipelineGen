@@ -15,6 +15,12 @@ type AssetSemanticInput struct {
 	PromptOriginal      string
 	SemanticDescription string
 	SearchText          string
+	// LLM-generated enriched fields (produced at ingest time, stored in DB)
+	ConceptTags         []string // synonym-expanded concepts
+	VisualObjects       []string // physical objects in the image
+	EmotionalTone       []string // psychological/emotional intent
+	SearchTextExpanded  string   // full FTS blob for BM25+vector search
+	// Taxonomy fields
 	Subjects            []string
 	SubjectSlugs        []string
 	Tags                []string
@@ -47,6 +53,20 @@ func BuildAssetMetadata(in AssetSemanticInput, existing map[string]any) map[stri
 	setIfEmpty("prompt_original", strings.TrimSpace(in.PromptOriginal))
 	setIfEmpty("semantic_description", strings.TrimSpace(in.SemanticDescription))
 	setIfEmpty("search_text", strings.TrimSpace(in.SearchText))
+	// LLM-enriched fields
+	if len(in.ConceptTags) > 0 {
+		setIfEmpty("concept_tags", in.ConceptTags)
+	}
+	if len(in.VisualObjects) > 0 {
+		setIfEmpty("visual_objects", in.VisualObjects)
+	}
+	if len(in.EmotionalTone) > 0 {
+		setIfEmpty("emotional_tone", in.EmotionalTone)
+	}
+	if strings.TrimSpace(in.SearchTextExpanded) != "" {
+		setIfEmpty("search_text_expanded", strings.TrimSpace(in.SearchTextExpanded))
+	}
+	// Taxonomy fields
 	if len(in.Subjects) > 0 {
 		setIfEmpty("subjects", in.Subjects)
 	}

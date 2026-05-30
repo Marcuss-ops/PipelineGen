@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -68,7 +67,7 @@ func runCleanupOrphans(args []string) error {
 	}
 	fmt.Println()
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	deleted, err := deletionSvc.CleanupOrphanFiles(ctx, assetsDir, !*apply)
 	if err != nil {
 		return fmt.Errorf("orphan cleanup failed: %w", err)
@@ -117,7 +116,7 @@ func runCleanupAllOrphans(args []string) error {
 		{"YouTube Clips", "1r4B_m3Gz_5f2f5O-vNqG6_G8_G8_G8_G", "clips"},
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	for _, t := range targets {
 		if t.rootID == "" || t.rootID == "1r4B_m3Gz_5f2f5O-vNqG6_G8_G8_G8_G" {
 			fmt.Printf("\n--- Skipping %s: Root ID not configured or placeholder ---\n", t.name)
@@ -201,7 +200,7 @@ func runCleanupArtlistEmptyFolders(args []string) error {
 	}
 	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
@@ -276,7 +275,7 @@ func runCleanupStockOrphans(args []string) error {
 	}
 	driveUploader := &drive.Uploader{Service: deps.DriveClient, Log: log}
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	fmt.Printf("Scanning Drive folder: %s\n", *parentID)
 	query := fmt.Sprintf("'%s' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false", *parentID)
 
@@ -354,7 +353,7 @@ func runDeleteSpecificFolders(args []string) error {
 		log,
 	)
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	folderIDs := []string{
 		"1M7qauleXrKliDsouP4H9Iodl_y2Z0o8-",
 		"10hGPV1wqV6a-ZbToDSIHjM8CodJPm3Hg",
@@ -429,7 +428,7 @@ func runSyncAllDrive(args []string) error {
 	}
 	defer cleanup()
 
-	ctx := context.Background()
+	ctx := cmdContext()
 
 	deps, coreCleanup, err := app.ExportInitCoreMinimal(cfg, log)
 	if err != nil {

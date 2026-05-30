@@ -88,7 +88,7 @@ google-accounting/sessions/*.json
 __pycache__/
 
 # Database backups and backups leak prevention
-*.bak
-*.sqlite.bak
-data/**/*.bak
-data/**/*.sqlite.bak
+**/*.bak
+**/*.sqlite.bak
+**/*.db.bak
+**/*.db.sqlite.bak

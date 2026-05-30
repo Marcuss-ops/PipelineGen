@@ -1,16 +1,33 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"velox/go-master/internal/admin/googleaccounting"
 )
 
 type commandFunc func(args []string) error
 
+var rootCmdCtx context.Context
+
+func cmdContext() context.Context {
+	if rootCmdCtx == nil {
+		return context.Background()
+	}
+	return rootCmdCtx
+}
+
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	rootCmdCtx = ctx
+	googleaccounting.SetContext(ctx)
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -38,6 +55,9 @@ func main() {
 		"verify-artlist-pipeline": runVerifyArtlistPipeline,
 		"list-drive-folder":      runListDriveFolder,
 		"reset-video-ai":         runResetVideoAI,
+		"sync-outros":            runSyncOutros,
+		"backfill-missing":       runBackfillMissing,
+		"summarize-book":         runSummarizeBook,
 	}
 	fn, ok := commands[cmdName]
 	if !ok {
@@ -76,5 +96,9 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  sync-all-drive")
 	fmt.Fprintln(os.Stderr, "  test-youtube")
 	fmt.Fprintln(os.Stderr, "  verify-artlist-pipeline")
-	}
+	fmt.Fprintln(os.Stderr, "  reset-video-ai")
+	fmt.Fprintln(os.Stderr, "  sync-outros")
+	fmt.Fprintln(os.Stderr, "  backfill-missing")
+	fmt.Fprintln(os.Stderr, "  summarize-book")
+}
 

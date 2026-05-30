@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -40,7 +39,7 @@ func runListDriveFolder(args []string) error {
 		return fmt.Errorf("drive client is not available")
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext()
 
 	query := fmt.Sprintf("'%s' in parents and trashed = false", *folder)
 	list, err := deps.DriveClient.Files.List().Q(query).

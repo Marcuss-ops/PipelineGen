@@ -41,7 +41,7 @@ func runResetVideoAI(args []string) error {
 		return fmt.Errorf("drive client is not available")
 	}
 
-	ctx := context.Background()
+	ctx := cmdContext()
 	stockRootFolder := cfg.Drive.RootFolder()
 
 	// Step 1: List and delete all items in the source folder

@@ -26,6 +26,9 @@ type Service struct {
 	artlistDB      *sql.DB
 	log            *zap.Logger
 
+	// L1: in-memory cache per risultati live (evita rilanci di Playwright per term già ricercati di recente)
+	liveCache *liveSearchCache
+
 	// Componenti delegati
 	searchService      *SearchService
 	runOrchestrator    *RunOrchestratorService
@@ -42,10 +45,22 @@ type Service struct {
 	jobsSvc           *jobservice.Service
 	clipIndexer       *clipindexer.Service
 	driveSvc          *driveapi.Service
+
+	// Arricchimento semantico: popola search_text + embedding_json dopo ogni salvataggio
+	semanticEnricher  *SemanticEnricher
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service, log *zap.Logger) (*Service, error) {
+	scriptsDir := ""
+	ollamaURL := ""
+	ollamaModel := ""
+	if cfg != nil {
+		scriptsDir = cfg.Paths.PythonScriptsDir
+		ollamaURL = cfg.External.OllamaURL
+		ollamaModel = cfg.External.OllamaModel
+	}
+
 	s := &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
@@ -58,6 +73,8 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRe
 		jobsSvc:           jobsSvc,
 		driveSvc:          driveSvc,
 		log:               log,
+		liveCache:         newLiveSearchCache(),
+		semanticEnricher:  NewSemanticEnricher(artlistRepo, clipIndexer, scriptsDir, ollamaURL, ollamaModel, log),
 	}
 
 	// Inizializza i componenti delegati

@@ -146,6 +146,9 @@ func (h *Handler) GenerateVideo(c *gin.Context) {
 	}
 
 	// Background pipeline: Python → wait → Drive upload → DB registration
+	// context.Background() is intentional here: this is a long-running background job
+	// (minutes) with DB persistence. Cancelling it when the HTTP request ends would
+	// silently abort video generation. The client polls /status/:job_id separately.
 	go func(ctx context.Context, svc *images.Service, prompt, style, jid string) {
 		if err := h.jobsService.SetRunning(ctx, jid); err != nil {
 			h.log.Error("failed to mark job running", zap.String("job_id", jid), zap.Error(err))
@@ -225,6 +228,8 @@ func (h *Handler) GenerateAvatar(c *gin.Context) {
 		return
 	}
 
+	// context.Background() is intentional: avatar generation is a long-running job
+	// persisted in the DB. Cancelling it on HTTP request end would silently abort work.
 	go func(ctx context.Context, svc *images.Service, script, avatarID, jid string) {
 		if err := h.jobsService.SetRunning(ctx, jid); err != nil {
 			h.log.Error("failed to mark job running", zap.String("job_id", jid), zap.Error(err))

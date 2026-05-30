@@ -126,6 +126,13 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 	if imageModel == "" {
 		imageModel = "FLUX.1-schnell"
 	}
+	imagesPerScene := req.ImagesPerScene
+	if imagesPerScene < 1 {
+		imagesPerScene = 1
+	}
+	if imagesPerScene > 5 {
+		imagesPerScene = 5 // Safety cap
+	}
 
 	type result struct {
 		index int
@@ -133,7 +140,7 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 	}
 
 	resChan := make(chan result, len(sentences))
-	sem := make(chan struct{}, 7) // Concurrency semaphore limit = 7
+	sem := make(chan struct{}, 1) // Concurrency semaphore limit = 1 to prevent overloading Google Accounting server
 	var wg sync.WaitGroup
 
 	for idx, sentence := range sentences {
@@ -186,27 +193,68 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 				}
 			}
 
-			// 2. Generate if cache missed
-			if matchedAsset != nil {
-				scene.Image = generatedImageFromAsset(matchedAsset)
-			} else {
-				asset, genErr := h.imgService.GenerateSmartImage(
-					ctx,
-					sentence,
-					title,
-					visualStyle,
-					[]string{sentence},
-					[]string{req.Style, req.VisualStyle, req.Language},
-					req.Width,
-					req.Height,
-					imageModel,
-					false,
-				)
-				if genErr != nil {
-					scene.Error = genErr.Error()
-				} else {
-					scene.Image = generatedImageFromAsset(asset)
+			// 2. Generate images — either from cache or fresh (imagesPerScene variants)
+			// Variant angle suffixes to diversify prompts and avoid YouTube content reuse flagging
+			variantSuffixes := []string{
+				"",                             // primary — exact prompt
+				", close-up view, zoomed in",   // variant 2
+				", wide angle, establishing shot", // variant 3
+				", side view, different angle",  // variant 4
+				", overhead view, birds eye",    // variant 5
+			}
+
+			var generatedImages []GeneratedImage
+
+			for variantIdx := 0; variantIdx < imagesPerScene; variantIdx++ {
+				variantSentence := sentence
+				if variantIdx > 0 && variantIdx < len(variantSuffixes) {
+					variantSentence = sentence + variantSuffixes[variantIdx]
 				}
+
+				var assetForVariant *models.ImageAsset
+
+				// Only try cache for the primary (variant 0) — variants must be fresh for uniqueness
+				if variantIdx == 0 && matchedAsset != nil {
+					assetForVariant = matchedAsset
+				} else {
+					var genErr error
+					assetForVariant, genErr = h.imgService.GenerateSmartImage(
+						ctx,
+						variantSentence,
+						title,
+						visualStyle,
+						[]string{variantSentence},
+						[]string{req.Style, req.VisualStyle, req.Language},
+						req.Width,
+						req.Height,
+						imageModel,
+						false,
+					)
+					if genErr != nil {
+						h.log.Warn("image variant generation failed",
+							zap.Int("scene_idx", idx),
+							zap.Int("variant", variantIdx),
+							zap.Error(genErr),
+						)
+						if variantIdx == 0 {
+							scene.Error = genErr.Error()
+						}
+						continue // skip failed variant, continue with next
+					}
+				}
+
+				if assetForVariant != nil {
+					img := generatedImageFromAsset(assetForVariant)
+					if img != nil {
+						generatedImages = append(generatedImages, *img)
+					}
+				}
+			}
+
+			// Set primary image and full images slice
+			if len(generatedImages) > 0 {
+				scene.Image = &generatedImages[0]
+				scene.Images = generatedImages
 			}
 
 			// Voiceover generation moved to unified generation after scene loop
@@ -258,78 +306,104 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 		}
 	}
 
-	// 4. Translate rewritten script and scenes for all other requested languages
+	// 4. Translate rewritten script and scenes for all other requested languages in parallel
 	packageData.Translations = make(map[string]ScriptTranslation)
+	var transMu sync.Mutex
+	var transWg sync.WaitGroup
+
 	for _, lang := range req.Languages {
 		if lang == req.Language {
 			continue // Already base language
 		}
 
-		h.log.Info("translating script to target language", zap.String("lang", lang))
-		translatedScript, transErr := h.generator.TranslateText(ctx, rewritten, lang)
-		if transErr != nil {
-			h.log.Error("failed to translate script", zap.String("lang", lang), zap.Error(transErr))
-			continue
-		}
+		transWg.Add(1)
+		go func(lang string) {
+			defer transWg.Done()
 
-		// Translate scene texts
-		translatedScenes := make([]GeneratedScene, len(packageData.Scenes))
-		for sIdx, baseScene := range packageData.Scenes {
-			transSceneText, sceneTransErr := h.generator.TranslateText(ctx, baseScene.Text, lang)
-			if sceneTransErr != nil {
-				transSceneText = baseScene.Text // Fallback
+			h.log.Info("translating script to target language", zap.String("lang", lang))
+			translatedScript, transErr := h.generator.TranslateText(ctx, rewritten, lang)
+			if transErr != nil {
+				h.log.Error("failed to translate script", zap.String("lang", lang), zap.Error(transErr))
+				return
 			}
-			translatedScenes[sIdx] = GeneratedScene{
-				ID:        baseScene.ID,
-				Index:     baseScene.Index,
-				Text:      transSceneText,
-				Query:     baseScene.Query,
-				Image:     baseScene.Image, // Reuse the same image mapping!
-				Error:     baseScene.Error,
+
+			// Translate scene texts concurrently
+			translatedScenes := make([]GeneratedScene, len(packageData.Scenes))
+			var sceneWg sync.WaitGroup
+			var sceneMu sync.Mutex
+			sceneSem := make(chan struct{}, 5) // limit concurrency to avoid overloading Ollama
+
+			for sIdx, baseScene := range packageData.Scenes {
+				sceneWg.Add(1)
+				go func(idx int, scene GeneratedScene) {
+					defer sceneWg.Done()
+					sceneSem <- struct{}{}
+					defer func() { <-sceneSem }()
+
+					transSceneText, sceneTransErr := h.generator.TranslateText(ctx, scene.Text, lang)
+					if sceneTransErr != nil {
+						transSceneText = scene.Text // Fallback
+					}
+
+					sceneMu.Lock()
+					translatedScenes[idx] = GeneratedScene{
+						ID:        scene.ID,
+						Index:     scene.Index,
+						Text:      transSceneText,
+						Query:     scene.Query,
+						Image:     scene.Image, // Reuse the same image mapping!
+						Error:     scene.Error,
+					}
+					sceneMu.Unlock()
+				}(sIdx, baseScene)
 			}
-		}
+			sceneWg.Wait()
 
-		// Generate unified voiceover for this translation
-		var transVo *GeneratedVoiceover
-		if h.voService != nil {
-			voFilename := fmt.Sprintf("%s-%s", outputName, lang)
-			h.log.Info("generating translated voiceover for script", zap.String("lang", lang), zap.String("filename", voFilename))
+			// Generate unified voiceover for this translation
+			var transVo *GeneratedVoiceover
+			if h.voService != nil {
+				voFilename := fmt.Sprintf("%s-%s", outputName, lang)
+				h.log.Info("generating translated voiceover for script", zap.String("lang", lang), zap.String("filename", voFilename))
 
-			var destReq *voiceover.DestinationRequest
-			dbConn := h.voService.DB()
-			if dbConn != nil {
-				var folderID string
-				err := dbConn.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
-				if err == nil && folderID != "" {
-					destReq = &voiceover.DestinationRequest{
-						FolderID:        folderID,
-						Group:           "explainatory",
-						SubfolderName:   outputName,
-						CreateSubfolder: true,
+				var destReq *voiceover.DestinationRequest
+				dbConn := h.voService.DB()
+				if dbConn != nil {
+					var folderID string
+					err := dbConn.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
+					if err == nil && folderID != "" {
+						destReq = &voiceover.DestinationRequest{
+							FolderID:        folderID,
+							Group:           "explainatory",
+							SubfolderName:   outputName,
+							CreateSubfolder: true,
+						}
 					}
 				}
-			}
 
-			voRes, voErr := h.voService.GenerateWithDestination(ctx, translatedScript, lang, voFilename, destReq)
-			if voErr != nil {
-				h.log.Error("translated voiceover generation failed", zap.String("lang", lang), zap.Error(voErr))
-			} else if voRes != nil {
-				transVo = &GeneratedVoiceover{
-					LocalPath: voRes.Path,
-					DriveLink: voRes.DriveLink,
-					Voice:     voRes.Voice,
+				voRes, voErr := h.voService.GenerateWithDestination(ctx, translatedScript, lang, voFilename, destReq)
+				if voErr != nil {
+					h.log.Error("translated voiceover generation failed", zap.String("lang", lang), zap.Error(voErr))
+				} else if voRes != nil {
+					transVo = &GeneratedVoiceover{
+						LocalPath: voRes.Path,
+						DriveLink: voRes.DriveLink,
+						Voice:     voRes.Voice,
+					}
+					h.log.Info("translated voiceover generated successfully", zap.String("lang", lang), zap.String("drive_link", voRes.DriveLink))
 				}
-				h.log.Info("translated voiceover generated successfully", zap.String("lang", lang), zap.String("drive_link", voRes.DriveLink))
 			}
-		}
 
-		packageData.Translations[lang] = ScriptTranslation{
-			Language:        lang,
-			RewrittenScript: translatedScript,
-			Scenes:          translatedScenes,
-			Voiceover:       transVo,
-		}
+			transMu.Lock()
+			packageData.Translations[lang] = ScriptTranslation{
+				Language:        lang,
+				RewrittenScript: translatedScript,
+				Scenes:          translatedScenes,
+				Voiceover:       transVo,
+			}
+			transMu.Unlock()
+		}(lang)
 	}
+	transWg.Wait()
 
 	videoScenes := make([]VideoScene, 0, len(packageData.Scenes))
 	for _, s := range packageData.Scenes {
@@ -341,9 +415,19 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 				link = s.Image.LocalPath
 			}
 		}
+		// Collect all variant links
+		var allLinks []string
+		for _, img := range s.Images {
+			if img.DriveLink != "" {
+				allLinks = append(allLinks, img.DriveLink)
+			} else if img.LocalPath != "" {
+				allLinks = append(allLinks, img.LocalPath)
+			}
+		}
 		videoScenes = append(videoScenes, VideoScene{
-			Text:      s.Text,
-			ImageLink: link,
+			Text:       s.Text,
+			ImageLink:  link,
+			ImageLinks: allLinks,
 		})
 	}
 

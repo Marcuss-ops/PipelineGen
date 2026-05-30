@@ -674,8 +674,18 @@ class GoogleVidsImagesMixin:
                                 break
                         except Exception as e:
                             log.warning("Backdrop selector %s failed: %s", sel, e)
-                if not dialog_closed:
-                    log.info("No getting-started dialog to close")
+            # Deselect any active elements (Escape + backdrop click) to ensure contextual toolbars (e.g. Image Options) are closed
+            try:
+                log.info("Deselecting active elements to show main toolbar...")
+                await page.keyboard.press("Escape")
+                await human_delay(300, 600)
+                backdrop_sel = '.sketchy-desktop-viewport, .docs-editor-container, .apps-layer-front'
+                backdrop = page.locator(backdrop_sel).first
+                if await backdrop.count() > 0:
+                    await self._human_click(page, backdrop, timeout=3000)
+                    await human_delay(300, 600)
+            except Exception as e:
+                log.warning("Deselect failed: %s", e)
 
             # ── Step 1: Click "Immagini" tab ──────────────────────────────────
             log.info("Step 1: Clicking Immagini tab...")

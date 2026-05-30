@@ -41,10 +41,11 @@
 
 | Module | Status | Feature Flag | Description | Database | Module Path |
 |--------|--------|--------------|-------------|----------|-------------|
-| **ScriptDocs** | ACTIVE | `SCRIPT_DOCS_ENABLED` | Script generation via Ollama | `velox.db.sqlite` | `internal/api/handlers/script/` |
+| **ScriptDocs** | ACTIVE | `SCRIPT_DOCS_ENABLED` | Script generation + multi-image scene pipeline | `velox.db.sqlite` | `internal/api/handlers/script/` |
 | **Script History** | ACTIVE | `SCRIPT_CLIPS_ENABLED` | Generated script history | `velox.db.sqlite` | `internal/module/scripthistory.go` |
 | **Voiceover** | EXPERIMENTAL | `VOICEOVER_ENABLED` | Voiceover generation, sync | `media.db.sqlite` | `internal/media/voiceover/` |
-| **Images** | EXPERIMENTAL | `IMAGES_ENABLED` | Image search, sync and generation (NVIDIA AI) | `media.db.sqlite` | `internal/media/images/` |
+| **Images** | EXPERIMENTAL | `IMAGES_ENABLED` | Image generation (NVIDIA/Google), semantic enrichment | `media.db.sqlite` | `internal/media/images/` |
+| **Semantic Tagger** | ACTIVE | always ON | LLM metadata enrichment at ingest (concept_tags, visual_objects, emotional_tone, search_text_expanded) | n/a (JSON in media_assets) | `internal/media/semantic/` + `scripts/semantic_tagger.py` |
 
 ### Asset Management
 

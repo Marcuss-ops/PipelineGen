@@ -48,6 +48,9 @@ external:
   pixabay_base_url: "https://pixabay.com/api"
   pexels_api_key: ""
   pexels_base_url: "https://api.pexels.com/v1"
+  # Artlist scraper optimizations
+  artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
+  artlist_scraper_server_url: ""             # Level 3: set to "http://localhost:9123" when server is running
 
 paths:
   python_scripts_dir: "scripts"

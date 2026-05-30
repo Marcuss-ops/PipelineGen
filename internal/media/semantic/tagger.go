@@ -13,13 +13,19 @@ import (
 type Payload struct {
 	AssetID             string           `json:"asset_id,omitempty"`
 	AssetType           string           `json:"asset_type"`
-	SemanticTier        string           `json:"semantic_tier"`
+	SemanticTier        string           `json:"semantic_tier"` // "generated_rich" when enriched
 	Source              string           `json:"source"`
 	MediaType           string           `json:"media_type"`
 	Generator           string           `json:"generator"`
 	PromptOriginal      string           `json:"prompt_original"`
 	SemanticDescription string           `json:"semantic_description"`
 	SearchText          string           `json:"search_text"`
+	// Enriched fields for hybrid BM25+vector search (no LLM at runtime)
+	ConceptTags         []string         `json:"concept_tags,omitempty"`    // synonym-expanded keywords
+	VisualObjects       []string         `json:"visual_objects,omitempty"`  // physical objects in image
+	EmotionalTone       []string         `json:"emotional_tone,omitempty"` // psychological intent
+	SearchTextExpanded  string           `json:"search_text_expanded,omitempty"` // full FTS blob
+	// Core taxonomy fields
 	Subjects            []string         `json:"subjects"`
 	SubjectSlugs        []string         `json:"subject_slugs"`
 	Tags                []string         `json:"tags"`
@@ -37,7 +43,9 @@ type Payload struct {
 
 // Tagger calls the Python semantic_tagger.py script and returns a Payload.
 // mediaType can be "image", "video", "audio", or "voiceover".
-func Tagger(ctx context.Context, scriptsDir, prompt, style, mediaType, generator string) (*Payload, error) {
+// ollamaURL and ollamaModel are used to call Ollama for LLM enrichment at ingest time.
+// Pass empty strings to skip LLM enrichment (taxonomy-only mode).
+func Tagger(ctx context.Context, scriptsDir, prompt, style, mediaType, generator, ollamaURL, ollamaModel string) (*Payload, error) {
 	scriptPath := filepath.Join(scriptsDir, "semantic_tagger.py")
 	args := []string{
 		scriptPath,
@@ -45,6 +53,12 @@ func Tagger(ctx context.Context, scriptsDir, prompt, style, mediaType, generator
 		"--style", style,
 		"--media-type", mediaType,
 		"--generator", generator,
+	}
+	if ollamaURL != "" {
+		args = append(args, "--ollama-url", ollamaURL)
+	}
+	if ollamaModel != "" {
+		args = append(args, "--ollama-model", ollamaModel)
 	}
 
 	cmd := exec.CommandContext(ctx, "python3", args...)
@@ -60,3 +74,4 @@ func Tagger(ctx context.Context, scriptsDir, prompt, style, mediaType, generator
 
 	return &payload, nil
 }
+

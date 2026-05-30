@@ -31,8 +31,15 @@ external:
   pixabay_base_url: "https://pixabay.com/api"
   pexels_api_key: ""
   pexels_base_url: "https://api.pexels.com/v1"
+  # Artlist scraper optimizations
+  # Level 1+2: in-memory cache (default 24h TTL, background refresh at 75% TTL)
+  artlist_live_search_cache_ttl_hours: 24
+  # Level 3: persistent Node.js scraper server (keep Chromium warm between searches)
+  # Start with: node node-scraper/artlist_server.js
+  # Or: sudo systemctl start artlist-scraper
+  artlist_scraper_server_url: ""  # e.g. "http://localhost:9123" when server is running
   nvidia_api_key: ""
-  nvidia_model: "flux-1-dev"
+  nvidia_model: "flux-1-schnell"
 
 video:
   width: 1920
@@ -93,6 +100,7 @@ drive:
   video_ai_root_folder: "1m83vpyunkUrtWoUcQyRhnGrp0S5SYvQ9"
   copertine_root_folder: "1iifOcR4ZrZAep8y1lT3qc1Ku0Z9XwbaZ"
   sound_effects_root_folder: "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
+  outro_root_folder: "12z9U1KRM5C5WmC9xOS2kRtdBDCyL-vbq"
 
 features:
   artlist_enabled: true

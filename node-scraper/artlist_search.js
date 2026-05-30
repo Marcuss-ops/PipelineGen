@@ -46,9 +46,21 @@ function parseArgs(argv) {
   return args;
 }
 
-async function searchArtlist(term, limit, profileDir) {
-  const handle = await createBrowserPage(profileDir);
-  const { browser, page } = handle;
+async function searchArtlist(term, limit, profileDir, existingBrowser = null) {
+  let handle = null;
+  let browser = existingBrowser;
+  let page = null;
+
+  if (existingBrowser) {
+    const context = await existingBrowser.createBrowserContext();
+    page = await context.newPage();
+    handle = { browser: existingBrowser, context, page, connected: true };
+  } else {
+    handle = await createBrowserPage(profileDir);
+    browser = handle.browser;
+    page = handle.page;
+  }
+
   await page.setViewport({ width: 1440, height: 900 });
   await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
@@ -196,7 +208,12 @@ async function searchArtlist(term, limit, profileDir) {
       clips: (scored.length >= limit ? scored : fallback).slice(0, limit).map(({ score, ...clip }) => clip),
     };
   } finally {
-    await closeBrowserHandle(handle);
+    if (existingBrowser) {
+      if (page) await page.close().catch(() => {});
+      if (handle?.context) await handle.context.close().catch(() => {});
+    } else {
+      await closeBrowserHandle(handle);
+    }
   }
 }
 

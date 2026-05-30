@@ -142,6 +142,11 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, term string, lim
 
 		if err := s.artlistRepo.UpsertClip(ctx, clip); err == nil {
 			resp.Clips = append(resp.Clips, *clip)
+			// Arricchimento semantico in background: popola search_text + embedding_json
+			// senza bloccare il flusso di risposta all'utente.
+			if s.semanticEnricher != nil {
+				s.semanticEnricher.EnrichAsync(clip, term)
+			}
 		}
 	}
 

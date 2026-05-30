@@ -230,11 +230,18 @@ type DriveConfig struct {
 	CopertineRootFolder string `yaml:"copertine_root_folder" env:"VELOX_DRIVE_COPERTINE_ROOT" default:""`
 	// Sound effects root folder
 	SoundEffectsRootFolder string `yaml:"sound_effects_root_folder" env:"VELOX_DRIVE_SOUND_EFFECTS_ROOT" default:""`
+	// Outro channels root folder
+	OutroRootFolder string `yaml:"outro_root_folder" env:"VELOX_DRIVE_OUTRO_ROOT" default:""`
 }
 
 // RootFolder returns the MediaRootFolder.
 func (d DriveConfig) RootFolder() string {
 	return d.MediaRootFolder
+}
+
+// OutroFolder returns the OutroRootFolder.
+func (d DriveConfig) OutroFolder() string {
+	return d.OutroRootFolder
 }
 
 // LoggingConfig holds logger-specific configuration.
@@ -354,6 +361,9 @@ type ExternalConfig struct {
 	PixabayBaseURL       string `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
 	PexelsAPIKey         string `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`
 	PexelsBaseURL        string `yaml:"pexels_base_url" env:"PEXELS_BASE_URL" default:"https://api.pexels.com/v1"`
+	// Artlist scraper optimizations
+	ArtlistScraperServerURL       string `yaml:"artlist_scraper_server_url" env:"ARTLIST_SCRAPER_SERVER_URL" default:""` // e.g. http://localhost:9123 — persistent Node.js server (Level 3)
+	ArtlistLiveSearchCacheTTLHours int   `yaml:"artlist_live_search_cache_ttl_hours" env:"ARTLIST_CACHE_TTL_HOURS" default:"24"` // in-memory cache TTL (Level 1)
 }
 
 // PathsConfig holds the few filesystem paths still used by the minimal server.
