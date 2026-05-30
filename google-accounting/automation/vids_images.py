@@ -613,6 +613,18 @@ class GoogleVidsImagesMixin:
                 except Exception:
                     pass
 
+            # Wait for welcome dialog choices to become enabled (Google Vids finishes loading in bg)
+            log.info("Waiting for welcome dialog choices to become enabled...")
+            try:
+                await page.wait_for_selector(
+                    'button[data-view-id="getting-started-dialog-videogen"]:not(.getting-started-dialog-navigation-button-disabled), '
+                    'button.appsDocsGettingStartedEntryPointSelectionViewBlankCard:not(.getting-started-dialog-navigation-button-disabled)',
+                    timeout=35000
+                )
+                log.info("Welcome dialog options are now enabled!")
+            except Exception as e:
+                log.warning("Timeout waiting for welcome dialog options to enable, proceeding anyway: %s", e)
+
             # ── Step 0: Click Veo 3.1 or "Video vuoto" if present ───────────
             log.info("Step 0: Checking for Veo 3.1 / 'Video vuoto' button...")
             entry_clicked = False
