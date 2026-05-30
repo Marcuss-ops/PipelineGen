@@ -26,22 +26,30 @@ async def main():
     async with async_playwright() as p:
         launch_args = [
             "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
         ]
         
-        # If legacy session JSON exists but persistent profile is empty, import it once
-        storage_state = None
-        if session_path.exists() and not (profile_path.exists() and any(profile_path.iterdir())):
-            print("Importing legacy storage state JSON to persistent context profile")
-            storage_state = str(session_path)
-
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(profile_path),
             headless=False, 
             args=launch_args,
             channel="chrome",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-            storage_state=storage_state
+            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
         )
+        
+        # Import legacy cookies if profile is empty but session JSON exists
+        if session_path.exists() and not any(profile_path.iterdir()):
+            try:
+                import json as _json
+                state = _json.loads(session_path.read_text(encoding="utf-8"))
+                cookies = state.get("cookies", [])
+                if cookies:
+                    await context.add_cookies(cookies)
+                    print(f"Imported {len(cookies)} cookies from legacy session JSON")
+            except Exception as e:
+                print(f"Warning: could not import legacy cookies: {e}")
+
         
         page = await context.new_page()
         await page.goto("https://vids.google.com")
