@@ -32,6 +32,16 @@ async def _sync_all():
     log.info("Global scheduled sync complete. Downloaded %d files.", downloaded)
 
 
+async def _keep_alive_job():
+    from keep_alive import run_keep_alive
+    log.info("Running scheduled keep-alive task...")
+    try:
+        success = await run_keep_alive(account="favamassimo", headless=True)
+        log.info("Scheduled keep-alive run completed. Success: %s", success)
+    except Exception as e:
+        log.error("Failed running scheduled keep-alive: %s", e)
+
+
 def start(custom_cron: str | None = None):
     cron = custom_cron or SCHEDULE_CRON
     parts = cron.split()
@@ -43,6 +53,11 @@ def start(custom_cron: str | None = None):
         day_of_week=parts[4],
     )
     scheduler.add_job(_sync_all, trigger, id="sync_all", replace_existing=True)
+    
+    # Run keep-alive every 4 hours to prevent session expiry
+    from apscheduler.triggers.interval import IntervalTrigger
+    scheduler.add_job(_keep_alive_job, IntervalTrigger(hours=4), id="keep_alive", replace_existing=True)
+    
     scheduler.start()
     log.info("Scheduler started with cron: %s", cron)
 

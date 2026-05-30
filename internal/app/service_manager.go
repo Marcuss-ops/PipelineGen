@@ -47,6 +47,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	styleRegistry, _ := generation.NewStyleRegistry("config/generation_styles.yaml")
 
 	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
+	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
 	scriptGen := ollama.NewGenerator(ollamaClient)
 
 	docClient, err := drive.NewDocClient(ctx, cfg.GetCredentialsPath(), cfg.GetTokenPath())

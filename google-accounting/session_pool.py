@@ -13,7 +13,7 @@ from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
-from config import get_session_path, DOWNLOAD_DIR
+from config import get_session_path, get_profile_path, DOWNLOAD_DIR
 
 log = logging.getLogger("SessionPool")
 
@@ -53,7 +53,6 @@ class SessionPool:
 
     def __init__(self):
         self._playwright = None
-        self._browser: Optional[Browser] = None
         self._sessions: dict[str, list[WarmSession]] = {}  # account -> sessions
         self._warm_pages: dict[tuple[str, str], list[Page]] = {}  # (account, video_id) -> pages
         self._active_pages: set[Page] = set()
@@ -61,27 +60,17 @@ class SessionPool:
         self._started = False
 
     async def start(self):
-        """Initialize Playwright and launch the browser (call at startup)."""
+        """Initialize Playwright (call at startup)."""
         if self._started:
             return
 
         log.info("Starting session pool...")
         self._playwright = await async_playwright().start()
-
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-        ]
-
-        self._browser = await self._playwright.chromium.launch(
-            headless=True,
-            args=launch_args,
-            channel="chrome",
-        )
         self._started = True
-        log.info("Session pool started (browser launched)")
+        log.info("Session pool started")
 
     async def stop(self):
-        """Close all warm sessions, loaded pages and the browser."""
+        """Close all warm sessions and loaded pages."""
         if not self._started:
             return
 
@@ -108,9 +97,6 @@ class SessionPool:
                     await session.close()
             self._sessions.clear()
 
-        if self._browser:
-            await self._browser.close()
-            self._browser = None
         if self._playwright:
             await self._playwright.stop()
             self._playwright = None
@@ -119,11 +105,14 @@ class SessionPool:
         log.info("Session pool stopped")
 
     async def _create_context(self, account: str) -> BrowserContext:
-        """Create a new browser context with session state."""
+        """Create a new persistent browser context."""
+        profile_path = get_profile_path(account)
         session_path = get_session_path(account)
-        if not session_path.exists():
+        
+        login_exists = session_path.exists() or (profile_path.exists() and any(profile_path.iterdir()))
+        if not login_exists:
             raise FileNotFoundError(
-                f"Session not found for account '{account}' at {session_path}. "
+                f"Session/Profile not found for account '{account}'. "
                 "Run login first."
             )
 
@@ -132,12 +121,26 @@ class SessionPool:
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/129.0.0.0 Safari/537.36"
         )
+        
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+        ]
 
-        context = await self._browser.new_context(
-            storage_state=str(session_path),
+        # Migrate JSON if needed
+        storage_state = None
+        if session_path.exists() and not (profile_path.exists() and any(profile_path.iterdir())):
+            log.info("Migrating legacy storage state JSON to persistent context profile in session pool")
+            storage_state = str(session_path)
+
+        context = await self._playwright.chromium.launch_persistent_context(
+            user_data_dir=str(profile_path),
+            headless=True,
+            args=launch_args,
+            channel="chrome",
             user_agent=user_agent,
             viewport={"width": 1920, "height": 1080},
             device_scale_factor=1,
+            storage_state=storage_state
         )
 
         # Stealth scripts

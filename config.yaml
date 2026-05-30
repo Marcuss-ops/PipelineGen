@@ -40,6 +40,8 @@ external:
   artlist_scraper_server_url: ""  # e.g. "http://localhost:9123" when server is running
   nvidia_api_key: ""
   nvidia_model: "flux-1-schnell"
+  use_nvidia_for_llm: false
+  nvidia_llm_model: "meta/llama-3.1-8b-instruct"
 
 video:
   width: 1920

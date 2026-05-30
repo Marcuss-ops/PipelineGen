@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -93,6 +94,91 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, messages []types.
 
 // doChatRequest executes a single chat request
 func (c *Client) doChatRequest(ctx context.Context, model string, messages []types.Message, options map[string]interface{}) (string, error) {
+	if c.useNvidiaForLLM && c.nvidiaAPIKey != "" {
+		type NvidiaMessage struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}
+		type NvidiaChatPayload struct {
+			Model       string          `json:"model"`
+			Messages    []NvidiaMessage `json:"messages"`
+			Temperature float64         `json:"temperature,omitempty"`
+			MaxTokens   int             `json:"max_tokens,omitempty"`
+			Stream      bool            `json:"stream"`
+		}
+
+		nvMsgs := make([]NvidiaMessage, len(messages))
+		for i, m := range messages {
+			nvMsgs[i] = NvidiaMessage{
+				Role:    m.Role,
+				Content: m.Content,
+			}
+		}
+
+		nvModel := c.nvidiaLLMModel
+		if nvModel == "" {
+			nvModel = "meta/llama-3.1-8b-instruct"
+		}
+
+		payload := NvidiaChatPayload{
+			Model:    nvModel,
+			Messages: nvMsgs,
+			Stream:   false,
+		}
+
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return "", err
+		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://integrate.api.nvidia.com/v1/chat/completions", bytes.NewReader(body))
+		if err != nil {
+			return "", err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+c.nvidiaAPIKey)
+
+		resp, err := c.httpClient.Do(httpReq)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errBody []byte
+			if b, errRead := io.ReadAll(resp.Body); errRead == nil {
+				errBody = b
+			}
+			return "", fmt.Errorf("nvidia nim chat returned status %d: %s", resp.StatusCode, string(errBody))
+		}
+
+		type NvidiaChoice struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+		type NvidiaResponse struct {
+			Choices []NvidiaChoice `json:"choices"`
+		}
+
+		var result NvidiaResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return "", err
+		}
+
+		if len(result.Choices) == 0 {
+			return "", fmt.Errorf("nvidia nim returned empty choices")
+		}
+
+		logger.Info("NVIDIA NIM chat response received",
+			zap.String("model", nvModel),
+			zap.Int("chars", len(result.Choices[0].Message.Content)),
+		)
+
+		return result.Choices[0].Message.Content, nil
+	}
+
 	req := types.ChatRequest{
 		Model:    model,
 		Messages: messages,

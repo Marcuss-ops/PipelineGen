@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Callable, TypeVar
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from config import get_session_path, DOWNLOAD_DIR, GOOGLE_VIDS_BASE_URL
+from config import get_session_path, get_profile_path, DOWNLOAD_DIR, GOOGLE_VIDS_BASE_URL
 
 log = logging.getLogger("AutomationEngine")
 SELECTOR_REPORT_FILE = os.getenv("GOOGLE_ACCOUNTING_SELECTOR_REPORT_FILE", "").strip()
@@ -93,10 +93,12 @@ class BaseAutomation:
         self.page: Page = external_page
         self._external_page = external_page is not None
         self._external_context = external_context is not None or self._external_page
+        self.profile_path = get_profile_path(account)
         self.session_path = get_session_path(account)
         
-        if not self._external_context and not self.session_path.exists():
-            raise FileNotFoundError(f"Sessione non trovata per account '{account or 'default'}' in {self.session_path}. Eseguire prima il login.")
+        login_exists = self.session_path.exists() or (self.profile_path.exists() and any(self.profile_path.iterdir()))
+        if not self._external_context and not login_exists:
+            raise FileNotFoundError(f"Sessione o profilo Chrome non trovato per account '{account or 'default'}'. Eseguire prima il login.")
 
     async def __aenter__(self):
         if self._external_page:
@@ -106,31 +108,32 @@ class BaseAutomation:
             log.info("Using external context for account=%s", self.account or "default")
             return self
 
-        log.info("Starting browser context for account=%s headless=%s", self.account or "default", self.headless)
+        log.info("Starting persistent browser context for account=%s headless=%s", self.account or "default", self.headless)
         self.playwright = await async_playwright().start()
         
-        # Argomenti anti-rilevamento robot
         launch_args = [
             "--disable-blink-features=AutomationControlled",
         ]
         
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
-            args=launch_args,
-            channel="chrome"
-        )
-        
-        # Stealth: User agent reale e viewport standard
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
         
-        self.context = await self.browser.new_context(
-            storage_state=str(self.session_path),
+        # If legacy session JSON exists but persistent profile is empty, import it once
+        storage_state = None
+        if self.session_path.exists() and not (self.profile_path.exists() and any(self.profile_path.iterdir())):
+            log.info("Migrating legacy storage state JSON to persistent context profile")
+            storage_state = str(self.session_path)
+
+        self.context = await self.playwright.chromium.launch_persistent_context(
+            user_data_dir=str(self.profile_path),
+            headless=self.headless,
+            args=launch_args,
+            channel="chrome",
             user_agent=user_agent,
             viewport={'width': 1920, 'height': 1080},
             device_scale_factor=1,
+            storage_state=storage_state
         )
         
-        # Aggiungi script per nascondere Playwright (stealth potenziato)
         await self.context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
@@ -146,7 +149,7 @@ class BaseAutomation:
             });
         """)
         
-        log.info("Browser context ready for account=%s", self.account or "default")
+        log.info("Persistent browser context ready for account=%s", self.account or "default")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -154,7 +157,5 @@ class BaseAutomation:
             return  # Don't close external context or page
         if self.context:
             await self.context.close()
-        if self.browser:
-            await self.browser.close()
         if hasattr(self, 'playwright') and self.playwright:
             await self.playwright.stop()

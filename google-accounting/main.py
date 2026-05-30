@@ -817,3 +817,17 @@ async def cancel_job(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"job_id": job_id, "status": "cancelled", "detail": "Job removed from store"}
+
+
+@app.post("/keep-alive")
+async def trigger_keep_alive(
+    account: Optional[str] = Query(None, description="Account name for keep-alive"),
+    headed: bool = Query(False, description="Run browser in headed mode")
+):
+    """Trigger the keep-alive human-like automated simulation manually."""
+    from keep_alive import run_keep_alive
+    success = await run_keep_alive(account=account or "favamassimo", headless=not headed)
+    if success:
+        return {"status": "success", "message": "Keep-alive simulation completed successfully."}
+    else:
+        raise HTTPException(status_code=500, detail="Keep-alive simulation failed. Check logs.")

@@ -166,16 +166,28 @@ func (h *ScriptFlowHandler) GenerateText(c *gin.Context) {
 		return
 	}
 
+	// Generate video description and tags in English automatically based on the title
+	videoDesc := ""
+	videoTags := []string{}
+	if metaDesc, metaTags, err := h.generator.GenerateVideoMetadata(ctx, req.Title); err != nil {
+		h.log.Warn("Failed to generate video metadata", zap.Error(err))
+	} else {
+		videoDesc = metaDesc
+		videoTags = metaTags
+	}
+
 	apiutil.OK(c, gin.H{
-		"ok":           true,
-		"topic":        req.Topic,
-		"title":        req.Title,
-		"script":       result.Script,
-		"text":         result.Script,
-		"word_count":   result.WordCount,
-		"est_duration": result.EstDuration,
-		"model":        result.Model,
-		"prompt":       result.Prompt,
+		"ok":            true,
+		"topic":         req.Topic,
+		"title":         req.Title,
+		"script":        result.Script,
+		"text":          result.Script,
+		"word_count":    result.WordCount,
+		"est_duration":  result.EstDuration,
+		"model":         result.Model,
+		"prompt":        result.Prompt,
+		"video_desc_en": videoDesc,
+		"video_tags":    videoTags,
 	})
 }
 

@@ -72,10 +72,13 @@ var modelFallbackChains = map[string][]string{
 
 // Client client per Ollama API
 type Client struct {
-	baseURL        string
-	httpClient     *http.Client
-	model          string
-	circuitBreaker *CircuitBreaker
+	baseURL         string
+	httpClient      *http.Client
+	model           string
+	circuitBreaker  *CircuitBreaker
+	useNvidiaForLLM bool
+	nvidiaAPIKey    string
+	nvidiaLLMModel  string
 }
 
 // BaseURL returns the configured Ollama base URL.
@@ -85,5 +88,14 @@ func (c *Client) BaseURL() string {
 
 // Model returns the configured primary model.
 func (c *Client) Model() string {
+	if c.useNvidiaForLLM && c.nvidiaLLMModel != "" {
+		return c.nvidiaLLMModel
+	}
 	return c.model
+}
+
+func (c *Client) SetNvidiaConfig(useNvidia bool, apiKey, model string) {
+	c.useNvidiaForLLM = useNvidia
+	c.nvidiaAPIKey = apiKey
+	c.nvidiaLLMModel = model
 }

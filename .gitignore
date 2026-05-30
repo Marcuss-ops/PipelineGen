@@ -92,3 +92,4 @@ __pycache__/
 **/*.sqlite.bak
 **/*.db.bak
 **/*.db.sqlite.bak
+google-accounting/profiles/

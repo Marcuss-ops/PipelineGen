@@ -357,6 +357,8 @@ type ExternalConfig struct {
 	FfmpegPath           string `yaml:"ffmpeg_path" env:"FFMPEG_PATH" default:"ffmpeg"`
 	NvidiaAPIKey         string `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
 	NvidiaModel          string `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	UseNvidiaForLLM      bool   `yaml:"use_nvidia_for_llm" env:"VELOX_USE_NVIDIA_FOR_LLM" default:"false"`
+	NvidiaLLMModel       string `yaml:"nvidia_llm_model" env:"VELOX_NVIDIA_LLM_MODEL" default:"meta/llama-3.1-8b-instruct"`
 	PixabayAPIKey        string `yaml:"pixabay_api_key" env:"PIXABAY_API_KEY" default:""`
 	PixabayBaseURL       string `yaml:"pixabay_base_url" env:"PIXABAY_BASE_URL" default:"https://pixabay.com/api"`
 	PexelsAPIKey         string `yaml:"pexels_api_key" env:"PEXELS_API_KEY" default:""`

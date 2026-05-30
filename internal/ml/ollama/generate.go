@@ -2,6 +2,7 @@ package ollama
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -115,3 +116,55 @@ func (g *Generator) TranslateText(ctx context.Context, text, targetLanguage stri
 
 	return strings.TrimSpace(result), nil
 }
+
+func (g *Generator) GenerateVideoMetadata(ctx context.Context, title string) (string, []string, error) {
+	if g.client == nil {
+		return "", nil, fmt.Errorf("ollama client not initialized")
+	}
+
+	systemPrompt := "You are a professional video optimizer. Provide metadata strictly in English based on the given title."
+	userPrompt := fmt.Sprintf(`Given the video title: "%s"
+
+Generate:
+1. A concise, professional, engaging video description (1 to 2 lines max) in English. Do not write intros or greetings, start directly.
+2. A list of 5 to 8 generic keywords/tags in English relevant to the topic.
+
+You must respond ONLY with a raw JSON object matching the following structure:
+{
+  "description": "Engaging description of the video...",
+  "tags": ["tag1", "tag2", "tag3"]
+}`, title)
+
+	messages := []types.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userPrompt},
+	}
+
+	result, err := g.client.Chat(ctx, messages, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("metadata generation failed: %w", err)
+	}
+
+	// Clean code blocks or extra text if any, and parse the json
+	cleanJSON := result
+	if idx := strings.Index(cleanJSON, "{"); idx != -1 {
+		cleanJSON = cleanJSON[idx:]
+	}
+	if idx := strings.LastIndex(cleanJSON, "}"); idx != -1 {
+		cleanJSON = cleanJSON[:idx+1]
+	}
+
+	type MetadataResponse struct {
+		Description string   `json:"description"`
+		Tags        []string `json:"tags"`
+	}
+
+	var meta MetadataResponse
+	if err := json.Unmarshal([]byte(cleanJSON), &meta); err != nil {
+		// Fallback parse logic if LLM failed to return valid JSON
+		return strings.TrimSpace(result), []string{}, nil
+	}
+
+	return meta.Description, meta.Tags, nil
+}
+
