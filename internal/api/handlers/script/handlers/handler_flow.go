@@ -18,6 +18,7 @@ import (
 	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/ml/ollama"
 	ollamatypes "velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/pkg/apiutil"
 	"velox/go-master/internal/upload/drive"
 )
@@ -27,6 +28,7 @@ type ScriptFlowHandler struct {
 	generator   *ollama.Generator
 	imgService  *images.Service
 	realtimeSvc *realtime.Service
+	voService   *voiceover.Service
 	docClient   drive.DocClient
 	jobsSvc     *jobservice.Service
 	cfg         *config.Config
@@ -34,11 +36,12 @@ type ScriptFlowHandler struct {
 }
 
 // NewScriptFlowHandler creates the handler for text and visual flows.
-func NewScriptFlowHandler(gen *ollama.Generator, imgSvc *images.Service, realtimeSvc *realtime.Service, docClient drive.DocClient, jobsSvc *jobservice.Service, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
+func NewScriptFlowHandler(gen *ollama.Generator, imgSvc *images.Service, realtimeSvc *realtime.Service, voSvc *voiceover.Service, docClient drive.DocClient, jobsSvc *jobservice.Service, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
 	return &ScriptFlowHandler{
 		generator:   gen,
 		imgService:  imgSvc,
 		realtimeSvc: realtimeSvc,
+		voService:   voSvc,
 		docClient:   docClient,
 		jobsSvc:     jobsSvc,
 		cfg:         cfg,

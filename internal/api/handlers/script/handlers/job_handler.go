@@ -13,6 +13,7 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/ml/ollama/types"
 )
 
@@ -143,23 +144,82 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 				Query: query,
 			}
 
-			asset, genErr := h.imgService.GenerateSmartImage(
-				ctx,
-				sentence,
-				title,
-				visualStyle,
-				[]string{sentence},
-				[]string{req.Style, req.VisualStyle, req.Language},
-				req.Width,
-				req.Height,
-				imageModel,
-				false,
-			)
-			if genErr != nil {
-				scene.Error = genErr.Error()
-			} else {
-				scene.Image = generatedImageFromAsset(asset)
+			// 1. Try Qdrant Vector search for existing image cache match
+			var matchedAsset *models.ImageAsset
+			if h.realtimeSvc != nil {
+				h.log.Info("checking semantic vector store cache for scene", zap.Int("scene_idx", idx), zap.String("query", sentence))
+				matchResp, err := h.realtimeSvc.Match(ctx, &realtime.MatchRequest{
+					Query:     sentence,
+					MediaType: "image",
+					MinScore:  0.85,
+				})
+				if err == nil && matchResp != nil && matchResp.Status == "instant_match" && matchResp.Asset != nil {
+					h.log.Info("semantic image cache HIT! Reusing existing asset", zap.String("asset_id", matchResp.Asset.ID), zap.Float64("score", matchResp.Asset.Score))
+					
+					// Extract drive file id
+					driveFileID := ""
+					link := matchResp.Asset.DriveLink
+					if strings.Contains(link, "file/d/") {
+						parts := strings.Split(link, "file/d/")
+						if len(parts) > 1 {
+							subparts := strings.Split(parts[1], "/")
+							if len(subparts) > 0 {
+								driveFileID = subparts[0]
+							}
+						}
+					}
+					
+					matchedAsset = &models.ImageAsset{
+						DriveFileID: driveFileID,
+						PathRel:     matchResp.Asset.LocalPath,
+						SourceURL:   matchResp.Asset.Source,
+						Description: matchResp.Asset.Name,
+					}
+				}
 			}
+
+			// 2. Generate if cache missed
+			if matchedAsset != nil {
+				scene.Image = generatedImageFromAsset(matchedAsset)
+			} else {
+				asset, genErr := h.imgService.GenerateSmartImage(
+					ctx,
+					sentence,
+					title,
+					visualStyle,
+					[]string{sentence},
+					[]string{req.Style, req.VisualStyle, req.Language},
+					req.Width,
+					req.Height,
+					imageModel,
+					false,
+				)
+				if genErr != nil {
+					scene.Error = genErr.Error()
+				} else {
+					scene.Image = generatedImageFromAsset(asset)
+				}
+			}
+
+			// 3. Generate voiceover for the scene
+			if h.voService != nil {
+				voFilename := fmt.Sprintf("%s-scene-%d", outputName, idx+1)
+				h.log.Info("generating voiceover for scene", zap.Int("scene_idx", idx))
+				voRes, voErr := h.voService.Generate(ctx, sentence, req.Language, voFilename)
+				if voErr != nil {
+					h.log.Error("scene voiceover generation failed", zap.Int("scene_idx", idx), zap.Error(voErr))
+					scene.Voiceover = &GeneratedVoiceover{
+						Error: voErr.Error(),
+					}
+				} else if voRes != nil {
+					scene.Voiceover = &GeneratedVoiceover{
+						LocalPath: voRes.Path,
+						DriveLink: voRes.DriveLink,
+						Voice:     voRes.Voice,
+					}
+				}
+			}
+
 			resChan <- result{index: idx, scene: scene}
 		}(idx, sentence)
 	}

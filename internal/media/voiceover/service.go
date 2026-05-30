@@ -113,9 +113,11 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 	}
 
 	return &VoiceoverResult{
-		OK:    true,
-		Voice: item.Voice,
-		Path:  item.LocalPath,
+		OK:          true,
+		Voice:       item.Voice,
+		Path:        item.LocalPath,
+		DriveLink:   item.DriveLink,
+		DriveFileID: item.DriveFileID,
 	}, nil
 }
 

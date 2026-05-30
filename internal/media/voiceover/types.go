@@ -77,10 +77,12 @@ type BatchItem struct {
 }
 
 type VoiceoverResult struct {
-	OK    bool   `json:"ok"`
-	Voice string `json:"voice,omitempty"`
-	Path  string `json:"path,omitempty"`
-	Error string `json:"error,omitempty"`
+	OK          bool   `json:"ok"`
+	Voice       string `json:"voice,omitempty"`
+	Path        string `json:"path,omitempty"`
+	DriveLink   string `json:"drive_link,omitempty"`
+	DriveFileID string `json:"drive_file_id,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 type ResolvedDestination struct {

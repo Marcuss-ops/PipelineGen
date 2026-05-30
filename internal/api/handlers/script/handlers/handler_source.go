@@ -43,13 +43,21 @@ type GeneratedImage struct {
 	Error       string `json:"error,omitempty"`
 }
 
+type GeneratedVoiceover struct {
+	LocalPath string `json:"local_path,omitempty"`
+	DriveLink string `json:"drive_link,omitempty"`
+	Voice     string `json:"voice,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
 type GeneratedScene struct {
-	ID    string          `json:"id"`
-	Index int             `json:"index"`
-	Text  string          `json:"text"`
-	Query string          `json:"query"`
-	Image *GeneratedImage `json:"image,omitempty"`
-	Error string          `json:"error,omitempty"`
+	ID        string              `json:"id"`
+	Index     int                 `json:"index"`
+	Text      string              `json:"text"`
+	Query     string              `json:"query"`
+	Image     *GeneratedImage     `json:"image,omitempty"`
+	Voiceover *GeneratedVoiceover `json:"voiceover,omitempty"`
+	Error     string              `json:"error,omitempty"`
 }
 
 type VideoScene struct {

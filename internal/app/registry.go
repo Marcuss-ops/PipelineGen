@@ -81,7 +81,7 @@ func WireRegistry(
 			if coreDeps.ScriptGen == nil || coreDeps.ImageService == nil {
 				return nil, nil, nil
 			}
-			handler := handlers.NewScriptFlowHandler(coreDeps.ScriptGen, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.DocClient, coreDeps.JobsService, cfg, log)
+			handler := handlers.NewScriptFlowHandler(coreDeps.ScriptGen, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.VoiceoverService, coreDeps.DocClient, coreDeps.JobsService, cfg, log)
 			handler.RegisterJobHandlers(coreDeps.JobsService)
 			mod := module.NewScriptFlowModule(cfg, log, handler)
 			return mod, nil, nil

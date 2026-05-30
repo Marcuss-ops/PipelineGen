@@ -277,7 +277,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	youtubeClipService.RegisterHandler(jobsService)
 	voService.RegisterHandler(jobsService)
 
-	scriptFlowHandler := handlers.NewScriptFlowHandler(scriptGen, imageService, realtimeSvc, docClient, jobsService, cfg, log)
+	scriptFlowHandler := handlers.NewScriptFlowHandler(scriptGen, imageService, realtimeSvc, voService, docClient, jobsService, cfg, log)
 	scriptFlowHandler.RegisterJobHandlers(jobsService)
 
 	// Create deletion service
