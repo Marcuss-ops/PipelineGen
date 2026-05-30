@@ -14,6 +14,7 @@ from typing import Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
 from config import get_session_path, get_profile_path, DOWNLOAD_DIR
+from automation.base import _get_realistic_user_agent, _STEALTH_INIT_SCRIPT
 
 log = logging.getLogger("SessionPool")
 
@@ -116,14 +117,20 @@ class SessionPool:
                 "Run login first."
             )
 
-        user_agent = (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/129.0.0.0 Safari/537.36"
-        )
+        user_agent = _get_realistic_user_agent()
         
         launch_args = [
             "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-accelerated-2d-canvas",
+            "--no-first-run",
+            "--no-zygote",
+            "--disable-gpu",
+            "--window-size=1920,1080",
         ]
 
         # Migrate JSON if needed
@@ -140,22 +147,13 @@ class SessionPool:
             user_agent=user_agent,
             viewport={"width": 1920, "height": 1080},
             device_scale_factor=1,
+            locale="it-IT",
+            timezone_id="Europe/Rome",
             storage_state=storage_state
         )
 
-        # Stealth scripts
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            window.chrome = { runtime: {} };
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['it-IT', 'it', 'en-US', 'en']
-            });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3]
-            });
-        """)
+        # Stealth scripts (shared from base.py)
+        await context.add_init_script(_STEALTH_INIT_SCRIPT)
 
         return context
 

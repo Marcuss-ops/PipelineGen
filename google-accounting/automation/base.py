@@ -14,6 +14,175 @@ log = logging.getLogger("AutomationEngine")
 SELECTOR_REPORT_FILE = os.getenv("GOOGLE_ACCOUNTING_SELECTOR_REPORT_FILE", "").strip()
 
 
+def _get_realistic_user_agent() -> str:
+    """Returns a realistic Chrome user-agent matching the system-installed Chrome version."""
+    import subprocess
+    import re
+    try:
+        for cmd in [
+            ["google-chrome", "--version"],
+            ["google-chrome-stable", "--version"],
+            ["chromium-browser", "--version"],
+            ["chromium", "--version"],
+        ]:
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    match = re.search(r"(\d+\.\d+\.\d+\.\d+)", result.stdout)
+                    if match:
+                        version = match.group(1)
+                        major = version.split(".")[0]
+                        log.info("Detected Chrome version: %s", version)
+                        return (
+                            f"Mozilla/5.0 (X11; Linux x86_64) "
+                            f"AppleWebKit/537.36 (KHTML, like Gecko) "
+                            f"Chrome/{version} Safari/537.36"
+                        )
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+    except Exception as e:
+        log.warning("Could not detect Chrome version: %s", e)
+    # Fallback: recent stable Chrome version
+    log.warning("Falling back to hardcoded Chrome user-agent")
+    return (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/136.0.0.0 Safari/537.36"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Comprehensive stealth init script - defeats most bot-detection fingerprinting
+# ---------------------------------------------------------------------------
+_STEALTH_INIT_SCRIPT = """
+// 1. Hide webdriver property
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+// 2. Realistic window.chrome object
+window.chrome = {
+    app: {
+        isInstalled: false,
+        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
+    },
+    runtime: {
+        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+        OnRestartRequiredReason: { APP_UPDATE: 'app_update', GC_PRESSURE: 'gc_pressure', OS_UPDATE: 'os_update' },
+        PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+        PlatformNaclArch: { ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+        PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+        RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' }
+    }
+};
+
+// 3. Realistic navigator.plugins (not empty, not [1,2,3])
+const makePlugin = (name, description, filename, mimeTypes) => {
+    const plugin = Object.create(Plugin.prototype);
+    Object.defineProperties(plugin, {
+        name: { value: name },
+        description: { value: description },
+        filename: { value: filename },
+        length: { value: mimeTypes.length }
+    });
+    mimeTypes.forEach((mt, i) => {
+        const mime = Object.create(MimeType.prototype);
+        Object.defineProperties(mime, {
+            type: { value: mt.type },
+            suffixes: { value: mt.suffixes },
+            description: { value: mt.description },
+            enabledPlugin: { value: plugin }
+        });
+        Object.defineProperty(plugin, i, { value: mime });
+        Object.defineProperty(plugin, mt.type, { value: mime });
+    });
+    return plugin;
+};
+try {
+    const plugins = [
+        makePlugin('Chrome PDF Plugin', 'Portable Document Format', 'internal-pdf-viewer', [
+            { type: 'application/x-google-chrome-pdf', suffixes: 'pdf', description: 'Portable Document Format' }
+        ]),
+        makePlugin('Chrome PDF Viewer', '', 'mhjfbmdgcfjbbpaeojofohoefgiehjai', [
+            { type: 'application/pdf', suffixes: 'pdf', description: '' }
+        ]),
+        makePlugin('Native Client', '', 'internal-nacl-plugin', [
+            { type: 'application/x-nacl', suffixes: '', description: 'Native Client Executable' },
+            { type: 'application/x-pnacl', suffixes: '', description: 'Portable Native Client Executable' }
+        ])
+    ];
+    Object.defineProperty(navigator, 'plugins', {
+        get: () => {
+            const arr = Object.create(PluginArray.prototype);
+            plugins.forEach((p, i) => {
+                Object.defineProperty(arr, i, { value: p });
+                Object.defineProperty(arr, p.name, { value: p });
+            });
+            Object.defineProperty(arr, 'length', { value: plugins.length });
+            arr.item = (i) => plugins[i] || null;
+            arr.namedItem = (name) => plugins.find(p => p.name === name) || null;
+            arr.refresh = () => {};
+            return arr;
+        }
+    });
+} catch(e) {}
+
+// 4. Language
+Object.defineProperty(navigator, 'languages', { get: () => ['it-IT', 'it', 'en-US', 'en'] });
+
+// 5. Hardware properties (typical workstation)
+try {
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+} catch(e) {}
+try {
+    Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+} catch(e) {}
+
+// 6. Permissions API - avoid returning 'denied' for automation-related queries
+const originalQuery = window.navigator.permissions ? window.navigator.permissions.query.bind(window.navigator.permissions) : null;
+if (originalQuery) {
+    window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission })
+            : originalQuery(parameters)
+    );
+}
+
+// 7. Network connection
+try {
+    Object.defineProperty(navigator, 'connection', {
+        get: () => ({
+            effectiveType: '4g',
+            rtt: 50,
+            downlink: 10,
+            saveData: false
+        })
+    });
+} catch(e) {}
+
+// 8. Screen properties
+try {
+    Object.defineProperty(screen, 'colorDepth', { get: () => 24 });
+    Object.defineProperty(screen, 'pixelDepth', { get: () => 24 });
+} catch(e) {}
+
+// 9. Prevent iframe detection of webdriver
+const originalContentWindow = HTMLIFrameElement.prototype.__lookupGetter__('contentWindow');
+if (originalContentWindow) {
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+        get: function() {
+            const cw = originalContentWindow.call(this);
+            if (cw) {
+                try {
+                    Object.defineProperty(cw.navigator, 'webdriver', { get: () => undefined });
+                } catch(e) {}
+            }
+            return cw;
+        }
+    });
+}
+"""
+
+
 # ---------------------------------------------------------------------------
 # Retry decorator with exponential backoff
 # ---------------------------------------------------------------------------
@@ -113,9 +282,19 @@ class BaseAutomation:
         
         launch_args = [
             "--disable-blink-features=AutomationControlled",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-site-isolation-trials",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-accelerated-2d-canvas",
+            "--no-first-run",
+            "--no-zygote",
+            "--disable-gpu",
+            "--window-size=1920,1080",
         ]
         
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+        user_agent = _get_realistic_user_agent()
         
         # If legacy session JSON exists but persistent profile is empty, import it once
         storage_state = None
@@ -131,23 +310,12 @@ class BaseAutomation:
             user_agent=user_agent,
             viewport={'width': 1920, 'height': 1080},
             device_scale_factor=1,
+            locale="it-IT",
+            timezone_id="Europe/Rome",
             storage_state=storage_state
         )
         
-        await self.context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            window.chrome = {
-                runtime: {}
-            };
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['it-IT', 'it', 'en-US', 'en']
-            });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3]
-            });
-        """)
+        await self.context.add_init_script(_STEALTH_INIT_SCRIPT)
         
         log.info("Persistent browser context ready for account=%s", self.account or "default")
         return self
