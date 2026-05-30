@@ -130,6 +130,7 @@ class SessionPool:
             "--no-zygote",
             "--use-gl=angle",
             "--use-angle=swiftshader",
+            "--ignore-gpu-blocklist",
             "--window-size=1920,1080",
         ]
 
