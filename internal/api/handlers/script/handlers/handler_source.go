@@ -82,6 +82,7 @@ type GeneratedScriptPackage struct {
 	EstimatedDuration int                     `json:"estimated_duration,omitempty"`
 	Scenes            []GeneratedScene        `json:"scenes"`
 	Files             GeneratedScriptFileInfo `json:"files"`
+	Voiceover         *GeneratedVoiceover     `json:"voiceover,omitempty"`
 	GeneratedAt       time.Time               `json:"generated_at"`
 }
 
@@ -238,6 +239,11 @@ func renderGeneratedMarkdown(pkg GeneratedScriptPackage, jsonData []byte) []byte
 	b.WriteString("## Script\n\n")
 	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
 	b.WriteString("\n\n")
+	
+	if pkg.Voiceover != nil && pkg.Voiceover.DriveLink != "" {
+		b.WriteString("## Voiceover\n")
+		b.WriteString(fmt.Sprintf("[Unified Voiceover Audio](%s)\n\n", pkg.Voiceover.DriveLink))
+	}
 	
 	b.WriteString("## Scenes JSON\n")
 	b.WriteString("```json\n")

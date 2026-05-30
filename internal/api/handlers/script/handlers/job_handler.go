@@ -202,41 +202,8 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 				}
 			}
 
-			// 3. Generate voiceover for the scene
-			if h.voService != nil {
-				voFilename := fmt.Sprintf("%s-scene-%d", outputName, idx+1)
-				h.log.Info("generating voiceover for scene", zap.Int("scene_idx", idx))
-				
-				var destReq *voiceover.DestinationRequest
-				dbConn := h.voService.DB()
-				if dbConn != nil {
-					var folderID string
-					err := dbConn.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
-					if err == nil && folderID != "" {
-						destReq = &voiceover.DestinationRequest{
-							FolderID:        folderID,
-							Group:           "explainatory",
-							SubfolderName:   outputName,
-							CreateSubfolder: true,
-						}
-						h.log.Info("found explainatory folder, routing voiceover destination", zap.String("folder_id", folderID), zap.String("subfolder", outputName))
-					}
-				}
+			// Voiceover generation moved to unified generation after scene loop
 
-				voRes, voErr := h.voService.GenerateWithDestination(ctx, sentence, req.Language, voFilename, destReq)
-				if voErr != nil {
-					h.log.Error("scene voiceover generation failed", zap.Int("scene_idx", idx), zap.Error(voErr))
-					scene.Voiceover = &GeneratedVoiceover{
-						Error: voErr.Error(),
-					}
-				} else if voRes != nil {
-					scene.Voiceover = &GeneratedVoiceover{
-						LocalPath: voRes.Path,
-						DriveLink: voRes.DriveLink,
-						Voice:     voRes.Voice,
-					}
-				}
-			}
 
 			resChan <- result{index: idx, scene: scene}
 		}(idx, sentence)
@@ -250,6 +217,39 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 		scenesList[res.index] = res.scene
 	}
 	packageData.Scenes = scenesList
+
+	// 3. Generate a single unified voiceover for the entire rewritten script
+	if h.voService != nil {
+		h.log.Info("generating single unified voiceover for the entire script", zap.String("output_name", outputName))
+		
+		var destReq *voiceover.DestinationRequest
+		dbConn := h.voService.DB()
+		if dbConn != nil {
+			var folderID string
+			err := dbConn.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
+			if err == nil && folderID != "" {
+				destReq = &voiceover.DestinationRequest{
+					FolderID:        folderID,
+					Group:           "explainatory",
+					SubfolderName:   outputName,
+					CreateSubfolder: true,
+				}
+				h.log.Info("found explainatory folder, routing voiceover destination", zap.String("folder_id", folderID), zap.String("subfolder", outputName))
+			}
+		}
+
+		voRes, voErr := h.voService.GenerateWithDestination(ctx, rewritten, req.Language, outputName, destReq)
+		if voErr != nil {
+			h.log.Error("unified voiceover generation failed", zap.Error(voErr))
+		} else if voRes != nil {
+			packageData.Voiceover = &GeneratedVoiceover{
+				LocalPath: voRes.Path,
+				DriveLink: voRes.DriveLink,
+				Voice:     voRes.Voice,
+			}
+			h.log.Info("unified voiceover generated successfully", zap.String("drive_link", voRes.DriveLink))
+		}
+	}
 
 	videoScenes := make([]VideoScene, 0, len(packageData.Scenes))
 	for _, s := range packageData.Scenes {

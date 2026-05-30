@@ -39,6 +39,13 @@ func buildGeneratedDocContent(pkg GeneratedScriptPackage, videoScenes []VideoSce
 		b.WriteString(strings.TrimSpace(pkg.Title))
 		b.WriteString("\n\n")
 	}
+	
+	if pkg.Voiceover != nil && pkg.Voiceover.DriveLink != "" {
+		b.WriteString("Unified Voiceover Link:\n")
+		b.WriteString(pkg.Voiceover.DriveLink)
+		b.WriteString("\n\n")
+	}
+
 	b.WriteString("Script:\n")
 	b.WriteString(strings.TrimSpace(pkg.RewrittenScript))
 	b.WriteString("\n\n")
