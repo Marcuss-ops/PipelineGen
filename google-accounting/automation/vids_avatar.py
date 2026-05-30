@@ -4,8 +4,7 @@ import re
 import time
 from pathlib import Path
 
-from drive_client import download_file, list_exported_files
-from reupload_drive_assets import upload_file_to_drive
+from drive_client import download_file, list_exported_files, upload_file_to_drive
 from .base import (
     BaseAutomation,
     _append_selector_report,

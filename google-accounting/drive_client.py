@@ -7,7 +7,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 import aiofiles
 from config import GOOGLE_CREDENTIALS_PATH, TOKEN_PATH, DOWNLOAD_DIR, DRIVE_SCOPES, VIDS_MIME_TYPE
 
@@ -125,3 +125,33 @@ async def download_file(file_id: str, filename: str, file_type: str) -> Path:
 
     await asyncio.get_event_loop().run_in_executor(None, _do_download)
     return dest_path
+
+
+def upload_file_to_drive(folder_id: str, local_path: Path, filename: str, mime_type: str = "application/octet-stream") -> str:
+    """Upload a local file to a specific Google Drive folder.
+
+    Args:
+        folder_id: The Drive folder ID to upload into.
+        local_path: Local Path to the file to upload.
+        filename: Name to give the file in Drive.
+        mime_type: MIME type of the file (e.g. 'video/mp4', 'image/png').
+
+    Returns:
+        The Drive file ID of the uploaded file.
+    """
+    import logging
+    log = logging.getLogger("DriveClient")
+    service = _build_service()
+    file_metadata = {
+        "name": filename,
+        "parents": [folder_id],
+    }
+    media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=True)
+    file = (
+        service.files()
+        .create(body=file_metadata, media_body=media, fields="id")
+        .execute()
+    )
+    file_id = file.get("id", "")
+    log.info("Uploaded %s to Drive folder %s → file_id=%s", filename, folder_id, file_id)
+    return file_id
