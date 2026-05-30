@@ -136,43 +136,9 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	textHash := textToHash(req.Text)
 
 	destinationReq := req.Destination
-	expFolderID := s.getExplainatoryFolderID(ctx)
-
-	if destinationReq == nil {
-		if expFolderID != "" {
-			subfolderName := "general"
-			if req.FilenameTemplate != "" {
-				if idx := strings.Index(req.FilenameTemplate, "-scene-"); idx != -1 {
-					subfolderName = req.FilenameTemplate[:idx]
-				} else if idx := strings.LastIndex(req.FilenameTemplate, "-"); idx != -1 {
-					subfolderName = req.FilenameTemplate[:idx]
-				}
-			}
-			destinationReq = &DestinationRequest{
-				FolderID:        expFolderID,
-				Group:           "explainatory",
-				SubfolderName:   subfolderName,
-				CreateSubfolder: true,
-			}
-		} else if strings.TrimSpace(s.cfg.Drive.RootFolder()) != "" {
-			destinationReq = &DestinationRequest{
-				FolderID: s.cfg.Drive.RootFolder(),
-			}
-		}
-	} else if destinationReq.FolderID == s.cfg.Drive.RootFolder() || destinationReq.FolderID == "" {
-		if expFolderID != "" {
-			destinationReq.FolderID = expFolderID
-			destinationReq.Group = "explainatory"
-			destinationReq.CreateSubfolder = true
-			if destinationReq.SubfolderName == "" && req.FilenameTemplate != "" {
-				subfolderName := "general"
-				if idx := strings.Index(req.FilenameTemplate, "-scene-"); idx != -1 {
-					subfolderName = req.FilenameTemplate[:idx]
-				} else if idx := strings.LastIndex(req.FilenameTemplate, "-"); idx != -1 {
-					subfolderName = req.FilenameTemplate[:idx]
-				}
-				destinationReq.SubfolderName = subfolderName
-			}
+	if destinationReq == nil && strings.TrimSpace(s.cfg.Drive.RootFolder()) != "" {
+		destinationReq = &DestinationRequest{
+			FolderID: s.cfg.Drive.RootFolder(),
 		}
 	}
 
@@ -368,14 +334,38 @@ func truncateString(s string, maxLen int) string {
 	return s[:maxLen]
 }
 
-func (s *Service) getExplainatoryFolderID(ctx context.Context) string {
-	if s.db == nil {
-		return ""
+func (s *Service) DB() *sql.DB {
+	return s.db
+}
+
+func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
+	req := &BatchRequest{
+		Text:             text,
+		Languages:        []string{language},
+		FilenameTemplate: filename,
+		RemoveSilence:    boolPtr(false),
+		Strategy:         "replace",
+		Destination:      dest,
 	}
-	var folderID string
-	err := s.db.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
+	resp, err := s.GenerateBatch(ctx, req)
 	if err != nil {
-		return ""
+		return nil, err
 	}
-	return folderID
+
+	if len(resp.Items) == 0 {
+		return nil, fmt.Errorf("no voiceover generated")
+	}
+
+	item := resp.Items[0]
+	if item.Status == "failed" {
+		return nil, fmt.Errorf("%s", item.Error)
+	}
+
+	return &VoiceoverResult{
+		OK:          true,
+		Voice:       item.Voice,
+		Path:        item.LocalPath,
+		DriveLink:   item.DriveLink,
+		DriveFileID: item.DriveFileID,
+	}, nil
 }

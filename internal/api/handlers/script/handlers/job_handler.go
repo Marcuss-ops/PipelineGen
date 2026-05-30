@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/realtime"
+	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/ml/ollama/types"
 )
 
@@ -205,7 +206,24 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 			if h.voService != nil {
 				voFilename := fmt.Sprintf("%s-scene-%d", outputName, idx+1)
 				h.log.Info("generating voiceover for scene", zap.Int("scene_idx", idx))
-				voRes, voErr := h.voService.Generate(ctx, sentence, req.Language, voFilename)
+				
+				var destReq *voiceover.DestinationRequest
+				dbConn := h.voService.DB()
+				if dbConn != nil {
+					var folderID string
+					err := dbConn.QueryRowContext(ctx, "SELECT folder_id FROM clip_folders WHERE id = 'explainatory' OR group_name = 'explainatory' LIMIT 1").Scan(&folderID)
+					if err == nil && folderID != "" {
+						destReq = &voiceover.DestinationRequest{
+							FolderID:        folderID,
+							Group:           "explainatory",
+							SubfolderName:   outputName,
+							CreateSubfolder: true,
+						}
+						h.log.Info("found explainatory folder, routing voiceover destination", zap.String("folder_id", folderID), zap.String("subfolder", outputName))
+					}
+				}
+
+				voRes, voErr := h.voService.GenerateWithDestination(ctx, sentence, req.Language, voFilename, destReq)
 				if voErr != nil {
 					h.log.Error("scene voiceover generation failed", zap.Int("scene_idx", idx), zap.Error(voErr))
 					scene.Voiceover = &GeneratedVoiceover{
