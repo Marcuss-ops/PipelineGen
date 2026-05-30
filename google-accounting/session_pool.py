@@ -320,7 +320,7 @@ class SessionPool:
                 await page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 try:
                     import re as _re
-                    await page.wait_for_url(_re.compile(r"/videos/d/"), timeout=30000)
+                    await page.wait_for_url(_re.compile(r"/videos/d/"), timeout=90000)
                     log.info("Redirected successfully to new project: %s", page.url)
                 except Exception as e:
                     log.warning("Redirect wait failed or timed out: %s", e)

@@ -619,7 +619,7 @@ class GoogleVidsImagesMixin:
                 await page.wait_for_selector(
                     'button[data-view-id="getting-started-dialog-videogen"]:not(.getting-started-dialog-navigation-button-disabled), '
                     'button.appsDocsGettingStartedEntryPointSelectionViewBlankCard:not(.getting-started-dialog-navigation-button-disabled)',
-                    timeout=35000
+                    timeout=85000
                 )
                 log.info("Welcome dialog options are now enabled!")
             except Exception as e:
