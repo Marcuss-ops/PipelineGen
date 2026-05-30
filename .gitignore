@@ -83,6 +83,12 @@ Rosone Cattedrale/
 
 # Google session cookies (contain auth tokens - DO NOT COMMIT)
 google-accounting/sessions/*.json
-\n# Python cache
+# Python cache
 *.pyc
 __pycache__/
+
+# Database backups and backups leak prevention
+*.bak
+*.sqlite.bak
+data/**/*.bak
+data/**/*.sqlite.bak
