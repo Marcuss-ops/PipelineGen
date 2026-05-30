@@ -699,14 +699,21 @@ class GoogleVidsImagesMixin:
                 for idx in range(count):
                     btn = toolbar_btns.nth(idx)
                     try:
-                        btn_text = await btn.inner_text()
-                        parent_text = await btn.locator("..").inner_text()
-                        grandparent_text = await btn.locator("../..").inner_text()
-                        combined = (btn_text + " " + parent_text + " " + grandparent_text).lower()
-                        if "immagin" in combined or "image" in combined:
+                        aria_label = await btn.get_attribute("aria-label") or ""
+                        tooltip = await btn.get_attribute("data-tooltip") or ""
+                        btn_text = await btn.inner_text() or ""
+                        
+                        parent = btn.locator("..")
+                        parent_text = ""
+                        if await parent.count() > 0:
+                            parent_text = await parent.inner_text() or ""
+                            
+                        combined = f"{aria_label} {tooltip} {btn_text} {parent_text}".lower()
+                        # Verify that we specifically target image and not other elements like video/veo, audio, voiceover, etc.
+                        if ("immagin" in combined or "image" in combined) and not any(x in combined for x in ["veo", "video", "avatar", "voce", "musica", "audio", "registra", "sottotitoli", "modelli"]):
                             await self._human_click(page, btn, timeout=10000)
                             immagini_clicked = True
-                            log.info("Clicked Immagini tab via toolbar button (idx=%d) text=%s", idx, combined[:100])
+                            log.info("Clicked Immagini tab via toolbar button (idx=%d) combined_text=%s", idx, combined[:150])
                             break
                     except Exception:
                         continue
