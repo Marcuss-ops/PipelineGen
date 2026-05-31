@@ -42,7 +42,7 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 		dsn = dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
 	}
 
-	return newSQLiteConnection(dbPath, dsn, 5, log)
+	return newSQLiteConnection(dbPath, dsn, 1, log)
 }
 
 // NewSQLiteDBWithMaxConns creates a new SQLite database connection with custom max open connections.
@@ -62,7 +62,7 @@ func OpenSQLiteDB(dbPath string, log *zap.Logger) (*SQLiteDB, error) {
 		}
 	}
 	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000"
-	return newSQLiteConnection(dbPath, dsn, 5, log)
+	return newSQLiteConnection(dbPath, dsn, 1, log)
 }
 
 // newSQLiteConnection is the common implementation for creating a configured SQLite connection.
