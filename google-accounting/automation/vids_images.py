@@ -471,21 +471,12 @@ class GoogleVidsImagesMixin:
                 pass
 
     async def _debug_screenshot(self, page, name: str):
-        """Helper to save a debug screenshot in the logs folder and upload to user's Drive."""
+        """Helper to save a debug screenshot in the logs folder."""
         try:
             timestamp = int(time.time())
             path = Path("logs") / f"vids_debug_{timestamp}_{name}.png"
             await page.screenshot(path=str(path))
-            log.info("Saved debug screenshot: %s", path)
-            
-            # Automatically upload to user's Drive folder for live debugging
-            try:
-                from drive_client import upload_file_to_drive
-                debug_folder_id = "1HinlvxnAFknV3wCSB9cuKA4gZVivdXC7"
-                upload_file_to_drive(debug_folder_id, path, path.name, "image/png")
-                log.info("Successfully uploaded debug screenshot %s to Drive folder %s", path.name, debug_folder_id)
-            except Exception as e_upload:
-                log.warning("Failed to upload debug screenshot to Drive: %s", e_upload)
+            log.info("Saved debug screenshot locally: %s", path)
         except Exception as e:
             log.warning("Failed to save debug screenshot '%s': %s", name, e)
 
