@@ -54,6 +54,10 @@ LLM-generated semantic metadata. Assets are deduplicated, indexed for hybrid sea
 Generates a full video script from source text, creates N image variants per scene,
 enriches metadata via Ollama, and exports to a Google Doc.
 
+**Parallel Execution & Performance:**
+The image generation phase for scripts has been significantly optimized. PipelineGen now uses a concurrent worker pool to generate up to **6 scenes simultaneously**.
+When using the Google Vids generator (`google-accounting` backend), the Python service utilizes a Playwright session pool (`MAX_WARM_CONTEXTS = 6`) to maintain multiple pre-warmed browser instances per account. This eliminates browser startup overhead and allows all 6 Go workers to execute browser automation flows in parallel, drastically reducing the total generation time for multi-scene scripts.
+
 ```json
 {
   "source_text": "...",
