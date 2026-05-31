@@ -185,7 +185,12 @@ func FromEnv() *Config {
 	c.DriveTokensDir = os.Getenv("VELOX_DRIVE_TOKENS_DIR")
 
 	// NVIDIA API configuration
-	c.NVIDIAAPIKey = os.Getenv("VELOX_NVIDIA_API_KEY")
+	// Prefer the canonical NVIDIA_API_KEY env var, but keep compatibility with
+	// the older VELOX_NVIDIA_API_KEY name.
+	c.NVIDIAAPIKey = os.Getenv("NVIDIA_API_KEY")
+	if c.NVIDIAAPIKey == "" {
+		c.NVIDIAAPIKey = os.Getenv("VELOX_NVIDIA_API_KEY")
+	}
 	c.SemanticSearchURL = os.Getenv("VELOX_SEMANTIC_SEARCH_URL")
 
 	// YouTube API configuration

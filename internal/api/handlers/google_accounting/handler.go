@@ -320,7 +320,8 @@ func (h *Handler) ListVideos(c *gin.Context) {
 	})
 }
 
-// GenerateFlowImages triggers Google Labs Flow image generation.
+// GenerateFlowImages is kept for compatibility, but the current Python backend
+// exposes the Vids image synthesis endpoint, so we remap the request there.
 func (h *Handler) GenerateFlowImages(c *gin.Context) {
 	var reqBody googleaccounting.FlowImageRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
@@ -332,14 +333,26 @@ func (h *Handler) GenerateFlowImages(c *gin.Context) {
 		return
 	}
 
-	payload, err := json.Marshal(reqBody)
+	driveFolderID := strings.TrimSpace(h.cfg.Drive.ImagesRootFolder)
+	if driveFolderID == "" {
+		driveFolderID = strings.TrimSpace(h.cfg.Drive.RootFolder())
+	}
+
+	vidsPayload, err := json.Marshal(googleaccounting.VidsImageRequest{
+		VideoID:       reqBody.ProjectID,
+		Prompt:        reqBody.Prompt,
+		Style:         reqBody.Style,
+		Headless:      reqBody.Headless,
+		Account:       reqBody.Account,
+		DriveFolderID: driveFolderID,
+	})
 	if err != nil {
-		h.log.Error("failed to marshal google accounting request", zap.Error(err))
+		h.log.Error("failed to marshal vids image request", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare request"})
 		return
 	}
 
-	h.proxyGoogleAccounting(c, http.MethodPost, "/generate-flow-images", payload)
+	h.proxyGoogleAccounting(c, http.MethodPost, "/generate-vids-images", vidsPayload)
 }
 
 // JobStatus proxies the status of a Google Accounting background job.
@@ -384,6 +397,13 @@ func (h *Handler) GenerateVidsImage(c *gin.Context) {
 	if reqBody.Prompt == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required"})
 		return
+	}
+
+	if strings.TrimSpace(reqBody.DriveFolderID) == "" {
+		reqBody.DriveFolderID = strings.TrimSpace(h.cfg.Drive.ImagesRootFolder)
+		if reqBody.DriveFolderID == "" {
+			reqBody.DriveFolderID = strings.TrimSpace(h.cfg.Drive.RootFolder())
+		}
 	}
 
 	payload, err := json.Marshal(reqBody)

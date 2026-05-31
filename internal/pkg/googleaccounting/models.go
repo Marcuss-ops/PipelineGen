@@ -35,7 +35,7 @@ type GenerateRequest struct {
 	VideoID  string `json:"video_id,omitempty"`
 	Prompt   string `json:"prompt"`
 	Style    string `json:"style,omitempty"`
-	Headless *bool `json:"headless,omitempty"`
+	Headless *bool  `json:"headless,omitempty"`
 	Account  string `json:"account,omitempty"`
 }
 
@@ -44,7 +44,7 @@ type AvatarRequest struct {
 	VideoID  string `json:"video_id,omitempty"`
 	Script   string `json:"script"`
 	AvatarID string `json:"avatar_id,omitempty"`
-	Headless *bool `json:"headless,omitempty"`
+	Headless *bool  `json:"headless,omitempty"`
 	Account  string `json:"account,omitempty"`
 }
 
@@ -59,17 +59,19 @@ type FlowImageRequest struct {
 
 // VidsImageRequest is the shared request structure for Vids image generation
 type VidsImageRequest struct {
-	VideoID  string `json:"video_id,omitempty"`
-	Prompt   string `json:"prompt"`
-	Headless *bool  `json:"headless,omitempty"`
-	Account  string `json:"account,omitempty"`
+	VideoID       string `json:"video_id,omitempty"`
+	Prompt        string `json:"prompt"`
+	Style         string `json:"style,omitempty"`
+	Headless      *bool  `json:"headless,omitempty"`
+	Account       string `json:"account,omitempty"`
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
 }
 
 // DownloadRequest is the shared request structure for asset downloads
 type DownloadRequest struct {
 	VideoID  string `json:"video_id"`
 	FileType string `json:"file_type"` // "video", "image", "all"
-	Headless *bool `json:"headless,omitempty"`
+	Headless *bool  `json:"headless,omitempty"`
 	Account  string `json:"account,omitempty"`
 }
 

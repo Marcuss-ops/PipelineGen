@@ -19,7 +19,7 @@ from automation.base import _get_realistic_user_agent, _STEALTH_INIT_SCRIPT
 log = logging.getLogger("SessionPool")
 
 # Maximum number of warm contexts per account
-MAX_WARM_CONTEXTS = 2
+MAX_WARM_CONTEXTS = 6
 # Maximum age (seconds) before a context is recycled
 CONTEXT_MAX_AGE = 1800  # 30 minutes
 
@@ -27,7 +27,8 @@ CONTEXT_MAX_AGE = 1800  # 30 minutes
 class WarmSession:
     """A single pre-warmed browser context ready for reuse."""
 
-    def __init__(self, context: BrowserContext, account: str, created_at: float):
+    def __init__(self, browser: Browser, context: BrowserContext, account: str, created_at: float):
+        self.browser = browser
         self.context = context
         self.account = account
         self.created_at = created_at
@@ -45,6 +46,11 @@ class WarmSession:
     async def close(self):
         try:
             await self.context.close()
+        except Exception:
+            pass
+        try:
+            if self.browser:
+                await self.browser.close()
         except Exception:
             pass
 
@@ -197,9 +203,10 @@ class SessionPool:
             if len(sessions) < MAX_WARM_CONTEXTS:
                 try:
                     context = await self._create_context(account)
+                    browser = context.browser
                     ready = await self._warmup_context(context)
                     if ready:
-                        session = WarmSession(context, account, time.time())
+                        session = WarmSession(browser, context, account, time.time())
                         sessions.append(session)
                         log.info("Pre-warmed context ready for account=%s", account)
                     else:
@@ -238,9 +245,10 @@ class SessionPool:
                 log.info("Creating new warm context for account=%s", account)
                 try:
                     context = await self._create_context(account)
+                    browser = context.browser
                     ready = await self._warmup_context(context)
                     if ready:
-                        session = WarmSession(context, account, time.time())
+                        session = WarmSession(browser, context, account, time.time())
                         session.in_use = True
                         sessions.append(session)
                         self._sessions[account] = sessions
@@ -255,7 +263,7 @@ class SessionPool:
             # All in use or creation failed - create a temporary one
             log.info("No warm session available, creating ad-hoc for account=%s", account)
             context = await self._create_context(account)
-            session = WarmSession(context, account, time.time())
+            session = WarmSession(context.browser, context, account, time.time())
             session.in_use = True
             return session
 
@@ -305,7 +313,7 @@ class SessionPool:
             
             if not session:
                 context = await self._create_context(account)
-                session = WarmSession(context, account, time.time())
+                session = WarmSession(context.browser, context, account, time.time())
                 sessions.append(session)
 
             page = await session.context.new_page()

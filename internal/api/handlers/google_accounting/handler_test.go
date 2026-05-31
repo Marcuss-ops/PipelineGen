@@ -194,14 +194,14 @@ func TestGenerateFlowImagesCallsGenerateEndpoint(t *testing.T) {
 	if gotMethod != http.MethodPost {
 		t.Fatalf("expected POST, got %s", gotMethod)
 	}
-	if gotPath != "/generate-flow-images" {
-		t.Fatalf("expected /generate-flow-images, got %s", gotPath)
+	if gotPath != "/generate-vids-images" {
+		t.Fatalf("expected /generate-vids-images, got %s", gotPath)
 	}
 	if gotBody["prompt"] != "forest tree" {
 		t.Fatalf("expected prompt, got %#v", gotBody["prompt"])
 	}
-	if gotBody["project_id"] != "proj-1" {
-		t.Fatalf("expected project_id proj-1, got %#v", gotBody["project_id"])
+	if gotBody["video_id"] != "proj-1" {
+		t.Fatalf("expected video_id proj-1, got %#v", gotBody["video_id"])
 	}
 	if gotBody["style"] != "cinematic" {
 		t.Fatalf("expected style cinematic, got %#v", gotBody["style"])

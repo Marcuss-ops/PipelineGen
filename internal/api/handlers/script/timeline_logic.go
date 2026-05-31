@@ -122,7 +122,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		}
 
 		// If we still have no useful local matches, trigger a live Artlist discovery as a final fallback.
-		if len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 && artlistService != nil {
+		if false && len(seg.StockMatches) == 0 && len(seg.ArtlistMatches) == 0 && artlistService != nil {
 			if decision, ok := attemptLiveSearchDecision(ctx, req, seg, artlistService); ok {
 				if len(decision.Matches) > 0 {
 					seg.ArtlistMatches = decision.Matches
@@ -131,7 +131,7 @@ func BuildTimelinePlan(ctx context.Context, gen *ollama.Generator, req ScriptDoc
 		}
 
 		// SMART HARVESTING: If still no matches, try a live search for the most relevant suggestions
-		if len(seg.ArtlistMatches) == 0 && artlistService != nil && len(seg.SearchSuggestions) > 0 {
+		if false && len(seg.ArtlistMatches) == 0 && artlistService != nil && len(seg.SearchSuggestions) > 0 {
 			maxToSearch := 2
 			if len(seg.SearchSuggestions) < maxToSearch {
 				maxToSearch = len(seg.SearchSuggestions)

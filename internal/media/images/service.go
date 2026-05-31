@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
-	"velox/go-master/internal/pkg/textutil"
 	"time"
+	"velox/go-master/internal/pkg/textutil"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
@@ -23,12 +24,12 @@ import (
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
 type Service struct {
-	cfg      *config.Config
-	repo     *imagesRepo.Repository
-	stockRepo *clipsRepo.Repository
-	driveSvc *driveapi.Service
-	log      *zap.Logger
-	tempDir  string
+	cfg        *config.Config
+	repo       *imagesRepo.Repository
+	stockRepo  *clipsRepo.Repository
+	driveSvc   *driveapi.Service
+	log        *zap.Logger
+	tempDir    string
 	scriptsDir string
 
 	// NVIDIA AI image generation
@@ -47,8 +48,9 @@ type Service struct {
 	flowProjectID       string
 
 	// Image storage
-	imagesDir     string
-	driveFolderID string
+	imagesDir           string
+	driveFolderID       string
+	imagesDriveFolderID string
 
 	// HTTP client for external API calls
 	client *http.Client
@@ -80,31 +82,32 @@ type wikiCacheEntry struct {
 }
 
 type DiagnosticsReport struct {
-	OK                bool     `json:"ok"`
-	Services          []string `json:"services"`
-	RepoConfigured    bool     `json:"repo_configured"`
-	DriveConfigured   bool     `json:"drive_configured"`
-	NvidiaConfigured  bool     `json:"nvidia_configured"`
-	IngestConfigured  bool     `json:"ingest_configured"`
-	WikidataWorks     bool     `json:"wikidata_works"`
+	OK               bool     `json:"ok"`
+	Services         []string `json:"services"`
+	RepoConfigured   bool     `json:"repo_configured"`
+	DriveConfigured  bool     `json:"drive_configured"`
+	NvidiaConfigured bool     `json:"nvidia_configured"`
+	IngestConfigured bool     `json:"ingest_configured"`
+	WikidataWorks    bool     `json:"wikidata_works"`
 }
 
 func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
 	s := &Service{
-		cfg:       cfg,
-		repo:      repo,
-		stockRepo: stockRepo,
-		driveSvc:  driveSvc,
-		driveFolderID: cfg.Drive.RootFolder(),
-		log:       log,
-		imagesDir: cfg.Storage.ImagesPath(),
-		tempDir:   cfg.Storage.TempPath(),
+		cfg:                 cfg,
+		repo:                repo,
+		stockRepo:           stockRepo,
+		driveSvc:            driveSvc,
+		driveFolderID:       cfg.Drive.RootFolder(),
+		imagesDriveFolderID: cfg.Drive.ImagesRootFolder,
+		log:                 log,
+		imagesDir:           cfg.Storage.ImagesPath(),
+		tempDir:             cfg.Storage.TempPath(),
 		client: &http.Client{
 			Timeout: 5 * time.Minute, // AI generation and browser automation can be slow
 		},
-		wikiCache:    make(map[string]wikiCacheEntry),
-		scriptsDir:   cfg.Paths.PythonScriptsDir,
-		nvidiaModel:  cfg.External.NvidiaModel,
+		wikiCache:     make(map[string]wikiCacheEntry),
+		scriptsDir:    cfg.Paths.PythonScriptsDir,
+		nvidiaModel:   cfg.External.NvidiaModel,
 		animationsDir: cfg.Storage.AnimationsPath(),
 		styleRegistry: styleRegistry,
 	}
@@ -131,7 +134,6 @@ func (s *Service) Diagnostics() DiagnosticsReport {
 		IngestConfigured: s.ingestSvc != nil,
 	}
 }
-
 
 func (s *Service) SetIngestService(svc *ingest.Service) {
 	s.ingestSvc = svc
@@ -176,6 +178,13 @@ func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectI
 	// Resolve eventuali elementi ".." o "." nel path
 	absDir = filepath.Clean(absDir)
 	s.googleAccountingDir = absDir
+}
+
+func (s *Service) effectiveImagesDriveFolderID() string {
+	if strings.TrimSpace(s.imagesDriveFolderID) != "" {
+		return strings.TrimSpace(s.imagesDriveFolderID)
+	}
+	return strings.TrimSpace(s.driveFolderID)
 }
 
 func Slugify(s string) string {

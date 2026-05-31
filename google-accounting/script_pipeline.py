@@ -14,6 +14,7 @@ import yaml
 
 from playwright_client import generate_vids_image_v1_pooled
 from drive_client import upload_file_to_drive
+from config import DEFAULT_DRIVE_FOLDER_ID, DEFAULT_IMAGES_DRIVE_FOLDER_ID
 from style_presets import STYLE_PRESETS
 
 
@@ -31,6 +32,7 @@ class SourceTextPipelineRequest:
     account: Optional[str]
     headless: bool
     drive_folder_id: Optional[str]
+    images_drive_folder_id: Optional[str]
 
 
 def _config_path() -> Path:
@@ -63,11 +65,48 @@ def _safe_name(value: str) -> str:
 
 
 def _scene_chunks(text: str, limit: int) -> list[str]:
+    compact = " ".join(text.split()).strip()
+    if not compact:
+        return [""] * max(1, limit)
+
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-    if len(paragraphs) >= 2:
+    if len(paragraphs) >= limit:
         return paragraphs[:limit]
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
-    return (sentences or [text])[:limit]
+
+    candidates = paragraphs if len(paragraphs) > 1 else []
+    if len(candidates) < limit:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", compact) if s.strip()]
+        if len(sentences) > len(candidates):
+            candidates = sentences
+
+    if len(candidates) < limit:
+        clauses = [c.strip(" ,;:-") for c in re.split(r"\s*(?:,|;|:|\s-\s|—)\s*", compact) if c.strip(" ,;:-")]
+        if len(clauses) > len(candidates):
+            candidates = clauses
+
+    if not candidates:
+        candidates = [compact]
+
+    if len(candidates) >= limit:
+        return candidates[:limit]
+
+    words = compact.split()
+    if len(words) > len(candidates):
+        size = max(1, len(words) // limit)
+        word_chunks = []
+        for idx in range(0, len(words), size):
+            chunk = " ".join(words[idx : idx + size]).strip()
+            if chunk:
+                word_chunks.append(chunk)
+        if len(word_chunks) >= len(candidates):
+            candidates = word_chunks
+
+    if len(candidates) >= limit:
+        return candidates[:limit]
+
+    while len(candidates) < limit:
+        candidates.append(candidates[-1])
+    return candidates[:limit]
 
 
 def _build_messages(config: dict[str, Any], req: SourceTextPipelineRequest, source_text: str) -> list[dict[str, str]]:
@@ -121,17 +160,73 @@ def _extract_payload(response: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _clean_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    value = value.strip()
+    if value.lower() in {"null", "none", "undefined"}:
+        return ""
+    return value
+
+
+def _derive_title(source_text: str, payload: dict[str, Any]) -> str:
+    title = _clean_text(payload.get("title"))
+    if title:
+        return title
+
+    compact = " ".join(source_text.split())
+    if not compact:
+        return "Generated Script"
+
+    first_sentence = re.split(r"(?<=[.!?])\s+", compact, maxsplit=1)[0].strip()
+    if len(first_sentence) > 72:
+        cut = first_sentence[:72].rsplit(" ", 1)[0].strip()
+        first_sentence = cut or first_sentence[:72].strip()
+    return first_sentence.rstrip(".!?;:")
+
+
+def _derive_script(source_text: str, payload: dict[str, Any], scenes: list[dict[str, Any]]) -> str:
+    script = _clean_text(payload.get("script"))
+    if script:
+        return script
+
+    scene_texts = [_clean_text(scene.get("text")) for scene in scenes]
+    scene_texts = [text for text in scene_texts if text]
+    if scene_texts:
+        return "\n\n".join(scene_texts)
+    return source_text.strip()
+
+
 def _normalize_scenes(payload: dict[str, Any], source_text: str, scene_count: int) -> list[dict[str, Any]]:
     scenes = payload.get("scenes")
     if isinstance(scenes, list) and scenes:
         normalized = []
         for idx, scene in enumerate(scenes[:scene_count], start=1):
+            fallback_chunk = _scene_chunks(source_text, scene_count)[idx - 1] if scene_count > 0 else source_text
             normalized.append(
                 {
-                    "id": scene.get("id") or f"scene_{idx:03d}",
-                    "speaker": scene.get("speaker") or "Narrator",
-                    "text": scene.get("text") or "",
-                    "image_hint": scene.get("image_hint") or scene.get("text") or source_text,
+                    "id": _clean_text(scene.get("id")) or f"scene_{idx:03d}",
+                    "speaker": _clean_text(scene.get("speaker")) or "Narrator",
+                    "text": _clean_text(scene.get("text")) or fallback_chunk,
+                    "image_hint": _clean_text(scene.get("image_hint"))
+                    or _clean_text(scene.get("text"))
+                    or fallback_chunk,
+                }
+            )
+        if len(normalized) >= scene_count:
+            return normalized
+
+        fallback_chunks = _scene_chunks(source_text, scene_count)
+        for idx in range(len(normalized) + 1, scene_count + 1):
+            chunk = fallback_chunks[idx - 1] if idx - 1 < len(fallback_chunks) else source_text
+            normalized.append(
+                {
+                    "id": f"scene_{idx:03d}",
+                    "speaker": "Narrator",
+                    "text": chunk,
+                    "image_hint": chunk,
                 }
             )
         return normalized
@@ -160,6 +255,14 @@ def _docs_root(config: dict[str, Any]) -> Path:
     return Path(__file__).resolve().parent / root
 
 
+def _effective_drive_folder_id(req: SourceTextPipelineRequest) -> str:
+    return (req.drive_folder_id or DEFAULT_DRIVE_FOLDER_ID or "").strip()
+
+
+def _effective_images_drive_folder_id(req: SourceTextPipelineRequest) -> str:
+    return (req.images_drive_folder_id or DEFAULT_IMAGES_DRIVE_FOLDER_ID or "").strip()
+
+
 def _build_output_paths(config: dict[str, Any], req: SourceTextPipelineRequest, title: str) -> tuple[Path, Path, Path]:
     root = _docs_root(config)
     root.mkdir(parents=True, exist_ok=True)
@@ -176,6 +279,7 @@ async def _generate_images(
     req: SourceTextPipelineRequest,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    drive_folder_id = _effective_images_drive_folder_id(req)
     for scene in scenes:
         prompt = _image_prompt(scene, req.visual_style)
         local_path = await generate_vids_image_v1_pooled(
@@ -185,9 +289,9 @@ async def _generate_images(
         )
         drive_link = ""
         drive_file_id = ""
-        if local_path and req.drive_folder_id:
+        if local_path and drive_folder_id:
             drive_file_id = upload_file_to_drive(
-                req.drive_folder_id,
+                drive_folder_id,
                 Path(local_path),
                 Path(local_path).name,
                 "image/png" if str(local_path).lower().endswith(".png") else "image/jpeg",
@@ -235,6 +339,40 @@ def _write_docs(folder: Path, source_text: str, payload: dict[str, Any], scenes:
     }
 
 
+def _upload_docs_to_drive(files: dict[str, str], drive_folder_id: str) -> dict[str, str]:
+    uploaded: dict[str, str] = {}
+    uploads = [
+        ("json_drive_file_id", Path(files["json_path"]), "script.json", "application/json", None),
+        (
+            "markdown_drive_file_id",
+            Path(files["markdown_path"]),
+            "script",
+            "text/plain",
+            "application/vnd.google-apps.document",
+        ),
+        (
+            "source_drive_file_id",
+            Path(files["source_txt_path"]),
+            "source",
+            "text/plain",
+            "application/vnd.google-apps.document",
+        ),
+    ]
+    for key, path, filename, mime_type, target_mime_type in uploads:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing docs file for Drive upload: {path}")
+        file_id = upload_file_to_drive(
+            drive_folder_id,
+            path,
+            filename,
+            mime_type,
+            drive_mime_type=target_mime_type,
+        )
+        uploaded[key] = file_id
+        uploaded[f"{key.replace('_file_id', '')}_drive_link"] = f"https://drive.google.com/file/d/{file_id}/view"
+    return uploaded
+
+
 async def run_source_text_pipeline(req: SourceTextPipelineRequest) -> dict[str, Any]:
     config = load_config()
     source_text = read_source_text(req.source_text, req.source_txt_path)
@@ -242,8 +380,10 @@ async def run_source_text_pipeline(req: SourceTextPipelineRequest) -> dict[str, 
     response = await _call_ollama(config, messages)
     payload = _extract_payload(response)
     scenes = _normalize_scenes(payload, source_text, req.scene_count)
+    title = _derive_title(source_text, payload)
+    script = _derive_script(source_text, payload, scenes)
     scenes = await _generate_images(scenes, req)
-    folder, _, _ = _build_output_paths(config, req, payload.get("title") or "Generated Script")
-    files = _write_docs(folder, source_text, payload, scenes)
-    return {"title": payload.get("title"), "script": payload.get("script"), "scenes": scenes, "files": files}
-
+    folder, _, _ = _build_output_paths(config, req, title)
+    files = _write_docs(folder, source_text, {"title": title, "script": script}, scenes)
+    drive_docs = _upload_docs_to_drive(files, _effective_drive_folder_id(req))
+    return {"title": title, "script": script, "scenes": scenes, "files": files, "drive_docs": drive_docs}

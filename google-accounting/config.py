@@ -14,6 +14,11 @@ DOWNLOAD_DIR = Path(os.getenv("DOWNLOAD_DIR", str(BASE_DIR / "data" / "google_vi
 SCHEDULE_CRON = os.getenv("SCHEDULE_CRON", "0 2 * * *")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+DEFAULT_DRIVE_FOLDER_ID = os.getenv("DEFAULT_DRIVE_FOLDER_ID", "1HinlvxnAFknV3wCSB9cuKA4gZVivdXC7")
+DEFAULT_IMAGES_DRIVE_FOLDER_ID = os.getenv(
+    "DEFAULT_IMAGES_DRIVE_FOLDER_ID",
+    os.getenv("VELOX_DRIVE_IMAGES_ROOT", "14gbQ3ucY9TaRs0aGPkJxTpczGv7tQW4C"),
+)
 
 DRIVE_SCOPES = [
     "https://www.googleapis.com/auth/drive",

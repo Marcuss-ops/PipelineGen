@@ -140,7 +140,7 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 	}
 
 	resChan := make(chan result, len(sentences))
-	sem := make(chan struct{}, 1) // Concurrency semaphore limit = 1 to prevent overloading Google Accounting server
+	sem := make(chan struct{}, 6) // Concurrency semaphore limit = 6 to allow parallel processing
 	var wg sync.WaitGroup
 
 	for idx, sentence := range sentences {

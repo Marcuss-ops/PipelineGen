@@ -1,4 +1,4 @@
-"""FastAPI routes for source-text driven script generation."""
+"""FastAPI routes for the original source-text driven script pipeline."""
 
 from typing import Optional
 
@@ -24,6 +24,7 @@ class SourceTextPipelineBody(BaseModel):
     account: Optional[str] = None
     headless: bool = True
     drive_folder_id: Optional[str] = None
+    images_drive_folder_id: Optional[str] = None
 
 
 @router.post("/generate-from-txt")
@@ -44,10 +45,10 @@ async def generate_from_txt(body: SourceTextPipelineBody):
         account=body.account,
         headless=body.headless,
         drive_folder_id=body.drive_folder_id,
+        images_drive_folder_id=body.images_drive_folder_id,
     )
     try:
         result = await run_source_text_pipeline(req)
         return {"status": "ok", **result}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-

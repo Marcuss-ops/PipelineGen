@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -39,6 +40,37 @@ func (s *Service) GenerateSmartImage(
 		return nil, fmt.Errorf("missing image prompt")
 	}
 
+	// Check if this image has already been generated and is in the DB
+	if s.repo != nil && s.repo.DB() != nil {
+		desc := fmt.Sprintf("AI generated image via Google Vids for prompt: %s", cleanPrompt)
+		var img models.ImageAsset
+		var name, urlVal, tagsJSON, metaJSON, createdAtStr, fileHash, localPath, driveFileID sql.NullString
+		err := s.repo.DB().QueryRowContext(ctx, `
+			SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
+			FROM media_assets
+			WHERE media_type = 'image' AND name = ?
+			LIMIT 1
+		`, desc).Scan(&img.SlugID, &name, &urlVal, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID)
+		if err == nil {
+			s.log.Info("REUSING already generated Google Vids image from database", zap.String("prompt", cleanPrompt))
+			img.Description = name.String
+			img.SourceURL = urlVal.String
+			img.Hash = fileHash.String
+			img.PathRel = localPath.String
+			img.DriveFileID = driveFileID.String
+			if createdAtStr.Valid {
+				img.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr.String)
+			}
+			if tagsJSON.Valid && tagsJSON.String != "" {
+				_ = json.Unmarshal([]byte(tagsJSON.String), &img.Tags)
+			}
+			if metaJSON.Valid && metaJSON.String != "" {
+				img.MetadataJSON = metaJSON.String
+			}
+			return &img, nil
+		}
+	}
+
 	// Apply style from registry if provided
 	styledPrompt := cleanPrompt
 	if s.styleRegistry != nil && style != "" {
@@ -46,7 +78,7 @@ func (s *Service) GenerateSmartImage(
 	}
 
 	// Step 1: Try Google Vids image synthesis
-	asset, err := s.generateGoogleVidsImage(ctx, cleanPrompt, styledPrompt, subject, style, tags, skipDrive)
+	asset, err := s.generateGoogleVidsImage(ctx, cleanPrompt, styledPrompt, subject, style, tags, width, height, skipDrive)
 	if err == nil && asset != nil {
 		return asset, nil
 	}
@@ -93,7 +125,7 @@ func pickImagePrompt(subject, topic string, prompts []string) string {
 	}
 }
 
-func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, width, height int, skipDrive bool) (*models.ImageAsset, error) {
 	s.log.Info("generateGoogleVidsImage: entering function", zap.String("googleAccountingURL", s.googleAccountingURL))
 
 	if strings.TrimSpace(s.googleAccountingURL) == "" {
@@ -110,13 +142,18 @@ func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styl
 
 	// For YouTube vertical format (9:16), add it to the prompt as a hint for Google Vids.
 	vidsPrompt := styledPrompt
-	if !strings.Contains(strings.ToLower(vidsPrompt), "9:16") {
+	if height > width && !strings.Contains(strings.ToLower(vidsPrompt), "9:16") {
 		vidsPrompt += ", 9:16 aspect ratio, vertical format, youtube shorts format"
 	}
+	videoID := strings.TrimSpace(s.vidsProjectID)
+	if videoID == "" {
+		videoID = "new"
+	}
 	reqBody := googleaccounting.VidsImageRequest{
-		VideoID: "1Q4i4Tz4Ft8se_usT6QGoRa6pQfHddkOQZ8mqQH5InCw",
-		Prompt:  vidsPrompt,
-		Account: "favamassimo", // Default to favamassimo
+		VideoID:       videoID,
+		Prompt:        vidsPrompt,
+		Account:       "favamassimo", // Default to favamassimo
+		DriveFolderID: s.effectiveImagesDriveFolderID(),
 	}
 
 	body, err := json.Marshal(reqBody)

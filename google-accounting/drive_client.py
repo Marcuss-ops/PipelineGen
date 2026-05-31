@@ -127,7 +127,13 @@ async def download_file(file_id: str, filename: str, file_type: str) -> Path:
     return dest_path
 
 
-def upload_file_to_drive(folder_id: str, local_path: Path, filename: str, mime_type: str = "application/octet-stream") -> str:
+def upload_file_to_drive(
+    folder_id: str | None,
+    local_path: Path,
+    filename: str,
+    mime_type: str = "application/octet-stream",
+    drive_mime_type: str | None = None,
+) -> str:
     """Upload a local file to a specific Google Drive folder.
 
     Args:
@@ -144,8 +150,11 @@ def upload_file_to_drive(folder_id: str, local_path: Path, filename: str, mime_t
     service = _build_service()
     file_metadata = {
         "name": filename,
-        "parents": [folder_id],
     }
+    if folder_id:
+        file_metadata["parents"] = [folder_id]
+    if drive_mime_type:
+        file_metadata["mimeType"] = drive_mime_type
     media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=True)
     file = (
         service.files()

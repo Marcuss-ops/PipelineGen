@@ -395,8 +395,9 @@ func (s *Service) GenerateVidsImage(ctx context.Context, prompt string) (string,
 	}
 
 	reqBody := googleaccounting.VidsImageRequest{
-		VideoID: videoID,
-		Prompt:  prompt,
+		VideoID:       videoID,
+		Prompt:        prompt,
+		DriveFolderID: s.effectiveImagesDriveFolderID(),
 	}
 
 	body, err := json.Marshal(reqBody)

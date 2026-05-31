@@ -17,6 +17,8 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from models import DownloadRequest, GenerateRequest, CharacterVideoRequest, AvatarRequest, VidsImageRequest, SyncRequest
 
 import scheduler as sched
+from config import DEFAULT_DRIVE_FOLDER_ID
+from config import DEFAULT_IMAGES_DRIVE_FOLDER_ID
 from storage import ensure_dirs, list_downloaded_videos, list_downloaded_images
 from style_presets import STYLE_PRESETS, require_valid_style, compose_styled_prompt
 from job_manager import new_job, update_job, get_job, get_all_jobs, delete_job, cleanup_expired_jobs
@@ -44,6 +46,10 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 STYLE_NAMES = tuple(STYLE_PRESETS.keys())
+
+
+def _effective_drive_folder_id(explicit: Optional[str]) -> str:
+    return (explicit or DEFAULT_IMAGES_DRIVE_FOLDER_ID or DEFAULT_DRIVE_FOLDER_ID or "").strip()
 
 
 
@@ -238,9 +244,10 @@ async def generate_vids_image_endpoint(req: VidsImageRequest, background_tasks: 
     account = req.account or "favamassimo"
     style = require_valid_style(req.style)
     styled_prompt = compose_styled_prompt(req.prompt, req.style)
+    drive_folder_id = _effective_drive_folder_id(req.drive_folder_id)
     new_job(job_id, prompt=req.prompt, video_id=req.video_id, account=account,
              style=style,
-             callback_url=req.callback_url, drive_folder_id=req.drive_folder_id)
+             callback_url=req.callback_url, drive_folder_id=drive_folder_id)
 
     async def _run():
         update_job(job_id, status="running", progress=10, current_step="opening_vids", last_log="Opening Google Vids for image generation")
@@ -272,10 +279,10 @@ async def generate_vids_image_endpoint(req: VidsImageRequest, background_tasks: 
                     "styled_prompt": styled_prompt,
                 }
                 # Auto-upload to Drive
-                if req.drive_folder_id:
+                if drive_folder_id:
                     drive_results = []
                     for img_path in files:
-                        dr = await auto_upload_to_drive(img_path, req.drive_folder_id, "image")
+                        dr = await auto_upload_to_drive(img_path, drive_folder_id, "image")
                         if dr:
                             drive_results.append(dr)
                     if drive_results:
