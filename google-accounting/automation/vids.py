@@ -67,8 +67,12 @@ class GoogleVidsAutomation(GoogleVidsVideoMixin, GoogleVidsAvatarMixin, GoogleVi
 
     async def _goto_home(self) -> Page:
         page = await self.context.new_page()
-        await page.goto("https://docs.google.com/videos/u/0/?usp=direct_url", wait_until="networkidle")
-        await page.wait_for_timeout(1500)
+        await page.goto(
+            "https://docs.google.com/videos/u/0/?usp=direct_url",
+            wait_until="domcontentloaded",
+            timeout=60000,
+        )
+        await page.wait_for_timeout(5000)
         return page
 
     @staticmethod
@@ -385,4 +389,3 @@ async def generate_vids_image_v1_pooled(video_id: str, prompt: str, account: str
 async def list_projects(account: str = None, headless: bool = True):
     async with GoogleVidsAutomation(account=account, headless=headless) as engine:
         return await engine.list_projects()
-

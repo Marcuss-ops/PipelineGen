@@ -17,15 +17,16 @@ class GoogleVidsImagesMixin:
     """Mixin class for Google Vids image generation using the built-in image synthesis tool."""
 
     # ── Selectors per la generazione immagini ──────────────────────────────────
-    IMMAGINI_TAB_SELECTOR = 'div.appsSketchyContentLibraryRailToolbarButtonIconRefreshed'
+    IMMAGINI_TAB_SELECTOR = '#content-library-rail-image-synthesis-element'
 
     ASPECT_RATIO_TRIGGER_SELECTOR = (
+        "div[aria-label*='Proporzioni' i], div[aria-label*='Aspect ratio' i], "
         'div.appsDocsAiGenerativeaiImageGenerateImagesInputAspectRatioPicker'
     )
 
 
     PROMPT_TEXTAREA_SELECTOR = (
-        'textarea.docs-prompt-view-input.docs-image-synthesis-search-bar-input'
+        'textarea.docs-prompt-view-input.docs-image-synthesis-search-bar-input.goog-textarea'
     )
 
     GENERATE_BUTTON_SELECTOR = (
@@ -34,98 +35,84 @@ class GoogleVidsImagesMixin:
 
     # Fallback selectors
     PROMPT_TEXTAREA_FALLBACKS = [
+        "textarea[placeholder*='Descrivi' i]",
+        "textarea[aria-label*='Descrivi' i]",
+        ".docs-prompt-view-input",
+        "textarea.docs-image-synthesis-search-bar-input",
+        'textarea.docs-prompt-view-input.docs-image-synthesis-search-bar-input',
         'textarea.docs-prompt-view-input',
         'textarea.docs-image-synthesis-search-bar-input',
+        'div.appsDocsUiSidebarEl.genAiImageSidebarEl textarea',
+        'div.appsDocsUiSidebarEl.genAiImageSidebarEl [contenteditable="true"]',
+        '[aria-label*="Descrivi la tua idea" i]',
+        '[placeholder*="Descrivi la tua idea" i]',
+        'textarea[placeholder*="Describe your idea"]',
         'textarea[placeholder*="Descrivi la tua idea"]',
         '.docs-prompt-view-input-container textarea',
+        'xpath=/html/body/aside/div/div[4]/div[1]/div[2]/div[1]/div/textarea',
         'textarea',
     ]
 
     GENERATE_BUTTON_FALLBACKS = [
+        'button.image-synthesis-creation-button.image-synthesis-begin-create',
         'button.image-synthesis-begin-create',
+        'button[aria-label="Create"]',
+        'button[data-tooltip="Create"]',
+        'button:has-text("Create")',
         'button[aria-label="Crea"]',
         'button[data-tooltip="Crea"]',
         'button:has-text("Crea")',
         'button:has-text("Genera")',
     ]
 
-    # ── Selector per il pulsante Veo 3.1 / "Video vuoto" all'avvio ──
-    VEO_BUTTON_SELECTORS = [
-        'button[data-view-id="getting-started-dialog-videogen"]',
-        'button.appsDocsGettingStartedEntryPointSelectionViewButton.videogen',
-        'button.videogen',
-        '[data-view-id*="videogen"]',
-        '[data-view-id*="video-gen"]',
-        'button:has-text("Veo 3.1")',
-        'button:has-text("Veo")',
-    ]
-
-    BLANK_VIDEO_SELECTORS = [
-        'button.appsDocsGettingStartedEntryPointSelectionViewBlankCard',
-        'button:has-text("Video vuoto")',
-        'button:has-text("Blank video")',
-        '[class*="BlankCard"]',
-        'button[class*="EntryPointSelectionView"]',
-    ]
-
-    # ── Selector per chiudere il dialog "Inizia" all'avvio ──────────────
-    GETTING_STARTED_CLOSE_SELECTORS = [
-        'span.getting-started-dialog-close.docs-material-gm-dialog-title-close',
-        'span.getting-started-dialog-close',
-        '[aria-label="Chiudi"][data-tooltip="Chiudi"]',
-        '.getting-started-dialog-close',
-        '.docs-material-gm-dialog-title-close',
-        'button[aria-label="Chiudi"]',
-    ]
-
-    # ── Selector per il backdrop del dialog ──────────────────────────────
-    GETTING_STARTED_BACKDROP_SELECTORS = [
-        '/html/body/div[2]/div/div[2]/span',
-        'div.docs-material-gm-dialog-bg',
-        'div[class*="dialog-bg"]',
-    ]
+    # Progetto esistente da usare sempre (evita il popup "Ciao Massimo")
+    SHARED_VIDS_PROJECT_ID = "1Kn_99mlEjC8kn4_dLBgfeoKZw7ohMz-TjBAvx3szNoQ"
+    SHARED_VIDS_PROJECT_SCENE = "id.g57c7d542_0_0"
 
     # ── Helper per click umano (hover + click) ─────────────────────────────
     async def _human_click(self, page, locator, timeout: int = 10000) -> bool:
         """
-        Hover sul centro dell'elemento, pausa umana, poi click.
-        Sostituisce click(force=True) per evitare rilevamento bot.
+        Sostituisce click(force=True) manuale con locator.click() per maggiore affidabilita'.
+        Include scrolling, rimozione modali e fallback coordinate.
         """
         try:
-            box = await locator.bounding_box(timeout=timeout)
-            if not box:
-                log.warning("human_click: bounding_box not found")
-                await locator.click(force=True, timeout=timeout)
-                return True
-
-            # Coordinate randomiche dentro il box (per sembrare umano)
-            x = box["x"] + box["width"] * random.uniform(0.2, 0.8)
-            y = box["y"] + box["height"] * random.uniform(0.2, 0.8)
-
-            # Movimento lento verso il punto
-            steps = random.randint(5, 12)
-            for i in range(steps):
-                progress = (i + 1) / steps
-                cx = box["x"] + box["width"] * 0.5
-                cy = box["y"] + box["height"] * 0.5
-                intermediate_x = cx * progress + x * (1 - progress) + random.uniform(-2, 2)
-                intermediate_y = cy * progress + y * (1 - progress) + random.uniform(-2, 2)
-                await page.mouse.move(intermediate_x, intermediate_y)
-                await asyncio.sleep(random.uniform(0.01, 0.03))
-
-            # Pausa sull'elemento prima di cliccare
-            await asyncio.sleep(random.uniform(0.1, 0.4))
-
-            await page.mouse.click(x, y)
-            log.info("Human click at (%.0f, %.0f) size=%.0fx%.0f", x, y, box["width"], box["height"])
-            return True
-        except Exception as e:
-            log.warning("human_click fallback to force click: %s", e)
+            # 1. Ensure element is in view
+            await locator.scroll_into_view_if_needed(timeout=timeout)
+            await asyncio.sleep(0.5)
+            
+            # 2. Try standard Playwright click
             try:
-                await locator.click(force=True, timeout=timeout)
+                await locator.click(delay=random.randint(50, 150), timeout=timeout)
+                log.info("Standard click on locator successful")
                 return True
-            except Exception:
-                return False
+            except Exception as e:
+                log.warning("Standard click failed: %s, trying force=True", e)
+                
+            # 3. Try forced click
+            try:
+                await locator.click(force=True, delay=random.randint(50, 150), timeout=timeout)
+                log.info("Force click on locator successful")
+                return True
+            except Exception as e2:
+                log.warning("Force click failed: %s, trying coordinate-based click", e2)
+
+            # 4. Try coordinate-based mouse click as fallback
+            box = await locator.bounding_box()
+            if box:
+                center_x = box["x"] + box["width"] / 2
+                center_y = box["y"] + box["height"] / 2
+                await page.mouse.click(center_x, center_y)
+                log.info("Coordinate-based click at (%.0f, %.0f) successful", center_x, center_y)
+                return True
+            
+            # 5. Last resort: JS dispatchEvent
+            log.warning("Coordinate click failed (no box), trying dispatchEvent")
+            await locator.dispatch_event('click')
+            return True
+            
+        except Exception as e3:
+            log.error("All click methods failed for locator: %s", e3)
+            return False
 
     # ── Selectors per il polling dell'immagine generata ───────────────────
     # ATTENZIONE: usare selettori SPECIFICI, NON 'img' generico (prende icone UI)
@@ -149,29 +136,56 @@ class GoogleVidsImagesMixin:
     async def _set_aspect_ratio_16_9(self, page):
         """Clicks the aspect ratio picker and selects 'Orizzontale 16:9'."""
         log.info("Setting aspect ratio to 16:9...")
+        await page.wait_for_timeout(7000)
 
-        # Prova a cliccare direttamente il trigger dell'aspect ratio
+        trigger_selectors = [
+            self.ASPECT_RATIO_TRIGGER_SELECTOR,
+            '[role="listbox"][aria-label*="Proporzioni" i]',
+            '[role="listbox"][data-tooltip*="Proporzioni" i]',
+            '[aria-label*="Proporzioni" i]',
+            '[data-tooltip*="Proporzioni" i]',
+        ]
+
+        picker = None
+        for sel in trigger_selectors:
+            try:
+                loc = page.locator(sel).first
+                await loc.wait_for(state="visible", timeout=30000)
+                picker = loc
+                log.info("Aspect ratio trigger found via: %s", sel)
+                break
+            except Exception:
+                continue
+
+        if picker is None:
+            log.warning("Aspect ratio picker trigger not found, trying fallback")
+            return False
+
         try:
-            picker = page.locator(self.ASPECT_RATIO_TRIGGER_SELECTOR).first
-            if await picker.count() > 0:
-                await self._human_click(page, picker, timeout=5000)
-                await human_delay(500, 1000)
-                log.info("Clicked aspect ratio picker trigger")
-            else:
-                log.warning("Aspect ratio picker trigger not found, trying fallback")
-                return False
+            await picker.scroll_into_view_if_needed(timeout=5000)
+            await self._human_click(page, picker, timeout=5000)
+            await human_delay(500, 900)
+            log.info("Clicked aspect ratio picker trigger")
         except Exception as e:
             log.warning("Failed to click aspect ratio picker: %s", e)
             return False
 
-        # Ora seleziona "Orizzontale 16:9" dal dropdown
-        for sel in [
+        # Ora seleziona la voce 16:9 nel dropdown, usando il testo visibile
+        # che sappiamo essere presente quando il pannello è aperto.
+        option_selectors = [
             'div[role="option"][aria-label*="16:9"]',
+            '[role="option"][aria-label*="16:9"]',
             'div[role="option"]:has-text("16:9")',
+            '[role="option"]:has-text("16:9")',
             'div[role="option"]:has-text("Orizzontale")',
-            'div[data-tooltip*="16:9"]',
+            '[role="option"]:has-text("Orizzontale")',
+            'div[role="option"]:has-text("Landscape")',
+            '[role="option"]:has-text("Landscape")',
+            'div[aria-label*="Landscape 16:9"]',
             'div[aria-label*="Orizzontale"]',
-        ]:
+            'div[aria-label*="Landscape"]',
+        ]
+        for sel in option_selectors:
             try:
                 opt = page.locator(sel).first
                 if await opt.count() > 0:
@@ -182,56 +196,51 @@ class GoogleVidsImagesMixin:
             except Exception:
                 continue
 
+        try:
+            opt = page.get_by_role("option", name=re.compile(r"16:9|Orizzontale|Landscape", re.I)).first
+            if await opt.count() > 0:
+                await self._human_click(page, opt, timeout=5000)
+                log.info("Selected 16:9 aspect ratio via role-based lookup")
+                await human_delay(300, 700)
+                return True
+        except Exception:
+            pass
+
         log.warning("Could not select 16:9 aspect ratio from dropdown")
         return False
 
     async def _fill_image_prompt(self, page, prompt: str) -> bool:
         """Fills the prompt textarea with the given prompt.
-        
-        Tecnica anti-bot: dopo il fill, aggiunge qualche carattere e li rimuove
-        per simulare una digitazione più umana (fingerprint removal).
         """
         log.info("Filling image prompt...")
 
         ta = None
         selector_used = None
 
-        # Prova prima con il selettore esatto
-        try:
-            ta = page.locator(self.PROMPT_TEXTAREA_SELECTOR).first
-            if await ta.count() > 0 and await ta.is_visible():
-                selector_used = "exact"
-            else:
+        # Prova prima con il selettore esatto e attendi che diventi visibile.
+        selectors = [self.PROMPT_TEXTAREA_SELECTOR, *self.PROMPT_TEXTAREA_FALLBACKS]
+        for sel in selectors:
+            try:
+                ta = page.locator(sel).first
+                await ta.wait_for(state="visible", timeout=15000)
+                selector_used = "exact" if sel == self.PROMPT_TEXTAREA_SELECTOR else f"fallback: {sel}"
+                break
+            except Exception:
                 ta = None
-        except Exception as e:
-            log.warning("Exact prompt selector failed: %s", e)
-
-        # Fallback: prova i selettori alternativi
-        if ta is None:
-            for sel in self.PROMPT_TEXTAREA_FALLBACKS:
-                try:
-                    ta = page.locator(sel).first
-                    if await ta.count() > 0 and await ta.is_visible():
-                        selector_used = f"fallback: {sel}"
-                        break
-                    else:
-                        ta = None
-                except Exception:
-                    continue
+                continue
 
         if ta is None:
             log.error("Could not find prompt textarea")
             return False
 
-        # Click + fill (evita timeout con prompt lunghi)
-        await self._human_click(page, ta)
+        # Google Vids enables the submit button only after real keyboard input.
+        # Use actual typing events, but keep the sequence simple and deterministic.
+        await ta.click(timeout=5000)
         await human_delay(200, 500)
-        await ta.fill(prompt)
+        await ta.focus()
+        await page.keyboard.type(prompt, delay=random.randint(15, 35))
+        await page.wait_for_timeout(800)
         log.info("Prompt filled via %s", selector_used)
-
-        # ── ANTI-BOT FINGERPRINT: applica a TUTTI i path ──
-        await self._apply_anti_bot_fingerprint(page)
-        # ── FINE ANTI-BOT ──────────────────────────────────────────
 
         return True
 
@@ -450,28 +459,7 @@ class GoogleVidsImagesMixin:
                     len(captured_urls), len(saved_paths)
                 )
 
-            # Se siamo arrivati qui, prova un ultimo tentativo: cattura tutto il DOM
-            log.warning("Timeout polling. Tentativo finale: dump completo DOM...")
-            try:
-                await page.screenshot(path="logs/vids_img_final.png", full_page=True)
-                # Dump tutti gli URL delle img nel DOM
-                img_urls = await page.evaluate("""() => {
-                    const imgs = document.querySelectorAll('img');
-                    return Array.from(imgs).map(el => ({
-                        src: el.currentSrc || el.src || el.getAttribute('src') || '',
-                        w: el.naturalWidth || el.width,
-                        h: el.naturalHeight || el.height,
-                        visible: el.offsetWidth > 0 && el.offsetHeight > 0,
-                        tag: el.tagName,
-                    }));
-                }""")
-                log.info("DOM dump complete: %d img elements found", len(img_urls))
-                for item in img_urls:
-                    log.info("  img: src=%s.. size=%dx%d visible=%s",
-                             item["src"][:80], item["w"], item["h"], item["visible"])
-            except Exception as e:
-                log.warning("DOM dump failed: %s", e)
-
+            log.warning("Timeout polling for generated image.")
             log.warning("No generated image found after polling")
             return None
 
@@ -481,6 +469,25 @@ class GoogleVidsImagesMixin:
                 page.remove_listener("response", on_response)
             except Exception:
                 pass
+
+    async def _debug_screenshot(self, page, name: str):
+        """Helper to save a debug screenshot in the logs folder and upload to user's Drive."""
+        try:
+            timestamp = int(time.time())
+            path = Path("logs") / f"vids_debug_{timestamp}_{name}.png"
+            await page.screenshot(path=str(path))
+            log.info("Saved debug screenshot: %s", path)
+            
+            # Automatically upload to user's Drive folder for live debugging
+            try:
+                from drive_client import upload_file_to_drive
+                debug_folder_id = "1HinlvxnAFknV3wCSB9cuKA4gZVivdXC7"
+                upload_file_to_drive(debug_folder_id, path, path.name, "image/png")
+                log.info("Successfully uploaded debug screenshot %s to Drive folder %s", path.name, debug_folder_id)
+            except Exception as e_upload:
+                log.warning("Failed to upload debug screenshot to Drive: %s", e_upload)
+        except Exception as e:
+            log.warning("Failed to save debug screenshot '%s': %s", name, e)
 
     async def generate_vids_image(
         self,
@@ -513,185 +520,91 @@ class GoogleVidsImagesMixin:
             "generated_at": int(time.time()),
         }
 
+                # Usa SEMPRE il progetto condiviso per evitare il popup "Ciao Massimo"
+        # Se però fallisce, proveremo a crearne uno nuovo
+        effective_video_id = video_id if (video_id and video_id != "new") else self.SHARED_VIDS_PROJECT_ID
+
         if self._external_page:
             page = self.page
-            log.info("Using preloaded external page for image generation, bypassing navigation")
+            if effective_video_id not in page.url:
+                project_url = (
+                    f"https://docs.google.com/videos/d/{effective_video_id}/edit"
+                    f"?scene={self.SHARED_VIDS_PROJECT_SCENE}"
+                    f"#scene={self.SHARED_VIDS_PROJECT_SCENE}"
+                )
+                log.info(f"Navigating to project {effective_video_id}...")
+                await page.goto(project_url, wait_until="domcontentloaded", timeout=60000)
+                await asyncio.sleep(10)
+            log.info("Using preloaded external page for image generation")
         else:
             page = await self._goto_home()
-            try:
-                if video_id == "new" or not video_id:
-                    log.info("Creating new Vids project for Image Generation")
-                    created = False
-                    # Prova il metodo diretto /videos/create (funziona in generate_video)
-                    try:
-                        await page.goto(
-                            "https://docs.google.com/videos/create",
-                            wait_until="domcontentloaded",
-                        )
-                        await asyncio.sleep(8)
-                        try:
-                            await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
-                            created = True
-                            log.info("Created Vids project via /videos/create")
-                        except Exception:
-                            log.info("wait_for_url failed for /videos/create, current url: %s", page.url)
-                    except Exception as e:
-                        log.warning("Failed to create via /videos/create: %s", e)
-                    
-                    if not created:
-                        # Fallback: clicca pulsante nuovo video
-                        for sel in [
-                            '[aria-label="Inizia un nuovo video"]',
-                            '[aria-label="Crea nuovo video"]',
-                        ]:
-                            try:
-                                loc = page.locator(sel).first
-                                if await loc.count() > 0:
-                                    await self._human_click(page, loc, timeout=10000)
-                                    created = True
-                                    log.info("Clicked new video button: %s", sel)
-                                    break
-                            except Exception:
-                                continue
-                    if not created:
-                        # Ultimo fallback: naviga direttamente
-                        await page.goto(
-                            "https://docs.google.com/videos/create",
-                            wait_until="domcontentloaded",
-                        )
-                        try:
-                            await page.wait_for_url(re.compile(r"/videos/d/"), timeout=30000)
-                        except Exception:
-                            pass
-                    video_id = self._extract_vid_id(page.url)
-                    if video_id and video_id != "new":
-                        save_project_id("vids", video_id)
-                else:
-                    log.info("Opening existing Vids project: %s", video_id)
-                    await page.goto(
-                        f"https://docs.google.com/videos/d/{video_id}/edit",
-                        wait_until="domcontentloaded",
-                    )
+            project_url = (
+                f"https://docs.google.com/videos/d/{effective_video_id}/edit"
+                f"?scene={self.SHARED_VIDS_PROJECT_SCENE}"
+                f"#scene={self.SHARED_VIDS_PROJECT_SCENE}"
+            )
+            log.info(f"Navigating to project {effective_video_id}...")
+            await page.goto(project_url, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(15)
 
-                log.info("Waiting for editor to stabilize...")
-                await asyncio.sleep(15)
-            except Exception as e:
-                log.error("Navigation setup failed: %s", e)
-
+        from .modal_handler import start_modal_killer
+        stop_modals = asyncio.Event()
+        modal_task = asyncio.create_task(start_modal_killer(page, stop_modals))
+        
         try:
-
-            # Rimuovi dialoghi bloccanti
-            log.info("Removing hanging/stuck dialog backdrops via JS injection...")
-            try:
-                await page.evaluate("""() => {
-                    const bgs = document.querySelectorAll('.docs-material-gm-dialog-bg, [class*="dialog-bg"], .modal-backdrop');
-                    bgs.forEach(el => el.remove());
-                    const dialogs = document.querySelectorAll('div[role="dialog"], .docs-material-gm-dialog, .modal-dialog');
-                    dialogs.forEach(el => el.remove());
-                }""")
-                await asyncio.sleep(2)
-            except Exception as e:
-                log.warning("Failed to remove dialog backdrops via JS: %s", e)
-
-            # Dismiss dialogs con umanizzazione
-            for _ in range(3):
+            # Attendiamo che l'editor carichi la sidebar prima di procedere
+            log.info("Waiting for Vids editor sidebar to load...")
+            sidebar_found = False
+            editor_selectors = [
+                self.IMMAGINI_TAB_SELECTOR,
+                'text="Immagine"',
+                'text="Immagini"',
+                'text="Images"',
+                'text="Avatar"',
+                'div[role="menubar"]',
+                '.sketchy-desktop-viewport',
+            ]
+            for sel in editor_selectors:
                 try:
-                    await page.keyboard.press("Escape")
-                    await asyncio.sleep(0.5)
+                    await page.wait_for_selector(sel, timeout=10000)
+                    sidebar_found = True
+                    log.info(f"Editor sidebar detected via selector: {sel}")
+                    break
                 except Exception:
-                    pass
+                    continue
+            if not sidebar_found:
+                log.warning("Sidebar not found in shared project. Attempting to create a NEW project via Vids Home...")
                 try:
-                    btns = page.locator(
-                        '[aria-label="Chiudi"], [aria-label="Close"], [aria-label="Dismiss"], '
-                        '.modal-dialog-close, .docs-material-dialog-close, button:has-text("Chiudi"), '
-                        'button:has-text("Close"), button:has-text("OK"), button:has-text("Ho capito"), '
-                        '[data-view-id*="getting-started"] button'
-                    )
-                    if await btns.count() > 0:
-                        await self._human_click(page, btns.first, timeout=3000)
-                        await human_delay(400, 1000)
-                except Exception:
-                    pass
+                    await page.goto("https://vids.google.com", wait_until="domcontentloaded")
+                    await asyncio.sleep(8)
+                    create_btn = page.locator('div[role="button"]:has-text("Crea"), div[role="button"]:has-text("Create")').first
+                    if await create_btn.count() > 0:
+                        await create_btn.click()
+                        await asyncio.sleep(15)
+                        await page.wait_for_selector(self.IMMAGINI_TAB_SELECTOR, timeout=30000)
+                        sidebar_found = True
+                        log.info("Sidebar detected in new project!")
+                except Exception as e2:
+                    log.error(f"Failed to create new project as fallback: {e2}")
 
-            # Wait for welcome dialog choices to become enabled (Google Vids finishes loading in bg)
-            log.info("Waiting for welcome dialog choices to become enabled...")
-            try:
-                await page.wait_for_selector(
-                    'button[data-view-id="getting-started-dialog-videogen"]:not(.getting-started-dialog-navigation-button-disabled), '
-                    'button.appsDocsGettingStartedEntryPointSelectionViewBlankCard:not(.getting-started-dialog-navigation-button-disabled)',
-                    timeout=85000
-                )
-                log.info("Welcome dialog options are now enabled!")
-            except Exception as e:
-                log.warning("Timeout waiting for welcome dialog options to enable, proceeding anyway: %s", e)
+            if not sidebar_found:
+                log.warning("Sidebar still not detected, proceeding anyway (fingers crossed)")
 
-            # ── Step 0: Click Veo 3.1 or "Video vuoto" if present ───────────
-            log.info("Step 0: Checking for Veo 3.1 / 'Video vuoto' button...")
-            entry_clicked = False
-            # Prima prova Veo 3.1 (carica dashboard direttamente)
-            for sel in self.VEO_BUTTON_SELECTORS:
-                try:
-                    btn = page.locator(sel).first
-                    if await btn.count() > 0 and await btn.is_visible():
-                        await self._human_click(page, btn, timeout=10000)
-                        await human_delay(2000, 4000)
-                        entry_clicked = True
-                        log.info("Clicked Veo 3.1 button via: %s", sel)
-                        break
-                except Exception as e:
-                    log.warning("Veo selector %s failed: %s", sel, e)
-            # Fallback: "Video vuoto"
-            if not entry_clicked:
-                log.info("Veo 3.1 not found, trying 'Video vuoto'...")
-                for sel in self.BLANK_VIDEO_SELECTORS:
-                    try:
-                        btn = page.locator(sel).first
-                        if await btn.count() > 0 and await btn.is_visible():
-                            await self._human_click(page, btn, timeout=10000)
-                            await human_delay(2000, 4000)
-                            entry_clicked = True
-                            log.info("Clicked 'Video vuoto' button via: %s", sel)
-                            break
-                    except Exception as e:
-                        log.warning("Blank video selector %s failed: %s", sel, e)
-            if not entry_clicked:
-                log.info("No entry button found (maybe already in Vids editor)")
-
-            # ── Step 0b: Chiudi dialog "Inizia" / getting-started ────────────
-            log.info("Step 0b: Checking for getting-started dialog to close (unconditional)...")
-            dialog_closed = False
-            # Prima: X button di chiusura
-            for sel in self.GETTING_STARTED_CLOSE_SELECTORS + ['[aria-label="Chiudi"]', '[aria-label="Close"]', '.docs-material-gm-dialog-title-close', '.getting-started-dialog-close']:
-                try:
-                    btn = page.locator(sel).first
-                    if await btn.count() > 0 and await btn.is_visible():
-                        await self._human_click(page, btn, timeout=5000)
-                        await human_delay(500, 1200)
-                        dialog_closed = True
-                        log.info("Closed getting-started dialog via: %s", sel)
-                        break
-                except Exception as e:
-                    log.warning("Getting-started close selector %s failed: %s", sel, e)
-            # Fallback: clicca il backdrop per chiudere
-            if not dialog_closed:
-                for sel in self.GETTING_STARTED_BACKDROP_SELECTORS:
-                    try:
-                        backdrop = page.locator(sel).first
-                        if await backdrop.count() > 0:
-                            await self._human_click(page, backdrop, timeout=5000)
-                            await human_delay(500, 1200)
-                            dialog_closed = True
-                            log.info("Closed dialog via backdrop: %s", sel)
-                            break
-                    except Exception as e:
-                        log.warning("Backdrop selector %s failed: %s", sel, e)
+            # No popup dismissal needed - we're using the shared existing project
 
             # Deselect any active elements (Escape + backdrop click) to ensure contextual toolbars (e.g. Image Options) are closed
             try:
-                log.info("Deselecting active elements to show main toolbar...")
+                from .modal_handler import dismiss_vids_modals
+                await dismiss_vids_modals(page)
+                
+                log.info("Deselecting active elements to show main toolbar... (Current URL: %s)", page.url)
                 for _ in range(3):
                     await page.keyboard.press("Escape")
                     await human_delay(200, 400)
+                
+                # Check again after Escape
+                await dismiss_vids_modals(page)
+                
                 backdrop_sel = '.sketchy-desktop-viewport, .docs-editor-container, .apps-layer-front'
                 backdrop = page.locator(backdrop_sel).first
                 if await backdrop.count() > 0:
@@ -701,112 +614,110 @@ class GoogleVidsImagesMixin:
                 log.warning("Deselect failed: %s", e)
 
             # ── Step 1: Click "Immagini" tab ──────────────────────────────────
+            await self._debug_screenshot(page, "before_tab_click")
+            log.info("Step 1: Waiting 8 seconds for React event listeners to hydrate...")
+            await asyncio.sleep(8)
             log.info("Step 1: Clicking Immagini tab...")
             immagini_clicked = False
-
-            # IMMAGINI TAB: prima prova con l'icona toolbar + testo "Immagini" (selettore esatto)
-            try:
-                toolbar_btns = page.locator(self.IMMAGINI_TAB_SELECTOR)
-                count = await toolbar_btns.count()
-                for idx in range(count):
-                    btn = toolbar_btns.nth(idx)
+            
+            immagini_tab_selectors = [
+                self.IMMAGINI_TAB_SELECTOR,
+                '#content-library-rail-image-synthesis-element',
+                '[id*="image-synthesis"]',
+                'text="Immagine"',
+                'text="Immagini"',
+                'text="Images"',
+                '[aria-label*="Immagine" i]',
+                '[aria-label*="Immagini" i]',
+                '[aria-label*="Images" i]',
+                '[data-tooltip*="Immagine" i]',
+                '[data-tooltip*="Immagini" i]',
+                '[data-tooltip*="Images" i]',
+                'button:has-text("Immagine")',
+                'button:has-text("Immagini")',
+                'button:has-text("Images")',
+                'div[role="button"]:has-text("Immagine")',
+                'div[role="button"]:has-text("Immagini")',
+                'div[role="button"]:has-text("Images")',
+                'div:has-text("Immagine")',
+                'div:has-text("Immagini")',
+                'div:has-text("Images")',
+                '#content-library-rail-image-synthesis-element button',
+            ]
+            
+            prompt_textarea_selectors = [
+                'textarea.docs-prompt-view-input',
+                'textarea.docs-image-synthesis-search-bar-input',
+                'textarea[aria-label*="Descrivi" i]',
+                'textarea[placeholder*="Descrivi" i]',
+                'textarea[placeholder*="Describe" i]',
+            ]
+            
+            async def is_panel_open():
+                for p_sel in prompt_textarea_selectors:
                     try:
-                        aria_label = await btn.get_attribute("aria-label") or ""
-                        tooltip = await btn.get_attribute("data-tooltip") or ""
-                        btn_text = await btn.inner_text() or ""
-                        
-                        parent = btn.locator("..")
-                        parent_text = ""
-                        if await parent.count() > 0:
-                            parent_text = await parent.inner_text() or ""
-                            
-                        combined = f"{aria_label} {tooltip} {btn_text} {parent_text}".lower()
-                        # Verify that we specifically target image and not other elements like video/veo, audio, voiceover, etc.
-                        if ("immagin" in combined or "image" in combined) and not any(x in combined for x in ["veo", "video", "avatar", "voce", "musica", "audio", "registra", "sottotitoli", "modelli"]):
-                            await self._human_click(page, btn, timeout=10000)
-                            immagini_clicked = True
-                            log.info("Clicked Immagini tab via toolbar button (idx=%d) combined_text=%s", idx, combined[:150])
-                            break
+                        loc = page.locator(p_sel).first
+                        if await loc.count() > 0 and await loc.is_visible():
+                            return True
                     except Exception:
-                        continue
-            except Exception as e:
-                log.warning("Failed to click Immagini via toolbar: %s", e)
+                        pass
+                return False
 
-            if not immagini_clicked:
-                # Fallback: selectors specifici (ID, aria-label)
-                immagini_selectors = [
-                    '#content-library-rail-image-generation-element',
-                    '#content-library-rail-images-element',
-                    '#content-library-rail-immagini-element',
-                    '[aria-label*="Genera un\'immagine" i]',
-                    '[aria-label*="Genera immagin" i]',
-                    '[data-view-id*="image-generation"]',
-                    '[data-view-id*="image"]',
-                    # Esclude 'Ritaglia'
-                    '[aria-label*="immagin" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i]):not([aria-label*="mask" i]):not([aria-label*="maschera" i]):not([class*="toolbar" i]):not([id*="mask" i])',
-                    '[aria-label="Images"]',
-                    '[aria-label*="image" i]:not([aria-label*="Ritaglia" i]):not([aria-label*="crop" i]):not([aria-label*="mask" i]):not([aria-label*="maschera" i]):not([class*="toolbar" i]):not([id*="mask" i])',
-                ]
-                for sel in immagini_selectors:
-                    try:
-                        loc = page.locator(sel).first
-                        if await loc.count() > 0:
-                            await self._human_click(page, loc, timeout=10000)
-                            immagini_clicked = True
-                            log.info("Clicked Immagini tab via: %s", sel)
-                            break
-                    except Exception as e:
-                        log.warning("Selector failed %s: %s", sel, e)
-
-            if not immagini_clicked:
-                # Fallback: cerca per qualsiasi elemento che contenga "Immagini"
-                for sel in [
-                    'div[role="tab"]:has-text("Immagini")',
-                    'div[role="tab"]:has-text("Images")',
-                    'div[role="button"]:has-text("Immagini")',
-                    'div[role="button"]:has-text("Images")',
-                    'span:has-text("Immagini")',
-                    'span:has-text("Images")',
-                    'button:has-text("Immagini")',
-                    'button:has-text("Images")',
-                    'a:has-text("Immagini")',
-                    'a:has-text("Images")',
-                    '[class*="tab"]:has-text("Immagini")',
-                    '[class*="tab"]:has-text("Images")',
-                    ':has-text("Immagini")',
-                ]:
-                    try:
-                        loc = page.locator(sel).first
-                        if await loc.count() > 0:
-                            await self._human_click(page, loc, timeout=10000)
-                            immagini_clicked = True
-                            log.info("Clicked Immagini tab via text: %s", sel)
-                            break
-                    except Exception:
-                        continue
-
-            if not immagini_clicked:
-                # Debug: dump della UI per capire cosa c'è
-                log.info("Immagini tab not found, dumping UI for debugging...")
+            for sel in immagini_tab_selectors:
                 try:
-                    await page.screenshot(path="logs/vids_img_debug.png", full_page=True)
-                    # Dump all elements with ID, aria-label, role
-                    dump = await page.evaluate("""() => {
-                        const all = document.querySelectorAll('[id],[aria-label],[role="tab"],[role="button"],[class*="tab"]');
-                        return Array.from(all).slice(0, 100).map(el => ({
-                            tag: el.tagName,
-                            id: el.id || '',
-                            class: (el.className || '').toString().substring(0, 60),
-                            aria: el.getAttribute('aria-label') || '',
-                            role: el.getAttribute('role') || '',
-                            text: (el.textContent || '').trim().substring(0, 80),
-                        }));
-                    }""")
-                    for item in dump:
-                        log.info("UI element: %s", item)
+                    btn = page.locator(sel).first
+                    if await btn.count() > 0:
+                        log.info(f"Step 1: Attempting click on Immagine tab via selector: {sel}")
+                        await self._human_click(page, btn, timeout=10000)
+                        await asyncio.sleep(4)
+                        if await is_panel_open():
+                            immagini_clicked = True
+                            log.info(f"Clicked Immagini tab successfully via selector: {sel} and verified panel is open!")
+                            await self._debug_screenshot(page, "after_tab_click")
+                            break
+                        else:
+                            log.warning(f"Clicked selector {sel} but panel is still not open (no visible textarea).")
                 except Exception as e:
-                    log.warning("UI dump failed: %s", e)
-                log.error("Could not find Immagini tab")
+                    log.warning(f"Failed to click Immagini tab using selector {sel}: {e}")
+                    
+            if not immagini_clicked:
+                # Try fallback clicks directly in case the initial loop missed it
+                fallback_clicks = [
+                    'text="Immagine"',
+                    'text="Immagini"',
+                    'text="Images"',
+                    '[role="button"][aria-label*="Immagine" i]',
+                    '[role="button"][aria-label*="Images" i]',
+                    'button[aria-label*="Immagine" i]',
+                    'button[aria-label*="Images" i]',
+                    '[role="button"]:has-text("Immagine")',
+                    '[role="button"]:has-text("Images")',
+                    'button:has-text("Immagine")',
+                    'button:has-text("Images")',
+                    'div[role="button"]:has-text("Immagine")',
+                    'div[role="button"]:has-text("Images")',
+                    'div:has-text("Immagine")',
+                    'div:has-text("Immagini")',
+                    'div:has-text("Images")',
+                ]
+                for sel in fallback_clicks:
+                    try:
+                        loc = page.locator(sel).first
+                        if await loc.count() > 0:
+                            log.info("Retrying Immagini click via fallback selector: %s", sel)
+                            await self._human_click(page, loc, timeout=10000)
+                            await asyncio.sleep(4)
+                            if await is_panel_open():
+                                immagini_clicked = True
+                                log.info(f"Fallback click succeeded via selector: {sel}")
+                                await self._debug_screenshot(page, "after_tab_click")
+                                break
+                    except Exception:
+                        continue
+                    
+            if not immagini_clicked:
+                # Let's save a screenshot specifically for this failure
+                await page.screenshot(path="logs/vids_img_error.png")
                 raise RuntimeError("Immagini tab not found in Google Vids UI")
 
             selector_report["attempts"].append({
@@ -815,6 +726,9 @@ class GoogleVidsImagesMixin:
             })
             if not immagini_clicked:
                 raise RuntimeError("Immagini tab click failed")
+
+            log.info("Panel is verified open. Proceeding to aspect ratio.")
+
             # Attesa lunga per far caricare il pannello laterale
             log.info("Waiting for image generation panel to load...")
             await asyncio.sleep(5)
@@ -830,6 +744,7 @@ class GoogleVidsImagesMixin:
             await asyncio.sleep(3)
 
             # ── Step 2: Set aspect ratio to 16:9 ────────────────────────────
+            await self._debug_screenshot(page, "before_aspect_ratio")
             log.info("Step 2: Setting aspect ratio to 16:9...")
             ratio_set = await self._set_aspect_ratio_16_9(page)
             selector_report["attempts"].append({
@@ -837,8 +752,12 @@ class GoogleVidsImagesMixin:
                 "found": ratio_set,
             })
             await human_delay(500, 1000)
+            await self._debug_screenshot(page, "after_aspect_ratio")
 
             # ── Step 3: Fill prompt ──────────────────────────────────────────
+            await self._debug_screenshot(page, "before_fill_prompt")
+            from .modal_handler import dismiss_vids_modals
+            await dismiss_vids_modals(page)
             log.info("Step 3: Filling prompt...")
             prompt_filled = await self._fill_image_prompt(page, prompt)
             selector_report["attempts"].append({
@@ -850,20 +769,27 @@ class GoogleVidsImagesMixin:
             if not prompt_filled:
                 raise RuntimeError("Could not fill image prompt in Google Vids UI")
 
-            # ── Step 3b: Tab per sbloccare tasto genera ─────────────────────
-            log.info("Step 3b: Tab after prompt to unlock generate button...")
-            await asyncio.sleep(1)
+            # Wait for the UI to enable the create button after the prompt input event.
+            await dismiss_vids_modals(page)
+            log.info("Step 3b: Waiting for generate button to enable...")
             try:
-                await page.keyboard.press("Tab")
-                await human_delay(500, 1000)
-                # Aggiungi anche uno spazio se Tab non basta
-                await page.keyboard.press("Tab")
-                await human_delay(500, 1000)
-                log.info("Pressed Tab twice after prompt fill")
+                await page.wait_for_function(
+                    """() => {
+                        const btn = document.querySelector('button.image-synthesis-creation-button.image-synthesis-begin-create');
+                        if (!btn) return false;
+                        const cls = (btn.className || '').toString();
+                        return !cls.includes('goog-button-disabled') && !cls.includes('disabled');
+                    }""",
+                    timeout=10000,
+                )
+                log.info("Generate button enabled")
+                await self._debug_screenshot(page, "after_prompt_filled")
             except Exception as e:
-                log.warning("Tab press failed: %s", e)
+                log.warning("Generate button did not report enabled state in time: %s", e)
 
             # ── Step 4: Click Generate ───────────────────────────────────────
+            await self._debug_screenshot(page, "before_click_generate")
+            await dismiss_vids_modals(page)
             log.info("Step 4: Clicking Generate button...")
             generate_clicked = await self._click_generate_image(page)
             selector_report["attempts"].append({
@@ -875,6 +801,7 @@ class GoogleVidsImagesMixin:
                 raise RuntimeError("Generate button not found for image synthesis")
 
             # ── Step 5: Poll and download ────────────────────────────────────
+            await self._debug_screenshot(page, "after_click_generate")
             log.info("Step 5: Polling for generated image...")
             final_path = await self._poll_and_download_image(page, video_id, timeout_ms=300000)
 
@@ -918,6 +845,8 @@ class GoogleVidsImagesMixin:
             selector_report["error"] = str(e)
             return None
         finally:
+            stop_modals.set()
+            await modal_task
             selector_report.setdefault("result", "success")
             _append_selector_report(selector_report)
             await page.close()

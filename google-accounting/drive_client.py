@@ -155,3 +155,33 @@ def upload_file_to_drive(folder_id: str, local_path: Path, filename: str, mime_t
     file_id = file.get("id", "")
     log.info("Uploaded %s to Drive folder %s → file_id=%s", filename, folder_id, file_id)
     return file_id
+
+async def auto_upload_to_drive(file_path: str, drive_folder_id: str, media_type: str = "video"):
+    """Upload a generated file to Google Drive folder."""
+    import logging
+    log = logging.getLogger("DriveClient")
+    try:
+        p = Path(file_path)
+        if not p.exists():
+            log.warning("Auto-upload skipped: file not found %s", file_path)
+            return None
+        
+        mime_map = {
+            "video": "video/mp4",
+            "image": "image/jpeg",
+        }
+        ext = p.suffix.lower()
+        mimetype = mime_map.get(media_type, "application/octet-stream")
+        if ext == ".png":
+            mimetype = "image/png"
+        elif ext == ".gif":
+            mimetype = "image/gif"
+        elif ext == ".mp4":
+            mimetype = "video/mp4"
+
+        file_id = upload_file_to_drive(drive_folder_id, p, p.name, mimetype)
+        log.info("Auto-uploaded %s to Drive folder %s → file_id=%s", p.name, drive_folder_id, file_id)
+        return {"drive_file_id": file_id}
+    except Exception as e:
+        log.error("Auto-upload failed for %s: %s", file_path, e)
+        return None

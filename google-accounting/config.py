@@ -34,7 +34,4 @@ def get_session_path(account: str = None) -> Path:
 
 def get_profile_path(account: str = None) -> Path:
     """Returns the path to the persistent Chrome profile directory for a specific account."""
-    if not account:
-        account = DEFAULT_ACCOUNT
-    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-    return PROFILES_DIR / account
+    return Path("/home/pierone/snap/chromium/common/chromium")

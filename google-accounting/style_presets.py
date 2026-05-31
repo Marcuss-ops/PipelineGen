@@ -1,6 +1,7 @@
 """Canonical style presets shared across prompt generation, local folders, and Drive seeding."""
 
 from collections import OrderedDict
+from typing import Optional
 
 
 STYLE_PRESETS = OrderedDict(
@@ -25,3 +26,23 @@ STYLE_PRESETS = OrderedDict(
 
 STYLE_FOLDER_NAMES = tuple(STYLE_PRESETS.keys())
 
+
+def style_prompt_suffix(style: Optional[str]) -> str:
+    if not style:
+        return ""
+    return STYLE_PRESETS.get(style, "")
+
+
+def compose_styled_prompt(prompt: str, style: Optional[str]) -> str:
+    suffix = style_prompt_suffix(style)
+    if suffix:
+        return f"{prompt}, {suffix}"
+    return prompt
+
+
+def require_valid_style(style: Optional[str]) -> Optional[str]:
+    if style is None:
+        return None
+    if style not in STYLE_PRESETS:
+        raise ValueError(f"Unsupported style '{style}'")
+    return style

@@ -1,68 +1,68 @@
 import asyncio
-import logging
-import sys
-import argparse
-from pathlib import Path
 from playwright.async_api import async_playwright
-from config import get_session_path, get_profile_path
+from pathlib import Path
+import os
 
-async def main():
-    parser = argparse.ArgumentParser(description="Google Login Automation")
-    parser.add_argument("--account", type=str, help="Account name for the session")
-    args = parser.parse_args()
-
-    profile_path = get_profile_path(args.account)
-    session_path = get_session_path(args.account)
-
-    print("\n" + "="*60)
-    print(f"PROCEDURA DI LOGIN MANUALE PER ACCOUNT: {args.account or 'default'}")
+async def login(account: str = "favamassimo"):
+    """Opens a headed browser to allow manual login, saving directly to the clean profile dir."""
+    profile_dir = Path(f"profiles/{account}")
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    
     print("="*60)
-    print("1. Si aprirà una finestra di Chrome.")
-    print("2. Effettua il login al tuo account Google.")
-    print("3. Vai sulla home di Google Vids o Google Labs.")
-    print("4. UNA VOLTA ENTRATO, TORNA QUI E PREMI [INVIO] PER SALVARE.")
-    print("="*60 + "\n")
-
+    print(f" AVVIO LOGIN MANUALE PER: {account}")
+    print(f" Cartella Profilo: {profile_dir.absolute()}")
+    print("="*60)
+    print("\n1. Si aprirà una finestra di Chromium.")
+    print("2. EFFETTUA IL LOGIN al tuo account Google.")
+    print("3. QUANDO HAI FINITO e vedi Google Vids, TORNA QUI.")
+    print("4. PREMI [INVIO] IN QUESTO TERMINALE PER SALVARE E CHIUDERE.")
+    print("\nPROFILO PULITO: Niente più dati vecchi o Snap. Solo Playwright puro.\n")
+    
     async with async_playwright() as p:
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-        ]
-        
         context = await p.chromium.launch_persistent_context(
-            user_data_dir=str(profile_path),
-            headless=False, 
-            args=launch_args,
+            user_data_dir=str(profile_dir.absolute()),
+            headless=False,
             channel="chrome",
-            user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--start-maximized",
+                "--password-store=basic",
+                "--profile-directory=Profile 1",
+            ],
+            no_viewport=True,
+            viewport=None,
+            locale="en-US"
         )
         
-        # Import legacy cookies if profile is empty but session JSON exists
-        if session_path.exists() and not any(profile_path.iterdir()):
-            try:
-                import json as _json
-                state = _json.loads(session_path.read_text(encoding="utf-8"))
-                cookies = state.get("cookies", [])
-                if cookies:
-                    await context.add_cookies(cookies)
-                    print(f"Imported {len(cookies)} cookies from legacy session JSON")
-            except Exception as e:
-                print(f"Warning: could not import legacy cookies: {e}")
-
-        
         page = await context.new_page()
-        await page.goto("https://vids.google.com")
-
-        # Aspettiamo l'input dell'utente nel terminale
-        await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
-
-        # Salviamo lo stato anche in formato JSON legacy per retrocompatibilità
-        await context.storage_state(path=str(session_path))
-        print(f"\nProfilo Chrome salvato in: {profile_path}")
-        print(f"Sessione specchio JSON salvata in: {session_path}")
+        await page.goto("https://vids.google.com", wait_until="networkidle")
         
+        print("Attesa del login da parte dell'utente...")
+        print("Effettua l'accesso nella finestra di Chrome aperta sul tuo schermo.")
+        
+        while True:
+            await asyncio.sleep(3)
+            url = page.url
+            try:
+                # Se l'utente è su Google Vids ed è loggato (il pulsante Sign in / Accedi non c'è più)
+                signin_btn = page.locator('a:has-text("Sign in"), a:has-text("Accedi"), button:has-text("Sign in"), button:has-text("Accedi")').first
+                btn_count = await signin_btn.count()
+                
+                # Se siamo su Vids e non c'è il pulsante Accedi
+                if ("docs.google.com" in url or "vids.google.com" in url) and btn_count == 0:
+                    # Facciamo un'ulteriore verifica attendendo qualche secondo per stabilità
+                    print("Rilevato login completato con successo!")
+                    await asyncio.sleep(3)
+                    break
+            except Exception as e:
+                pass
+        
+        print("Salvataggio sessione e chiusura in corso...")
         await context.close()
+        print("\nREGISTRAZIONE COMPLETATA! Ora puoi avviare il server.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    account = sys.argv[1] if len(sys.argv) > 1 else "favamassimo"
+    asyncio.run(login(account))

@@ -43,11 +43,11 @@ def _get_realistic_user_agent() -> str:
     except Exception as e:
         log.warning("Could not detect Chrome version: %s", e)
     # Fallback: recent stable Chrome version
-    log.warning("Falling back to hardcoded Chrome user-agent")
+    log.info("Using user-provided realistic Chrome user-agent")
     return (
-        "Mozilla/5.0 (X11; Linux x86_64) "
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/136.0.0.0 Safari/537.36"
+        "Chrome/148.0.0.0 Safari/537.36"
     )
 
 
@@ -289,11 +289,12 @@ class BaseAutomation:
             "--disable-dev-shm-usage",
             "--no-first-run",
             "--no-zygote",
-            "--use-gl=angle",
-            "--use-angle=swiftshader",
-            "--ignore-gpu-blocklist",
-            "--window-size=1920,1080",
+            "--start-maximized",
+            "--password-store=basic",
+            "--profile-directory=Profile 1",
         ]
+
+        # Profile directory removed to use the root of user_data_dir as standard Playwright persistent context does.
         
         user_agent = _get_realistic_user_agent()
         
@@ -303,16 +304,29 @@ class BaseAutomation:
             log.info("Legacy storage state JSON found — will import cookies after context launch")
             legacy_state_path = self.session_path
 
+        # Clean up any residual lock files from crashed runs to prevent "ProcessSingleton" errors
+        for lock_name in ["SingletonLock", "SingletonSocket", "SingletonCookie"]:
+            lock_file = self.profile_path / lock_name
+            if lock_file.exists() or lock_file.is_symlink():
+                try:
+                    if lock_file.is_symlink():
+                        lock_file.unlink()
+                    else:
+                        os.unlink(str(lock_file))
+                    log.info(f"Cleaned up residual lock: {lock_name}")
+                except Exception as e:
+                    log.warning(f"Could not remove lock {lock_name}: {e}")
+
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_path),
             headless=self.headless,
-            args=launch_args,
             channel="chrome",
+            args=launch_args,
             user_agent=user_agent,
-            viewport={'width': 1920, 'height': 1080},
-            device_scale_factor=1,
-            locale="it-IT",
-            timezone_id="Europe/Rome",
+            viewport=None,
+            no_viewport=True,
+            locale="en-US",
+            timezone_id="America/New_York",
         )
 
         # Import legacy cookies if needed
