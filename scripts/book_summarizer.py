@@ -8,6 +8,7 @@ import urllib.request
 import json
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import List, Optional
 
 # Pure Python HTML Tag Stripper
 class HTMLTagStripper(HTMLParser):
@@ -33,8 +34,8 @@ def clean_html(html_content):
         # Fallback to regex tag stripping if HTMLParser fails
         return re.sub(r'<[^>]+>', '', html_content).strip()
 
-# PDF Text Extraction using PyMuPDF
-def extract_pdf_text(pdf_path):
+# PDF Text Extraction using PyMuPDF - returns list of page texts
+def extract_pdf_pages(pdf_path) -> List[str]:
     try:
         import fitz  # PyMuPDF
     except ImportError:
@@ -44,15 +45,18 @@ def extract_pdf_text(pdf_path):
 
     print(f"Extracting text from PDF: {pdf_path}")
     doc = fitz.open(pdf_path)
-    full_text = []
+    pages = []
     
     for i, page in enumerate(doc):
-        text = page.get_text()
-        full_text.append(text)
+        text = page.get_text().strip()
+        pages.append(text)
         if (i + 1) % 50 == 0 or i + 1 == len(doc):
             print(f"  Processed page {i + 1}/{len(doc)}...")
             
-    return "\n\n".join(full_text)
+    return pages
+
+def extract_pdf_text(pdf_path):
+    return "\n\n".join(extract_pdf_pages(pdf_path))
 
 # EPUB Text Extraction using standard Zipfile and HTML parsing
 def extract_epub_text(epub_path):
@@ -125,15 +129,15 @@ def chunk_text(text, max_chars=24000):
     return chunks
 
 # Local Ollama / Gemma API Summarization
-def call_ollama(prompt, model="gemma", system_prompt=None, host="http://127.0.0.1:11434"):
+def call_ollama(prompt, model="gemma3:12b", system_prompt=None, host="http://127.0.0.1:11434"):
     url = f"{host.rstrip('/')}/api/generate"
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": 0.3,
-            "num_predict": 1024
+            "temperature": 0.5,
+            "num_predict": 8192
         }
     }
     if system_prompt:
@@ -142,19 +146,32 @@ def call_ollama(prompt, model="gemma", system_prompt=None, host="http://127.0.0.
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST")
     req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
+        with urllib.request.urlopen(req, timeout=300) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             return res.get("response", "").strip()
     except Exception as e:
         print(f"  Warning: failed to call Ollama model '{model}': {e}")
         return ""
 
+# Clean up function for stage directions
+def clean_output(text):
+    text = re.sub(r'\([^)]*\)', '', text)
+    text = re.sub(r'\[[^\]]*\]', '', text)
+    text = re.sub(r'\*\*[^*]*\*\*', '', text)
+    text = re.sub(r'(?i)(audiobook\s+chapter\s+(begins?|ends?|starts?)),?', '', text)
+    text = re.sub(r'(?i)(chapter\s+(start|end|begins?)),?', '', text)
+    text = re.sub(r'#+\s*', '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
 def main():
-    parser = argparse.ArgumentParser(description="Book plain-text extractor and chunked Gemma summarizer.")
+    parser = argparse.ArgumentParser(description="Book summarizer with page-based chunking.")
     parser.add_argument("--file", required=True, help="Path to PDF or EPUB book file")
-    parser.add_argument("--model", default="gemma", help="Ollama model name (e.g. gemma, gemma2, llama3)")
-    parser.add_argument("--chunk-size", type=int, default=24000, help="Maximum characters per chunk (default: 24000)")
+    parser.add_argument("--model", default="gemma3:12b", help="Ollama model name (default: gemma3:12b)")
+    parser.add_argument("--pages-per-chunk", type=int, default=4, help="Pages per summary chunk (default: 4)")
+    parser.add_argument("--chunk-size", type=int, default=24000, help="Max chars per chunk for EPUB (default: 24000)")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434", help="Ollama API endpoint URL")
+    parser.add_argument("--output", default=None, help="Output summary file path (default: same dir as input)")
     args = parser.parse_args()
 
     book_path = Path(args.file)
@@ -164,80 +181,93 @@ def main():
 
     ext = book_path.suffix.lower()
     
-    # 1. Text Extraction
-    try:
-        if ext == ".pdf":
-            raw_text = extract_pdf_text(str(book_path))
-        elif ext == ".epub":
-            raw_text = extract_epub_text(str(book_path))
-        else:
+    # 1. Text Extraction - page-based for PDF, chunk-based for EPUB
+    is_pdf = ext == ".pdf"
+    if is_pdf:
+        pages = extract_pdf_pages(str(book_path))
+        total_pages = len(pages)
+        print(f"Extracted {total_pages} pages from PDF.")
+        
+        # Group pages into chunks of N
+        page_chunks = []
+        for i in range(0, total_pages, args.pages_per_chunk):
+            chunk_pages = pages[i:i + args.pages_per_chunk]
+            chunk_text = "\n\n".join(p for p in chunk_pages if p.strip())
+            page_start = i + 1
+            page_end = min(i + args.pages_per_chunk, total_pages)
+            if chunk_text.strip():
+                page_chunks.append((page_start, page_end, chunk_text))
+        
+        print(f"Grouped into {len(page_chunks)} chunks of {args.pages_per_chunk} pages each.")
+    else:
+        if ext != ".epub":
             print(f"Unsupported file format '{ext}'. Only .pdf and .epub are supported.")
             sys.exit(1)
-    except Exception as e:
-        print(f"Failed to extract text from book: {e}")
-        sys.exit(1)
+        raw_text = extract_epub_text(str(book_path))
+        if not raw_text.strip():
+            print("Error: Extracted text is empty!")
+            sys.exit(1)
+        chunks = chunk_text(raw_text, max_chars=args.chunk_size)
+        # Adapt to same format as PDF: (start, end, text) where start/end are chunk indices
+        page_chunks = [(i + 1, i + 1, c) for i, c in enumerate(chunks)]
+        print(f"Split EPUB into {len(page_chunks)} chunks.")
 
-    if not raw_text.strip():
-        print("Error: Extracted text is empty!")
-        sys.exit(1)
-
-    print(f"Successfully extracted {len(raw_text)} characters.")
-
-    # Write clean plain text to output
-    clean_text_path = book_path.parent / f"{book_path.stem}_clean.txt"
-    with open(clean_text_path, "w", encoding="utf-8") as f:
-        f.write(raw_text)
-    print(f"Saved plain text output to: {clean_text_path}")
-
-    # 2. Chunking
-    chunks = chunk_text(raw_text, max_chars=args.chunk_size)
-    print(f"Split book into {len(chunks)} chunks of max {args.chunk_size} characters.")
-
-    # 3. Summarization
-    print(f"Summarizing chunk-by-chunk using Ollama model '{args.model}'...")
-    chunk_summaries = []
-    
+    # 2. Summarization
     system_prompt = (
-        "You are an expert literary analyst. Write a concise, structured, and informative summary of the "
-        "provided book section. Focus on core events, characters, themes, and key insights. Do not add intro/outro comments."
+        "You are a professional audiobook narrator. Write a chapter in English based on the book section below.\n\n"
+        "MANDATORY RULES:\n"
+        "- Use THIRD PERSON only. Never say 'I', 'me', 'my', 'we'. Always 'Freud', 'he', 'the author'.\n"
+        "- NEVER write: '(Audiobook Chapter Begins)', '(Chapter Start)', '(Music)', or any stage directions.\n"
+        "- NEVER write meta-commentary like 'this section explores' or 'here's a narrative'.\n"
+        "- NEVER write bullet points, lists, or markdown.\n"
+        "- Explain each concept when it first appears (e.g. 'pleasure principle' → 'Freud calls the pleasure principle...').\n"
+        "- End with a brief recap, varying the phrasing.\n\n"
+        "BOOK SECTION:\n\n"
     )
     
-    for idx, chunk in enumerate(chunks):
-        print(f"  Summarizing chunk {idx + 1}/{len(chunks)} ({len(chunk)} characters)...")
-        prompt = f"Summarize the following book section:\n\n{chunk}"
-        summary = call_ollama(prompt, model=args.model, system_prompt=system_prompt, host=args.ollama_url)
-        if summary:
-            chunk_summaries.append(f"### SECTION {idx + 1} SUMMARY\n{summary}")
-        else:
-            chunk_summaries.append(f"### SECTION {idx + 1} SUMMARY\n[Failed to summarize this section]")
-
-    # 4. Generate Final Master Summary (reduction step)
-    master_summary = ""
-    if len(chunk_summaries) > 1:
-        print("Generating overall Master Summary from section summaries...")
-        combined_summaries_text = "\n\n".join(chunk_summaries)
-        master_prompt = (
-            "Based on the following section summaries of a book, write a cohesive, high-level overview "
-            "summarizing the entire book. Highlight the narrative arc, key character developments, and "
-            "main arguments/themes:\n\n" + combined_summaries_text
-        )
-        master_system = "You are a senior editor. Write an elegant, comprehensive, and cohesive book summary."
-        master_summary = call_ollama(master_prompt, model=args.model, system_prompt=master_system, host=args.ollama_url)
-
-    # 5. Save Summary to File
-    summary_path = book_path.parent / f"{book_path.stem}_summary.txt"
-    with open(summary_path, "w", encoding="utf-8") as f:
-        f.write(f"==================================================\n")
-        f.write(f" BOOK SUMMARY: {book_path.stem}\n")
-        f.write(f"==================================================\n\n")
-        if master_summary:
-            f.write(f"## OVERALL SUMMARY\n{master_summary}\n\n")
-            f.write(f"==================================================\n\n")
-        f.write(f"## SECTION BY SECTION SUMMARIES\n\n")
-        f.write("\n\n".join(chunk_summaries))
-        f.write("\n")
+    summaries = []
+    null_count = 0
+    
+    for idx, (start, end, text) in enumerate(page_chunks):
+        pages_label = f"pages {start}-{end}" if start != end else f"page {start}"
+        print(f"  Summarizing chunk {idx + 1}/{len(page_chunks)} ({pages_label}, {len(text)} chars)...")
         
-    print(f"Saved complete summarization output to: {summary_path}")
+        prompt = f"Write an audiobook chapter in English based on this book section ({pages_label}).\n"
+        prompt += "IMPORTANT: If the original text uses 'I', 'me', 'my', or 'we', rewrite in third person: 'Freud', 'he', 'the author'.\n"
+        prompt += f"NO stage directions like '(Audiobook Chapter Begins)', '(Music)', '(Pause)'.\n"
+        prompt += f"NO meta-commentary like 'this section explores'.\n"
+        prompt += f"NO first person narration.\n"
+        prompt += f"NO bullet points or markdown.\n"
+        prompt += f"Explain concepts as they appear. End with a varied recap.\n\n"
+        prompt += text
+        summary = call_ollama(prompt, model=args.model, system_prompt=system_prompt, host=args.ollama_url)
+        
+        if not summary.strip():
+            null_count += 1
+            print(f"    -> NULL (no meaningful content)")
+            continue
+        else:
+            summaries.append((start, end, clean_output(summary)))
+            print(f"    -> OK ({len(summary)} chars)")
+
+    print(f"\nResults: {len(summaries)} sections summarized, {null_count} null/empty sections.")
+
+    # 3. Generate Master Summary (skip entirely - causes AI meta-commentary)
+    master_summary = ""
+
+    # 4. Save Summary
+    if args.output:
+        summary_path = Path(args.output)
+    else:
+        summary_path = book_path.parent / f"{book_path.stem}_summary.txt"
+    
+    with open(summary_path, "w", encoding="utf-8") as f:
+        if master_summary:
+            f.write(f"{clean_output(master_summary)}\n\n")
+        for start, end, txt in summaries:
+            f.write(f"{txt}\n\n")
+        
+    print(f"\nSaved summary to: {summary_path}")
     print("Done!")
 
 if __name__ == "__main__":
