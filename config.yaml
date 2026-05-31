@@ -26,7 +26,7 @@ security:
 
 external:
   ollama_url: "http://localhost:11434"
-  ollama_model: "gemma3:12b"
+  ollama_model: "gemma3:4b"
   pixabay_api_key: ""
   pixabay_base_url: "https://pixabay.com/api"
   pexels_api_key: ""
