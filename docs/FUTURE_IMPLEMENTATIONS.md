@@ -4,9 +4,12 @@ This document outlines the immediate technical priorities and architectural impr
 
 ## 1. "Warm" Artlist Pipeline (Low-Latency Stock Search)
 **Goal:** Drastically reduce the time it takes to find and retrieve stock clips from Artlist.
-*   **Problem:** Currently, the Artlist search and scrape pipeline may suffer from startup latency or session initialization overhead during script generation.
-*   **Action:** Implement a "warm" session pool for the Artlist pipeline (similar to the Playwright pooling used for Google Vids). By keeping authenticated sessions or API wrappers persistently active in the background, the system can instantly query and retrieve stock footage as soon as the script scenes are generated. 
-*   **Bonus:** Implement background pre-fetching for common narrative themes (e.g., "technology", "nature", "stress") to build a hot cache of ready-to-use clips.
+*   **Problem:** Currently, the Artlist scraper opens a new browser tab for every single clip to extract stream URLs. This "tab-by-tab" approach is extremely slow (15s+ for 2 clips) and prone to bot detection.
+*   **Action:** 
+    *   **API Interception:** Rewrite the Node.js scraper to intercept the GraphQL/XHR search responses from Artlist. These responses contain preview URLs for all results in a single JSON payload, eliminating the need to open individual clip tabs.
+    *   **Session Pooling:** Maintain a pool of pre-warmed, authenticated Playwright/Puppeteer contexts specifically for Artlist to eliminate startup latency.
+    *   **Traffic Filtering:** Optimize the network listener to ignore non-media domains (e.g., Braze, LinkedIn analytics) and focus exclusively on Artlist/Artgrid CDN streams.
+*   **Impact:** Reduce search time from ~15-20 seconds down to ~2 seconds per query.
 
 ## 2. Unified Metadata Enrichment & Pre-Linking (Stock, Clips, Artlist)
 **Goal:** Enable instantaneous asset discovery and scene-matching across all sources.
