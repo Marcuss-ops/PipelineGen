@@ -173,6 +173,9 @@ func (s *Service) generateGoogleVidsImage(ctx context.Context, cleanPrompt, styl
 	description := fmt.Sprintf("AI generated image via Google Vids for prompt: %s", cleanPrompt)
 
 	resolved := job.FilePath
+	if resolved == "" && len(job.Files) > 0 {
+		resolved = job.Files[0]
+	}
 	if !filepath.IsAbs(resolved) {
 		if s.googleAccountingDir != "" {
 			resolved = filepath.Join(s.googleAccountingDir, resolved)
