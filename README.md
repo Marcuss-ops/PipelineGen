@@ -83,6 +83,7 @@ PipelineGen uses a unified job system for all long-running operations. Jobs are 
 ## 📝 Documentation
 - [AGENTS.md](./AGENTS.md): Critical system rules and architectural overview.
 - [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Italian language getting started guide.
+- [docs/PARALLELIZATION.md](./docs/PARALLELIZATION.md): Parallel execution architecture, warm pool configuration, and tuning.
 - [docs/](./docs/): Detailed technical documentation.
 
 ---
