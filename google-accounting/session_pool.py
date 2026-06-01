@@ -19,7 +19,8 @@ from automation.base import _get_realistic_user_agent, _STEALTH_INIT_SCRIPT
 log = logging.getLogger("SessionPool")
 
 # Maximum number of warm contexts per account
-MAX_WARM_CONTEXTS = 6
+# Increased to 9 to support parallel image generation (7-9 concurrent segments)
+MAX_WARM_CONTEXTS = 9
 # Maximum age (seconds) before a context is recycled
 CONTEXT_MAX_AGE = 1800  # 30 minutes
 

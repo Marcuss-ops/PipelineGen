@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -239,74 +240,104 @@ func (h *ScriptFlowHandler) Visualize(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Minute)
 	defer cancel()
 
-	segments := make([]VisualizeSegment, 0, len(sentences))
-	usedReuse := false
-	usedGeneration := false
+	// ── Parallel segment processing ────────────────────────────
+	type segResult struct {
+		index   int
+		segment VisualizeSegment
+	}
+
+	resChan := make(chan segResult, len(sentences))
+	sem := make(chan struct{}, 9) // Up to 9 concurrent image generations
+	var wg sync.WaitGroup
+	var usedReuse, usedGeneration bool
+	var mu sync.Mutex
 
 	for idx, sentence := range sentences {
-		query := buildVisualQuery(sentence, req.Topic, req.Style, req.Language)
-		segment := VisualizeSegment{
-			Index:    idx,
-			Sentence: sentence,
-			Query:    query,
-			Action:   "skipped",
-		}
+		wg.Add(1)
+		go func(idx int, sentence string) {
+			defer wg.Done()
+			sem <- struct{}{}        // Acquire concurrency token
+			defer func() { <-sem }() // Release token
 
-		if h.realtimeSvc != nil {
-			matchResp, err := h.realtimeSvc.Match(ctx, &realtime.MatchRequest{
-				Query:              query,
-				Mode:               "visual",
-				Limit:              1,
-				MinScore:           req.MinScore,
-				AllowBackgroundGen: false,
-				MediaType:          "image",
-			})
-			if err == nil && matchResp != nil && strings.HasPrefix(matchResp.Status, "instant_match") && matchResp.Asset != nil {
-				segment.Action = "reuse"
-				segment.Match = matchResp.Asset
-				segment.Image = &VisualAssetResult{
-					ID:        matchResp.Asset.ID,
-					Score:     matchResp.Asset.Score,
-					Source:    matchResp.Asset.Source,
-					Name:      matchResp.Asset.Name,
-					Category:  matchResp.Asset.Category,
-					MediaType: matchResp.Asset.MediaType,
-					LocalPath: matchResp.Asset.LocalPath,
-					DriveLink: matchResp.Asset.DriveLink,
-				}
-				segments = append(segments, segment)
-				usedReuse = true
-				continue
+			query := buildVisualQuery(sentence, req.Topic, req.Style, req.Language)
+			segment := VisualizeSegment{
+				Index:    idx,
+				Sentence: sentence,
+				Query:    query,
+				Action:   "skipped",
 			}
-		}
 
-		if !generateMissing {
-			segments = append(segments, segment)
-			continue
-		}
+			// Step 1: Try realtime match for existing assets
+			if h.realtimeSvc != nil {
+				matchResp, err := h.realtimeSvc.Match(ctx, &realtime.MatchRequest{
+					Query:              query,
+					Mode:               "visual",
+					Limit:              1,
+					MinScore:           req.MinScore,
+					AllowBackgroundGen: false,
+					MediaType:          "image",
+				})
+				if err == nil && matchResp != nil && strings.HasPrefix(matchResp.Status, "instant_match") && matchResp.Asset != nil {
+					segment.Action = "reuse"
+					segment.Match = matchResp.Asset
+					segment.Image = &VisualAssetResult{
+						ID:        matchResp.Asset.ID,
+						Score:     matchResp.Asset.Score,
+						Source:    matchResp.Asset.Source,
+						Name:      matchResp.Asset.Name,
+						Category:  matchResp.Asset.Category,
+						MediaType: matchResp.Asset.MediaType,
+						LocalPath: matchResp.Asset.LocalPath,
+						DriveLink: matchResp.Asset.DriveLink,
+					}
+					mu.Lock()
+					usedReuse = true
+					mu.Unlock()
+					resChan <- segResult{index: idx, segment: segment}
+					return
+				}
+			}
 
-		generated, err := h.imgService.GenerateSmartImage(
-			ctx,
-			req.Topic,
-			req.Topic,
-			req.Style,
-			[]string{sentence},
-			nil,
-			req.Width,
-			req.Height,
-			req.Model,
-			false,
-		)
-		if err != nil {
-			segment.Error = err.Error()
-			segments = append(segments, segment)
-			continue
-		}
+			if !generateMissing {
+				resChan <- segResult{index: idx, segment: segment}
+				return
+			}
 
-		segment.Action = "generated"
-		segment.Image = imageAssetToResult(generated)
-		segments = append(segments, segment)
-		usedGeneration = true
+			// Step 2: Generate new image (runs in parallel with other goroutines)
+			generated, err := h.imgService.GenerateSmartImage(
+				ctx,
+				req.Topic,
+				req.Topic,
+				req.Style,
+				[]string{sentence},
+				nil,
+				req.Width,
+				req.Height,
+				req.Model,
+				false,
+			)
+			if err != nil {
+				segment.Error = err.Error()
+				resChan <- segResult{index: idx, segment: segment}
+				return
+			}
+
+			segment.Action = "generated"
+			segment.Image = imageAssetToResult(generated)
+			mu.Lock()
+			usedGeneration = true
+			mu.Unlock()
+			resChan <- segResult{index: idx, segment: segment}
+		}(idx, sentence)
+	}
+
+	wg.Wait()
+	close(resChan)
+
+	// Collect results in order
+	segments := make([]VisualizeSegment, len(sentences))
+	for res := range resChan {
+		segments[res.index] = res.segment
 	}
 
 	mode := "mixed"
