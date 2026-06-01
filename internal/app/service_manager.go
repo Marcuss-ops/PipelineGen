@@ -29,6 +29,7 @@ import (
 	imgservice "velox/go-master/internal/media/images"
 	"velox/go-master/internal/media/indexing"
 	"velox/go-master/internal/media/realtime"
+	"velox/go-master/internal/reranker"
 	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/media/vectorstore"
@@ -270,9 +271,20 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if cfg.VectorSearch.Enabled && cfg.VectorSearch.RealtimeEnabled && vectorSvc != nil {
 		embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
 		jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
-		reranker := realtime.NewRerankAdapter(cfg.ClipIndexer.ServerURL, log)
-		realtimeSvc = realtime.NewService(vectorSvc, embedder, jobAdapter, reranker, &cfg.VectorSearch, log)
-		log.Info("real-time matching service enabled (with CrossEncoder reranker)")
+		rerankerClient := reranker.NewClient(reranker.Config{
+			Enabled:   cfg.Reranker.Enabled,
+			URL:       cfg.Reranker.URL,
+			Model:     cfg.Reranker.Model,
+			TopK:      cfg.Reranker.TopK,
+			TimeoutMs: cfg.Reranker.TimeoutMs,
+			Weight:    cfg.Reranker.Weight,
+		})
+		realtimeSvc = realtime.NewService(vectorSvc, embedder, jobAdapter, rerankerClient, cfg.Reranker, &cfg.VectorSearch, log)
+		log.Info("real-time matching service enabled",
+			zap.Bool("reranker_enabled", cfg.Reranker.Enabled),
+			zap.Int("reranker_top_k", cfg.Reranker.TopK),
+			zap.Int("reranker_timeout_ms", cfg.Reranker.TimeoutMs),
+		)
 	}
 
 	// Register job handlers

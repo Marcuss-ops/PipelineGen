@@ -74,7 +74,7 @@ func newTestService(t *testing.T, store *mockVectorStore, embedder *mockEmbedder
 		AllowBackgroundGen: true,
 	}
 	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
-	return NewService(vectorSvc, embedder, jobSvc, nil, cfg, log)
+	return NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, log)
 }
 
 func makeEmbedding(dim int) []float64 {
@@ -177,7 +177,7 @@ func TestMatch_NoResults_FallbackWithoutGeneration(t *testing.T) {
 		AllowBackgroundGen: false, // disabled globally
 	}
 	vectorSvc := vectorstore.NewService(store, vectorstore.Config{}, log)
-	svc := NewService(vectorSvc, embedder, jobSvc, nil, cfg, log)
+	svc := NewService(vectorSvc, embedder, jobSvc, nil, config.RerankerConfig{}, cfg, log)
 
 	resp, err := svc.Match(context.Background(), &MatchRequest{
 		Query: "unicorn ballet cinematic", MinScore: 0.85,

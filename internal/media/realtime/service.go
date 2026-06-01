@@ -10,6 +10,7 @@ import (
 
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/vectorstore"
+	"velox/go-master/internal/reranker"
 )
 
 // EmbeddingClient is the interface for calling the embedding server.
@@ -25,11 +26,13 @@ type JobService interface {
 }
 
 // Service handles real-time asset matching using vector search + CrossEncoder rerank + fallback.
+// Multi-media ready: works for clips, stock, artlist, images, voiceovers, AI video.
 type Service struct {
 	vectorSvc  *vectorstore.Service
 	embedder   EmbeddingClient
 	jobSvc     JobService
-	reranker   *RerankAdapter
+	reranker   *reranker.Client
+	rerankCfg  config.RerankerConfig
 	cfg        *config.VectorSearchConfig
 	log        *zap.Logger
 
@@ -42,7 +45,8 @@ func NewService(
 	vectorSvc *vectorstore.Service,
 	embedder EmbeddingClient,
 	jobSvc JobService,
-	reranker *RerankAdapter,
+	rerankerClient *reranker.Client,
+	rerankCfg config.RerankerConfig,
 	cfg *config.VectorSearchConfig,
 	log *zap.Logger,
 ) *Service {
@@ -50,7 +54,8 @@ func NewService(
 		vectorSvc:      vectorSvc,
 		embedder:       embedder,
 		jobSvc:         jobSvc,
-		reranker:       reranker,
+		reranker:       rerankerClient,
+		rerankCfg:      rerankCfg,
 		cfg:            cfg,
 		log:            log,
 		embeddingCache: make(map[string][]float32),
@@ -58,6 +63,7 @@ func NewService(
 }
 
 // Match performs a real-time match of a query against the vector index.
+// Pipeline: Embed → Qdrant → Reranker (optional) → Mixed Scoring → Fallback/Generation.
 func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse, error) {
 	start := time.Now()
 
@@ -102,64 +108,110 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 		return resp, nil
 	}
 
-	// Step 2: Qdrant ANN search
+	// Step 2: Qdrant ANN search — fetch top_k candidates for reranker
+	topK := s.rerankCfg.TopK
+	if topK <= 0 {
+		topK = 30
+	}
 	searchResults, err := s.vectorSvc.Search(ctx, vectorstore.SearchRequest{
 		QueryVector: queryVec,
 		VectorName:  vectorName,
-		Limit:       limit * 5, // fetch more candidates for reranker to select from
-		MinScore:    minScore * 0.5,
+		Limit:       topK,
+		MinScore:    minScore * 0.5, // relaxed threshold for reranker
 		Source:      req.Source,
 		Category:    req.Category,
 		MediaType:   req.MediaType,
 	})
 	if err != nil {
-		// Log but don't fail — fallback may still work
 		s.log.Warn("vector search failed", zap.Error(err))
 	}
 
-	// Step 2.5: CrossEncoder Reranking (circuit breaker: 50ms timeout)
-	if s.reranker != nil && len(searchResults) > 1 {
-		candidates := make([]RerankCandidate, len(searchResults))
+	// Step 2.5: CrossEncoder Reranking (optional, circuit breaker pattern)
+	rerankUsed := false
+	if s.reranker != nil && s.reranker.IsEnabled() && len(searchResults) > 1 {
+		candidates := make([]reranker.Candidate, len(searchResults))
 		for i, r := range searchResults {
-			candidates[i] = RerankCandidate{ID: r.AssetID, Text: r.Name}
+			// Build rich candidate text for CrossEncoder precision.
+			// Uses fields available on vectorstore.SearchResult (Name, Category, MediaType, Source).
+			// Callers with richer metadata can enrich Text before passing to Rerank.
+			candidates[i] = reranker.Candidate{
+				ID:          r.AssetID,
+				Text:        reranker.BuildCandidateText(r.Name, r.Category, nil, r.Source, "", r.MediaType),
+				QdrantScore: &r.Score,
+			}
 		}
+
 		if reranked, err := s.reranker.Rerank(ctx, req.Query, candidates); err == nil && len(reranked) > 0 {
-			// Build reranked order by mapping IDs back to original results
-			rerankedMap := make(map[string]float64, len(reranked))
+			rerankUsed = true
+
+			// Build maps for normalization and mixed scoring
+			rerankScores := make(map[string]float64, len(reranked))
+			qdrantScores := make(map[string]float64, len(searchResults))
 			for _, rr := range reranked {
-				rerankedMap[rr.ID] = rr.Score
+				rerankScores[rr.ID] = rr.RerankScore
 			}
-			// Reorder searchResults by reranker scores
-			reordered := make([]vectorstore.SearchResult, 0, len(searchResults))
 			for _, r := range searchResults {
-				if score, ok := rerankedMap[r.AssetID]; ok {
-					r.Score = score
-				}
-				reordered = append(reordered, r)
+				qdrantScores[r.AssetID] = r.Score
 			}
-			// Sort by reranker score descending
-			for i := 0; i < len(reordered)-1; i++ {
-				for j := i + 1; j < len(reordered); j++ {
-					if reordered[j].Score > reordered[i].Score {
-						reordered[i], reordered[j] = reordered[j], reordered[i]
+
+			// Normalize reranker scores to [0, 1]
+			normScores := reranker.NormalizeScores(rerankScores)
+
+			// Apply mixed scoring: Qdrant (bi-encoder) + Reranker (cross-encoder)
+			weight := s.rerankCfg.Weight
+			finalScores := make(map[string]float64, len(searchResults))
+			for _, r := range searchResults {
+				qScore := qdrantScores[r.AssetID]
+				rScore := normScores[r.AssetID]
+				finalScores[r.AssetID] = reranker.MixedScore(qScore, rScore, weight)
+			}
+
+			// Sort results by final mixed score descending
+			type scored struct {
+				r     vectorstore.SearchResult
+				score float64
+			}
+			sorted := make([]scored, 0, len(searchResults))
+			for _, r := range searchResults {
+				sorted = append(sorted, scored{r: r, score: finalScores[r.AssetID]})
+			}
+			// Simple bubble sort for small arrays (top 30)
+			for i := 0; i < len(sorted)-1; i++ {
+				for j := i + 1; j < len(sorted); j++ {
+					if sorted[j].score > sorted[i].score {
+						sorted[i], sorted[j] = sorted[j], sorted[i]
 					}
 				}
 			}
+
+			reordered := make([]vectorstore.SearchResult, len(sorted))
+			for i, sc := range sorted {
+				reordered[i] = sc.r
+				reordered[i].Score = sc.score
+			}
 			searchResults = reordered
-			s.log.Debug("reranker reordered candidates",
+
+			s.log.Debug("reranker reordered candidates (mixed scoring)",
 				zap.Int("candidates", len(searchResults)),
 				zap.String("top_id", searchResults[0].AssetID),
 				zap.Float64("top_score", searchResults[0].Score),
+				zap.Float64("weight", weight),
 			)
-		} else if err != nil {
-			s.log.Debug("reranker skipped, using Qdrant order", zap.Error(err))
+		} else {
+			s.log.Debug("reranker unavailable, using Qdrant order",
+				zap.Int("candidates", len(candidates)),
+				zap.Error(err),
+			)
 		}
 	}
 
-	// Step 3: Process results
+	// Step 3: Select best result
 	if len(searchResults) > 0 {
 		top := searchResults[0]
 		resp.Status = "instant_match"
+		if rerankUsed {
+			resp.Status = "instant_match_reranked"
+		}
 		resp.Asset = &MatchAsset{
 			ID:        top.AssetID,
 			Score:     top.Score,
@@ -171,19 +223,17 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 			MediaType: top.MediaType,
 		}
 
-		// If score is very high, return immediately
+		// If score is high enough, return immediately
 		if top.Score >= minScore {
 			resp.LatencyMs = time.Since(start).Milliseconds()
 			return resp, nil
 		}
 	}
 
-	// Step 4: No high-score match — check for fallback or generation
+	// Step 4: No high-score match — provide fallback
 	resp.Status = "fallback_used"
-	latencyMs := time.Since(start).Milliseconds()
-	resp.LatencyMs = latencyMs
+	resp.LatencyMs = time.Since(start).Milliseconds()
 
-	// If we have results but below threshold, return best as fallback
 	if len(searchResults) > 0 {
 		top := searchResults[0]
 		resp.FallbackAsset = &MatchAsset{
@@ -219,7 +269,6 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 // getEmbeddingForVector returns a cached or fresh query embedding for a specific vector space.
 func (s *Service) getEmbeddingForVector(ctx context.Context, query string, mode string) ([]float32, error) {
 	cacheKey := mode + ":" + query
-	// Check cache
 	if cached, ok := s.embeddingCache[cacheKey]; ok {
 		return cached, nil
 	}
@@ -231,7 +280,6 @@ func (s *Service) getEmbeddingForVector(ctx context.Context, query string, mode 
 	var emb64 []float64
 	var err error
 
-	// Call appropriate Python embedding server endpoint
 	switch mode {
 	case "visual":
 		emb64, err = s.embedder.EmbedVisual(ctx, query)
@@ -245,15 +293,12 @@ func (s *Service) getEmbeddingForVector(ctx context.Context, query string, mode 
 		return nil, fmt.Errorf("embedding failed for mode %s: %w", mode, err)
 	}
 
-	// Convert float64 → float32 for Qdrant
 	emb32 := make([]float32, len(emb64))
 	for i, v := range emb64 {
 		emb32[i] = float32(v)
 	}
 
-	// Cache
 	s.embeddingCache[cacheKey] = emb32
-
 	return emb32, nil
 }
 

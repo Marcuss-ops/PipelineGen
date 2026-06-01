@@ -96,6 +96,7 @@ type Config struct {
 	ClipIndexer      ClipIndexerConfig      `yaml:"clip_indexer"`
 	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
 	VectorSearch     VectorSearchConfig     `yaml:"vector_search"`
+	Reranker         RerankerConfig         `yaml:"reranker"`
 }
 
 // GoogleAccountingConfig holds settings for the Google Accounting FastAPI service.
@@ -415,6 +416,16 @@ type FeaturesConfig struct {
 	GoogleAccountingEnabled bool `yaml:"google_accounting_enabled" env:"VELOX_FEATURE_GOOGLE_ACCOUNTING_ENABLED" default:"false"`
 }
 
+// ClipIndexerConfig holds configuration for the ClipIndexer service.
+// It provides the URL and script path for the Python-based indexing pipeline.
+type ClipIndexerConfig struct {
+	Enabled               bool   `yaml:"enabled" default:"true"`
+	ServerURL             string `yaml:"server_url" default:"http://127.0.0.1:8001"`
+	ScriptPath            string `yaml:"script_path" default:"scripts/index_clips.py"`
+	PythonBin             string `yaml:"python_bin" default:"python3"`
+	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist" default:"true"`
+}
+
 // VectorSearchConfig holds settings for the vector search (Qdrant) integration.
 type VectorSearchConfig struct {
 	Enabled            bool    `yaml:"enabled" default:"false"`
@@ -434,11 +445,14 @@ type VectorSearchConfig struct {
 	AllowBackgroundGen bool    `yaml:"allow_background_generation" default:"false"`
 }
 
-// ClipIndexerConfig holds settings for the clip metadata indexing service.
-type ClipIndexerConfig struct {
-	Enabled               bool   `yaml:"enabled" default:"true"`
-	ServerURL             string `yaml:"server_url" default:"http://127.0.0.1:8001"`
-	ScriptPath            string `yaml:"script_path" default:"scripts/index_clips.py"`
-	PythonBin             string `yaml:"python_bin" default:"python3"`
-	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist" default:"true"`
+// RerankerConfig holds settings for the CrossEncoder reranking service.
+// The reranker is an optional post-Qdrant reordering layer that improves
+// semantic precision for all media types (clips, stock, artlist, images, voiceovers).
+type RerankerConfig struct {
+	Enabled   bool    `yaml:"enabled" default:"false"`
+	URL       string  `yaml:"url" default:"http://127.0.0.1:8091/rerank"`
+	Model     string  `yaml:"model" default:"BAAI/bge-reranker-v2-m3"`
+	TopK      int     `yaml:"top_k" default:"30"`
+	TimeoutMs int     `yaml:"timeout_ms" default:"150"`
+	Weight    float64 `yaml:"weight" default:"0.35"`
 }
