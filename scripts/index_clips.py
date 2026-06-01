@@ -22,7 +22,7 @@ try:
 except:
     pass
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer("intfloat/multilingual-e5-base")
 
 def get_txt_content(local_path, name=None):
     if not local_path and not name:

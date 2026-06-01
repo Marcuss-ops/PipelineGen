@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import uvicorn
 
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer, CrossEncoder
     import spacy
     import imagehash
     from PIL import Image
@@ -27,8 +27,8 @@ try:
 except Exception as e:
     print(f"Italian NLP model it_core_news_sm not loaded (using English fallback): {e}")
 
-print("Loading SentenceTransformer model (all-MiniLM-L6-v2)...")
-model = SentenceTransformer("all-MiniLM-L6-v2")
+print("Loading SentenceTransformer model (intfloat/multilingual-e5-base)...")
+model = SentenceTransformer("intfloat/multilingual-e5-base")
 print("Loading CLIP model (clip-ViT-B-32)...")
 clip_model = SentenceTransformer("clip-ViT-B-32")
 
@@ -41,6 +41,18 @@ try:
     clap_model = SentenceTransformer("laion/clap-htsat-fused")
 except Exception as e:
     print(f"CLAP model not loaded: {e}")
+
+# Load CrossEncoder Reranker model
+reranker_model = None
+try:
+    print("Loading CrossEncoder model (BAAI/bge-reranker-base)...")
+    reranker_model = CrossEncoder("BAAI/bge-reranker-base")
+except Exception as e:
+    print(f"Failed to load BAAI/bge-reranker-base: {e}. Falling back to cross-encoder/ms-marco-MiniLM-L-6-v2")
+    try:
+        reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    except Exception as ex:
+        print(f"Failed to load fallback CrossEncoder: {ex}")
 
 app = FastAPI(title="PipelineGen Embedding Server")
 
@@ -205,6 +217,41 @@ def compute_phash(req: PhashRequest):
         img = Image.open(req.image_path)
         h = str(imagehash.phash(img))
         return {"phash": h}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class RerankCandidate(BaseModel):
+    id: str
+    text: str
+
+
+class RerankRequest(BaseModel):
+    query: str
+    candidates: list[RerankCandidate]
+
+
+@app.post("/rerank")
+def rerank(req: RerankRequest):
+    """Rerank candidates using CrossEncoder."""
+    if reranker_model is None:
+        raise HTTPException(status_code=501, detail="Reranker model not loaded")
+    if not req.candidates:
+        return {"results": []}
+    try:
+        # Prepare pairs for cross-encoder matching
+        pairs = [[req.query, cand.text] for cand in req.candidates]
+        scores = reranker_model.predict(pairs).tolist()
+
+        # Build and sort results by score descending
+        results = []
+        for idx, cand in enumerate(req.candidates):
+            results.append({
+                "id": cand.id,
+                "score": float(scores[idx])
+            })
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return {"results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
