@@ -19,6 +19,7 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 )
 
@@ -174,10 +175,17 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 			cleanPrompt = parts[1]
 		}
 	}
-	meta, err := s.callSemanticTagger(ctx, cleanPrompt, style, "image", generator)
+	// Use semantic.Tagger() directly (replaces removed callSemanticTagger duplicate)
+	ollamaURL := ""
+	ollamaModel := ""
+	if s.cfg != nil {
+		ollamaURL = s.cfg.External.OllamaURL
+		ollamaModel = s.cfg.External.OllamaModel
+	}
+	meta, err := semantic.Tagger(ctx, s.scriptsDir, cleanPrompt, style, "image", generator, ollamaURL, ollamaModel)
 
-	// NEW: LLM Fallback if confidence is low
-	if err == nil && meta.Confidence < 0.6 {
+	// LLM Fallback if confidence is low
+	if err == nil && meta != nil && meta.Confidence < 0.6 {
 		s.log.Info("Semantic confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
 		meta.SemanticDescription = s.callLLMFallback(ctx, "image", cleanPrompt, style)
 	}

@@ -237,6 +237,11 @@ def build_search_text_expanded(prompt, subjects, tags, categories, mood,
 # MAIN
 # ---------------------------------------------------------------------------
 
+# Nota: il supporto multilingua non si basa su dizionari statici.
+# Il modello intfloat/multilingual-e5-base mappa nativamente tutte le lingue
+# nello stesso spazio semantico. Il cross-encoder bge-reranker-v2-m3 ri-ordina
+# i candidati in qualsiasi lingua. Nessuna traduzione esplicita necessaria.
+
 def main():
     parser = argparse.ArgumentParser(description="Semantic tagger for generated assets")
     parser.add_argument("--prompt",      required=True,  help="Original generation prompt")
@@ -303,6 +308,11 @@ def main():
     asset_type = {"image": "image", "video": "video", "audio": "sound_effect", "voiceover": "voiceover"}.get(args.media_type, "image")
     semantic_tier = "generated_rich" if (concept_tags or visual_objects) else "generated_light"
 
+    # Nota: il supporto multilingua non richiede dizionari statici.
+    # Il modello intfloat/multilingual-e5-base mappa nativamente tutte le lingue
+    # nello stesso spazio semantico. Il cross-encoder bge-reranker-v2-m3 ri-ordina
+    # i candidati in qualsiasi lingua. Nessuna traduzione esplicita necessaria.
+
     result = {
         "asset_id":             "",
         "asset_type":           asset_type,
@@ -325,7 +335,7 @@ def main():
         "style":                [args.style] if args.style else [],
         "confidence":           round(confidence, 2),
         "embedding_status":     "pending",
-        "created_at":           datetime.utcnow().isoformat() + "Z"
+        "created_at":           datetime.utcnow().isoformat() + "Z",
     }
 
     print(json.dumps(result, indent=2))

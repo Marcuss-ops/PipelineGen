@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/media/generation"
 	"velox/go-master/internal/media/ingest"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/ml/ollama"
@@ -74,6 +75,10 @@ type Service struct {
 
 	// Centralized style registry
 	styleRegistry *generation.StyleRegistry
+
+	// Unified metadata writer for ALL media types
+	// Replaces separate callSemanticTagger + fallback + upload logic per file
+	metaWriter *semantic.MetadataWriter
 }
 
 type wikiCacheEntry struct {
@@ -142,6 +147,12 @@ func (s *Service) SetIngestService(svc *ingest.Service) {
 // SetMediaStore sets the unified media store for Drive operations.
 func (s *Service) SetMediaStore(store *storage.Store) {
 	s.mediaStore = store
+}
+
+// SetMetadataWriter sets the unified metadata writer for ALL media types.
+// Handles semantic tagging + fallback + metadata.json creation.
+func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
+	s.metaWriter = w
 }
 
 // SetLLMGenerator sets the Ollama generator for rich descriptions.

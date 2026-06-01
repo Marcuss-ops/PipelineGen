@@ -212,6 +212,16 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		imageService.SetVectorStore(vectorSvc)
 	}
 
+	// Wire unified metadata writer into image service (covers images, videos, audio)
+	metaWriter := semantic.NewMetadataWriter(
+		cfg.Paths.PythonScriptsDir,
+		cfg.Storage.TempPath(),
+		cfg.External.OllamaURL,
+		cfg.External.OllamaModel,
+		log,
+	)
+	imageService.SetMetadataWriter(metaWriter)
+
 	// Wire up semantic tagger for voiceover metadata enrichment
 	pythonScriptsDir := cfg.Paths.PythonScriptsDir
 	voService.SetSemanticTagger(func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {

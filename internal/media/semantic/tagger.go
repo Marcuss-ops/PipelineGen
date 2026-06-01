@@ -10,16 +10,17 @@ import (
 
 // Payload is the semantic metadata output from the Python tagger.
 // Same structure as images.SemanticMetadataPayload — one format, no duplication.
+// ALL media types (image, video, audio, voiceover, clip, stock) use this single struct.
 type Payload struct {
-	AssetID             string           `json:"asset_id,omitempty"`
-	AssetType           string           `json:"asset_type"`
-	SemanticTier        string           `json:"semantic_tier"` // "generated_rich" when enriched
-	Source              string           `json:"source"`
-	MediaType           string           `json:"media_type"`
-	Generator           string           `json:"generator"`
-	PromptOriginal      string           `json:"prompt_original"`
-	SemanticDescription string           `json:"semantic_description"`
-	SearchText          string           `json:"search_text"`
+	AssetID             string   `json:"asset_id,omitempty"`
+	AssetType           string   `json:"asset_type"`
+	SemanticTier        string   `json:"semantic_tier"` // "generated_rich" when enriched
+	Source              string   `json:"source"`
+	MediaType           string   `json:"media_type"`
+	Generator           string   `json:"generator"`
+	PromptOriginal      string   `json:"prompt_original"`
+	SemanticDescription string   `json:"semantic_description"`
+	SearchText          string   `json:"search_text"`
 	// Enriched fields for hybrid BM25+vector search (no LLM at runtime)
 	ConceptTags         []string         `json:"concept_tags,omitempty"`    // synonym-expanded keywords
 	VisualObjects       []string         `json:"visual_objects,omitempty"`  // physical objects in image
@@ -39,6 +40,9 @@ type Payload struct {
 	PHash               string           `json:"phash,omitempty"`
 	VisualDimensions    int              `json:"visual_dimensions,omitempty"`
 	Assets              []map[string]any `json:"assets,omitempty"`
+	// Type-specific extensions (video: fps/codec, audio: sample_rate/channels, image: width/height, etc.)
+	// Extensions preserves per-media-type fields without bloating the core Payload.
+	Extensions map[string]any `json:"extensions,omitempty"`
 }
 
 // Tagger calls the Python semantic_tagger.py script and returns a Payload.

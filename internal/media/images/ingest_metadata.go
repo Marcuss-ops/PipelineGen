@@ -2,20 +2,27 @@ package images
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 )
 
 // uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
+// Uses the unified semantic.MetadataWriter for tagger invocation + fallback.
 func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink, hash, localPath string, width, height int) {
-	// Call Python tagger for rich metadata
+	if s.metaWriter == nil {
+		s.log.Warn("uploadImageMetadata: metadata writer not configured")
+		return
+	}
+	if s.mediaStore == nil {
+		s.log.Warn("uploadImageMetadata: media store not configured")
+		return
+	}
+
+	// Clean prompt of technical prefixes
 	cleanPrompt := prompt
 	if strings.Contains(prompt, "for prompt: ") {
 		parts := strings.SplitN(prompt, "for prompt: ", 2)
@@ -23,70 +30,55 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 			cleanPrompt = parts[1]
 		}
 	}
-	meta, err := s.callSemanticTagger(ctx, cleanPrompt, style, "image", generator)
-	if err != nil {
-		s.log.Warn("uploadImageMetadata: semantic tagger failed, using fallback", zap.Error(err))
-		// Fallback to basic metadata
-		fSubject, fTags := extractSubjectAndTags(prompt)
-		styleList := []string{}
-		if style != "" {
-			styleList = append(styleList, style)
-		}
-		meta = &SemanticMetadataPayload{
-			AssetID:             hash,
-			AssetType:           "image",
-			SemanticTier:        "generated_light",
-			Source:              "generated",
-			MediaType:           "image",
-			Generator:           generator,
-			PromptOriginal:      prompt,
-			SemanticDescription: prompt,
-			Subjects:            []string{fSubject},
-			Tags:                fTags,
-			Style:               styleList,
-			SearchText:          prompt,
-			EmbeddingStatus:     "pending",
-			CreatedAt:           time.Now().Format(time.RFC3339),
-		}
-	} else {
-		meta.AssetID = hash
-		// NEW: LLM Fallback if confidence is low
-		if meta.Confidence < 0.6 {
-			s.log.Info("uploadImageMetadata: confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
-			meta.SemanticDescription = s.callLLMFallback(ctx, "image", cleanPrompt, style)
-		}
-	}
 
-	data, err := json.MarshalIndent(meta, "", "  ")
+	// Use unified MetadataWriter for ALL media types
+	result, err := s.metaWriter.Write(ctx, semantic.WriteRequest{
+		AssetID:    hash,
+		AssetType:  "image",
+		MediaType:  "image",
+		Source:     "generated",
+		Generator:  generator,
+		Style:      style,
+		Prompt:     cleanPrompt,
+		LocalPath:  localPath,
+		TempDir:    s.tempDir,
+		Extensions: semantic.BuildImageExtension(width, height, "", "", 0),
+	})
 	if err != nil {
-		s.log.Warn("uploadImageMetadata: failed to marshal metadata", zap.Error(err))
+		s.log.Warn("uploadImageMetadata: metadata writer failed", zap.Error(err))
 		return
 	}
 
-	tmpPath := filepath.Join(s.tempDir, "img_metadata_"+req.Hash+".json")
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		s.log.Warn("uploadImageMetadata: failed to write temp metadata file", zap.Error(err))
+	// Upload metadata.json via Drive
+	metaLocalPath := result.LocalPath
+	if metaLocalPath == "" {
+		s.log.Warn("uploadImageMetadata: metadata writer returned empty local path")
 		return
 	}
-	defer os.Remove(tmpPath)
 
+	// Use the same Drive folder as the image, named "metadata.json"
 	metaReq := req
 	metaReq.Ext = ".json"
-	metaReq.Hash = "metadata" // Standard name for metadata inside the folder
-	if metaReq.GenerationID == "" && hash != "" {
-		metaReq.GenerationID = hash
-	}
+	metaReq.Hash = "metadata"
 
-	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, tmpPath); err != nil {
+	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, metaLocalPath); err != nil {
 		s.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}
-	s.log.Info("uploadImageMetadata: metadata.json uploaded", zap.String("prompt", prompt), zap.String("style", style))
+	s.log.Info("uploadImageMetadata: metadata.json uploaded",
+		zap.String("prompt", prompt),
+		zap.String("style", style),
+		zap.Int("tags", len(result.Payload.Tags)),
+	)
 }
 
 // UploadBatchMetadata writes a single metadata.json for a group of assets.
 func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*models.ImageAsset) {
 	s.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
+	if s.metaWriter == nil {
+		s.log.Warn("UploadBatchMetadata: metadata writer not configured")
+		return
+	}
 	if s.mediaStore == nil {
 		s.log.Warn("UploadBatchMetadata: mediaStore is nil")
 		return
@@ -96,43 +88,7 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 		return
 	}
 
-	// 1. Call Python tagger for rich metadata base
-	meta, err := s.callSemanticTagger(ctx, prompt, style, "image", generator)
-	if err != nil {
-		s.log.Warn("UploadBatchMetadata: semantic tagger failed, using fallback", zap.Error(err))
-		// Fallback to basic metadata
-		fSubject, fTags := extractSubjectAndTags(prompt)
-		styleList := []string{}
-		if style != "" {
-			styleList = append(styleList, style)
-		}
-		meta = &SemanticMetadataPayload{
-			AssetID:             genID,
-			AssetType:           "image_group",
-			SemanticTier:        "generated_light",
-			Source:              "generated",
-			MediaType:           "image",
-			Generator:           generator,
-			PromptOriginal:      prompt,
-			SemanticDescription: prompt,
-			Subjects:            []string{fSubject},
-			Tags:                fTags,
-			Style:               styleList,
-			SearchText:          prompt,
-			EmbeddingStatus:     "pending",
-			CreatedAt:           time.Now().Format(time.RFC3339),
-		}
-	} else {
-		meta.AssetID = genID
-		meta.AssetType = "image_group"
-		// NEW: LLM Fallback if confidence is low
-		if meta.Confidence < 0.6 {
-			s.log.Info("UploadBatchMetadata: confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
-			meta.SemanticDescription = s.callLLMFallback(ctx, "image", prompt, style)
-		}
-	}
-
-	// 2. Add individual asset info
+	// Build asset info list for group metadata
 	assetInfos := make([]map[string]any, len(assets))
 	for i, a := range assets {
 		assetInfos[i] = map[string]any{
@@ -144,20 +100,27 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 			"variant_index": i + 1,
 		}
 	}
-	meta.Assets = assetInfos
 
-	data, err := json.MarshalIndent(meta, "", "  ")
+	// Use unified MetadataWriter
+	result, err := s.metaWriter.Write(ctx, semantic.WriteRequest{
+		AssetID:    genID,
+		AssetType:  "image_group",
+		MediaType:  "image",
+		Source:     "generated",
+		Generator:  generator,
+		Style:      style,
+		Prompt:     prompt,
+		GroupID:    genID,
+		Assets:     assetInfos,
+		TempDir:    s.tempDir,
+		Extensions: nil, // group metadata doesn't need type-specific extensions
+	})
 	if err != nil {
-		s.log.Warn("UploadBatchMetadata: failed to marshal metadata", zap.Error(err))
+		s.log.Warn("UploadBatchMetadata: metadata writer failed", zap.Error(err))
 		return
 	}
 
-	tmpPath := filepath.Join(s.tempDir, "group_metadata_"+genID+".json")
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return
-	}
-	defer os.Remove(tmpPath)
-
+	// Upload metadata.json via Drive
 	req := storage.AssetDestinationRequest{
 		Source:       storage.SourceImage,
 		MediaType:    storage.MediaTypeImage,
@@ -168,9 +131,13 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 		Hash:         "metadata",
 	}
 
-	if _, _, err := s.mediaStore.UploadToDrive(ctx, req, tmpPath); err != nil {
+	if _, _, err := s.mediaStore.UploadToDrive(ctx, req, result.LocalPath); err != nil {
 		s.log.Warn("UploadBatchMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}
-	s.log.Info("UploadBatchMetadata: metadata.json uploaded for group", zap.String("gen_id", genID), zap.Int("assets_count", len(assets)))
+	s.log.Info("UploadBatchMetadata: metadata.json uploaded for group",
+		zap.String("gen_id", genID),
+		zap.Int("assets_count", len(assets)),
+		zap.Int("tags", len(result.Payload.Tags)),
+	)
 }

@@ -2,10 +2,6 @@ package images
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"os/exec"
-	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -13,36 +9,9 @@ import (
 	"velox/go-master/internal/media/vectorstore"
 )
 
-func (s *Service) callSemanticTagger(ctx context.Context, prompt, style, mediaType, generator string) (*SemanticMetadataPayload, error) {
-	scriptPath := filepath.Join(s.scriptsDir, "semantic_tagger.py")
-	args := []string{
-		scriptPath,
-		"--prompt", prompt,
-		"--style", style,
-		"--media-type", mediaType,
-		"--generator", generator,
-	}
-	// Pass Ollama config for LLM enrichment at ingest time (one-shot, not at search time)
-	if s.cfg != nil && s.cfg.External.OllamaURL != "" {
-		args = append(args, "--ollama-url", s.cfg.External.OllamaURL)
-	}
-	if s.cfg != nil && s.cfg.External.OllamaModel != "" {
-		args = append(args, "--ollama-model", s.cfg.External.OllamaModel)
-	}
-
-	cmd := exec.CommandContext(ctx, "python3", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("semantic_tagger failed: %w (output: %s)", err, string(output))
-	}
-
-	var payload SemanticMetadataPayload
-	if err := json.Unmarshal(output, &payload); err != nil {
-		return nil, fmt.Errorf("decode semantic_tagger output: %w", err)
-	}
-
-	return &payload, nil
-}
+// callSemanticTagger RIMOSSO: usa semantic.Tagger() o semantic.MetadataWriter.Write() direttamente.
+// callSemanticTagger era un duplicato identico di semantic.Tagger() — contribuiva alla
+// frammentazione dei metadati. Ogni media type ora usa lo stesso semantic.Tagger() centralizzato.
 
 func (s *Service) callLLMFallback(ctx context.Context, mediaType, prompt, style string) string {
 	if s.llmGen == nil {
