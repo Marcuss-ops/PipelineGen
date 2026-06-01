@@ -10,16 +10,13 @@ import (
 	"velox/go-master/internal/media/storage"
 )
 
-// uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
-// Uses the unified semantic.MetadataWriter for tagger invocation + fallback.
-func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink, hash, localPath string, width, height int) {
+// tagImageMetadata calls metaWriter.Write() ONCE to produce semantic metadata.
+// Returns the WriteResult which can be used for both Drive upload and DB record.
+// This eliminates the duplicate tagger call that existed between
+// uploadImageMetadata (calling metaWriter.Write) and ingestDirect (calling semantic.Tagger directly).
+func (s *Service) tagImageMetadata(ctx context.Context, prompt, style, generator, hash, localPath string, width, height int) (*semantic.WriteResult, error) {
 	if s.metaWriter == nil {
-		s.log.Warn("uploadImageMetadata: metadata writer not configured")
-		return
-	}
-	if s.mediaStore == nil {
-		s.log.Warn("uploadImageMetadata: media store not configured")
-		return
+		return nil, nil
 	}
 
 	// Clean prompt of technical prefixes
@@ -31,7 +28,6 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 		}
 	}
 
-	// Use unified MetadataWriter for ALL media types
 	result, err := s.metaWriter.Write(ctx, semantic.WriteRequest{
 		AssetID:    hash,
 		AssetType:  "image",
@@ -45,14 +41,21 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 		Extensions: semantic.BuildImageExtension(width, height, "", "", 0),
 	})
 	if err != nil {
-		s.log.Warn("uploadImageMetadata: metadata writer failed", zap.Error(err))
+		return nil, err
+	}
+	return result, nil
+}
+
+// uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
+// Uses a pre-computed semantic.WriteResult — does NOT call the tagger again.
+// This avoids duplicating the Python subprocess call that tagImageMetadata already made.
+func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDestinationRequest, result *semantic.WriteResult) {
+	if result == nil || result.LocalPath == "" {
+		s.log.Warn("uploadImageMetadata: nil result or empty local path")
 		return
 	}
-
-	// Upload metadata.json via Drive
-	metaLocalPath := result.LocalPath
-	if metaLocalPath == "" {
-		s.log.Warn("uploadImageMetadata: metadata writer returned empty local path")
+	if s.mediaStore == nil {
+		s.log.Warn("uploadImageMetadata: media store not configured")
 		return
 	}
 
@@ -61,13 +64,13 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 	metaReq.Ext = ".json"
 	metaReq.Hash = "metadata"
 
-	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, metaLocalPath); err != nil {
+	if _, _, err := s.mediaStore.UploadToDrive(ctx, metaReq, result.LocalPath); err != nil {
 		s.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}
 	s.log.Info("uploadImageMetadata: metadata.json uploaded",
-		zap.String("prompt", prompt),
-		zap.String("style", style),
+		zap.String("prompt", result.Payload.PromptOriginal),
+		zap.String("style", strings.Join(result.Payload.Style, ", ")),
 		zap.Int("tags", len(result.Payload.Tags)),
 	)
 }

@@ -19,7 +19,6 @@ import (
 
 	"go.uber.org/zap"
 	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 )
 
@@ -143,61 +142,51 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		}
 	}
 
-	// 5. Upload to Drive if configured (skip if disabled by fullimages pipeline)
+	// 4b. Compute image dimensions once (needed for both metadata and DB)
+	imgWidth, imgHeight := decodeImageDimensions(content)
+
+	// 5. SINGLE tagger call — used for BOTH Drive metadata.json AND DB record.
+	// Previously the tagger was called twice: once inside uploadImageMetadata
+	// (via metaWriter.Write) and once directly via semantic.Tagger().
+	metaResult, taggerErr := s.tagImageMetadata(ctx, description, style, generator, hash, fullPath, imgWidth, imgHeight)
+
+	// 5b. Apply LLM fallback if tagger succeeded but confidence is low
+	if taggerErr == nil && metaResult != nil && metaResult.Payload != nil && metaResult.Payload.Confidence < 0.6 {
+		s.log.Info("Semantic confidence low, calling LLM fallback", zap.Float64("confidence", metaResult.Payload.Confidence))
+		cleanPrompt := description
+		if strings.Contains(description, "for prompt: ") {
+			parts := strings.SplitN(description, "for prompt: ", 2)
+			if len(parts) == 2 {
+				cleanPrompt = parts[1]
+			}
+		}
+		metaResult.Payload.SemanticDescription = s.callLLMFallback(ctx, "image", cleanPrompt, style)
+	}
+
+	// 6. Upload to Drive if configured (skip if disabled by fullimages pipeline)
 	var driveFileID string
 	if s.mediaStore != nil && !skipDrive {
-		fileID, link, err := s.mediaStore.UploadToDrive(ctx, req, fullPath)
+		fileID, _, err := s.mediaStore.UploadToDrive(ctx, req, fullPath)
 		if err != nil {
 			s.log.Warn("Drive upload failed", zap.Error(err))
 		} else {
 			driveFileID = fileID
 			s.log.Info("Drive upload successful", zap.String("file_id", fileID))
 
-			if !skipMetadata {
-				// Estrai dimensioni reali dell'immagine
-				imgWidth, imgHeight := decodeImageDimensions(content)
-
-				// Upload metadata.json
-				prompt := description // Usiamo description come prompt o info
-				s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, link, hash, fullPath, imgWidth, imgHeight)
+			if !skipMetadata && metaResult != nil {
+				s.uploadImageMetadata(ctx, req, metaResult)
 			}
 		}
 	}
 
-	// 6. Estrai dimensioni reali dell'immagine (per DB)
-	imgWidth, imgHeight := decodeImageDimensions(content)
-
-	// Call Python tagger for rich metadata for DB record
-	cleanPrompt := description
-	if strings.Contains(description, "for prompt: ") {
-		parts := strings.SplitN(description, "for prompt: ", 2)
-		if len(parts) == 2 {
-			cleanPrompt = parts[1]
-		}
-	}
-	// Use semantic.Tagger() directly (replaces removed callSemanticTagger duplicate)
-	ollamaURL := ""
-	ollamaModel := ""
-	if s.cfg != nil {
-		ollamaURL = s.cfg.External.OllamaURL
-		ollamaModel = s.cfg.External.OllamaModel
-	}
-	meta, err := semantic.Tagger(ctx, s.scriptsDir, cleanPrompt, style, "image", generator, ollamaURL, ollamaModel)
-
-	// LLM Fallback if confidence is low
-	if err == nil && meta != nil && meta.Confidence < 0.6 {
-		s.log.Info("Semantic confidence low, calling LLM fallback", zap.Float64("confidence", meta.Confidence))
-		meta.SemanticDescription = s.callLLMFallback(ctx, "image", cleanPrompt, style)
-	}
-
+	// 7. Build metaJSON for DB record from the SINGLE tagger result
 	var metaJSON []byte
-	if err == nil {
-		meta.AssetID = hash
-		metaJSON, _ = json.Marshal(meta)
-		// Enrich tags from rich metadata
-		tags = uniqueAppend(tags, meta.Tags...)
+	if taggerErr == nil && metaResult != nil && metaResult.Payload != nil {
+		metaResult.Payload.AssetID = hash
+		metaJSON, _ = json.Marshal(metaResult.Payload)
+		tags = uniqueAppend(tags, metaResult.Payload.Tags...)
 	} else {
-		// Fallback to basic metadata if tagger fails
+		// Fallback to basic metadata if tagger fails or writer not configured
 		metaMap := map[string]any{
 			"prompt":    description,
 			"style":     style,
@@ -206,7 +195,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		metaJSON, _ = json.Marshal(metaMap)
 	}
 
-	// 7. Crea record DB con dimensioni reali
+	// 8. Crea record DB con dimensioni reali
 	asset := &models.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
@@ -230,17 +219,21 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 		return nil, fmt.Errorf("failed to add image to repository: %w", err)
 	}
 
+	// Determine search text for vector indexing
+	searchText := description
+	if taggerErr == nil && metaResult != nil && metaResult.Payload != nil && metaResult.Payload.SearchText != "" {
+		searchText = metaResult.Payload.SearchText
+	}
+
 	// NEW: Asynchronous Vector Indexing
-	// Use WithoutCancel so the goroutine inherits ctx values (trace, logger)
-	// but is NOT cancelled when the HTTP request ends.
-	if s.vectorSvc != nil && err == nil {
+	if s.vectorSvc != nil {
 		asyncCtx := context.WithoutCancel(ctx)
 		go func() {
 			driveLink := ""
 			if driveFileID != "" {
 				driveLink = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID)
 			}
-			s.indexAssetInVectorStore(asyncCtx, hash, source, cleanPrompt, relPath, driveLink, style, "image", meta.SearchText, tags)
+			s.indexAssetInVectorStore(asyncCtx, hash, source, searchText, relPath, driveLink, style, "image", searchText, tags)
 		}()
 	}
 

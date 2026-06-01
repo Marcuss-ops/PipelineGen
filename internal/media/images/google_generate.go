@@ -358,7 +358,11 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, asset *models.ImageAss
 		prompt = asset.SubjectID // Fallback to subject
 	}
 
-	s.uploadImageMetadata(ctx, req, prompt, style, generator, fileID, webLink, asset.Hash, imagePath, asset.Width, asset.Height)
+	// Call unified tagger ONCE and reuse result
+	metaResult, metaErr := s.tagImageMetadata(ctx, prompt, style, generator, asset.Hash, imagePath, asset.Width, asset.Height)
+	if metaErr == nil && metaResult != nil {
+		s.uploadImageMetadata(ctx, req, metaResult)
+	}
 
 	s.log.Info("image uploaded to Drive with style",
 		zap.String("file_id", fileID),

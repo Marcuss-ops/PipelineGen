@@ -125,6 +125,36 @@ Verify metadata updates:
 sqlite3 data/media/media.db.sqlite "SELECT search_text, embedding_json FROM clips WHERE id = <CLIP_ID>;"
 ```
 
+### Artlist Speed Optimization (June 2026)
+Three levels of optimization were implemented to reduce Artlist search times from 30-50s to near-instant:
+
+#### Level 1: Persistent Two-Level Cache (`artlist_search_cache`)
+- **In-memory L1** (fast map with TTL)
+- **SQLite L2** (`artlist_search_cache` table in `velox.db.sqlite`)
+- Survives server restarts; warmed at startup from last 48h of entries
+- Cached results return in **~14ms** vs 28s live search — **~2000x faster**
+- Migration: `migrations/sqlite/012_create_search_cache.sql`
+- Code: `internal/sources/artlist/search_cache.go` — `newPersistentLiveSearchCache()`
+
+#### Level 2: Parallel Downloads
+- `RunTag` pipeline uses configurable concurrency (default **3**, max **10**)
+- Previously sequential: 5 clips × 20s = ~100s → now parallel: ~35s
+- `Concurrency int` field in `RunTagRequest`, normalized in `run_helpers.go`
+
+#### Level 3: Persistent Node.js Scraper Server
+- Systemd service `artlist-scraper` keeps Chromium alive between requests
+- Cold start: 28s → warm browser: 5-10s per search
+- Server URL: `artlist_scraper_server_url: "http://localhost:9123"` in `config.yaml`
+- Service file: `docs/architecture/artlist-scraper.service`
+- Port: 9123, health endpoint: `GET /health`
+
+### Scraper Tuning (applied in `node-scraper/`)
+| Param | Before | After |
+|-------|--------|-------|
+| Scroll delay | 1000ms | 300ms |
+| Detail page delay | 1000ms | 300ms |
+| Detail concurrency | 4 | 8 |
+
 ## Known Issues & Fixes
 
 ### Fixed Issues
@@ -159,12 +189,12 @@ sqlite3 data/media/media.db.sqlite "SELECT search_text, embedding_json FROM clip
    - Fixed: Corrected module registration loop in `registry.go` to handle multiple return values.
 
 ### Recurring Issues
-1. **Artlist search is slow** (30-50 seconds per search via node-scraper)
+1. ~~**Artlist search is slow**~~ ✅ **OPTIMIZED** — 30-50s → **14ms cached**, ~24s live cold, ~5-10s live warm
 2. **Binary and scripts in source dir** - Needs proper `.gitignore` rules
 3. **Admin token must be set via `VELOX_ADMIN_TOKEN` env var** - The `config.yaml` in the repo must NOT contain the production token. The server reads from `VELOX_ADMIN_TOKEN` at runtime.
 4. **Tests in `internal/media/voiceover/` had compilation errors** - Functions `sanitizeFilename` and `buildVoiceoverID` were `*Service` methods but tests called them as package-level functions. Fixed by removing the receiver. Also fixed `toSlug` trailing-dash bug and path traversal detection in `sanitizeFilename`.
 5. **context.Background() in production code** - `cmd/admin/*`, `internal/api/handlers/sources/stock_handler.go`, `internal/repository/catalog/*`, `internal/media/images/service.go`, `internal/media/clipindexer/service.go` still use `context.Background()` instead of propagating request contexts. The stock_handler.go handler was fixed; the others need a larger refactor to add context parameters.
-6. **Large files (God Objects)** - `internal/media/images/service.go` (1069 lines), `internal/repository/clips/repository.go` (1066 lines), `internal/media/stockpipeline/service.go` (968 lines) are too large and should be split into smaller modules.
+6. **Large files (God Objects)** - `internal/repository/clips/repository.go` (1066 lines), `internal/media/stockpipeline/service.go` (968 lines) could use further splitting. `internal/media/images/service.go` is now **203 lines** (the package was split into 15 focused files: `nvidia.go`, `google_vids_assets.go`, `google_generate.go`, `ingest.go`, `ingest_metadata.go`, `search.go`, `web_search.go`, etc.).
 7. **`data/` directory not gitignored per-database** - The whole `data/` dir is gitignored but individual DB backup files at root level (`data/*.bak`) can leak between ignores.
 8. **Heavy AI-generated codebase** - ~80% of commits from AI agents. Code works but subtle bugs are harder to diagnose without human oversight. Keep test coverage high and document non-obvious architectural decisions.
 
@@ -201,10 +231,20 @@ All media types (images, videos, audio, voiceovers) use a single metadata format
 - **One shared package**: `internal/media/semantic/tagger.go` — callable from any service without circular imports
 - **One taxonomy**: `config/semantic_taxonomy.yaml` with `entities`, `actions`, `styles`, and `audio.sounds` sections
 
+### Single-Call Pattern (June 2026)
+Previously, `semantic.Tagger()` was called **twice** per image ingestion:
+1. Inside `uploadImageMetadata()` → `metaWriter.Write()` → `Tagger()` (for Drive metadata.json)
+2. Directly in `ingestDirect()` (for DB record fields)
+
+This was **unified into a single call**:
+- New helper: `tagImageMetadata()` calls `metaWriter.Write()` ONCE
+- `uploadImageMetadata()` now accepts a pre-computed `*semantic.WriteResult` — no tagger call
+- `ingestDirect()` and `UploadToStyleDrive()` both use the single result for Drive + DB
+
 Flow for all media types:
-1. Call `semantic.Tagger(ctx, scriptsDir, prompt, style, mediaType, generator)` or `callSemanticTagger()`
+1. Call `tagImageMetadata()` which calls `semantic.Tagger()` once
 2. If confidence < 0.6, call LLM fallback via `callLLMFallback()`
-3. Build `SemanticMetadataPayload` and upload as `metadata.json` to Drive
+3. Use the same `WriteResult` for both Drive `metadata.json` AND DB record fields
 4. Populate `search_text`, `tags`, `subjects` on the `MediaAsset` DB record
 
 Media type-specific notes:
@@ -230,6 +270,12 @@ Voiceover integration uses a callback pattern (`SemanticTaggerFunc`) to avoid ci
 - ✅ Centralized database migrations and connection pooling (WAL/busy_timeout)
 - ✅ Migrated harvester/catalog sync/db backup to job system
 - ✅ Integrated CI checks: `scripts/ci-architectural-checks.sh` is now executed in the GitHub Actions pipeline
+
+### Completed (June 2026)
+- ✅ Artlist speed optimization: persistent SQLite cache (14ms responses), parallel downloads (concurrency 3-10), persistent Node.js scraper server (Chromium always warm)
+- ✅ Unified metadata single-call pattern: `tagImageMetadata()` eliminates duplicate `semantic.Tagger()` calls
+- ✅ Scraper tuning: scroll delay 1s→300ms, detail delay 1s→300ms, concurrency 4→8
+- ✅ Systemd service `artlist-scraper.service` for persistent browser
 
 ### Pending
 - Remove any remaining duplicates in legacy doc folders

@@ -91,6 +91,415 @@ entities:
       - sinister
       - mad
 
+  mountain:
+    canonical: Mountain
+    aliases:
+      - mountains
+      - montagna
+      - montagne
+      - alpine
+      - peak
+      - mount
+      - monte
+    tags:
+      - nature
+      - landscape
+      - outdoors
+      - scenic
+      - elevation
+    categories:
+      - nature
+      - landscape
+    mood:
+      - majestic
+      - serene
+      - grand
+
+  ocean:
+    canonical: Ocean
+    aliases:
+      - sea
+      - mare
+      - oceano
+      - ocean waves
+      - deep sea
+    tags:
+      - water
+      - nature
+      - marine
+      - vast
+      - coastal
+    categories:
+      - nature
+      - water
+    mood:
+      - peaceful
+      - vast
+      - mysterious
+
+  forest:
+    canonical: Forest
+    aliases:
+      - woods
+      - foresta
+      - bosco
+      - woodland
+      - jungle
+      - rainforest
+    tags:
+      - nature
+      - trees
+      - green
+      - wilderness
+      - foliage
+    categories:
+      - nature
+      - landscape
+    mood:
+      - tranquil
+      - mystical
+      - lush
+
+  sunset:
+    canonical: Sunset
+    aliases:
+      - sunrise
+      - tramonto
+      - alba
+      - dawn
+      - dusk
+      - golden hour
+    tags:
+      - sky
+      - light
+      - colors
+      - horizon
+      - golden
+    categories:
+      - nature
+      - atmosphere
+    mood:
+      - romantic
+      - warm
+      - nostalgic
+
+  city:
+    canonical: City
+    aliases:
+      - urban
+      - citta
+      - metropolis
+      - downtown
+      - cityscape
+      - skyline
+    tags:
+      - urban
+      - architecture
+      - buildings
+      - streets
+      - nightlife
+    categories:
+      - urban
+      - travel
+    mood:
+      - vibrant
+      - energetic
+      - dynamic
+
+  desert:
+    canonical: Desert
+    aliases:
+      - deserto
+      - dunes
+      - arid
+      - sand
+      - sahara
+    tags:
+      - arid
+      - sand
+      - sun
+      - heat
+      - barren
+    categories:
+      - nature
+      - landscape
+    mood:
+      - desolate
+      - vast
+      - harsh
+
+  lake:
+    canonical: Lake
+    aliases:
+      - lago
+      - pond
+      - waterbody
+      - glacial lake
+      - reservoir
+    tags:
+      - water
+      - reflection
+      - calm
+      - nature
+      - freshwater
+    categories:
+      - nature
+      - water
+    mood:
+      - calm
+      - reflective
+      - peaceful
+
+  waterfall:
+    canonical: Waterfall
+    aliases:
+      - cascata
+      - falls
+      - cascade
+      - water fall
+    tags:
+      - water
+      - nature
+      - flow
+      - movement
+      - mist
+    categories:
+      - nature
+      - water
+    mood:
+      - powerful
+      - refreshing
+      - majestic
+
+  space:
+    canonical: Space
+    aliases:
+      - outer space
+      - cosmos
+      - universe
+      - spazio
+      - galassia
+      - galaxy
+      - stars
+      - nebulae
+    tags:
+      - astronomy
+      - science
+      - stars
+      - cosmos
+      - exploration
+    categories:
+      - science
+      - exploration
+    mood:
+      - awe-inspiring
+      - mysterious
+      - infinite
+
+  technology:
+    canonical: Technology
+    aliases:
+      - tech
+      - tecnologia
+      - digital
+      - computer
+      - innovation
+      - high tech
+      - modern technology
+    tags:
+      - innovation
+      - digital
+      - future
+      - progress
+      - science
+    categories:
+      - technology
+      - science
+    mood:
+      - modern
+      - futuristic
+      - innovative
+
+  love:
+    canonical: Love
+    aliases:
+      - amore
+      - romance
+      - romantic
+      - affection
+      - passion
+    tags:
+      - emotion
+      - relationship
+      - human
+      - affection
+      - connection
+    categories:
+      - emotion
+      - human
+    mood:
+      - warm
+      - passionate
+      - tender
+
+  peace:
+    canonical: Peace
+    aliases:
+      - pace
+      - tranquility
+      - harmony
+      - calm
+      - serenity
+    tags:
+      - emotion
+      - calm
+      - harmony
+      - zen
+      - balance
+    categories:
+      - emotion
+      - lifestyle
+    mood:
+      - peaceful
+      - calm
+      - harmonious
+
+  car:
+    canonical: Car
+    aliases:
+      - auto
+      - automobile
+      - macchina
+      - vehicle
+      - sports car
+    tags:
+      - vehicle
+      - transportation
+      - road
+      - speed
+      - travel
+    categories:
+      - transportation
+      - technology
+    mood:
+      - fast
+      - dynamic
+      - modern
+
+  airplane:
+    canonical: Airplane
+    aliases:
+      - plane
+      - aereo
+      - flight
+      - aircraft
+      - jet
+      - aeroplano
+    tags:
+      - flight
+      - travel
+      - transportation
+      - sky
+      - aviation
+    categories:
+      - transportation
+      - travel
+    mood:
+      - adventurous
+      - soaring
+      - fast
+
+  food:
+    canonical: Food
+    aliases:
+      - cibo
+      - cuisine
+      - cooking
+      - meal
+      - dish
+      - culinaria
+    tags:
+      - food
+      - cooking
+      - culinary
+      - nutrition
+      - gastronomy
+    categories:
+      - food
+      - lifestyle
+    mood:
+      - appetizing
+      - warm
+      - comforting
+
+  music:
+    canonical: Music
+    aliases:
+      - musica
+      - song
+      - melody
+      - sound
+      - audio
+    tags:
+      - music
+      - sound
+      - melody
+      - art
+      - performance
+    categories:
+      - entertainment
+      - art
+    mood:
+      - rhythmic
+      - emotional
+      - inspiring
+
+  winter:
+    canonical: Winter
+    aliases:
+      - inverno
+      - snow
+      - neve
+      - cold
+      - ice
+      - frozen
+    tags:
+      - season
+      - cold
+      - snow
+      - ice
+      - christmas
+    categories:
+      - nature
+      - season
+    mood:
+      - cold
+      - cozy
+      - serene
+
+  warrior:
+    canonical: Warrior
+    aliases:
+      - guerriero
+      - fighter
+      - soldier
+      - knight
+      - samurai
+      - spartan
+    tags:
+      - combat
+      - medieval
+      - strength
+      - battle
+      - armor
+    categories:
+      - history
+      - action
+    mood:
+      - fierce
+      - determined
+      - heroic
+
 actions:
   attack:
     aliases:
@@ -131,6 +540,166 @@ actions:
     categories:
       - action
       - defense
+
+  run:
+    aliases:
+      - runs
+      - running
+      - sprint
+      - jog
+      - corre
+      - scappa
+      - fuga
+    tags:
+      - movement
+      - speed
+      - action
+    categories:
+      - movement
+      - action
+
+  jump:
+    aliases:
+      - jumps
+      - jumping
+      - leap
+      - bound
+      - hop
+      - salta
+      - salto
+    tags:
+      - movement
+      - height
+      - action
+    categories:
+      - movement
+      - action
+
+  fly:
+    aliases:
+      - flies
+      - flying
+      - soar
+      - vola
+      - volare
+      - in volo
+    tags:
+      - movement
+      - sky
+      - freedom
+    categories:
+      - movement
+      - action
+
+  swim:
+    aliases:
+      - swims
+      - swimming
+      - nuota
+      - nuotare
+      - diving
+    tags:
+      - water
+      - movement
+      - sport
+    categories:
+      - sport
+      - water
+
+  dance:
+    aliases:
+      - dances
+      - dancing
+      - balla
+      - ballare
+      - danza
+      - ballet
+    tags:
+      - movement
+      - rhythm
+      - art
+    categories:
+      - art
+      - entertainment
+
+  walk:
+    aliases:
+      - walks
+      - walking
+      - stroll
+      - cammina
+      - passeggiata
+    tags:
+      - movement
+      - slow
+      - leisure
+    categories:
+      - movement
+      - leisure
+
+  build:
+    aliases:
+      - builds
+      - building
+      - construction
+      - costruisce
+      - costruzione
+      - create
+    tags:
+      - creation
+      - progress
+      - labor
+    categories:
+      - action
+      - creation
+
+  destroy:
+    aliases:
+      - destroys
+      - destroying
+      - demolish
+      - distrugge
+      - demolizione
+      - ruin
+    tags:
+      - destruction
+      - violence
+      - chaos
+    categories:
+      - action
+      - destruction
+
+  explore:
+    aliases:
+      - explores
+      - exploring
+      - discovery
+      - esplora
+      - scoperta
+      - adventure
+    tags:
+      - adventure
+      - discovery
+      - curiosity
+    categories:
+      - exploration
+      - adventure
+
+  meditate:
+    aliases:
+      - meditates
+      - meditation
+      - mindfulness
+      - medita
+      - yoga
+      - contemplation
+    tags:
+      - calm
+      - focus
+      - mental
+    categories:
+      - wellness
+      - lifestyle
 
 styles:
   landscape:
@@ -182,6 +751,96 @@ styles:
     mood:
       - high-tech
       - sleek
+
+  cinematic:
+    tags:
+      - film
+      - movie
+      - dramatic
+      - epic
+      - wide
+      - cinematography
+    categories:
+      - composition
+      - aesthetic
+    mood:
+      - dramatic
+      - epic
+      - grand
+
+  vintage:
+    tags:
+      - retro
+      - old
+      - classic
+      - nostalgic
+      - antique
+    categories:
+      - aesthetic
+    mood:
+      - nostalgic
+      - warm
+      - classic
+
+  noir:
+    tags:
+      - black and white
+      - dark
+      - shadow
+      - crime
+      - mystery
+    categories:
+      - aesthetic
+      - film
+    mood:
+      - dark
+      - mysterious
+      - tense
+
+  minimalist:
+    tags:
+      - simple
+      - clean
+      - minimal
+      - empty
+      - geometric
+    categories:
+      - composition
+      - aesthetic
+    mood:
+      - calm
+      - serene
+      - modern
+
+  watercolor:
+    tags:
+      - painting
+      - artistic
+      - soft
+      - flowing
+      - hand painted
+    categories:
+      - art
+      - aesthetic
+    mood:
+      - soft
+      - dreamy
+      - artistic
+
+  fantasy:
+    tags:
+      - magical
+      - mythical
+      - dream
+      - enchanted
+      - fairy tale
+    categories:
+      - art
+      - fiction
+    mood:
+      - magical
+      - whimsical
+      - enchanting
 
 # Audio-specific taxonomy for sound effects, voiceovers, and ambient sounds
 audio:
@@ -397,3 +1056,59 @@ audio:
         - warm
         - destructive
         - cozy
+
+    birds:
+      aliases:
+        - bird song
+        - uccelli
+        - birds chirping
+        - tweeting
+      tags:
+        - nature
+        - wildlife
+        - ambient
+      categories:
+        - nature
+        - ambient
+      mood:
+        - peaceful
+        - joyful
+        - natural
+
+    river:
+      aliases:
+        - stream
+        - fiume
+        - ruscello
+        - flowing water
+      tags:
+        - water
+        - nature
+        - ambient
+      categories:
+        - nature
+        - water
+      mood:
+        - calming
+        - tranquil
+        - serene
+
+    alarm:
+      aliases:
+        - siren
+        - sirena
+        - warning
+        - alert
+        - sirene
+      tags:
+        - emergency
+        - warning
+        - mechanical
+        - loud
+      categories:
+        - mechanical
+        - emergency
+      mood:
+        - urgent
+        - alarming
+        - tense
