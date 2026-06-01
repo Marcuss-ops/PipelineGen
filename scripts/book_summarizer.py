@@ -56,13 +56,13 @@ def extract_pdf_pages(pdf_path) -> List[str]:
     print(f"Extracting text from PDF: {pdf_path}")
     doc = fitz.open(pdf_path)
     pages = []
-    
+
     for i, page in enumerate(doc):
         text = page.get_text().strip()
         pages.append(text)
         if (i + 1) % 50 == 0 or i + 1 == len(doc):
             print(f"  Processed page {i + 1}/{len(doc)}...")
-            
+
     return pages
 
 def extract_pdf_text(pdf_path):
@@ -73,16 +73,16 @@ def extract_epub_text(epub_path):
     print(f"Extracting text from EPUB: {epub_path}")
     if not zipfile.is_zipfile(epub_path):
         raise ValueError(f"File is not a valid EPUB zip archive: {epub_path}")
-        
+
     full_text = []
     with zipfile.ZipFile(epub_path, 'r') as epub:
         # 1. Look for XHTML, HTML, or HTM documents
         html_files = [f for f in epub.namelist() if f.lower().endswith(('.xhtml', '.html', '.htm'))]
-        
+
         # Sort files to try and maintain logical order
         # Simple sorting usually aligns with book chapters (e.g. chapter_1, chapter_2)
         html_files.sort()
-        
+
         print(f"  Found {len(html_files)} document segments in EPUB.")
         for i, file_name in enumerate(html_files):
             try:
@@ -92,25 +92,25 @@ def extract_epub_text(epub_path):
                     full_text.append(text)
             except Exception as e:
                 print(f"  Warning: failed to parse EPUB segment {file_name}: {e}")
-                
+
             if (i + 1) % 10 == 0 or i + 1 == len(html_files):
                 print(f"  Processed segment {i + 1}/{len(html_files)}...")
-                
+
     return "\n\n".join(full_text)
 
 # Robust Chunking Strategy
-def chunk_text(text, max_chars=24000):
+def chunk_text(text, max_chars=12000):
     # Split text into paragraphs to maintain logical block separation
     paragraphs = text.split("\n")
     chunks = []
     current_chunk = []
     current_len = 0
-    
+
     for para in paragraphs:
         para_stripped = para.strip()
         if not para_stripped:
             continue
-            
+
         # If a single paragraph is longer than max_chars, split it by sentences
         if len(para_stripped) > max_chars:
             sentences = re.split(r'(?<=[.!?])\s+', para_stripped)
@@ -132,27 +132,55 @@ def chunk_text(text, max_chars=24000):
             else:
                 current_chunk.append(para_stripped)
                 current_len += len(para_stripped) + 1
-                
+
     if current_chunk:
         chunks.append("\n".join(current_chunk))
-        
+
     return chunks
 
+def deduplicate_repetitions(text):
+    """Safety net: truncates output if the same line appears >3 times (LLM repetition loop)."""
+    lines = text.split('\n')
+    seen = {}
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            seen[stripped] = seen.get(stripped, 0) + 1
+            if seen[stripped] > 3:
+                # Repetition loop detected - truncate here
+                return '\n'.join(result)
+        result.append(line)
+    return '\n'.join(result)
+
 # Local Ollama / Gemma API Summarization
-def call_ollama(prompt, model="gemma3:12b", system_prompt=None, host="http://127.0.0.1:11434"):
+def call_ollama(prompt, model="gemma3:12b", system_prompt=None, host="http://127.0.0.1:11434",
+                is_instruction_mode=False):
+    """Call Ollama LLM with anti-repetition safeguards."""
     url = f"{host.rstrip('/')}/api/generate"
+
+    # Higher token budget for instruction mode (rewrite needs more space)
+    max_tokens = 16384 if is_instruction_mode else 8192
+
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": 0.5,
-            "num_predict": 8192
+            "temperature": 0.7 if is_instruction_mode else 0.5,
+            "num_predict": max_tokens,
+            # Anti-repetition: penalize repeated tokens to prevent infinite loops
+            "repeat_penalty": 1.15,
+            # Safe sampling parameters
+            "top_k": 40,
+            "top_p": 0.9,
+            # Stop at triple newline (safe guard against runaway generation)
+            "stop": ["\n\n\n"]
         }
     }
     if system_prompt:
         payload["system"] = system_prompt
-        
+
     req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), method="POST")
     req.add_header("Content-Type", "application/json")
     try:
@@ -179,7 +207,7 @@ def main():
     parser.add_argument("--file", required=True, help="Path to PDF or EPUB book file")
     parser.add_argument("--model", default="gemma3:12b", help="Ollama model name (default: gemma3:12b)")
     parser.add_argument("--pages-per-chunk", type=int, default=4, help="Pages per summary chunk (default: 4)")
-    parser.add_argument("--chunk-size", type=int, default=24000, help="Max chars per chunk for EPUB (default: 24000)")
+    parser.add_argument("--chunk-size", type=int, default=12000, help="Max chars per chunk for EPUB (default: 12000)")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434", help="Ollama API endpoint URL")
     parser.add_argument("--output", default=None, help="Output summary file path (default: same dir as input)")
     parser.add_argument("--instruction", default=None,
@@ -198,14 +226,14 @@ def main():
         sys.exit(1)
 
     ext = book_path.suffix.lower()
-    
+
     # 1. Text Extraction - page-based for PDF, chunk-based for EPUB
     is_pdf = ext == ".pdf"
     if is_pdf:
         pages = extract_pdf_pages(str(book_path))
         total_pages = len(pages)
         print(f"Extracted {total_pages} pages from PDF.")
-        
+
         # Group pages into chunks of N
         page_chunks = []
         for i in range(0, total_pages, args.pages_per_chunk):
@@ -215,7 +243,7 @@ def main():
             page_end = min(i + args.pages_per_chunk, total_pages)
             if merged_text.strip():
                 page_chunks.append((page_start, page_end, merged_text))
-        
+
         print(f"Grouped into {len(page_chunks)} chunks of {args.pages_per_chunk} pages each.")
     else:
         if ext != ".epub":
@@ -265,18 +293,18 @@ def main():
             "- NEVER write: '(Audiobook Chapter Begins)', '(Chapter Start)', '(Music)', or any stage directions.\n"
             "- NEVER write meta-commentary like 'this section explores' or 'here's a narrative'.\n"
             "- NEVER write bullet points, lists, or markdown.\n"
-            "- Explain each concept when it first appears (e.g. 'pleasure principle' → 'Freud calls the pleasure principle...').\n"
+            "- Explain each concept when it first appears (e.g. 'pleasure principle' to 'Freud calls the pleasure principle...').\n"
             "- End with a brief recap, varying the phrasing.\n\n"
             "BOOK SECTION:\n\n"
         )
-    
+
     summaries = []
     null_count = 0
-    
+
     for idx, (start, end, text) in enumerate(page_chunks):
         pages_label = f"pages {start}-{end}" if start != end else f"page {start}"
-        print(f"  Summarizing chunk {idx + 1}/{len(page_chunks)} ({pages_label}, {len(text)} chars)...")
-        
+        print(f"  Processing chunk {idx + 1}/{len(page_chunks)} ({pages_label}, {len(text)} chars)...")
+
         if user_instruction:
             prompt = (
                 f"REWRITE the following book section ({pages_label}). "
@@ -299,13 +327,17 @@ def main():
             prompt += f"NO bullet points or markdown.\n"
             prompt += f"Explain concepts as they appear. End with a varied recap.\n\n"
             prompt += text
-        summary = call_ollama(prompt, model=args.model, system_prompt=system_prompt, host=args.ollama_url)
-        
+        summary = call_ollama(prompt, model=args.model, system_prompt=system_prompt, host=args.ollama_url,
+                              is_instruction_mode=bool(user_instruction))
+
         if user_instruction:
-            summary_text = summary  # Skip clean_output for custom instructions (preserves brackets, parens, etc.)
+            summary_text = summary  # Skip clean_output for custom instructions
         else:
             summary_text = clean_output(summary)
-        
+
+        # Apply deduplication safety net (LLM repetition loop defense)
+        summary_text = deduplicate_repetitions(summary_text)
+
         if not summary_text:
             null_count += 1
             print(f"    -> NULL (no meaningful content)")
@@ -324,13 +356,13 @@ def main():
         summary_path = Path(args.output)
     else:
         summary_path = book_path.parent / f"{book_path.stem}_summary.txt"
-    
+
     with open(summary_path, "w", encoding="utf-8") as f:
         if master_summary:
             f.write(f"{clean_output(master_summary)}\n\n")
         for start, end, txt in summaries:
             f.write(f"{txt}\n\n")
-        
+
     print(f"\nSaved summary to: {summary_path}")
 
     # 5. Auto-upload to Google Drive as Google Doc
