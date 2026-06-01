@@ -1,0 +1,27 @@
+{
+  "project_id": "sleep_without_pills",
+  "style": "realistic",
+  "language": "IT",
+  "scenes": [
+    {
+      "id_scena": "sleep_without_pills_001",
+      "testo_originale": "Ciao a tutti. Dormire bene è fondamentale per la nostra salute fisica e mentale.",
+      "prompt_immagine": "Ciao a tutti. Dormire bene è fondamentale per la nostra salute fisica e mentale., extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "file_immagine_atteso": "immagini/sleep_without_pills_001.png",
+      "file_audio_atteso": "audio/IT_sleep_without_pills_001.mp3",
+      "image_link": "https://drive.google.com/file/d/1PZETgHDbKsKVFbB71VHYVOrafYzdMucQ/view",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780254996_0.jpg",
+      "drive_file_id": "1PZETgHDbKsKVFbB71VHYVOrafYzdMucQ"
+    },
+    {
+      "id_scena": "sleep_without_pills_002",
+      "testo_originale": "Il primo passo è stabilire un orario regolare. Anche nei fine settimana, cerca di andare a letto e svegliarti alla stessa ora.",
+      "prompt_immagine": "Il primo passo è stabilire un orario regolare. Anche nei fine settimana, cerca di andare a letto e svegliarti alla stessa ora., extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "file_immagine_atteso": "immagini/sleep_without_pills_002.png",
+      "file_audio_atteso": "audio/IT_sleep_without_pills_002.mp3",
+      "image_link": "https://drive.google.com/file/d/1eRvCY29PzxuSb9AEOF2sti7BQyob2YfB/view",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780255003_0.jpg",
+      "drive_file_id": "1eRvCY29PzxuSb9AEOF2sti7BQyob2YfB"
+    }
+  ]
+}

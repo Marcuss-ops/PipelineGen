@@ -93,3 +93,7 @@ __pycache__/
 **/*.db.bak
 **/*.db.sqlite.bak
 google-accounting/profiles/
+
+# Local state and data
+storage/
+.qdrant-initialized

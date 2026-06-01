@@ -1,0 +1,61 @@
+{
+  "meta": {
+    "project_id": "sleep_without_pills",
+    "generated_at": "2026-05-31T19:01:30.788266+00:00",
+    "backend": "ollama",
+    "model": "gemma3:4b",
+    "style": "deep_dive",
+    "language": "IT",
+    "source_prompt": "Come addormentarsi senza pillole: mantieni un orario regolare, riduci gli schermi la sera, evita caffeina nel tardo pomeriggio, prova la respirazione lenta, prepara una stanza fresca e buia, e scrivi i pensieri su un foglio se la mente continua a correre."
+  },
+  "content": {
+    "title": "Dormire Senza Pillole: Una Guida Pratica",
+    "style": "Calmo e Pratico",
+    "language": "IT",
+    "script": "Benvenuti a questa guida per un sonno più naturale e riposante. Molti di noi cercano soluzioni rapide per dormire, ma spesso dimentichiamo l'importanza di creare le condizioni giuste. In questo script esploreremo diverse strategie per migliorare la vostra capacità di addormentarsi senza l'ausilio di farmaci. Ricordate, la costanza è la chiave!",
+    "scenes": [
+      {
+        "id": "scene_001",
+        "speaker": "Narratore",
+        "text": "Ciao a tutti. Dormire bene è fondamentale per la nostra salute fisica e mentale. Invece di affidarci a farmaci, esploreremo alcune strategie semplici ma efficaci per preparare il corpo e la mente al riposo.",
+        "image_hint": "Immagine di una persona che si rilassa in un ambiente tranquillo."
+      },
+      {
+        "id": "scene_002",
+        "speaker": "Narratore",
+        "text": "Il primo passo è stabilire un orario regolare. Anche nei fine settimana, cerca di andare a letto e svegliarti alla stessa ora. Questo aiuta a regolare l'orologio biologico del tuo corpo.",
+        "image_hint": "Immagine di un orologio da polso."
+      },
+      {
+        "id": "scene_003",
+        "speaker": "Narratore",
+        "text": "Il secondo punto cruciale è ridurre l'esposizione agli schermi, soprattutto la sera. La luce blu emessa da smartphone, tablet e computer interferisce con la produzione di melatonina, l'ormone che regola il sonno.",
+        "image_hint": "Immagine di una mano che utilizza uno smartphone."
+      },
+      {
+        "id": "scene_004",
+        "speaker": "Narratore",
+        "text": "Evita anche di consumare caffeina nel pomeriggio. La caffeina è uno stimolante che può rimanere nel tuo sistema per diverse ore, rendendo difficile addormentarsi.",
+        "image_hint": "Immagine di una tazza di caffè."
+      },
+      {
+        "id": "scene_005",
+        "speaker": "Narratore",
+        "text": "Provare la respirazione lenta è un'ottima tecnica per rilassarsi. Concentrati sul tuo respiro, inspirando profondamente ed espirando lentamente. Questo aiuta a calmare il sistema nervoso.",
+        "image_hint": "Immagine di una persona che pratica la respirazione profonda."
+      },
+      {
+        "id": "scene_006",
+        "speaker": "Narratore",
+        "text": "Prepara una stanza fresca e buia. La temperatura ideale per dormire è intorno ai 18-20 gradi Celsius. L'oscurità favorisce la produzione di melatonina. Usa tende oscuranti se necessario.",
+        "image_hint": "Immagine di una stanza da letto ben illuminata dalla luna."
+      },
+      {
+        "id": "scene_007",
+        "speaker": "Narratore",
+        "text": "Infine, se la tua mente continua a correre, scrivi i tuoi pensieri su un foglio. Questo può aiutarti a 'scaricare' la mente e a distogliere l'attenzione dai pensieri che ti impediscono di dormire.  Ricorda, il riposo è un processo. Sii paziente con te stesso e sperimenta diverse tecniche per trovare quella che funziona meglio per te.",
+        "image_hint": "Immagine di una persona che scrive su un quaderno."
+      }
+    ]
+  }
+}

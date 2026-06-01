@@ -1,0 +1,66 @@
+{
+  "title": "Come addormentarsi senza pillole",
+  "script": "Come addormentarsi senza pillole. Mantieni un orario regolare\n\nriduci gli schermi la sera\n\nevita caffeina nel tardo pomeriggio\n\nprova la respirazione lenta\n\nprepara una stanza fresca e buia\n\ne scrivi i pensieri su un foglio se la mente continua a correre.",
+  "scenes": [
+    {
+      "id": "scene_001",
+      "speaker": "Narrator",
+      "text": "Come addormentarsi senza pillole. Mantieni un orario regolare",
+      "image_hint": "Come addormentarsi senza pillole. Mantieni un orario regolare",
+      "image_prompt": "Come addormentarsi senza pillole. Mantieni un orario regolare, extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253215_0.jpg",
+      "drive_file_id": "",
+      "drive_link": ""
+    },
+    {
+      "id": "scene_002",
+      "speaker": "Narrator",
+      "text": "riduci gli schermi la sera",
+      "image_hint": "riduci gli schermi la sera",
+      "image_prompt": "riduci gli schermi la sera, extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253304_0.jpg",
+      "drive_file_id": "",
+      "drive_link": ""
+    },
+    {
+      "id": "scene_003",
+      "speaker": "Narrator",
+      "text": "evita caffeina nel tardo pomeriggio",
+      "image_hint": "evita caffeina nel tardo pomeriggio",
+      "image_prompt": "evita caffeina nel tardo pomeriggio, extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253400_0.jpg",
+      "drive_file_id": "",
+      "drive_link": ""
+    },
+    {
+      "id": "scene_004",
+      "speaker": "Narrator",
+      "text": "prova la respirazione lenta",
+      "image_hint": "prova la respirazione lenta",
+      "image_prompt": "prova la respirazione lenta, extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253478_0.jpg",
+      "drive_file_id": "",
+      "drive_link": ""
+    },
+    {
+      "id": "scene_005",
+      "speaker": "Narrator",
+      "text": "prepara una stanza fresca e buia",
+      "image_hint": "prepara una stanza fresca e buia",
+      "image_prompt": "prepara una stanza fresca e buia, extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253568_0.jpg",
+      "drive_file_id": "",
+      "drive_link": ""
+    },
+    {
+      "id": "scene_006",
+      "speaker": "Narrator",
+      "text": "e scrivi i pensieri su un foglio se la mente continua a correre.",
+      "image_hint": "e scrivi i pensieri su un foglio se la mente continua a correre.",
+      "image_prompt": "e scrivi i pensieri su un foglio se la mente continua a correre., extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253660_0.jpg",
+      "drive_file_id": "",
+      "drive_link": ""
+    }
+  ]
+}

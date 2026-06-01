@@ -1,0 +1,26 @@
+{
+  "title": "Come addormentarsi senza pillole",
+  "script": "Come addormentarsi senza pillole.\n\nMantieni un orario regolare, riduci gli schermi la sera, evita caffeina nel tardo pomeriggio, prova la respirazione lenta, prepara una stanza fresca e buia, e scrivi i pensieri su un foglio se la mente continua a correre.",
+  "scenes": [
+    {
+      "id": "scene_001",
+      "speaker": "Narrator",
+      "text": "Come addormentarsi senza pillole.",
+      "image_hint": "Come addormentarsi senza pillole.",
+      "image_prompt": "Come addormentarsi senza pillole., extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253823_0.jpg",
+      "drive_file_id": "1CbM6DC0Pw53hKytuw7X9ug_EqOVRI5zx",
+      "drive_link": "https://drive.google.com/file/d/1CbM6DC0Pw53hKytuw7X9ug_EqOVRI5zx/view"
+    },
+    {
+      "id": "scene_002",
+      "speaker": "Narrator",
+      "text": "Mantieni un orario regolare, riduci gli schermi la sera, evita caffeina nel tardo pomeriggio, prova la respirazione lenta, prepara una stanza fresca e buia, e scrivi i pensieri su un foglio se la mente continua a correre.",
+      "image_hint": "Mantieni un orario regolare, riduci gli schermi la sera, evita caffeina nel tardo pomeriggio, prova la respirazione lenta, prepara una stanza fresca e buia, e scrivi i pensieri su un foglio se la mente continua a correre.",
+      "image_prompt": "Mantieni un orario regolare, riduci gli schermi la sera, evita caffeina nel tardo pomeriggio, prova la respirazione lenta, prepara una stanza fresca e buia, e scrivi i pensieri su un foglio se la mente continua a correre., extremely detailed, realistic, 8k, photorealistic, cinematic lighting",
+      "local_image_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/google_vids/images/vids/NET_1780253925_0.jpg",
+      "drive_file_id": "1jFGTXAla920B_jAYgvseDWb7s0R4DspU",
+      "drive_link": "https://drive.google.com/file/d/1jFGTXAla920B_jAYgvseDWb7s0R4DspU/view"
+    }
+  ]
+}
