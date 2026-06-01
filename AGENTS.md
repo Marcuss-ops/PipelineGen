@@ -115,6 +115,39 @@ sqlite3 data/velox/velox.db.sqlite ".tables"
 sqlite3 data/velox/velox.db.sqlite ".schema jobs"
 ```
 
+### Book Summarizer (`scripts/book_summarizer.py`)
+
+A Python tool that rewrites PDF/EPUB books using a local Ollama LLM with custom style instructions. Supports Google Docs auto-upload.
+
+**Features (June 2026):**
+- **Input formats**: PDF (via PyMuPDF) and EPUB (via zipfile + HTML parsing)
+- **Chunking**: Page-based for PDF, character-based for EPUB (`--chunk-size`, `--pages-per-chunk`)
+- **Default mode**: Audiobook narrator (third person, explains concepts, no meta-commentary)
+- **Custom instruction mode** (`--instruction`): Rewrites the book in any specified style/perspective
+  - Explicitly instructed to REWRITE, not analyze/summarize
+  - Preserves all practical advice, numbers, examples, details
+- **Partial processing** (`--max-chunks`): Process only the first N chunks for testing
+- **Google Drive auto-upload** (`--drive-folder-id` or `DEFAULT_DRIVE_FOLDER_ID` env var):
+  - Converts .txt output to Google Doc format (`application/vnd.google-apps.document`)
+  - Prints the Google Docs link on success
+- **Model**: Ollama (`gemma3:12b` default, configurable via `--model`)
+
+**Usage examples:**
+```bash
+# Default audiobook style
+python3 scripts/book_summarizer.py --file book.epub
+
+# Custom Amish/teaching style + Google Docs upload
+python3 scripts/book_summarizer.py --file book.epub \
+  --instruction "Rewrite in the voice of an Amish elder..." \
+  --drive-folder-id "YOUR_FOLDER_ID"
+
+# Test with first 3 chunks only
+python3 scripts/book_summarizer.py --file book.epub \
+  --max-chunks 3 \
+  --instruction "Rewrite as a horror story"
+```
+
 ### Clipindexer Testing
 Test the Python script manually:
 ```bash

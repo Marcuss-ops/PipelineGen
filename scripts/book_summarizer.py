@@ -10,6 +10,16 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import List, Optional
 
+# Google Drive upload support (auto-converts .txt to Google Docs)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:
+    sys.path.insert(0, str(_PROJECT_ROOT / "google-accounting"))
+    from drive_client import upload_file_to_drive as _drive_upload
+    HAS_DRIVE = True
+except ImportError as e:
+    _drive_upload = None
+    HAS_DRIVE = False
+
 # Pure Python HTML Tag Stripper
 class HTMLTagStripper(HTMLParser):
     def __init__(self):
@@ -172,6 +182,14 @@ def main():
     parser.add_argument("--chunk-size", type=int, default=24000, help="Max chars per chunk for EPUB (default: 24000)")
     parser.add_argument("--ollama-url", default="http://127.0.0.1:11434", help="Ollama API endpoint URL")
     parser.add_argument("--output", default=None, help="Output summary file path (default: same dir as input)")
+    parser.add_argument("--instruction", default=None,
+                        help="Custom instruction/prompt for rewriting the book. Overrides the default audiobook style. "
+                             "Example: --instruction 'Rewrite this in the style of a horror story for teenagers'")
+    parser.add_argument("--max-chunks", type=int, default=0,
+                        help="Process only the first N chunks (default: 0 = all chunks)")
+    parser.add_argument("--drive-folder-id", default=os.getenv("DEFAULT_DRIVE_FOLDER_ID", ""),
+                        help="Google Drive folder ID for auto-upload. If set, the .txt summary gets uploaded as a Google Doc. "
+                             "Can also be set via DEFAULT_DRIVE_FOLDER_ID env var.")
     args = parser.parse_args()
 
     book_path = Path(args.file)
@@ -192,11 +210,11 @@ def main():
         page_chunks = []
         for i in range(0, total_pages, args.pages_per_chunk):
             chunk_pages = pages[i:i + args.pages_per_chunk]
-            chunk_text = "\n\n".join(p for p in chunk_pages if p.strip())
+            merged_text = "\n\n".join(p for p in chunk_pages if p.strip())
             page_start = i + 1
             page_end = min(i + args.pages_per_chunk, total_pages)
-            if chunk_text.strip():
-                page_chunks.append((page_start, page_end, chunk_text))
+            if merged_text.strip():
+                page_chunks.append((page_start, page_end, merged_text))
         
         print(f"Grouped into {len(page_chunks)} chunks of {args.pages_per_chunk} pages each.")
     else:
@@ -212,18 +230,45 @@ def main():
         page_chunks = [(i + 1, i + 1, c) for i, c in enumerate(chunks)]
         print(f"Split EPUB into {len(page_chunks)} chunks.")
 
+    # Apply --max-chunks limit (if set, take only first N chunks)
+    if args.max_chunks and args.max_chunks > 0 and len(page_chunks) > args.max_chunks:
+        print(f"Limiting to first {args.max_chunks} chunks (out of {len(page_chunks)} total).")
+        page_chunks = page_chunks[:args.max_chunks]
+
     # 2. Summarization
-    system_prompt = (
-        "You are a professional audiobook narrator. Write a chapter in English based on the book section below.\n\n"
-        "MANDATORY RULES:\n"
-        "- Use THIRD PERSON only. Never say 'I', 'me', 'my', 'we'. Always 'Freud', 'he', 'the author'.\n"
-        "- NEVER write: '(Audiobook Chapter Begins)', '(Chapter Start)', '(Music)', or any stage directions.\n"
-        "- NEVER write meta-commentary like 'this section explores' or 'here's a narrative'.\n"
-        "- NEVER write bullet points, lists, or markdown.\n"
-        "- Explain each concept when it first appears (e.g. 'pleasure principle' → 'Freud calls the pleasure principle...').\n"
-        "- End with a brief recap, varying the phrasing.\n\n"
-        "BOOK SECTION:\n\n"
-    )
+    user_instruction = args.instruction
+    if user_instruction:
+        user_instruction = user_instruction.strip()
+
+    if user_instruction:
+        # Custom rewrite mode: AI must REWRITE the content directly (no analysis/summary)
+        system_prompt = (
+            "You are a professional writer. Your ONLY task is to REWRITE the provided book "
+            "section according to the given instruction.\n\n"
+            "CRITICAL RULES - VIOLATION WILL RUIN THE OUTPUT:\n"
+            "1. REWRITE the content directly - do NOT summarize, analyze, or comment on it.\n"
+            "2. PRESERVE all practical advice, examples, tips, numbers, and details from the original.\n"
+            "3. NEVER write sections like 'Overall Summary', 'Key Takeaways', 'Analysis', or 'Potential Improvements'.\n"
+            "4. NEVER add meta-commentary like 'this section explores' or 'here's what the author suggests'.\n"
+            "5. NEVER use bullet points, numbered lists, markdown headings, or bold text.\n"
+            "6. Write in flowing prose/paragraphs - like a real book chapter.\n"
+            "7. Match the length of the original - don't condense or shorten it.\n"
+            "8. Keep all specific numbers, dollar amounts, product names, and actionable steps.\n\n"
+            f"INSTRUCTION TO FOLLOW:\n{user_instruction}\n\n"
+        )
+    else:
+        # Default audiobook narrator mode
+        system_prompt = (
+            "You are a professional audiobook narrator. Write a chapter in English based on the book section below.\n\n"
+            "MANDATORY RULES:\n"
+            "- Use THIRD PERSON only. Never say 'I', 'me', 'my', 'we'. Always 'Freud', 'he', 'the author'.\n"
+            "- NEVER write: '(Audiobook Chapter Begins)', '(Chapter Start)', '(Music)', or any stage directions.\n"
+            "- NEVER write meta-commentary like 'this section explores' or 'here's a narrative'.\n"
+            "- NEVER write bullet points, lists, or markdown.\n"
+            "- Explain each concept when it first appears (e.g. 'pleasure principle' → 'Freud calls the pleasure principle...').\n"
+            "- End with a brief recap, varying the phrasing.\n\n"
+            "BOOK SECTION:\n\n"
+        )
     
     summaries = []
     null_count = 0
@@ -232,22 +277,41 @@ def main():
         pages_label = f"pages {start}-{end}" if start != end else f"page {start}"
         print(f"  Summarizing chunk {idx + 1}/{len(page_chunks)} ({pages_label}, {len(text)} chars)...")
         
-        prompt = f"Write an audiobook chapter in English based on this book section ({pages_label}).\n"
-        prompt += "IMPORTANT: If the original text uses 'I', 'me', 'my', or 'we', rewrite in third person: 'Freud', 'he', 'the author'.\n"
-        prompt += f"NO stage directions like '(Audiobook Chapter Begins)', '(Music)', '(Pause)'.\n"
-        prompt += f"NO meta-commentary like 'this section explores'.\n"
-        prompt += f"NO first person narration.\n"
-        prompt += f"NO bullet points or markdown.\n"
-        prompt += f"Explain concepts as they appear. End with a varied recap.\n\n"
-        prompt += text
+        if user_instruction:
+            prompt = (
+                f"REWRITE the following book section ({pages_label}). "
+                f"IMPORTANT: This is a REWRITE, not a summary or analysis. "
+                f"Keep all advice, examples, numbers, and details. "
+                f"Change only the voice, style, and perspective to match the instruction.\n\n"
+                f"INSTRUCTION: {user_instruction}\n\n"
+                f"--- BOOK SECTION TO REWRITE ---\n"
+                f"{text}\n"
+                f"--- END OF BOOK SECTION ---\n\n"
+                f"Now write the REWRITTEN version. Start directly with the rewritten content - "
+                f"no headings, no introduction, no analysis. Just the rewritten text."
+            )
+        else:
+            prompt = f"Write an audiobook chapter in English based on this book section ({pages_label}).\n"
+            prompt += "IMPORTANT: If the original text uses 'I', 'me', 'my', or 'we', rewrite in third person: 'Freud', 'he', 'the author'.\n"
+            prompt += f"NO stage directions like '(Audiobook Chapter Begins)', '(Music)', '(Pause)'.\n"
+            prompt += f"NO meta-commentary like 'this section explores'.\n"
+            prompt += f"NO first person narration.\n"
+            prompt += f"NO bullet points or markdown.\n"
+            prompt += f"Explain concepts as they appear. End with a varied recap.\n\n"
+            prompt += text
         summary = call_ollama(prompt, model=args.model, system_prompt=system_prompt, host=args.ollama_url)
         
-        if not summary.strip():
+        if user_instruction:
+            summary_text = summary  # Skip clean_output for custom instructions (preserves brackets, parens, etc.)
+        else:
+            summary_text = clean_output(summary)
+        
+        if not summary_text:
             null_count += 1
             print(f"    -> NULL (no meaningful content)")
             continue
         else:
-            summaries.append((start, end, clean_output(summary)))
+            summaries.append((start, end, summary_text))
             print(f"    -> OK ({len(summary)} chars)")
 
     print(f"\nResults: {len(summaries)} sections summarized, {null_count} null/empty sections.")
@@ -268,6 +332,32 @@ def main():
             f.write(f"{txt}\n\n")
         
     print(f"\nSaved summary to: {summary_path}")
+
+    # 5. Auto-upload to Google Drive as Google Doc
+    drive_folder_id = args.drive_folder_id
+    if drive_folder_id and HAS_DRIVE:
+        try:
+            doc_name = f"{book_path.stem}_rewritten.txt"
+            print(f"Uploading to Google Drive folder {drive_folder_id} as Google Doc...")
+            file_id = _drive_upload(
+                folder_id=drive_folder_id,
+                local_path=summary_path,
+                filename=doc_name,
+                mime_type="text/plain",
+                drive_mime_type="application/vnd.google-apps.document",
+            )
+            if file_id:
+                doc_link = f"https://docs.google.com/document/d/{file_id}/edit"
+                print(f"[OK] Uploaded to Google Docs: {doc_link}")
+            else:
+                print("[WARN] Upload failed (no file ID returned)")
+        except Exception as e:
+            print(f"[WARN] Google Drive upload failed: {e}")
+    elif not drive_folder_id:
+        print("  (Skipped Google Drive upload: no --drive-folder-id provided)")
+    elif not HAS_DRIVE:
+        print("  (Skipped Google Drive upload: drive_client not available - check credentials)")
+
     print("Done!")
 
 if __name__ == "__main__":
