@@ -18,7 +18,7 @@ func NewRealtimeModule(
 		func(cfg *config.Config) bool {
 			return handler != nil && cfg.VectorSearch.RealtimeEnabled
 		},
-		"/api",
+		"",
 		handler,
 		log,
 	)
