@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/ml/ollama/types"
+	"velox/go-master/internal/pkg/concurrent"
 )
 
 // HandleSourceScriptGenerateJob processes the background job for script.generate_from_source
@@ -134,30 +135,15 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 		imagesPerScene = 5 // Safety cap
 	}
 
-	type result struct {
-		index int
-		scene GeneratedScene
-	}
-
-	resChan := make(chan result, len(sentences))
-	sem := make(chan struct{}, 6) // Concurrency semaphore limit = 6 to allow parallel processing
-	var wg sync.WaitGroup
-
-	for idx, sentence := range sentences {
-		wg.Add(1)
-		go func(idx int, sentence string) {
-			defer wg.Done()
-			sem <- struct{}{}        // Acquire token
-			defer func() { <-sem }() // Release token
-
-			sceneID := fmt.Sprintf("scene_%03d", idx+1)
-			query := buildVisualQuery(sentence, title, visualStyle, req.Language)
-			scene := GeneratedScene{
-				ID:    sceneID,
-				Index: idx,
-				Text:  sentence,
-				Query: query,
-			}
+	packageData.Scenes = concurrent.ParallelMap(sentences, 6, func(idx int, sentence string) GeneratedScene {
+		sceneID := fmt.Sprintf("scene_%03d", idx+1)
+		query := buildVisualQuery(sentence, title, visualStyle, req.Language)
+		scene := GeneratedScene{
+			ID:    sceneID,
+			Index: idx,
+			Text:  sentence,
+			Query: query,
+		}
 
 			// 1. Try Qdrant Vector search for existing image cache match
 			var matchedAsset *models.ImageAsset
@@ -260,18 +246,8 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 			// Voiceover generation moved to unified generation after scene loop
 
 
-			resChan <- result{index: idx, scene: scene}
-		}(idx, sentence)
-	}
-
-	wg.Wait()
-	close(resChan)
-
-	scenesList := make([]GeneratedScene, len(sentences))
-	for res := range resChan {
-		scenesList[res.index] = res.scene
-	}
-	packageData.Scenes = scenesList
+		return scene
+	})
 
 	// 3. Generate a single unified voiceover for the entire rewritten script
 	if h.voService != nil {
