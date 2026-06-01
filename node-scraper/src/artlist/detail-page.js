@@ -25,7 +25,7 @@ export async function fetchClipDetails(browser, clipPageUrl) {
   try {
     await detailPage.goto(clipPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
     await detailPage.waitForSelector('video, [class*="player"], [class*="video"]', { timeout: 10000 }).catch(() => {});
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const title = await detailPage.title();
     
     if (title.includes('Just a moment')) {

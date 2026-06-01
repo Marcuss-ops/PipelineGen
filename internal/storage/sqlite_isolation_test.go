@@ -39,6 +39,7 @@ var expectedTables = map[string][]string{
 		// Additional tables from migrations
 		"characters",
 		"sketchfab_models",
+		"artlist_search_cache",
 	},
 }
 

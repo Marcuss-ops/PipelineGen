@@ -36,6 +36,9 @@ func (c *JobCodec) PayloadFromRequest(req *RunTagRequest) map[string]any {
 	if req.FPS > 0 {
 		m["fps"] = req.FPS
 	}
+	if req.Concurrency > 0 {
+		m["concurrency"] = req.Concurrency
+	}
 	return m
 }
 
@@ -78,6 +81,11 @@ func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 		req.FPS = int(v)
 	} else if v, ok := payload["fps"].(int); ok {
 		req.FPS = v
+	}
+	if v, ok := payload["concurrency"].(float64); ok {
+		req.Concurrency = int(v)
+	} else if v, ok := payload["concurrency"].(int); ok {
+		req.Concurrency = v
 	}
 	return req
 }

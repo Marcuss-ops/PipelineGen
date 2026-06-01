@@ -46,6 +46,9 @@ type RunTagRequest struct {
 	Width        int    `json:"width,omitempty"`
 	Height       int    `json:"height,omitempty"`
 	FPS          int    `json:"fps,omitempty"`
+	// Concurrency sets how many clips are downloaded in parallel.
+	// Default: 3. Max: 10. Set to 1 for sequential downloads (legacy behavior).
+	Concurrency int `json:"concurrency,omitempty"`
 }
 
 // ToMap converts RunTagRequest to a map for job payload.

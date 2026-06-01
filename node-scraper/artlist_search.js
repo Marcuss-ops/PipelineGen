@@ -74,7 +74,7 @@ async function searchArtlist(term, limit, profileDir, existingBrowser = null) {
     const maxScrollRounds = Math.max(1, Math.min(8, Math.ceil(targetCandidates / 2) + 1));
 
     for (let round = 0; round < maxScrollRounds && clipPages.length < targetCandidates; round++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const newlyFound = await page.evaluate(() => {
         const found = [];
@@ -110,7 +110,7 @@ async function searchArtlist(term, limit, profileDir, existingBrowser = null) {
 
     const clips = [];
     const clipQueue = clipPages.slice(0, targetCandidates);
-    const concurrency = 4;
+    const concurrency = 8;
 
     for (let i = 0; i < clipQueue.length; i += concurrency) {
       const chunk = clipQueue.slice(i, i + concurrency);
@@ -133,7 +133,7 @@ async function searchArtlist(term, limit, profileDir, existingBrowser = null) {
         try {
           await detailPage.goto(clipPageUrl, { waitUntil: 'networkidle2', timeout: 60000 });
           await detailPage.waitForSelector('video, [class*="player"], [class*="video"]', { timeout: 10000 }).catch(() => {});
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 300));
           const title = await detailPage.title();
           
           if (title.includes('Just a moment')) {

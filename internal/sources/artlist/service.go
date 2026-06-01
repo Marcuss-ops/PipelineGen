@@ -73,7 +73,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRe
 		jobsSvc:           jobsSvc,
 		driveSvc:          driveSvc,
 		log:               log,
-		liveCache:         newLiveSearchCache(),
+		liveCache:         newPersistentLiveSearchCache(mainDB, log),
 		semanticEnricher:  NewSemanticEnricher(artlistRepo, clipIndexer, scriptsDir, ollamaURL, ollamaModel, log),
 	}
 

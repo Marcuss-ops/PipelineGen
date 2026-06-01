@@ -56,22 +56,7 @@ async function cleanupBrowser() {
   }
 }
 
-// ─── Search Runner with persistent browser ─────────────────────────────────────
-async function runSearchWithPersistentBrowser(term, limit) {
-  const browser = await getBrowser();
-  // Create page inside its own transient context for cookie/session isolation
-  const context = await browser.createBrowserContext();
-  const page = await context.newPage();
-  await page.setViewport({ width: 1440, height: 900 });
-  await page.setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
-  // We temporarily patch or call searchArtlist logic using our open context/page.
-  // Since searchArtlist calls createBrowserPage internally, we can temporarily bypass it 
-  // or pass a custom browser handle, or simply run the search script but reuse page.
-  // Let's modify searchArtlist to accept an optional existing browser/page handle,
-  // or write a lightweight wrapper. Let's look at searchArtlist in artlist_search.js first
-  // to see if we can adapt it or pass the browser.
-}
 
 // ─── Request handler ──────────────────────────────────────────────────────────
 async function handleSearch(req, res) {
@@ -117,10 +102,7 @@ async function handleSearch(req, res) {
   try {
     const browser = await getBrowser();
     
-    // Instead of launching a new browser inside searchArtlist, let's call the search.
-    // However, searchArtlist is hardcoded to do createBrowserPage. 
-    // We will export a modified version of searchArtlist, or patch it to accept custom browser page handle.
-    // Let's look at artlist_search.js to make it support passing an existing page or browser.
+    // searchArtlist accetta un browser esistente (param 4) per riusare Chromium.
     const result = await searchArtlist(term, limit, PROFILE_DIR, browser);
     const elapsed = Date.now() - t0;
     console.log(`[${new Date().toISOString()}] #${reqId} DONE ${result.clips.length} clips in ${elapsed}ms`);

@@ -1,33 +1,41 @@
+# artlist-scraper.service
+# Node.js HTTP server that keeps Chromium alive for Artlist searches.
+# Avoids 30-50s cold starts by maintaining a persistent browser session.
+#
+# Install:
+#   sudo cp docs/architecture/artlist-scraper.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable artlist-scraper
+#   sudo systemctl start artlist-scraper
+#
+# Verify: curl http://127.0.0.1:9123/health
+# Logs: journalctl -u artlist-scraper -f
+
 [Unit]
-Description=Artlist Scraper Persistent Server (Level 3 optimization)
-Documentation=https://github.com/Marcuss-ops/PipelineGen
-After=network.target pipelinegen.service
-Wants=pipelinegen.service
+Description=Artlist Scraper Server (persistent Chromium)
+After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
 User=pierone
 WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/node-scraper
-ExecStart=/usr/bin/node artlist_server.js --port 9123
+ExecStart=/usr/bin/node /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/node-scraper/artlist_server.js
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=30
 
 # Environment
-Environment="ARTLIST_SCRAPER_PORT=9123"
-Environment="CHROME_PROFILE_DIR=/home/pierone/.config/chromium-artlist"
-Environment="NODE_ENV=production"
-# Puppeteer needs a display — use virtual framebuffer if no display
-Environment="DISPLAY=:99"
+Environment=ARTLIST_SCRAPER_PORT=9123
+Environment=NODE_ENV=production
 
 # Resource limits
 LimitNOFILE=65536
-MemoryMax=2G
-CPUQuota=80%
 
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=artlist-scraper
+# Security
+PrivateTmp=true
+ProtectHome=read-only
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

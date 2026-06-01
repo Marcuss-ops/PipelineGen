@@ -28,7 +28,7 @@ export async function searchArtlist(term, limit, profileDir) {
     const maxScrollRounds = Math.max(1, Math.min(8, Math.ceil(targetCandidates / 2) + 1));
 
     for (let round = 0; round < maxScrollRounds && clipPages.length < targetCandidates; round++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const newlyFound = await page.evaluate(() => {
         const found = [];
@@ -64,7 +64,7 @@ export async function searchArtlist(term, limit, profileDir) {
 
     const clips = [];
     const clipQueue = clipPages.slice(0, targetCandidates);
-    const concurrency = 4; // Fetch 4 clips at a time
+    const concurrency = 8; // Fetch 8 clips at a time
 
     for (let i = 0; i < clipQueue.length; i += concurrency) {
       const chunk = clipQueue.slice(i, i + concurrency);

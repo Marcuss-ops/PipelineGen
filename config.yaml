@@ -45,7 +45,7 @@ external:
   # Level 3: persistent Node.js scraper server (keep Chromium warm between searches)
   # Start with: node node-scraper/artlist_server.js
   # Or: sudo systemctl start artlist-scraper
-  artlist_scraper_server_url: ""  # e.g. "http://localhost:9123" when server is running
+  artlist_scraper_server_url: "http://localhost:9123"  # Persistent Node.js server (Level 3)
   nvidia_api_key: ""
   nvidia_model: "flux-1-schnell"
 

@@ -65,6 +65,13 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 	// Normalize strategy
 	req.Strategy = string(models.NormalizeStrategy(req.Strategy, false))
 
+	// Normalize concurrency
+	if req.Concurrency <= 0 {
+		req.Concurrency = 3
+	} else if req.Concurrency > 10 {
+		req.Concurrency = 10
+	}
+
 	return req
 }
 

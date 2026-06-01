@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"go.uber.org/zap"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/pkg/hashutil"
@@ -91,7 +93,21 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 		return resp, fmt.Errorf("media processor is not configured")
 	}
 
-	processedCount := 0
+	// Determine concurrency: default 3, max 10
+	concurrency := req.Concurrency
+	if concurrency <= 0 {
+		concurrency = 3
+	} else if concurrency > 10 {
+		concurrency = 10
+	}
+
+	// Build clip work items first (synchronous — fast)
+	type clipWork struct {
+		item        RunTagItem
+		processInput *processor.ProcessInput
+	}
+	workItems := make([]clipWork, 0, len(discoveryResp.Clips))
+
 	for _, clip := range discoveryResp.Clips {
 		item := RunTagItem{
 			ClipID:       clip.ID,
@@ -124,7 +140,6 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 			if len(termSlug) > 20 {
 				termSlug = termSlug[:20]
 			}
-			// Use a combination of a short slug and a hash to keep it unique but short
 			genID := fmt.Sprintf("%s_%s", termSlug, hashutil.MD5String(resp.Term)[:8])
 			outputDir = filepath.Join(o.svc.cfg.Storage.DataDir, "media", "artlist", "general", genID)
 		}
@@ -158,43 +173,85 @@ func (o *RunOrchestratorService) RunTag(ctx context.Context, req *RunTagRequest)
 			continue
 		}
 
-		result, procErr := o.svc.mediaProcessor.Process(ctx, processInput)
-		if procErr != nil {
-			item.Status = "media_process_failed"
-			item.Error = procErr.Error()
-			resp.Failed++
-			resp.Items = append(resp.Items, item)
-			continue
-		}
-
-		item.Status = result.Status
-		if item.Status == "" {
-			item.Status = "processed"
-		}
-		item.Filename = result.Filename
-		item.LocalPath = result.LocalPath
-		item.FileHash = result.FileHash
-		item.DriveLink = result.DriveLink
-		item.DriveFileID = result.DriveFileID
-		item.DownloadLink = result.DownloadLink
-		resp.Processed++
-		processedCount++
-		resp.Items = append(resp.Items, item)
-
-		// Arricchimento semantico sul clip finale (con nome definitivo e local path)
-		if o.svc.semanticEnricher != nil {
-			enrichClip := &models.MediaAsset{
-				ID:           item.ClipID,
-				Name:         item.Name,
-				LocalPath:    item.LocalPath,
-				DriveLink:    item.DriveLink,
-				DriveFileID:  item.DriveFileID,
-				DownloadLink: item.DownloadLink,
-				Tags:         []string{resp.Term},
-			}
-			o.svc.semanticEnricher.EnrichAsync(enrichClip, resp.Term)
-		}
+		workItems = append(workItems, clipWork{item: item, processInput: processInput})
 	}
+
+	if len(workItems) == 0 {
+		return resp, nil
+	}
+
+	// Process clips in PARALLEL using a semaphore pattern
+	// Each goroutine gets its own item slice for safe concurrent writes
+	processedCount := 0
+	var mu sync.Mutex
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for _, work := range workItems {
+		wg.Add(1)
+		sem <- struct{}{} // acquire slot
+		go func(w clipWork) {
+			defer wg.Done()
+			defer func() { <-sem }() // release slot
+
+			result, procErr := o.svc.mediaProcessor.Process(ctx, w.processInput)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if procErr != nil {
+				w.item.Status = "media_process_failed"
+				w.item.Error = procErr.Error()
+				resp.Failed++
+				resp.Items = append(resp.Items, w.item)
+				return
+			}
+
+			w.item.Status = result.Status
+			if w.item.Status == "" {
+				w.item.Status = "processed"
+			}
+			w.item.Filename = result.Filename
+			w.item.LocalPath = result.LocalPath
+			w.item.FileHash = result.FileHash
+			w.item.DriveLink = result.DriveLink
+			w.item.DriveFileID = result.DriveFileID
+			w.item.DownloadLink = result.DownloadLink
+			resp.Processed++
+			resp.Items = append(resp.Items, w.item)
+
+			// Arricchimento semantico in background
+			if o.svc.semanticEnricher != nil {
+				enrichClip := &models.MediaAsset{
+					ID:           w.item.ClipID,
+					Name:         w.item.Name,
+					LocalPath:    w.item.LocalPath,
+					DriveLink:    w.item.DriveLink,
+					DriveFileID:  w.item.DriveFileID,
+					DownloadLink: w.item.DownloadLink,
+					Tags:         []string{resp.Term},
+				}
+				o.svc.semanticEnricher.EnrichAsync(enrichClip, resp.Term)
+			}
+		}(work)
+	}
+
+	wg.Wait()
+
+	// Use the processed count for the error check
+	// (resp.Processed is already incremented inside goroutines)
+	mu.Lock()
+	processedCount = resp.Processed
+	mu.Unlock()
+
+	o.svc.log.Info("artlist run completed",
+		zap.String("term", resp.Term),
+		zap.Int("concurrency", concurrency),
+		zap.Int("found", resp.Found),
+		zap.Int("processed", processedCount),
+		zap.Int("failed", resp.Failed),
+		zap.Int("skipped", resp.Skipped),
+	)
 
 	if processedCount == 0 && resp.Failed > 0 && resp.Skipped == 0 {
 		resp.OK = false
