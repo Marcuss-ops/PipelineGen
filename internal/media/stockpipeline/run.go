@@ -349,7 +349,7 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 			// Trigger automatic vector indexing asynchronously since we have local file (Deep visual + text index)
 			if s.clipIndexer != nil && s.clipIndexer.IsEnabled() {
 				go func(id string) {
-					indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+					indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 					defer cancel()
 					s.log.Info("triggering automatic vector indexing for stock chunk", zap.String("id", id))
 					if err := s.clipIndexer.IndexClip(indexCtx, id); err != nil {

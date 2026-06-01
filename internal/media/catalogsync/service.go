@@ -406,7 +406,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 	// Trigger automatic vector indexing asynchronously if enabled and it's a file
 	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder {
 		go func(id string) {
-			indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 			defer cancel()
 			s.log.Debug("triggering automatic vector indexing for synced catalog asset", zap.String("id", id))
 			if err := s.clipIndexer.IndexClip(indexCtx, id); err != nil {

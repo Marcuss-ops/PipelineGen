@@ -36,6 +36,9 @@ var expectedTables = map[string][]string{
 		"segment_embeddings",
 		"subjects",
 		"voiceovers",
+		// Additional tables from migrations
+		"characters",
+		"sketchfab_models",
 	},
 }
 

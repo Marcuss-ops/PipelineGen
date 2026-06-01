@@ -45,7 +45,9 @@ func TestWriteGeneratedScriptFilesPlacesScriptBeforeJson(t *testing.T) {
 		GeneratedAt: time.Date(2026, 5, 29, 13, 39, 46, 0, time.UTC),
 	}
 
-	outDir, written, err := h.writeGeneratedScriptFiles(pkg)
+	outDir, written, err := h.writeGeneratedScriptFiles(pkg, []VideoScene{
+		{Text: "First sentence.", ImageLink: "https://drive.google.com/file/d/abc123/view"},
+	})
 	if err != nil {
 		t.Fatalf("writeGeneratedScriptFiles failed: %v", err)
 	}
@@ -65,7 +67,7 @@ func TestWriteGeneratedScriptFilesPlacesScriptBeforeJson(t *testing.T) {
 		t.Fatalf("read markdown failed: %v", err)
 	}
 	md := string(mdBytes)
-	if !strings.Contains(md, "## Full Script") {
+	if !strings.Contains(md, "## Script (Base)") {
 		t.Fatalf("markdown missing full script section: %s", md)
 	}
 	if !strings.Contains(md, "First sentence. Second sentence.") {
@@ -74,8 +76,8 @@ func TestWriteGeneratedScriptFilesPlacesScriptBeforeJson(t *testing.T) {
 	if !strings.Contains(md, "## Scenes JSON") {
 		t.Fatalf("markdown missing scenes json section: %s", md)
 	}
-	if !strings.Contains(md, "\"drive_link\": \"https://drive.google.com/file/d/abc123/view\"") {
-		t.Fatalf("markdown json block missing drive link: %s", md)
+	if !strings.Contains(md, "\"image_link\": \"https://drive.google.com/file/d/abc123/view\"") {
+		t.Fatalf("markdown json block missing image link: %s", md)
 	}
 	if strings.Index(md, "First sentence. Second sentence.") > strings.Index(md, "## Scenes JSON") {
 		t.Fatalf("expected script text before json block: %s", md)
@@ -85,18 +87,12 @@ func TestWriteGeneratedScriptFilesPlacesScriptBeforeJson(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read json failed: %v", err)
 	}
-	var decoded GeneratedScriptPackage
+	var decoded []VideoScene
 	if err := json.Unmarshal(jsonBytes, &decoded); err != nil {
 		t.Fatalf("unmarshal json failed: %v", err)
 	}
-	if decoded.Files.Markdown != mdPath || decoded.Files.JSON != jsonPath {
-		t.Fatalf("json file paths not persisted, got %#v", decoded.Files)
-	}
-	if len(decoded.Scenes) != 1 || decoded.Scenes[0].Image == nil {
-		t.Fatalf("expected one scene with image, got %#v", decoded.Scenes)
-	}
-	if decoded.Scenes[0].Image.DriveLink != "https://drive.google.com/file/d/abc123/view" {
-		t.Fatalf("unexpected drive link in json: %#v", decoded.Scenes[0].Image)
+	if len(decoded) != 1 || decoded[0].ImageLink != "https://drive.google.com/file/d/abc123/view" {
+		t.Fatalf("expected one video scene with image link, got %#v", decoded)
 	}
 }
 
@@ -143,7 +139,7 @@ func TestWriteGeneratedScriptFilesWritesRepoDocsDir(t *testing.T) {
 		GeneratedAt: time.Date(2026, 5, 29, 13, 39, 46, 0, time.UTC),
 	}
 
-	outDir, written, err := h.writeGeneratedScriptFiles(pkg)
+	outDir, written, err := h.writeGeneratedScriptFiles(pkg, nil)
 	if err != nil {
 		t.Fatalf("writeGeneratedScriptFiles failed: %v", err)
 	}
@@ -199,7 +195,9 @@ func TestCreateGeneratedGoogleDocBuildsFullDocContent(t *testing.T) {
 		},
 	}
 
-	doc, err := h.createGeneratedGoogleDoc(context.Background(), pkg)
+	doc, err := h.createGeneratedGoogleDoc(context.Background(), pkg, []VideoScene{
+		{Text: "In a moonlit kingdom, a knight rode through the forest.", ImageLink: "https://drive.google.com/file/d/scene1/view"},
+	})
 	if err != nil {
 		t.Fatalf("createGeneratedGoogleDoc failed: %v", err)
 	}
@@ -212,13 +210,13 @@ func TestCreateGeneratedGoogleDocBuildsFullDocContent(t *testing.T) {
 	if client.folder != "drive-root-folder" {
 		t.Fatalf("unexpected folder sent to doc client: %q", client.folder)
 	}
-	if !strings.Contains(client.content, "Full Script:") || !strings.Contains(client.content, "Scenes JSON:") {
+	if !strings.Contains(client.content, "Script (Base):") || !strings.Contains(client.content, "Scenes JSON:") {
 		t.Fatalf("doc content missing sections: %s", client.content)
 	}
 	if !strings.Contains(client.content, "In a moonlit kingdom, a knight rode through the forest.") {
 		t.Fatalf("doc content missing full script: %s", client.content)
 	}
-	if !strings.Contains(client.content, "\"scene_001\"") {
+	if !strings.Contains(client.content, "scene1") {
 		t.Fatalf("doc content missing scene json: %s", client.content)
 	}
 }

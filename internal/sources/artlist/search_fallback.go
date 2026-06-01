@@ -38,7 +38,7 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 	}
 	ttl := time.Duration(ttlHours) * time.Hour
 
-	if s.liveCache.isFresh(term, ttl) {
+	if s.liveCache != nil && s.liveCache.isFresh(term, ttl) {
 		cached, _ := s.liveCache.get(term)
 		s.log.Info("artlist live search: cache HIT", zap.String("term", term), zap.Int("clips", len(cached)))
 
@@ -64,7 +64,9 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 
 	// ─── CACHE MISS: Run live search ─────────────────────────────────────────
 	if clips, err := ss.searchArtlistLive(ctx, term, limit); err == nil && len(clips) > 0 {
-		s.liveCache.set(term, clips) // populate cache for next call
+		if s.liveCache != nil {
+			s.liveCache.set(term, clips) // populate cache for next call
+		}
 		return clips, nil
 	} else if err != nil {
 		s.log.Warn("artlist live search failed, trying fallbacks", zap.String("term", term), zap.Error(err))
