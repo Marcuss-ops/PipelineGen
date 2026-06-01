@@ -304,36 +304,21 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 			}
 
 			// Translate scene texts concurrently
-			translatedScenes := make([]GeneratedScene, len(packageData.Scenes))
-			var sceneWg sync.WaitGroup
-			var sceneMu sync.Mutex
-			sceneSem := make(chan struct{}, 5) // limit concurrency to avoid overloading Ollama
+			translatedScenes := concurrent.ParallelMap(packageData.Scenes, 5, func(idx int, baseScene GeneratedScene) GeneratedScene {
+				transSceneText, sceneTransErr := h.generator.TranslateText(ctx, baseScene.Text, lang)
+				if sceneTransErr != nil {
+					transSceneText = baseScene.Text // Fallback
+				}
 
-			for sIdx, baseScene := range packageData.Scenes {
-				sceneWg.Add(1)
-				go func(idx int, scene GeneratedScene) {
-					defer sceneWg.Done()
-					sceneSem <- struct{}{}
-					defer func() { <-sceneSem }()
-
-					transSceneText, sceneTransErr := h.generator.TranslateText(ctx, scene.Text, lang)
-					if sceneTransErr != nil {
-						transSceneText = scene.Text // Fallback
-					}
-
-					sceneMu.Lock()
-					translatedScenes[idx] = GeneratedScene{
-						ID:        scene.ID,
-						Index:     scene.Index,
-						Text:      transSceneText,
-						Query:     scene.Query,
-						Image:     scene.Image, // Reuse the same image mapping!
-						Error:     scene.Error,
-					}
-					sceneMu.Unlock()
-				}(sIdx, baseScene)
-			}
-			sceneWg.Wait()
+				return GeneratedScene{
+					ID:    baseScene.ID,
+					Index: baseScene.Index,
+					Text:  transSceneText,
+					Query: baseScene.Query,
+					Image: baseScene.Image, // Reuse the same image mapping!
+					Error: baseScene.Error,
+				}
+			})
 
 			// Generate unified voiceover for this translation
 			var transVo *GeneratedVoiceover
