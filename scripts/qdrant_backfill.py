@@ -257,7 +257,8 @@ def main():
     parser.add_argument("--db", required=True, help="Media database path")
     parser.add_argument("--qdrant", default="http://127.0.0.1:6333", help="Qdrant HTTP URL")
     parser.add_argument("--collection", default="pipelinegen_assets", help="Qdrant collection name")
-    parser.add_argument("--text-dim", type=int, default=384)
+    parser.add_argument("--text-dim", type=int, default=768,
+                        help="Text embedding dimension (768 for intfloat/multilingual-e5-base)")
     parser.add_argument("--visual-dim", type=int, default=512)
     parser.add_argument("--audio-dim", type=int, default=512)
     parser.add_argument("--text-vector", default="text")

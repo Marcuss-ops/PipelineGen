@@ -168,7 +168,7 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 					MediaType: "image",
 					MinScore:  0.85,
 				})
-				if err == nil && matchResp != nil && matchResp.Status == "instant_match" && matchResp.Asset != nil {
+				if err == nil && matchResp != nil && strings.HasPrefix(matchResp.Status, "instant_match") && matchResp.Asset != nil {
 					h.log.Info("semantic image cache HIT! Reusing existing asset", zap.String("asset_id", matchResp.Asset.ID), zap.Float64("score", matchResp.Asset.Score))
 					
 					// Extract drive file id

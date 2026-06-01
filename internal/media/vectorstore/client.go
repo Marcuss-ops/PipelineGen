@@ -157,7 +157,8 @@ func (c *QdrantClient) UpsertAsset(ctx context.Context, asset VectorAsset) error
 		"style":      asset.Style,
 		"media_type": asset.MediaType,
 		"duration_ms": asset.DurationMs,
-		"tags":       asset.Tags,
+		"tags":        asset.Tags,
+		"search_text": asset.SearchText,
 	}
 
 	if !asset.CreatedAt.IsZero() {
@@ -288,6 +289,25 @@ func (c *QdrantClient) Search(ctx context.Context, req SearchRequest) ([]SearchR
 		}
 		if p, ok := r.Payload["media_type"]; ok {
 			sr.MediaType, _ = p.(string)
+		}
+		if p, ok := r.Payload["style"]; ok {
+			sr.Style, _ = p.(string)
+		}
+		if p, ok := r.Payload["tags"]; ok {
+			// tags can be []interface{} from JSON or []string
+			switch t := p.(type) {
+			case []interface{}:
+				for _, tag := range t {
+					if s, ok := tag.(string); ok {
+						sr.Tags = append(sr.Tags, s)
+					}
+				}
+			case []string:
+				sr.Tags = t
+			}
+		}
+		if p, ok := r.Payload["search_text"]; ok {
+			sr.SearchText, _ = p.(string)
 		}
 
 		results = append(results, sr)

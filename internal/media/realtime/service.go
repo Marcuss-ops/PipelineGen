@@ -132,11 +132,11 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 		candidates := make([]reranker.Candidate, len(searchResults))
 		for i, r := range searchResults {
 			// Build rich candidate text for CrossEncoder precision.
-			// Uses fields available on vectorstore.SearchResult (Name, Category, MediaType, Source).
-			// Callers with richer metadata can enrich Text before passing to Rerank.
+			// Now uses SearchText (rich FTS blob), Tags, Style — not just Name/Category.
+			// This enables bge-reranker-v2-m3 to compare query vs rich passage for 100+ languages.
 			candidates[i] = reranker.Candidate{
 				ID:          r.AssetID,
-				Text:        reranker.BuildCandidateText(r.Name, r.Category, nil, r.Source, "", r.MediaType),
+				Text:        reranker.BuildCandidateText(r.Name, r.SearchText, r.Tags, r.Style, r.Category, r.MediaType),
 				QdrantScore: &r.Score,
 			}
 		}

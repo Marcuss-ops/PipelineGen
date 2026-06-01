@@ -17,6 +17,10 @@ from sentence_transformers import SentenceTransformer
 
 DB_PATH = Path("/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/velox/velox.db.sqlite")
 DEFAULT_COLLECTION = "pipelinegen_assets"
+# [LEGACY] qdrant_emulator — simulatore Qdrant in-memory per testing locale.
+# Non usato in produzione. Il modello all-MiniLM-L6-v2 (384d) è deprecato;
+# il sistema ora usa intfloat/multilingual-e5-base (768d).
+# Vedi scripts/reranker_server.py e scripts/embedding_server.py per i servizi reali.
 TEXT_MODEL = "all-MiniLM-L6-v2"
 
 # Prefix for media_assets IDs to avoid collision with asset_index IDs

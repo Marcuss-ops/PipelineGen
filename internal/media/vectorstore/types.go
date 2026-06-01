@@ -7,7 +7,7 @@
 //   SQLite remains the canonical metadata store; Qdrant is the real-time index.
 //
 // Named vectors:
-//   "text"   — 384d  from all-MiniLM-L6-v2 (SentenceTransformer)
+//   "text"   — 768d  from intfloat/multilingual-e5-base
 //   "visual" — 512d  from clip-ViT-B-32 (SentenceTransformer CLIP)
 package vectorstore
 
@@ -46,7 +46,10 @@ type VectorAsset struct {
 	// DurationMs is the clip duration in milliseconds (0 for images)
 	DurationMs int `json:"duration_ms,omitempty"`
 
-	// TextEmbedding is the 384d text embedding vector (all-MiniLM-L6-v2)
+	// SearchText is the rich search text for FTS and CrossEncoder reranking (768d from multilingual-e5-base)
+	SearchText string `json:"search_text,omitempty"`
+
+	// TextEmbedding is the 768d text embedding vector (intfloat/multilingual-e5-base)
 	TextEmbedding []float32 `json:"-"`
 
 	// VisualEmbedding is the 512d visual embedding vector (clip-ViT-B-32)
@@ -88,15 +91,19 @@ type SearchRequest struct {
 }
 
 // SearchResult is a single match from a vector search.
+// Fields populated from Qdrant payload. SearchText and Tags enable rich CrossEncoder reranking.
 type SearchResult struct {
-	AssetID   string  `json:"asset_id"`
-	Score     float64 `json:"score"`
-	Source    string  `json:"source"`
-	Name      string  `json:"name"`
-	LocalPath string  `json:"local_path,omitempty"`
-	DriveLink string  `json:"drive_link,omitempty"`
-	Category  string  `json:"category,omitempty"`
-	MediaType string  `json:"media_type,omitempty"`
+	AssetID    string   `json:"asset_id"`
+	Score      float64  `json:"score"`
+	Source     string   `json:"source"`
+	Name       string   `json:"name"`
+	LocalPath  string   `json:"local_path,omitempty"`
+	DriveLink  string   `json:"drive_link,omitempty"`
+	Category   string   `json:"category,omitempty"`
+	MediaType  string   `json:"media_type,omitempty"`
+	Style      string   `json:"style,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	SearchText string   `json:"search_text,omitempty"`
 }
 
 // Store is the canonical interface for vector-based asset search.

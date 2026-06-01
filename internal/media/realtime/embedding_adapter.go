@@ -25,9 +25,16 @@ func NewPythonEmbeddingAdapter(serverURL string) *PythonEmbeddingAdapter {
 	}
 }
 
-// EmbedText calls the Python embedding server's /embed endpoint with the given text.
+// EmbedText calls the Python embedding server's /embed endpoint with type="query".
+// Used for real-time matching (search queries).
 func (a *PythonEmbeddingAdapter) EmbedText(ctx context.Context, text string) ([]float64, error) {
-	return a.callEmbedder(ctx, "/embed", text)
+	return a.callEmbedder(ctx, "/embed", text, "query")
+}
+
+// EmbedPassage calls the Python embedding server's /embed endpoint with type="passage".
+// Used for document indexing into Qdrant. E5 requires separate prefixes for query vs passage.
+func (a *PythonEmbeddingAdapter) EmbedPassage(ctx context.Context, text string) ([]float64, error) {
+	return a.callEmbedder(ctx, "/embed", text, "passage")
 }
 
 // EmbedVisual calls the Python embedding server's /embed_visual endpoint.
@@ -79,8 +86,12 @@ func (a *PythonEmbeddingAdapter) AnalyzeImage(ctx context.Context, imagePath str
 	return &result, nil
 }
 
-func (a *PythonEmbeddingAdapter) callEmbedder(ctx context.Context, endpoint, text string) ([]float64, error) {
-	body := map[string]string{"text": text}
+func (a *PythonEmbeddingAdapter) callEmbedder(ctx context.Context, endpoint, text string, embedType ...string) ([]float64, error) {
+	embedTypeVal := "query"
+	if len(embedType) > 0 {
+		embedTypeVal = embedType[0]
+	}
+	body := map[string]string{"text": text, "type": embedTypeVal}
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)

@@ -30,9 +30,9 @@ func (s *Service) indexAssetInVectorStore(ctx context.Context, assetID, source, 
 		return
 	}
 
-	// 1. Get embedding from Python server
+	// 1. Get passage embedding from Python server (type="passage" per E5 prefix)
 	adapter := realtime.NewPythonEmbeddingAdapter(s.cfg.ClipIndexer.ServerURL)
-	embedding, err := adapter.EmbedText(ctx, searchText)
+	embedding, err := adapter.EmbedPassage(ctx, searchText)
 	if err != nil {
 		s.log.Warn("Failed to generate embedding for search_text", zap.String("asset_id", assetID), zap.Error(err))
 		return

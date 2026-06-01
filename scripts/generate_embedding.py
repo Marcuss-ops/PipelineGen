@@ -16,7 +16,12 @@ args = parser.parse_args()
 
 try:
     model = SentenceTransformer("intfloat/multilingual-e5-base")
-    embedding = model.encode(args.text).tolist()
+    # E5 requires 'query:' prefix for retrieval queries or 'passage:' for documents
+    # Default to 'query:' for one-shot usage; use --prefix to override
+    prefix = "query: "
+    if args.text.startswith("passage:"):
+        prefix = ""
+    embedding = model.encode(prefix + args.text, normalize_embeddings=True).tolist()
     print(json.dumps(embedding))
 except Exception as e:
     # Print empty array on error to prevent total crash

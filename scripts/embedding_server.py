@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import uvicorn
 
 try:
-    from sentence_transformers import SentenceTransformer, CrossEncoder
+    from sentence_transformers import SentenceTransformer
     import spacy
     import imagehash
     from PIL import Image
@@ -42,23 +42,16 @@ try:
 except Exception as e:
     print(f"CLAP model not loaded: {e}")
 
-# Load CrossEncoder Reranker model
-reranker_model = None
-try:
-    print("Loading CrossEncoder model (BAAI/bge-reranker-base)...")
-    reranker_model = CrossEncoder("BAAI/bge-reranker-base")
-except Exception as e:
-    print(f"Failed to load BAAI/bge-reranker-base: {e}. Falling back to cross-encoder/ms-marco-MiniLM-L-6-v2")
-    try:
-        reranker_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    except Exception as ex:
-        print(f"Failed to load fallback CrossEncoder: {ex}")
+# CrossEncoder Reranker RIMOSSO da embedding_server.
+# Il reranking è gestito dal servizio separato scripts/reranker_server.py su porta 8091.
+# Questa separazione segue l'architettura modulare: embedding vs reranking.
 
 app = FastAPI(title="PipelineGen Embedding Server")
 
 
 class EmbedRequest(BaseModel):
     text: str
+    type: str = "query"  # "query" per retrieval, "passage" per document indexing
 
 
 class PhashRequest(BaseModel):
@@ -161,11 +154,18 @@ def health():
 
 @app.post("/embed")
 def embed(req: EmbedRequest):
-    """Generate text embedding (384d, all-MiniLM-L6-v2)."""
+    """Generate text embedding (768d, intfloat/multilingual-e5-base).
+    Per E5 recommendation for asymmetric retrieval:
+    - type="query" (default): adds "query:" prefix for search queries
+    - type="passage": adds "passage:" prefix for document indexing
+    See: https://huggingface.co/intfloat/multilingual-e5-base
+    """
     try:
+        prefix = "query: " if req.type == "query" else "passage: "
         normalized = normalize_text(req.text)
-        embedding = model.encode(normalized).tolist()
-        return {"embedding": embedding, "normalized_text": normalized}
+        prefixed = prefix + normalized
+        embedding = model.encode(prefixed, normalize_embeddings=True).tolist()
+        return {"embedding": embedding, "normalized_text": normalized, "type": req.type}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -221,40 +221,7 @@ def compute_phash(req: PhashRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class RerankCandidate(BaseModel):
-    id: str
-    text: str
-
-
-class RerankRequest(BaseModel):
-    query: str
-    candidates: list[RerankCandidate]
-
-
-@app.post("/rerank")
-def rerank(req: RerankRequest):
-    """Rerank candidates using CrossEncoder."""
-    if reranker_model is None:
-        raise HTTPException(status_code=501, detail="Reranker model not loaded")
-    if not req.candidates:
-        return {"results": []}
-    try:
-        # Prepare pairs for cross-encoder matching
-        pairs = [[req.query, cand.text] for cand in req.candidates]
-        scores = reranker_model.predict(pairs).tolist()
-
-        # Build and sort results by score descending
-        results = []
-        for idx, cand in enumerate(req.candidates):
-            results.append({
-                "id": cand.id,
-                "score": float(scores[idx])
-            })
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+# Reranker endpoint RIMOSSO: usa scripts/reranker_server.py (porta 8091).
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

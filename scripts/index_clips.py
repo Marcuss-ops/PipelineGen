@@ -82,7 +82,10 @@ embedding_cache_text = {}
 def compute_embedding(text):
     if text in embedding_cache_text:
         return embedding_cache_text[text]
-    emb = json.dumps(model.encode(text).tolist())
+    # E5 requires 'passage:' prefix for documents being indexed
+    # See: https://huggingface.co/intfloat/multilingual-e5-base
+    prefixed = "passage: " + text
+    emb = json.dumps(model.encode(prefixed, normalize_embeddings=True).tolist())
     embedding_cache_text[text] = emb
     return emb
 

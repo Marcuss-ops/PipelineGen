@@ -261,7 +261,7 @@ func (h *ScriptFlowHandler) Visualize(c *gin.Context) {
 				AllowBackgroundGen: false,
 				MediaType:          "image",
 			})
-			if err == nil && matchResp != nil && matchResp.Status == "instant_match" && matchResp.Asset != nil {
+			if err == nil && matchResp != nil && strings.HasPrefix(matchResp.Status, "instant_match") && matchResp.Asset != nil {
 				segment.Action = "reuse"
 				segment.Match = matchResp.Asset
 				segment.Image = &VisualAssetResult{
