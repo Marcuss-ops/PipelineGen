@@ -73,8 +73,50 @@ def normalize_text(text):
     doc = target_nlp(text.lower())
     return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
-def generate_search_text(tags):
-    return " ".join(tags)
+def generate_search_text(parts):
+    """
+    Generate a rich search_text from name, description, and tags.
+    Aligned with semantic_tagger.py: produces a flat text blob with normalized tokens,
+    deduplication, and rich contextual phrases for FTS + vector search.
+    
+    This is lighter than semantic_tagger.py (no taxonomy, no YAKE, no Ollama),
+    but produces similarly rich normalized text for search indexing.
+    """
+    # Collect all parts
+    text_parts = []
+    for p in parts:
+        if isinstance(p, str):
+            text_parts.append(normalize_text(p))
+        elif isinstance(p, (list, tuple)):
+            for item in p:
+                if item:
+                    text_parts.append(item.lower().strip())
+    
+    # Tokenize and deduplicate with frequency awareness
+    seen = set()
+    tokens = []
+    for text in text_parts:
+        for token in text.split():
+            token = token.strip(".,!?;:'\"()[]")
+            if len(token) <= 2 or token in {"the", "and", "for", "are", "was", "had", "but", "not", "all", "can", "has", "its", "per", "via", "use", "get", "new"}:
+                continue
+            if token not in seen:
+                seen.add(token)
+                tokens.append(token)
+    
+    # Sort for deterministic output
+    tokens.sort()
+    
+    # Also keep original full phrases for bigram matching
+    phrases = []
+    for p in parts:
+        if isinstance(p, str) and len(p) > 3:
+            clean = p.lower().strip()
+            if clean not in seen:
+                phrases.append(clean)
+                seen.add(clean)
+    
+    return " ".join(tokens + phrases)
 
 # In-memory deduplication cache for text -> embedding
 embedding_cache_text = {}

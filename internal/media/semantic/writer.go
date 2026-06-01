@@ -68,22 +68,10 @@ func NewMetadataWriter(scriptsDir, tempDir, ollamaURL, ollamaModel string, log *
 	}
 }
 
-// Write is the SINGLE entry point for creating metadata.json for any media asset.
-//
-// Flow:
-//  1. Call semantic_tagger.py (if ScriptsDir is configured)
-//  2. Fall back to NewFallbackPayload() on error
-//  3. Apply overrides (AssetID, AssetType, Source, SearchText, Confidence)
-//  4. Apply type-specific Extensions (image: width/height, video: fps/codec, etc.)
-//  5. Add Assets info for batch/group metadata
-//  6. Write metadata.json to local disk (next to LocalPath or in TempDir)
-//  7. Return *Payload + JSON for DB population and Drive upload
-//
-// Nota: il supporto multilingua non richiede dizionari statici.
-// Il modello intfloat/multilingual-e5-base mappa nativamente tutte le lingue
-// nello stesso spazio semantico. Il cross-encoder bge-reranker-v2-m3 ri-ordina
-// i candidati in qualsiasi lingua. Nessuna traduzione esplicita necessaria.
-func (w *MetadataWriter) Write(ctx context.Context, req WriteRequest) (*WriteResult, error) {
+// GeneratePayload calls the tagger, applies overrides, and returns the Payload + JSON.
+// Shared between Write() (which also writes to disk) and external callers.
+// This is the SINGLE code path for semantic metadata generation across ALL media types.
+func (w *MetadataWriter) GeneratePayload(ctx context.Context, req WriteRequest) (*Payload, string, error) {
 	var payload *Payload
 	var err error
 
@@ -149,21 +137,32 @@ func (w *MetadataWriter) Write(ctx context.Context, req WriteRequest) (*WriteRes
 	// Step 7: Marshal to JSON
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("marshal metadata: %w", err)
+		return nil, "", fmt.Errorf("marshal metadata: %w", err)
 	}
 
-	// Step 8: Write metadata.json to local disk
+	return payload, string(data), nil
+}
+
+// Write is the SINGLE entry point for creating metadata.json for any media asset.
+// Uses GeneratePayload() internally to avoid duplicating the tagger+override logic.
+func (w *MetadataWriter) Write(ctx context.Context, req WriteRequest) (*WriteResult, error) {
+	payload, metadataJSON, err := w.GeneratePayload(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Write metadata.json to local disk
 	metaPath := w.metadataPath(req)
 	if err := os.MkdirAll(filepath.Dir(metaPath), 0755); err != nil {
 		w.log.Warn("failed to create metadata dir", zap.String("path", filepath.Dir(metaPath)), zap.Error(err))
 	}
-	if err := os.WriteFile(metaPath, data, 0644); err != nil {
+	if err := os.WriteFile(metaPath, []byte(metadataJSON), 0644); err != nil {
 		w.log.Warn("failed to write metadata.json", zap.String("path", metaPath), zap.Error(err))
 	}
 
 	result := &WriteResult{
 		Payload:      payload,
-		MetadataJSON: string(data),
+		MetadataJSON: metadataJSON,
 		LocalPath:    metaPath,
 	}
 

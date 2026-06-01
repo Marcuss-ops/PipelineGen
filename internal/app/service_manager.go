@@ -223,10 +223,18 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	imageService.SetMetadataWriter(metaWriter)
 
 	// Wire up semantic tagger for voiceover metadata enrichment
-	pythonScriptsDir := cfg.Paths.PythonScriptsDir
+	// Uses metaWriter.GeneratePayload() (the unified code path) instead of calling semantic.Tagger() directly.
+	// This ensures voiceovers get the same fallback + extension logic as all other media types.
 	voService.SetSemanticTagger(func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {
-		payload, err := semantic.Tagger(ctx, pythonScriptsDir, prompt, style, mediaType, generator,
-			cfg.External.OllamaURL, cfg.External.OllamaModel)
+		payload, _, err := metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
+			AssetID:   "",
+			AssetType: "voiceover",
+			MediaType: mediaType,
+			Source:    "voiceover",
+			Generator: generator,
+			Style:     style,
+			Prompt:    prompt,
+		})
 		if err != nil {
 			return nil, err
 		}

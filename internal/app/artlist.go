@@ -15,6 +15,7 @@ import (
 	"velox/go-master/internal/media/clipresolver"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/ontology"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/storage"
 	"velox/go-master/internal/module"
 	"velox/go-master/internal/pkg/matchingconfig"
@@ -56,6 +57,20 @@ func WireArtlist(
 	if err != nil {
 		log.Warn("Failed to create Artlist service", zap.Error(err))
 		return nil, err
+	}
+
+	// 4b. Wire SemanticEnricher into artlist service
+	if artlistSvc != nil && coreDeps.ArtlistRepo != nil && clipIndexerSvc != nil {
+		metaWriter := semantic.NewMetadataWriter(
+			cfg.Paths.PythonScriptsDir,
+			cfg.Storage.TempPath(),
+			cfg.External.OllamaURL,
+			cfg.External.OllamaModel,
+			log,
+		)
+		enricher := artlistPkg.NewSemanticEnricher(coreDeps.ArtlistRepo, clipIndexerSvc, metaWriter, log)
+		artlistSvc.SetSemanticEnricher(enricher)
+		log.Info("wired semantic enricher into artlist service")
 	}
 
 	// 5. Clip Resolver

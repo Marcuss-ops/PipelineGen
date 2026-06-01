@@ -6,18 +6,6 @@ import (
 	"time"
 )
 
-type AssetKind string
-
-const (
-	AssetKindImage     AssetKind = "image"
-	AssetKindVideo     AssetKind = "video"
-	AssetKindAudio     AssetKind = "audio"
-	AssetKindVoiceover AssetKind = "voiceover"
-	AssetKindClip      AssetKind = "clip"
-	AssetKindFolder    AssetKind = "folder"
-	AssetKindAsset     AssetKind = "asset"
-)
-
 func CleanGeneratedPrompt(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {

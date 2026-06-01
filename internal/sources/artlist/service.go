@@ -52,15 +52,6 @@ type Service struct {
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service, log *zap.Logger) (*Service, error) {
-	scriptsDir := ""
-	ollamaURL := ""
-	ollamaModel := ""
-	if cfg != nil {
-		scriptsDir = cfg.Paths.PythonScriptsDir
-		ollamaURL = cfg.External.OllamaURL
-		ollamaModel = cfg.External.OllamaModel
-	}
-
 	s := &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
@@ -74,7 +65,6 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRe
 		driveSvc:          driveSvc,
 		log:               log,
 		liveCache:         newPersistentLiveSearchCache(mainDB, log),
-		semanticEnricher:  NewSemanticEnricher(artlistRepo, clipIndexer, scriptsDir, ollamaURL, ollamaModel, log),
 	}
 
 	// Inizializza i componenti delegati
@@ -86,6 +76,12 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRe
 	s.clipStatusService = NewClipStatusService(s)
 
 	return s, nil
+}
+
+// SetSemanticEnricher imposta l'enricher semantico per i clip Artlist.
+// Deve essere chiamato dopo NewService(), durante il wiring.
+func (s *Service) SetSemanticEnricher(enricher *SemanticEnricher) {
+	s.semanticEnricher = enricher
 }
 
 // Close è un no-op poiché la connessione artlistDB è gestita esternamente.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"go.uber.org/zap"
@@ -24,20 +23,18 @@ import (
 type SemanticEnricher struct {
 	repo        *clips.Repository
 	clipIndexer *clipindexer.Service
-	scriptsDir  string
-	ollamaURL   string
-	ollamaModel string
+	metaWriter  *semantic.MetadataWriter
 	log         *zap.Logger
 }
 
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
-func NewSemanticEnricher(repo *clips.Repository, clipIndexer *clipindexer.Service, scriptsDir, ollamaURL, ollamaModel string, log *zap.Logger) *SemanticEnricher {
+// Usa semantic.MetadataWriter (chiamato GeneratePayload) invece di chiamare Tagger() direttamente,
+// per garantire che tutto il metadata passi dal percorso centralizzato.
+func NewSemanticEnricher(repo *clips.Repository, clipIndexer *clipindexer.Service, metaWriter *semantic.MetadataWriter, log *zap.Logger) *SemanticEnricher {
 	return &SemanticEnricher{
 		repo:        repo,
 		clipIndexer: clipIndexer,
-		scriptsDir:  scriptsDir,
-		ollamaURL:   ollamaURL,
-		ollamaModel: ollamaModel,
+		metaWriter:  metaWriter,
 		log:         log,
 	}
 }
@@ -66,8 +63,8 @@ func (e *SemanticEnricher) EnrichAsync(clip *models.MediaAsset, term string) {
 // Restituisce errore solo se il tagger stesso fallisce; aggiornamenti parziali
 // sono tollerati (il clip è già salvato, il metadata è un bonus).
 func (e *SemanticEnricher) Enrich(ctx context.Context, clip *models.MediaAsset, term string) error {
-	if e.scriptsDir == "" {
-		return fmt.Errorf("scripts dir not configured")
+	if e.metaWriter == nil {
+		return fmt.Errorf("metadata writer not configured")
 	}
 
 	// Costruiamo un prompt ricco dal titolo + term di ricerca
@@ -81,18 +78,19 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *models.MediaAsset, 
 		zap.String("prompt_preview", truncate(prompt, 80)),
 	)
 
-	payload, err := semantic.Tagger(
-		ctx,
-		filepath.Clean(e.scriptsDir),
-		prompt,
-		style,
-		"video", // media_type
-		"artlist_scraper",
-		e.ollamaURL,
-		e.ollamaModel,
-	)
+	// Usa MetadataWriter.GeneratePayload() invece di chiamare Tagger() direttamente
+	// Questo garantisce che il metadata passi dal percorso centralizzato con fallback e override.
+	payload, _, err := e.metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
+		AssetID:   clip.ID,
+		AssetType: "clip",
+		MediaType: "video",
+		Source:    "artlist",
+		Generator: "artlist_scraper",
+		Style:     style,
+		Prompt:    prompt,
+	})
 	if err != nil {
-		return fmt.Errorf("semantic.Tagger: %w", err)
+		return fmt.Errorf("metaWriter.GeneratePayload: %w", err)
 	}
 
 	// Ricarichiamo il clip dal DB per non sovrascrivere campi aggiornati nel frattempo
