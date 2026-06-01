@@ -101,13 +101,14 @@ type Config struct {
 
 // GoogleAccountingConfig holds settings for the Google Accounting FastAPI service.
 type GoogleAccountingConfig struct {
-	Enabled       bool   `yaml:"enabled" default:"false"`
-	ServerURL     string `yaml:"server_url" default:"http://localhost:8000"`
-	DownloadDir   string `yaml:"download_dir" default:"./data/google_vids"`
-	SessionsPath  string `yaml:"sessions_path" default:"./google-accounting/sessions"`
-	ScheduleCron  string `yaml:"schedule_cron" default:"0 2 * * *"`
-	VidsProjectID string `yaml:"vids_project_id" default:""`
-	FlowProjectID string `yaml:"flow_project_id" default:""`
+	Enabled          bool   `yaml:"enabled" default:"false"`
+	ServerURL        string `yaml:"server_url" default:"http://localhost:8000"`
+	DownloadDir      string `yaml:"download_dir" default:"./data/google_vids"`
+	SessionsPath     string `yaml:"sessions_path" default:"./google-accounting/sessions"`
+	ScheduleCron     string `yaml:"schedule_cron" default:"0 2 * * *"`
+	MaxWarmContexts  int    `yaml:"max_warm_contexts" default:"9"`
+	VidsProjectID    string `yaml:"vids_project_id" default:""`
+	FlowProjectID    string `yaml:"flow_project_id" default:""`
 }
 
 // VideoConfig holds all video processing parameters shared across the clip, stock,

@@ -127,6 +127,7 @@ google_accounting:
   download_dir: "./data/google_vids"
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
+  max_warm_contexts: 9  # Playwright browser pool size (overridable via MAX_WARM_CONTEXTS env var)
   vids_project_id: "" # ID of an existing Google Vids project to reuse
   flow_project_id: "" # ID of an existing Google Flow project to reuse
 
