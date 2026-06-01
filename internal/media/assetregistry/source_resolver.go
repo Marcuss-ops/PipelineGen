@@ -2,6 +2,7 @@ package assetregistry
 
 import (
 	"strings"
+	"sync"
 
 	"velox/go-master/internal/repository/clips"
 )
@@ -43,21 +44,27 @@ var StandardSources = []SourceDefinition{
 	},
 }
 
-// sourceAliasMap is a pre-built lookup for O(1) alias resolution.
+// sourceAliasMap is a lazy-built lookup for O(1) alias resolution.
+// Built via buildSourceAliasMap() which is called lazily instead of init().
 var sourceAliasMap map[string]string
+var sourceAliasMapOnce sync.Once
 
-func init() {
-	sourceAliasMap = make(map[string]string)
-	for _, def := range StandardSources {
-		for _, alias := range def.Aliases {
-			sourceAliasMap[strings.ToLower(alias)] = def.Canonical
+func buildSourceAliasMap() {
+	sourceAliasMapOnce.Do(func() {
+		sourceAliasMap = make(map[string]string)
+		for _, def := range StandardSources {
+			for _, alias := range def.Aliases {
+				sourceAliasMap[strings.ToLower(alias)] = def.Canonical
+			}
 		}
-	}
+	})
 }
 
 // CanonicalSource resolves any source alias to its canonical name.
 // Returns empty string if the source is unknown.
+// Lazily builds the alias map on first call instead of using init().
 func CanonicalSource(source string) string {
+	buildSourceAliasMap()
 	return sourceAliasMap[strings.ToLower(source)]
 }
 

@@ -75,8 +75,11 @@ func (c *ArtlistDBClient) SearchClipsByKeywords(keywords []string, limit int) ([
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		fmt.Printf("DB QUERY ERROR: %v\n", err)
-		return nil, fmt.Errorf("query failed: %v", err)
+		log.Error("artlist DB query failed",
+			zap.String("db_path", c.dbPath),
+			zap.String("query", query[:min(len(query), 200)]),
+			zap.Error(err))
+		return nil, fmt.Errorf("artlist DB query failed: %w", err)
 	}
 	defer rows.Close()
 

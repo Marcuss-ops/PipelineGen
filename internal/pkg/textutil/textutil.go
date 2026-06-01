@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -19,11 +20,17 @@ func Slugify(s string) string {
 	return strings.Trim(s, "-")
 }
 
-var stopwords map[string]bool
+var (
+	stopwords      map[string]bool
+	stopwordsOnce  sync.Once
+)
 
-func init() {
-	stopwords = make(map[string]bool)
-	loadStopwordsFromDir("config/stopwords")
+// ensureStopwords loads stopwords lazily on first access instead of using init().
+func ensureStopwords() {
+	stopwordsOnce.Do(func() {
+		stopwords = make(map[string]bool)
+		loadStopwordsFromDir("config/stopwords")
+	})
 }
 
 func loadStopwordsFromDir(dir string) {
@@ -76,7 +83,9 @@ func Normalize(text string) string {
 }
 
 // IsStopWord checks if a term is a common stop word loaded from config files.
+// Lazily loads stopwords on first call instead of using init().
 func IsStopWord(term string) bool {
+	ensureStopwords()
 	return stopwords[strings.ToLower(term)]
 }
 
