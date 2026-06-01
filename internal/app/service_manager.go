@@ -270,8 +270,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	if cfg.VectorSearch.Enabled && cfg.VectorSearch.RealtimeEnabled && vectorSvc != nil {
 		embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
 		jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
-		realtimeSvc = realtime.NewService(vectorSvc, embedder, jobAdapter, &cfg.VectorSearch, log)
-		log.Info("real-time matching service enabled")
+		reranker := realtime.NewRerankAdapter(cfg.ClipIndexer.ServerURL, log)
+		realtimeSvc = realtime.NewService(vectorSvc, embedder, jobAdapter, reranker, &cfg.VectorSearch, log)
+		log.Info("real-time matching service enabled (with CrossEncoder reranker)")
 	}
 
 	// Register job handlers

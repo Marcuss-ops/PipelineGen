@@ -24,11 +24,12 @@ type JobService interface {
 	EnqueueMediaGeneration(ctx context.Context, query string, source string) (string, error)
 }
 
-// Service handles real-time asset matching using vector search + fallback.
+// Service handles real-time asset matching using vector search + CrossEncoder rerank + fallback.
 type Service struct {
 	vectorSvc  *vectorstore.Service
 	embedder   EmbeddingClient
 	jobSvc     JobService
+	reranker   *RerankAdapter
 	cfg        *config.VectorSearchConfig
 	log        *zap.Logger
 
@@ -41,6 +42,7 @@ func NewService(
 	vectorSvc *vectorstore.Service,
 	embedder EmbeddingClient,
 	jobSvc JobService,
+	reranker *RerankAdapter,
 	cfg *config.VectorSearchConfig,
 	log *zap.Logger,
 ) *Service {
@@ -48,6 +50,7 @@ func NewService(
 		vectorSvc:      vectorSvc,
 		embedder:       embedder,
 		jobSvc:         jobSvc,
+		reranker:       reranker,
 		cfg:            cfg,
 		log:            log,
 		embeddingCache: make(map[string][]float32),
@@ -103,8 +106,8 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 	searchResults, err := s.vectorSvc.Search(ctx, vectorstore.SearchRequest{
 		QueryVector: queryVec,
 		VectorName:  vectorName,
-		Limit:       limit,
-		MinScore:    minScore,
+		Limit:       limit * 5, // fetch more candidates for reranker to select from
+		MinScore:    minScore * 0.5,
 		Source:      req.Source,
 		Category:    req.Category,
 		MediaType:   req.MediaType,
@@ -112,6 +115,45 @@ func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse,
 	if err != nil {
 		// Log but don't fail — fallback may still work
 		s.log.Warn("vector search failed", zap.Error(err))
+	}
+
+	// Step 2.5: CrossEncoder Reranking (circuit breaker: 50ms timeout)
+	if s.reranker != nil && len(searchResults) > 1 {
+		candidates := make([]RerankCandidate, len(searchResults))
+		for i, r := range searchResults {
+			candidates[i] = RerankCandidate{ID: r.AssetID, Text: r.Name}
+		}
+		if reranked, err := s.reranker.Rerank(ctx, req.Query, candidates); err == nil && len(reranked) > 0 {
+			// Build reranked order by mapping IDs back to original results
+			rerankedMap := make(map[string]float64, len(reranked))
+			for _, rr := range reranked {
+				rerankedMap[rr.ID] = rr.Score
+			}
+			// Reorder searchResults by reranker scores
+			reordered := make([]vectorstore.SearchResult, 0, len(searchResults))
+			for _, r := range searchResults {
+				if score, ok := rerankedMap[r.AssetID]; ok {
+					r.Score = score
+				}
+				reordered = append(reordered, r)
+			}
+			// Sort by reranker score descending
+			for i := 0; i < len(reordered)-1; i++ {
+				for j := i + 1; j < len(reordered); j++ {
+					if reordered[j].Score > reordered[i].Score {
+						reordered[i], reordered[j] = reordered[j], reordered[i]
+					}
+				}
+			}
+			searchResults = reordered
+			s.log.Debug("reranker reordered candidates",
+				zap.Int("candidates", len(searchResults)),
+				zap.String("top_id", searchResults[0].AssetID),
+				zap.Float64("top_score", searchResults[0].Score),
+			)
+		} else if err != nil {
+			s.log.Debug("reranker skipped, using Qdrant order", zap.Error(err))
+		}
 	}
 
 	// Step 3: Process results
