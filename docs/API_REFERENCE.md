@@ -191,18 +191,7 @@ curl -i http://77.93.152.122:8080/api/script/jobs/JOB_ID \
   -H "Authorization: Bearer velox_master_key_2026"
 ```
 
-### 5.4 Genera Documento Script Completo (vecchio endpoint)
-```bash
-curl -i -X POST http://77.93.152.122:8080/api/scriptdocs/generate \
-  -H "Authorization: Bearer velox_master_key_2026" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Il mistero delle piramidi",
-    "style": "documentary",
-    "lang": "it",
-    "upload_to_drive": false
-  }'
-```
+> **Nota:** L'endpoint `/from-source` è un alias per `/generate-with-images` (mantenuto per compatibilità).
 
 ---
 
