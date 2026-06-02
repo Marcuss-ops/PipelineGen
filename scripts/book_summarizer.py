@@ -15,9 +15,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 try:
     sys.path.insert(0, str(_PROJECT_ROOT / "google-accounting"))
     from drive_client import upload_file_to_drive as _drive_upload
+    from config import BOOKS_DRIVE_FOLDER_ID as _books_drive_folder_id
     HAS_DRIVE = True
 except ImportError as e:
     _drive_upload = None
+    _books_drive_folder_id = ""
     HAS_DRIVE = False
 
 # Pure Python HTML Tag Stripper
@@ -215,9 +217,9 @@ def main():
                              "Example: --instruction 'Rewrite this in the style of a horror story for teenagers'")
     parser.add_argument("--max-chunks", type=int, default=0,
                         help="Process only the first N chunks (default: 0 = all chunks)")
-    parser.add_argument("--drive-folder-id", default=os.getenv("DEFAULT_DRIVE_FOLDER_ID", ""),
+    parser.add_argument("--drive-folder-id", default=os.getenv("BOOKS_DRIVE_FOLDER_ID", _books_drive_folder_id),
                         help="Google Drive folder ID for auto-upload. If set, the .txt summary gets uploaded as a Google Doc. "
-                             "Can also be set via DEFAULT_DRIVE_FOLDER_ID env var.")
+                             "Can also be set via BOOKS_DRIVE_FOLDER_ID env var or config.yaml books_root_folder.")
     args = parser.parse_args()
 
     book_path = Path(args.file)

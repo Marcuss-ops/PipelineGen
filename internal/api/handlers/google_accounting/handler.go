@@ -333,10 +333,7 @@ func (h *Handler) GenerateFlowImages(c *gin.Context) {
 		return
 	}
 
-	driveFolderID := strings.TrimSpace(h.cfg.Drive.ImagesRootFolder)
-	if driveFolderID == "" {
-		driveFolderID = strings.TrimSpace(h.cfg.Drive.RootFolder())
-	}
+	driveFolderID := h.cfg.Drive.ImagesFolder()
 
 	vidsPayload, err := json.Marshal(googleaccounting.VidsImageRequest{
 		VideoID:       reqBody.ProjectID,
@@ -400,10 +397,7 @@ func (h *Handler) GenerateVidsImage(c *gin.Context) {
 	}
 
 	if strings.TrimSpace(reqBody.DriveFolderID) == "" {
-		reqBody.DriveFolderID = strings.TrimSpace(h.cfg.Drive.ImagesRootFolder)
-		if reqBody.DriveFolderID == "" {
-			reqBody.DriveFolderID = strings.TrimSpace(h.cfg.Drive.RootFolder())
-		}
+		reqBody.DriveFolderID = h.cfg.Drive.ImagesFolder()
 	}
 
 	payload, err := json.Marshal(reqBody)

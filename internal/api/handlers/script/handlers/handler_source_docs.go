@@ -29,7 +29,7 @@ func (h *ScriptFlowHandler) googleDocsFolderID() string {
 	if h.cfg == nil {
 		return ""
 	}
-	return strings.TrimSpace(h.cfg.Drive.RootFolder())
+	return h.cfg.Drive.ScriptsFolder()
 }
 
 func buildGeneratedDocContent(pkg GeneratedScriptPackage, videoScenes []VideoScene) string {

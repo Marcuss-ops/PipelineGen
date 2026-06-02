@@ -60,6 +60,15 @@ paths:
 drive:
   stock_root_folder: ""
   clips_root_folder: ""
+  voiceover_root_folder: ""
+  artlist_root_folder: ""
+  images_root_folder: ""
+  books_root_folder: ""
+  scripts_root_folder: ""
+  video_ai_root_folder: ""
+  copertine_root_folder: ""
+  sound_effects_root_folder: ""
+  outro_root_folder: ""
 
 harvester:
   enabled: true

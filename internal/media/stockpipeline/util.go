@@ -13,7 +13,7 @@ import (
 func (s *Service) resolveFolderTarget(ctx context.Context, folderID, subfolder, folderName string) (string, error) {
 	currentID := folderID
 	if currentID == "" {
-		currentID = s.cfg.Drive.RootFolder()
+		currentID = s.cfg.Drive.StockFolder()
 	}
 	if currentID == "" {
 		return "", fmt.Errorf("no drive folder configured (media_root_folder)")

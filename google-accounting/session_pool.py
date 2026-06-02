@@ -13,7 +13,7 @@ from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
-from config import get_session_path, get_profile_path, DOWNLOAD_DIR, MAX_WARM_CONTEXTS
+from config import get_session_path, get_profile_path, DOWNLOAD_DIR, MAX_WARM_CONTEXTS, VIDS_PROJECT_ID as _cfg_vids_pid
 from automation.base import _get_realistic_user_agent, _STEALTH_INIT_SCRIPT
 
 log = logging.getLogger("SessionPool")
@@ -315,15 +315,16 @@ class SessionPool:
                 sessions.append(session)
 
             page = await session.context.new_page()
-            shared_id = "1Kn_99mlEjC8kn4_dLBgfeoKZw7ohMz-TjBAvx3szNoQ"
-            if video_id == "new":
-                url = f"https://docs.google.com/videos/d/{shared_id}/edit"
+            # Use the Vids project ID from centralized config (config.yaml)
+            _shared_id = _cfg_vids_pid if video_id == "new" else video_id
+            if _shared_id and _shared_id != "new":
+                url = f"https://docs.google.com/videos/d/{_shared_id}/edit"
                 log.info("Opening shared Google Vids project: %s", url)
-                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             else:
-                url = f"https://docs.google.com/videos/d/{video_id}/edit"
-                log.info("Loading heavy Google Vids editor URL: %s", url)
-                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                url = f"https://docs.google.com/videos/d/new"
+                log.info("Creating new Google Vids project...")
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(6000)  # Wait for UI stabilization
             await page.wait_for_timeout(6000)  # Wait for UI stabilization
 
             self._active_pages.add(page)

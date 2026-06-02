@@ -100,11 +100,13 @@ drive:
   # Se vuoto, usa i legacy roots come fallback
   media_root_folder: ""
   # Legacy roots (restano fino a migrazione completa)
-  stock_root_folder: "1wt4hqmHD5qEsNhpUUBszlRkSHhyFgtGh"
+  stock_root_folder: "1Jn4yXXZkcCY3JR5rn6DvpepmM8E_ItB1"
   clips_root_folder: "1ID_oFJF15Q5nmiZF0d2NaJeKhsOJpQNS"
   images_root_folder: "14gbQ3ucY9TaRs0aGPkJxTpczGv7tQW4C"
   voiceover_root_folder: "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A"
   artlist_root_folder: "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
+  books_root_folder: "1C2xcL7fnjZK23iSByOw6kRtlfN7Iup2f"
+  scripts_root_folder: "1HinlvxnAFknV3wCSB9cuKA4gZVivdXC7"
   video_ai_root_folder: "1m83vpyunkUrtWoUcQyRhnGrp0S5SYvQ9"
   copertine_root_folder: "1iifOcR4ZrZAep8y1lT3qc1Ku0Z9XwbaZ"
   sound_effects_root_folder: "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
@@ -128,8 +130,39 @@ google_accounting:
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
   max_warm_contexts: 9  # Playwright browser pool size (overridable via MAX_WARM_CONTEXTS env var)
-  vids_project_id: "" # ID of an existing Google Vids project to reuse
+  vids_project_id: "1Kn_99mlEjC8kn4_dLBgfeoKZw7ohMz-TjBAvx3szNoQ" # ID of an existing Google Vids project to reuse
   flow_project_id: "" # ID of an existing Google Flow project to reuse
+
+clip_indexer:
+  enabled: true
+  server_url: "http://127.0.0.1:8001"
+  script_path: "scripts/index_clips.py"
+  python_bin: "python3"
+  auto_index_after_artlist: true
+
+paths:
+  python_scripts_dir: "scripts"
+  credentials_file: "credentials.json"
+  token_file: "token.json"
+  workflows_dir: "./workflows"
+
+harvester:
+  enabled: true
+  check_interval: "1h"
+  max_results_per_query: 20
+  max_concurrent_downloads: 3
+
+jobs:
+  catalog_sync_interval: "6h"
+  maintenance_interval: "24h"
+  backup_interval: "6h"
+  indexing_interval: "15m"
+  retention_days: 30
+
+workers:
+  heartbeat_timeout: 30
+  worker_fail_window_seconds: 300
+  worker_fail_threshold: 3
 
 vector_search:
   enabled: true

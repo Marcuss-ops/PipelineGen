@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from automation.vids_images import GoogleVidsImagesMixin
 from drive_client import auto_upload_to_drive
-from config import DOWNLOAD_DIR, DEFAULT_IMAGES_DRIVE_FOLDER_ID
+from config import DOWNLOAD_DIR, DEFAULT_IMAGES_DRIVE_FOLDER_ID, VIDS_PROJECT_ID as _cfg_vids_pid
 
 class CDPBot(GoogleVidsImagesMixin):
     def __init__(self, page):
@@ -22,10 +22,10 @@ class CDPBot(GoogleVidsImagesMixin):
 async def main():
     profile_path = "/home/pierone/snap/chromium/common/chromium"
     snap_executable = "/snap/bin/chromium"
-    video_id = "1Kn_99mlEjC8kn4_dLBgfeoKZw7ohMz-TjBAvx3szNoQ"
+    video_id = _cfg_vids_pid
     url = f"https://docs.google.com/videos/d/{video_id}/edit?scene=id.g57c7d542_0_0"
     prompt = "A beautiful cute fluffy orange cat wearing a tiny golden crown in a medieval library, oil painting style"
-    drive_folder_id = DEFAULT_IMAGES_DRIVE_FOLDER_ID or "1HinlvxnAFknV3wCSB9cuKA4gZVivdXC7"
+    drive_folder_id = DEFAULT_IMAGES_DRIVE_FOLDER_ID or ""
     
     print("="*70)
     print("AVVIO AUTOMAZIONE DIRETTA COMPLETA (SNAP CHROMIUM)")

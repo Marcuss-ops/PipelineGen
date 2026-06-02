@@ -66,8 +66,14 @@ class GoogleVidsImagesMixin:
     ]
 
     # Progetto esistente da usare sempre (evita il popup "Ciao Massimo")
-    SHARED_VIDS_PROJECT_ID = "1Kn_99mlEjC8kn4_dLBgfeoKZw7ohMz-TjBAvx3szNoQ"
+    # Il valore viene dal config.yaml (google_accounting.vids_project_id), centralizzato in config.py
     SHARED_VIDS_PROJECT_SCENE = "id.g57c7d542_0_0"
+
+    @staticmethod
+    def _get_shared_vids_project_id() -> str:
+        """Read the Vids project ID from centralized config.py."""
+        from config import VIDS_PROJECT_ID
+        return VIDS_PROJECT_ID
 
     # ── Helper per click umano (hover + click) ─────────────────────────────
     async def _human_click(self, page, locator, timeout: int = 10000) -> bool:
@@ -513,7 +519,9 @@ class GoogleVidsImagesMixin:
 
                 # Usa SEMPRE il progetto condiviso per evitare il popup "Ciao Massimo"
         # Se però fallisce, proveremo a crearne uno nuovo
-        effective_video_id = video_id if (video_id and video_id != "new") else self.SHARED_VIDS_PROJECT_ID
+        # Il project ID viene da config.yaml (google_accounting.vids_project_id)
+        _shared_id = self._get_shared_vids_project_id()
+        effective_video_id = video_id if (video_id and video_id != "new") else _shared_id
 
         if self._external_page:
             page = self.page

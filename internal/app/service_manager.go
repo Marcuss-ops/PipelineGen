@@ -63,10 +63,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	var driveUploader *drive.Uploader
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
-		imageRoot := cfg.Drive.ImagesRootFolder
-		if imageRoot == "" {
-			imageRoot = cfg.Drive.RootFolder()
-		}
+		imageRoot := cfg.Drive.ImagesFolder()
 		if imageRoot != "" {
 			go ensureStyleDriveFolders(ctx, driveUploader, imageRoot, styleRegistry, log)
 		}
@@ -272,9 +269,9 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	// Voiceover sync service
 	var voiceoverSync *voiceoversync.Service
-	if cfg.Drive.RootFolder() != "" && voRepo != nil {
-		voiceoverSync = voiceoversync.NewService(driveUploader, voRepo, assetTreeService, cfg.Drive.RootFolder(), log)
-		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", cfg.Drive.RootFolder()))
+	if voFolder := cfg.Drive.VoiceoverFolder(); voFolder != "" && voRepo != nil {
+		voiceoverSync = voiceoversync.NewService(driveUploader, voRepo, assetTreeService, voFolder, log)
+		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
 	// Jobs system

@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 	"velox/go-master/internal/pkg/textutil"
@@ -49,9 +48,8 @@ type Service struct {
 	flowProjectID       string
 
 	// Image storage
-	imagesDir           string
-	driveFolderID       string
-	imagesDriveFolderID string
+	imagesDir     string
+	driveFolderID string
 
 	// HTTP client for external API calls
 	client *http.Client
@@ -102,8 +100,7 @@ func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clip
 		repo:                repo,
 		stockRepo:           stockRepo,
 		driveSvc:            driveSvc,
-		driveFolderID:       cfg.Drive.RootFolder(),
-		imagesDriveFolderID: cfg.Drive.ImagesRootFolder,
+		driveFolderID: cfg.Drive.RootFolder(),
 		log:                 log,
 		imagesDir:           cfg.Storage.ImagesPath(),
 		tempDir:             cfg.Storage.TempPath(),
@@ -192,10 +189,8 @@ func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectI
 }
 
 func (s *Service) effectiveImagesDriveFolderID() string {
-	if strings.TrimSpace(s.imagesDriveFolderID) != "" {
-		return strings.TrimSpace(s.imagesDriveFolderID)
-	}
-	return strings.TrimSpace(s.driveFolderID)
+	// Use centralized resolver: MediaRootFolder > ImagesRootFolder > ""
+	return s.cfg.Drive.ImagesFolder()
 }
 
 func Slugify(s string) string {

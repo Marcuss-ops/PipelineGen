@@ -97,9 +97,9 @@ func (s *Service) Generate(ctx context.Context, text, language, filename string)
 		RemoveSilence:    boolPtr(false),
 		Strategy:         "replace",
 	}
-	if s.cfg.Drive.RootFolder() != "" {
+	if s.cfg.Drive.VoiceoverFolder() != "" {
 		req.Destination = &DestinationRequest{
-			FolderID: s.cfg.Drive.RootFolder(),
+			FolderID: s.cfg.Drive.VoiceoverFolder(),
 		}
 	}
 	resp, err := s.GenerateBatch(ctx, req)
@@ -136,9 +136,9 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 	textHash := textToHash(req.Text)
 
 	destinationReq := req.Destination
-	if destinationReq == nil && strings.TrimSpace(s.cfg.Drive.RootFolder()) != "" {
+	if destinationReq == nil && s.cfg.Drive.VoiceoverFolder() != "" {
 		destinationReq = &DestinationRequest{
-			FolderID: s.cfg.Drive.RootFolder(),
+			FolderID: s.cfg.Drive.VoiceoverFolder(),
 		}
 	}
 
@@ -156,8 +156,8 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		dest = &ResolvedDestination{}
 	}
 
-	if dest.FolderID == "" && s.cfg.Drive.RootFolder() != "" {
-		dest.FolderID = s.cfg.Drive.RootFolder()
+	if dest.FolderID == "" && s.cfg.Drive.VoiceoverFolder() != "" {
+		dest.FolderID = s.cfg.Drive.VoiceoverFolder()
 	}
 
 	resp := &BatchResponse{

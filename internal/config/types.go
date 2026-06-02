@@ -3,6 +3,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -224,6 +225,18 @@ type DriveConfig struct {
 	// Example: "1ABCdef..." points to "PipelineGen Media" at Drive root.
 	MediaRootFolder string `yaml:"media_root_folder" env:"PIPELINEGEN_DRIVE_MEDIA_ROOT" default:""`
 
+	// Stock footage root folder
+	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
+	// Clips (YouTube/Artlist) root folder
+	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
+	// Voiceover root folder
+	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
+	// Artlist assets root folder
+	ArtlistRootFolder string `yaml:"artlist_root_folder" env:"VELOX_DRIVE_ARTLIST_ROOT" default:""`
+	// Books (summarized/rewritten) root folder
+	BooksRootFolder string `yaml:"books_root_folder" env:"VELOX_DRIVE_BOOKS_ROOT" default:""`
+	// Scripts/docs generation root folder
+	ScriptsRootFolder string `yaml:"scripts_root_folder" env:"VELOX_DRIVE_SCRIPTS_ROOT" default:""`
 	// Video AI generated assets root folder
 	VideoAIRootFolder string `yaml:"video_ai_root_folder" env:"VELOX_DRIVE_VIDEO_AI_ROOT" default:""`
 	// Images root folder
@@ -241,10 +254,27 @@ func (d DriveConfig) RootFolder() string {
 	return d.MediaRootFolder
 }
 
-// OutroFolder returns the OutroRootFolder.
-func (d DriveConfig) OutroFolder() string {
-	return d.OutroRootFolder
+// ResolveFolder returns the effective folder ID for a given specific root.
+// Priority: MediaRootFolder (unified root) > specific root folder > "".
+func (d DriveConfig) ResolveFolder(specificRoot string) string {
+	if root := strings.TrimSpace(d.MediaRootFolder); root != "" {
+		return root
+	}
+	return strings.TrimSpace(specificRoot)
 }
+
+// Convenience resolvers — each returns MediaRootFolder if set, else its own root.
+func (d DriveConfig) StockFolder() string        { return d.ResolveFolder(d.StockRootFolder) }
+func (d DriveConfig) ClipsFolder() string         { return d.ResolveFolder(d.ClipsRootFolder) }
+func (d DriveConfig) VoiceoverFolder() string     { return d.ResolveFolder(d.VoiceoverRootFolder) }
+func (d DriveConfig) ArtlistFolder() string       { return d.ResolveFolder(d.ArtlistRootFolder) }
+func (d DriveConfig) BooksFolder() string         { return d.ResolveFolder(d.BooksRootFolder) }
+func (d DriveConfig) ScriptsFolder() string       { return d.ResolveFolder(d.ScriptsRootFolder) }
+func (d DriveConfig) ImagesFolder() string        { return d.ResolveFolder(d.ImagesRootFolder) }
+func (d DriveConfig) VideoAIFolder() string       { return d.ResolveFolder(d.VideoAIRootFolder) }
+func (d DriveConfig) CopertineFolder() string     { return d.ResolveFolder(d.CopertineRootFolder) }
+func (d DriveConfig) SoundEffectsFolder() string  { return d.ResolveFolder(d.SoundEffectsRootFolder) }
+func (d DriveConfig) OutroFolder() string         { return d.ResolveFolder(d.OutroRootFolder) }
 
 // LoggingConfig holds logger-specific configuration.
 type LoggingConfig struct {

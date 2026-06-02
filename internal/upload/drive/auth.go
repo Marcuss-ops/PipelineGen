@@ -15,8 +15,6 @@ import (
 	"google.golang.org/api/option"
 )
 
-const defaultArtlistRootFolderID = "1OAAf5dawAppdopsgCq1yHFGPUXCI9Vbk"
-
 // NewGoogleHTTPClient creates an OAuth2 HTTP client using credentials and token paths.
 // It uses a refreshing token source that saves the token to disk upon refresh.
 func NewGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string, scopes ...string) (*http.Client, error) {
@@ -73,18 +71,15 @@ func NewDriveServiceFromFiles(ctx context.Context, cfg *config.Config) (*drive.S
 }
 
 // ResolveArtlistRootFolderID returns the Drive folder ID for Artlist.
-// Priority: MediaRootFolder > Harvester.DriveFolderID > legacy default.
+// Priority: DriveConfig.ArtlistFolder() > Harvester.DriveFolderID > "".
+// Deprecated: prefer cfg.Drive.ArtlistFolder() directly.
 func ResolveArtlistRootFolderID(cfg *config.Config) string {
 	if cfg == nil {
-		return defaultArtlistRootFolderID
+		return ""
 	}
-	// Media root unificato
-	if root := cfg.Drive.RootFolder(); root != "" {
-		return root
-	}
-	// Legacy: harvester override
-	if folderID := strings.TrimSpace(cfg.Harvester.DriveFolderID); folderID != "" {
+	if folderID := cfg.Drive.ArtlistFolder(); folderID != "" {
 		return folderID
 	}
-	return defaultArtlistRootFolderID
+	// Legacy: harvester override (not covered by ArtlistFolder() -> DriveConfig)
+	return strings.TrimSpace(cfg.Harvester.DriveFolderID)
 }

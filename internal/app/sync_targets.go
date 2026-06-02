@@ -17,21 +17,21 @@ func buildSyncTargets(
 	targets := []catalogsync.Target{
 		{
 			Name:         "stock",
-			RootFolderID: cfg.Drive.RootFolder(),
+			RootFolderID: cfg.Drive.StockFolder(),
 			Source:       "stock",
 			MediaType:    "stock",
 			Repo:         clipsRepo,
 		},
 		{
 			Name:         "youtube",
-			RootFolderID: cfg.Drive.RootFolder(),
+			RootFolderID: cfg.Drive.ClipsFolder(),
 			Source:       "youtube",
 			MediaType:    "clip",
 			Repo:         clipsOnlyRepo,
 		},
 		{
 			Name:         "artlist",
-			RootFolderID: cfg.Drive.RootFolder(),
+			RootFolderID: cfg.Drive.ArtlistFolder(),
 			Source:       "artlist",
 			MediaType:    "artlist",
 			Repo:         artlistRepo,
