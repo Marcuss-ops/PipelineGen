@@ -23,6 +23,7 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media"
 	"velox/go-master/internal/media/voiceover"
+	voiceoversync "velox/go-master/internal/media/voiceoversync"
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/upload/drive"
 	"velox/go-master/internal/pkg/apiutil"
@@ -71,6 +72,7 @@ func NewHandler(
 	artlistSvc *artlist.Service,
 	youtubeSvc *youtube.Service,
 	voiceoverSvc *voiceover.Service,
+	voiceoverSync *voiceoversync.Service,
 	jobsSvc *jobservice.Service,
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
@@ -107,7 +109,7 @@ func NewHandler(
 		log:            log,
 	}
 
-	h.Voiceover = NewVoiceoverHandler(voiceoverSvc, jobsSvc)
+	h.Voiceover = NewVoiceoverHandler(voiceoverSvc, voiceoverSync, jobsSvc, log)
 
 	return h
 }

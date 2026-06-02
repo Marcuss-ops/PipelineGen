@@ -22,7 +22,6 @@ type RegistryWiring struct {
 	YouTubeClip      *YouTubeClipWiring
 	Jobs             *JobsWiring
 	ScriptDocs       *ScriptDocsWiring
-	Voiceover        *VoiceoverWiring
 	Images           *ImagesWiring
 	MediaIngest      *MediaIngestWiring
 	Drive            *DriveWiring
@@ -86,13 +85,6 @@ func WireRegistry(
 			mod := module.NewScriptFlowModule(cfg, log, handler)
 			return mod, nil, nil
 		}, nil},
-		{"Voiceover", func() (module.Module, interface{}, error) {
-			w, err := WireVoiceover(cfg, log, coreDeps)
-			if err != nil {
-				return nil, nil, err
-			}
-			return w.Module, w, nil
-		}, func(w interface{}) { wiring.Voiceover = w.(*VoiceoverWiring) }},
 		{"YouTubeClip", func() (module.Module, interface{}, error) {
 			w, err := WireYouTubeClip(cfg, log, coreDeps)
 			if err != nil {
@@ -232,8 +224,8 @@ func WireRegistry(
 	}
 
 	var voiceoverService *voiceover.Service
-	if wiring.Voiceover != nil {
-		voiceoverService = wiring.Voiceover.Service
+	if coreDeps.VoiceoverService != nil {
+		voiceoverService = coreDeps.VoiceoverService
 	}
 
 	if assetsWiring, err := WireAssets(
@@ -243,6 +235,7 @@ func WireRegistry(
 		artlistService,
 		youtubeClipService,
 		voiceoverService,
+		coreDeps.VoiceoverSync,
 		coreDeps.JobsService,
 		coreDeps.CatalogRepo,
 		coreDeps.AssetIndexService,

@@ -13,6 +13,7 @@ import (
 	"velox/go-master/internal/media/assettree"
 	"velox/go-master/internal/media/foldermemory"
 	"velox/go-master/internal/media/voiceover"
+	voiceoversync "velox/go-master/internal/media/voiceoversync"
 	"velox/go-master/internal/module"
 	assettreerepo "velox/go-master/internal/repository/assettree"
 	"velox/go-master/internal/repository/catalog"
@@ -54,6 +55,7 @@ func WireAssets(
 	artlistSvc *artlist.Service,
 	youtubeSvc *youtube.Service,
 	voiceoverSvc *voiceover.Service,
+	voiceoverSync *voiceoversync.Service,
 	jobsSvc *jobservice.Service,
 	catalogRepo *catalog.Repository,
 	assetIndexSvc *assetindex.Service,
@@ -92,6 +94,7 @@ func WireAssets(
 		artlistSvc,
 		youtubeSvc,
 		voiceoverSvc,
+		voiceoverSync,
 		jobsSvc,
 		catalogRepo,
 		assetIndexSvc,
