@@ -35,6 +35,7 @@ type Config struct {
 	AudioDimensions   int
 	MinInstantScore   float64
 	TimeoutMs         int
+	BatchSize         int // max assets per batch upsert (0 = no chunking, default 500)
 }
 
 // NewQdrantClient creates a new Qdrant HTTP client.

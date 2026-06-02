@@ -188,16 +188,22 @@ func (s *Service) IndexRunItems(ctx context.Context, items []map[string]interfac
 	if s.cfg.ServerURL != "" {
 		err := s.indexBulkAPI(ctx, clipIDs)
 		if err == nil {
+			s.UpsertVectorStoreBulk(ctx, clipIDs)
 			return nil
 		}
 		s.log.Warn("bulk indexing via API failed, falling back to individual indexing", zap.Error(err))
 	}
 
+	// Fallback: index one-by-one, then batch upsert to vector store
+	var indexed []string
 	for _, clipID := range clipIDs {
-		if err := s.IndexClip(ctx, clipID); err != nil {
+		if err := s.indexViaScript(ctx, clipID); err != nil {
 			s.log.Warn("failed to index clip", zap.String("clip_id", clipID), zap.Error(err))
+		} else {
+			indexed = append(indexed, clipID)
 		}
 	}
+	s.UpsertVectorStoreBulk(ctx, indexed)
 	return nil
 }
 
@@ -251,6 +257,22 @@ func (s *Service) UpsertVectorStore(ctx context.Context, clipID string) {
 	} else {
 		s.log.Debug("vector store upserted clip",
 			zap.String("clip_id", clipID))
+	}
+}
+
+// UpsertVectorStoreBulk pushes multiple indexed clips to Qdrant in a single batch.
+// Much faster than N individual UpsertVectorStore calls for bulk operations.
+func (s *Service) UpsertVectorStoreBulk(ctx context.Context, clipIDs []string) {
+	if s.vectorStore == nil || len(clipIDs) == 0 {
+		return
+	}
+	if err := s.vectorStore.UpsertFromClips(ctx, clipIDs); err != nil {
+		s.log.Warn("failed to batch upsert clips to vector store",
+			zap.Int("count", len(clipIDs)),
+			zap.Error(err))
+	} else {
+		s.log.Debug("vector store batch upserted clips",
+			zap.Int("count", len(clipIDs)))
 	}
 }
 

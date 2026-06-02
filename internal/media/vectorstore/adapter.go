@@ -34,19 +34,58 @@ func (a *ClipIndexerAdapter) UpsertFromClip(ctx context.Context, clipID string) 
 		return nil
 	}
 
-	// Read clip data from DB
 	asset, err := a.readClipFromDB(ctx, clipID)
 	if err != nil {
 		return fmt.Errorf("read clip %s: %w", clipID, err)
 	}
 
-	if len(asset.TextEmbedding) == 0 && len(asset.VisualEmbedding) == 0 && len(asset.AudioEmbedding) == 0 {
+	if !a.hasEmbeddings(asset) {
 		a.log.Debug("clip has no embeddings to index in vector store",
 			zap.String("clip_id", clipID))
 		return nil
 	}
 
 	return a.store.UpsertAsset(ctx, *asset)
+}
+
+// UpsertFromClips reads multiple clips from SQLite and pushes them in a single batch upsert.
+// Skips clips without embeddings. Much faster than N individual UpsertFromClip calls
+// for bulk operations like IndexRunItems or backfill/import scripts.
+func (a *ClipIndexerAdapter) UpsertFromClips(ctx context.Context, clipIDs []string) error {
+	if a.store == nil || !a.store.Enabled() || len(clipIDs) == 0 {
+		return nil
+	}
+
+	assets := make([]VectorAsset, 0, len(clipIDs))
+	for _, clipID := range clipIDs {
+		asset, err := a.readClipFromDB(ctx, clipID)
+		if err != nil {
+			a.log.Warn("skipping clip in batch upsert",
+				zap.String("clip_id", clipID),
+				zap.Error(err))
+			continue
+		}
+		if a.hasEmbeddings(asset) {
+			assets = append(assets, *asset)
+		} else {
+			a.log.Debug("skip clip with no embeddings", zap.String("clip_id", clipID))
+		}
+	}
+
+	if len(assets) == 0 {
+		return nil
+	}
+
+	a.log.Info("batch upserting clips to vector store",
+		zap.Int("total_requested", len(clipIDs)),
+		zap.Int("with_embeddings", len(assets)))
+
+	return a.store.UpsertAssets(ctx, assets)
+}
+
+// hasEmbeddings returns true if the asset has at least one embedding type.
+func (a *ClipIndexerAdapter) hasEmbeddings(asset *VectorAsset) bool {
+	return len(asset.TextEmbedding) > 0 || len(asset.VisualEmbedding) > 0 || len(asset.AudioEmbedding) > 0
 }
 
 // readClipFromDB fetches clip metadata + embeddings from the media database.

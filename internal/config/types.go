@@ -99,6 +99,7 @@ type Config struct {
 	VectorSearch     VectorSearchConfig     `yaml:"vector_search"`
 	Reranker         RerankerConfig         `yaml:"reranker"`
 	Books            BooksConfig            `yaml:"books"`
+	Multilingual     MultilingualConfig     `yaml:"multilingual"`
 }
 
 // GoogleAccountingConfig holds settings for the Google Accounting FastAPI service.
@@ -499,4 +500,14 @@ type BooksConfig struct {
 	OllamaURL     string `yaml:"ollama_url" default:"http://127.0.0.1:11434"`
 	PagesPerChunk int    `yaml:"pages_per_chunk" default:"4"`
 	ChunkSize     int    `yaml:"chunk_size" default:"12000"`
+}
+
+// MultilingualConfig holds settings for multilingual metadata generation.
+// When enabled, the semantic tagger will translate key metadata fields
+// (search_text, tags, subjects, mood) into the configured languages
+// at ingest time via Ollama, storing translations in metadata.json.
+type MultilingualConfig struct {
+	Enabled            bool     `yaml:"enabled" default:"false"`
+	SourceLanguage     string   `yaml:"source_language" default:"en"`
+	TranslateLanguages []string `yaml:"translate_languages" default:"[it, es, fr, de]"`
 }

@@ -277,6 +277,13 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 			continue
 		}
 
+		// Generate and upload metadata.json via unified MetadataWriter.
+		// Always runs if metaWriter is configured — basic semantic enrichment is always on.
+		// Multilingual translations are opt-in via cfg.Multilingual.Enabled.
+		if s.metaWriter != nil {
+			s.enrichChunkMetadata(ctx, chunkTitle, chunkPath, folderID, input.SearchQueries, input.FolderName)
+		}
+
 		chunkRes := ChunkResult{
 			Index:         chunkIdx,
 			TimelineStart: float64(chunkIdx * chunkDur),
@@ -367,4 +374,68 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	)
 
 	return result, nil
+}
+
+// enrichChunkMetadata generates metadata.json for a rendered stock chunk and
+// uploads it to the same Drive folder alongside the video.
+// Uses the unified MetadataWriter for consistency with all other media types.
+func (s *Service) enrichChunkMetadata(ctx context.Context, chunkTitle, chunkPath, folderID string, searchQueries []string, folderName string) {
+	if s.metaWriter == nil {
+		return
+	}
+
+	// Build rich prompt from search queries and chunk info
+	prompt := strings.Join(searchQueries, ", ")
+	if folderName != "" {
+		prompt = folderName + ": " + prompt
+	}
+
+	s.log.Info("enriching stock chunk metadata",
+		zap.String("chunk_title", chunkTitle),
+		zap.String("folder_id", folderID),
+	)
+
+	lang := s.cfg.Multilingual.SourceLanguage
+	if lang == "" {
+		lang = "en"
+	}
+	// Only translate if explicitly enabled AND languages are configured
+	var translateTo []string
+	if s.cfg.Multilingual.Enabled && len(s.cfg.Multilingual.TranslateLanguages) > 0 {
+		translateTo = s.cfg.Multilingual.TranslateLanguages
+	}
+
+	result, err := s.metaWriter.Write(ctx, semantic.WriteRequest{
+		AssetType:           "stock_clip",
+		MediaType:           "video",
+		Source:              "stock",
+		Generator:           "stock-pipeline",
+		Style:               "stock",
+		Prompt:              prompt,
+		SearchText:          semantic.MergeMetadataSearchText(chunkTitle, folderName, strings.Join(searchQueries, " ")),
+		Language:            lang,
+		TranslateLanguages:  translateTo,
+		LocalPath:           chunkPath,
+		Extensions:          semantic.BuildClipExtension(0, "stock", 0.75, nil, nil, "", ""),
+	})
+	if err != nil {
+		s.log.Warn("enrichChunkMetadata: metadata write failed", zap.Error(err))
+		return
+	}
+
+	// Upload metadata.json to the same Drive folder as the video
+	if result.LocalPath != "" && folderID != "" && s.driveUp != nil {
+		_, err := s.driveUp.UploadFile(ctx, result.LocalPath, folderID, chunkTitle+"_metadata.json")
+		if err != nil {
+			s.log.Warn("enrichChunkMetadata: failed to upload metadata.json to Drive", zap.Error(err))
+			return
+		}
+		s.log.Info("enrichChunkMetadata: metadata.json uploaded to Drive",
+			zap.String("chunk_title", chunkTitle),
+			zap.String("folder_id", folderID),
+			zap.Float64("confidence", result.Payload.Confidence),
+			zap.Int("tags", len(result.Payload.Tags)),
+			zap.Int("translations", len(result.Payload.Translations)),
+		)
+	}
 }

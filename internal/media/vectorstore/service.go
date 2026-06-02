@@ -128,21 +128,67 @@ func (s *Service) UpsertAssets(ctx context.Context, assets []VectorAsset) error 
 		return nil
 	}
 
-	start := time.Now()
-	err := s.store.UpsertAssets(ctx, valid)
-	elapsed := time.Since(start).Seconds()
-
-	if err != nil {
-		metrics.QdrantUpsertTotal.WithLabelValues("error").Add(float64(len(assets)))
-		metrics.QdrantErrorsTotal.WithLabelValues("batch_upsert").Inc()
-		return fmt.Errorf("batch upsert %d assets: %w", len(valid), err)
+	// Auto-chunk large batches to avoid oversized HTTP requests to Qdrant.
+	// Default batchSize=500; set to 0 or negative to disable chunking.
+	batchSize := s.cfg.BatchSize
+	if batchSize <= 0 {
+		batchSize = 500
 	}
 
-	metrics.QdrantUpsertTotal.WithLabelValues("ok").Add(float64(len(valid)))
+	start := time.Now()
+	totalUpserted := 0
+	var chunkErrors []error
+	totalChunks := (len(valid) + batchSize - 1) / batchSize
 
-	s.log.Debug("vectorstore batch upserted assets",
-		zap.Int("count", len(valid)),
-		zap.Float64("elapsed_sec", elapsed))
+	for i := 0; i < len(valid); i += batchSize {
+		end := i + batchSize
+		if end > len(valid) {
+			end = len(valid)
+		}
+		chunk := valid[i:end]
+
+		chunkStart := time.Now()
+		err := s.store.UpsertAssets(ctx, chunk)
+		chunkElapsed := time.Since(chunkStart).Seconds()
+
+		if err != nil {
+			metrics.QdrantUpsertTotal.WithLabelValues("error").Add(float64(len(chunk)))
+			metrics.QdrantErrorsTotal.WithLabelValues("batch_upsert").Inc()
+			chunkErrors = append(chunkErrors, fmt.Errorf("chunk [%d:%d] (%d assets): %w", i, end, len(chunk), err))
+			s.log.Error("batch upsert chunk failed",
+				zap.Int("offset", i),
+				zap.Int("chunk_size", len(chunk)),
+				zap.Float64("elapsed_sec", chunkElapsed),
+				zap.Error(err))
+			continue
+		}
+
+		metrics.QdrantUpsertTotal.WithLabelValues("ok").Add(float64(len(chunk)))
+		totalUpserted += len(chunk)
+
+		s.log.Debug("vectorstore batch chunk upserted",
+			zap.Int("offset", i),
+			zap.Int("chunk_size", len(chunk)),
+			zap.Float64("elapsed_sec", chunkElapsed))
+	}
+
+	elapsed := time.Since(start).Seconds()
+
+	if totalUpserted > 0 {
+		s.log.Info("vectorstore batch upsert complete",
+			zap.Int("total", totalUpserted),
+			zap.Int("original", len(assets)),
+			zap.Float64("elapsed_sec", elapsed))
+	}
+	if totalUpserted == 0 && len(chunkErrors) > 0 {
+		s.log.Warn("all batch chunks failed",
+			zap.Int("total_requested", len(valid)),
+			zap.Int("failed_chunks", len(chunkErrors)))
+	}
+
+	if len(chunkErrors) > 0 {
+		return fmt.Errorf("%d/%d chunks failed: first error: %w", len(chunkErrors), totalChunks, chunkErrors[0])
+	}
 
 	return nil
 }

@@ -149,6 +149,53 @@ Style: "{style}"
 
 Respond with ONLY the JSON object, no explanation, no markdown, no code blocks."""
 
+# Multilingual translation prompt — used to translate metadata fields
+TRANSLATION_PROMPT = """\
+You are a professional translator. Translate the following metadata fields to {target_language}.
+Preserve the original meaning, style, and tone.
+
+Input JSON:
+{fields_json}
+
+Return ONLY a JSON object with the same keys containing the translated values.
+No explanations, no markdown, no code blocks."""
+
+# ISO 639-1 language names for translation prompts
+LANGUAGE_NAMES = {
+    "en": "English", "es": "Spanish", "fr": "French", "de": "German",
+    "it": "Italian", "pt": "Portuguese", "pl": "Polish", "nl": "Dutch",
+    "ja": "Japanese", "ko": "Korean", "ru": "Russian", "tr": "Turkish",
+    "id": "Indonesian", "zh": "Chinese", "ar": "Arabic", "hi": "Hindi",
+}
+
+
+def _ollama_api_call(ollama_url, model, prompt, temperature=0.2, num_predict=400, timeout=30):
+    """Low-level Ollama API call. Returns parsed JSON or raises on failure."""
+    payload = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": temperature,
+            "num_predict": num_predict,
+        }
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        ollama_url.rstrip("/") + "/api/generate",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+
+    raw_response = body.get("response", "").strip()
+    # Strip markdown code fences
+    raw_response = re.sub(r"^```(?:json)?\s*", "", raw_response)
+    raw_response = re.sub(r"\s*```$", "", raw_response)
+    return json.loads(raw_response)
+
 
 def call_ollama(prompt, style, ollama_url, model):
     """
@@ -160,47 +207,43 @@ def call_ollama(prompt, style, ollama_url, model):
         return empty
 
     llm_prompt = LLM_ENRICHMENT_PROMPT.format(
-        prompt=prompt[:800],  # cap to avoid context overflow
+        prompt=prompt[:800],
         style=style or "general"
     )
 
-    payload = json.dumps({
-        "model": model,
-        "prompt": llm_prompt,
-        "stream": False,
-        "options": {
-            "temperature": 0.2,   # low temp = consistent, structured output
-            "num_predict": 400,
-        }
-    }).encode("utf-8")
-
     try:
-        req = urllib.request.Request(
-            ollama_url.rstrip("/") + "/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-
-        raw_response = body.get("response", "").strip()
-
-        # Strip markdown code fences if present
-        raw_response = re.sub(r"^```(?:json)?\s*", "", raw_response)
-        raw_response = re.sub(r"\s*```$", "", raw_response)
-
-        parsed = json.loads(raw_response)
-
+        parsed = _ollama_api_call(ollama_url, model, llm_prompt)
         return {
             "concept_tags":   [str(t) for t in parsed.get("concept_tags", []) if t],
             "visual_objects":  [str(t) for t in parsed.get("visual_objects", []) if t],
             "emotional_tone": [str(t) for t in parsed.get("emotional_tone", []) if t],
         }
-
     except (urllib.error.URLError, json.JSONDecodeError, KeyError, Exception) as e:
         print(f"[semantic_tagger] Ollama enrichment failed (non-fatal): {e}", file=sys.stderr)
         return empty
+
+
+def translate_metadata(ollama_url, model, fields, target_language):
+    """
+    Translates metadata fields to target_language using Ollama.
+    fields: dict with keys like search_text, semantic_description, tags, subjects, mood
+    Returns: dict with same keys containing translated values, or empty dict on failure.
+    """
+    if not ollama_url or not model or not fields:
+        return {}
+
+    lang_name = LANGUAGE_NAMES.get(target_language.lower(), target_language)
+    llm_prompt = TRANSLATION_PROMPT.format(
+        target_language=lang_name,
+        fields_json=json.dumps(fields, ensure_ascii=False, indent=2)
+    )
+
+    try:
+        return _ollama_api_call(ollama_url, model, llm_prompt,
+                               temperature=0.1, num_predict=800, timeout=60)
+    except (urllib.error.URLError, json.JSONDecodeError, KeyError, Exception) as e:
+        print(f"[semantic_tagger] Translation to {target_language} failed (non-fatal): {e}", file=sys.stderr)
+        return {}
 
 
 def build_search_text_expanded(prompt, subjects, tags, categories, mood,
@@ -241,6 +284,9 @@ def build_search_text_expanded(prompt, subjects, tags, categories, mood,
 # Il modello intfloat/multilingual-e5-base mappa nativamente tutte le lingue
 # nello stesso spazio semantico. Il cross-encoder bge-reranker-v2-m3 ri-ordina
 # i candidati in qualsiasi lingua. Nessuna traduzione esplicita necessaria.
+#
+# PERO': per garantire riusabilita' multilingua su Drive, il tagger puo' generare
+# traduzioni esplicite dei campi metadata chiave (search_text, tags, etc.) via Ollama.
 
 def main():
     parser = argparse.ArgumentParser(description="Semantic tagger for generated assets")
@@ -251,6 +297,8 @@ def main():
     parser.add_argument("--taxonomy",    default="config/semantic_taxonomy.yaml")
     parser.add_argument("--ollama-url",  default="",     help="Ollama base URL (e.g. http://localhost:11434)")
     parser.add_argument("--ollama-model",default="",     help="Ollama model for enrichment (e.g. llama3)")
+    parser.add_argument("--language",    default="en",   help="Source language code (ISO 639-1, e.g. en, it, es)")
+    parser.add_argument("--translate-to",default="",     help="Comma-separated target language codes for translation (e.g. it,es,fr)")
     args = parser.parse_args()
 
     # 1. Clean prompt
@@ -308,10 +356,49 @@ def main():
     asset_type = {"image": "image", "video": "video", "audio": "sound_effect", "voiceover": "voiceover"}.get(args.media_type, "image")
     semantic_tier = "generated_rich" if (concept_tags or visual_objects) else "generated_light"
 
-    # Nota: il supporto multilingua non richiede dizionari statici.
-    # Il modello intfloat/multilingual-e5-base mappa nativamente tutte le lingue
-    # nello stesso spazio semantico. Il cross-encoder bge-reranker-v2-m3 ri-ordina
-    # i candidati in qualsiasi lingua. Nessuna traduzione esplicita necessaria.
+    # 9. Multi-language translations (Ollama — one-time at ingest)
+    translations = {}
+    translate_targets = [t.strip() for t in args.translate_to.split(",") if t.strip()] if args.translate_to else []
+    if translate_targets and args.ollama_url and args.ollama_model:
+        fields_to_translate = {
+            "search_text": search_text,
+            "semantic_description": semantic_desc,
+            "tags": tags_list,
+            "subjects": subjects,
+            "mood": mood,
+        }
+        for target_lang in translate_targets:
+            translated = translate_metadata(
+                args.ollama_url, args.ollama_model,
+                fields_to_translate, target_lang
+            )
+            if translated:
+                translations[target_lang] = translated
+                # Add translated tokens to search_text_expanded for cross-language search
+                for value in translated.values():
+                    if isinstance(value, str):
+                        for token in normalize(value).split():
+                            if token not in SYSTEM_WORDS and len(token) > 2:
+                                tokens.add(token)
+                    elif isinstance(value, list):
+                        for item in value:
+                            for token in normalize(str(item)).split():
+                                if token not in SYSTEM_WORDS and len(token) > 2:
+                                    tokens.add(token)
+        # Rebuild search_text_expanded with multilingual tokens
+        phrases = set()
+        for part in (
+            [clean_prompt, semantic_desc]
+            + subjects + tags_list + categories + mood
+            + concept_tags + visual_objects + emotional_tone
+            + ([args.style] if args.style else [])
+        ):
+            p = normalize(str(part)).strip()
+            if p and len(p) > 3 and p not in SYSTEM_WORDS:
+                phrases.add(p)
+        search_text_expanded = " ".join(sorted(tokens) + sorted(phrases - tokens))
+
+        print(f"[semantic_tagger] Generated translations for: {', '.join(translations.keys())}", file=sys.stderr)
 
     result = {
         "asset_id":             "",
@@ -320,6 +407,7 @@ def main():
         "source":               "generated",
         "media_type":           args.media_type,
         "generator":            args.generator,
+        "language":             args.language,
         "prompt_original":      clean_prompt,
         "semantic_description": semantic_desc,
         "search_text":          search_text,
@@ -335,10 +423,11 @@ def main():
         "style":                [args.style] if args.style else [],
         "confidence":           round(confidence, 2),
         "embedding_status":     "pending",
+        "translations":         translations,
         "created_at":           datetime.utcnow().isoformat() + "Z",
     }
 
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()

@@ -8,9 +8,12 @@ import (
 // VectorStoreIndexer defines the interface for upserting indexed assets into a vector store.
 // This keeps the clipindexer decoupled from the actual Qdrant implementation.
 type VectorStoreIndexer interface {
-	// UpsertFromClip reads the clip's updated data (search_text, embeddings) from DB
+	// UpsertFromClip reads a single clip's updated data (search_text, embeddings) from DB
 	// and pushes it to the vector index.
 	UpsertFromClip(ctx context.Context, clipID string) error
+	// UpsertFromClips reads multiple clips and pushes them in a single batch upsert.
+	// Must be faster than N individual UpsertFromClip calls for bulk operations.
+	UpsertFromClips(ctx context.Context, clipIDs []string) error
 }
 
 // IndexResult represents the result of an indexing operation

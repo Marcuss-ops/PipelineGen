@@ -16,6 +16,7 @@ import (
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/pkg/media/downloader"
 	"velox/go-master/internal/pkg/media/ffmpeg"
 	"velox/go-master/internal/sources/youtube"
@@ -57,6 +58,7 @@ type Service struct {
 	assetIndex  *assetindex.Service
 	youtubeSvc  *youtube.Service
 	clipIndexer *clipindexer.Service
+	metaWriter  *semantic.MetadataWriter
 }
 
 // NewService creates a stock pipeline service using the provided config, logger,
@@ -97,6 +99,12 @@ func (s *Service) SetYoutubeService(svc *youtube.Service) {
 // SetClipIndexer injects the clip indexer service dependency.
 func (s *Service) SetClipIndexer(indexer *clipindexer.Service) {
 	s.clipIndexer = indexer
+}
+
+// SetMetadataWriter injects the unified metadata writer for semantic enrichment.
+// When set, stock chunks get metadata.json uploaded alongside videos on Drive.
+func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
+	s.metaWriter = w
 }
 
 // RegisterHandler registers the stock pipeline job handler with the jobs system.

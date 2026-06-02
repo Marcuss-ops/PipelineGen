@@ -26,6 +26,10 @@ type WriteRequest struct {
 	SearchText    string // optional override; derived from Prompt if empty
 	Confidence    float64
 
+	// Multi-language support
+	Language           string   // ISO 639-1 source language (default "en")
+	TranslateLanguages []string // target languages for translation (e.g. ["it", "es", "fr"])
+
 	// Asset-specific info
 	Assets    []map[string]any // individual file info for batch/group metadata
 	GroupID   string           // generation group ID (for batch metadata)
@@ -77,7 +81,7 @@ func (w *MetadataWriter) GeneratePayload(ctx context.Context, req WriteRequest) 
 
 	// Step 1: Call Python tagger
 	if w.scriptsDir != "" {
-		payload, err = Tagger(ctx, w.scriptsDir, req.Prompt, req.Style, req.MediaType, req.Generator, w.ollamaURL, w.ollamaModel)
+		payload, err = Tagger(ctx, w.scriptsDir, req.Prompt, req.Style, req.MediaType, req.Generator, w.ollamaURL, w.ollamaModel, req.Language, req.TranslateLanguages)
 	}
 
 	// Step 2: Fallback on error

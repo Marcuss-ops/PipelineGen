@@ -3,6 +3,7 @@ package app
 import (
 	"velox/go-master/internal/api/handlers/sources"
 	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/semantic"
 	"velox/go-master/internal/media/stockpipeline"
 	"velox/go-master/internal/module"
 
@@ -34,6 +35,17 @@ func WireStockPipeline(
 	if coreDeps.ClipIndexerService != nil {
 		svc.SetClipIndexer(coreDeps.ClipIndexerService)
 	}
+
+	// Wire unified metadata writer for semantic enrichment of stock chunks
+	metaWriter := semantic.NewMetadataWriter(
+		cfg.Paths.PythonScriptsDir,
+		cfg.Storage.TempPath(),
+		cfg.External.OllamaURL,
+		cfg.External.OllamaModel,
+		log,
+	)
+	svc.SetMetadataWriter(metaWriter)
+	log.Info("metadata writer wired into stock pipeline")
 
 	handler := sources.NewStockHandler(svc, coreDeps.JobsService, log)
 	if coreDeps.YoutubeClipService != nil {
