@@ -91,9 +91,107 @@ curl -i -X POST http://77.93.152.122:8080/api/clips/process \
 
 ---
 
-## 📝 5. Script & Intelligence (Ollama)
+## 📝 5. Script Generation (Ollama)
 
-### 5.1 Genera un Documento Script Completo
+### 5.1 Genera Script Testuale (solo testo)
+Genera uno script narrativo con metadata YouTube (descrizione, tags, titoli tradotti) per tutte le lingue richieste.
+```bash
+curl -i -X POST http://77.93.152.122:8080/api/script/generate \
+  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "Come vivere una vita semplice e prospera",
+    "title": "Vita Semplice",
+    "language": "it",
+    "tone": "documentary",
+    "duration": 90,
+    "languages": ["en", "es", "fr", "de"]
+  }'
+```
+
+**Response include metadata per ogni lingua:**
+```json
+{
+  "ok": true,
+  "topic": "Come vivere una vita semplice e prospera",
+  "title": "Vita Semplice",
+  "script": "Testo dello script generato...",
+  "word_count": 150,
+  "est_duration": 90,
+  "metadata": [
+    {
+      "language": "en",
+      "title": "Simple Life",
+      "description": "Discover how to live a simple and prosperous life...",
+      "tags": ["lifestyle", "motivation", "success"]
+    },
+    {
+      "language": "it",
+      "title": "Vita Semplice",
+      "description": "Scopri come vivere una vita semplice e prospera...",
+      "tags": ["stile di vita", "motivazione", "successo"]
+    }
+  ]
+}
+```
+
+### 5.2 Genera Script con Immagini (async)
+Genera script riscritto + immagini per ogni scena + voiceover unificato + traduzioni. Ritorna un job_id per tracciare il progresso.
+```bash
+curl -i -X POST http://77.93.152.122:8080/api/script/generate-with-images \
+  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_text": "Testo o articolo da trasformare in video explicativo...",
+    "title": "Vita Semplice",
+    "language": "en",
+    "languages": ["it", "es", "fr"],
+    "style": "documentary",
+    "scene_count": 8,
+    "images_per_scene": 1,
+    "width": 1344,
+    "height": 768
+  }'
+```
+
+**Risposta iniziale (job enqueued):**
+```json
+{
+  "ok": true,
+  "job_id": "job_xxx",
+  "status": "queued"
+}
+```
+
+**Risultato finale (via `/api/script/jobs/:job_id`):**
+```json
+{
+  "ok": true,
+  "job_id": "job_xxx",
+  "status": "completed",
+  "progress": 100,
+  "result": {
+    "output_dir": "/path/to/output",
+    "doc_id": "google-doc-id",
+    "doc_url": "https://docs.google.com/...",
+    "word_count": 450,
+    "est_duration": 180,
+    "scenes_count": 8,
+    "metadata": [
+      {"language": "en", "title": "...", "description": "...", "tags": [...]},
+      {"language": "it", "title": "...", "description": "...", "tags": [...]}
+    ]
+  }
+}
+```
+
+### 5.3 Status Job Script Generation
+```bash
+curl -i http://77.93.152.122:8080/api/script/jobs/JOB_ID \
+  -H "Authorization: Bearer velox_master_key_2026"
+```
+
+### 5.4 Genera Documento Script Completo (vecchio endpoint)
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/scriptdocs/generate \
   -H "Authorization: Bearer velox_master_key_2026" \
