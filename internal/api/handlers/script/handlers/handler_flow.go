@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -132,78 +131,9 @@ func (h *ScriptFlowHandler) GenerateText(c *gin.Context) {
 		return
 	}
 
-	// Generate video metadata for all requested languages (including base language)
-	languages := []string{"en"} // Always include English for YouTube
-	languageSet := map[string]bool{"en": true}
-
-	// Add base language if not English
-	if req.Language != "" && req.Language != "en" && !languageSet[req.Language] {
-		languages = append(languages, req.Language)
-		languageSet[req.Language] = true
-	}
-
-	// Add additional requested languages
-	for _, lang := range req.Languages {
-		if !languageSet[lang] {
-			languages = append(languages, lang)
-			languageSet[lang] = true
-		}
-	}
-
-	// Generate metadata for all languages in parallel
-	var mu sync.Mutex
-	metadata := make([]VideoMetadata, 0, len(languages))
-	var wg sync.WaitGroup
-
-	for _, lang := range languages {
-		wg.Add(1)
-		go func(lang string) {
-			defer wg.Done()
-
-			meta := VideoMetadata{Language: lang}
-
-			// Translate title to target language
-			titleTranslated, _ := h.generator.TranslateText(ctx, req.Title, lang)
-			if titleTranslated != "" {
-				meta.Title = titleTranslated
-			} else {
-				meta.Title = req.Title
-			}
-
-			// Generate description and tags in English, or translate if not English
-			if lang == "en" {
-				if desc, tags, err := h.generator.GenerateVideoMetadata(ctx, req.Title); err == nil {
-					meta.Description = desc
-					meta.Tags = tags
-				}
-			} else {
-				// Translate English metadata to target language
-				if desc, tags, err := h.generator.GenerateVideoMetadata(ctx, req.Title); err == nil {
-					descTranslated, _ := h.generator.TranslateText(ctx, desc, lang)
-					if descTranslated != "" {
-						meta.Description = descTranslated
-					} else {
-						meta.Description = desc
-					}
-					// Translate tags
-					var translatedTags []string
-					for _, tag := range tags {
-						if t, err := h.generator.TranslateText(ctx, tag, lang); err == nil && t != "" {
-							translatedTags = append(translatedTags, t)
-						} else {
-							translatedTags = append(translatedTags, tag)
-						}
-					}
-					meta.Tags = translatedTags
-				}
-			}
-
-			mu.Lock()
-			metadata = append(metadata, meta)
-			mu.Unlock()
-		}(lang)
-	}
-	wg.Wait()
+	// Generate video metadata for all requested languages
+	languages := BuildMetadataLanguages(req.Language, req.Languages)
+	metadata := GenerateVideoMetadata(ctx, h.generator, req.Title, languages)
 
 	apiutil.OK(c, gin.H{
 		"ok":           true,
