@@ -39,7 +39,9 @@ import (
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/internal/upload/drive"
+	bookshandler "velox/go-master/internal/api/handlers/books"
 	"velox/go-master/internal/api/handlers/script/handlers"
+	"velox/go-master/internal/media/books"
 
 	"go.uber.org/zap"
 )
@@ -117,14 +119,17 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	if cfg.VectorSearch.Enabled {
 		qdrantCfg := vectorstore.Config{
-			URL:              cfg.VectorSearch.URL,
-			Collection:       cfg.VectorSearch.Collection,
-			TextVectorName:   cfg.VectorSearch.TextVectorName,
-			VisualVectorName: cfg.VectorSearch.VisualVectorName,
-			TextDimensions:   cfg.VectorSearch.TextDimensions,
-			VisualDimensions: cfg.VectorSearch.VisualDimensions,
-			MinInstantScore:  cfg.VectorSearch.MinInstantScore,
-			TimeoutMs:        cfg.VectorSearch.TimeoutMs,
+			URL:               cfg.VectorSearch.URL,
+			Collection:        cfg.VectorSearch.Collection,
+			TextVectorName:    cfg.VectorSearch.TextVectorName,
+			VisualVectorName:  cfg.VectorSearch.VisualVectorName,
+			AudioVectorName:   cfg.VectorSearch.AudioVectorName,
+			SparseVectorName:  cfg.VectorSearch.SparseVectorName,
+			TextDimensions:    cfg.VectorSearch.TextDimensions,
+			VisualDimensions:  cfg.VectorSearch.VisualDimensions,
+			AudioDimensions:   cfg.VectorSearch.AudioDimensions,
+			MinInstantScore:   cfg.VectorSearch.MinInstantScore,
+			TimeoutMs:         cfg.VectorSearch.TimeoutMs,
 		}
 		qdrantClient := vectorstore.NewQdrantClient(qdrantCfg)
 		vectorSvc = vectorstore.NewService(qdrantClient, qdrantCfg, log)
@@ -188,6 +193,15 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 
 	voService := voiceover.NewService(cfg, dbs.media.DB, cfg.Paths.PythonScriptsDir, voDir, log, driveUploader, voLifecycle, destResolver)
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
+
+	// Books service (book summarization/processing)
+	booksSvc := books.NewService(&books.Config{
+		Enabled:       cfg.Books.Enabled,
+		ScriptPath:    cfg.Books.ScriptPath,
+		PythonBin:     cfg.Books.PythonBin,
+		DriveFolderID: cfg.Drive.BooksFolder(),
+	}, dbs.main.DB, cfg.Drive.BooksFolder(), log)
+	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))
 
 	clipsRepo := clips.NewRepository(dbs.media.DB, log)
 	artlistRepo := clips.NewRepository(dbs.media.DB, log)
@@ -261,6 +275,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	catalogRepo := catalog.NewRepository(clipsOnlyRepo, clipsRepo, artlistRepo)
 
 	assocService := association.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir, clipsRepo, artlistRepo, clipsOnlyRepo, catalogRepo)
+	if vectorSvc != nil {
+		assocService.SetVectorStore(vectorSvc)
+		log.Info("vector store wired into association service for hybrid search")
+	}
 
 	// Build sync targets centrally
 	syncTargets := buildSyncTargets(cfg, clipsOnlyRepo, clipsRepo, artlistRepo)
@@ -306,6 +324,10 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	catalogSync.RegisterHandler(jobsService)
 	youtubeClipService.RegisterHandler(jobsService)
 	voService.RegisterHandler(jobsService)
+	booksSvc.RegisterJobHandler(jobsService)
+
+	// Books API handler
+	booksApiHandler := bookshandler.NewHandler(booksSvc, log)
 
 	scriptFlowHandler := handlers.NewScriptFlowHandler(scriptGen, imageService, realtimeSvc, voService, docClient, jobsService, cfg, log)
 	scriptFlowHandler.RegisterJobHandlers(jobsService)
@@ -363,5 +385,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 		styleRegistry:      styleRegistry,
 		vectorSvc:          vectorSvc,
 		realtimeSvc:        realtimeSvc,
+		booksService:       booksSvc,
+		booksHandler:       booksApiHandler,
 	}, nil
 }

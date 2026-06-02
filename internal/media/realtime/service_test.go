@@ -30,6 +30,20 @@ func (m *mockVectorStore) Search(ctx context.Context, req vectorstore.SearchRequ
 	return m.results, m.err
 }
 
+func (m *mockVectorStore) UpsertAssets(ctx context.Context, assets []vectorstore.VectorAsset) error {
+	return nil
+}
+
+func (m *mockVectorStore) HybridSearch(ctx context.Context, req vectorstore.HybridSearchRequest) ([]vectorstore.SearchResult, error) {
+	return []vectorstore.SearchResult{
+		{AssetID: "hybrid_001", Score: 0.91, Name: "Hybrid mock"},
+	}, nil
+}
+
+func (m *mockVectorStore) CollectionInfo(ctx context.Context) (*vectorstore.CollectionInfo, error) {
+	return &vectorstore.CollectionInfo{}, nil
+}
+
 type mockEmbedder struct {
 	embedding []float64
 	err       error

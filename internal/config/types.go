@@ -98,6 +98,7 @@ type Config struct {
 	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
 	VectorSearch     VectorSearchConfig     `yaml:"vector_search"`
 	Reranker         RerankerConfig         `yaml:"reranker"`
+	Books            BooksConfig            `yaml:"books"`
 }
 
 // GoogleAccountingConfig holds settings for the Google Accounting FastAPI service.
@@ -466,7 +467,8 @@ type VectorSearchConfig struct {
 	TextVectorName     string  `yaml:"text_vector_name" default:"text"`
 	VisualVectorName   string  `yaml:"visual_vector_name" default:"visual"`
 	AudioVectorName    string  `yaml:"audio_vector_name" default:"audio"`
-	TextDimensions     int     `yaml:"text_dimensions" default:"384"`
+	SparseVectorName   string  `yaml:"sparse_vector_name" default:"bm25_text"`
+	TextDimensions     int     `yaml:"text_dimensions" default:"768"`
 	VisualDimensions   int     `yaml:"visual_dimensions" default:"512"`
 	AudioDimensions    int     `yaml:"audio_dimensions" default:"512"`
 	MinInstantScore    float64 `yaml:"min_instant_score" default:"0.85"`
@@ -486,4 +488,15 @@ type RerankerConfig struct {
 	TopK      int     `yaml:"top_k" default:"30"`
 	TimeoutMs int     `yaml:"timeout_ms" default:"150"`
 	Weight    float64 `yaml:"weight" default:"0.35"`
+}
+
+// BooksConfig holds settings for the book summarization/processing service.
+type BooksConfig struct {
+	Enabled       bool   `yaml:"enabled" default:"true"`
+	ScriptPath    string `yaml:"script_path" default:"scripts/book_summarizer.py"`
+	PythonBin     string `yaml:"python_bin" default:"python3"`
+	DefaultModel  string `yaml:"default_model" default:"gemma3:12b"`
+	OllamaURL     string `yaml:"ollama_url" default:"http://127.0.0.1:11434"`
+	PagesPerChunk int    `yaml:"pages_per_chunk" default:"4"`
+	ChunkSize     int    `yaml:"chunk_size" default:"12000"`
 }

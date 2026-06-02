@@ -18,10 +18,9 @@ from sentence_transformers import SentenceTransformer
 DB_PATH = Path("/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/velox/velox.db.sqlite")
 DEFAULT_COLLECTION = "pipelinegen_assets"
 # [LEGACY] qdrant_emulator — simulatore Qdrant in-memory per testing locale.
-# Non usato in produzione. Il modello all-MiniLM-L6-v2 (384d) è deprecato;
-# il sistema ora usa intfloat/multilingual-e5-base (768d).
+# Non usato in produzione. Usa intfloat/multilingual-e5-base (768d) come il server reale.
 # Vedi scripts/reranker_server.py e scripts/embedding_server.py per i servizi reali.
-TEXT_MODEL = "all-MiniLM-L6-v2"
+TEXT_MODEL = "intfloat/multilingual-e5-base"
 
 # Prefix for media_assets IDs to avoid collision with asset_index IDs
 MEDIA_ASSET_PREFIX = "ma:"
@@ -173,10 +172,13 @@ def extract_text_from_media_asset(row: sqlite3.Row) -> str:
 
 
 def _ingest_batch(name: str, batch_texts: list, batch_rows: list, id_fn, payload_fn, counter: list) -> None:
-    """Encode a batch and store into the collection. Mutates counter[0]."""
+    """Encode a batch and store into the collection. Mutates counter[0].
+    Applies E5 passage prefix and normalize_embeddings=True to match the real embedding_server.py."""
     if not batch_texts:
         return
-    vectors = model.encode(batch_texts, batch_size=len(batch_texts), show_progress_bar=False)
+    # E5 requires "passage:" prefix for document indexing (asymmetric retrieval)
+    prefixed = ["passage: " + t for t in batch_texts]
+    vectors = model.encode(prefixed, batch_size=len(batch_texts), show_progress_bar=False, normalize_embeddings=True)
     with lock:
         for row, vec in zip(batch_rows, vectors):
             payload = payload_fn(row)
@@ -257,8 +259,10 @@ def backfill_collection(name: str) -> None:
             if emb_json and emb_json.startswith("["):
                 try:
                     emb_vec = json.loads(emb_json)
-                    if isinstance(emb_vec, list) and len(emb_vec) == 384:
-                        # Pre-computed embedding — store directly without re-encoding
+                    if isinstance(emb_vec, list) and len(emb_vec) == 768:
+                        # Pre-computed embedding (E5 passage-prefixed, 768d) — store directly
+                        # Note: 384d embeddings from old all-MiniLM-L6-v2 model are skipped
+                        #       and will be re-encoded with E5 below
                         payload = _make_media_asset_payload(row)
                         point_id = MEDIA_ASSET_PREFIX + str(row["id"])
                         with lock:
@@ -348,6 +352,7 @@ def get_collection(collection: str):
 
 @app.put("/collections/{collection}")
 def create_collection(collection: str, req: CreateCollectionRequest):
+    # no HNSW config needed — emulator uses brute-force cosine similarity, not ANN indexing
     with lock:
         collections.setdefault(collection, {"vectors": {}, "points": {}, "created": True})
         if req.vectors:

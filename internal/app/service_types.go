@@ -3,12 +3,14 @@ package app
 import (
 	gdrive "google.golang.org/api/drive/v3"
 	"velox/go-master/internal/api/handlers/common"
+	booksHandler "velox/go-master/internal/api/handlers/books"
 	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/core/processor"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/assettree"
 	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/media/books"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/generation"
@@ -62,4 +64,6 @@ type services struct {
 	styleRegistry      *generation.StyleRegistry
 	vectorSvc          *vectorstore.Service
 	realtimeSvc        *realtime.Service
+	booksService       *books.Service
+	booksHandler       *booksHandler.Handler
 }

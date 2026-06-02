@@ -165,6 +165,67 @@ def upload_file_to_drive(
     log.info("Uploaded %s to Drive folder %s → file_id=%s", filename, folder_id, file_id)
     return file_id
 
+def get_google_doc_title(doc_id: str) -> str:
+    """Get the title of a Google Docs document.
+    
+    Args:
+        doc_id: The Google Docs document ID (from the URL)
+        
+    Returns:
+        The document title, or empty string on failure.
+    """
+    import logging
+    log = logging.getLogger("DriveClient")
+    
+    try:
+        service = _build_service()
+        file_info = service.files().get(fileId=doc_id, fields="name").execute()
+        title = file_info.get("name", "")
+        log.info("Retrieved title for Google Doc %s: %s", doc_id, title)
+        return title
+    except Exception as e:
+        log.error("Failed to get title for Google Doc %s: %s", doc_id, e)
+        return ""
+
+
+def download_google_doc_text(doc_id: str) -> str:
+    """Download the content of a Google Docs document as plain text.
+    
+    Args:
+        doc_id: The Google Docs document ID (from the URL)
+        
+    Returns:
+        The document content as plain text, or empty string on failure.
+    """
+    import logging
+    log = logging.getLogger("DriveClient")
+    
+    try:
+        service = _build_service()
+        
+        # Export as plain text
+        request = service.files().export_media(
+            fileId=doc_id,
+            mimeType="text/plain"
+        )
+        
+        import io
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request, chunksize=10 * 1024 * 1024)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        
+        fh.seek(0)
+        content = fh.read().decode("utf-8")
+        log.info("Downloaded Google Doc %s (%d chars)", doc_id, len(content))
+        return content
+        
+    except Exception as e:
+        log.error("Failed to download Google Doc %s: %s", doc_id, e)
+        return ""
+
+
 async def auto_upload_to_drive(file_path: str, drive_folder_id: str, media_type: str = "video"):
     """Upload a generated file to Google Drive folder."""
     import logging

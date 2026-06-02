@@ -10,6 +10,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"go.uber.org/zap"
 
@@ -103,6 +104,9 @@ func (r *Router) Setup() *gin.Engine {
 	// Health checks (public — no auth/rate limit)
 	engine.GET("/health", (&common.HealthHandler{}).Health)
 	engine.GET("/api/health", (&common.HealthHandler{}).Health)
+
+	// Prometheus metrics endpoint (public — scraped by Prometheus)
+	engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Serve static assets (images, etc.)
 	assetsDir := filepath.Join(r.cfg.Storage.DataDir, "assets")

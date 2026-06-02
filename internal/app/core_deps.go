@@ -12,6 +12,7 @@ import (
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/assettree"
 	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/media/books"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/clipresolver"
@@ -75,4 +76,5 @@ type CoreDeps struct {
 	RealtimeService    *realtime.Service
 	DeletionService    *media.DeletionService
 	MaintenanceService *maintenance.Service
+	BooksService       *books.Service
 }

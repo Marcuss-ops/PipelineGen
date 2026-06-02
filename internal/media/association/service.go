@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/pkg/sliceutil"
 	"velox/go-master/internal/pkg/termutil"
 	"velox/go-master/internal/pkg/textutil"
@@ -76,9 +77,15 @@ func (s *Service) Associate(ctx context.Context, input SegmentInput) []ScoredMat
 	return matches
 }
 
-// ScoreMedia re-scores candidates using a hybrid of linear and semantic scoring.
+// ScoreMedia re-scores candidates using Qdrant hybrid search (dense + sparse BM25 + RRF)
+// when configured, falling back to local ad-hoc linear+semantic fusion.
 func (s *Service) ScoreMedia(ctx context.Context, query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
-	return s.engine.ScoreMedia(query, queryEmb, candidates)
+	return s.engine.ScoreMedia(ctx, query, queryEmb, candidates)
+}
+
+// SetVectorStore injects the vector store for Qdrant hybrid search into the engine.
+func (s *Service) SetVectorStore(vs *vectorstore.Service) {
+	s.engine.SetVectorStore(vs)
 }
 
 // ResolvePreferredStockMatch returns the best direct stock folder match for the primary focus entity.

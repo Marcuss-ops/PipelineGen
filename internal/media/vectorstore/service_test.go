@@ -31,6 +31,13 @@ func (m *mockStore) UpsertAsset(ctx context.Context, asset VectorAsset) error {
 	return nil
 }
 
+func (m *mockStore) UpsertAssets(ctx context.Context, assets []VectorAsset) error {
+	for _, a := range assets {
+		m.points[a.AssetID] = a
+	}
+	return nil
+}
+
 func (m *mockStore) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
 	m.searches = append(m.searches, req)
 	return []SearchResult{
@@ -51,6 +58,16 @@ func (m *mockStore) DeleteAsset(ctx context.Context, assetID string) error {
 
 func (m *mockStore) Health(ctx context.Context) error {
 	return nil
+}
+
+func (m *mockStore) HybridSearch(ctx context.Context, req HybridSearchRequest) ([]SearchResult, error) {
+	return []SearchResult{
+		{AssetID: "clip_hybrid_001", Score: 0.93, Source: "artlist", Name: "Hybrid match", LocalPath: "/data/media/hybrid.mp4"},
+	}, nil
+}
+
+func (m *mockStore) CollectionInfo(ctx context.Context) (*CollectionInfo, error) {
+	return &CollectionInfo{PointsCount: int64(len(m.points))}, nil
 }
 
 func (m *mockStore) Close() error {

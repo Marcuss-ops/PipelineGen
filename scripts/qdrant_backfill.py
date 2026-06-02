@@ -15,7 +15,7 @@ Options:
     --db PATH             Media database path (required)
     --qdrant URL          Qdrant HTTP endpoint (default: http://127.0.0.1:6333)
     --collection NAME     Qdrant collection name (default: pipelinegen_assets)
-    --text-dim N          Text embedding dimension (default: 384)
+    --text-dim N          Text embedding dimension (default: 768)
     --visual-dim N        Visual embedding dimension (default: 512)
     --text-vector NAME    Named vector for text (default: text)
     --visual-vector NAME  Named vector for visual (default: visual)
@@ -62,13 +62,17 @@ def ensure_collection(qdrant_url, collection, text_dim, visual_dim, audio_dim, t
         print(f"Collection '{collection}' already exists")
         return True
 
-    # Create
+    # Create with HNSW params optimized for recall (m=16, ef_construct=100)
     body = {
         "name": collection,
         "vectors": {
             text_vector: {"size": text_dim, "distance": "Cosine"},
             visual_vector: {"size": visual_dim, "distance": "Cosine"},
             audio_vector: {"size": audio_dim, "distance": "Cosine"},
+        },
+        "hnsw_config": {
+            "m": 16,
+            "ef_construct": 100,
         },
     }
     result = qdrant_request(url, method="PUT", body=body, timeout=30)
@@ -108,7 +112,8 @@ def fetch_assets(db_path, limit=None, offset=0):
                json_extract(metadata_json, '$.style') as style,
                json_extract(metadata_json, '$.media_type') as media_type,
                json_extract(metadata_json, '$.duration_ms') as duration_ms,
-               json_extract(metadata_json, '$.created_at') as created_at
+               json_extract(metadata_json, '$.created_at') as created_at,
+               COALESCE(json_extract(metadata_json, '$.search_text'), name, '') as search_text
         FROM media_assets
         WHERE (embedding_json IS NOT NULL AND embedding_json != '[]')
            OR json_extract(metadata_json, '$.visual_embedding_json') IS NOT NULL
@@ -224,6 +229,7 @@ def build_payload(row, text_vector, visual_vector, audio_vector):
             "media_type": row["media_type"] or "video",
             "duration_ms": duration_ms,
             "tags": tags,
+            "search_text": row["search_text"] or "",
             "created_at": created_at,
         },
     }

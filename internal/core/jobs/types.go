@@ -15,6 +15,7 @@ const (
 	JobTypeWorkflowRun        JobType = "workflow.run"
 	JobTypeMediaGenerate      JobType = "media.generate_missing_asset"
 	JobTypeMediaReindex       JobType = "media.reindex"
+	JobTypeBooksProcess       JobType = "books.process"
 )
 
 

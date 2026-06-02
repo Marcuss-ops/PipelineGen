@@ -3,6 +3,8 @@ package association
 import (
 	"context"
 	"strings"
+
+	"velox/go-master/internal/media/vectorstore"
 )
 
 // SegmentInput provides data for association matching.
@@ -21,11 +23,18 @@ type Association interface {
 
 // Engine orchestrates multiple associations to find the best matches.
 type Engine struct {
-	sources []Association
+	sources     []Association
+	vectorStore *vectorstore.Service
 }
 
 func NewEngine(sources ...Association) *Engine {
 	return &Engine{sources: sources}
+}
+
+// SetVectorStore injects the vector store for Qdrant hybrid search (dense + sparse BM25).
+// When set, ScoreMedia uses Qdrant RRF fusion instead of ad-hoc linear+semantic scoring.
+func (e *Engine) SetVectorStore(vs *vectorstore.Service) {
+	e.vectorStore = vs
 }
 
 func (e *Engine) AssociateAll(ctx context.Context, input SegmentInput) []ScoredMatch {
@@ -61,30 +70,64 @@ func deduplicateMatches(matches []ScoredMatch) []ScoredMatch {
 	return out
 }
 
-// ScoreMedia ordina e valuta i candidati usando un approccio Hybrid Search (Lineare + Semantico).
-// Assumiamo che i candidati abbiano già un punteggio Lineare pre-calcolato in c.Score (0-100).
-func (e *Engine) ScoreMedia(query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
+// ScoreMedia re-scores candidates using Qdrant hybrid search (dense + sparse BM25 with RRF)
+// when a vector store is configured. Falls back to local ad-hoc fusion if vectorstore is nil.
+//
+// Qdrant path: the query text is tokenized into sparse BM25 + dense embedding, and
+// Qdrant performs RRF fusion natively. Results replace the candidates entirely.
+// Fallback path: local dot product fusion (40% linear, 60% semantic).
+func (e *Engine) ScoreMedia(ctx context.Context, query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
+	// Prefer Qdrant hybrid search if available
+	if e.vectorStore != nil && len(queryEmb) > 0 && query != "" {
+		results, err := e.vectorStore.HybridSearch(ctx, vectorstore.HybridSearchRequest{
+			QueryText:    query,
+			DenseVector:  queryEmb,
+			Limit:        30,
+		})
+		if err == nil && len(results) > 0 {
+			// Convert Qdrant results to ScoredMatch
+			matches := make([]ScoredMatch, 0, len(results))
+			for _, r := range results {
+				match := ScoredMatch{
+					ClipID: r.AssetID,
+					Title:  r.Name,
+					Path:   r.LocalPath,
+					Score:  int(r.Score * 100), // scale 0-1 → 0-100
+					Source: r.Source,
+					Link:   r.DriveLink,
+					Reason: "qdrant hybrid search (dense + BM25 + RRF)",
+				}
+				if match.Score > 100 {
+					match.Score = 100
+				}
+				matches = append(matches, match)
+			}
+			return matches
+		}
+		// On error, fall through to ad-hoc scoring
+	}
+
+	// Fallback: ad-hoc linear+semantic fusion (legacy path for when Qdrant is unavailable)
+	return e.scoreMediaLocal(query, queryEmb, candidates)
+}
+
+// scoreMediaLocal is the original ad-hoc hybrid scoring (fallback when Qdrant is unavailable).
+func (e *Engine) scoreMediaLocal(query string, queryEmb []float32, candidates []ScoredMatch) []ScoredMatch {
 	var scoredCandidates []ScoredMatch
-	
-	// Normalizza la query per i check lineari
 	queryLower := strings.ToLower(query)
 
 	for _, c := range candidates {
-		linear := float64(c.Score) // Punteggio lineare (es. calcolato da matching.ScoreText o dal DB)
+		linear := float64(c.Score)
 		semantic := float64(0)
-		
+
 		if len(queryEmb) > 0 && len(c.Embedding) > 0 {
-			// DotProduct tra due vettori normalizzati dà la Cosine Similarity
-			semantic = DotProduct(queryEmb, c.Embedding) * 100 // scalato a 0-100
+			semantic = DotProduct(queryEmb, c.Embedding) * 100
 		} else if len(c.Embedding) == 0 {
-			// Se manca l'embedding, usiamo solo il lineare
-			semantic = linear 
+			semantic = linear
 		}
 
-		// Fusione (40% Lineare, 60% Semantico)
 		final := linear*0.4 + semantic*0.6
 
-		// Bonus esatto: Se il nome file o path contiene la query (e la query non è cortissima)
 		if len(queryLower) > 3 && (strings.Contains(strings.ToLower(c.Title), queryLower) || strings.Contains(strings.ToLower(c.Path), queryLower)) {
 			final += 15.0
 		}
@@ -93,8 +136,7 @@ func (e *Engine) ScoreMedia(query string, queryEmb []float32, candidates []Score
 		if c.Score > 100 {
 			c.Score = 100
 		}
-		
-		// Filtro base: accettiamo solo se il punteggio supera una certa soglia
+
 		if c.Score >= 15 {
 			scoredCandidates = append(scoredCandidates, c)
 		}

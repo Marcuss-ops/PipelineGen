@@ -93,5 +93,6 @@ func initCoreMinimal(cfg *config.Config, log *zap.Logger, mode string) (*CoreDep
 		MaintenanceService: svcs.maintenanceSvc,
 		VectorStore:        svcs.vectorSvc,
 		RealtimeService:    svcs.realtimeSvc,
+		BooksService:       svcs.booksService,
 	}, cleanup, nil
 }

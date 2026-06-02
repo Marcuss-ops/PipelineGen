@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	bookshandler "velox/go-master/internal/api/handlers/books"
 	realtimehandler "velox/go-master/internal/api/handlers/realtime"
 	"velox/go-master/internal/api/handlers/script/handlers"
 	"velox/go-master/internal/config"
@@ -156,6 +157,14 @@ func WireRegistry(
 			}
 			handler := realtimehandler.NewMatchHandler(coreDeps.RealtimeService, log)
 			mod := module.NewRealtimeModule(cfg, log, handler)
+			return mod, nil, nil
+		}, nil},
+		{"Books", func() (module.Module, interface{}, error) {
+			if coreDeps.BooksService == nil {
+				return nil, nil, nil
+			}
+			handler := bookshandler.NewHandler(coreDeps.BooksService, log)
+			mod := module.NewBooksModule(cfg, log, handler)
 			return mod, nil, nil
 		}, nil},
 	}

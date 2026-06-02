@@ -36,6 +36,7 @@ const (
 	JobTypeSystemCleanup      JobType = "system.cleanup"
 	JobTypeMediaGenerate      JobType = "media.generate_missing_asset"
 	JobTypeVideoGenerate      JobType = "video.generate"
+	JobTypeBooksProcess       JobType = "books.process"
 )
 
 // Job rappresenta un job nel sistema
