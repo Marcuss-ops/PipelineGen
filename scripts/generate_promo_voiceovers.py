@@ -17,7 +17,7 @@ from pathlib import Path
 OLLAMA_URL = "http://localhost:11434"
 VOICEOVER_API = "http://127.0.0.1:8081/api/media/voiceover/generate"
 
-# 10 languages for voiceover
+# 13 languages for voiceover
 LANGUAGES = [
     ("en-US", "English", "English"),
     ("es-ES", "Spanish", "Spanish"),
@@ -29,6 +29,9 @@ LANGUAGES = [
     ("nl-NL", "Dutch", "Dutch"),
     ("ja-JP", "Japanese", "Japanese"),
     ("ko-KR", "Korean", "Korean"),
+    ("ru-RU", "Russian", "Russian"),
+    ("tr-TR", "Turkish", "Turkish"),
+    ("id-ID", "Indonesian", "Indonesian"),
 ]
 
 
