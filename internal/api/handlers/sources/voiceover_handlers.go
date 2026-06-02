@@ -63,6 +63,10 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 
 	// If async is requested, enqueue as a batch job with 1 item
 	if req.Async && h.jobsSvc != nil {
+		h.log.Info("enqueuing voiceover generation (async)",
+			zap.String("language", req.Language),
+			zap.Bool("async", req.Async))
+
 		batchReq := voiceover.BatchRequest{
 			Text:      req.Text,
 			Languages: []string{req.Language},
@@ -91,12 +95,19 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 	if req.Filename == "" {
 		req.Filename = "manual vo " + strings.ReplaceAll(req.Language, "-", " ") + ".mp3"
 	}
+
+	h.log.Info("generating voiceover (sync)",
+		zap.String("language", req.Language),
+		zap.String("filename", req.Filename))
+
 	result, err := h.service.Generate(c.Request.Context(), req.Text, req.Language, req.Filename)
 	if err != nil {
+		h.log.Error("voiceover generation failed", zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
 
+	h.log.Info("voiceover generated successfully", zap.String("path", result.Path))
 	apiutil.OK(c, gin.H{"result": result})
 }
 
@@ -111,6 +122,10 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	h.log.Info("enqueuing voiceover batch",
+		zap.Int("languages", len(req.Languages)),
+		zap.Strings("languages", req.Languages))
 
 	if h.jobsSvc != nil {
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
@@ -130,8 +145,11 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 	}
 
 	// Fallback to sync if jobs service not available
+	h.log.Info("jobs service unavailable, falling back to sync batch processing")
+
 	resp, err := h.service.GenerateBatch(c.Request.Context(), &req)
 	if err != nil {
+		h.log.Error("voiceover batch generation failed", zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
