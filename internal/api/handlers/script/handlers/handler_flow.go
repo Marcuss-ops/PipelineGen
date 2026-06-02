@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"velox/go-master/internal/config"
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/images"
-	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/ml/ollama"
 	ollamatypes "velox/go-master/internal/ml/ollama/types"
@@ -221,55 +219,7 @@ func (h *ScriptFlowHandler) GenerateText(c *gin.Context) {
 	})
 }
 
-// VisualizeSegment is one sentence/beat from the script (used by GenerateFromSource).
-type VisualizeSegment struct {
-	Index    int                  `json:"index"`
-	Sentence string               `json:"sentence"`
-	Query    string               `json:"query"`
-	Action   string               `json:"action"` // reuse | generated | skipped
-	Match    *realtime.MatchAsset `json:"match,omitempty"`
-	Image    *VisualAssetResult   `json:"image,omitempty"`
-	Error    string               `json:"error,omitempty"`
-}
-
-// VisualAssetResult is returned for both reused and generated images.
-type VisualAssetResult struct {
-	ID          string   `json:"id,omitempty"`
-	Hash        string   `json:"hash,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Source      string   `json:"source,omitempty"`
-	Category    string   `json:"category,omitempty"`
-	MediaType   string   `json:"media_type,omitempty"`
-	Score       float64  `json:"score,omitempty"`
-	LocalPath   string   `json:"local_path,omitempty"`
-	PathRel     string   `json:"path_rel,omitempty"`
-	SourceURL   string   `json:"source_url,omitempty"`
-	DriveLink   string   `json:"drive_link,omitempty"`
-	DriveFileID string   `json:"drive_file_id,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-}
-
-func imageAssetToResult(asset *models.ImageAsset) *VisualAssetResult {
-	if asset == nil {
-		return nil
-	}
-	return &VisualAssetResult{
-		ID:          fmt.Sprintf("%d", asset.ID),
-		Hash:        asset.Hash,
-		Name:        asset.SubjectID,
-		Source:      asset.SourceURL,
-		MediaType:   "image",
-		LocalPath:   asset.PathRel,
-		PathRel:     asset.PathRel,
-		SourceURL:   asset.SourceURL,
-		DriveLink:   driveLinkFromImageAsset(asset),
-		DriveFileID: asset.DriveFileID,
-		Description: asset.Description,
-		Tags:        asset.Tags,
-	}
-}
-
+// splitScriptSentences splits script text into sentences for scene generation.
 func splitScriptSentences(text string) []string {
 	text = strings.ReplaceAll(text, "\r\n", " ")
 	text = strings.ReplaceAll(text, "\n", " ")
