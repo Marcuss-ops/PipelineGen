@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,11 +21,11 @@ import (
 	ollamatypes "velox/go-master/internal/ml/ollama/types"
 	"velox/go-master/internal/media/voiceover"
 	"velox/go-master/internal/pkg/apiutil"
-	"velox/go-master/internal/pkg/concurrent"
 	"velox/go-master/internal/upload/drive"
 )
 
-// ScriptFlowHandler exposes text-only generation and image-from-text visualization.
+// ScriptFlowHandler exposes script generation endpoints.
+// Provides text-only generation and generation with images, both with full metadata.
 type ScriptFlowHandler struct {
 	generator   *ollama.Generator
 	imgService  *images.Service
@@ -54,67 +55,33 @@ func NewScriptFlowHandler(gen *ollama.Generator, imgSvc *images.Service, realtim
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.GenerateText)
 	r.POST("/text", h.GenerateText)
-	r.POST("/generate-from-source", h.GenerateFromSource)
-	r.POST("/from-source", h.GenerateFromSource)
-	r.POST("/visualize", h.Visualize)
+	r.POST("/generate-with-images", h.GenerateFromSource)
+	r.POST("/from-source", h.GenerateFromSource) // alias for backwards compat
 	r.GET("/jobs/:job_id", h.GetJobStatus)
+}
+
+// VideoMetadata contains YouTube metadata for multiple languages
+type VideoMetadata struct {
+	Language    string   `json:"language"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
 }
 
 // GenerateTextRequest is the input for the text-only generation endpoint.
 type GenerateTextRequest struct {
-	Topic      string `json:"topic" binding:"required"`
-	SourceText string `json:"source_text,omitempty"`
-	Title      string `json:"title,omitempty"`
-	Language   string `json:"language,omitempty"`
-	Tone       string `json:"tone,omitempty"`
-	Duration   int    `json:"duration,omitempty"`
-	Model      string `json:"model,omitempty"`
-}
-
-// VisualizeRequest is the input for the text-to-image planning endpoint.
-type VisualizeRequest struct {
-	ScriptText      string  `json:"script_text" binding:"required"`
-	Topic           string  `json:"topic,omitempty"`
-	Style           string  `json:"style,omitempty"`
-	Language        string  `json:"language,omitempty"`
-	Model           string  `json:"model,omitempty"`
-	Width           int     `json:"width,omitempty"`
-	Height          int     `json:"height,omitempty"`
-	MinScore        float64 `json:"min_score,omitempty"`
-	MaxSegments     int     `json:"max_segments,omitempty"`
-	GenerateMissing *bool   `json:"generate_missing,omitempty"`
-}
-
-// VisualAssetResult is returned for both reused and generated images.
-type VisualAssetResult struct {
-	ID          string   `json:"id,omitempty"`
-	Hash        string   `json:"hash,omitempty"`
-	Name        string   `json:"name,omitempty"`
-	Source      string   `json:"source,omitempty"`
-	Category    string   `json:"category,omitempty"`
-	MediaType   string   `json:"media_type,omitempty"`
-	Score       float64  `json:"score,omitempty"`
-	LocalPath   string   `json:"local_path,omitempty"`
-	PathRel     string   `json:"path_rel,omitempty"`
-	SourceURL   string   `json:"source_url,omitempty"`
-	DriveLink   string   `json:"drive_link,omitempty"`
-	DriveFileID string   `json:"drive_file_id,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
-}
-
-// VisualizeSegment is one sentence/beat from the script.
-type VisualizeSegment struct {
-	Index    int                  `json:"index"`
-	Sentence string               `json:"sentence"`
-	Query    string               `json:"query"`
-	Action   string               `json:"action"` // reuse | generated | skipped
-	Match    *realtime.MatchAsset `json:"match,omitempty"`
-	Image    *VisualAssetResult   `json:"image,omitempty"`
-	Error    string               `json:"error,omitempty"`
+	Topic      string   `json:"topic" binding:"required"`
+	SourceText string   `json:"source_text,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Language   string   `json:"language,omitempty"`
+	Tone       string   `json:"tone,omitempty"`
+	Duration   int      `json:"duration,omitempty"`
+	Model      string   `json:"model,omitempty"`
+	Languages  []string `json:"languages,omitempty"` // Additional languages for metadata translation
 }
 
 // GenerateText returns plain text only, with no entity extraction or asset linkage.
+// Also generates YouTube metadata (description, tags, translated titles) for multiple languages.
 func (h *ScriptFlowHandler) GenerateText(c *gin.Context) {
 	if h.generator == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, "script generator not initialized")
@@ -167,170 +134,120 @@ func (h *ScriptFlowHandler) GenerateText(c *gin.Context) {
 		return
 	}
 
-	// Generate video description and tags in English automatically based on the title
-	videoDesc := ""
-	videoTags := []string{}
-	if metaDesc, metaTags, err := h.generator.GenerateVideoMetadata(ctx, req.Title); err != nil {
-		h.log.Warn("Failed to generate video metadata", zap.Error(err))
-	} else {
-		videoDesc = metaDesc
-		videoTags = metaTags
+	// Generate video metadata for all requested languages (including base language)
+	languages := []string{"en"} // Always include English for YouTube
+	languageSet := map[string]bool{"en": true}
+
+	// Add base language if not English
+	if req.Language != "" && req.Language != "en" && !languageSet[req.Language] {
+		languages = append(languages, req.Language)
+		languageSet[req.Language] = true
 	}
 
+	// Add additional requested languages
+	for _, lang := range req.Languages {
+		if !languageSet[lang] {
+			languages = append(languages, lang)
+			languageSet[lang] = true
+		}
+	}
+
+	// Generate metadata for all languages in parallel
+	var mu sync.Mutex
+	metadata := make([]VideoMetadata, 0, len(languages))
+	var wg sync.WaitGroup
+
+	for _, lang := range languages {
+		wg.Add(1)
+		go func(lang string) {
+			defer wg.Done()
+
+			meta := VideoMetadata{Language: lang}
+
+			// Translate title to target language
+			titleTranslated, _ := h.generator.TranslateText(ctx, req.Title, lang)
+			if titleTranslated != "" {
+				meta.Title = titleTranslated
+			} else {
+				meta.Title = req.Title
+			}
+
+			// Generate description and tags in English, or translate if not English
+			if lang == "en" {
+				if desc, tags, err := h.generator.GenerateVideoMetadata(ctx, req.Title); err == nil {
+					meta.Description = desc
+					meta.Tags = tags
+				}
+			} else {
+				// Translate English metadata to target language
+				if desc, tags, err := h.generator.GenerateVideoMetadata(ctx, req.Title); err == nil {
+					descTranslated, _ := h.generator.TranslateText(ctx, desc, lang)
+					if descTranslated != "" {
+						meta.Description = descTranslated
+					} else {
+						meta.Description = desc
+					}
+					// Translate tags
+					var translatedTags []string
+					for _, tag := range tags {
+						if t, err := h.generator.TranslateText(ctx, tag, lang); err == nil && t != "" {
+							translatedTags = append(translatedTags, t)
+						} else {
+							translatedTags = append(translatedTags, tag)
+						}
+					}
+					meta.Tags = translatedTags
+				}
+			}
+
+			mu.Lock()
+			metadata = append(metadata, meta)
+			mu.Unlock()
+		}(lang)
+	}
+	wg.Wait()
+
 	apiutil.OK(c, gin.H{
-		"ok":            true,
-		"topic":         req.Topic,
-		"title":         req.Title,
-		"script":        result.Script,
-		"text":          result.Script,
-		"word_count":    result.WordCount,
-		"est_duration":  result.EstDuration,
-		"model":         result.Model,
-		"prompt":        result.Prompt,
-		"video_desc_en": videoDesc,
-		"video_tags":    videoTags,
+		"ok":           true,
+		"topic":        req.Topic,
+		"title":        req.Title,
+		"script":       result.Script,
+		"text":         result.Script,
+		"word_count":   result.WordCount,
+		"est_duration": result.EstDuration,
+		"model":        result.Model,
+		"prompt":       result.Prompt,
+		"metadata":     metadata,
 	})
 }
 
-// Visualize turns script text into visual beats, reuses semantically matching assets, or generates new images.
-func (h *ScriptFlowHandler) Visualize(c *gin.Context) {
-	if h.imgService == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "image service not initialized")
-		return
-	}
+// VisualizeSegment is one sentence/beat from the script (used by GenerateFromSource).
+type VisualizeSegment struct {
+	Index    int                  `json:"index"`
+	Sentence string               `json:"sentence"`
+	Query    string               `json:"query"`
+	Action   string               `json:"action"` // reuse | generated | skipped
+	Match    *realtime.MatchAsset `json:"match,omitempty"`
+	Image    *VisualAssetResult   `json:"image,omitempty"`
+	Error    string               `json:"error,omitempty"`
+}
 
-	req, ok := apiutil.BindJSON[VisualizeRequest](c)
-	if !ok {
-		return
-	}
-	req.ScriptText = strings.TrimSpace(req.ScriptText)
-	if req.ScriptText == "" {
-		apiutil.BadRequest(c, "script_text is required")
-		return
-	}
-
-	if req.Language == "" {
-		req.Language = "it"
-	}
-	if req.Width <= 0 {
-		req.Width = 1344
-	}
-	if req.Height <= 0 {
-		req.Height = 768
-	}
-	if req.MinScore <= 0 {
-		req.MinScore = 0.78
-	}
-	if req.MaxSegments <= 0 {
-		req.MaxSegments = 8
-	}
-	generateMissing := true
-	if req.GenerateMissing != nil {
-		generateMissing = *req.GenerateMissing
-	}
-
-	sentences := splitScriptSentences(req.ScriptText)
-	if len(sentences) > req.MaxSegments {
-		sentences = sentences[:req.MaxSegments]
-	}
-	if len(sentences) == 0 {
-		sentences = []string{req.ScriptText}
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Minute)
-	defer cancel()
-
-	// ── Parallel segment processing ────────────────────────────
-	segments := concurrent.ParallelMap(sentences, 9, func(idx int, sentence string) VisualizeSegment {
-		query := buildVisualQuery(sentence, req.Topic, req.Style, req.Language)
-		segment := VisualizeSegment{
-			Index:    idx,
-			Sentence: sentence,
-			Query:    query,
-			Action:   "skipped",
-		}
-
-		// Step 1: Try realtime match for existing assets
-		if h.realtimeSvc != nil {
-			matchResp, err := h.realtimeSvc.Match(ctx, &realtime.MatchRequest{
-				Query:              query,
-				Mode:               "visual",
-				Limit:              1,
-				MinScore:           req.MinScore,
-				AllowBackgroundGen: false,
-				MediaType:          "image",
-			})
-			if err == nil && matchResp != nil && strings.HasPrefix(matchResp.Status, "instant_match") && matchResp.Asset != nil {
-				segment.Action = "reuse"
-				segment.Match = matchResp.Asset
-				segment.Image = &VisualAssetResult{
-					ID:        matchResp.Asset.ID,
-					Score:     matchResp.Asset.Score,
-					Source:    matchResp.Asset.Source,
-					Name:      matchResp.Asset.Name,
-					Category:  matchResp.Asset.Category,
-					MediaType: matchResp.Asset.MediaType,
-					LocalPath: matchResp.Asset.LocalPath,
-					DriveLink: matchResp.Asset.DriveLink,
-				}
-				return segment
-			}
-		}
-
-		if !generateMissing {
-			return segment
-		}
-
-		// Step 2: Generate new image (runs in parallel with other goroutines)
-		generated, err := h.imgService.GenerateSmartImage(
-			ctx,
-			req.Topic,
-			req.Topic,
-			req.Style,
-			[]string{sentence},
-			nil,
-			req.Width,
-			req.Height,
-			req.Model,
-			false,
-		)
-		if err != nil {
-			segment.Error = err.Error()
-			return segment
-		}
-
-		segment.Action = "generated"
-		segment.Image = imageAssetToResult(generated)
-		return segment
-	})
-
-	var usedReuse, usedGeneration bool
-	for _, seg := range segments {
-		switch seg.Action {
-		case "reuse":
-			usedReuse = true
-		case "generated":
-			usedGeneration = true
-		}
-	}
-
-	mode := "mixed"
-	switch {
-	case usedGeneration && !usedReuse:
-		mode = "generated"
-	case usedReuse && !usedGeneration:
-		mode = "reused"
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":            true,
-		"mode":          mode,
-		"topic":         req.Topic,
-		"style":         req.Style,
-		"language":      req.Language,
-		"segments":      segments,
-		"segment_count": len(segments),
-	})
+// VisualAssetResult is returned for both reused and generated images.
+type VisualAssetResult struct {
+	ID          string   `json:"id,omitempty"`
+	Hash        string   `json:"hash,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	Source      string   `json:"source,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	MediaType   string   `json:"media_type,omitempty"`
+	Score       float64  `json:"score,omitempty"`
+	LocalPath   string   `json:"local_path,omitempty"`
+	PathRel     string   `json:"path_rel,omitempty"`
+	SourceURL   string   `json:"source_url,omitempty"`
+	DriveLink   string   `json:"drive_link,omitempty"`
+	DriveFileID string   `json:"drive_file_id,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 func imageAssetToResult(asset *models.ImageAsset) *VisualAssetResult {

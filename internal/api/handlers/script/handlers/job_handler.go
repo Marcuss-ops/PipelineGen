@@ -19,9 +19,9 @@ import (
 	"velox/go-master/internal/pkg/concurrent"
 )
 
-// HandleSourceScriptGenerateJob processes the background job for script.generate_from_source
+// HandleSourceScriptGenerateJob processes the background job for script.generate_with_images
 func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
-	h.log.Info("handling script.generate_from_source job", zap.String("job_id", job.ID))
+	h.log.Info("handling script.generate_with_images job", zap.String("job_id", job.ID))
 
 	var req GenerateFromSourceRequest
 	if err := json.Unmarshal(job.Payload, &req); err != nil {
@@ -414,6 +414,78 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 		tools.Progress(100, "Script generation finished successfully")
 	}
 
+		// 5. Generate video metadata (YouTube description, tags, translated titles) for all languages in parallel
+	metadataLanguages := []string{"en"} // Always include English for YouTube
+	languageSet := map[string]bool{"en": true}
+
+	// Add base language if not English
+	if req.Language != "" && req.Language != "en" && !languageSet[req.Language] {
+		metadataLanguages = append(metadataLanguages, req.Language)
+		languageSet[req.Language] = true
+	}
+
+	// Add additional requested languages
+	for _, lang := range req.Languages {
+		if !languageSet[lang] {
+			metadataLanguages = append(metadataLanguages, lang)
+			languageSet[lang] = true
+		}
+	}
+
+	var metaMu sync.Mutex
+	videoMetadata := make([]map[string]any, 0, len(metadataLanguages))
+	var metaWg sync.WaitGroup
+
+	for _, lang := range metadataLanguages {
+		metaWg.Add(1)
+		go func(lang string) {
+			defer metaWg.Done()
+
+			meta := map[string]any{"language": lang}
+
+			// Translate title to target language
+			titleTranslated, _ := h.generator.TranslateText(ctx, title, lang)
+			if titleTranslated != "" {
+				meta["title"] = titleTranslated
+			} else {
+				meta["title"] = title // fallback to original
+			}
+
+			// Generate description and tags in English, or translate if not English
+			if lang == "en" {
+				if desc, tags, err := h.generator.GenerateVideoMetadata(ctx, title); err == nil {
+					meta["description"] = desc
+					meta["tags"] = tags
+				}
+			} else {
+				// Translate English metadata to target language
+				if desc, tags, err := h.generator.GenerateVideoMetadata(ctx, title); err == nil {
+					descTranslated, _ := h.generator.TranslateText(ctx, desc, lang)
+					if descTranslated != "" {
+						meta["description"] = descTranslated
+					} else {
+						meta["description"] = desc
+					}
+					// Translate tags
+					var translatedTags []string
+					for _, tag := range tags {
+						if t, err := h.generator.TranslateText(ctx, tag, lang); err == nil && t != "" {
+							translatedTags = append(translatedTags, t)
+						} else {
+							translatedTags = append(translatedTags, tag)
+						}
+					}
+					meta["tags"] = translatedTags
+				}
+			}
+
+			metaMu.Lock()
+			videoMetadata = append(videoMetadata, meta)
+			metaMu.Unlock()
+		}(lang)
+	}
+	metaWg.Wait()
+
 	// Return final metadata
 	return map[string]any{
 		"output_dir":    outputDir,
@@ -425,13 +497,14 @@ func (h *ScriptFlowHandler) HandleSourceScriptGenerateJob(ctx context.Context, j
 		"word_count":    packageData.WordCount,
 		"est_duration":  packageData.EstimatedDuration,
 		"scenes_count":  len(packageData.Scenes),
+		"metadata":      videoMetadata,
 	}, nil
 }
 
-// RegisterJobHandlers registers the handler for script.generate_from_source jobs
+// RegisterJobHandlers registers the handler for script.generate_with_images jobs
 func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
 		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeSourceScriptGenerate), h.HandleSourceScriptGenerateJob)
-		h.log.Info("registered script.generate_from_source job handler")
+		h.log.Info("registered script.generate_with_images job handler")
 	}
 }
