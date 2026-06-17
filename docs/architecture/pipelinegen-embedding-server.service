@@ -1,0 +1,17 @@
+[Unit]
+Description=PipelineGen Embedding Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pierone
+WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored
+ExecStart=/usr/bin/python3 -m scripts.services.embedding_server --port 8001
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/pierone/.local/bin
+
+[Install]
+WantedBy=multi-user.target

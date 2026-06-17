@@ -1,0 +1,168 @@
+# ============================================
+# Dependencies
+# ============================================
+vendor/
+node_modules/
+**/node_modules/
+web-admin/node_modules/
+
+# ============================================
+# Logs and temp files
+# ============================================
+*.log
+*.tmp
+tmp/
+logs/
+**/__pycache__/
+
+# ============================================
+# Environment and Secrets
+# ============================================
+.env
+.env.local
+*.env.*
+credentials.json
+token.json
+token_full.json
+
+# Production config — never commit real credentials, folder IDs, or IPs
+config.yaml
+!config.example.yaml
+
+# ============================================
+# Binaries
+# ============================================
+pipelinegen
+server
+admin
+*.exe
+*.dll
+*.so
+
+# ============================================
+# Editors
+# ============================================
+.vscode/
+.idea/
+
+# ============================================
+# Build artifacts
+# ============================================
+bin/
+build/
+coverage.out
+*.test
+web-admin/dist/
+
+# ============================================
+# Database
+# ============================================
+data/
+
+# YouTube cookies for yt-dlp authentication (exported from browser)
+# Refresh periodically when cookies expire
+config/youtube_cookies.txt
+*.db
+*.db.sqlite
+*.db.sqlite-wal
+*.db.sqlite-shm
+
+# ============================================
+# Google Accounting local state
+# ============================================
+google-accounting/sessions/
+google-accounting/logs/
+google-accounting/deliverables/
+sessions/
+deliverables/
+
+# ============================================
+# Screenshots (moved to docs/screenshots/)
+# ============================================
+docs/screenshots/
+
+# ============================================
+# Root-level artifacts (binaries, logs, caches)
+# ============================================
+*.bak
+pipelinegen.bak
+config.yaml.server.bak
+final_videoTEMP_MPY_wvf_snd.mp4
+cookies_fresh.txt
+cookies_fresh2.txt
+.qdrant-initialized
+server_debug.log
+monitor.log
+server.log
+
+# ============================================
+# Generated Assets / Scratch
+# ============================================
+Crociata/
+Epica Medievale/
+Notte Gotica/
+Rosone Cattedrale/
+
+# Google Accounting debug/generated files
+google-accounting/debug_*.py
+google-accounting/debug_*.html
+google-accounting/dump_*.py
+google-accounting/login_checker*.py
+google-accounting/test_image_gen.py
+google-accounting/run_direct_generation.py
+google-accounting/docs/generated/
+
+# Google session cookies (contain auth tokens - DO NOT COMMIT)
+google-accounting/sessions/*.json
+# Python cache
+*.pyc
+__pycache__/
+
+# Database backups and backups leak prevention
+**/*.bak
+**/*.sqlite.bak
+**/*.db.bak
+**/*.db.sqlite.bak
+google-accounting/profiles/
+
+# Local state and data
+storage/
+.qdrant-initialized
+cookies.txt
+debug_output.txt
+eval_results.json
+--batch
+
+# ============================================
+# Scratch / Temp Files
+# ============================================
+scratch/
+
+# ============================================
+# Cache and Book Generation
+# ============================================
+.cache/
+*.cache/
+*_summary.txt
+*_summary.pdf
+*.tmp.txt
+
+# Ollama local model cache (large, auto-downloaded)
+.ollama/
+
+# ============================================
+# PID files and numbered backups
+# ============================================
+*.pid
+*.bak.*
+
+# Local generated docs/scripts
+docs/generated/
+
+
+# Chrome profiles (browser cache, cookies, etc.)
+profiles/
+.blackboxcli/
+comic-video-maker/
+.env
+local.env

@@ -1,0 +1,171 @@
+package autotag
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"go.uber.org/zap"
+
+	"velox/go-master/internal/media/clipindexer"
+	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/vlm"
+)
+
+type Service struct {
+	repo        *clips.Repository
+	vlmClient   *vlm.Client
+	vectorStore clipindexer.VectorStoreIndexer
+	log         *zap.Logger
+}
+
+func NewService(repo *clips.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
+	return &Service{
+		repo:      repo,
+		vlmClient: vlmClient,
+		log:       log,
+	}
+}
+
+func (s *Service) SetVectorStore(vs clipindexer.VectorStoreIndexer) {
+	s.vectorStore = vs
+}
+
+// ProcessUntagged scans the database for assets without visual tags and processes them.
+func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
+	if !s.vlmClient.IsEnabled() {
+		return 0, fmt.Errorf("VLM client is disabled")
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// Query untagged assets. We target those with empty tags and no 'vlm_tagged' flag.
+	query := `
+		SELECT id, source, name, tags, local_path, media_type, metadata_json
+		FROM media_assets
+		WHERE (tags IS NULL OR tags = '[]' OR tags = '')
+		  AND media_type != 'folder'
+		  AND local_path != ''
+		  AND json_extract(COALESCE(metadata_json, '{}'), '$.vlm_tagged') IS NULL
+		LIMIT ?
+	`
+
+	rows, err := s.repo.DB().QueryContext(ctx, query, limit)
+	if err != nil {
+		return 0, fmt.Errorf("query untagged: %w", err)
+	}
+	defer rows.Close()
+
+	var assets []*models.MediaAsset
+	for rows.Next() {
+		a := &models.MediaAsset{}
+		var tagsJSON, metaJSON string
+		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &a.LocalPath, &a.MediaType, &metaJSON); err != nil {
+			return 0, fmt.Errorf("scan asset: %w", err)
+		}
+		json.Unmarshal([]byte(tagsJSON), &a.Tags)
+		a.SetMetadataJSON(metaJSON)
+		assets = append(assets, a)
+	}
+
+	if len(assets) == 0 {
+		return 0, nil
+	}
+
+	s.log.Info("starting auto-tagging batch", zap.Int("count", len(assets)))
+
+	processed := 0
+	for _, a := range assets {
+		if err := s.TagAsset(ctx, a); err != nil {
+			s.log.Warn("failed to tag asset", zap.String("id", a.ID), zap.Error(err))
+			continue
+		}
+		processed++
+	}
+
+	return processed, nil
+}
+
+// TagAsset analyzes a single asset with VLM and updates its metadata in DB and Qdrant.
+func (s *Service) TagAsset(ctx context.Context, a *models.MediaAsset) error {
+	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath))
+
+	// 1. Call VLM sidecar
+	vTags, err := s.vlmClient.AutoTagLocal(ctx, a.LocalPath, a.MediaType)
+	if err != nil {
+		// Mark as skipped in metadata so we don't keep retrying if it's a permanent failure (e.g. file corrupt)
+		a.SetMetadataString("vlm_tag_error", err.Error())
+		a.SetMetadataString("vlm_tagged", "failed")
+		s.repo.UpsertClip(ctx, a)
+		return fmt.Errorf("vlm autotag: %w", err)
+	}
+
+	// 2. Merge tags
+	// We combine visual objects, mood, scene type and lighting into the searchable tags list.
+	newTags := make(map[string]bool)
+	for _, t := range a.Tags {
+		newTags[strings.ToLower(t)] = true
+	}
+	for _, o := range vTags.VisualObjects {
+		newTags[strings.ToLower(o)] = true
+	}
+	for _, m := range vTags.Mood {
+		newTags[strings.ToLower(m)] = true
+	}
+	if vTags.SceneType != "" {
+		newTags[strings.ToLower(vTags.SceneType)] = true
+	}
+	if vTags.Lighting != "" {
+		newTags[strings.ToLower(vTags.Lighting)] = true
+	}
+
+	finalTags := make([]string, 0, len(newTags))
+	for t := range newTags {
+		finalTags = append(finalTags, t)
+	}
+	a.Tags = finalTags
+
+	// 3. Update metadata with full structured VLM info
+	a.SetMetadataString("vlm_tagged", "success")
+	a.SetMetadataString("vlm_model", "nvidia/nemotron-nano-12b-v2-vl:free")
+	a.SetMetadataString("scene_type", vTags.SceneType)
+	a.SetMetadataString("lighting", vTags.Lighting)
+	a.SetMetadataString("composition", vTags.Composition)
+
+	if len(vTags.DominantColors) > 0 {
+		colors, _ := json.Marshal(vTags.DominantColors)
+		a.SetMetadataString("dominant_colors", string(colors))
+	}
+	if len(vTags.TextOnScreen) > 0 {
+		text, _ := json.Marshal(vTags.TextOnScreen)
+		a.SetMetadataString("text_on_screen", string(text))
+	}
+
+	// 4. Save to Repository
+	if err := s.repo.UpsertClip(ctx, a); err != nil {
+		return fmt.Errorf("repo upsert: %w", err)
+	}
+
+	// 5. Trigger Qdrant Re-index
+	if s.vectorStore != nil {
+		go func() {
+			// Use background context for re-indexing as it involves LLM/Embedding calls
+			indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if err := s.vectorStore.UpsertFromClip(indexCtx, a.ID); err != nil {
+				s.log.Warn("failed to re-index asset in qdrant after autotag",
+					zap.String("id", a.ID), zap.Error(err))
+			} else {
+				s.log.Info("asset re-indexed in qdrant", zap.String("id", a.ID))
+			}
+		}()
+	}
+
+	s.log.Info("asset tagged successfully", zap.String("id", a.ID), zap.Int("tag_count", len(finalTags)))
+	return nil
+}

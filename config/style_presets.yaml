@@ -1,0 +1,122 @@
+# =============================================================================
+# MediaCurator Style Instruction Presets
+# =============================================================================
+# These presets are referenced by name in CurateRequest.StylePreset.
+# The instructions are injected into the LLM prompt's STYLE INSTRUCTIONS section.
+# =============================================================================
+
+presets:
+  - name: "comedy"
+    instructions: |
+      Write a comedic script, not a ceremonial tribute.
+
+      Every scene must contain:
+      1. One concrete detail from the assigned clip
+      2. One comedic observation
+      3. One new piece of information
+
+      Use SETUP and PAYOFF structure:
+      - SETUP: Describe a situation
+      - EXPECTATION: What the audience expects to happen
+      - TWIST: What actually happens (the joke)
+      - PAYOFF: Why it's funny
+
+      CRITICAL RULES:
+      - Do NOT call the subject a "legend", "icon", "master", or "genius"
+      - Do NOT explain that something is funny — make the narration itself funny
+      - Avoid generic phrases like: comedic masterpiece, magical journey, global icon, whirlwind of laughter, testament to his legacy, extraordinary talent
+      - Use short, punchy sentences
+      - End the final scene with a CALLBACK to the opening joke
+      - One strong ending is better than three weak conclusions
+
+  - name: "documentary"
+    instructions: |
+      Write a serious, authoritative documentary script.
+
+      Every scene must contain:
+      1. Factual depth with specific dates, names, numbers where relevant
+      2. Context explaining why this moment matters historically or culturally
+      3. Narrative progression where each scene builds on the last
+
+      CRITICAL RULES:
+      - Maintain a consistent, measured tone throughout
+      - Ground every statement in the clip evidence — do not invent facts
+      - Use precise language over hyperbole
+      - Begin with a strong contextual hook
+      - End with a reflective, thought-provoking conclusion
+      - Avoid casual language, slang, or forced emotional appeals
+
+  - name: "emotional"
+    instructions: |
+      Write an emotional, heartfelt documentary script.
+
+      Every scene must contain:
+      1. Sensory details of what the viewer sees, hears, feels
+      2. Personal stakes explaining why this matters on a human level
+      3. Emotional progression that builds from curiosity to empathy to inspiration
+
+      CRITICAL RULES:
+      - Use evocative but precise language
+      - Show vulnerability without being maudlin
+      - Create moments of quiet reflection between dramatic passages
+      - Let the clip evidence speak for itself
+      - Begin with an intimate, personal moment
+      - End with a sense of hope, resilience, or wonder
+      - Avoid cliches like "against all odds" or "triumph of the human spirit"
+
+  - name: "educational"
+    instructions: |
+      Write a clear, pedagogical documentary script.
+
+      Every scene must contain:
+      1. One core concept explained simply
+      2. A concrete example or analogy
+      3. Why this knowledge is useful or interesting
+
+      CRITICAL RULES:
+      - Define technical terms before using them
+      - Use analogies to make complex ideas accessible
+      - Build from simple to complex concepts
+      - Pause to recap key points before moving on
+      - End with a summary of what was learned
+      - Avoid unnecessary jargon or academic language
+
+  - name: "narrative"
+    instructions: |
+      Write a story-driven documentary with a clear three-act narrative arc.
+
+      ACT 1 (Hook): Introduce the central question or conflict
+      ACT 2 (Rising Action): Build tension through examples and stakes
+      ACT 3 (Resolution): Answer the question, resolve the conflict
+
+      CRITICAL RULES:
+      - Every scene must advance the story
+      - Create suspense at scene transitions
+      - Use character-driven moments for emotional connection
+      - End each act with a mini-cliffhanger
+      - The final scene must feel earned, not forced
+      - Let the story reveal the theme rather than stating it explicitly
+
+  - name: "compilation"
+    instructions: |
+      You are writing a COMEDIC COMPILATION SHOW, not a documentary.
+
+      For EACH clip, use this pattern:
+      1. INTRO: Build anticipation for what is ABOUT to happen
+         - Describe the scene with a witty, surprising observation
+         - Tease the funny moment that is coming
+         - Create curiosity: make the audience WANT to see it
+      2. The clip plays (no narration during the clip)
+      3. PUNCHLINE: A quick remark that lands the joke after the clip
+
+      STRUCTURE:
+      - HOOK: Energetic opening paragraph about the theme
+      - For each clip: WITTY INTRO → [clip] → PUNCHLINE
+      - OUTRO: Quick callback to the opening hook
+
+      RULES:
+      - Speak like a host introducing the next video in a compilation
+      - Use present tense, conversational tone
+      - Mention something SPECIFIC that happens in each clip
+      - Keep intros SHORT and punchy (2-3 sentences max)
+      - Ground everything in the clip evidence, don't invent

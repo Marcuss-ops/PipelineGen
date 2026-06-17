@@ -1,0 +1,97 @@
+package clipindexer
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+
+	"velox/go-master/internal/storage"
+)
+
+type mockVectorStoreIndexer struct {
+	indexedIDs []string
+}
+
+func (m *mockVectorStoreIndexer) UpsertFromClip(ctx context.Context, clipID string) error {
+	m.indexedIDs = append(m.indexedIDs, clipID)
+	return nil
+}
+
+func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []string) error {
+	m.indexedIDs = append(m.indexedIDs, clipIDs...)
+	return nil
+}
+
+func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
+	// 1. Create in-memory SQLite DB with schema
+	db := storage.NewTestDBWithSchema(t, `
+		CREATE TABLE media_assets (
+			id TEXT PRIMARY KEY,
+			name TEXT,
+			source TEXT,
+			tags TEXT,
+			embedding_json TEXT,
+			metadata_json TEXT
+		)
+	`)
+	defer db.Close()
+
+	// Insert test clips
+	_, err := db.Exec(`
+		INSERT INTO media_assets (id, name, source, tags, embedding_json, metadata_json)
+		VALUES 
+			('clip_1', 'Test Clip One', 'artlist', '[]', NULL, '{"local_path":"/data/clip1.mp4","search_text":"test clip one"}'),
+			('clip_2', 'Test Clip Two', 'artlist', '[]', NULL, '{"local_path":"/data/clip2.mp4","search_text":"test clip two"}')
+	`)
+	require.NoError(t, err)
+
+	// 3. Setup Mock HTTP Server to mock embedding_server.py
+	var apiCalled int
+	var bulkCalled int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/index" {
+			apiCalled++
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{"status": "success", "clip_id": "clip_1", "dimensions": 768})
+		} else if r.URL.Path == "/index_bulk" {
+			bulkCalled++
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{"status": "success", "count": 2})
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// 4. Create Service
+	cfg := &Config{
+		Enabled:    true,
+		ServerURL:  server.URL,
+		PythonBin:  "python-invalid-should-not-be-called", // if subprocess is spawned, it will fail
+		ScriptPath: "scripts/bridges/index_clips.py",
+	}
+	svc := NewService(cfg, db, ":memory:", zap.NewNop())
+	vs := &mockVectorStoreIndexer{}
+	svc.vectorStore = vs
+
+	// 5. Index individual clip via API
+	err = svc.IndexClip(context.Background(), "clip_1")
+	require.NoError(t, err)
+	assert.Equal(t, 1, apiCalled)
+
+	// 6. Index run items in bulk via API
+	items := []map[string]any{
+		{"clip_id": "clip_1"},
+		{"clip_id": "clip_2"},
+	}
+	err = svc.IndexRunItems(context.Background(), items)
+	require.NoError(t, err)
+	assert.Equal(t, 1, bulkCalled)
+}

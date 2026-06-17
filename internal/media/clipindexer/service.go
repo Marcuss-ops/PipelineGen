@@ -1,0 +1,146 @@
+package clipindexer
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"velox/go-master/pkg/concurrent"
+
+	"go.uber.org/zap"
+)
+
+// Config holds clipindexer configuration
+type Config struct {
+	Enabled               bool   `yaml:"enabled"`
+	ServerURL             string `yaml:"server_url"`
+	ScriptPath            string `yaml:"script_path"`
+	PythonBin             string `yaml:"python_bin"`
+	DBPath                string `yaml:"db_path"`
+	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist"`
+}
+
+// DefaultConfig returns default clipindexer config
+func DefaultConfig() *Config {
+	return &Config{
+		Enabled:               true,
+		ServerURL:             "http://127.0.0.1:8001",
+		ScriptPath:            "scripts/bridges/index_clips.py",
+		PythonBin:             "python3",
+		AutoIndexAfterArtlist: true,
+	}
+}
+
+// Global semaphore to restrict python indexing processes to at most 2 system-wide
+var globalScriptSem = make(chan struct{}, 2)
+
+// Service provides clip indexing functionality
+type Service struct {
+	db          *sql.DB
+	dbPath      string
+	cfg         *Config
+	log         *zap.Logger
+	scriptPath  string
+	vectorStore VectorStoreIndexer
+}
+
+// NewService constructs a clip indexer bound to a database path and script directory.
+func NewService(cfg *Config, db *sql.DB, dbPath string, log *zap.Logger) *Service {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+	return &Service{
+		db:         db,
+		dbPath:     dbPath,
+		cfg:        cfg,
+		log:        log,
+		scriptPath: cfg.ScriptPath,
+	}
+}
+
+func (s *Service) IsEnabled() bool {
+	return s.cfg.Enabled
+}
+
+// VectorStore returns the configured vector store indexer, if any.
+func (s *Service) VectorStore() VectorStoreIndexer {
+	return s.vectorStore
+}
+
+// StartServer starts the Python embedding server as a background process
+func (s *Service) StartServer(ctx context.Context) error {
+	if !s.cfg.Enabled || s.cfg.ServerURL == "" {
+		return nil
+	}
+
+	// Check if server is already running
+	if s.checkServer(ctx) {
+		s.log.Info("embedding server already running")
+		return nil
+	}
+
+	// Start server
+	serverScript := filepath.Join(filepath.Dir(s.scriptPath), "embedding_server.py")
+	s.log.Info("starting embedding server", zap.String("script", serverScript))
+
+	cmd := exec.Command(s.cfg.PythonBin, serverScript)
+	cmd.Dir = filepath.Dir(s.scriptPath)
+
+	// Start the process in the background
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start embedding server: %w", err)
+	}
+
+	s.log.Info("embedding server process started", zap.Int("pid", cmd.Process.Pid))
+	return nil
+}
+
+// StartWatchdog starts a background goroutine to monitor and restart the server if it fails
+func (s *Service) StartWatchdog(ctx context.Context) {
+	if !s.cfg.Enabled || s.cfg.ServerURL == "" {
+		return
+	}
+
+	concurrent.SafeGo("clipindexer-watchdog", func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if !s.checkServer(ctx) {
+					s.log.Warn("embedding server health check failed, restarting...")
+					if err := s.StartServer(ctx); err != nil {
+						s.log.Error("watchdog failed to restart server", zap.Error(err))
+					}
+				}
+			}
+		}
+	})
+}
+
+func (s *Service) checkServer(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	url := fmt.Sprintf("%s/health", strings.TrimSuffix(s.cfg.ServerURL, "/"))
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
+}

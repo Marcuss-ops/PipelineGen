@@ -1,0 +1,88 @@
+# Matching configuration - no hardcoded tokens/weights in Go code
+# All domain knowledge belongs here, not in Go source files
+
+matching:
+  # Token length thresholds
+  min_default_token_len: 5
+  allow_short_tokens:
+    # Sports
+    - ko
+    - mma
+    - ufc
+    - wwe
+    - nba
+    - wnba
+    - nfl
+    - mlb
+    - nhl
+    - f1
+    # Tech
+    - ai
+    - "5g"
+    - ev
+    - vr
+    - ar
+    - ui
+    - ux
+    - io
+    # Geography
+    - uk
+    - usa
+    - eu
+  allow_4_letter_tokens:
+    - cave
+    - fire
+    - farm
+    - city
+    - data
+    - tech
+    - ring
+    - road
+    - cars
+    - rock
+    - jazz
+    - folk
+    - blues
+    - punk
+    - metal
+    - pop
+    - love
+    - hate
+    - war
+    - peace
+    - gold
+    - iron
+    - clay
+    - sand
+    - rain
+    - snow
+    - wind
+    - storm
+
+  # Query/token thresholds
+  default_limit: 10
+  candidate_multiplier: 2
+  min_score: 0.5
+
+  # Recommendation scoring weights
+  text_score_weight: 0.45
+  vector_score_weight: 0.30
+  topic_boost_weight: 0.20
+  category_boost_weight: 0.10
+  usable_for_boost_weight: 0.15
+  quality_score_weight: 0.15
+  negative_penalty_weight: 0.40
+  reuse_penalty_weight: 0.10
+
+  # Narrative/association thresholds
+  narrative_min_token_len: 4
+  narrative_max_terms: 5
+  total_max_terms: 8
+  association_min_score: 20
+
+clip_quality:
+  base_score: 0.5
+  embedding_bonus: 0.2
+  category_bonus: 0.15
+  reuse_threshold: 5
+  reuse_penalty_per_use: 0.1

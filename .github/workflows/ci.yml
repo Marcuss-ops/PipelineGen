@@ -1,0 +1,106 @@
+name: Go CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.x'
+        cache: true
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Run Architectural Checks
+      run: |
+        chmod +x scripts/ci-architectural-checks.sh
+        bash scripts/ci-architectural-checks.sh
+
+    - name: Build all binaries
+      run: |
+        go build -o /dev/null ./cmd/server/
+        go build -o /dev/null ./cmd/admin/
+        go build -o /dev/null ./cmd/gen-api-docs/
+
+    - name: Generate API docs
+      run: |
+        go run ./cmd/gen-api-docs/ docs/api/ACTIVE_API_GENERATED.md
+
+    - name: Verify generated docs are up to date
+      run: git diff --exit-code docs/api/ACTIVE_API_GENERATED.md || { echo "❌ Generated API docs are out of date. Run: go run ./cmd/gen-api-docs/ docs/api/ACTIVE_API_GENERATED.md"; exit 1; }
+
+    - name: Run Unit Tests (with race detector)
+      run: go test -race -v ./internal/... ./pkg/...
+
+    - name: Run Coverage Check
+      run: make coverage-check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.x'
+        cache: true
+
+    - name: Install golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: v1.59.1
+
+    - name: Run golangci-lint
+      run: golangci-lint run --timeout=5m
+
+  vuln:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.x'
+        cache: true
+
+    - name: Install govulncheck
+      run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.3
+
+    - name: Run govulncheck
+      run: govulncheck ./...
+
+  secrets:
+    name: Secret Scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Run gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

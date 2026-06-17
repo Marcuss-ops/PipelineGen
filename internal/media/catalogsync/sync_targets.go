@@ -1,0 +1,102 @@
+package catalogsync
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"velox/go-master/internal/repository/clips"
+)
+
+// SyncAll synchronizes every configured target.
+func (s *Service) SyncAll(ctx context.Context) (*Summary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	summary := &Summary{
+		OK:        true,
+		StartedAt: time.Now().UTC(),
+		Roots:     make([]RootSummary, 0, len(s.targets)),
+	}
+
+	if s.uploader == nil {
+		summary.OK = false
+		summary.Error = "drive uploader not configured"
+		return summary, fmt.Errorf("drive uploader not configured")
+	}
+
+	for _, target := range s.targets {
+		if strings.TrimSpace(target.RootFolderID) == "" || target.Repo == nil {
+			continue
+		}
+
+		rootSummary, err := s.syncTarget(ctx, target)
+		if err != nil {
+			rootSummary.Error = err.Error()
+			summary.OK = false
+			summary.Error = err.Error()
+		}
+		summary.Roots = append(summary.Roots, rootSummary)
+		summary.Synced += rootSummary.Synced
+		summary.Failed += rootSummary.Failed
+	}
+
+	summary.EndedAt = time.Now().UTC()
+	return summary, nil
+}
+
+// SyncSource synchronizes a specific source target.
+func (s *Service) SyncSource(ctx context.Context, source string) (*RootSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, target := range s.targets {
+		if strings.EqualFold(target.Source, source) {
+			summary, err := s.syncTarget(ctx, target)
+			return &summary, err
+		}
+	}
+
+	return nil, fmt.Errorf("source not found: %s", source)
+}
+
+// SyncFolderID synchronizes a single Drive folder (not pre-configured as a target)
+// into the database recursively. This is the ad-hoc equivalent of a catalog sync
+// that accepts an arbitrary folder ID, source, and repo.
+//
+// Usage:
+//
+//	POST /api/media/sync-drive-folder
+//	{ "drive_folder_id": "1ll2RlTa...", "source": "youtube", "name": "MyFolder" }
+func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, mediaType string, repo *clips.Repository) (*RootSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if strings.TrimSpace(folderID) == "" {
+		return nil, fmt.Errorf("drive_folder_id is required")
+	}
+	if repo == nil {
+		return nil, fmt.Errorf("repository is required")
+	}
+	if source == "" {
+		source = "drive"
+	}
+	if name == "" {
+		name = folderID
+	}
+	if mediaType == "" {
+		mediaType = "clip"
+	}
+
+	target := Target{
+		Name:         name,
+		RootFolderID: folderID,
+		Source:       source,
+		MediaType:    mediaType,
+		Repo:         repo,
+	}
+
+	summary, err := s.syncTarget(ctx, target)
+	return &summary, err
+}

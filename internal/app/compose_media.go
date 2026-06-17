@@ -1,0 +1,129 @@
+package app
+
+import (
+	"context"
+
+	"go.uber.org/zap"
+
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/media/assetregistry"
+	"velox/go-master/internal/media/books"
+	imgservice "velox/go-master/internal/media/images"
+	"velox/go-master/internal/media/semantic"
+	"velox/go-master/internal/media/videomuscles"
+	"velox/go-master/internal/media/voiceover"
+	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/repository/images"
+	"velox/go-master/internal/repository/monitors"
+	"velox/go-master/internal/repository/scripts"
+	"velox/go-master/internal/repository/voiceovers"
+	"velox/go-master/internal/sources/youtube"
+	pkgffmpeg "velox/go-master/pkg/media/ffmpeg"
+)
+
+// MediaDomain holds media-specific services produced by composeMediaDomain.
+type MediaDomain struct {
+	YoutubeClipService *youtube.Service
+	VoiceoverService   *voiceover.Service
+	VoiceoverRepo      *voiceovers.Repository
+	BooksService       *books.Service
+	ClipsRepo          *clips.Repository
+	ArtlistRepo        *clips.Repository
+	ScriptsRepo        *scripts.ScriptRepository
+	ImageRepo          *images.Repository
+	ImageService       *imgservice.Service
+	MetaWriter         *semantic.MetadataWriter
+	MonitorsRepo       *monitors.Repository
+}
+
+// composeMediaDomain initializes all media domain services.
+// These depend on core infrastructure and domain-specific configuration.
+func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, core *CoreInfra) (*MediaDomain, error) {
+	clipsRepo := clips.NewRepository(dbs.main.DB, log)
+	artlistRepo := clips.NewRepository(dbs.main.DB, log)
+	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
+	imageRepo := images.NewRepository(dbs.main.DB)
+
+	// YouTube Lifecycle & Video Pipeline
+	clipsRegistry := assetregistry.NewClipsRegistry(core.ClipsOnlyRepo)
+	ytLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
+		Registry:    clipsRegistry,
+		DriveClient: core.DriveClient,
+		AssetIndex:  core.AssetIndexService,
+	}, log)
+
+	clipProcessor := pkgffmpeg.New(cfg)
+	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
+
+	// YouTube Clip Service
+	monitorsRepo := monitors.NewRepository(dbs.main.DB)
+	youtubeClipService := youtube.NewService(
+		cfg, log,
+		core.ClipsOnlyRepo, monitorsRepo,
+		core.DriveClient, core.MediaProcessor,
+		videoPipeline, ytLifecycle,
+		core.ClipIndexerService, core.DestResolver,
+		core.OllamaClient,
+	)
+
+	// Voiceover Service
+	voService, voRepo := initVoiceoverService(ctx, cfg, dbs, log,
+		core.DriveClient, core.DriveUploader,
+		core.AssetIndexService, core.ClipIndexerService,
+		core.DestResolver,
+	)
+
+	// Books Service
+	booksSvc := initBooksService(cfg, dbs, log, core.DriveUploader, voService)
+
+	// Image Service
+	imageService, metaWriter := initImageService(ctx, cfg, log,
+		core.DriveClient, clipsRepo, artlistRepo,
+		core.StyleRegistry, core.ScriptGen,
+		core.MediaStore, core.VectorSvc, imageRepo,
+	)
+
+	// Wire semantic tagger for voiceover metadata enrichment
+	voService.SetSemanticTagger(func(ctx context.Context, prompt, style, mediaType, generator string) (*voiceover.SemanticTaggerResult, error) {
+		payload, _, err := metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
+			AssetID:   "",
+			AssetType: "voiceover",
+			MediaType: mediaType,
+			Source:    "voiceover",
+			Generator: generator,
+			Style:     style,
+			Prompt:    prompt,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &voiceover.SemanticTaggerResult{
+			SearchText: payload.SearchText,
+			Tags:       payload.Tags,
+			Subjects:   payload.Subjects,
+			Mood:       payload.Mood,
+		}, nil
+	})
+
+	// Wire Ollama translator for voiceover promo generation
+	if core.ScriptGen != nil {
+		voService.SetTranslator(func(ctx context.Context, text, targetLanguage string) (string, error) {
+			return core.ScriptGen.TranslateText(ctx, text, targetLanguage)
+		})
+		log.Info("Ollama translator wired into voiceover service for promo generation")
+	}
+
+	return &MediaDomain{
+		YoutubeClipService: youtubeClipService,
+		VoiceoverService:   voService,
+		VoiceoverRepo:      voRepo,
+		BooksService:       booksSvc,
+		ClipsRepo:          clipsRepo,
+		ArtlistRepo:        artlistRepo,
+		ScriptsRepo:        scriptsRepo,
+		ImageRepo:          imageRepo,
+		ImageService:       imageService,
+		MetaWriter:         metaWriter,
+		MonitorsRepo:       monitorsRepo,
+	}, nil
+}

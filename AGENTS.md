@@ -1,0 +1,408 @@
+# AGENTS.md - PipelineGen System Documentation
+
+## Overview
+PipelineGen is a Go-based backend service that manages media processing pipelines for YouTube clips and Artlist assets. It runs as a systemd service on **port 18080** (NOT 8080 — port 8080 on the same host is consumed by SearXNG). The dev binary binds to `127.0.0.1:18080` by default; override via `VELOX_PORT`.
+
+## Documentation Map
+
+- **This file (AGENTS.md)**: Critical rules and instructions for all agents
+- **internal/media/images/GEMINI.md**: Image generation strategy and Go-Python integration
+- **google-accounting/GEMINI.md**: Python automation details and image capture logic
+- **docs/INTELLIGENCE_ROADMAP.md**: Roadmap for advanced AI features and Hybrid Search evolutions
+- **docs/archive/sqlite-databases.md**: Complete database schema, boundaries, and migration strategy
+- **README.md**: Project structure and architecture overview
+- **PROJECT_GUIDE.md**: Italian language getting started guide
+
+## Instructions
+
+- **Non cambiare driver SQLite** (rimanere su `mattn/go-sqlite3`)
+- **Non lavorare su FTS5** (il supporto dipende dal driver compilato, usare fallback LIKE)
+- **Concentrarsi solo su schema boundaries, diagnostics e test**
+- **Ogni database deve avere solo le tabelle necessarie** al servizio che lo usa
+- **Non applicare migration generiche a più database se creano tabelle non usate da quel database.**
+- Schema attuale (Unificato):
+  - `data/media/media.db.sqlite`: **Unico database** — tutto in un solo file (scripts, jobs, asset_index, media_assets, harvester, pipeline_runs, voiceovers, etc.)
+
+## Qdrant Entity Associations
+
+PipelineGen uses Qdrant vector database to power semantic search across all
+media types. Here's how entity associations work:
+
+### Architecture: SQLite + Qdrant Dual Store
+- **SQLite** (`media.db.sqlite`) is the **canonical metadata store**
+- **Qdrant** (port 6333) is the **real-time semantic index**
+- Each media asset exists in both stores with the same `asset_id`
+
+### Vector Spaces (4 named vectors per point)
+| Vector | Dims | Model | Purpose |
+|--------|------|-------|---------|
+| `text` | 768 | multilingual-e5-base | Semantic meaning (title + summary + topics) |
+| `transcript` | 768 | multilingual-e5-base | Whisper transcript content (YouTube clips) |
+| `visual` | 512 | CLIP ViT-B-32 | Visual content (images, video frames) |
+| `audio` | 512 | CLAP HTSAT | Audio content (SFX, music) |
+| `bm25_text` | sparse | Client-side BM25 | Lexical exact-match (keyword search) |
+
+### Association Flow (How Scripts Match Assets)
+
+1. **Script Generation** → LLM extracts names, keywords, visual cues
+2. **Query Construction** → Keywords are embedded via the same model
+3. **Qdrant Search** (`/collections/{name}/points/search`):
+   - **Dense ANN**: cosine similarity on `text` vector
+   - **Hybrid RRF**: dense text + transcript + BM25 sparse fused via Reciprocal Rank Fusion
+4. **Reranker** (optional): CrossEncoder post-Qdrant reorder (BGE-reranker-v2-m3)
+5. **Score Blending**: `final = qdrantScore * 0.65 + rerankScore * 0.35`
+6. **Result**: Ranked media assets with Drive links returned
+
+### Key Services
+- **`vectorstore.Service`** (`internal/media/vectorstore/`): Qdrant CRUD + search
+- **`association.Service`** (`internal/media/association/`): Script→asset matching engine
+- **`realtime.Service`** (`internal/media/realtime/`): High-level clip search for handlers
+- **`clipresolver.Service`** (`internal/media/clipresolver/`): Scene-based clip recommendation
+
+### Qdrant Stale Link Cleaner
+Runs every **12 hours** (`startQdrantCleaner` in `background_jobs.go`):
+- Scrolls ALL Qdrant points
+- Validates each `drive_link` via Google Drive API (`FileIsNotTrashed`)
+- Removes points whose Drive files have been deleted/trashed
+- Ensures semantic search never returns dead links
+
+## Architecture (see ARCHITECTURE.md)
+
+For full architecture documentation (system diagram, data flows, module ownership,
+external services, configuration, day-1 commands), see **`ARCHITECTURE.md`** at
+the project root. This file is the canonical architecture doc.
+
+Key contract files:
+- `internal/core/` — canonical interfaces (destination.Resolver, processor.Processor, jobs)
+- `internal/app/registry.go::WireRegistry` — module wiring single source of truth
+- `ARCHITECTURE.md` — system diagram, data flows, 9-module registry, persistence
+
+---
+
+## Common Operations (see ARCHITECTURE.md §10)
+
+All day-1 commands (build, run, test, lint, admin CLI) are documented in
+ARCHITECTURE.md §10. Key shortcuts:
+
+```bash
+# Build
+go build -o pipelinegen ./cmd/server/
+
+# Run
+./pipelinegen --mode all
+
+# Lint (CI checks)
+bash scripts/ci-architectural-checks.sh
+```
+
+## Script Generation Endpoints (consolidated June 2026)
+
+Script generation has been **consolidated to three endpoints**; per-flow
+separation (separate handlers, job types, phase files, Google Doc
+builder, Python test scripts) has been **removed**. All async work goes
+through one unified pipeline; the Python agent is reachable only via
+the sync endpoint.
+
+**For the full table of endpoints, schema, modes, and migration notes,
+see `docs/CHANGELOG_2026-06-03.md` §0.** The detailed data flow and
+pipeline diagrams live in `ARCHITECTURE.md` §3 and
+`docs/SCRIPT_PIPELINE.md` §3. This file does not duplicate them.
+
+**Rule of thumb for new integrations**: scegli l'endpoint in base al preset di flag desiderato.
+
+| Endpoint | Handler | Job type | Preset del payload |
+|----------|---------|----------|--------------------|
+| `POST /api/script/generate-from-clips` | `ScriptFlowHandler.GenerateFromClips` (`handler_clip_source.go`) | `script.generate_from_clips` | Rispettano i flag del body. `generate_metadata=true` implica `extract_entities=true`. Default `sentences_per_image=10`. |
+| `POST /api/script/generate-with-images` | `ScriptFlowHandler.GenerateWithImages` (`handler_generate_with_images.go`) | `script.generate_from_clips` (stesso) | **Forza** `extract_entities=false`, `generate_scene_images=true`, `generate_metadata=false`. Default `sentences_per_image=8`. |
+
+I due endpoint **non sono alias**: hanno handler e request type distinti
+(`GenerateFromClipsRequest` vs `GenerateWithImagesRequest`); condividono
+solo il job type e la pipeline di esecuzione (`HandleClipScriptGenerateJob`
+in `job_handler_clip_source.go`). La differenza è il **preset del
+payload**, non la pipeline.
+
+Use `/generate-with-images` quando vuoi scene-by-scene AI images senza
+entity extraction né metadata; usa `/generate-from-clips` per ogni
+altro caso (incluso opt-in delle scene images via `generate_scene_images=true`).
+
+Use `POST /api/script-docs/generate` only when you specifically need
+the Python ReAct agent in the loop and can tolerate the 15-min sync timeout.
+
+---
+
+## Known Issues & Fixes
+
+### Fixed Issues (historical)
+1. **Artlist job status endpoint** — Fixed column names in `job_adapter.go`, added `getIntFromResult()`.
+2. **SQLite "database is locked"** — Fixed: WAL mode + `busy_timeout=5000` + pool limits.
+3. **Missing `monitored_sources` table** — Created schema in `media.db.sqlite`.
+4. **Clipindexer DB path** — Fixed: `IndexClip` passes `--db` to Python script.
+5. **Python `index_clips.py` `None` tags** — Added try-except defaults.
+6. **Numpy conflicts** — Uninstalled `tts` and `fish-speech` packages.
+7. **Inconsistent SQLite configs** — Centralized via `storage.OpenSQLiteDB`.
+8. **Missing models/registry wiring** — Restored `AssetNode` + fixed registry loop.
+
+### Active Concerns
+1. ~~**Artlist search is slow**~~ ✅ **OPTIMIZED** — 14ms cached (was 30-50s).
+2. ~~**Binary and scripts in source dir**~~ ✅ **FIXED** — .gitignore updated (June 2026).
+3. **Admin token**: must be set via `VELOX_ADMIN_TOKEN` env var at runtime; never in `config.yaml`.
+4. ~~**Large files (God Objects)**~~ ✅ **SPLIT** — channel_monitor (9 files), extractor_process (3), handler_batch_phases (8), clipindexer (4), voiceover (3).
+5. ~~**context.Background()**~~ ✅ **AUDITED** — remaining ~7 sites are intentional (post-write save contexts per ARCHITECTURE.md §7, composition roots, fallback patterns). CI check `scripts/ci-architectural-checks.sh` enforces the ban on handlers.
+6. ~~**Duplicate architecture docs**~~ ✅ **CONSOLIDATED** — MODULE_MAP.md and MODULE_OWNERSHIP.md deleted. ARCHITECTURE.md is canonical. AGENTS.md now points to it.
+7. ~~**.gitignore leaks**~~ ✅ **FIXED** — Added patterns for root binaries, logs, caches, cookies, `.bak` files.
+8. **Heavy AI-generated codebase**: ~80% of commits from AI agents. Bug diagnosis requires human oversight. Keep test coverage high.
+
+### Drive Token Regeneration
+If Google Drive authentication fails:
+```bash
+python3 scripts/generate_drive_token.py
+```
+
+---
+
+## Context.Background() Policy
+
+The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
+`context.Background()` in `internal/api/` handlers. The following sites are
+**intentionally exempt** per ARCHITECTURE.md §7:
+
+| Site | Reason |
+|------|--------|
+| `internal/api/handlers/script/handlers/postwrite.go` | Post-write save context (30s timeout) — must survive client disconnect |
+| `internal/service/gemmamemory/service.go` | Post-write save context (30s timeout) |
+| `internal/service/scriptcore/write_script.go` | Post-write save context (30s timeout) |
+| `internal/jobs/worker.go` (finalizationCtx, lines ~142-146) | Finalization context for job outcome persistence (30s timeout) — must survive handler timeout so the worker can still mark the job as failed/completed/dead-lettered in the DB. Detached from `jobCtx` by design; detaching from `ctx` (worker lifecycle) would lose the outcome if the worker is shut down mid-job. |
+| `internal/app/init_core.go` | Top-level composition root (no parent context exists) |
+| `internal/api/server.go` | `signal.NotifyContext()` — canonical Go pattern |
+| `internal/service/translations/cache.go` | Defensive fallback when parentCtx is nil |
+| `internal/sources/artlist/search_cache.go` | Defensive fallback when parentCtx is nil |
+
+---
+
+## Migration Status (Brutal Care Plan)
+
+### Completed (June 2026)
+- ✅ Database Consolidation (all tables → `media.db.sqlite`; `media.db.sqlite` removed as unused)
+- ✅ Eliminated `assetpipeline` thin wrapper
+- ✅ Migrated `workflowrunner.results` → job system
+- ✅ Migrated `assetdestination.Resolver` → `core/destination.Resolver`
+- ✅ Migrated `mediaasset.Processor` → `core/processor.Processor`
+- ✅ Consolidated `internal/core/media/` unified models
+- ✅ Centralized DB migrations + connection pooling (WAL/busy_timeout)
+- ✅ Migrated harvester/catalog/db backup → job system
+- ✅ CI checks integrated: `scripts/ci-architectural-checks.sh` in GitHub Actions
+- ✅ Artlist speed optimization (14ms cache, parallel download, persistent Node scraper)
+- ✅ Unified metadata single-call pattern (`tagImageMetadata()`)
+- ✅ Scraper tuning (scroll 300ms, concurrency 8, persistent browser)
+- ✅ All God Objects split into focused files (channel_monitor, extractor_process, etc.)
+- ✅ **context.Background() audited and documented** (ARCHITECTURE.md §7)
+- ✅ **Duplicate architecture docs consolidated** (MODULE_MAP + OWNERSHIP deleted)
+- ✅ **.gitignore cleaned up** (root binaries, logs, cookies, .bak patterns added)
+
+### Still Pending
+- Remove any remaining duplicates in legacy doc folders
+
+---
+
+## Core Contracts
+
+All modules must use canonical contracts in `internal/core/`:
+- `core/destination.Resolver` — adapter in `service/assetdestination/adapter.go`
+- `core/processor.Processor` — adapter in `service/mediaasset/adapter.go`
+- All long-running operations must use `internal/service/jobs/` system
+
+---
+
+## 🧰 Utilities to prefer
+
+Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni utility è leaf-only (zero import da `internal/`); `pkg/` è dove cerchi prima di replicare logica. Regola pratica: se stai per incollare 20+ righe di helper, prima `grep` qui sotto.
+
+| Scenario | Pacchetto | Helper chiave (preferisci questo invece di custom) |
+|---|---|---|
+| Default coalesce (string/int/float) | `pkg/defaults` | `String(val, fallback)`, `Int(val, fallback)`, `Float64(val, fallback)` |
+| Retry con backoff esponenziale | `pkg/retry` | `Do(ctx, fn, opts)`, `DoWithValue[T](ctx, fn, opts)`, `DefaultOptions()` |
+| Hash content / ID generation | `pkg/hashutil` | `SHA256String(s)`, `RandomString(n)`, `MD5File(path)`, `HashFile(path, h)` |
+| Correlation ID propagation (job/script) | `pkg/corid` | `WithCorrelationID(ctx, id)`, `FromContext(ctx)` — usalo nel middleware request ID e nell'enqueue job |
+| Pointer utilities | `pkg/ptrutil` | `Ptr[T](v)`, `DerefOr[T](p, fallback)` |
+| Text/slug/voiceover cleanup | `pkg/textutil` | `Slugify`, `SlugifyWithMax`, `CountWords`, `Truncate`, `CleanForVoiceover`, `FirstNonEmpty(...)`, `ParseVTTTimestamp`, `SplitScriptSentences` |
+| File I/O JSON + filesystem | `pkg/fileutil` | `WriteJSON(path, v, indent)`, `ReadJSON(path, v)`, `CopyFile`, `CleanFolderName(s)`, `UsableCachedClip(path)` |
+| Gin HTTP helpers (handler) | `pkg/apiutil` | `BindJSON[T](c)`, `OK(c, data)`, `BadRequest(c, msg)`, `InternalError(c, err)`, `NotFound`, `Error(c, status, msg)`, `ClampLimit(v, def, max)` |
+| Pagination & job utilities | `pkg/handlerutil` | `ParsePagination(defaultLimit, maxLimit)`, `AsyncJobResponse(c, job, msg)`, `EnqueueAsync`, `ParseJobStatusFilter` |
+| Concurrency / errgroup+panic | `pkg/concurrent` | `WithContext(parent)`, `ParallelMap[T,U]`, `SafeGo(name, fn)` (sostituisce WaitGroup+Mutex+recover custom) |
+| Slice primitives | `pkg/sliceutil` | `UniqueStrings`, `UniqueStringsCI`, `MinInt(a, b)`, `Clamp(v, lo, hi)`, `GroupSentences`, `NormalizeAndDedupe`, `MergeNormalizedLists` |
+| SQL fallbacks (FTS5 bandito) | `pkg/sqlutil` | `BuildFallbackLikeConditions(tokens, cols)`, `BuildFallbackLikeConditionsOR` |
+| YouTube URL / Drive link parse | `pkg/urlutil` | `ExtractVideoID(raw)`, `FileIDFromDriveLink(raw)` |
+| Path/folder naming | `pkg/pathutil` | `SafeFolderName(name)`, `BuildTimestampedSlug`, `ExtractStyleFromPath(relPath)` |
+| Term/name parsing + topic match | `pkg/termutil` | `SubjectMatchesTopic`, `ExtractLikelyNames`, `TermsFromText`, `TopicTokens` |
+| Similarity math | `pkg/similarity` | `Jaccard(a, b)`, `TokenSet(text)`, `OverlapRatio(startA, endA, startB, endB)` |
+| Matching thresholds config | `pkg/matchingconfig` | `LoadMatchingConfig(path)` — **nicho**, solo se tocchi semantic/similarity scoring |
+| Media filesystem scanning | `pkg/mediascan` | `ScanDirectory(root, urlPrefix)` — **nicho**, solo se enumari file media locali |
+| Test helpers | `pkg/testutil` | `MustMarshalJSON(t, v)` |
+| Job HTTP client riusabile | `pkg/veloxclient` | `New(baseURL, token)` → `SubmitAsync`, `GetJobStatus`, `IsTerminal` |
+| Time RFC3339 | `pkg/timeutil` | `ParseRFC3339`, `FormatNow`, `ParseRFC3339PtrString` |
+| External process exec | `pkg/executil` | `Run(ctx, name, args, opts)`, `RunSimple`, `LookPath`, `CommandExists` |
+
+**Servizi interni riusabili** (non reinventare la ruota — vietato duplicare logica):
+
+| Scenario | Servizio | Path |
+|---|---|---|
+| Enqueue/poll/cancel async | `jobs.Service` | `internal/jobs/` — sempre per ogni long-running (>5s) |
+| Vettori Qdrant (interfaccia canonica) | `vectorstore.Service` | `internal/media/vectorstore/` — mai HTTP diretto |
+| Reranker CrossEncoder BGE-reranker-v2-m3 | `reranker.Client` | `internal/reranker/` |
+| Embeddings/chat LLM (con retry + fallback) | `ollama.client.Client` | `internal/ml/ollama/client/` |
+| Read media_assets | `clips.Repository` | `internal/repository/clips/` — GetClip, SearchByTags |
+| Script generation core | `scriptcore.Engine` | `internal/service/scriptcore/` — WriteScript |
+| Script→asset semantic match | `association.Service` | `internal/media/association/` |
+| Real-time clip search (post-Qdrant) | `realtime.Service` | `internal/media/realtime/` |
+| Topic-by-DB routing (folder risoluzione) | `voiceover.GroupsResolver` | `internal/media/voiceover/` |
+| Salva con idempotency / outbox | `outbox.Dispatcher` | `internal/repository/outbox/` |
+| Google Drive upload / Doc creation | `drive.Uploader`, `drive.DocClient` | `internal/upload/drive/` |
+| Channel monitor background | `monitor.ChannelMonitor` | `internal/media/monitor/` |
+
+> **Regola**: se l'utility corretta non è in questa tabella ma `grep` mostra un duplicato (la stessa funzione implementata in >1 posto), PRIMA estrarla in `pkg/<x>/` poi consumarla. Esempio realistico visto nel codice: 4+ implementazioni di "retry con backoff" sono state collassate in `pkg/retry` — stessa opportunità per qualsiasi altra duplicazione che trovi.
+
+---
+
+## ✂️ Modular edit patterns
+
+Quando modifichi il codebase, **modularizza**: una decisione per sezione, una modifica per file, niente "monkey patch" nel posto sbagliato. Questi pattern sono osservati dalla codebase esistente e dai CHANGELOG.
+
+### Pattern 1 — Aggiungere un HTTP handler
+
+1. Crea `internal/api/handlers/<domain>/<file>.go` (un handler per file, non di più).
+2. Definisci request/response types nello stesso file o in `types_<domain>.go` se condivisi.
+3. Registra in `internal/api/routes.go::RegisterRoutes` OPPURE via il modulo in `internal/module/<domain>.go::RegisterRoutes`.
+4. **VIETATO** aggiungere handler a file `god_object.go` esistenti. Se >300 righe, splittalo prima (Pattern 5).
+5. **Mai** chiamare business logic direttamente dal handler — passa per `internal/service/<X>` o `internal/media/<X>`.
+
+```go
+// Shape canonica
+func (h *XHandler) NewAction(c *gin.Context) {
+    if h.deps == nil { apiutil.Error(c, http.StatusServiceUnavailable, "deps not initialized"); return }
+    req, ok := apiutil.BindJSON[NewActionRequest](c)
+    if !ok { return }
+    out, err := h.deps.svc.Do(c.Request.Context(), req)
+    if err != nil { apiutil.InternalError(c, err); return }
+    apiutil.OK(c, out)
+}
+```
+
+### Pattern 2 — Aggiungere una tabella DB
+
+1. Crea `migrations/sqlite/0XX_<descriptive_name>.sql` (numero progressivo; **mai** modificare migration esistenti).
+2. Crea `internal/repository/<domain>/repository.go` con i metodi CRUD tipizzati.
+3. Test di round-trip: insert + select dopo migrate, deve tornare uguale.
+4. **VIETATO** applicare migration generiche cross-DB (anche se ora c'è un solo DB, il principio resta).
+5. **FTS5 bandito**: per full-text usa `pkg/sqlutil.BuildFallbackLikeConditions`.
+
+### Pattern 3 — Aggiungere una fase a una pipeline
+
+1. Logica di business nel service core (`internal/service/<X>/`), **mai** nel handler né nel job handler.
+2. Fan-out parallelo con `pkg/concurrent.WithContext(ctx)` — first-error-wins + panic recovery inclusi.
+3. Per pipeline jobs (script generation, artlist, ...), emetti sempre:
+   - `pipeline_stage_started` con `stage` e `job_id` (a inizio fase)
+   - `pipeline_stage_completed` con `duration_ms` + extra fields (a fine fase, includi counts/ok/error rate)
+4. Aggiorna progress via `tools.Progress(percent, "message")` ad ogni stage (operatori guardano il log stream).
+5. Pattern di post-write save ctx: `withPostWriteContext()` invece di `context.Background()` — consulta l'allowlist sopra.
+
+### Pattern 4 — Aggiungere una utility riutilizzabile
+
+1. Crea `pkg/<utility>/<utility>.go` con package doc che spiega lo scopo in 3-6 righe (vedi `pkg/retry/retry.go` come esempio).
+2. **1 concetto per file** se la utility ha sotto-funzioni (es. `textutil/split.go` per i chunk VTT/script, separato da `textutil.go`).
+3. Aggiungi `pkg/<utility>/<utility>_test.go` accanto — i test sono parte del package (`pkg/<utility>` è leaf, ma i `_test.go` no).
+4. **VIETATO** import da `internal/` dentro `pkg/` — `pkg/` è leaf per definizione (vedi ARCHITECTURE §13).
+5. Se la utility sostituisce duplicazione esistente, fai la migration in PR separata per `code-search` agent così individui tutti i call site.
+
+### Pattern 5 — Splittare un god object
+
+Quando un file supera ~300-400 righe o ha >2-3 responsabilità distinte:
+
+1. Identifica i "tagli naturali" (gruppi di funzioni che condividono uno stato minimo).
+2. Crea un file per **concetto** (es. `voiceover_<feature>.go`, `monitor_<phase>.go`), **non** per tipo.
+3. Condividi lo stato via una struct receiver (es. `Service` con metodi splittati tra file).
+4. Ogni file inizia con section header: `// Package voiceover — split-out file per scene batching` (vedi canonical_pattern in `internal/jobs/types.go` o `internal/media/realtime/*.go`).
+5. Non cambiare la signature pubblica — solo sposta codice.
+
+Esempi già fatti (stato a Giugno 2026 — numeri verificati via `ls`): channel_monitor (11 file in `internal/media/monitor/`), extractor_process (10), handler_batch_phases (13), clipindexer (6), voiceover (11). **← valori snapshot**: se il numero è cambiato, rifai `ls <dir> | wc -l` per verificarlo; aggiorna qui quando splitti un nuovo file.
+
+### Pattern 6 — Modificare una request o payload struct
+
+Quando aggiungi un campo a una request API o a un job payload (caso reale: Bug A di `generate_timeline` perso silenziosamente — vedi CHANGELOG):
+
+1. **3 posti da aggiornare**:
+   - Handler request type (`types_<domain>.go`)
+   - Job payload unmarshalable (`jobPayload<X> struct` o equivalente)
+   - Worker struct/logica che legge il campo e agisce
+2. Aggiungi sempre con `omitempty` o zero-value safe per retro-compatibilità (es. `MinQualityScore float64` con check `> 0`).
+3. Test round-trip: scrivi un test `json.Marshal → json.Unmarshal` che verifica che il campo sopravvive.
+4. **Mai** aggiungere un campo che il worker legge ma il handler non scrive — finisce come "perso silenziosamente" (questo è esattamente Bug A).
+5. Se il campo ha impatto reale, esegui un job reale per verificare end-to-end (usa `pkg/veloxclient` o `scripts/velox_client.py` — vedi `docs/integrations/cross-worker-jobs.md`).
+
+```go
+// Diff template:
+// 1. types_x.go
+type XRequest struct {
+    // ...
+    NewField string `json:"new_field,omitempty"`  // omitempty per retro-compat
+}
+
+// 2. worker payload struct
+type jobPayloadX struct {
+    // ...
+    NewField string `json:"new_field"`  // required dal worker
+}
+
+// 3. handler payload map
+payload := map[string]any{
+    // ...
+    "new_field": req.NewField,
+}
+```
+
+### Pattern 7 — Reusing existing services (regola d'oro)
+
+Prima di scrivere logica nuova, chiediti: esiste già un servizio per X?
+
+**Cross-reference**: la **tabella completa** dei servizi è nella sezione 🧰 Utilities / Servizi interni riusabili sopra — qui sotto solo lo shortcut decisionale dei casi più comuni.
+
+| Tu vuai... | Usa questo (vedi sezione sopra per il path completo) |
+|---|---|
+| **Genera uno script end-to-end** | **`scriptcore.Engine.WriteScript`** *(questo è IL punto d'ingresso canonico)* |
+| Async work (>5s) | `jobs.Service.Enqueue` |
+| Parlare con Qdrant | `vectorstore.Service` (NON HTTP diretto) |
+| Rerank risultati | `reranker.Client.Score` |
+| Chat LLM | `ollama.Client.Chat` (ha già retry+fallback) |
+| Read media_assets | `clips.Repository.GetClip` |
+| Salva con idempotency | `outbox.Dispatcher` |
+
+Se l'utility che cerchi **non è nella sezione 🧰 Utilities**: probabilmente devi creare un servizio condiviso in `internal/service/<X>/` PIUTTOSTO che duplicare logica. Una `code-search` veloce (`rg -l "<func_name>"`) conferma se è già implementato altrove.
+
+---
+
+## File Structure (quick reference)
+
+See `ARCHITECTURE.md` for the full diagram. Quick reference:
+
+```
+.
+├── cmd/server/main.go        # HTTP server + workers
+├── cmd/admin/main.go         # One-shot admin CLI
+├── internal/
+│   ├── core/                 # Canonical contracts
+│   ├── api/handlers/         # HTTP handlers
+│   ├── app/                  # Composition root, wiring, migrations
+│   ├── service/              # Business logic (scriptcore, gemmamemory, translations)
+│   ├── media/                # Media pipelines (images, voiceover, monitor, semantic, ...)
+│   ├── sources/              # Artlist + YouTube providers
+│   ├── jobs/                 # Job queue + workers
+│   ├── module/               # Registry modules (9 modules)
+│   ├── repository/           # Data access layer (scripts, clips, jobs, ...)
+│   └── storage/              # DB connection config
+├── pkg/                      # Leaf utilities only
+├── config/                   # YAML configuration
+├── migrations/               # SQL migrations
+├── scripts/                  # Python AI scripts
+├── node-scraper/             # Persistent Chromium scraper
+├── google-accounting/        # FastAPI + Playwright sidecar
+└── docs/                     # Technical documentation
+```

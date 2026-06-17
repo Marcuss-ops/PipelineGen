@@ -1,0 +1,266 @@
+package drive
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+
+	"google.golang.org/api/docs/v1"
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
+)
+
+const (
+	googleDocsBaseURL = "https://docs.google.com/document/d/%s/edit"
+)
+
+// DocClient is an interface for Google Docs operations.
+type DocClient interface {
+	CreateDoc(ctx context.Context, title, content, folderID string) (*Doc, error)
+	ShareDoc(ctx context.Context, docID, email, role string) error
+	ListRecentDocs(ctx context.Context, folderID string, limit int) ([]Doc, error)
+	UpdateDoc(ctx context.Context, docID, title, content string) error
+}
+
+// DocClientImpl is a Google Docs-backed DocClient.
+type DocClientImpl struct {
+	credentialsPath string
+	tokenPath       string
+	docsService     *docs.Service
+	driveService    *drive.Service
+}
+
+// CreateDoc creates a new Google Doc, inserts the provided content, and moves it to the target folder when requested.
+func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID string) (*Doc, error) {
+	if d.docsService == nil {
+		return nil, fmt.Errorf("google docs service not initialized")
+	}
+
+	docTitle := strings.TrimSpace(title)
+	if docTitle == "" {
+		docTitle = "Untitled script"
+	}
+
+	// Detect HTML content
+	isHTML := strings.Contains(content, "<html") || strings.Contains(content, "<div") || strings.Contains(content, "<h1") || strings.Contains(content, "<p>") || strings.Contains(content, "<style")
+
+	if isHTML && d.driveService != nil {
+		fileMetadata := &drive.File{
+			Name:     docTitle,
+			MimeType: "application/vnd.google-apps.document",
+		}
+		if folderID != "" {
+			fileMetadata.Parents = []string{folderID}
+		}
+
+		media := strings.NewReader(content)
+		created, err := d.driveService.Files.Create(fileMetadata).
+			Media(media, googleapi.ContentType("text/html")).
+			Fields("id,webViewLink").
+			Context(ctx).
+			Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create google doc from html: %w", err)
+		}
+
+		return &Doc{
+			ID:      created.Id,
+			Title:   docTitle,
+			URL:     created.WebViewLink,
+			Content: content,
+		}, nil
+	}
+
+	created, err := d.docsService.Documents.Create(&docs.Document{
+		Title: docTitle,
+	}).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create google doc: %w", err)
+	}
+
+	if err := d.insertContent(ctx, created.DocumentId, content); err != nil {
+		return nil, err
+	}
+
+	if err := d.moveToFolder(ctx, created.DocumentId, folderID); err != nil {
+		return nil, err
+	}
+
+	return &Doc{
+		ID:      created.DocumentId,
+		Title:   docTitle,
+		URL:     fmt.Sprintf(googleDocsBaseURL, created.DocumentId),
+		Content: content,
+	}, nil
+}
+
+func (d *DocClientImpl) insertContent(ctx context.Context, docID, content string) error {
+	text := strings.TrimSpace(content)
+	if text == "" {
+		return nil
+	}
+
+	if _, err := d.docsService.Documents.BatchUpdate(docID, &docs.BatchUpdateDocumentRequest{
+		Requests: []*docs.Request{
+			{
+				InsertText: &docs.InsertTextRequest{
+					Location: &docs.Location{Index: 1},
+					Text:     text,
+				},
+			},
+		},
+	}).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to insert google doc content: %w", err)
+	}
+
+	return nil
+}
+
+// ShareDoc shares a Google Doc with a specific user by email.
+func (d *DocClientImpl) ShareDoc(ctx context.Context, docID, email, role string) error {
+	email = strings.TrimSpace(email)
+	if email == "" || d.driveService == nil {
+		return nil
+	}
+	if role == "" {
+		role = "writer"
+	}
+
+	perm := &drive.Permission{
+		Type:         "user",
+		Role:         role,
+		EmailAddress: email,
+	}
+	_, err := d.driveService.Permissions.Create(docID, perm).
+		SendNotificationEmail(true).
+		Context(ctx).
+		Do()
+	if err != nil {
+		return fmt.Errorf("failed to share google doc with %s: %w", email, err)
+	}
+	return nil
+}
+
+// ListRecentDocs returns recent Google Docs created in the given folder (or across Drive if folderID is empty).
+func (d *DocClientImpl) ListRecentDocs(ctx context.Context, folderID string, limit int) ([]Doc, error) {
+	if d.driveService == nil {
+		return nil, fmt.Errorf("drive service not initialized")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	q := "mimeType='application/vnd.google-apps.document'"
+	folderID = strings.TrimSpace(folderID)
+	if folderID != "" {
+		q = fmt.Sprintf("'%s' in parents and %s", folderID, q)
+	}
+
+	files, err := d.driveService.Files.List().
+		Q(q).
+		OrderBy("createdTime desc").
+		PageSize(int64(limit)).
+		Fields("files(id, name, createdTime, webViewLink)").
+		Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list recent docs: %w", err)
+	}
+
+	var docs []Doc
+	for _, f := range files.Files {
+		docs = append(docs, Doc{
+			ID:        f.Id,
+			Title:     f.Name,
+			URL:       f.WebViewLink,
+			CreatedAt: f.CreatedTime,
+		})
+	}
+	return docs, nil
+}
+
+func (d *DocClientImpl) moveToFolder(ctx context.Context, docID, folderID string) error {
+	folderID = strings.TrimSpace(folderID)
+	if folderID == "" || d.driveService == nil {
+		return nil
+	}
+
+	file, err := d.driveService.Files.Get(docID).Fields("parents").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to fetch document parents: %w", err)
+	}
+
+	update := d.driveService.Files.Update(docID, nil).
+		AddParents(folderID)
+	if len(file.Parents) > 0 {
+		update = update.RemoveParents(strings.Join(file.Parents, ","))
+	}
+	_, err = update.Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to move document to folder: %w", err)
+	}
+
+	return nil
+}
+
+// NewDocClient creates a new Google Docs-backed DocClient.
+func NewDocClient(ctx context.Context, credentialsPath, tokenPath string) (DocClient, error) {
+	if strings.TrimSpace(credentialsPath) == "" {
+		return nil, fmt.Errorf("google credentials path is required")
+	}
+	if strings.TrimSpace(tokenPath) == "" {
+		return nil, fmt.Errorf("google token path is required")
+	}
+
+	if _, err := os.Stat(credentialsPath); err != nil {
+		return nil, fmt.Errorf("google credentials file not found: %w", err)
+	}
+	if _, err := os.Stat(tokenPath); err != nil {
+		return nil, fmt.Errorf("google token file not found: %w", err)
+	}
+
+	httpClient, err := NewGoogleHTTPClient(ctx, credentialsPath, tokenPath, docs.DocumentsScope, drive.DriveScope)
+	if err != nil {
+		return nil, err
+	}
+
+	docsService, err := docs.NewService(ctx, option.WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize google docs service: %w", err)
+	}
+
+	driveService, err := drive.NewService(ctx, option.WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize google drive service: %w", err)
+	}
+
+	return &DocClientImpl{
+		credentialsPath: credentialsPath,
+		tokenPath:       tokenPath,
+		docsService:     docsService,
+		driveService:    driveService,
+	}, nil
+}
+
+// UpdateDoc updates the title and content of an existing Google Doc.
+func (d *DocClientImpl) UpdateDoc(ctx context.Context, docID, title, content string) error {
+	if d.driveService == nil {
+		return fmt.Errorf("drive service not initialized")
+	}
+	fileMetadata := &drive.File{
+		Name: title,
+	}
+	media := strings.NewReader(content)
+	_, err := d.driveService.Files.Update(docID, fileMetadata).
+		Media(media, googleapi.ContentType("text/html")).
+		Context(ctx).
+		Do()
+	if err != nil {
+		return fmt.Errorf("failed to update google doc content: %w", err)
+	}
+	return nil
+}

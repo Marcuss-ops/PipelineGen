@@ -1,0 +1,273 @@
+package app
+
+import (
+	"context"
+
+	bookshandler "velox/go-master/internal/api/handlers/books"
+	lessonshandler "velox/go-master/internal/api/handlers/lessons"
+	realtimehandler "velox/go-master/internal/api/handlers/realtime"
+	"velox/go-master/internal/api/handlers/script/handlers"
+	"velox/go-master/internal/config"
+	"velox/go-master/internal/core/maintenance"
+	"velox/go-master/internal/media/clipresolver"
+	"velox/go-master/internal/media/voiceover"
+	"velox/go-master/internal/module"
+	channelsrepo "velox/go-master/internal/repository/channels"
+	searchqueriesrepo "velox/go-master/internal/repository/searchqueries"
+	"velox/go-master/internal/service/gemmamemory"
+	"velox/go-master/internal/service/scriptcore"
+	"velox/go-master/internal/sources/artlist"
+	"velox/go-master/internal/sources/youtube"
+
+	"go.uber.org/zap"
+)
+
+// RegistryWiring holds the registry and all wired modules.
+type RegistryWiring struct {
+	Registry      *module.Registry
+	System        *SystemWiring
+	ArtlistSvc    *ArtlistWiring
+	YouTubeClip   *YouTubeClipWiring
+	Jobs          *JobsWiring
+	Images        *ImagesWiring
+	MediaIngest   *MediaIngestWiring
+	Drive         *DriveWiring
+	Scraper       *ScraperWiring
+	Assets        *AssetsWiring
+	FullImages    *FullImagesWiring
+	StockPipeline *StockPipelineWiring
+}
+
+// registerModule is a helper to safely register a module and log on error.
+func registerModule(registry *module.Registry, log *zap.Logger, mod module.Module) {
+	if err := registry.Register(mod); err != nil {
+		log.Warn("failed to register module", zap.String("module", mod.Name()), zap.Error(err))
+	}
+}
+
+// WireRegistry creates and populates the module registry with all modules.
+func WireRegistry(
+	ctx context.Context,
+	cfg *config.Config,
+	log *zap.Logger,
+	coreDeps *CoreDeps,
+) (*RegistryWiring, error) {
+	registry := module.NewRegistry()
+	wiring := &RegistryWiring{Registry: registry}
+
+	// ── System ─────────────────────────────────────────────────────────
+	systemWiring := WireSystem(cfg, log)
+	registerModule(registry, log, systemWiring.Module)
+	wiring.System = systemWiring
+
+	// ── Artlist ────────────────────────────────────────────────────────
+	artlistWiring, err := WireArtlist(ctx, cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "Artlist"), zap.Error(err))
+	} else {
+		registerModule(registry, log, artlistWiring.Module)
+		wiring.ArtlistSvc = artlistWiring
+	}
+
+	// ── ScriptFlow ─────────────────────────────────────────────────────
+	if coreDeps.ScriptGen != nil && coreDeps.ImageService != nil {
+		memoryRepo := gemmamemory.NewRepository(coreDeps.DB.DB)
+		memorySvc := gemmamemory.NewService(memoryRepo, log)
+		engine := scriptcore.NewEngine(coreDeps.ScriptGen, memorySvc, coreDeps.ScriptsRepo, log)
+		handler := handlers.NewScriptFlowHandler(
+			coreDeps.ScriptGen, engine, coreDeps.ImageService, coreDeps.RealtimeService,
+			coreDeps.AssocService, coreDeps.VoiceoverService, coreDeps.AssetTreeService,
+			coreDeps.DocClient,
+			coreDeps.DriveUploader, coreDeps.JobsService, coreDeps.ScriptsRepo, memorySvc,
+			cfg.Drive.ScriptsGenFolder(), cfg, log,
+		)
+
+		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore,
+			coreDeps.ClipsOnlyRepo, engine, cfg, log)
+
+		if coreDeps.JobsService != nil {
+			presetsConfig, _ := artlist.LoadPresets("config/presets.yaml")
+			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
+			handler.SetHarvestService(harvestSvc)
+		}
+		mod := module.NewScriptFlowModule(cfg, log, handler)
+		registerModule(registry, log, mod)
+	}
+
+	// ── YouTubeClip ────────────────────────────────────────────────────
+	ytWiring, err := WireYouTubeClip(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "YouTubeClip"), zap.Error(err))
+	} else {
+		registerModule(registry, log, ytWiring.Module)
+		wiring.YouTubeClip = ytWiring
+	}
+
+	// ── Jobs ───────────────────────────────────────────────────────────
+	jobsWiring, err := WireJobs(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "Jobs"), zap.Error(err))
+	} else {
+		registerModule(registry, log, jobsWiring.Module)
+		wiring.Jobs = jobsWiring
+	}
+
+	// ── Images ─────────────────────────────────────────────────────────
+	imagesWiring, err := WireImages(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "Images"), zap.Error(err))
+	} else {
+		registerModule(registry, log, imagesWiring.Module)
+		wiring.Images = imagesWiring
+	}
+
+	// ── MediaIngest ────────────────────────────────────────────────────
+	mediaIngestWiring, err := WireMediaIngest(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "MediaIngest"), zap.Error(err))
+	} else if mediaIngestWiring != nil {
+		registerModule(registry, log, mediaIngestWiring.Module)
+		wiring.MediaIngest = mediaIngestWiring
+	}
+
+	// ── Drive ──────────────────────────────────────────────────────────
+	driveWiring, err := WireDrive(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "Drive"), zap.Error(err))
+	} else {
+		registerModule(registry, log, driveWiring.Module)
+		wiring.Drive = driveWiring
+	}
+
+	// ── Scraper ────────────────────────────────────────────────────────
+	scraperWiring, err := WireScraper(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "Scraper"), zap.Error(err))
+	} else {
+		registerModule(registry, log, scraperWiring.Module)
+		wiring.Scraper = scraperWiring
+	}
+
+	// ── FullImages ─────────────────────────────────────────────────────
+	fullImagesWiring, err := WireFullImages(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "FullImages"), zap.Error(err))
+	} else if fullImagesWiring != nil {
+		registerModule(registry, log, fullImagesWiring.Module)
+		wiring.FullImages = fullImagesWiring
+	}
+
+	// ── StockPipeline ──────────────────────────────────────────────────
+	stockWiring, err := WireStockPipeline(cfg, log, coreDeps)
+	if err != nil {
+		log.Warn("failed to wire module", zap.String("module", "StockPipeline"), zap.Error(err))
+	} else if stockWiring != nil {
+		registerModule(registry, log, stockWiring.Module)
+		wiring.StockPipeline = stockWiring
+	}
+
+	// ── Realtime ───────────────────────────────────────────────────────
+	if coreDeps.RealtimeService != nil {
+		handler := realtimehandler.NewMatchHandler(coreDeps.RealtimeService, log)
+		mod := module.NewRealtimeModule(cfg, log, handler)
+		registerModule(registry, log, mod)
+	}
+
+	// ── Books ──────────────────────────────────────────────────────────
+	if coreDeps.BooksService != nil {
+		handler := bookshandler.NewHandler(coreDeps.BooksService, coreDeps.JobsService, log)
+		mod := module.NewBooksModule(cfg, log, handler)
+		registerModule(registry, log, mod)
+	}
+
+	// ── Lessons ────────────────────────────────────────────────────────
+	if coreDeps.LessonsService != nil {
+		handler := lessonshandler.NewHandler(coreDeps.LessonsService, coreDeps.JobsService, log)
+		mod := module.NewLessonsModule(cfg, log, handler)
+		registerModule(registry, log, mod)
+	}
+
+	// ── Channels ───────────────────────────────────────────────────────
+	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
+		repo := channelsrepo.NewRepository(coreDeps.DB.DB)
+		mod := module.NewChannelsModule(log, repo)
+		registerModule(registry, log, mod)
+	}
+
+	// ── SearchQueries ──────────────────────────────────────────────────
+	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
+		repo := searchqueriesrepo.NewRepository(coreDeps.DB.DB)
+		mod := module.NewSearchQueriesModule(log, repo)
+		registerModule(registry, log, mod)
+	}
+
+	// ── Post-wiring cross-injections ───────────────────────────────────
+	if wiring.Images != nil && wiring.MediaIngest != nil {
+		if wiring.Images.Handler != nil {
+			wiring.Images.Handler.SetIngestService(wiring.MediaIngest.Service)
+			log.Info("injected MediaIngest service into ImagesHandler")
+		}
+		if coreDeps.ImageService != nil {
+			coreDeps.ImageService.SetIngestService(wiring.MediaIngest.Service)
+			log.Info("injected MediaIngest service into ImagesService")
+		}
+	}
+
+	if coreDeps.IndexingService != nil && wiring.MediaIngest != nil {
+		coreDeps.IndexingService.SetIngestService(wiring.MediaIngest.Service)
+		log.Info("injected MediaIngest service into IndexingService")
+	}
+
+	// ── ScriptHistory (dynamic module) ─────────────────────────────────
+	if coreDeps.ScriptsRepo != nil {
+		registerModule(registry, log, module.NewScriptHistoryModule(
+			cfg, log, handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log),
+		))
+	}
+
+	registerModule(registry, log, module.NewUtilityModule(cfg, log, coreDeps.Utility))
+
+	// ── Maintenance Service ────────────────────────────────────────────
+	// Uses a single DB reference (the double-DB bug is fixed).
+	maintenanceSvc := maintenance.NewService(cfg, log,
+		coreDeps.AssetIndexService, coreDeps.AssetTreeService,
+		coreDeps.DeletionService, coreDeps.JobsService, coreDeps.DB.DB)
+	if err := maintenanceSvc.RegisterHandler(); err != nil {
+		log.Warn("failed to register maintenance handler", zap.Error(err))
+	}
+	coreDeps.MaintenanceService = maintenanceSvc
+
+	// ── Artlist / YouTube / Voiceover wiring ───────────────────────────
+	var artlistService *artlist.Service
+	if wiring.ArtlistSvc != nil {
+		artlistService = wiring.ArtlistSvc.Service
+	}
+
+	var youtubeClipService *youtube.Service
+	if wiring.YouTubeClip != nil {
+		youtubeClipService = wiring.YouTubeClip.Service
+	}
+
+	var voiceoverService *voiceover.Service
+	if coreDeps.VoiceoverService != nil {
+		voiceoverService = coreDeps.VoiceoverService
+	}
+
+	// ── Assets ─────────────────────────────────────────────────────────
+	if assetsWiring, err := WireAssets(
+		cfg, log, coreDeps, artlistService, youtubeClipService,
+		voiceoverService, coreDeps.VoiceoverSync, coreDeps.JobsService,
+		coreDeps.CatalogRepo, coreDeps.AssetIndexService, maintenanceSvc,
+	); err == nil && assetsWiring != nil {
+		wiring.Assets = assetsWiring
+		registerModule(registry, log, assetsWiring.Module)
+		coreDeps.DeletionService = assetsWiring.DeletionSvc
+
+		if maintenanceSvc != nil && assetsWiring.DeletionSvc != nil {
+			maintenanceSvc.SetDeletionService(assetsWiring.DeletionSvc)
+			log.Info("injected DeletionService into MaintenanceService")
+		}
+	}
+
+	return wiring, nil
+}

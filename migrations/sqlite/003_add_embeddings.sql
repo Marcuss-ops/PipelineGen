@@ -1,0 +1,3 @@
+-- Deprecated migration placeholder.
+-- The unified velox database no longer contains a clips table, so this migration
+-- is intentionally a no-op to keep schema history aligned without failing startup.
