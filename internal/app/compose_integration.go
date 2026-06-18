@@ -270,6 +270,7 @@ func composeIntegration(
 		imageService:       mediaDomain.ImageService,
 		stockDriveRepo:     mediaDomain.ClipsRepo,
 		clipsOnlyRepo:      core.ClipsOnlyRepo,
+		assetRepo:          core.AssetRepo,
 		monitorsRepo:       mediaDomain.MonitorsRepo,
 		voiceoverService:   mediaDomain.VoiceoverService,
 		voiceoverSync:      voiceoverSync,

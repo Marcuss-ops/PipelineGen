@@ -7,6 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
 	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -61,6 +62,7 @@ type CoreDeps struct {
 	StockDriveRepo     *clips.Repository
 	ArtlistRepo        *clips.Repository
 	ClipsOnlyRepo      *clips.Repository
+	AssetRepo          asset.Repository
 	MonitorsRepo       *monitors.Repository
 	VoiceoverRepo      *voiceovers.Repository
 	VoiceoverService   *voiceover.Service
