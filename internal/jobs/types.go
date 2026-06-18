@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // EnqueueRequest is the HTTP-layer DTO for enqueueing a job. Still uses
@@ -33,10 +35,10 @@ type JobTools struct {
 	IsCancelled func() bool
 }
 
-// HandlerFunc is the type for job handlers. It receives a domain job.Job
-// (not a models.Job) so handlers are not coupled to the legacy model
-// types. Passaggio 6 will remove the models package entirely.
-type HandlerFunc func(ctx context.Context, job *job.Job, tools *JobTools) (map[string]any, error)
+// HandlerFunc is the type for job handlers. Temporarily accepts *models.Job
+// for backward compatibility with ~30 existing handler implementations.
+// Passaggio 6 will migrate all handlers to accept domain *job.Job.
+type HandlerFunc func(ctx context.Context, job *models.Job, tools *JobTools) (map[string]any, error)
 
 // Dispatcher routes jobs to registered handlers by job type (string).
 // Safe for concurrent use after Freeze().
@@ -82,7 +84,58 @@ func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job, tools *JobTools) 
 	if !ok {
 		return nil, fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
-	return handler(ctx, j, tools)
+	// Bridge: convert domain *job.Job → legacy *models.Job for handler
+	// compatibility. Removed in Passaggio 6 when handlers migrate.
+	return handler(ctx, domainToModelsLegacy(j), tools)
+}
+
+// domainToModelsLegacy converts *job.Job → *models.Job for the dispatcher
+// bridge. Removed in Passaggio 6.
+func domainToModelsLegacy(j *job.Job) *models.Job {
+	if j == nil {
+		return nil
+	}
+	status := models.StatusPending
+	switch j.Status {
+	case job.StatusRunning:
+		status = models.StatusRunning
+	case job.StatusCompleted:
+		status = models.StatusSucceeded
+	case job.StatusFailed:
+		status = models.StatusFailed
+	case job.StatusCancelled:
+		status = models.StatusCancelled
+	}
+	return &models.Job{
+		ID:            j.ID,
+		Type:          models.JobType(j.Type),
+		Status:        status,
+		Priority:      j.Priority,
+		Project:       j.Project,
+		Payload:       j.Payload,
+		Result:        modelResult(j.Result),
+		Error:         j.Error,
+		Progress:      j.Progress,
+		RetryCount:    j.RetryCount,
+		MaxRetries:    j.MaxRetries,
+		WorkerID:      j.WorkerID,
+		LeaseID:       j.LeaseID,
+		LeaseExpiry:   j.LeaseExpiry,
+		Revision:      j.Revision,
+		CorrelationID: j.CorrelationID,
+		CreatedAt:     j.CreatedAt,
+		UpdatedAt:     j.UpdatedAt,
+		StartedAt:     j.StartedAt,
+		CompletedAt:   j.CompletedAt,
+	}
+}
+
+func modelResult(r json.RawMessage) map[string]any {
+	var m map[string]any
+	if len(r) > 0 && string(r) != "null" {
+		_ = json.Unmarshal(r, &m)
+	}
+	return m
 }
 
 type RunnerConfig struct {
