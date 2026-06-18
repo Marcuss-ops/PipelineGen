@@ -64,6 +64,8 @@ type CoreDeps struct {
 	ClipsOnlyRepo      *clips.Repository
 	AssetRepo          asset.Repository
 	AssetLocationRepo  asset.LocationRepository
+	AssetProcessingRepo asset.ProcessingRepository
+	AssetQueryService   *assetquery.Service
 	MonitorsRepo       *monitors.Repository
 	VoiceoverRepo      *voiceovers.Repository
 	VoiceoverService   *voiceover.Service

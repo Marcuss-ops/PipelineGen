@@ -1,26 +1,37 @@
 package app
 
 import (
+	"database/sql"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
 
 // initMediaProcessor initializes the media processing engine.
-func initMediaProcessor(cfg *config.Config, clipsOnlyRepo *clips.Repository, log *zap.Logger, driveUploader *drive.Uploader) processor.Processor {
+func initMediaProcessor(
+	cfg *config.Config,
+	db *sql.DB,
+	assets asset.Repository,
+	querySvc *assetquery.Service,
+	locations asset.LocationRepository,
+	processing asset.ProcessingRepository,
+	log *zap.Logger,
+	driveUploader *drive.Uploader,
+) processor.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
-	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(db, assets, querySvc, locations, processing)
 
 	return mediaasset.NewProcessor(
 		ytDLPDownloader,

@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     avoid_for           TEXT    NOT NULL DEFAULT '[]',
     phash               TEXT    NOT NULL DEFAULT '',
     child_count         INTEGER NOT NULL DEFAULT 0,
+    thumb_url           TEXT    NOT NULL DEFAULT '',
     status              TEXT    NOT NULL DEFAULT '',
     error               TEXT    NOT NULL DEFAULT '',
     drive_file_id       TEXT    NOT NULL DEFAULT '',

@@ -120,7 +120,13 @@ func wireArtlistHandler(
 }
 
 func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
-	clipsRegistry := assetregistry.NewClipsRegistry(coreDeps.ClipsOnlyRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(
+		coreDeps.DB.DB,
+		coreDeps.AssetRepo,
+		coreDeps.AssetQueryService,
+		coreDeps.AssetLocationRepo,
+		coreDeps.AssetProcessingRepo,
+	)
 	return NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
 		DriveClient: coreDeps.DriveClient,

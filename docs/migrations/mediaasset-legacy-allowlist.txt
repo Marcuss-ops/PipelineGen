@@ -22,7 +22,6 @@ internal/api/handlers/sources/source_utils.go
 internal/api/handlers/sources/youtube_handlers.go
 internal/application/workerassets/service.go
 internal/media/assetindex/resolver.go
-internal/media/assetregistry/clips_adapter.go
 internal/media/assetregistry/converters.go
 internal/media/autotag/service.go
 internal/media/catalogsync/dispatcher_test.go
@@ -36,7 +35,6 @@ internal/media/clipresolver/utils.go
 internal/media/deletion.go
 internal/media/images/google_vids_assets.go
 internal/media/images/nvidia_animate.go
-internal/media/ingest/adapter_clip.go
 internal/media/ontology/scorer.go
 internal/media/ontology/scorer_test.go
 internal/media/ontology/types.go
