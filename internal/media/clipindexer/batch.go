@@ -45,7 +45,7 @@ func (s *Service) BatchReindex(ctx context.Context, source, mediaType string, li
 		queryParams = append(queryParams, source)
 	}
 	if mediaType != "" {
-		conditions = append(conditions, "json_extract(metadata_json, '$.media_type') = ?")
+		conditions = append(conditions, "media_type = ?")
 		queryParams = append(queryParams, mediaType)
 	}
 
@@ -132,7 +132,7 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 		queryParams = append(queryParams, req.Source)
 	}
 	if req.MediaType != "" {
-		conditions = append(conditions, "json_extract(metadata_json, '$.media_type') = ?")
+		conditions = append(conditions, "media_type = ?")
 		queryParams = append(queryParams, req.MediaType)
 	}
 
