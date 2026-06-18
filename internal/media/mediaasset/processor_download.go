@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 )
 
 // downloadStep downloads the asset from the source URL.
-func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath string) (actualPath string, err error) {
-	// Try HTTP download first for direct URLs (e.g., Artlist with direct links)
+func (p *Processor) downloadStep(ctx context.Context, input *processor.ProcessInput, rawPath string) (actualPath string, err error) {
+	// Try HTTP download first for direct URLs (e.g., Artlist with direct links).
 	if p.httpDL != nil && p.isDirectURL(input.SourceURL) {
 		p.log.Info("using HTTP downloader for direct URL", zap.String("id", input.ID), zap.String("url", input.SourceURL))
 		httpReq := &downloader.HTTPDownloadRequest{
@@ -26,7 +28,7 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 		}
 		if err := p.httpDL.Download(ctx, httpReq); err != nil {
 			p.log.Warn("HTTP download failed, falling back to yt-dlp", zap.Error(err))
-			// Fall through to yt-dlp
+			// Fall through to yt-dlp.
 		} else {
 			p.log.Info("HTTP download succeeded", zap.String("path", rawPath))
 			return rawPath, nil
@@ -56,7 +58,7 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 		)
 	}
 
-	// Use FFmpeg for other HLS URLs (non-Artlist, e.g. direct m3u8)
+	// Use FFmpeg for other HLS URLs (non-Artlist, e.g. direct m3u8).
 	if p.ffmpeg != nil && p.isHLSURL(input.SourceURL) {
 		p.log.Info("using FFmpeg for HLS URL",
 			zap.String("id", input.ID),
@@ -72,7 +74,7 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 		}
 	}
 
-	// Use yt-dlp for complex URLs (YouTube, etc.)
+	// Use yt-dlp for complex URLs (YouTube, etc.).
 	dlReq := &downloader.DownloadRequest{
 		URL:              input.SourceURL,
 		OutputPath:       rawPath,
@@ -102,7 +104,7 @@ func (p *Processor) downloadStep(ctx context.Context, input AssetInput, rawPath 
 
 // isDirectURL checks if URL is likely a direct download (not needing yt-dlp).
 func (p *Processor) isDirectURL(url string) bool {
-	// Check for known direct download patterns
+	// Check for known direct download patterns.
 	directPatterns := []string{
 		"artlist.io/download",
 		"artlist.io/api",
@@ -132,17 +134,17 @@ func (p *Processor) isArtlistURL(url string) bool {
 
 // downloadViaScraper calls the Node.js scraper /download endpoint to download
 // an Artlist clip with browser authentication (cookies).
-func (p *Processor) downloadViaScraper(ctx context.Context, input AssetInput, rawPath string) (string, error) {
+func (p *Processor) downloadViaScraper(ctx context.Context, input *processor.ProcessInput, rawPath string) (string, error) {
 	scraperURL := strings.TrimSuffix(p.scraperURL, "/") + "/download"
 
-	// Use ClipPageURL if available (the actual Artlist clip page URL for browser navigation)
-	// Fall back to SourceURL (which might be the .m3u8 URL)
+	// Use ClipPageURL if available (the actual Artlist clip page URL for browser navigation).
+	// Fall back to SourceURL (which might be the .m3u8 URL).
 	clipPageURL := input.ClipPageURL
 	if clipPageURL == "" {
 		clipPageURL = input.SourceURL
 	}
 
-	// The scraper saves to output_dir with filename: {clipId}.ts (for HLS) or {clipId}.mp4
+	// The scraper saves to output_dir with filename: {clipId}.ts (for HLS) or {clipId}.mp4.
 	savePath := rawPath + ".mp4"
 
 	payload := map[string]any{
