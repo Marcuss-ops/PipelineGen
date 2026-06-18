@@ -21,22 +21,22 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
 		}
 	}
 	clip := &asset.MediaAsset{
-		ID:           rec.ID,
-		Name:         name,
-		Filename:     rec.Filename,
-		FolderID:     rec.FolderID,
-		FolderPath:   rec.FolderPath,
-		DriveLink:    rec.DriveLink,
-		DriveFileID:  rec.DriveFileID,
-		DownloadLink: rec.DownloadLink,
-		FileHash:     rec.FileHash,
-		LocalPath:    rec.LocalPath,
-		Source:       "voiceover",
-		MediaType:    "audio",
-		SearchTerms:  []string{rec.TextPreview},
-		CreatedAt:    rec.CreatedAt,
-		UpdatedAt:    rec.UpdatedAt,
+		ID:          rec.ID,
+		Name:        name,
+		Filename:    rec.Filename,
+		Source:      "voiceover",
+		MediaType:   "audio",
+		SearchTerms: []string{rec.TextPreview},
+		CreatedAt:   rec.CreatedAt,
+		UpdatedAt:   rec.UpdatedAt,
 	}
+	clip.SetFolderID(rec.FolderID)
+	clip.SetFolderPath(rec.FolderPath)
+	clip.SetDriveLink(rec.DriveLink)
+	clip.SetDriveFileID(rec.DriveFileID)
+	clip.SetDownloadLink(rec.DownloadLink)
+	clip.SetFileHash(rec.FileHash)
+	clip.SetLocalPath(rec.LocalPath)
 	clip.SetMetadataJSON(rec.Metadata)
 	return clip
 }
@@ -54,14 +54,10 @@ func ImageAssetToClip(assetItem *models.ImageAsset) *asset.MediaAsset {
 	if id == "" {
 		id = assetItem.Hash
 	}
-	return &asset.MediaAsset{
+	clip := &asset.MediaAsset{
 		ID:          id,
 		Name:        name,
 		Filename:    filepath.Base(assetItem.PathRel),
-		DriveLink:   assetItem.SourceURL,
-		DriveFileID: assetItem.DriveFileID,
-		FileHash:    assetItem.Hash,
-		LocalPath:   assetItem.PathRel,
 		Source:      "images",
 		MediaType:   "image",
 		Tags:        assetItem.Tags,
@@ -69,25 +65,10 @@ func ImageAssetToClip(assetItem *models.ImageAsset) *asset.MediaAsset {
 		CreatedAt:   assetItem.CreatedAt,
 		UpdatedAt:   assetItem.CreatedAt,
 	}
+	clip.SetDriveLink(assetItem.SourceURL)
+	clip.SetDriveFileID(assetItem.DriveFileID)
+	clip.SetFileHash(assetItem.Hash)
+	clip.SetLocalPath(assetItem.PathRel)
+	return clip
 }
 
-
-// ToCanonical is an identity function during the transition.
-// Since the canonical type (*asset.MediaAsset) is already the single source of truth,
-// this simply returns its input unchanged.
-//
-// Deprecated: This function is a no-op. Remove all call sites, then delete this function.
-// After all callers are migrated, this file should be removed entirely.
-func ToCanonical(a *asset.MediaAsset) *asset.MediaAsset {
-	return a
-}
-
-// ToLegacy is an identity function during the transition.
-// Since models.MediaAsset has been deleted and all code now uses *asset.MediaAsset,
-// this simply returns its input unchanged.
-//
-// Deprecated: This function is a no-op. Remove all call sites, then delete this function.
-// After all callers are migrated, this file should be removed entirely.
-func ToLegacy(a *asset.MediaAsset) *asset.MediaAsset {
-	return a
-}

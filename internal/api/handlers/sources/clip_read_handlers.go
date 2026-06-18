@@ -166,7 +166,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			}
 			allClips = make([]*asset.MediaAsset, len(legacyClips))
 			for i, lc := range legacyClips {
-				allClips[i] = assetregistry.ToCanonical(lc)
+				allClips[i] = lc
 			}
 		}
 	}

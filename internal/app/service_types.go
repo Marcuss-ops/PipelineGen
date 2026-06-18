@@ -38,7 +38,7 @@ import (
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"

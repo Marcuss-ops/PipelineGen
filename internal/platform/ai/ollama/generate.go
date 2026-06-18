@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/translations"
 	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 
 	"go.uber.org/zap"
@@ -26,9 +25,14 @@ var randomSeed = func() int {
 	return int(rand.Int63())
 }
 
+type TranslationCache interface {
+	Get(ctx context.Context, text, targetLanguage string) (string, bool)
+	Set(ctx context.Context, text, targetLanguage, translated string) error
+}
+
 type Generator struct {
 	client           *client.Client
-	translationCache *translations.Cache
+	translationCache TranslationCache
 	metadataModel    string // lighter model for entity extraction, metadata, translations
 }
 
@@ -387,7 +391,7 @@ func (g *Generator) TranslateTextWithModel(ctx context.Context, text, targetLang
 
 // SetTranslationCache attaches a translation cache to the Generator.
 // All subsequent TranslateText calls will check the cache first.
-func (g *Generator) SetTranslationCache(cache *translations.Cache) {
+func (g *Generator) SetTranslationCache(cache TranslationCache) {
 	g.translationCache = cache
 }
 

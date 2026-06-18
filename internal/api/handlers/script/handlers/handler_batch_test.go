@@ -16,7 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 

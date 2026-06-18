@@ -326,7 +326,7 @@ func convertMediaAsset(details *assetquery.Details) *resolvedAsset {
 		Filename:     filename,
 		LocalPath:    localPath,
 		DriveLink:    driveLink,
-		DownloadLink: firstNonEmpty(downloadLink, assetItem.ExternalURL),
+		DownloadLink: firstNonEmpty(downloadLink, assetItem.ExternalURL()),
 	}
 }
 

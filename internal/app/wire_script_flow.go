@@ -9,8 +9,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
 // wireScriptFlowExtras wires the optional clip-source builder and media curator

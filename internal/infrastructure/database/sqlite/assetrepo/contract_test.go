@@ -121,18 +121,18 @@ func TestUpsertGetRoundTrip(t *testing.T) {
 	r := newTestRepo(t)
 	ctx := context.Background()
 	m := &asset.MediaAsset{
-		ID:            "asset_rt_001",
-		Source:        "youtube",
-		Name:          "Round Trip Test",
-		Filename:      "rt_001.mp4",
-		MediaType:     "video",
-		Category:      "demo",
-		SourceURL:     "https://youtube.com/watch?v=rt_001",
-		DurationMs:    12345,
-		Tags:          []string{"a", "b"},
-		QualityScore:  0.92,
+		ID:             "asset_rt_001",
+		Source:         "youtube",
+		Name:           "Round Trip Test",
+		Filename:       "rt_001.mp4",
+		MediaType:      "video",
+		Category:       "demo",
+		SourceURL:      "https://youtube.com/watch?v=rt_001",
+		DurationMs:     12345,
+		Tags:           []string{"a", "b"},
 		LifecycleState: asset.StateReady,
 	}
+	m.SetQualityScore(0.92)
 	mustUpsert(t, r, m)
 
 	got, err := r.Get(ctx, m.ID)
@@ -142,7 +142,7 @@ func TestUpsertGetRoundTrip(t *testing.T) {
 	if got == nil {
 		t.Fatalf("Get(%s): nil result", m.ID)
 	}
-	if got.Source != m.Source || got.DurationMs != m.DurationMs || got.QualityScore != m.QualityScore {
+	if got.Source != m.Source || got.DurationMs != m.DurationMs || got.QualityScore() != m.QualityScore() {
 		t.Errorf("round-trip mismatch:\n want=%+v\n  got=%+v", m, got)
 	}
 }

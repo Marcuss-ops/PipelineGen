@@ -32,8 +32,8 @@ import (
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )

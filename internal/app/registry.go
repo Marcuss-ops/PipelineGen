@@ -14,8 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 

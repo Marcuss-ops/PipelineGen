@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/translations"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
 // ── topicRelevant ─────────────────────────────────────────────────────────

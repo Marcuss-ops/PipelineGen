@@ -3,7 +3,6 @@ package sources
 import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -85,7 +84,7 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 
 	// Also update Asset Tree if service is available
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(assetregistry.ToCanonical(clip))
+		node := clipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clipID), zap.Error(err))
 		}

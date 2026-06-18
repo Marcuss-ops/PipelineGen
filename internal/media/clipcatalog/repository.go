@@ -262,8 +262,8 @@ func (r *Repository) GetClip(ctx context.Context, clipID string) (*asset.MediaAs
 		return nil, err
 	}
 
-	clip.DriveLink = driveLinkNull.String
-	clip.LocalPath = localPathNull.String
+	clip.SetDriveLink(driveLinkNull.String)
+	clip.SetLocalPath(localPathNull.String)
 	clip.Category = categoryNull.String
 	if searchTextNull.String != "" {
 		clip.SearchTerms = []string{searchTextNull.String}

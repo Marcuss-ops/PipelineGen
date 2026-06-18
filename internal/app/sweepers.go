@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"

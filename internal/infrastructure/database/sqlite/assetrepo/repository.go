@@ -370,8 +370,8 @@ func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, t
 		deletedAtStr = timeutil.FormatRFC3339(*m.DeletedAt)
 	}
 
-	usableForJSON := mustJSONArray(m.UsableFor)
-	avoidForJSON := mustJSONArray(m.AvoidFor)
+	usableForJSON := mustJSONArray(m.UsableFor())
+	avoidForJSON := mustJSONArray(m.AvoidFor())
 	metadataJSON := m.MetadataJSON()
 
 	_, err := tx.ExecContext(ctx, `
@@ -449,15 +449,15 @@ func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, t
 			thumb_url       = excluded.thumb_url
 	`,
 		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
-		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
+		m.SourceURL, m.ClipPageURL, m.ThumbnailURL,		m.ExternalURL(),
 		m.DurationMs, tagsJSON, searchTermsJSON, m.SearchText,
 		lifecycle, deletedAtStr,
-		m.QualityScore, m.ReuseCount, m.LastUsedAt,
-		m.SceneType, metadataJSON, boolToInt(m.IsFolder), m.Depth,
-		m.FolderID, m.ParentFolderID, m.FolderPath,
-		usableForJSON, avoidForJSON, m.PHash, m.ChildCount,
-		m.DriveFileID, m.DriveLink, m.DownloadLink, m.LocalPath, m.LocalPath, m.FileHash,
-		m.EmbeddingJSON, m.VisualEmbedding, m.TranscriptEmbedding, m.VisualEmbeddingJSON,
+		m.QualityScore(), m.ReuseCount(), m.LastUsedAt(),
+		m.SceneType(), metadataJSON, boolToInt(m.IsFolder()), m.Depth(),
+		m.FolderID(), m.ParentFolderID(), m.FolderPath(),
+		usableForJSON, avoidForJSON, m.PHash(), m.ChildCount(),
+		m.DriveFileID(), m.DriveLink(), m.DownloadLink(), m.LocalPath(), m.LocalPath(), m.FileHash(),
+		m.EmbeddingJSON(), m.VisualEmbedding(), m.TranscriptEmbedding(), m.VisualEmbeddingJSON(),
 		tagsNorm(m.Tags), m.FolderID, m.ThumbnailURL,
 		nowStr, nowStr,
 	)
@@ -519,7 +519,7 @@ func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, m *asset.MediaAss
 // the INSERT's is_primary value is the sole authority.
 func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, nowStr string) error {
 	// ── Local location ──────────────────────────────────────────────
-	if m.LocalPath != "" {
+	if m.LocalPath() != "" {
 		// Reset any previous primary before setting the new one.
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE asset_locations SET is_primary = 0 WHERE asset_id = ?`,
@@ -536,7 +536,7 @@ func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, no
 				file_hash   = excluded.file_hash,
 				is_primary  = excluded.is_primary,
 				updated_at  = excluded.updated_at
-		`, m.ID, m.LocalPath, m.FileHash, nowStr, nowStr)
+		`, m.ID, m.LocalPath(), m.FileHash(), nowStr, nowStr)
 		if err != nil {
 			return fmt.Errorf("upsert local location: %w", err)
 		}
@@ -550,17 +550,17 @@ func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, no
 	}
 
 	// ── Drive location ─────────────────────────────────────────────
-	hasDrive := m.DriveFileID != "" || m.DriveLink != ""
+	hasDrive := m.DriveFileID() != "" || m.DriveLink() != ""
 	if hasDrive {
 		uri := ""
-		if m.DriveFileID != "" {
-			uri = "drive://" + m.DriveFileID
+		if m.DriveFileID() != "" {
+			uri = "drive://" + m.DriveFileID()
 		} else {
-			uri = m.DriveLink
+			uri = m.DriveLink()
 		}
 		// Drive is primary only when there's no local path.
 		isPrimary := 0
-		if m.LocalPath == "" {
+		if m.LocalPath() == "" {
 			// Reset previous primary before setting the new one.
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE asset_locations SET is_primary = 0 WHERE asset_id = ?`,
@@ -582,8 +582,8 @@ func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, no
 				file_hash     = excluded.file_hash,
 				is_primary    = excluded.is_primary,
 				updated_at    = excluded.updated_at
-		`, m.ID, uri, m.DriveFileID, m.DriveLink, m.DownloadLink,
-			m.FileHash, isPrimary, nowStr, nowStr)
+		`, m.ID, uri, m.DriveFileID(), m.DriveLink(), m.DownloadLink(),
+			m.FileHash(), isPrimary, nowStr, nowStr)
 		if err != nil {
 			return fmt.Errorf("upsert drive location: %w", err)
 		}

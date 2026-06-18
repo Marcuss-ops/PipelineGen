@@ -166,9 +166,9 @@ func clipToAssetRecord(source string, clip *asset.MediaAsset) *AssetRecord {
 		Source:    source,
 		SourceID:  clip.ID,
 		GroupName: clip.Group,
-		LocalPath: clip.LocalPath,
-		DriveLink: clip.DriveLink,
-		FileHash:  clip.FileHash,
+		LocalPath: clip.LocalPath(),
+		DriveLink: clip.DriveLink(),
+		FileHash:  clip.FileHash(),
 		Status:    "", // status migrated to asset_processing
 	}
 

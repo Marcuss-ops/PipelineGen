@@ -12,7 +12,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
@@ -91,12 +90,12 @@ func StartMetricsRefresher(ctx context.Context, repo MetricRefresher, interval t
 	}()
 }
 
-// Worker polls the domain job.Repository for queued jobs and dispatches
-// them to registered handlers. It depends on the domain job.Repository
+// Worker polls the domain Repository for queued jobs and dispatches
+// them to registered handlers. It depends on the domain Repository
 // interface, NOT on the concrete *jobs.Repository.
 type Worker struct {
 	id         string
-	repo       job.Repository
+	repo       Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	leaseTTL   time.Duration
@@ -104,7 +103,7 @@ type Worker struct {
 	types      []string
 }
 
-func NewWorker(id string, repo job.Repository, dispatcher *Dispatcher, log *zap.Logger,
+func NewWorker(id string, repo Store, dispatcher *Dispatcher, log *zap.Logger,
 	leaseTTL, pollEvery time.Duration, types []string) *Worker {
 	return &Worker{
 		id:         id,
@@ -156,7 +155,7 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-func (w *Worker) runJob(parent context.Context, j *job.Job) {
+func (w *Worker) runJob(parent context.Context, j *Job) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
@@ -207,7 +206,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			if err != nil {
 				return false
 			}
-			return domJob != nil && domJob.Status == job.StatusCancelled
+			return domJob != nil && domJob.Status == StatusCancelled
 		},
 	}
 
@@ -237,7 +236,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			// server-side backoff via available_at. No intermediate
 			// "failed" state — avoids false alerting.
 			if retryErr := w.repo.ScheduleRetry(finalizationCtx, j.ID, workerID, leaseID, revision, backoff); retryErr != nil {
-				if errors.Is(retryErr, job.ErrLeaseLost) {
+				if errors.Is(retryErr, ErrLeaseLost) {
 					w.log.Warn("lease lost during ScheduleRetry — another worker claimed this job",
 						zap.String("job_id", j.ID))
 				} else {
@@ -250,7 +249,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		}
 
 		if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, revision, dispatchErr.Error()); failErr != nil {
-			if errors.Is(failErr, job.ErrLeaseLost) {
+			if errors.Is(failErr, ErrLeaseLost) {
 				w.log.Warn("lease lost during fail (exhausted retries)",
 					zap.String("job_id", j.ID))
 			} else {
@@ -271,7 +270,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	}
 
 	if completeErr := w.repo.Complete(finalizationCtx, j.ID, workerID, leaseID, revision, mapToRawMessage(result)); completeErr != nil {
-		if errors.Is(completeErr, job.ErrLeaseLost) {
+		if errors.Is(completeErr, ErrLeaseLost) {
 			w.log.Warn("lease lost during complete — another worker claimed this job",
 				zap.String("job_id", j.ID))
 		} else {

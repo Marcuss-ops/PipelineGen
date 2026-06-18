@@ -81,17 +81,24 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 	var isFolder sql.NullInt64
 	var driveFileID, driveLink, downloadLink, localPath, fileHash sql.NullString
 
+	// Deprecated fields — scan into locals, then use setters
+	var externalURL sql.NullString
+	var folderID, parentFolderID, folderPath sql.NullString
+	var sceneType sql.NullString
+	var lastUsedAt sql.NullString
+	var phash sql.NullString
+
 	err := s.Scan(
 		&a.ID, &a.Source, &a.Name, &a.Filename, &a.MediaType, &a.Category,
-		&grp, &a.SourceURL, &a.ClipPageURL, &a.ThumbnailURL, &a.ExternalURL,
+		&grp, &a.SourceURL, &a.ClipPageURL, &a.ThumbnailURL, &externalURL,
 		&duration,
 		&tagsJSON, &searchTermsJSON, &a.SearchText,
 		&lifecycleStr, &deletedAtStr,
 		&metadataStr,
 		&embeddingJSON, &visualEmb, &transcriptEmb, &visualEmbJSON,
-		&a.FolderID, &a.ParentFolderID, &a.FolderPath, &depth, &isFolder,
-		&a.SceneType, &qualityScore, &reuseCount, &a.LastUsedAt,
-		&usableForJSON, &avoidForJSON, &a.PHash, &childCount,
+		&folderID, &parentFolderID, &folderPath, &depth, &isFolder,
+		&sceneType, &qualityScore, &reuseCount, &lastUsedAt,
+		&usableForJSON, &avoidForJSON, &phash, &childCount,
 		&driveFileID, &driveLink, &downloadLink, &localPath, &fileHash,
 		&createdAtStr, &updatedAtStr,
 	)
@@ -99,45 +106,21 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 		return nil, err
 	}
 
-	if grp.Valid {
-		a.Group = grp.String
-	}
-	if duration.Valid {
-		a.DurationMs = duration.Int64
-	}
-	if depth.Valid {
-		a.Depth = int(depth.Int64)
-	}
-	if isFolder.Valid {
-		a.IsFolder = isFolder.Int64 != 0
-	}
-	if qualityScore.Valid {
-		a.QualityScore = qualityScore.Float64
-	}
-	if reuseCount.Valid {
-		a.ReuseCount = int(reuseCount.Int64)
-	}
-	if childCount.Valid {
-		a.ChildCount = int(childCount.Int64)
-	}
-	if lifecycleStr.Valid {
-		a.LifecycleState = asset.LifecycleState(lifecycleStr.String)
-	}
+	if grp.Valid { a.Group = grp.String }
+	if duration.Valid { a.DurationMs = duration.Int64 }
+	if depth.Valid { a.SetDepth(int(depth.Int64)) }
+	if isFolder.Valid { a.SetIsFolder(isFolder.Int64 != 0) }
+	if qualityScore.Valid { a.SetQualityScore(qualityScore.Float64) }
+	if reuseCount.Valid { a.SetReuseCount(int(reuseCount.Int64)) }
+	if childCount.Valid { a.SetChildCount(int(childCount.Int64)) }
+	if lifecycleStr.Valid { a.LifecycleState = asset.LifecycleState(lifecycleStr.String) }
 
 	if deletedAtStr.Valid && deletedAtStr.String != "" {
-		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() {
-			a.DeletedAt = &t
-		}
+		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() { a.DeletedAt = &t }
 	}
 
-	now := timeutil.ParseRFC3339(createdAtStr.String)
-	if !now.IsZero() {
-		a.CreatedAt = now
-	}
-	updated := timeutil.ParseRFC3339(updatedAtStr.String)
-	if !updated.IsZero() {
-		a.UpdatedAt = updated
-	}
+	if t := timeutil.ParseRFC3339(createdAtStr.String); !t.IsZero() { a.CreatedAt = t }
+	if t := timeutil.ParseRFC3339(updatedAtStr.String); !t.IsZero() { a.UpdatedAt = t }
 
 	if tagsJSON.Valid && tagsJSON.String != "" && tagsJSON.String != "[]" {
 		_ = json.Unmarshal([]byte(tagsJSON.String), &a.Tags)
@@ -146,44 +129,34 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 		_ = json.Unmarshal([]byte(searchTermsJSON.String), &a.SearchTerms)
 	}
 	if usableForJSON.Valid && usableForJSON.String != "" && usableForJSON.String != "[]" {
-		_ = json.Unmarshal([]byte(usableForJSON.String), &a.UsableFor)
+		var arr []string
+		_ = json.Unmarshal([]byte(usableForJSON.String), &arr)
+		a.SetUsableFor(arr)
 	}
 	if avoidForJSON.Valid && avoidForJSON.String != "" && avoidForJSON.String != "[]" {
-		_ = json.Unmarshal([]byte(avoidForJSON.String), &a.AvoidFor)
+		var arr []string
+		_ = json.Unmarshal([]byte(avoidForJSON.String), &arr)
+		a.SetAvoidFor(arr)
 	}
 
-	if embeddingJSON.Valid {
-		a.EmbeddingJSON = embeddingJSON.String
-	}
-	if visualEmb.Valid {
-		a.VisualEmbedding = visualEmb.String
-	}
-	if transcriptEmb.Valid {
-		a.TranscriptEmbedding = transcriptEmb.String
-	}
-	if visualEmbJSON.Valid {
-		a.VisualEmbeddingJSON = visualEmbJSON.String
-	}
+	// Use setters for all deprecated fields
+	if externalURL.Valid { a.SetExternalURL(externalURL.String) }
+	if embeddingJSON.Valid { a.SetEmbeddingJSON(embeddingJSON.String) }
+	if visualEmb.Valid { a.SetVisualEmbedding(visualEmb.String) }
+	if transcriptEmb.Valid { a.SetTranscriptEmbedding(transcriptEmb.String) }
+	if visualEmbJSON.Valid { a.SetVisualEmbeddingJSON(visualEmbJSON.String) }
+	if folderID.Valid { a.SetFolderID(folderID.String) }
+	if parentFolderID.Valid { a.SetParentFolderID(parentFolderID.String) }
+	if folderPath.Valid { a.SetFolderPath(folderPath.String) }
+	if sceneType.Valid { a.SetSceneType(sceneType.String) }
+	if lastUsedAt.Valid { a.SetLastUsedAt(lastUsedAt.String) }
+	if phash.Valid { a.SetPHash(phash.String) }
+	if driveFileID.Valid { a.SetDriveFileID(driveFileID.String) }
+	if driveLink.Valid { a.SetDriveLink(driveLink.String) }
+	if downloadLink.Valid { a.SetDownloadLink(downloadLink.String) }
+	if localPath.Valid { a.SetLocalPath(localPath.String) }
+	if fileHash.Valid { a.SetFileHash(fileHash.String) }
 
-	// PR1 dual-write: populate legacy location fields from media_assets columns.
-	// These will move to asset_locations exclusively in PR2.
-	if driveFileID.Valid {
-		a.DriveFileID = driveFileID.String
-	}
-	if driveLink.Valid {
-		a.DriveLink = driveLink.String
-	}
-	if downloadLink.Valid {
-		a.DownloadLink = downloadLink.String
-	}
-	if localPath.Valid {
-		a.LocalPath = localPath.String
-	}
-	if fileHash.Valid {
-		a.FileHash = fileHash.String
-	}
-
-	// Parse metadata_json — only for provider-specific fields
 	a.SetMetadataJSON(metadataStr.String)
 
 	return &a, nil

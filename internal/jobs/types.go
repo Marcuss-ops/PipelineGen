@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 )
 
 // EnqueueRequest is the HTTP-layer DTO for enqueueing a job.
@@ -33,8 +31,8 @@ type JobTools struct {
 }
 
 // HandlerFunc is the type for job handlers. Accepts the canonical domain
-// *job.Job type. All handlers were migrated in Passaggio 6.
-type HandlerFunc func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error)
+// *Job type. All handlers were migrated in Passaggio 6.
+type HandlerFunc func(ctx context.Context, j *Job, tools *JobTools) (map[string]any, error)
 
 // Dispatcher routes jobs to registered handlers by job type (string).
 // Safe for concurrent use after Freeze().
@@ -67,7 +65,7 @@ func (d *Dispatcher) Freeze() {
 	d.frozen = true
 }
 
-func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job, tools *JobTools) (result map[string]any, err error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, j *Job, tools *JobTools) (result map[string]any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in handler for job type %s: %v", j.Type, r)
@@ -90,17 +88,17 @@ type RunnerConfig struct {
 	JobTypes  []string
 }
 
-// Runner manages a pool of Workers. Depends on the domain job.Repository
+// Runner manages a pool of Workers. Depends on the domain Repository
 // interface — NOT on the concrete *jobs.Repository.
 type Runner struct {
-	repo       job.Repository
+	repo       Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
 	workers    []*Worker
 }
 
-func NewRunner(repo job.Repository, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
+func NewRunner(repo Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
 		dispatcher: dispatcher,

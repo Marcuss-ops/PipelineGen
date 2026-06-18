@@ -11,8 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -63,7 +62,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 func setupTestService(t *testing.T) (*Service, func()) {
 	t.Helper()
 	db := setupTestDB(t)
-	repo := jobs.NewRepository(db, zap.NewNop())
+	repo := NewSQLiteStore(db, zap.NewNop())
 	svc := NewService(repo, nil, zap.NewNop())
 
 	return svc, func() {}
@@ -74,18 +73,18 @@ func TestCreateJobStoresPendingJob(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	job, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type:     models.JobType("test_job"),
+	j, err := svc.Enqueue(ctx, &EnqueueRequest{
+		Type:     "test_job",
 		Priority: 1,
 		Project:  "test-project",
 	})
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
-	if job.Status != models.StatusQueued {
-		t.Errorf("expected status %s, got %s", models.StatusQueued, job.Status)
+	if j.Status != StatusQueued {
+		t.Errorf("expected status %s, got %s", StatusQueued, j.Status)
 	}
-	if job.ID == "" {
+	if j.ID == "" {
 		t.Error("expected non-empty job ID")
 	}
 }
@@ -96,7 +95,7 @@ func TestJobMovesToCompleted(t *testing.T) {
 
 	ctx := context.Background()
 	job, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type: models.JobType("test_job"),
+		Type: "test_job",
 	})
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
@@ -112,8 +111,8 @@ func TestJobMovesToCompleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if updated.Status != models.StatusCompleted {
-		t.Errorf("expected status %s, got %s", models.StatusCompleted, updated.Status)
+	if updated.Status != StatusSucceeded {
+		t.Errorf("expected status %s, got %s", StatusSucceeded, updated.Status)
 	}
 }
 
@@ -123,7 +122,7 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 
 	ctx := context.Background()
 	job, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type: models.JobType("test_job"),
+		Type: "test_job",
 	})
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
@@ -138,8 +137,8 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if updated.Status != models.StatusFailed {
-		t.Errorf("expected status %s, got %s", models.StatusFailed, updated.Status)
+	if updated.Status != StatusFailed {
+		t.Errorf("expected status %s, got %s", StatusFailed, updated.Status)
 	}
 }
 
@@ -150,7 +149,7 @@ func TestJobPayloadRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	payload := map[string]any{"key": "value", "number": float64(42)}
 	job, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type:    models.JobType("test_job"),
+		Type:    "test_job",
 		Payload: payload,
 	})
 	if err != nil {
@@ -173,13 +172,13 @@ func TestUnknownJobTypeFailsClearly(t *testing.T) {
 
 	ctx := context.Background()
 	job, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type: models.JobType("unknown_type"),
+		Type: "unknown_type",
 	})
 	if err != nil {
 		t.Fatalf("enqueue should not fail for unknown type: %v", err)
 	}
 
-	if job.Type != models.JobType("unknown_type") {
+	if job.Type != "unknown_type" {
 		t.Errorf("expected job type 'unknown_type', got %s", job.Type)
 	}
 }
@@ -197,7 +196,7 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			_, err := svc.Enqueue(ctx, &EnqueueRequest{
-				Type:    models.JobType("concurrent_job"),
+				Type:    "concurrent_job",
 				Project: "concurrent-test",
 			})
 			if err != nil {
@@ -208,7 +207,7 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 	wg.Wait()
 
 	// Verify all jobs were created
-	jobs, err := svc.List(ctx, models.JobFilter{})
+	jobs, err := svc.List(ctx, Filter{})
 	if err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
@@ -227,10 +226,10 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 
 	// Insert old running job
 	oldTime := time.Now().UTC().Add(-30 * time.Minute)
-	oldJob := &models.Job{
+	oldJob := &Job{
 		ID:        "job-old-running",
-		Type:      models.JobTypeArtlistRun,
-		Status:    models.StatusRunning,
+		Type:      JobTypeArtlistRun,
+		Status:    StatusRunning,
 		UpdatedAt: oldTime,
 		CreatedAt: oldTime,
 		Payload:   []byte("{}"),
@@ -238,10 +237,10 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, oldJob))
 
 	// Insert fresh running job
-	freshJob := &models.Job{
+	freshJob := &Job{
 		ID:        "job-fresh-running",
-		Type:      models.JobTypeArtlistRun,
-		Status:    models.StatusRunning,
+		Type:      JobTypeArtlistRun,
+		Status:    StatusRunning,
 		UpdatedAt: time.Now().UTC(),
 		CreatedAt: time.Now().UTC(),
 		Payload:   []byte("{}"),
@@ -249,10 +248,10 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, freshJob))
 
 	// Insert completed job (should not be affected)
-	completedJob := &models.Job{
+	completedJob := &Job{
 		ID:        "job-completed",
-		Type:      models.JobTypeArtlistRun,
-		Status:    models.StatusCompleted,
+		Type:      JobTypeArtlistRun,
+		Status:    StatusSucceeded,
 		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute),
 		CreatedAt: time.Now().UTC().Add(-30 * time.Minute),
 		Payload:   []byte("{}"),
@@ -267,18 +266,18 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	// Verify old job is now failed
 	oldJobGot, err := svc.Get(ctx, oldJob.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.StatusFailed, oldJobGot.Status)
+	assert.Equal(t, StatusFailed, oldJobGot.Status)
 	assert.Contains(t, oldJobGot.Error, "stale")
 
 	// Verify fresh job is still running
 	freshJobGot, err := svc.Get(ctx, freshJob.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.StatusRunning, freshJobGot.Status)
+	assert.Equal(t, StatusRunning, freshJobGot.Status)
 
 	// Verify completed job is still succeeded
 	completedJobGot, err := svc.Get(ctx, completedJob.ID)
 	require.NoError(t, err)
-	assert.Equal(t, models.StatusCompleted, completedJobGot.Status)
+	assert.Equal(t, StatusSucceeded, completedJobGot.Status)
 }
 
 // TestEnqueueDuplicateCorrelationID verifies the core
@@ -292,7 +291,7 @@ func TestEnqueue_Idempotence_DuplicateCorrelationID(t *testing.T) {
 	ctx := context.Background()
 
 	req := &EnqueueRequest{
-		Type:          models.JobType("idem_test"),
+		Type:          "idem_test",
 		CorrelationID: "client-req-abc-123",
 	}
 	j1, err := svc.Enqueue(ctx, req)
@@ -307,11 +306,11 @@ func TestEnqueue_Idempotence_DuplicateCorrelationID(t *testing.T) {
 	assert.Equal(t, j1.ID, j2.ID, "duplicate enqueue must return same job_id")
 
 	// The DB now has exactly one row.
-	all, err := svc.List(ctx, models.JobFilter{})
+	all, err := svc.List(ctx, Filter{})
 	require.NoError(t, err)
 	count := 0
 	for _, j := range all {
-		if j.Type == models.JobType("idem_test") {
+		if j.Type == "idem_test" {
 			count++
 		}
 	}
@@ -326,12 +325,12 @@ func TestEnqueue_Idempotence_DifferentCorrelationID(t *testing.T) {
 	ctx := context.Background()
 
 	j1, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type:          models.JobType("idem_test"),
+		Type:          "idem_test",
 		CorrelationID: "key-1",
 	})
 	require.NoError(t, err)
 	j2, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type:          models.JobType("idem_test"),
+		Type:          "idem_test",
 		CorrelationID: "key-2",
 	})
 	require.NoError(t, err)
@@ -348,12 +347,12 @@ func TestEnqueue_Idempotence_AutoInjectsFromContext(t *testing.T) {
 	defer cleanup()
 
 	ctx := corid.WithCorrelationID(context.Background(), "auto-injected-key")
-	j1, err := svc.Enqueue(ctx, &EnqueueRequest{Type: models.JobType("idem_test")})
+	j1, err := svc.Enqueue(ctx, &EnqueueRequest{Type: "idem_test"})
 	require.NoError(t, err)
 	assert.Equal(t, "auto-injected-key", j1.CorrelationID, "correlation_id must be auto-injected from context")
 
 	// Same context, same correlation_id, same type — same job_id.
-	j2, err := svc.Enqueue(ctx, &EnqueueRequest{Type: models.JobType("idem_test")})
+	j2, err := svc.Enqueue(ctx, &EnqueueRequest{Type: "idem_test"})
 	require.NoError(t, err)
 	assert.Equal(t, j1.ID, j2.ID, "auto-injected correlation_id must dedupe subsequent enqueues")
 }
@@ -369,19 +368,19 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 	ctx := context.Background()
 
 	j1, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type:          models.JobType("idem_test"),
+		Type:          "idem_test",
 		CorrelationID: "completed-key",
 	})
 	require.NoError(t, err)
 	require.NoError(t, svc.Complete(ctx, j1.ID, map[string]any{"ok": true}))
 
 	j2, err := svc.Enqueue(ctx, &EnqueueRequest{
-		Type:          models.JobType("idem_test"),
+		Type:          "idem_test",
 		CorrelationID: "completed-key",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, j1.ID, j2.ID, "resubmit with same key after completion must return same job_id")
-	assert.Equal(t, models.StatusCompleted, j2.Status, "status of the returned job must be the terminal completion")
+	assert.Equal(t, StatusSucceeded, j2.Status, "status of the returned job must be the terminal completion")
 }
 
 // TestEnqueueConcurrentSameCorrelationConverges stresses the
@@ -402,7 +401,7 @@ func TestEnqueue_Idempotence_ConcurrentSameCorrelation(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			j, err := svc.Enqueue(ctx, &EnqueueRequest{
-				Type:          models.JobType("concurrent_idem"),
+				Type:          "concurrent_idem",
 				CorrelationID: "concurrent-key",
 			})
 			if err != nil {
@@ -420,11 +419,11 @@ func TestEnqueue_Idempotence_ConcurrentSameCorrelation(t *testing.T) {
 		assert.Equal(t, first, ids[i], "all concurrent enqueues with same correlation_id must converge to one job_id")
 	}
 
-	all, err := svc.List(ctx, models.JobFilter{})
+	all, err := svc.List(ctx, Filter{})
 	require.NoError(t, err)
 	count := 0
 	for _, j := range all {
-		if j.Type == models.JobType("concurrent_idem") {
+		if j.Type == "concurrent_idem" {
 			count++
 		}
 	}
@@ -444,8 +443,8 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 
 	// Two Service instances over the same *sql.DB deliberately share state
 	// but NOT the in-process enqueueMu.
-	repoA := jobs.NewRepository(db, zap.NewNop())
-	repoB := jobs.NewRepository(db, zap.NewNop())
+	repoA := NewSQLiteStore(db, zap.NewNop())
+	repoB := NewSQLiteStore(db, zap.NewNop())
 	svcA := NewService(repoA, nil, zap.NewNop())
 	svcB := NewService(repoB, nil, zap.NewNop())
 
@@ -460,7 +459,7 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		j, err := svcA.Enqueue(ctxA, &EnqueueRequest{Type: models.JobType("rescue_test")})
+		j, err := svcA.Enqueue(ctxA, &EnqueueRequest{Type: "rescue_test"})
 		if err == nil && j != nil {
 			ids[0] = j.ID
 		}
@@ -468,7 +467,7 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		j, err := svcB.Enqueue(ctxB, &EnqueueRequest{Type: models.JobType("rescue_test")})
+		j, err := svcB.Enqueue(ctxB, &EnqueueRequest{Type: "rescue_test"})
 		if err == nil && j != nil {
 			ids[1] = j.ID
 		}
@@ -485,11 +484,11 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	assert.Equal(t, ids[0], ids[1], "both Service instances must converge on one job_id (rescue branch returns the winner)")
 
 	// And only one row exists in the DB.
-	all, err := svcA.List(ctxA, models.JobFilter{})
+	all, err := svcA.List(ctxA, Filter{})
 	require.NoError(t, err)
 	count := 0
 	for _, j := range all {
-		if j.Type == models.JobType("rescue_test") {
+		if j.Type == "rescue_test" {
 			count++
 		}
 	}

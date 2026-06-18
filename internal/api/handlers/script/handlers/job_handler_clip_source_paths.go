@@ -9,9 +9,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
