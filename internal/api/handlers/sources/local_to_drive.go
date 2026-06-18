@@ -108,7 +108,7 @@ func (h *Handler) LocalToDrive(c *gin.Context) {
 	}
 
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:    models.JobTypeBulkUploadYouTubeClips,
+		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
 		Payload: payload,
 	})

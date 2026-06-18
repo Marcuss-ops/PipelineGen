@@ -128,7 +128,7 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobTypeYouTubeClipExtract,
+			Type:    "youtube_clip.extract",
 			Payload: payloadMap,
 		})
 		if err != nil {

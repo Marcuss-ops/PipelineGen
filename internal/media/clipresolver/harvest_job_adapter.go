@@ -6,7 +6,6 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 )
 
@@ -63,7 +62,7 @@ func (s *JobHarvestService) EnqueueHarvest(ctx context.Context, term string, lim
 
 	// Enqueue job
 	job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
-		Type:       models.JobTypeArtlistRun,
+		Type:       "artlist.run",
 		Payload:    (&jobservice.JobCodec{}).PayloadFromRequest(req),
 		MaxRetries: 3,
 		ActiveKey:  jobservice.RunDedupKey(term, req.RootFolderID, req.Strategy, false),

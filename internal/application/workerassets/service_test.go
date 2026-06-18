@@ -1,6 +1,7 @@
 package workerassets
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -156,5 +157,33 @@ func TestUploadLifecycleUpdatesAssetIndex(t *testing.T) {
 	}
 	if rec == nil || rec.Status != "ready" {
 		t.Fatalf("expected ready record, got %#v", rec)
+	}
+}
+
+func TestUploadPersistsContent(t *testing.T) {
+	workerSvc, assetSvc, cleanup := setupWorkerAssetsTest(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	if _, err := workerSvc.InitiateUpload(ctx, "asset-upload-2"); err != nil {
+		t.Fatalf("initiate upload: %v", err)
+	}
+	if err := workerSvc.Upload(ctx, "asset-upload-2", "result.mp4", bytes.NewBufferString("video-bytes")); err != nil {
+		t.Fatalf("upload content: %v", err)
+	}
+
+	rec, err := assetSvc.GetByID(ctx, "asset-upload-2")
+	if err != nil {
+		t.Fatalf("get asset: %v", err)
+	}
+	if rec == nil || rec.LocalPath == "" {
+		t.Fatalf("expected local path after upload, got %#v", rec)
+	}
+	data, err := os.ReadFile(rec.LocalPath)
+	if err != nil {
+		t.Fatalf("read uploaded file: %v", err)
+	}
+	if string(data) != "video-bytes" {
+		t.Fatalf("unexpected uploaded content %q", string(data))
 	}
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -98,6 +100,9 @@ func (r *Runner) runLease(parent context.Context, lease *job.Lease) error {
 	if err != nil {
 		return r.fail(jobCtx, lease, err)
 	}
+	if err := r.uploadOutputs(jobCtx, lease.Job.ID, handlerResult); err != nil {
+		return r.fail(jobCtx, lease, err)
+	}
 	return r.broker.Complete(jobCtx, job.CompleteCommand{
 		WorkerID:         r.workerID,
 		WorkerSessionID:  r.sessionID,
@@ -119,6 +124,72 @@ func (r *Runner) fail(ctx context.Context, lease *job.Lease, err error) error {
 	})
 }
 
-func (r *Runner) workspacePath(jobID string) string {
-	return filepath.Join(r.workspace.Root, "jobs", jobID)
+func (r *Runner) uploadOutputs(ctx context.Context, jobID string, handlerResult map[string]any) error {
+	if r.assetClient == nil || len(handlerResult) == 0 {
+		return nil
+	}
+	type outputFile struct {
+		assetID string
+		path    string
+	}
+	var files []outputFile
+	seen := make(map[string]struct{})
+	add := func(assetID, path string) {
+		assetID = strings.TrimSpace(assetID)
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if assetID == "" {
+			assetID = jobID + ":" + filepath.Base(path)
+		}
+		key := assetID + "|" + path
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		files = append(files, outputFile{assetID: assetID, path: path})
+	}
+
+	for _, key := range []string{"output_path", "pdf_path", "markdown_path"} {
+		if v, ok := handlerResult[key].(string); ok {
+			add(jobID+":"+key, v)
+		}
+	}
+
+	if raw, ok := handlerResult["output_files"]; ok {
+		switch list := raw.(type) {
+		case []string:
+			for _, path := range list {
+				add("", path)
+			}
+		case []any:
+			for i, item := range list {
+				switch v := item.(type) {
+				case string:
+					add("", v)
+				case map[string]any:
+					path, _ := v["path"].(string)
+					assetID, _ := v["asset_id"].(string)
+					if assetID == "" {
+						assetID = fmt.Sprintf("%s:output_files:%d", jobID, i)
+					}
+					add(assetID, path)
+				}
+			}
+		}
+	}
+
+	for _, file := range files {
+		if _, err := os.Stat(file.path); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if err := r.assetClient.UploadFile(ctx, file.assetID, file.path); err != nil {
+			return fmt.Errorf("upload output %s: %w", file.path, err)
+		}
+	}
+	return nil
 }

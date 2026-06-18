@@ -1,7 +1,7 @@
 package artlist
 
 import (
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobAdapter gestisce l'integrazione tra il servizio Artlist e il sistema di job.
@@ -14,15 +14,15 @@ func NewJobAdapter(s *Service) *JobAdapter {
 	return &JobAdapter{service: s}
 }
 
-// jobToResponse converts a domain job.Job to RunTagResponse using the codec.
-func (a *JobAdapter) jobToResponse(job *domainjob.Job) *RunTagResponse {
+// jobToResponse converts a models.Job to RunTagResponse using the codec.
+func (a *JobAdapter) jobToResponse(job *models.Job) *RunTagResponse {
 	if job == nil {
 		return &RunTagResponse{OK: false, Status: "not_found", Error: "job not found"}
 	}
-	return jobCodec.ResponseFromJob(job)
+	return jobCodec.ResponseFromLegacyJob(job)
 }
 
-// JobToRunTagResponse converts a domain job.Job to RunTagResponse using the codec.
-func JobToRunTagResponse(job *domainjob.Job) *RunTagResponse {
-	return jobCodec.ResponseFromJob(job)
+// JobToRunTagResponse converts a models.Job to RunTagResponse using the codec.
+func JobToRunTagResponse(job *models.Job) *RunTagResponse {
+	return jobCodec.ResponseFromLegacyJob(job)
 }

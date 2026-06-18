@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -19,8 +20,12 @@ func (a *JobAdapter) HandleJob(ctx context.Context, job *domainjob.Job, tools *j
 		zap.String("type", job.Type),
 	)
 
-	// Use codec to extract request from job payload
-	req := jobCodec.RequestFromJob(job)
+	// Extract request from job payload directly (domain *job.Job)
+	var payloadMap map[string]any
+	if err := json.Unmarshal(job.Payload, &payloadMap); err != nil {
+		payloadMap = map[string]any{}
+	}
+	req := jobCodec.RequestFromPayload(payloadMap)
 
 	// Normalize the request (worker path)
 	normalized := NormalizeRunTagRequest(*req, RunDefaults{

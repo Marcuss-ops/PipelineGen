@@ -14,7 +14,6 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -111,7 +110,7 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 
 	// Use common jobs system exclusively
 	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       models.JobTypeArtlistRun,
+		Type:       "artlist.run",
 		Payload:    (&artlist.JobCodec{}).PayloadFromRequest(&req),
 		MaxRetries: 3,
 		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),

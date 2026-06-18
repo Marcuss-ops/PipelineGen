@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,8 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
@@ -27,8 +28,8 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *doma
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
 
-	payload, err := models.DecodePayload[models.BulkUploadYouTubeClipsPayload](job)
-	if err != nil {
+	payload := &models.BulkUploadYouTubeClipsPayload{}
+	if err := json.Unmarshal(job.Payload, payload); err != nil {
 		return nil, fmt.Errorf("invalid payload: %w", err)
 	}
 	log := h.log.With(zap.String("job_id", job.ID), zap.String("handler", "bulk-upload-worker"))

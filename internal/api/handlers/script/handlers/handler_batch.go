@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -213,7 +212,7 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:          jobs.JobTypeBatchScriptGenerate,
+			Type:          "script.generate_batch",
 			Priority:      5,
 			ActiveKey:     activeKey,
 			Payload:       payloadMap,

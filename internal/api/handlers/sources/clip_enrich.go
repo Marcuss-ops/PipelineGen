@@ -309,7 +309,7 @@ func (h *Handler) BatchReindex(c *gin.Context) {
 	// Enqueue as a job so callers can poll progress via GET /api/jobs/:id/full
 	if h.jobsSvc != nil {
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type: models.JobTypeMediaReindex,
+			Type: "media.reindex",
 			Payload: map[string]any{
 				"source":     req.Source,
 				"media_type": req.MediaType,

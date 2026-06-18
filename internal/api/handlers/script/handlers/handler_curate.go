@@ -7,9 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -139,7 +137,7 @@ func (h *ScriptFlowHandler) Curate(c *gin.Context) {
 	)
 
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       jobs.JobTypeMediaCurate,
+		Type:       "script.curate",
 		Payload:    payload,
 		MaxRetries: 2,
 	})

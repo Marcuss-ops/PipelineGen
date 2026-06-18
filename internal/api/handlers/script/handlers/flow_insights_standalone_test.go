@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	"go.uber.org/zap"
 )
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ type mockJobEnqueuer struct {
 }
 
 type jobserviceEnqueueRequest struct {
-	Type       models.JobType
+	Type       string
 	Payload    map[string]any
 	MaxRetries int
 }

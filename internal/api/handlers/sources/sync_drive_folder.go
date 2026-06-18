@@ -92,7 +92,7 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 	}
 
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       models.JobTypeDriveFolderSync,
+		Type:       "drive.folder.sync",
 		Payload:    payloadMap,
 		MaxRetries: 2,
 	})

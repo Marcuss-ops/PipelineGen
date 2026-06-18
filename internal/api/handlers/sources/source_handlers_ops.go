@@ -116,7 +116,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 			}
 
 			job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-				Type:      models.JobTypeSystemCleanup,
+				Type:      "system.cleanup",
 				Payload:   map[string]any{"deep": true, "dry_run": req.DryRun},
 				Priority:  10,
 				ActiveKey: activeKey,

@@ -185,5 +185,5 @@ func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return fmt.Errorf("jobs service not available")
 	}
-	return h.jobsSvc.RegisterHandler(models.JobTypeBulkUploadYouTubeClips, h.HandleBulkUploadYouTubeClipsJob)
+	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.HandleBulkUploadYouTubeClipsJob)
 }

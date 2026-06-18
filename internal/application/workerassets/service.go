@@ -21,12 +21,13 @@ import (
 )
 
 type Service struct {
-	assetIndex   *assetindex.Service
-	clipsRepo    *clips.Repository
-	imagesRepo   *images.Repository
+	assetIndex    *assetindex.Service
+	clipsRepo     *clips.Repository
+	imagesRepo    *images.Repository
 	voiceoverRepo *voiceovers.Repository
-	httpClient   *http.Client
-	log          *zap.Logger
+	uploadRoot    string
+	httpClient    *http.Client
+	log           *zap.Logger
 }
 
 type UploadResponse struct {
@@ -43,11 +44,19 @@ type resolvedAsset struct {
 }
 
 func NewService(assetIndex *assetindex.Service, clipsRepo *clips.Repository, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, log *zap.Logger) *Service {
+	return NewServiceWithUploadRoot(assetIndex, clipsRepo, imagesRepo, voiceoverRepo, "", log)
+}
+
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, clipsRepo *clips.Repository, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, uploadRoot string, log *zap.Logger) *Service {
+	if strings.TrimSpace(uploadRoot) == "" {
+		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
+	}
 	return &Service{
 		assetIndex:    assetIndex,
 		clipsRepo:     clipsRepo,
 		imagesRepo:    imagesRepo,
 		voiceoverRepo: voiceoverRepo,
+		uploadRoot:    uploadRoot,
 		httpClient:    &http.Client{Timeout: 2 * time.Minute},
 		log:           log,
 	}
@@ -122,10 +131,69 @@ func (s *Service) InitiateUpload(ctx context.Context, assetID string) (*UploadRe
 	if err := s.assetIndex.Upsert(ctx, rec); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(filepath.Join(s.uploadRoot, assetID), 0o755); err != nil {
+		return nil, err
+	}
 	return &UploadResponse{
 		UploadID: assetID,
-		URL:      "",
+		URL:      "/internal/v1/worker-assets/uploads/" + assetID + "/content",
 	}, nil
+}
+
+func (s *Service) Upload(ctx context.Context, assetID, filename string, content io.Reader) error {
+	if s.assetIndex == nil {
+		return fmt.Errorf("asset index service not configured")
+	}
+	if strings.TrimSpace(assetID) == "" {
+		return fmt.Errorf("asset id is required")
+	}
+	if content == nil {
+		return fmt.Errorf("upload content is required")
+	}
+	if strings.TrimSpace(filename) == "" {
+		filename = assetID
+	}
+	dir := filepath.Join(s.uploadRoot, assetID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	dst := filepath.Join(dir, filepath.Base(filename))
+	f, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(f, content); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	rec, err := s.assetIndex.GetByID(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		rec = &assetindex.AssetRecord{
+			AssetID:   assetID,
+			AssetType: "worker-output",
+			Source:    "worker",
+			SourceID:  assetID,
+		}
+	}
+	if rec.AssetType == "" {
+		rec.AssetType = "worker-output"
+	}
+	if rec.Source == "" {
+		rec.Source = "worker"
+	}
+	if rec.SourceID == "" {
+		rec.SourceID = assetID
+	}
+	rec.LocalPath = dst
+	rec.Status = "uploaded"
+	return s.assetIndex.Upsert(ctx, rec)
 }
 
 func (s *Service) FinalizeUpload(ctx context.Context, assetID string) error {

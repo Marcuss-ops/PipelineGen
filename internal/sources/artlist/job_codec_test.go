@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 )
 
 func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
@@ -75,14 +75,14 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 	}
 
 	// Convert back to RunTagResponse
-	job := &models.Job{
+	job := &domainjob.Job{
 		ID:     "test-job",
 		Type:   "artlist.run",
-		Status: models.StatusCompleted,
+		Status: domainjob.StatusCompleted,
 	}
 	jsonPayload, _ := json.Marshal(codec.PayloadFromRequest(&RunTagRequest{Term: "city"}))
 	job.Payload = jsonPayload
-	job.Result = result
+	job.Result = mustRawMessage(result)
 
 	converted := codec.ResponseFromJob(job)
 	if converted.Processed != resp.Processed {
@@ -94,6 +94,11 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 	if converted.Items[0].ClipID != "clip1" {
 		t.Fatalf("item clip id lost")
 	}
+}
+
+func mustRawMessage(v any) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
 }
 
 func TestNormalizeRunTagRequest(t *testing.T) {

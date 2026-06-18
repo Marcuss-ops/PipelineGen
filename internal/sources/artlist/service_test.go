@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
@@ -608,10 +609,10 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 
 	// Create a job directly (simulate a job that would be processed by a worker)
 	payload := testutil.MustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})
-	job := &models.Job{
+	job := &domainjob.Job{
 		ID:        "test-job-1",
-		Type:      models.JobTypeArtlistRun,
-		Status:    models.StatusRunning,
+		Type:      string(models.JobTypeArtlistRun),
+		Status:    domainjob.StatusRunning,
 		Payload:   payload,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),

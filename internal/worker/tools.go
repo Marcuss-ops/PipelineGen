@@ -14,6 +14,7 @@ import (
 
 type AssetClient interface {
 	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
+	UploadFile(ctx context.Context, assetID, filePath string) error
 }
 
 type Tools struct {

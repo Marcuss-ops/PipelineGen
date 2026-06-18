@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.
-// This eliminates duplicate conversion logic across job_handler.go, job_adapter.go, and run_management.go.
 type JobCodec struct{}
 
 // PayloadFromRequest converts RunTagRequest to a map suitable for job payload.
@@ -16,7 +16,6 @@ func (c *JobCodec) PayloadFromRequest(req *RunTagRequest) map[string]any {
 	if req == nil {
 		return map[string]any{}
 	}
-
 	m := map[string]any{
 		"term":           strings.TrimSpace(req.Term),
 		"limit":          req.Limit,
@@ -42,7 +41,6 @@ func (c *JobCodec) PayloadFromRequest(req *RunTagRequest) map[string]any {
 	return m
 }
 
-// RequestFromPayload converts a job payload map to RunTagRequest.
 func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 	req := &RunTagRequest{}
 	if v, ok := payload["term"].(string); ok {
@@ -90,19 +88,6 @@ func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 	return req
 }
 
-// RequestFromJob extracts RunTagRequest from a domain job.Job.
-func (c *JobCodec) RequestFromJob(job *domainjob.Job) *RunTagRequest {
-	if job.Payload == nil {
-		return &RunTagRequest{}
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(job.Payload, &payload); err != nil {
-		return &RunTagRequest{}
-	}
-	return c.RequestFromPayload(payload)
-}
-
-// ResultFromResponse converts RunTagResponse to a map suitable for job result.
 func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 	result := map[string]any{
 		"found":          resp.Found,
@@ -117,8 +102,6 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 	if resp.LastProcessedAt != nil {
 		result["last_processed_at"] = *resp.LastProcessedAt
 	}
-
-	// Include items with detailed status
 	if len(resp.Items) > 0 {
 		items := make([]map[string]any, 0, len(resp.Items))
 		for _, item := range resp.Items {
@@ -137,11 +120,9 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 		}
 		result["items"] = items
 	}
-
 	return result
 }
 
-// addItemFromMap adds an item to resp.Items from a map
 func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 	item := RunTagItem{}
 	if v, ok := itemMap["clip_id"].(string); ok {
@@ -178,6 +159,7 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 }
 
 // ResponseFromJob converts a domain job.Job to RunTagResponse.
+// (domain job.Result is json.RawMessage, so we unmarshal it first)
 func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 	resp := &RunTagResponse{
 		OK:        job.Status != domainjob.StatusFailed,
@@ -189,7 +171,6 @@ func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 		Skipped:   0,
 		Failed:    0,
 	}
-
 	if job.StartedAt != nil {
 		started := job.StartedAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.StartedAt = &started
@@ -198,8 +179,6 @@ func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 		ended := job.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.EndedAt = &ended
 	}
-
-	// Extract fields from payload
 	if job.Payload != nil {
 		var payload map[string]any
 		if err := json.Unmarshal(job.Payload, &payload); err == nil {
@@ -217,9 +196,8 @@ func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 			}
 		}
 	}
-
-	// Extract fields from result (json.RawMessage in domain)
-	if len(job.Result) > 0 && string(job.Result) != "null" {
+	// domain job.Result is json.RawMessage — unmarshal before indexing
+	if len(job.Result) > 0 {
 		var result map[string]any
 		if err := json.Unmarshal(job.Result, &result); err == nil {
 			resp.Found = getIntFromResult(result, "found")
@@ -233,16 +211,70 @@ func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 			if v, ok := result["last_processed_at"].(string); ok {
 				resp.LastProcessedAt = &v
 			}
-			// Extract items from result
 			if itemsRaw, ok := result["items"].([]any); ok {
 				for _, itemRaw := range itemsRaw {
 					if itemMap, ok := itemRaw.(map[string]any); ok {
 						addItemFromMap(resp, itemMap)
 					}
 				}
+			} else if itemsRaw, ok := result["items"].([]map[string]any); ok {
+				for _, itemMap := range itemsRaw {
+					addItemFromMap(resp, itemMap)
+				}
 			}
 		}
 	}
-
 	return resp
+}
+
+// ResponseFromLegacyJob converts a legacy models.Job to RunTagResponse.
+// It marshals the models Result (map[string]any) into json.RawMessage,
+// converts the job to a domain job, then delegates to ResponseFromJob.
+func (c *JobCodec) ResponseFromLegacyJob(job *models.Job) *RunTagResponse {
+	if job == nil {
+		return &RunTagResponse{OK: false, Status: "not_found", Error: "job not found"}
+	}
+
+	status := domainjob.StatusQueued
+	switch job.Status {
+	case models.StatusRunning:
+		status = domainjob.StatusRunning
+	case models.StatusSucceeded:
+		status = domainjob.StatusCompleted
+	case models.StatusFailed:
+		status = domainjob.StatusFailed
+	case models.StatusCancelled:
+		status = domainjob.StatusCancelled
+	}
+
+	var resultJSON json.RawMessage
+	if job.Result != nil {
+		if b, err := json.Marshal(job.Result); err == nil {
+			resultJSON = b
+		}
+	}
+
+	converted := &domainjob.Job{
+		ID:            job.ID,
+		Type:          string(job.Type),
+		Status:        status,
+		Priority:      job.Priority,
+		Project:       job.Project,
+		Payload:       job.Payload,
+		Result:        resultJSON,
+		Error:         job.Error,
+		Progress:      job.Progress,
+		RetryCount:    job.RetryCount,
+		MaxRetries:    job.MaxRetries,
+		WorkerID:      job.WorkerID,
+		LeaseID:       job.LeaseID,
+		LeaseExpiry:   job.LeaseExpiry,
+		Revision:      job.Revision,
+		CorrelationID: job.CorrelationID,
+		CreatedAt:     job.CreatedAt,
+		UpdatedAt:     job.UpdatedAt,
+		StartedAt:     job.StartedAt,
+		CompletedAt:   job.CompletedAt,
+	}
+	return c.ResponseFromJob(converted)
 }

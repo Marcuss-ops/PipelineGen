@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -107,7 +106,7 @@ func (h *VoiceoverHandler) Generate(c *gin.Context) {
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobTypeVoiceoverBatch,
+			Type:    "voiceover.batch",
 			Payload: batchReq.PayloadMap(),
 		})
 		if err != nil {
@@ -160,7 +159,7 @@ func (h *VoiceoverHandler) Batch(c *gin.Context) {
 
 	if h.jobsSvc != nil {
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobTypeVoiceoverBatch,
+			Type:    "voiceover.batch",
 			Payload: req.PayloadMap(),
 		})
 		if err != nil {
@@ -373,7 +372,7 @@ func (h *VoiceoverHandler) GenerateWithGroup(c *gin.Context) {
 		payload["voiceover_group"] = req.VoiceoverGroup // explicit for /jobs status
 
 		job, jobErr := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobTypeVoiceoverBatch,
+			Type:    "voiceover.batch",
 			Payload: payload,
 		})
 		if jobErr != nil {

@@ -9,7 +9,6 @@ import (
 
 	corejobs "github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -145,7 +144,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobTypeMediaStock,
+			Type:    "media.stock",
 			Payload: payload.ToMap(),
 		})
 		if err != nil {
@@ -237,7 +236,7 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 
 	if h.jobsSvc != nil {
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:    models.JobTypeMediaStock,
+			Type:    "media.stock",
 			Payload: req.ToMap(),
 		})
 		if err != nil {

@@ -17,10 +17,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
 	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
@@ -57,7 +57,7 @@ func main() {
 	imageRepo := imagerepo.NewRepository(db.DB)
 	voiceoverRepo := vorepo.NewRepository(db.DB)
 	broker := local.New(domain.NewSQLiteJobRepository(jobRepo), workerRepo)
-	assetSvc := workerassets.NewService(assetIndexSvc, clipRepo, imageRepo, voiceoverRepo, log)
+	assetSvc := workerassets.NewServiceWithUploadRoot(assetIndexSvc, clipRepo, imageRepo, voiceoverRepo, filepath.Join(cfg.Storage.DataDir, "worker-uploads"), log)
 	router.SetWorkerHandler(internalworker.NewHandler(broker, assetSvc, log))
 	engine := router.Setup()
 

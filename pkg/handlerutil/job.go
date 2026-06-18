@@ -56,7 +56,7 @@ func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message s
 	}
 
 	req := &jobs.EnqueueRequest{
-		Type:          in.Type,
+		Type:          string(in.Type),
 		Payload:       in.Payload,
 		Priority:      in.Priority,
 		MaxRetries:    in.MaxRetries,

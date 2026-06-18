@@ -28,6 +28,7 @@ type Broker interface {
 type AssetTransferService interface {
 	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
 	InitiateUpload(ctx context.Context, assetID string) (*workerassets.UploadResponse, error)
+	Upload(ctx context.Context, assetID, filename string, content io.Reader) error
 	FinalizeUpload(ctx context.Context, assetID string) error
 }
 
@@ -52,14 +53,15 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/jobs/:id/cancelled", h.IsCancelled)
 	r.GET("/worker-assets/:asset_id/download", h.DownloadAsset)
 	r.POST("/worker-assets/uploads/initiate", h.InitiateUpload)
+	r.POST("/worker-assets/uploads/:asset_id/content", h.UploadAssetContent)
 	r.POST("/worker-assets/uploads/finalize", h.FinalizeUpload)
 }
 
 type registerWorkerRequest struct {
-	WorkerID     string             `json:"worker_id"`
-	Name         string             `json:"name,omitempty"`
-	Version      string             `json:"version,omitempty"`
-	Hostname     string             `json:"hostname,omitempty"`
+	WorkerID     string                 `json:"worker_id"`
+	Name         string                 `json:"name,omitempty"`
+	Version      string                 `json:"version,omitempty"`
+	Hostname     string                 `json:"hostname,omitempty"`
 	Capabilities job.WorkerCapabilities `json:"capabilities"`
 }
 
@@ -213,6 +215,25 @@ func (h *Handler) InitiateUpload(c *gin.Context) {
 		return
 	}
 	apiutil.OK(c, out)
+}
+
+func (h *Handler) UploadAssetContent(c *gin.Context) {
+	if h.assets == nil {
+		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		return
+	}
+	filename := c.GetHeader("X-Filename")
+	if filename == "" {
+		filename = c.Query("filename")
+	}
+	if filename == "" {
+		filename = c.Param("asset_id")
+	}
+	if err := h.assets.Upload(c.Request.Context(), c.Param("asset_id"), filename, c.Request.Body); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"ok": true})
 }
 
 func (h *Handler) FinalizeUpload(c *gin.Context) {

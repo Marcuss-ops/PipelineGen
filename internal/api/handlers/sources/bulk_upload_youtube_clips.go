@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -185,7 +184,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// Enqueue the job
 	activeKey := fmt.Sprintf("bulk_upload_yt:%s", abs)
 	job, err := h.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-		Type:    models.JobTypeBulkUploadYouTubeClips,
+		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
 		Payload: map[string]any{
 			"local_folder":           abs,
