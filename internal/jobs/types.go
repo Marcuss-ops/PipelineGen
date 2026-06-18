@@ -9,11 +9,13 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
+// EnqueueRequest is the HTTP-layer DTO for enqueueing a job. Still uses
+// string types for backward compatibility with 95+ call sites; migrated
+// to domain types in Passaggio 6.
 type EnqueueRequest struct {
-	Type          models.JobType `json:"type"`
+	Type          string         `json:"type"`
 	Project       string         `json:"project,omitempty"`
 	VideoName     string         `json:"video_name,omitempty"`
 	Payload       map[string]any `json:"payload"`
@@ -23,30 +25,32 @@ type EnqueueRequest struct {
 	CorrelationID string         `json:"correlation_id,omitempty"`
 }
 
+// JobTools provides callbacks that handlers use to report progress,
+// record events, and check for cancellation.
 type JobTools struct {
 	Progress    func(progress int, message string)
 	Event       func(eventType string, message string, data map[string]any)
 	IsCancelled func() bool
 }
 
-type HandlerFunc func(ctx context.Context, job *models.Job, tools *JobTools) (map[string]any, error)
+// HandlerFunc is the type for job handlers. It receives a domain job.Job
+// (not a models.Job) so handlers are not coupled to the legacy model
+// types. Passaggio 6 will remove the models package entirely.
+type HandlerFunc func(ctx context.Context, job *job.Job, tools *JobTools) (map[string]any, error)
 
-// Dispatcher routes jobs to registered handlers. It is safe for concurrent
-// use after Freeze() has been called.
+// Dispatcher routes jobs to registered handlers by job type (string).
+// Safe for concurrent use after Freeze().
 type Dispatcher struct {
 	mu       sync.RWMutex
-	handlers map[models.JobType]HandlerFunc
+	handlers map[string]HandlerFunc
 	frozen   bool
 }
 
 func NewDispatcher() *Dispatcher {
-	return &Dispatcher{handlers: make(map[models.JobType]HandlerFunc)}
+	return &Dispatcher{handlers: make(map[string]HandlerFunc)}
 }
 
-// Register adds a handler for the given job type. Returns an error if a
-// handler for the same type is already registered, or if the dispatcher
-// has been frozen.
-func (d *Dispatcher) Register(jobType models.JobType, handler HandlerFunc) error {
+func (d *Dispatcher) Register(jobType string, handler HandlerFunc) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.frozen {
@@ -59,44 +63,37 @@ func (d *Dispatcher) Register(jobType models.JobType, handler HandlerFunc) error
 	return nil
 }
 
-// Freeze prevents any further handler registration. Call this after all
-// handlers have been registered and before starting workers.
 func (d *Dispatcher) Freeze() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.frozen = true
 }
 
-// Dispatch looks up the handler for the job type and executes it.
-// Panics in the handler are recovered and returned as errors.
-func (d *Dispatcher) Dispatch(ctx context.Context, job *models.Job, tools *JobTools) (result map[string]any, err error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, j *job.Job, tools *JobTools) (result map[string]any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in handler for job type %s: %v", job.Type, r)
+			err = fmt.Errorf("panic in handler for job type %s: %v", j.Type, r)
 		}
 	}()
 
 	d.mu.RLock()
-	handler, ok := d.handlers[job.Type]
+	handler, ok := d.handlers[j.Type]
 	d.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("no handler registered for job type %s", job.Type)
+		return nil, fmt.Errorf("no handler registered for job type %s", j.Type)
 	}
-	return handler(ctx, job, tools)
+	return handler(ctx, j, tools)
 }
 
 type RunnerConfig struct {
 	Workers   int
 	PollEvery time.Duration
 	LeaseTTL  time.Duration
-	JobTypes  []string // domain-compatible: string job types, not models.JobType
+	JobTypes  []string
 }
 
-// Runner manages a pool of Workers that poll the job repository for queued
-// jobs and dispatch them to registered handlers. It depends on the domain
-// job.Repository interface — NOT on the concrete *jobs.Repository — so the
-// broker (future PR) can swap in a distributed implementation without
-// touching Worker or Runner code.
+// Runner manages a pool of Workers. Depends on the domain job.Repository
+// interface — NOT on the concrete *jobs.Repository.
 type Runner struct {
 	repo       job.Repository
 	dispatcher *Dispatcher
@@ -105,9 +102,6 @@ type Runner struct {
 	workers    []*Worker
 }
 
-// NewRunner creates a new Runner with the given domain repository, dispatcher,
-// and configuration. The repository must satisfy job.Repository (e.g.
-// SQLiteJobRepository wrapping the concrete *jobs.Repository).
 func NewRunner(repo job.Repository, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
@@ -121,7 +115,6 @@ func (r *Runner) Start(ctx context.Context) {
 	r.log.Info("starting job runner", zap.Int("workers", r.config.Workers))
 
 	for i := 0; i < r.config.Workers; i++ {
-		// Globally unique worker ID including hostname + PID (punto 25).
 		workerID := fmt.Sprintf("%s_worker-%d", workerIDPrefix, i+1)
 		worker := NewWorker(workerID, r.repo, r.dispatcher, r.log, r.config.LeaseTTL, r.config.PollEvery, r.config.JobTypes)
 		r.workers = append(r.workers, worker)

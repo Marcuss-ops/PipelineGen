@@ -38,8 +38,10 @@ func NewService(repo *jobsrepo.Repository, dispatcher *Dispatcher, log *zap.Logg
 	}
 }
 
+// RegisterHandler registers a handler for the given job type.
+// Accepts models.JobType (converted to string for the dispatcher).
 func (s *Service) RegisterHandler(jobType models.JobType, handler HandlerFunc) error {
-	return s.dispatcher.Register(jobType, handler)
+	return s.dispatcher.Register(string(jobType), handler)
 }
 
 // validateEnqueueRequest checks the EnqueueRequest for common errors (punto 23).
@@ -108,7 +110,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 	// (type, correlation_id) (see migrations/sqlite/036_job_idempotency.sql)
 	// is the ultimate safety net handled below the INSERT.
 	if req.CorrelationID != "" {
-		existing, err := s.repo.FindByTypeAndCorrelation(ctx, req.Type, req.CorrelationID)
+		existing, err := s.repo.FindByTypeAndCorrelation(ctx, models.JobType(req.Type), req.CorrelationID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing job by correlation: %w", err)
 		}
@@ -135,7 +137,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 
 	job := &models.Job{
 		ID:            generateJobID(),
-		Type:          req.Type,
+		Type:          models.JobType(req.Type),
 		Status:        models.StatusPending,
 		Priority:      req.Priority,
 		Project:       req.Project,
