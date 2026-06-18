@@ -11,13 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 	"go.uber.org/zap"
 )
 
 type searchL1Entry struct {
-	Results []models.MediaAsset
+	Results []asset.MediaAsset
 	AddedAt time.Time
 }
 
@@ -28,7 +29,7 @@ type metadataL1Entry struct {
 
 // SearchLive performs a live YouTube search using yt-dlp.
 // sort can be "views" for most viewed videos.
-func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]models.MediaAsset, error) {
+func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]asset.MediaAsset, error) {
 	// Parse limit from query if present (e.g., "query -15")
 	if strings.Contains(query, " -") {
 		parts := strings.Split(query, " -")
@@ -62,12 +63,13 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	// 2. Check L2 SQLite cache
 	if cached, ok := s.getCachedSearch(ctx, cacheKey); ok {
 		s.log.Info("Serving YouTube search results from L2 SQLite cache", zap.String("query", query))
+		results := ToDomainSlice(cached)
 		// Populate L1 cache
 		s.searchL1.Store(cacheKey, searchL1Entry{
-			Results: cached,
+			Results: results,
 			AddedAt: time.Now(),
 		})
-		return cached, nil
+		return results, nil
 	}
 
 	s.log.Info("Performing live YouTube search", zap.String("query", query), zap.Int("limit", limit), zap.String("sort", sort))
@@ -119,7 +121,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	results := make([]models.MediaAsset, 0, len(lines))
+	legacyResults := make([]models.MediaAsset, 0, len(lines))
 
 	for _, line := range lines {
 		if line == "" {
@@ -156,11 +158,13 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			ThumbURL:     thumbnail,
 		}
 		clip.SetMetadataJSON(fmt.Sprintf(`{"uploader": %q, "duration": %f, "video_id": %q}`, item.Uploader, item.Duration, item.ID))
-		results = append(results, clip)
+		legacyResults = append(legacyResults, clip)
 	}
 
+	results := ToDomainSlice(legacyResults)
+
 	// Cache the search results in L1 and L2
-	s.setCachedSearch(ctx, cacheKey, results)
+	s.setCachedSearch(ctx, cacheKey, legacyResults)
 	s.searchL1.Store(cacheKey, searchL1Entry{
 		Results: results,
 		AddedAt: time.Now(),
