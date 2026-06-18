@@ -145,7 +145,7 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 }
 
 // SearchClips cerca clip nel database locale.
-func (s *Service) SearchClips(ctx context.Context, term string) []*models.MediaAsset {
+func (s *Service) SearchClips(ctx context.Context, term string) []*asset.MediaAsset {
 	return s.searchService.SearchClips(ctx, term)
 }
 
