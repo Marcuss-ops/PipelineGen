@@ -7,7 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -28,7 +29,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	var clip models.MediaAsset
+	var clip asset.MediaAsset
 	if err := c.ShouldBindJSON(&clip); err != nil {
 		apiutil.BadRequest(c, "invalid clip data: "+err.Error())
 		return
@@ -44,15 +45,15 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 1. Save to DB
-	if err := repo.UpsertClip(ctx, &clip); err != nil {
+	// 1. Save to DB (clips.Repository still expects legacy type)
+	if err := repo.UpsertClip(ctx, assetregistry.ToLegacy(&clip)); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	// 2. Update Asset Tree
+	// 2. Update Asset Tree (clipToAssetNode still expects legacy type)
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(&clip)
+		node := clipToAssetNode(assetregistry.ToLegacy(&clip))
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -60,9 +61,12 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	// 3. Trigger async enrichment + indexing (non-blocking) with 3-minute timeout.
 	// context.WithoutCancel ensures the goroutine survives the HTTP handler's return.
+	// enrichAndIndexClip still expects *models.MediaAsset; we pass a converted copy
+	// so the background goroutine owns its mutation independently.
 	if h.metaWriter != nil || h.clipIndexer != nil || h.vectorStore != nil {
+		legacyClip := assetregistry.ToLegacy(&clip)
 		concurrent.SafeGo("clip-create-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), &clip, source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), legacyClip, source)
 		})
 	}
 
