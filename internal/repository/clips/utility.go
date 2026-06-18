@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.MediaAsset, error) {
+func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*asset.MediaAsset, error) {
 	query := `SELECT ` + mediaAssetColumns + `
 		FROM media_assets
 		WHERE ` + r.SoftDeleteFilter() + ` AND parent_folder_id = ?
@@ -23,9 +23,9 @@ func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]
 	}
 	defer rows.Close()
 
-	var clips []*models.MediaAsset
+	var clips []*asset.MediaAsset
 	for rows.Next() {
-		clip, err := scanMediaAssetRows(rows)
+		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
 			r.log.Error("failed to scan clip", zap.Error(err))
 			continue

@@ -4,14 +4,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 // scoreClips scores and sorts clips based on keyword match quality, quality score,
 // duplicate penalty, sponsor penalty, and search visibility.
-func scoreClips(clips []*models.MediaAsset, keywords []string) []*models.MediaAsset {
+func scoreClips(clips []*asset.MediaAsset, keywords []string) []*asset.MediaAsset {
 	type scoredClip struct {
-		clip  *models.MediaAsset
+		clip  *asset.MediaAsset
 		score float64
 	}
 
@@ -112,7 +112,7 @@ func scoreClips(clips []*models.MediaAsset, keywords []string) []*models.MediaAs
 	})
 
 	// Extract sorted clips
-	result := make([]*models.MediaAsset, len(scored))
+	result := make([]*asset.MediaAsset, len(scored))
 	for i, s := range scored {
 		result[i] = s.clip
 	}
@@ -121,7 +121,7 @@ func scoreClips(clips []*models.MediaAsset, keywords []string) []*models.MediaAs
 }
 
 // isSponsorSegment checks if a clip is a sponsor segment based on metadata.
-func isSponsorSegment(clip *models.MediaAsset) bool {
+func isSponsorSegment(clip *asset.MediaAsset) bool {
 	if clip.Metadata == nil {
 		return false
 	}
@@ -131,7 +131,7 @@ func isSponsorSegment(clip *models.MediaAsset) bool {
 	return false
 }
 
-func searchableClipText(clip *models.MediaAsset) string {
+func searchableClipText(clip *asset.MediaAsset) string {
 	if clip == nil {
 		return ""
 	}
@@ -153,14 +153,14 @@ func searchableClipText(clip *models.MediaAsset) string {
 	return strings.Join(parts, "\n")
 }
 
-func isDuplicateClip(clip *models.MediaAsset) bool {
+func isDuplicateClip(clip *asset.MediaAsset) bool {
 	if clip == nil || clip.Metadata == nil {
 		return false
 	}
 	return metadataBool(clip.Metadata, "is_duplicate") || metadataString(clip.Metadata, "duplicate_of") != ""
 }
 
-func isBestVersionClip(clip *models.MediaAsset) bool {
+func isBestVersionClip(clip *asset.MediaAsset) bool {
 	if clip == nil || clip.Metadata == nil {
 		return false
 	}

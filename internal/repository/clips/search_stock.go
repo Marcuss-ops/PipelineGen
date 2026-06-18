@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
@@ -13,15 +13,15 @@ import (
 // Lives in its own file so the stock-specific query (which hard-codes
 // source='stock' and ignores the Repository.source argument) does not
 // clutter the user-facing search.go.
-func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*models.MediaAsset, error) {
+func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []string, limit int) ([]*asset.MediaAsset, error) {
 	if len(keywords) == 0 {
-		return []*models.MediaAsset{}, nil
+		return []*asset.MediaAsset{}, nil
 	}
 
 	columns := clipSearchColumns()
 	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
 	if conditionSQL == "" {
-		return []*models.MediaAsset{}, nil
+		return []*asset.MediaAsset{}, nil
 	}
 
 	query := fmt.Sprintf(`
@@ -40,9 +40,9 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	}
 	defer rows.Close()
 
-	var clips []*models.MediaAsset
+	var clips []*asset.MediaAsset
 	for rows.Next() {
-		clip, err := scanMediaAssetRows(rows)
+		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
