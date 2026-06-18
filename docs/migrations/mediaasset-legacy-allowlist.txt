@@ -23,7 +23,6 @@ internal/api/handlers/sources/youtube_handlers.go
 internal/application/workerassets/service.go
 internal/media/assetindex/resolver.go
 internal/media/assetregistry/converters.go
-internal/media/autotag/service.go
 internal/media/catalogsync/dispatcher_test.go
 internal/media/catalogsync/sync_persist.go
 internal/media/catalogsync/sync_recursive.go

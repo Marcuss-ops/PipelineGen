@@ -2,6 +2,7 @@ package autotag
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -10,20 +11,21 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/vlm"
 )
 
 type Service struct {
-	repo        *clips.Repository
+	db          *sql.DB
+	repo        asset.Repository
 	vlmClient   *vlm.Client
 	vectorStore clipindexer.VectorStoreIndexer
 	log         *zap.Logger
 }
 
-func NewService(repo *clips.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
+func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
 	return &Service{
+		db:        db,
 		repo:      repo,
 		vlmClient: vlmClient,
 		log:       log,
@@ -55,15 +57,15 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 		LIMIT ?
 	`
 
-	rows, err := s.repo.DB().QueryContext(ctx, query, limit)
+	rows, err := s.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return 0, fmt.Errorf("query untagged: %w", err)
 	}
 	defer rows.Close()
 
-	var assets []*models.MediaAsset
+	var assets []*asset.MediaAsset
 	for rows.Next() {
-		a := &models.MediaAsset{}
+		a := &asset.MediaAsset{}
 		var tagsJSON, metaJSON string
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &a.LocalPath, &a.MediaType, &metaJSON); err != nil {
 			return 0, fmt.Errorf("scan asset: %w", err)
@@ -92,7 +94,7 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 }
 
 // TagAsset analyzes a single asset with VLM and updates its metadata in DB and Qdrant.
-func (s *Service) TagAsset(ctx context.Context, a *models.MediaAsset) error {
+func (s *Service) TagAsset(ctx context.Context, a *asset.MediaAsset) error {
 	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath))
 
 	// 1. Call VLM sidecar
@@ -101,12 +103,11 @@ func (s *Service) TagAsset(ctx context.Context, a *models.MediaAsset) error {
 		// Mark as skipped in metadata so we don't keep retrying if it's a permanent failure (e.g. file corrupt)
 		a.SetMetadataString("vlm_tag_error", err.Error())
 		a.SetMetadataString("vlm_tagged", "failed")
-		s.repo.UpsertClip(ctx, a)
+		s.repo.Upsert(ctx, a)
 		return fmt.Errorf("vlm autotag: %w", err)
 	}
 
 	// 2. Merge tags
-	// We combine visual objects, mood, scene type and lighting into the searchable tags list.
 	newTags := make(map[string]bool)
 	for _, t := range a.Tags {
 		newTags[strings.ToLower(t)] = true
@@ -147,25 +148,20 @@ func (s *Service) TagAsset(ctx context.Context, a *models.MediaAsset) error {
 	}
 
 	// 4. Save to Repository
-	if err := s.repo.UpsertClip(ctx, a); err != nil {
+	if err := s.repo.Upsert(ctx, a); err != nil {
 		return fmt.Errorf("repo upsert: %w", err)
 	}
 
 	// 5. Trigger Qdrant Re-index
 	if s.vectorStore != nil {
 		go func() {
-			// Use background context for re-indexing as it involves LLM/Embedding calls
 			indexCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
 			if err := s.vectorStore.UpsertFromClip(indexCtx, a.ID); err != nil {
-				s.log.Warn("failed to re-index asset in qdrant after autotag",
-					zap.String("id", a.ID), zap.Error(err))
-			} else {
-				s.log.Info("asset re-indexed in qdrant", zap.String("id", a.ID))
+				s.log.Error("failed to trigger vector re-indexing for tagged asset", zap.String("id", a.ID), zap.Error(err))
 			}
 		}()
 	}
 
-	s.log.Info("asset tagged successfully", zap.String("id", a.ID), zap.Int("tag_count", len(finalTags)))
 	return nil
 }
