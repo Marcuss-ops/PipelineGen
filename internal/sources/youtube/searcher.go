@@ -63,7 +63,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	// 2. Check L2 SQLite cache
 	if cached, ok := s.getCachedSearch(ctx, cacheKey); ok {
 		s.log.Info("Serving YouTube search results from L2 SQLite cache", zap.String("query", query))
-		results := ToDomainSlice(cached)
+		results := toAssetDomainSlice(cached)
 		// Populate L1 cache
 		s.searchL1.Store(cacheKey, searchL1Entry{
 			Results: results,
@@ -161,7 +161,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 		legacyResults = append(legacyResults, clip)
 	}
 
-	results := ToDomainSlice(legacyResults)
+	results := toAssetDomainSlice(legacyResults)
 
 	// Cache the search results in L1 and L2
 	s.setCachedSearch(ctx, cacheKey, legacyResults)

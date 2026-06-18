@@ -68,7 +68,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 
 	resp.Clips = make([]asset.MediaAsset, 0, len(clipsList))
 	for _, c := range clipsList {
-		if a := ToDomain(c); a != nil {
+		if a := toDomain(c); a != nil {
 			resp.Clips = append(resp.Clips, *a)
 		}
 	}
@@ -151,7 +151,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		}
 
 		if err := s.artlistRepo.UpsertClip(ctx, clip); err == nil {
-			if a := ToDomain(clip); a != nil {
+			if a := toDomain(clip); a != nil {
 				resp.Clips = append(resp.Clips, *a)
 			}
 
@@ -242,7 +242,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
 		return nil
 	}
-	return ToDomainSlice(clips)
+	return toDomainPtrSlice(clips)
 }
 
 // UpsertClip inserts or updates a clip in the database

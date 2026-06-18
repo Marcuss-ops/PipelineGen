@@ -70,18 +70,18 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		item := RunTagItem{
 			ClipID:       clip.ID,
 			Name:         clip.Name,
-			DownloadLink: clip.DownloadLink,
-			DriveLink:    clip.DriveLink,
-			DriveFileID:  clip.DriveFileID,
-			LocalPath:    clip.LocalPath,
-			FileHash:     clip.FileHash,
+			DownloadLink: clip.GetMetadataString("_download_link"),
+			DriveLink:    clip.GetMetadataString("_drive_link"),
+			DriveFileID:  clip.GetMetadataString("_drive_file_id"),
+			LocalPath:    clip.GetMetadataString("_local_path"),
+			FileHash:     clip.GetMetadataString("_file_hash"),
 		}
 
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
 		item.Name = defaults.String(item.Name, clip.Name)
 		item.Name = defaults.String(item.Name, item.ClipID)
 
-		sourceURL := defaults.String(clip.DownloadLink, clip.ExternalURL)
+		sourceURL := defaults.String(item.DownloadLink, clip.ExternalURL)
 
 		outputDir := ""
 		if o.svc.cfg != nil {
