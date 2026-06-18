@@ -12,10 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/artifacts"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // UploadVideoClipResponse is returned after a successful video upload.

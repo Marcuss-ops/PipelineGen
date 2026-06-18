@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // extractYouTubeVideoID extracts the YouTube video ID from a clip ID (yt_{videoID}_*) or clip metadata.

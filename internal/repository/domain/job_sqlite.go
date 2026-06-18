@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/internal/core/domain/job"
-	"velox/go-master/internal/media/models"
-	jobsrepo "velox/go-master/internal/repository/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	jobsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 )
 
 // SQLiteJobRepository implements job.Repository by delegating to the

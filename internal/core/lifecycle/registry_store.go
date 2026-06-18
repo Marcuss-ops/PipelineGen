@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"velox/go-master/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 )
 
 // RegistryStoreAdapter adapts a assetregistry.Registry to the AssetRecordStore interface.

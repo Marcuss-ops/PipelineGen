@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 // RouteModule is a generic module for simple route-only modules.

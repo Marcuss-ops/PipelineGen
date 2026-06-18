@@ -3,8 +3,8 @@ package mediaasset
 import (
 	"context"
 
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
 
 type YTDLP interface {

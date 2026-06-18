@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 type Repository struct {

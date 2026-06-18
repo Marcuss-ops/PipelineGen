@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 func (r *Repository) AddEvent(ctx context.Context, jobID string, eventType string, message string, data map[string]any) error {

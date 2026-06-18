@@ -9,9 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api"
-	"velox/go-master/internal/app"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 func main() {

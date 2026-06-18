@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/service/mediacurator"
-	"velox/go-master/internal/service/scriptcore"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )
 
 // HandleCurateJob processes a background script.curate job.

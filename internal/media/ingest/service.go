@@ -12,10 +12,10 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
 
 type Pipeline struct {

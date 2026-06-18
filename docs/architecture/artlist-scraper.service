@@ -19,8 +19,8 @@ Wants=network.target
 [Service]
 Type=simple
 User=pierone
-WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/node-scraper
-ExecStart=/usr/bin/node /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/node-scraper/artlist_server.js
+WorkingDirectory=/home/pierone/Pyt/Pipelinegen/node-scraper
+ExecStart=/usr/bin/node /home/pierone/Pyt/Pipelinegen/node-scraper/artlist_server.js
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=30

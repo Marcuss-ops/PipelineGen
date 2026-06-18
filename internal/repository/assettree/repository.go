@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // AssetNode represents a node in the asset tree hierarchy

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
 )
 
 // clusterClipsViaLLM sends search results to the LLM for thematic clustering.

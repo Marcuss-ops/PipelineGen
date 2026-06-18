@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/images"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

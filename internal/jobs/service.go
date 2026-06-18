@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	jobsrepo "velox/go-master/internal/repository/jobs"
-	"velox/go-master/pkg/corid"
-	"velox/go-master/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	jobsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
 
 // MaxPayloadSize is the maximum allowed size for a serialized job payload in bytes.

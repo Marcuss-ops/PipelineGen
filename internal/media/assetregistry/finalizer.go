@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/semantic"
-	"velox/go-master/pkg/textutil"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
 )

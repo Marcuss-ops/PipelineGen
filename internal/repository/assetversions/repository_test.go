@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 const testSchema = `

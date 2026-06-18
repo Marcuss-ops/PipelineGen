@@ -2,7 +2,7 @@ package termutil
 
 import (
 	"strings"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // SubjectMatchesTopic checks if a subject matches any of the topic tokens.

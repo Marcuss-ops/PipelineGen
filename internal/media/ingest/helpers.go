@@ -4,8 +4,8 @@ import (
 	"os"
 	"strings"
 
-	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func buildAssetID(kind Kind, hash string) string {

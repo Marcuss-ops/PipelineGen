@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/ml/ollama"
-	ollamatypes "velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/pkg/retry"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"
 )

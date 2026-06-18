@@ -9,14 +9,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/config"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/catalogsync"
-	"velox/go-master/internal/media/clipresolver"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/sources/artlist"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 type ArtlistHandler struct {

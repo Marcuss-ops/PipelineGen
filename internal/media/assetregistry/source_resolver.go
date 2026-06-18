@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 // SourceDefinition defines a canonical source with its aliases and associated repository.

@@ -1,8 +1,8 @@
 package module
 
 import (
-	imghandler "velox/go-master/internal/api/handlers/images"
-	"velox/go-master/internal/config"
+	imghandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 
 	"go.uber.org/zap"
 )

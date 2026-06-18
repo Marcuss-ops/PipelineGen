@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // Run executes the full stock pipeline: resolve sources, download, extract clips,

@@ -7,9 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 const catalogSyncTestSchema = `

@@ -1,6 +1,6 @@
 package workspace
 
-import "velox/go-master/pkg/defaults"
+import "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 // Scope represents a workspace and project context.
 type Scope struct {

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

@@ -1,7 +1,7 @@
 package clipresolver
 
 import (
-	"velox/go-master/internal/media/clipcatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 )
 
 // qdrantResultToCandidate converts a vector store SearchResult to ClipCandidate.

@@ -1,7 +1,7 @@
 package clipresolver
 
 import (
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // ApplyOntologyBoost applies boosts from ontology rules.

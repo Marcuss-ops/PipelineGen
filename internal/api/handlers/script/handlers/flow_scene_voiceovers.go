@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/voiceover"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // generateSceneVoiceovers generates voiceovers for each scene in parallel.

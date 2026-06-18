@@ -6,10 +6,10 @@ import (
 	"math"
 	"strings"
 
-	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/ml/ollama/prompts"
-	ollamatypes "velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // WordCountBounds returns the acceptable word count range using percentage-based

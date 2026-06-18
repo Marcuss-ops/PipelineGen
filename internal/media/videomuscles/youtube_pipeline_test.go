@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"velox/go-master/pkg/fileutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 )
 
 func TestUsableCachedClipIgnoresEmptyFiles(t *testing.T) {

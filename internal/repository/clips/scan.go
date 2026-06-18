@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 type mediaAssetScanner interface {

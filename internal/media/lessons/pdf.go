@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/jung-kurt/gofpdf"
 )

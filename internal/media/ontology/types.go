@@ -1,6 +1,6 @@
 package ontology
 
-import "velox/go-master/internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 // TopicRule defines the scoring rules for a specific topic.
 type TopicRule struct {

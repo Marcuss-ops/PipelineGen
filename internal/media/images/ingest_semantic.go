@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/realtime"
-	"velox/go-master/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
 // callSemanticTagger RIMOSSO: usa semantic.Tagger() o semantic.MetadataWriter.Write() direttamente.

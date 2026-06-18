@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/internal/core/workspace"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/workspace"
 )
 
 // WorkspaceScopeMiddleware extracts workspace and project IDs from headers or query params.

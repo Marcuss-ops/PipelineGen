@@ -1,8 +1,8 @@
 package module
 
 import (
-	"velox/go-master/internal/api/handlers/mediaingest"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/mediaingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 
 	"go.uber.org/zap"
 )

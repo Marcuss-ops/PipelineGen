@@ -3,14 +3,14 @@ package app
 import (
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api/handlers/script/handlers"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/reranker"
-	"velox/go-master/internal/service/mediacurator"
-	"velox/go-master/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )
 
 // wireScriptFlowExtras wires the optional clip-source builder and media curator

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 type Record struct {

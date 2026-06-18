@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	"velox/go-master/pkg/similarity"
+	"github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 )
 
 // ── Text normalization ────────────────────────────────────────────────

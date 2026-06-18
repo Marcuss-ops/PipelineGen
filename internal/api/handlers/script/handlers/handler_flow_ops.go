@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	ollamatypes "velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/pkg/apiutil"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 type RegenerateSectionRequest struct {

@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/generation"
-	driveup "velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 // ensureStyleDriveFolders pre-creates the common style folders under a Drive root.

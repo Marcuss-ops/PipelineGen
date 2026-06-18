@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"path"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // DestinationInfo rappresenta una destinazione risolta per i clip

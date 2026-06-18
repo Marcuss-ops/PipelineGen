@@ -12,14 +12,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/clipindexer"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/semantic"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/outbox"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 var enrichMetaMu sync.Mutex

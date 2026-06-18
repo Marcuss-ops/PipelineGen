@@ -2,7 +2,7 @@ package clipresolver
 
 import (
 	"context"
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // EmbeddingProvider defines the interface for obtaining text embeddings.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"velox/go-master/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
 )
 
 // ── Catalog types ──────────────────────────────────────────────────────

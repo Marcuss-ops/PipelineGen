@@ -24,7 +24,7 @@ set -Eeuo pipefail
 
 # ── Configuration (override via env vars) ───────────────────────────────
 : "${BACKUP_ROOT:=/var/backups/pipelinegen}"
-: "${PROJECT_ROOT:=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored}"
+: "${PROJECT_ROOT:=/home/pierone/Pyt/Pipelinegen}"
 : "${QDRANT_URL:=http://127.0.0.1:6333}"
 : "${QDRANT_COLLECTION:=media_assets}"
 : "${RETENTION_DAYS:=30}"

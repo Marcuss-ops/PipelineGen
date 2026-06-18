@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	jobservice "velox/go-master/internal/sources/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 )
 
 // JobHarvestService implements ArtlistHarvestService using the jobs service

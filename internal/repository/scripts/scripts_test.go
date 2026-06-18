@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 // testSchema is a minimal subset of the production schema that covers

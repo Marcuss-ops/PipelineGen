@@ -1,4 +1,4 @@
-// Package logger provides centralized logging for the VeloxEditing system.
+// Package logger provides centralized logging for the PipelineGen system.
 package logger
 
 import (

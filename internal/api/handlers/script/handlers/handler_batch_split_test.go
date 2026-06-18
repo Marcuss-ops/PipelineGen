@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func TestBuildBatchWorkItemsSplitsLongSource(t *testing.T) {

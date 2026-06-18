@@ -3,10 +3,10 @@ package module
 import (
 	"context"
 
-	"velox/go-master/internal/api/handlers/sources"
-	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/config"
-	artlistService "velox/go-master/internal/sources/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/sources"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	artlistService "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 
 	"go.uber.org/zap"
 )

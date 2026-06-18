@@ -7,15 +7,15 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/media/assettree"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/images"
-	"velox/go-master/internal/repository/voiceovers"
-	driveutil "velox/go-master/internal/storage/drive"
-	"velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 // DeletionService handles synchronized deletion between database and cloud storage.

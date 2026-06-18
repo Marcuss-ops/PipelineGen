@@ -7,7 +7,7 @@ import (
 	"sync"
 	"text/template"
 
-	"velox/go-master/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
 
 	"gopkg.in/yaml.v3"
 )

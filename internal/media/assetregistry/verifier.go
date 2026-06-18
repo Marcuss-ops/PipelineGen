@@ -6,8 +6,8 @@ import (
 	"time"
 
 	driveapi "google.golang.org/api/drive/v3"
-	"velox/go-master/internal/storage/drive"
-	driveupload "velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type DriveVerifier interface {

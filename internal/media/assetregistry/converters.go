@@ -3,8 +3,8 @@ package assetregistry
 import (
 	"path/filepath"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 )
 
 // VoiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.

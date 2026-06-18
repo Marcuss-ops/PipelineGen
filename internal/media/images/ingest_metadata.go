@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/semantic"
-	"velox/go-master/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 )
 
 type contextKey string

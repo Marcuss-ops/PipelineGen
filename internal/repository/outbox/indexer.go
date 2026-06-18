@@ -12,7 +12,7 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
 
 // Indexer wraps a clipindexer.Service and adds outbox-aware indexing.

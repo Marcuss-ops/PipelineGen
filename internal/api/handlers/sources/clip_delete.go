@@ -2,7 +2,7 @@ package sources
 
 import (
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // TrashClip moves a clip to Drive trash and removes SQLite record.

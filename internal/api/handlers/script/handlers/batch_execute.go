@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *GenerateBatchRequest, onProgress func(int, string)) (BatchGenerateResponse, error) {

@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/sources/artlist"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // SearchRequest represents a search request

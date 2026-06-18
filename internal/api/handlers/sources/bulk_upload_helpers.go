@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // isLocalFolderAllowed returns true if abs lives under any of the configured

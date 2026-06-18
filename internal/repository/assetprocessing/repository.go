@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // ProcessingStatus represents the status of a processing step.

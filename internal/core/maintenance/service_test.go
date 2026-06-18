@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media"
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/assettree"
-	assettreerepo "velox/go-master/internal/repository/assettree"
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

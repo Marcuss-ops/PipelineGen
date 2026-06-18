@@ -3,7 +3,7 @@ package images
 import (
 	"testing"
 
-	"velox/go-master/pkg/googleaccounting"
+	"github.com/Marcuss-ops/PipelineGen/pkg/googleaccounting"
 )
 
 func TestExtractRemoteImageNamesFromResultImages(t *testing.T) {

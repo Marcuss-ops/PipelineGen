@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 )
 
 // WorkflowStepFailedHandler logs every workflow step failure at ERROR

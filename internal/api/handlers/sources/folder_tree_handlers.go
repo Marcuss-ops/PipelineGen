@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // GetFolderChildren returns the children of a specific folder.

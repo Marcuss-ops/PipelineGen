@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
 )
 
 // ── Mock dependencies ──

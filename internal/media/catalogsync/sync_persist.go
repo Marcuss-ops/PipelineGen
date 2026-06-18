@@ -8,10 +8,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // upsertPreservingExisting upserts a MediaAsset while preserving fields that

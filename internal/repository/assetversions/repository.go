@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // Version represents a single asset_versions row.

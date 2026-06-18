@@ -2,7 +2,7 @@ package indexing
 
 import (
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 )
 
 type Service struct {

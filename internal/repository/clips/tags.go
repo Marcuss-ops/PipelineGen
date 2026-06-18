@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // BulkAddTags adds a set of tags to multiple clips efficiently.

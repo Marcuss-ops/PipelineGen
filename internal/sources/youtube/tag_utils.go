@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"velox/go-master/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 // ── Rich metadata normalization ────────────────────────────────────────────

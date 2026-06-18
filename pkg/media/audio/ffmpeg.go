@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
 )
 
 // ExtractClip estrae la traccia audio da un file video e la taglia a maxDur secondi.

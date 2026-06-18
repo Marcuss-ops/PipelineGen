@@ -8,9 +8,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 // clipSourceTestSchema is the minimal schema needed for media_assets table.

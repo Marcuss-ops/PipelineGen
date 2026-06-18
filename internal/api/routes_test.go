@@ -7,8 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 )
 
 func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {

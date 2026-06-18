@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // GetJobByRunID retrieves a job by its run ID (which is the job ID).

@@ -8,12 +8,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media"
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/assettree"
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // DriveFileChecker is the minimal interface we need from the Drive uploader

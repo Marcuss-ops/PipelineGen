@@ -12,11 +12,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	imgservice "velox/go-master/internal/media/images"
-	"velox/go-master/internal/media/ingest"
-	"velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/textutil"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type Handler struct {

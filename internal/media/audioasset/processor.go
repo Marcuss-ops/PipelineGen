@@ -10,10 +10,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/core/destination"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/media/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/audio"
 )
 
 type Processor struct {

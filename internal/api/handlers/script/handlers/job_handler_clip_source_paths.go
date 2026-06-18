@@ -7,12 +7,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/internal/service/mediacurator"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // sceneCountWithKind counts how many ClipScenes have a matching Kind value.

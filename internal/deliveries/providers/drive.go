@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/artifacts"
-	"velox/go-master/internal/deliveries"
-	"velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 // DriveProvider delivers artifacts to Google Drive.

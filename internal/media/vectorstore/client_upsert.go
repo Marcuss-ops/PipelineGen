@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // UpsertAsset indexes a single asset as a point with named vectors.

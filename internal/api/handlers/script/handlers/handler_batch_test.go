@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	ollama "velox/go-master/internal/ml/ollama"
-	"velox/go-master/internal/ml/ollama/client"
-	ollamatypes "velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/internal/storage"
+	ollama "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 // minimalTestSchema is a minimal subset of the production schema covering

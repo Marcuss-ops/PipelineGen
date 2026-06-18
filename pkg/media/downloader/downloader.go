@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/security"
-	"velox/go-master/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
 )
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.

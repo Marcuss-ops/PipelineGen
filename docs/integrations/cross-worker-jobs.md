@@ -97,7 +97,7 @@ Importabile come modulo interno del repo, oppure copiabile in altri
 progetti Go. Superficie stabile, stdlib-only.
 
 ```go
-import "velox/go-master/pkg/veloxclient"
+import "github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 
 cli := veloxclient.New("https://pipeline.tuodominio.com", os.Getenv("VELOX_WORKER_TOKEN"),
     veloxclient.WithTimeout(60*time.Second))

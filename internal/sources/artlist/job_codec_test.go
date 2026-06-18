@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {

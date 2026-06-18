@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/security"
-	"velox/go-master/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
 )
 
 // VideoInfo contains basic info from yt-dlp --flat-playlist.

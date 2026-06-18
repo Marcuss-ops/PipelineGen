@@ -7,17 +7,17 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
-	svcjobs "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/indexing"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/monitor"
-	jobrepo "velox/go-master/internal/repository/jobs"
-	scriptrepo "velox/go-master/internal/repository/scripts"
-	searchqueriesrepo "velox/go-master/internal/repository/searchqueries"
-	"velox/go-master/internal/deliveries"
-	"velox/go-master/internal/storage/scheduler"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
+	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/scheduler"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 type backgroundJobs struct {

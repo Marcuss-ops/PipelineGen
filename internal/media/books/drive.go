@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/voiceover"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 type ProcessFromDriveRequest struct {

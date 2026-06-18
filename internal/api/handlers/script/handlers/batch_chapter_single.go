@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // generateSingleChapterFromWorkItem is the per-chapter body of

@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/core"
-	"velox/go-master/internal/media/association"
-	"velox/go-master/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 // ── ScriptInsightBuilder ──────────────────────────────────────────────────────

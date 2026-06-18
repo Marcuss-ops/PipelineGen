@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
 
 // hashStep calculates the MD5 hash of the processed file.

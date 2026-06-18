@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/media/models"
-	assetversions "velox/go-master/internal/repository/assetversions"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/defaults"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // clipWork pairs a RunTagItem with its processor input.

@@ -10,13 +10,13 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/generation"
-	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/internal/security"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 )
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {

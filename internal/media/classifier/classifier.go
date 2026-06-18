@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/ml/ollama/prompts"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
 
 	"go.uber.org/zap"
 )

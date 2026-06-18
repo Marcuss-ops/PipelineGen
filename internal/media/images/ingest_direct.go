@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/storage"
-	storedrive "velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {

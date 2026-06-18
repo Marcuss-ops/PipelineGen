@@ -7,7 +7,7 @@ import (
 	"image/png"
 	"testing"
 
-	"velox/go-master/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
 // Helper to decode dimensions using the same function used in production

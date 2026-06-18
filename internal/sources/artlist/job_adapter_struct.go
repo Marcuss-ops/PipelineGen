@@ -1,7 +1,7 @@
 package artlist
 
 import (
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobAdapter gestisce l'integrazione tra il servizio Artlist e il sistema di job.

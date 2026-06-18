@@ -7,11 +7,11 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/textutil"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // jobPayloadCatalogScript is the runtime payload for catalog-first script generation.

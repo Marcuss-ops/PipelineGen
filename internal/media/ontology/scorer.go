@@ -3,8 +3,8 @@ package ontology
 import (
 	"strings"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Scorer implements the OntologyScorer interface.

@@ -15,10 +15,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api/handlers/common"
-	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 )
 
 // Router holds the API router configuration

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // cleanTranscriptJSON extracts a "description" field from a JSON blob if the

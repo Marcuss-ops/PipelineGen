@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Phase: Pipelined Web Search → Chapter Generation ──────────────────────────

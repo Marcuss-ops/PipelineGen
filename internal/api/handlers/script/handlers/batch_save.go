@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

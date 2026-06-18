@@ -1,11 +1,11 @@
 package app
 
 import (
-	drivehandler "velox/go-master/internal/api/handlers/drive"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/module"
-	"velox/go-master/internal/storage/drivecleanup"
-	"velox/go-master/internal/upload/drive"
+	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
 	"go.uber.org/zap"
 )

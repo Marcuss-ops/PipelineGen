@@ -3,8 +3,8 @@ package youtube
 import (
 	"context"
 
-	"velox/go-master/internal/media/videomuscles"
-	"velox/go-master/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 
 	"go.uber.org/zap"
 )

@@ -17,8 +17,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/voiceover"
-	"velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type Config struct {

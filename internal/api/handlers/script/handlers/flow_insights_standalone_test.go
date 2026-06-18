@@ -8,11 +8,11 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/core"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/association"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 )
 
 // ── Mocks ────────────────────────────────────────────────────────────────────

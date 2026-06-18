@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/core/destination"
-	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/media/audioasset"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/ptrutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/audioasset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

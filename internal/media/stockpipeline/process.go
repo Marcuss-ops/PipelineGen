@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
 
 // processSingleVideo downloads a single video source, then extracts and normalizes

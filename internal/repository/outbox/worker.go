@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 )
 
 // Worker is a concurrent claim+process pool for the outbox. A Start

@@ -3,13 +3,13 @@ package app
 import (
 	"strings"
 
-	"velox/go-master/internal/api/handlers/mediaingest"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/assetregistry"
-	imgreg "velox/go-master/internal/media/images"
-	"velox/go-master/internal/media/ingest"
-	voingsvc "velox/go-master/internal/media/voiceover"
-	"velox/go-master/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/mediaingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	imgreg "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
+	voingsvc "github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	"go.uber.org/zap"
 )

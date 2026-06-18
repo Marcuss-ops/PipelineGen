@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	repo "velox/go-master/internal/repository/assettree"
-	"velox/go-master/internal/storage/drive"
+	repo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
 )
 
 // Service provides utility functions for asset trees

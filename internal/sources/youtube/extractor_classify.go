@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"velox/go-master/internal/media/classifier"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
 )
 
 // youtubeCategoryCache implements classifier.CategoryCache backed by SQLite.

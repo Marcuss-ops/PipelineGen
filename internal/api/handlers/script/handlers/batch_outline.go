@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	ollamatypes "velox/go-master/internal/ml/ollama/types"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
 
 	"go.uber.org/zap"
 )

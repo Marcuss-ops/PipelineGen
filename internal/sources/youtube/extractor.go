@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/security"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/textutil"
-	"velox/go-master/pkg/timeutil"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

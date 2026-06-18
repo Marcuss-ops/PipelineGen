@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 )
 
 // ── Search (with multi-query expansion) ───────────────────────────────────

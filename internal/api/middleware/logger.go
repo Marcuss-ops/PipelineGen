@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/logger"
 )
 
 // apiLog represents a logged API request for the database

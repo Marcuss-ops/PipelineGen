@@ -9,11 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/ptrutil"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // ── Async Response ──────────────────────────────────────────────────────

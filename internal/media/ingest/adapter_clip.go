@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type clipStoreAdapter struct {

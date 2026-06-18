@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/textutil"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
 )

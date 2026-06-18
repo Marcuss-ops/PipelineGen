@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"velox/go-master/internal/core/scoring"
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 
 	"go.uber.org/zap"
 )

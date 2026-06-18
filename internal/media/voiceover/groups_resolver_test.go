@@ -10,8 +10,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/assettree"
-	assettreerepo "velox/go-master/internal/repository/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
 )
 
 // voiceoverRootID is the canonical voiceover-routing tree root this resolver

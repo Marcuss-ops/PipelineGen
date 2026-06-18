@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/internal/media/clipcatalog"
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 func (s *Service) folderKeyFromPath(path string) string {

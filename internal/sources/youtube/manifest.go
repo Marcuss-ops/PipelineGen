@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // updateManifest updates the clip manifest with the processed segment.

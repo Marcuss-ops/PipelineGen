@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 // SyncAll synchronizes every configured target.

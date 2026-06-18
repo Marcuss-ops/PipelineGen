@@ -2,7 +2,7 @@ package association
 
 import (
 	"strings"
-	"velox/go-master/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 type CandidatesRequest struct {

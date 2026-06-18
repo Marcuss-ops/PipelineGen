@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"time"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/searchqueries"
-	"velox/go-master/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
 	"go.uber.org/zap"
 )

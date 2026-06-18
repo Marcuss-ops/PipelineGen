@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/executil"
-	"velox/go-master/pkg/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
 
 // renderChunk concatenates clips into a single output video with transition and effects.

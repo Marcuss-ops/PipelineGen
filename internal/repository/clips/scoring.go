@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // scoreClips scores and sorts clips based on keyword match quality, quality score,

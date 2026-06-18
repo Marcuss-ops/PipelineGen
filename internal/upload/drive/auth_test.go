@@ -3,7 +3,7 @@ package drive
 import (
 	"testing"
 
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 func TestDriveConfigResolveFolder(t *testing.T) {

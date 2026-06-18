@@ -1,9 +1,9 @@
 package app
 
 import (
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/catalogsync"
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 // buildSyncTargets creates the catalog sync targets from configuration.

@@ -8,11 +8,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/jobs"
-	booksService "velox/go-master/internal/media/books"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/handlerutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/handlerutil"
 )
 
 // Handler exposes book processing endpoints

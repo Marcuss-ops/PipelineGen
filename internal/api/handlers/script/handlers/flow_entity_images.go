@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ScriptEntityImage represents an enriched image for a named entity.

@@ -3,7 +3,7 @@ package association
 import (
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // collectTerms estrae i termini di ricerca dalla richiesta.

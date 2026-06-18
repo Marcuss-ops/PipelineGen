@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/media/assetregistry"
-	vorepo "velox/go-master/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 )
 
 type voiceoverStoreAdapter struct {

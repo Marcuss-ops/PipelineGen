@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 type mockVectorStoreIndexer struct {

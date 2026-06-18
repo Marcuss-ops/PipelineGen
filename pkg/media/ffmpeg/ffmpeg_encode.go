@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
 )
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).

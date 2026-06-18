@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
 )
 
 func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse, error) {

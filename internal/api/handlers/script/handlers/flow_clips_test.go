@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
-	"velox/go-master/internal/media/realtime"
-	"velox/go-master/internal/ml/ollama"
-	ollamaclient "velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/service/translations"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/translations"
 )
 
 // ── topicRelevant ─────────────────────────────────────────────────────────

@@ -5,14 +5,14 @@ import (
 	"database/sql"
 	"fmt"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/core/destination"
-	"velox/go-master/internal/core/lifecycle"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/audioasset"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/audioasset"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"
 )

@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // buildFallbackSearchText builds a minimal search_text from existing clip metadata.

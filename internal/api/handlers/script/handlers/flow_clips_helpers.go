@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type assetSearchTarget struct {

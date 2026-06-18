@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/defaults"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // RecommendRequest is the input for the clip recommendation endpoint.

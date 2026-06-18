@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // GetJobFullStatus returns the full job state including events.

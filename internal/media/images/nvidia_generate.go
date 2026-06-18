@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // globalNvidiaSem limits concurrent NVIDIA NIM/flux image generation requests system-wide to avoid overloading GPU/VRAM.

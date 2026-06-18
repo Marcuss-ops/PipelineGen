@@ -9,11 +9,11 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/service/mediacurator"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/concurrent"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // jobPayloadUnified is the runtime payload for the unified script generation job.

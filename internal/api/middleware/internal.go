@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // RequireServiceToken returns a middleware that permits only authenticated

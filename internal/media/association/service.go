@@ -6,13 +6,13 @@ import (
 	"sort"
 	"strings"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/repository/catalog"
-	"velox/go-master/internal/repository/clips"
-	driveutil "velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/termutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Service matches script segments against media assets (stock, artlist, clips, Drive)

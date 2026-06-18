@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // RenameDriveFileRequest is the JSON body for POST /api/media/rename-drive-file.

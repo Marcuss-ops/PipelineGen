@@ -21,7 +21,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 // canonicalMissingTables are the tables the storage tests expect to exist in

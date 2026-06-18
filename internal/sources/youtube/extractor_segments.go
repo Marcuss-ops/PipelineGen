@@ -10,10 +10,10 @@ import (
 	"regexp"
 	"strings"
 
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/textutil"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

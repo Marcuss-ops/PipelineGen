@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // HandleJob processes the background job for book summarization.

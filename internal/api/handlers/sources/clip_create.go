@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // CreateClip creates a new clip and triggers semantic enrichment + vector indexing

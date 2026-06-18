@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/pkg/defaults"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

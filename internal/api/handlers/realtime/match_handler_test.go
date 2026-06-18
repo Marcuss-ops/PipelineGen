@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 )
 
 // mockRealtimeSvc implements realtime matching for handler tests.

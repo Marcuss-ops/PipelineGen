@@ -8,10 +8,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	storedrive "velox/go-master/internal/storage/drive"
-	uploaddrive "velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"

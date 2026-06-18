@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // chapterAnchor creates an HTML anchor from chapter index and title.

@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"velox/go-master/internal/core"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func fallbackEntityExtractionResult(segment string, segmentIndex, entityCount int) *core.EntityExtractionResult {

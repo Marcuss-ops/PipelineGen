@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 
 	"go.uber.org/zap"
 )

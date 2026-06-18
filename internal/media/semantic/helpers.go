@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 var generatedNoiseWords = map[string]struct{}{

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )
 
 type BatchTopic struct {

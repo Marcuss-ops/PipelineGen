@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 // HealthHandler handles health check requests

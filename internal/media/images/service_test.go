@@ -3,7 +3,7 @@ package images
 import (
 	"testing"
 
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 func TestNormalizeLookupTerm(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/internal/repository/catalog"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 
 	"go.uber.org/zap"
 )

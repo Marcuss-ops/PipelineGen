@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/ml/ollama/prompts"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // BuildEnrichedPrompt adds memory context to the user's generation request.

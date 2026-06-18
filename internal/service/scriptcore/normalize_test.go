@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ─── Block 1: Duration formula ────────────────────────────────────────

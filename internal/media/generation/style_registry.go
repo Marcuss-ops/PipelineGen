@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"gopkg.in/yaml.v3"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // StyleRegistry manages a collection of generation styles

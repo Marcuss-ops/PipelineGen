@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ── Semantic field derivation ──────────────────────────────────────────────

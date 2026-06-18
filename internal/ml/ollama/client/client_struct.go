@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
 )
 
 // CircuitBreaker implements a simple circuit breaker for Ollama requests

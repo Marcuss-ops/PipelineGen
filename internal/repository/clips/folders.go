@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/sqlutil"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFolder) error {

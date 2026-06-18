@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/media/clipcatalog"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*RecommendResponse, error) {

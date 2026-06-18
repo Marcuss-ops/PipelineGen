@@ -1,9 +1,9 @@
 package module
 
 import (
-	searchquerieshandler "velox/go-master/internal/api/handlers/searchqueries"
-	"velox/go-master/internal/config"
-	searchqueriesrepo "velox/go-master/internal/repository/searchqueries"
+	searchquerieshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 
 	"go.uber.org/zap"
 )

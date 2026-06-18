@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 // DBProvider searches the local database for indexed clips.

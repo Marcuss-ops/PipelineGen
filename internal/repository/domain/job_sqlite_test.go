@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/core/domain/job"
-	jobsrepo "velox/go-master/internal/repository/jobs"
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	jobsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 // jobTestSchema matches the canonical jobs table from the production migrations.

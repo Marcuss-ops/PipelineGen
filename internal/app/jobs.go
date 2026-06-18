@@ -1,9 +1,9 @@
 package app
 
 import (
-	jobshandler "velox/go-master/internal/api/handlers/jobs"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/module"
+	jobshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	"go.uber.org/zap"
 )

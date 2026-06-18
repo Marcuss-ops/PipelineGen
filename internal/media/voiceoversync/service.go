@@ -9,10 +9,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/assettree"
-	"velox/go-master/internal/repository/voiceovers"
-	storedrive "velox/go-master/internal/storage/drive"
-	driveup "velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"

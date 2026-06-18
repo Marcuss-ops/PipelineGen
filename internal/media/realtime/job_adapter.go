@@ -6,9 +6,9 @@ import (
 
 	"go.uber.org/zap"
 
-	corejobs "velox/go-master/internal/core/jobs"
-	"velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
+	corejobs "github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobServiceAdapter wraps the jobs.Service to implement the JobService interface

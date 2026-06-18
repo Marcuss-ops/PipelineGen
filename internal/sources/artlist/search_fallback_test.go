@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 func TestSearchPixabayVideosUsesConfiguredBaseURL(t *testing.T) {

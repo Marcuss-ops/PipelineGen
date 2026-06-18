@@ -3,8 +3,8 @@ package handlers
 import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/fullimages"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.

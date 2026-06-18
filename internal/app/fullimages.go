@@ -1,11 +1,11 @@
 package app
 
 import (
-	fullimageshandler "velox/go-master/internal/api/handlers/fullimages"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/fullimages"
-	"velox/go-master/internal/module"
-	"velox/go-master/pkg/media/ffmpeg"
+	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/fullimages"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 
 	"go.uber.org/zap"
 )

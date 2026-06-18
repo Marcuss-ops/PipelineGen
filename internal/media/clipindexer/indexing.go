@@ -14,9 +14,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 )
 
 const (

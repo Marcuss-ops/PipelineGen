@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 	"go.uber.org/zap"
 )

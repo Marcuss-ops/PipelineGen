@@ -3,8 +3,8 @@ package clipresolver
 import (
 	"context"
 
-	"velox/go-master/internal/media/clipcatalog"
-	"velox/go-master/pkg/matchingconfig"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
+	"github.com/Marcuss-ops/PipelineGen/pkg/matchingconfig"
 )
 
 // Service provides clip recommendation functionality.

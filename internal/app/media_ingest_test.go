@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"velox/go-master/internal/media/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 )
 
 func TestIsAIImageIngestSource(t *testing.T) {

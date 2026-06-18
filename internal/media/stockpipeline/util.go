@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	driveutil "velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/urlutil"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // resolveFolderTarget resolves the Google Drive folder ID for upload.

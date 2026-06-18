@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/concurrent"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // sceneImageParallelism bounds concurrent scene image-generation goroutines.

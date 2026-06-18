@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/association"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/concurrent"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── SearchArtlistClips ───────────────────────────────────────────────────────

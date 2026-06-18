@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	channelsrepo "velox/go-master/internal/repository/channels"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler handles CRUD operations for category_channels (channel subscriptions per Drive folder).

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // Codec defines a typed interface for encoding/decoding job payloads and results.

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

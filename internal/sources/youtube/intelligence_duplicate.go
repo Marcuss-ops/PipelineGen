@@ -3,8 +3,8 @@ package youtube
 import (
 	"strings"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/similarity"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/similarity"
 )
 
 // ── Semantic text builder ──────────────────────────────────────────────

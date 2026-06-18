@@ -14,7 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // RequireService checks that a service is non-nil and returns false (having

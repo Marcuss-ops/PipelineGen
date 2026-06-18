@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/media/realtime/benchmark"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime/benchmark"
 )
 
 func main() {

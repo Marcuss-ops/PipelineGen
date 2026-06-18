@@ -1,4 +1,4 @@
-module velox/go-master
+module github.com/Marcuss-ops/PipelineGen
 
 go 1.25.0
 

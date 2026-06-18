@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 )
 
 // GroupsResolver is a thin DB-backed voiceover category resolver.

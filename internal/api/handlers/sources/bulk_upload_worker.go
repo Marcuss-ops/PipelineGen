@@ -12,10 +12,10 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/pkg/hashutil"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by

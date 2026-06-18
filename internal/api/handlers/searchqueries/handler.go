@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	searchqueriesrepo "velox/go-master/internal/repository/searchqueries"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler handles CRUD operations for search_queries (scheduled YouTube topic searches).

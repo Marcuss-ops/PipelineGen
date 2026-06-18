@@ -3,7 +3,7 @@ package monitor
 import (
 	"context"
 
-	"velox/go-master/internal/media/classifier"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/classifier"
 )
 
 func (m *ChannelMonitor) classifyCategory(ctx context.Context, title string, fallbackCategory string, cfg *MonitorConfig) string {

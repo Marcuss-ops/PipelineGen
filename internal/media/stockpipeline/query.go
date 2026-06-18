@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // resolveQuery converts a query string into a list of VideoSource entries.

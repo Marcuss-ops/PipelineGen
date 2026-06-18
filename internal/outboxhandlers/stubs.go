@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 )
 
 // DeliveryHandlerStub is a placeholder for "delivery.requested". The

@@ -12,13 +12,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/metrics"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // RegisterFromYouTubeRequest is the JSON body for registering a clip from a YouTube URL.

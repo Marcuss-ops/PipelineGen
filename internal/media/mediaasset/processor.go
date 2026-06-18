@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/media/ffmpeg"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 var driveMetaMu sync.Mutex

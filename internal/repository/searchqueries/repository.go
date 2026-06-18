@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"time"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // Repository handles persistence for search_queries and their results.

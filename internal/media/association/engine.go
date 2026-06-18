@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // SegmentInput provides data for association matching.

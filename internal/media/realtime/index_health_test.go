@@ -17,9 +17,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 )
 
 // indexHealthStore is a minimal fake of vectorstore.Store that lets the

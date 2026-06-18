@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"velox/go-master/internal/media/voiceover"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

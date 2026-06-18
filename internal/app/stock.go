@@ -1,11 +1,11 @@
 package app
 
 import (
-	"velox/go-master/internal/api/handlers/sources"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/media/semantic"
-	"velox/go-master/internal/media/stockpipeline"
-	"velox/go-master/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/sources"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	"go.uber.org/zap"
 )

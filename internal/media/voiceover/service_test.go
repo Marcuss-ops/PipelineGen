@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/ptrutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/stretchr/testify/assert"
 )

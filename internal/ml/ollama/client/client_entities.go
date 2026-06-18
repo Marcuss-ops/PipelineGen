@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/core"
-	"velox/go-master/internal/ml/ollama/prompts"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
 )
 
 // ExtractEntitiesFromSegment extracts entities from a single text segment using Ollama.

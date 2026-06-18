@@ -3,8 +3,8 @@ package association
 import (
 	"strings"
 
-	"velox/go-master/internal/core/scoring"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // scoreFolderCandidates calcola lo score per una lista di cartelle candidate.

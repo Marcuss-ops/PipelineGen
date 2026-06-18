@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 // HandleJob processes a catalog.sync job.

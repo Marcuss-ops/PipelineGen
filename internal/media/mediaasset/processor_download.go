@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 )
 
 // downloadStep downloads the asset from the source URL.

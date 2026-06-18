@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) buildFilename(req *BatchRequest, language, textHash string) string {

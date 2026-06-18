@@ -8,11 +8,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/voiceover"
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/fileutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // voiceoverSceneItem describes a scene for voiceover generation.

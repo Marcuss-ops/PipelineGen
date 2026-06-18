@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 func regexRemoveVTTHeader(content string) string {

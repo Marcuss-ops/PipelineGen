@@ -3,9 +3,9 @@ package association
 import (
 	"context"
 
-	"velox/go-master/internal/core/scoring"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ClipDriveAssociation cerca clip specifiche nel database delle clip scaricate.

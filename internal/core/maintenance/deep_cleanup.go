@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // validateCheckpointMode ensures the env-supplied SQLite WAL checkpoint mode

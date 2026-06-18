@@ -1,6 +1,6 @@
 package artlist
 
-import "velox/go-master/internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 // SearchRequest represents a search request
 type SearchRequest struct {

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) materializeImage(sourcePath, filename string, req *Request) (string, string, func(), error) {

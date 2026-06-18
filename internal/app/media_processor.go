@@ -5,14 +5,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/core/processor"
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/media/mediaasset"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/media/downloader"
-	"velox/go-master/pkg/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
 
 // initMediaProcessor initializes the media processing engine.

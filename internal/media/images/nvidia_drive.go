@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	driveupload "velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) SyncAssets() error {

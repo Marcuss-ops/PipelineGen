@@ -4,9 +4,9 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/core/lifecycle"
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 )
 
 // LifecycleDeps holds the dependencies needed to create a lifecycle service

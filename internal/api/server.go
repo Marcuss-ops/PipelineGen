@@ -1,4 +1,4 @@
-// Package api provides the HTTP server for the VeloxEditing system.
+// Package api provides the HTTP server for the PipelineGen system.
 package api
 
 import (
@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/logger"
-	"velox/go-master/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 )
 
 // Server represents the HTTP server.

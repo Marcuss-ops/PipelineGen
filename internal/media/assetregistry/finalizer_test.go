@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 
 	"go.uber.org/zap"
 )

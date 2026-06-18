@@ -3,7 +3,7 @@ package clipresolver
 import (
 	"context"
 
-	"velox/go-master/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
 // VectorStoreAdapter wraps a vectorstore.Service to implement VectorStoreSearcher.

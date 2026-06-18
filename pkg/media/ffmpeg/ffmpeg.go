@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/pkg/executil"
-	"velox/go-master/pkg/fileutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 )
 
 // Processor handles FFmpeg operations.

@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/core/scoring"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ArtlistStockAssociation searches in the Artlist clip database using multiple terms.

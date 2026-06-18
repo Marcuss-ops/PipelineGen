@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	jobservice "velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 	"go.uber.org/zap"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 const (

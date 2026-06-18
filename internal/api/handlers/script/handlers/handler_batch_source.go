@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"velox/go-master/internal/config"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 type youtubeMetadata struct {

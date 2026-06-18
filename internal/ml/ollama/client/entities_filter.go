@@ -4,8 +4,8 @@ import (
 	"strings"
 	"unicode"
 
-	"velox/go-master/internal/core"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func sanitizeEntityExtractionResult(segment string, result *core.EntityExtractionResult, limit int) *core.EntityExtractionResult {

@@ -9,9 +9,9 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"velox/go-master/pkg/fileutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 
-	drivequery "velox/go-master/internal/storage/drive"
+	drivequery "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
 )
 
 // GetOrCreateFolder gets an existing folder or creates it.

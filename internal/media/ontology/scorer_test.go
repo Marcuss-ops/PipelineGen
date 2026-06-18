@@ -3,7 +3,7 @@ package ontology
 import (
 	"testing"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 func TestScorer_Apply(t *testing.T) {

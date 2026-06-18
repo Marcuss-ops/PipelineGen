@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 )
 
 func mediaRecordToAssetRecord(rec *assetregistry.MediaRecord) *assetop.AssetRecord {

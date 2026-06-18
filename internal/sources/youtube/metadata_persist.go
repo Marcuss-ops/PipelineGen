@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/media/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 )
 
 // ── Metadata helpers ────────────────────────────────────────────────────────

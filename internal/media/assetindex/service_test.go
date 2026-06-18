@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 func setupTestService(t *testing.T) (*Service, func()) {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"velox/go-master/internal/sources/youtube"
-	"velox/go-master/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 
 	"go.uber.org/zap"
 )

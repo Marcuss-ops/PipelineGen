@@ -3,9 +3,9 @@ package module
 import (
 	"context"
 
-	"velox/go-master/internal/api/handlers/script/handlers"
-	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 
 	"github.com/gin-gonic/gin"
 

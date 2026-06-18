@@ -1,6 +1,6 @@
 package handlers
 
-import "velox/go-master/internal/service/scriptcore"
+import "github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 
 // GenerateFromCatalogRequest is the input for catalog-first script generation.
 type GenerateFromCatalogRequest struct {

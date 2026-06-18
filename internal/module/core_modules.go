@@ -5,11 +5,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/api/handlers/common"
-	drivehandler "velox/go-master/internal/api/handlers/drive"
-	scraperhandler "velox/go-master/internal/api/handlers/scraper"
-	"velox/go-master/internal/api/handlers/system"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
+	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/drive"
+	scraperhandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/scraper"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/system"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 // SystemModule handles system diagnostic routes.

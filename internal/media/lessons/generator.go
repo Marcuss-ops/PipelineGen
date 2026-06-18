@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // GenerateChapters processes all chapter splits in parallel using concurrent.ParallelMap.

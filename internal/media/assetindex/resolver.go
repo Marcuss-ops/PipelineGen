@@ -6,10 +6,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/images"
-	"velox/go-master/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 )
 
 // Resolver provides a unified way to resolve assets across all databases.

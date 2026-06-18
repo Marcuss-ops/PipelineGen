@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/storage"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Test A: Research Cache — base get/save ──────────────────────────────

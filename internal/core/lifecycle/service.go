@@ -7,10 +7,10 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 // Service orchestrates the full asset lifecycle:

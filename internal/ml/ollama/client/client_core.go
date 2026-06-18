@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"velox/go-master/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
 
-	"velox/go-master/internal/logger"
-	"velox/go-master/pkg/retry"
+	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"
 )

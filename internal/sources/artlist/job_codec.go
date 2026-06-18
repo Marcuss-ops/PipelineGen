@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.

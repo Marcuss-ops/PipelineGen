@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	imgservice "velox/go-master/internal/media/images"
-	"velox/go-master/internal/media/storage"
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/media/ffmpeg"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
 
 // Section describes a single text part for which a video should be generated.

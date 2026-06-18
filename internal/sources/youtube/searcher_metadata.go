@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/security"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"velox/go-master/pkg/fileutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 )
 
 func TestCleanFolderName(t *testing.T) {

@@ -19,4 +19,4 @@
 #   - Read access to data/media.db.sqlite in $PROJECT_ROOT
 
 # m h dom mon dow command
-30 2 * * * SRCDIR=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored BACKUP_ROOT=/var/backups/pipelinegen LOG_FILE=/var/log/pipelinegen-backup.log /bin/bash -c 'mkdir -p "$(dirname "$LOG_FILE")" && "$SRCDIR/scripts/backup/backup_pipelinegen.sh" >> "$LOG_FILE" 2>&1' >> /dev/null 2>&1
+30 2 * * * SRCDIR=/home/pierone/Pyt/Pipelinegen BACKUP_ROOT=/var/backups/pipelinegen LOG_FILE=/var/log/pipelinegen-backup.log /bin/bash -c 'mkdir -p "$(dirname "$LOG_FILE")" && "$SRCDIR/scripts/backup/backup_pipelinegen.sh" >> "$LOG_FILE" 2>&1' >> /dev/null 2>&1

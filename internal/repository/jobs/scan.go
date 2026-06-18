@@ -3,8 +3,8 @@ package jobs
 import (
 	"encoding/json"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // unmarshalJobFields deserializza i campi JSON e temporali di un job dopo una Scan.

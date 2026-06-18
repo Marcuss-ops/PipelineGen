@@ -7,13 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/media/models"
-	assettreerepo "velox/go-master/internal/repository/assettree"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/voiceovers"
-	driveutil "velox/go-master/internal/storage/drive"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ValidateSource checks the source parameter against known sources and writes

@@ -3,7 +3,7 @@ package prompts
 import (
 	"fmt"
 	"strings"
-	"velox/go-master/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
 )
 
 // BuildChatMessages builds the message list for the chat API.

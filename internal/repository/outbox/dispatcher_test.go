@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // fakeClips records UpsertClipTx invocations and argument order so tests

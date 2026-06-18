@@ -20,9 +20,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/clipindexer"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 )
 
 // ClipsUpserter is the *clips.Repository method surface the Dispatcher needs.

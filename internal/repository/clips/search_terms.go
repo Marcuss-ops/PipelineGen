@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // SearchByTerms searches clips using the indexed clip_search_terms table.

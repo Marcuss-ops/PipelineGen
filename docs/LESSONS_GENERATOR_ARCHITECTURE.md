@@ -208,9 +208,9 @@ package lessons
 
 import (
     "database/sql"
-    "velox/go-master/internal/ml/ollama"
-    imgservice "velox/go-master/internal/media/images"
-    "velox/go-master/internal/upload/drive"
+    "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+    imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+    "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
     "go.uber.org/zap"
 )
 
@@ -279,7 +279,7 @@ func (s *Service) SplitIntoChapters(sourceText string, maxChapters int) []Chapte
 Usa `concurrent.ParallelMap` già presente in `pkg/concurrent/`:
 
 ```go
-import "velox/go-master/pkg/concurrent"
+import "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 // GenerateChapters genera tutti i capitoli in parallelo.
 // Ogni capitolo viene elaborato in una goroutine separata.

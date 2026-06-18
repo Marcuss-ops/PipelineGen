@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"velox/go-master/internal/api/middleware"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/module"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"

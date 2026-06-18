@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 )
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {

@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/semantic"
-	"velox/go-master/internal/media/storage"
-	"velox/go-master/pkg/media/audio"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/pkg/media/audio"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // RegisterVideoAsset uploada su Drive e crea un record in media_assets per un video generato.

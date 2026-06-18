@@ -16,10 +16,10 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	"velox/go-master/internal/media/realtime"
-	"velox/go-master/internal/media/vectorstore"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )
 
 // ── Style Presets (caricati da config/style_presets.yaml) ────────────────

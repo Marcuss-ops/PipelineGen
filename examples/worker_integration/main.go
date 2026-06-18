@@ -32,8 +32,8 @@ import (
 	"syscall"
 	"time"
 
-	"velox/go-master/pkg/hashutil"
-	"velox/go-master/pkg/veloxclient"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
 
 func main() {

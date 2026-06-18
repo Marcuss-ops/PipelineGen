@@ -1,9 +1,9 @@
 package app
 
 import (
-	scraperhandler "velox/go-master/internal/api/handlers/scraper"
-	"velox/go-master/internal/config"
-	"velox/go-master/internal/module"
+	scraperhandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/scraper"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	"go.uber.org/zap"
 )

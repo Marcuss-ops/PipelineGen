@@ -3,7 +3,7 @@ package termutil
 import (
 	"strings"
 	"unicode"
-	"velox/go-master/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 // LooksLikePersonName checks if the text looks like a person's name.

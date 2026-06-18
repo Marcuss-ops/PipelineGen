@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ===== Utility function tests =====

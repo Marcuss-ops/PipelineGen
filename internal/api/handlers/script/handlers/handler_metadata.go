@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"velox/go-master/internal/ml/ollama"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // BuildMetadataLanguages builds the list of languages for metadata generation.

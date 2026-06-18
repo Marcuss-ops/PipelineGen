@@ -3,8 +3,8 @@ package lifecycle
 import (
 	"context"
 
-	"velox/go-master/internal/core/assetop"
-	"velox/go-master/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 )
 
 type AssetKind string

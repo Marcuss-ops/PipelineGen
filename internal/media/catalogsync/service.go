@@ -6,12 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/assetindex"
-	"velox/go-master/internal/media/assettree"
-	"velox/go-master/internal/media/clipindexer"
-	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/outbox"
-	uploaddrive "velox/go-master/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
+	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type Target struct {

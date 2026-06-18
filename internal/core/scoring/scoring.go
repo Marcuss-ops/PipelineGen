@@ -3,7 +3,7 @@ package scoring
 import (
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type Params struct {

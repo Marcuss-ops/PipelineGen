@@ -47,7 +47,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/vectorstore"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
 // IndexHealthSampleCap bounds the cross-check sample size.

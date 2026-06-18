@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/internal/media/storage"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // UploadToStyleDrive carica un'immagine su Drive in una subfolder per stile.

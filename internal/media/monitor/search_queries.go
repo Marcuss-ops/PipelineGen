@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
 )

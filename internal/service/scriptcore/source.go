@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/repository/scripts"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

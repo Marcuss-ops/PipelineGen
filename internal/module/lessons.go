@@ -1,8 +1,8 @@
 package module
 
 import (
-	"velox/go-master/internal/api/handlers/lessons"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 
 	"go.uber.org/zap"
 )

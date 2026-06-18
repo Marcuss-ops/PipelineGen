@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/internal/service/scriptcore"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Curate runs the full media curation pipeline:

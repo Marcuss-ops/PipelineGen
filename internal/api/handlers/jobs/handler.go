@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"velox/go-master/internal/jobs"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // Handler exposes HTTP endpoints for job lifecycle management (enqueue, list, get, cancel, retry, events).
@@ -143,7 +143,7 @@ func (h *Handler) Events(c *gin.Context) {
 // @Description revision counter. The `revision` field is bumped on every
 // @Description status transition and is the optimistic-lock token used by
 // @Description internal/core/domain/job.Transition to detect concurrent
-// @Description writers (PR-1 of the VeloxEditing roadmap).
+// @Description writers (PR-1 of the PipelineGen roadmap).
 // @Tags jobs
 // @Accept json
 // @Produce json

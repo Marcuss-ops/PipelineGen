@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 
 	_ "github.com/mattn/go-sqlite3"
 )

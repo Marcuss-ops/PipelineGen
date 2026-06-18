@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // RetrieveRelevantContext implements the 3-level memory retrieval:

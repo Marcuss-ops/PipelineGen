@@ -3,7 +3,7 @@ package client
 import (
 	"strings"
 
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func tokenSet(text string) map[string]struct{} {

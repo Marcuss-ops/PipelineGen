@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // buildCleanup constructs a cleanup function that stops background jobs,

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

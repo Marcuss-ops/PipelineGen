@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"velox/go-master/internal/deliveries"
+	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
 )
 
 // S3Provider is a stub provider for future S3/R2/MinIO delivery.

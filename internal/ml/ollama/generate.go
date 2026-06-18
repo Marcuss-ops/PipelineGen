@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"velox/go-master/internal/logger"
-	"velox/go-master/internal/ml/ollama/client"
-	"velox/go-master/internal/ml/ollama/prompts"
-	"velox/go-master/internal/ml/ollama/types"
-	"velox/go-master/internal/service/translations"
-	"velox/go-master/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
+	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/translations"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 
 	"go.uber.org/zap"
 )

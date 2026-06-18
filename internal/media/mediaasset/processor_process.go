@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"go.uber.org/zap"
-	"velox/go-master/pkg/fileutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 )
 
 // processStep normalizes/processes the video if needed.

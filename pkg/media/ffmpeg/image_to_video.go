@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"velox/go-master/pkg/executil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
 )
 
 // ImageToVideoOptions configures how a still image is converted to a video.

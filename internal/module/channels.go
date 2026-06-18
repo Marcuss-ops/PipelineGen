@@ -1,9 +1,9 @@
 package module
 
 import (
-	channelshandler "velox/go-master/internal/api/handlers/channels"
-	"velox/go-master/internal/config"
-	channelsrepo "velox/go-master/internal/repository/channels"
+	channelshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
 
 	"go.uber.org/zap"
 )

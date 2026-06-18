@@ -3,7 +3,7 @@ package mediaasset
 import (
 	"context"
 
-	"velox/go-master/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 )
 
 // ToCoreProcessor adapts a mediaasset.Processor to core/processor.Processor.

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"velox/go-master/internal/media/videomuscles"
-	"velox/go-master/pkg/retry"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ===== cleanClipName tests =====

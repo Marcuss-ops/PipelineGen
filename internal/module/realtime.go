@@ -1,8 +1,8 @@
 package module
 
 import (
-	realtimehandler "velox/go-master/internal/api/handlers/realtime"
-	"velox/go-master/internal/config"
+	realtimehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 
 	"go.uber.org/zap"
 )

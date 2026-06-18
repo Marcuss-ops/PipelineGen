@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 )
 
 // ── Phase: Merge Results ─────────────────────────────────────────────────────

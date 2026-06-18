@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 )
 
 // RealtimeMatcher is the interface for real-time asset matching.

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"velox/go-master/internal/core"
-	"velox/go-master/pkg/sliceutil"
-	"velox/go-master/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // EntityScriptExtractor extracts entities from a script.

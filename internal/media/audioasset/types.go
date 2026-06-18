@@ -1,6 +1,6 @@
 package audioasset
 
-import "velox/go-master/internal/core/destination"
+import "github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 
 type AudioInput struct {
 	Text          string

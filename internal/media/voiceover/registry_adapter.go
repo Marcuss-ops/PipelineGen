@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"velox/go-master/internal/media/assetregistry"
-	"velox/go-master/internal/repository/voiceovers"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 type voiceoverRegistryAdapter struct {

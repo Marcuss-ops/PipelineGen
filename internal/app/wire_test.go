@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/config"
 )
 
 func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {

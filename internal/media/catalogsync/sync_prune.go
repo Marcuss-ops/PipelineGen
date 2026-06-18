@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 func (s *Service) pruneMissingFolders(ctx context.Context, repo *clips.Repository, source string, seenFolderIDs map[string]struct{}) error {
