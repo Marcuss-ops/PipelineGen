@@ -18,6 +18,11 @@ import (
 // Usage: go run scripts/ast_legacy_finder.go [dir] [--include-tests]
 //
 // Output: one file path per line (sorted) containing a real reference.
+//
+// The scanner now verifies references against the actual import path
+// (github.com/Marcuss-ops/PipelineGen/internal/media/models), not just
+// the package identifier name. This prevents false positives when other
+// packages happen to declare a MediaAsset type in package "models".
 
 func main() {
 	dir := "internal"
@@ -81,9 +86,56 @@ func main() {
 	}
 }
 
+// isLegacySelectorExpr returns true if expr is a SelectorExpr where the
+// package identifier maps to the legacy models package AND the selected
+// name is "MediaAsset".
+func isLegacySelectorExpr(expr ast.Expr, legacyImports map[string]bool) bool {
+	sel, ok := expr.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	return ok && legacyImports[id.Name] && sel.Sel.Name == "MediaAsset"
+}
+
 // containsLegacyRef walks the AST looking for any reference to models.MediaAsset
-// in expressions, types, and composite literals — but NOT in comments or strings.
+// (or aliased) in expressions, types, and composite literals — but NOT in
+// comments or strings. It verifies references against the actual import path
+// to prevent false positives.
 func containsLegacyRef(file *ast.File) bool {
+	// Build a map of valid package identifiers (aliases or base package
+	// names) that resolve to the legacy models package.
+	legacyImports := make(map[string]bool)
+	// Canonical module path for the legacy package.
+	targetPath := "github.com/Marcuss-ops/PipelineGen/internal/media/models"
+
+	for _, imp := range file.Imports {
+		path := strings.Trim(imp.Path.Value, `"`)
+		// Match exact canonical path OR any path ending in /internal/media/models.
+		// The suffix match covers both relative and alternate-module imports.
+		if path == targetPath || strings.HasSuffix(path, "/internal/media/models") {
+			if imp.Name != nil {
+				// Explicit alias: import foo "github.com/.../models" → use "foo"
+				if imp.Name.Name != "_" && imp.Name.Name != "." {
+					legacyImports[imp.Name.Name] = true
+				}
+			} else {
+				// Default identifier is the last element of the import path
+				// (conventional Go: .../models → package name is "models")
+				parts := strings.Split(path, "/")
+				if len(parts) > 0 {
+					legacyImports[parts[len(parts)-1]] = true
+				}
+			}
+		}
+	}
+
+	// If the file doesn't import the legacy package, it can't contain a
+	// reference to models.MediaAsset.
+	if len(legacyImports) == 0 {
+		return false
+	}
+
 	found := false
 
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -95,41 +147,27 @@ func containsLegacyRef(file *ast.File) bool {
 		}
 
 		switch x := n.(type) {
-		// models.MediaAsset as a type selector: e.g. *models.MediaAsset, models.MediaAsset{
+		// [alias].MediaAsset as a type selector: e.g. *models.MediaAsset,
+		// models.MediaAsset{...}
 		case *ast.SelectorExpr:
-			if id, ok := x.X.(*ast.Ident); ok && id.Name == "models" && x.Sel.Name == "MediaAsset" {
+			if isLegacySelectorExpr(x, legacyImports) {
 				found = true
 				return false
 			}
 
-		// models.MediaAsset as an ident (rare, but possible after import alias)
-		case *ast.Ident:
-			if x.Name == "MediaAsset" {
-				// Check parent context — skip if it's a standalone Ident
-				// (this is a heuristic; selector expr is the main case)
-			}
-
-		// Composite literal: &models.MediaAsset{}, models.MediaAsset{...}
+		// Composite literal: &[alias].MediaAsset{}, [alias].MediaAsset{...}
 		case *ast.CompositeLit:
-			if sel, ok := x.Type.(*ast.SelectorExpr); ok {
-				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "models" && sel.Sel.Name == "MediaAsset" {
-					found = true
-					return false
-				}
+			if isLegacySelectorExpr(x.Type, legacyImports) {
+				found = true
+				return false
 			}
 
-		// Type assertion or type switch: v.(models.MediaAsset)
+		// Type assertion or type switch: v.([alias].MediaAsset)
 		case *ast.TypeAssertExpr:
-			if sel, ok := x.Type.(*ast.SelectorExpr); ok {
-				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "models" && sel.Sel.Name == "MediaAsset" {
-					found = true
-					return false
-				}
+			if isLegacySelectorExpr(x.Type, legacyImports) {
+				found = true
+				return false
 			}
-
-		// Function type or field type: func(clip *models.MediaAsset)
-		case *ast.Field:
-			// handled by the generic ast.Inspect on child nodes
 		}
 
 		return true
