@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -27,14 +28,17 @@ func (h *Handler) GetClip(c *gin.Context) {
 		return
 	}
 
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
-	legacyClip, err := repo.GetClip(c.Request.Context(), clipID)
+	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
 	if err != nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
+	if clip == nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
@@ -42,7 +46,7 @@ func (h *Handler) GetClip(c *gin.Context) {
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
-		"clip":   assetregistry.ToCanonical(legacyClip),
+		"clip":   clip,
 	})
 }
 
@@ -51,18 +55,19 @@ func (h *Handler) ClipStatus(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
-
-	legacyClip, err := repo.GetClip(c.Request.Context(), clipID)
+	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	clip := assetregistry.ToCanonical(legacyClip)
+	if clip == nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
 
 	// Determine status based on available data
 	status := "unknown"
@@ -131,19 +136,38 @@ func (h *Handler) ListClips(c *gin.Context) {
 			allClips = append(allClips, assetregistry.ImageAssetToClip(img))
 		}
 	} else {
-		repo := h.resolveRepo(source)
-		if repo == nil {
-			apiutil.BadRequest(c, "invalid source: "+source)
+		if h.assetRepo == nil {
+			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 			return
 		}
-		legacyClips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
-		if err != nil {
-			apiutil.InternalError(c, err)
-			return
-		}
-		allClips = make([]*asset.MediaAsset, len(legacyClips))
-		for i, lc := range legacyClips {
-			allClips[i] = assetregistry.ToCanonical(lc)
+		if q == "" {
+			// No search — use canonical List with pagination.
+			clips, err := h.assetRepo.List(ctx, asset.Filter{
+				Source: source,
+				Limit:  limit,
+				Offset: offset,
+			})
+			if err != nil {
+				apiutil.InternalError(c, err)
+				return
+			}
+			allClips = clips
+		} else {
+			// Text search — fall back to legacy clipsRepo (asset.Filter has no search yet).
+			repo := h.resolveRepo(source)
+			if repo == nil {
+				apiutil.BadRequest(c, "invalid source: "+source)
+				return
+			}
+			legacyClips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
+			if err != nil {
+				apiutil.InternalError(c, err)
+				return
+			}
+			allClips = make([]*asset.MediaAsset, len(legacyClips))
+			for i, lc := range legacyClips {
+				allClips[i] = assetregistry.ToCanonical(lc)
+			}
 		}
 	}
 
@@ -163,7 +187,10 @@ func (h *Handler) ListClips(c *gin.Context) {
 		repo := h.resolveRepo(source)
 		if repo != nil {
 			if q == "" {
-				total, _ = repo.CountClips(ctx)
+				n, err := h.assetRepo.Count(ctx, asset.Filter{Source: source})
+				if err == nil {
+					total = int(n)
+				}
 			} else {
 				// For search, total is len of results for now (since SearchClips isn't paged yet)
 				total = len(allClips)
