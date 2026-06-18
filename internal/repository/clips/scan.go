@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -206,12 +207,72 @@ func scanMediaAsset(s mediaAssetScanner) (*models.MediaAsset, error) {
 	return &clip, nil
 }
 
-// scanMediaAssetRows scans a media asset from sql.Rows.
-func scanMediaAssetRows(rows *sql.Rows) (*models.MediaAsset, error) {
-	return scanMediaAsset(rows)
+// toCanonical converts a legacy MediaAsset to the canonical domain type.
+// Defined locally to avoid an import cycle (clips → assetregistry → assetindex → clips).
+func toCanonical(m *models.MediaAsset) *asset.MediaAsset {
+	if m == nil {
+		return nil
+	}
+	return &asset.MediaAsset{
+		ID:            m.ID,
+		Source:        m.Source,
+		Name:          m.Name,
+		Filename:      m.Filename,
+		MediaType:     m.MediaType,
+		Category:      m.Category,
+		Group:         m.Group,
+		Tags:          append([]string(nil), m.Tags...),
+		SearchTerms:   m.SearchTerms,
+		SearchText:    m.SearchText,
+		SourceURL:     m.ExternalURL,
+		ExternalURL:   m.ExternalURL,
+		ThumbnailURL:  m.ThumbURL,
+		ClipPageURL:   m.ClipPageURL,
+		DurationMs:    int64(m.Duration),
+		Metadata:      m.Metadata,
+		LifecycleState: asset.LifecycleState(m.LifecycleStateOrDefault()),
+		DeletedAt:     m.DeletedAt,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
+		FolderID:      m.FolderID,
+		ParentFolderID: m.ParentFolderID,
+		FolderPath:    m.FolderPath,
+		Depth:         m.Depth,
+		IsFolder:      m.IsFolder,
+		DriveFileID:   m.DriveFileID,
+		DriveLink:     m.DriveLink,
+		DownloadLink:  m.DownloadLink,
+		LocalPath:     m.LocalPath,
+		FileHash:      m.FileHash,
+		ChildCount:    m.ChildCount,
+		SceneType:     m.SceneType,
+		QualityScore:  m.QualityScore,
+		ReuseCount:    m.ReuseCount,
+		LastUsedAt:    m.LastUsedAt,
+		PHash:         m.PHash,
+		EmbeddingJSON:       m.EmbeddingJSON,
+		VisualEmbedding:     m.VisualEmbedding,
+		TranscriptEmbedding: m.TranscriptEmbedding,
+		VisualEmbeddingJSON: m.VisualEmbeddingJSON,
+		UsableFor:           m.UsableFor,
+		AvoidFor:            m.AvoidFor,
+	}
 }
 
-// scanMediaAssetRow scans a single media asset from sql.Row.
-func (r *Repository) scanMediaAssetRow(row *sql.Row) (*models.MediaAsset, error) {
-	return scanMediaAsset(row)
+// scanCanonicalAssetRows scans a canonical asset from sql.Rows.
+func scanCanonicalAssetRows(rows *sql.Rows) (*asset.MediaAsset, error) {
+	m, err := scanMediaAsset(rows)
+	if err != nil {
+		return nil, err
+	}
+	return toCanonical(m), nil
+}
+
+// scanCanonicalAssetRow scans a single canonical asset from sql.Row.
+func (r *Repository) scanCanonicalAssetRow(row *sql.Row) (*asset.MediaAsset, error) {
+	m, err := scanMediaAsset(row)
+	if err != nil {
+		return nil, err
+	}
+	return toCanonical(m), nil
 }

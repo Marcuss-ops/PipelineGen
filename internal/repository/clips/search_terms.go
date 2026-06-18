@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 // SearchByTerms searches clips using the indexed clip_search_terms table.
@@ -14,7 +14,7 @@ import (
 //
 // Splits cleanly from search.go so the fast-path index lookup can evolve
 // independently of the LIKE fallback in SearchClips.
-func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*models.MediaAsset, error) {
+func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.MediaAsset, error) {
 	filtered := make([]string, 0, len(keywords))
 	for _, k := range keywords {
 		k = strings.TrimSpace(k)
@@ -23,7 +23,7 @@ func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords 
 		}
 	}
 	if len(filtered) == 0 {
-		return []*models.MediaAsset{}, nil
+		return []*asset.MediaAsset{}, nil
 	}
 
 	placeholders := make([]string, len(filtered))
@@ -59,7 +59,7 @@ func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords 
 	}
 
 	if len(clipIDs) == 0 {
-		return []*models.MediaAsset{}, nil
+		return []*asset.MediaAsset{}, nil
 	}
 	if limit > 0 && len(clipIDs) > limit {
 		clipIDs = clipIDs[:limit]
@@ -72,9 +72,9 @@ func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords 
 // Private to this file because callers should always go through
 // SearchByTerms (which respects the search_terms index); batch-fetch helpers
 // belong only with the search path that knows the index schema.
-func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs []string) ([]*models.MediaAsset, error) {
+func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs []string) ([]*asset.MediaAsset, error) {
 	if len(clipIDs) == 0 {
-		return []*models.MediaAsset{}, nil
+		return []*asset.MediaAsset{}, nil
 	}
 
 	idPlaceholders := make([]string, len(clipIDs))
@@ -96,9 +96,9 @@ func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs
 		}
 		defer rows.Close()
 
-		var results []*models.MediaAsset
+		var results []*asset.MediaAsset
 		for rows.Next() {
-			clip, err := scanMediaAssetRows(rows)
+			clip, err := scanCanonicalAssetRows(rows)
 			if err != nil {
 				return nil, err
 			}
@@ -114,9 +114,9 @@ func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs
 	}
 	defer rows.Close()
 
-	var results []*models.MediaAsset
+	var results []*asset.MediaAsset
 	for rows.Next() {
-		clip, err := scanMediaAssetRows(rows)
+		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}

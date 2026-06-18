@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -95,7 +96,7 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 }
 
 // ListClipsByFolderID returns all clips for a given folder ID (canonical column after migration 059).
-func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.MediaAsset, error) {
+func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*asset.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
 	if err != nil {
@@ -103,9 +104,9 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 	}
 	defer rows.Close()
 
-	var clips []*models.MediaAsset
+	var clips []*asset.MediaAsset
 	for rows.Next() {
-		clip, err := scanMediaAssetRows(rows)
+		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +116,7 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 }
 
 // ListClipsByFolderPath returns all clips for a given folder path (canonical column).
-func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.MediaAsset, error) {
+func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*asset.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
@@ -123,9 +124,9 @@ func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath strin
 	}
 	defer rows.Close()
 
-	var clips []*models.MediaAsset
+	var clips []*asset.MediaAsset
 	for rows.Next() {
-		clip, err := scanMediaAssetRows(rows)
+		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
 			return nil, err
 		}
