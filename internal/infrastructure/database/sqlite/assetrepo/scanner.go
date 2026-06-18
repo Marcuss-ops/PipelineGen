@@ -53,6 +53,11 @@ const selectColumns = `
 	COALESCE(avoid_for, '[]')     AS avoid_for,
 	COALESCE(phash, '')           AS phash,
 	COALESCE(child_count, 0)      AS child_count,
+	COALESCE(drive_file_id, '')   AS drive_file_id,
+	COALESCE(drive_link, '')      AS drive_link,
+	COALESCE(download_link, '')   AS download_link,
+	COALESCE(local_path, '')      AS local_path,
+	COALESCE(file_hash, '')       AS file_hash,
 	created_at,
 	updated_at
 `
@@ -74,6 +79,7 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 	var depth, reuseCount, childCount sql.NullInt64
 	var qualityScore sql.NullFloat64
 	var isFolder sql.NullInt64
+	var driveFileID, driveLink, downloadLink, localPath, fileHash sql.NullString
 
 	err := s.Scan(
 		&a.ID, &a.Source, &a.Name, &a.Filename, &a.MediaType, &a.Category,
@@ -86,6 +92,7 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 		&a.FolderID, &a.ParentFolderID, &a.FolderPath, &depth, &isFolder,
 		&a.SceneType, &qualityScore, &reuseCount, &a.LastUsedAt,
 		&usableForJSON, &avoidForJSON, &a.PHash, &childCount,
+		&driveFileID, &driveLink, &downloadLink, &localPath, &fileHash,
 		&createdAtStr, &updatedAtStr,
 	)
 	if err != nil {
@@ -156,6 +163,24 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 	}
 	if visualEmbJSON.Valid {
 		a.VisualEmbeddingJSON = visualEmbJSON.String
+	}
+
+	// PR1 dual-write: populate legacy location fields from media_assets columns.
+	// These will move to asset_locations exclusively in PR2.
+	if driveFileID.Valid {
+		a.DriveFileID = driveFileID.String
+	}
+	if driveLink.Valid {
+		a.DriveLink = driveLink.String
+	}
+	if downloadLink.Valid {
+		a.DownloadLink = downloadLink.String
+	}
+	if localPath.Valid {
+		a.LocalPath = localPath.String
+	}
+	if fileHash.Valid {
+		a.FileHash = fileHash.String
 	}
 
 	// Parse metadata_json — only for provider-specific fields

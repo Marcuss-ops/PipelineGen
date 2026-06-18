@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS media_assets (
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
     project TEXT NOT NULL DEFAULT '',
+    drive_file_id TEXT NOT NULL DEFAULT '',
+    drive_link TEXT NOT NULL DEFAULT '',
+    download_link TEXT NOT NULL DEFAULT '',
+    local_path TEXT NOT NULL DEFAULT '',
+    relative_path TEXT NOT NULL DEFAULT '',
+    file_hash TEXT NOT NULL DEFAULT '',
+    tags_norm TEXT NOT NULL DEFAULT '',
+    drive_folder_id TEXT NOT NULL DEFAULT '',
+    thumb_url TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT ''
 );
@@ -70,6 +79,24 @@ CREATE TABLE IF NOT EXISTS outbox_events (
     payload_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT '',
     published_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS asset_locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_id TEXT NOT NULL,
+    location_kind TEXT NOT NULL DEFAULT 'local',
+    uri TEXT NOT NULL DEFAULT '',
+    external_id TEXT NOT NULL DEFAULT '',
+    web_view_link TEXT NOT NULL DEFAULT '',
+    download_url TEXT NOT NULL DEFAULT '',
+    is_public INTEGER NOT NULL DEFAULT 0,
+    mime_type TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    file_hash TEXT NOT NULL DEFAULT '',
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    UNIQUE(asset_id, location_kind)
 );
 `
 

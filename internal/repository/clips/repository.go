@@ -17,7 +17,6 @@ package clips
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -92,26 +91,39 @@ func (r *Repository) buildMediaAssetQuery(source string) string {
 
 // Repository handles persistence for clips.
 //
-// PR1: Repository optionally satisfies asset.Repository by delegating to a
-// canonical assetrepo.Repository. When canonical is non-nil, the
-// asset.Repository methods delegate to it.
+// PR1: Repository always delegates canonical CRUD (Upsert/Get/List/
+// SoftDelete/Restore/HardDelete) to an embedded assetrepo.Repository,
+// which is auto-created by NewRepository. Callers that previously wired
+// a separate canonical via NewRepositoryCanonical get graceful overlap
+// (the explicitly-passed canonical is used). Custom queries (SearchClips,
+// folders, dedup, scoring) remain on this type.
 type Repository struct {
-	db  *sql.DB
-	log *zap.Logger
+	db        *sql.DB
+	log       *zap.Logger
 	canonical *assetrepo.Repository
 }
 
+// NewRepository creates a Repository backed by db, with an auto-created
+// canonical assetrepo.Repository. All callers get canonical delegation
+// for free — no migration needed.
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
-	r := &Repository{db: db, log: log}
+	r := &Repository{
+		db:        db,
+		log:       log,
+		canonical: assetrepo.New(db, log),
+	}
 	if log != nil {
-		log.Info("clips repository: canonical lifecycle_state column in use")
+		log.Info("clips repository: canonical assetrepo auto-wired (PR1)")
 	}
 	return r
 }
 
+// NewRepositoryCanonical wraps an existing canonical assetrepo.Repository.
+// For backward compatibility with callers that previously created the
+// canonical externally (e.g., compose_core.go). When nil, auto-creates one.
 func NewRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical *assetrepo.Repository) *Repository {
 	if canonical == nil {
-		panic("clips.NewRepositoryCanonical: canonical assetrepo.Repository is required")
+		canonical = assetrepo.New(db, log)
 	}
 	r := &Repository{db: db, log: log, canonical: canonical}
 	if log != nil {
@@ -121,55 +133,40 @@ func NewRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical *assetrepo.Re
 	return r
 }
 
-// ── asset.Repository interface (PR1: canonical delegation) ──────────────
+// ── asset.Repository interface (PR1: always delegated to canonical) ────
 
 func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.Upsert: canonical repo not wired")
-	}
 	return r.canonical.Upsert(ctx, m)
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, error) {
-	if r.canonical == nil {
-		return nil, fmt.Errorf("clips.Repository.Get: canonical repo not wired")
-	}
 	return r.canonical.Get(ctx, id)
 }
 
 func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.MediaAsset, error) {
-	if r.canonical == nil {
-		return nil, fmt.Errorf("clips.Repository.List: canonical repo not wired")
-	}
 	return r.canonical.List(ctx, filter)
 }
 
 func (r *Repository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
-	if r.canonical == nil {
-		return 0, fmt.Errorf("clips.Repository.Count: canonical repo not wired")
-	}
 	return r.canonical.Count(ctx, filter)
 }
 
 func (r *Repository) SoftDelete(ctx context.Context, id string) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.SoftDelete: canonical repo not wired")
-	}
 	return r.canonical.SoftDelete(ctx, id)
 }
 
 func (r *Repository) Restore(ctx context.Context, id string) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.Restore: canonical repo not wired")
-	}
 	return r.canonical.Restore(ctx, id)
 }
 
 func (r *Repository) HardDelete(ctx context.Context, id string) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.HardDelete: canonical repo not wired")
-	}
 	return r.canonical.HardDelete(ctx, id)
+}
+
+// Canonical returns the embedded assetrepo.Repository for callers that
+// need direct access (e.g., WithTx, UpsertTx).
+func (r *Repository) Canonical() *assetrepo.Repository {
+	return r.canonical
 }
 
 // ── Legacy write methods (PR2: converted to canonical *asset.MediaAsset) ─
@@ -186,135 +183,32 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 	return r.db.BeginTx(ctx, opts)
 }
 
-// UpsertClip inserts or updates a media asset. Now accepts *asset.MediaAsset.
-// Delegates to the canonical Upsert when canonical is wired; otherwise writes directly.
+// UpsertClip inserts or updates a media asset. PR1: always delegates to
+// the canonical assetrepo.Repository. Same semantics as before.
 func (r *Repository) UpsertClip(ctx context.Context, clip *asset.MediaAsset) error {
-	if r.canonical != nil {
-		return r.canonical.Upsert(ctx, clip)
-	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		}
-	}()
-	if err := r.UpsertClipTx(ctx, tx, clip); err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			r.log.Warn("rollback failed", zap.Error(rbErr))
-		}
-		return err
-	}
-	return tx.Commit()
+	return r.canonical.Upsert(ctx, clip)
 }
 
-// UpsertClipTx is the tx-aware variant of UpsertClip. Now accepts *asset.MediaAsset.
+// UpsertClipTx is the tx-aware variant of UpsertClip. PR1: delegates to
+// the canonical assetrepo.Repository.UpsertTx. The caller owns the
+// transaction lifecycle and outbox emission.
 func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
-	tagsJSON, err := json.Marshal(clip.Tags)
-	if err != nil {
-		return fmt.Errorf("failed to marshal tags: %w", err)
-	}
-	metadataJSON := clip.MetadataJSON()
-	tagsNorm := normalizeTags(clip.Tags)
-	nowStr := timeutil.FormatRFC3339(time.Now())
-
-	lifecycle := string(clip.LifecycleState)
-	if lifecycle == "" {
-		lifecycle = "ready"
-	}
-	deletedAtStr := ""
-	if clip.DeletedAt != nil {
-		deletedAtStr = clip.DeletedAt.UTC().Format(time.RFC3339)
-	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_folder_id, drive_link, download_link, file_hash, embedding_json, metadata_json, visual_embedding, transcript_embedding, lifecycle_state, deleted_at, folder_id, parent_folder_id, folder_path, category, filename, error, thumb_url, phash, search_text, scene_type, quality_score, reuse_count, last_used_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			source=excluded.source,
-			name=excluded.name,
-			tags=excluded.tags,
-			tags_norm=excluded.tags_norm,
-			duration_ms=excluded.duration_ms,
-			url=excluded.url,
-			media_type=excluded.media_type,
-			status=excluded.status,
-			local_path=excluded.local_path,
-			relative_path=excluded.relative_path,
-			drive_file_id=excluded.drive_file_id,
-			drive_folder_id=excluded.drive_folder_id,
-			drive_link=excluded.drive_link,
-			download_link=excluded.download_link,
-			file_hash=excluded.file_hash,
-			embedding_json=excluded.embedding_json,
-			metadata_json=excluded.metadata_json,
-			visual_embedding=excluded.visual_embedding,
-			transcript_embedding=excluded.transcript_embedding,
-			lifecycle_state=excluded.lifecycle_state,
-			deleted_at=excluded.deleted_at,
-			folder_id=excluded.folder_id,
-			parent_folder_id=excluded.parent_folder_id,
-			folder_path=excluded.folder_path,
-			category=excluded.category,
-			filename=excluded.filename,
-			error=excluded.error,
-			thumb_url=excluded.thumb_url,
-			phash=excluded.phash,
-			search_text=excluded.search_text,
-			scene_type=excluded.scene_type,
-			quality_score=excluded.quality_score,
-			reuse_count=excluded.reuse_count,
-			last_used_at=excluded.last_used_at,
-			updated_at=excluded.updated_at
-	`, clip.ID, clip.Source, clip.Name, string(tagsJSON), tagsNorm,
-		clip.DurationMs, clip.SourceURL,
-		clip.MediaType, "", clip.LocalPath, clip.LocalPath,
-		clip.DriveFileID, clip.FolderID, clip.DriveLink, clip.DownloadLink,
-		clip.FileHash, clip.EmbeddingJSON,
-		metadataJSON, clip.VisualEmbedding, clip.TranscriptEmbedding,
-		lifecycle, deletedAtStr, clip.FolderID, clip.ParentFolderID,
-		clip.FolderPath, clip.Category, clip.Filename, "",
-		clip.ThumbnailURL, clip.PHash, clip.SearchText, clip.SceneType,
-		clip.QualityScore, clip.ReuseCount, clip.LastUsedAt,
-		nowStr, nowStr)
-
-	return err
+	return r.canonical.UpsertTx(ctx, tx, clip)
 }
 
-// DeleteClip soft-deletes a clip by its ID.
+// DeleteClip soft-deletes a clip by its ID. PR1: delegates to canonical.
 func (r *Repository) DeleteClip(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip id is required")
-	}
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'deleted', deleted_at = ? WHERE id = ?`, now, id)
-	return err
+	return r.canonical.SoftDelete(ctx, id)
 }
 
-// RestoreClip restores a soft-deleted clip.
+// RestoreClip restores a soft-deleted clip. PR1: delegates to canonical.
 func (r *Repository) RestoreClip(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip id is required")
-	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = '' WHERE id = ?`, id)
-	return err
+	return r.canonical.Restore(ctx, id)
 }
 
-// HardDeleteClip permanently deletes a clip.
+// HardDeleteClip permanently deletes a clip. PR1: delegates to canonical.
 func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip id is required")
-	}
-	_, err := r.db.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
-	return err
+	return r.canonical.HardDelete(ctx, id)
 }
 
 // DeleteClipByDriveLink deletes a clip by its drive_link or download_link.
