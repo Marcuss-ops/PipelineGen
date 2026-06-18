@@ -168,7 +168,7 @@ func (r *Repository) SearchClipsAdvanced(ctx context.Context, req AdvancedSearch
 	}
 
 	if req.Category != "" {
-		conditions = append(conditions, "json_extract(COALESCE(metadata_json,'{}'), '$.category') = ?")
+		conditions = append(conditions, "category = ?")
 		args = append(args, req.Category)
 	}
 
@@ -194,7 +194,7 @@ func (r *Repository) SearchClipsAdvanced(ctx context.Context, req AdvancedSearch
 	}
 
 	if req.HasTranscript {
-		conditions = append(conditions, "json_extract(COALESCE(metadata_json,'{}'), '$.search_text') != '' AND json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NOT NULL")
+		conditions = append(conditions, "search_text != '' AND search_text IS NOT NULL")
 	}
 
 	if req.HasDriveLink {

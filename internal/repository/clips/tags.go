@@ -111,7 +111,7 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 
 // GetClipByFolderAndFilename retrieves a clip by folder and filename (stored in metadata_json).
 func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.filename') = ? LIMIT 1"
+	query := buildMediaAssetQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderID, filename)
 	return r.scanMediaAssetRow(row)
 }
@@ -132,7 +132,7 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 	}
 
 	pattern := "%" + fileID + "%"
-	query := buildMediaAssetQuery("") + " AND (json_extract(COALESCE(metadata_json,'{}'), '$.drive_link') LIKE ? OR json_extract(COALESCE(metadata_json,'{}'), '$.download_link') LIKE ? OR json_extract(COALESCE(metadata_json,'{}'), '$.drive_file_id') LIKE ?) LIMIT 1"
+	query := buildMediaAssetQuery("") + " AND (drive_link LIKE ? OR download_link LIKE ? OR drive_file_id LIKE ?) LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, pattern, pattern, pattern)
 	clip, err := r.scanMediaAssetRow(row)
 	if err == sql.ErrNoRows {
@@ -143,7 +143,7 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 
 // FindClipsByHash returns all clips with the given file hash (stored in metadata_json).
 func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*models.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.file_hash') = ?"
+	query := buildMediaAssetQuery("") + " AND file_hash = ?"
 	rows, err := r.db.QueryContext(ctx, query, hash)
 	if err != nil {
 		return nil, err
@@ -163,7 +163,7 @@ func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*model
 
 // GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (stored in metadata_json).
 func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.drive_file_id') IS NOT NULL AND json_extract(COALESCE(metadata_json,'{}'), '$.drive_file_id') != ''"
+	query := buildMediaAssetQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
