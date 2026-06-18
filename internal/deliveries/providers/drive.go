@@ -31,28 +31,30 @@ func NewDriveProvider(uploader *drive.Uploader, log *zap.Logger) *DriveProvider 
 func (p *DriveProvider) Name() string { return "drive" }
 
 // Deliver uploads the artifact to Google Drive via the ArtifactReader.
-func (p *DriveProvider) Deliver(ctx context.Context, artifact deliveries.ArtifactDescriptor, content deliveries.ArtifactReader, dest deliveries.DeliveryDestination) (deliveries.Result, error) {
+// Returns *deliveries.Result per the deliveries.Provider contract (pointer-typed
+// so streaming providers can re-use the same backing allocation).
+func (p *DriveProvider) Deliver(ctx context.Context, artifact deliveries.ArtifactDescriptor, content deliveries.ArtifactReader, dest deliveries.DeliveryDestination) (*deliveries.Result, error) {
 	if p.uploader == nil {
-		return deliveries.Result{}, fmt.Errorf("drive uploader not configured")
+		return nil, fmt.Errorf("drive uploader not configured")
 	}
 
 	// Open artifact stream from BlobStore
 	reader, err := content.Open(ctx, artifact.StorageKey)
 	if err != nil {
-		return deliveries.Result{}, fmt.Errorf("drive: open artifact: %w", err)
+		return nil, fmt.Errorf("drive: open artifact: %w", err)
 	}
 	defer reader.Close()
 
 	// Write to temp file for Drive upload (Drive API requires filesystem path)
 	tmpFile, err := os.CreateTemp("", "dlv-drive-*")
 	if err != nil {
-		return deliveries.Result{}, fmt.Errorf("drive: create temp: %w", err)
+		return nil, fmt.Errorf("drive: create temp: %w", err)
 	}
 	defer os.Remove(tmpFile.Name())
 
 	if _, err := tmpFile.ReadFrom(reader); err != nil {
 		tmpFile.Close()
-		return deliveries.Result{}, fmt.Errorf("drive: read artifact: %w", err)
+		return nil, fmt.Errorf("drive: read artifact: %w", err)
 	}
 	tmpFile.Close()
 
@@ -65,7 +67,7 @@ func (p *DriveProvider) Deliver(ctx context.Context, artifact deliveries.Artifac
 			zap.String("artifact_id", artifact.ArtifactID),
 			zap.Error(err),
 		)
-		return deliveries.Result{}, fmt.Errorf("drive: upload: %w", err)
+		return nil, fmt.Errorf("drive: upload: %w", err)
 	}
 
 	p.log.Info("drive delivery complete",
@@ -74,7 +76,7 @@ func (p *DriveProvider) Deliver(ctx context.Context, artifact deliveries.Artifac
 		zap.String("drive_link", result.WebViewLink),
 	)
 
-	return deliveries.Result{
+	return &deliveries.Result{
 		RemoteID:  result.FileID,
 		RemoteURL: result.WebViewLink,
 	}, nil

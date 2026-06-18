@@ -17,8 +17,9 @@ func NewS3Provider() *S3Provider { return &S3Provider{} }
 func (p *S3Provider) Name() string { return "s3" }
 
 // Deliver returns ErrProviderNotConfigured until S3 support is built.
-func (p *S3Provider) Deliver(ctx context.Context, artifact deliveries.ArtifactDescriptor, content deliveries.ArtifactReader, dest deliveries.DeliveryDestination) (deliveries.Result, error) {
-	return deliveries.Result{}, ErrProviderNotConfigured
+// Returns *deliveries.Result per the deliveries.Provider contract.
+func (p *S3Provider) Deliver(ctx context.Context, artifact deliveries.ArtifactDescriptor, content deliveries.ArtifactReader, dest deliveries.DeliveryDestination) (*deliveries.Result, error) {
+	return nil, ErrProviderNotConfigured
 }
 
 // ClassifyError returns FailurePermanent for the not-configured error.

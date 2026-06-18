@@ -21,13 +21,21 @@ func newInMemoryRepository(t *testing.T) *Repository {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
+	// schema_migrations ledger is required by some downstream loaders; not
+	// needed for counter/listing tests but harmless to include.
 	_, err = db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
 			source TEXT,
 			name TEXT,
 			embedding_json TEXT,
-			metadata_json TEXT
+			metadata_json TEXT,
+			-- canonical soft-delete column (migration 037). CountIndexed
+			-- and ListIndexedIDs route SoftDeleteFilter through the
+			-- column when it exists, bypassing the json_extract()
+			-- fallback that some in-memory SQLite configs reject with
+			-- "malformed JSON".
+			lifecycle_state TEXT NOT NULL DEFAULT 'ready'
 		)
 	`)
 	require.NoError(t, err)
@@ -35,18 +43,20 @@ func newInMemoryRepository(t *testing.T) *Repository {
 }
 
 // seedAsset inserts one row; embeddingJSON is the literal string written to
-// the embedding_json column (pass "" or "[]" for "not indexed").
+// the embedding_json column (pass "" or "[]" for "not indexed"). When
+// deletedAtJSON is non-empty the row is also flagged as soft-deleted via the
+// canonical lifecycle_state column so the SoftDeleteFilter excludes it.
 func seedAsset(t *testing.T, repo *Repository, id, embeddingJSON, deletedAtJSON string) {
 	t.Helper()
 	metadata := "{}"
+	lifecycleState := "ready"
 	if deletedAtJSON != "" {
-		// Embed the deleted_at sentinel inside metadata_json so the json_extract
-		// filter recognises the row as soft-deleted.
 		metadata = `{"deleted_at":"` + deletedAtJSON + `"}`
+		lifecycleState = "deleted"
 	}
 	_, err := repo.db.Exec(
-		`INSERT INTO media_assets (id, source, name, embedding_json, metadata_json) VALUES (?,?,?,?,?)`,
-		id, "youtube", "name-"+id, embeddingJSON, metadata,
+		`INSERT INTO media_assets (id, source, name, embedding_json, metadata_json, lifecycle_state) VALUES (?,?,?,?,?,?)`,
+		id, "youtube", "name-"+id, embeddingJSON, metadata, lifecycleState,
 	)
 	require.NoError(t, err)
 }

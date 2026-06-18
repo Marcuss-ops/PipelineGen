@@ -48,6 +48,28 @@ func (m *mockQdrantStore) CleanupStalePoints(ctx context.Context, fn func(assetI
 	return 0, nil
 }
 
+// DeletePoints satisfies vectorstore.Store (PR3-5b batch-delete). Stub: the
+// test scope never asserts on DeletePoints behaviour, only on the build
+// succeeding.
+func (m *mockQdrantStore) DeletePoints(ctx context.Context, assetIDs []string) error {
+	return nil
+}
+
+// ListPointIDs satisfies vectorstore.Store (PR3-5b cross-check sampling).
+// Stub: the test scope never inspects the returned slice.
+func (m *mockQdrantStore) ListPointIDs(ctx context.Context, limit int) ([]string, error) {
+	return nil, nil
+}
+
+// ScrollAssetIDsPage satisfies vectorstore.Store (ghost sweeper, internal/app).
+// Stub: calls fn with a single empty batch and returns nil.
+func (m *mockQdrantStore) ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error {
+	if fn != nil {
+		_ = fn(nil)
+	}
+	return nil
+}
+
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 // insertTestClipFrom is a helper to insert a test clip into the DB.

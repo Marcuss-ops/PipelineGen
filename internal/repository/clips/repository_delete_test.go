@@ -34,7 +34,13 @@ const testSchema = `
 		file_hash TEXT,
 		visual_embedding TEXT,
 		transcript_embedding TEXT,
-		updated_at TEXT
+		updated_at TEXT,
+		-- Canonical soft-delete columns (migration 037). Required because
+		-- DeleteClip / RestoreClip / DeleteClipByDriveLink all UPDATE
+		-- lifecycle_state; without these columns those queries error with
+		-- "no such column: lifecycle_state".
+		lifecycle_state TEXT NOT NULL DEFAULT 'ready',
+		deleted_at TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE TABLE clip_folders (

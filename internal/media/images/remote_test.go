@@ -56,11 +56,13 @@ func TestExtractRemoteImageNamesFromArtifacts(t *testing.T) {
 }
 
 func TestJobStatusIsTerminal(t *testing.T) {
+	// googleaccounting only exposes StatusSucceeded and StatusFailed as
+	// terminal states (see pkg/googleaccounting/models.go JobStatus.IsTerminal).
+	// Historical aliases StatusDone/StatusCompleted were removed; they map to
+	// StatusSucceeded on ingest.
 	terminal := []googleaccounting.JobStatus{
 		googleaccounting.StatusSucceeded,
 		googleaccounting.StatusFailed,
-		googleaccounting.StatusDone,
-		googleaccounting.StatusCompleted,
 	}
 	for _, status := range terminal {
 		if !status.IsTerminal() {
