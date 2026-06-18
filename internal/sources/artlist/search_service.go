@@ -139,7 +139,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			ClipPageURL:  c.ClipPageURL,
 		}
 
-		if existing, err := s.artlistRepo.GetClip(ctx, clip.ID); err == nil && existing != nil {
+		if existing, err := s.artlistRepo.Get(ctx, clip.ID); err == nil && existing != nil {
 			// Preserve existing Drive metadata (upload results)
 			if existing.LocalPath != "" {
 				clip.LocalPath = existing.LocalPath
@@ -166,7 +166,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 			}
 		}
 
-		if err := s.artlistRepo.UpsertClip(ctx, clip); err == nil {
+		if err := s.artlistRepo.Upsert(ctx, clip); err == nil {
 			if a := toDomain(clip); a != nil {
 				resp.Clips = append(resp.Clips, *a)
 			}
@@ -280,5 +280,5 @@ func (ss *SearchService) UpsertClip(ctx context.Context, clip *models.MediaAsset
 		return ss.assetRepo.Upsert(ctx, toDomain(clip))
 	}
 	s := ss.service
-	return s.artlistRepo.UpsertClip(ctx, clip)
+	return s.artlistRepo.Upsert(ctx, clip)
 }

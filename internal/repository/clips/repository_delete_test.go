@@ -50,7 +50,7 @@ func TestDeleteClip(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	err := repo.UpsertClip(ctx, &models.MediaAsset{
+	err := repo.Upsert(ctx, &models.MediaAsset{
 		ID:        "clip_1",
 		Name:      "Test Clip",
 		Filename:  "test.mp4",
@@ -62,15 +62,15 @@ func TestDeleteClip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := repo.GetClip(ctx, "clip_1"); err != nil {
+	if _, err := repo.Get(ctx, "clip_1"); err != nil {
 		t.Fatalf("expected clip before delete: %v", err)
 	}
 
-	if err := repo.DeleteClip(ctx, "clip_1"); err != nil {
+	if err := repo.SoftDelete(ctx, "clip_1"); err != nil {
 		t.Fatalf("DeleteClip failed: %v", err)
 	}
 
-	clip, err := repo.GetClip(ctx, "clip_1")
+	clip, err := repo.Get(ctx, "clip_1")
 	if clip != nil {
 		t.Fatal("expected nil clip after deleting clip")
 	}
@@ -101,7 +101,7 @@ func TestRestoreClip(t *testing.T) {
 	defer db.Close()
 	repo := NewRepository(db, zap.NewNop())
 
-	_ = repo.UpsertClip(ctx, &models.MediaAsset{
+	_ = repo.Upsert(ctx, &models.MediaAsset{
 		ID:        "clip_res",
 		Name:      "Restore Clip",
 		Tags:      []string{"restore"},
@@ -109,18 +109,18 @@ func TestRestoreClip(t *testing.T) {
 		UpdatedAt: time.Now(),
 	})
 
-	_ = repo.DeleteClip(ctx, "clip_res")
+	_ = repo.SoftDelete(ctx, "clip_res")
 
-	clip, _ := repo.GetClip(ctx, "clip_res")
+	clip, _ := repo.Get(ctx, "clip_res")
 	if clip != nil {
 		t.Fatal("expected nil clip after soft delete")
 	}
 
-	if err := repo.RestoreClip(ctx, "clip_res"); err != nil {
+	if err := repo.Restore(ctx, "clip_res"); err != nil {
 		t.Fatalf("RestoreClip failed: %v", err)
 	}
 
-	clip, err := repo.GetClip(ctx, "clip_res")
+	clip, err := repo.Get(ctx, "clip_res")
 	if err != nil || clip == nil {
 		t.Fatalf("expected clip to be present after restore, err: %v", err)
 	}
@@ -142,15 +142,15 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	if err := repo.UpsertClip(ctx, clip); err != nil {
+	if err := repo.Upsert(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := repo.DeleteClipByDriveLink(ctx, clip.DriveLink); err != nil {
+	if err := repo.DeleteByDriveLink(ctx, clip.DriveLink); err != nil {
 		t.Fatalf("DeleteClipByDriveLink failed: %v", err)
 	}
 
-	c, _ := repo.GetClip(ctx, "clip_2")
+	c, _ := repo.Get(ctx, "clip_2")
 	if c != nil {
 		t.Fatal("expected nil clip after deleting by drive link")
 	}

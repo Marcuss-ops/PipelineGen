@@ -9,7 +9,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // HandleJob processes the background job for lesson generation.
@@ -82,7 +81,7 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 // RegisterJobHandler registers the handler for lesson processing jobs.
 func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeLessonsProcess, s.HandleJob)
+		jobsSvc.RegisterHandler(domainjob.JobTypeLessonsProcess, s.HandleJob)
 		s.log.Info("registered lessons.process job handler")
 	}
 }

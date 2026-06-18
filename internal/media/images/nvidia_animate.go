@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 )
 
@@ -52,8 +52,9 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 4. Upload to Drive
 	var driveVideoID string
+	var driveLink string
 	if s.mediaStore != nil {
-		fileID, _, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
+		fileID, wl, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
 			Source:    storage.SourceImage,
 			MediaType: storage.MediaTypeImageVideo,
 			Subject:   asset.SubjectID,
@@ -65,21 +66,25 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 			s.log.Warn("Drive video upload failed", zap.Error(err))
 		} else {
 			driveVideoID = fileID
+			driveLink = wl
 			s.log.Info("Drive video upload successful", zap.String("file_id", fileID))
 		}
 	}
 
 	// 6. Salva nel DB stock (fallback)
 	if s.stockRepo != nil {
-		clip := &asset.MediaAsset{
-			ID:        "ai_" + imageHash,
-			Name:      "AI Animation: " + asset.SubjectID,
-			MediaType: "video",
-			Source:    "nvidia-animation",
-			CreatedAt: time.Now(),
+		clip := &domainasset.MediaAsset{
+			ID:             "ai_" + imageHash,
+			Name:           "AI Animation: " + asset.SubjectID,
+			MediaType:      "video",
+			Source:         "nvidia-animation",
+			CreatedAt:      time.Now(),
+			DriveFileID:    driveVideoID,
+			DriveLink:      driveLink,
+			LifecycleState: domainasset.StateReady,
 		}
 
-		if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
+		if err := s.stockRepo.Upsert(ctx, clip); err != nil {
 			s.log.Warn("Failed to ingest animated clip into stock DB", zap.Error(err))
 		} else {
 			s.log.Info("Animated clip ingested into stock DB", zap.String("clip_id", clip.ID))

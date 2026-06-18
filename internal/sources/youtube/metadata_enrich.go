@@ -45,7 +45,7 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *models.MediaA
 	// Use clip duration if available
 	durationSec := endSec - startSec
 	if durationSec <= 0 {
-		durationSec = clip.Duration
+		durationSec = int(clip.DurationMs / 1000)
 	}
 
 	youtubeURL := clip.GetMetadataString("youtube_url")

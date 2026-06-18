@@ -91,17 +91,17 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 }
 
 // voiceoverRecordToClip delegates to the canonical converter in assetregistry.
-func voiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
-	return assetregistry.ToLegacy(assetregistry.VoiceoverRecordToClip(rec))
+func voiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
+	return assetregistry.VoiceoverRecordToClip(rec)
 }
 
 // imageAssetToClip uses the canonical converter from assetregistry.
-func imageAssetToClip(asset *models.ImageAsset) *models.MediaAsset {
-	return assetregistry.ToLegacy(assetregistry.ImageAssetToClip(asset))
+func imageAssetToClip(a *models.ImageAsset) *asset.MediaAsset {
+	return assetregistry.ImageAssetToClip(a)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *models.MediaAsset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *asset.MediaAsset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

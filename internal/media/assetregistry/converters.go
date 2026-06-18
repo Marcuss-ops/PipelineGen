@@ -71,22 +71,23 @@ func ImageAssetToClip(assetItem *models.ImageAsset) *asset.MediaAsset {
 	}
 }
 
-// cloneMetadata returns a shallow copy of src, or an empty map if src is nil.
-func cloneMetadata(src map[string]any) map[string]any {
-	if src == nil {
-		return make(map[string]any)
-	}
-	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
+
+// ToCanonical is an identity function during the transition.
+// Since the canonical type (*asset.MediaAsset) is already the single source of truth,
+// this simply returns its input unchanged.
+//
+// Deprecated: This function is a no-op. Remove all call sites, then delete this function.
+// After all callers are migrated, this file should be removed entirely.
+func ToCanonical(a *asset.MediaAsset) *asset.MediaAsset {
+	return a
 }
 
-// safeStringSlice returns s if non-nil, or an empty slice.
-func safeStringSlice(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
+// ToLegacy is an identity function during the transition.
+// Since models.MediaAsset has been deleted and all code now uses *asset.MediaAsset,
+// this simply returns its input unchanged.
+//
+// Deprecated: This function is a no-op. Remove all call sites, then delete this function.
+// After all callers are migrated, this file should be removed entirely.
+func ToLegacy(a *asset.MediaAsset) *asset.MediaAsset {
+	return a
 }

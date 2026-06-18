@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/handlerutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -80,7 +80,7 @@ func (h *Handler) GenerateLesson(c *gin.Context) {
 		}
 		h.log.Info("enqueuing async lesson generate job", zap.String("title", req.Title))
 		handlerutil.EnqueueAsync(c, h.jobsSvc, &handlerutil.EnqueueInput{
-			Type: models.JobTypeLessonsProcess,
+			Type: domainjob.JobTypeLessonsProcess,
 			Payload: map[string]any{
 				"source_text":     req.SourceText,
 				"title":           req.Title,
@@ -161,11 +161,11 @@ func (h *Handler) ListJobs(c *gin.Context) {
 	}
 
 	pag := handlerutil.ParsePagination(c, 20, 1000)
-	jobType := models.JobTypeLessonsProcess
+	jobType := domainjob.JobTypeLessonsProcess
 
-	filter := models.JobFilter{
+	filter := domainjob.Filter{
 		Type:   &jobType,
-		Status: handlerutil.ParseJobStatusFilter(c),
+		Status: (*domainjob.Status)(handlerutil.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}

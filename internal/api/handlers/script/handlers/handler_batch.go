@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -87,22 +87,25 @@ func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
 		"chapters_done":  chaptersDone,
 	}
 
-	if job.Status == models.StatusFailed && job.Error != "" {
+	if job.Status == domainjob.StatusFailed && job.Error != "" {
 		resp["error"] = job.Error
 	}
 
-	if job.Status == models.StatusCompleted && job.Result != nil {
-		summary := gin.H{}
-		if docURL, ok := job.Result["doc_url"]; ok {
-			summary["doc_url"] = docURL
+	if job.Status == domainjob.StatusCompleted && len(job.Result) > 0 {
+		var resultObj map[string]any
+		if err := json.Unmarshal(job.Result, &resultObj); err == nil {
+			summary := gin.H{}
+			if docURL, ok := resultObj["doc_url"]; ok {
+				summary["doc_url"] = docURL
+			}
+			if trans, ok := resultObj["translations"]; ok {
+				summary["translations"] = trans
+			}
+			if fc, ok := resultObj["failed_chapter_count"]; ok {
+				summary["failed_chapter_count"] = fc
+			}
+			resp["result_summary"] = summary
 		}
-		if trans, ok := job.Result["translations"]; ok {
-			summary["translations"] = trans
-		}
-		if fc, ok := job.Result["failed_chapter_count"]; ok {
-			summary["failed_chapter_count"] = fc
-		}
-		resp["result_summary"] = summary
 	}
 
 	apiutil.OK(c, resp)

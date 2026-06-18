@@ -37,11 +37,11 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		name = fmt.Sprintf("[%s] %s", style, name)
 	}
 
-	// Upload to Drive solo se non abbiamo già driveFileID
-	var driveFileID, driveLink string
+	// Upload to Drive solo se non abbiamo già existingDriveFileID
 	uploaded := false
 	var folderID string
 	var semanticMeta *semantic.Payload
+	var driveFileID, driveLink string
 	if existingDriveFileID != "" {
 		driveFileID = existingDriveFileID
 		driveLink = existingDriveLink
@@ -73,11 +73,13 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 	}
 
 	clip := &asset.MediaAsset{
-		ID:        id,
-		Name:      name,
-		Source:    source,
-		MediaType: "video",
-		CreatedAt: time.Now(),
+		ID:          id,
+		Name:        name,
+		Source:      source,
+		MediaType:   "video",
+		DriveFileID: driveFileID,
+		DriveLink:   driveLink,
+		CreatedAt:   time.Now(),
 	}
 	clip.SetMetadataString("prompt", description)
 	clip.SetMetadataString("style", style)
@@ -96,7 +98,7 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		clip.Group = style
 	}
 
-	if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {
+	if err := s.stockRepo.Upsert(ctx, clip); err != nil {
 		return err
 	}
 
@@ -227,7 +229,7 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 		s.log.Warn("registerAudioClip: metadata writer failed", zap.Error(err))
 	}
 
-	clip := &models.MediaAsset{
+	clip := &asset.MediaAsset{
 		ID:          videoID + "_audio",
 		Name:        description + " (audio)",
 		Source:      source,
@@ -236,8 +238,7 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 		DriveFileID: fileID,
 		DriveLink:   webLink,
 		FolderID:    folderID,
-		Status:      "ready",
-		Duration:    3,
+		DurationMs:  3000,
 		CreatedAt:   time.Now(),
 		SearchText:  searchText,
 		Tags:        tags,

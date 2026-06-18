@@ -44,7 +44,7 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 		}
 	}
 
-	clip, err := s.clipsRepo.GetClip(ctx, item.ID)
+	clip, err := s.clipsRepo.Get(ctx, item.ID)
 	if err != nil || clip == nil {
 		return
 	}
@@ -80,7 +80,7 @@ func (s *Service) syncManifestClipIntelligence(ctx context.Context, clipFolder *
 	clip.Metadata["topic_cluster_size"] = item.TopicClusterSize
 	clip.Metadata["topic_cluster_rank"] = item.TopicClusterRank
 
-	if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
+	if err := s.clipsRepo.Upsert(ctx, clip); err != nil {
 		s.log.Debug("failed to persist clip intelligence", zap.String("clip_id", item.ID), zap.Error(err))
 		return
 	}

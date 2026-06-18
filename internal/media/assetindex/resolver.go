@@ -114,7 +114,7 @@ func (r *Resolver) resolveClipFromDB(ctx context.Context, source, id string) (*A
 		return nil, nil
 	}
 
-	clip, err := repo.GetClip(ctx, id)
+	clip, err := repo.Get(ctx, id)
 	if err != nil {
 		r.log.Warn("failed to get clip from repo", zap.Error(err), zap.String("source", source))
 		return nil, nil

@@ -57,10 +57,10 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		clip.SearchTerms = terms
 	}
 	if val, ok := payload["status"].(string); ok {
-		clip.Status = val
+		clip.SetMetadataString("status", val)
 	}
 	if val, ok := payload["error"].(string); ok {
-		clip.Error = val
+		clip.SetMetadataString("error", val)
 	}
 	if val, ok := payload["folder_id"].(string); ok {
 		clip.FolderID = val
@@ -75,7 +75,7 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		clip.DownloadLink = val
 	}
 	if val, ok := payload["thumb_url"].(string); ok {
-		clip.ThumbURL = val
+		clip.ThumbnailURL = val
 	}
 
 	if err := repo.UpsertClip(ctx, clip); err != nil {

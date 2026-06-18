@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/handlerutil"
 )
@@ -83,7 +83,7 @@ func (h *Handler) ProcessBook(c *gin.Context) {
 		}
 		h.log.Info("enqueuing async book process job", zap.String("file", req.FilePath))
 		handlerutil.EnqueueAsync(c, h.jobsSvc, &handlerutil.EnqueueInput{
-			Type: models.JobTypeBooksProcess,
+			Type: domainjob.JobTypeBooksProcess,
 			Payload: map[string]any{
 				"file_path":       req.FilePath,
 				"google_doc_url":  req.GoogleDocURL,
@@ -166,11 +166,11 @@ func (h *Handler) ListJobs(c *gin.Context) {
 	}
 
 	pag := handlerutil.ParsePagination(c, 20, 1000)
-	jobType := models.JobTypeBooksProcess
+	jobType := domainjob.JobTypeBooksProcess
 
-	filter := models.JobFilter{
+	filter := domainjob.Filter{
 		Type:   &jobType,
-		Status: handlerutil.ParseJobStatusFilter(c),
+		Status: (*domainjob.Status)(handlerutil.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}

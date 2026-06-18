@@ -132,15 +132,16 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 			Subfolder:     req.Subfolder,
 			FolderName:    req.FolderName,
 			FolderID:      req.FolderID,
-		}			if req.Metadata != nil {
-				payload.Metadata = &stockpipeline.StockRunPayloadMetadata{
-					Title:       req.Metadata.Title,
-					Description: req.Metadata.Description,
-					Tags:        req.Metadata.Tags,
-					Category:    req.Metadata.Category,
-					Author:      req.Metadata.Author,
-					Extra:       req.Metadata.Extra,
-				}
+		}
+		if req.Metadata != nil {
+			payload.Metadata = &stockpipeline.StockRunPayloadMetadata{
+				Title:       req.Metadata.Title,
+				Description: req.Metadata.Description,
+				Tags:        req.Metadata.Tags,
+				Category:    req.Metadata.Category,
+				Author:      req.Metadata.Author,
+				Extra:       req.Metadata.Extra,
+			}
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{

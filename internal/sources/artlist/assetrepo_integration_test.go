@@ -181,12 +181,12 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 	// This is the critical PR12b promise: the canonical writer must persist
 	// the legacy physical-location columns too so clips.Repository stays
 	// unchanged.
-	legacy, err := clipsRepo.GetClip(ctx, clip.ID)
+	legacy, err := clipsRepo.Get(ctx, clip.ID)
 	if err != nil {
-		t.Fatalf("clipsRepo.GetClip(%q) failed: %v", clip.ID, err)
+		t.Fatalf("clipsRepo.Get(%q) failed: %v", clip.ID, err)
 	}
 	if legacy == nil {
-		t.Fatalf("clipsRepo.GetClip(%q) returned nil; row missing after canonical write", clip.ID)
+		t.Fatalf("clipsRepo.Get(%q) returned nil; row missing after canonical write", clip.ID)
 	}
 	if legacy.ID != clip.ID {
 		t.Errorf("legacy ID mismatch: want %q, got %q", clip.ID, legacy.ID)
@@ -246,7 +246,7 @@ func TestArtlistPR12b_UpsertClipWithoutAssetRepoFallsBack(t *testing.T) {
 		t.Fatalf("legacy UpsertClip fallback failed: %v", err)
 	}
 
-	if _, err := clipsRepo.GetClip(ctx, clip.ID); err != nil {
-		t.Fatalf("legacy GetClip after fallback upsert failed: %v", err)
+	if _, err := clipsRepo.Get(ctx, clip.ID); err != nil {
+		t.Fatalf("legacy Get after fallback upsert failed: %v", err)
 	}
 }

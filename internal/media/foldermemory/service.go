@@ -130,19 +130,19 @@ func (s *Service) ComputeManifestStats(manifest *models.ClipManifest) models.Cli
 	return stats
 }
 
-// UpsertClipFolder creates or updates a clip folder in DB
-func (s *Service) UpsertClipFolder(ctx context.Context, folder *models.ClipFolder) error {
+// UpsertFolder creates or updates a clip folder in DB
+func (s *Service) UpsertFolder(ctx context.Context, folder *models.ClipFolder) error {
 	if s.clipsRepo == nil {
 		return fmt.Errorf("clips repository not available")
 	}
 	folder.UpdatedAt = time.Now().UTC()
-	return s.clipsRepo.UpsertClipFolder(ctx, folder)
+	return s.clipsRepo.UpsertFolder(ctx, folder)
 }
 
-// GetClipFolder retrieves a clip folder by ID
-func (s *Service) GetClipFolder(ctx context.Context, folderID string) (*models.ClipFolder, error) {
+// GetFolder retrieves a clip folder by ID
+func (s *Service) GetFolder(ctx context.Context, folderID string) (*models.ClipFolder, error) {
 	if s.clipsRepo == nil {
 		return nil, fmt.Errorf("clips repository not available")
 	}
-	return s.clipsRepo.GetClipFolder(ctx, folderID)
+	return s.clipsRepo.GetFolder(ctx, folderID)
 }

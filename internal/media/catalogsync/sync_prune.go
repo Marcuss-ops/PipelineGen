@@ -14,7 +14,7 @@ func (s *Service) pruneMissingFolders(ctx context.Context, repo *clips.Repositor
 		return nil
 	}
 
-	folders, err := repo.ListClipFolders(ctx, source)
+	folders, err := repo.ListFolders(ctx, source)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (s *Service) pruneMissingFolders(ctx context.Context, repo *clips.Repositor
 		if _, ok := seenFolderIDs[folder.FolderID]; ok {
 			continue
 		}
-		if err := repo.DeleteClipFolder(ctx, folder.ID); err != nil {
+		if err := repo.DeleteFolder(ctx, folder.ID); err != nil {
 			return err
 		}
 		if s.assetTree != nil {
