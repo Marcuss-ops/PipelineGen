@@ -31,9 +31,13 @@ CREATE TABLE IF NOT EXISTS artifacts (
     sha256          TEXT NOT NULL DEFAULT '',
     size_bytes      INTEGER NOT NULL DEFAULT 0,
     mime_type       TEXT NOT NULL DEFAULT '',
+    duration_ms     INTEGER,
+    width           INTEGER,
+    height          INTEGER,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    verified_at     TEXT
+    verified_at     TEXT,
+    last_accessed_at TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_sha256 ON artifacts(sha256) WHERE sha256 != '';
@@ -285,6 +289,13 @@ func (r *SQLiteRepository) GetJobArtifact(ctx context.Context, jobID, artifactID
 	}
 	ja.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return &ja, nil
+}
+
+// TouchAccess updates last_accessed_at for an artifact (PR3: from assetregistry).
+func (r *SQLiteRepository) TouchAccess(ctx context.Context, artifactID string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := r.db.ExecContext(ctx, `UPDATE artifacts SET last_accessed_at = ? WHERE id = ?`, now, artifactID)
+	return err
 }
 
 // Compile-time check

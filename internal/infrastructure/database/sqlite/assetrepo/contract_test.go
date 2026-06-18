@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 // minimalSchema is the subset of media_assets columns this repo reads/writes.

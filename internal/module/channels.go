@@ -2,7 +2,7 @@ package module
 
 import (
 	channelshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
 
 	"go.uber.org/zap"

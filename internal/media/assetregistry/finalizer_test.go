@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 
 	"go.uber.org/zap"
 )

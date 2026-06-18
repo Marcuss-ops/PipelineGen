@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 
 	"go.uber.org/zap"
 )

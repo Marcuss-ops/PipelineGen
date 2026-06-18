@@ -7,17 +7,15 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
-	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/scheduler"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 

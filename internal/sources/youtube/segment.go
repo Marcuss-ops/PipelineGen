@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
-	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
 	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"

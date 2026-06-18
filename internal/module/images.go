@@ -2,7 +2,7 @@ package module
 
 import (
 	imghandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )

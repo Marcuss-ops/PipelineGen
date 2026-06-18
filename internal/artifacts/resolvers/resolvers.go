@@ -1,5 +1,5 @@
-// Package resolvers provides URI-scheme content resolvers for the asset registry.
-// Each resolver handles a specific scheme (file, velox-asset, https, drive) and
+// Package resolvers provides URI-scheme content resolvers for the artifact registry.
+// Each resolver handles a specific scheme (file, velox-artifact, https, drive) and
 // enforces security boundaries (SSRF prevention, path traversal protection).
 package resolvers
 
@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 )
 
 // ── Shared SSRF Protection ─────────────────────────────────────────────
@@ -110,57 +110,57 @@ func NewLocalResolver(allowedDirs []string) *LocalResolver {
 func (r *LocalResolver) Scheme() string { return "file" }
 
 // Open opens a local file for reading with path traversal protection.
-func (r *LocalResolver) Open(ctx context.Context, ref assetregistry.Reference) (io.ReadCloser, error) {
-	cleanPath := assetregistry.CleanAssetPath(ref.Raw)
-	if !assetregistry.IsSafePath(r.allowedDirs, cleanPath) {
+func (r *LocalResolver) Open(ctx context.Context, ref artifacts.Reference) (io.ReadCloser, error) {
+	cleanPath := artifacts.CleanArtifactPath(ref.Raw)
+	if !artifacts.IsSafePath(r.allowedDirs, cleanPath) {
 		return nil, fmt.Errorf("path traversal blocked: %s", ref.Raw)
 	}
 	return os.Open(cleanPath)
 }
 
 // Stat returns file metadata.
-func (r *LocalResolver) Stat(ctx context.Context, ref assetregistry.Reference) (assetregistry.ObjectInfo, error) {
-	cleanPath := assetregistry.CleanAssetPath(ref.Raw)
-	if !assetregistry.IsSafePath(r.allowedDirs, cleanPath) {
-		return assetregistry.ObjectInfo{}, fmt.Errorf("path traversal blocked: %s", ref.Raw)
+func (r *LocalResolver) Stat(ctx context.Context, ref artifacts.Reference) (artifacts.ObjectInfo, error) {
+	cleanPath := artifacts.CleanArtifactPath(ref.Raw)
+	if !artifacts.IsSafePath(r.allowedDirs, cleanPath) {
+		return artifacts.ObjectInfo{}, fmt.Errorf("path traversal blocked: %s", ref.Raw)
 	}
 	info, err := os.Stat(cleanPath)
 	if err != nil {
-		return assetregistry.ObjectInfo{}, err
+		return artifacts.ObjectInfo{}, err
 	}
-	return assetregistry.ObjectInfo{
+	return artifacts.ObjectInfo{
 		SizeBytes: info.Size(),
 		MimeType:  "",
 	}, nil
 }
 
-// ── VeloxAsset Resolver ────────────────────────────────────────────────
+// ── VeloxArtifact Resolver ────────────────────────────────────────────
 
-// VeloxAssetResolver resolves velox-asset:// URIs from the asset registry database.
-type VeloxAssetResolver struct {
+// VeloxArtifactResolver resolves velox-artifact:// URIs from the artifact registry database.
+type VeloxArtifactResolver struct {
 	db *sql.DB
 }
 
-// NewVeloxAssetResolver creates a resolver that looks up assets from the registry DB.
-func NewVeloxAssetResolver(db *sql.DB) *VeloxAssetResolver {
-	return &VeloxAssetResolver{db: db}
+// NewVeloxArtifactResolver creates a resolver that looks up artifacts from the registry DB.
+func NewVeloxArtifactResolver(db *sql.DB) *VeloxArtifactResolver {
+	return &VeloxArtifactResolver{db: db}
 }
 
-// Scheme returns "velox-asset".
-func (r *VeloxAssetResolver) Scheme() string { return "velox-asset" }
+// Scheme returns "velox-artifact".
+func (r *VeloxArtifactResolver) Scheme() string { return "velox-artifact" }
 
-// Open reads an asset by looking up its storage key from the assets table.
-func (r *VeloxAssetResolver) Open(ctx context.Context, ref assetregistry.Reference) (io.ReadCloser, error) {
+// Open reads an artifact by looking up its storage key from the artifacts table.
+func (r *VeloxArtifactResolver) Open(ctx context.Context, ref artifacts.Reference) (io.ReadCloser, error) {
 	var storageBackend, storageKey string
 	err := r.db.QueryRowContext(ctx,
-		`SELECT storage_backend, storage_key FROM assets WHERE asset_id = ? AND status = 'READY'`,
-		ref.AssetID,
+		`SELECT storage_backend, storage_key FROM artifacts WHERE id = ? AND status = 'READY'`,
+		ref.ArtifactID,
 	).Scan(&storageBackend, &storageKey)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("asset not found: %s", ref.AssetID)
+			return nil, fmt.Errorf("artifact not found: %s", ref.ArtifactID)
 		}
-		return nil, fmt.Errorf("asset lookup failed: %w", err)
+		return nil, fmt.Errorf("artifact lookup failed: %w", err)
 	}
 
 	// For local storage backend, open the file
@@ -170,22 +170,22 @@ func (r *VeloxAssetResolver) Open(ctx context.Context, ref assetregistry.Referen
 	return nil, fmt.Errorf("unsupported storage backend: %s", storageBackend)
 }
 
-// Stat returns asset metadata from the database.
-func (r *VeloxAssetResolver) Stat(ctx context.Context, ref assetregistry.Reference) (assetregistry.ObjectInfo, error) {
+// Stat returns artifact metadata from the database.
+func (r *VeloxArtifactResolver) Stat(ctx context.Context, ref artifacts.Reference) (artifacts.ObjectInfo, error) {
 	var sha256 string
 	var sizeBytes int64
 	var mimeType sql.NullString
 	err := r.db.QueryRowContext(ctx,
-		`SELECT sha256, size_bytes, mime_type FROM assets WHERE asset_id = ? AND status = 'READY'`,
-		ref.AssetID,
+		`SELECT sha256, size_bytes, mime_type FROM artifacts WHERE id = ? AND status = 'READY'`,
+		ref.ArtifactID,
 	).Scan(&sha256, &sizeBytes, &mimeType)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return assetregistry.ObjectInfo{}, fmt.Errorf("asset not found: %s", ref.AssetID)
+			return artifacts.ObjectInfo{}, fmt.Errorf("artifact not found: %s", ref.ArtifactID)
 		}
-		return assetregistry.ObjectInfo{}, fmt.Errorf("asset stat failed: %w", err)
+		return artifacts.ObjectInfo{}, fmt.Errorf("artifact stat failed: %w", err)
 	}
-	return assetregistry.ObjectInfo{
+	return artifacts.ObjectInfo{
 		SHA256:    sha256,
 		SizeBytes: sizeBytes,
 		MimeType:  mimeType.String,
@@ -232,7 +232,7 @@ func NewHTTPResolver() *HTTPResolver {
 func (r *HTTPResolver) Scheme() string { return "https" }
 
 // Open fetches content from an HTTPS URL with SSRF protection.
-func (r *HTTPResolver) Open(ctx context.Context, ref assetregistry.Reference) (io.ReadCloser, error) {
+func (r *HTTPResolver) Open(ctx context.Context, ref artifacts.Reference) (io.ReadCloser, error) {
 	u, err := url.Parse(ref.Raw)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
@@ -266,33 +266,33 @@ func (r *HTTPResolver) Open(ctx context.Context, ref assetregistry.Reference) (i
 }
 
 // Stat performs a HEAD request to get metadata.
-func (r *HTTPResolver) Stat(ctx context.Context, ref assetregistry.Reference) (assetregistry.ObjectInfo, error) {
+func (r *HTTPResolver) Stat(ctx context.Context, ref artifacts.Reference) (artifacts.ObjectInfo, error) {
 	u, err := url.Parse(ref.Raw)
 	if err != nil {
-		return assetregistry.ObjectInfo{}, err
+		return artifacts.ObjectInfo{}, err
 	}
 	if u.Scheme != "https" {
-		return assetregistry.ObjectInfo{}, fmt.Errorf("unsupported scheme: %s", u.Scheme)
+		return artifacts.ObjectInfo{}, fmt.Errorf("unsupported scheme: %s", u.Scheme)
 	}
 
 	host := u.Hostname()
 	if err := isBlockedHost(host); err != nil {
-		return assetregistry.ObjectInfo{}, err
+		return artifacts.ObjectInfo{}, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "HEAD", ref.Raw, nil)
 	if err != nil {
-		return assetregistry.ObjectInfo{}, err
+		return artifacts.ObjectInfo{}, err
 	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return assetregistry.ObjectInfo{}, err
+		return artifacts.ObjectInfo{}, err
 	}
 	resp.Body.Close()
 
 	sizeBytes, _ := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-	return assetregistry.ObjectInfo{
+	return artifacts.ObjectInfo{
 		MimeType:  resp.Header.Get("Content-Type"),
 		SizeBytes: sizeBytes,
 	}, nil
@@ -310,8 +310,7 @@ func (h *httpReadCloser) Close() error {
 // ── Drive Resolver ─────────────────────────────────────────────────────
 
 // DriveResolver resolves drive:// URIs via the Google Drive API.
-// Placeholder for drive integration. In the initial PR-7 cutover,
-// drive assets flow through the existing ingest pipeline.
+// Placeholder for drive integration.
 type DriveResolver struct{}
 
 // NewDriveResolver creates a Drive content resolver.
@@ -323,11 +322,11 @@ func NewDriveResolver() *DriveResolver {
 func (r *DriveResolver) Scheme() string { return "drive" }
 
 // Open resolves a Drive URI placeholder.
-func (r *DriveResolver) Open(ctx context.Context, ref assetregistry.Reference) (io.ReadCloser, error) {
+func (r *DriveResolver) Open(ctx context.Context, ref artifacts.Reference) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("drive resolver not yet implemented for %s", ref.Raw)
 }
 
 // Stat resolves Drive URI metadata placeholder.
-func (r *DriveResolver) Stat(ctx context.Context, ref assetregistry.Reference) (assetregistry.ObjectInfo, error) {
-	return assetregistry.ObjectInfo{}, fmt.Errorf("drive resolver not yet implemented for %s", ref.Raw)
+func (r *DriveResolver) Stat(ctx context.Context, ref artifacts.Reference) (artifacts.ObjectInfo, error) {
+	return artifacts.ObjectInfo{}, fmt.Errorf("drive resolver not yet implemented for %s", ref.Raw)
 }

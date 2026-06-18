@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 )
 
 type Service struct {

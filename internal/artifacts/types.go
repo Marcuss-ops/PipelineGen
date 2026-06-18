@@ -144,6 +144,9 @@ type Repository interface {
 	UpsertJobArtifact(ctx context.Context, ja *JobArtifact) error
 	ListJobArtifacts(ctx context.Context, jobID string) ([]JobArtifact, error)
 	GetJobArtifact(ctx context.Context, jobID, artifactID string) (*JobArtifact, error)
+
+	// TouchAccess updates last_accessed_at for an artifact (PR3: from assetregistry).
+	TouchAccess(ctx context.Context, artifactID string) error
 }
 
 // ── URI Resolution ─────────────────────────────────────────────────
@@ -251,4 +254,101 @@ type CreateInput struct {
 	MimeType       string
 	Reader         io.Reader
 	ExpectedSHA256 string // optional; empty = no pre-verification
+}
+
+// ResolveAndRegisterInput carries the data needed to register an artifact
+// with content-addressed deduplication and provenance tracking.
+// Ported from assetregistry.CreateInput (PR3 merge).
+type ResolveAndRegisterInput struct {
+	Kind       string
+	SourceType string
+	SourceRef  string
+	AccountID  string
+	MimeType   string
+	DurationMs int
+	Width      int
+	Height     int
+	Content    io.Reader
+}
+
+// ResolveAndRegisterResult holds the outcome of artifact registration.
+type ResolveAndRegisterResult struct {
+	Artifact     *Artifact
+	SHA256       string
+	NewlyCreated bool
+}
+
+// ── Path Safety Helpers (ported from assetregistry) ───────────────
+
+// CleanArtifactPath normalizes a file URI or path for safe access.
+func CleanArtifactPath(raw string) string {
+	// Handle file:// prefix
+	if len(raw) > 7 && raw[:7] == "file://" {
+		raw = raw[7:]
+	}
+	return cleanFilePath(raw)
+}
+
+// IsSafePath checks whether a cleaned path falls within any of the allowed directories.
+func IsSafePath(allowedDirs []string, cleanPath string) bool {
+	for _, dir := range allowedDirs {
+		if isUnderDir(cleanPath, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanFilePath removes path traversal and normalizes.
+func cleanFilePath(p string) string {
+	// Remove leading ./
+	for len(p) > 1 && p[0] == '.' && p[1] == '/' {
+		p = p[2:]
+	}
+	// Resolve .. segments
+	segments := splitPath(p)
+	var cleaned []string
+	for _, seg := range segments {
+		switch seg {
+		case "", ".":
+			continue
+		case "..":
+			if len(cleaned) > 0 {
+				cleaned = cleaned[:len(cleaned)-1]
+			}
+		default:
+			cleaned = append(cleaned, seg)
+		}
+	}
+	result := ""
+	for i, seg := range cleaned {
+		if i > 0 {
+			result += "/"
+		}
+		result += seg
+	}
+	return result
+}
+
+// isUnderDir checks if a path is within a given directory.
+func isUnderDir(path, dir string) bool {
+	path = cleanFilePath(path)
+	dir = cleanFilePath(dir)
+	return path == dir || (len(path) > len(dir) && path[:len(dir)] == dir && path[len(dir)] == '/')
+}
+
+// splitPath splits a path into segments.
+func splitPath(p string) []string {
+	var segs []string
+	start := 0
+	for i := 0; i < len(p); i++ {
+		if p[i] == '/' {
+			segs = append(segs, p[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(p) {
+		segs = append(segs, p[start:])
+	}
+	return segs
 }

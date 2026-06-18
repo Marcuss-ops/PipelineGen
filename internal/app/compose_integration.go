@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
@@ -34,7 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/scheduler"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -247,7 +247,7 @@ func composeIntegration(
 	lessonsSvc.RegisterJobHandler(jobsService)
 
 	// ── Asset Satellite Repositories (canonical model completion, PR0) ────
-	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
+	assetLocRepo := assetlocations.NewAdapter(assetlocations.NewRepository(dbs.main.DB))
 	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
 	assetRelRepo := assetrelations.NewRepository(dbs.main.DB)
 	assetTagRepo := assettags.NewRepository(dbs.main.DB)
@@ -282,6 +282,7 @@ func composeIntegration(
 		imageRepo:          mediaDomain.ImageRepo,
 		imageService:       mediaDomain.ImageService,
 		stockDriveRepo:     mediaDomain.ClipsRepo,
+		artlistRepo:        mediaDomain.ClipsRepo,
 		clipsOnlyRepo:      core.ClipsOnlyRepo,
 		assetRepo:          core.AssetRepo,
 		monitorsRepo:       mediaDomain.MonitorsRepo,
@@ -325,7 +326,5 @@ func composeIntegration(
 		assetTagsRepo:       assetTagRepo,
 		assetVersionsRepo:   assetVerRepo,
 		assetQueryService:   assetQuerySvc,
-		DeliveryService:      core.DeliveryService,
-		DeliveryRunner:       core.DeliveryRunner,
 	}, nil
 }

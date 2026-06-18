@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"

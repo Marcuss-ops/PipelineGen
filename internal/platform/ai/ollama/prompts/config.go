@@ -7,7 +7,7 @@ import (
 	"sync"
 	"text/template"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 
 	"gopkg.in/yaml.v3"
 )

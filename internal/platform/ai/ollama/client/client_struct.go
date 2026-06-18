@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 )
 
 // CircuitBreaker implements a simple circuit breaker for Ollama requests

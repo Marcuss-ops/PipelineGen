@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 // databases holds the single SQLite database connection.

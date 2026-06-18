@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 

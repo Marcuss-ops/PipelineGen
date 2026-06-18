@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/prompts"
 
 	"go.uber.org/zap"
 )

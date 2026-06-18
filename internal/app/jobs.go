@@ -2,7 +2,7 @@ package app
 
 import (
 	jobshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	"go.uber.org/zap"

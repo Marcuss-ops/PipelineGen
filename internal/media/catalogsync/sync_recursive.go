@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

@@ -58,9 +58,6 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 		}
 
 		if dbs.main != nil {
-			if err := dbs.main.Backup(); err != nil {
-				log.Warn("Failed to create main backup on shutdown", zap.Error(err))
-			}
 			if err := dbs.main.Close(); err != nil {
 				log.Error("Failed to close main database", zap.Error(err))
 			}

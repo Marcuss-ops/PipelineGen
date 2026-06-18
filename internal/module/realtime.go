@@ -2,7 +2,7 @@ package module
 
 import (
 	realtimehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
