@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -60,6 +61,7 @@ type Handler struct {
 	vectorStore    *vectorstore.Service
 	metaWriter     *semantic.MetadataWriter
 	artifactSvc    *artifacts.Service
+	assetRepo      asset.Repository
 	log            *zap.Logger
 
 	// downloadCache prevents re-downloading the same YouTube video when
@@ -97,6 +99,12 @@ func (h *Handler) SetMetaWriter(mw *semantic.MetadataWriter) {
 // SetArtifactService sets the artifact service for content-addressed file storage.
 func (h *Handler) SetArtifactService(svc *artifacts.Service) {
 	h.artifactSvc = svc
+}
+
+// SetAssetRepo sets the canonical asset repository (replaces clips.Repository
+// for handlers that have been migrated to use asset.MediaAsset directly).
+func (h *Handler) SetAssetRepo(repo asset.Repository) {
+	h.assetRepo = repo
 }
 
 // NewHandler creates a new common media handler.

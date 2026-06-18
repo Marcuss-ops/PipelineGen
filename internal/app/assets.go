@@ -141,6 +141,9 @@ func WireAssets(
 	if coreDeps.ArtifactService != nil {
 		handler.SetArtifactService(coreDeps.ArtifactService)
 	}
+	if coreDeps.AssetRepo != nil {
+		handler.SetAssetRepo(coreDeps.AssetRepo)
+	}
 	log.Info("created unified Assets module")
 
 	return &AssetsWiring{
