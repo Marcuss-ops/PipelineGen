@@ -70,21 +70,21 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
 		a.DurationMs = duration.Int64
 	}
 	a.SourceURL = urlNull.String
-	a.ExternalURL = urlNull.String
+	a.SetExternalURL(urlNull.String)
 	a.MediaType = mediaTypeNull.String
-	a.LocalPath = localPathNull.String
-	a.DriveFileID = driveFileIDNull.String
-	a.DriveLink = driveLinkNull.String
-	a.DownloadLink = downloadLinkNull.String
-	a.FileHash = fileHashNull.String
+	a.SetLocalPath(localPathNull.String)
+	a.SetDriveFileID(driveFileIDNull.String)
+	a.SetDriveLink(driveLinkNull.String)
+	a.SetDownloadLink(downloadLinkNull.String)
+	a.SetFileHash(fileHashNull.String)
 	if embeddingJSON.Valid {
-		a.EmbeddingJSON = embeddingJSON.String
+		a.SetEmbeddingJSON(embeddingJSON.String)
 	}
 	if visualEmb.Valid {
-		a.VisualEmbedding = visualEmb.String
+		a.SetVisualEmbedding(visualEmb.String)
 	}
 	if transcriptEmb.Valid {
-		a.TranscriptEmbedding = transcriptEmb.String
+		a.SetTranscriptEmbedding(transcriptEmb.String)
 	}
 
 	// Timestamps.
@@ -110,22 +110,22 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
 	}
 
 	// Canonical columns from migration 059.
-	a.FolderID = folderIDNull.String
-	a.ParentFolderID = parentFolderIDNull.String
-	a.FolderPath = folderPathNull.String
+	a.SetFolderID(folderIDNull.String)
+	a.SetParentFolderID(parentFolderIDNull.String)
+	a.SetFolderPath(folderPathNull.String)
 	a.Category = category.String
 	a.Filename = filename.String
 	a.ThumbnailURL = thumbURL.String
-	a.PHash = phash.String
+	a.SetPHash(phash.String)
 	a.SearchText = searchText.String
-	a.SceneType = sceneType.String
+	a.SetSceneType(sceneType.String)
 	if qualityScore.Valid {
-		a.QualityScore = qualityScore.Float64
+		a.SetQualityScore(qualityScore.Float64)
 	}
 	if reuseCount.Valid {
-		a.ReuseCount = int(reuseCount.Int64)
+		a.SetReuseCount(int(reuseCount.Int64))
 	}
-	a.LastUsedAt = lastUsedAtNull.String
+	a.SetLastUsedAt(lastUsedAtNull.String)
 	if deletedAtStr.Valid && strings.TrimSpace(deletedAtStr.String) != "" {
 		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() {
 			a.DeletedAt = &t
@@ -136,8 +136,8 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
 	}
 
 	// Legacy fallback: drive_folder_id → folder_id.
-	if a.FolderID == "" && driveFolderID.Valid && driveFolderID.String != "" {
-		a.FolderID = driveFolderID.String
+	if a.FolderID() == "" && driveFolderID.Valid && driveFolderID.String != "" {
+		a.SetFolderID(driveFolderID.String)
 	}
 
 	// Parse tags.

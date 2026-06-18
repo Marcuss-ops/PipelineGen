@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
 // GenerateFromClipsRequest is the unified input for POST /api/script/generate-from-clips.

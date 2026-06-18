@@ -16,9 +16,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
-	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

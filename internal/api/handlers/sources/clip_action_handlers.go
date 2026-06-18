@@ -380,7 +380,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 				continue
 			}
 
-			canonDup := assetregistry.ToCanonical(dup)
+			canonDup := dup
 			duplicates = append(duplicates, gin.H{
 				"source":     repoSource,
 				"id":         canonDup.ID,

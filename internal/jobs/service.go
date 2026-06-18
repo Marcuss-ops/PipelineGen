@@ -10,8 +10,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	jobsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
@@ -21,7 +19,7 @@ const MaxPayloadSize = 1 << 20 // 1 MB
 
 // Service manages job life cycle: enqueue, query, cancel.
 type Service struct {
-	repo       *jobsrepo.Repository
+	repo       *SQLiteStore
 	dispatcher *Dispatcher
 	log        *zap.Logger
 
@@ -31,7 +29,7 @@ type Service struct {
 	enqueueMu sync.Mutex
 }
 
-func NewService(repo *jobsrepo.Repository, dispatcher *Dispatcher, log *zap.Logger) *Service {
+func NewService(repo *SQLiteStore, dispatcher *Dispatcher, log *zap.Logger) *Service {
 	return &Service{
 		repo:       repo,
 		dispatcher: dispatcher,
@@ -64,7 +62,7 @@ func validateEnqueueRequest(req *EnqueueRequest) error {
 	return nil
 }
 
-func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*job.Job, error) {
+func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*Job, error) {
 	if err := validateEnqueueRequest(req); err != nil {
 		return nil, err
 	}
@@ -117,10 +115,10 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*job.Job, e
 		payload = payloadBytes
 	}
 
-	j := &job.Job{
+	j := &Job{
 		ID:            generateJobID(),
 		Type:          req.Type,
-		Status:        job.StatusQueued,
+		Status:        StatusQueued,
 		Priority:      req.Priority,
 		Project:       req.Project,
 		VideoName:     req.VideoName,
@@ -168,15 +166,15 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*job.Job, e
 	return j, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (*job.Job, error) {
+func (s *Service) Get(ctx context.Context, id string) (*Job, error) {
 	return s.repo.Get(ctx, id)
 }
 
-func (s *Service) FindActiveByKey(ctx context.Context, activeKey string) (*job.Job, error) {
+func (s *Service) FindActiveByKey(ctx context.Context, activeKey string) (*Job, error) {
 	return s.repo.FindActiveByKey(ctx, activeKey)
 }
 
-func (s *Service) List(ctx context.Context, filter job.Filter) ([]job.Job, error) {
+func (s *Service) List(ctx context.Context, filter Filter) ([]Job, error) {
 	return s.repo.List(ctx, filter)
 }
 
@@ -184,7 +182,7 @@ func (s *Service) Cancel(ctx context.Context, id string) error {
 	return s.repo.Cancel(ctx, id)
 }
 
-func (s *Service) Retry(ctx context.Context, id string) (*job.Job, error) {
+func (s *Service) Retry(ctx context.Context, id string) (*Job, error) {
 	return s.repo.Retry(ctx, id)
 }
 
@@ -196,7 +194,7 @@ func (s *Service) AddEvent(ctx context.Context, jobID string, eventType string, 
 	return s.repo.AddEvent(ctx, jobID, eventType, message, data)
 }
 
-func (s *Service) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
+func (s *Service) ListEvents(ctx context.Context, jobID string) ([]Event, error) {
 	return s.repo.ListEvents(ctx, jobID)
 }
 
@@ -205,7 +203,7 @@ func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
 }
 
 // GetStats returns aggregated job statistics.
-func (s *Service) GetStats(ctx context.Context) (*jobsrepo.JobStats, error) {
+func (s *Service) GetStats(ctx context.Context) (*JobStats, error) {
 	return s.repo.GetStats(ctx)
 }
 

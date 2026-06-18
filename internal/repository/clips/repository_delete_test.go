@@ -164,16 +164,16 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 	clip := &asset.MediaAsset{
 		ID:        "clip_2",
 		Name:      "Drive Clip",
-		DriveLink: "https://drive.google.com/file/d/123",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+	clip.SetDriveLink("https://drive.google.com/file/d/123")
 
 	if err := repo.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := repo.DeleteClipByDriveLink(ctx, clip.DriveLink); err != nil {
+	if err := repo.DeleteClipByDriveLink(ctx, clip.DriveLink()); err != nil {
 		t.Fatalf("DeleteClipByDriveLink failed: %v", err)
 	}
 

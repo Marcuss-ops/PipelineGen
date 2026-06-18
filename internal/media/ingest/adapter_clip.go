@@ -40,25 +40,25 @@ func NewClipStoreAdapter(
 
 func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error {
 	m := &asset.MediaAsset{
-		ID:                  rec.ID,
-		Source:              rec.Source,
-		Name:                rec.Name,
-		Filename:            rec.Filename,
-		MediaType:           rec.MediaType,
-		Category:            rec.Category,
-		Group:               rec.Group,
-		SourceURL:           rec.ExternalURL,
-		ExternalURL:         rec.ExternalURL,
-		DurationMs:          int64(rec.Duration),
-		Tags:                append([]string(nil), rec.Tags...),
-		LifecycleState:      asset.StateReady,
-		CreatedAt:           time.Now().UTC(),
-		UpdatedAt:           time.Now().UTC(),
-		FolderID:            rec.FolderID,
-		FolderPath:          rec.FolderPath,
-		PHash:               rec.PHash,
-		VisualEmbeddingJSON: rec.VisualEmbeddingJSON,
+		ID:             rec.ID,
+		Source:         rec.Source,
+		Name:           rec.Name,
+		Filename:       rec.Filename,
+		MediaType:      rec.MediaType,
+		Category:       rec.Category,
+		Group:          rec.Group,
+		SourceURL:      rec.ExternalURL,
+		DurationMs:     int64(rec.Duration),
+		Tags:           append([]string(nil), rec.Tags...),
+		LifecycleState: asset.StateReady,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
+	m.SetExternalURL(rec.ExternalURL)
+	m.SetFolderID(rec.FolderID)
+	m.SetFolderPath(rec.FolderPath)
+	m.SetPHash(rec.PHash)
+	m.SetVisualEmbeddingJSON(rec.VisualEmbeddingJSON)
 	m.SetMetadataJSON(rec.Metadata)
 
 	if rec.Status == "deleted" {
@@ -239,14 +239,14 @@ func detailsToMediaRecord(details *assetquery.Details) *assetregistry.MediaRecor
 		Source:              details.Asset.Source,
 		Category:            details.Asset.Category,
 		MediaType:           details.Asset.MediaType,
-		ExternalURL:         details.Asset.ExternalURL,
-		FolderID:            details.Asset.FolderID,
-		FolderPath:          details.Asset.FolderPath,
+		ExternalURL:         details.Asset.ExternalURL(),
+		FolderID:            details.Asset.FolderID(),
+		FolderPath:          details.Asset.FolderPath(),
 		Group:               details.Asset.Group,
 		Tags:                append([]string(nil), details.Asset.Tags...),
 		Duration:            int(details.Asset.DurationMs),
-		VisualEmbeddingJSON: details.Asset.VisualEmbeddingJSON,
-		SourceID:            textutil.FirstNonEmpty(details.Asset.ExternalURL, details.Asset.Filename, details.Asset.ID),
+		VisualEmbeddingJSON: details.Asset.VisualEmbeddingJSON(),
+		SourceID:            textutil.FirstNonEmpty(details.Asset.ExternalURL(), details.Asset.Filename, details.Asset.ID),
 	}
 	rec.Metadata = details.Asset.MetadataJSON()
 

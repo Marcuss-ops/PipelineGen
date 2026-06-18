@@ -42,8 +42,8 @@ func (r *Repository) SearchStock(ctx context.Context, q string) ([]CatalogRecord
 					rec := CatalogRecord{
 						ID:        clip.ID,
 						Name:      clip.Name,
-						Path:      clip.FolderPath,
-						Link:      clip.DriveLink,
+			Path:      clip.FolderPath(),
+			Link:      clip.DriveLink(),
 						Source:    clip.Source,
 						DriveID:   clip.ID,
 						MediaType: clip.MediaType,

@@ -1,0 +1,732 @@
+package assets
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"go.uber.org/zap"
+)
+
+// ── AssetStoreSQLite ──────────────────────────────────────────────────
+
+type AssetStoreSQLite struct {
+	db  *sql.DB
+	log *zap.Logger
+}
+
+func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &AssetStoreSQLite{db: db, log: log}
+}
+
+var _ Store = (*AssetStoreSQLite)(nil)
+
+// Get retrieves a single asset, joining with its primary/available locations.
+func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Asset, error) {
+	if id == "" {
+		return nil, errors.New("invalid id")
+	}
+
+	var a Asset
+	var tagsJSON, searchTermsJSON, metadataStr sql.NullString
+	var grp sql.NullString
+	var createdAtStr, updatedAtStr, deletedAtStr sql.NullString
+	var lifecycleStr sql.NullString
+	var duration sql.NullInt64
+
+	// Additional asset columns from migration 059
+	var folderID, parentFolderID, folderPath sql.NullString
+	var depth, isFolder, childCount sql.NullInt64
+	var sceneType, usableForJSON, avoidForJSON, phash, lastUsedAt sql.NullString
+	var qualityScore sql.NullFloat64
+	var reuseCount sql.NullInt64
+
+	// Embedding columns
+	var embeddingJSON, visualEmb, transcriptEmb sql.NullString
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, COALESCE(source, '') AS source, COALESCE(name, '') AS name, COALESCE(filename, '') AS filename,
+			COALESCE(media_type, '') AS media_type, COALESCE(category, '') AS category, COALESCE(group_name, '') AS grp,
+			COALESCE(url, '') AS source_url, COALESCE(clip_page_url, '') AS clip_page_url, COALESCE(thumbnail_url, '') AS thumbnail_url,
+			COALESCE(duration_ms, 0) AS duration_ms, COALESCE(tags, '[]') AS tags, COALESCE(search_terms, '[]') AS search_terms,
+			COALESCE(search_text, '') AS search_text, COALESCE(lifecycle_state, 'ready') AS lifecycle_state, deleted_at,
+			COALESCE(metadata_json, '{}') AS metadata_json, created_at, updated_at,
+			COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(folder_path, '') AS folder_path,
+			COALESCE(depth, 0) AS depth, is_folder, COALESCE(child_count, 0) AS child_count,
+			COALESCE(scene_type, '') AS scene_type, COALESCE(usable_for, '[]') AS usable_for, COALESCE(avoid_for, '[]') AS avoid_for,
+			COALESCE(phash, '') AS phash, COALESCE(last_used_at, '') AS last_used_at, COALESCE(quality_score, 0.0) AS quality_score,
+			COALESCE(reuse_count, 0) AS reuse_count, COALESCE(embedding_json, '') AS embedding_json,
+			COALESCE(visual_embedding, '') AS visual_embedding, COALESCE(transcript_embedding, '') AS transcript_embedding
+		FROM media_assets WHERE id = ?
+	`, id).Scan(
+		&a.ID, &a.Source, &a.Name, &a.Filename,
+		&a.MediaType, &a.Category, &grp,
+		&a.SourceURL, &a.ClipPageURL, &a.ThumbnailURL,
+		&duration, &tagsJSON, &searchTermsJSON,
+		&a.SearchText, &lifecycleStr, &deletedAtStr,
+		&metadataStr, &createdAtStr, &updatedAtStr,
+		&folderID, &parentFolderID, &folderPath,
+		&depth, &isFolder, &childCount,
+		&sceneType, &usableForJSON, &avoidForJSON,
+		&phash, &lastUsedAt, &qualityScore,
+		&reuseCount, &embeddingJSON,
+		&visualEmb, &transcriptEmb,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("assets: get %s: %w", id, err)
+	}
+
+	if grp.Valid {
+		a.Group = grp.String
+	}
+	if duration.Valid {
+		a.DurationMs = duration.Int64
+	}
+	if folderID.Valid {
+		a.FolderID = folderID.String
+	}
+	if parentFolderID.Valid {
+		a.ParentFolderID = parentFolderID.String
+	}
+	if folderPath.Valid {
+		a.FolderPath = folderPath.String
+	}
+	if depth.Valid {
+		a.Metadata = map[string]any{"depth": int(depth.Int64)}
+	}
+	if sceneType.Valid {
+		a.SceneType = sceneType.String
+	}
+	if phash.Valid {
+		a.PHash = phash.String
+	}
+	if lastUsedAt.Valid {
+		a.LastUsedAt = lastUsedAt.String
+	}
+	if qualityScore.Valid {
+		a.QualityScore = qualityScore.Float64
+	}
+	if reuseCount.Valid {
+		a.ReuseCount = int(reuseCount.Int64)
+	}
+	if embeddingJSON.Valid {
+		a.EmbeddingJSON = embeddingJSON.String
+	}
+	if visualEmb.Valid {
+		a.VisualEmbedding = visualEmb.String
+	}
+	if transcriptEmb.Valid {
+		a.TranscriptEmbedding = transcriptEmb.String
+	}
+
+	a.LifecycleState = LifecycleState(lifecycleStr.String)
+	if deletedAtStr.Valid && deletedAtStr.String != "" {
+		t := timeutil.ParseRFC3339(deletedAtStr.String)
+		if !t.IsZero() {
+			a.DeletedAt = &t
+		}
+	}
+	a.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
+	a.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr.String)
+
+	if tagsJSON.Valid && tagsJSON.String != "" && tagsJSON.String != "[]" {
+		_ = json.Unmarshal([]byte(tagsJSON.String), &a.Tags)
+	}
+	if searchTermsJSON.Valid && searchTermsJSON.String != "" && searchTermsJSON.String != "[]" {
+		_ = json.Unmarshal([]byte(searchTermsJSON.String), &a.SearchTerms)
+	}
+
+	// Load metadata_json
+	if metadataStr.Valid && metadataStr.String != "" {
+		_ = json.Unmarshal([]byte(metadataStr.String), &a.Metadata)
+	}
+
+	// Load physical locations
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT location_kind, uri, external_id, web_view_link, download_url, file_hash
+		FROM asset_locations WHERE asset_id = ?
+	`, id)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var kind, uri, extID, webLink, dlURL, hash sql.NullString
+			if err := rows.Scan(&kind, &uri, &extID, &webLink, &dlURL, &hash); err == nil {
+				if kind.Valid {
+					if kind.String == "local" {
+						a.LocalPath = uri.String
+						if hash.Valid && hash.String != "" {
+							a.FileHash = hash.String
+						}
+					} else if kind.String == "drive" {
+						a.DriveFileID = extID.String
+						a.DriveLink = webLink.String
+						a.DownloadLink = dlURL.String
+						if a.FileHash == "" && hash.Valid {
+							a.FileHash = hash.String
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return &a, nil
+}
+
+// List queries assets based on filter.
+func (s *AssetStoreSQLite) List(ctx context.Context, filter Filter) ([]*Asset, error) {
+	conds := []string{"1=1"}
+	args := []any{}
+
+	if filter.Source != "" {
+		conds = append(conds, "source = ?")
+		args = append(args, filter.Source)
+	}
+	if filter.Category != "" {
+		conds = append(conds, "category = ?")
+		args = append(args, filter.Category)
+	}
+	if filter.Group != "" {
+		conds = append(conds, "group_name = ?")
+		args = append(args, filter.Group)
+	}
+
+	query := `
+		SELECT id
+		FROM media_assets
+		WHERE ` + strings.Join(conds, " AND ") + `
+		ORDER BY created_at DESC
+	`
+	if filter.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, filter.Limit)
+		if filter.Offset > 0 {
+			query += " OFFSET ?"
+			args = append(args, filter.Offset)
+		}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("assets: list query: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*Asset
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		a, err := s.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if a != nil {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+// Save inserts or updates an asset, writing to media_assets and asset_locations.
+func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
+	if a == nil || a.ID == "" {
+		return errors.New("invalid asset")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("assets: save begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = now
+	}
+	a.UpdatedAt = now
+
+	tagsJSON, _ := json.Marshal(a.Tags)
+	searchTermsJSON, _ := json.Marshal(a.SearchTerms)
+	metadataJSON, _ := json.Marshal(a.Metadata)
+
+	deletedAtStr := ""
+	if a.DeletedAt != nil {
+		deletedAtStr = timeutil.FormatRFC3339(*a.DeletedAt)
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO media_assets (
+			id, source, name, filename, media_type, category, group_name,
+			url, clip_page_url, thumbnail_url, duration_ms, tags, search_terms,
+			search_text, lifecycle_state, deleted_at, metadata_json,
+			created_at, updated_at, folder_id, parent_folder_id, folder_path,
+			scene_type, phash, last_used_at, quality_score, reuse_count,
+			embedding_json, visual_embedding, transcript_embedding
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			source = excluded.source,
+			name = excluded.name,
+			filename = excluded.filename,
+			media_type = excluded.media_type,
+			category = excluded.category,
+			group_name = excluded.group_name,
+			url = excluded.url,
+			clip_page_url = excluded.clip_page_url,
+			thumbnail_url = excluded.thumbnail_url,
+			duration_ms = excluded.duration_ms,
+			tags = excluded.tags,
+			search_terms = excluded.search_terms,
+			search_text = excluded.search_text,
+			lifecycle_state = excluded.lifecycle_state,
+			deleted_at = excluded.deleted_at,
+			metadata_json = excluded.metadata_json,
+			updated_at = excluded.updated_at,
+			folder_id = excluded.folder_id,
+			parent_folder_id = excluded.parent_folder_id,
+			folder_path = excluded.folder_path,
+			scene_type = excluded.scene_type,
+			phash = excluded.phash,
+			last_used_at = excluded.last_used_at,
+			quality_score = excluded.quality_score,
+			reuse_count = excluded.reuse_count,
+			embedding_json = excluded.embedding_json,
+			visual_embedding = excluded.visual_embedding,
+			transcript_embedding = excluded.transcript_embedding
+	`,
+		a.ID, a.Source, a.Name, a.Filename, a.MediaType, a.Category, a.Group,
+		a.SourceURL, a.ClipPageURL, a.ThumbnailURL, a.DurationMs, string(tagsJSON), string(searchTermsJSON),
+		a.SearchText, string(a.LifecycleState), deletedAtStr, string(metadataJSON),
+		timeutil.FormatRFC3339(a.CreatedAt), nowStr, a.FolderID, a.ParentFolderID, a.FolderPath,
+		a.SceneType, a.PHash, a.LastUsedAt, a.QualityScore, a.ReuseCount,
+		a.EmbeddingJSON, a.VisualEmbedding, a.TranscriptEmbedding,
+	)
+	if err != nil {
+		return fmt.Errorf("assets: save asset row: %w", err)
+	}
+
+	// Sync local location
+	if a.LocalPath != "" {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO asset_locations (asset_id, location_kind, uri, file_hash, is_primary, created_at, updated_at)
+			VALUES (?, 'local', ?, ?, 1, ?, ?)
+			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
+				uri = excluded.uri,
+				file_hash = excluded.file_hash,
+				is_primary = excluded.is_primary,
+				updated_at = excluded.updated_at
+		`, a.ID, a.LocalPath, a.FileHash, nowStr, nowStr)
+		if err != nil {
+			return fmt.Errorf("assets: save local location: %w", err)
+		}
+	} else {
+		_, _ = tx.ExecContext(ctx, `DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = 'local'`, a.ID)
+	}
+
+	// Sync drive location
+	if a.DriveFileID != "" || a.DriveLink != "" {
+		uri := "drive://" + a.DriveFileID
+		if a.DriveFileID == "" {
+			uri = a.DriveLink
+		}
+		isPrimary := 0
+		if a.LocalPath == "" {
+			isPrimary = 1
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, file_hash, is_primary, created_at, updated_at)
+			VALUES (?, 'drive', ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
+				uri = excluded.uri,
+				external_id = excluded.external_id,
+				web_view_link = excluded.web_view_link,
+				download_url = excluded.download_url,
+				file_hash = excluded.file_hash,
+				is_primary = excluded.is_primary,
+				updated_at = excluded.updated_at
+		`, a.ID, uri, a.DriveFileID, a.DriveLink, a.DownloadLink, a.FileHash, isPrimary, nowStr, nowStr)
+		if err != nil {
+			return fmt.Errorf("assets: save drive location: %w", err)
+		}
+	} else {
+		_, _ = tx.ExecContext(ctx, `DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = 'drive'`, a.ID)
+	}
+
+	// Write outbox event
+	payloadJSON, _ := json.Marshal(a)
+	evtID := fmt.Sprintf("outbox_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO outbox_events (id, aggregate_id, event_type, payload_json, created_at)
+		VALUES (?, ?, 'asset.upserted', ?, ?)
+	`, evtID, a.ID, string(payloadJSON), nowStr)
+	if err != nil {
+		return fmt.Errorf("assets: save outbox: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+// Delete marks the asset as DELETED.
+func (s *AssetStoreSQLite) Delete(ctx context.Context, id string) error {
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE media_assets
+		SET lifecycle_state = 'DELETED', deleted_at = ?, updated_at = ?
+		WHERE id = ?
+	`, nowStr, nowStr, id)
+	return err
+}
+
+// ── ArtifactStoreSQLite ───────────────────────────────────────────────
+
+type ArtifactStoreSQLite struct {
+	db *sql.DB
+}
+
+func NewArtifactStoreSQLite(db *sql.DB) *ArtifactStoreSQLite {
+	return &ArtifactStoreSQLite{db: db}
+}
+
+var _ ArtifactStore = (*ArtifactStoreSQLite)(nil)
+
+func (s *ArtifactStoreSQLite) Create(ctx context.Context, a *Artifact) error {
+	now := time.Now().UTC()
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = now
+	}
+	a.UpdatedAt = now
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO artifacts (id, job_id, kind, status, storage_backend,
+			storage_key, sha256, size_bytes, mime_type,
+			duration_ms, width, height, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, a.ID, a.JobID, a.Kind, string(a.Status), a.StorageBackend,
+		a.StorageKey, a.SHA256, a.SizeBytes, a.MimeType,
+		a.DurationMs, a.Width, a.Height,
+		timeutil.FormatRFC3339(a.CreatedAt), timeutil.FormatRFC3339(a.UpdatedAt))
+	if err != nil {
+		return fmt.Errorf("artifacts: create %s: %w", a.ID, err)
+	}
+	return nil
+}
+
+func (s *ArtifactStoreSQLite) Get(ctx context.Context, id string) (*Artifact, error) {
+	var a Artifact
+	var createdAt, updatedAt string
+	var verifiedAt, lastAccessedAt sql.NullString
+	var durationMs, width, height sql.NullInt64
+	var statusStr string
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, job_id, kind, status, storage_backend,
+			storage_key, sha256, size_bytes, mime_type,
+			duration_ms, width, height,
+			created_at, updated_at, verified_at, last_accessed_at
+		FROM artifacts WHERE id = ?
+	`, id).Scan(
+		&a.ID, &a.JobID, &a.Kind, &statusStr, &a.StorageBackend,
+		&a.StorageKey, &a.SHA256, &a.SizeBytes, &a.MimeType,
+		&durationMs, &width, &height,
+		&createdAt, &updatedAt, &verifiedAt, &lastAccessedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: get %s: %w", id, err)
+	}
+
+	a.Status = ArtifactStatus(statusStr)
+	a.CreatedAt = timeutil.ParseRFC3339(createdAt)
+	a.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
+	if verifiedAt.Valid && verifiedAt.String != "" {
+		t := timeutil.ParseRFC3339(verifiedAt.String)
+		a.VerifiedAt = &t
+	}
+	if durationMs.Valid {
+		a.DurationMs = int(durationMs.Int64)
+	}
+	if width.Valid {
+		a.Width = int(width.Int64)
+	}
+	if height.Valid {
+		a.Height = int(height.Int64)
+	}
+	if lastAccessedAt.Valid && lastAccessedAt.String != "" {
+		t := timeutil.ParseRFC3339(lastAccessedAt.String)
+		a.LastAccessedAt = &t
+	}
+	return &a, nil
+}
+
+func (s *ArtifactStoreSQLite) GetBySHA256(ctx context.Context, sha256 string) (*Artifact, error) {
+	var a Artifact
+	var createdAt, updatedAt string
+	var verifiedAt, lastAccessedAt sql.NullString
+	var durationMs, width, height sql.NullInt64
+	var statusStr string
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, job_id, kind, status, storage_backend,
+			storage_key, sha256, size_bytes, mime_type,
+			duration_ms, width, height,
+			created_at, updated_at, verified_at, last_accessed_at
+		FROM artifacts WHERE sha256 = ? AND status != 'DELETED'
+		LIMIT 1
+	`, sha256).Scan(
+		&a.ID, &a.JobID, &a.Kind, &statusStr, &a.StorageBackend,
+		&a.StorageKey, &a.SHA256, &a.SizeBytes, &a.MimeType,
+		&durationMs, &width, &height,
+		&createdAt, &updatedAt, &verifiedAt, &lastAccessedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: get by sha256: %w", err)
+	}
+
+	a.Status = ArtifactStatus(statusStr)
+	a.CreatedAt = timeutil.ParseRFC3339(createdAt)
+	a.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
+	if verifiedAt.Valid && verifiedAt.String != "" {
+		t := timeutil.ParseRFC3339(verifiedAt.String)
+		a.VerifiedAt = &t
+	}
+	if durationMs.Valid {
+		a.DurationMs = int(durationMs.Int64)
+	}
+	if width.Valid {
+		a.Width = int(width.Int64)
+	}
+	if height.Valid {
+		a.Height = int(height.Int64)
+	}
+	if lastAccessedAt.Valid && lastAccessedAt.String != "" {
+		t := timeutil.ParseRFC3339(lastAccessedAt.String)
+		a.LastAccessedAt = &t
+	}
+	return &a, nil
+}
+
+func (s *ArtifactStoreSQLite) UpdateStatus(ctx context.Context, id string, status ArtifactStatus, sha256 string, sizeBytes int64) error {
+	now := timeutil.FormatRFC3339(time.Now().UTC())
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE artifacts
+		SET status = ?, sha256 = ?, size_bytes = ?, updated_at = ?,
+			verified_at = CASE WHEN ? = 'READY' THEN ? ELSE verified_at END
+		WHERE id = ?
+	`, string(status), sha256, sizeBytes, now, string(status), now, id)
+	if err != nil {
+		return fmt.Errorf("artifacts: update status %s: %w", id, err)
+	}
+	return nil
+}
+
+func (s *ArtifactStoreSQLite) ListByJob(ctx context.Context, jobID string) ([]*Artifact, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, job_id, kind, status, storage_backend,
+			storage_key, sha256, size_bytes, mime_type,
+			duration_ms, width, height,
+			created_at, updated_at, verified_at, last_accessed_at
+		FROM artifacts WHERE job_id = ? ORDER BY created_at
+	`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: list by job %s: %w", jobID, err)
+	}
+	defer rows.Close()
+
+	var list []*Artifact
+	for rows.Next() {
+		var a Artifact
+		var createdAt, updatedAt string
+		var verifiedAt, lastAccessedAt sql.NullString
+		var durationMs, width, height sql.NullInt64
+		var statusStr string
+		if err := rows.Scan(
+			&a.ID, &a.JobID, &a.Kind, &statusStr, &a.StorageBackend,
+			&a.StorageKey, &a.SHA256, &a.SizeBytes, &a.MimeType,
+			&durationMs, &width, &height,
+			&createdAt, &updatedAt, &verifiedAt, &lastAccessedAt,
+		); err != nil {
+			return nil, fmt.Errorf("artifacts: scan list: %w", err)
+		}
+		a.Status = ArtifactStatus(statusStr)
+		a.CreatedAt = timeutil.ParseRFC3339(createdAt)
+		a.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
+		if verifiedAt.Valid && verifiedAt.String != "" {
+			t := timeutil.ParseRFC3339(verifiedAt.String)
+			a.VerifiedAt = &t
+		}
+		if durationMs.Valid {
+			a.DurationMs = int(durationMs.Int64)
+		}
+		if width.Valid {
+			a.Width = int(width.Int64)
+		}
+		if height.Valid {
+			a.Height = int(height.Int64)
+		}
+		if lastAccessedAt.Valid && lastAccessedAt.String != "" {
+			t := timeutil.ParseRFC3339(lastAccessedAt.String)
+			a.LastAccessedAt = &t
+		}
+		list = append(list, &a)
+	}
+	return list, nil
+}
+
+// ── DeliveryStoreSQLite ───────────────────────────────────────────────
+
+type DeliveryStoreSQLite struct {
+	db *sql.DB
+}
+
+func NewDeliveryStoreSQLite(db *sql.DB) *DeliveryStoreSQLite {
+	return &DeliveryStoreSQLite{db: db}
+}
+
+var _ DeliveryStore = (*DeliveryStoreSQLite)(nil)
+
+func (s *DeliveryStoreSQLite) Create(ctx context.Context, d *Delivery) error {
+	now := time.Now().UTC()
+	if d.CreatedAt.IsZero() {
+		d.CreatedAt = now
+	}
+	d.UpdatedAt = now
+
+	if d.IdempotencyKey == "" {
+		raw := d.ArtifactID + d.DestinationID + d.Provider
+		h := sha256.Sum256([]byte(raw))
+		d.IdempotencyKey = hex.EncodeToString(h[:])
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO deliveries (id, artifact_id, destination_id, provider, status,
+			attempt_count, max_attempts, next_attempt_at, locked_by, locked_until,
+			remote_id, remote_url, last_error_code, last_error_message,
+			idempotency_key, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, d.ID, d.ArtifactID, d.DestinationID, d.Provider, string(d.Status),
+		d.AttemptCount, d.MaxAttempts, timeutil.FormatPtrRFC3339(d.NextAttemptAt),
+		d.LockedBy, timeutil.FormatPtrRFC3339(d.LockedUntil), d.RemoteID, d.RemoteURL,
+		d.LastErrorCode, d.LastErrorMessage, d.IdempotencyKey,
+		timeutil.FormatRFC3339(d.CreatedAt), timeutil.FormatRFC3339(d.UpdatedAt))
+	if err != nil {
+		return fmt.Errorf("deliveries: create %s: %w", d.ID, err)
+	}
+	return nil
+}
+
+func (s *DeliveryStoreSQLite) Get(ctx context.Context, id string) (*Delivery, error) {
+	var d Delivery
+	var nextAttempt, lockedUntil, completedAt sql.NullString
+	var createdAt, updatedAt string
+	var statusStr string
+
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, artifact_id, destination_id, provider, status,
+			attempt_count, max_attempts, next_attempt_at, locked_by, locked_until,
+			remote_id, remote_url, last_error_code, last_error_message,
+			idempotency_key, created_at, updated_at, completed_at
+		FROM deliveries WHERE id = ?
+	`, id).Scan(
+		&d.ID, &d.ArtifactID, &d.DestinationID, &d.Provider, &statusStr,
+		&d.AttemptCount, &d.MaxAttempts, &nextAttempt, &d.LockedBy, &lockedUntil,
+		&d.RemoteID, &d.RemoteURL, &d.LastErrorCode, &d.LastErrorMessage,
+		&d.IdempotencyKey, &createdAt, &updatedAt, &completedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("deliveries: get %s: %w", id, err)
+	}
+
+	d.Status = DeliveryStatus(statusStr)
+	d.CreatedAt = timeutil.ParseRFC3339(createdAt)
+	d.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
+	if nextAttempt.Valid && nextAttempt.String != "" {
+		t := timeutil.ParseRFC3339(nextAttempt.String)
+		d.NextAttemptAt = &t
+	}
+	if lockedUntil.Valid && lockedUntil.String != "" {
+		t := timeutil.ParseRFC3339(lockedUntil.String)
+		d.LockedUntil = &t
+	}
+	if completedAt.Valid && completedAt.String != "" {
+		t := timeutil.ParseRFC3339(completedAt.String)
+		d.CompletedAt = &t
+	}
+	return &d, nil
+}
+
+func (s *DeliveryStoreSQLite) Update(ctx context.Context, d *Delivery) error {
+	now := time.Now().UTC()
+	d.UpdatedAt = now
+	completedAtStr := ""
+	if d.CompletedAt != nil {
+		completedAtStr = timeutil.FormatRFC3339(*d.CompletedAt)
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE deliveries
+		SET status = ?, attempt_count = ?, max_attempts = ?, next_attempt_at = ?,
+			locked_by = ?, locked_until = ?, remote_id = ?, remote_url = ?,
+			last_error_code = ?, last_error_message = ?, updated_at = ?, completed_at = ?
+		WHERE id = ?
+	`, string(d.Status), d.AttemptCount, d.MaxAttempts, timeutil.FormatPtrRFC3339(d.NextAttemptAt),
+		d.LockedBy, timeutil.FormatPtrRFC3339(d.LockedUntil), d.RemoteID, d.RemoteURL,
+		d.LastErrorCode, d.LastErrorMessage, timeutil.FormatRFC3339(d.UpdatedAt), completedAtStr, d.ID)
+	if err != nil {
+		return fmt.Errorf("deliveries: update %s: %w", d.ID, err)
+	}
+	return nil
+}
+
+func (s *DeliveryStoreSQLite) ListPending(ctx context.Context) ([]*Delivery, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM deliveries
+		WHERE status IN ('PENDING', 'RETRY_WAIT')
+			AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+		ORDER BY created_at ASC
+	`, timeutil.FormatRFC3339(time.Now().UTC()))
+	if err != nil {
+		return nil, fmt.Errorf("deliveries: list pending: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*Delivery
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		d, err := s.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if d != nil {
+			list = append(list, d)
+		}
+	}
+	return list, nil
+}
