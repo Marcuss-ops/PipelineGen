@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -67,12 +66,11 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	// 3. Trigger async enrichment + indexing (non-blocking) with 3-minute timeout.
 	// context.WithoutCancel ensures the goroutine survives the HTTP handler's return.
-	// enrichAndIndexClip still expects *models.MediaAsset; we pass a converted copy
-	// so the background goroutine owns its mutation independently.
+	// Stack-copy clip so the background goroutine owns its mutation independently.
 	if h.metaWriter != nil || h.clipIndexer != nil || h.vectorStore != nil {
-		legacyClip := assetregistry.ToLegacy(&clip)
+		clipCopy := clip
 		concurrent.SafeGo("clip-create-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), legacyClip, source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), &clipCopy, source)
 		})
 	}
 

@@ -574,7 +574,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
 	if hasIndexer {
 		concurrent.SafeGo("yt-register-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), clip, source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), assetregistry.ToCanonical(clip), source)
 		})
 		log.Info("triggered async Qdrant indexing and enrichment",
 			zap.String("clip_id", clip.ID))
