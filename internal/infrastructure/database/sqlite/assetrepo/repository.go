@@ -89,7 +89,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			scene_type, metadata_json, is_folder, depth,
 			folder_id, parent_folder_id, folder_path,
 			usable_for, avoid_for, phash, child_count,
-			status, error,
 			created_at, updated_at
 		) VALUES (
 			?, ?, ?, ?, ?, ?, ?,
@@ -100,7 +99,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			?, ?, ?, ?,
 			?, ?, ?,
 			?, ?, ?, ?,
-			?, ?,
 			?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
@@ -134,11 +132,9 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			usable_for     = excluded.usable_for,
 			avoid_for      = excluded.avoid_for,
 			phash          = excluded.phash,
-			child_count    = excluded.child_count,
-			status         = excluded.status,
-			error          = excluded.error
+			child_count    = excluded.child_count
 	`,
-		// Values (matches the 35 ? placeholders above in order)
+		// Values (matches the 33 ? placeholders above in order)
 		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
 		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
 		m.DurationMs, string(tagsJSON), string(searchTermsJSON), m.SearchText,
@@ -147,7 +143,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 		m.SceneType, m.MetadataJSON(), boolToInt(m.IsFolder), m.Depth,
 		m.FolderID, m.ParentFolderID, m.FolderPath,
 		mustJSONArray(m.UsableFor), mustJSONArray(m.AvoidFor), m.PHash, m.ChildCount,
-		m.Status, m.Error,
 		nowStr, nowStr,
 	)
 	if err != nil {

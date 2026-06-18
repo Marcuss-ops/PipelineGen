@@ -53,8 +53,6 @@ const selectColumns = `
 	COALESCE(avoid_for, '[]')     AS avoid_for,
 	COALESCE(phash, '')           AS phash,
 	COALESCE(child_count, 0)      AS child_count,
-	COALESCE(status, '')          AS status,
-	COALESCE(error, '')           AS err_msg,
 	created_at,
 	updated_at
 `
@@ -88,7 +86,6 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 		&a.FolderID, &a.ParentFolderID, &a.FolderPath, &depth, &isFolder,
 		&a.SceneType, &qualityScore, &reuseCount, &a.LastUsedAt,
 		&usableForJSON, &avoidForJSON, &a.PHash, &childCount,
-		&a.Status, &a.Error,
 		&createdAtStr, &updatedAtStr,
 	)
 	if err != nil {

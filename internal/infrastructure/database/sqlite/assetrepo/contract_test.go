@@ -56,8 +56,6 @@ CREATE TABLE IF NOT EXISTS media_assets (
     avoid_for TEXT NOT NULL DEFAULT '[]',
     phash TEXT NOT NULL DEFAULT '',
     child_count INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT '',
-    error TEXT NOT NULL DEFAULT '',
     mime_type TEXT NOT NULL DEFAULT '',
     file_size_bytes INTEGER NOT NULL DEFAULT 0,
     project TEXT NOT NULL DEFAULT '',

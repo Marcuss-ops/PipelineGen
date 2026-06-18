@@ -17,7 +17,7 @@ import (
 //
 // Fields map directly to typed columns in media_assets. Fields that are
 // NOT here (local_path, drive_link, file_hash, status, error) belong in
-// dedicated sub-tables (asset_locations, asset_processing) and must be
+// dedicated sub-tables (asset_locations, asset_processing) and are
 // accessed through the corresponding repository interfaces.
 type MediaAsset struct {
 	// ── Identity ──────────────────────────────────────────────────
@@ -79,11 +79,10 @@ type MediaAsset struct {
 	PHash               string   `json:"phash,omitempty"`
 	ChildCount          int      `json:"child_count,omitempty"`
 
-	// ── Deprecated fields (will be removed in PR12) ───────────────
-	// These are kept only for struct-compat during the transition.
-	// New code MUST NOT read or write them.
-	Status      string `json:"status,omitempty"`
-	Error       string `json:"error,omitempty"`
+	// ── Deprecated fields (removed: Status, Error → asset_processing) ─
+	// Location fields are kept for struct-compat during the transition.
+	// Status/Error have been migrated to asset_processing and removed.
+	// New code MUST NOT read or write these deprecated fields.
 	DriveFileID string `json:"drive_file_id,omitempty"`
 	DriveLink   string `json:"drive_link,omitempty"`
 	DownloadLink string `json:"download_link,omitempty"`

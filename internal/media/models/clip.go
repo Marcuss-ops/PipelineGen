@@ -31,7 +31,7 @@ type MediaAsset struct {
 	LocalPath      string         `json:"local_path"` // Path to downloaded local file
 	ThumbURL       string         `json:"thumb_url"`  // Thumbnail URL
 	Status         string         `json:"status"`
-	Error          string         `json:"error"`
+	Error          string         `json:"error"`          // Deprecated — migrated to asset_processing
 	SearchTerms    []string       `json:"search_terms"` // Frasi di riferimento/query di ricerca che hanno portato al download
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
