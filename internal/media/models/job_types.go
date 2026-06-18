@@ -140,3 +140,21 @@ type JobFilter struct {
 	Limit    int
 	Offset   int
 }
+
+// IsTerminal returns true if the status is one of the three terminal states.
+func (s JobStatus) IsTerminal() bool {
+	return s == StatusSucceeded || s == StatusFailed || s == StatusCancelled
+}
+
+// IsActive returns true if a worker currently owns this job.
+func (s JobStatus) IsActive() bool {
+	return s == StatusLeased || s == StatusRunning
+}
+
+// CanRetry checks if the job can be retried.
+func (j *Job) CanRetry() bool {
+	if j == nil {
+		return false
+	}
+	return j.RetryCount < j.MaxRetries && (j.Status == StatusFailed || j.Status == StatusRetryWait)
+}

@@ -26,6 +26,7 @@ type Router struct {
 	cfg                 *config.Config
 	rateLimitMiddleware *middleware.RateLimitMiddleware
 	registry            *module.Registry
+	workerHandler       interface{ RegisterRoutes(*gin.RouterGroup) }
 	ctx                 context.Context
 }
 
@@ -39,6 +40,11 @@ func NewRouter(cfg *config.Config) *Router {
 // SetRegistry sets the module registry for route registration
 func (r *Router) SetRegistry(reg *module.Registry) {
 	r.registry = reg
+}
+
+// SetWorkerHandler wires internal worker routes into the router.
+func (r *Router) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) }) {
+	r.workerHandler = h
 }
 
 // SetContext sets the context for module lifecycle management
@@ -145,6 +151,14 @@ func (r *Router) Setup() *gin.Engine {
 			} else {
 				log.Warn("no module registry available, no routes registered")
 			}
+		}
+	}
+
+	internalGroup := engine.Group("/internal/v1")
+	internalGroup.Use(middleware.Auth(r.cfg))
+	{
+		if r.workerHandler != nil {
+			r.workerHandler.RegisterRoutes(internalGroup)
 		}
 	}
 
