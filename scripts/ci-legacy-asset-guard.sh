@@ -63,11 +63,12 @@ echo "Check 2: legacy symbols (populateAssetMetadata, DownloadProcessUpload, ToC
 LEGACY_SYMBOL_COUNT=$(rg -c 'populateAssetMetadata|DownloadProcessUpload|ToCoreProcessor' internal --glob '*.go' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
 echo "  INFO: legacy symbol occurrences: $LEGACY_SYMBOL_COUNT (target: 0)"
 
-# ── Check 3: canonical fields read from metadata_json ───────────────
+# ── Check 3: legacy fields read from metadata_json ──────────────────
 echo ""
-echo "Check 3: canonical fields read from metadata_json (dual-read)"
-CANONICAL_READ_COUNT=$(rg -c "json_extract\([^)]*metadata_json" internal --glob '*.go' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
-echo "  INFO: metadata_json reads remaining: $CANONICAL_READ_COUNT (target: 0)"
+echo "Check 3: legacy fields read from metadata_json (should use typed columns)"
+LEGACY_FIELD_PATTERN='\.(search_text|category|local_path|drive_link|download_link|drive_file_id|file_hash|filename|folder_id|folder_path|media_type|status|error|deleted_at|phash|parent_folder_id)'
+LEGACY_READ_COUNT=$(rg -c "json_extract.*metadata_json.*$LEGACY_FIELD_PATTERN" internal --glob '*.go' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+echo "  INFO: legacy field metadata_json reads: $LEGACY_READ_COUNT (target: 0)"
 
 # ── Check 4: legacy clip model file ─────────────────────────────────
 echo ""
