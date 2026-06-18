@@ -63,7 +63,7 @@ internal/service/scriptcore/clip_source_evidence.go
 internal/service/scriptcore/clip_source.go
 internal/service/scriptcore/clip_source_test.go
 internal/sources/artlist/convert.go
-internal/sources/artlist/run_orchestrator_stages.go
+internal/sources/artlist/dispatch_bridge.go
 internal/sources/artlist/search_service.go
 internal/sources/artlist/semantic_enricher.go
 internal/sources/artlist/service_test.go

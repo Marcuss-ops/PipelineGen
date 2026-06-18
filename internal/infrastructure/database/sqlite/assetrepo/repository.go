@@ -31,9 +31,8 @@ import (
 
 // Repository is the concrete SQLite implementation of asset.Repository.
 type Repository struct {
-	db       *sql.DB
-	log      *zap.Logger
-	enricher *asset.LocationEnricher
+	db  *sql.DB
+	log *zap.Logger
 }
 
 // Compile-time interface check.
@@ -45,13 +44,6 @@ func New(db *sql.DB, log *zap.Logger) *Repository {
 		log = zap.NewNop()
 	}
 	return &Repository{db: db, log: log}
-}
-
-// SetLocationEnricher injects the location enricher that hydrates deprecated
-// location fields (DriveFileID, LocalPath, etc.) from asset_locations on read.
-// Must be called after New and before any Get/List calls. Nil is safe (no-op).
-func (r *Repository) SetLocationEnricher(e *asset.LocationEnricher) {
-	r.enricher = e
 }
 
 // ── CRUD ───────────────────────────────────────────────────────────────
@@ -98,7 +90,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			folder_id, parent_folder_id, folder_path,
 			usable_for, avoid_for, phash, child_count,
 			status, error,
-			drive_file_id, drive_link, download_link, local_path, file_hash,
 			created_at, updated_at
 		) VALUES (
 			?, ?, ?, ?, ?, ?, ?,
@@ -110,7 +101,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			?, ?, ?,
 			?, ?, ?, ?,
 			?, ?,
-			?, ?, ?, ?, ?,
 			?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
@@ -146,14 +136,9 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			phash          = excluded.phash,
 			child_count    = excluded.child_count,
 			status         = excluded.status,
-			error          = excluded.error,
-			drive_file_id  = excluded.drive_file_id,
-			drive_link     = excluded.drive_link,
-			download_link  = excluded.download_link,
-			local_path     = excluded.local_path,
-			file_hash      = excluded.file_hash
+			error          = excluded.error
 	`,
-		// Values (matches the 40 ? placeholders above in order)
+		// Values (matches the 35 ? placeholders above in order)
 		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
 		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
 		m.DurationMs, string(tagsJSON), string(searchTermsJSON), m.SearchText,
@@ -163,7 +148,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 		m.FolderID, m.ParentFolderID, m.FolderPath,
 		mustJSONArray(m.UsableFor), mustJSONArray(m.AvoidFor), m.PHash, m.ChildCount,
 		m.Status, m.Error,
-		m.DriveFileID, m.DriveLink, m.DownloadLink, m.LocalPath, m.FileHash,
 		nowStr, nowStr,
 	)
 	if err != nil {
@@ -198,7 +182,6 @@ func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, err
 	if m.LifecycleState == asset.StateDeleted {
 		return nil, asset.ErrSoftDeleted
 	}
-	r.enricher.Enrich(ctx, m)
 	return m, nil
 }
 
@@ -265,7 +248,6 @@ func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.Me
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	r.enricher.EnrichSlice(ctx, out)
 	return out, nil
 }
 
