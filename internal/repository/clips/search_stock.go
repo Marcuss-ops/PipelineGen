@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/sqlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
 // SearchStockByKeywords searches stock clips by keywords using LIKE on the media_assets table.
@@ -27,7 +27,7 @@ func (r *Repository) SearchStockByKeywords(ctx context.Context, keywords []strin
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM media_assets
-		WHERE source = 'stock' AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL AND (%s)
+		WHERE source = 'stock' AND `+r.SoftDeleteFilter()+` AND (%s)
 		LIMIT ?`,
 		mediaAssetColumns,
 		conditionSQL,

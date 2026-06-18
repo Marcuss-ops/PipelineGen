@@ -5,14 +5,14 @@ import (
 	"database/sql"
 	"strings"
 
-	"velox/go-master/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // ListClips returns clips for a source (or all sources when source is empty
 // / "all" / "unified"). No pagination — callers needing paged reads should
 // use ListClipsPaged instead.
 func (r *Repository) ListClips(ctx context.Context, source string) ([]*models.MediaAsset, error) {
-	query := buildMediaAssetQuery(source)
+	query := r.buildMediaAssetQuery(source)
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		args = append(args, source)
@@ -53,7 +53,7 @@ func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, o
 		return r.SearchClips(ctx, source, q)
 	}
 
-	query := buildMediaAssetQuery(source) + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	query := r.buildMediaAssetQuery(source) + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		args = append(args, source)
@@ -79,7 +79,7 @@ func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, o
 
 // CountClips returns the total number of clips (excluding soft-deleted).
 func (r *Repository) CountClips(ctx context.Context) (int, error) {
-	query := "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
+	query := "SELECT COUNT(*) FROM media_assets WHERE " + r.SoftDeleteFilter()
 	row := r.db.QueryRowContext(ctx, query)
 	var count int
 	err := row.Scan(&count)

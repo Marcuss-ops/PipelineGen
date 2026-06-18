@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.MediaAsset, error) {
 	query := `SELECT ` + mediaAssetColumns + `
 		FROM media_assets
-		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL AND json_extract(COALESCE(metadata_json,'{}'), '$.parent_folder_id') = ?
+		WHERE ` + r.SoftDeleteFilter() + ` AND json_extract(COALESCE(metadata_json,'{}'), '$.parent_folder_id') = ?
 		ORDER BY name ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, parentID)
@@ -43,7 +43,7 @@ func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, err
 		return "", nil
 	}
 	var id string
-	query := `SELECT id FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.phash') = ? AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL LIMIT 1`
+	query := `SELECT id FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.phash') = ? AND ` + r.SoftDeleteFilter() + ` LIMIT 1`
 	err := r.db.QueryRowContext(ctx, query, phash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil

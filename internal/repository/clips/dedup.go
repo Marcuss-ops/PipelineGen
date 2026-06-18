@@ -15,7 +15,7 @@ import (
 // (register-from-youtube, upload-video) to avoid creating duplicate
 // MediaAsset records for the same source content.
 //
-// All queries filter out soft-deleted clips (metadata_json.deleted_at).
+// All queries exclude soft-deleted clips via lifecycle_state column.
 
 // FindByYouTubeVideoID returns the ID of the most recent non-deleted clip
 // that was registered from the given YouTube video ID. The match is exact
@@ -46,7 +46,7 @@ func (r *Repository) FindByYouTubeVideoID(ctx context.Context, videoID string, h
 		endMS := int64(endSec * 1000)
 		query = `SELECT id FROM media_assets
 			WHERE json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') = ?
-			AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+			AND ` + r.SoftDeleteFilter() + `
 			AND CAST(ROUND(COALESCE(CAST(json_extract(metadata_json, '$.start') AS REAL), 0) * 1000) AS INTEGER) = ?
 			AND CAST(ROUND(COALESCE(CAST(json_extract(metadata_json, '$.end')   AS REAL), 0) * 1000) AS INTEGER) = ?
 			ORDER BY created_at DESC LIMIT 1`
@@ -54,7 +54,7 @@ func (r *Repository) FindByYouTubeVideoID(ctx context.Context, videoID string, h
 	} else {
 		query = `SELECT id FROM media_assets
 			WHERE json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') = ?
-			AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+			AND ` + r.SoftDeleteFilter() + `
 			ORDER BY created_at DESC LIMIT 1`
 		args = []any{videoID}
 	}
@@ -83,7 +83,7 @@ func (r *Repository) FindByFileHash(ctx context.Context, fileHash string) (strin
 	var id string
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM media_assets
 		WHERE file_hash = ?
-		AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		AND `+r.SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, fileHash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -107,7 +107,7 @@ func (r *Repository) FindBySourceURL(ctx context.Context, url string) (string, e
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM media_assets
 		WHERE (json_extract(COALESCE(metadata_json,'{}'), '$.source_url') = ?
 			OR json_extract(COALESCE(metadata_json,'{}'), '$.youtube_url') = ?)
-		AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		AND `+r.SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, url, url).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -128,7 +128,7 @@ func (r *Repository) FindByName(ctx context.Context, name string) (string, error
 	var id string
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM media_assets
 		WHERE name = ?
-		AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		AND `+r.SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, name).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -151,7 +151,7 @@ func (r *Repository) FindDuplicatesByYouTubeID(ctx context.Context, videoID stri
 	}
 	rows, err := r.db.QueryContext(ctx, `SELECT id FROM media_assets
 		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') = ?
-		AND json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		AND `+r.SoftDeleteFilter()+`
 		AND id != ?
 		ORDER BY created_at DESC`,
 		videoID, excludeID)

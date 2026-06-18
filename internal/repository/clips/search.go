@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/sqlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
 // SearchClips searches clips by tag or name.
@@ -44,7 +44,7 @@ func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*mo
 		return []*models.MediaAsset{}, nil
 	}
 
-	query := buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
+	query := r.buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
 
 	finalArgs := []any{}
 	if source != "" && source != "all" && source != "unified" {
@@ -79,7 +79,7 @@ func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*mo
 	if len(keywords) > 1 {
 		orCondition, orArgs := sqlutil.BuildFallbackLikeConditionsOR(keywords, columns)
 		if orCondition != "" {
-			orQuery := buildMediaAssetQuery(source) + " AND (" + orCondition + ")"
+			orQuery := r.buildMediaAssetQuery(source) + " AND (" + orCondition + ")"
 			orFinalArgs := []any{}
 			if source != "" && source != "all" && source != "unified" {
 				orFinalArgs = append(orFinalArgs, source)
@@ -120,7 +120,7 @@ func (r *Repository) SearchClipsByKeywords(ctx context.Context, source string, k
 		return []*models.MediaAsset{}, nil
 	}
 
-	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildMediaAssetQuery(source), conditionSQL)
+	query := fmt.Sprintf("%s AND (%s) LIMIT ?", r.buildMediaAssetQuery(source), conditionSQL)
 	finalArgs := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		finalArgs = append(finalArgs, source)
@@ -159,7 +159,7 @@ func (r *Repository) SearchClipsAdvanced(ctx context.Context, req AdvancedSearch
 		req.Limit = 500
 	}
 
-	conditions := []string{"json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"}
+	conditions := []string{r.SoftDeleteFilter()}
 	args := []any{}
 
 	if req.Source != "" && req.Source != "all" {

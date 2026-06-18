@@ -44,9 +44,11 @@ func buildClipFolderQuery(source string) string {
 }
 
 // buildMediaAssetQuery builds a SELECT query using the media_assets table,
-// excluding soft-deleted clips via the canonical lifecycle_state column.
-func buildMediaAssetQuery(source string) string {
-	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE lifecycle_state != 'deleted'"
+// excluding soft-deleted clips via softDeleteFilter() (which uses the
+// canonical lifecycle_state column when available, falling back to
+// metadata_json extraction for pre-migration databases).
+func (r *Repository) buildMediaAssetQuery(source string) string {
+	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE " + r.SoftDeleteFilter()
 	if source != "" && source != "all" && source != "unified" {
 		query += " AND source = ?"
 	}
@@ -55,13 +57,55 @@ func buildMediaAssetQuery(source string) string {
 
 // Repository handles persistence for clips
 type Repository struct {
-	db  *sql.DB
-	log *zap.Logger
+	db                 *sql.DB
+	log                *zap.Logger
+	hasLifecycleState  bool // true if migration 037 (lifecycle_state column) has been applied
 }
 
-// NewRepository creates a new clips repository
+// NewRepository creates a new clips repository.
+// Detects whether migration 037 (lifecycle_state column) has been applied
+// so queries can use the canonical column or fall back to metadata_json.
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
-	return &Repository{db: db, log: log}
+	r := &Repository{db: db, log: log}
+	r.hasLifecycleState = r.detectLifecycleStateColumn()
+	if log != nil {
+		if r.hasLifecycleState {
+			log.Info("lifecycle_state column detected — using canonical soft-delete filter")
+		} else {
+			log.Warn("lifecycle_state column NOT found — falling back to json_extract(metadata_json, '$.deleted_at'). Run migration 037.")
+		}
+	}
+	return r
+}
+
+// detectLifecycleStateColumn checks whether the lifecycle_state column exists
+// on media_assets (added by migration 037). Uses PRAGMA table_info because
+// it works even when the migration hasn't run yet.
+func (r *Repository) detectLifecycleStateColumn() bool {
+	if r.db == nil {
+		return false
+	}
+	var count int
+	err := r.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM pragma_table_info('media_assets') WHERE name = 'lifecycle_state'").Scan(&count)
+	if err != nil {
+		return false
+	}
+	return count > 0
+}
+
+// SoftDeleteFilter returns the SQL WHERE fragment that excludes soft-deleted
+// clips. When the lifecycle_state column exists (migration 037 applied), uses
+// the canonical typed column. Falls back to the legacy metadata_json extraction
+// for databases that haven't been migrated yet — ensuring zero-downtime
+// compatibility during rollout.
+//
+// Exported so callers outside the clips package (e.g. sweepers) can compose
+// ad-hoc queries that respect the same filter.
+func (r *Repository) SoftDeleteFilter() string {
+	if r.hasLifecycleState {
+		return "lifecycle_state != 'deleted'"
+	}
+	return "json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
 }
 
 // Log returns the repository's logger
@@ -334,7 +378,7 @@ func (r *Repository) CountAll(ctx context.Context) (int64, error) {
 	}
 	var n int64
 	err := r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM media_assets WHERE lifecycle_state != 'deleted'",
+		"SELECT COUNT(*) FROM media_assets WHERE "+r.SoftDeleteFilter(),
 	).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("clips.CountAll: %w", err)
@@ -357,7 +401,7 @@ func (r *Repository) CountIndexed(ctx context.Context) (int64, error) {
 	var n int64
 	err := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM media_assets
-		 WHERE lifecycle_state != 'deleted'
+		 WHERE `+r.SoftDeleteFilter()+`
 		   AND embedding_json IS NOT NULL
 		   AND embedding_json != ''
 		   AND embedding_json != '[]'`,
@@ -385,7 +429,7 @@ func (r *Repository) ListIndexedIDs(ctx context.Context, limit int) ([]string, e
 	}
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id FROM media_assets
-		 WHERE lifecycle_state != 'deleted'
+		 WHERE `+r.SoftDeleteFilter()+`
 		   AND embedding_json IS NOT NULL
 		   AND embedding_json != ''
 		   AND embedding_json != '[]'

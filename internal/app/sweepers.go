@@ -7,14 +7,14 @@ import (
 
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/media/autotag"
-	"velox/go-master/internal/media/vectorstore"
-	clipsrepo "velox/go-master/internal/repository/clips"
-	scriptrepo "velox/go-master/internal/repository/scripts"
-	"velox/go-master/internal/service/gemmamemory"
-	"velox/go-master/internal/upload/drive"
-	"velox/go-master/pkg/metrics"
-	"velox/go-master/pkg/urlutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // startResearchCacheSweeper deletes research_cache rows whose last_used is
@@ -158,7 +158,7 @@ func runDedupSweep(ctx context.Context, clipsRepo *clipsrepo.Repository, log *za
 	rows, err := clipsRepo.DB().QueryContext(ctx, `
 		SELECT json_extract(metadata_json, '$.youtube_video_id') AS vid, COUNT(*) AS n
 		FROM media_assets
-		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		WHERE `+clipsRepo.SoftDeleteFilter()+`
 		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') IS NOT NULL
 		  AND json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') != ''
 		GROUP BY vid

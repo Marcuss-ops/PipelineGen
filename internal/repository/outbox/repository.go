@@ -7,6 +7,30 @@
 //
 // The outbox is written in the SAME transaction as media_assets upserts,
 // ensuring atomicity even across multiple PipelineGen instances.
+//
+// DEPRECATED — Legacy media_index_outbox (Blocco 4, June 2026):
+//
+// The media_index_outbox table is the original outbox pattern designed for
+// local-indexing workers that poll a shared SQLite table. With the move
+// toward truly stateless workers (Point 4 of the architecture roadmap),
+// this local-SQLite-polling outbox will be replaced by:
+//
+//   1. Job-system-based indexing (jobs.Repository + worker pool) — for
+//      embedding/indexing work that is naturally async and retryable.
+//   2. Direct Qdrant upserts — for hot-path catalog sync where the worker
+//      already has the embedding payload in memory.
+//
+// Migration plan:
+//   Phase 1 (now):    Keep media_index_outbox running.  Catalog sync and
+//                     artlist enrichment still depend on it.
+//   Phase 2 (Point 4): Route all indexing through the job system.
+//                      media_index_outbox becomes a write-only dead table.
+//   Phase 3:           Remove the outbox worker, the table, and this
+//                      package.  No new code should depend on outbox.
+//
+// New integrations MUST use the job system (internal/jobs) for async work
+// or call vectorstore.Service directly for synchronous upserts.  Do NOT
+// add new consumers of this package.
 package outbox
 
 import (
