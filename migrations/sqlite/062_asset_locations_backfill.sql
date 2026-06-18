@@ -44,6 +44,36 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- STEP 1 — Add the 11 missing columns to media_assets
 -- ════════════════════════════════════════════════════════════════════════════
+-- PR12a.1 IDEMPOTENCY NOTE
+-- SQLite has no `IF NOT EXISTS` clause on `ALTER TABLE ADD COLUMN` and no way to
+-- conditionally execute DDL inside a CASE/CTE expression. RAISE(ABORT) — the
+-- only portable "error-out of this statement" tool — is **trigger-only** in
+-- SQLite 3.37.x (verified empirically: `RAISE() may only be used within a
+-- trigger-program`). As a result, a pure-SQL guard that wraps each ALTER in a
+-- column-existence check is NOT achievable in this file.
+--
+-- Operational contract:
+--   * Production: the `schema_migrations` ledger ensures the file is applied
+--     exactly once. No re-run path exists.
+--   * Local dev / partial-failure recovery: if STEP 1 was interrupted after
+--     some-but-not-all ADDs succeeded, a re-run will abort at the first
+--     `duplicate column name` error. This is intentional — silently masking
+--     schema drift is worse than a loud failure. To recover, the operator
+--     must inspect pragma_table_info('media_assets') and either (a) manually
+--     craft a follow-up migration that ADDs only the missing subset, or
+--     (b) mark the migration as `dirty` in schema_migrations and re-run from
+--     a known-good checkpoint.
+--
+-- The trailing SELECT below is a post-condition audit — it logs the current
+-- media_assets schema state in the runner's output transcript. Operators can
+-- grep for the 11 column names after the migration completes to confirm
+-- STEP 1 landed cleanly. The audit itself cannot conditionally execute the
+-- ADDs; it is observational only.
+--
+-- Future hardening (out of scope for this PR — see followup): enhance the Go
+-- migration runner to introspect pragma_table_info before each ALTER and skip
+-- the ADD when the column already exists. That migration-runner change makes
+-- this file truly safe-no-op on partial-failure re-run.
 
 ALTER TABLE media_assets ADD COLUMN filename        TEXT    NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN category        TEXT    NOT NULL DEFAULT '';
@@ -56,6 +86,17 @@ ALTER TABLE media_assets ADD COLUMN reuse_count     INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE media_assets ADD COLUMN last_used_at    TEXT    NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN lifecycle_state TEXT    NOT NULL DEFAULT '';
 ALTER TABLE media_assets ADD COLUMN deleted_at      TEXT    NOT NULL DEFAULT '';
+
+-- Post-condition audit: actually setup fails if some columns didn't get added;
+-- this is just a runtime confirmation of STEP 1's effect.
+SELECT name, type, dflt_value, "notnull" AS notnull
+FROM pragma_table_info('media_assets')
+WHERE name IN (
+    'filename', 'category', 'thumbnail_url', 'clip_page_url', 'search_text',
+    'scene_type', 'quality_score', 'reuse_count', 'last_used_at',
+    'lifecycle_state', 'deleted_at'
+)
+ORDER BY name;
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- STEP 2 — Backfill asset_locations via UPSERT
