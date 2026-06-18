@@ -13,7 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -218,7 +219,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 8. Build the MediaAsset record
 	now := time.Now().UTC()
-	clip := &models.MediaAsset{
+	clip := &asset.MediaAsset{
 		ID:         clipID,
 		Name:       name,
 		Filename:   driveFilename,
@@ -232,7 +233,6 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		FileHash:   fileHash,
 		FolderID:   targetFolderID,
 		FolderPath: group,
-		Status:     "uploaded",
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -250,7 +250,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 10. Save to database
 	if h.clipsRepo != nil {
-		if err := h.clipsRepo.UpsertClip(ctx, clip); err != nil {
+		if err := h.clipsRepo.UpsertClip(ctx, assetregistry.ToLegacy(clip)); err != nil {
 			log.Error("failed to save clip to DB", zap.Error(err))
 			apiutil.InternalError(c, fmt.Errorf("failed to save clip: %w", err))
 			return
@@ -260,7 +260,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 11. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(clip)
+		node := clipToAssetNode(assetregistry.ToLegacy(clip))
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -269,8 +269,9 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	// 12. Trigger async enrichment + Qdrant indexing (reuses the existing pipeline)
 	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
 	if hasIndexer {
+		legacyClip := assetregistry.ToLegacy(clip)
 		concurrent.SafeGo("upload-video-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), clip, source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), legacyClip, source)
 		})
 		log.Info("triggered async enrichment + Qdrant indexing", zap.String("clip_id", clip.ID))
 	}
@@ -289,7 +290,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		Tags:        tags,
 		LocalPath:   localPath,
 		Indexed:     hasIndexer,
-		Duration:    clip.Duration,
+		Duration:    int(clip.DurationMs),
 	})
 }
 
@@ -302,7 +303,7 @@ type driveUploadResult struct {
 
 // probeDuration probes the video file for duration using ffprobe.
 // Falls back to 0 if unavailable.
-func probeDuration(ctx context.Context, localPath string, clip *models.MediaAsset, log *zap.Logger) {
+func probeDuration(ctx context.Context, localPath string, clip *asset.MediaAsset, log *zap.Logger) {
 	if clip == nil {
 		return
 	}
@@ -310,14 +311,14 @@ func probeDuration(ctx context.Context, localPath string, clip *models.MediaAsse
 	// Try ffprobe
 	probe := probeFFprobe(ctx, localPath)
 	if probe != nil && probe.Duration > 0 {
-		clip.Duration = int(probe.Duration)
+		clip.DurationMs = int64(probe.Duration * 1000)
 		return
 	}
 
 	// Fallback: try mediainfo if available
 	dur := probeMediaInfo(ctx, localPath)
 	if dur > 0 {
-		clip.Duration = dur
+		clip.DurationMs = int64(dur * 1000)
 		return
 	}
 
