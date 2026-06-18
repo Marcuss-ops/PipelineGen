@@ -45,6 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/storage/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
 )
 
 type services struct {
@@ -113,4 +114,7 @@ type services struct {
 
 	// assetQueryService is the canonical aggregate reader for asset state.
 	assetQueryService *assetquery.Service
+
+	DeliveryService *deliveries.Service
+	DeliveryRunner  *deliveries.Runner
 }

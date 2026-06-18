@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
@@ -18,6 +18,33 @@ import (
 // UPDATE lifecycle_state (canonical soft-delete column from migration
 // 037) so the canonical block is mandatory here.
 const testSchema = storage.CanonicalMediaAssetsSchema + `
+
+	CREATE TABLE IF NOT EXISTS asset_locations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		asset_id TEXT NOT NULL,
+		location_kind TEXT NOT NULL DEFAULT 'local',
+		uri TEXT NOT NULL DEFAULT '',
+		external_id TEXT NOT NULL DEFAULT '',
+		web_view_link TEXT NOT NULL DEFAULT '',
+		download_url TEXT NOT NULL DEFAULT '',
+		is_public INTEGER NOT NULL DEFAULT 0,
+		mime_type TEXT NOT NULL DEFAULT '',
+		file_size_bytes INTEGER NOT NULL DEFAULT 0,
+		file_hash TEXT NOT NULL DEFAULT '',
+		is_primary INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(asset_id, location_kind)
+	);
+
+	CREATE TABLE IF NOT EXISTS outbox_events (
+		id TEXT PRIMARY KEY,
+		aggregate_id TEXT NOT NULL DEFAULT '',
+		event_type TEXT NOT NULL,
+		payload_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL DEFAULT '',
+		published_at TEXT
+	);
 
 	CREATE TABLE clip_folders (
 		id TEXT PRIMARY KEY,
@@ -50,7 +77,7 @@ func TestDeleteClip(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	err := repo.Upsert(ctx, &models.MediaAsset{
+	err := repo.UpsertClip(ctx, &asset.MediaAsset{
 		ID:        "clip_1",
 		Name:      "Test Clip",
 		Filename:  "test.mp4",
@@ -62,15 +89,15 @@ func TestDeleteClip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := repo.Get(ctx, "clip_1"); err != nil {
+	if _, err := repo.GetClip(ctx, "clip_1"); err != nil {
 		t.Fatalf("expected clip before delete: %v", err)
 	}
 
-	if err := repo.SoftDelete(ctx, "clip_1"); err != nil {
+	if err := repo.DeleteClip(ctx, "clip_1"); err != nil {
 		t.Fatalf("DeleteClip failed: %v", err)
 	}
 
-	clip, err := repo.Get(ctx, "clip_1")
+	clip, err := repo.GetClip(ctx, "clip_1")
 	if clip != nil {
 		t.Fatal("expected nil clip after deleting clip")
 	}
@@ -101,7 +128,7 @@ func TestRestoreClip(t *testing.T) {
 	defer db.Close()
 	repo := NewRepository(db, zap.NewNop())
 
-	_ = repo.Upsert(ctx, &models.MediaAsset{
+	_ = repo.UpsertClip(ctx, &asset.MediaAsset{
 		ID:        "clip_res",
 		Name:      "Restore Clip",
 		Tags:      []string{"restore"},
@@ -109,18 +136,18 @@ func TestRestoreClip(t *testing.T) {
 		UpdatedAt: time.Now(),
 	})
 
-	_ = repo.SoftDelete(ctx, "clip_res")
+	_ = repo.DeleteClip(ctx, "clip_res")
 
-	clip, _ := repo.Get(ctx, "clip_res")
+	clip, _ := repo.GetClip(ctx, "clip_res")
 	if clip != nil {
 		t.Fatal("expected nil clip after soft delete")
 	}
 
-	if err := repo.Restore(ctx, "clip_res"); err != nil {
+	if err := repo.RestoreClip(ctx, "clip_res"); err != nil {
 		t.Fatalf("RestoreClip failed: %v", err)
 	}
 
-	clip, err := repo.Get(ctx, "clip_res")
+	clip, err := repo.GetClip(ctx, "clip_res")
 	if err != nil || clip == nil {
 		t.Fatalf("expected clip to be present after restore, err: %v", err)
 	}
@@ -134,7 +161,7 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	clip := &models.MediaAsset{
+	clip := &asset.MediaAsset{
 		ID:        "clip_2",
 		Name:      "Drive Clip",
 		DriveLink: "https://drive.google.com/file/d/123",
@@ -142,15 +169,15 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	if err := repo.Upsert(ctx, clip); err != nil {
+	if err := repo.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := repo.DeleteByDriveLink(ctx, clip.DriveLink); err != nil {
+	if err := repo.DeleteClipByDriveLink(ctx, clip.DriveLink); err != nil {
 		t.Fatalf("DeleteClipByDriveLink failed: %v", err)
 	}
 
-	c, _ := repo.Get(ctx, "clip_2")
+	c, _ := repo.GetClip(ctx, "clip_2")
 	if c != nil {
 		t.Fatal("expected nil clip after deleting by drive link")
 	}

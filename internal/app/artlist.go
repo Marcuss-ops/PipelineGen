@@ -22,6 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/matchingconfig"
 )
 
@@ -251,7 +252,7 @@ func wireArtlistService(
 
 	// Register artlist job handler
 	if artlistSvc != nil && coreDeps.JobsService != nil {
-		coreDeps.JobsService.RegisterHandler(models.JobTypeArtlistRun, artlistSvc.HandleJob)
+		coreDeps.JobsService.RegisterHandler(job.JobTypeArtlistRun, artlistSvc.HandleJob)
 		log.Info("registered artlist job handler")
 	}
 
