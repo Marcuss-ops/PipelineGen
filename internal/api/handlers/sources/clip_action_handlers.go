@@ -24,19 +24,21 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	ctx := c.Request.Context()
-	legacyClip, err := repo.GetClip(ctx, clipID)
+	clip, err := h.assetRepo.Get(ctx, clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	clip := assetregistry.ToCanonical(legacyClip)
+	if clip == nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
 
 	if h.mediaProcessor == nil {
 		apiutil.InternalError(c, fmt.Errorf("media processor not configured"))
@@ -82,7 +84,7 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	clip.UpdatedAt = time.Now()
 
 	// Save to DB
-	if err := repo.UpsertClip(ctx, assetregistry.ToLegacy(clip)); err != nil {
+	if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
@@ -116,18 +118,21 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		}
 		clip = assetregistry.VoiceoverRecordToClip(rec)
 	} else {
-		repo := h.resolveRepo(source)
-		if repo == nil {
-			apiutil.BadRequest(c, "invalid source: "+source)
+		if h.assetRepo == nil {
+			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 			return
 		}
 
-		legacyClip, getErr := repo.GetClip(c.Request.Context(), clipID)
+		var getErr error
+		clip, getErr = h.assetRepo.Get(c.Request.Context(), clipID)
 		if getErr != nil {
 			apiutil.NotFound(c, "clip not found: "+clipID)
 			return
 		}
-		clip = assetregistry.ToCanonical(legacyClip)
+		if clip == nil {
+			apiutil.NotFound(c, "clip not found: "+clipID)
+			return
+		}
 	}
 
 	// 1. Try local file if it exists
@@ -202,19 +207,21 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	ctx := c.Request.Context()
-	legacyClip, err := repo.GetClip(ctx, clipID)
+	clip, err := h.assetRepo.Get(ctx, clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	clip := assetregistry.ToCanonical(legacyClip)
+	if clip == nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
 
 	// Check local file
 	if clip.LocalPath == "" {
@@ -304,7 +311,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	}
 
 	// Save to DB
-	if err := repo.UpsertClip(ctx, assetregistry.ToLegacy(clip)); err != nil {
+	if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
@@ -324,18 +331,20 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
-	legacyClip, err := repo.GetClip(c.Request.Context(), clipID)
+	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	clip := assetregistry.ToCanonical(legacyClip)
+	if clip == nil {
+		apiutil.NotFound(c, "clip not found")
+		return
+	}
 
 	if clip.FileHash == "" {
 		apiutil.OK(c, gin.H{
