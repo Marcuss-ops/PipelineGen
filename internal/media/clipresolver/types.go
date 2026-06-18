@@ -2,7 +2,7 @@ package clipresolver
 
 import (
 	"context"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 // EmbeddingProvider defines the interface for obtaining text embeddings.
@@ -41,7 +41,7 @@ type SearchResult struct {
 
 // OntologyScorer defines the interface for applying ontology-based scoring.
 type OntologyScorer interface {
-	Apply(score float64, clip *models.MediaAsset, topic string) float64
+	Apply(score float64, clip *asset.MediaAsset, topic string) float64
 }
 
 // RecommendRequest is the request for clip recommendation
@@ -122,7 +122,7 @@ type ScoreBreakdown struct {
 
 // ClipScore is an internal type for scoring clips
 type ClipScore struct {
-	Clip         *models.MediaAsset
+	Clip         *asset.MediaAsset
 	Score        float64
 	Breakdown    *ScoreBreakdown
 	MatchedQuery string
