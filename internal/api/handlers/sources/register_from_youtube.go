@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
@@ -563,7 +563,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	// 9. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(assetregistry.ToCanonical(clip))
+		node := clipToAssetNode(artifacts.ToCanonical(clip))
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -573,7 +573,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
 	if hasIndexer {
 		concurrent.SafeGo("yt-register-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), assetregistry.ToCanonical(clip), source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), artifacts.ToCanonical(clip), source)
 		})
 		log.Info("triggered async Qdrant indexing and enrichment",
 			zap.String("clip_id", clip.ID))

@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 )
 
-func mediaRecordToAssetRecord(rec *assetregistry.MediaRecord) *assetop.AssetRecord {
+func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *assetop.AssetRecord {
 	if rec == nil {
 		return nil
 	}

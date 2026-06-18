@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 )
 
@@ -20,11 +20,11 @@ func NewVoiceoverStoreAdapter(repo *vorepo.Repository) lifecycle.AssetRecordStor
 	return &voiceoverStoreAdapter{repo: repo}
 }
 
-func (a *voiceoverStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error {
+func (a *voiceoverStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
 	return a.repo.Upsert(ctx, mediaRecordToVoiceover(rec))
 }
 
-func (a *voiceoverStoreAdapter) Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
+func (a *voiceoverStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	vRec, err := a.repo.GetByID(ctx, id)
 	if err != nil || vRec == nil {
 		return nil, err
@@ -111,11 +111,11 @@ func (a *voiceoverStoreAdapter) DeleteAssetRecord(ctx context.Context, id string
 	return a.repo.Delete(ctx, id)
 }
 
-func voiceoverToMediaRecord(rec *vorepo.Record) *assetregistry.MediaRecord {
+func voiceoverToMediaRecord(rec *vorepo.Record) *artifacts.MediaRecord {
 	if rec == nil {
 		return nil
 	}
-	return &assetregistry.MediaRecord{
+	return &artifacts.MediaRecord{
 		ID:           rec.ID,
 		Name:         rec.TextPreview,
 		Filename:     rec.Filename,
@@ -135,7 +135,7 @@ func voiceoverToMediaRecord(rec *vorepo.Record) *assetregistry.MediaRecord {
 	}
 }
 
-func mediaRecordToVoiceover(rec *assetregistry.MediaRecord) *vorepo.Record {
+func mediaRecordToVoiceover(rec *artifacts.MediaRecord) *vorepo.Record {
 	meta := map[string]any{}
 	if strings.TrimSpace(rec.Metadata) != "" && rec.Metadata != "{}" {
 		_ = json.Unmarshal([]byte(rec.Metadata), &meta)

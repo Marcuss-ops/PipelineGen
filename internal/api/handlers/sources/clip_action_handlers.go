@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -116,7 +116,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found: "+clipID)
 			return
 		}
-		clip = assetregistry.VoiceoverRecordToClip(rec)
+		clip = artifacts.VoiceoverRecordToClip(rec)
 	} else {
 		if h.assetRepo == nil {
 			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
@@ -380,7 +380,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 				continue
 			}
 
-			canonDup := assetregistry.ToCanonical(dup)
+			canonDup := artifacts.ToCanonical(dup)
 			duplicates = append(duplicates, gin.H{
 				"source":     repoSource,
 				"id":         canonDup.ID,

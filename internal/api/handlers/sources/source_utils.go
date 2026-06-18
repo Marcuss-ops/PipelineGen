@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
@@ -22,7 +22,7 @@ import (
 //
 //	if !ValidateSource(c, source) { return }
 func ValidateSource(c *gin.Context, source string) bool {
-	if !assetregistry.IsValidSource(source) {
+	if !artifacts.IsValidSource(source) {
 		apiutil.BadRequest(c, "invalid source: "+source)
 		return false
 	}
@@ -30,9 +30,9 @@ func ValidateSource(c *gin.Context, source string) bool {
 }
 
 // resolveRepo returns the appropriate repository for the given source.
-// Uses centralized SourceResolver from assetregistry.
+// Uses centralized SourceResolver from artifacts.
 func (h *Handler) resolveRepo(source string) *clips.Repository {
-	resolver := assetregistry.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo)
+	resolver := artifacts.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo)
 	return resolver.ResolveRepo(source)
 }
 
@@ -90,14 +90,14 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 	}
 }
 
-// voiceoverRecordToClip delegates to the canonical converter in assetregistry.
+// voiceoverRecordToClip delegates to the canonical converter in artifacts.
 func voiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
-	return assetregistry.VoiceoverRecordToClip(rec)
+	return artifacts.VoiceoverRecordToClip(rec)
 }
 
-// imageAssetToClip uses the canonical converter from assetregistry.
+// imageAssetToClip uses the canonical converter from artifacts.
 func imageAssetToClip(a *models.ImageAsset) *asset.MediaAsset {
-	return assetregistry.ImageAssetToClip(a)
+	return artifacts.ImageAssetToClip(a)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.

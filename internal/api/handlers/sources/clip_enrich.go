@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -155,7 +155,7 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 			if err == nil && clip != nil {
 			// Clip found — use existing enrichment pipeline (async, survives handler return)
 			concurrent.SafeGo("media-enrich", func() {
-				h.enrichAndIndexClip(context.WithoutCancel(ctx), assetregistry.ToCanonical(clip), req.Source)
+				h.enrichAndIndexClip(context.WithoutCancel(ctx), artifacts.ToCanonical(clip), req.Source)
 			})
 				apiutil.OK(c, gin.H{
 					"ok":       true,
@@ -223,7 +223,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 	enrichNeeded := clip.SearchText == "" && clip.Name != "" && h.metaWriter != nil
 	if enrichNeeded {
 		concurrent.SafeGo("reindex-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), assetregistry.ToCanonical(clip), source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), artifacts.ToCanonical(clip), source)
 		})
 		apiutil.OK(c, gin.H{
 			"ok":      true,

@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
@@ -31,7 +31,7 @@ func initMediaProcessor(
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
-	clipsRegistry := assetregistry.NewClipsRegistry(db, assets, querySvc, locations, processing)
+	clipsRegistry := artifacts.NewClipsRegistry(db, assets, querySvc, locations, processing)
 
 	return mediaasset.NewProcessor(
 		ytDLPDownloader,

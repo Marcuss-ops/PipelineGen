@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -23,7 +23,7 @@ func (h *Handler) GetClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := assetregistry.VoiceoverRecordToClip(rec)
+		clip := artifacts.VoiceoverRecordToClip(rec)
 		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
@@ -120,7 +120,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, rec := range records {
-			allClips = append(allClips, assetregistry.VoiceoverRecordToClip(rec))
+			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
 		}
 	} else if sourceLower == "images" {
 		if h.imagesRepo == nil {
@@ -133,7 +133,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, img := range assets {
-			allClips = append(allClips, assetregistry.ImageAssetToClip(img))
+			allClips = append(allClips, artifacts.ImageAssetToClip(img))
 		}
 	} else {
 		if h.assetRepo == nil {
@@ -166,7 +166,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			}
 			allClips = make([]*asset.MediaAsset, len(legacyClips))
 			for i, lc := range legacyClips {
-				allClips[i] = assetregistry.ToCanonical(lc)
+				allClips[i] = artifacts.ToCanonical(lc)
 			}
 		}
 	}

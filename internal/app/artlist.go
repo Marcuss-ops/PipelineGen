@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
@@ -120,7 +120,7 @@ func wireArtlistHandler(
 }
 
 func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
-	clipsRegistry := assetregistry.NewClipsRegistry(
+	clipsRegistry := artifacts.NewClipsRegistry(
 		coreDeps.DB.DB,
 		coreDeps.AssetRepo,
 		coreDeps.AssetQueryService,
