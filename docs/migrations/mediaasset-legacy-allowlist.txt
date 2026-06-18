@@ -63,14 +63,14 @@ internal/service/scriptcore/catalog_scanner_test.go
 internal/service/scriptcore/clip_source_evidence.go
 internal/service/scriptcore/clip_source.go
 internal/service/scriptcore/clip_source_test.go
-internal/sources/artlist/legacy_bridge.go
+internal/sources/artlist/convert.go
 internal/sources/artlist/run_orchestrator_stages.go
 internal/sources/artlist/search_service.go
 internal/sources/artlist/semantic_enricher.go
 internal/sources/artlist/service_test.go
+internal/sources/youtube/convert.go
 internal/sources/youtube/enrichment_fallback.go
 internal/sources/youtube/extractor_process.go
-internal/sources/youtube/legacy_bridge.go
 internal/sources/youtube/metadata_enrich.go
 internal/sources/youtube/metadata_persist.go
 internal/sources/youtube/searcher_cache.go
