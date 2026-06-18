@@ -162,7 +162,7 @@ func composeIntegration(
 	scriptFlowHandler.RegisterJobHandlers(jobsService)
 
 	// ── Auto-Tagging Service ───────────────────────────────────────────
-	autotagSvc := autotag.NewService(core.ClipsOnlyRepo, core.VLMClient, log)
+	autotagSvc := autotag.NewService(dbs.main.DB, core.AssetRepo, core.VLMClient, log)
 	if core.ClipIndexerService != nil {
 		autotagSvc.SetVectorStore(core.ClipIndexerService.VectorStore())
 	}
