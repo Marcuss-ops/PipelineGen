@@ -64,18 +64,18 @@ func (r *Repository) FindCandidatesFTS(ctx context.Context, query string, limit 
 	sqlQuery := `
 		SELECT 
 			c.id, c.name, 
-			COALESCE(json_extract(c.metadata_json, '$.search_text'), '') as search_text,
-			COALESCE(json_extract(c.metadata_json, '$.category'), '') as category,
+			COALESCE(c.search_text, '') as search_text,
+			COALESCE(c.category, '') as category,
 			COALESCE(json_extract(c.metadata_json, '$.scene_type'), '') as scene_type,
 			COALESCE(c.tags, '[]') as tags,
-			COALESCE(json_extract(c.metadata_json, '$.drive_link'), '') as drive_link,
-			COALESCE(json_extract(c.metadata_json, '$.local_path'), '') as local_path,
+			COALESCE(c.drive_link, '') as drive_link,
+			COALESCE(c.local_path, '') as local_path,
 			COALESCE(CAST(json_extract(c.metadata_json, '$.quality_score') AS REAL), 0.0) as quality_score,
 			COALESCE(CAST(json_extract(c.metadata_json, '$.reuse_count') AS INTEGER), 0) as reuse_count,
 			COALESCE(json_extract(c.metadata_json, '$.usable_for'), '[]') as usable_for,
 			COALESCE(json_extract(c.metadata_json, '$.avoid_for'), '[]') as avoid_for,
-			COALESCE(json_extract(c.metadata_json, '$.folder_id'), '') as folder_id,
-			COALESCE(json_extract(c.metadata_json, '$.folder_path'), '') as folder_path,
+			COALESCE(c.folder_id, '') as folder_id,
+			COALESCE(c.folder_path, '') as folder_path,
 			bm25(clips_fts, 5.0, 2.0, 1.0, 1.5, 1.0) as rank
 		FROM clips_fts
 		JOIN media_assets c ON c.id = clips_fts.id
@@ -141,18 +141,18 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 
 	sqlQuery := fmt.Sprintf(`
 		SELECT id, name,
-			COALESCE(json_extract(metadata_json, '$.search_text'), ''),
-			COALESCE(json_extract(metadata_json, '$.category'), ''),
+			COALESCE(search_text, ''),
+			COALESCE(category, ''),
 			COALESCE(json_extract(metadata_json, '$.scene_type'), ''),
 			COALESCE(tags, '[]'),
-			COALESCE(json_extract(metadata_json, '$.drive_link'), ''),
-			COALESCE(json_extract(metadata_json, '$.local_path'), ''),
+			COALESCE(drive_link, ''),
+			COALESCE(local_path, ''),
 			COALESCE(CAST(json_extract(metadata_json, '$.quality_score') AS REAL), 0.0),
 			COALESCE(CAST(json_extract(metadata_json, '$.reuse_count') AS INTEGER), 0),
 			COALESCE(json_extract(metadata_json, '$.usable_for'), '[]'),
 			COALESCE(json_extract(metadata_json, '$.avoid_for'), '[]'),
-			COALESCE(json_extract(metadata_json, '$.folder_id'), ''),
-			COALESCE(json_extract(metadata_json, '$.folder_path'), '')
+			COALESCE(folder_id, ''),
+			COALESCE(folder_path, '')
 		FROM media_assets
 		WHERE (%s) AND (? = '' OR source = ?)
 		ORDER BY quality_score DESC, reuse_count ASC
@@ -257,10 +257,10 @@ func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.MediaA
 	var driveLinkNull, localPathNull, categoryNull, searchTextNull sql.NullString
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name,
-			COALESCE(json_extract(metadata_json, '$.drive_link'), ''),
-			COALESCE(json_extract(metadata_json, '$.local_path'), ''),
-			COALESCE(json_extract(metadata_json, '$.category'), ''),
-			COALESCE(json_extract(metadata_json, '$.search_text'), '')
+			COALESCE(drive_link, ''),
+			COALESCE(local_path, ''),
+			COALESCE(category, ''),
+			COALESCE(search_text, '')
 		FROM media_assets WHERE id = ?
 	`, clipID).Scan(&clip.ID, &clip.Name, &driveLinkNull, &localPathNull, &categoryNull, &searchTextNull)
 

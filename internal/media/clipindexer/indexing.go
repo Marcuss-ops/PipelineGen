@@ -326,7 +326,7 @@ func (s *Service) computeContentHash(ctx context.Context, clipID string) (hash s
 	err = s.db.QueryRowContext(ctx,
 		`SELECT
 			COALESCE(name, ''),
-			COALESCE(json_extract(metadata_json, '$.search_text'), ''),
+			COALESCE(search_text, ''),
 			COALESCE(json_extract(metadata_json, '$.clean_transcript'), '')
 		FROM media_assets WHERE id = ?`, clipID).Scan(&name, &searchText, &cleanTranscript)
 	if err != nil {
@@ -420,7 +420,7 @@ func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
 	// === Step 3: Multi-frame visual embedding ===
 	var localPath string
 	_ = s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(json_extract(metadata_json, '$.local_path'), '') FROM media_assets WHERE id = ?`,
+		`SELECT COALESCE(local_path, '') FROM media_assets WHERE id = ?`,
 		clipID).Scan(&localPath)
 
 	if localPath != "" {
@@ -484,7 +484,7 @@ func (s *Service) indexViaScript(ctx context.Context, clipID string) error {
 	}
 
 	var name, localPath string
-	err := s.db.QueryRowContext(ctx, "SELECT name, COALESCE(json_extract(metadata_json, '$.local_path'), '') FROM media_assets WHERE id = ?", clipID).Scan(&name, &localPath)
+	err := s.db.QueryRowContext(ctx, "SELECT name, COALESCE(local_path, '') FROM media_assets WHERE id = ?", clipID).Scan(&name, &localPath)
 	if err != nil {
 		return fmt.Errorf("failed to get clip info: %w", err)
 	}
