@@ -5,6 +5,11 @@
 // (selectColumns + scanAsset). Provider-specific fields still live in
 // metadata_json and are exposed via MediaAsset.Metadata.
 //
+// Location fields (local_path, drive_file_id, drive_link, download_link,
+// file_hash) are written to the asset_locations satellite table — NOT
+// into media_assets columns. This is the PR1 separation of concerns:
+// media_assets = identity + metadata; asset_locations = physical files.
+//
 // Transactional outbox: every mutating method writes an outbox_events
 // row in the SAME transaction as the data change. Consumers of the
 // canonical pipeline must observe the outbox to react to asset changes
@@ -48,9 +53,15 @@ func New(db *sql.DB, log *zap.Logger) *Repository {
 
 // ── CRUD ───────────────────────────────────────────────────────────────
 
-// Upsert inserts or replaces a media_asset row. Writes "asset.upserted"
-// outbox event in the same transaction. Reads/writes use real columns
-// (no json_extract for canonical fields).
+// Upsert inserts or replaces a media_asset row and synchronises the
+// canonical satellite tables (asset_locations). Writes "asset.upserted"
+// outbox event in the same transaction.
+//
+// Location fields (LocalPath, DriveFileID, DriveLink, DownloadLink, FileHash)
+// are written to asset_locations via upsertLocationRows. The media_assets
+// row only receives the core identity/metadata columns — location columns
+// on media_assets are intentionally omitted (they will be dropped in a
+// future migration).
 func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 	if m == nil {
 		return asset.ErrInvalidID
@@ -79,6 +90,10 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 	// NOTE: ON CONFLICT(id) DO UPDATE does NOT include created_at in the
 	// update clause → on re-upsert the row preserves its original
 	// created_at even though we bind a fresh nowStr value.
+	//
+	// Location columns (drive_file_id, drive_link, download_link, local_path,
+	// relative_path, file_hash) are intentionally OMITTED. They belong in
+	// asset_locations — see upsertLocationRows below.
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type, category, group_name,
@@ -89,7 +104,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			scene_type, metadata_json, is_folder, depth,
 			folder_id, parent_folder_id, folder_path,
 			usable_for, avoid_for, phash, child_count,
-			drive_file_id, drive_link, download_link, local_path, relative_path, file_hash,
 			created_at, updated_at
 		) VALUES (
 			?, ?, ?, ?, ?, ?, ?,
@@ -100,7 +114,6 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			?, ?, ?, ?,
 			?, ?, ?,
 			?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?,
 			?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
@@ -134,13 +147,7 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			usable_for     = excluded.usable_for,
 			avoid_for      = excluded.avoid_for,
 			phash          = excluded.phash,
-			child_count    = excluded.child_count,
-			drive_file_id  = excluded.drive_file_id,
-			drive_link     = excluded.drive_link,
-			download_link  = excluded.download_link,
-			local_path     = excluded.local_path,
-			relative_path  = excluded.relative_path,
-			file_hash      = excluded.file_hash
+			child_count    = excluded.child_count
 	`,
 		// Values (matches placeholders above in order)
 		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
@@ -151,11 +158,17 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 		m.SceneType, m.MetadataJSON(), boolToInt(m.IsFolder), m.Depth,
 		m.FolderID, m.ParentFolderID, m.FolderPath,
 		mustJSONArray(m.UsableFor), mustJSONArray(m.AvoidFor), m.PHash, m.ChildCount,
-		m.DriveFileID, m.DriveLink, m.DownloadLink, m.LocalPath, m.LocalPath, m.FileHash,
 		nowStr, nowStr,
 	)
 	if err != nil {
 		return fmt.Errorf("assetrepo.Upsert(%s): %w", m.ID, err)
+	}
+
+	// Synchronise asset_locations from the deprecated location fields.
+	// These fields are still on asset.MediaAsset for backward compat but
+	// the canonical home is asset_locations.
+	if err := upsertLocationRows(ctx, tx, m, nowStr); err != nil {
+		return fmt.Errorf("assetrepo.Upsert(%s) locations: %w", m.ID, err)
 	}
 
 	if err := writeOutbox(ctx, tx, m.ID, "asset.upserted", m); err != nil {
@@ -400,6 +413,106 @@ func (r *Repository) WithTx(ctx context.Context, fn func(*Tx) error) error {
 	return tx.Commit()
 }
 
+// ── Asset locations sync (PR1: canonical separation) ─────────────────
+
+// upsertLocationRows writes location data from the deprecated fields on
+// asset.MediaAsset into the asset_locations satellite table. It runs
+// inside the caller's transaction.
+//
+// Mapping:
+//
+//	LocalPath        → location_kind='local',  uri=LocalPath
+//	DriveFileID      → location_kind='drive',  external_id=DriveFileID
+//	DriveLink        → location_kind='drive',  access_url=DriveLink
+//	DownloadLink     → location_kind='drive',  download_url=DownloadLink
+//	FileHash         → both kinds inherit FileHash when set
+//
+// is_primary: local wins when LocalPath is non-empty; otherwise drive wins.
+// Before upserting, stale rows whose deprecated field is now empty are
+// deleted, and all other rows for this asset have is_primary cleared so
+// the INSERT's is_primary value is the sole authority.
+func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, nowStr string) error {
+	// ── Local location ──────────────────────────────────────────────
+	if m.LocalPath != "" {
+		// Reset any previous primary before setting the new one.
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE asset_locations SET is_primary = 0 WHERE asset_id = ?`,
+			m.ID); err != nil {
+			return fmt.Errorf("reset primary before local upsert: %w", err)
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO asset_locations (
+				asset_id, location_kind, uri, file_hash, is_primary,
+				created_at, updated_at
+			) VALUES (?, 'local', ?, ?, 1, ?, ?)
+			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
+				uri         = excluded.uri,
+				file_hash   = excluded.file_hash,
+				is_primary  = excluded.is_primary,
+				updated_at  = excluded.updated_at
+		`, m.ID, m.LocalPath, m.FileHash, nowStr, nowStr)
+		if err != nil {
+			return fmt.Errorf("upsert local location: %w", err)
+		}
+	} else {
+		// LocalPath became empty — remove the stale row.
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = 'local'`,
+			m.ID); err != nil {
+			return fmt.Errorf("delete stale local location: %w", err)
+		}
+	}
+
+	// ── Drive location ─────────────────────────────────────────────
+	hasDrive := m.DriveFileID != "" || m.DriveLink != ""
+	if hasDrive {
+		uri := ""
+		if m.DriveFileID != "" {
+			uri = "drive://" + m.DriveFileID
+		} else {
+			uri = m.DriveLink
+		}
+		// Drive is primary only when there's no local path.
+		isPrimary := 0
+		if m.LocalPath == "" {
+			// Reset previous primary before setting the new one.
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE asset_locations SET is_primary = 0 WHERE asset_id = ?`,
+				m.ID); err != nil {
+				return fmt.Errorf("reset primary before drive upsert: %w", err)
+			}
+			isPrimary = 1
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO asset_locations (
+				asset_id, location_kind, uri, external_id, access_url,
+				download_url, file_hash, is_primary, created_at, updated_at
+			) VALUES (?, 'drive', ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
+				uri          = excluded.uri,
+				external_id  = excluded.external_id,
+				access_url   = excluded.access_url,
+				download_url = excluded.download_url,
+				file_hash    = excluded.file_hash,
+				is_primary   = excluded.is_primary,
+				updated_at   = excluded.updated_at
+		`, m.ID, uri, m.DriveFileID, m.DriveLink, m.DownloadLink,
+			m.FileHash, isPrimary, nowStr, nowStr)
+		if err != nil {
+			return fmt.Errorf("upsert drive location: %w", err)
+		}
+	} else {
+		// Drive fields became empty — remove the stale row.
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = 'drive'`,
+			m.ID); err != nil {
+			return fmt.Errorf("delete stale drive location: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────
 
 // writeOutbox enters one row into outbox_events, transaction-shared with
@@ -479,5 +592,3 @@ func joinAnd(conds []string) string {
 	}
 	return out
 }
-
-
