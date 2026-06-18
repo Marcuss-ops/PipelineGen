@@ -43,7 +43,7 @@ func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, err
 		return "", nil
 	}
 	var id string
-	query := `SELECT id FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.phash') = ? AND ` + r.SoftDeleteFilter() + ` LIMIT 1`
+	query := `SELECT id FROM media_assets WHERE phash = ? AND ` + r.SoftDeleteFilter() + ` LIMIT 1`
 	err := r.db.QueryRowContext(ctx, query, phash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil

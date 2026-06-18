@@ -147,12 +147,12 @@ func (s *Service) scanDBOrphans(
 ) {
 	// ── Pass 1: local file existence ──────────────────────────────────
 	localRows, err := db.QueryContext(ctx, `
-		SELECT id, COALESCE(json_extract(metadata_json, '$.local_path'), '') AS lp,
+		SELECT id, COALESCE(local_path, '') AS lp,
 		       COALESCE(json_extract(metadata_json, '$.orphan_locale'), 0) AS already,
 		       COALESCE(json_extract(metadata_json, '$.orphan_detected_at'), '') AS prev
 		FROM media_assets
 		WHERE deleted_at IS NULL
-		  AND COALESCE(json_extract(metadata_json, '$.local_path'), '') != ''
+		  AND COALESCE(local_path, '') != ''
 		LIMIT ?`, batch)
 	if err != nil {
 		s.log.Warn("deep_cleanup local query failed", zap.Int("db_index", dbIdx), zap.Error(err))
@@ -238,12 +238,12 @@ func (s *Service) scanDriveOrphans(
 	defer cancel()
 
 	rows, err := db.QueryContext(driveCtx, `
-		SELECT id, COALESCE(json_extract(metadata_json, '$.drive_link'), '') AS dl,
+		SELECT id, COALESCE(drive_link, '') AS dl,
 		       COALESCE(json_extract(metadata_json, '$.orphan_drive'), 0) AS already,
 		       COALESCE(json_extract(metadata_json, '$.orphan_detected_at'), '') AS prev
 		FROM media_assets
 		WHERE deleted_at IS NULL
-		  AND COALESCE(json_extract(metadata_json, '$.drive_link'), '') != ''
+		  AND COALESCE(drive_link, '') != ''
 		LIMIT ?`, driveBatch)
 	if err != nil {
 		return fmt.Errorf("drive query: %w", err)
