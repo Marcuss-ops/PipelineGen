@@ -18,7 +18,7 @@ import (
 // sceneCountWithKind counts how many ClipScenes have a matching Kind value.
 // Used for diagnostic logging in the clip-aware paths so we can report
 // "clip-anchored" vs "narration-anchored" scene counts separately.
-func sceneCountWithKind(scenes []scriptcore.ClipScene, kind string) int {
+func sceneCountWithKind(scenes []scripts.ClipScene, kind string) int {
 	n := 0
 	for _, s := range scenes {
 		if s.Kind == kind {
@@ -42,7 +42,7 @@ func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload 
 	// Previously these fields were silently dropped here, so callers passing
 	// min_quality_score / min_transcript_words / guidelines had no effect on
 	// the explicit-clip path (auto-search and text-only already honored them).
-	opts := &scriptcore.ClipGenerationOptions{
+	opts := &scripts.ClipGenerationOptions{
 		Language:           payload.Language,
 		Tone:               payload.Tone,
 		Title:              payload.Title,
@@ -61,14 +61,14 @@ func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload 
 		return nil, fmt.Errorf("clip context building failed: %w", err)
 	}
 
-	sourceFingerprint := clipSvc.ComputeFingerprint(payload.ClipIDs, pack, opts, scriptcore.NewFingerprintContext(opts.Model, opts.Model))
+	sourceFingerprint := clipSvc.ComputeFingerprint(payload.ClipIDs, pack, opts, scripts.NewFingerprintContext(opts.Model, opts.Model))
 
 	if tools.Progress != nil {
 		tools.Progress(50, "Generating script via common engine")
 	}
 
-	writeResult, err := h.engine.WriteScript(ctx, scriptcore.WriteScriptRequest{
-		Plan: &scriptcore.ScriptGenerationPlan{
+	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{
+		Plan: &scripts.ScriptGenerationPlan{
 			Title:       plan.Title,
 			Topic:       plan.Title,
 			Language:    opts.Language,
@@ -104,7 +104,7 @@ func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload 
 	// clips the LLM omitted. Guarantees 1:1 coverage with pack.Clips so
 	// downstream scene_images / voiceovers / result mapping can rely on
 	// scene N ↔ clip N correspondence.
-	clipScenes := scriptcore.BuildScenesWithMarkers(writeResult.Script, pack)
+	clipScenes := scripts.BuildScenesWithMarkers(writeResult.Script, pack)
 	h.log.Info("clip-script generated",
 		zap.Int("scenes", len(clipScenes)),
 		zap.Int("words", writeResult.WordCount),
@@ -149,7 +149,7 @@ func (h *ScriptFlowHandler) handleClipPathAutoSearch(ctx context.Context, payloa
 		payload.Title = curateResult.Title
 	}
 
-	writeResult := &scriptcore.WriteScriptResult{
+	writeResult := &scripts.WriteScriptResult{
 		Script:      curateResult.Script,
 		WordCount:   curateResult.WordCount,
 		EstDuration: (curateResult.WordCount * 60) / 150,
@@ -224,7 +224,7 @@ func (h *ScriptFlowHandler) handleClipPathTextOnly(ctx context.Context, payload 
 		defaults.String(payload.QAPromptVersion, defaultTextQAPromptVersion),
 	)
 
-	writeResult, err := h.engine.WriteScript(ctx, scriptcore.WriteScriptRequest{
+	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{
 		Plan:        plan,
 		SaveTimeout: 60,
 	})

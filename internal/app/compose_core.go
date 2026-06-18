@@ -79,7 +79,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	}
 
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	translationCache := translations.NewCache(dbs.main.DB)
+	translationCache := scripts.NewCache(dbs.main.DB)
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 

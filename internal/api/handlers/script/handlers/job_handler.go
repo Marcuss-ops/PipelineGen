@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 
 	"go.uber.org/zap"
@@ -14,11 +13,11 @@ import (
 // RegisterJobHandlers registers the handlers for script jobs
 func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.JobTypeBatchScriptGenerate, h.HandleBatchScriptGenerateJob)
+		jobsSvc.RegisterHandler(jobservice.JobTypeBatchScriptGenerate, h.HandleBatchScriptGenerateJob)
 		h.log.Info("registered script.generate_batch job handler")
-		jobsSvc.RegisterHandler(domainjob.JobTypeClipScriptGenerate, h.HandleClipScriptGenerateJob)
+		jobsSvc.RegisterHandler(jobservice.JobTypeClipScriptGenerate, h.HandleClipScriptGenerateJob)
 		h.log.Info("registered script.generate_from_clips job handler")
-		jobsSvc.RegisterHandler(domainjob.JobTypeCatalogScriptGenerate, h.HandleCatalogScriptGenerateJob)
+		jobsSvc.RegisterHandler(jobservice.JobTypeCatalogScriptGenerate, h.HandleCatalogScriptGenerateJob)
 		h.log.Info("registered script.generate_from_catalog job handler")
 		// script.curate has no canonical domainjob constant yet, we can use the string literal directly.
 		jobsSvc.RegisterHandler("script.curate", h.HandleCurateJob)
@@ -27,7 +26,7 @@ func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 }
 
 // HandleBatchScriptGenerateJob processes the background job for script.generate_batch
-func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_batch job", zap.String("job_id", job.ID))
 	var req GenerateBatchRequest
 	if err := json.Unmarshal(job.Payload, &req); err != nil {

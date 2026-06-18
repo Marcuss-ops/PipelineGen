@@ -43,7 +43,7 @@ func clipToAssetNode(clip *asset.MediaAsset) *assettreerepo.AssetNode {
 		return nil
 	}
 	nodeType := "file"
-	if clip.IsFolder {
+	if clip.IsFolder() {
 		nodeType = "folder"
 	} else if clip.MediaType != "" {
 		nodeType = clip.MediaType
@@ -55,16 +55,16 @@ func clipToAssetNode(clip *asset.MediaAsset) *assettreerepo.AssetNode {
 		AssetID:     clip.ID,
 		Name:        clip.Name,
 		Type:        nodeType,
-		ParentID:    clip.ParentFolderID,
-		Path:        clip.FolderPath,
-		Depth:       clip.Depth,
-		IsFolder:    clip.IsFolder,
-		DriveFileID: clip.DriveFileID,
-		DriveLink:   clip.DriveLink,
+		ParentID:    clip.ParentFolderID(),
+		Path:        clip.FolderPath(),
+		Depth:       clip.Depth(),
+		IsFolder:    clip.IsFolder(),
+		DriveFileID: clip.DriveFileID(),
+		DriveLink:   clip.DriveLink(),
 		Metadata:    clip.MetadataJSON(),
 		CreatedAt:   clip.CreatedAt,
 		UpdatedAt:   clip.UpdatedAt,
-		ChildCount:  clip.ChildCount,
+		ChildCount:  clip.ChildCount(),
 	}
 }
 
@@ -114,14 +114,14 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 
 	// Check local file
 	hasLocalFile := false
-	if clip.LocalPath != "" {
-		if _, statErr := os.Stat(clip.LocalPath); statErr == nil {
+	if clip.LocalPath() != "" {
+		if _, statErr := os.Stat(clip.LocalPath()); statErr == nil {
 			hasLocalFile = true
 			result["local_file"] = true
-			result["local_path"] = clip.LocalPath
+			result["local_path"] = clip.LocalPath()
 		} else {
 			result["local_file"] = false
-			result["local_path"] = clip.LocalPath
+			result["local_path"] = clip.LocalPath()
 			result["local_error"] = "file not found: " + statErr.Error()
 			result["issues"] = append(result["issues"].([]string), "local_file_missing")
 		}
@@ -131,9 +131,9 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 	}
 
 	// Check Drive link
-	driveLink := clip.DriveLink
+	driveLink := clip.DriveLink()
 	if driveLink == "" {
-		driveLink = clip.DownloadLink
+		driveLink = clip.DownloadLink()
 	}
 	var fileID string
 	if driveLink != "" {
@@ -154,8 +154,8 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 	}
 
 	// Check hash
-	if clip.FileHash != "" {
-		result["hash"] = clip.FileHash
+	if clip.FileHash() != "" {
+		result["hash"] = clip.FileHash()
 		result["has_hash"] = true
 
 		// Verify hash if local file exists
@@ -167,7 +167,7 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 		if fileID != "" && h.driveUploader != nil {
 			md5, err := h.driveUploader.GetFileMD5(ctx, fileID)
 			if err == nil && md5 != "" {
-				clip.FileHash = md5
+				clip.SetFileHash(md5)
 				result["hash"] = md5
 				result["has_hash"] = true
 				result["hash_recovered"] = true
@@ -200,18 +200,18 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 	}
 
 	// Check folder info
-	if clip.FolderID != "" {
-		result["folder_id"] = clip.FolderID
+	if clip.FolderID() != "" {
+		result["folder_id"] = clip.FolderID()
 	}
-	if clip.FolderPath != "" {
-		result["folder_path"] = clip.FolderPath
+	if clip.FolderPath() != "" {
+		result["folder_path"] = clip.FolderPath()
 	}
 
 	// Determine status based on available data
 	status := "unknown"
-	if clip.DriveLink != "" || clip.DownloadLink != "" {
+	if clip.DriveLink() != "" || clip.DownloadLink() != "" {
 		status = "processed"
-	} else if clip.LocalPath != "" {
+	} else if clip.LocalPath() != "" {
 		status = "downloaded"
 	} else {
 		status = "pending"

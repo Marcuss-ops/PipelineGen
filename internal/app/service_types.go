@@ -27,11 +27,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
-	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
@@ -55,9 +54,7 @@ type services struct {
 	scriptsRepo        *scripts.ScriptRepository
 	imageRepo          *images.Repository
 	imageService       *imgservice.Service
-	stockDriveRepo     *clips.Repository
-	artlistRepo        *clips.Repository
-	clipsOnlyRepo      *clips.Repository
+	clipsRepo          *clips.Repository // unified (replaces stockDriveRepo, artlistRepo, clipsOnlyRepo)
 	assetRepo          asset.Repository
 	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
 	monitorsRepo       *monitors.Repository
@@ -68,7 +65,7 @@ type services struct {
 	catalogRepo        *catalog.Repository
 	catalogSync        *catalogsync.Service
 	assocService       *association.Service
-	jobsRepo           *jobrepo.Repository
+	jobsRepo           *jobservice.SQLiteStore
 	jobsService        *jobservice.Service
 	jobsDispatcher     *jobservice.Dispatcher
 	memoryRepo         *gemmamemory.Repository

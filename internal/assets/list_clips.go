@@ -12,13 +12,13 @@ import (
 // / "all" / "unified"). No pagination — callers needing paged reads should
 // use ListClipsPaged instead.
 func (s *AssetStoreSQLite) ListClips(ctx context.Context, source string) ([]*Asset, error) {
-	query := r.buildMediaAssetQuery(source)
+	query := buildMediaAssetQuery(source)
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		args = append(args, source)
 	}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -50,17 +50,17 @@ func (s *AssetStoreSQLite) ListClipsPaged(ctx context.Context, source string, li
 	}
 
 	if strings.TrimSpace(q) != "" {
-		return r.SearchClips(ctx, source, q)
+		return s.SearchClips(ctx, source, q)
 	}
 
-	query := r.buildMediaAssetQuery(source) + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	query := buildMediaAssetQuery(source) + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		args = append(args, source)
 	}
 	args = append(args, limit, offset)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +79,8 @@ func (s *AssetStoreSQLite) ListClipsPaged(ctx context.Context, source string, li
 
 // CountClips returns the total number of clips (excluding soft-deleted).
 func (s *AssetStoreSQLite) CountClips(ctx context.Context) (int, error) {
-	query := "SELECT COUNT(*) FROM media_assets WHERE " + r.SoftDeleteFilter()
-	row := r.db.QueryRowContext(ctx, query)
+	query := "SELECT COUNT(*) FROM media_assets WHERE " + SoftDeleteFilter()
+	row := s.db.QueryRowContext(ctx, query)
 	var count int
 	err := row.Scan(&count)
 	return count, err
@@ -98,7 +98,7 @@ func (s *AssetStoreSQLite) LastUpdatedAtForTerm(ctx context.Context, term string
 		FROM media_assets
 		WHERE source = 'artlist' AND tags LIKE ?
 	`
-	row := r.db.QueryRowContext(ctx, query, "%"+term+"%")
+	row := s.db.QueryRowContext(ctx, query, "%"+term+"%")
 
 	if err := row.Scan(&lastUpdated); err != nil {
 		return nil, err
@@ -108,3 +108,4 @@ func (s *AssetStoreSQLite) LastUpdatedAtForTerm(ctx context.Context, term string
 	}
 	return &lastUpdated.String, nil
 }
+

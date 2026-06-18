@@ -205,8 +205,8 @@ func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asse
 }
 
 func directYouTubeLink(clip asset.MediaAsset) string {
-	if strings.TrimSpace(clip.ExternalURL) != "" {
-		return clip.ExternalURL
+	if strings.TrimSpace(clip.ExternalURL()) != "" {
+		return clip.ExternalURL()
 	}
 	id := strings.TrimPrefix(strings.TrimSpace(clip.ID), "youtube_")
 	if id == "" {

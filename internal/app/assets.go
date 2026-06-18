@@ -63,7 +63,7 @@ func WireAssets(
 	maintenanceSvc *maintenance.Service,
 ) (*AssetsWiring, error) {
 	// Create folder memory service
-	folderMemSvc := foldermemory.NewService(log, coreDeps.ArtlistRepo)
+	folderMemSvc := foldermemory.NewService(log, coreDeps.ClipsRepo)
 
 	// Create drive uploader
 	var driveUploader *drive.Uploader
@@ -79,9 +79,9 @@ func WireAssets(
 
 	// Create deletion service
 	deletionSvc := media.NewDeletionService(
-		coreDeps.ArtlistRepo,
-		coreDeps.ClipsOnlyRepo,
-		coreDeps.StockDriveRepo,
+		coreDeps.ClipsRepo,
+		coreDeps.ClipsRepo,
+		coreDeps.ClipsRepo,
 		coreDeps.VoiceoverRepo,
 		coreDeps.ImageRepo,
 		driveUploader,
@@ -99,9 +99,9 @@ func WireAssets(
 		jobsSvc,
 		catalogRepo,
 		assetIndexSvc,
-		coreDeps.ArtlistRepo,
-		coreDeps.ClipsOnlyRepo,
-		coreDeps.StockDriveRepo,
+		coreDeps.ClipsRepo,
+		coreDeps.ClipsRepo,
+		coreDeps.ClipsRepo,
 		driveCleanupSvc,
 		folderMemSvc,
 		coreDeps.AssetTreeService,

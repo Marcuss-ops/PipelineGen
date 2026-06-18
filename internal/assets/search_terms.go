@@ -43,7 +43,7 @@ func (s *AssetStoreSQLite) SearchByTerms(ctx context.Context, source string, key
 
 	fullArgs := append(args, len(filtered))
 
-	rows, err := r.db.QueryContext(ctx, termQuery, fullArgs...)
+	rows, err := s.db.QueryContext(ctx, termQuery, fullArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("clip_search_terms query: %w", err)
 	}
@@ -65,7 +65,7 @@ func (s *AssetStoreSQLite) SearchByTerms(ctx context.Context, source string, key
 		clipIDs = clipIDs[:limit]
 	}
 
-	return r.fetchClipsByIDs(ctx, source, clipIDs)
+	return s.fetchClipsByIDs(ctx, source, clipIDs)
 }
 
 // fetchClipsByIDs fetches full MediaAsset records for a list of clip IDs.
@@ -90,7 +90,7 @@ func (s *AssetStoreSQLite) fetchClipsByIDs(ctx context.Context, source string, c
 		query += " AND id IN (" + strings.Join(idPlaceholders, ",") + ")"
 		args := []any{source}
 		args = append(args, idArgs...)
-		rows, err := r.db.QueryContext(ctx, query, args...)
+		rows, err := s.db.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func (s *AssetStoreSQLite) fetchClipsByIDs(ctx context.Context, source string, c
 	}
 
 	query += " AND id IN (" + strings.Join(idPlaceholders, ",") + ")"
-	rows, err := r.db.QueryContext(ctx, query, idArgs...)
+	rows, err := s.db.QueryContext(ctx, query, idArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (s *AssetStoreSQLite) UpdateSearchTerms(ctx context.Context, clipID, source
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
@@ -218,7 +218,7 @@ func (s *AssetStoreSQLite) RebuildSearchTerms(ctx context.Context, source string
 		args = append(args, source)
 	}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("query clips: %w", err)
 	}
@@ -234,7 +234,7 @@ func (s *AssetStoreSQLite) RebuildSearchTerms(ctx context.Context, source string
 		var tags []string
 		_ = json.Unmarshal([]byte(tagsJSON), &tags)
 
-		if err := r.UpdateSearchTerms(ctx, id, source, name, tags, searchText); err != nil {
+		if err := s.UpdateSearchTerms(ctx, id, source, name, tags, searchText); err != nil {
 			continue
 		}
 		total++
@@ -246,3 +246,4 @@ func (s *AssetStoreSQLite) RebuildSearchTerms(ctx context.Context, source string
 
 	return total, rows.Err()
 }
+

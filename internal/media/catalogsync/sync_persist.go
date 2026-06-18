@@ -24,11 +24,11 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 	}
 
 	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
-		if existing.FileHash != "" {
-			clip.FileHash = existing.FileHash
+		if existing.FileHash() != "" {
+			clip.SetFileHash(existing.FileHash())
 		}
-		if existing.LocalPath != "" {
-			clip.LocalPath = existing.LocalPath
+		if existing.LocalPath() != "" {
+			clip.SetLocalPath(existing.LocalPath())
 		}
 		if len(existing.Metadata) > 0 {
 			clip.Metadata = existing.Metadata
@@ -64,7 +64,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 
 	var upsertErr error
 	if dispatcher != nil {
-		upsertErr = dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash)
+		upsertErr = dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash())
 	} else {
 		upsertErr = repo.UpsertClip(ctx, clip)
 	}
@@ -82,7 +82,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 	// the race window where the goroutine could start before the upsert
 	// committed, AND the half-state window where process exit would leak
 	// a "metadata-written-but-no-embedding" row.
-	if dispatcher == nil && s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder {
+	if dispatcher == nil && s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder() {
 		concurrent.SafeGoFunc("catalog-indexing", clip.ID, func(id string) {
 			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 			defer cancel()
@@ -112,9 +112,9 @@ func (s *Service) writeAssetIndex(ctx context.Context, clip *models.MediaAsset) 
 		Source:    clip.Source,
 		SourceID:  clip.ID,
 		GroupName: clip.Group,
-		LocalPath: clip.LocalPath,
-		DriveLink: clip.DriveLink,
-		FileHash:  clip.FileHash,
+		LocalPath: clip.LocalPath(),
+		DriveLink: clip.DriveLink(),
+		FileHash:  clip.FileHash(),
 		Status:    "ready",
 		Metadata:  clip.MetadataJSON(),
 		CreatedAt: clip.CreatedAt,

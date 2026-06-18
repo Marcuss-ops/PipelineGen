@@ -27,14 +27,14 @@ func (s *AssetStoreSQLite) SearchStockByKeywords(ctx context.Context, keywords [
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM media_assets
-		WHERE source = 'stock' AND `+r.SoftDeleteFilter()+` AND (%s)
+		WHERE source = 'stock' AND `+SoftDeleteFilter()+` AND (%s)
 		LIMIT ?`,
 		mediaAssetColumns,
 		conditionSQL,
 	)
 	args = append(args, limit)
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -50,3 +50,4 @@ func (s *AssetStoreSQLite) SearchStockByKeywords(ctx context.Context, keywords [
 	}
 	return clips, rows.Err()
 }
+

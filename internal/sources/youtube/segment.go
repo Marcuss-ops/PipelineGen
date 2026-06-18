@@ -318,29 +318,29 @@ func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, cl
 	}
 
 	expectedPath := filepath.Join(outDir, item.Filename)
-	if existingClip.LocalPath != expectedPath {
+	if existingClip.LocalPath() != expectedPath {
 		s.log.Info("cached clip local path mismatch, forcing re-processing for new folder",
 			zap.String("clip_id", clipID),
-			zap.String("existing_path", existingClip.LocalPath),
+			zap.String("existing_path", existingClip.LocalPath()),
 			zap.String("expected_path", expectedPath))
 		return false
 	}
 
 	if req.Strategy == "skip" {
-		item.LocalPath = existingClip.LocalPath
-		item.DriveLink = existingClip.DriveLink
-		item.DriveFileID = existingClip.DriveFileID
-		item.DownloadLink = existingClip.DownloadLink
+		item.LocalPath = existingClip.LocalPath()
+		item.DriveLink = existingClip.DriveLink()
+		item.DriveFileID = existingClip.DriveFileID()
+		item.DownloadLink = existingClip.DownloadLink()
 		item.Status = "skipped"
 		return true
 	}
 
 	// Default strategy: verify file exists
-	if ok, clipErr := fileutil.UsableCachedClip(existingClip.LocalPath); clipErr == nil && ok {
-		item.LocalPath = existingClip.LocalPath
-		item.DriveLink = existingClip.DriveLink
-		item.DriveFileID = existingClip.DriveFileID
-		item.DownloadLink = existingClip.DownloadLink
+	if ok, clipErr := fileutil.UsableCachedClip(existingClip.LocalPath()); clipErr == nil && ok {
+		item.LocalPath = existingClip.LocalPath()
+		item.DriveLink = existingClip.DriveLink()
+		item.DriveFileID = existingClip.DriveFileID()
+		item.DownloadLink = existingClip.DownloadLink()
 		item.Status = "skipped"
 		return true
 	}
@@ -348,9 +348,9 @@ func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, cl
 	// Stale record — clean up before reprocessing
 	s.log.Warn("stale youtube clip record detected, removing it before reprocessing",
 		zap.String("clip_id", clipID),
-		zap.String("local_path", existingClip.LocalPath))
-	if existingClip.LocalPath != "" {
-		_ = os.Remove(existingClip.LocalPath)
+		zap.String("local_path", existingClip.LocalPath()))
+	if existingClip.LocalPath() != "" {
+		_ = os.Remove(existingClip.LocalPath())
 	}
 	_ = s.clipsRepo.DeleteClip(ctx, clipID)
 	return false

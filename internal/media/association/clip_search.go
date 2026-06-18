@@ -101,7 +101,7 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 			Query: strings.Join(terms, " "),
 			Topic: topic,
 			Name:  clip.Name,
-			Path:  clip.FolderPath,
+			Path:  clip.FolderPath(),
 			Tags:  clip.Tags,
 		})
 
@@ -113,15 +113,15 @@ func (a *ClipSearchAssociation) searchRepo(ctx context.Context, repo *clips.Repo
 
 		match := ScoredMatch{
 			Title:     clip.Name,
-			Path:      clip.FolderPath,
+			Path:      clip.FolderPath(),
 			Score:     result.Score,
 			Source:    source,
-			Link:      clip.DriveLink,
+			Link:      clip.DriveLink(),
 			Reason:    "clip search match",
-			Embedding: ParseEmbeddingJSON(clip.EmbeddingJSON),
+			Embedding: ParseEmbeddingJSON(clip.EmbeddingJSON()),
 		}
-		if match.Link == "" && clip.FolderID != "" {
-			match.Link = "https://drive.google.com/drive/folders/" + clip.FolderID
+		if match.Link == "" && clip.FolderID() != "" {
+			match.Link = "https://drive.google.com/drive/folders/" + clip.FolderID()
 		}
 		matches = append(matches, match)
 	}

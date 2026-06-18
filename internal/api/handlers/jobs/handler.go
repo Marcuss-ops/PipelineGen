@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -72,10 +71,10 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	var filter job.Filter
+	var filter jobs.Filter
 
 	if status := c.Query("status"); status != "" {
-		s := job.Status(status)
+		s := jobs.Status(status)
 		filter.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
@@ -166,7 +165,7 @@ func (h *Handler) GetFull(c *gin.Context) {
 	events, err := h.service.ListEvents(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
-		events = make([]job.Event, 0)
+		events = make([]jobs.Event, 0)
 	}
 
 	retryable := j.CanRetry()

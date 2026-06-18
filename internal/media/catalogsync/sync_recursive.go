@@ -54,22 +54,22 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 		ID:             target.RootFolderID,
 		Name:           rootName,
 		Filename:       rootName,
-		FolderID:       target.RootFolderID,
-		ParentFolderID: "", // Root has no parent
-		Depth:          0,
-		IsFolder:       true,
-		FolderPath:     rootName,
 		Group:          target.Source,
 		MediaType:      target.MediaType,
-		DriveLink:      rootLink,
-		DownloadLink:   rootLink,
 		Source:         target.Source,
 		Category:       "folder",
-		ExternalURL:    rootLink,
 		Tags:           []string{},
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
+	rootClip.SetFolderID(target.RootFolderID)
+	rootClip.SetParentFolderID("")
+	rootClip.SetDepth(0)
+	rootClip.SetIsFolder(true)
+	rootClip.SetFolderPath(rootName)
+	rootClip.SetDriveLink(rootLink)
+	rootClip.SetDownloadLink(rootLink)
+	rootClip.SetExternalURL(rootLink)
 	if err := s.upsertPreservingExisting(ctx, target.Repo, rootClip); err != nil {
 		rootSummary.Failed++
 		return rootSummary, err
@@ -147,22 +147,22 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repositor
 			ID:             child.ID,
 			Name:           childName,
 			Filename:       childName,
-			FolderID:       child.ID,
-			ParentFolderID: folderID,
-			Depth:          0, // depth non calcolato qui
-			IsFolder:       child.MimeType == folderMimeType,
-			FolderPath:     childPath,
 			Group:          target.Source,
 			MediaType:      target.MediaType,
-			DriveLink:      link,
-			DownloadLink:   link,
 			Source:         target.Source,
 			Category:       category,
-			ExternalURL:    link,
 			Tags:           []string{},
 			CreatedAt:      now,
 			UpdatedAt:      now,
 		}
+		clip.SetFolderID(child.ID)
+		clip.SetParentFolderID(folderID)
+		clip.SetDepth(0)
+		clip.SetIsFolder(child.MimeType == folderMimeType)
+		clip.SetFolderPath(childPath)
+		clip.SetDriveLink(link)
+		clip.SetDownloadLink(link)
+		clip.SetExternalURL(link)
 		clip.SetMetadataString("mime_type", child.MimeType)
 
 		if err := s.upsertPreservingExisting(ctx, repo, clip); err != nil {

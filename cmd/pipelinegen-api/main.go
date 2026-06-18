@@ -18,7 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
-	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
@@ -53,7 +53,7 @@ func main() {
 	}
 
 	router := api.NewRouter(cfg)
-	jobRepo := jobrepo.NewRepository(db.DB, log)
+	jobRepo := jobrepo.NewSQLiteStore(db.DB, log)
 	workerRepo := workernodes.NewRepository(db.DB)
 	assetIndexSvc := assetindex.NewService(assetindex.NewRepository(db.DB))
 	imageRepo := imagerepo.NewRepository(db.DB)

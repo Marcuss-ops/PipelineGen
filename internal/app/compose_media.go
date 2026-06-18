@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"

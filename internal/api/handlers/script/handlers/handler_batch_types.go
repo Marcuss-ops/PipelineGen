@@ -165,7 +165,7 @@ func effectiveTargetWords(req *GenerateBatchRequest) int {
 		return req.MinWords
 	}
 	if req.Duration > 0 {
-		words := scriptcore.CalculateTargetWords(req.Duration, 0)
+		words := scripts.CalculateTargetWords(req.Duration, 0)
 		if words > 0 {
 			return words
 		}

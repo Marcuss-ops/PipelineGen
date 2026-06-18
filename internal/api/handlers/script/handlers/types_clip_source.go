@@ -173,9 +173,9 @@ type ClipScriptJobResult struct {
 	WordCount         int                        `json:"word_count,omitempty"`
 	Language          string                     `json:"language,omitempty"`
 	SourceFingerprint string                     `json:"source_fingerprint,omitempty"`
-	ClipCoverage      *scriptcore.ClipCoverage   `json:"clip_coverage,omitempty"`
-	Sections          []scriptcore.ScriptSection `json:"sections,omitempty"`
-	ExcludedClips     []scriptcore.ClipEvidence  `json:"excluded_clips,omitempty"`
+	ClipCoverage      *scripts.ClipCoverage   `json:"clip_coverage,omitempty"`
+	Sections          []scripts.ScriptSection `json:"sections,omitempty"`
+	ExcludedClips     []scripts.ClipEvidence  `json:"excluded_clips,omitempty"`
 	Warnings          []string                   `json:"warnings,omitempty"`
 	DocURL            string                     `json:"doc_url,omitempty"`
 	DocID             string                     `json:"doc_id,omitempty"`

@@ -80,7 +80,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		item.Name = defaults.String(item.Name, clip.Name)
 		item.Name = defaults.String(item.Name, item.ClipID)
 
-		sourceURL := defaults.String(item.DownloadLink, clip.ExternalURL)
+		sourceURL := defaults.String(item.DownloadLink, clip.ExternalURL())
 
 		outputDir := ""
 		if o.svc.cfg != nil {
@@ -254,16 +254,16 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 				zap.String("clip_id", item.ClipID))
 			continue
 		}
-		existingClip.LocalPath = item.LocalPath
-		existingClip.DriveLink = item.DriveLink
-		existingClip.DriveFileID = item.DriveFileID
-		existingClip.FileHash = item.FileHash
-		existingClip.DownloadLink = item.DownloadLink
+		existingClip.SetLocalPath(item.LocalPath)
+		existingClip.SetDriveLink(item.DriveLink)
+		existingClip.SetDriveFileID(item.DriveFileID)
+		existingClip.SetFileHash(item.FileHash)
+		existingClip.SetDownloadLink(item.DownloadLink)
 		existingClip.SetMetadataString("status", "processed")
 		existingClip.LifecycleState = asset.StateReady
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
-		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash)
+		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash())
 	}
 }
 

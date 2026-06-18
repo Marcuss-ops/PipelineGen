@@ -15,7 +15,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
@@ -24,14 +23,14 @@ import (
 
 type ScriptFlowHandler struct {
 	generator         *ollama.Generator
-	engine            *scriptcore.Engine
+	engine            *scripts.Engine
 	imgService        *images.Service
 	realtimeSvc       *realtime.Service
 	associationSvc    *association.Service
 	voService         *voiceover.Service
 	assetTreeSvc      *assettree.Service
 	groupsResolver    *voiceover.GroupsResolver
-	clipSourceBuilder *scriptcore.ClipSourceBuilder
+	clipSourceBuilder *scripts.ClipSourceBuilder
 	mediaCurator      *mediacurator.Service
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      ClipServices
@@ -40,7 +39,7 @@ type ScriptFlowHandler struct {
 	jobsSvc           *jobservice.Service
 	scriptsRepo       *scripts.ScriptRepository
 	memorySvc         *gemmamemory.Service
-	sourceResolver    *scriptcore.SourceResolver
+	sourceResolver    *scripts.SourceResolver
 	harvestSvc        AutoHarvestService
 	driveFolderID     string
 	cfg               *config.Config
@@ -53,7 +52,7 @@ type AutoHarvestService interface {
 	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
-func NewScriptFlowHandler(gen *ollama.Generator, engine *scriptcore.Engine, imgSvc *images.Service, realtimeSvc *realtime.Service, assocSvc *association.Service, voSvc *voiceover.Service, assetTreeSvc *assettree.Service, docClient drive.DocClient, driveUploader *drive.Uploader, jobsSvc *jobservice.Service, scriptsRepo *scripts.ScriptRepository, memorySvc *gemmamemory.Service, driveFolderID string, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
+func NewScriptFlowHandler(gen *ollama.Generator, engine *scripts.Engine, imgSvc *images.Service, realtimeSvc *realtime.Service, assocSvc *association.Service, voSvc *voiceover.Service, assetTreeSvc *assettree.Service, docClient drive.DocClient, driveUploader *drive.Uploader, jobsSvc *jobservice.Service, scriptsRepo *scripts.ScriptRepository, memorySvc *gemmamemory.Service, driveFolderID string, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm
@@ -125,7 +124,7 @@ func NewScriptFlowHandler(gen *ollama.Generator, engine *scriptcore.Engine, imgS
 	}
 	if gen != nil && gen.GetClient() != nil {
 		ws := gen.GetClient().WebSearcher()
-		h.sourceResolver = scriptcore.NewSourceResolver(h.youTubeAwareSourceResolver(), ws, log)
+		h.sourceResolver = scripts.NewSourceResolver(h.youTubeAwareSourceResolver(), ws, log)
 	}
 	if gen != nil {
 		gen.SetMetadataModel(metaModel)
@@ -150,7 +149,7 @@ func (h *ScriptFlowHandler) SetAssetTreeSvc(svc *assettree.Service) {
 }
 
 // SetClipSourceBuilder sets the ClipSourceBuilder for Clip→Script generation.
-func (h *ScriptFlowHandler) SetClipSourceBuilder(b *scriptcore.ClipSourceBuilder) {
+func (h *ScriptFlowHandler) SetClipSourceBuilder(b *scripts.ClipSourceBuilder) {
 	h.clipSourceBuilder = b
 }
 
@@ -159,7 +158,7 @@ func (h *ScriptFlowHandler) SetMediaCurator(m *mediacurator.Service) {
 	h.mediaCurator = m
 }
 
-func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scriptcore.SourceTextResolver {
+func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResolver {
 	return func(ctx context.Context, raw string) (string, string, error) {
 		return resolveBatchSourceText(ctx, h.cfg, raw)
 	}

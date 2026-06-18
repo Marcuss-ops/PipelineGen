@@ -128,38 +128,38 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		// intent is never lost.  The normalized (shorter) term is used only
 		// for the search/cache key, not for metadata.
 		clip := &models.MediaAsset{
-			ID:           id,
-			Name:         name,
-			Source:       "artlist",
-			MediaType:    "video", // Artlist content is always video
-			Tags:         []string{originalTerm},
-			SearchTerms:  []string{originalTerm},
-			ExternalURL:  c.PrimaryURL,
-			DownloadLink: c.PrimaryURL,
-			ClipPageURL:  c.ClipPageURL,
+			ID:          id,
+			Name:        name,
+			Source:      "artlist",
+			MediaType:   "video", // Artlist content is always video
+			Tags:        []string{originalTerm},
+			SearchTerms: []string{originalTerm},
+			SourceURL:   c.PrimaryURL,
+			ClipPageURL: c.ClipPageURL,
 		}
+		clip.SetDownloadLink(c.PrimaryURL)
 
 		if existing, err := s.artlistRepo.Get(ctx, clip.ID); err == nil && existing != nil {
 			// Preserve existing Drive metadata (upload results)
-			if existing.LocalPath != "" {
-				clip.LocalPath = existing.LocalPath
+			if existing.LocalPath() != "" {
+				clip.SetLocalPath(existing.LocalPath())
 			}
-			if existing.FileHash != "" {
-				clip.FileHash = existing.FileHash
+			if existing.FileHash() != "" {
+				clip.SetFileHash(existing.FileHash())
 			}
-			if existing.DriveLink != "" {
-				clip.DriveLink = existing.DriveLink
+			if existing.DriveLink() != "" {
+				clip.SetDriveLink(existing.DriveLink())
 			}
-			if existing.DriveFileID != "" {
-				clip.DriveFileID = existing.DriveFileID
+			if existing.DriveFileID() != "" {
+				clip.SetDriveFileID(existing.DriveFileID())
 			}
 			// Preserve DownloadLink only if it's an Artlist CDN URL (not a Google Drive link).
 			// When a clip is already uploaded to Drive, DownloadLink gets overwritten with
 			// the Drive download URL, which breaks the scraper's isArtlistURL() check and
 			// causes all pipeline items to fail. The fresh Artlist primary_url from the
 			// current search should always take precedence for the download step.
-			if existing.DownloadLink != "" && !strings.Contains(existing.DownloadLink, "drive.google.com") {
-				clip.DownloadLink = existing.DownloadLink
+			if existing.DownloadLink() != "" && !strings.Contains(existing.DownloadLink(), "drive.google.com") {
+				clip.SetDownloadLink(existing.DownloadLink())
 			}
 			if existing.ClipPageURL != "" {
 				clip.ClipPageURL = existing.ClipPageURL

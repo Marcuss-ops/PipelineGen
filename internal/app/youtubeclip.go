@@ -34,8 +34,8 @@ func WireYouTubeClip(
 	}
 
 	// Wire clips repo for advanced search
-	if coreDeps.ClipsOnlyRepo != nil {
-		handler.SetClipsRepo(coreDeps.ClipsOnlyRepo)
+	if coreDeps.ClipsRepo != nil {
+		handler.SetClipsRepo(coreDeps.ClipsRepo)
 	}
 
 	return &YouTubeClipWiring{

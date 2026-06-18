@@ -26,7 +26,7 @@ import (
 // Fix C: Each clip gets a UNIQUE metadata filename (metadata_<clip_id>.json) so
 // that multiple clips in the same Drive folder don't overwrite each other.
 func (s *Service) writeClipMetadataFile(ctx context.Context, clip *models.MediaAsset, ym *downloader.YouTubeMetadata) {
-	if clip == nil || clip.LocalPath == "" {
+	if clip == nil || clip.LocalPath() == "" {
 		return
 	}
 
@@ -66,7 +66,7 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *models.MediaA
 	thumbnailURL := ymThumbnailURL(ym, clip)
 
 	// Read clip transcript from the .txt file alongside the clip (clip-specific spoken content)
-	transcriptPath := strings.TrimSuffix(clip.LocalPath, filepath.Ext(clip.LocalPath)) + ".txt"
+	transcriptPath := strings.TrimSuffix(clip.LocalPath(), filepath.Ext(clip.LocalPath())) + ".txt"
 	transcript := ""
 	if transcriptBytes, err := os.ReadFile(transcriptPath); err == nil && len(transcriptBytes) > 0 {
 		transcript = strings.TrimSpace(string(transcriptBytes))
@@ -204,7 +204,7 @@ func (s *Service) writeClipMetadataFile(ctx context.Context, clip *models.MediaA
 
 	// Fix C: Unique metadata filename per clip
 	metaFilename := "metadata_" + clip.ID + ".json"
-	metaPath := filepath.Join(filepath.Dir(clip.LocalPath), metaFilename)
+	metaPath := filepath.Join(filepath.Dir(clip.LocalPath()), metaFilename)
 	if err := os.WriteFile(metaPath, data, 0644); err != nil {
 		s.log.Warn("failed to write clip metadata file",
 			zap.String("clip_id", clip.ID),

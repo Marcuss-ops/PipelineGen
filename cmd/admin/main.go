@@ -7,8 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"go.uber.org/zap"
+
 )
 
 func main() {
@@ -54,17 +53,7 @@ func main() {
 	}
 }
 
-func appLogger() (*config.Config, *zap.Logger, func(), error) {
-	log, err := zap.NewDevelopment()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	cfg := config.Get()
-	cleanup := func() {
-		_ = log.Sync()
-	}
-	return cfg, log, cleanup, nil
-}
+
 
 func cmdContext() context.Context {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -181,3 +181,4 @@ func searchVisibilityBonus(meta map[string]any) float64 {
 		return 0
 	}
 }
+

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 // isLocalFolderAllowed returns true if abs lives under any of the configured
@@ -99,7 +99,7 @@ func sanitiseDriveName(name string) string {
 	return out
 }
 
-func buildBulkDriveDescription(cand clipCandidate, fileHash string, payload models.BulkUploadYouTubeClipsPayload) string {
+func buildBulkDriveDescription(cand clipCandidate, fileHash string, payload jobs.BulkUploadYouTubeClipsPayload) string {
 	var b strings.Builder
 	b.WriteString("Bulk-uploaded YouTube clip\n")
 	b.WriteString("Source: " + payload.Source + "\n")

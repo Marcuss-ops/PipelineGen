@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
@@ -26,7 +25,7 @@ import (
 //     c. Plans narrative (LLM step 1)
 //     d. Generates script (common engine with intro/outro)
 //  3. Return the complete result with clip scenes, search results, timings
-func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.curate job", zap.String("job_id", job.ID))
 
 	curator := h.mediaCurator
@@ -197,7 +196,7 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *domainjob.
 // The description line gives a reader (or LLM consumer) a fast per-scene
 // snapshot — useful for compilations where the viewer wants to skim the
 // lineup before reading the prose.
-func buildCurateDocContent(title string, clipScenes []scriptcore.ClipScene) string {
+func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string {
 	var b strings.Builder
 	b.WriteString("<html><head><style>")
 	b.WriteString("body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.4; margin: 20px; }")
@@ -340,7 +339,7 @@ func firstSentencePreview(text string, maxChars int) string {
 // clip_id, OR it's the second scene with no clip_id when there are 2+
 // narration-only scenes. Used to label narration-only scenes as Intro/Outro/
 // Transition for the doc reader.
-func isLikelyOutro(sc scriptcore.ClipScene, all []scriptcore.ClipScene) bool {
+func isLikelyOutro(sc scripts.ClipScene, all []scripts.ClipScene) bool {
 	if sc.ClipID != "" {
 		return false
 	}

@@ -71,7 +71,7 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 	if usableWeight == 0 {
 		usableWeight = 0.15
 	}
-	if len(c.UsableFor) > 0 {
+	if len(c.UsableFor()) > 0 {
 		for _, term := range req.Queries {
 			if s.clipUsableFor(c, term) {
 				boost := usableWeight
@@ -86,7 +86,7 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 	if qualityWeight == 0 {
 		qualityWeight = 0.15
 	}
-	qualityScore := c.QualityScore * qualityWeight
+	qualityScore := c.QualityScore() * qualityWeight
 	if qualityScore > qualityWeight {
 		qualityScore = qualityWeight
 	}
@@ -121,15 +121,15 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 		}
 	}
 
-	if c.LocalPath != "" {
-		lowerPath := strings.ToLower(c.LocalPath)
+	if c.LocalPath() != "" {
+		lowerPath := strings.ToLower(c.LocalPath())
 		if usedPaths[lowerPath] {
 			penalty := 0.30
 			bd.DiversityPenalty += penalty
 			entry.Score -= penalty
 		}
 
-		folderKey := s.folderKeyFromPath(c.LocalPath)
+		folderKey := s.folderKeyFromPath(c.LocalPath())
 		if folderKey != "" && usedFolders[folderKey] {
 			penalty := 0.25
 			bd.DiversityPenalty += penalty
@@ -205,7 +205,7 @@ func (s *Service) clipContainsTerm(clip *asset.MediaAsset, term string) bool {
 		return true
 	}
 
-	for _, avoid := range clip.AvoidFor {
+	for _, avoid := range clip.AvoidFor() {
 		if strings.EqualFold(avoid, term) {
 			return true
 		}
@@ -215,12 +215,13 @@ func (s *Service) clipContainsTerm(clip *asset.MediaAsset, term string) bool {
 }
 
 func (s *Service) clipUsableFor(clip *asset.MediaAsset, term string) bool {
-	if len(clip.UsableFor) == 0 {
+	usableFor := clip.UsableFor()
+	if len(usableFor) == 0 {
 		return false
 	}
 
 	termLower := strings.ToLower(term)
-	for _, usable := range clip.UsableFor {
+	for _, usable := range usableFor {
 		if strings.EqualFold(usable, term) || textutil.ContainsCI(usable, termLower) {
 			return true
 		}

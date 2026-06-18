@@ -200,9 +200,9 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 	}
 
 	// Update cumulative metadata.json locally and on Google Drive with the enriched semantic data under lock to avoid races
-	if existing.LocalPath != "" {
+	if existing.LocalPath() != "" {
 		enrichMetaMu.Lock()
-		localMetaPath := filepath.Join(filepath.Dir(existing.LocalPath), "metadata.json")
+		localMetaPath := filepath.Join(filepath.Dir(existing.LocalPath()), "metadata.json")
 		var localExisting []map[string]any
 		if data, err := os.ReadFile(localMetaPath); err == nil {
 			_ = json.Unmarshal(data, &localExisting)
@@ -214,14 +214,14 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 			"source":               existing.Source,
 			"term":                 term,
 			"filename":             existing.Filename,
-			"file_hash":            existing.FileHash,
+			"file_hash":            existing.FileHash(),
 			"duration_sec":         existing.DurationMs / 1000,
 			"created_at":           existing.CreatedAt.Format(time.RFC3339),
-			"drive_file_id":        existing.DriveFileID,
-			"drive_link":           existing.DriveLink,
-			"download_link":        existing.DownloadLink,
+			"drive_file_id":        existing.DriveFileID(),
+			"drive_link":           existing.DriveLink(),
+			"download_link":        existing.DownloadLink(),
 			"clip_page_url":        existing.ClipPageURL,
-			"source_url":           existing.ExternalURL,
+			"source_url":           existing.ExternalURL(),
 			"tags":                 existing.Tags,
 			"search_terms":         existing.SearchTerms,
 			"search_text":          existing.SearchText,
@@ -250,9 +250,9 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 			_ = os.WriteFile(localMetaPath, data, 0644)
 		}
 
-		folderID := existing.FolderID
+		folderID := existing.FolderID()
 		if folderID == "" {
-			folderID = existing.ParentFolderID
+			folderID = existing.ParentFolderID()
 		}
 		if e.driveUploader != nil && folderID != "" {
 			e.updateCumulativeMetadataJSON(ctx, folderID, existing.ID, metaData)
@@ -265,7 +265,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 	// genera l'embedding da search_text come faceva IndexClip, ma lo fa in
 	// una tx con UpsertClip + outbox enqueue, eliminando la finestra in cui
 	// un crash tra le due lascia il clip un-indexed.
-	e.dispatchOrIndexAndUpsert(ctx, existing, existing.FileHash)
+	e.dispatchOrIndexAndUpsert(ctx, existing, existing.FileHash())
 
 	// 🚀 Update search terms index after semantic enrichment
 	// This ensures the indexed clip_search_terms table reflects the rich

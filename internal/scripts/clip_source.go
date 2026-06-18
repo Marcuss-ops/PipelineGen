@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
@@ -293,6 +293,6 @@ func (b *ClipSourceBuilder) BuildClipContext(ctx context.Context, clipIDs []stri
 }
 
 // Ensure unused imports are referenced
-var _ = assets.Asset{}
+var _ = asset.MediaAsset{}
 var _ = time.Now
 var _ = strings.TrimSpace

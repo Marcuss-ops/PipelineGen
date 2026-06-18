@@ -39,7 +39,7 @@ func (p *DBProvider) Search(ctx context.Context, term string, limit int) ([]Scra
 			ID:          clip.ID,
 			Title:       clip.Name,
 			Name:        clip.Name,
-			PrimaryURL:  clip.ExternalURL,
+			PrimaryURL:  clip.ExternalURL(),
 			ClipPageURL: clip.GetMetadataString("external_url"),
 		})
 	}

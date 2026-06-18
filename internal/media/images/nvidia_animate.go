@@ -79,10 +79,10 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 			MediaType:      "video",
 			Source:         "nvidia-animation",
 			CreatedAt:      time.Now(),
-			DriveFileID:    driveVideoID,
-			DriveLink:      driveLink,
 			LifecycleState: domainasset.StateReady,
 		}
+		clip.SetDriveFileID(driveVideoID)
+		clip.SetDriveLink(driveLink)
 
 		if err := s.stockRepo.Upsert(ctx, clip); err != nil {
 			s.log.Warn("Failed to ingest animated clip into stock DB", zap.Error(err))

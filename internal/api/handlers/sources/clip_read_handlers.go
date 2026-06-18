@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -23,7 +23,7 @@ func (h *Handler) GetClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := assetregistry.VoiceoverRecordToClip(rec)
+		clip := artifacts.VoiceoverRecordToClip(rec)
 		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
@@ -71,9 +71,9 @@ func (h *Handler) ClipStatus(c *gin.Context) {
 
 	// Determine status based on available data
 	status := "unknown"
-	if clip.DriveLink != "" || clip.DownloadLink != "" {
+	if clip.DriveLink() != "" || clip.DownloadLink() != "" {
 		status = "processed"
-	} else if clip.LocalPath != "" {
+	} else if clip.LocalPath() != "" {
 		status = "downloaded"
 	} else {
 		status = "pending"
@@ -85,14 +85,14 @@ func (h *Handler) ClipStatus(c *gin.Context) {
 		"clip_id":        clipID,
 		"exists_db":      true,
 		"name":           clip.Name,
-		"has_local_file": clip.LocalPath != "",
-		"local_path":     clip.LocalPath,
-		"has_drive_link": clip.DriveLink != "" || clip.DownloadLink != "",
-		"drive_link":     clip.DriveLink,
-		"download_link":  clip.DownloadLink,
-		"file_hash":      clip.FileHash,
-		"folder_id":      clip.FolderID,
-		"folder_path":    clip.FolderPath,
+		"has_local_file": clip.LocalPath() != "",
+		"local_path":     clip.LocalPath(),
+		"has_drive_link": clip.DriveLink() != "" || clip.DownloadLink() != "",
+		"drive_link":     clip.DriveLink(),
+		"download_link":  clip.DownloadLink(),
+		"file_hash":      clip.FileHash(),
+		"folder_id":      clip.FolderID(),
+		"folder_path":    clip.FolderPath(),
 		"status":         status,
 	})
 }
@@ -120,7 +120,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, rec := range records {
-			allClips = append(allClips, assetregistry.VoiceoverRecordToClip(rec))
+			allClips = append(allClips, artifacts.VoiceoverRecordToClip(rec))
 		}
 	} else if sourceLower == "images" {
 		if h.imagesRepo == nil {
@@ -133,7 +133,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, img := range assets {
-			allClips = append(allClips, assetregistry.ImageAssetToClip(img))
+			allClips = append(allClips, artifacts.ImageAssetToClip(img))
 		}
 	} else {
 		if h.assetRepo == nil {

@@ -31,7 +31,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	}
 
 	// Fast path: use indexed search terms table
-	clips, err := r.SearchByTerms(ctx, source, keywords, 50)
+	clips, err := s.SearchByTerms(ctx, source, keywords, 50)
 	if err == nil && len(clips) > 0 {
 		scored := scoreClips(clips, keywords)
 		return scored, nil
@@ -44,7 +44,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 		return []*Asset{}, nil
 	}
 
-	query := r.buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
+	query := buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
 
 	finalArgs := []any{}
 	if source != "" && source != "all" && source != "unified" {
@@ -52,7 +52,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	}
 	finalArgs = append(finalArgs, args...)
 
-	rows, err := r.db.QueryContext(ctx, query, finalArgs...)
+	rows, err := s.db.QueryContext(ctx, query, finalArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -79,14 +79,14 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	if len(keywords) > 1 {
 		orCondition, orArgs := sqlutil.BuildFallbackLikeConditionsOR(keywords, columns)
 		if orCondition != "" {
-			orQuery := r.buildMediaAssetQuery(source) + " AND (" + orCondition + ")"
+			orQuery := buildMediaAssetQuery(source) + " AND (" + orCondition + ")"
 			orFinalArgs := []any{}
 			if source != "" && source != "all" && source != "unified" {
 				orFinalArgs = append(orFinalArgs, source)
 			}
 			orFinalArgs = append(orFinalArgs, orArgs...)
 
-			orRows, err := r.db.QueryContext(ctx, orQuery, orFinalArgs...)
+			orRows, err := s.db.QueryContext(ctx, orQuery, orFinalArgs...)
 			if err != nil {
 				return nil, err
 			}
@@ -120,7 +120,7 @@ func (s *AssetStoreSQLite) SearchClipsByKeywords(ctx context.Context, source str
 		return []*Asset{}, nil
 	}
 
-	query := fmt.Sprintf("%s AND (%s) LIMIT ?", r.buildMediaAssetQuery(source), conditionSQL)
+	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildMediaAssetQuery(source), conditionSQL)
 	finalArgs := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		finalArgs = append(finalArgs, source)
@@ -128,7 +128,7 @@ func (s *AssetStoreSQLite) SearchClipsByKeywords(ctx context.Context, source str
 	finalArgs = append(finalArgs, args...)
 	finalArgs = append(finalArgs, limit)
 
-	rows, err := r.db.QueryContext(ctx, query, finalArgs...)
+	rows, err := s.db.QueryContext(ctx, query, finalArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req Advanced
 		req.Limit = 500
 	}
 
-	conditions := []string{r.SoftDeleteFilter()}
+	conditions := []string{SoftDeleteFilter()}
 	args := []any{}
 
 	if req.Source != "" && req.Source != "all" {
@@ -214,7 +214,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req Advanced
 
 	countQuery := "SELECT COUNT(*) FROM media_assets WHERE " + whereClause
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("count query: %w", err)
 	}
 
@@ -238,7 +238,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req Advanced
 		mediaAssetColumns, whereClause, sortField, sortDir)
 	dataArgs := append(args, req.Limit, req.Offset)
 
-	rows, err := r.db.QueryContext(ctx, dataQuery, dataArgs...)
+	rows, err := s.db.QueryContext(ctx, dataQuery, dataArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("data query: %w", err)
 	}
@@ -285,3 +285,4 @@ type AdvancedSearchResult struct {
 	Limit  int                  `json:"limit"`
 	Offset int                  `json:"offset"`
 }
+

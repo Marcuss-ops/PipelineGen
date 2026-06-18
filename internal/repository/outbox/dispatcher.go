@@ -127,7 +127,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.MediaAsset
 	// filter, but a forgotten caller must not trigger a wasted embedding
 	// job. The metadata UPSERT still runs so Drive folder traversal is
 	// not broken — only the outbox enqueue is suppressed.
-	if clip.IsFolder {
+	if clip.IsFolder() {
 		return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
 			if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
 				return fmt.Errorf("dispatcher upsert folder %s: %w", clip.ID, err)

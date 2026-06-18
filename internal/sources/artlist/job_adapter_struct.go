@@ -1,7 +1,7 @@
 package artlist
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 // JobAdapter gestisce l'integrazione tra il servizio Artlist e il sistema di job.

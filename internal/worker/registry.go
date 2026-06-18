@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 type Handler func(ctx context.Context, j *job.Job, tools *Tools) (map[string]any, error)

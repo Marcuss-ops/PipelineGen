@@ -62,16 +62,16 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		clip.SetMetadataString("error", val)
 	}
 	if val, ok := payload["folder_id"].(string); ok {
-		clip.FolderID = val
+		clip.SetFolderID(val)
 	}
 	if val, ok := payload["folder_path"].(string); ok {
-		clip.FolderPath = val
+		clip.SetFolderPath(val)
 	}
 	if val, ok := payload["drive_link"].(string); ok {
-		clip.DriveLink = val
+		clip.SetDriveLink(val)
 	}
 	if val, ok := payload["download_link"].(string); ok {
-		clip.DownloadLink = val
+		clip.SetDownloadLink(val)
 	}
 	if val, ok := payload["thumb_url"].(string); ok {
 		clip.ThumbnailURL = val

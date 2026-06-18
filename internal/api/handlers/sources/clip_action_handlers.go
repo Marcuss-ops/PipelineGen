@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -57,7 +57,7 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 		ID:        clip.ID,
 		Name:      clip.Name,
 		SourceURL: clip.SourceURL,
-		FolderID:  clip.FolderID,
+		FolderID:  clip.FolderID(),
 		Duration:  int(clip.DurationMs),
 		Metadata: map[string]any{
 			"source": source,
@@ -73,13 +73,13 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	}
 
 	// Update clip with result
-	clip.LocalPath = result.LocalPath
-	clip.FileHash = result.FileHash
+	clip.SetLocalPath(result.LocalPath)
+	clip.SetFileHash(result.FileHash)
 	if result.DriveLink != "" {
-		clip.DriveLink = result.DriveLink
+		clip.SetDriveLink(result.DriveLink)
 	}
 	if result.DownloadLink != "" {
-		clip.DownloadLink = result.DownloadLink
+		clip.SetDownloadLink(result.DownloadLink)
 	}
 	clip.UpdatedAt = time.Now()
 
@@ -116,7 +116,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			apiutil.NotFound(c, "voiceover not found: "+clipID)
 			return
 		}
-		clip = assetregistry.VoiceoverRecordToClip(rec)
+		clip = artifacts.VoiceoverRecordToClip(rec)
 	} else {
 		if h.assetRepo == nil {
 			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
@@ -136,25 +136,25 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	}
 
 	// 1. Try local file if it exists
-	if clip.LocalPath != "" {
-		if info, err := os.Stat(clip.LocalPath); err == nil && !info.IsDir() {
-			ext := strings.ToLower(filepath.Ext(clip.LocalPath))
+	if clip.LocalPath() != "" {
+		if info, err := os.Stat(clip.LocalPath()); err == nil && !info.IsDir() {
+			ext := strings.ToLower(filepath.Ext(clip.LocalPath()))
 			if ext == ".txt" || ext == ".json" || ext == ".md" {
 				apiutil.BadRequest(c, "file is not a video: "+ext)
 				return
 			}
-			c.File(clip.LocalPath)
+			c.File(clip.LocalPath())
 			return
 		}
 	}
 
 	// 2. Try to proxy from Google Drive
-	driveID := clip.DriveFileID
+	driveID := clip.DriveFileID()
 	if driveID == "" {
-		driveID = driveutil.FileIDFromLink(clip.DriveLink)
+		driveID = driveutil.FileIDFromLink(clip.DriveLink())
 	}
 	if driveID == "" {
-		driveID = driveutil.FileIDFromLink(clip.DownloadLink)
+		driveID = driveutil.FileIDFromLink(clip.DownloadLink())
 	}
 
 	if driveID != "" && h.driveUploader != nil {
@@ -224,13 +224,13 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	}
 
 	// Check local file
-	if clip.LocalPath == "" {
+	if clip.LocalPath() == "" {
 		apiutil.BadRequest(c, "clip has no local path")
 		return
 	}
 
-	if _, err := os.Stat(clip.LocalPath); err != nil {
-		apiutil.BadRequest(c, "local file not found: "+clip.LocalPath)
+	if _, err := os.Stat(clip.LocalPath()); err != nil {
+		apiutil.BadRequest(c, "local file not found: "+clip.LocalPath())
 		return
 	}
 
@@ -241,7 +241,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	}
 
 	// Determine folder ID
-	folderID := clip.FolderID
+	folderID := clip.FolderID()
 	if folderID == "" {
 		// Attempt to resolve folder ID dynamically based on source and local path
 		var rootID string
@@ -258,9 +258,9 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 			pathMarker = "/stock/"
 		}
 
-		if rootID != "" && pathMarker != "" && strings.Contains(clip.LocalPath, pathMarker) {
-			idx := strings.Index(clip.LocalPath, pathMarker)
-			relPath := clip.LocalPath[idx+len(pathMarker):]
+		if rootID != "" && pathMarker != "" && strings.Contains(clip.LocalPath(), pathMarker) {
+			idx := strings.Index(clip.LocalPath(), pathMarker)
+			relPath := clip.LocalPath()[idx+len(pathMarker):]
 			dir := filepath.Dir(relPath)
 			if dir != "." && dir != "" {
 				segments := strings.Split(dir, string(filepath.Separator))
@@ -277,7 +277,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 					currentID = id
 				}
 				folderID = currentID
-				clip.FolderID = folderID // save it for later
+				clip.SetFolderID(folderID) // save it for later
 			}
 		}
 
@@ -290,24 +290,25 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	// Upload file to Drive
 	filename := clip.Filename
 	if filename == "" {
-		filename = filepath.Base(clip.LocalPath)
+		filename = filepath.Base(clip.LocalPath())
 	}
 
-	result, err := h.driveUploader.UploadFile(ctx, clip.LocalPath, folderID, filename)
+	result, err := h.driveUploader.UploadFile(ctx, clip.LocalPath(), folderID, filename)
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("upload failed: %w", err))
 		return
 	}
 
 	// Update clip with new Drive link
-	clip.DriveLink = result.DownloadLink
-	if clip.DriveLink == "" && result.FileID != "" {
-		clip.DriveLink = driveutil.FileURLFromID(result.FileID)
+	driveLinkVal := result.DownloadLink
+	if driveLinkVal == "" && result.FileID != "" {
+		driveLinkVal = driveutil.FileURLFromID(result.FileID)
 	}
+	clip.SetDriveLink(driveLinkVal)
 
 	// Update file hash if available
 	if result.MD5Checksum != "" {
-		clip.FileHash = result.MD5Checksum
+		clip.SetFileHash(result.MD5Checksum)
 	}
 
 	// Save to DB
@@ -320,8 +321,8 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 		"ok":          true,
 		"source":      source,
 		"clip_id":     clipID,
-		"drive_link":  clip.DriveLink,
-		"file_hash":   clip.FileHash,
+		"drive_link":  clip.DriveLink(),
+		"file_hash":   clip.FileHash(),
 		"uploaded_at": timeutil.FormatRFC3339(time.Now()),
 	})
 }
@@ -346,7 +347,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		return
 	}
 
-	if clip.FileHash == "" {
+	if clip.FileHash() == "" {
 		apiutil.OK(c, gin.H{
 			"ok":         true,
 			"source":     source,
@@ -369,7 +370,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 			continue
 		}
 
-		found, err := srcRepo.FindClipsByHash(c.Request.Context(), clip.FileHash)
+		found, err := srcRepo.FindClipsByHash(c.Request.Context(), clip.FileHash())
 		if err != nil {
 			h.log.Warn("Failed to search duplicates in "+repoSource, zap.Error(err))
 			continue
@@ -385,8 +386,8 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 				"source":     repoSource,
 				"id":         canonDup.ID,
 				"name":       canonDup.Name,
-				"drive_link": canonDup.DriveLink,
-				"local_path": canonDup.LocalPath,
+				"drive_link": canonDup.DriveLink(),
+				"local_path": canonDup.LocalPath(),
 				"thumb_url":  canonDup.ThumbnailURL,
 			})
 		}
@@ -396,7 +397,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		"ok":         true,
 		"source":     source,
 		"clip_id":    clipID,
-		"file_hash":  clip.FileHash,
+		"file_hash":  clip.FileHash(),
 		"duplicates": duplicates,
 	})
 }

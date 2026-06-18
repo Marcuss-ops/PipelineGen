@@ -1,4 +1,4 @@
-package models
+package assets
 
 import (
 	"encoding/json"
@@ -271,3 +271,4 @@ func (c *ClipManifestItem) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+

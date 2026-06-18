@@ -15,7 +15,7 @@ import (
 	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
@@ -83,7 +83,7 @@ func WireRegistry(
 		)
 
 		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore,
-			coreDeps.ClipsOnlyRepo, engine, cfg, log)
+			coreDeps.ClipsRepo, engine, cfg, log)
 
 		if coreDeps.JobsService != nil {
 			presetsConfig, _ := artlist.LoadPresets("config/presets.yaml")

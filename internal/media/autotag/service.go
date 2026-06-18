@@ -66,11 +66,12 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 	var assets []*asset.MediaAsset
 	for rows.Next() {
 		a := &asset.MediaAsset{}
-		var tagsJSON, metaJSON string
-		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &a.LocalPath, &a.MediaType, &metaJSON); err != nil {
+		var tagsJSON, metaJSON, localPath string
+		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &localPath, &a.MediaType, &metaJSON); err != nil {
 			return 0, fmt.Errorf("scan asset: %w", err)
 		}
 		json.Unmarshal([]byte(tagsJSON), &a.Tags)
+		a.SetLocalPath(localPath)
 		a.SetMetadataJSON(metaJSON)
 		assets = append(assets, a)
 	}
@@ -95,10 +96,10 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 
 // TagAsset analyzes a single asset with VLM and updates its metadata in DB and Qdrant.
 func (s *Service) TagAsset(ctx context.Context, a *asset.MediaAsset) error {
-	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath))
+	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath()))
 
 	// 1. Call VLM sidecar
-	vTags, err := s.vlmClient.AutoTagLocal(ctx, a.LocalPath, a.MediaType)
+	vTags, err := s.vlmClient.AutoTagLocal(ctx, a.LocalPath(), a.MediaType)
 	if err != nil {
 		// Mark as skipped in metadata so we don't keep retrying if it's a permanent failure (e.g. file corrupt)
 		a.SetMetadataString("vlm_tag_error", err.Error())

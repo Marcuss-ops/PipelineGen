@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 )
 
@@ -241,7 +241,7 @@ func (s *Service) likeSearchClips(ctx context.Context, query string, source stri
 	infos := make([]SearchResultInfo, 0, len(assets))
 	for _, a := range assets {
 		score := 0.5 // base score for LIKE matches (no semantic similarity)
-		driveLink := a.DriveLink
+		driveLink := a.DriveLink()
 		if driveLink == "" {
 			driveLink = a.GetMetadataString("drive_link")
 		}

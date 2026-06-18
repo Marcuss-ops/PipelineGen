@@ -58,21 +58,22 @@ func (s *Service) buildRecommendReason(entry *ClipScore, req *RecommendRequest) 
 }
 
 func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *asset.MediaAsset {
-	return &asset.MediaAsset{
-		ID:             cand.ID,
-		Name:           cand.Name,
-		DriveLink:      cand.DriveLink,
-		LocalPath:      cand.LocalPath,
-		ParentFolderID: cand.FolderID,
-		FolderPath:     cand.FolderPath,
-		Category:       cand.Category,
-		SearchTerms:    []string{cand.SearchText},
-		Tags:           cand.Tags,
-		SearchText:     cand.SearchText,
-		SceneType:      cand.SceneType,
-		QualityScore:   cand.QualityScore,
-		ReuseCount:     cand.ReuseCount,
-		UsableFor:      cand.UsableFor,
-		AvoidFor:       cand.AvoidFor,
+	m := &asset.MediaAsset{
+		ID:          cand.ID,
+		Name:        cand.Name,
+		Category:    cand.Category,
+		SearchTerms: []string{cand.SearchText},
+		Tags:        cand.Tags,
+		SearchText:  cand.SearchText,
 	}
+	m.SetDriveLink(cand.DriveLink)
+	m.SetLocalPath(cand.LocalPath)
+	m.SetParentFolderID(cand.FolderID)
+	m.SetFolderPath(cand.FolderPath)
+	m.SetSceneType(cand.SceneType)
+	m.SetQualityScore(cand.QualityScore)
+	m.SetReuseCount(cand.ReuseCount)
+	m.SetUsableFor(cand.UsableFor)
+	m.SetAvoidFor(cand.AvoidFor)
+	return m
 }

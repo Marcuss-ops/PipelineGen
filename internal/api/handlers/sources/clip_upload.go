@@ -228,18 +228,18 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		MediaType:  "video",
 		Tags:       tags,
 		SearchText: description,
-		LocalPath:  localPath,
-		FileHash:   fileHash,
-		FolderID:   targetFolderID,
-		FolderPath: group,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
+	clip.SetLocalPath(localPath)
+	clip.SetFileHash(fileHash)
+	clip.SetFolderID(targetFolderID)
+	clip.SetFolderPath(group)
 
 	if uploadResult != nil {
-		clip.DriveLink = uploadResult.WebViewLink
-		clip.DownloadLink = uploadResult.DownloadLink
-		clip.DriveFileID = uploadResult.FileID
+		clip.SetDriveLink(uploadResult.WebViewLink)
+		clip.SetDownloadLink(uploadResult.DownloadLink)
+		clip.SetDriveFileID(uploadResult.FileID)
 	}
 
 	// 9. Probe video duration from local file
@@ -281,8 +281,8 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		ClipID:      clip.ID,
 		Name:        clip.Name,
 		Filename:    driveFilename,
-		DriveLink:   clip.DriveLink,
-		DriveFileID: clip.DriveFileID,
+		DriveLink:   clip.DriveLink(),
+		DriveFileID: clip.DriveFileID(),
 		FileHash:    fileHash,
 		Source:      source,
 		Category:    category,

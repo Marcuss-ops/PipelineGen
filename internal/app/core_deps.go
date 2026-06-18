@@ -7,6 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
 	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -33,12 +34,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 
 	gdrive "google.golang.org/api/drive/v3"
 	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/media/storage"
@@ -58,12 +58,11 @@ type CoreDeps struct {
 	DriveClient        *gdrive.Service
 	Utility            *common.UtilityHandler
 	DB                 *storage.SQLiteDB // Unified database (scripts, jobs, asset index, media assets)
-	ScriptsRepo        *scripts.ScriptRepository
+	ScriptsRepo        *scriptcore.ScriptRepository
 	ImageRepo          *images.Repository
 	ImageService       *imgservice.Service
-	StockDriveRepo     *clips.Repository
-	ArtlistRepo        *clips.Repository
-	ClipsOnlyRepo      *clips.Repository
+	ClipsRepo          *clips.Repository // canonical unified clips repository (replaces StockDriveRepo + ArtlistRepo + ClipsOnlyRepo)
+	AssetStore         *assets.AssetStoreSQLite // canonical asset persistence (media_assets table)
 	AssetRepo          asset.Repository
 	AssetLocationRepo  asset.LocationRepository
 	AssetProcessingRepo asset.ProcessingRepository

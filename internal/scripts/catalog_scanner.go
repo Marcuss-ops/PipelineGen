@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
@@ -288,7 +288,7 @@ type searchClipSummary struct {
 
 // toSearchSummary converts a MediaAsset to a searchClipSummary, filtering out
 // clips without transcripts. Returns nil if the clip is not usable.
-func (b *ClipSourceBuilder) toSearchSummary(clip *assets.Asset) *searchClipSummary {
+func (b *ClipSourceBuilder) toSearchSummary(clip *asset.MediaAsset) *searchClipSummary {
 	transcript := clip.GetMetadataString("clean_transcript")
 	if transcript == "" {
 		transcript = clip.GetMetadataString("transcript")
@@ -322,7 +322,7 @@ func (b *ClipSourceBuilder) toSearchSummary(clip *assets.Asset) *searchClipSumma
 // searchViaQdrant searches the vector store for clips semantically matching the topic.
 // Uses HybridSearch with BM25 sparse vector (auto-generated from topic text).
 // Returns nil, nil if vector store is not configured or unavailable.
-func (b *ClipSourceBuilder) searchViaQdrant(ctx context.Context, topic string) ([]*assets.Asset, error) {
+func (b *ClipSourceBuilder) searchViaQdrant(ctx context.Context, topic string) ([]*asset.MediaAsset, error) {
 	if b.vectorSvc == nil {
 		return nil, fmt.Errorf("vector store not configured")
 	}
@@ -347,7 +347,7 @@ func (b *ClipSourceBuilder) searchViaQdrant(ctx context.Context, topic string) (
 	// Fetch full MediaAsset records for the returned asset IDs from the clips repository.
 	// The clipsRepo is used for all sources; vector results may include clips from
 	// any indexed source (youtube, artlist, stock).
-	var assets []*assets.Asset
+	var foundAssets []*asset.MediaAsset
 	for _, r := range results {
 		clip, err := b.clipsRepo.GetClip(ctx, r.AssetID)
 		if err != nil || clip == nil {
@@ -357,10 +357,10 @@ func (b *ClipSourceBuilder) searchViaQdrant(ctx context.Context, topic string) (
 			)
 			continue
 		}
-		assets = append(assets, clip)
+		foundAssets = append(foundAssets, clip)
 	}
 
-	return assets, nil
+	return foundAssets, nil
 }
 
 // rerankClips optionally reorders merged search results using the CrossEncoder reranker

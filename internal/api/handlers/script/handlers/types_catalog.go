@@ -37,5 +37,5 @@ type GenerateFromCatalogResponse struct {
 	// CatalogReport is included when the scan completes synchronously
 	// (before the job is enqueued), giving the user immediate visibility
 	// into which clusters and clips were selected.
-	CatalogReport *scriptcore.CatalogReport `json:"catalog_report,omitempty"`
+	CatalogReport *scripts.CatalogReport `json:"catalog_report,omitempty"`
 }

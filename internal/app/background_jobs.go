@@ -8,12 +8,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
-	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
-	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -24,7 +22,7 @@ type backgroundJobs struct {
 	driveSyncSchedule *scheduler.DriveSyncScheduler
 	indexingService   *indexing.Service
 	jobRunner         *svcjobs.Runner
-	jobScanner        *jobrepo.Scanner
+	jobScanner        *svcjobs.Scanner
 	scriptsRepo       *scriptrepo.ScriptRepository
 }
 
@@ -46,7 +44,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		zap.Bool("maintenance", runMaintenance))
 
 	var jobRunner *svcjobs.Runner
-	var jobScanner *jobrepo.Scanner
+	var jobScanner *svcjobs.Scanner
 	var channelMon *monitor.ChannelMonitor
 	var driveSyncSched *scheduler.DriveSyncScheduler
 
@@ -73,7 +71,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			// See startJobRunner() for the actual start call.
 			log.Info("Job runner created", zap.Int("workers", runnerConfig.Workers))
 
-			jobScanner = jobrepo.NewScanner(svcs.jobsRepo, log)
+			jobScanner = svcjobs.NewScanner(svcs.jobsRepo, log)
 			concurrent.SafeGo("job-scanner", func() { jobScanner.Start(ctx, 5*time.Minute) })
 			log.Info("Job scanner started")
 
@@ -90,7 +88,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				dbForChannels = dbs.main.DB
 			}
 
-			channelMon = monitor.NewChannelMonitor(cfg, svcs.stockDriveRepo, log, svcs.youtubeClipService, dbForChannels, svcs.ollamaClient)
+			channelMon = monitor.NewChannelMonitor(cfg, svcs.clipsRepo, log, svcs.youtubeClipService, dbForChannels, svcs.ollamaClient)
 
 			// Wire search queries repo for topic-based searches
 			if dbForChannels != nil {
@@ -153,7 +151,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 					}
 					for {
 				_, err := svcs.jobsService.Enqueue(ctx, &svcjobs.EnqueueRequest{
-					Type:     domainjob.TypeSystemCleanup,
+					Type:     svcjobs.JobTypeSystemCleanup,
 					Priority: 5,
 							Payload: map[string]any{
 								"label":  label,
@@ -242,10 +240,10 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		}
 
 		// Clip dedup sweeper — every 30 minutes.
-		if svcs.clipsOnlyRepo != nil {
+		if svcs.clipsRepo != nil {
 			concurrent.SafeGo("clip-dedup-sweeper", func() {
 				log.Info("clip dedup sweeper starting (interval=30m)")
-				startClipDedupSweeper(ctx, svcs.clipsOnlyRepo, log)
+				startClipDedupSweeper(ctx, svcs.clipsRepo, log)
 			})
 		}
 

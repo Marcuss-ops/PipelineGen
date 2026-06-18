@@ -3,7 +3,7 @@ package handlers
 import (
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 
 	"github.com/gin-gonic/gin"
