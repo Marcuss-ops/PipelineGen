@@ -15,6 +15,7 @@ import (
 	jobrepo "velox/go-master/internal/repository/jobs"
 	scriptrepo "velox/go-master/internal/repository/scripts"
 	searchqueriesrepo "velox/go-master/internal/repository/searchqueries"
+	"velox/go-master/internal/deliveries"
 	"velox/go-master/internal/storage/scheduler"
 	"velox/go-master/pkg/concurrent"
 )
@@ -277,6 +278,14 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		concurrent.SafeGo("qdrant-health-monitor", func() {
 			log.Info("Qdrant health monitor starting (interval=60s)")
 			startQdrantHealthMonitor(ctx, svcs.vectorSvc, log)
+		})
+	}
+
+	// ── Delivery runner (always runs if deliveries service exists) ────
+	if svcs.deliverySvc != nil && svcs.deliveryRunner != nil {
+		concurrent.SafeGo("delivery-runner", func() {
+			log.Info("Delivery runner starting")
+			svcs.deliveryRunner.Start(ctx)
 		})
 	}
 
