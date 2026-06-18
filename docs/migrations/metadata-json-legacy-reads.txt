@@ -1,138 +1,96 @@
 # metadata-json-legacy-reads.txt
-# Files that read canonical asset fields via json_extract(metadata_json, '$.<field>').
-# These reads must be migrated to canonical typed columns before dual-write can stop.
-# Generated: 2026-06-18 — baseline for codex/freeze-mediaasset-legacy
+# All json_extract(metadata_json) reads in the codebase, classified.
+# Regenerated: 2026-06-18 — 81 total reads (14 legacy, 67 permitted)
 #
-# LEGACY fields (must migrate to columns):
-#   drive_link, drive_file_id, download_link, local_path, file_hash, status,
-#   media_type, deleted_at, folder_id, folder_path, category, search_text,
-#   filename, error, reuse_count, quality_score, scene_type, usable_for,
-#   avoid_for, phash, visual_embedding_json
+# LEGACY = field has a typed column in media_assets → must migrate read
+# PERMITTED = provider-specific / variable schema → stays in metadata_json
 #
-# PERMITTED fields (stay in metadata_json — provider-specific, variable):
-#   youtube_video_id, youtube_url, youtube_title, start, end, language,
-#   audio_embedding_json, style, clean_title, clip_summary, hook, topics,
-#   speakers, mentioned_people, people, clip_tags, search_keywords,
-#   embedding_text, clean_transcript, indexed_content_hash, index_state,
-#   vlm_tagged, orphan_locale, orphan_detected_at, orphan_drive,
-#   subject_id, source_url
-#
-internal/api/handlers/sources/index_health_handler.go:84: json_extract(metadata_json, '$.search_text')
-internal/api/handlers/sources/index_health_handler.go:85: json_extract(metadata_json, '$.language')
-internal/app/sweepers.go:159: json_extract(metadata_json, '$.youtube_video_id')
-internal/app/sweepers.go:162: json_extract(metadata_json, '$.youtube_video_id')
-internal/app/sweepers.go:163: json_extract(metadata_json, '$.youtube_video_id')
-internal/core/maintenance/deep_cleanup.go:150: json_extract(metadata_json, '$.local_path')
-internal/core/maintenance/deep_cleanup.go:151: json_extract(metadata_json, '$.orphan_locale')
-internal/core/maintenance/deep_cleanup.go:152: json_extract(metadata_json, '$.orphan_detected_at')
-internal/core/maintenance/deep_cleanup.go:155: json_extract(metadata_json, '$.local_path')
-internal/core/maintenance/deep_cleanup.go:241: json_extract(metadata_json, '$.drive_link')
-internal/core/maintenance/deep_cleanup.go:242: json_extract(metadata_json, '$.orphan_drive')
-internal/core/maintenance/deep_cleanup.go:243: json_extract(metadata_json, '$.orphan_detected_at')
-internal/core/maintenance/deep_cleanup.go:246: json_extract(metadata_json, '$.drive_link')
-internal/media/autotag/service.go:54: json_extract(metadata_json, '$.vlm_tagged')
-internal/media/clipcatalog/repository.go:144: json_extract(metadata_json, '$.search_text')
-internal/media/clipcatalog/repository.go:145: json_extract(metadata_json, '$.category')
-internal/media/clipcatalog/repository.go:146: json_extract(metadata_json, '$.scene_type')
-internal/media/clipcatalog/repository.go:148: json_extract(metadata_json, '$.drive_link')
-internal/media/clipcatalog/repository.go:149: json_extract(metadata_json, '$.local_path')
-internal/media/clipcatalog/repository.go:150: json_extract(metadata_json, '$.quality_score')
-internal/media/clipcatalog/repository.go:151: json_extract(metadata_json, '$.reuse_count')
-internal/media/clipcatalog/repository.go:152: json_extract(metadata_json, '$.usable_for')
-internal/media/clipcatalog/repository.go:153: json_extract(metadata_json, '$.avoid_for')
-internal/media/clipcatalog/repository.go:154: json_extract(metadata_json, '$.folder_id')
-internal/media/clipcatalog/repository.go:155: json_extract(metadata_json, '$.folder_path')
-internal/media/clipcatalog/repository.go:216: json_extract(metadata_json, '$.reuse_count')
-internal/media/clipcatalog/repository.go:260: json_extract(metadata_json, '$.drive_link')
-internal/media/clipcatalog/repository.go:261: json_extract(metadata_json, '$.local_path')
-internal/media/clipcatalog/repository.go:262: json_extract(metadata_json, '$.category')
-internal/media/clipcatalog/repository.go:263: json_extract(metadata_json, '$.search_text')
-internal/media/clipcatalog/repository.go:67: json_extract(metadata_json, '$.search_text')
-internal/media/clipcatalog/repository.go:68: json_extract(metadata_json, '$.category')
-internal/media/clipcatalog/repository.go:69: json_extract(metadata_json, '$.scene_type')
-internal/media/clipcatalog/repository.go:71: json_extract(metadata_json, '$.drive_link')
-internal/media/clipcatalog/repository.go:72: json_extract(metadata_json, '$.local_path')
-internal/media/clipcatalog/repository.go:73: json_extract(metadata_json, '$.quality_score')
-internal/media/clipcatalog/repository.go:74: json_extract(metadata_json, '$.reuse_count')
-internal/media/clipcatalog/repository.go:75: json_extract(metadata_json, '$.usable_for')
-internal/media/clipcatalog/repository.go:76: json_extract(metadata_json, '$.avoid_for')
-internal/media/clipcatalog/repository.go:77: json_extract(metadata_json, '$.folder_id')
-internal/media/clipcatalog/repository.go:78: json_extract(metadata_json, '$.folder_path')
-internal/media/clipindexer/batch.go:135: json_extract(metadata_json, '$.media_type')
-internal/media/clipindexer/batch.go:48: json_extract(metadata_json, '$.media_type')
-internal/media/clipindexer/indexing.go:136: json_extract(metadata_json, '$.indexed_content_hash')
-internal/media/clipindexer/indexing.go:137: json_extract(metadata_json, '$.index_state')
-internal/media/clipindexer/indexing.go:329: json_extract(metadata_json, '$.search_text')
-internal/media/clipindexer/indexing.go:330: json_extract(metadata_json, '$.clean_transcript')
-internal/media/clipindexer/indexing.go:423: json_extract(metadata_json, '$.local_path')
-internal/media/clipindexer/indexing.go:487: json_extract(metadata_json, '$.local_path')
-internal/media/vectorstore/adapter.go:111: json_extract(metadata_json, '$.audio_embedding_json')
-internal/media/vectorstore/adapter.go:112: json_extract(metadata_json, '$.drive_link')
-internal/media/vectorstore/adapter.go:113: json_extract(metadata_json, '$.local_path')
-internal/media/vectorstore/adapter.go:114: json_extract(metadata_json, '$.category')
-internal/media/vectorstore/adapter.go:115: json_extract(metadata_json, '$.style')
-internal/media/vectorstore/adapter.go:116: json_extract(metadata_json, '$.media_type')
-internal/media/vectorstore/adapter.go:117: json_extract(metadata_json, '$.duration_ms')
-internal/media/vectorstore/adapter.go:118: json_extract(metadata_json, '$.language')
-internal/media/vectorstore/adapter.go:119: json_extract(metadata_json, '$.search_text')
-internal/media/vectorstore/adapter.go:120: json_extract(metadata_json, '$.youtube_video_id')
-internal/media/vectorstore/adapter.go:121: json_extract(metadata_json, '$.youtube_url')
-internal/media/vectorstore/adapter.go:122: json_extract(metadata_json, '$.start')
-internal/media/vectorstore/adapter.go:123: json_extract(metadata_json, '$.end')
-internal/repository/catalog/stock_query.go:105: json_extract(metadata_json, '$.filename')
-internal/repository/catalog/stock_query.go:106: json_extract(metadata_json, '$.folder_id')
-internal/repository/catalog/stock_query.go:107: json_extract(metadata_json, '$.folder_path')
-internal/repository/catalog/stock_query.go:108: json_extract(metadata_json, '$.group_name')
-internal/repository/catalog/stock_query.go:109: json_extract(metadata_json, '$.media_type')
-internal/repository/catalog/stock_query.go:110: json_extract(metadata_json, '$.drive_link')
-internal/repository/catalog/stock_query.go:115: json_extract(metadata_json, '$.media_type')
-internal/repository/clips/dedup.go:48: json_extract(metadata_json, '$.youtube_video_id')
-internal/repository/clips/dedup.go:50: json_extract(metadata_json, '$.start')
-internal/repository/clips/dedup.go:51: json_extract(metadata_json, '$.end')
-internal/repository/clips/dedup.go:56: json_extract(metadata_json, '$.youtube_video_id')
-internal/repository/clips/dedup.go:108: json_extract(metadata_json, '$.source_url')
-internal/repository/clips/dedup.go:109: json_extract(metadata_json, '$.youtube_url')
-internal/repository/clips/dedup.go:153: json_extract(metadata_json, '$.youtube_video_id')
-internal/repository/clips/folders.go:99: json_extract(metadata_json, '$.folder_id')
-internal/repository/clips/folders.go:119: json_extract(metadata_json, '$.folder_path')
-internal/repository/clips/folders.go:139: json_extract(metadata_json, '$.folder_id')
-internal/repository/clips/metadata.go:104: json_extract(metadata_json, '$.clean_title')
-internal/repository/clips/metadata.go:105: json_extract(metadata_json, '$.clip_summary')
-internal/repository/clips/metadata.go:106: json_extract(metadata_json, '$.hook')
-internal/repository/clips/metadata.go:107: json_extract(metadata_json, '$.topics')
-internal/repository/clips/metadata.go:108: json_extract(metadata_json, '$.speakers')
-internal/repository/clips/metadata.go:109: json_extract(metadata_json, '$.mentioned_people')
-internal/repository/clips/metadata.go:110: json_extract(metadata_json, '$.people')
-internal/repository/clips/metadata.go:111: json_extract(metadata_json, '$.clip_tags')
-internal/repository/clips/metadata.go:112: json_extract(metadata_json, '$.search_keywords')
-internal/repository/clips/metadata.go:113: json_extract(metadata_json, '$.embedding_text')
-internal/repository/clips/metadata.go:114: json_extract(metadata_json, '$.search_text')
-internal/repository/clips/repository.go:108: json_extract(metadata_json, '$.deleted_at')
-internal/repository/clips/search.go:171: json_extract(metadata_json, '$.category')
-internal/repository/clips/search.go:197: json_extract(metadata_json, '$.search_text')
-internal/repository/clips/search_terms.go:200: json_extract(metadata_json, '$.clean_title')
-internal/repository/clips/search_terms.go:201: json_extract(metadata_json, '$.clip_summary')
-internal/repository/clips/search_terms.go:202: json_extract(metadata_json, '$.hook')
-internal/repository/clips/search_terms.go:203: json_extract(metadata_json, '$.topics')
-internal/repository/clips/search_terms.go:204: json_extract(metadata_json, '$.speakers')
-internal/repository/clips/search_terms.go:205: json_extract(metadata_json, '$.mentioned_people')
-internal/repository/clips/search_terms.go:206: json_extract(metadata_json, '$.people')
-internal/repository/clips/search_terms.go:207: json_extract(metadata_json, '$.clip_tags')
-internal/repository/clips/search_terms.go:208: json_extract(metadata_json, '$.search_keywords')
-internal/repository/clips/search_terms.go:209: json_extract(metadata_json, '$.embedding_text')
-internal/repository/clips/search_terms.go:210: json_extract(metadata_json, '$.search_text')
-internal/repository/clips/tags.go:114: json_extract(metadata_json, '$.folder_id')
-internal/repository/clips/tags.go:114: json_extract(metadata_json, '$.filename')
-internal/repository/clips/tags.go:135: json_extract(metadata_json, '$.drive_link')
-internal/repository/clips/tags.go:135: json_extract(metadata_json, '$.download_link')
-internal/repository/clips/tags.go:135: json_extract(metadata_json, '$.drive_file_id')
-internal/repository/clips/tags.go:146: json_extract(metadata_json, '$.file_hash')
-internal/repository/clips/tags.go:166: json_extract(metadata_json, '$.drive_file_id')
-internal/repository/clips/utility.go:17: json_extract(metadata_json, '$.parent_folder_id')
-internal/repository/clips/utility.go:46: json_extract(metadata_json, '$.phash')
-internal/repository/clips/utility.go:68: json_extract(metadata_json, '$.reuse_count')
-internal/repository/images/repository.go:163: json_extract(metadata_json, '$.drive_file_id')
-internal/repository/images/repository.go:175: json_extract(metadata_json, '$.subject_id')
-internal/sources/artlist/service_test.go:257: json_extract(metadata_json, '$.drive_link')
-internal/sources/artlist/service_test.go:284: json_extract(metadata_json, '$.drive_link')
-internal/sources/youtube/rebuild_job.go:47: json_extract(metadata_json, '$.youtube_title')
+# ════════════════════════════════════════════════════════════════════
+# LEGACY reads (14) — must migrate to typed columns
+# ════════════════════════════════════════════════════════════════════
+internal/api/handlers/sources/index_health_handler.go:84 search_text
+internal/repository/catalog/stock_query.go:105 filename
+internal/repository/catalog/stock_query.go:106 folder_id
+internal/repository/catalog/stock_query.go:107 folder_path
+internal/repository/catalog/stock_query.go:109 media_type
+internal/repository/catalog/stock_query.go:110 drive_link
+internal/repository/catalog/stock_query.go:115 media_type
+internal/repository/clips/metadata.go:114 search_text
+internal/repository/clips/repository.go:108 deleted_at
+internal/repository/clips/search_terms.go:210 search_text
+internal/repository/clips/utility.go:17 parent_folder_id
+internal/repository/clips/utility.go:68 reuse_count
+internal/repository/images/repository.go:163 drive_file_id
+# Tests (migrate when production code migrates):
+internal/repository/clips/repository_delete_test.go:104 deleted_at
+internal/repository/clips/repository_delete_test.go:183 deleted_at
+internal/sources/artlist/service_test.go:257 drive_link
+internal/sources/artlist/service_test.go:284 drive_link
+# ════════════════════════════════════════════════════════════════════
+# PERMITTED reads (67) — stay in metadata_json
+# ════════════════════════════════════════════════════════════════════
+internal/api/handlers/sources/index_health_handler.go:85 language
+internal/app/sweepers.go:159 youtube_video_id
+internal/app/sweepers.go:162 youtube_video_id
+internal/app/sweepers.go:163 youtube_video_id
+internal/core/maintenance/deep_cleanup.go:151 orphan_locale
+internal/core/maintenance/deep_cleanup.go:152 orphan_detected_at
+internal/core/maintenance/deep_cleanup.go:242 orphan_drive
+internal/core/maintenance/deep_cleanup.go:243 orphan_detected_at
+internal/media/autotag/service.go:54 vlm_tagged
+internal/media/clipcatalog/repository.go:69 scene_type
+internal/media/clipcatalog/repository.go:73 quality_score
+internal/media/clipcatalog/repository.go:74 reuse_count
+internal/media/clipcatalog/repository.go:75 usable_for
+internal/media/clipcatalog/repository.go:76 avoid_for
+internal/media/clipcatalog/repository.go:146 scene_type
+internal/media/clipcatalog/repository.go:150 quality_score
+internal/media/clipcatalog/repository.go:151 reuse_count
+internal/media/clipcatalog/repository.go:152 usable_for
+internal/media/clipcatalog/repository.go:153 avoid_for
+internal/media/clipcatalog/repository.go:216 reuse_count
+internal/media/clipindexer/indexing.go:136 indexed_content_hash
+internal/media/clipindexer/indexing.go:137 index_state
+internal/media/clipindexer/indexing.go:330 clean_transcript
+internal/media/vectorstore/adapter.go:111 audio_embedding_json
+internal/media/vectorstore/adapter.go:115 style
+internal/media/vectorstore/adapter.go:118 language
+internal/media/vectorstore/adapter.go:120 youtube_video_id
+internal/media/vectorstore/adapter.go:121 youtube_url
+internal/media/vectorstore/adapter.go:122 start
+internal/media/vectorstore/adapter.go:123 end
+internal/repository/catalog/stock_query.go:108 group_name
+internal/repository/clips/dedup.go:48 youtube_video_id
+internal/repository/clips/dedup.go:50 start
+internal/repository/clips/dedup.go:51 end
+internal/repository/clips/dedup.go:56 youtube_video_id
+internal/repository/clips/dedup.go:108 source_url
+internal/repository/clips/dedup.go:109 youtube_url
+internal/repository/clips/dedup.go:153 youtube_video_id
+internal/repository/clips/metadata.go:104 clean_title
+internal/repository/clips/metadata.go:105 clip_summary
+internal/repository/clips/metadata.go:106 hook
+internal/repository/clips/metadata.go:107 topics
+internal/repository/clips/metadata.go:108 speakers
+internal/repository/clips/metadata.go:109 mentioned_people
+internal/repository/clips/metadata.go:110 people
+internal/repository/clips/metadata.go:111 clip_tags
+internal/repository/clips/metadata.go:112 search_keywords
+internal/repository/clips/metadata.go:113 embedding_text
+internal/repository/clips/search_terms.go:200 clean_title
+internal/repository/clips/search_terms.go:201 clip_summary
+internal/repository/clips/search_terms.go:202 hook
+internal/repository/clips/search_terms.go:203 topics
+internal/repository/clips/search_terms.go:204 speakers
+internal/repository/clips/search_terms.go:205 mentioned_people
+internal/repository/clips/search_terms.go:206 people
+internal/repository/clips/search_terms.go:207 clip_tags
+internal/repository/clips/search_terms.go:208 search_keywords
+internal/repository/clips/search_terms.go:209 embedding_text
+internal/repository/images/repository.go:175 subject_id
+internal/sources/youtube/rebuild_job.go:47 youtube_title
+# Comments (informational, not code):
+internal/media/realtime/index_health_test.go:243 comment
+internal/repository/clips/repository.go:75 comment (fallback warning)
+internal/repository/clips/repository.go:216 comment (migration note)
+internal/infrastructure/database/sqlite/assetrepo/contract_test.go:257 comment
