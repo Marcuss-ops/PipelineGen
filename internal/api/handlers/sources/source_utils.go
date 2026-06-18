@@ -90,12 +90,12 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 
 // voiceoverRecordToClip delegates to the canonical converter in assetregistry.
 func voiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
-	return assetregistry.VoiceoverRecordToClip(rec)
+	return assetregistry.ToLegacy(assetregistry.VoiceoverRecordToClip(rec))
 }
 
 // imageAssetToClip uses the canonical converter from assetregistry.
 func imageAssetToClip(asset *models.ImageAsset) *models.MediaAsset {
-	return assetregistry.ImageAssetToClip(asset)
+	return assetregistry.ToLegacy(assetregistry.ImageAssetToClip(asset))
 }
 
 // verifyClip performs verification of a single clip and returns the result map.

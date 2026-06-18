@@ -78,13 +78,13 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		if err != nil {
 			return fmt.Errorf("voiceover not found: %w", err)
 		}
-		clip = assetregistry.VoiceoverRecordToClip(rec)
+		clip = assetregistry.ToLegacy(assetregistry.VoiceoverRecordToClip(rec))
 	} else if canonical == "images" && s.imagesRepo != nil {
 		img, err := s.imagesRepo.GetByID(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("image not found: %w", err)
 		}
-		clip = assetregistry.ImageAssetToClip(img)
+		clip = assetregistry.ToLegacy(assetregistry.ImageAssetToClip(img))
 	} else if repo != nil {
 		clip, err = repo.GetClip(ctx, clipID)
 		if err != nil {
@@ -190,13 +190,13 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 			voRepo := repo.(*voiceovers.Repository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
-				return assetregistry.VoiceoverRecordToClip(rec), source, nil
+				return assetregistry.ToLegacy(assetregistry.VoiceoverRecordToClip(rec)), source, nil
 			}
 		case "images":
 			imgRepo := repo.(*images.Repository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
-				return assetregistry.ImageAssetToClip(img), source, nil
+				return assetregistry.ToLegacy(assetregistry.ImageAssetToClip(img)), source, nil
 			}
 		}
 	}
