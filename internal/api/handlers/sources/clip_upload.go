@@ -14,7 +14,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -269,9 +268,9 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	// 12. Trigger async enrichment + Qdrant indexing (reuses the existing pipeline)
 	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
 	if hasIndexer {
-		legacyClip := assetregistry.ToLegacy(clip)
+		temp := *clip // dereference for goroutine-safe struct copy
 		concurrent.SafeGo("upload-video-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), legacyClip, source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), &temp, source)
 		})
 		log.Info("triggered async enrichment + Qdrant indexing", zap.String("clip_id", clip.ID))
 	}

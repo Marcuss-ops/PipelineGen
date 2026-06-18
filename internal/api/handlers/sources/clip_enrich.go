@@ -7,8 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -19,7 +20,7 @@ import (
 //  1. LLM semantic tagger → search_text, tags, subjects
 //  2. Clip indexer → embedding computation
 //  3. Vector store (Qdrant) upsert
-func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *models.MediaAsset, source string) {
+func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *asset.MediaAsset, source string) {
 	// Apply a 3-minute timeout to prevent runaway goroutines
 	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -27,8 +28,6 @@ func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *models.MediaAsse
 	h.log.Info("starting enrichment for clip",
 		zap.String("clip_id", clip.ID),
 		zap.String("source", source))
-
-	repo := h.resolveRepo(source)
 
 	// Step 1: Semantic enrichment via MetadataWriter (LLM-generated tags/description)
 	if h.metaWriter != nil && clip.Name != "" {
@@ -71,9 +70,9 @@ func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *models.MediaAsse
 				clip.Metadata["semantic_enriched"] = true
 			}
 
-			// Persist enriched metadata to DB (so clipIndexer can read it when computing embeddings)
-			if repo != nil {
-				if err := repo.UpsertClip(enrichCtx, clip); err != nil {
+		// Persist enriched metadata to DB (so clipIndexer can read it when computing embeddings)
+		if h.assetRepo != nil {
+			if err := h.assetRepo.Upsert(enrichCtx, clip); err != nil {
 					h.log.Warn("failed to persist enriched clip metadata",
 						zap.String("clip_id", clip.ID), zap.Error(err))
 				}
@@ -154,10 +153,10 @@ func (h *Handler) EnrichMedia(c *gin.Context) {
 		if repo != nil {
 			clip, err := repo.GetClip(ctx, req.AssetID)
 			if err == nil && clip != nil {
-				// Clip found — use existing enrichment pipeline (async, survives handler return)
-				concurrent.SafeGo("media-enrich", func() {
-					h.enrichAndIndexClip(context.WithoutCancel(ctx), clip, req.Source)
-				})
+			// Clip found — use existing enrichment pipeline (async, survives handler return)
+			concurrent.SafeGo("media-enrich", func() {
+				h.enrichAndIndexClip(context.WithoutCancel(ctx), assetregistry.ToCanonical(clip), req.Source)
+			})
 				apiutil.OK(c, gin.H{
 					"ok":       true,
 					"action":   "enqueued",
@@ -224,7 +223,7 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 	enrichNeeded := clip.SearchText == "" && clip.Name != "" && h.metaWriter != nil
 	if enrichNeeded {
 		concurrent.SafeGo("reindex-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), clip, source)
+			h.enrichAndIndexClip(context.WithoutCancel(ctx), assetregistry.ToCanonical(clip), source)
 		})
 		apiutil.OK(c, gin.H{
 			"ok":      true,
