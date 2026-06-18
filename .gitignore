@@ -51,8 +51,17 @@ admin
 bin/
 build/
 coverage.out
+coverage.html
 *.test
 web-admin/dist/
+
+# ============================================
+# Runtime output directories (test fixtures, worker downloads)
+# ============================================
+**/completed_videos/
+**/worker_downloads/
+**/script_assets/
+**/test-results/
 
 # ============================================
 # Database
