@@ -181,7 +181,7 @@ func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Media
 	return clips, rows.Err()
 }
 
-// UpdateDriveFileID updates the drive_file_id for a clip (stored in metadata_json).
+// UpdateDriveFileID updates the drive_file_id for a clip.
 func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
 	clipID = strings.TrimSpace(clipID)
 	fileID = strings.TrimSpace(fileID)
@@ -189,12 +189,12 @@ func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID strin
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.drive_file_id', ?) WHERE id=?", fileID, clipID)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET drive_file_id = ? WHERE id=?", fileID, clipID)
 	return err
 }
 
-// UpdateFileHash updates the file_hash for a clip (stored in metadata_json).
+// UpdateFileHash updates the file_hash for a clip.
 func (r *Repository) UpdateFileHash(ctx context.Context, clipID, hash string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.file_hash', ?) WHERE id=?", hash, clipID)
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
 	return err
 }
