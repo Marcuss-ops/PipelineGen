@@ -109,7 +109,7 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 	return tx.Commit()
 }
 
-// GetClipByFolderAndFilename retrieves a clip by folder and filename (stored in metadata_json).
+// GetClipByFolderAndFilename retrieves a clip by folder and filename (canonical columns after migration 059).
 func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*models.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderID, filename)
@@ -123,7 +123,7 @@ func (r *Repository) GetClip(ctx context.Context, id string) (*models.MediaAsset
 	return r.scanMediaAssetRow(row)
 }
 
-// GetClipByDriveFileID finds a clip by Drive file ID (searches both drive_link and download_link in metadata_json).
+// GetClipByDriveFileID finds a clip by Drive file ID (searches canonical columns drive_file_id, drive_link, download_link).
 // Returns nil, nil if not found.
 func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*models.MediaAsset, error) {
 	fileID = strings.TrimSpace(fileID)
@@ -141,7 +141,7 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 	return clip, err
 }
 
-// FindClipsByHash returns all clips with the given file hash (stored in metadata_json).
+// FindClipsByHash returns all clips with the given file hash (canonical column after migration 059).
 func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*models.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND file_hash = ?"
 	rows, err := r.db.QueryContext(ctx, query, hash)
@@ -161,7 +161,7 @@ func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*model
 	return clips, rows.Err()
 }
 
-// GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (stored in metadata_json).
+// GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (canonical column).
 func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
 	rows, err := r.db.QueryContext(ctx, query)
@@ -181,7 +181,7 @@ func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*models.Media
 	return clips, rows.Err()
 }
 
-// UpdateDriveFileID updates the drive_file_id for a clip.
+// UpdateDriveFileID updates the drive_file_id for a clip (canonical column).
 func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID string) error {
 	clipID = strings.TrimSpace(clipID)
 	fileID = strings.TrimSpace(fileID)
@@ -193,7 +193,7 @@ func (r *Repository) UpdateDriveFileID(ctx context.Context, clipID, fileID strin
 	return err
 }
 
-// UpdateFileHash updates the file_hash for a clip.
+// UpdateFileHash updates the file_hash for a clip (canonical column).
 func (r *Repository) UpdateFileHash(ctx context.Context, clipID, hash string) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
 	return err

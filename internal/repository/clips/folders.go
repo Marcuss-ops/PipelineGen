@@ -94,7 +94,7 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 	return &folder, nil
 }
 
-// ListClipsByFolderID returns all clips for a given folder ID (stored in metadata_json).
+// ListClipsByFolderID returns all clips for a given folder ID (canonical column after migration 059).
 func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
@@ -114,7 +114,7 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 	return clips, rows.Err()
 }
 
-// ListClipsByFolderPath returns all clips for a given folder path (stored in metadata_json).
+// ListClipsByFolderPath returns all clips for a given folder path (canonical column).
 func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.MediaAsset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
@@ -134,7 +134,7 @@ func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath strin
 	return clips, rows.Err()
 }
 
-// CountClipsByFolderID returns the number of clips in a folder (folder_id stored in metadata_json).
+// CountClipsByFolderID returns the number of clips in a folder (folder_id is a canonical column).
 func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) (int, error) {
 	query := "SELECT COUNT(*) FROM media_assets WHERE folder_id = ?"
 	row := r.db.QueryRowContext(ctx, query, folderID)

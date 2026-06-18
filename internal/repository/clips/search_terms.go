@@ -184,19 +184,22 @@ func (r *Repository) UpdateSearchTerms(ctx context.Context, clipID, source strin
 	return tx.Commit()
 }
 
-// RebuildSearchTerms re-indexes all existing clips' search terms from name, tags, and search_text.
+// RebuildSearchTerms re-indexes all existing clips' search terms from name, tags, search_text, and the clipindexer search helpers stored in metadata_json.
 // This is used to populate the index for existing data after migration.
 func (r *Repository) RebuildSearchTerms(ctx context.Context, source string, batchSize int) (int, error) {
 	if batchSize <= 0 {
 		batchSize = 100
 	}
 
+	// After migration 059, search_text is a canonical column; the rest are
+	// still in metadata_json (clipindexer output: clean_title, hook, topics, etc).
 	query := `
 		SELECT
 			id,
 			COALESCE(name, ''),
 			COALESCE(tags, '[]'),
 			TRIM(
+				COALESCE(search_text, '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clean_title'), '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clip_summary'), '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.hook'), '') || ' ' ||
@@ -206,8 +209,7 @@ func (r *Repository) RebuildSearchTerms(ctx context.Context, source string, batc
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.people'), '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags'), '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text'), '') || ' ' ||
-				COALESCE(search_text, '')
+				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text'), '')
 			)
 		FROM media_assets`
 	var args []any

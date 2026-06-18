@@ -86,23 +86,26 @@ func (e *SemanticEnricher) SetDispatcher(d *outbox.Dispatcher) {
 
 // dispatchOrIndexAndUpsert performs UpsertClip + IndexClip atomically via
 // the canonical media_index_outbox dispatcher when wired, otherwise falls
-// back to the legacy (UpsertClip + clipIndexer.IndexClip) pair. The legacy
-// pair is not crash-safe between the write and the indexer call — when the
-// dispatcher is nil, the caller accepts that a crash in between leaves the
-// clip indexed-missing and a manual reindex is required.
+// back to the legacy (UpsertClip + clipIndexer.IndexClip) pair.
+//
+// The decision logic lives in dispatchBridge (dispatch_bridge.go) so this
+// method is a thin alias and can be removed in a follow-up once all
+// callers route directly through the bridge.
 func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *models.MediaAsset, hash string) {
-	if e.dispatcher != nil {
-		if err := e.dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
-			e.log.Warn("semantic_enricher: dispatcher.EnqueueAndIndex failed",
-				zap.String("clip_id", clip.ID), zap.Error(err))
-		}
-		return
-	}
-	if e.clipIndexer != nil {
-		if err := e.clipIndexer.IndexClip(ctx, clip.ID); err != nil {
-			e.log.Warn("semantic_enricher: legacy clipIndexer.IndexClip failed",
-				zap.String("clip_id", clip.ID), zap.Error(err))
-		}
+	e.newDispatchBridge().EnqueueOrFallback(ctx, clip, hash)
+}
+
+// newDispatchBridge is the enricher-local mirror of Service.newDispatchBridge.
+// It pulls the four upstream deps from the enricher's own struct fields so
+// callers don't have to construct dispatchBridge{} by hand. Symmetric with
+// the Service variant; if the enricher is ever refactored to hold a *Service
+// reference, both methods collapse into one.
+func (e *SemanticEnricher) newDispatchBridge() *dispatchBridge {
+	return &dispatchBridge{
+		dispatcher:  e.dispatcher,
+		clipsRepo:   e.repo,
+		clipIndexer: e.clipIndexer,
+		log:         e.log,
 	}
 }
 

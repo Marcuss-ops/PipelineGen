@@ -194,7 +194,7 @@ func (r *Repository) SearchClipsAdvanced(ctx context.Context, req AdvancedSearch
 	}
 
 	if req.HasTranscript {
-		conditions = append(conditions, "search_text != '' AND search_text IS NOT NULL")
+		conditions = append(conditions, "(search_text IS NOT NULL AND search_text != '')")
 	}
 
 	if req.HasDriveLink {

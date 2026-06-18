@@ -155,11 +155,13 @@ func (r *Repository) Delete(ctx context.Context, id any) error {
 	return err
 }
 
-// GetByDriveFileID recupera un'immagine tramite Drive file ID
+// GetByDriveFileID recupera un'immagine tramite Drive file ID. drive_file_id
+// è una colonna canonica (migration 059): lettura diretta invece di
+// json_extract(metadata_json, '$.drive_file_id').
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*models.ImageAsset, error) {
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
-		FROM media_assets 
+		FROM media_assets
 		WHERE source = 'image' AND (drive_file_id = ? OR url LIKE ?)
 		LIMIT 1
 	`

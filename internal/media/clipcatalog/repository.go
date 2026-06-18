@@ -62,16 +62,16 @@ func (r *Repository) FindCandidatesFTS(ctx context.Context, query string, limit 
 	}
 
 	sqlQuery := `
-		SELECT 
-			c.id, c.name, 
+		SELECT
+			c.id, c.name,
 			COALESCE(c.search_text, '') as search_text,
 			COALESCE(c.category, '') as category,
-			COALESCE(json_extract(c.metadata_json, '$.scene_type'), '') as scene_type,
+			COALESCE(c.scene_type, '') as scene_type,
 			COALESCE(c.tags, '[]') as tags,
 			COALESCE(c.drive_link, '') as drive_link,
 			COALESCE(c.local_path, '') as local_path,
-			COALESCE(CAST(json_extract(c.metadata_json, '$.quality_score') AS REAL), 0.0) as quality_score,
-			COALESCE(CAST(json_extract(c.metadata_json, '$.reuse_count') AS INTEGER), 0) as reuse_count,
+			COALESCE(c.quality_score, 0.0) as quality_score,
+			COALESCE(c.reuse_count, 0) as reuse_count,
 			COALESCE(json_extract(c.metadata_json, '$.usable_for'), '[]') as usable_for,
 			COALESCE(json_extract(c.metadata_json, '$.avoid_for'), '[]') as avoid_for,
 			COALESCE(c.folder_id, '') as folder_id,
@@ -143,12 +143,12 @@ func (r *Repository) FindCandidates(ctx context.Context, query string, limit int
 		SELECT id, name,
 			COALESCE(search_text, ''),
 			COALESCE(category, ''),
-			COALESCE(json_extract(metadata_json, '$.scene_type'), ''),
+			COALESCE(scene_type, ''),
 			COALESCE(tags, '[]'),
 			COALESCE(drive_link, ''),
 			COALESCE(local_path, ''),
-			COALESCE(CAST(json_extract(metadata_json, '$.quality_score') AS REAL), 0.0),
-			COALESCE(CAST(json_extract(metadata_json, '$.reuse_count') AS INTEGER), 0),
+			COALESCE(quality_score, 0.0),
+			COALESCE(reuse_count, 0),
 			COALESCE(json_extract(metadata_json, '$.usable_for'), '[]'),
 			COALESCE(json_extract(metadata_json, '$.avoid_for'), '[]'),
 			COALESCE(folder_id, ''),
@@ -207,16 +207,16 @@ func (r *Repository) MarkUsed(ctx context.Context, clipID string, topic string) 
 	}
 	defer tx.Rollback()
 
-	// Increment reuse count
+	// Increment reuse count on the canonical column (migration 059).
 	_, err = tx.ExecContext(ctx, `
-		UPDATE media_assets 
-		SET reuse_count = reuse_count + 1
+		UPDATE media_assets
+		SET reuse_count = COALESCE(reuse_count, 0) + 1
 		WHERE id = ?`, clipID)
 	if err != nil {
 		return fmt.Errorf("failed to increment reuse count: %w", err)
 	}
 
-	// Update last_used_at
+	// Update last_used_at on the canonical column (migration 059).
 	now := timeutil.FormatRFC3339(time.Now())
 	_, err = tx.ExecContext(ctx, "UPDATE media_assets SET last_used_at = ? WHERE id = ?", now, clipID)
 	if err != nil {
@@ -248,7 +248,7 @@ func (r *Repository) GetEmbedding(ctx context.Context, clipID string) ([]float64
 // GetClip retrieves a full clip by ID
 func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.MediaAsset, error) {
 	// Delegate to existing clips repository or implement here
-	// For now, return a basic clip
+	// For now, return a basic clip. Reads from canonical columns (migration 059).
 	var clip models.MediaAsset
 	var driveLinkNull, localPathNull, categoryNull, searchTextNull sql.NullString
 	err := r.db.QueryRowContext(ctx, `

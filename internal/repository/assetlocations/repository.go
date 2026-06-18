@@ -1,156 +1,132 @@
-// Package assetlocations provides the concrete SQLite-backed implementation
-// of asset.LocationRepository. All public domain types (Location,
-// LocationKind, LocationRepository) come from the canonical domain
-// package internal/core/domain/asset — this package intentionally
-// declares NO duplicate types.
+// Package assetlocations provides the read/write layer for the
+// asset_locations table, which records where an asset physically lives.
+// Each asset can have multiple locations (local file, Drive, object storage)
+// with one designated as primary.
 //
-// Method semantics, including transactional outbox emission, are
-// documented on the asset.LocationRepository interface.
+// This table normalises what was previously inlined in media_assets
+// (drive_link, local_path, download_link, drive_file_id). The old columns
+// remain for backward compatibility and will be deprecated in a follow-up.
 package assetlocations
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	"go.uber.org/zap"
 )
 
-// Repository is the SQLite-backed implementation of asset.LocationRepository.
+// LocationKind categorises where an asset physically lives.
+type LocationKind string
+
+const (
+	LocationLocal         LocationKind = "local"
+	LocationDrive         LocationKind = "drive"
+	LocationObjectStorage LocationKind = "object_storage"
+)
+
+// AssetLocation represents a single asset_locations row.
+//
+// Drive-specific columns (ExternalID / WebViewLink / DownloadURL /
+// IsPublic) were added in migration 056. They default to safe empty
+// values so older callers that don't populate them still work, and
+// non-Drive rows simply leave them at zero values.
+type AssetLocation struct {
+	ID            int64
+	AssetID       string
+	LocationKind  LocationKind
+	URI           string // local path, drive_file_id, s3://...
+	ExternalID    string // provider-specific resource id (Drive file ID, S3 key)
+	WebViewLink   string // human-facing URL (https://drive.google.com/...)
+	DownloadURL   string // direct provider download URL
+	IsPublic      bool   // whether the resource is publicly readable
+	MimeType      string
+	FileSizeBytes int64
+	FileHash      string
+	IsPrimary     bool
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// Repository wraps SQL access to the asset_locations table.
 type Repository struct {
-	db  *sql.DB
-	log *zap.Logger
+	db *sql.DB
 }
 
-// Compile-time guard — concrete *Repository must satisfy the canonical interface.
-var _ asset.LocationRepository = (*Repository)(nil)
-
-// New wraps db in a Repository. log may be nil (zap.NewNop is used). New
-// code should prefer this constructor.
-func New(db *sql.DB, log *zap.Logger) *Repository {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &Repository{db: db, log: log}
-}
-
-// NewRepository is the legacy constructor retained for backward compat
-// with the previous API. Delegates to New(db, nil). New code should use
-// New directly with an explicit logger.
+// NewRepository creates a Repository backed by db.
 func NewRepository(db *sql.DB) *Repository {
-	return New(db, nil)
+	return &Repository{db: db}
 }
 
-// selectColumns enumerates every column in asset_locations (after
-// migration 061 added external_id/access_url/download_url). Single
-// source of truth for all SELECTs.
-const selectColumns = `
-	id, asset_id, location_kind, uri,
-	external_id, access_url, download_url,
-	mime_type, file_size_bytes, file_hash, is_primary,
-	created_at, updated_at
-`
-
-type scanner interface {
-	Scan(dest ...any) error
-}
-
-// scanLocation reads a single asset_locations row into a canonical
-// *asset.Location. Mirrors the assetrepo scanner.go pattern.
-func scanLocation(s scanner) (*asset.Location, error) {
-	var loc asset.Location
-	var kindStr string
-	var isPrimaryInt int
-	var createdAtStr, updatedAtStr string
-
-	err := s.Scan(
-		&loc.ID, &loc.AssetID, &kindStr, &loc.URI,
-		&loc.ExternalID, &loc.AccessURL, &loc.DownloadURL,
-		&loc.MimeType, &loc.FileSizeBytes, &loc.FileHash, &isPrimaryInt,
-		&createdAtStr, &updatedAtStr,
-	)
-	if err != nil {
-		return nil, err
-	}
-	loc.LocationKind = asset.LocationKind(kindStr)
-	loc.IsPrimary = isPrimaryInt == 1
-	loc.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
-	loc.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
-	return &loc, nil
-}
-
-// ── CRUD ────────────────────────────────────────────────────────────────
-
-// Upsert inserts or replaces a location record.
-func (r *Repository) Upsert(ctx context.Context, loc *asset.Location) error {
-	if loc == nil || loc.AssetID == "" || loc.URI == "" {
-		return asset.ErrInvalidID
-	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("assetlocations.Upsert begin: %w", err)
-	}
-	defer tx.Rollback()
-
-	now := time.Now().UTC()
-	nowStr := timeutil.FormatRFC3339(now)
-	if loc.CreatedAt.IsZero() {
-		loc.CreatedAt = now
-	}
-	loc.UpdatedAt = now
-
+// Upsert inserts or replaces a location record. The (asset_id, location_kind)
+// unique constraint ensures at most one record per location kind per asset.
+// On conflict, all non-PK fields are updated.
+//
+// The Drive-specific columns (external_id, web_view_link, download_url,
+// is_public) are populated from loc.* fields when kind == 'drive'. For
+// other kinds they're harmless zero values.
+func (r *Repository) Upsert(ctx context.Context, loc AssetLocation) error {
+	now := timeutil.FormatRFC3339(time.Now())
 	isPrimary := 0
 	if loc.IsPrimary {
 		isPrimary = 1
 	}
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO asset_locations (
-			asset_id, location_kind, uri,
-			external_id, access_url, download_url,
-			mime_type, file_size_bytes, file_hash, is_primary,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	isPublic := 0
+	if loc.IsPublic {
+		isPublic = 1
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO asset_locations
+			(asset_id, location_kind, uri, external_id, web_view_link, download_url, is_public,
+			 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
-			uri             = excluded.uri,
-			external_id     = excluded.external_id,
-			access_url      = excluded.access_url,
-			download_url    = excluded.download_url,
-			mime_type       = excluded.mime_type,
+			uri = excluded.uri,
+			external_id = excluded.external_id,
+			web_view_link = excluded.web_view_link,
+			download_url = excluded.download_url,
+			is_public = excluded.is_public,
+			mime_type = excluded.mime_type,
 			file_size_bytes = excluded.file_size_bytes,
-			file_hash       = excluded.file_hash,
-			is_primary      = excluded.is_primary,
-			updated_at      = excluded.updated_at
-	`,
-		loc.AssetID, string(loc.LocationKind), loc.URI,
-		loc.ExternalID, loc.AccessURL, loc.DownloadURL,
-		loc.MimeType, loc.FileSizeBytes, loc.FileHash, isPrimary,
-		timeutil.FormatRFC3339(loc.CreatedAt), nowStr,
-	)
+			file_hash = excluded.file_hash,
+			is_primary = excluded.is_primary,
+			updated_at = excluded.updated_at
+	`, loc.AssetID, string(loc.LocationKind), loc.URI, loc.ExternalID,
+		loc.WebViewLink, loc.DownloadURL, isPublic,
+		loc.MimeType, loc.FileSizeBytes, loc.FileHash, isPrimary, now, now)
 	if err != nil {
 		return fmt.Errorf("assetlocations.Upsert(%s, %s): %w", loc.AssetID, loc.LocationKind, err)
 	}
-
-	if err := writeOutbox(ctx, tx, loc.AssetID, "location.upserted", loc); err != nil {
-		return fmt.Errorf("assetlocations.Upsert outbox: %w", err)
-	}
-
-	return tx.Commit()
+	return nil
 }
 
-// GetPrimary returns the primary location (is_primary=1) for an asset.
-func (r *Repository) GetPrimary(ctx context.Context, assetID string) (*asset.Location, error) {
-	if assetID == "" {
-		return nil, asset.ErrInvalidID
+// GetByAssetID returns all location records for an asset, ordered by
+// is_primary DESC so the primary location comes first.
+func (r *Repository) GetByAssetID(ctx context.Context, assetID string) ([]AssetLocation, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url, is_public,
+		       mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at
+		FROM asset_locations
+		WHERE asset_id = ?
+		ORDER BY is_primary DESC, location_kind
+	`, assetID)
+	if err != nil {
+		return nil, fmt.Errorf("assetlocations.GetByAssetID(%s): %w", assetID, err)
 	}
-	row := r.db.QueryRowContext(ctx,
-		`SELECT `+selectColumns+` FROM asset_locations WHERE asset_id = ? AND is_primary = 1`,
-		assetID)
+	defer rows.Close()
+	return scanLocations(rows)
+}
+
+// GetPrimary returns the primary location for an asset (is_primary=1), or nil
+// if the asset has no primary location.
+func (r *Repository) GetPrimary(ctx context.Context, assetID string) (*AssetLocation, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url, is_public,
+		       mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at
+		FROM asset_locations
+		WHERE asset_id = ? AND is_primary = 1
+	`, assetID)
 	loc, err := scanLocation(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -161,194 +137,135 @@ func (r *Repository) GetPrimary(ctx context.Context, assetID string) (*asset.Loc
 	return loc, nil
 }
 
-// ListByAsset returns all location records for an asset, primary first.
-func (r *Repository) ListByAsset(ctx context.Context, assetID string) ([]*asset.Location, error) {
-	if assetID == "" {
-		return nil, asset.ErrInvalidID
+// GetDriveLocation returns the Drive location record for an asset
+// (location_kind = 'drive'), or nil if no Drive location exists.
+// Use this instead of reading media_assets.drive_link/drive_file_id/
+// download_link in callers that don't already own those columns.
+func (r *Repository) GetDriveLocation(ctx context.Context, assetID string) (*AssetLocation, error) {
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url, is_public,
+		       mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at
+		FROM asset_locations
+		WHERE asset_id = ? AND location_kind = 'drive'
+	`, assetID)
+	loc, err := scanLocation(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
 	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+selectColumns+` FROM asset_locations WHERE asset_id = ? ORDER BY is_primary DESC, location_kind`,
-		assetID)
 	if err != nil {
-		return nil, fmt.Errorf("assetlocations.ListByAsset(%s): %w", assetID, err)
+		return nil, fmt.Errorf("assetlocations.GetDriveLocation(%s): %w", assetID, err)
 	}
-	defer rows.Close()
-
-	var out []*asset.Location
-	for rows.Next() {
-		loc, err := scanLocation(rows)
-		if err != nil {
-			return nil, fmt.Errorf("assetlocations.ListByAsset scan: %w", err)
-		}
-		out = append(out, loc)
-	}
-	return out, rows.Err()
+	return loc, nil
 }
 
-// SetPrimary atomically unmarks the current primary (if any) and marks
-// the (assetID, kind) location as primary.
-func (r *Repository) SetPrimary(ctx context.Context, assetID string, kind asset.LocationKind) error {
-	if assetID == "" || kind == "" {
-		return asset.ErrInvalidID
+// GetByExternalID returns the location record whose external_id matches.
+// Useful for cross-references (e.g., Drive webhook notifications arriving
+// with just a file ID and no asset_id yet).
+func (r *Repository) GetByExternalID(ctx context.Context, externalID string) (*AssetLocation, error) {
+	if externalID == "" {
+		return nil, nil
 	}
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url, is_public,
+		       mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at
+		FROM asset_locations
+		WHERE external_id = ?
+		LIMIT 1
+	`, externalID)
+	loc, err := scanLocation(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("assetlocations.GetByExternalID(%s): %w", externalID, err)
+	}
+	return loc, nil
+}
+
+// SetPrimary designates a location as the primary for its asset, unmarking
+// any previous primary. Runs in a transaction so there's never a moment
+// where the asset has 0 or 2 primary locations.
+func (r *Repository) SetPrimary(ctx context.Context, assetID string, kind LocationKind) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("assetlocations.SetPrimary(%s, %s) begin: %w", assetID, kind, err)
 	}
 	defer tx.Rollback()
 
-	nowStr := timeutil.FormatRFC3339(time.Now())
+	now := timeutil.FormatRFC3339(time.Now())
 
-	// Unset the existing primary.
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE asset_locations SET is_primary = 0, updated_at = ? WHERE asset_id = ? AND is_primary = 1`,
-		nowStr, assetID); err != nil {
+	// Unset any existing primary.
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE asset_locations SET is_primary = 0, updated_at = ?
+		WHERE asset_id = ? AND is_primary = 1
+	`, now, assetID); err != nil {
 		return fmt.Errorf("assetlocations.SetPrimary unset: %w", err)
 	}
 
 	// Set the new primary.
-	res, err := tx.ExecContext(ctx,
-		`UPDATE asset_locations SET is_primary = 1, updated_at = ? WHERE asset_id = ? AND location_kind = ?`,
-		nowStr, assetID, string(kind))
+	result, err := tx.ExecContext(ctx, `
+		UPDATE asset_locations SET is_primary = 1, updated_at = ?
+		WHERE asset_id = ? AND location_kind = ?
+	`, now, assetID, string(kind))
 	if err != nil {
 		return fmt.Errorf("assetlocations.SetPrimary set: %w", err)
 	}
-	affected, _ := res.RowsAffected()
+	affected, _ := result.RowsAffected()
 	if affected == 0 {
-		return asset.ErrNotFound
+		return fmt.Errorf("assetlocations.SetPrimary(%s, %s): location not found", assetID, kind)
 	}
 
-	if err := writeOutbox(ctx, tx, assetID, "location.primary_set",
-		struct{ AssetID, LocationKind string }{assetID, string(kind)}); err != nil {
-		return fmt.Errorf("assetlocations.SetPrimary outbox: %w", err)
-	}
 	return tx.Commit()
 }
 
-// Delete removes a single (assetID, kind) location row.
-func (r *Repository) Delete(ctx context.Context, assetID string, kind asset.LocationKind) error {
-	if assetID == "" || kind == "" {
-		return asset.ErrInvalidID
-	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("assetlocations.Delete begin: %w", err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.ExecContext(ctx,
-		`DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = ?`,
-		assetID, string(kind))
+// Delete removes a location record for an asset.
+func (r *Repository) Delete(ctx context.Context, assetID string, kind LocationKind) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = ?
+	`, assetID, string(kind))
 	if err != nil {
 		return fmt.Errorf("assetlocations.Delete(%s, %s): %w", assetID, kind, err)
-	}
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return asset.ErrNotFound
-	}
-
-	if err := writeOutbox(ctx, tx, assetID, "location.deleted",
-		struct{ AssetID, LocationKind string }{assetID, string(kind)}); err != nil {
-		return fmt.Errorf("assetlocations.Delete outbox: %w", err)
-	}
-	return tx.Commit()
-}
-
-// DeleteAll removes every location row for assetID.
-func (r *Repository) DeleteAll(ctx context.Context, assetID string) error {
-	if assetID == "" {
-		return asset.ErrInvalidID
-	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("assetlocations.DeleteAll begin: %w", err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.ExecContext(ctx,
-		`DELETE FROM asset_locations WHERE asset_id = ?`, assetID)
-	if err != nil {
-		return fmt.Errorf("assetlocations.DeleteAll(%s): %w", assetID, err)
-	}
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return asset.ErrNotFound
-	}
-
-	if err := writeOutbox(ctx, tx, assetID, "location.all_deleted",
-		struct{ AssetID string }{assetID}); err != nil {
-		return fmt.Errorf("assetlocations.DeleteAll outbox: %w", err)
-	}
-	return tx.Commit()
-}
-
-// ── Transactional API ───────────────────────────────────────────────────
-
-// Tx exposes the underlying transaction for compound operations across
-// multiple locations (and across tables).
-type Tx struct {
-	tx  *sql.Tx
-	log *zap.Logger
-}
-
-// OnCommit schedules an outbox event to be written if the transaction
-// commits successfully.
-func (t *Tx) OnCommit(ctx context.Context, assetID, event string, payload any) error {
-	return writeOutbox(ctx, t.tx, assetID, event, payload)
-}
-
-// Commit finalises the transaction.
-func (t *Tx) Commit() error { return t.tx.Commit() }
-
-// Rollback undoes the transaction.
-func (t *Tx) Rollback() error { return t.tx.Rollback() }
-
-// WithTx begins a transaction and runs fn with a Tx handle. If fn returns
-// an error, the transaction is rolled back; otherwise it is committed.
-// Outbox events scheduled via Tx.OnCommit share the transaction.
-func (r *Repository) WithTx(ctx context.Context, fn func(*Tx) error) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("assetlocations.WithTx begin: %w", err)
-	}
-	defer tx.Rollback()
-	if err := fn(&Tx{tx: tx, log: r.log}); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-// ── Outbox helpers ──────────────────────────────────────────────────────
-
-// writeOutbox enters one row into outbox_events, transaction-shared with
-// the caller's mutating SQL. Same signature as assetrepo.writeOutbox
-// so callers can compose both pipelines.
-func writeOutbox(ctx context.Context, tx *sql.Tx, aggregateID, event string, payload any) error {
-	var payloadJSON []byte
-	if payload == nil {
-		payloadJSON = []byte("{}")
-	} else {
-		b, err := json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("marshal outbox payload: %w", err)
-		}
-		payloadJSON = b
-	}
-	_, err := tx.ExecContext(ctx, `
-		INSERT INTO outbox_events (id, aggregate_id, event_type, payload_json, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, outboxID(), aggregateID, event, string(payloadJSON),
-		timeutil.FormatRFC3339(time.Now()),
-	)
-	if err != nil {
-		return fmt.Errorf("write outbox row: %w", err)
 	}
 	return nil
 }
 
-// outboxID matches the project convention used in jobs/events.go (UnixNano
-// + RandomString suffix). Avoids collisions on retries within the same
-// nanosecond.
-func outboxID() string {
-	return fmt.Sprintf("outbox_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
+// DeleteAll removes all location records for an asset.
+func (r *Repository) DeleteAll(ctx context.Context, assetID string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM asset_locations WHERE asset_id = ?`, assetID)
+	if err != nil {
+		return fmt.Errorf("assetlocations.DeleteAll(%s): %w", assetID, err)
+	}
+	return nil
+}
+
+// ── helpers ───────────────────────────────────────────────────────────
+
+func scanLocation(s interface{ Scan(dest ...any) error }) (*AssetLocation, error) {
+	loc := &AssetLocation{}
+	var isPrimary, isPublic int
+	var createdAtStr, updatedAtStr string
+	err := s.Scan(&loc.ID, &loc.AssetID, (*string)(&loc.LocationKind), &loc.URI,
+		&loc.ExternalID, &loc.WebViewLink, &loc.DownloadURL, &isPublic,
+		&loc.MimeType, &loc.FileSizeBytes, &loc.FileHash, &isPrimary,
+		&createdAtStr, &updatedAtStr)
+	if err != nil {
+		return nil, err
+	}
+	loc.IsPrimary = isPrimary == 1
+	loc.IsPublic = isPublic == 1
+	loc.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
+	loc.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
+	return loc, nil
+}
+
+func scanLocations(rows *sql.Rows) ([]AssetLocation, error) {
+	var out []AssetLocation
+	for rows.Next() {
+		loc, err := scanLocation(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *loc)
+	}
+	return out, rows.Err()
 }

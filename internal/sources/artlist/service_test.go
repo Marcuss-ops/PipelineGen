@@ -26,33 +26,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
 )
 
-// artlistTestSchema is the schema needed by artlist tests.
-const artlistTestSchema = `
-	CREATE TABLE IF NOT EXISTS media_assets (
-		id TEXT PRIMARY KEY,
-		source TEXT NOT NULL DEFAULT '',
-		name TEXT NOT NULL DEFAULT '',
-		tags TEXT NOT NULL DEFAULT '[]',
-		tags_norm TEXT NOT NULL DEFAULT '',
-		embedding_json TEXT NOT NULL DEFAULT '[]',
-		duration_ms INTEGER NOT NULL DEFAULT 0,
-		url TEXT NOT NULL DEFAULT '',
-		created_at TEXT,
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		media_type TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'ready',
-		local_path TEXT,
-		relative_path TEXT,
-		drive_file_id TEXT,
-		drive_folder_id TEXT,
-		drive_link TEXT,
-		download_link TEXT,
-		file_hash TEXT,
-		width INTEGER NOT NULL DEFAULT 0,
-		height INTEGER NOT NULL DEFAULT 0,
-		visual_embedding TEXT,
-		transcript_embedding TEXT,
-		updated_at TEXT
+// artlistTestSchema composes the full canonical media_assets CREATE TABLE
+// (see internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus
+// the companion clip_search_terms table used by artlist Search indexing.
+// Composing the canonical block keeps this fixture in lockstep with
+// production migrations and clips.Repository.mediaAssetColumns: a new
+// canonical column added by migration 060 only requires touching one
+// place, not every fixture.
+const artlistTestSchema = storage.CanonicalMediaAssetsSchema + `
+	CREATE TABLE IF NOT EXISTS clip_search_terms (
+		clip_id TEXT NOT NULL,
+		term TEXT NOT NULL,
+		PRIMARY KEY (clip_id, term)
 	);
 `
 
@@ -252,9 +237,10 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 		t.Errorf("expected 1 clip in DB, got %d", count)
 	}
 
-	// Verify drive link field exists (even if empty)
+	// Verify drive link field exists (even if empty) — drive_link is now
+	// a canonical column (migration 059), not a metadata_json key.
 	var driveLink string
-	err = db.QueryRow("SELECT COALESCE(json_extract(metadata_json, '$.drive_link'), '') FROM media_assets WHERE id = ?", clip.ID).Scan(&driveLink)
+	err = db.QueryRow("SELECT COALESCE(drive_link, '') FROM media_assets WHERE id = ?", clip.ID).Scan(&driveLink)
 	if err != nil {
 		t.Fatalf("failed to query drive link: %v", err)
 	}
@@ -279,9 +265,10 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	}
 	insertTestClip(t, db, clip)
 
-	// Verify drive link is persisted
+	// Verify drive link is persisted — drive_link is now a canonical
+	// column (migration 059), not a metadata_json key.
 	var driveLink string
-	err := db.QueryRow("SELECT COALESCE(json_extract(metadata_json, '$.drive_link'), '') FROM media_assets WHERE id = ?", clip.ID).Scan(&driveLink)
+	err := db.QueryRow("SELECT COALESCE(drive_link, '') FROM media_assets WHERE id = ?", clip.ID).Scan(&driveLink)
 	if err != nil {
 		t.Fatalf("failed to query drive link: %v", err)
 	}

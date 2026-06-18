@@ -102,6 +102,11 @@ func (a *ClipIndexerAdapter) hasEmbeddings(asset *VectorAsset) bool {
 }
 
 // readClipFromDB fetches clip metadata + embeddings from the media database.
+// Canonical columns (drive_link, local_path, category, media_type,
+// search_text) are read directly per migration 059. Source-specific
+// provider metadata stays in metadata_json (audio_embedding_json, style,
+// language, youtube_video_id, youtube_url, start, end, duration_ms) —
+// those are clipindexer source annotations, not canonical columns.
 func (a *ClipIndexerAdapter) readClipFromDB(ctx context.Context, clipID string) (*VectorAsset, error) {
 	query := `
 		SELECT id, name, source, tags,

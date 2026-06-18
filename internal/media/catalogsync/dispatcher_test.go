@@ -15,37 +15,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
-// dispatcherTestSchema mirrors the canonical media_assets + outbox_events
-// table layout used by PipelineGen. Kept locally because storage.NewTestDBWithSchema
-// is a thin wrapper that only takes the CREATE statements as a string.
+// dispatcherTestSchema composes the canonical media_assets CREATE TABLE
+// (see internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus the
+// outbox_events companion tables that Dispatcher reads/writes.
 //
 // The unique index on outbox_events(event_key) makes Dispatcher.EnqueueAndIndex
 // idempotent: a duplicate Enqueue with the same event_key is silently swallowed.
-const dispatcherTestSchema = `
-	CREATE TABLE media_assets (
-		id TEXT PRIMARY KEY,
-		source TEXT NOT NULL DEFAULT '',
-		name TEXT NOT NULL DEFAULT '',
-		tags TEXT NOT NULL DEFAULT '[]',
-		tags_norm TEXT NOT NULL DEFAULT '',
-		embedding_json TEXT NOT NULL DEFAULT '[]',
-		duration_ms INTEGER NOT NULL DEFAULT 0,
-		url TEXT NOT NULL DEFAULT '',
-		media_type TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT '',
-		local_path TEXT NOT NULL DEFAULT '',
-		relative_path TEXT NOT NULL DEFAULT '',
-		drive_file_id TEXT NOT NULL DEFAULT '',
-		drive_folder_id TEXT NOT NULL DEFAULT '',
-		drive_link TEXT NOT NULL DEFAULT '',
-		download_link TEXT NOT NULL DEFAULT '',
-		file_hash TEXT NOT NULL DEFAULT '',
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		visual_embedding TEXT NOT NULL DEFAULT '',
-		transcript_embedding TEXT NOT NULL DEFAULT '',
-		created_at TEXT,
-		updated_at TEXT
-	);
+const dispatcherTestSchema = storage.CanonicalMediaAssetsSchema + `
 	CREATE TABLE outbox_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		event_type TEXT NOT NULL,

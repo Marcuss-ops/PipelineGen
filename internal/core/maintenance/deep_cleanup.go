@@ -146,6 +146,9 @@ func (s *Service) scanDBOrphans(
 	c *deepCleanupCounters,
 ) {
 	// ── Pass 1: local file existence ──────────────────────────────────
+	// local_path is a canonical column (migration 059). orphan_locale /
+	// orphan_detected_at stay in JSON because they are deep_cleanup's
+	// state-machine markers, not columns on the schema.
 	localRows, err := db.QueryContext(ctx, `
 		SELECT id, COALESCE(local_path, '') AS lp,
 		       COALESCE(json_extract(metadata_json, '$.orphan_locale'), 0) AS already,

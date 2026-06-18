@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -284,6 +285,319 @@ func TestGetMigrationStatus(t *testing.T) {
 	formatted := FormatMigrateStatus(report)
 	assert.Contains(t, formatted, "applied")
 	assert.Contains(t, formatted, "pending")
+}
+
+// TestRunMigration059CanonicalMediaColumns verifies, end-to-end through the
+// storage.RunMigrations runner, that migration 059 (Blocco 3 / Task 9)
+//
+//  1. Adds the 16 canonical columns (lifecycle_state, deleted_at, folder_id,
+//     parent_folder_id, folder_path, category, filename, error, thumb_url,
+//     phash, search_text, scene_type, quality_score, reuse_count,
+//     last_used_at).
+//  2. Backfills those columns from any pre-existing metadata_json values
+//     (typed correctly: REAL for quality_score, INTEGER for reuse_count,
+//     TEXT for the rest).
+//  3. Strips ALL migrated keys from metadata_json — including the 7 legacy
+//     duplicates (drive_link, download_link, drive_file_id, file_hash,
+//     local_path, status, media_type) that the deprecated
+//     populateAssetMetadata used to write.
+//  4. Records the 059 entry in schema_migrations.
+//  5. Creates the 3 new indexes (idx_media_assets_lifecycle / category /
+//     folder_id).
+//  6. Survives the "fresh row" case (no metadata_json at insert time):
+//     column defaults applied, never NULL.
+//  7. Is idempotent: re-running RunMigrations is a no-op.
+//
+// The test inlines migration 059's SQL as a string constant so it stays
+// self-contained (no filesystem dependency on migrations/sqlite/). The
+// inline copy MUST be kept in sync with the on-disk file; a separate
+// SHA-256 hash check (TestMigration059DiskSync) enforces that.
+//
+// IMPORTANT: the inline SQL must NOT include BEGIN/COMMIT —
+// storage.RunMigrations wraps each migration in an outer transaction, and
+// a nested BEGIN inside the runner tx would fail with "cannot start a
+// transaction within a transaction".
+func TestRunMigration059CanonicalMediaColumns(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "migration-059-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Pre-059 schema: matches what migration 033 created for media_assets.
+	// Notably: NO lifecycle_state, NO deleted_at, NO folder_id etc. The
+	// pre-existing typed columns for drive_* / file_hash / etc. are
+	// still present; only their JSON mirrors are stripped by 059.
+	const pre059Schema = `
+		CREATE TABLE IF NOT EXISTS media_assets (
+		    id TEXT PRIMARY KEY,
+		    source TEXT NOT NULL DEFAULT '',
+		    name TEXT NOT NULL DEFAULT '',
+		    tags TEXT NOT NULL DEFAULT '[]',
+		    tags_norm TEXT NOT NULL DEFAULT '',
+		    embedding_json TEXT NOT NULL DEFAULT '[]',
+		    duration_ms INTEGER NOT NULL DEFAULT 0,
+		    url TEXT NOT NULL DEFAULT '',
+		    created_at TEXT,
+		    metadata_json TEXT NOT NULL DEFAULT '{}',
+		    drive_folder_id TEXT,
+		    media_type TEXT,
+		    status TEXT,
+		    local_path TEXT,
+		    relative_path TEXT,
+		    drive_file_id TEXT,
+		    drive_link TEXT,
+		    download_link TEXT,
+		    file_hash TEXT,
+		    visual_embedding TEXT,
+		    transcript_embedding TEXT,
+		    updated_at TEXT
+		);
+		CREATE INDEX IF NOT EXISTS idx_media_source ON media_assets(source);
+		CREATE INDEX IF NOT EXISTS idx_media_tags ON media_assets(tags_norm);
+	`
+
+	const migration059 = `
+		ALTER TABLE media_assets ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'ready';
+		ALTER TABLE media_assets ADD COLUMN deleted_at      TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN folder_id       TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN parent_folder_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN folder_path     TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN category        TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN filename        TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN error           TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN thumb_url       TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN phash           TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN search_text     TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN scene_type      TEXT NOT NULL DEFAULT '';
+		ALTER TABLE media_assets ADD COLUMN quality_score   REAL NOT NULL DEFAULT 0.0;
+		ALTER TABLE media_assets ADD COLUMN reuse_count     INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE media_assets ADD COLUMN last_used_at    TEXT NOT NULL DEFAULT '';
+
+		UPDATE media_assets SET
+		    lifecycle_state  = COALESCE(NULLIF(json_extract(metadata_json, '$.lifecycle_state'), ''), 'ready'),
+		    deleted_at       = COALESCE(json_extract(metadata_json, '$.deleted_at'), ''),
+		    folder_id        = COALESCE(json_extract(metadata_json, '$.folder_id'), ''),
+		    parent_folder_id = COALESCE(json_extract(metadata_json, '$.parent_folder_id'), ''),
+		    folder_path      = COALESCE(json_extract(metadata_json, '$.folder_path'), ''),
+		    category         = COALESCE(json_extract(metadata_json, '$.category'), ''),
+		    filename         = COALESCE(json_extract(metadata_json, '$.filename'), ''),
+		    error            = COALESCE(json_extract(metadata_json, '$.error'), ''),
+		    thumb_url        = COALESCE(json_extract(metadata_json, '$.thumb_url'), ''),
+		    phash            = COALESCE(json_extract(metadata_json, '$.phash'), ''),
+		    search_text      = COALESCE(json_extract(metadata_json, '$.search_text'), ''),
+		    scene_type       = COALESCE(json_extract(metadata_json, '$.scene_type'), ''),
+		    quality_score    = COALESCE(CAST(json_extract(metadata_json, '$.quality_score') AS REAL), 0.0),
+		    reuse_count      = COALESCE(CAST(json_extract(metadata_json, '$.reuse_count') AS INTEGER), 0),
+		    last_used_at     = COALESCE(json_extract(metadata_json, '$.last_used_at'), '')
+		;
+
+		UPDATE media_assets
+		SET metadata_json = json_remove(
+		    metadata_json,
+		    '$.deleted_at',
+		    '$.folder_id',
+		    '$.parent_folder_id',
+		    '$.folder_path',
+		    '$.category',
+		    '$.filename',
+		    '$.error',
+		    '$.thumb_url',
+		    '$.phash',
+		    '$.search_text',
+		    '$.scene_type',
+		    '$.quality_score',
+		    '$.reuse_count',
+		    '$.last_used_at',
+		    '$.drive_link',
+		    '$.download_link',
+		    '$.drive_file_id',
+		    '$.file_hash',
+		    '$.local_path',
+		    '$.status',
+		    '$.media_type'
+		)
+		WHERE metadata_json IS NOT NULL AND metadata_json != '{}';
+
+		CREATE INDEX IF NOT EXISTS idx_media_assets_lifecycle ON media_assets(lifecycle_state);
+		CREATE INDEX IF NOT EXISTS idx_media_assets_category  ON media_assets(category);
+		CREATE INDEX IF NOT EXISTS idx_media_assets_folder_id ON media_assets(folder_id);
+	`
+
+	require.NoError(t, os.WriteFile(
+		filepath.Join(tmpDir, "059_canonical_media_columns.sql"),
+		[]byte(migration059),
+		0644,
+	))
+
+	db := NewTestDB(t, &TestDBOpts{InMemory: true})
+
+	// Lay down the pre-059 schema manually and seed legacy data BEFORE
+	// invoking RunMigrations. RunMigrations then picks up 059 from the
+	// tmp dir and applies it on top.
+	_, err = db.Exec(pre059Schema)
+	require.NoError(t, err)
+
+	const legacyJSON = `{
+        "folder_id": "fld_001",
+        "drive_link": "https://drive.google.com/file/d/abc123",
+        "download_link": "https://drive.google.com/uc?id=abc123",
+        "drive_file_id": "abc123",
+        "file_hash": "deadbeef0001",
+        "local_path": "/var/media/clip_001.mp4",
+        "status": "ready",
+        "media_type": "video",
+        "filename": "clip_001.mp4",
+        "search_text": "amish family walking",
+        "category": "people",
+        "scene_type": "outdoor",
+        "quality_score": "0.85",
+        "reuse_count": "3",
+        "last_used_at": "2026-06-15T10:00:00Z",
+        "deleted_at": "2026-06-10T08:00:00Z",
+        "phash": "phash_001",
+        "error": "",
+        "folder_path": "/Amish",
+        "parent_folder_id": "fld_root",
+        "thumb_url": "https://example.com/thumb.jpg"
+    }`
+	_, err = db.Exec(`
+		INSERT INTO media_assets (id, source, name, metadata_json)
+		VALUES ('clip_001', 'youtube', 'Test Clip 001', ?)
+	`, legacyJSON)
+	require.NoError(t, err, "legacy seed insert")
+
+	// Fresh row (no metadata_json): the "happy path" of a brand-new row
+	// inserted after 059 has run; we simulate it by inserting pre-059
+	// without metadata_json, then asserting column defaults post-059.
+	_, err = db.Exec(`
+		INSERT INTO media_assets (id, source, name)
+		VALUES ('clip_002', 'artlist', 'Brand-new Clip')
+	`)
+	require.NoError(t, err, "fresh-row insert")
+
+	sdb := &SQLiteDB{DB: db, log: zap.NewNop()}
+	require.NoError(t, sdb.RunMigrations(zap.NewNop(), tmpDir),
+		"RunMigrations should apply 059 over the pre-seeded schema")
+
+	// === 1. The 16 canonical columns now exist ===
+	expectedColumns := []string{
+		"lifecycle_state", "deleted_at", "folder_id", "parent_folder_id",
+		"folder_path", "category", "filename", "error", "thumb_url",
+		"phash", "search_text", "scene_type", "quality_score",
+		"reuse_count", "last_used_at",
+	}
+	for _, col := range expectedColumns {
+		var cnt int
+		require.NoError(t, db.QueryRow(
+			"SELECT COUNT(*) FROM pragma_table_info('media_assets') WHERE name = ?", col,
+		).Scan(&cnt), "pragma_table_info query for %s", col)
+		assert.Equal(t, 1, cnt, "expected column %q to exist after migration 059", col)
+	}
+
+	// === 2. Text-column backfill: each canonical column holds the
+	// pre-migration metadata_json value ===
+	type backfillCheck struct {
+		column  string
+		jsonKey string
+		want    string
+	}
+	textBackfills := []backfillCheck{
+		{"folder_id", "folder_id", "fld_001"},
+		{"filename", "filename", "clip_001.mp4"},
+		{"category", "category", "people"},
+		{"scene_type", "scene_type", "outdoor"},
+		{"search_text", "search_text", "amish family walking"},
+		{"phash", "phash", "phash_001"},
+		{"thumb_url", "thumb_url", "https://example.com/thumb.jpg"},
+		{"folder_path", "folder_path", "/Amish"},
+		{"parent_folder_id", "parent_folder_id", "fld_root"},
+		{"deleted_at", "deleted_at", "2026-06-10T08:00:00Z"},
+		{"last_used_at", "last_used_at", "2026-06-15T10:00:00Z"},
+	}
+	for _, b := range textBackfills {
+		var colVal string
+		require.NoError(t, db.QueryRow(
+			"SELECT "+b.column+" FROM media_assets WHERE id='clip_001'",
+		).Scan(&colVal), "read column %s", b.column)
+		assert.Equal(t, b.want, colVal,
+			"backfill: column %s should mirror metadata_json.$.%s", b.column, b.jsonKey)
+	}
+
+	// === 3. Numeric-column typed backfill (REAL / INTEGER) ===
+	var qScore float64
+	require.NoError(t, db.QueryRow(
+		"SELECT quality_score FROM media_assets WHERE id='clip_001'",
+	).Scan(&qScore))
+	assert.InDelta(t, 0.85, qScore, 0.0001,
+		"quality_score should be backfilled as REAL (parsed from '0.85' string)")
+
+	var rCount int64
+	require.NoError(t, db.QueryRow(
+		"SELECT reuse_count FROM media_assets WHERE id='clip_001'",
+	).Scan(&rCount))
+	assert.Equal(t, int64(3), rCount,
+		"reuse_count should be backfilled as INTEGER (parsed from '3' string)")
+
+	// === 4. EVERY migrated JSON key is now stripped from metadata_json ===
+	strippedKeys := []string{
+		// 16 canonical fields (now columns)
+		"deleted_at", "folder_id", "parent_folder_id", "folder_path",
+		"category", "filename", "error", "thumb_url", "phash",
+		"search_text", "scene_type", "quality_score", "reuse_count",
+		"last_used_at",
+		// 7 legacy duplicates (the populateAssetMetadata residues)
+		"drive_link", "download_link", "drive_file_id",
+		"file_hash", "local_path", "status", "media_type",
+	}
+	for _, key := range strippedKeys {
+		var v sql.NullString
+		require.NoError(t, db.QueryRow(
+			"SELECT json_extract(metadata_json, ?) FROM media_assets WHERE id='clip_001'",
+			"$."+key,
+		).Scan(&v), "json_extract for stripped key %s", key)
+		stripped := !v.Valid || v.String == ""
+		assert.True(t, stripped,
+			"json key %q should be stripped from metadata_json by migration 059 (got %q)",
+			key, v.String)
+	}
+
+	// === 5. Fresh row gets default values for the new columns ===
+	var freshLifecycle string
+	var freshDeleted string
+	require.NoError(t, db.QueryRow(
+		"SELECT lifecycle_state, deleted_at FROM media_assets WHERE id='clip_002'",
+	).Scan(&freshLifecycle, &freshDeleted))
+	assert.Equal(t, "ready", freshLifecycle, "fresh row lifecycle_state default")
+	assert.Equal(t, "", freshDeleted, "fresh row deleted_at default")
+
+	// === 6. The three new indexes exist ===
+	expectedIndexes := []string{
+		"idx_media_assets_lifecycle",
+		"idx_media_assets_category",
+		"idx_media_assets_folder_id",
+	}
+	for _, idx := range expectedIndexes {
+		var cnt int
+		require.NoError(t, db.QueryRow(
+			"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?", idx,
+		).Scan(&cnt))
+		assert.Equal(t, 1, cnt, "expected index %q to exist after migration 059", idx)
+	}
+
+	// === 7. Migration 059 is recorded in schema_migrations ===
+	var recorded int
+	require.NoError(t, db.QueryRow(
+		"SELECT COUNT(*) FROM schema_migrations WHERE version=59",
+	).Scan(&recorded))
+	assert.Equal(t, 1, recorded, "migration 059 should be recorded in schema_migrations")
+
+	// === 8. RunMigrations is idempotent: running 059 again is a no-op ===
+	require.NoError(t, sdb.RunMigrations(zap.NewNop(), tmpDir),
+		"re-running RunMigrations must be a no-op (schema_migrations ledger)")
+	var ledgerCount int
+	require.NoError(t, db.QueryRow(
+		"SELECT COUNT(*) FROM schema_migrations WHERE version=59",
+	).Scan(&ledgerCount))
+	assert.Equal(t, 1, ledgerCount, "re-run must not duplicate the ledger entry")
 }
 
 // TestNewSQLiteDB validates DB creation with WAL mode and foreign keys.
