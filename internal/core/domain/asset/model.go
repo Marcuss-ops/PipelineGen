@@ -17,31 +17,30 @@ import (
 //
 // Fields map directly to typed columns in media_assets. Fields that are
 // NOT here (local_path, drive_link, file_hash, status, error) belong in
-// dedicated sub-tables (asset_locations, asset_processing) and are
-// accessed through the corresponding repository interfaces.
+// dedicated sub-tables and are accessed through their repository interfaces.
 type MediaAsset struct {
 	// ── Identity ──────────────────────────────────────────────────
 	ID       string `json:"id"`
-	Source   string `json:"source"`    // "youtube", "artlist", "stock", "image", "local"
+	Source   string `json:"source"`
 	Name     string `json:"name"`
 	Filename string `json:"filename"`
 
 	// ── Classification ────────────────────────────────────────────
-	MediaType string `json:"media_type"` // "video", "audio", "image"
-	Category  string `json:"category"`   // "nature", "tech", "people", etc.
+	MediaType string `json:"media_type"`
+	Category  string `json:"category"`
 	Group     string `json:"group"`
 
 	// ── URLs ──────────────────────────────────────────────────────
-	SourceURL    string `json:"source_url"`    // original source URL
-	ClipPageURL  string `json:"clip_page_url"` // Artlist clip page URL
-	ThumbnailURL string `json:"thumbnail_url"` // thumbnail image URL
-	ExternalURL  string `json:"external_url"`  // legacy alias for SourceURL
+	SourceURL    string `json:"source_url"`
+	ClipPageURL  string `json:"clip_page_url"`
+	ThumbnailURL string `json:"thumbnail_url"`
+	ExternalURL  string `json:"external_url"` // transitional alias for SourceURL
 
 	// ── Content ───────────────────────────────────────────────────
 	DurationMs  int64    `json:"duration_ms"`
 	Tags        []string `json:"tags"`
-	SearchTerms []string `json:"search_terms"` // queries that led to download
-	SearchText  string   `json:"search_text"`  // concatenated searchable text
+	SearchTerms []string `json:"search_terms"`
+	SearchText  string   `json:"search_text"`
 
 	// ── Lifecycle ─────────────────────────────────────────────────
 	LifecycleState LifecycleState `json:"lifecycle_state"`
@@ -50,17 +49,13 @@ type MediaAsset struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 
 	// ── Provider-specific metadata ────────────────────────────────
-	// This map holds variable, provider-specific fields that don't
-	// warrant a dedicated column (e.g. youtube_video_id, clean_title,
-	// clip_summary, hook, topics, speakers, language, style).
-	// Canonical fields MUST NOT be stored here — use typed columns.
+	// Canonical fields MUST NOT be stored here.
 	Metadata map[string]any `json:"metadata"`
 
-	// ── Legacy fields (to be removed) ────────────────────────────
-	// These fields exist in the struct temporarily for backward
-	// compatibility during the migration. They will be removed from
-	// the struct once all consumers are migrated.
-	// DO NOT add new consumers of these fields.
+	// ── Remaining migration fields ────────────────────────────────
+	// These fields are unrelated to physical storage and are removed in
+	// later focused migrations. Location and processing fields are no longer
+	// allowed on this entity.
 	EmbeddingJSON       string   `json:"embedding_json,omitempty"`
 	VisualEmbedding     string   `json:"visual_embedding,omitempty"`
 	TranscriptEmbedding string   `json:"transcript_embedding,omitempty"`
@@ -78,20 +73,9 @@ type MediaAsset struct {
 	AvoidFor            []string `json:"avoid_for,omitempty"`
 	PHash               string   `json:"phash,omitempty"`
 	ChildCount          int      `json:"child_count,omitempty"`
-
-	// ── Deprecated fields (removed: Status, Error → asset_processing) ─
-	// Location fields are kept for struct-compat during the transition.
-	// Status/Error have been migrated to asset_processing and removed.
-	// New code MUST NOT read or write these deprecated fields.
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
-	DownloadLink string `json:"download_link,omitempty"`
-	LocalPath   string `json:"local_path,omitempty"`
-	FileHash    string `json:"file_hash,omitempty"`
 }
 
 // MetadataJSON returns the Metadata map serialized as a JSON string.
-// Returns "{}" if Metadata is nil or empty.
 func (m *MediaAsset) MetadataJSON() string {
 	if m.Metadata == nil {
 		return "{}"
@@ -122,12 +106,12 @@ func (m *MediaAsset) GetMetadataString(key string) string {
 	if m.Metadata == nil {
 		return ""
 	}
-	v, ok := m.Metadata[key]
+	value, ok := m.Metadata[key]
 	if !ok {
 		return ""
 	}
-	s, _ := v.(string)
-	return s
+	result, _ := value.(string)
+	return result
 }
 
 // SetMetadataString sets a string value in the Metadata map.
