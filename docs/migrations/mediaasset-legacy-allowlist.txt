@@ -1,0 +1,78 @@
+# mediaasset-legacy-allowlist.txt
+# Files that import or reference models.MediaAsset (legacy type).
+# Each PR MUST reduce this list; new files MUST NOT appear here.
+# Generated: 2026-06-18 — baseline for codex/freeze-mediaasset-legacy
+#
+# Rule: no new file may be added to this list.
+#       every PR must remove at least one entry.
+#       when the list is empty, the legacy type can be deleted.
+#
+internal/api/handlers/sources/bulk_upload_worker.go
+internal/api/handlers/sources/clip_action_handlers.go
+internal/api/handlers/sources/clip_create.go
+internal/api/handlers/sources/clip_enrich.go
+internal/api/handlers/sources/clip_read_handlers.go
+internal/api/handlers/sources/clip_upload.go
+internal/api/handlers/sources/local_to_drive.go
+internal/api/handlers/sources/register_from_youtube.go
+internal/api/handlers/sources/sound_effect_handlers.go
+internal/api/handlers/sources/source_handlers_ops.go
+internal/api/handlers/sources/source_utils.go
+internal/api/handlers/sources/youtube_handlers.go
+internal/application/workerassets/service.go
+internal/core/domain/asset/repository.go
+internal/media/assetindex/resolver.go
+internal/media/assetregistry/clips_adapter.go
+internal/media/assetregistry/converters.go
+internal/media/autotag/service.go
+internal/media/catalogsync/dispatcher_test.go
+internal/media/catalogsync/sync_persist.go
+internal/media/catalogsync/sync_recursive.go
+internal/media/clipcatalog/repository.go
+internal/media/clipresolver/scorer.go
+internal/media/clipresolver/scoring.go
+internal/media/clipresolver/types.go
+internal/media/clipresolver/utils.go
+internal/media/deletion.go
+internal/media/images/google_vids_assets.go
+internal/media/images/nvidia_animate.go
+internal/media/ingest/adapter_clip.go
+internal/media/ontology/scorer.go
+internal/media/ontology/scorer_test.go
+internal/media/ontology/types.go
+internal/media/repository/repository.go
+internal/media/stockpipeline/run_upload.go
+internal/repository/clips/folders.go
+internal/repository/clips/list_clips.go
+internal/repository/clips/repository_delete_test.go
+internal/repository/clips/repository.go
+internal/repository/clips/scan.go
+internal/repository/clips/scoring.go
+internal/repository/clips/search.go
+internal/repository/clips/search_stock.go
+internal/repository/clips/search_terms.go
+internal/repository/clips/tags.go
+internal/repository/clips/utility.go
+internal/repository/outbox/dispatcher.go
+internal/repository/outbox/dispatcher_multi_test.go
+internal/repository/outbox/dispatcher_test.go
+internal/service/mediacurator/service_test.go
+internal/service/scriptcore/catalog_scanner.go
+internal/service/scriptcore/catalog_scanner_test.go
+internal/service/scriptcore/clip_source_evidence.go
+internal/service/scriptcore/clip_source.go
+internal/service/scriptcore/clip_source_test.go
+internal/sources/artlist/dto_search.go
+internal/sources/artlist/run_orchestrator_stages.go
+internal/sources/artlist/search_service.go
+internal/sources/artlist/semantic_enricher.go
+internal/sources/artlist/service.go
+internal/sources/artlist/service_test.go
+internal/sources/youtube/enrichment_fallback.go
+internal/sources/youtube/extractor_process.go
+internal/sources/youtube/metadata_enrich.go
+internal/sources/youtube/metadata_persist.go
+internal/sources/youtube/searcher_cache.go
+internal/sources/youtube/searcher.go
+internal/sources/youtube/search_topic.go
+internal/sources/youtube/service.go
