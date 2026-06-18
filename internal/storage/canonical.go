@@ -77,5 +77,19 @@ CREATE TABLE IF NOT EXISTS media_assets (
     scene_type TEXT NOT NULL DEFAULT '',
     quality_score REAL NOT NULL DEFAULT 0.0,
     reuse_count INTEGER NOT NULL DEFAULT 0,
-    last_used_at TEXT NOT NULL DEFAULT ''
+    last_used_at TEXT NOT NULL DEFAULT '',
+    group_name TEXT NOT NULL DEFAULT '',
+    search_terms TEXT NOT NULL DEFAULT '[]',
+    clip_page_url TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    external_url TEXT NOT NULL DEFAULT '',
+    usable_for TEXT NOT NULL DEFAULT '[]',
+    avoid_for TEXT NOT NULL DEFAULT '[]',
+    child_count INTEGER NOT NULL DEFAULT 0,
+    is_folder INTEGER NOT NULL DEFAULT 0,
+    depth INTEGER NOT NULL DEFAULT 0,
+    visual_embedding_json TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    project TEXT NOT NULL DEFAULT ''
 );`

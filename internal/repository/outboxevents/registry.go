@@ -45,3 +45,10 @@ func (r *HandlerRegistry) Register(h Handler) error {
 	r.handlers[key] = h
 	return nil
 }
+
+func (r *HandlerRegistry) Get(eventType string) (Handler, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	h, ok := r.handlers[eventType]
+	return h, ok
+}

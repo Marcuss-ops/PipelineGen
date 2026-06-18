@@ -325,5 +325,7 @@ func composeIntegration(
 		assetTagsRepo:       assetTagRepo,
 		assetVersionsRepo:   assetVerRepo,
 		assetQueryService:   assetQuerySvc,
+		DeliveryService:      core.DeliveryService,
+		DeliveryRunner:       core.DeliveryRunner,
 	}, nil
 }

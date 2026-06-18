@@ -35,6 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
@@ -66,6 +67,7 @@ type CoreDeps struct {
 	AssetRepo          asset.Repository
 	AssetLocationRepo  asset.LocationRepository
 	AssetProcessingRepo asset.ProcessingRepository
+	AssetVersionsRepo   *assetversions.Repository
 	AssetQueryService   *assetquery.Service
 	MonitorsRepo       *monitors.Repository
 	VoiceoverRepo      *voiceovers.Repository
