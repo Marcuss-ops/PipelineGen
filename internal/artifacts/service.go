@@ -188,12 +188,4 @@ func (s *Service) LocalPath(ctx context.Context, artifactID string) (string, err
 	return local.LocalPath(a.StorageKey)
 }
 
-// CreateInput is the input for CreateAndVerify.
-type CreateInput struct {
-	ID              string
-	JobID           string
-	Kind            string
-	MimeType        string
-	Reader          io.Reader
-	ExpectedSHA256  string // optional; empty = no pre-verification
-}
+

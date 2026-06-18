@@ -5,6 +5,11 @@
 //
 // Storage is content-addressed via SHA-256: the canonical key for any blob
 // is artifacts/sha256/xx/xxxx... where xx is the first two hex chars.
+//
+// PR3 (unify artifact registry): provenance tracking (ArtifactSource),
+// job-artifact linking (JobArtifact), URI resolution (ResolverRegistry),
+// and job-payload binding extraction (BindingExtractorRegistry) now live
+// here — the legacy internal/assetregistry package is being absorbed.
 package artifacts
 
 import (
@@ -12,6 +17,8 @@ import (
 	"io"
 	"time"
 )
+
+// ── Status ─────────────────────────────────────────────────────────
 
 // Status represents the canonical artifact states.
 type Status string
@@ -25,21 +32,55 @@ const (
 	StatusDeleted     Status = "DELETED"
 )
 
+// ── Artifact ───────────────────────────────────────────────────────
+
 // Artifact is the domain model for a stored artifact.
 type Artifact struct {
-	ID             string    `json:"id"`
-	JobID          string    `json:"job_id,omitempty"`
-	Kind           string    `json:"kind"`           // video, audio, thumbnail, image
-	Status         Status    `json:"status"`
-	StorageBackend string    `json:"storage_backend"` // local, s3
-	StorageKey     string    `json:"storage_key"`     // canonical blob path
-	SHA256         string    `json:"sha256"`
-	SizeBytes      int64     `json:"size_bytes"`
-	MimeType       string    `json:"mime_type"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	VerifiedAt     *time.Time `json:"verified_at,omitempty"`
+	ID             string     `json:"id"`
+	JobID          string     `json:"job_id,omitempty"`
+	Kind           string     `json:"kind"` // video, audio, thumbnail, image
+	Status         Status     `json:"status"`
+	StorageBackend string     `json:"storage_backend"` // local, s3
+	StorageKey     string     `json:"storage_key"`     // canonical blob path
+	SHA256         string     `json:"sha256"`
+	SizeBytes      int64      `json:"size_bytes"`
+	MimeType       string     `json:"mime_type"`
+	// Media-specific metadata (PR3: carried in from assetregistry.Asset).
+	DurationMs int        `json:"duration_ms,omitempty"`
+	Width      int        `json:"width,omitempty"`
+	Height     int        `json:"height,omitempty"`
+	// Timestamps.
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	VerifiedAt    *time.Time `json:"verified_at,omitempty"`
+	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
 }
+
+// ── Provenance ─────────────────────────────────────────────────────
+
+// ArtifactSource records the provenance of an artifact (PR3: was assetregistry.AssetSource).
+type ArtifactSource struct {
+	SourceID        string    `json:"source_id"`
+	ArtifactID      string    `json:"artifact_id"`
+	SourceType      string    `json:"source_type"`
+	SourceReference string    `json:"source_reference"`
+	SourceAccountID string    `json:"source_account_id,omitempty"`
+	ImportedAt      time.Time `json:"imported_at"`
+}
+
+// ── Job Linking ────────────────────────────────────────────────────
+
+// JobArtifact links an artifact to a job with a role and ordinal (PR3: was assetregistry.JobAsset).
+type JobArtifact struct {
+	JobID     string    `json:"job_id"`
+	ArtifactID string   `json:"artifact_id"`
+	Role      string    `json:"role"`
+	Ordinal   int       `json:"ordinal"`
+	Required  bool      `json:"required"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ── BlobStore ──────────────────────────────────────────────────────
 
 // BlobStore is the abstraction over content-addressed blob storage.
 // Implementations: LocalBlobStore (filesystem), S3BlobStore (future).
@@ -85,11 +126,129 @@ type BlobInfo struct {
 	Exists    bool
 }
 
+// ── Repository ─────────────────────────────────────────────────────
+
 // Repository is the persistence contract for artifact metadata.
 type Repository interface {
+	// Core CRUD.
 	Create(ctx context.Context, a *Artifact) error
 	Get(ctx context.Context, id string) (*Artifact, error)
 	GetBySHA256(ctx context.Context, sha256 string) (*Artifact, error)
 	UpdateStatus(ctx context.Context, id string, status Status, sha256 string, sizeBytes int64) error
 	ListByJob(ctx context.Context, jobID string) ([]Artifact, error)
+
+	// Provenance (PR3: from assetregistry.AssetRepository).
+	CreateSource(ctx context.Context, s *ArtifactSource) error
+
+	// Job-artifact linking (PR3: from assetregistry.AssetRepository).
+	UpsertJobArtifact(ctx context.Context, ja *JobArtifact) error
+	ListJobArtifacts(ctx context.Context, jobID string) ([]JobArtifact, error)
+	GetJobArtifact(ctx context.Context, jobID, artifactID string) (*JobArtifact, error)
+}
+
+// ── URI Resolution ─────────────────────────────────────────────────
+
+// Reference is a parsed asset URI like "velox-asset://ast_01ARZ3..."
+type Reference struct {
+	Scheme   string // velox-asset, drive, https, file
+	ArtifactID string
+	Raw      string // original URI string
+}
+
+// Resolver opens artifact content for a given URI scheme.
+type Resolver interface {
+	Scheme() string
+	Open(ctx context.Context, ref Reference) (io.ReadCloser, error)
+	Stat(ctx context.Context, ref Reference) (ObjectInfo, error)
+}
+
+// ObjectInfo holds metadata about a resolved artifact.
+type ObjectInfo struct {
+	SHA256    string
+	SizeBytes int64
+	MimeType  string
+}
+
+// ResolverRegistry manages scheme-to-resolver mappings (PR3: from assetregistry).
+type ResolverRegistry struct {
+	resolvers map[string]Resolver
+}
+
+// NewResolverRegistry creates an empty resolver registry.
+func NewResolverRegistry() *ResolverRegistry {
+	return &ResolverRegistry{resolvers: make(map[string]Resolver)}
+}
+
+// Register adds a resolver for a URI scheme.
+func (r *ResolverRegistry) Register(resolver Resolver) {
+	r.resolvers[resolver.Scheme()] = resolver
+}
+
+// Get returns the resolver for a scheme, or nil.
+func (r *ResolverRegistry) Get(scheme string) Resolver {
+	return r.resolvers[scheme]
+}
+
+// ── Binding Extraction ─────────────────────────────────────────────
+
+// Binding represents a requested artifact for a job payload (PR3: from assetregistry).
+type Binding struct {
+	Role     Role      `json:"role"`
+	Ordinal  int       `json:"ordinal"`
+	Required bool      `json:"required"`
+	Source   Reference `json:"source"`
+}
+
+// Role represents the artifact's role within a job.
+type Role string
+
+// ResolvedBinding pairs a binding with its resolved artifact ID.
+type ResolvedBinding struct {
+	Binding    Binding `json:"binding"`
+	ArtifactID string  `json:"artifact_id"`
+}
+
+// BindingExtractor extracts artifact bindings from a job payload
+// and rewrites the payload with resolved artifact references.
+type BindingExtractor interface {
+	JobType() string
+	Extract(payload map[string]any) ([]Binding, error)
+	Rewrite(payload map[string]any, resolved []ResolvedBinding) error
+}
+
+// BindingExtractorRegistry manages job-type to extractor mappings (PR3: from assetregistry).
+type BindingExtractorRegistry struct {
+	extractors []BindingExtractor
+	byJobType  map[string][]BindingExtractor
+}
+
+// NewBindingExtractorRegistry creates an empty extractor registry.
+func NewBindingExtractorRegistry() *BindingExtractorRegistry {
+	return &BindingExtractorRegistry{
+		extractors: make([]BindingExtractor, 0),
+		byJobType:  make(map[string][]BindingExtractor),
+	}
+}
+
+// Register adds an extractor for a job type.
+func (e *BindingExtractorRegistry) Register(ext BindingExtractor) {
+	e.extractors = append(e.extractors, ext)
+	e.byJobType[ext.JobType()] = append(e.byJobType[ext.JobType()], ext)
+}
+
+// GetForJobType returns all extractors that match a job type.
+func (e *BindingExtractorRegistry) GetForJobType(jobType string) []BindingExtractor {
+	return e.byJobType[jobType]
+}
+
+// ── Service Input/Output ───────────────────────────────────────────
+
+// CreateInput is the input for CreateAndVerify.
+type CreateInput struct {
+	ID             string
+	JobID          string
+	Kind           string
+	MimeType       string
+	Reader         io.Reader
+	ExpectedSHA256 string // optional; empty = no pre-verification
 }
