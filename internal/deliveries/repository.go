@@ -74,8 +74,10 @@ func (r *SQLiteRepository) Create(ctx context.Context, d *Delivery) error {
 }
 
 // ClaimNext atomically claims the next PENDING delivery for a worker.
+// Uses BEGIN IMMEDIATE to prevent concurrent claims on the same row
+// in WAL mode. Verifies rowsAffected to detect lost-update races.
 func (r *SQLiteRepository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration) (*Delivery, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, fmt.Errorf("deliveries: begin tx: %w", err)
 	}
@@ -113,8 +115,8 @@ func (r *SQLiteRepository) ClaimNext(ctx context.Context, workerID string, lease
 		return nil, fmt.Errorf("deliveries: claim: %w", err)
 	}
 
-	// Atomically mark as LEASED
-	_, err = tx.ExecContext(ctx, `
+	// Atomically mark as LEASED — verify rowsAffected to prevent lost-update races
+	result, err := tx.ExecContext(ctx, `
 		UPDATE deliveries
 		SET status = 'LEASED', lease_id = ?, lease_expires_at = ?,
 			updated_at = ?
@@ -122,6 +124,11 @@ func (r *SQLiteRepository) ClaimNext(ctx context.Context, workerID string, lease
 	`, leaseID, leaseExpires, nowStr, d.ID)
 	if err != nil {
 		return nil, fmt.Errorf("deliveries: claim update: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		// Another worker claimed this delivery first
+		return nil, nil
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -172,23 +179,19 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Delivery, error
 	return &d, nil
 }
 
-// UpdateStatus transitions a delivery to a new status.
+// UpdateStatus transitions a delivery to a new status. Uses parameterized
+// SQL to safely set optional fields (completed_at is set for terminal statuses).
 func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id string, status Status, remoteID, remoteURL, lastError string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	var completedAtSQL string
-	if status == StatusSucceeded || status == StatusFailed || status == StatusCancelled {
-		completedAtSQL = ", completed_at = '" + now + "'"
-	}
-
-	query := fmt.Sprintf(`
+	// Always set completed_at for terminal states via a CASE expression
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE deliveries
 		SET status = ?, remote_id = ?, remote_url = ?, last_error = ?,
-			updated_at = ?%s
+			updated_at = ?,
+			completed_at = CASE WHEN ? IN ('SUCCEEDED','FAILED','CANCELLED') THEN ? ELSE completed_at END
 		WHERE id = ?
-	`, completedAtSQL)
-
-	_, err := r.db.ExecContext(ctx, query, status, remoteID, remoteURL, lastError, now, id)
+	`, status, remoteID, remoteURL, lastError, now, status, now, id)
 	if err != nil {
 		return fmt.Errorf("deliveries: update %s: %w", id, err)
 	}
@@ -211,11 +214,18 @@ func (r *SQLiteRepository) RenewLease(ctx context.Context, id, leaseID string, l
 	return nil
 }
 
-// RequeueStale returns stale LEASED/RUNNING deliveries to PENDING.
+// RequeueStale returns stale LEASED/RUNNING deliveries to PENDING
+// atomically within a transaction.
 func (r *SQLiteRepository) RequeueStale(ctx context.Context, now time.Time, limit int) ([]Delivery, error) {
 	nowStr := now.UTC().Format(time.RFC3339)
 
-	rows, err := r.db.QueryContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return nil, fmt.Errorf("deliveries: requeue begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `
 		SELECT id, artifact_id, target_id, provider, status,
 			attempt_count, max_attempts, next_attempt_at,
 			lease_id, lease_expires_at, remote_id, remote_url,
@@ -249,14 +259,17 @@ func (r *SQLiteRepository) RequeueStale(ctx context.Context, now time.Time, limi
 		stale = append(stale, d)
 	}
 
-	// Return stale deliveries to PENDING
+	// Return stale deliveries to PENDING atomically
 	if len(stale) > 0 {
 		for _, d := range stale {
-			_, _ = r.db.ExecContext(ctx, `
+			_, _ = tx.ExecContext(ctx, `
 				UPDATE deliveries
 				SET status = 'PENDING', lease_id = '', lease_expires_at = NULL, updated_at = ?
 				WHERE id = ?
 			`, nowStr, d.ID)
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("deliveries: commit requeue: %w", err)
 		}
 	}
 	return stale, rows.Err()

@@ -129,21 +129,17 @@ func (r *SQLiteRepository) GetBySHA256(ctx context.Context, sha256 string) (*Art
 }
 
 // UpdateStatus transitions an artifact to a new status and updates its
-// storage metadata atomically.
+// storage metadata atomically. Uses parameterized SQL for verified_at.
 func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id string, status Status, sha256 string, sizeBytes int64) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	var verifiedAtSQL string
-	if status == StatusReady {
-		verifiedAtSQL = ", verified_at = '" + now + "'"
-	}
 
-	query := fmt.Sprintf(`
+	// Set verified_at via CASE expression for READY status
+	_, err := r.db.ExecContext(ctx, `
 		UPDATE artifacts
-		SET status = ?, sha256 = ?, size_bytes = ?, updated_at = ?%s
+		SET status = ?, sha256 = ?, size_bytes = ?, updated_at = ?,
+			verified_at = CASE WHEN ? = 'READY' THEN ? ELSE verified_at END
 		WHERE id = ?
-	`, verifiedAtSQL)
-
-	_, err := r.db.ExecContext(ctx, query, status, sha256, sizeBytes, now, id)
+	`, status, sha256, sizeBytes, now, status, now, id)
 	if err != nil {
 		return fmt.Errorf("artifacts: update status %s: %w", id, err)
 	}

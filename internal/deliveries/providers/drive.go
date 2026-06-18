@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -100,28 +101,19 @@ func (p *DriveProvider) ClassifyError(err error) deliveries.FailureClass {
 	}
 	errStr := err.Error()
 	// Auth errors
-	if containsAny(errStr, "oauth2", "token", "unauthorized", "403") {
-		return deliveries.FailureAuth
+	for _, sub := range []string{"oauth2", "token", "unauthorized", "403"} {
+		if strings.Contains(errStr, sub) {
+			return deliveries.FailureAuth
+		}
 	}
 	// Permanent config errors
-	if containsAny(errStr, "not found", "folder", "invalid") {
-		return deliveries.FailurePermanent
+	for _, sub := range []string{"not found", "folder", "invalid"} {
+		if strings.Contains(errStr, sub) {
+			return deliveries.FailurePermanent
+		}
 	}
 	// Default: retryable
 	return deliveries.FailureTemporary
-}
-
-func containsAny(s string, substrs ...string) bool {
-	for _, sub := range substrs {
-		if len(s) >= len(sub) {
-			for i := 0; i <= len(s)-len(sub); i++ {
-				if s[i:i+len(sub)] == sub {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // Compile-time check
