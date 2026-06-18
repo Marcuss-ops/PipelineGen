@@ -29,11 +29,10 @@ import (
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -82,7 +81,7 @@ func composeIntegration(
 	}
 
 	// ── Jobs System ────────────────────────────────────────────────────
-	jobsRepo := jobrepo.NewRepository(dbs.main.DB, log)
+	jobsRepo := jobservice.NewSQLiteStore(dbs.main.DB, log)
 	jobsDispatcher := jobservice.NewDispatcher()
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
@@ -281,9 +280,7 @@ func composeIntegration(
 		scriptsRepo:        mediaDomain.ScriptsRepo,
 		imageRepo:          mediaDomain.ImageRepo,
 		imageService:       mediaDomain.ImageService,
-		stockDriveRepo:     mediaDomain.ClipsRepo,
-		artlistRepo:        mediaDomain.ClipsRepo,
-		clipsOnlyRepo:      core.ClipsOnlyRepo,
+		clipsRepo:          core.ClipsOnlyRepo,
 		assetRepo:          core.AssetRepo,
 		monitorsRepo:       mediaDomain.MonitorsRepo,
 		voiceoverService:   mediaDomain.VoiceoverService,

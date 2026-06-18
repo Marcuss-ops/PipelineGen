@@ -314,7 +314,7 @@ func buildTextOnlyScriptPlan(
 	topic, sourceText, guidelines, title, language, tone, model string,
 	forceRefresh, saveToDB bool, targetWords int,
 	promptVersion, editorPromptVersion, qaPromptVersion string,
-) *scriptcore.ScriptGenerationPlan {
+) *scripts.ScriptGenerationPlan {
 	if topic == "" {
 		topic = sourceText
 	}
@@ -322,7 +322,7 @@ func buildTextOnlyScriptPlan(
 		title = topic
 	}
 
-	plan := scriptcore.NewPlan()
+	plan := scripts.NewPlan()
 	plan.Title = title
 	plan.Topic = topic
 	plan.Language = language

@@ -86,15 +86,15 @@ func (a *ArtlistStockAssociation) searchInDB(ctx context.Context, term string, t
 				zap.Bool("topic_matched", result.TopicMatched),
 				zap.Strings("matched_tokens", matchedTokens))
 
-			link := clip.DriveLink
+			link := clip.DriveLink()
 			if link == "" {
-				link = clip.ExternalURL
+				link = clip.ExternalURL()
 			}
 
 			matches = append(matches, ScoredMatch{
 				ClipID:  clip.ID,
 				Title:   clip.Name,
-				Path:    clip.LocalPath,
+				Path:    clip.LocalPath(),
 				Score:   result.Score,
 				Source:  "artlist_stock",
 				Link:    link,

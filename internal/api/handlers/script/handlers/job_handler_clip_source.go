@@ -10,7 +10,6 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -80,11 +79,11 @@ type jobPayloadUnified struct {
 // clipSourcePathResult is the result produced by a single script generation path.
 // The same struct is used regardless of which path was taken (clip, auto-search, text-only).
 type clipSourcePathResult struct {
-	WriteResult       *scriptcore.WriteScriptResult
-	ClipScenes        []scriptcore.ClipScene
+	WriteResult       *scripts.WriteScriptResult
+	ClipScenes        []scripts.ClipScene
 	SourceFingerprint string
 	SearchResults     []mediacurator.SearchResultInfo
-	NarrativePlan     *scriptcore.NarrativePlan
+	NarrativePlan     *scripts.NarrativePlan
 	CurateTimings     mediacurator.CurateTimings
 }
 
@@ -128,7 +127,7 @@ var scriptGenSemaphore = make(chan struct{}, 2)
 //
 // Each phase emits pipeline_stage_started / _completed zap logs with
 // duration_ms so operators can pinpoint exactly where a job is stalled.
-func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling unified script generation job", zap.String("job_id", job.ID))
 
 	h.log.Info("waiting for script generation slot (max 2 concurrent)", zap.String("job_id", job.ID))

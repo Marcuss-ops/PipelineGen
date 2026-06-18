@@ -56,9 +56,9 @@ func (s *Service) loadClipsFromDB(ctx context.Context, repo *clips.Repository, s
 		records = append(records, catalog.StockClipRef{
 			ClipID:     c.ID,
 			Name:       c.Name,
-			FolderID:   c.FolderID,
-			FolderPath: c.FolderPath,
-			DriveLink:  c.DriveLink,
+			FolderID:   c.FolderID(),
+			FolderPath: c.FolderPath(),
+			DriveLink:  c.DriveLink(),
 			MediaType:  c.MediaType,
 			Group:      c.Group,
 		})

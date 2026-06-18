@@ -16,7 +16,7 @@ func (s *AssetStoreSQLite) BulkAddTags(ctx context.Context, ids []string, tags [
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (s *AssetStoreSQLite) BulkRemoveTags(ctx context.Context, ids []string, tag
 		return nil
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -112,14 +112,14 @@ func (s *AssetStoreSQLite) BulkRemoveTags(ctx context.Context, ids []string, tag
 // GetClipByFolderAndFilename retrieves a clip by folder and filename (canonical columns after migration 059).
 func (s *AssetStoreSQLite) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*Asset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
-	row := r.db.QueryRowContext(ctx, query, folderID, filename)
-	return r.scanCanonicalAssetRow(row)
+	row := s.db.QueryRowContext(ctx, query, folderID, filename)
+	return s.scanCanonicalAssetRow(row)
 }
 
 // GetClip retrieves a clip by ID. PR1: delegates to canonical assetrepo,
 // which returns (nil, asset.ErrSoftDeleted) for soft-deleted assets.
 func (s *AssetStoreSQLite) GetClip(ctx context.Context, id string) (*Asset, error) {
-	return r.canonical.Get(ctx, id)
+	return s.Get(ctx, id)
 }
 
 // GetClipByDriveFileID finds a clip by Drive file ID (searches canonical columns drive_file_id, drive_link, download_link).
@@ -132,8 +132,8 @@ func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID stri
 
 	pattern := "%" + fileID + "%"
 	query := buildMediaAssetQuery("") + " AND (drive_link LIKE ? OR download_link LIKE ? OR drive_file_id LIKE ?) LIMIT 1"
-	row := r.db.QueryRowContext(ctx, query, pattern, pattern, pattern)
-	clip, err := r.scanCanonicalAssetRow(row)
+	row := s.db.QueryRowContext(ctx, query, pattern, pattern, pattern)
+	clip, err := s.scanCanonicalAssetRow(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -143,7 +143,7 @@ func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID stri
 // FindClipsByHash returns all clips with the given file hash (canonical column after migration 059).
 func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]*Asset, error) {
 	query := buildMediaAssetQuery("") + " AND file_hash = ?"
-	rows, err := r.db.QueryContext(ctx, query, hash)
+	rows, err := s.db.QueryContext(ctx, query, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +163,7 @@ func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]
 // GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (canonical column).
 func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*Asset, error) {
 	query := buildMediaAssetQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -188,12 +188,13 @@ func (s *AssetStoreSQLite) UpdateDriveFileID(ctx context.Context, clipID, fileID
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET drive_file_id = ? WHERE id=?", fileID, clipID)
+	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET drive_file_id = ? WHERE id=?", fileID, clipID)
 	return err
 }
 
 // UpdateFileHash updates the file_hash for a clip (canonical column).
 func (s *AssetStoreSQLite) UpdateFileHash(ctx context.Context, clipID, hash string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
+	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
 	return err
 }
+

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 // GetJobByRunID retrieves a job by its run ID (which is the job ID).

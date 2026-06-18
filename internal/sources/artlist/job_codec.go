@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.
@@ -159,9 +159,9 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 
 // ResponseFromJob converts a domain job.Job to RunTagResponse.
 // (domain job.Result is json.RawMessage, so we unmarshal it first)
-func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
+func (c *JobCodec) ResponseFromJob(job *jobs.Job) *RunTagResponse {
 	resp := &RunTagResponse{
-		OK:        job.Status != domainjob.StatusFailed,
+		OK:        job.Status != jobs.StatusFailed,
 		RunID:     job.ID,
 		Status:    string(job.Status),
 		Error:     job.Error,

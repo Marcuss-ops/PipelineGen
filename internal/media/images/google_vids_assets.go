@@ -77,10 +77,10 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		Name:        name,
 		Source:      source,
 		MediaType:   "video",
-		DriveFileID: driveFileID,
-		DriveLink:   driveLink,
 		CreatedAt:   time.Now(),
 	}
+	clip.SetDriveFileID(driveFileID)
+	clip.SetDriveLink(driveLink)
 	clip.SetMetadataString("prompt", description)
 	clip.SetMetadataString("style", style)
 	clip.SetMetadataString("generator", source)
@@ -234,15 +234,15 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 		Name:        description + " (audio)",
 		Source:      source,
 		MediaType:   "sound_effect",
-		LocalPath:   audioPath,
-		DriveFileID: fileID,
-		DriveLink:   webLink,
-		FolderID:    folderID,
 		DurationMs:  3000,
 		CreatedAt:   time.Now(),
 		SearchText:  searchText,
 		Tags:        tags,
 	}
+	clip.SetLocalPath(audioPath)
+	clip.SetDriveFileID(fileID)
+	clip.SetDriveLink(webLink)
+	clip.SetFolderID(folderID)
 	if style != "" {
 		clip.Group = style
 	}

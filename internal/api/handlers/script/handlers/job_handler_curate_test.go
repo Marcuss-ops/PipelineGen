@@ -11,8 +11,8 @@ import (
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-func sampleCurateScenes() []scriptcore.ClipScene {
-	return []scriptcore.ClipScene{
+func sampleCurateScenes() []scripts.ClipScene {
+	return []scripts.ClipScene{
 		{
 			SceneIndex: 1,
 			Text: "The annals of cinematic history are littered with legends. " +
@@ -102,7 +102,7 @@ func TestBuildCurateDocContent_PreviewStripsClipAndNarrationMarkers(t *testing.T
 	// Regression guard: a narration body that survives the LLM pass with the
 	// [Clip: <id>] or [Narration: <role>] marker on the first line MUST be
 	// stripped from the per-scene preview so the reader sees prose, not handles.
-	scenes := []scriptcore.ClipScene{
+	scenes := []scripts.ClipScene{
 		{
 			SceneIndex: 1,
 			ClipID:     "abc123",
@@ -169,7 +169,7 @@ func TestBuildCurateDocContent_EmptyScenesList_StillRendersValidDoc(t *testing.T
 }
 
 func TestBuildCurateDocContent_ClipSceneWithEmptyText_StillRendersLabelAndDriveLink(t *testing.T) {
-	scenes := []scriptcore.ClipScene{
+	scenes := []scripts.ClipScene{
 		{
 			SceneIndex: 1,
 			ClipID:     "silent_clip",
@@ -212,7 +212,7 @@ func TestBuildCurateDocContent_NoDriveLinkForIntroScene(t *testing.T) {
 }
 
 func TestBuildCurateDocContent_LastNarrationSceneIsLabeledOutro(t *testing.T) {
-	scenes := []scriptcore.ClipScene{
+	scenes := []scripts.ClipScene{
 		{SceneIndex: 1, Text: "Hook line. This is the opening narration."},
 		{SceneIndex: 2, ClipID: "c1", DriveLink: "https://drive.google.com/file/d/c1",
 			Text: "First clip narration."},

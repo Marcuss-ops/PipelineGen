@@ -9,12 +9,11 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
 // HandleJob processes a catalog.sync job.
-func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	s.log.Info("handling catalog.sync job", zap.String("job_id", job.ID))
 
 	var payload struct {
@@ -68,7 +67,7 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 // RegisterHandler registers this service as a handler for catalog.sync jobs.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.TypeCatalogSync, s.HandleJob)
+		jobsSvc.RegisterHandler(jobservice.JobTypeCatalogSync, s.HandleJob)
 		s.log.Info("registered catalog.sync job handler")
 	}
 }
@@ -76,14 +75,14 @@ func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 // RegisterDriveFolderSyncHandler registers the handler for async drive.folder.sync jobs.
 func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.TypeDriveFolderSync, s.HandleDriveFolderSyncJob)
+		jobsSvc.RegisterHandler(jobservice.JobTypeDriveFolderSync, s.HandleDriveFolderSyncJob)
 		s.log.Info("registered drive.folder.sync job handler")
 	}
 }
 
 // HandleDriveFolderSyncJob processes an async drive.folder.sync job.
 // It wraps SyncFolderID with progress reporting and mutex serialization.
-func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	var payload struct {
 		DriveFolderID string `json:"drive_folder_id"`
 		Source        string `json:"source,omitempty"`

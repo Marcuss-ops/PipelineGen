@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )

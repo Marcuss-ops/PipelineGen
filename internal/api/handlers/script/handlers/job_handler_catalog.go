@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -43,7 +42,7 @@ type jobPayloadCatalogScript struct {
 //  3. Build source text from evidence + plan
 //  4. Generate script through common engine (WriteScript)
 //  5. Assemble result with catalog_report metadata
-func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_from_catalog job", zap.String("job_id", job.ID))
 
 	clipSvc := h.clipSourceBuilder
@@ -63,7 +62,7 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 		tools.Progress(5, fmt.Sprintf("Loading %d clips selected from catalog", len(payload.ClipIDs)))
 	}
 
-	opts := &scriptcore.ClipGenerationOptions{
+	opts := &scripts.ClipGenerationOptions{
 		Language:         payload.Language,
 		Tone:             payload.Tone,
 		Title:            payload.Title,
@@ -90,15 +89,15 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 	}
 
 	// Compute source fingerprint for memory gate cache key
-	sourceFingerprint := clipSvc.ComputeFingerprint(payload.ClipIDs, pack, opts, scriptcore.NewFingerprintContext(opts.Model, opts.Model))
+	sourceFingerprint := clipSvc.ComputeFingerprint(payload.ClipIDs, pack, opts, scripts.NewFingerprintContext(opts.Model, opts.Model))
 
 	if tools.Progress != nil {
 		tools.Progress(50, "Generating script via common engine (MemoryGate, normalization)...")
 	}
 
 	// Step 4: Generate script through the common engine
-	writeResult, err := h.engine.WriteScript(ctx, scriptcore.WriteScriptRequest{
-		Plan: &scriptcore.ScriptGenerationPlan{
+	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{
+		Plan: &scripts.ScriptGenerationPlan{
 			Title:       plan.Title,
 			Topic:       plan.Title,
 			Language:    opts.Language,

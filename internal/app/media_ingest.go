@@ -24,7 +24,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 	if coreDeps == nil || coreDeps.DriveClient == nil {
 		return nil, nil
 	}
-	if coreDeps.ImageRepo == nil || coreDeps.VoiceoverRepo == nil || coreDeps.ClipsOnlyRepo == nil || coreDeps.StockDriveRepo == nil || coreDeps.AssetIndexService == nil {
+	if coreDeps.ImageRepo == nil || coreDeps.VoiceoverRepo == nil || coreDeps.ClipsRepo == nil || coreDeps.AssetIndexService == nil {
 		return nil, nil
 	}
 

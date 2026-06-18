@@ -169,13 +169,13 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 					"name":          existingClip.Name,
 					"filename":      existingClip.Filename,
 					"duration_sec":  existingClip.DurationMs / 1000,
-					"drive_link":    existingClip.DriveLink,
-					"drive_file_id": existingClip.DriveFileID,
-					"file_hash":     existingClip.FileHash,
+					"drive_link":    existingClip.DriveLink(),
+					"drive_file_id": existingClip.DriveFileID(),
+					"file_hash":     existingClip.FileHash(),
 					"source":        existingClip.Source,
 					"category":      existingClip.Category,
 					"tags":          existingClip.Tags,
-					"local_path":    existingClip.LocalPath,
+					"local_path":    existingClip.LocalPath(),
 					"indexed":       h.clipIndexer != nil || h.vectorStore != nil,
 					"message":       "clip already registered for this YouTube video",
 				})
@@ -501,15 +501,15 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		MediaType:  "video",
 		Tags:       req.Tags,
 		SearchText: description,
-		LocalPath:  downloadedPath,
-		FileHash:   fileHash,
-		FolderID:   targetFolderID,
-		FolderPath: group,
 		SourceURL:  req.URL,
 		DurationMs: int64(duration) * 1000,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
+	clip.SetLocalPath(downloadedPath)
+	clip.SetFileHash(fileHash)
+	clip.SetFolderID(targetFolderID)
+	clip.SetFolderPath(group)
 
 	clip.SetMetadataString("youtube_video_id", videoID)
 	clip.SetMetadataString("youtube_url", req.URL)
@@ -539,9 +539,9 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		}
 	}
 	if uploadResult != nil {
-		clip.DriveLink = uploadResult.WebViewLink
-		clip.DownloadLink = uploadResult.DownloadLink
-		clip.DriveFileID = uploadResult.FileID
+		clip.SetDriveLink(uploadResult.WebViewLink)
+		clip.SetDownloadLink(uploadResult.DownloadLink)
+		clip.SetDriveFileID(uploadResult.FileID)
 	}
 	if req.Start > 0 {
 		clip.SetMetadataString("start", fmt.Sprintf("%.1f", req.Start))
@@ -590,8 +590,8 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		"name":            clip.Name,
 		"filename":        driveFilename,
 		"duration_sec":    duration,
-		"drive_link":      clip.DriveLink,
-		"drive_file_id":   clip.DriveFileID,
+		"drive_link":      clip.DriveLink(),
+		"drive_file_id":   clip.DriveFileID(),
 		"file_hash":       fileHash,
 		"source":          source,
 		"category":        req.Category,

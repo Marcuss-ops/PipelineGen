@@ -14,10 +14,10 @@ import (
 func (s *AssetStoreSQLite) GetFolderChildren(ctx context.Context, parentID string) ([]*Asset, error) {
 	query := `SELECT ` + mediaAssetColumns + `
 		FROM media_assets
-		WHERE ` + r.SoftDeleteFilter() + ` AND parent_folder_id = ?
+		WHERE ` + SoftDeleteFilter() + ` AND parent_folder_id = ?
 		ORDER BY name ASC`
 
-	rows, err := r.db.QueryContext(ctx, query, parentID)
+	rows, err := s.db.QueryContext(ctx, query, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func (s *AssetStoreSQLite) GetFolderChildren(ctx context.Context, parentID strin
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
-			r.log.Error("failed to scan clip", zap.Error(err))
+			s.log.Error("failed to scan clip", zap.Error(err))
 			continue
 		}
 		clips = append(clips, clip)
@@ -43,8 +43,8 @@ func (s *AssetStoreSQLite) FindByPHash(ctx context.Context, phash string) (strin
 		return "", nil
 	}
 	var id string
-	query := `SELECT id FROM media_assets WHERE phash = ? AND ` + r.SoftDeleteFilter() + ` LIMIT 1`
-	err := r.db.QueryRowContext(ctx, query, phash).Scan(&id)
+	query := `SELECT id FROM media_assets WHERE phash = ? AND ` + SoftDeleteFilter() + ` LIMIT 1`
+	err := s.db.QueryRowContext(ctx, query, phash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
@@ -61,7 +61,7 @@ func (s *AssetStoreSQLite) MarkUsed(ctx context.Context, clipID string) error {
 		return nil
 	}
 	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx, `
+	_, err := s.db.ExecContext(ctx, `
 		UPDATE media_assets
 		SET reuse_count = reuse_count + 1,
 		    last_used_at = ?
@@ -73,9 +73,10 @@ func (s *AssetStoreSQLite) MarkUsed(ctx context.Context, clipID string) error {
 // MarkClipsUsed marks multiple clips as used in a single operation.
 func (s *AssetStoreSQLite) MarkClipsUsed(ctx context.Context, clipIDs []string) error {
 	for _, id := range clipIDs {
-		if err := r.MarkUsed(ctx, id); err != nil {
+		if err := s.MarkUsed(ctx, id); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+

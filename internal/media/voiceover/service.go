@@ -7,7 +7,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/audioasset"
@@ -86,7 +85,7 @@ func NewService(
 // RegisterHandler registers this service as a handler for voiceover jobs
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.TypeVoiceoverBatch, s.HandleJob)
+		jobsSvc.RegisterHandler(jobservice.JobTypeVoiceoverBatch, s.HandleJob)
 		s.log.Info("registered voiceover job handler")
 	}
 }

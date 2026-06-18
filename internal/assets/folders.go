@@ -18,7 +18,7 @@ func (s *AssetStoreSQLite) UpsertFolder(ctx context.Context, folder *ClipFolder)
 	searchKey := strings.ToLower(folder.Group + " " + folder.FolderPath)
 	searchKey = strings.ReplaceAll(searchKey, " ", "")
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO clip_folders (id, source, source_url, video_id, folder_id, folder_path,
 			local_folder_path, group_name, manifest_txt_path, manifest_json_path,
 			clip_count, processed_count, failed_count, skipped_count, last_error, metadata, created_at, updated_at, search_key)
@@ -47,14 +47,14 @@ func (s *AssetStoreSQLite) DeleteFolder(ctx context.Context, id string) error {
 		return fmt.Errorf("clip folder id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "DELETE FROM clip_folders WHERE id = ?", id)
+	_, err := s.db.ExecContext(ctx, "DELETE FROM clip_folders WHERE id = ?", id)
 	return err
 }
 
 // GetFolder retrieves a clip folder by ID
 func (s *AssetStoreSQLite) GetFolder(ctx context.Context, id string) (*ClipFolder, error) {
 	query := buildClipFolderQuery("") + " WHERE id = ? LIMIT 1"
-	row := r.db.QueryRowContext(ctx, query, id)
+	row := s.db.QueryRowContext(ctx, query, id)
 
 	var folder ClipFolder
 	var createdAt, updatedAt string
@@ -76,7 +76,7 @@ func (s *AssetStoreSQLite) GetFolder(ctx context.Context, id string) (*ClipFolde
 // GetFolderByVideoID retrieves a clip folder by video ID
 func (s *AssetStoreSQLite) GetFolderByVideoID(ctx context.Context, videoID string) (*ClipFolder, error) {
 	query := buildClipFolderQuery("") + " WHERE video_id = ? LIMIT 1"
-	row := r.db.QueryRowContext(ctx, query, videoID)
+	row := s.db.QueryRowContext(ctx, query, videoID)
 
 	var folder ClipFolder
 	var createdAt, updatedAt string
@@ -97,8 +97,8 @@ func (s *AssetStoreSQLite) GetFolderByVideoID(ctx context.Context, videoID strin
 
 // ListByFolderID returns all clips for a given folder ID (canonical column after migration 059).
 func (s *AssetStoreSQLite) ListByFolderID(ctx context.Context, folderID string) ([]*Asset, error) {
-	query := r.buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
-	rows, err := r.db.QueryContext(ctx, query, folderID)
+	query := buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
+	rows, err := s.db.QueryContext(ctx, query, folderID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,8 +117,8 @@ func (s *AssetStoreSQLite) ListByFolderID(ctx context.Context, folderID string) 
 
 // ListByFolderPath returns all clips for a given folder path (canonical column).
 func (s *AssetStoreSQLite) ListByFolderPath(ctx context.Context, folderPath string) ([]*Asset, error) {
-	query := r.buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
-	rows, err := r.db.QueryContext(ctx, query, folderPath)
+	query := buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
+	rows, err := s.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (s *AssetStoreSQLite) ListByFolderPath(ctx context.Context, folderPath stri
 // CountByFolderID returns the number of clips in a folder (folder_id is a canonical column).
 func (s *AssetStoreSQLite) CountByFolderID(ctx context.Context, folderID string) (int, error) {
 	query := "SELECT COUNT(*) FROM media_assets WHERE folder_id = ?"
-	row := r.db.QueryRowContext(ctx, query, folderID)
+	row := s.db.QueryRowContext(ctx, query, folderID)
 	var count int
 	err := row.Scan(&count)
 	return count, err
@@ -157,7 +157,7 @@ func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*C
 		args = append(args, source)
 	}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([
 	}
 
 	query := buildClipFolderQuery("") + " WHERE " + conditionSQL + " ORDER BY updated_at DESC"
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -225,3 +225,4 @@ func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([
 // GetFolderChildren returns all clips that are children of the given parent_folder_id.
 // parent_folder_id is stored in metadata_json.
 // Pass an empty string to get root folders.
+

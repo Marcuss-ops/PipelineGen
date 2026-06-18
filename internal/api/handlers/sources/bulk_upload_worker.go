@@ -13,23 +13,21 @@ import (
 
 	"go.uber.org/zap"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
 // RegisterJobHandlers (called from NewHandler).
-func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	// Job-level deadline so abandoned jobs can't sit half-done forever.
 	// Worker ctx only times out on shutdown, which leaves orphans otherwise.
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
 
-	payload := &models.BulkUploadYouTubeClipsPayload{}
+	payload := &jobservice.BulkUploadYouTubeClipsPayload{}
 	if err := json.Unmarshal(job.Payload, payload); err != nil {
 		return nil, fmt.Errorf("invalid payload: %w", err)
 	}
@@ -204,7 +202,7 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *doma
 //  6. Push to Qdrant (handled automatically by clipIndexer.IndexClip unless skip_qdrant)
 func (h *Handler) processOneClip(
 	ctx context.Context,
-	payload *models.BulkUploadYouTubeClipsPayload,
+	payload *jobservice.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
 	resolveSubdirFolderID func(ctx context.Context, subdir string) (string, error),
 	uploaded, indexed, pushed, skipped, failed *atomic.Int64,
@@ -306,22 +304,22 @@ func (h *Handler) processOneClip(
 	}
 
 	clip := &domainasset.MediaAsset{
-		ID:           clipID,
-		Name:         cand.DisplayName(),
-		Filename:     filepath.Base(cand.LocalPath),
-		Source:       source,
-		Category:     category,
-		MediaType:    "video",
-		SearchText:   deriveSearchText(cand),
-		LocalPath:    cand.LocalPath,
-		FileHash:     fileHash,
-		FolderID:     targetFolderID,
-		FolderPath:   cand.Subdir,
+		ID:             clipID,
+		Name:           cand.DisplayName(),
+		Filename:       filepath.Base(cand.LocalPath),
+		Source:         source,
+		Category:       category,
+		MediaType:      "video",
+		SearchText:     deriveSearchText(cand),
 		LifecycleState: domainasset.StateReady,
-		DurationMs:   int64(extractIntFromManifest(cand.Manifest, "duration_sec")) * 1000,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		DurationMs:     int64(extractIntFromManifest(cand.Manifest, "duration_sec")) * 1000,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
+	clip.SetLocalPath(cand.LocalPath)
+	clip.SetFileHash(fileHash)
+	clip.SetFolderID(targetFolderID)
+	clip.SetFolderPath(cand.Subdir)
 	// Store the YouTube ID and source URL if the manifest has them
 	if cand.Manifest != nil {
 		if v, ok := cand.Manifest["youtube_video_id"].(string); ok && v != "" {
@@ -343,9 +341,9 @@ func (h *Handler) processOneClip(
 		}
 	}
 	if driveFileID != "" {
-		clip.DriveLink = driveLink
-		clip.DownloadLink = downloadLink
-		clip.DriveFileID = driveFileID
+		clip.SetDriveLink(driveLink)
+		clip.SetDownloadLink(downloadLink)
+		clip.SetDriveFileID(driveFileID)
 	}
 	// Persist transcript text in metadata for embedding/indexing
 	if cand.Transcript != "" {
@@ -429,8 +427,8 @@ func (h *Handler) processOneClip(
 				AssetID:    clip.ID,
 				Source:     clip.Source,
 				Name:       clip.Name,
-				LocalPath:  clip.LocalPath,
-				DriveLink:  clip.DriveLink,
+				LocalPath:  clip.LocalPath(),
+				DriveLink:  clip.DriveLink(),
 				Category:   clip.Category,
 				MediaType:  clip.MediaType,
 				SearchText: clip.SearchText,

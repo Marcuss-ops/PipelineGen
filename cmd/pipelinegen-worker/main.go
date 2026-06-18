@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"

@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
 )
 
 type Broker struct {
-	jobs   job.Repository
+	jobs   job.Store
 	workers *workernodes.Repository
 }
 
-func New(jobs job.Repository, workers *workernodes.Repository) *Broker {
+func New(jobs job.Store, workers *workernodes.Repository) *Broker {
 	return &Broker{jobs: jobs, workers: workers}
 }
 

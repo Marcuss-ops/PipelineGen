@@ -8,13 +8,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 )
 
 // HandleJob processes the background job for lesson generation.
 // Unmarshals the LessonRequest, calls GenerateLessonWithProgress with
 // the job tools for live progress updates, and returns structured results.
-func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
 	s.log.Info("handling lessons.process job", zap.String("job_id", job.ID))
 
 	var req LessonRequest
@@ -81,7 +80,7 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 // RegisterJobHandler registers the handler for lesson processing jobs.
 func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.JobTypeLessonsProcess, s.HandleJob)
+		jobsSvc.RegisterHandler(jobs.JobTypeLessonsProcess, s.HandleJob)
 		s.log.Info("registered lessons.process job handler")
 	}
 }

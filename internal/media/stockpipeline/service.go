@@ -14,7 +14,6 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -131,13 +130,13 @@ func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
 // RegisterHandler registers the stock pipeline job handler with the jobs system.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.TypeMediaStock, s.HandleJob)
-		s.log.Info("registered media.stock job handler", zap.String("type", domainjob.TypeMediaStock))
+		jobsSvc.RegisterHandler(jobservice.JobTypeMediaStock, s.HandleJob)
+		s.log.Info("registered media.stock job handler", zap.String("type", jobservice.JobTypeMediaStock))
 	}
 }
 
 // HandleJob handles a stock pipeline job from the job queue.
-func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	var payload StockRunPayload
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {

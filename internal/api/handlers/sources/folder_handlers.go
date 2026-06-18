@@ -95,7 +95,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 	stats := models.ClipFolderStats{}
 	for _, clip := range clipList {
 		stats.ClipCount++
-		if clip.DriveLink != "" || clip.DownloadLink != "" {
+		if clip.DriveLink() != "" || clip.DownloadLink() != "" {
 			stats.ProcessedCount++
 		}
 	}

@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -73,7 +72,7 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 	)
 
 	// Marshal payload for job
-	payload := models.DriveFolderSyncPayload{
+	payload := jobservice.DriveFolderSyncPayload{
 		DriveFolderID: folderID,
 		Source:        source,
 		Name:          req.Name,

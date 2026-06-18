@@ -271,3 +271,4 @@ func (m *Asset) ExternalURL() string { return m.SourceURL }
 // SetExternalURL sets the external URL (delegates to SourceURL).
 func (m *Asset) SetExternalURL(v string) { m.SourceURL = v }
 
+

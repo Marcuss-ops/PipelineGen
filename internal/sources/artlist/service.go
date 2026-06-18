@@ -13,9 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -44,7 +42,7 @@ type Service struct {
 	mediaProcessor    processor.Processor
 	lifecycleService  *lifecycle.Service
 	assetDestResolver destination.Resolver
-	jobsSvc           *jobservice.Service
+	jobsSvc           *jobs.Service
 	clipIndexer       *clipindexer.Service
 	driveSvc          *driveapi.Service
 	dispatcher        *outbox.Dispatcher
@@ -61,7 +59,7 @@ type Service struct {
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service,
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
 	assetProcRepo asset.ProcessingRepository,
 	assetVerRepo *assetversions.Repository,
 	assetLocRepo asset.LocationRepository,
@@ -154,11 +152,11 @@ func (s *Service) SearchClips(ctx context.Context, term string) []*asset.MediaAs
 }
 
 // HandleJob gestisce un job dalla coda.
-func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
 	return s.jobAdapter.HandleJob(ctx, job, tools)
 }
 
 // GetJobByRunID ottiene un job per run ID.
-func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*domainjob.Job, error) {
+func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*jobs.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
 }

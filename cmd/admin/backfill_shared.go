@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 )
 
 // appLogger initializes the application config and logger for admin commands.

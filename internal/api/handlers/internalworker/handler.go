@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

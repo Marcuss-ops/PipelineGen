@@ -7,13 +7,12 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 var jobCodec = &JobCodec{}
 
-func (a *JobAdapter) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (a *JobAdapter) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
 	s := a.service
 	s.log.Info("handling artlist job",
 		zap.String("job_id", job.ID),

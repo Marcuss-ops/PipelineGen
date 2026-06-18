@@ -11,6 +11,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
@@ -70,8 +71,9 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 	// 5. Background Jobs (creates runner but does NOT start it yet)
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
-	// 6. Create VoiceoverRepo
+	// 6. Create VoiceoverRepo and canonical AssetStore
 	voRepo := voiceovers.NewRepository(dbs.main.DB)
+	assetStore := assets.NewAssetStoreSQLite(dbs.main.DB, log)
 
 	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
@@ -89,9 +91,8 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		ScriptsRepo:        svcs.scriptsRepo,
 		ImageRepo:          svcs.imageRepo,
 		ImageService:       svcs.imageService,
-		StockDriveRepo:     svcs.stockDriveRepo,
-		ArtlistRepo:        svcs.artlistRepo,
-		ClipsOnlyRepo:      svcs.clipsOnlyRepo,
+		ClipsRepo:          svcs.clipsRepo,
+		AssetStore:         assetStore,
 		AssetRepo:          svcs.assetRepo,
 		AssetLocationRepo:  svcs.assetLocationsRepo,
 		AssetProcessingRepo: svcs.assetProcessingRepo,

@@ -123,29 +123,26 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 	}
 
 	clip := &domainasset.MediaAsset{
-		ID:           upResult.FileID,
-		Name:         chunkTitle + ".mp4",
-		Filename:     chunkTitle + ".mp4",
-		FolderID:     folderID,
-		FolderPath:   input.Subfolder + "/" + input.FolderName,
-		Group:        "stock",
-		MediaType:    "video",
-		DriveLink:    upResult.WebViewLink,
-		DriveFileID:  upResult.FileID,
-		DownloadLink: upResult.DownloadLink,
-		Tags:         tags,
-		Source:       "stock",
-		Category:     "file",
-		DurationMs:   int64(videoCfg.ChunkDuration) * 1000,
-		SearchText:   semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStrings(chunkRes.SourceIDs...), " ")),
-		LocalPath:    chunkPath,
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
+		ID:         upResult.FileID,
+		Name:       chunkTitle + ".mp4",
+		Filename:   chunkTitle + ".mp4",
+		Group:      "stock",
+		MediaType:  "video",
+		Tags:       tags,
+		Source:     "stock",
+		Category:   "file",
+		DurationMs: int64(videoCfg.ChunkDuration) * 1000,
+		SearchText: semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStrings(chunkRes.SourceIDs...), " ")),
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
 	}
+	clip.SetFolderID(folderID)
+	clip.SetFolderPath(input.Subfolder + "/" + input.FolderName)
+	clip.SetDriveLink(upResult.WebViewLink)
+	clip.SetDriveFileID(upResult.FileID)
+	clip.SetDownloadLink(upResult.DownloadLink)
+	clip.SetLocalPath(chunkPath)
 	clip.SetMetadataString("status", "ready")
-	clip.SetMetadataString("local_path", chunkPath)
-	clip.SetMetadataString("folder_id", folderID)
-	clip.SetMetadataString("folder_path", input.Subfolder+"/"+input.FolderName)
 	clip.SetMetadataString("search_text", clip.SearchText)
 	clip.SetMetadataString("chunk_index", fmt.Sprintf("%d", chunkIdx))
 	clip.SetMetadataString("timeline_start", formatDuration(chunkRes.TimelineStart))
@@ -181,7 +178,7 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *domainasset.
 	// tags_norm / search_text columns never lag the embeddable record.
 	// Skipped for folder rows because UpdateSearchTerms rejects them in
 	// clips.Repository.
-	if clip.SearchText != "" && !clip.IsFolder && s.clipsRepo != nil {
+	if clip.SearchText != "" && !clip.IsFolder() && s.clipsRepo != nil {
 		if err := s.clipsRepo.UpdateSearchTerms(ctx, clip.ID, clip.Source, clip.Name, clip.Tags, clip.SearchText); err != nil {
 			s.log.Warn("failed to update search terms for stock clip", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -194,8 +191,8 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *domainasset.
 		// excluded the same way the legacy branch does — folders are
 		// containers, not embeddable assets, and the worker would otherwise
 		// have to detect-and-skip them.
-		if !clip.IsFolder {
-			if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash); err != nil {
+		if !clip.IsFolder() {
+			if err := s.dispatcher.EnqueueAndIndex(ctx, clip, clip.FileHash()); err != nil {
 				return fmt.Errorf("dispatcher.EnqueueAndIndex: %w", err)
 			}
 		}
@@ -211,7 +208,7 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *domainasset.
 	}
 	// Legacy async IndexClip — preserved when no dispatcher is wired. The
 	// !clip.IsFolder gate keeps folder metadata rows out of Qdrant.
-	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder {
+	if s.clipIndexer != nil && s.clipIndexer.IsEnabled() && !clip.IsFolder() {
 		concurrent.SafeGoFunc("stock-vector-indexing", clip.ID, func(id string) {
 			indexCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 			defer cancel()

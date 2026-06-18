@@ -219,21 +219,21 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		ID:             "sfx_" + hashStr[:12],
 		Name:           name,
 		Filename:       filepath.Base(dest.LocalPath),
-		IsFolder:       false,
 		Group:          name,
 		MediaType:      "sound_effect",
-		DriveLink:      driveLink,
-		DriveFileID:    driveFileID,
-		ParentFolderID: parentFolderID,
 		Source:         "sound_effect",
 		DurationMs:     int64(duration * 1000),
-		LocalPath:      dest.LocalPath,
 		LifecycleState: domainasset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		Tags:           tags,
 		SearchText:     searchText,
 	}
+	clip.SetIsFolder(false)
+	clip.SetDriveLink(driveLink)
+	clip.SetDriveFileID(driveFileID)
+	clip.SetParentFolderID(parentFolderID)
+	clip.SetLocalPath(dest.LocalPath)
 
 	if h.clipsRepo != nil {
 		if err := h.clipsRepo.Upsert(ctx, &clip); err != nil {
@@ -246,9 +246,9 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		"ok":        true,
 		"clip_id":   clip.ID,
 		"name":      clip.Name,
-		"local":     clip.LocalPath,
-		"drive_id":  clip.DriveFileID,
-		"drive_url": clip.DriveLink,
+		"local":     clip.LocalPath(),
+		"drive_id":  clip.DriveFileID(),
+		"drive_url": clip.DriveLink(),
 		"duration":  clip.DurationMs,
 		"tags":      clip.Tags,
 	})

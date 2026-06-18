@@ -21,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/matchingconfig"
 )
 
@@ -62,7 +62,7 @@ func WireArtlist(
 	}
 
 	// 4b. Wire SemanticEnricher into artlist service
-	if artlistSvc != nil && coreDeps.ClipsOnlyRepo != nil && clipIndexerSvc != nil {
+	if artlistSvc != nil && coreDeps.ClipsRepo != nil && clipIndexerSvc != nil {
 		metaWriter := semantic.NewMetadataWriter(
 			cfg.Paths.PythonScriptsDir,
 			cfg.Storage.TempPath(),
@@ -70,7 +70,7 @@ func WireArtlist(
 			cfg.External.OllamaModel,
 			log,
 		)
-		enricher := artlistPkg.NewSemanticEnricher(coreDeps.ClipsOnlyRepo, clipIndexerSvc, metaWriter, coreDeps.DriveUploader, log)
+		enricher := artlistPkg.NewSemanticEnricher(coreDeps.ClipsRepo, clipIndexerSvc, metaWriter, coreDeps.DriveUploader, log)
 		artlistSvc.SetSemanticEnricher(enricher)
 		log.Info("wired semantic enricher into artlist service")
 	}
@@ -188,8 +188,8 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	repos := make(map[string]*clipcatalog.Repository)
 
 	// 1. Stock database (highest priority)
-	if coreDeps.StockDriveRepo != nil && coreDeps.StockDriveRepo.DB() != nil {
-		repos["stock"] = clipcatalog.NewRepository(coreDeps.StockDriveRepo.DB(), log)
+	if coreDeps.ClipsRepo != nil && coreDeps.ClipsRepo.DB() != nil {
+		repos["stock"] = clipcatalog.NewRepository(coreDeps.ClipsRepo.DB(), log)
 		repos["stock"].SetSource("stock")
 	}
 
@@ -232,7 +232,7 @@ func wireArtlistService(
 		cfg,
 		coreDeps.DB.DB,
 		coreDeps.DB.DB,
-		coreDeps.ClipsOnlyRepo,
+		coreDeps.ClipsRepo,
 		coreDeps.MediaProcessor,
 		artlistLifecycle,
 		assetDestResolver,
@@ -251,7 +251,7 @@ func wireArtlistService(
 
 	// Register artlist job handler
 	if artlistSvc != nil && coreDeps.JobsService != nil {
-		coreDeps.JobsService.RegisterHandler(job.JobTypeArtlistRun, artlistSvc.HandleJob)
+		coreDeps.JobsService.RegisterHandler(svcjobs.JobTypeArtlistRun, artlistSvc.HandleJob)
 		log.Info("registered artlist job handler")
 	}
 

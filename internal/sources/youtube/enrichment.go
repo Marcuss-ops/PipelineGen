@@ -106,7 +106,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 		// IndexClip and outbox enqueue), falling back to the legacy
 		// UpsertClip when a nil dispatcher leaves the ingestion crash-exposed
 		// between write and re-index.
-		if err := s.dispatchOrIndex(ctx, existing, existing.FileHash); err != nil {
+		if err := s.dispatchOrIndex(ctx, existing, existing.FileHash()); err != nil {
 			s.log.Warn("failed to save fallback search_text",
 				zap.String("clip_id", clipID),
 				zap.Error(err))
@@ -116,7 +116,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 
 	// Read the clip transcript so we can clean it and feed it into the embedding.
 	var clipTranscript string
-	transcriptPath := strings.TrimSuffix(existing.LocalPath, filepath.Ext(existing.LocalPath)) + ".txt"
+	transcriptPath := strings.TrimSuffix(existing.LocalPath(), filepath.Ext(existing.LocalPath())) + ".txt"
 	if transcriptBytes, err := os.ReadFile(transcriptPath); err == nil && len(transcriptBytes) > 0 {
 		clipTranscript = strings.TrimSpace(string(transcriptBytes))
 		if clipTranscript != "" {
@@ -342,7 +342,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 	// the outbox_events enqueue (and downstream Qdrant upsert) when
 	// the dispatcher is wired, so the post-enrichment state is consistently
 	// searchable. Falls back to legacy UpsertClip on nil dispatcher.
-	if err := s.dispatchOrIndex(ctx, existing, existing.FileHash); err != nil {
+	if err := s.dispatchOrIndex(ctx, existing, existing.FileHash()); err != nil {
 		s.log.Warn("failed to enrich YouTube clip with metadata",
 			zap.String("clip_id", clipID),
 			zap.Error(err))

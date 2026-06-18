@@ -31,13 +31,13 @@ type SegmentEmbeddingRecord struct {
 
 // DeleteSegmentEmbeddingsByScriptKey removes all cached segments for a script key.
 func (s *AssetStoreSQLite) DeleteSegmentEmbeddingsByScriptKey(ctx context.Context, scriptKey string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM segment_embeddings WHERE script_key = ?`, scriptKey)
+	_, err := s.db.ExecContext(ctx, `DELETE FROM segment_embeddings WHERE script_key = ?`, scriptKey)
 	return err
 }
 
 // GetSegmentEmbeddingsByScriptKey loads cached segments for a script key.
 func (s *AssetStoreSQLite) GetSegmentEmbeddingsByScriptKey(ctx context.Context, scriptKey string) ([]SegmentEmbeddingRecord, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, script_key, source_hash, topic, language, template, duration, segment_index,
 		       raw_subject, canonical_subject, raw_keywords_json, canonical_keywords_json,
 		       raw_entities_json, canonical_entities_json, segment_json, embedding_json,
@@ -99,7 +99,7 @@ func (s *AssetStoreSQLite) UpsertSegmentEmbedding(ctx context.Context, rec *Segm
 		rec.EmbeddingJSON = "[]"
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO segment_embeddings (
 			script_key, source_hash, topic, language, template, duration, segment_index,
 			raw_subject, canonical_subject, raw_keywords_json, canonical_keywords_json,
@@ -134,3 +134,4 @@ func (s *AssetStoreSQLite) UpsertSegmentEmbedding(ctx context.Context, rec *Segm
 	}
 	return nil
 }
+

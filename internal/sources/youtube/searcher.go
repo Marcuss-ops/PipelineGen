@@ -158,7 +158,6 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			Name:         item.Title,
 			Source:       "youtube",
 			SourceURL:    item.URL,
-			ExternalURL:  item.URL,
 			ThumbnailURL: thumbnail,
 			Metadata:     metadata,
 		})

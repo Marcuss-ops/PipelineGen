@@ -6,13 +6,12 @@ import (
 	"fmt"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 
 	"go.uber.org/zap"
 )
 
 // HandleJob processes a youtube_clip.extract job.
-func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	s.log.Info("handling youtube_clip.extract job",
 		zap.String("job_id", job.ID),
 	)

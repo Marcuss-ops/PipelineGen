@@ -148,7 +148,7 @@ func (h *ScriptFlowHandler) generateSingleChapterFromWorkItem(
 			predictLimit = 32000
 		}
 
-		genReq := scriptcore.GenerateRequest{
+		genReq := scripts.GenerateRequest{
 			Language:   req.Language,
 			Duration:   req.Duration,
 			MinWords:   targetWordsPerChapter,

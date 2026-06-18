@@ -29,8 +29,8 @@ func WireStockPipeline(
 	svc := stockpipeline.NewService(cfg, log, coreDeps.DriveClient)
 	svc.SetJobsSvc(coreDeps.JobsService)
 	svc.SetAssetIndex(coreDeps.AssetIndexService)
-	if coreDeps.StockDriveRepo != nil {
-		svc.SetClipsRepo(coreDeps.StockDriveRepo)
+	if coreDeps.ClipsRepo != nil {
+		svc.SetClipsRepo(coreDeps.ClipsRepo)
 	}
 	if coreDeps.YoutubeClipService != nil {
 		svc.SetYoutubeService(coreDeps.YoutubeClipService)

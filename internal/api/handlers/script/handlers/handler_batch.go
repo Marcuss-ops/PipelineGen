@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
@@ -87,11 +86,11 @@ func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
 		"chapters_done":  chaptersDone,
 	}
 
-	if job.Status == domainjob.StatusFailed && job.Error != "" {
+	if job.Status == jobservice.StatusFailed && job.Error != "" {
 		resp["error"] = job.Error
 	}
 
-	if job.Status == domainjob.StatusCompleted && len(job.Result) > 0 {
+	if job.Status == jobservice.StatusSucceeded && len(job.Result) > 0 {
 		var resultObj map[string]any
 		if err := json.Unmarshal(job.Result, &resultObj); err == nil {
 			summary := gin.H{}

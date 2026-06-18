@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	driveapi "google.golang.org/api/drive/v3"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 func runBackfillHash(args []string) error {

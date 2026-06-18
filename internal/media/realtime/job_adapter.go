@@ -5,7 +5,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
@@ -24,7 +23,7 @@ func NewJobServiceAdapter(svc *jobs.Service, log *zap.Logger) *JobServiceAdapter
 // EnqueueMediaGeneration enqueues a media.generate_missing_asset job.
 func (a *JobServiceAdapter) EnqueueMediaGeneration(ctx context.Context, query string, source string) (string, error) {
 	j, err := a.svc.Enqueue(ctx, &jobs.EnqueueRequest{
-		Type:    job.TypeMediaGenerate,
+		Type:    jobs.JobTypeMediaGenerate,
 		Payload: map[string]any{"query": query, "source": source},
 		Priority:   1,
 		MaxRetries: 3,

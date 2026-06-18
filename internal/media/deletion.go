@@ -79,12 +79,12 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 			return fmt.Errorf("voiceover not found: %w", voErr)
 		}
 		clip := artifacts.VoiceoverRecordToClip(rec)
-		driveFileID = clip.DriveFileID
+		driveFileID = clip.DriveFileID()
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DriveLink())
 		}
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
 		}
 	} else if canonical == "images" && s.imagesRepo != nil {
 		img, imgErr := s.imagesRepo.GetByID(ctx, clipID)
@@ -92,12 +92,12 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 			return fmt.Errorf("image not found: %w", imgErr)
 		}
 		clip := artifacts.ImageAssetToClip(img)
-		driveFileID = clip.DriveFileID
+		driveFileID = clip.DriveFileID()
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DriveLink())
 		}
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
 		}
 	} else if repo != nil {
 		var clip *asset.MediaAsset
@@ -105,9 +105,9 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		if err != nil {
 			return fmt.Errorf("clip not found: %w", err)
 		}
-		driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
+		driveFileID = driveutil.FileIDFromLink(clip.DriveLink())
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
 		}
 	} else {
 		return fmt.Errorf("repository for %s not available", source)

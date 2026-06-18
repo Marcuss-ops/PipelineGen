@@ -46,7 +46,7 @@ func (s *AssetStoreSQLite) FindByYouTubeVideoID(ctx context.Context, videoID str
 		endMS := int64(endSec * 1000)
 		query = `SELECT id FROM media_assets
 			WHERE json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') = ?
-			AND ` + r.SoftDeleteFilter() + `
+			AND ` + SoftDeleteFilter() + `
 			AND CAST(ROUND(COALESCE(CAST(json_extract(metadata_json, '$.start') AS REAL), 0) * 1000) AS INTEGER) = ?
 			AND CAST(ROUND(COALESCE(CAST(json_extract(metadata_json, '$.end')   AS REAL), 0) * 1000) AS INTEGER) = ?
 			ORDER BY created_at DESC LIMIT 1`
@@ -54,13 +54,13 @@ func (s *AssetStoreSQLite) FindByYouTubeVideoID(ctx context.Context, videoID str
 	} else {
 		query = `SELECT id FROM media_assets
 			WHERE json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') = ?
-			AND ` + r.SoftDeleteFilter() + `
+			AND ` + SoftDeleteFilter() + `
 			ORDER BY created_at DESC LIMIT 1`
 		args = []any{videoID}
 	}
 
 	var id string
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(&id)
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
@@ -81,9 +81,9 @@ func (s *AssetStoreSQLite) FindByFileHash(ctx context.Context, fileHash string) 
 		return "", nil
 	}
 	var id string
-	err := r.db.QueryRowContext(ctx, `SELECT id FROM media_assets
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM media_assets
 		WHERE file_hash = ?
-		AND `+r.SoftDeleteFilter()+`
+		AND `+SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, fileHash).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -104,10 +104,10 @@ func (s *AssetStoreSQLite) FindBySourceURL(ctx context.Context, url string) (str
 		return "", nil
 	}
 	var id string
-	err := r.db.QueryRowContext(ctx, `SELECT id FROM media_assets
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM media_assets
 		WHERE (json_extract(COALESCE(metadata_json,'{}'), '$.source_url') = ?
 			OR json_extract(COALESCE(metadata_json,'{}'), '$.youtube_url') = ?)
-		AND `+r.SoftDeleteFilter()+`
+		AND `+SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, url, url).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -126,9 +126,9 @@ func (s *AssetStoreSQLite) FindByName(ctx context.Context, name string) (string,
 		return "", nil
 	}
 	var id string
-	err := r.db.QueryRowContext(ctx, `SELECT id FROM media_assets
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM media_assets
 		WHERE name = ?
-		AND `+r.SoftDeleteFilter()+`
+		AND `+SoftDeleteFilter()+`
 		ORDER BY created_at DESC LIMIT 1`, name).Scan(&id)
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -149,9 +149,9 @@ func (s *AssetStoreSQLite) FindDuplicatesByYouTubeID(ctx context.Context, videoI
 	if videoID == "" {
 		return nil, nil
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id FROM media_assets
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM media_assets
 		WHERE json_extract(COALESCE(metadata_json,'{}'), '$.youtube_video_id') = ?
-		AND `+r.SoftDeleteFilter()+`
+		AND `+SoftDeleteFilter()+`
 		AND id != ?
 		ORDER BY created_at DESC`,
 		videoID, excludeID)
@@ -164,10 +164,11 @@ func (s *AssetStoreSQLite) FindDuplicatesByYouTubeID(ctx context.Context, videoI
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			r.log.Warn("FindDuplicatesByYouTubeID scan failed", zap.Error(err))
+			s.log.Warn("FindDuplicatesByYouTubeID scan failed", zap.Error(err))
 			continue
 		}
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
 }
+

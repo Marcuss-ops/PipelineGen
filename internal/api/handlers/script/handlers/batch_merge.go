@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
 // ── Phase: Merge Results ─────────────────────────────────────────────────────
