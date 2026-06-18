@@ -96,7 +96,7 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 
 // ListClipsByFolderID returns all clips for a given folder ID (stored in metadata_json).
 func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ? ORDER BY created_at ASC"
+	query := buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 
 // ListClipsByFolderPath returns all clips for a given folder path (stored in metadata_json).
 func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND json_extract(COALESCE(metadata_json,'{}'), '$.folder_path') = ? ORDER BY created_at ASC"
+	query := buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath strin
 
 // CountClipsByFolderID returns the number of clips in a folder (folder_id stored in metadata_json).
 func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) (int, error) {
-	query := "SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.folder_id') = ?"
+	query := "SELECT COUNT(*) FROM media_assets WHERE folder_id = ?"
 	row := r.db.QueryRowContext(ctx, query, folderID)
 	var count int
 	err := row.Scan(&count)
