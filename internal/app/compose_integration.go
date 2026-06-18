@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/outboxhandlers"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
 	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
@@ -245,6 +246,7 @@ func composeIntegration(
 	lessonsSvc.RegisterJobHandler(jobsService)
 
 	// ── Asset Satellite Repositories (canonical model completion, PR0) ────
+	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
 	assetProcRepo := assetprocessing.NewRepository(dbs.main.DB)
 	assetRelRepo := assetrelations.NewRepository(dbs.main.DB)
 	assetTagRepo := assettags.NewRepository(dbs.main.DB)
@@ -303,6 +305,7 @@ func composeIntegration(
 		outboxEventsPool:     outboxEventsPool,
 		outboxEventsRegistry: outboxEventsRegistry,
 
+		assetLocationsRepo:  assetLocRepo,
 		assetProcessingRepo: assetProcRepo,
 		assetRelationsRepo:  assetRelRepo,
 		assetTagsRepo:       assetTagRepo,

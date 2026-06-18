@@ -126,7 +126,7 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 //
 // This is a thin wrapper around UpsertClipTx that opens its own transaction
 // for atomicity. Callers that are already in a transaction (e.g. composing
-// the upsert with a media_index_outbox INSERT under the outbox Dispatcher)
+// the upsert with an outbox_events INSERT under the outbox Dispatcher)
 // should call UpsertClipTx directly to reuse the caller's tx.
 func (r *Repository) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
 	r.populateAssetMetadata(clip)
@@ -151,7 +151,7 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.MediaAsset) er
 
 // UpsertClipTx is the tx-aware variant of UpsertClip. Use this when the
 // caller is already inside a *sql.Tx and the upsert must be atomic with
-// other writes (e.g. media_index_outbox enqueue by outbox.Dispatcher).
+// other writes (e.g. outbox_events enqueue by outbox.Dispatcher).
 //
 // MUST keep SQL, metadata serialization, and tag normalization in lockstep
 // with UpsertClip — the two diverge by call surface only.

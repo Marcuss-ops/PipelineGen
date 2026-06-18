@@ -102,7 +102,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 			existing.Metadata["language"] = ytLang
 		}
 		// Save fallback to DB. dispatchOrIndex routes through the canonical
-		// media_index_outbox dispatcher when wired (atomic UpsertClip +
+		// outbox_events dispatcher when wired (atomic UpsertClip +
 		// IndexClip and outbox enqueue), falling back to the legacy
 		// UpsertClip when a nil dispatcher leaves the ingestion crash-exposed
 		// between write and re-index.
@@ -339,7 +339,7 @@ func (s *Service) enrichYouTubeClipWithMetadata(ctx context.Context, clipID stri
 	}
 
 	// Save to DB. dispatchOrIndex writes the clip atomically together with
-	// the media_index_outbox enqueue (and downstream Qdrant upsert) when
+	// the outbox_events enqueue (and downstream Qdrant upsert) when
 	// the dispatcher is wired, so the post-enrichment state is consistently
 	// searchable. Falls back to legacy UpsertClip on nil dispatcher.
 	if err := s.dispatchOrIndex(ctx, existing, existing.FileHash); err != nil {

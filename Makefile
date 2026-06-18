@@ -118,5 +118,5 @@ docker-run: docker-build
 	docker run -p 18080:18080 velox-go-master:latest
 
 # CI pipeline (runs all checks)
-ci: fmt vet lint test coverage-check build
+ci: fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"

@@ -1,17 +1,9 @@
-// Package txmanager provides a thin wrapper around *sql.DB that ensures
-// transactional atomicity between media_assets mutations and outbox inserts.
+// Package outbox provides the transactional outbox pattern for atomic
+// media_assets UPSERT + outbox_events INSERT operations.
 //
-// The pattern is:
-//
-//	err := txmanager.InTransaction(ctx, func(tx *sql.Tx) error {
-//	    // 1. UPSERT media_assets
-//	    // 2. INSERT media_index_outbox
-//	    return nil
-//	})
-//
-// If either step fails, the entire transaction rolls back — the outbox
-// never contains orphan entries and media_assets never contains orphan
-// embeddings that were never dispatched.
+// The canonical ingestion entry point is Dispatcher.EnqueueAndIndex,
+// which guarantees that the metadata write and the outbox_events row
+// are committed atomically with no orphan jobs or orphan embeddings.
 package outbox
 
 import (
@@ -21,6 +13,14 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// TxManager is the minimal transaction surface required by Dispatcher.
+// Manager (below) is the production implementation backed by *sql.DB.
+// Tests inject txMgrNoop or other fakes.
+type TxManager interface {
+	InTransaction(ctx context.Context, fn func(tx *sql.Tx) error) error
+	DB() *sql.DB
+}
 
 // Manager wraps a *sql.DB and provides transactional helpers.
 type Manager struct {

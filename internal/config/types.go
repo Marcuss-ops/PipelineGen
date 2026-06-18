@@ -56,7 +56,7 @@ type GoogleAccountingConfig struct {
 	VidsProjectID string `yaml:"vids_project_id" env:"VELOX_GOOGLE_ACCOUNTING_VIDS_PROJECT_ID" default:""`
 }
 
-// OutboxConfig tunes the media_index_outbox worker pool. Defaults follow the
+// OutboxConfig tunes the outbox_events worker pool. Defaults follow the
 // CPU-only tuning from the PR-2 design review: 500ms poll, batch 10,
 // 2 workers, 5min per-entry timeout, 60s reclaim cadence, 360s stale
 // threshold (2× process timeout), 5 max attempts. Env vars take precedence

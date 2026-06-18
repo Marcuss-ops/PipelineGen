@@ -1,0 +1,15 @@
+-- Migration 056: drop the legacy media_index_outbox table.
+--
+-- In the outbox-cutover PR (June 2026), the media_index_outbox worker pool,
+-- Repository, Worker, and Indexer were all removed. Every ingestion path now
+-- routes through Dispatcher.EnqueueAndIndex, which writes to outbox_events
+-- atomically with the media_assets UPSERT. The outboxevents.Pool handles all
+-- claim/fail/dead-letter semantics.
+--
+-- This migration drops the now-unused table so fresh deployments don't create
+-- a dead schema object. Existing databases with rows in media_index_outbox
+-- are safe: those rows were already orphaned by the code removal, so dropping
+-- the table is a no-op from the application's perspective.
+--
+-- The outbox_events table (migration 042) is the canonical replacement.
+DROP TABLE IF EXISTS media_index_outbox;

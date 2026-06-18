@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 
+	assetlocations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
 	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
@@ -101,6 +102,7 @@ type services struct {
 	outboxEventsRegistry *outboxevents.HandlerRegistry
 
 	// Asset satellite tables (canonical model completion, PR0)
+	assetLocationsRepo  *assetlocations.Repository
 	assetProcessingRepo *assetprocessing.Repository
 	assetRelationsRepo  *assetrelations.Repository
 	assetTagsRepo       *assettags.Repository

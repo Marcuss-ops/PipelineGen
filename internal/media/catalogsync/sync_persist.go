@@ -17,7 +17,7 @@ import (
 // upsertPreservingExisting upserts a MediaAsset while preserving fields that
 // the catalog sync should not overwrite (hash, local_path, metadata, tags).
 // Routes through the canonical outbox dispatcher when available, so the
-// media_assets UPDATE and the media_index_outbox INSERT commit atomically.
+// media_assets UPDATE and the outbox_events INSERT commit atomically.
 func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *models.MediaAsset) error {
 	if repo == nil || clip == nil {
 		return nil
@@ -42,7 +42,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 	// PR1: when the canonical outbox dispatcher is wired, route the
 	// upsert + outbox enqueue through it. Atomicity is guaranteed by the
 	// dispatcher: either both the media_assets UPDATE and the
-	// media_index_outbox INSERT commit, or neither does. The previous
+	// outbox_events INSERT commit, or neither does. The previous
 	// pattern of `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)`
 	// violated atomicity — the goroutine could crash before IndexClip
 	// ran, or start before the upsert committed (half-state visible to
@@ -76,7 +76,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 
 	// Indexing trigger — only on the legacy path. On the dispatcher path
 	// the outbox.Worker (configured in app/compose_integration.go) picks
-	// up the new media_index_outbox row and calls clipIndexer.IndexClip,
+	// up the new outbox_events row and the outboxevents Pool runs IndexClip,
 	// preserving the same indexing behaviour, just delivered through the
 	// outbox queue instead of a fire-and-forget goroutine. This eliminates
 	// the race window where the goroutine could start before the upsert
@@ -97,7 +97,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 }
 
 // writeAssetIndex writes a unified asset_index record (best-effort, runs
-// after the canonical media_assets / media_index_outbox commit). Failure
+// after the canonical media_assets / outbox_events commit). Failure
 // is logged but never propagated: a stale asset_index row is preferable
 // to rolling back the canonical outbox state. Identical payload across
 // dispatcher + legacy paths — extracted here so the two branches in
