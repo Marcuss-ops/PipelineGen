@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
@@ -62,7 +63,7 @@ func (o *RunOrchestratorService) stageDiscoverClips(ctx context.Context, req *Ru
 
 // stageBuildProcessInputs builds clip work items and process inputs from discovered clips.
 // Returns the work items slice and the resolved root folder ID.
-func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, req *RunTagRequest, resp *RunTagResponse, clips []models.MediaAsset) []clipWork {
+func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, req *RunTagRequest, resp *RunTagResponse, clips []asset.MediaAsset) []clipWork {
 	workItems := make([]clipWork, 0, len(clips))
 
 	for _, clip := range clips {

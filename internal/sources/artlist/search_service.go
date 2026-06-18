@@ -6,6 +6,7 @@ import (
 
 	"go.uber.org/zap"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
@@ -65,9 +66,11 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 		clipsList = clipsList[:limit]
 	}
 
-	resp.Clips = make([]models.MediaAsset, 0, len(clipsList))
+	resp.Clips = make([]asset.MediaAsset, 0, len(clipsList))
 	for _, c := range clipsList {
-		resp.Clips = append(resp.Clips, *c)
+		if a := ToDomain(c); a != nil {
+			resp.Clips = append(resp.Clips, *a)
+		}
 	}
 	resp.Source = "database"
 
@@ -90,7 +93,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		return nil, err
 	}
 
-	resp := &SearchResponse{OK: true, Term: originalTerm, Source: "live", Clips: make([]models.MediaAsset, 0, len(clips))}
+	resp := &SearchResponse{OK: true, Term: originalTerm, Source: "live", Clips: make([]asset.MediaAsset, 0, len(clips))}
 
 	for _, c := range clips {
 		// Handle both clip_id (new format) and id (old format)
@@ -148,7 +151,9 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		}
 
 		if err := s.artlistRepo.UpsertClip(ctx, clip); err == nil {
-			resp.Clips = append(resp.Clips, *clip)
+			if a := ToDomain(clip); a != nil {
+				resp.Clips = append(resp.Clips, *a)
+			}
 
 			// Update search terms index: use normalizedTerm for indexed search
 			// (faster AND matching) but also include originalTerm for broader LIKE hits.
@@ -229,7 +234,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 }
 
 // SearchClips searches clips in the database
-func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models.MediaAsset {
+func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.MediaAsset {
 	s := ss.service
 	term = normalizeSearchTerm(term)
 	clips, err := s.artlistRepo.SearchClips(ctx, "artlist", term)
@@ -237,7 +242,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*models
 		s.log.Error("failed to search clips", zap.Error(err), zap.String("term", term))
 		return nil
 	}
-	return clips
+	return ToDomainSlice(clips)
 }
 
 // UpsertClip inserts or updates a clip in the database
