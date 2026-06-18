@@ -3,7 +3,8 @@ package processor
 import "context"
 
 // Processor is the canonical interface for processing media assets.
-// This matches mediaasset.MediaProcessor for unified usage.
+// Concrete media processors implement this contract directly; adapters and
+// package-local input/result mirrors are intentionally forbidden.
 type Processor interface {
 	// Process downloads, processes, and uploads an asset.
 	Process(ctx context.Context, input *ProcessInput) (*ProcessResult, error)

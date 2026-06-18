@@ -4,19 +4,19 @@
 
 ## Overview
 
-The media asset pipeline provides a common, reusable pipeline for downloading, processing, and uploading media assets across different services (Artlist, YouTube Clips, Stock, etc.).
+The media asset pipeline provides a common, reusable pipeline for downloading, processing, and uploading media assets across different services such as Artlist, YouTube Clips, and stock providers.
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Service Layer                            │
-│  ┌──────────────┐        ┌──────────────┐                │
-│  │   Artlist    │        │ YouTube Clip │                │
-│  │   Service    │        │   Service    │                │
-│  └──────┬───────┘        └──────┬───────┘                │
-│         │                        │                            │
-│         └────────┬───────────────┘                            │
+│  ┌──────────────┐        ┌──────────────┐                  │
+│  │   Artlist    │        │ YouTube Clip │                  │
+│  │   Service    │        │   Service    │                  │
+│  └──────┬───────┘        └──────┬───────┘                  │
+│         │                        │                          │
+│         └────────┬───────────────┘                          │
 │                  │                                          │
 │                  ▼                                          │
 │      ┌───────────────────────────┐                          │
@@ -24,7 +24,12 @@ The media asset pipeline provides a common, reusable pipeline for downloading, p
 │      │  Process()                │                          │
 │      └──────────────┬────────────┘                          │
 │                     │                                       │
-│      ┌──────────────┴────────────┐                         │
+│      ┌──────────────▼────────────┐                         │
+│      │ mediaasset.Processor       │                         │
+│      │ direct implementation      │                         │
+│      └──────────────┬────────────┘                         │
+│                     │                                       │
+│      ┌──────────────▼────────────┐                         │
 │      │       Shared Components    │                         │
 │      │  - downloader.YTDLP       │                         │
 │      │  - ffmpeg.Processor       │                         │
@@ -34,43 +39,36 @@ The media asset pipeline provides a common, reusable pipeline for downloading, p
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Core Packages
+## Canonical contract
 
-### `internal/media/mediaasset`
+`internal/core/processor` owns the only processing contract and its DTOs:
 
-Common pipeline for processing media assets.
+- `processor.Processor`
+- `processor.ProcessInput`
+- `processor.ProcessResult`
 
-**Types** (`types.go`):
-- `AssetInput`: Input parameters for processing
-  - `ID`, `Name`, `SourceURL`, `OutputDir`, `FolderID`
-- `AssetResult`: Result of processing
-  - `LocalPath`, `DriveFileID`, `DriveLink`, `Size`, `Hash`, `Error`
+`internal/media/mediaasset.Processor` implements that interface directly. Package-local mirrors such as `AssetInput` and `AssetResult`, plus conversion adapters, are forbidden because they create contract drift and silently drop fields.
 
-**Adapter** (`adapter.go`):
-- `ToCoreProcessor()` wraps `mediaasset.Processor` into `core/processor.Processor` interface
-
-**Note**: Prior to unificato, la logica di processing viveva in `internal/service/mediaasset/`. Ora è in `internal/media/mediaasset/`.
-
-## Service Integration
+## Service integration
 
 ### Artlist Service (`internal/sources/artlist`)
 
 The Artlist service handles:
-1. Searching Artlist via node-scraper
-2. Downloading media assets
-3. Processing via `core/processor.Processor`
-4. Uploading to Drive folders
-5. Enqueuing jobs for async operations
+
+1. Searching Artlist through the Node scraper.
+2. Submitting media processing through `core/processor.Processor`.
+3. Persisting authoritative metadata in the canonical database.
+4. Enqueuing asynchronous operations through the job system.
 
 ### YouTube Clip Service (`internal/sources/youtube`)
 
 The YouTube Clip service handles:
-1. Downloading YouTube videos as clips
-2. Processing via `core/processor.Processor`
-3. Uploading to Drive clips folder
-4. Enqueuing jobs for async operations
+
+1. Resolving and downloading YouTube clips.
+2. Submitting processing through `core/processor.Processor`.
+3. Persisting authoritative metadata in the canonical database.
+4. Enqueuing asynchronous operations through the job system.
 
 ## Database
 
-All media assets are stored in `data/media/media.db.sqlite` (unified database).
-Job state is tracked in `data/media/media.db.sqlite`.
+All authoritative media metadata and job state are stored in `data/media/media.db.sqlite`. Generated `metadata.json` files and external indexes are exports or projections, never sources of truth.

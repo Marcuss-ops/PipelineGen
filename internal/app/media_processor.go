@@ -22,7 +22,7 @@ func initMediaProcessor(cfg *config.Config, clipsOnlyRepo *clips.Repository, log
 	ffmpegProc := ffmpeg.New(cfg)
 	clipsRegistry := assetregistry.NewClipsRegistry(clipsOnlyRepo)
 
-	mediaProcessorInternal := mediaasset.NewProcessor(
+	return mediaasset.NewProcessor(
 		ytDLPDownloader,
 		httpDL,
 		ffmpegProc,
@@ -37,5 +37,4 @@ func initMediaProcessor(cfg *config.Config, clipsOnlyRepo *clips.Repository, log
 		clipsRegistry,
 		driveUploader,
 	)
-	return mediaasset.ToCoreProcessor(mediaProcessorInternal)
 }
