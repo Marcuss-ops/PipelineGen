@@ -8,8 +8,10 @@
 // Database: media.db.sqlite (unified single database)
 // Table: media_assets (unified schema with metadata_json for flexible fields)
 //
-// Note: Stock and Artlist clips use separate databases (stock.db, artlist.db)
-// but share the same Repository structure with different instances.
+// Note: All sources (youtube, artlist, stock) share the same unified database
+// (media.db.sqlite) and are differentiated by the `source` column.
+// Different Repository instances may be created for ergonomic source-filtering
+// but they all wrap the same underlying DB.
 package clips
 
 import (
@@ -21,8 +23,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"velox/go-master/internal/media/models"
-	"velox/go-master/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // mediaAssetColumns defines the columns selected from media_assets table.
@@ -42,9 +44,9 @@ func buildClipFolderQuery(source string) string {
 }
 
 // buildMediaAssetQuery builds a SELECT query using the media_assets table,
-// excluding deleted clips (those with '$.deleted_at' in metadata_json).
+// excluding soft-deleted clips via the canonical lifecycle_state column.
 func buildMediaAssetQuery(source string) string {
-	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
+	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE lifecycle_state != 'deleted'"
 	if source != "" && source != "all" && source != "unified" {
 		query += " AND source = ?"
 	}
@@ -157,6 +159,23 @@ func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.
 // columns into the Metadata map (serialized to metadata_json). Kept as a
 // separate helper so UpsertClip and UpsertClipTx stay byte-for-byte
 // equivalent on column writes. Returns nothing (no fallible work).
+//
+// DEPRECATED (Blocco 3, June 2026): This function duplicates canonical
+// typed columns (local_path, drive_file_id, drive_link, download_link,
+// file_hash, status, media_type) into metadata_json. After all readers
+// have been migrated to use the canonical columns, this function should
+// be removed and only non-canonical metadata (prompt, mood, subjects,
+// model_parameters, provider_raw_metadata, creative_annotations) should
+// be written to metadata_json.
+//
+// Migration plan:
+//   1. Migrate all READ paths from json_extract(metadata_json, '$.<key>')
+//      to the canonical typed columns.
+//   2. Backfill: ensure every row has both column AND JSON key values.
+//   3. Compare: verify column == json_extract(...) for all rows.
+//   4. Stop writing duplicate keys (remove this function's column copies).
+//   5. Remove duplicate keys from existing metadata_json records.
+//   6. Delete this function.
 func (r *Repository) populateAssetMetadata(clip *models.MediaAsset) {
 	if clip.FolderID != "" {
 		clip.SetMetadataString("folder_id", clip.FolderID)
@@ -238,24 +257,41 @@ func (r *Repository) populateAssetMetadata(clip *models.MediaAsset) {
 }
 
 // DeleteClip soft-deletes a clip by its ID.
+// Uses both lifecycle_state + deleted_at columns (canonical) and
+// metadata_json.deleted_at (legacy, for backward compatibility during
+// dual-read migration phase). After Blocco 3 migration 037 completes,
+// the metadata_json write can be removed.
 func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("clip id is required")
 	}
+	now := timeutil.FormatRFC3339(time.Now())
 
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?) WHERE id = ?", timeutil.FormatRFC3339(time.Now()), id)
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets
+		 SET lifecycle_state = 'deleted',
+		     deleted_at = ?,
+		     metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?)
+		 WHERE id = ?`, now, now, id)
 	return err
 }
 
 // RestoreClip restores a soft-deleted clip by its ID.
+// Uses both lifecycle_state + deleted_at columns (canonical) and
+// metadata_json.deleted_at (legacy compat).
 func (r *Repository) RestoreClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("clip id is required")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_remove(COALESCE(metadata_json,'{}'), '$.deleted_at') WHERE id = ?", id)
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets
+		 SET lifecycle_state = 'ready',
+		     deleted_at = '',
+		     metadata_json = json_remove(COALESCE(metadata_json,'{}'), '$.deleted_at')
+		 WHERE id = ?`, id)
 	return err
 }
 
@@ -270,7 +306,8 @@ func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
 	return err
 }
 
-// DeleteClipByDriveLink deletes a clip by its Drive link (stored in metadata_json).
+// DeleteClipByDriveLink deletes a clip by its canonical drive_link or
+// download_link column.
 func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {
@@ -278,23 +315,26 @@ func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string
 	}
 
 	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?) WHERE json_extract(metadata_json, '$.drive_link') = ? OR json_extract(metadata_json, '$.download_link') = ?", now, driveLink, driveLink)
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets
+		 SET lifecycle_state = 'deleted',
+		     deleted_at = ?
+		 WHERE drive_link = ?
+		    OR download_link = ?`,
+		now, driveLink, driveLink)
 	return err
 }
 
 // CountAll returns the total row count of media_assets (excluding soft-deleted
-// rows whose metadata_json contains '$.deleted_at'). Used by the PR3-5b
-// IndexHealth cross-check as the canonical SQLite asset count.
-//
-// The deletion filter mirrors buildMediaAssetQuery so the cross-check number
-// matches what other read paths (ListClips etc.) would see.
+// rows). Used by the PR3-5b IndexHealth cross-check as the canonical SQLite
+// asset count.
 func (r *Repository) CountAll(ctx context.Context) (int64, error) {
 	if r.db == nil {
 		return 0, fmt.Errorf("clips.Repository: db is nil")
 	}
 	var n int64
 	err := r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL",
+		"SELECT COUNT(*) FROM media_assets WHERE lifecycle_state != 'deleted'",
 	).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("clips.CountAll: %w", err)
@@ -317,7 +357,7 @@ func (r *Repository) CountIndexed(ctx context.Context) (int64, error) {
 	var n int64
 	err := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM media_assets
-		 WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		 WHERE lifecycle_state != 'deleted'
 		   AND embedding_json IS NOT NULL
 		   AND embedding_json != ''
 		   AND embedding_json != '[]'`,
@@ -345,7 +385,7 @@ func (r *Repository) ListIndexedIDs(ctx context.Context, limit int) ([]string, e
 	}
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id FROM media_assets
-		 WHERE json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL
+		 WHERE lifecycle_state != 'deleted'
 		   AND embedding_json IS NOT NULL
 		   AND embedding_json != ''
 		   AND embedding_json != '[]'

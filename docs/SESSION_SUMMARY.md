@@ -247,7 +247,7 @@ come pure `person` salta il semantic text match), il recall crolla.
 #### Comando di replica
 
 ```bash
-cd /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored
+cd /home/pierone/Pyt/Pipelinegen
 go build -o /tmp/cmdbench ./cmd/benchmark/
 /tmp/cmdbench --server http://127.0.0.1:18080 \
   --token "$VELOX_ADMIN_TOKEN" \
@@ -459,7 +459,7 @@ Con queste 5 (in più di Fase 1-4), è possibile passare da `laptop/VPS singola`
 
 ```bash
 # Build & vet
-cd /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored
+cd /home/pierone/Pyt/Pipelinegen
 go build ./... && go vet ./...   # ✅
 go test ./internal/media/realtime/benchmark/  # 16/16 PASS
 

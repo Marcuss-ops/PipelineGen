@@ -31,7 +31,7 @@ graph TD
 
 ## 🚀 Strategia di Generazione a Due Livelli
 
-Il punto di ingresso primario per la generazione è la funzione [GenerateSmartImage](file:///home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/internal/media/images/google_generate.go#L27) che orchestra i due livelli:
+Il punto di ingresso primario per la generazione è la funzione [GenerateSmartImage](internal/media/images/google_generate.go#L27) che orchestra i due livelli:
 
 ### 1. Livello Primario: Google Labs Flow
 * **Descrizione**: Interagisce con il server locale `google-accounting` (scritto in Python).
@@ -63,7 +63,7 @@ Per ottimizzare i tempi di risposta (portandoli da decine di secondi a **~1ms**)
 
 ## 🏷️ Pipeline di Ingestione e Taggatura Semantica
 
-Una volta generata o scaricata l'immagine, questa viene processata tramite la funzione [IngestImage](file:///home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/internal/media/images/ingest.go#L42):
+Una volta generata o scaricata l'immagine, questa viene processata tramite la funzione [IngestImage](internal/media/images/ingest.go#L42):
 
 * **Deduplicazione SHA-256**: Calcola l'hash univoco dell'immagine prima del salvataggio per evitare duplicati fisici sul disco.
 * **Organizzazione su Disco**: I file vengono salvati in `/data/images/{style}/{subject}/`.
@@ -101,4 +101,4 @@ Per mantenere stabile il sistema ed evitare crash dovuti all'uso eccessivo di ri
 
 > [!TIP]
 > **Semaforo di Concorrenza NVIDIA**:
-> Abbiamo introdotto la variabile `globalNvidiaSem` a livello di package in [nvidia.go](file:///home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/internal/media/images/nvidia.go#L23). Questo blocca a un massimo di **2 elaborazioni contemporanee** le chiamate ai modelli NVIDIA NIM (in particolare per l'istanza locale `local-nim` che alloca molta memoria sulla GPU fisica), proteggendo il sistema da blocchi di memoria (out of memory).
+> Abbiamo introdotto la variabile `globalNvidiaSem` a livello di package in [nvidia.go](internal/media/images/nvidia.go#L23). Questo blocca a un massimo di **2 elaborazioni contemporanee** le chiamate ai modelli NVIDIA NIM (in particolare per l'istanza locale `local-nim` che alloca molta memoria sulla GPU fisica), proteggendo il sistema da blocchi di memoria (out of memory).

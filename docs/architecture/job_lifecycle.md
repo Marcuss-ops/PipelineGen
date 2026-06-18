@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE - Job system documentation
 
-Velox uses a distributed job queue system to manage asynchronous tasks such as script generation, video rendering, and uploads.
+PipelineGen uses a distributed job queue system to manage asynchronous tasks such as script generation, video rendering, and uploads.
 
 ## Job Types
 
@@ -49,7 +49,7 @@ graph TD
 ```
 
 ## Worker Lease System
-To prevent multiple workers from executing the same job, Velox uses an atomic "Lease" mechanism:
+To prevent multiple workers from executing the same job, PipelineGen uses an atomic "Lease" mechanism:
 - Workers fetch jobs where `status = 'queued'` and `lease_expiry < NOW()`.
 - Upon selection, the worker updates the `status` to `processing` and sets a `lease_expiry` (default 5-30 mins).
 - If a worker crashes, the lease will eventually expire, and another worker will pick up the job.

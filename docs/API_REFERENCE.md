@@ -5,7 +5,7 @@ This guide contains ready-to-use examples for interacting with the PipelineGen b
 ## 🛠️ Initial Setup
 
 Tutte le chiamate richiedono l'autenticazione tramite Bearer Token.
-**Token attivo:** `velox_master_key_2026`
+**Token attivo:** `<YOUR_ADMIN_TOKEN>`
 **Indirizzo Server:** Sostituisci `77.93.152.122` con l'IP effettivo del server se dovesse cambiare.
 
 ---
@@ -15,19 +15,19 @@ Tutte le chiamate richiedono l'autenticazione tramite Bearer Token.
 ### 1.1 Controlla se il server è online
 ```bash
 curl -i http://77.93.152.122:8080/api/health \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ### 1.2 System Doctor (Module status details)
 ```bash
 curl -i http://77.93.152.122:8080/api/system/doctor \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ### 1.3 Avvia Manutenzione Manuale (Log Pruning & Orphan Cleanup)
 ```bash
 curl -i -X POST "http://77.93.152.122:8080/api/system/cleanup?deep=true" \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ---
@@ -37,7 +37,7 @@ curl -i -X POST "http://77.93.152.122:8080/api/system/cleanup?deep=true" \
 ### 2.1 Genera un singolo Voiceover
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/media/voiceover/generate \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "text": "Questo è un test del modulo voiceover di PipelineGen.",
@@ -52,7 +52,7 @@ Traduce il testo sorgente in più lingue tramite Ollama e genera un voiceover pe
 
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/media/voiceover/promo \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "text": "Scopri la nostra nuova collezione estiva. Qualità premium, stile senza tempo.",
@@ -113,7 +113,7 @@ curl -i -X POST http://77.93.152.122:8080/api/media/voiceover/promo \
 Downloads matching clips using a preset. Returns the Job ID (see Jobs section).
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/artlist/run-smart \
-  -H "Authorization: Bearer velox_...026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "term": "cyberpunk city",
@@ -126,7 +126,7 @@ curl -i -X POST http://77.93.152.122:8080/api/artlist/run-smart \
 Returns metadata directly from the website via Node.js scraper.
 ```bash
 curl -i -X POST "http://77.93.152.122:8080/api/artlist/search/live?term=nature&limit=5" \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "X-Internal: true"
 ```
 
@@ -138,7 +138,7 @@ curl -i -X POST "http://77.93.152.122:8080/api/artlist/search/live?term=nature&l
 Invia un job per scaricare una specifica porzione di un video YouTube.
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/clips/process \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -168,7 +168,7 @@ Consulta le sezioni 5.2 e 5.3 per gli schemi e i dettagli.
 Esempio text-only via `/generate-from-clips` (`num_clips=0`):
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/script/generate-from-clips \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "Come vivere una vita semplice e prospera",
@@ -194,7 +194,7 @@ Genera script riscritto + (opzionalmente) scene con clip/artlist/stock + voiceov
 
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/script/generate-from-clips \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "Testo o articolo da trasformare in video explicativo...",
@@ -223,7 +223,7 @@ Endpoint dedicato (handler `ScriptFlowHandler.GenerateWithImages` in `handler_ge
 
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/script/generate-with-images \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "Leonardo da Vinci e il Rinascimento italiano",
@@ -279,7 +279,7 @@ curl -i -X POST http://77.93.152.122:8080/api/script/generate-with-images \
 ### 5.4 Status Job Script Generation
 ```bash
 curl -i http://77.93.152.122:8080/api/script/jobs/JOB_ID \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 > **Nota (doc-fix June 2026):** questa nota è parzialmente corretta. L'endpoint è dedicato e separato (ha `GenerateWithImagesRequest`, handler `GenerateWithImages` in `handler_generate_with_images.go`) e non è un alias di `/generate-from-clips` — ma il job type **NON è `script.generate_with_images`** (quel job type non esiste), bensì `script.generate_from_clips` (condiviso con `/generate-from-clips`); la pipeline è la stessa. La descrizione "testo → entità → immagini → Google Doc" è altresì imprecisa: entity extraction + metadata sono **forzate a false** da `handler_generate_with_images.go:93-95`; la pipeline reale è **testo → scene images forzate → Google Doc**, senza estrazione entità né metadata. I campi clip (`clip_ids`, `num_clips`, `artlist_search`, `stock_search`, ecc.) restano correttamente NON accettati (vedi `GenerateWithImagesRequest` in `types_clip_source.go:79`).
@@ -297,7 +297,7 @@ Inserisce un nuovo media asset nel database. Dopo il salvataggio, parte automati
 
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/artlist/clips \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "id": "mia_clip_001",
@@ -363,7 +363,7 @@ Triggera la reindicizzazione di un clip già presente nel database. Utile dopo a
 
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/artlist/clips/mia_clip_001/reindex \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 **Comportamento:**
@@ -424,19 +424,19 @@ Cerca clip e media asset nel **vector store Qdrant** usando similarità semantic
 ```bash
 # Ricerca semantica di base (testuale)
 curl -i "http://77.93.152.122:8080/api/semantic-search?q=tramonto+spiaggia+mare&limit=5&min_score=0.6" \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ```bash
 # Ricerca con filtri per source e media_type
 curl -i "http://77.93.152.122:8080/api/semantic-search?q=cyberpunk+city+night&source=artlist&media_type=video&limit=10&min_score=0.7" \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ```bash
 # Ricerca su spazio vettoriale visuale (CLIP)
 curl -i "http://77.93.152.122:8080/api/semantic-search?q=mountain+landscape&vector=visual&limit=5&min_score=0.5" \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 **Parametri query (GET):**
@@ -492,7 +492,7 @@ curl -i "http://77.93.152.122:8080/api/semantic-search?q=mountain+landscape&vect
 ### 7.1 Genera un'immagine AI (Richiede NVIDIA_API_KEY nel config)
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/images/generate/nvidia \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "A futuristic server room glowing with neon lights, highly detailed, 8k",
@@ -505,7 +505,7 @@ curl -i -X POST http://77.93.152.122:8080/api/images/generate/nvidia \
 *Sostituisci `HASH_IMMAGINE` con l'hash restituito dalla generazione o ricerca.*
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/images/animate \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "image_hash": "HASH_IMMAGINE_QUI",
@@ -520,14 +520,14 @@ curl -i -X POST http://77.93.152.122:8080/api/images/animate \
 ### 8.1 Lista tutti i Jobs recenti
 ```bash
 curl -i http://77.93.152.122:8080/api/jobs \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ### 8.2 Dettagli di un Job specifico
 *Sostituisci `JOB_ID` con l'ID reale (es. `job-12345`).*
 ```bash
 curl -i http://77.93.152.122:8080/api/jobs/JOB_ID/full \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 ---
@@ -540,7 +540,7 @@ Genera lezioni web strutturate da un testo sorgente. Divide automaticamente il t
 Elabora il testo sorgente e restituisce la lezione completa con capitoli, immagini e PDF.
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/lessons/generate \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "source_text": "L'articolo completo o testo da trasformare in una lezione strutturata. Il sistema dividerà automaticamente il contenuto in capitoli basati sulla struttura del testo.",
@@ -615,7 +615,7 @@ curl -i -X POST http://77.93.152.122:8080/api/lessons/generate \
 Per testi lunghi o quando `generate_images: true`, usa la modalità async per non aspettare la risposta.
 ```bash
 curl -i -X POST http://77.93.152.122:8080/api/lessons/generate \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "source_text": "Testo lungo da elaborare...",
@@ -643,7 +643,7 @@ curl -i -X POST http://77.93.152.122:8080/api/lessons/generate \
 ### 9.3 Lista Job di Generazione Lezioni
 ```bash
 curl -i "http://77.93.152.122:8080/api/lessons/jobs?status=completed&limit=10" \
-  -H "Authorization: Bearer velox_master_key_2026"
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>"
 ```
 
 **Parametri query (GET):**

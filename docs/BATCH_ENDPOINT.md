@@ -56,7 +56,7 @@ Genera script multi-capitolo da una lista di topic con source text. Supporta voi
 
 ```bash
 curl -X POST http://127.0.0.1:8081/api/script/generate-batch \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "doc_title": "Simple Living Guide",
@@ -82,7 +82,7 @@ curl -X POST http://127.0.0.1:8081/api/script/generate-batch \
 
 ```bash
 curl -X POST http://127.0.0.1:8081/api/script/generate-batch \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "doc_title": "Frugal Living: 8 Steps to Financial Freedom",
@@ -112,7 +112,7 @@ curl -X POST http://127.0.0.1:8081/api/script/generate-batch \
 
 ```bash
 curl -X POST http://127.0.0.1:8081/api/script/generate-batch \
-  -H "Authorization: Bearer velox_master_key_2026" \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "doc_title": "Italian Cooking Basics",
