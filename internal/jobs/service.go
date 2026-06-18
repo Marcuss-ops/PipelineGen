@@ -136,7 +136,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*models.Job
 	job := &models.Job{
 		ID:            generateJobID(),
 		Type:          req.Type,
-		Status:        models.StatusQueued,
+		Status:        models.StatusPending,
 		Priority:      req.Priority,
 		Project:       req.Project,
 		VideoName:     req.VideoName,
@@ -225,70 +225,8 @@ func (s *Service) Retry(ctx context.Context, id string) (*models.Job, error) {
 	return s.repo.Retry(ctx, id)
 }
 
-// SetRunning marks a queued job as running with optimistic-lock
-// guarantees against double-claim by concurrent workers.
-//
-// Idempotency contract: if the job is already running (e.g. a caller
-// re-invokes SetRunning in a recovery path), this method returns
-// nil without firing a transition. The legacy SetStatusRunning was
-// idempotent in the same way for backwards compatibility — a strict
-// Transition(queued→running) would reject with
-// `invalid transition: "running" → "running"`, which would break any
-// caller that retries SetRunning. The short-circuit below preserves
-// the legacy semantics.
-//
-// Returns:
-//   - nil on success (transition fired) OR on idempotent no-op (job
-//     already running);
-//   - ErrOptimisticLockFailed if another worker raced us past the
-//     Transition and bumped the revision;
-//   - the wrapped state-machine error if the current status is
-//     non-queued and non-running (e.g. cancelled / failed / completed).
-func (s *Service) SetRunning(ctx context.Context, id string) error {
-	job, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return fmt.Errorf("set running: load job: %w", err)
-	}
-	if job == nil {
-		return fmt.Errorf("set running: job %s not found", id)
-	}
-	if job.Status == models.StatusRunning {
-		// Idempotent: already running. Preserves legacy semantics so
-		// any caller that double-invokes (e.g. recovery paths) does
-		// not surface a state-machine error.
-		return nil
-	}
-	_, err = s.repo.Transition(ctx, jobsrepo.TransitionRequest{
-		JobID:            id,
-		ExpectedRevision: job.Revision,
-		ExpectedStatus:   job.Status,
-		NewStatus:        models.StatusRunning,
-		Updates: map[string]any{
-			"started_at": time.Now(),
-		},
-	})
-	return err
-}
-
-// Transition executes a status change on the underlying repository
-// using the optimistic-lock contract (revision + expected status).
-// This is the canonical primitive for advancing job lifecycle; all
-// higher-level helpers (Complete, Fail, Cancel, Retry) are thin
-// wrappers over this method, but new flows may call it directly.
-func (s *Service) Transition(ctx context.Context, req jobsrepo.TransitionRequest) (*models.Job, error) {
-	return s.repo.Transition(ctx, req)
-}
-
 func (s *Service) Progress(ctx context.Context, id string, progress int, message string) error {
 	return s.repo.SetProgress(ctx, id, progress, message)
-}
-
-func (s *Service) Complete(ctx context.Context, id string, result map[string]any) error {
-	return s.repo.Complete(ctx, id, result)
-}
-
-func (s *Service) Fail(ctx context.Context, id string, err error) error {
-	return s.repo.Fail(ctx, id, err.Error())
 }
 
 func (s *Service) AddEvent(ctx context.Context, jobID string, eventType string, message string, data map[string]any) error {
@@ -300,7 +238,7 @@ func (s *Service) ListEvents(ctx context.Context, jobID string) ([]models.JobEve
 }
 
 func (s *Service) RequeueExpiredLeases(ctx context.Context) error {
-	return s.repo.RequeueExpiredLeases(ctx)
+	return s.repo.RequeueExpiredLeasesNoArg(ctx)
 }
 
 // GetStats returns aggregated job statistics.

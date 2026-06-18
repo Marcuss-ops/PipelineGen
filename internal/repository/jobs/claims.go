@@ -164,27 +164,44 @@ func (r *Repository) requeueSingle(ctx context.Context, jobID string, retryCount
 	}
 	defer tx.Rollback()
 
+	// First, determine current status (LEASED vs RUNNING).
+	var currentStatus models.JobStatus
+	err = tx.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&currentStatus)
+	if err != nil {
+		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("select status: %v", err)}
+	}
+
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
 	if retryCount < maxRetries {
+		// LEASED → PENDING (job was claimed but never started — no backoff needed).
+		// RUNNING → RETRY_WAIT (job was executing — apply retry backoff).
+		targetStatus := models.StatusRetryWait
+		eventType := "job_retry_wait"
+		eventMsg := "Lease expired, retrying"
+		if currentStatus == models.StatusLeased {
+			targetStatus = models.StatusPending
+			eventType = "job_pending"
+			eventMsg = "Lease expired, re-queued"
+		}
 		res, err := tx.ExecContext(ctx,
-			`UPDATE jobs SET status = 'RETRY_WAIT', worker_id = '',
+			`UPDATE jobs SET status = ?, worker_id = '',
 			 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
-			 WHERE id = ? AND status IN ('LEASED', 'RUNNING') AND lease_expiry < ? AND revision = ?`,
-			nowStr, jobID, nowStr, revision)
+			 WHERE id = ? AND status = ? AND lease_expiry < ? AND revision = ?`,
+			targetStatus, nowStr, jobID, currentStatus, nowStr, revision)
 		if err != nil || mustRowsAffected(res) == 0 {
 			return RequeueResult{JobID: jobID, Error: "rows affected 0"}
 		}
 		tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			evtID, jobID, "job_retry_wait", "Lease expired, retrying", "{}", nowStr)
+			evtID, jobID, eventType, eventMsg, "{}", nowStr)
 		tx.Commit()
-		return RequeueResult{JobID: jobID, NewStatus: models.StatusRetryWait}
+		return RequeueResult{JobID: jobID, NewStatus: targetStatus}
 	}
 	// Exhausted → FAILED
 	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
 		 worker_id = '', lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
-		 WHERE id = ? AND status IN ('LEASED', 'RUNNING') AND lease_expiry < ? AND revision = ?`,
-		nowStr, "max retries exhausted (reaper)", nowStr, jobID, nowStr, revision)
+		 WHERE id = ? AND status = ? AND lease_expiry < ? AND revision = ?`,
+		nowStr, "max retries exhausted (reaper)", nowStr, jobID, currentStatus, nowStr, revision)
 	if err != nil || mustRowsAffected(res) == 0 {
 		return RequeueResult{JobID: jobID, Error: "rows affected 0"}
 	}

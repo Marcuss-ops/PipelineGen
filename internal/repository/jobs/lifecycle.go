@@ -287,6 +287,40 @@ func (r *Repository) Retry(ctx context.Context, jobID string) (*models.Job, erro
 	return r.Get(ctx, jobID)
 }
 
+// ── Convenience Wrappers (backward compat with old callers) ──────────────
+
+// Cancel transitions a non-terminal job to CANCELLED. Convenience wrapper
+// around RequestCancel for callers that don't need the result.
+func (r *Repository) Cancel(ctx context.Context, jobID string) error {
+	_, err := r.RequestCancel(ctx, RequestCancel{JobID: jobID})
+	return err
+}
+
+// RequeueExpiredLeasesNoArg is a convenience wrapper that passes time.Now()
+// and a default limit of 1000.
+func (r *Repository) RequeueExpiredLeasesNoArg(ctx context.Context) error {
+	_, err := r.RequeueExpiredLeases(ctx, time.Now(), 1000)
+	return err
+}
+
+// MarkRunningJobsOlderThanFailed moves stale LEASED/RUNNING jobs to FAILED
+// if their lease has expired beyond the given cutoff.
+func (r *Repository) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff time.Time, reason string) (int, error) {
+	now := timeutil.FormatRFC3339(time.Now())
+	cutoffStr := timeutil.FormatRFC3339(cutoff)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
+		 worker_id = '', lease_id = '', lease_expiry = NULL,
+		 revision = revision + 1, updated_at = ?
+		 WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < ?`,
+		now, reason, now, cutoffStr)
+	if err != nil {
+		return 0, fmt.Errorf("markRunningJobsOlderThanFailed: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 func validateOwnership(jobID string, currentStatus models.JobStatus,

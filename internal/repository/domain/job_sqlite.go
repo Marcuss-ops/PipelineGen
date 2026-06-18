@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	jobsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
 
 // SQLiteJobRepository implements job.Repository by delegating to the
@@ -49,7 +50,7 @@ func domainToModel(j *job.Job) *models.Job {
 
 	status := models.JobStatus(j.Status)
 	if j.Status == "" {
-		status = models.StatusQueued
+		status = models.StatusPending
 	}
 
 	// Result: json.RawMessage (domain) → map[string]any (models).
@@ -77,8 +78,6 @@ func domainToModel(j *job.Job) *models.Job {
 		RetryCount:     j.RetryCount,
 		MaxRetries:     j.MaxRetries,
 		Progress:       j.Progress,
-		WorkflowID:     j.WorkflowID,
-		WorkflowStepID: j.WorkflowStepID,
 	}
 	return m
 }
@@ -114,8 +113,6 @@ func modelToDomain(m *models.Job) *job.Job {
 		MaxRetries:     m.MaxRetries,
 		WorkerID:       m.WorkerID,
 		CorrelationID:  m.CorrelationID,
-		WorkflowID:     m.WorkflowID,
-		WorkflowStepID: m.WorkflowStepID,
 		CreatedAt:      m.CreatedAt,
 		UpdatedAt:      m.UpdatedAt,
 		StartedAt:      m.StartedAt,
@@ -124,14 +121,9 @@ func modelToDomain(m *models.Job) *job.Job {
 	return j
 }
 
-// domainToModelStatus converts domain.Status to models.JobStatus.
-func domainToModelStatus(s job.Status) models.JobStatus {
-	return models.JobStatus(s)
-}
-
 // ── job.Repository implementation ─────────────────────────────────────
 
-// Create inserts a new job in queued state.
+// Create inserts a new job in PENDING state.
 func (r *SQLiteJobRepository) Create(ctx context.Context, j *job.Job) error {
 	m := domainToModel(j)
 	return r.inner.Create(ctx, m)
@@ -178,29 +170,22 @@ func (r *SQLiteJobRepository) List(ctx context.Context, filter job.Filter) ([]jo
 }
 
 // Transition atomically transitions a job from one status to another.
-// This is the SINGLE entry point for all job state transitions; Complete,
-// Fail, and Retry all route through Transition.
-//
-// Delegates to the canonical repo's Transition method with the expected
-// revision fetched from the current job row for optimistic concurrency.
+// Routes through the new typed commands (CompleteJob, FailJob, StartJob, etc.)
+// with fencing-token validation from the loaded current job.
 func (r *SQLiteJobRepository) Transition(ctx context.Context, id string, from, to job.Status) error {
 	return r.transitionInternal(ctx, id, from, to, nil, "")
 }
 
 // transitionInternal is the single call path for all job state transitions.
-// It validates the transition, loads the current job for revision-based
-// optimistic concurrency, builds the TransitionRequest, and delegates to
-// the canonical repo's Transition method.
-//
-// When result is non-nil, it is set on the completed job.
-// When errMsg is non-empty, it is set on the failed job.
+// It validates the transition, loads the current job for fencing tokens,
+// and routes to the appropriate typed command on the canonical repo.
 func (r *SQLiteJobRepository) transitionInternal(ctx context.Context, id string, from, to job.Status, result map[string]any, errMsg string) error {
 	// Validate the transition using domain-level rules.
 	if err := validateTransition(from, to); err != nil {
 		return fmt.Errorf("SQLiteJobRepository.Transition(%s): %w", id, err)
 	}
 
-	// Load the current job to get revision and current status.
+	// Load the current job to get fencing tokens (worker_id, lease_id, revision).
 	current, err := r.inner.Get(ctx, id)
 	if err != nil {
 		return fmt.Errorf("SQLiteJobRepository.Transition(%s): %w", id, err)
@@ -210,72 +195,109 @@ func (r *SQLiteJobRepository) transitionInternal(ctx context.Context, id string,
 	}
 
 	// Verify the current status matches the expected from status.
-	if current.Status != domainToModelStatus(from) {
+	if current.Status != models.JobStatus(from) {
 		return fmt.Errorf("SQLiteJobRepository.Transition(%s): %w (current=%s, expected=%s)",
 			id, job.ErrTransitionConflict, current.Status, from)
 	}
 
-	req := jobsrepo.TransitionRequest{
-		JobID:            id,
-		ExpectedStatus:   domainToModelStatus(from),
-		ExpectedRevision: current.Revision,
-		NewStatus:        domainToModelStatus(to),
-		// Preserve fencing tokens from the loaded job so the canonical
-		// Transition enforces worker_id + lease_id ownership (prevents
-		// stale-lease completion of a reassigned job).
-		WorkerID: current.WorkerID,
-		LeaseID:  current.LeaseID,
-	}
-
-	// Set status-specific fields that the canonical Transition doesn't handle natively.
+	// Dispatch to typed commands based on the target status.
 	switch to {
-	case job.StatusCompleted:
-		req.Progress = intPtr(100)
-		if result != nil {
-			req.Result = result
-		}
-	case job.StatusFailed:
-		if errMsg != "" {
-			req.Error = &errMsg
-		}
-	case job.StatusQueued:
-		// Retry path: clear lease, worker, and timestamps.
-		req.ExtraSets = []string{
-			"retry_count = retry_count + 1",
-			"worker_id = ''",
-			"lease_id = ''",
-			"lease_expiry = NULL",
-			"started_at = NULL",
-			"completed_at = NULL",
-			"cancelled_at = NULL",
-		}
-	}
+	case job.StatusRunning, job.StatusLeased:
+		// PENDING → LEASED/RUNNING: use Start (handles both PENDING and LEASED as from-states).
+		_, err = r.inner.Start(ctx, jobsrepo.StartJob{
+			JobID:    id,
+			WorkerID: current.WorkerID,
+			LeaseID:  current.LeaseID,
+			LeaseTTL: 5 * time.Minute, // default; caller should use ClaimNext for proper lease
+			Revision: int64(current.Revision),
+		})
+		return err
 
-	_, err = r.inner.Transition(ctx, req)
-	if err != nil {
-		return fmt.Errorf("SQLiteJobRepository.Transition(%s): %w", id, err)
+	case job.StatusSucceeded: // covers job.StatusCompleted (alias)
+		var resultJSON json.RawMessage
+		if result != nil {
+			b, _ := json.Marshal(result)
+			if b != nil {
+				resultJSON = b
+			}
+		}
+		if resultJSON == nil {
+			resultJSON = json.RawMessage("{}")
+		}
+		_, err = r.inner.Complete(ctx, jobsrepo.CompleteJob{
+			JobID:      id,
+			WorkerID:   current.WorkerID,
+			LeaseID:    current.LeaseID,
+			Revision:   int64(current.Revision),
+			ResultJSON: resultJSON,
+		})
+		return err
+
+	case job.StatusFailed:
+		_, err = r.inner.Fail(ctx, jobsrepo.FailJob{
+			JobID:    id,
+			WorkerID: current.WorkerID,
+			LeaseID:  current.LeaseID,
+			Revision: int64(current.Revision),
+			Error:    errMsg,
+		})
+		return err
+
+	case job.StatusPending: // covers job.StatusQueued (alias)
+		// Retry path: FAILED → PENDING (or RETRY_WAIT → PENDING).
+		// Uses the canonical Retry which handles both.
+		_, err = r.inner.Retry(ctx, id)
+		return err
+
+	case job.StatusCancelled:
+		return r.inner.Cancel(ctx, id)
+
+	default:
+		return fmt.Errorf("SQLiteJobRepository.Transition(%s): unhandled target status %q", id, to)
 	}
-	return nil
 }
 
-// ClaimNext claims the oldest queued job for the given worker.
-// Delegates to the canonical repo's CTE-based atomic claim — no claimMu needed.
+// ClaimNext claims the oldest PENDING job for the given worker,
+// transitioning it PENDING→LEASED→RUNNING in one logical operation.
 func (r *SQLiteJobRepository) ClaimNext(ctx context.Context, workerID string, leaseTTLSeconds int, types []string) (*job.Job, error) {
 	jobTypes := make([]models.JobType, 0, len(types))
 	for _, t := range types {
 		jobTypes = append(jobTypes, models.JobType(t))
 	}
 
-	m, err := r.inner.ClaimNext(ctx, workerID, time.Duration(leaseTTLSeconds)*time.Second, jobTypes)
+	leaseID := fmt.Sprintf("lease_%d_%s", time.Now().UnixNano(), hashutil.RandomString(8))
+	leaseTTL := time.Duration(leaseTTLSeconds) * time.Second
+
+	// Step 1: ClaimNext (PENDING → LEASED with fencing token)
+	leas, err := r.inner.ClaimNext(ctx, jobsrepo.ClaimNext{
+		WorkerID: workerID,
+		LeaseID:  leaseID,
+		LeaseTTL: leaseTTL,
+		Types:    jobTypes,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("SQLiteJobRepository.ClaimNext: %w", err)
 	}
-	return modelToDomain(m), nil
+	if leas == nil || leas.Job == nil {
+		return nil, nil
+	}
+
+	// Step 2: Start (LEASED → RUNNING)
+	started, err := r.inner.Start(ctx, jobsrepo.StartJob{
+		JobID:    leas.Job.ID,
+		WorkerID: workerID,
+		LeaseID:  leaseID,
+		LeaseTTL: leaseTTL,
+		Revision: int64(leas.Job.Revision),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("SQLiteJobRepository.ClaimNext start: %w", err)
+	}
+
+	return modelToDomain(started), nil
 }
 
 // Complete marks a running job as completed with a result.
-// Routes through Transition (running → completed) — the single entry point
-// for all job state changes.
 func (r *SQLiteJobRepository) Complete(ctx context.Context, id string, result json.RawMessage) error {
 	var resultMap map[string]any
 	if len(result) > 0 && string(result) != "null" {
@@ -285,21 +307,16 @@ func (r *SQLiteJobRepository) Complete(ctx context.Context, id string, result js
 }
 
 // Fail marks a running job as failed with an error message.
-// Routes through Transition (running → failed) — the single entry point
-// for all job state changes.
 func (r *SQLiteJobRepository) Fail(ctx context.Context, id string, errMsg string) error {
 	return r.transitionInternal(ctx, id, job.StatusRunning, job.StatusFailed, nil, errMsg)
 }
 
-// Cancel cancels a queued or running job.
+// Cancel cancels a PENDING, LEASED, RUNNING, or RETRY_WAIT job.
 func (r *SQLiteJobRepository) Cancel(ctx context.Context, id string) error {
 	return r.inner.Cancel(ctx, id)
 }
 
 // Retry re-enqueues a failed job for retry.
-// Uses the adapter's Transition (failed → queued) rather than the canonical
-// ScheduleRetry, which is designed for in-flight retries (running → queued)
-// and requires fencing tokens that a failed job no longer holds.
 func (r *SQLiteJobRepository) Retry(ctx context.Context, id string) error {
 	current, err := r.inner.Get(ctx, id)
 	if err != nil {
@@ -308,58 +325,55 @@ func (r *SQLiteJobRepository) Retry(ctx context.Context, id string) error {
 	if current == nil {
 		return fmt.Errorf("SQLiteJobRepository.Retry: job %s not found", id)
 	}
-	if current.Status != models.StatusFailed {
-		return fmt.Errorf("SQLiteJobRepository.Retry: job %s is not failed (status=%s)", id, current.Status)
-	}
 	if current.RetryCount >= current.MaxRetries {
 		return fmt.Errorf("SQLiteJobRepository.Retry: job %s exhausted retries (%d/%d)", id, current.RetryCount, current.MaxRetries)
 	}
 
-	// Use the adapter's Transition which handles the ExtraSets for
-	// clearing worker_id, lease_id, timestamps, and incrementing retry_count.
-	return r.Transition(ctx, id, job.StatusFailed, job.StatusQueued)
+	// Use the canonical Retry which handles FAILED/RetryWait → PENDING.
+	_, err = r.inner.Retry(ctx, id)
+	if err != nil {
+		return fmt.Errorf("SQLiteJobRepository.Retry: %w", err)
+	}
+	return nil
 }
 
 // ── Transition validation ─────────────────────────────────────────────
 
 // validateTransition checks if the transition is valid per the canonical
-// state machine (same rules as models.TransitionJob). This operates on
-// domain job.Status to avoid importing models from the domain layer.
-//
-// Rule: jobs must go through running to reach terminal states.
-// Only the worker can complete or fail a job.
-//
-// Allowed transitions:
-//
-//	queued    → running, cancelled
-//	running   → completed, failed, cancelled, queued (lease expiry / retry)
-//	failed    → queued (retry)
-//	completed → (terminal)
-//	cancelled → (terminal)
+// state machine. This operates on domain job.Status to avoid importing
+// models from the domain layer.
 func validateTransition(current, next job.Status) error {
 	switch current {
-	case job.StatusQueued:
+	case job.StatusPending: // covers job.StatusQueued (alias)
 		switch next {
-		case job.StatusRunning, job.StatusCancelled:
+		case job.StatusLeased, job.StatusCancelled:
+			return nil
+		}
+	case job.StatusLeased:
+		switch next {
+		case job.StatusRunning, job.StatusPending, job.StatusCancelled:
 			return nil
 		}
 	case job.StatusRunning:
 		switch next {
-		case job.StatusCompleted, job.StatusFailed, job.StatusCancelled, job.StatusQueued:
+		case job.StatusSucceeded, job.StatusFailed, job.StatusCancelled, job.StatusRetryWait:
+			return nil
+		}
+	case job.StatusRetryWait:
+		switch next {
+		case job.StatusPending, job.StatusFailed, job.StatusCancelled:
 			return nil
 		}
 	case job.StatusFailed:
-		if next == job.StatusQueued {
+		if next == job.StatusPending {
 			return nil
 		}
-	case job.StatusCompleted, job.StatusCancelled:
+	case job.StatusSucceeded, job.StatusCancelled:
 		return fmt.Errorf("cannot transition from terminal status %q to %q", current, next)
+	default:
+		return fmt.Errorf("unknown status %q", current)
 	}
 	return fmt.Errorf("invalid transition: %q → %q", current, next)
-}
-
-func intPtr(i int) *int {
-	return &i
 }
 
 // Compile-time check that SQLiteJobRepository satisfies job.Repository.
