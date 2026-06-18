@@ -5,7 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -14,14 +15,14 @@ func (h *Handler) GetClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	// Handle Voiceover source
+	// Handle Voiceover source — use canonical converter directly.
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 		rec, err := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
 		if err != nil {
 			apiutil.NotFound(c, "voiceover not found")
 			return
 		}
-		clip := voiceoverRecordToClip(rec)
+		clip := assetregistry.VoiceoverRecordToClip(rec)
 		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
@@ -32,7 +33,7 @@ func (h *Handler) GetClip(c *gin.Context) {
 		return
 	}
 
-	clip, err := repo.GetClip(c.Request.Context(), clipID)
+	legacyClip, err := repo.GetClip(c.Request.Context(), clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
@@ -41,7 +42,7 @@ func (h *Handler) GetClip(c *gin.Context) {
 	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
-		"clip":   clip,
+		"clip":   assetregistry.ToCanonical(legacyClip),
 	})
 }
 
@@ -56,11 +57,12 @@ func (h *Handler) ClipStatus(c *gin.Context) {
 		return
 	}
 
-	clip, err := repo.GetClip(c.Request.Context(), clipID)
+	legacyClip, err := repo.GetClip(c.Request.Context(), clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
+	clip := assetregistry.ToCanonical(legacyClip)
 
 	// Determine status based on available data
 	status := "unknown"
@@ -100,7 +102,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 	q := c.Query("q")
 
 	ctx := c.Request.Context()
-	var allClips []*models.MediaAsset
+	var allClips []*asset.MediaAsset
 
 	if sourceLower == "voiceover" {
 		if h.voiceoverRepo == nil {
@@ -113,7 +115,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			return
 		}
 		for _, rec := range records {
-			allClips = append(allClips, voiceoverRecordToClip(rec))
+			allClips = append(allClips, assetregistry.VoiceoverRecordToClip(rec))
 		}
 	} else if sourceLower == "images" {
 		if h.imagesRepo == nil {
@@ -125,8 +127,8 @@ func (h *Handler) ListClips(c *gin.Context) {
 			apiutil.InternalError(c, err)
 			return
 		}
-		for _, asset := range assets {
-			allClips = append(allClips, imageAssetToClip(asset))
+		for _, img := range assets {
+			allClips = append(allClips, assetregistry.ImageAssetToClip(img))
 		}
 	} else {
 		repo := h.resolveRepo(source)
@@ -134,19 +136,22 @@ func (h *Handler) ListClips(c *gin.Context) {
 			apiutil.BadRequest(c, "invalid source: "+source)
 			return
 		}
-		clips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
+		legacyClips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
 		if err != nil {
 			apiutil.InternalError(c, err)
 			return
 		}
-		allClips = clips
+		allClips = make([]*asset.MediaAsset, len(legacyClips))
+		for i, lc := range legacyClips {
+			allClips[i] = assetregistry.ToCanonical(lc)
+		}
 	}
 
 	total := 0
 	if sourceLower == "voiceover" || sourceLower == "images" {
 		total = len(allClips)
 		if offset >= len(allClips) {
-			allClips = []*models.MediaAsset{}
+			allClips = []*asset.MediaAsset{}
 		} else {
 			end := offset + limit
 			if end > len(allClips) {
