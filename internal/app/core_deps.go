@@ -63,6 +63,7 @@ type CoreDeps struct {
 	ArtlistRepo        *clips.Repository
 	ClipsOnlyRepo      *clips.Repository
 	AssetRepo          asset.Repository
+	AssetLocationRepo  asset.LocationRepository
 	MonitorsRepo       *monitors.Repository
 	VoiceoverRepo      *voiceovers.Repository
 	VoiceoverService   *voiceover.Service

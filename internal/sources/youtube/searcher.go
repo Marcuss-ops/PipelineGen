@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 	"go.uber.org/zap"
 )
@@ -63,13 +62,12 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	// 2. Check L2 SQLite cache
 	if cached, ok := s.getCachedSearch(ctx, cacheKey); ok {
 		s.log.Info("Serving YouTube search results from L2 SQLite cache", zap.String("query", query))
-		results := toAssetDomainSlice(cached)
 		// Populate L1 cache
 		s.searchL1.Store(cacheKey, searchL1Entry{
-			Results: results,
+			Results: cached,
 			AddedAt: time.Now(),
 		})
-		return results, nil
+		return cached, nil
 	}
 
 	s.log.Info("Performing live YouTube search", zap.String("query", query), zap.Int("limit", limit), zap.String("sort", sort))
@@ -121,7 +119,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	legacyResults := make([]models.MediaAsset, 0, len(lines))
+	results := make([]asset.MediaAsset, 0, len(lines))
 
 	for _, line := range lines {
 		if line == "" {
@@ -149,22 +147,25 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			thumbnail = item.Thumbnails[len(item.Thumbnails)-1].URL
 		}
 
-		clip := models.MediaAsset{
+		metadata := map[string]any{
+			"uploader":  item.Uploader,
+			"duration":  item.Duration,
+			"video_id":  item.ID,
+		}
+
+		results = append(results, asset.MediaAsset{
 			ID:           "youtube_" + item.ID,
 			Name:         item.Title,
 			Source:       "youtube",
+			SourceURL:    item.URL,
 			ExternalURL:  item.URL,
-			DownloadLink: item.URL,
-			ThumbURL:     thumbnail,
-		}
-		clip.SetMetadataJSON(fmt.Sprintf(`{"uploader": %q, "duration": %f, "video_id": %q}`, item.Uploader, item.Duration, item.ID))
-		legacyResults = append(legacyResults, clip)
+			ThumbnailURL: thumbnail,
+			Metadata:     metadata,
+		})
 	}
 
-	results := toAssetDomainSlice(legacyResults)
-
 	// Cache the search results in L1 and L2
-	s.setCachedSearch(ctx, cacheKey, legacyResults)
+	s.setCachedSearch(ctx, cacheKey, results)
 	s.searchL1.Store(cacheKey, searchL1Entry{
 		Results: results,
 		AddedAt: time.Now(),

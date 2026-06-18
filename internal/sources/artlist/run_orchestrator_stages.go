@@ -68,13 +68,44 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 
 	for _, clip := range clips {
 		item := RunTagItem{
-			ClipID:       clip.ID,
-			Name:         clip.Name,
-			DownloadLink: clip.GetMetadataString("_download_link"),
-			DriveLink:    clip.GetMetadataString("_drive_link"),
-			DriveFileID:  clip.GetMetadataString("_drive_file_id"),
-			LocalPath:    clip.GetMetadataString("_local_path"),
-			FileHash:     clip.GetMetadataString("_file_hash"),
+			ClipID: clip.ID,
+			Name:   clip.Name,
+		}
+
+		// Read locations from canonical asset_locations instead of _underscore metadata keys
+		if o.svc.assetLocRepo != nil {
+			if locs, err := o.svc.assetLocRepo.ListByAsset(ctx, clip.ID); err == nil {
+				for _, loc := range locs {
+					switch loc.LocationKind {
+					case asset.LocationKindLocal:
+						item.LocalPath = loc.URI
+						item.FileHash = loc.FileHash
+					case asset.LocationKindDrive:
+						item.DriveFileID = loc.ExternalID
+						item.DriveLink = loc.AccessURL
+						item.DownloadLink = loc.DownloadURL
+						if item.FileHash == "" {
+							item.FileHash = loc.FileHash
+						}
+					}
+				}
+			}
+		}
+		// Fallback to deprecated struct fields for backward compat during migration
+		if item.DownloadLink == "" {
+			item.DownloadLink = clip.GetMetadataString("_download_link")
+		}
+		if item.DriveLink == "" {
+			item.DriveLink = clip.GetMetadataString("_drive_link")
+		}
+		if item.DriveFileID == "" {
+			item.DriveFileID = clip.GetMetadataString("_drive_file_id")
+		}
+		if item.LocalPath == "" {
+			item.LocalPath = clip.GetMetadataString("_local_path")
+		}
+		if item.FileHash == "" {
+			item.FileHash = clip.GetMetadataString("_file_hash")
 		}
 
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
@@ -236,6 +267,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 // When the dispatcher is wired, UpsertClip + IndexClip are routed through
 // EnqueueAndIndex (atomic media_assets + outbox); otherwise the legacy
 // UpsertClip + async clipIndexer.IndexClip path remains.
+// Also writes location data to asset_locations when the location repo is wired.
 func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
 	if o.svc.artlistRepo == nil {
 		return
@@ -254,6 +286,12 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 			existingClip.Status = "processed"
 			existingClip.Source = "artlist"
 			existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
+
+			// Write locations to canonical asset_locations table
+			if o.svc.assetLocRepo != nil {
+				o.writeAssetLocations(ctx, item.ClipID, item)
+			}
+
 			if o.svc.dispatcher != nil {
 				if err := o.svc.dispatcher.EnqueueAndIndex(ctx, existingClip, existingClip.FileHash); err != nil {
 					o.svc.log.Warn("failed to update clip record after pipeline (dispatcher)",
@@ -267,6 +305,42 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 						zap.Error(err))
 				}
 			}
+		}
+	}
+}
+
+// writeAssetLocations upserts location records for a processed clip into asset_locations.
+func (o *RunOrchestratorService) writeAssetLocations(ctx context.Context, clipID string, item RunTagItem) {
+	if item.LocalPath != "" {
+		loc := &asset.Location{
+			AssetID:      clipID,
+			LocationKind: asset.LocationKindLocal,
+			URI:          item.LocalPath,
+			FileHash:     item.FileHash,
+			IsPrimary:    true,
+		}
+		if err := o.svc.assetLocRepo.Upsert(ctx, loc); err != nil {
+			o.svc.log.Warn("failed to upsert local location", zap.String("clip_id", clipID), zap.Error(err))
+		}
+	}
+	if item.DriveFileID != "" || item.DriveLink != "" {
+		uri := "drive://" + item.DriveFileID
+		if item.DriveFileID == "" {
+			uri = item.DriveLink
+		}
+		isPrimary := item.LocalPath == ""
+		loc := &asset.Location{
+			AssetID:      clipID,
+			LocationKind: asset.LocationKindDrive,
+			URI:          uri,
+			ExternalID:   item.DriveFileID,
+			AccessURL:    item.DriveLink,
+			DownloadURL:  item.DownloadLink,
+			FileHash:     item.FileHash,
+			IsPrimary:    isPrimary,
+		}
+		if err := o.svc.assetLocRepo.Upsert(ctx, loc); err != nil {
+			o.svc.log.Warn("failed to upsert drive location", zap.String("clip_id", clipID), zap.Error(err))
 		}
 	}
 }

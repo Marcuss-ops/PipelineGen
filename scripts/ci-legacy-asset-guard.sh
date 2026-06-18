@@ -17,8 +17,8 @@ echo "=== Legacy Asset Guard (strict exact-match) ==="
 
 # ── Check 1: exact match between allowlist and actual references ─────
 echo ""
-echo "Check 1: models.MediaAsset — allowlist vs actual (exact match)"
-ACTUAL=$(rg -l 'models\.MediaAsset' internal --glob '*.go' 2>/dev/null | sort)
+echo "Check 1: models.MediaAsset — allowlist vs actual (AST-based, excludes comments)"
+ACTUAL=$(scripts/ast-legacy-finder.sh --include-tests 2>/dev/null | sort)
 ALLOWED=""
 if [[ -f "$ALLOWLIST" ]]; then
     ALLOWED=$(grep -v '^#' "$ALLOWLIST" | grep -v '^$' | sort)

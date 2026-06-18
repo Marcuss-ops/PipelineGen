@@ -56,12 +56,16 @@ type Service struct {
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
 	assetProcessing asset.ProcessingRepository
 	assetVersions   *assetversions.Repository
+
+	// Asset locations: canonical source of truth for local/drive paths.
+	assetLocRepo asset.LocationRepository
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service,
 	assetProcRepo asset.ProcessingRepository,
 	assetVerRepo *assetversions.Repository,
+	assetLocRepo asset.LocationRepository,
 	log *zap.Logger,
 ) (*Service, error) {
 	s := &Service{
@@ -79,6 +83,7 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRe
 		liveCache:         newPersistentLiveSearchCache(mainDB, log),
 		assetProcessing:   assetProcRepo,
 		assetVersions:     assetVerRepo,
+		assetLocRepo:      assetLocRepo,
 	}
 
 	// Inizializza i componenti delegati
