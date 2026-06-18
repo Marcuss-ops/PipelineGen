@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -18,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
-	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
@@ -52,7 +52,7 @@ type Service struct {
 	// direct indexer so operator overrides bypass the queue.
 	dispatcher *outbox.Dispatcher
 	// assetProcessing tracks clip processing state (download_and_cut step).
-	assetProcessing *assetprocessing.Repository
+	assetProcessing asset.ProcessingRepository
 	// assetVersions records file identity on successful processing.
 	assetVersions *assetversions.Repository
 }
@@ -69,7 +69,7 @@ func NewService(
 	indexer *clipindexer.Service,
 	assetDestResolver destination.Resolver,
 	ollamaClient *client.Client,
-	assetProcRepo *assetprocessing.Repository,
+	assetProcRepo asset.ProcessingRepository,
 	assetVerRepo *assetversions.Repository,
 ) *Service {
 	// Create folder memory service
@@ -95,7 +95,7 @@ func NewService(
 
 // SetAssetRepos injects the asset lifecycle repositories (late-binding).
 // Called from composeIntegration after the repos are constructed.
-func (s *Service) SetAssetRepos(assetProc *assetprocessing.Repository, assetVer *assetversions.Repository) {
+func (s *Service) SetAssetRepos(assetProc asset.ProcessingRepository, assetVer *assetversions.Repository) {
 	s.assetProcessing = assetProc
 	s.assetVersions = assetVer
 }

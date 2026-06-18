@@ -247,7 +247,7 @@ func composeIntegration(
 
 	// ── Asset Satellite Repositories (canonical model completion, PR0) ────
 	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
-	assetProcRepo := assetprocessing.NewRepository(dbs.main.DB)
+	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
 	assetRelRepo := assetrelations.NewRepository(dbs.main.DB)
 	assetTagRepo := assettags.NewRepository(dbs.main.DB)
 	assetVerRepo := assetversions.NewRepository(dbs.main.DB)

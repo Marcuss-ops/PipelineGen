@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -11,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
 	"go.uber.org/zap"
 )

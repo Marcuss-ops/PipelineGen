@@ -17,7 +17,7 @@ import (
 // string types for backward compatibility with 95+ call sites; migrated
 // to domain types in Passaggio 6.
 type EnqueueRequest struct {
-	Type          string         `json:"type"`
+	Type          models.JobType `json:"type"`
 	Project       string         `json:"project,omitempty"`
 	VideoName     string         `json:"video_name,omitempty"`
 	Payload       map[string]any `json:"payload"`

@@ -1,7 +1,6 @@
 package app
 
 import (
-	gdrive "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -32,7 +31,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
+	gdrive "google.golang.org/api/drive/v3"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	assetlocations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
 	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
@@ -103,7 +104,7 @@ type services struct {
 
 	// Asset satellite tables (canonical model completion, PR0)
 	assetLocationsRepo  *assetlocations.Repository
-	assetProcessingRepo *assetprocessing.Repository
+	assetProcessingRepo asset.ProcessingRepository
 	assetRelationsRepo  *assetrelations.Repository
 	assetTagsRepo       *assettags.Repository
 	assetVersionsRepo   *assetversions.Repository

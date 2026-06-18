@@ -6,18 +6,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	internalworker "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/internalworker"
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobbroker/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobbroker/local"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -34,25 +35,20 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	coreDeps, cleanup, err := app.ExportInitCoreWithModeAndContext(cfg, log, "api", rootCtx)
+	db, err := storage.NewSQLiteDB(cfg.Storage.DataDir, storage.DBMedia, log)
 	if err != nil {
-		log.Fatal("bootstrap failed", zap.Error(err))
+		log.Fatal("database bootstrap failed", zap.Error(err))
 	}
-	defer cleanup()
-
-	registry, err := app.WireRegistry(rootCtx, cfg, log, coreDeps)
-	if err != nil {
-		log.Fatal("wire registry failed", zap.Error(err))
+	defer db.Close()
+	if err := db.RunMigrations(log, filepath.Join("migrations", "sqlite")); err != nil {
+		log.Fatal("migration failed", zap.Error(err))
 	}
 
 	router := api.NewRouter(cfg)
-	router.SetRegistry(registry.Registry)
-	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
-		jobRepo := jobrepo.NewRepository(coreDeps.DB.DB, log)
-		workerRepo := workernodes.NewRepository(coreDeps.DB.DB)
-		broker := local.New(domain.NewSQLiteJobRepository(jobRepo), workerRepo)
-		router.SetWorkerHandler(internalworker.NewHandler(broker, log))
-	}
+	jobRepo := jobrepo.NewRepository(db.DB, log)
+	workerRepo := workernodes.NewRepository(db.DB)
+	broker := local.New(domain.NewSQLiteJobRepository(jobRepo), workerRepo)
+	router.SetWorkerHandler(internalworker.NewHandler(broker, log))
 	engine := router.Setup()
 
 	server := &http.Server{

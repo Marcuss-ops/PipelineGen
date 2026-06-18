@@ -17,6 +17,30 @@ import (
 	"go.uber.org/zap"
 )
 
+func GetAllDBs() []string {
+	return []string{"media.db.sqlite"}
+}
+
+func GetDBPath(dataDir, dbRelPath string) string {
+	return filepath.Join(dataDir, dbRelPath)
+}
+
+func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	dsn := path + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000"
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("storage: open %s: %w", path, err)
+	}
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("storage: ping %s: %w", path, err)
+	}
+	return &SQLiteDB{DB: db, path: path, log: log}, nil
+}
+
 // DBMedia is the canonical database filename for the unified media database.
 const DBMedia = "media.db.sqlite"
 

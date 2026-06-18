@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
@@ -48,7 +49,7 @@ func TestStartAndComplete(t *testing.T) {
 	if rec == nil {
 		t.Fatal("expected record after start, got nil")
 	}
-	if rec.Status != StatusRunning {
+	if rec.Status != asset.StatusRunning {
 		t.Errorf("expected running, got %s", rec.Status)
 	}
 	if rec.StartedAt == nil {
@@ -64,7 +65,7 @@ func TestStartAndComplete(t *testing.T) {
 	}
 
 	rec, _ = repo.Get(ctx, "asset_1", "download")
-	if rec.Status != StatusCompleted {
+	if rec.Status != asset.StatusCompleted {
 		t.Errorf("expected completed, got %s", rec.Status)
 	}
 	if rec.CompletedAt == nil {
@@ -110,7 +111,7 @@ func TestFail(t *testing.T) {
 	}
 
 	rec, _ := repo.Get(ctx, "asset_3", "transcription")
-	if rec.Status != StatusFailed {
+	if rec.Status != asset.StatusFailed {
 		t.Errorf("expected failed, got %s", rec.Status)
 	}
 	if rec.ErrorMessage != "timeout after 30s" {
@@ -172,11 +173,11 @@ func TestTransition(t *testing.T) {
 	}
 
 	// running → completed
-	if err := repo.Transition(ctx, "asset_tr", "step1", StatusRunning, StatusCompleted); err != nil {
+	if err := repo.Transition(ctx, "asset_tr", "step1", asset.StatusRunning, asset.StatusCompleted); err != nil {
 		t.Fatalf("Transition running→completed: %v", err)
 	}
 	rec, _ := repo.Get(ctx, "asset_tr", "step1")
-	if rec.Status != StatusCompleted {
+	if rec.Status != asset.StatusCompleted {
 		t.Errorf("expected completed, got %s", rec.Status)
 	}
 	if rec.CompletedAt == nil {
@@ -184,29 +185,29 @@ func TestTransition(t *testing.T) {
 	}
 
 	// completed → running (reprocessing)
-	if err := repo.Transition(ctx, "asset_tr", "step1", StatusCompleted, StatusRunning); err != nil {
+	if err := repo.Transition(ctx, "asset_tr", "step1", asset.StatusCompleted, asset.StatusRunning); err != nil {
 		t.Fatalf("Transition completed→running: %v", err)
 	}
 	rec, _ = repo.Get(ctx, "asset_tr", "step1")
-	if rec.Status != StatusRunning {
+	if rec.Status != asset.StatusRunning {
 		t.Errorf("expected running, got %s", rec.Status)
 	}
 
 	// running → failed
-	if err := repo.Transition(ctx, "asset_tr", "step1", StatusRunning, StatusFailed); err != nil {
+	if err := repo.Transition(ctx, "asset_tr", "step1", asset.StatusRunning, asset.StatusFailed); err != nil {
 		t.Fatalf("Transition running→failed: %v", err)
 	}
 	rec, _ = repo.Get(ctx, "asset_tr", "step1")
-	if rec.Status != StatusFailed {
+	if rec.Status != asset.StatusFailed {
 		t.Errorf("expected failed, got %s", rec.Status)
 	}
 
 	// failed → running (retry)
-	if err := repo.Transition(ctx, "asset_tr", "step1", StatusFailed, StatusRunning); err != nil {
+	if err := repo.Transition(ctx, "asset_tr", "step1", asset.StatusFailed, asset.StatusRunning); err != nil {
 		t.Fatalf("Transition failed→running: %v", err)
 	}
 	rec, _ = repo.Get(ctx, "asset_tr", "step1")
-	if rec.Status != StatusRunning {
+	if rec.Status != asset.StatusRunning {
 		t.Errorf("expected running after retry, got %s", rec.Status)
 	}
 }
@@ -223,14 +224,14 @@ func TestTransition_Invalid(t *testing.T) {
 
 	// pending → completed (illegal, must go through running)
 	// Use a non-existent step to test invalid from status.
-	err := repo.Transition(ctx, "asset_inv", "step", StatusPending, StatusCompleted)
+	err := repo.Transition(ctx, "asset_inv", "step", asset.StatusPending, asset.StatusCompleted)
 	if err == nil {
 		t.Fatal("expected error for invalid transition pending→completed")
 	}
 
 	// completed → failed (illegal from terminal state via direct transition)
 	repo.Complete(ctx, "asset_inv", "step")
-	err = repo.Transition(ctx, "asset_inv", "step", StatusCompleted, StatusFailed)
+	err = repo.Transition(ctx, "asset_inv", "step", asset.StatusCompleted, asset.StatusFailed)
 	if err == nil {
 		t.Fatal("expected error for invalid transition completed→failed")
 	}
@@ -245,7 +246,7 @@ func TestTransition_WrongFromStatus(t *testing.T) {
 	repo.Complete(ctx, "asset_ws", "step")
 
 	// Try running→failed, but current is completed.
-	err := repo.Transition(ctx, "asset_ws", "step", StatusRunning, StatusFailed)
+	err := repo.Transition(ctx, "asset_ws", "step", asset.StatusRunning, asset.StatusFailed)
 	if err == nil {
 		t.Fatal("expected error when from status doesn't match")
 	}
@@ -256,7 +257,7 @@ func TestTransition_NotFound(t *testing.T) {
 	repo, cleanup := newTestRepo(t)
 	defer cleanup()
 
-	err := repo.Transition(ctx, "nonexistent", "step", StatusPending, StatusRunning)
+	err := repo.Transition(ctx, "nonexistent", "step", asset.StatusPending, asset.StatusRunning)
 	if err == nil {
 		t.Fatal("expected error when transitioning non-existent record")
 	}
@@ -344,10 +345,10 @@ func TestUpsert_InvalidJSON(t *testing.T) {
 	repo, cleanup := newTestRepo(t)
 	defer cleanup()
 
-	err := repo.Upsert(ctx, ProcessingRecord{
+	err := repo.Upsert(ctx, asset.ProcessingRecord{
 		AssetID:      "asset_json",
 		Step:         "download",
-		Status:       StatusPending,
+		Status:       asset.StatusPending,
 		MetadataJSON: "not-valid-json",
 	})
 	if err == nil {
@@ -360,10 +361,10 @@ func TestUpsert_ValidJSON(t *testing.T) {
 	repo, cleanup := newTestRepo(t)
 	defer cleanup()
 
-	err := repo.Upsert(ctx, ProcessingRecord{
+	err := repo.Upsert(ctx, asset.ProcessingRecord{
 		AssetID:      "asset_valid_json",
 		Step:         "download",
-		Status:       StatusPending,
+		Status:       asset.StatusPending,
 		MetadataJSON: `{"encoder":"h264"}`,
 	})
 	if err != nil {
@@ -388,10 +389,10 @@ func TestStart_ValidJSONPreserved(t *testing.T) {
 	defer cleanup()
 
 	// Upsert with valid JSON metadata, then Start to mark it running.
-	err := repo.Upsert(ctx, ProcessingRecord{
+	err := repo.Upsert(ctx, asset.ProcessingRecord{
 		AssetID:      "asset_meta",
 		Step:         "embedding",
-		Status:       StatusPending,
+		Status:       asset.StatusPending,
 		MetadataJSON: `{"model":"e5-base","dims":768}`,
 	})
 	if err != nil {
@@ -415,10 +416,10 @@ func TestUpsert_EmptyJSONAllowed(t *testing.T) {
 	defer cleanup()
 
 	// Empty string should be allowed (default JSON).
-	err := repo.Upsert(ctx, ProcessingRecord{
+	err := repo.Upsert(ctx, asset.ProcessingRecord{
 		AssetID:      "asset_empty_json",
 		Step:         "download",
-		Status:       StatusPending,
+		Status:       asset.StatusPending,
 		MetadataJSON: "",
 	})
 	if err != nil {
@@ -437,10 +438,10 @@ func TestUpsert_EmptyObjectJSONAllowed(t *testing.T) {
 	defer cleanup()
 
 	// "{}" should be allowed (empty JSON object).
-	err := repo.Upsert(ctx, ProcessingRecord{
+	err := repo.Upsert(ctx, asset.ProcessingRecord{
 		AssetID:      "asset_empty_obj",
 		Step:         "download",
-		Status:       StatusPending,
+		Status:       asset.StatusPending,
 		MetadataJSON: "{}",
 	})
 	if err != nil {

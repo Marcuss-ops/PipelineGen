@@ -9,13 +9,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -53,13 +53,13 @@ type Service struct {
 	semanticEnricher *SemanticEnricher
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
-	assetProcessing *assetprocessing.Repository
+	assetProcessing asset.ProcessingRepository
 	assetVersions   *assetversions.Repository
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service,
-	assetProcRepo *assetprocessing.Repository,
+	assetProcRepo asset.ProcessingRepository,
 	assetVerRepo *assetversions.Repository,
 	log *zap.Logger,
 ) (*Service, error) {
