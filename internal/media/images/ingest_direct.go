@@ -46,8 +46,11 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 
 	// Create request for resolver
+	// Source is a typed string (storage.SourceType = models.SourceType);
+	// the caller-supplied `source` is a plain string (e.g. "google-flow"),
+	// so we explicitly cast to satisfy the literal.
 	req := storage.AssetDestinationRequest{
-		Source:       source, // Use the provided source (e.g. google-flow)
+		Source:       storage.SourceType(source), // Use the provided source (e.g. google-flow)
 		MediaType:    storage.MediaTypeImage,
 		Subject:      slug, // Prompt slug
 		Hash:         hash,
