@@ -116,11 +116,10 @@ func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, f
 	return r.scanCanonicalAssetRow(row)
 }
 
-// GetClip retrieves a clip by ID
+// GetClip retrieves a clip by ID. PR1: delegates to canonical assetrepo,
+// which returns (nil, asset.ErrSoftDeleted) for soft-deleted assets.
 func (r *Repository) GetClip(ctx context.Context, id string) (*asset.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND id = ? LIMIT 1"
-	row := r.db.QueryRowContext(ctx, query, id)
-	return r.scanCanonicalAssetRow(row)
+	return r.canonical.Get(ctx, id)
 }
 
 // GetClipByDriveFileID finds a clip by Drive file ID (searches canonical columns drive_file_id, drive_link, download_link).

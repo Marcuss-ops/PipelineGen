@@ -57,11 +57,13 @@ func New(db *sql.DB, log *zap.Logger) *Repository {
 // canonical satellite tables (asset_locations). Writes "asset.upserted"
 // outbox event in the same transaction.
 //
-// Location fields (LocalPath, DriveFileID, DriveLink, DownloadLink, FileHash)
-// are written to asset_locations via upsertLocationRows. The media_assets
-// row only receives the core identity/metadata columns — location columns
-// on media_assets are intentionally omitted (they will be dropped in a
-// future migration).
+// PR1: Legacy location columns are dual-written to media_assets for backward
+// compatibility with callers that read drive_link, local_path, etc. from the
+// main table. The canonical destination is asset_locations. Legacy columns
+// will be dropped from media_assets in PR2.
+//
+// UpsertTx is the tx-aware variant — same logic without starting its own
+// transaction or emitting outbox (caller controls both).
 func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 	if m == nil {
 		return asset.ErrInvalidID
@@ -91,76 +93,12 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 	// update clause → on re-upsert the row preserves its original
 	// created_at even though we bind a fresh nowStr value.
 	//
-	// Location columns (drive_file_id, drive_link, download_link, local_path,
-	// relative_path, file_hash) are intentionally OMITTED. They belong in
-	// asset_locations — see upsertLocationRows below.
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO media_assets (
-			id, source, name, filename, media_type, category, group_name,
-			url, clip_page_url, thumbnail_url, external_url,
-			duration_ms, tags, search_terms, search_text,
-			lifecycle_state, deleted_at,
-			quality_score, reuse_count, last_used_at,
-			scene_type, metadata_json, is_folder, depth,
-			folder_id, parent_folder_id, folder_path,
-			usable_for, avoid_for, phash, child_count,
-			created_at, updated_at
-		) VALUES (
-			?, ?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?,
-			?, ?, ?, ?,
-			?, ?,
-			?, ?, ?,
-			?, ?, ?, ?,
-			?, ?, ?,
-			?, ?, ?, ?,
-			?, ?
-		)
-		ON CONFLICT(id) DO UPDATE SET
-			source         = excluded.source,
-			name           = excluded.name,
-			filename       = excluded.filename,
-			media_type     = excluded.media_type,
-			category       = excluded.category,
-			group_name     = excluded.group_name,
-			url            = excluded.url,
-			clip_page_url  = excluded.clip_page_url,
-			thumbnail_url  = excluded.thumbnail_url,
-			external_url   = excluded.external_url,
-			duration_ms    = excluded.duration_ms,
-			tags           = excluded.tags,
-			search_terms   = excluded.search_terms,
-			search_text    = excluded.search_text,
-			lifecycle_state= excluded.lifecycle_state,
-			deleted_at     = excluded.deleted_at,
-			updated_at     = excluded.updated_at,
-			quality_score  = excluded.quality_score,
-			reuse_count    = excluded.reuse_count,
-			last_used_at   = excluded.last_used_at,
-			scene_type     = excluded.scene_type,
-			metadata_json  = excluded.metadata_json,
-			is_folder      = excluded.is_folder,
-			depth          = excluded.depth,
-			folder_id      = excluded.folder_id,
-			parent_folder_id = excluded.parent_folder_id,
-			folder_path    = excluded.folder_path,
-			usable_for     = excluded.usable_for,
-			avoid_for      = excluded.avoid_for,
-			phash          = excluded.phash,
-			child_count    = excluded.child_count
-	`,
-		// Values (matches placeholders above in order)
-		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
-		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
-		m.DurationMs, string(tagsJSON), string(searchTermsJSON), m.SearchText,
-		string(m.LifecycleState), timeutil.FormatPtrRFC3339(m.DeletedAt),
-		m.QualityScore, m.ReuseCount, m.LastUsedAt,
-		m.SceneType, m.MetadataJSON(), boolToInt(m.IsFolder), m.Depth,
-		m.FolderID, m.ParentFolderID, m.FolderPath,
-		mustJSONArray(m.UsableFor), mustJSONArray(m.AvoidFor), m.PHash, m.ChildCount,
-		nowStr, nowStr,
-	)
-	if err != nil {
+	// PR1: Legacy location columns (drive_file_id, drive_link, download_link,
+	// local_path, relative_path, file_hash, embedding_json, visual_embedding,
+	// transcript_embedding) are dual-written to media_assets for backward
+	// compatibility. The canonical destination is asset_locations.
+	// These columns will be dropped from media_assets in PR2.
+	if err := upsertMediaAssetRow(ctx, tx, m, string(tagsJSON), string(searchTermsJSON), nowStr); err != nil {
 		return fmt.Errorf("assetrepo.Upsert(%s): %w", m.ID, err)
 	}
 
@@ -338,7 +276,7 @@ func (r *Repository) Restore(ctx context.Context, id string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	res, err := tx.ExecContext(ctx, `
 		UPDATE media_assets
-		SET lifecycle_state = ?, deleted_at = NULL, updated_at = ?
+		SET lifecycle_state = ?, deleted_at = '', updated_at = ?
 		WHERE id = ? AND lifecycle_state = ?
 	`, asset.StateReady, nowStr, id, asset.StateDeleted)
 	if err != nil {
@@ -415,6 +353,154 @@ func (r *Repository) WithTx(ctx context.Context, fn func(*Tx) error) error {
 
 // ── Asset locations sync (PR1: canonical separation) ─────────────────
 
+// upsertMediaAssetRow is the core INSERT/UPDATE for the media_assets main row.
+// It includes legacy location columns (drive_file_id, drive_link, download_link,
+// local_path, relative_path, file_hash, embedding_json, visual_embedding,
+// transcript_embedding) for backward compatibility. These columns will be
+// dropped from media_assets in PR2.
+//
+// The caller controls the transaction and outbox emission.
+func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, tagsJSON, searchTermsJSON, nowStr string) error {
+	lifecycle := string(m.LifecycleState)
+	if lifecycle == "" {
+		lifecycle = string(asset.StateReady)
+	}
+	deletedAtStr := ""
+	if m.DeletedAt != nil {
+		deletedAtStr = timeutil.FormatRFC3339(*m.DeletedAt)
+	}
+
+	usableForJSON := mustJSONArray(m.UsableFor)
+	avoidForJSON := mustJSONArray(m.AvoidFor)
+	metadataJSON := m.MetadataJSON()
+
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO media_assets (
+			id, source, name, filename, media_type, category, group_name,
+			url, clip_page_url, thumbnail_url, external_url,
+			duration_ms, tags, search_terms, search_text,
+			lifecycle_state, deleted_at,
+			quality_score, reuse_count, last_used_at,
+			scene_type, metadata_json, is_folder, depth,
+			folder_id, parent_folder_id, folder_path,
+			usable_for, avoid_for, phash, child_count,
+			drive_file_id, drive_link, download_link, local_path, relative_path, file_hash,
+			embedding_json, visual_embedding, transcript_embedding, visual_embedding_json,
+			tags_norm, drive_folder_id, thumb_url,
+			created_at, updated_at
+		) VALUES (
+			?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?,
+			?, ?, ?, ?,
+			?, ?,
+			?, ?, ?,
+			?, ?, ?, ?,
+			?, ?, ?,
+			?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?,
+			?, ?, ?,
+			?, ?
+		)
+		ON CONFLICT(id) DO UPDATE SET
+			source          = excluded.source,
+			name            = excluded.name,
+			filename        = excluded.filename,
+			media_type      = excluded.media_type,
+			category        = excluded.category,
+			group_name      = excluded.group_name,
+			url             = excluded.url,
+			clip_page_url   = excluded.clip_page_url,
+			thumbnail_url   = excluded.thumbnail_url,
+			external_url    = excluded.external_url,
+			duration_ms     = excluded.duration_ms,
+			tags            = excluded.tags,
+			search_terms    = excluded.search_terms,
+			search_text     = excluded.search_text,
+			lifecycle_state = excluded.lifecycle_state,
+			deleted_at      = excluded.deleted_at,
+			updated_at      = excluded.updated_at,
+			quality_score   = excluded.quality_score,
+			reuse_count     = excluded.reuse_count,
+			last_used_at    = excluded.last_used_at,
+			scene_type      = excluded.scene_type,
+			metadata_json   = excluded.metadata_json,
+			is_folder       = excluded.is_folder,
+			depth           = excluded.depth,
+			folder_id       = excluded.folder_id,
+			parent_folder_id = excluded.parent_folder_id,
+			folder_path     = excluded.folder_path,
+			usable_for      = excluded.usable_for,
+			avoid_for       = excluded.avoid_for,
+			phash           = excluded.phash,
+			child_count     = excluded.child_count,
+			drive_file_id   = excluded.drive_file_id,
+			drive_link      = excluded.drive_link,
+			download_link   = excluded.download_link,
+			local_path      = excluded.local_path,
+			relative_path   = excluded.relative_path,
+			file_hash       = excluded.file_hash,
+			embedding_json  = excluded.embedding_json,
+			visual_embedding = excluded.visual_embedding,
+			transcript_embedding = excluded.transcript_embedding,
+			visual_embedding_json = excluded.visual_embedding_json,
+			tags_norm       = excluded.tags_norm,
+			drive_folder_id = excluded.drive_folder_id,
+			thumb_url       = excluded.thumb_url
+	`,
+		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
+		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
+		m.DurationMs, tagsJSON, searchTermsJSON, m.SearchText,
+		lifecycle, deletedAtStr,
+		m.QualityScore, m.ReuseCount, m.LastUsedAt,
+		m.SceneType, metadataJSON, boolToInt(m.IsFolder), m.Depth,
+		m.FolderID, m.ParentFolderID, m.FolderPath,
+		usableForJSON, avoidForJSON, m.PHash, m.ChildCount,
+		m.DriveFileID, m.DriveLink, m.DownloadLink, m.LocalPath, m.LocalPath, m.FileHash,
+		m.EmbeddingJSON, m.VisualEmbedding, m.TranscriptEmbedding, m.VisualEmbeddingJSON,
+		tagsNorm(m.Tags), m.FolderID, m.ThumbnailURL,
+		nowStr, nowStr,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert media_assets row: %w", err)
+	}
+	return nil
+}
+
+// UpsertTx is the tx-aware variant of Upsert. It performs the same media_assets
+// insert/update + asset_locations sync, but does NOT start its own transaction
+// or emit outbox events. The caller owns the transaction lifecycle and outbox
+// emission. Use this when composing multi-table writes atomically.
+func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset) error {
+	if m == nil {
+		return asset.ErrInvalidID
+	}
+	if m.ID == "" {
+		return asset.ErrInvalidID
+	}
+
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = now
+	}
+	m.UpdatedAt = now
+
+	tagsJSON, _ := json.Marshal(m.Tags)
+	searchTermsJSON, _ := json.Marshal(m.SearchTerms)
+
+	if err := upsertMediaAssetRow(ctx, tx, m, string(tagsJSON), string(searchTermsJSON), nowStr); err != nil {
+		return fmt.Errorf("assetrepo.UpsertTx(%s): %w", m.ID, err)
+	}
+
+	if err := upsertLocationRows(ctx, tx, m, nowStr); err != nil {
+		return fmt.Errorf("assetrepo.UpsertTx(%s) locations: %w", m.ID, err)
+	}
+
+	return nil
+}
+
 // upsertLocationRows writes location data from the deprecated fields on
 // asset.MediaAsset into the asset_locations satellite table. It runs
 // inside the caller's transaction.
@@ -485,17 +571,17 @@ func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, no
 		}
 		_, err := tx.ExecContext(ctx, `
 			INSERT INTO asset_locations (
-				asset_id, location_kind, uri, external_id, access_url,
+				asset_id, location_kind, uri, external_id, web_view_link,
 				download_url, file_hash, is_primary, created_at, updated_at
 			) VALUES (?, 'drive', ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
-				uri          = excluded.uri,
-				external_id  = excluded.external_id,
-				access_url   = excluded.access_url,
-				download_url = excluded.download_url,
-				file_hash    = excluded.file_hash,
-				is_primary   = excluded.is_primary,
-				updated_at   = excluded.updated_at
+				uri           = excluded.uri,
+				external_id   = excluded.external_id,
+				web_view_link = excluded.web_view_link,
+				download_url  = excluded.download_url,
+				file_hash     = excluded.file_hash,
+				is_primary    = excluded.is_primary,
+				updated_at    = excluded.updated_at
 		`, m.ID, uri, m.DriveFileID, m.DriveLink, m.DownloadLink,
 			m.FileHash, isPrimary, nowStr, nowStr)
 		if err != nil {
@@ -578,6 +664,27 @@ func inClause(n int, col string, negate ...string) string {
 		placeholders[i] = "?"
 	}
 	return prefix + col + " IN (" + strings.Join(placeholders, ",") + ")"
+}
+
+// tagsNorm converts a tag list to a lowercase, accent-stripped string used
+// for the denormalized tags_norm column (legacy compat; PR2 will drop it).
+func tagsNorm(tags []string) string {
+	var b strings.Builder
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		low := strings.ToLower(t)
+		low = strings.NewReplacer(
+			"à", "a", "è", "e", "é", "e", "ì", "i", "ò", "o", "ù", "u",
+		).Replace(low)
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(low)
+	}
+	return b.String()
 }
 
 // joinAnd joins non-empty SQL conditions with " AND ".
