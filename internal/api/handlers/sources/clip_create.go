@@ -23,9 +23,15 @@ import (
 //  4. Upsert to Qdrant vector store
 func (h *Handler) CreateClip(c *gin.Context) {
 	source := c.Param("source")
-	repo := h.resolveRepo(source)
-	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+
+	// Validate source param exists
+	if source == "" {
+		apiutil.BadRequest(c, "source is required")
+		return
+	}
+
+	if h.assetRepo == nil {
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
@@ -45,8 +51,8 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 1. Save to DB (clips.Repository still expects legacy type)
-	if err := repo.UpsertClip(ctx, assetregistry.ToLegacy(&clip)); err != nil {
+	// 1. Save to DB via canonical asset.Repository (no converter needed).
+	if err := h.assetRepo.Upsert(ctx, &clip); err != nil {
 		apiutil.InternalError(c, err)
 		return
 	}
