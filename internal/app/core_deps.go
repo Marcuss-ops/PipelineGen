@@ -14,6 +14,7 @@ import (
 	"velox/go-master/internal/media/assetindex"
 	"velox/go-master/internal/media/assettree"
 	"velox/go-master/internal/media/association"
+	"velox/go-master/internal/artifacts"
 	booksService "velox/go-master/internal/media/books"
 	"velox/go-master/internal/media/catalogsync"
 	"velox/go-master/internal/media/clipindexer"
@@ -88,6 +89,7 @@ type CoreDeps struct {
 	LessonsService     *lessonsService.Service
 	LessonsHandler     *lessonsHandler.Handler
 	MediaStore         *mediastorage.Store
+	ArtifactService    *artifacts.Service
 
 	// startJobRunner is set by initCoreMinimal and invoked by WireServices
 	// after WireRegistry completes, ensuring all job handlers are registered

@@ -22,6 +22,7 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/clips"
+	"velox/go-master/internal/artifacts"
 	"velox/go-master/internal/repository/outbox"
 	"velox/go-master/internal/reranker"
 	"velox/go-master/internal/service/translations"
@@ -47,6 +48,7 @@ type CoreInfra struct {
 	VectorSvc          *vectorstore.Service
 	MediaStore         *storage.Store
 	DestResolver       destination.Resolver
+	ArtifactService    *artifacts.Service
 }
 
 // composeCoreInfra initializes all core infrastructure services.
@@ -242,6 +244,15 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	)
 	destResolver := storage.NewDestinationResolver(mediaStore)
 
+	// 8. Artifact Service (content-addressed storage)
+	blobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: create blob store: %w", err)
+	}
+	artifactRepo := artifacts.NewSQLiteRepository(dbs.main.DB)
+	artifactService := artifacts.NewService(blobStore, artifactRepo, log)
+	log.Info("artifact service initialized", zap.String("data_dir", cfg.Storage.DataDir))
+
 	return &CoreInfra{
 		OllamaClient:  ollamaClient,
 		ScriptGen:     scriptGen,
@@ -259,6 +270,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		VectorSvc:          vectorSvc,
 		MediaStore:         mediaStore,
 		DestResolver:       destResolver,
+		ArtifactService:    artifactService,
 	}, nil
 }
 
