@@ -30,7 +30,13 @@ import (
 	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/outbox"
+	"velox/go-master/internal/repository/outboxevents"
 	"velox/go-master/internal/repository/scripts"
+
+	assetprocessing "velox/go-master/internal/repository/assetprocessing"
+	assetrelations "velox/go-master/internal/repository/assetrelations"
+	assettags "velox/go-master/internal/repository/assettags"
+	assetversions "velox/go-master/internal/repository/assetversions"
 	"velox/go-master/internal/service/gemmamemory"
 	"velox/go-master/internal/sources/youtube"
 	"velox/go-master/internal/storage/scheduler"
@@ -48,8 +54,8 @@ type services struct {
 	imageRepo          *images.Repository
 	imageService       *imgservice.Service
 	stockDriveRepo     *clips.Repository
-	artlistRepo        *clips.Repository
 	clipsOnlyRepo      *clips.Repository
+	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
 	monitorsRepo       *monitors.Repository
 	voiceoverService   *voiceover.Service
 	voiceoverSync      *voiceoversync.Service
@@ -80,13 +86,23 @@ type services struct {
 
 	mediaStore *storage.Store
 
-	// Outbox (transactional outbox for idempotent Qdrant indexing)
-	outboxRepo *outbox.Repository
 	// outboxDispatcher is the canonical ingestion entry point. Injected
 	// into ingestion flows (catalogsync, voiceover, artlist orchestrator,
 	// stock upload, youtube registration, manual upload, …). Admin reindex
 	// uses outbox.DirectIndexer instead — the dispatcher is for production
 	// writes only.
 	outboxDispatcher *outbox.Dispatcher
-	outboxWorker     *outbox.Worker
+
+	// Outbox events (PR5) — reliable outbox for asset.index.requested,
+	// delivery, metadata_export, provider_sync, workflow.step.* handlers.
+	// Replaces the legacy media_index_outbox Worker pool.
+	outboxEventsRepo     *outboxevents.Repository
+	outboxEventsPool     *outboxevents.Pool
+	outboxEventsRegistry *outboxevents.HandlerRegistry
+
+	// Asset satellite tables (canonical model completion, PR0)
+	assetProcessingRepo *assetprocessing.Repository
+	assetRelationsRepo  *assetrelations.Repository
+	assetTagsRepo       *assettags.Repository
+	assetVersionsRepo   *assetversions.Repository
 }

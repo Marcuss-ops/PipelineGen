@@ -3,7 +3,7 @@
 // PR1 invariant: every code path that mutates media_assets and triggers
 // vector indexing MUST route through Dispatcher.EnqueueAndIndex. Doing so
 // guarantees that the metadata write (media_assets) and the indexing job
-// (media_index_outbox) are committed atomically — no orphan jobs, no
+// (outbox_events insert) are committed atomically — no orphan jobs, no
 // orphan embeddings.
 //
 // The ONLY legitimate way to bypass the outbox is the DirectIndexer, which
@@ -14,6 +14,7 @@ package outbox
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -21,6 +22,7 @@ import (
 
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/models"
+	"velox/go-master/internal/repository/outboxevents"
 )
 
 // ClipsUpserter is the *clips.Repository method surface the Dispatcher needs.
@@ -41,82 +43,70 @@ type ClipsUpserter interface {
 // but no embedding; if the goroutine started before the upsert committed,
 // a concurrent reader saw a half-state.
 //
-// By colocating the upsert and the outbox insert in a single transaction
-// we either commit both or neither; the OutboxWorker then picks up the
-// entry and runs IndexClip on its own schedule.
+// By colocating the upsert and the outbox_events insert in a single
+// transaction we either commit both or neither; the outboxevents Pool
+// then picks up the event and runs IndexClip via the
+// IndexingHandler.
 type Dispatcher struct {
-	clips ClipsUpserter
-	repo  *Repository
-	txmgr TxManager
-	log   *zap.Logger
+	clips            ClipsUpserter
+	outboxEventsRepo *outboxevents.Repository
+	txmgr            TxManager
+	log              *zap.Logger
 }
 
 // NewDispatcher wires a Dispatcher against the canonical dependencies.
 // clips is typically *clips.Repository (which implements ClipsUpserter).
-func NewDispatcher(clips ClipsUpserter, repo *Repository, txmgr TxManager, log *zap.Logger) *Dispatcher {
-	return &Dispatcher{clips: clips, repo: repo, txmgr: txmgr, log: log}
+// outboxEventsRepo is the canonical outbox_events repository for
+// asset.index.requested event enqueue.
+func NewDispatcher(clips ClipsUpserter, outboxEventsRepo *outboxevents.Repository, txmgr TxManager, log *zap.Logger) *Dispatcher {
+	return &Dispatcher{clips: clips, outboxEventsRepo: outboxEventsRepo, txmgr: txmgr, log: log}
 }
 
-// EnqueueAndIndex performs UPSERT media_assets + INSERT media_index_outbox
-// in a single atomic transaction, then commits. After commit, the
-// outbox worker (worker.go) will see the new pending entry and run
-// IndexClip on it asynchronously.
+// indexRequestPayload is the JSON payload for asset.index.requested events.
+type indexRequestPayload struct {
+	AssetID           string `json:"asset_id"`
+	EmbeddingModel    string `json:"embedding_model"`
+	EmbeddingVersion  string `json:"embedding_version"`
+	CollectionVersion string `json:"collection_version"`
+}
+
+// EnqueueAndIndex performs UPSERT media_assets + INSERT outbox_events
+// (event_type='asset.index.requested') in a single atomic transaction,
+// then commits. After commit, the outboxevents Pool will see the new
+// pending event and run IndexClip on it asynchronously via the
+// IndexingHandler.
 //
 // Callers MUST NOT subsequently run SafeGoFunc(IndexClip(...)) — the
-// outbox entry IS the indexing trigger.
+// outbox event IS the indexing trigger.
 //
-// contentHash should be the canonical content fingerprint. The same
-// (asset_id, content_hash, embedding_model, embedding_version,
-// collection_version) tuple intentionally produces an INSERT OR IGNORE
-// no-op (idempotent), so duplicate ingestions are safe.
+// contentHash should be the canonical content fingerprint. Used to build
+// the event_key for deduplication, so duplicate ingestions are safe.
 //
 // Folders (clip.IsFolder == true) MUST be filtered by the caller before
 // calling — vector indexing of folders is meaningless.
 //
 // ──────────────────────────────────────────────────────────────────────────
-// End-to-end auto-sync to Qdrant (canonical flow, verified June 2026)
+// End-to-end auto-sync to Qdrant (canonical flow, June 2026)
 // ──────────────────────────────────────────────────────────────────────────
-// Operators do NOT need a manual sync step (e.g. calling
-// scripts/tools/reindex_qdrant.py or embedding_server /index_bulk) after
-// a canonical ingest through Dispatcher.EnqueueAndIndex. The pipeline runs
-// automatically:
+// Operators do NOT need a manual sync step after a canonical ingest
+// through Dispatcher.EnqueueAndIndex. The pipeline runs automatically:
 //
-//	EnqueueAndIndex commits (media_assets UPSERT + media_index_outbox INSERT)
+//	EnqueueAndIndex commits (media_assets UPSERT + outbox_events INSERT)
 //	  ↓
-//	OutboxWorker (cfg.Outbox.PollIntervalMs, default 500ms; the JOBS
-//	  runner in background_jobs.go uses a separate PollEvery=2s — those are
-//	  different schedulers) claims the row
+//	outboxevents Pool (cfg.Outbox.PollIntervalMs, default 500ms) claims
+//	  the event via CTE-based atomic claim + lease fencing
 //	  ↓
-//	clipindexer.IndexClip(ctx, assetID):
+//	IndexingHandler calls clipindexer.IndexClip(ctx, assetID):
 //	  1. State transitions: pending → embedding → upserting → indexed
 //	  2. POST embedding_server.py /index with the clip's search_text
-//	     → multilingual-e5-base 768d vector (text named-vector)
-//	     → writes media_assets.embedding_json only (768d multilingual-e5-base)
-//	     → /index_transcript, /index_visual, /index_audio are independent
-//	       on-demand endpoints — they are NOT called by the IndexClip hot
-//	       path; transcript/visual/audio vectors are populated via separate
-//	       IndexClip-API calls when the operator triggers them.
-//	  3. clipindexer.UpsertVectorStore →
-//	     vectorstore.Service.UpsertAsset →
-//	     Qdrant PUT /collections/{alias}/points
-//	     (point id = uuid5(DNS_NS, assetID); payload includes drive_link,
-//	      local_path, search_text, tags; sparse = BM25(search_text))
+//	     → multilingual-e5-base 768d vector
+//	  3. Qdrant PUT /collections/{alias}/points (point id = uuid5(assetID))
 //
 // Failure modes handled without manual intervention:
-//   - Embedding server unreachable → IndexClip retries 3× with exp. backoff,
-//     then outbox row goes to dead_letter; the OutboxWorker's reclaim loop
-//     will re-claim later.
-//   - Qdrant unreachable → same retry/dead_letter pattern.
-//
-// Both ops are idempotent (Qdrant upsert by point id; SQLite UPSERT via
-// (asset_id, content_hash, embedding_model, embedding_version,
-// collection_version) on the outbox row), so a duplicate worker run after
-// a partial failure converges to the correct state.
-//
-// The ONLY historical case where manual sync was needed was when a tool
-// inserted rows into media_assets bypassing the dispatcher (one-shot
-// bootstrap scripts that used UPSERT_SQL directly). Those scripts have
-// been removed; canonical ingests flow through this Dispatcher.
+//   - Embedding server unreachable → IndexClip retries, IndexingHandler
+//     returns error → outboxevents Pool calls MarkFailed (retry with
+//     backoff, or dead_letter after max attempts)
+//   - Qdrant unreachable → same retry/dead_letter pattern
 func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *models.MediaAsset, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
@@ -127,8 +117,8 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *models.MediaAsse
 	if d.clips == nil {
 		return errors.New("outbox.Dispatcher: clips repo not configured")
 	}
-	if d.repo == nil {
-		return errors.New("outbox.Dispatcher: outbox repo not configured")
+	if d.outboxEventsRepo == nil {
+		return errors.New("outbox.Dispatcher: outbox events repo not configured")
 	}
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
@@ -155,21 +145,45 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *models.MediaAsse
 	// so a misconfigured startup is observable as a panic at commit time,
 	// not as a silent empty-string stamp in the outbox row.
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		entry := &OutboxEntry{
+		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
+			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
+		}
+
+		payload := indexRequestPayload{
 			AssetID:           clip.ID,
-			ContentHash:       contentHash,
 			EmbeddingModel:    clipindexer.EmbeddingModel(),
 			EmbeddingVersion:  clipindexer.EmbeddingModelVersion(),
 			CollectionVersion: clipindexer.CollectionVersion(),
 		}
-		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
-			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("dispatcher marshal index payload %s: %w", clip.ID, err)
 		}
-		if err := d.repo.Enqueue(ctx, tx, entry); err != nil {
-			return fmt.Errorf("dispatcher enqueue outbox %s: %w", clip.ID, err)
+
+		// event_key deduplicates: same (asset_id, content_hash, embedding_model,
+		// embedding_version, collection_version) tuple prevents duplicate
+		// indexing jobs. Matches the old media_index_outbox unique key semantics.
+		eventKey := fmt.Sprintf("index:%s:%s:%s:%s:%s",
+			clip.ID,
+			shortHashPrefix(contentHash),
+			clipindexer.EmbeddingModel(),
+			clipindexer.EmbeddingModelVersion(),
+			clipindexer.CollectionVersion(),
+		)
+
+		if err := d.outboxEventsRepo.Enqueue(
+			ctx, tx,
+			outboxevents.EventAssetIndexRequested,
+			clip.ID,
+			"media_asset",
+			string(payloadJSON),
+			eventKey,
+		); err != nil {
+			return fmt.Errorf("dispatcher enqueue outbox event %s: %w", clip.ID, err)
 		}
+
 		if d.log != nil {
-			d.log.Debug("dispatcher enqueued asset for outbox indexing",
+			d.log.Debug("dispatcher enqueued asset for outbox_events indexing",
 				zap.String("asset_id", clip.ID),
 				zap.String("source", clip.Source),
 				zap.String("content_hash_prefix", shortHashPrefix(contentHash)),

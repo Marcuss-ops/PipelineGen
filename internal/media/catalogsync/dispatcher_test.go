@@ -11,16 +11,16 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/outbox"
+	"velox/go-master/internal/repository/outboxevents"
 	"velox/go-master/internal/storage"
 )
 
-// dispatcherTestSchema mirrors the canonical media_assets + media_index_outbox
+// dispatcherTestSchema mirrors the canonical media_assets + outbox_events
 // table layout used by PipelineGen. Kept locally because storage.NewTestDBWithSchema
 // is a thin wrapper that only takes the CREATE statements as a string.
 //
-// The unique index on media_index_outbox(asset_id, content_hash, embedding_model,
-// embedding_version, collection_version) makes Dispatcher.EnqueueAndIndex
-// idempotent: a duplicate Enqueue is silently swallowed.
+// The unique index on outbox_events(event_key) makes Dispatcher.EnqueueAndIndex
+// idempotent: a duplicate Enqueue with the same event_key is silently swallowed.
 const dispatcherTestSchema = `
 	CREATE TABLE media_assets (
 		id TEXT PRIMARY KEY,
@@ -46,42 +46,48 @@ const dispatcherTestSchema = `
 		created_at TEXT,
 		updated_at TEXT
 	);
-	CREATE TABLE media_index_outbox (
+	CREATE TABLE outbox_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		asset_id TEXT NOT NULL,
-		content_hash TEXT NOT NULL,
-		embedding_model TEXT NOT NULL DEFAULT '',
-		embedding_version TEXT NOT NULL DEFAULT '',
-		collection_version TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'pending',
+		event_type TEXT NOT NULL,
+		aggregate_id TEXT NOT NULL DEFAULT '',
+		aggregate_type TEXT NOT NULL DEFAULT '',
 		payload_json TEXT NOT NULL DEFAULT '',
+		event_key TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
 		attempt_count INTEGER NOT NULL DEFAULT 0,
+		max_attempts INTEGER NOT NULL DEFAULT 10,
 		last_error TEXT NOT NULL DEFAULT '',
-		next_attempt_at TEXT NOT NULL DEFAULT '',
+		next_attempt_at TEXT,
+		worker_id TEXT NOT NULL DEFAULT '',
+		lease_id TEXT NOT NULL DEFAULT '',
+		lease_expiry TEXT,
+		completed_at TEXT,
 		created_at TEXT NOT NULL DEFAULT '',
 		updated_at TEXT NOT NULL DEFAULT ''
 	);
-	CREATE UNIQUE INDEX ux_media_index_outbox_asset
-		ON media_index_outbox(asset_id, content_hash, embedding_model, embedding_version, collection_version);
+	CREATE UNIQUE INDEX ux_outbox_events_event_key
+		ON outbox_events(event_key);
+	CREATE INDEX idx_outbox_events_status
+		ON outbox_events(status, next_attempt_at);
 `
 
 // TestUpsertPreservingExisting_DispatcherPath verifies the canonical PR1
 // flow: when SetDispatcher is wired, upsertPreservingExisting performs an
-// ATOMIC upsert of media_assets and INSERT into media_index_outbox in a
+// ATOMIC upsert of media_assets and INSERT into outbox_events in a
 // single transaction. Both rows must exist after the call returns. There
-// is no goroutine: the outbox entry IS the indexing trigger.
+// is no goroutine: the outbox event IS the indexing trigger.
 func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	ctx := context.Background()
 	db := storage.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
 	repo := clips.NewRepository(db, zap.NewNop())
-	outboxRepo := outbox.NewRepository(db, zap.NewNop())
+	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	// Direct single-repo dispatcher for the test — production wiring uses
 	// MultiClipsUpserter; single-repo is the simpler primitive that proves
 	// atomic upsert+enqueue without the routing layer in the way.
-	dispatcher := outbox.NewDispatcher(repo, outboxRepo, txmgr, zap.NewNop())
+	dispatcher := outbox.NewDispatcher(repo, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
@@ -109,14 +115,14 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	assert.Equal(t, "abc123", stored.FileHash)
 	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink)
 
-	// media_index_outbox row must be present — this is what the legacy
+	// outbox_events row must be present — this is what the legacy
 	// SafeGoFunc(IndexClip) pattern achieved via fire-and-forget goroutine.
-	// The dispatcher achieves it via atomic transaction + worker pickup.
+	// The dispatcher achieves it via atomic transaction + outboxevents Pool pickup.
 	var outboxCount int
 	require.NoError(t,
-		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_index_outbox WHERE asset_id = ?", "test_clip_001").Scan(&outboxCount),
+		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ? AND event_type = 'asset.index.requested'", "test_clip_001").Scan(&outboxCount),
 	)
-	assert.Equal(t, 1, outboxCount, "outbox row must be inserted in the same tx as the upsert")
+	assert.Equal(t, 1, outboxCount, "outbox_events row must be inserted in the same tx as the upsert")
 }
 
 // TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox verifies
@@ -128,9 +134,9 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	defer db.Close()
 
 	repo := clips.NewRepository(db, zap.NewNop())
-	outboxRepo := outbox.NewRepository(db, zap.NewNop())
+	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
-	dispatcher := outbox.NewDispatcher(repo, outboxRepo, txmgr, zap.NewNop())
+	dispatcher := outbox.NewDispatcher(repo, outboxEventsRepo, txmgr, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
@@ -146,31 +152,24 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, folder))
 
 	// media_assets row must be present (folder metadata is canonical).
-	// NOTE: clips.Repository does NOT persist the typed IsFolder field —
-	// it is a struct-only flag used at write time. Assert presence via
-	// row existence + the FolderID/name round-trip rather than the
-	// unpersisted IsFolder bit.
 	stored, err := repo.GetClip(ctx, "test_folder_001")
 	require.NoError(t, err)
 	require.NotNil(t, stored, "folder metadata must be persisted even though IsFolder is not a DB column")
 	assert.Equal(t, "Root Folder", stored.Name)
 	assert.Equal(t, "test_folder_001", stored.FolderID)
 
-	// NO outbox row — folders are not vector-indexable. Dispatcher must
-	// skip the enqueue for folders, otherwise we'd burn embedding budget
-	// on rows that have no text/visual/audio content to embed.
+	// NO outbox_events row — folders are not vector-indexable.
 	var outboxCount int
 	require.NoError(t,
-		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_index_outbox WHERE asset_id = ?", "test_folder_001").Scan(&outboxCount),
+		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ?", "test_folder_001").Scan(&outboxCount),
 	)
-	assert.Equal(t, 0, outboxCount, "folders must not produce an embedding job in the outbox")
+	assert.Equal(t, 0, outboxCount, "folders must not produce an indexing event in the outbox")
 }
 
 // TestUpsertPreservingExisting_NilDispatcherLegacyPath verifies the
 // backwards-compatibility fallback: when SetDispatcher has not been
 // called (partial wiring / unit tests), the legacy repo.UpsertClip path
-// is taken. The SafeGoFunc IndexClip trigger remains available in this
-// mode.
+// is taken.
 func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	ctx := context.Background()
 	db := storage.NewTestDBWithSchema(t, dispatcherTestSchema)
@@ -198,10 +197,10 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	require.NotNil(t, stored)
 	assert.Equal(t, "legacy_hash", stored.FileHash)
 
-	// NO outbox row — legacy path doesn't use the outbox.
+	// NO outbox_events row — legacy path doesn't use the outbox.
 	var outboxCount int
 	require.NoError(t,
-		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_index_outbox WHERE asset_id = ?", "legacy_clip_001").Scan(&outboxCount),
+		db.QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ?", "legacy_clip_001").Scan(&outboxCount),
 	)
-	assert.Equal(t, 0, outboxCount, "legacy path does NOT enqueue outbox jobs")
+	assert.Equal(t, 0, outboxCount, "legacy path does NOT enqueue outbox events")
 }

@@ -15,6 +15,8 @@ import (
 	jobservice "velox/go-master/internal/jobs"
 	"velox/go-master/internal/media/clipindexer"
 	"velox/go-master/internal/media/models"
+	assetprocessing "velox/go-master/internal/repository/assetprocessing"
+	assetversions "velox/go-master/internal/repository/assetversions"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/outbox"
 )
@@ -49,10 +51,18 @@ type Service struct {
 
 	// Arricchimento semantico: popola search_text + embedding_json dopo ogni salvataggio
 	semanticEnricher *SemanticEnricher
+
+	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
+	assetProcessing *assetprocessing.Repository
+	assetVersions   *assetversions.Repository
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service, log *zap.Logger) (*Service, error) {
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobservice.Service, driveSvc *driveapi.Service,
+	assetProcRepo *assetprocessing.Repository,
+	assetVerRepo *assetversions.Repository,
+	log *zap.Logger,
+) (*Service, error) {
 	s := &Service{
 		cfg:               cfg,
 		mainDB:            mainDB,
@@ -66,6 +76,8 @@ func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRe
 		driveSvc:          driveSvc,
 		log:               log,
 		liveCache:         newPersistentLiveSearchCache(mainDB, log),
+		assetProcessing:   assetProcRepo,
+		assetVersions:     assetVerRepo,
 	}
 
 	// Inizializza i componenti delegati

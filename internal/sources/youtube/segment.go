@@ -12,6 +12,7 @@ import (
 
 	"velox/go-master/internal/core/lifecycle"
 	"velox/go-master/internal/media/videomuscles"
+	assetversions "velox/go-master/internal/repository/assetversions"
 	"velox/go-master/internal/security"
 	"velox/go-master/pkg/fileutil"
 	"velox/go-master/pkg/hashutil"
@@ -143,6 +144,15 @@ func (s *Service) processSegment(
 		PreDownloadedPath: preDownloadedPath,
 	}
 
+	// Track asset lifecycle: mark download_and_cut step as running.
+	if s.assetProcessing != nil {
+		if err := s.assetProcessing.Start(ctx, clipID, "download_and_cut"); err != nil {
+			s.log.Warn("asset_processing.Start failed",
+				zap.String("clip_id", clipID),
+				zap.Error(err))
+		}
+	}
+
 	var result *videomuscles.YouTubeCutResult
 	err = retry.Do(ctx, func() error {
 		// Clean partial files before retry
@@ -157,12 +167,49 @@ func (s *Service) processSegment(
 		IsRetryable: isTransientDownloadError,
 	})
 	if err != nil {
+		// Track asset lifecycle: mark download_and_cut step as failed.
+		if s.assetProcessing != nil {
+			if fErr := s.assetProcessing.Fail(ctx, clipID, "download_and_cut", err.Error()); fErr != nil {
+				s.log.Warn("asset_processing.Fail failed",
+					zap.String("clip_id", clipID),
+					zap.Error(fErr))
+			}
+		}
 		s.log.Warn("segment video pipeline failed after retries",
 			zap.String("clip_id", clipID),
 			zap.Error(err))
 		item.Status = "failed"
 		item.Error = fmt.Sprintf("video processing failed: %v", err)
 		return item
+	}
+
+	// Track asset lifecycle: mark download_and_cut step as completed.
+	if s.assetProcessing != nil {
+		if err := s.assetProcessing.Complete(ctx, clipID, "download_and_cut"); err != nil {
+			s.log.Warn("asset_processing.Complete failed",
+				zap.String("clip_id", clipID),
+				zap.Error(err))
+		}
+	}
+
+	// Track asset version: create version record for the processed file.
+	if s.assetVersions != nil && result.LocalPath != "" {
+		versionHash, _ := hashutil.MD5File(result.LocalPath)
+		fileSize := fileSizeFromPath(result.LocalPath)
+		if versionHash != "" {
+			if _, verErr := s.assetVersions.CreateNext(ctx, clipID, assetversions.VersionInput{
+				ContentHash:   versionHash,
+				FileHash:      versionHash,
+				FileSizeBytes: fileSize,
+				MimeType:      "video/mp4",
+				MetadataJSON:  `{"pipeline":"youtube","source":"download_and_cut"}`,
+				CreatedBy:     "youtube-pipeline",
+			}); verErr != nil {
+				s.log.Warn("asset_versions.CreateNext failed",
+					zap.String("clip_id", clipID),
+					zap.Error(verErr))
+			}
+		}
 	}
 
 	localPath := result.LocalPath
@@ -337,6 +384,18 @@ func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.Fina
 	item.DriveFileID = lifecycleResult.DriveFileID
 	item.DownloadLink = lifecycleResult.DownloadLink
 	item.Status = "processed"
+}
+
+// fileSizeFromPath returns the file size in bytes, or 0 if the file cannot be stat'd.
+func fileSizeFromPath(path string) int64 {
+	if path == "" {
+		return 0
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return fi.Size()
 }
 
 // buildClipFilename creates a deterministic, unique filename for a YouTube clip.

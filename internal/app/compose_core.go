@@ -22,8 +22,7 @@ import (
 	"velox/go-master/internal/ml/ollama"
 	"velox/go-master/internal/ml/ollama/client"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/artifacts"
-	"velox/go-master/internal/repository/outbox"
+	"velox/go-master/internal/repository/outboxevents"
 	"velox/go-master/internal/reranker"
 	"velox/go-master/internal/service/translations"
 	"velox/go-master/internal/upload/drive"
@@ -38,6 +37,7 @@ type CoreInfra struct {
 	DriveClient   *gdrive.Service
 	DriveUploader *drive.Uploader
 	StyleRegistry *generation.StyleRegistry
+	DriveDests    *DriveDestinations // resolved Drive folder IDs (immutable Config)
 
 	ClipsOnlyRepo      *clips.Repository
 	MediaProcessor     processor.Processor
@@ -48,7 +48,6 @@ type CoreInfra struct {
 	VectorSvc          *vectorstore.Service
 	MediaStore         *storage.Store
 	DestResolver       destination.Resolver
-	ArtifactService    *artifacts.Service
 }
 
 // composeCoreInfra initializes all core infrastructure services.
@@ -85,18 +84,19 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		log.Warn("Google Drive client not initialized", zap.Error(err))
 	}
 	var driveUploader *drive.Uploader
+	var dests *DriveDestinations
 	if driveClient != nil {
 		driveUploader = &drive.Uploader{Service: driveClient, Log: log}
-		resolveDynamicDriveFolders(ctx, dbs.main.DB, driveClient, cfg, log)
-		imageRoot := cfg.Drive.VideoAIFolder()
-		if imageRoot != "" && imageRoot != cfg.Drive.MediaRootFolder {
+		dests = resolveRuntimeDestinations(ctx, dbs.main.DB, driveClient, cfg, log)
+		imageRoot := dests.VideoAIFolder()
+		if imageRoot != "" && imageRoot != dests.MediaRoot {
 			go ensureStyleDriveFolders(ctx, driveUploader, imageRoot, styleRegistry, log)
 			log.Info("Style Drive folders using AI Images root", zap.String("folder_id", imageRoot))
 		}
 		// Validate critical Drive folders are accessible at startup
 		driveFolderIDs := map[string]string{
-			"images":   cfg.Drive.ImagesFolder(),
-			"video_ai": cfg.Drive.VideoAIFolder(),
+			"images":   dests.ImagesFolder(),
+			"video_ai": dests.VideoAIFolder(),
 		}
 		for name, folderID := range driveFolderIDs {
 			if folderID == "" {
@@ -116,6 +116,9 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 				)
 			}
 		}
+	} else {
+		// No Drive client — populate from config values only
+		dests = configOnlyDestinations(cfg)
 	}
 
 	// 3. Storage Directories
@@ -228,30 +231,21 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 
 	storageResolver := storage.NewResolver(
 		storage.MediaRoot(cfg.Storage.MediaPath()),
-		storage.DriveRoot(cfg.Drive.RootFolder()),
+		storage.DriveRoot(dests.RootFolder()),
 	)
-	mediaStore := storage.NewStore(storageResolver, driveUploader, cfg.Drive.RootFolder(), cfg.Drive.ImagesFolder(), cfg.Drive.VideoAIRootFolder, cfg.Drive.SoundEffectsRootFolder, log)
+	mediaStore := storage.NewStore(storageResolver, driveUploader, dests.RootFolder(), dests.ImagesFolder(), dests.VideoAIRoot, dests.SoundEffectsRoot, log)
 	mediaStore.SetAssetTree(assetTreeService)
-	if cfg.Drive.VideoAIRootFolder != "" {
-		mediaStore.SetTreeSource(cfg.Drive.VideoAIRootFolder, "videoai")
+	if dests.VideoAIRoot != "" {
+		mediaStore.SetTreeSource(dests.VideoAIRoot, "videoai")
 	}
-	if cfg.Drive.ImagesFolder() != "" {
-		mediaStore.SetTreeSource(cfg.Drive.ImagesFolder(), "image")
+	if dests.ImagesFolder() != "" {
+		mediaStore.SetTreeSource(dests.ImagesFolder(), "image")
 	}
 	log.Info("mediaStore: Drive roots configured",
-		zap.String("images_folder_id", cfg.Drive.ImagesFolder()),
-		zap.String("video_ai_folder_id", cfg.Drive.VideoAIFolder()),
+		zap.String("images_folder_id", dests.ImagesFolder()),
+		zap.String("video_ai_folder_id", dests.VideoAIFolder()),
 	)
 	destResolver := storage.NewDestinationResolver(mediaStore)
-
-	// 8. Artifact Service (content-addressed storage)
-	blobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("artifacts: create blob store: %w", err)
-	}
-	artifactRepo := artifacts.NewSQLiteRepository(dbs.main.DB)
-	artifactService := artifacts.NewService(blobStore, artifactRepo, log)
-	log.Info("artifact service initialized", zap.String("data_dir", cfg.Storage.DataDir))
 
 	return &CoreInfra{
 		OllamaClient:  ollamaClient,
@@ -260,6 +254,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		DriveClient:   driveClient,
 		DriveUploader: driveUploader,
 		StyleRegistry: styleRegistry,
+		DriveDests:    dests,
 
 		ClipsOnlyRepo:      clipsOnlyRepo,
 		MediaProcessor:     mediaProcessor,
@@ -270,18 +265,17 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		VectorSvc:          vectorSvc,
 		MediaStore:         mediaStore,
 		DestResolver:       destResolver,
-		ArtifactService:    artifactService,
 	}, nil
 }
 
 // composeRealtimeService creates the real-time matching service when enabled.
 //
-// PR3-5b.4: clips (media_assets canonical metadata) and the outbox.Repository
-// (media_index_outbox counters) are threaded explicitly so realtime.IndexHealth
-// can run the canonical sqlite<->qdrant cross-check. Both are optional — the
-// service logs a WARN at startup if missing and the cross-check falls back to
-// zeros — but production wiring MUST pass non-nil.
-func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *clips.Repository, outboxRepo *outbox.Repository, jobsService *jobservice.Service) *realtime.Service {
+// PR3-5b.4: clips (media_assets canonical metadata) and the
+// outboxevents.Repository (outbox_events counters) are threaded explicitly so
+// realtime.IndexHealth can run the canonical sqlite<->qdrant cross-check.
+// Both are optional — the service logs a WARN at startup if missing and the
+// cross-check falls back to zeros — but production wiring MUST pass non-nil.
+func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *clips.Repository, outboxEventsRepo *outboxevents.Repository, jobsService *jobservice.Service) *realtime.Service {
 	embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
 	jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
 	rerankerClient := reranker.NewClient(reranker.Config{
@@ -292,13 +286,13 @@ func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Lo
 		TimeoutMs: cfg.Reranker.TimeoutMs,
 		Weight:    cfg.Reranker.Weight,
 	})
-	realtimeSvc := realtime.NewService(vectorSvc, embedder, jobAdapter, rerankerClient, cfg.Reranker, &cfg.VectorSearch, clipsRepo, outboxRepo, log)
+	realtimeSvc := realtime.NewService(vectorSvc, embedder, jobAdapter, rerankerClient, cfg.Reranker, &cfg.VectorSearch, clipsRepo, outboxEventsRepo, log)
 	log.Info("real-time matching service enabled",
 		zap.Bool("reranker_enabled", cfg.Reranker.Enabled),
 		zap.Int("reranker_top_k", cfg.Reranker.TopK),
 		zap.Int("reranker_timeout_ms", cfg.Reranker.TimeoutMs),
 		zap.Bool("index_health_clips_wired", clipsRepo != nil),
-		zap.Bool("index_health_outbox_wired", outboxRepo != nil),
+		zap.Bool("index_health_outbox_wired", outboxEventsRepo != nil),
 	)
 	return realtimeSvc
 }

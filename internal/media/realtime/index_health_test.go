@@ -19,7 +19,7 @@ import (
 
 	"velox/go-master/internal/media/vectorstore"
 	"velox/go-master/internal/repository/clips"
-	"velox/go-master/internal/repository/outbox"
+	"velox/go-master/internal/repository/outboxevents"
 )
 
 // indexHealthStore is a minimal fake of vectorstore.Store that lets the
@@ -79,6 +79,8 @@ func (s *indexHealthStore) ListPointIDs(ctx context.Context, limit int) ([]strin
 	}
 	return s.ids, nil
 }
+func (s *indexHealthStore) DeletePoints(ctx context.Context, ids []string) error { return nil }
+func (s *indexHealthStore) ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error { return nil }
 func (s *indexHealthStore) CleanupStalePoints(context.Context, func(string, string, string) (bool, error)) (int, error) {
 	return 0, nil
 }
@@ -248,11 +250,24 @@ CREATE TABLE media_assets (
     metadata_json TEXT,
     embedding_json TEXT
 );
-CREATE TABLE media_index_outbox (
+CREATE TABLE outbox_events (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    asset_id        TEXT,
+    event_type      TEXT NOT NULL DEFAULT '',
+    aggregate_id    TEXT NOT NULL DEFAULT '',
+    aggregate_type  TEXT NOT NULL DEFAULT '',
+    payload_json    TEXT NOT NULL DEFAULT '',
+    event_key       TEXT NOT NULL DEFAULT '',
     status          TEXT,
-    last_error      TEXT
+    attempt_count   INTEGER NOT NULL DEFAULT 0,
+    max_attempts    INTEGER NOT NULL DEFAULT 10,
+    last_error      TEXT,
+    next_attempt_at TEXT,
+    worker_id       TEXT NOT NULL DEFAULT '',
+    lease_id        TEXT NOT NULL DEFAULT '',
+    lease_expiry    TEXT,
+    completed_at    TEXT,
+    created_at      TEXT NOT NULL DEFAULT '',
+    updated_at      TEXT NOT NULL DEFAULT ''
 );`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("seed schema: %v", err)
@@ -266,15 +281,15 @@ CREATE TABLE media_index_outbox (
 	}
 	deadLetterRows := []string{"dead 1", "dead 2", "dead 3"}
 	for _, d := range deadLetterRows {
-		if _, err := db.Exec(`INSERT INTO media_index_outbox(asset_id, status, last_error) VALUES (?,?,?)`,
-			d, "dead_letter", "test"); err != nil {
+		if _, err := db.Exec(`INSERT INTO outbox_events(event_type, aggregate_id, status, last_error) VALUES (?,?,?,?)`,
+			"asset.index.requested", d, "dead_letter", "test"); err != nil {
 			t.Fatalf("insert dead_letter: %v", err)
 		}
 	}
 
 	log := zap.NewNop()
 	clipsRepo := clips.NewRepository(db, log)
-	outboxRepo := outbox.NewRepository(db, log)
+	outboxRepo := outboxevents.NewRepository(db)
 
 	// qdrant sample is empty — so asset_a is missing-in-qdrant.
 	store := &indexHealthStore{

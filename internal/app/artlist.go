@@ -62,7 +62,7 @@ func WireArtlist(
 	}
 
 	// 4b. Wire SemanticEnricher into artlist service
-	if artlistSvc != nil && coreDeps.ArtlistRepo != nil && clipIndexerSvc != nil {
+	if artlistSvc != nil && coreDeps.ClipsOnlyRepo != nil && clipIndexerSvc != nil {
 		metaWriter := semantic.NewMetadataWriter(
 			cfg.Paths.PythonScriptsDir,
 			cfg.Storage.TempPath(),
@@ -70,7 +70,7 @@ func WireArtlist(
 			cfg.External.OllamaModel,
 			log,
 		)
-		enricher := artlistPkg.NewSemanticEnricher(coreDeps.ArtlistRepo, clipIndexerSvc, metaWriter, coreDeps.DriveUploader, log)
+		enricher := artlistPkg.NewSemanticEnricher(coreDeps.ClipsOnlyRepo, clipIndexerSvc, metaWriter, coreDeps.DriveUploader, log)
 		artlistSvc.SetSemanticEnricher(enricher)
 		log.Info("wired semantic enricher into artlist service")
 	}
@@ -120,7 +120,7 @@ func wireArtlistHandler(
 }
 
 func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
-	clipsRegistry := assetregistry.NewClipsRegistry(coreDeps.ArtlistRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(coreDeps.ClipsOnlyRepo)
 	return NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
 		DriveClient: coreDeps.DriveClient,
@@ -226,13 +226,15 @@ func wireArtlistService(
 		cfg,
 		coreDeps.DB.DB,
 		coreDeps.DB.DB,
-		coreDeps.ArtlistRepo,
+		coreDeps.ClipsOnlyRepo,
 		coreDeps.MediaProcessor,
 		artlistLifecycle,
 		assetDestResolver,
 		clipIndexerSvc,
 		coreDeps.JobsService,
 		coreDeps.DriveClient,
+		coreDeps.AssetProcessingRepo,
+		coreDeps.AssetVersionsRepo,
 		log,
 	)
 

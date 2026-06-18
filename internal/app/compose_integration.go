@@ -20,10 +20,16 @@ import (
 	"velox/go-master/internal/media/lessons"
 	"velox/go-master/internal/media/realtime"
 	"velox/go-master/internal/media/voiceoversync"
+	"velox/go-master/internal/outboxhandlers"
+	assetprocessing "velox/go-master/internal/repository/assetprocessing"
+	assetrelations "velox/go-master/internal/repository/assetrelations"
+	assettags "velox/go-master/internal/repository/assettags"
+	assetversions "velox/go-master/internal/repository/assetversions"
 	"velox/go-master/internal/repository/catalog"
 	"velox/go-master/internal/repository/clips"
 	jobrepo "velox/go-master/internal/repository/jobs"
 	"velox/go-master/internal/repository/outbox"
+	"velox/go-master/internal/repository/outboxevents"
 	"velox/go-master/internal/service/gemmamemory"
 	"velox/go-master/internal/service/scriptcore"
 	"velox/go-master/internal/storage/scheduler"
@@ -43,8 +49,8 @@ func composeIntegration(
 	// ── Asset Resolver, Association, Catalog Sync ──────────────────────
 	clipsRepos := map[string]*clips.Repository{
 		"youtube": core.ClipsOnlyRepo,
-		"stock":   mediaDomain.ClipsRepo,
-		"artlist": mediaDomain.ArtlistRepo,
+		"stock":   core.ClipsOnlyRepo,
+		"artlist": core.ClipsOnlyRepo,
 	}
 	resolverCfg := &assetindex.ResolverConfig{
 		ClipsRepos:    clipsRepos,
@@ -55,16 +61,16 @@ func composeIntegration(
 	log.Info("asset resolver initialized")
 
 	indexingService := indexing.NewService(log)
-	catalogRepo := catalog.NewRepository(core.ClipsOnlyRepo, mediaDomain.ClipsRepo, mediaDomain.ArtlistRepo)
+	catalogRepo := catalog.NewRepository(core.ClipsOnlyRepo, core.ClipsOnlyRepo, core.ClipsOnlyRepo)
 
 	assocService := association.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
-		mediaDomain.ClipsRepo, mediaDomain.ArtlistRepo, core.ClipsOnlyRepo, catalogRepo)
+		core.ClipsOnlyRepo, core.ClipsOnlyRepo, core.ClipsOnlyRepo, catalogRepo)
 	if core.VectorSvc != nil {
 		assocService.SetVectorStore(core.VectorSvc)
 		log.Info("vector store wired into association service for hybrid search")
 	}
 
-	syncTargets := buildSyncTargets(cfg, core.ClipsOnlyRepo, mediaDomain.ClipsRepo, mediaDomain.ArtlistRepo)
+	syncTargets := buildSyncTargets(cfg, core.ClipsOnlyRepo, core.ClipsOnlyRepo, core.ClipsOnlyRepo)
 	catalogSync := catalogsync.NewService(core.DriveUploader, syncTargets, core.AssetIndexService, core.AssetTreeService, core.ClipIndexerService, log)
 
 	var voiceoverSync *voiceoversync.Service
@@ -78,15 +84,6 @@ func composeIntegration(
 	jobsDispatcher := jobservice.NewDispatcher()
 	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
 
-	// Note: the historical EnableTestJobHandlers config flag and the
-	// corresponding jobservice.RegisterTestHandlers import were removed
-	// in PR-1.5 (June 2026). The handlers they registered (test.echo,
-	// test.slow, test.fail) were useful only for local smoke-testing
-	// of the dispatcher and did not exercise the production job
-	// lifecycle. Their coverage is now provided by
-	// internal/repository/jobs/transition_test.go which verifies the
-	// actual optimistic-lock primitive used by all production paths.
-
 	// Register Job Handlers
 	catalogSync.RegisterHandler(jobsService)
 	catalogSync.RegisterDriveFolderSyncHandler(jobsService)
@@ -95,45 +92,40 @@ func composeIntegration(
 	mediaDomain.BooksService.RegisterJobHandler(jobsService)
 	core.ClipIndexerService.RegisterJobHandler(jobsService)
 
-	// ── Outbox Repository (PR3-5b.4) ───────────────────────────────────
-	// Constructed BEFORE composeRealtimeService so realtime.IndexHealth can
-	// report pending_outbox / dead_letter counts. The same instance is reused
-	// further down by outbox.NewWorker for idempotent Qdrant indexing.
-	outboxRepo := outbox.NewRepository(dbs.main.DB, log)
+	// ── Outbox Events Repository (PR5) ─────────────────────────────────
+	// The canonical outbox_events table is the single source of truth for
+	// asynchronous event dispatch (indexing, delivery, metadata, provider
+	// sync, workflow steps). Constructed BEFORE composeRealtimeService so
+	// IndexHealth can report pending/dead_letter counts from outbox_events.
+	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
 
-	// ── Outbox Dispatcher (Task 1 — canonical ingestion entry point) ───
-	// Compose a multi-repo ClipsUpserter that routes by clip.Source so a
-	// single Dispatcher can drive catalogsync across youtube/stock/artlist.
-	// The default repo catches sources not in the map and preserves the
-	// prior silent fallback behaviour (those flows were calling
-	// repo.UpsertClip directly against a single chosen repo).
+	// ── Outbox Events Dispatcher (canonical ingestion entry point) ─────
+	// The outbox.Dispatcher now enqueues to outbox_events (not
+	// media_index_outbox). MultiClipsUpserter routes clip.Source to the
+	// appropriate repository.
 	multiClipsUp := outbox.NewMultiClipsUpserter(
 		map[string]outbox.ClipsUpserter{
 			"youtube": core.ClipsOnlyRepo,
-			"stock":   mediaDomain.ClipsRepo,
-			"artlist": mediaDomain.ArtlistRepo,
+			"stock":   core.ClipsOnlyRepo,
+			"artlist": core.ClipsOnlyRepo,
 		},
 		core.ClipsOnlyRepo, // default fallback for unknown clip.Source
 		log,
 	)
 	outboxTxMgr := outbox.NewManager(dbs.main.DB, log)
-	outboxDispatcher := outbox.NewDispatcher(multiClipsUp, outboxRepo, outboxTxMgr, log)
-	log.Info("outbox dispatcher instantiated: canonical upsert+outbox-enqueue path")
+	outboxDispatcher := outbox.NewDispatcher(multiClipsUp, outboxEventsRepo, outboxTxMgr, log)
+	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path")
 
 	// Inject the canonical dispatcher into catalogsync — replaces the
 	// `repo.UpsertClip; concurrent.SafeGoFunc(IndexClip)` pattern with an
-	// atomic upsert+outbox-enqueue transaction. Subsequent PRs will inject
-	// the same dispatcher into YouTube registration, Artlist orchestrator,
-	// stock upload and manual upload paths.
+	// atomic upsert+outbox_events enqueue transaction.
 	catalogSync.SetDispatcher(outboxDispatcher)
-	log.Info("outbox dispatcher wired into catalogsync (SafeGoFunc(IndexClip) removed)")
+	log.Info("outbox dispatcher wired into catalogsync")
 
-	// Inject the canonical dispatcher into stockpipeline (Task 5). The
-	// stock service was constructed inside WireStockPipeline during
+	// Inject the canonical dispatcher into stockpipeline. The stock
+	// service was constructed inside WireStockPipeline during
 	// WireRegistry (before the dispatcher existed), so the setter is
-	// invoked here in a late-binding step. nil registryWiring means the
-	// registry was not assembled (test harnesses / partial wiring) and
-	// the stock fleet falls back to its SafeGoFunc(IndexClip) legacy path.
+	// invoked here in a late-binding step.
 	if registryWiring != nil && registryWiring.StockPipeline != nil && registryWiring.StockPipeline.Service != nil {
 		registryWiring.StockPipeline.Service.SetDispatcher(outboxDispatcher)
 		log.Info("outbox dispatcher wired into stockpipeline (legacy SafeGoFunc(IndexClip) gated)")
@@ -142,11 +134,10 @@ func composeIntegration(
 	// ── Real-time Matching Service ───────────────────────────────────
 	var realtimeSvc *realtime.Service
 	if cfg.VectorSearch.Enabled && cfg.VectorSearch.RealtimeEnabled && core.VectorSvc != nil {
-		realtimeSvc = composeRealtimeService(ctx, cfg, log, core.VectorSvc, core.ClipsOnlyRepo, outboxRepo, jobsService)
+		realtimeSvc = composeRealtimeService(ctx, cfg, log, core.VectorSvc, core.ClipsOnlyRepo, outboxEventsRepo, jobsService)
 	}
 
 	// ── Books API Handler ──────────────────────────────────────────────
-	// Wire voiceover service into books service (for Drive→Book→Voiceover pipeline)
 	if mediaDomain.VoiceoverService != nil {
 		mediaDomain.BooksService.SetVoiceoverService(mediaDomain.VoiceoverService)
 	}
@@ -165,10 +156,7 @@ func composeIntegration(
 	)
 
 	// ── ClipSourceBuilder (Clip→Script + Catalog→Script) ───────────────
-	// MUST be wired BEFORE RegisterJobHandlers so the job handler
-	// method value captures h with clipSourceBuilder already set.
 	wireScriptFlowExtras(scriptFlowHandler, core.OllamaClient, core.VectorSvc, core.ClipsOnlyRepo, engine, cfg, log)
-
 	scriptFlowHandler.RegisterJobHandlers(jobsService)
 
 	// ── Auto-Tagging Service ───────────────────────────────────────────
@@ -179,7 +167,7 @@ func composeIntegration(
 
 	// ── Deletion Service ───────────────────────────────────────────────
 	deletionSvc := media.NewDeletionService(
-		mediaDomain.ArtlistRepo, core.ClipsOnlyRepo, mediaDomain.ClipsRepo,
+		core.ClipsOnlyRepo, core.ClipsOnlyRepo, core.ClipsOnlyRepo,
 		mediaDomain.VoiceoverRepo, mediaDomain.ImageRepo,
 		core.DriveUploader, core.AssetTreeService, core.AssetIndexService, log,
 	)
@@ -196,32 +184,49 @@ func composeIntegration(
 	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, jobsService, log)
 	concurrent.SafeGo("lifecycle-scheduler", func() { lifecycleScheduler.Start(ctx) })
 
-	// ── Outbox Worker (transactional outbox for idempotent Qdrant indexing) ──
-	// Map cfg.Outbox (yaml + env-overridable) to the WorkerConfig time + int
-	// surfaces. Defaults are already populated by applyDefaults + applyEnvVars
-	// in internal/config/reflect.go, so a zero value here means the YAML
-	// default tag fired. We construct the struct directly to make the
-	// mapping self-documenting; NewWorker normalizes any zero that slipped
-	// through.
-	workerCfg := outbox.WorkerConfig{
-		PollInterval:    time.Duration(cfg.Outbox.PollIntervalMs) * time.Millisecond,
-		BatchSize:       cfg.Outbox.BatchSize,
-		Workers:         cfg.Outbox.Workers,
-		ProcessTimeout:  time.Duration(cfg.Outbox.ProcessTimeoutSeconds) * time.Second,
-		ReclaimInterval: time.Duration(cfg.Outbox.ReclaimIntervalSeconds) * time.Second,
-		StaleThreshold:  time.Duration(cfg.Outbox.StaleThresholdSeconds) * time.Second,
-		MaxAttempts:     cfg.Outbox.MaxAttempts,
+	// ── Outbox Events Pool (PR5 — canonical outbox for async events) ───
+	// The outbox_events Pool replaces the legacy media_index_outbox Worker.
+	// It uses CTE-based atomic claim + lease fencing + retry/dead-letter.
+	// The handler registry includes:
+	//   - workflow.step.completed (audit log)
+	//   - workflow.step.failed    (ERROR audit log + hookFn for alerting)
+	//   - asset.index.requested   (real — calls clipIndexer.IndexClip)
+	//   - delivery / metadata_export / provider_sync (stubs — return errors
+	//     so events retry until dead_letter for operator visibility)
+	outboxEventsRegistry := outboxevents.NewHandlerRegistry()
+	if err := outboxhandlers.RegisterAll(outboxEventsRegistry, log, core.ClipIndexerService); err != nil {
+		log.Warn("failed to register outbox events handlers", zap.Error(err))
 	}
-	outboxWorker := outbox.NewWorker(outboxRepo, func(ctx context.Context, payload *outbox.Payload) error {
-		// ProcessFunc: re-index via clipindexer (idempotent — content hash check skips if already done)
-		return core.ClipIndexerService.IndexClip(ctx, payload.AssetID)
-	}, workerCfg, log)
-	concurrent.SafeGo("outbox-worker", func() { outboxWorker.Start(ctx) })
-	log.Info("outbox worker pool started for idempotent Qdrant indexing",
-		zap.Int("batch_size", workerCfg.BatchSize),
-		zap.Int("workers", workerCfg.Workers),
-		zap.Duration("poll_interval", workerCfg.PollInterval),
-		zap.Duration("reclaim_interval", workerCfg.ReclaimInterval))
+	cfgPoll := 500 * time.Millisecond
+	if cfg.Outbox.PollIntervalMs > 0 {
+		cfgPoll = time.Duration(cfg.Outbox.PollIntervalMs) * time.Millisecond
+	}
+	cfgReclaim := 60 * time.Second
+	if cfg.Outbox.ReclaimIntervalSeconds > 0 {
+		cfgReclaim = time.Duration(cfg.Outbox.ReclaimIntervalSeconds) * time.Second
+	}
+	cfgProcess := 30 * time.Second
+	if cfg.Outbox.ProcessTimeoutSeconds > 0 {
+		cfgProcess = time.Duration(cfg.Outbox.ProcessTimeoutSeconds) * time.Second
+	}
+	outboxEventsCfg := outboxevents.WorkerPollConfig{
+		PollInterval:    cfgPoll,
+		ProcessTimeout:  cfgProcess,
+		ReclaimInterval: cfgReclaim,
+	}
+	outboxEventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, outboxEventsRegistry, log, outboxEventsCfg)
+	concurrent.SafeGo("outbox-events-pool", func() {
+		outboxEventsPool.Start(ctx, 1)
+	})
+	concurrent.SafeGo("outbox-events-shutdown", func() {
+		<-ctx.Done()
+		if err := outboxEventsPool.Stop(15 * time.Second); err != nil {
+			log.Warn("outbox events pool stop returned error", zap.Error(err))
+		}
+	})
+	log.Info("outbox events pool started for workflow.step.* + asset.index.requested + stubs",
+		zap.Duration("poll_interval", outboxEventsCfg.PollInterval),
+		zap.Duration("process_timeout", outboxEventsCfg.ProcessTimeout))
 
 	// ── Lessons Service ────────────────────────────────────────────────
 	lessonsSvc := lessons.NewService(
@@ -239,17 +244,29 @@ func composeIntegration(
 	log.Info("Lessons service initialized", zap.Bool("enabled", cfg.Lessons.Enabled))
 	lessonsSvc.RegisterJobHandler(jobsService)
 
+	// ── Asset Satellite Repositories (canonical model completion, PR0) ────
+	assetProcRepo := assetprocessing.NewRepository(dbs.main.DB)
+	assetRelRepo := assetrelations.NewRepository(dbs.main.DB)
+	assetTagRepo := assettags.NewRepository(dbs.main.DB)
+	assetVerRepo := assetversions.NewRepository(dbs.main.DB)
+
+	// Wire asset lifecycle repos into YouTube service (late-binding).
+	if mediaDomain.YoutubeClipService != nil {
+		mediaDomain.YoutubeClipService.SetAssetRepos(assetProcRepo, assetVerRepo)
+		log.Debug("asset lifecycle repos wired into youtube service")
+	}
+
 	return &services{
 		scriptGen:          core.ScriptGen,
 		docClient:          core.DocClient,
 		driveUploader:      core.DriveUploader,
 		driveClient:        core.DriveClient,
+		driveDests:         core.DriveDests,
 		utility:            common.NewUtilityHandler(),
 		scriptsRepo:        mediaDomain.ScriptsRepo,
 		imageRepo:          mediaDomain.ImageRepo,
 		imageService:       mediaDomain.ImageService,
 		stockDriveRepo:     mediaDomain.ClipsRepo,
-		artlistRepo:        mediaDomain.ArtlistRepo,
 		clipsOnlyRepo:      core.ClipsOnlyRepo,
 		monitorsRepo:       mediaDomain.MonitorsRepo,
 		voiceoverService:   mediaDomain.VoiceoverService,
@@ -279,8 +296,16 @@ func composeIntegration(
 		booksService:       mediaDomain.BooksService,
 		lessonsService:     lessonsSvc,
 		mediaStore:         core.MediaStore,
-		outboxRepo:         outboxRepo,
-		outboxDispatcher:   outboxDispatcher,
-		outboxWorker:       outboxWorker,
+
+		outboxDispatcher: outboxDispatcher,
+
+		outboxEventsRepo:     outboxEventsRepo,
+		outboxEventsPool:     outboxEventsPool,
+		outboxEventsRegistry: outboxEventsRegistry,
+
+		assetProcessingRepo: assetProcRepo,
+		assetRelationsRepo:  assetRelRepo,
+		assetTagsRepo:       assetTagRepo,
+		assetVersionsRepo:   assetVerRepo,
 	}, nil
 }

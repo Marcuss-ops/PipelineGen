@@ -18,6 +18,8 @@ import (
 	"velox/go-master/internal/media/models"
 	"velox/go-master/internal/media/videomuscles"
 	"velox/go-master/internal/ml/ollama/client"
+	assetprocessing "velox/go-master/internal/repository/assetprocessing"
+	assetversions "velox/go-master/internal/repository/assetversions"
 	"velox/go-master/internal/repository/clips"
 	"velox/go-master/internal/repository/monitors"
 	"velox/go-master/internal/repository/outbox"
@@ -44,11 +46,15 @@ type Service struct {
 	searchL1          sync.Map
 	metadataL1        sync.Map
 	// dispatcher routes UpsertClip + IndexClip atomically through the
-	// media_index_outbox. When set, enrichment/segment write the clip
+	// outbox_events. When set, enrichment/segment write the clip
 	// via dispatcher.EnqueueAndIndex and skip the standalone indexer
 	// call. Admin/reindex paths (indexing.go, rebuild_job.go) keep the
 	// direct indexer so operator overrides bypass the queue.
 	dispatcher *outbox.Dispatcher
+	// assetProcessing tracks clip processing state (download_and_cut step).
+	assetProcessing *assetprocessing.Repository
+	// assetVersions records file identity on successful processing.
+	assetVersions *assetversions.Repository
 }
 
 func NewService(
@@ -63,6 +69,8 @@ func NewService(
 	indexer *clipindexer.Service,
 	assetDestResolver destination.Resolver,
 	ollamaClient *client.Client,
+	assetProcRepo *assetprocessing.Repository,
+	assetVerRepo *assetversions.Repository,
 ) *Service {
 	// Create folder memory service
 	folderMemory := foldermemory.NewService(log, clipsRepo)
@@ -80,10 +88,19 @@ func NewService(
 		lifecycleService:  lifecycleService,
 		indexer:           indexer,
 		ollamaClient:      ollamaClient,
+		assetProcessing:   assetProcRepo,
+		assetVersions:     assetVerRepo,
 	}
 }
 
-// SetDispatcher injects the canonical media_index_outbox dispatcher.
+// SetAssetRepos injects the asset lifecycle repositories (late-binding).
+// Called from composeIntegration after the repos are constructed.
+func (s *Service) SetAssetRepos(assetProc *assetprocessing.Repository, assetVer *assetversions.Repository) {
+	s.assetProcessing = assetProc
+	s.assetVersions = assetVer
+}
+
+// SetDispatcher injects the canonical outbox_events dispatcher.
 // Called once during composition root, before any HTTP handler is
 // registered. A nil dispatcher (legacy partial wiring) is tolerated at
 // runtime so enrichment/segment fall back to the legacy indexer path —

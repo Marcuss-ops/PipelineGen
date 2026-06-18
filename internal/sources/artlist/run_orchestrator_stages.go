@@ -3,6 +3,7 @@ package artlist
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"velox/go-master/internal/core/processor"
 	"velox/go-master/internal/media/models"
+	assetversions "velox/go-master/internal/repository/assetversions"
 	"velox/go-master/pkg/concurrent"
 	"velox/go-master/pkg/defaults"
 	"velox/go-master/pkg/hashutil"
@@ -157,17 +159,60 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			defer wg.Done()
 			defer func() { <-arg.sem }()
 
+			// Track asset lifecycle: mark download step as running.
+			if o.svc.assetProcessing != nil {
+				if err := o.svc.assetProcessing.Start(ctx, arg.w.item.ClipID, "download"); err != nil {
+					o.svc.log.Warn("asset_processing.Start failed",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.Error(err))
+				}
+			}
+
 			result, procErr := o.svc.mediaProcessor.Process(ctx, arg.w.processInput)
 
 			mu.Lock()
 			defer mu.Unlock()
 
 			if procErr != nil {
+				// Track asset lifecycle: mark download step as failed.
+				if o.svc.assetProcessing != nil {
+					if err := o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, "download", procErr.Error()); err != nil {
+						o.svc.log.Warn("asset_processing.Fail failed",
+							zap.String("clip_id", arg.w.item.ClipID),
+							zap.Error(err))
+					}
+				}
 				arg.w.item.Status = "media_process_failed"
 				arg.w.item.Error = procErr.Error()
 				ps.resp.Failed++
 				ps.resp.Items = append(ps.resp.Items, arg.w.item)
 				return
+			}
+
+			// Track asset lifecycle: mark download step as completed.
+			if o.svc.assetProcessing != nil {
+				if err := o.svc.assetProcessing.Complete(ctx, arg.w.item.ClipID, "download"); err != nil {
+					o.svc.log.Warn("asset_processing.Complete failed",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.Error(err))
+				}
+			}
+
+			// Track asset version: create version record for the processed file.
+			if o.svc.assetVersions != nil && result.FileHash != "" {
+				fileSize := fileSizeFromPath(result.LocalPath)
+				if _, err := o.svc.assetVersions.CreateNext(ctx, arg.w.item.ClipID, assetversions.VersionInput{
+					ContentHash:   result.FileHash,
+					FileHash:      result.FileHash,
+					FileSizeBytes: fileSize,
+					MimeType:      "video/mp4",
+					MetadataJSON:  `{"pipeline":"artlist","source":"download"}`,
+					CreatedBy:     "artlist-pipeline",
+				}); err != nil {
+					o.svc.log.Warn("asset_versions.CreateNext failed",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.Error(err))
+				}
 			}
 
 			arg.w.item.Status = defaults.String(result.Status, "processed")
@@ -294,4 +339,16 @@ func concurrencyFromRequest(req *RunTagRequest) int {
 		return 10
 	}
 	return c
+}
+
+// fileSizeFromPath returns the file size in bytes, or 0 if the file cannot be stat'd.
+func fileSizeFromPath(path string) int64 {
+	if path == "" {
+		return 0
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return fi.Size()
 }

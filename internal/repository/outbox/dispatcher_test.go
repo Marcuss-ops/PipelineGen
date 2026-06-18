@@ -63,10 +63,20 @@ func TestDispatcher_MissingClipIDRejected(t *testing.T) {
 	}
 }
 
+// TestDispatcher_MissingOutboxEventsRejected confirms the outbox-events-nil guard
+// runs before any tx is opened.
+func TestDispatcher_MissingOutboxEventsRejected(t *testing.T) {
+	d := &Dispatcher{clips: &fakeClips{}, outboxEventsRepo: nil, txmgr: txMgrNoop{}}
+	err := d.EnqueueAndIndex(context.Background(), &models.MediaAsset{ID: "x"}, "hash")
+	if err == nil {
+		t.Fatal("nil outboxEventsRepo must return error before tx is reached")
+	}
+}
+
 // TestDispatcher_MissingTxMgrRejected confirms the txmgr-nil guard runs
 // before any tx is opened.
 func TestDispatcher_MissingTxMgrRejected(t *testing.T) {
-	d := &Dispatcher{clips: &fakeClips{}, repo: nil}
+	d := &Dispatcher{clips: &fakeClips{}, outboxEventsRepo: nil}
 	err := d.EnqueueAndIndex(context.Background(), &models.MediaAsset{ID: "x"}, "hash")
 	if err == nil {
 		t.Fatal("nil txmgr must return error before any field access")

@@ -205,6 +205,8 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 		nil, // indexer
 		nil, // asset dest resolver
 		nil, // ollama client
+		nil, // assetProcessing
+		nil, // assetVersions
 	)
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{
@@ -259,6 +261,8 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // assetProcessing
+		nil, // assetVersions
 	)
 
 	resp, err := svc.Extract(ctx, &ExtractRequest{

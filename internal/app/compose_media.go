@@ -27,8 +27,7 @@ type MediaDomain struct {
 	VoiceoverService   *voiceover.Service
 	VoiceoverRepo      *voiceovers.Repository
 	BooksService       *books.Service
-	ClipsRepo          *clips.Repository
-	ArtlistRepo        *clips.Repository
+	ClipsRepo          *clips.Repository // single shared repository (replaces ClipsRepo + ArtlistRepo)
 	ScriptsRepo        *scripts.ScriptRepository
 	ImageRepo          *images.Repository
 	ImageService       *imgservice.Service
@@ -39,8 +38,10 @@ type MediaDomain struct {
 // composeMediaDomain initializes all media domain services.
 // These depend on core infrastructure and domain-specific configuration.
 func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, core *CoreInfra) (*MediaDomain, error) {
-	clipsRepo := clips.NewRepository(dbs.main.DB, log)
-	artlistRepo := clips.NewRepository(dbs.main.DB, log)
+	// Single shared clips repository — core.ClipsOnlyRepo is the canonical instance.
+	// compose_media previously created separate clipsRepo and artlistRepo instances
+	// on the same DB; PR 7 unified them into one shared pointer.
+	clipsRepo := core.ClipsOnlyRepo
 	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := images.NewRepository(dbs.main.DB)
 
@@ -64,6 +65,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 		videoPipeline, ytLifecycle,
 		core.ClipIndexerService, core.DestResolver,
 		core.OllamaClient,
+		nil, nil, // assetProcessing, assetVersions — wired below via late-binding
 	)
 
 	// Voiceover Service
@@ -78,7 +80,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 
 	// Image Service
 	imageService, metaWriter := initImageService(ctx, cfg, log,
-		core.DriveClient, clipsRepo, artlistRepo,
+		core.DriveClient, clipsRepo, clipsRepo,
 		core.StyleRegistry, core.ScriptGen,
 		core.MediaStore, core.VectorSvc, imageRepo,
 	)
@@ -119,7 +121,6 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 		VoiceoverRepo:      voRepo,
 		BooksService:       booksSvc,
 		ClipsRepo:          clipsRepo,
-		ArtlistRepo:        artlistRepo,
 		ScriptsRepo:        scriptsRepo,
 		ImageRepo:          imageRepo,
 		ImageService:       imageService,
