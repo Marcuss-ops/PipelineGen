@@ -20,7 +20,6 @@ internal/api/handlers/sources/sound_effect_handlers.go
 internal/api/handlers/sources/source_handlers_ops.go
 internal/api/handlers/sources/source_utils.go
 internal/api/handlers/sources/youtube_handlers.go
-internal/application/workerassets/service.go
 internal/media/assetindex/resolver.go
 internal/media/assetregistry/converters.go
 internal/media/catalogsync/dispatcher_test.go

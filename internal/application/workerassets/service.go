@@ -13,8 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
@@ -22,7 +22,7 @@ import (
 
 type Service struct {
 	assetIndex    *assetindex.Service
-	clipsRepo     *clips.Repository
+	querySvc      *assetquery.Service
 	imagesRepo    *images.Repository
 	voiceoverRepo *voiceovers.Repository
 	uploadRoot    string
@@ -43,17 +43,17 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, clipsRepo *clips.Repository, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, log *zap.Logger) *Service {
-	return NewServiceWithUploadRoot(assetIndex, clipsRepo, imagesRepo, voiceoverRepo, "", log)
+func NewService(assetIndex *assetindex.Service, querySvc *assetquery.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, log *zap.Logger) *Service {
+	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, clipsRepo *clips.Repository, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, uploadRoot string, log *zap.Logger) *Service {
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *assetquery.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, uploadRoot string, log *zap.Logger) *Service {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}
 	return &Service{
 		assetIndex:    assetIndex,
-		clipsRepo:     clipsRepo,
+		querySvc:      querySvc,
 		imagesRepo:    imagesRepo,
 		voiceoverRepo: voiceoverRepo,
 		uploadRoot:    uploadRoot,
@@ -236,9 +236,9 @@ func (s *Service) resolve(ctx context.Context, assetID string) (*resolvedAsset, 
 		}
 	}
 
-	if s.clipsRepo != nil {
-		if clip, err := s.clipsRepo.GetClip(ctx, assetID); err == nil && clip != nil {
-			return convertMediaAsset(clip), nil
+	if s.querySvc != nil {
+		if details, err := s.querySvc.Get(ctx, assetID); err == nil && details != nil && details.Asset != nil {
+			return convertMediaAsset(details), nil
 		}
 	}
 
@@ -301,20 +301,32 @@ func convertAssetRecord(assetID, localPath, driveLink, downloadLink, fallbackID 
 	}
 }
 
-func convertMediaAsset(clip *models.MediaAsset) *resolvedAsset {
-	filename := clip.Filename
-	if filename == "" {
-		filename = filepath.Base(clip.LocalPath)
+func convertMediaAsset(details *assetquery.Details) *resolvedAsset {
+	assetItem := details.Asset
+	filename := assetItem.Filename
+	localPath := ""
+	driveLink := ""
+	downloadLink := ""
+	for _, loc := range details.Locations {
+		if loc.LocationKind == asset.LocationKindLocal {
+			localPath = loc.URI
+		} else if loc.LocationKind == asset.LocationKindDrive {
+			driveLink = loc.AccessURL
+			downloadLink = loc.DownloadURL
+		}
 	}
 	if filename == "" {
-		filename = clip.ID
+		filename = filepath.Base(localPath)
+	}
+	if filename == "" {
+		filename = assetItem.ID
 	}
 	return &resolvedAsset{
-		AssetID:      clip.ID,
+		AssetID:      assetItem.ID,
 		Filename:     filename,
-		LocalPath:    clip.LocalPath,
-		DriveLink:    clip.DriveLink,
-		DownloadLink: firstNonEmpty(clip.DownloadLink, clip.ExternalURL),
+		LocalPath:    localPath,
+		DriveLink:    driveLink,
+		DownloadLink: firstNonEmpty(downloadLink, assetItem.ExternalURL),
 	}
 }
 
