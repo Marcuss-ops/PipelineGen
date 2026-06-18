@@ -78,8 +78,7 @@ func (h *Handler) List(c *gin.Context) {
 		filter.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
-		t := models.JobType(jobType)
-		filter.Type = &t
+		filter.Type = &jobType
 	}
 	if workerID := c.Query("worker_id"); workerID != "" {
 		filter.WorkerID = workerID

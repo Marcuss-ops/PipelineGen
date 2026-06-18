@@ -37,8 +37,12 @@ func domainToModel(j *job.Job) *models.Job {
 	}
 	status := models.StatusPending
 	switch j.Status {
+	case job.StatusLeased:
+		status = models.StatusLeased
 	case job.StatusRunning:
 		status = models.StatusRunning
+	case job.StatusRetryWait:
+		status = models.StatusRetryWait
 	case job.StatusCompleted:
 		status = models.StatusSucceeded
 	case job.StatusFailed:
@@ -48,7 +52,7 @@ func domainToModel(j *job.Job) *models.Job {
 	}
 	return &models.Job{
 		ID:            j.ID,
-		Type:          models.JobType(j.Type),
+		Type:          j.Type,
 		Status:        status,
 		Priority:      j.Priority,
 		Project:       j.Project,
@@ -76,8 +80,12 @@ func modelToDomain(m *models.Job) *job.Job {
 	}
 	status := job.StatusQueued
 	switch m.Status {
+	case models.StatusLeased:
+		status = job.StatusLeased
 	case models.StatusRunning:
 		status = job.StatusRunning
+	case models.StatusRetryWait:
+		status = job.StatusRetryWait
 	case models.StatusSucceeded:
 		status = job.StatusCompleted
 	case models.StatusFailed:
@@ -149,8 +157,7 @@ func (r *SQLiteJobRepository) List(ctx context.Context, filter job.Filter) ([]jo
 		mf.Status = &s
 	}
 	if filter.Type != nil {
-		t := models.JobType(*filter.Type)
-		mf.Type = &t
+		mf.Type = filter.Type
 	}
 	list, err := r.inner.List(ctx, mf)
 	if err != nil {
@@ -168,8 +175,12 @@ func (r *SQLiteJobRepository) List(ctx context.Context, filter job.Filter) ([]jo
 
 func modelStatus(s job.Status) models.JobStatus {
 	switch s {
+	case job.StatusLeased:
+		return models.StatusLeased
 	case job.StatusRunning:
 		return models.StatusRunning
+	case job.StatusRetryWait:
+		return models.StatusRetryWait
 	case job.StatusCompleted:
 		return models.StatusSucceeded
 	case job.StatusFailed:
@@ -184,9 +195,9 @@ func modelStatus(s job.Status) models.JobStatus {
 // ── ClaimNext ─────────────────────────────────────────────────────────
 
 func (r *SQLiteJobRepository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*job.Job, error) {
-	modelTypes := make([]models.JobType, len(types))
+	modelTypes := make([]string, len(types))
 	for i, t := range types {
-		modelTypes[i] = models.JobType(t)
+		modelTypes[i] = t
 	}
 	leas, err := r.inner.ClaimNext(ctx, jobsrepo.ClaimNext{
 		WorkerID: workerID,

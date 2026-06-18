@@ -156,10 +156,10 @@ func (r *Repository) List(ctx context.Context, filter models.JobFilter) ([]*mode
 type JobStats struct {
 	Total      int                                         `json:"total"`
 	ByStatus   map[models.JobStatus]int                    `json:"by_status"`
-	ByType     map[models.JobType]map[models.JobStatus]int `json:"by_type"`
+	ByType     map[string]map[models.JobStatus]int `json:"by_type"`
 	DurationMs struct {
 		Overall float64 `json:"overall_ms"`
-		ByType  map[models.JobType]struct {
+		ByType  map[string]struct {
 			Count           int     `json:"count"`
 			AvgDurationMs   float64 `json:"avg_duration_ms"`
 			ImagesGenerated int     `json:"images_generated,omitempty"`
@@ -178,9 +178,9 @@ type JobStats struct {
 func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 	stats := &JobStats{
 		ByStatus: make(map[models.JobStatus]int),
-		ByType:   make(map[models.JobType]map[models.JobStatus]int),
+		ByType:   make(map[string]map[models.JobStatus]int),
 	}
-	stats.DurationMs.ByType = make(map[models.JobType]struct {
+	stats.DurationMs.ByType = make(map[string]struct {
 		Count           int     `json:"count"`
 		AvgDurationMs   float64 `json:"avg_duration_ms"`
 		ImagesGenerated int     `json:"images_generated,omitempty"`
@@ -211,7 +211,7 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 		r.log.Warn("getStats: by-type query failed", zap.Error(err))
 	} else {
 		for rows.Next() {
-			var jt models.JobType
+			var jt string
 			var js models.JobStatus
 			var cnt int
 			if err := rows.Scan(&jt, &js, &cnt); err != nil {
@@ -250,7 +250,7 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 		r.log.Warn("getStats: per-type query failed", zap.Error(err))
 	} else {
 		for typeRow.Next() {
-			var jt models.JobType
+			var jt string
 			var cnt int
 			var avgMs, imgsGen, errs sql.NullFloat64
 			if err := typeRow.Scan(&jt, &cnt, &avgMs, &imgsGen, &errs); err != nil {
@@ -317,7 +317,7 @@ func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*mo
 // circuit before calling in that case so we never SELECT with a known-empty
 // value (the index excludes empty strings, but a SELECT with ” would match
 // no row anyway; the early return saves the round-trip).
-func (r *Repository) FindByTypeAndCorrelation(ctx context.Context, jobType models.JobType, correlationID string) (*models.Job, error) {
+func (r *Repository) FindByTypeAndCorrelation(ctx context.Context, jobType string, correlationID string) (*models.Job, error) {
 	if correlationID == "" {
 		return nil, nil
 	}
@@ -346,9 +346,9 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("active types query: %w", err)
 	}
-	types := make(map[models.JobType]bool)
+	types := make(map[string]bool)
 	for activeTypes.Next() {
-		var jt models.JobType
+		var jt string
 		if err := activeTypes.Scan(&jt); err != nil {
 			activeTypes.Close()
 			return fmt.Errorf("active types scan: %w", err)
@@ -398,9 +398,9 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("oldest pending query: %w", err)
 	}
-	oldestSeen := make(map[models.JobType]bool)
+		oldestSeen := make(map[string]bool)
 	for oldest.Next() {
-		var jt models.JobType
+		var jt string
 		var secs float64
 		if err := oldest.Scan(&jt, &secs); err != nil {
 			oldest.Close()
