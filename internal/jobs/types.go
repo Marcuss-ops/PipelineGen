@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 )
 
 type EnqueueRequest struct {
@@ -88,18 +89,26 @@ type RunnerConfig struct {
 	Workers   int
 	PollEvery time.Duration
 	LeaseTTL  time.Duration
-	JobTypes  []models.JobType
+	JobTypes  []string // domain-compatible: string job types, not models.JobType
 }
 
+// Runner manages a pool of Workers that poll the job repository for queued
+// jobs and dispatch them to registered handlers. It depends on the domain
+// job.Repository interface — NOT on the concrete *jobs.Repository — so the
+// broker (future PR) can swap in a distributed implementation without
+// touching Worker or Runner code.
 type Runner struct {
-	repo       *jobs.Repository
+	repo       job.Repository
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
 	workers    []*Worker
 }
 
-func NewRunner(repo *jobs.Repository, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
+// NewRunner creates a new Runner with the given domain repository, dispatcher,
+// and configuration. The repository must satisfy job.Repository (e.g.
+// SQLiteJobRepository wrapping the concrete *jobs.Repository).
+func NewRunner(repo job.Repository, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
 		dispatcher: dispatcher,

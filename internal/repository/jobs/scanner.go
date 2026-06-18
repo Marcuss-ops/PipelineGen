@@ -17,12 +17,10 @@ func NewScanner(repo *Repository, log *zap.Logger) *Scanner {
 }
 
 func (s *Scanner) RequeueExpiredLeases(ctx context.Context) error {
-	results, err := s.repo.RequeueExpiredLeases(ctx, time.Now(), 1000)
-	if err != nil {
+	if err := s.repo.RequeueExpiredLeases(ctx); err != nil {
 		s.log.Error("failed to requeue expired leases", zap.Error(err))
 		return err
 	}
-	s.log.Info("requeued expired leases", zap.Int("count", len(results)))
 	return nil
 }
 
