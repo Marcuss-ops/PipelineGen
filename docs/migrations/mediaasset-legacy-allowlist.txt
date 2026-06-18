@@ -1,11 +1,12 @@
 # mediaasset-legacy-allowlist.txt
 # Files that import or reference models.MediaAsset (legacy type).
 # Each PR MUST reduce this list; new files MUST NOT appear here.
-# Generated: 2026-06-18 — baseline for codex/freeze-mediaasset-legacy
+# Regenerated: 2026-06-18 — exact match enforced by CI
 #
 # Rule: no new file may be added to this list.
 #       every PR must remove at least one entry.
 #       when the list is empty, the legacy type can be deleted.
+#       CI fails if any file in this list no longer references models.MediaAsset.
 #
 internal/api/handlers/sources/bulk_upload_worker.go
 internal/api/handlers/sources/clip_action_handlers.go
@@ -20,7 +21,7 @@ internal/api/handlers/sources/source_handlers_ops.go
 internal/api/handlers/sources/source_utils.go
 internal/api/handlers/sources/youtube_handlers.go
 internal/application/workerassets/service.go
-internal/core/domain/asset/repository.go
+internal/infrastructure/database/sqlite/assetrepo/scanner.go
 internal/media/assetindex/resolver.go
 internal/media/assetregistry/clips_adapter.go
 internal/media/assetregistry/converters.go
@@ -62,23 +63,16 @@ internal/service/scriptcore/catalog_scanner_test.go
 internal/service/scriptcore/clip_source_evidence.go
 internal/service/scriptcore/clip_source.go
 internal/service/scriptcore/clip_source_test.go
-internal/sources/artlist/dto_search.go
+internal/sources/artlist/legacy_bridge.go
 internal/sources/artlist/run_orchestrator_stages.go
 internal/sources/artlist/search_service.go
 internal/sources/artlist/semantic_enricher.go
-internal/sources/artlist/service.go
 internal/sources/artlist/service_test.go
 internal/sources/youtube/enrichment_fallback.go
 internal/sources/youtube/extractor_process.go
+internal/sources/youtube/legacy_bridge.go
 internal/sources/youtube/metadata_enrich.go
 internal/sources/youtube/metadata_persist.go
 internal/sources/youtube/searcher_cache.go
 internal/sources/youtube/searcher.go
-internal/sources/youtube/search_topic.go
 internal/sources/youtube/service.go
-# PR5: new canonical repository (reads models for backward compat scanning)
-internal/infrastructure/database/sqlite/assetrepo/scanner.go
-# PR7: bridge adapters (converts models→asset and asset→models)
-internal/sources/artlist/legacy_bridge.go
-# PR8: bridge adapters (converts models→asset and asset→models)
-internal/sources/youtube/legacy_bridge.go
