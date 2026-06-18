@@ -248,9 +248,9 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		probeDuration(ctx, localPath, clip, log)
 	}
 
-	// 10. Save to database
-	if h.clipsRepo != nil {
-		if err := h.clipsRepo.UpsertClip(ctx, assetregistry.ToLegacy(clip)); err != nil {
+	// 10. Save to database via canonical asset.Repository
+	if h.assetRepo != nil {
+		if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 			log.Error("failed to save clip to DB", zap.Error(err))
 			apiutil.InternalError(c, fmt.Errorf("failed to save clip: %w", err))
 			return
