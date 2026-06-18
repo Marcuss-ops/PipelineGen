@@ -17,7 +17,6 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
@@ -170,11 +169,11 @@ func (s *Service) dispatchOrIndex(ctx context.Context, clip *models.MediaAsset, 
 // and youtube.rebuild_search_text jobs.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeYouTubeClipExtract, s.HandleJob)
-		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", string(models.JobTypeYouTubeClipExtract)))
+		jobsSvc.RegisterHandler(domainjob.TypeYouTubeClipExtract, s.HandleJob)
+		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", domainjob.TypeYouTubeClipExtract))
 
-		jobsSvc.RegisterHandler(models.JobTypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
-		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", string(models.JobTypeYouTubeRebuildST)))
+		jobsSvc.RegisterHandler(domainjob.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
+		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", domainjob.TypeYouTubeRebuildST))
 	}
 }
 

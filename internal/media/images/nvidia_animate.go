@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 )
 
@@ -71,18 +71,12 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 6. Salva nel DB stock (fallback)
 	if s.stockRepo != nil {
-		clip := &models.MediaAsset{
-			ID:          "ai_" + imageHash,
-			Name:        "AI Animation: " + asset.SubjectID,
-			Filename:    outputName,
-			Group:       "ai-generated",
-			MediaType:   "video",
-			DriveFileID: driveVideoID,
-			LocalPath:   outputPath,
-			Duration:    duration,
-			Source:      "nvidia-animation",
-			Status:      "ready",
-			CreatedAt:   time.Now(),
+		clip := &asset.MediaAsset{
+			ID:        "ai_" + imageHash,
+			Name:      "AI Animation: " + asset.SubjectID,
+			MediaType: "video",
+			Source:    "nvidia-animation",
+			CreatedAt: time.Now(),
 		}
 
 		if err := s.stockRepo.UpsertClip(ctx, clip); err != nil {

@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -246,10 +246,8 @@ func (r *Repository) GetEmbedding(ctx context.Context, clipID string) ([]float64
 }
 
 // GetClip retrieves a full clip by ID
-func (r *Repository) GetClip(ctx context.Context, clipID string) (*models.MediaAsset, error) {
-	// Delegate to existing clips repository or implement here
-	// For now, return a basic clip. Reads from canonical columns (migration 059).
-	var clip models.MediaAsset
+func (r *Repository) GetClip(ctx context.Context, clipID string) (*asset.MediaAsset, error) {
+	var clip asset.MediaAsset
 	var driveLinkNull, localPathNull, categoryNull, searchTextNull sql.NullString
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, name,

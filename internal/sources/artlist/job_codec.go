@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.
@@ -227,54 +226,5 @@ func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 	return resp
 }
 
-// ResponseFromLegacyJob converts a legacy models.Job to RunTagResponse.
-// It marshals the models Result (map[string]any) into json.RawMessage,
-// converts the job to a domain job, then delegates to ResponseFromJob.
-func (c *JobCodec) ResponseFromLegacyJob(job *models.Job) *RunTagResponse {
-	if job == nil {
-		return &RunTagResponse{OK: false, Status: "not_found", Error: "job not found"}
-	}
-
-	status := domainjob.StatusQueued
-	switch job.Status {
-	case models.StatusRunning:
-		status = domainjob.StatusRunning
-	case models.StatusSucceeded:
-		status = domainjob.StatusCompleted
-	case models.StatusFailed:
-		status = domainjob.StatusFailed
-	case models.StatusCancelled:
-		status = domainjob.StatusCancelled
-	}
-
-	var resultJSON json.RawMessage
-	if job.Result != nil {
-		if b, err := json.Marshal(job.Result); err == nil {
-			resultJSON = b
-		}
-	}
-
-	converted := &domainjob.Job{
-		ID:            job.ID,
-		Type:          string(job.Type),
-		Status:        status,
-		Priority:      job.Priority,
-		Project:       job.Project,
-		Payload:       job.Payload,
-		Result:        resultJSON,
-		Error:         job.Error,
-		Progress:      job.Progress,
-		RetryCount:    job.RetryCount,
-		MaxRetries:    job.MaxRetries,
-		WorkerID:      job.WorkerID,
-		LeaseID:       job.LeaseID,
-		LeaseExpiry:   job.LeaseExpiry,
-		Revision:      job.Revision,
-		CorrelationID: job.CorrelationID,
-		CreatedAt:     job.CreatedAt,
-		UpdatedAt:     job.UpdatedAt,
-		StartedAt:     job.StartedAt,
-		CompletedAt:   job.CompletedAt,
-	}
-	return c.ResponseFromJob(converted)
-}
+// ResponseFromLegacyJob is removed — all callers now use domain *job.Job directly.
+// Kept as a compile-time reference for the diff; callers should use ResponseFromJob.

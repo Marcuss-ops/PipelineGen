@@ -16,7 +16,6 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -160,6 +159,6 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 }
 
 // GetJobByRunID ottiene un job per run ID.
-func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*models.Job, error) {
+func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*domainjob.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
 }

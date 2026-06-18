@@ -20,8 +20,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 )
 
@@ -29,7 +29,7 @@ import (
 // Defined as an interface so unit tests can substitute a fake without
 // pulling the full clips.Repository dependency.
 type ClipsUpserter interface {
-	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.MediaAsset) error
+	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error
 }
 
 // Dispatcher is the ingestion entry point for the canonical
@@ -107,7 +107,7 @@ type indexRequestPayload struct {
 //     returns error → outboxevents Pool calls MarkFailed (retry with
 //     backoff, or dead_letter after max attempts)
 //   - Qdrant unreachable → same retry/dead_letter pattern
-func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *models.MediaAsset, contentHash string) error {
+func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.MediaAsset, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
@@ -250,7 +250,7 @@ func NewMultiClipsUpserter(repos map[string]ClipsUpserter, defaultRepo ClipsUpse
 
 // UpsertClipTx routes the call based on clip.Source. See type doc for routing
 // rules. tx is forwarded untouched to the chosen repository.
-func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.MediaAsset) error {
+func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
 	if m == nil {
 		return errors.New("outbox.MultiClipsUpserter is nil")
 	}

@@ -1,7 +1,3 @@
-// Package jobs provides the canonical job repository with atomic CAS operations
-// for the 7-state job lifecycle (PR-2: atomic lifecycle).
-//
-// States: PENDING → LEASED → RUNNING → SUCCEEDED / RETRY_WAIT / FAILED / CANCELLED
 package jobs
 
 import (
@@ -10,25 +6,20 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 )
 
 // ── Errors ──────────────────────────────────────────────────────────────
 
 var (
-	ErrTransitionConflict  = errors.New("transition conflict: row was modified by another worker")
-	ErrLeaseLost           = errors.New("lease lost: worker_id or lease_id mismatch")
-	ErrAlreadyClaimed      = errors.New("job already claimed by another worker")
-	ErrJobNotFound         = errors.New("job not found")
-	ErrInvalidState        = errors.New("invalid state transition")
+	ErrTransitionConflict = errors.New("transition conflict: row was modified by another worker")
+	ErrLeaseLost          = errors.New("lease lost: worker_id or lease_id mismatch")
+	ErrAlreadyClaimed     = errors.New("job already claimed by another worker")
+	ErrJobNotFound        = errors.New("job not found")
+	ErrInvalidState       = errors.New("invalid state transition")
 )
 
 // ── Typed Command Structs ────────────────────────────────────────────────
-
-// CreateJob is the input for Repository.Create.
-type CreateJob struct {
-	Job           *models.Job
-}
 
 // ClaimNext is the input for Repository.ClaimNext.
 type ClaimNext struct {
@@ -39,13 +30,13 @@ type ClaimNext struct {
 }
 
 // StartJob is the input for Repository.Start.
-// Transitions PENDING or LEASED → RUNNING under the caller's lease.
+// Transitions queued or leased → running under the caller's lease.
 type StartJob struct {
-	JobID      string
-	WorkerID   string
-	LeaseID    string
-	LeaseTTL   time.Duration
-	Revision   int64
+	JobID    string
+	WorkerID string
+	LeaseID  string
+	LeaseTTL time.Duration
+	Revision int64
 }
 
 // RenewLease extends an active lease.
@@ -57,7 +48,7 @@ type RenewLease struct {
 	NewExpiration time.Time
 }
 
-// CompleteJob marks a job as SUCCEEDED.
+// CompleteJob marks a job as completed.
 type CompleteJob struct {
 	JobID      string
 	WorkerID   string
@@ -66,7 +57,7 @@ type CompleteJob struct {
 	ResultJSON json.RawMessage
 }
 
-// FailJob marks a job as FAILED.
+// FailJob marks a job as failed.
 type FailJob struct {
 	JobID    string
 	WorkerID string
@@ -75,7 +66,7 @@ type FailJob struct {
 	Error    string
 }
 
-// ScheduleRetry transitions a RUNNING job to RETRY_WAIT (or FAILED if no retries remain).
+// ScheduleRetry transitions a running job to retry_wait (or failed if no retries remain).
 type ScheduleRetry struct {
 	JobID    string
 	WorkerID string
@@ -83,7 +74,7 @@ type ScheduleRetry struct {
 	Revision int64
 }
 
-// RequestCancel transitions a non-terminal job to CANCELLED from any active state.
+// RequestCancel transitions a non-terminal job to cancelled from any active state.
 type RequestCancel struct {
 	JobID string
 }
@@ -100,50 +91,45 @@ type ConfirmCancelled struct {
 
 // Lease is returned by ClaimNext on success.
 type Lease struct {
-	Job         *models.Job
+	Job         *job.Job
 	LeaseID     string
 	LeaseExpiry time.Time
 }
 
 // RequeueResult is returned by RequeueExpiredLeases for each expired lease.
 type RequeueResult struct {
-	JobID    string
-	NewStatus models.JobStatus
-	Error    string
+	JobID     string
+	NewStatus job.Status
+	Error     string
 }
 
 // ── Transition Validation ────────────────────────────────────────────────
 
-// NOTE: Repository struct is declared in repository.go.
-// The typed command structs above are the canonical API surface for all
-// lifecycle operations on *Repository.
-//
-
 // ValidateTransition checks if the state transition is allowed per the
 // canonical 7-state machine.
-func ValidateTransition(current, next models.JobStatus) error {
+func ValidateTransition(current, next job.Status) error {
 	switch current {
-	case models.StatusPending:
+	case job.StatusQueued:
 		switch next {
-		case models.StatusLeased, models.StatusCancelled:
+		case job.StatusLeased, job.StatusCancelled:
 			return nil
 		}
-	case models.StatusLeased:
+	case job.StatusLeased:
 		switch next {
-		case models.StatusRunning, models.StatusPending, models.StatusCancelled:
+		case job.StatusRunning, job.StatusQueued, job.StatusCancelled:
 			return nil
 		}
-	case models.StatusRunning:
+	case job.StatusRunning:
 		switch next {
-		case models.StatusSucceeded, models.StatusRetryWait, models.StatusFailed, models.StatusCancelled:
+		case job.StatusCompleted, job.StatusRetryWait, job.StatusFailed, job.StatusCancelled:
 			return nil
 		}
-	case models.StatusRetryWait:
+	case job.StatusRetryWait:
 		switch next {
-		case models.StatusPending, models.StatusFailed, models.StatusCancelled:
+		case job.StatusQueued, job.StatusFailed, job.StatusCancelled:
 			return nil
 		}
-	case models.StatusSucceeded, models.StatusFailed, models.StatusCancelled:
+	case job.StatusCompleted, job.StatusFailed, job.StatusCancelled:
 		return fmt.Errorf("cannot transition from terminal status %q to %q", current, next)
 	}
 	return fmt.Errorf("invalid transition: %q → %q", current, next)

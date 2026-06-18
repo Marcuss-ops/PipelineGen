@@ -11,7 +11,6 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	corejobs "github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
@@ -133,14 +132,14 @@ func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
 // RegisterHandler registers the stock pipeline job handler with the jobs system.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeMediaStock, s.HandleJob)
-		s.log.Info("registered media.stock job handler", zap.String("type", string(models.JobTypeMediaStock)))
+		jobsSvc.RegisterHandler(domainjob.TypeMediaStock, s.HandleJob)
+		s.log.Info("registered media.stock job handler", zap.String("type", domainjob.TypeMediaStock))
 	}
 }
 
 // HandleJob handles a stock pipeline job from the job queue.
 func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
-	var payload corejobs.StockRunPayload
+	var payload StockRunPayload
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal stock payload: %w", err)

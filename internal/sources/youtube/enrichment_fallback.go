@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 // buildFallbackSearchText builds a minimal search_text from existing clip metadata.
@@ -13,7 +13,7 @@ import (
 // Transcript is intentionally excluded to prevent false positives from
 // literal phrase matches. It is indexed separately in the Qdrant "transcript"
 // named vector for hybrid search.
-func (s *Service) buildFallbackSearchText(clip *models.MediaAsset) {
+func (s *Service) buildFallbackSearchText(clip *asset.MediaAsset) {
 	var parts []string
 
 	// 1. YouTube title

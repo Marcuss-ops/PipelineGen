@@ -17,7 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
@@ -67,7 +66,7 @@ func main() {
 	versionsRepo := assetversions.NewAdapter(assetversions.NewRepository(db.DB))
 	querySvc := assetquery.New(assetsRepo, locationsRepo, processingRepo, versionsRepo)
 
-	broker := local.New(domain.NewSQLiteJobRepository(jobRepo), workerRepo)
+	broker := local.New(jobRepo, workerRepo)
 	assetSvc := workerassets.NewServiceWithUploadRoot(assetIndexSvc, querySvc, imageRepo, voiceoverRepo, filepath.Join(cfg.Storage.DataDir, "worker-uploads"), log)
 	router.SetWorkerHandler(internalworker.NewHandler(broker, assetSvc, log))
 	engine := router.Setup()

@@ -154,8 +154,8 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	}
 
 	// 4. Media Processing
-	clipsOnlyRepo := clips.NewRepository(dbs.main.DB, log)
 	assetRepo := assetrepo.New(dbs.main.DB, log)
+	clipsOnlyRepo := clips.NewRepositoryCanonical(dbs.main.DB, log, assetRepo)
 	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
 	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
 	assetVerRepo := assetversions.NewRepository(dbs.main.DB)

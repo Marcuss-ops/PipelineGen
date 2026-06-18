@@ -5,12 +5,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// Handler exposes HTTP endpoints for job lifecycle management (enqueue, list, get, cancel, retry, events).
+// Handler exposes HTTP endpoints for job lifecycle management.
 type Handler struct {
 	service *jobs.Service
 	log     *zap.Logger
@@ -39,7 +40,7 @@ func (h *Handler) Enqueue(c *gin.Context) {
 		return
 	}
 
-	job, err := h.service.Enqueue(c.Request.Context(), &req)
+	j, err := h.service.Enqueue(c.Request.Context(), &req)
 	if err != nil {
 		h.log.Error("failed to enqueue job", zap.Error(err))
 		apiutil.InternalError(c, err)
@@ -47,13 +48,13 @@ func (h *Handler) Enqueue(c *gin.Context) {
 	}
 
 	apiutil.Accepted(c, gin.H{
-		"job_id": job.ID,
+		"job_id": j.ID,
 		"job": gin.H{
-			"id":       job.ID,
-			"type":     job.Type,
-			"status":   job.Status,
-			"project":  job.Project,
-			"progress": job.Progress,
+			"id":       j.ID,
+			"type":     j.Type,
+			"status":   j.Status,
+			"project":  j.Project,
+			"progress": j.Progress,
 		},
 	})
 }
@@ -61,20 +62,20 @@ func (h *Handler) Enqueue(c *gin.Context) {
 func (h *Handler) Get(c *gin.Context) {
 	id := c.Param("id")
 
-	job, err := h.service.Get(c.Request.Context(), id)
+	j, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
 		apiutil.NotFound(c, "job not found")
 		return
 	}
 
-	apiutil.OK(c, gin.H{"job": job})
+	apiutil.OK(c, gin.H{"job": j})
 }
 
 func (h *Handler) List(c *gin.Context) {
-	var filter models.JobFilter
+	var filter job.Filter
 
 	if status := c.Query("status"); status != "" {
-		s := models.JobStatus(status)
+		s := job.Status(status)
 		filter.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
@@ -90,14 +91,14 @@ func (h *Handler) List(c *gin.Context) {
 		filter.Offset, _ = strconv.Atoi(offset)
 	}
 
-	jobs, err := h.service.List(c.Request.Context(), filter)
+	jobsList, err := h.service.List(c.Request.Context(), filter)
 	if err != nil {
 		h.log.Error("failed to list jobs", zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"jobs": jobs, "count": len(jobs)})
+	apiutil.OK(c, gin.H{"jobs": jobsList, "count": len(jobsList)})
 }
 
 func (h *Handler) Cancel(c *gin.Context) {
@@ -115,14 +116,14 @@ func (h *Handler) Cancel(c *gin.Context) {
 func (h *Handler) Retry(c *gin.Context) {
 	id := c.Param("id")
 
-	job, err := h.service.Retry(c.Request.Context(), id)
+	j, err := h.service.Retry(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to retry job", zap.String("job_id", id), zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"job": job})
+	apiutil.OK(c, gin.H{"job": j})
 }
 
 func (h *Handler) Events(c *gin.Context) {
@@ -136,22 +137,9 @@ func (h *Handler) Events(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{"events": events, "count": len(events)})
-}// GetFull godoc
-// @Summary Get full job details
-// @Description Get job with events, full status, and optimistic-lock
-// @Description revision counter. The `revision` field is bumped on every
-// @Description status transition and is the optimistic-lock token used by
-// @Description internal/core/domain/job.Transition to detect concurrent
-// @Description writers (PR-1 of the PipelineGen roadmap).
-// @Tags jobs
-// @Accept json
-// @Produce json
-// @Param id path string true "Job ID"
-// @Success 200 {object} map[string]any
-// @Failure 404 {object} map[string]string
-// @Router /jobs/{id}/full [get]	
-// Stats returns aggregated job statistics for monitoring (queued/running/completed/failed counts,
-// average durations, images generated, error rates). Useful for agents and CLI monitoring.
+}
+
+// Stats returns aggregated job statistics for monitoring.
 func (h *Handler) Stats(c *gin.Context) {
 	stats, err := h.service.GetStats(c.Request.Context())
 	if err != nil {
@@ -165,12 +153,12 @@ func (h *Handler) Stats(c *gin.Context) {
 func (h *Handler) GetFull(c *gin.Context) {
 	id := c.Param("id")
 
-	job, err := h.service.Get(c.Request.Context(), id)
+	j, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
 		apiutil.NotFound(c, "job not found")
 		return
 	}
-	if job == nil {
+	if j == nil {
 		apiutil.NotFound(c, "job not found")
 		return
 	}
@@ -178,21 +166,20 @@ func (h *Handler) GetFull(c *gin.Context) {
 	events, err := h.service.ListEvents(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
-		// Don't fail - just return empty events
-		events = make([]models.JobEvent, 0)
+		events = make([]job.Event, 0)
 	}
 
-	retryable := job.CanRetry()
+	retryable := j.CanRetry()
 
 	apiutil.OK(c, gin.H{
-		"id":           job.ID,
-		"type":         job.Type,
-		"status":       job.Status,
-		"progress":     job.Progress,
-		"current_step": job.Status,
+		"id":           j.ID,
+		"type":         j.Type,
+		"status":       j.Status,
+		"progress":     j.Progress,
+		"current_step": j.Status,
 		"events":       events,
-		"result":       job.Result,
+		"result":       j.Result,
 		"retryable":    retryable,
-		"job":          job,
+		"job":          j,
 	})
 }

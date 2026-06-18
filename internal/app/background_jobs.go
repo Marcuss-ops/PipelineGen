@@ -8,11 +8,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
@@ -68,11 +68,8 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				PollEvery: 2 * time.Second,
 				LeaseTTL:  leaseTTL,
 				JobTypes:  nil, // all types
-			}
-			// Wrap the concrete repo in the domain adapter so the Runner
-		// depends on job.Repository (interface), not *jobs.Repository.
-		domainJobRepo := domain.NewSQLiteJobRepository(svcs.jobsRepo)
-		jobRunner = svcjobs.NewRunner(domainJobRepo, svcs.jobsDispatcher, log, runnerConfig)
+			}		// The concrete repo now directly implements job.Repository (PR4).
+		jobRunner = svcjobs.NewRunner(svcs.jobsRepo, svcs.jobsDispatcher, log, runnerConfig)
 			// Job runner is NOT started here — it will be started in WireServices
 			// after WireRegistry completes and all job handlers are registered.
 			// See startJobRunner() for the actual start call.
@@ -157,9 +154,9 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 					case <-time.After(2 * time.Minute):
 					}
 					for {
-						_, err := svcs.jobsService.Enqueue(ctx, &svcjobs.EnqueueRequest{
-							Type:     models.JobTypeSystemCleanup,
-							Priority: 5,
+				_, err := svcs.jobsService.Enqueue(ctx, &svcjobs.EnqueueRequest{
+					Type:     domainjob.TypeSystemCleanup,
+					Priority: 5,
 							Payload: map[string]any{
 								"label":  label,
 								"source": "scheduled",
