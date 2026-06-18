@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
@@ -51,6 +52,14 @@ type Service struct {
 	// call. Admin/reindex paths (indexing.go, rebuild_job.go) keep the
 	// direct indexer so operator overrides bypass the queue.
 	dispatcher *outbox.Dispatcher
+	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
+	// When wired, dispatchOrIndex prefers it over the dispatcher and the
+	// legacy clipsRepository path: it converts the legacy *models.MediaAsset
+	// to *asset.MediaAsset via toAssetDomain and routes through
+	// assetrepo.Upsert — which writes both legacy and canonical columns in
+	// the same row and emits the asset.upserted outbox event in the same
+	// transaction.
+	assetRepo *assetrepo.Repository
 	// assetProcessing tracks clip processing state (download_and_cut step).
 	assetProcessing asset.ProcessingRepository
 	// assetVersions records file identity on successful processing.
@@ -114,11 +123,40 @@ func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
 	s.dispatcher = d
 }
 
-// dispatchOrIndex writes clip metadata via the canonical dispatcher when
-// wired (atomic UpsertClip + IndexClip + outbox row), otherwise falls back
-// to plain clipsRepo.UpsertClip. Used by enrichment.go + segment.go so
-// that both call sites share the same crash-safety contract.
+// SetAssetRepo injects the canonical assetrepo.Repository (PR12b). Mirrors
+// SetDispatcher semantics: late-bound once during composition root, idempotent,
+// nil-safe (legacy callers fall through to dispatcher / clipsRepo paths).
+// When wired, dispatchOrIndex prefers assetRepo over dispatcher so the
+// canonical SQL upsert writes both legacy + canonical columns + outbox row
+// in a single transaction.
+func (s *Service) SetAssetRepo(r *assetrepo.Repository) {
+	s.assetRepo = r
+}
+
+// dispatchOrIndex writes clip metadata via the canonical pipeline. The
+// preference order is fully explicit so callers reading the function can
+// reason about which path is active:
+//
+//   1. assetRepo wired (PR12b): convert via toAssetDomain and call
+//      assetrepo.Upsert. Writes legacy + canonical columns in one row, emits
+//      the asset.upserted outbox event in the same transaction, and DOES NOT
+//      touch the legacy indexer (the fresh-media Qdrant side-effect is now
+//      owned by outboxhandlers reading the event).
+//
+//   2. dispatcher wired (PR3-5b.4): EnqueueAndIndex does UpsertClip +
+//      IndexClip atomically through the outbox_events. The carry-over from
+//      before PR12b.
+//
+//   3. legacy fallback: clipsRepo.UpsertClip. No outbox, no Qdrant side-effect.
+//      Only reached when neither assetRepo nor dispatcher is wired (which is
+//      the case for tests that don't construct the full composition root).
+//
+// Used by enrichment.go + segment.go so both call sites share the same
+// crash-safety contract.
 func (s *Service) dispatchOrIndex(ctx context.Context, clip *models.MediaAsset, hash string) error {
+	if s.assetRepo != nil {
+		return s.assetRepo.Upsert(ctx, toAssetDomain(clip))
+	}
 	if s.dispatcher != nil {
 		return s.dispatcher.EnqueueAndIndex(ctx, clip, hash)
 	}

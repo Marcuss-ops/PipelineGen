@@ -135,7 +135,7 @@ func TestSolarPanelSearch(t *testing.T) {
 		},
 	}
 
-	svc, err := NewService(cfg, nil, nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, logger)
+	svc, err := NewService(cfg, db, db, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
 	require.NoError(t, err)
 	defer svc.Close()
 
