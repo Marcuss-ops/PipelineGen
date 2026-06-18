@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -563,7 +564,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	// 9. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(clip)
+		node := clipToAssetNode(assetregistry.ToCanonical(clip))
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
