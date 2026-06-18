@@ -57,10 +57,12 @@ func DriveRoot(folderID string) string {
 // handles folder grouping when present. We deliberately keep this method
 // pure-path so it can be safely called without a Drive client (used in
 // tests that don't want to hit the Drive API).
+//
+// Nil-receiver contract: when r == nil OR r.mediaRoot == "", we still
+// compute RelativePath from the request (so callers have a usable path
+// signal) but LocalPath stays empty (no root to anchor against). This
+// matches the documented behaviour the call sites already encode.
 func (r *Resolver) Resolve(req AssetDestinationRequest) (*ResolvedDest, error) {
-	if r == nil {
-		return &ResolvedDest{}, nil
-	}
 	// sanity defaults so a partially-populated request still resolves
 	if req.Subject == "" {
 		req.Subject = "unknown"
@@ -73,12 +75,11 @@ func (r *Resolver) Resolve(req AssetDestinationRequest) (*ResolvedDest, error) {
 		sourceSegment = "media"
 	}
 	rel := filepath.Join(sourceSegment, req.Subject+req.Ext)
-	root := r.mediaRoot
-	if root == "" {
+	if r == nil || r.mediaRoot == "" {
 		return &ResolvedDest{RelativePath: rel}, nil
 	}
 	return &ResolvedDest{
 		RelativePath: rel,
-		LocalPath:    filepath.Join(root, rel),
+		LocalPath:    filepath.Join(r.mediaRoot, rel),
 	}, nil
 }
