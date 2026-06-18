@@ -1,7 +1,7 @@
 # mediaasset-legacy-allowlist.txt
 # Files that import or reference models.MediaAsset (legacy type).
 # Each PR MUST reduce this list; new files MUST NOT appear here.
-# Regenerated: 2026-06-18 — exact match enforced by CI (AST-based, excludes comments)
+# Regenerated: 2026-06-18 — from enhanced AST finder (import-path verified)
 #
 # Rule: no new file may be added to this list.
 #       every PR must remove at least one entry.
@@ -44,8 +44,8 @@ internal/media/repository/repository.go
 internal/media/stockpipeline/run_upload.go
 internal/repository/clips/folders.go
 internal/repository/clips/list_clips.go
-internal/repository/clips/repository_delete_test.go
 internal/repository/clips/repository.go
+internal/repository/clips/repository_delete_test.go
 internal/repository/clips/scan.go
 internal/repository/clips/scoring.go
 internal/repository/clips/search.go
@@ -59,19 +59,19 @@ internal/repository/outbox/dispatcher_test.go
 internal/service/mediacurator/service_test.go
 internal/service/scriptcore/catalog_scanner.go
 internal/service/scriptcore/catalog_scanner_test.go
-internal/service/scriptcore/clip_source_evidence.go
 internal/service/scriptcore/clip_source.go
+internal/service/scriptcore/clip_source_evidence.go
 internal/service/scriptcore/clip_source_test.go
+internal/sources/artlist/assetrepo_integration_test.go
 internal/sources/artlist/convert.go
 internal/sources/artlist/dispatch_bridge.go
 internal/sources/artlist/search_service.go
 internal/sources/artlist/semantic_enricher.go
 internal/sources/artlist/service_test.go
-internal/sources/artlist/assetrepo_integration_test.go
+internal/sources/youtube/assetrepo_integration_test.go
 internal/sources/youtube/convert.go
 internal/sources/youtube/enrichment_fallback.go
 internal/sources/youtube/extractor_process.go
 internal/sources/youtube/metadata_enrich.go
 internal/sources/youtube/metadata_persist.go
 internal/sources/youtube/service.go
-internal/sources/youtube/assetrepo_integration_test.go
