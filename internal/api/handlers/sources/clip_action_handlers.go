@@ -10,8 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -30,11 +31,12 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	clip, err := repo.GetClip(ctx, clipID)
+	legacyClip, err := repo.GetClip(ctx, clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
+	clip := assetregistry.ToCanonical(legacyClip)
 
 	if h.mediaProcessor == nil {
 		apiutil.InternalError(c, fmt.Errorf("media processor not configured"))
@@ -52,9 +54,9 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	processInput := &processor.ProcessInput{
 		ID:        clip.ID,
 		Name:      clip.Name,
-		SourceURL: clip.ExternalURL,
+		SourceURL: clip.SourceURL,
 		FolderID:  clip.FolderID,
-		Duration:  clip.Duration,
+		Duration:  int(clip.DurationMs),
 		Metadata: map[string]any{
 			"source": source,
 			"tags":   clip.Tags,
@@ -80,7 +82,7 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	clip.UpdatedAt = time.Now()
 
 	// Save to DB
-	if err := repo.UpsertClip(ctx, clip); err != nil {
+	if err := repo.UpsertClip(ctx, assetregistry.ToLegacy(clip)); err != nil {
 		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
@@ -103,17 +105,16 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	var clip *models.MediaAsset
-	var err error
+	var clip *asset.MediaAsset
 
-	// Handle Voiceover source
+	// Handle Voiceover source — use canonical converter directly.
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 		rec, getErr := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
 		if getErr != nil {
 			apiutil.NotFound(c, "voiceover not found: "+clipID)
 			return
 		}
-		clip = voiceoverRecordToClip(rec)
+		clip = assetregistry.VoiceoverRecordToClip(rec)
 	} else {
 		repo := h.resolveRepo(source)
 		if repo == nil {
@@ -121,11 +122,12 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			return
 		}
 
-		clip, err = repo.GetClip(c.Request.Context(), clipID)
-		if err != nil {
+		legacyClip, getErr := repo.GetClip(c.Request.Context(), clipID)
+		if getErr != nil {
 			apiutil.NotFound(c, "clip not found: "+clipID)
 			return
 		}
+		clip = assetregistry.ToCanonical(legacyClip)
 	}
 
 	// 1. Try local file if it exists
@@ -207,11 +209,12 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	clip, err := repo.GetClip(ctx, clipID)
+	legacyClip, err := repo.GetClip(ctx, clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
+	clip := assetregistry.ToCanonical(legacyClip)
 
 	// Check local file
 	if clip.LocalPath == "" {
@@ -301,7 +304,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	}
 
 	// Save to DB
-	if err := repo.UpsertClip(ctx, clip); err != nil {
+	if err := repo.UpsertClip(ctx, assetregistry.ToLegacy(clip)); err != nil {
 		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
@@ -327,11 +330,12 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		return
 	}
 
-	clip, err := repo.GetClip(c.Request.Context(), clipID)
+	legacyClip, err := repo.GetClip(c.Request.Context(), clipID)
 	if err != nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
+	clip := assetregistry.ToCanonical(legacyClip)
 
 	if clip.FileHash == "" {
 		apiutil.OK(c, gin.H{
@@ -367,13 +371,14 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 				continue
 			}
 
+			canonDup := assetregistry.ToCanonical(dup)
 			duplicates = append(duplicates, gin.H{
 				"source":     repoSource,
-				"id":         dup.ID,
-				"name":       dup.Name,
-				"drive_link": dup.DriveLink,
-				"local_path": dup.LocalPath,
-				"thumb_url":  dup.ThumbURL,
+				"id":         canonDup.ID,
+				"name":       canonDup.Name,
+				"drive_link": canonDup.DriveLink,
+				"local_path": canonDup.LocalPath,
+				"thumb_url":  canonDup.ThumbnailURL,
 			})
 		}
 	}
