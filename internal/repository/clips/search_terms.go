@@ -207,7 +207,7 @@ func (r *Repository) RebuildSearchTerms(ctx context.Context, source string, batc
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags'), '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords'), '') || ' ' ||
 				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text'), '') || ' ' ||
-				COALESCE(json_extract(COALESCE(metadata_json,'{}'), '$.search_text'), '')
+				COALESCE(search_text, '')
 			)
 		FROM media_assets`
 	var args []any

@@ -14,7 +14,7 @@ import (
 func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*models.MediaAsset, error) {
 	query := `SELECT ` + mediaAssetColumns + `
 		FROM media_assets
-		WHERE ` + r.SoftDeleteFilter() + ` AND json_extract(COALESCE(metadata_json,'{}'), '$.parent_folder_id') = ?
+		WHERE ` + r.SoftDeleteFilter() + ` AND parent_folder_id = ?
 		ORDER BY name ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, parentID)
@@ -62,13 +62,8 @@ func (r *Repository) MarkUsed(ctx context.Context, clipID string) error {
 	now := timeutil.FormatRFC3339(time.Now())
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE media_assets
-		SET metadata_json = json_set(
-			COALESCE(metadata_json, '{}'),
-			'$.reuse_count',
-			COALESCE(CAST(json_extract(metadata_json, '$.reuse_count') AS INTEGER), 0) + 1,
-			'$.last_used_at',
-			?
-		)
+		SET reuse_count = reuse_count + 1,
+		    last_used_at = ?
 		WHERE id = ?
 	`, now, clipID)
 	return err

@@ -160,7 +160,7 @@ func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*mode
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id
 		FROM media_assets 
-		WHERE source = 'image' AND (json_extract(metadata_json, '$.drive_file_id') = ? OR url LIKE ?)
+		WHERE source = 'image' AND (drive_file_id = ? OR url LIKE ?)
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query, fileID, "%"+fileID+"%")

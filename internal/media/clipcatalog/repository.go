@@ -210,11 +210,7 @@ func (r *Repository) MarkUsed(ctx context.Context, clipID string, topic string) 
 	// Increment reuse count
 	_, err = tx.ExecContext(ctx, `
 		UPDATE media_assets 
-		SET metadata_json = json_set(
-			COALESCE(metadata_json, '{}'), 
-			'$.reuse_count', 
-			COALESCE(CAST(json_extract(metadata_json, '$.reuse_count') AS INTEGER), 0) + 1
-		) 
+		SET reuse_count = reuse_count + 1
 		WHERE id = ?`, clipID)
 	if err != nil {
 		return fmt.Errorf("failed to increment reuse count: %w", err)
@@ -222,7 +218,7 @@ func (r *Repository) MarkUsed(ctx context.Context, clipID string, topic string) 
 
 	// Update last_used_at
 	now := timeutil.FormatRFC3339(time.Now())
-	_, err = tx.ExecContext(ctx, "UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.last_used_at', ?) WHERE id = ?", now, clipID)
+	_, err = tx.ExecContext(ctx, "UPDATE media_assets SET last_used_at = ? WHERE id = ?", now, clipID)
 	if err != nil {
 		return fmt.Errorf("failed to update last_used_at: %w", err)
 	}

@@ -57,55 +57,22 @@ func (r *Repository) buildMediaAssetQuery(source string) string {
 
 // Repository handles persistence for clips
 type Repository struct {
-	db                 *sql.DB
-	log                *zap.Logger
-	hasLifecycleState  bool // true if migration 037 (lifecycle_state column) has been applied
+	db  *sql.DB
+	log *zap.Logger
 }
 
 // NewRepository creates a new clips repository.
-// Detects whether migration 037 (lifecycle_state column) has been applied
-// so queries can use the canonical column or fall back to metadata_json.
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
-	r := &Repository{db: db, log: log}
-	r.hasLifecycleState = r.detectLifecycleStateColumn()
-	if log != nil {
-		if r.hasLifecycleState {
-			log.Info("lifecycle_state column detected — using canonical soft-delete filter")
-		} else {
-			log.Warn("lifecycle_state column NOT found — falling back to json_extract(metadata_json, '$.deleted_at'). Run migration 037.")
-		}
-	}
-	return r
-}
-
-// detectLifecycleStateColumn checks whether the lifecycle_state column exists
-// on media_assets (added by migration 037). Uses PRAGMA table_info because
-// it works even when the migration hasn't run yet.
-func (r *Repository) detectLifecycleStateColumn() bool {
-	if r.db == nil {
-		return false
-	}
-	var count int
-	err := r.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM pragma_table_info('media_assets') WHERE name = 'lifecycle_state'").Scan(&count)
-	if err != nil {
-		return false
-	}
-	return count > 0
+	return &Repository{db: db, log: log}
 }
 
 // SoftDeleteFilter returns the SQL WHERE fragment that excludes soft-deleted
-// clips. When the lifecycle_state column exists (migration 037 applied), uses
-// the canonical typed column. Falls back to the legacy metadata_json extraction
-// for databases that haven't been migrated yet — ensuring zero-downtime
-// compatibility during rollout.
+// clips. Uses the canonical lifecycle_state typed column (migration 062).
 //
 // Exported so callers outside the clips package (e.g. sweepers) can compose
 // ad-hoc queries that respect the same filter.
 func (r *Repository) SoftDeleteFilter() string {
-	if r.hasLifecycleState {
-		return "lifecycle_state != 'deleted'"
-	}
-	return "json_extract(COALESCE(metadata_json,'{}'), '$.deleted_at') IS NULL"
+	return "lifecycle_state != 'deleted'"
 }
 
 // Log returns the repository's logger
@@ -129,7 +96,6 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 // the upsert with an outbox_events INSERT under the outbox Dispatcher)
 // should call UpsertClipTx directly to reuse the caller's tx.
 func (r *Repository) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
-	r.populateAssetMetadata(clip)
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -156,7 +122,6 @@ func (r *Repository) UpsertClip(ctx context.Context, clip *models.MediaAsset) er
 // MUST keep SQL, metadata serialization, and tag normalization in lockstep
 // with UpsertClip — the two diverge by call surface only.
 func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.MediaAsset) error {
-	r.populateAssetMetadata(clip)
 	tagsJSON, err := json.Marshal(clip.Tags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tags: %w", err)
@@ -199,112 +164,7 @@ func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.
 	return err
 }
 
-// populateAssetMetadata moves extended fields from the typed MediaAsset
-// columns into the Metadata map (serialized to metadata_json). Kept as a
-// separate helper so UpsertClip and UpsertClipTx stay byte-for-byte
-// equivalent on column writes. Returns nothing (no fallible work).
-//
-// DEPRECATED (Blocco 3, June 2026): This function duplicates canonical
-// typed columns (local_path, drive_file_id, drive_link, download_link,
-// file_hash, status, media_type) into metadata_json. After all readers
-// have been migrated to use the canonical columns, this function should
-// be removed and only non-canonical metadata (prompt, mood, subjects,
-// model_parameters, provider_raw_metadata, creative_annotations) should
-// be written to metadata_json.
-//
-// Migration plan:
-//   1. Migrate all READ paths from json_extract(metadata_json, '$.<key>')
-//      to the canonical typed columns.
-//   2. Backfill: ensure every row has both column AND JSON key values.
-//   3. Compare: verify column == json_extract(...) for all rows.
-//   4. Stop writing duplicate keys (remove this function's column copies).
-//   5. Remove duplicate keys from existing metadata_json records.
-//   6. Delete this function.
-func (r *Repository) populateAssetMetadata(clip *models.MediaAsset) {
-	if clip.FolderID != "" {
-		clip.SetMetadataString("folder_id", clip.FolderID)
-	}
-	if clip.DriveLink != "" {
-		clip.SetMetadataString("drive_link", clip.DriveLink)
-	}
-	if clip.DownloadLink != "" {
-		clip.SetMetadataString("download_link", clip.DownloadLink)
-	}
-	if clip.DriveFileID != "" {
-		clip.SetMetadataString("drive_file_id", clip.DriveFileID)
-	}
-	if clip.FileHash != "" {
-		clip.SetMetadataString("file_hash", clip.FileHash)
-	}
-	if clip.LocalPath != "" {
-		clip.SetMetadataString("local_path", clip.LocalPath)
-	}
-	if clip.Status != "" {
-		clip.SetMetadataString("status", clip.Status)
-	}
-	if clip.MediaType != "" {
-		clip.SetMetadataString("media_type", clip.MediaType)
-	}
-	if clip.Group != "" {
-		clip.SetMetadataString("group_name", clip.Group)
-	}
-	if clip.Category != "" {
-		clip.SetMetadataString("category", clip.Category)
-	}
-	if clip.Filename != "" {
-		clip.SetMetadataString("filename", clip.Filename)
-	}
-	if clip.ParentFolderID != "" {
-		clip.SetMetadataString("parent_folder_id", clip.ParentFolderID)
-	}
-	if clip.FolderPath != "" {
-		clip.SetMetadataString("folder_path", clip.FolderPath)
-	}
-	if clip.Error != "" {
-		clip.SetMetadataString("error", clip.Error)
-	}
-	if clip.ThumbURL != "" {
-		clip.SetMetadataString("thumb_url", clip.ThumbURL)
-	}
-	if clip.PHash != "" {
-		clip.SetMetadataString("phash", clip.PHash)
-	}
-	if clip.VisualEmbeddingJSON != "" {
-		clip.SetMetadataString("visual_embedding_json", clip.VisualEmbeddingJSON)
-	}
-	if clip.SearchText != "" {
-		clip.SetMetadataString("search_text", clip.SearchText)
-	}
-	if clip.SceneType != "" {
-		clip.SetMetadataString("scene_type", clip.SceneType)
-	}
-	if clip.QualityScore != 0 {
-		clip.SetMetadataString("quality_score", fmt.Sprintf("%f", clip.QualityScore))
-	}
-	if clip.ReuseCount != 0 {
-		clip.SetMetadataString("reuse_count", fmt.Sprintf("%d", clip.ReuseCount))
-	}
-	if clip.LastUsedAt != "" {
-		clip.SetMetadataString("last_used_at", clip.LastUsedAt)
-	}
-	if len(clip.UsableFor) > 0 {
-		b, _ := json.Marshal(clip.UsableFor)
-		clip.SetMetadataString("usable_for", string(b))
-	}
-	if len(clip.AvoidFor) > 0 {
-		b, _ := json.Marshal(clip.AvoidFor)
-		clip.SetMetadataString("avoid_for", string(b))
-	}
-	if clip.EmbeddingJSON != "" {
-		clip.SetMetadataString("embedding_json", clip.EmbeddingJSON)
-	}
-}
-
 // DeleteClip soft-deletes a clip by its ID.
-// Uses both lifecycle_state + deleted_at columns (canonical) and
-// metadata_json.deleted_at (legacy, for backward compatibility during
-// dual-read migration phase). After Blocco 3 migration 037 completes,
-// the metadata_json write can be removed.
 func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -315,15 +175,12 @@ func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE media_assets
 		 SET lifecycle_state = 'deleted',
-		     deleted_at = ?,
-		     metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?)
-		 WHERE id = ?`, now, now, id)
+		     deleted_at = ?
+		 WHERE id = ?`, now, id)
 	return err
 }
 
 // RestoreClip restores a soft-deleted clip by its ID.
-// Uses both lifecycle_state + deleted_at columns (canonical) and
-// metadata_json.deleted_at (legacy compat).
 func (r *Repository) RestoreClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -333,8 +190,7 @@ func (r *Repository) RestoreClip(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE media_assets
 		 SET lifecycle_state = 'ready',
-		     deleted_at = '',
-		     metadata_json = json_remove(COALESCE(metadata_json,'{}'), '$.deleted_at')
+		     deleted_at = ''
 		 WHERE id = ?`, id)
 	return err
 }

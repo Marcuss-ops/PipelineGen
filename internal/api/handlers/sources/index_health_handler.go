@@ -81,7 +81,7 @@ func (h *Handler) IndexHealth(c *gin.Context) {
 			_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets").Scan(&dbTotal)
 			_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]'").Scan(&withEmb)
 			_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE embedding_json IS NULL OR embedding_json = '' OR embedding_json = '[]'").Scan(&withoutEmb)
-			_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE json_extract(metadata_json, '$.search_text') IS NULL OR json_extract(metadata_json, '$.search_text') = ''").Scan(&missingST)
+			_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE search_text IS NULL OR search_text = ''").Scan(&missingST)
 			_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE json_extract(metadata_json, '$.language') IS NULL OR json_extract(metadata_json, '$.language') = ''").Scan(&missingLang)
 		}
 	}

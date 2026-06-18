@@ -111,6 +111,6 @@ func clipSearchColumns() []string {
 		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags')",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords')",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.search_text')",
+		"COALESCE(search_text, '')",
 	}
 }
