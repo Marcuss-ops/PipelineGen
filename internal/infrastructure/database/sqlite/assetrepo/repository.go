@@ -1,3 +1,18 @@
+// Package assetrepo is the canonical SQLite implementation of asset.Repository.
+//
+// It reads from media_assets directly — no metadata_json extract for
+// canonical fields. The schema-level row reader lives in scanner.go
+// (selectColumns + scanAsset). Provider-specific fields still live in
+// metadata_json and are exposed via MediaAsset.Metadata.
+//
+// Transactional outbox: every mutating method writes an outbox_events
+// row in the SAME transaction as the data change. Consumers of the
+// canonical pipeline must observe the outbox to react to asset changes
+// (search index updates, downstream indexers, etc.).
+//
+// The implementation is goroutine-safe via standard database/sql
+// connection pooling. Callers MUST NOT mutate the *sql.DB connection
+// pool from outside.
 package assetrepo
 
 import (
@@ -8,252 +23,417 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"go.uber.org/zap"
 )
 
-// Repository implements asset.Repository on top of SQLite.
+// Repository is the concrete SQLite implementation of asset.Repository.
 type Repository struct {
 	db  *sql.DB
 	log *zap.Logger
 }
 
-// New creates a new SQLite-backed asset repository.
+// Compile-time interface check.
+var _ asset.Repository = (*Repository)(nil)
+
+// New returns a Repository backed by db.
 func New(db *sql.DB, log *zap.Logger) *Repository {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &Repository{db: db, log: log}
 }
 
-// Upsert inserts or updates an asset row.
-func (r *Repository) Upsert(ctx context.Context, a *asset.MediaAsset) error {
-	tagsJSON, err := json.Marshal(a.Tags)
-	if err != nil {
-		return fmt.Errorf("marshal tags: %w", err)
-	}
-	searchTermsJSON, err := json.Marshal(a.SearchTerms)
-	if err != nil {
-		return fmt.Errorf("marshal search_terms: %w", err)
-	}
-	usableForJSON, err := json.Marshal(a.UsableFor)
-	if err != nil {
-		return fmt.Errorf("marshal usable_for: %w", err)
-	}
-	avoidForJSON, err := json.Marshal(a.AvoidFor)
-	if err != nil {
-		return fmt.Errorf("marshal avoid_for: %w", err)
-	}
-	metadataJSON := a.MetadataJSON()
-	tagsNorm := normalizeTags(a.Tags)
+// ── CRUD ───────────────────────────────────────────────────────────────
 
-	deletedAtStr := ""
-	if a.DeletedAt != nil {
-		deletedAtStr = timeutil.FormatRFC3339(*a.DeletedAt)
+// Upsert inserts or replaces a media_asset row. Writes "asset.upserted"
+// outbox event in the same transaction. Reads/writes use real columns
+// (no json_extract for canonical fields).
+func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
+	if m == nil {
+		return asset.ErrInvalidID
+	}
+	if m.ID == "" {
+		return asset.ErrInvalidID
 	}
 
-	_, err = r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("assetrepo.Upsert begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = now
+	}
+	m.UpdatedAt = now
+
+	tagsJSON, _ := json.Marshal(m.Tags)
+	searchTermsJSON, _ := json.Marshal(m.SearchTerms)
+
+	// NOTE: ON CONFLICT(id) DO UPDATE does NOT include created_at in the
+	// update clause → on re-upsert the row preserves its original
+	// created_at even though we bind a fresh nowStr value.
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type, category, group_name,
 			url, clip_page_url, thumbnail_url, external_url,
-			duration_ms, tags, tags_norm, search_terms, search_text,
+			duration_ms, tags, search_terms, search_text,
 			lifecycle_state, deleted_at,
-			metadata_json, embedding_json, visual_embedding, transcript_embedding,
-			visual_embedding_json, folder_id, parent_folder_id, folder_path,
-			depth, is_folder, scene_type, quality_score, reuse_count, last_used_at,
+			quality_score, reuse_count, last_used_at,
+			scene_type, metadata_json, is_folder, depth,
+			folder_id, parent_folder_id, folder_path,
 			usable_for, avoid_for, phash, child_count,
-			status, error, drive_file_id, drive_link, download_link,
-			local_path, file_hash,
+			status, error,
+			drive_file_id, drive_link, download_link, local_path, file_hash,
 			created_at, updated_at
 		) VALUES (
-			?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+			?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?,
+			?, ?, ?, ?,
+			?, ?,
+			?, ?, ?,
+			?, ?, ?, ?,
+			?, ?, ?,
+			?, ?, ?, ?,
+			?, ?,
+			?, ?, ?, ?, ?,
+			?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
-			source=excluded.source, name=excluded.name, filename=excluded.filename,
-			media_type=excluded.media_type, category=excluded.category,
-			group_name=excluded.group_name,
-			url=excluded.url, clip_page_url=excluded.clip_page_url,
-			thumbnail_url=excluded.thumbnail_url, external_url=excluded.external_url,
-			duration_ms=excluded.duration_ms, tags=excluded.tags, tags_norm=excluded.tags_norm,
-			search_terms=excluded.search_terms, search_text=excluded.search_text,
-			lifecycle_state=excluded.lifecycle_state, deleted_at=excluded.deleted_at,
-			metadata_json=excluded.metadata_json, embedding_json=excluded.embedding_json,
-			visual_embedding=excluded.visual_embedding,
-			transcript_embedding=excluded.transcript_embedding,
-			visual_embedding_json=excluded.visual_embedding_json,
-			folder_id=excluded.folder_id, parent_folder_id=excluded.parent_folder_id,
-			folder_path=excluded.folder_path, depth=excluded.depth,
-			is_folder=excluded.is_folder, scene_type=excluded.scene_type,
-			quality_score=excluded.quality_score, reuse_count=excluded.reuse_count,
-			last_used_at=excluded.last_used_at,
-			usable_for=excluded.usable_for, avoid_for=excluded.avoid_for,
-			phash=excluded.phash, child_count=excluded.child_count,
-			status=excluded.status, error=excluded.error,
-			drive_file_id=excluded.drive_file_id, drive_link=excluded.drive_link,
-			download_link=excluded.download_link,
-			local_path=excluded.local_path, file_hash=excluded.file_hash,
-			updated_at=excluded.updated_at
-	`, a.ID, a.Source, a.Name, a.Filename, a.MediaType, a.Category, a.Group,
-		a.SourceURL, a.ClipPageURL, a.ThumbnailURL, a.ExternalURL,
-		a.DurationMs, string(tagsJSON), tagsNorm, string(searchTermsJSON), a.SearchText,
-		string(a.LifecycleState), deletedAtStr,
-		metadataJSON, a.EmbeddingJSON, a.VisualEmbedding, a.TranscriptEmbedding,
-		a.VisualEmbeddingJSON, a.FolderID, a.ParentFolderID, a.FolderPath,
-		a.Depth, boolToInt(a.IsFolder), a.SceneType, a.QualityScore, a.ReuseCount, a.LastUsedAt,
-		string(usableForJSON), string(avoidForJSON), a.PHash, a.ChildCount,
-		a.Status, a.Error, a.DriveFileID, a.DriveLink, a.DownloadLink,
-		a.LocalPath, a.FileHash,
-		a.CreatedAt, a.UpdatedAt,
+			source         = excluded.source,
+			name           = excluded.name,
+			filename       = excluded.filename,
+			media_type     = excluded.media_type,
+			category       = excluded.category,
+			group_name     = excluded.group_name,
+			url            = excluded.url,
+			clip_page_url  = excluded.clip_page_url,
+			thumbnail_url  = excluded.thumbnail_url,
+			external_url   = excluded.external_url,
+			duration_ms    = excluded.duration_ms,
+			tags           = excluded.tags,
+			search_terms   = excluded.search_terms,
+			search_text    = excluded.search_text,
+			lifecycle_state= excluded.lifecycle_state,
+			deleted_at     = excluded.deleted_at,
+			updated_at     = excluded.updated_at,
+			quality_score  = excluded.quality_score,
+			reuse_count    = excluded.reuse_count,
+			last_used_at   = excluded.last_used_at,
+			scene_type     = excluded.scene_type,
+			metadata_json  = excluded.metadata_json,
+			is_folder      = excluded.is_folder,
+			depth          = excluded.depth,
+			folder_id      = excluded.folder_id,
+			parent_folder_id = excluded.parent_folder_id,
+			folder_path    = excluded.folder_path,
+			usable_for     = excluded.usable_for,
+			avoid_for      = excluded.avoid_for,
+			phash          = excluded.phash,
+			child_count    = excluded.child_count,
+			status         = excluded.status,
+			error          = excluded.error,
+			drive_file_id  = excluded.drive_file_id,
+			drive_link     = excluded.drive_link,
+			download_link  = excluded.download_link,
+			local_path     = excluded.local_path,
+			file_hash      = excluded.file_hash
+	`,
+		// Values (matches the 40 ? placeholders above in order)
+		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
+		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
+		m.DurationMs, string(tagsJSON), string(searchTermsJSON), m.SearchText,
+		string(m.LifecycleState), timeutil.FormatPtrRFC3339(m.DeletedAt),
+		m.QualityScore, m.ReuseCount, m.LastUsedAt,
+		m.SceneType, m.MetadataJSON(), boolToInt(m.IsFolder), m.Depth,
+		m.FolderID, m.ParentFolderID, m.FolderPath,
+		mustJSONArray(m.UsableFor), mustJSONArray(m.AvoidFor), m.PHash, m.ChildCount,
+		m.Status, m.Error,
+		m.DriveFileID, m.DriveLink, m.DownloadLink, m.LocalPath, m.FileHash,
+		nowStr, nowStr,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("assetrepo.Upsert(%s): %w", m.ID, err)
+	}
+
+	if err := writeOutbox(ctx, tx, m.ID, "asset.upserted", m); err != nil {
+		return fmt.Errorf("assetrepo.Upsert outbox: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("assetrepo.Upsert commit: %w", err)
+	}
+	return nil
 }
 
-// Get returns a single asset by ID, or asset.ErrNotFound if not found.
+// Get reads a single media_asset row by id. Returns (nil, nil) when missing.
+// Soft-deleted rows return (nil, asset.ErrSoftDeleted) so callers can
+// distinguish "not found" from "deleted".
 func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, error) {
-	row := r.db.QueryRowContext(ctx,
-		"SELECT "+selectColumns+" FROM media_assets WHERE id = ?", id)
-	a, err := scanAsset(row)
+	if id == "" {
+		return nil, asset.ErrInvalidID
+	}
+	row := r.db.QueryRowContext(ctx, `SELECT `+selectColumns+` FROM media_assets WHERE id = ?`, id)
+	m, err := scanAsset(row)
 	if err == sql.ErrNoRows {
-		return nil, asset.ErrNotFound
+		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("assetrepo.Get(%s): %w", id, err)
 	}
-	return a, nil
+	if m.LifecycleState == asset.StateDeleted {
+		return nil, asset.ErrSoftDeleted
+	}
+	return m, nil
 }
 
-// List returns assets matching the filter.
-func (r *Repository) List(ctx context.Context, f asset.Filter) ([]*asset.MediaAsset, error) {
-	query, args := r.buildListQuery(f)
+// List returns assets matching filter. Uses real columns; no json_extract.
+func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.MediaAsset, error) {
+	args := []any{}
+	conds := []string{"1=1"}
+	if filter.Source != "" {
+		conds = append(conds, "source = ?")
+		args = append(args, filter.Source)
+	}
+	if filter.MediaType != "" {
+		conds = append(conds, "media_type = ?")
+		args = append(args, filter.MediaType)
+	}
+	if len(filter.States) > 0 {
+		conds = append(conds, inClause(len(filter.States), "lifecycle_state"))
+		for _, s := range filter.States {
+			args = append(args, s)
+		}
+	}
+	if len(filter.IDs) > 0 {
+		conds = append(conds, inClause(len(filter.IDs), "id"))
+		for _, id := range filter.IDs {
+			args = append(args, id)
+		}
+	}
+	if len(filter.ExcludeIDs) > 0 {
+		conds = append(conds, inClause(len(filter.ExcludeIDs), "id", "NOT"))
+		for _, id := range filter.ExcludeIDs {
+			args = append(args, id)
+		}
+	}
+	if filter.IsFolder != nil {
+		conds = append(conds, "is_folder = ?")
+		args = append(args, boolToInt(*filter.IsFolder))
+	}
+
+	query := "SELECT " + selectColumns + " FROM media_assets WHERE " +
+		joinAnd(conds) + " ORDER BY created_at DESC"
+	if filter.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, filter.Limit)
+		if filter.Offset > 0 {
+			query += " OFFSET ?"
+			args = append(args, filter.Offset)
+		}
+	}
+
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("assetrepo.List: %w", err)
 	}
 	defer rows.Close()
 
 	var out []*asset.MediaAsset
 	for rows.Next() {
-		a, err := scanAsset(rows)
+		m, err := scanAsset(rows)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("assetrepo.List scan: %w", err)
 		}
-		out = append(out, a)
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }
 
-// Count returns the number of assets matching the filter.
-func (r *Repository) Count(ctx context.Context, f asset.Filter) (int64, error) {
-	query, args := r.buildCountQuery(f)
-	var n int64
-	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
-	return n, err
-}
-
-// SoftDelete sets lifecycle_state='deleted' and deleted_at.
-func (r *Repository) SoftDelete(ctx context.Context, id string) error {
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets
-		 SET lifecycle_state = 'deleted', deleted_at = ?,
-		     metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.deleted_at', ?)
-		 WHERE id = ?`, now, now, id)
-	return err
-}
-
-// Restore sets lifecycle_state='ready' and clears deleted_at.
-func (r *Repository) Restore(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets
-		 SET lifecycle_state = 'ready', deleted_at = '',
-		     metadata_json = json_remove(COALESCE(metadata_json,'{}'), '$.deleted_at')
-		 WHERE id = ?`, id)
-	return err
-}
-
-// HardDelete permanently removes a row.
-func (r *Repository) HardDelete(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
-	return err
-}
-
-// ── query builders ──────────────────────────────────────────────────
-
-func (r *Repository) buildListQuery(f asset.Filter) (string, []any) {
-	where, args := r.buildWhereClause(f)
-	query := "SELECT " + selectColumns + " FROM media_assets" + where + " ORDER BY created_at DESC"
-	if f.Limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, f.Limit)
-	}
-	if f.Offset > 0 {
-		query += " OFFSET ?"
-		args = append(args, f.Offset)
-	}
-	return query, args
-}
-
-func (r *Repository) buildCountQuery(f asset.Filter) (string, []any) {
-	where, _ := r.buildWhereClause(f)
-	return "SELECT COUNT(*) FROM media_assets" + where, nil
-}
-
-func (r *Repository) buildWhereClause(f asset.Filter) (string, []any) {
-	var conds []string
-	var args []any
-
-	// Always exclude soft-deleted unless explicitly requested
-	hasDeleted := false
-	for _, s := range f.States {
-		if s == "deleted" {
-			hasDeleted = true
-		}
-	}
-	if !hasDeleted {
-		conds = append(conds, "lifecycle_state != 'deleted'")
-	}
-
-	if f.Source != "" {
+// Count returns the number of rows matching filter (no pagination).
+func (r *Repository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
+	args := []any{}
+	conds := []string{"1=1"}
+	if filter.Source != "" {
 		conds = append(conds, "source = ?")
-		args = append(args, f.Source)
+		args = append(args, filter.Source)
 	}
-	if f.MediaType != "" {
+	if filter.MediaType != "" {
 		conds = append(conds, "media_type = ?")
-		args = append(args, f.MediaType)
+		args = append(args, filter.MediaType)
 	}
-	if len(f.IDs) > 0 {
-		placeholders := make([]string, len(f.IDs))
-		for i, id := range f.IDs {
-			placeholders[i] = "?"
-			args = append(args, id)
-		}
-		conds = append(conds, "id IN ("+strings.Join(placeholders, ",")+")")
-	}
-	if len(f.ExcludeIDs) > 0 {
-		placeholders := make([]string, len(f.ExcludeIDs))
-		for i, id := range f.ExcludeIDs {
-			placeholders[i] = "?"
-			args = append(args, id)
-		}
-		conds = append(conds, "id NOT IN ("+strings.Join(placeholders, ",")+")")
-	}
-	if f.IsFolder != nil {
-		if *f.IsFolder {
-			conds = append(conds, "is_folder = 1")
-		} else {
-			conds = append(conds, "is_folder = 0")
+	if len(filter.States) > 0 {
+		conds = append(conds, inClause(len(filter.States), "lifecycle_state"))
+		for _, s := range filter.States {
+			args = append(args, s)
 		}
 	}
-	if f.HasEmbedding != nil {
-		if *f.HasEmbedding {
-			conds = append(conds, "embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]'")
-		} else {
-			conds = append(conds, "(embedding_json IS NULL OR embedding_json = '' OR embedding_json = '[]')")
-		}
+	query := "SELECT COUNT(*) FROM media_assets WHERE " + joinAnd(conds)
+	var n int64
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("assetrepo.Count: %w", err)
 	}
+	return n, nil
+}
 
-	if len(conds) == 0 {
-		return "", nil
+// SoftDelete marks the asset as deleted (lifecycle_state='deleted', deleted_at=now)
+// and writes "asset.deleted" outbox event in the same transaction.
+func (r *Repository) SoftDelete(ctx context.Context, id string) error {
+	if id == "" {
+		return asset.ErrInvalidID
 	}
-	return " WHERE " + strings.Join(conds, " AND "), args
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("assetrepo.SoftDelete begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	res, err := tx.ExecContext(ctx, `
+		UPDATE media_assets
+		SET lifecycle_state = ?, deleted_at = ?, updated_at = ?
+		WHERE id = ? AND lifecycle_state != ?
+	`, asset.StateDeleted, nowStr, nowStr, id, asset.StateDeleted)
+	if err != nil {
+		return fmt.Errorf("assetrepo.SoftDelete(%s): %w", id, err)
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		return asset.ErrNotFound
+	}
+	if err := writeOutbox(ctx, tx, id, "asset.deleted", nil); err != nil {
+		return fmt.Errorf("assetrepo.SoftDelete outbox: %w", err)
+	}
+	return tx.Commit()
+}
+
+// Restore reverses a soft-delete. Idempotent: a non-deleted asset is a no-op.
+func (r *Repository) Restore(ctx context.Context, id string) error {
+	if id == "" {
+		return asset.ErrInvalidID
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("assetrepo.Restore begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	res, err := tx.ExecContext(ctx, `
+		UPDATE media_assets
+		SET lifecycle_state = ?, deleted_at = NULL, updated_at = ?
+		WHERE id = ? AND lifecycle_state = ?
+	`, asset.StateReady, nowStr, id, asset.StateDeleted)
+	if err != nil {
+		return fmt.Errorf("assetrepo.Restore(%s): %w", id, err)
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		return asset.ErrNotFound
+	}
+	if err := writeOutbox(ctx, tx, id, "asset.restored", nil); err != nil {
+		return fmt.Errorf("assetrepo.Restore outbox: %w", err)
+	}
+	return tx.Commit()
+}
+
+// HardDelete removes the asset row permanently. Audit trail is gone.
+// Writes outbox event "asset.hard_deleted" before deletion so downstream
+// observers can clean up before the parent row vanishes.
+func (r *Repository) HardDelete(ctx context.Context, id string) error {
+	if id == "" {
+		return asset.ErrInvalidID
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("assetrepo.HardDelete begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := writeOutbox(ctx, tx, id, "asset.hard_deleted", id); err != nil {
+		return fmt.Errorf("assetrepo.HardDelete outbox: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_assets WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("assetrepo.HardDelete(%s): %w", id, err)
+	}
+	return tx.Commit()
+}
+
+// ── Transactional API ────────────────────────────────────────────────
+
+// Tx exposes the SQL transaction for compound operations (cross-table
+// updates with a single outbox emit). Callers use Tx.OnCommit to schedule
+// outbox writes that share the transaction.
+type Tx struct {
+	tx  *sql.Tx
+	log *zap.Logger
+}
+
+// OnCommit schedules an outbox event to be written if the transaction
+// commits successfully.
+func (t *Tx) OnCommit(ctx context.Context, assetID, event string, payload any) error {
+	return writeOutbox(ctx, t.tx, assetID, event, payload)
+}
+
+// Commit finalises the transaction.
+func (t *Tx) Commit() error { return t.tx.Commit() }
+
+// Rollback undoes the transaction.
+func (t *Tx) Rollback() error { return t.tx.Rollback() }
+
+// WithTx begins a transaction and runs fn with a Tx handle. If fn returns
+// an error, the transaction is rolled back; otherwise it is committed.
+// Outbox events scheduled via Tx.OnCommit share the transaction.
+func (r *Repository) WithTx(ctx context.Context, fn func(*Tx) error) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("assetrepo.WithTx begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	if err := fn(&Tx{tx: tx, log: r.log}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────
+
+// writeOutbox enters one row into outbox_events, transaction-shared with
+// the caller's mutating SQL. Same signature as writeOutbox in jobs/events.go
+// so callers can compose both pipelines.
+func writeOutbox(ctx context.Context, tx *sql.Tx, aggregateID, event string, payload any) error {
+	var payloadJSON []byte
+	if payload == nil {
+		payloadJSON = []byte("{}")
+	} else {
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("marshal outbox payload: %w", err)
+		}
+		payloadJSON = b
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO outbox_events (id, aggregate_id, event_type, payload_json, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, outboxID(), aggregateID, event, string(payloadJSON),
+		timeutil.FormatRFC3339(time.Now()),
+	)
+	if err != nil {
+		return fmt.Errorf("write outbox row: %w", err)
+	}
+	return nil
+}
+
+// outboxID matches the project convention used in jobs/events.go (UnixNano
+// + RandomString suffix). Avoids collisions on retries within the same
+// nanosecond.
+func outboxID() string {
+	return fmt.Sprintf("outbox_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
 }
 
 func boolToInt(b bool) int {
@@ -262,3 +442,43 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
+
+func mustJSONArray(xs []string) string {
+	if xs == nil {
+		return "[]"
+	}
+	b, err := json.Marshal(xs)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// inClause builds "col IN (?, ?, ?)" placeholders. When negate is true
+// (e.g. NOT IN), the prefix "NOT " is omitted — caller concatenates it.
+func inClause(n int, col string, negate ...string) string {
+	prefix := ""
+	if len(negate) > 0 {
+		prefix = negate[0] + " "
+	}
+	placeholders := make([]string, n)
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+	return prefix + col + " IN (" + strings.Join(placeholders, ",") + ")"
+}
+
+// joinAnd joins non-empty SQL conditions with " AND ".
+func joinAnd(conds []string) string {
+	out := ""
+	for i, c := range conds {
+		if i == 0 {
+			out = c
+		} else {
+			out += " AND " + c
+		}
+	}
+	return out
+}
+
+
