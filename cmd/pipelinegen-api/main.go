@@ -17,13 +17,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
+	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
+	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"go.uber.org/zap"
 )
 
@@ -53,11 +57,18 @@ func main() {
 	jobRepo := jobrepo.NewRepository(db.DB, log)
 	workerRepo := workernodes.NewRepository(db.DB)
 	assetIndexSvc := assetindex.NewService(assetindex.NewRepository(db.DB))
-	clipRepo := clipsrepo.NewRepository(db.DB, log)
 	imageRepo := imagerepo.NewRepository(db.DB)
 	voiceoverRepo := vorepo.NewRepository(db.DB)
+
+	// Canonical asset repositories and query service
+	assetsRepo := assetrepo.New(db.DB, log)
+	locationsRepo := assetlocations.NewAdapter(assetlocations.NewRepository(db.DB))
+	processingRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(db.DB))
+	versionsRepo := assetversions.NewAdapter(assetversions.NewRepository(db.DB))
+	querySvc := assetquery.New(assetsRepo, locationsRepo, processingRepo, versionsRepo)
+
 	broker := local.New(domain.NewSQLiteJobRepository(jobRepo), workerRepo)
-	assetSvc := workerassets.NewServiceWithUploadRoot(assetIndexSvc, clipRepo, imageRepo, voiceoverRepo, filepath.Join(cfg.Storage.DataDir, "worker-uploads"), log)
+	assetSvc := workerassets.NewServiceWithUploadRoot(assetIndexSvc, querySvc, imageRepo, voiceoverRepo, filepath.Join(cfg.Storage.DataDir, "worker-uploads"), log)
 	router.SetWorkerHandler(internalworker.NewHandler(broker, assetSvc, log))
 	engine := router.Setup()
 
