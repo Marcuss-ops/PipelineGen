@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 )
@@ -22,13 +24,13 @@ func (f *fakeYTDLP) Download(ctx context.Context, req *downloader.DownloadReques
 	if f.err != nil {
 		return f.err
 	}
-	return os.WriteFile(req.OutputPath, []byte("fake-video"), 0644)
+	return os.WriteFile(req.OutputPath, []byte("fake-video"), 0o644)
 }
 
 type fakeHTTPDownloader struct{}
 
 func (f *fakeHTTPDownloader) Download(ctx context.Context, req *downloader.HTTPDownloadRequest) error {
-	return os.WriteFile(req.OutputPath, []byte("fake-http-video"), 0644)
+	return os.WriteFile(req.OutputPath, []byte("fake-http-video"), 0o644)
 }
 
 type fakeFFmpeg struct {
@@ -41,11 +43,11 @@ func (f *fakeFFmpeg) Normalize(ctx context.Context, inputPath, outputPath string
 	if f.normalizeErr != nil {
 		return f.normalizeErr
 	}
-	return os.WriteFile(outputPath, []byte("processed-video"), 0644)
+	return os.WriteFile(outputPath, []byte("processed-video"), 0o644)
 }
 
 func (f *fakeFFmpeg) RemuxHLS(ctx context.Context, sourceURL, outputPath string) error {
-	return os.WriteFile(outputPath, []byte("hls-video"), 0644)
+	return os.WriteFile(outputPath, []byte("hls-video"), 0o644)
 }
 
 func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error) {
@@ -58,7 +60,18 @@ func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo,
 }
 
 func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
-	return os.WriteFile(output, []byte("fake-frame"), 0644)
+	return os.WriteFile(output, []byte("fake-frame"), 0o644)
+}
+
+func TestProcessorHandlesNilInput(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, zap.NewNop(), ProcessorConfig{}, nil, nil)
+
+	result, err := p.Process(context.Background(), nil)
+
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "failed", result.Status)
+	assert.Contains(t, result.Error, "ProcessInput")
 }
 
 func TestProcessorHandlesYTDLPFailure(t *testing.T) {
@@ -79,7 +92,7 @@ func TestProcessorHandlesYTDLPFailure(t *testing.T) {
 		nil,
 	)
 
-	result, err := p.DownloadProcessUpload(ctx, AssetInput{
+	result, err := p.Process(ctx, &processor.ProcessInput{
 		ID:        "clip-1",
 		Name:      "test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -112,7 +125,7 @@ func TestProcessorHandlesFFmpegFailure(t *testing.T) {
 		nil,
 	)
 
-	result, err := p.DownloadProcessUpload(ctx, AssetInput{
+	result, err := p.Process(ctx, &processor.ProcessInput{
 		ID:        "clip-1",
 		Name:      "test clip",
 		SourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -150,8 +163,8 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 		nil,
 	)
 
-	// Case 1: StreamCopy is true and specs match -> Normalize should NOT be called
-	result, err := p.DownloadProcessUpload(ctx, AssetInput{
+	// Case 1: StreamCopy is true and specs match -> Normalize should NOT be called.
+	result, err := p.Process(ctx, &processor.ProcessInput{
 		ID:         "clip-1",
 		Name:       "test clip",
 		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -164,11 +177,11 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 	assert.False(t, ff.normalizeCalled)
 	assert.Equal(t, "processed", result.Status)
 
-	// Case 2: StreamCopy is true but specs don't match -> Normalize SHOULD be called
+	// Case 2: StreamCopy is true but specs don't match -> Normalize SHOULD be called.
 	ff.normalizeCalled = false
-	p.videoCfg.FPS = 60 // Change target FPS to 60
+	p.videoCfg.FPS = 60
 
-	result, err = p.DownloadProcessUpload(ctx, AssetInput{
+	result, err = p.Process(ctx, &processor.ProcessInput{
 		ID:         "clip-2",
 		Name:       "test clip 2",
 		SourceURL:  "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
