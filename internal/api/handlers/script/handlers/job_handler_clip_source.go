@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -128,7 +128,7 @@ var scriptGenSemaphore = make(chan struct{}, 2)
 //
 // Each phase emits pipeline_stage_started / _completed zap logs with
 // duration_ms so operators can pinpoint exactly where a job is stalled.
-func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling unified script generation job", zap.String("job_id", job.ID))
 
 	h.log.Info("waiting for script generation slot (max 2 concurrent)", zap.String("job_id", job.ID))

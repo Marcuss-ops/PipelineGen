@@ -2,12 +2,14 @@ package internalworker
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -23,13 +25,20 @@ type Broker interface {
 	IsCancelled(ctx context.Context, jobID string, leaseID string) (bool, error)
 }
 
+type AssetTransferService interface {
+	Download(ctx context.Context, assetID string) (io.ReadCloser, string, error)
+	InitiateUpload(ctx context.Context, assetID string) (*workerassets.UploadResponse, error)
+	FinalizeUpload(ctx context.Context, assetID string) error
+}
+
 type Handler struct {
 	broker Broker
+	assets AssetTransferService
 	log    *zap.Logger
 }
 
-func NewHandler(broker Broker, log *zap.Logger) *Handler {
-	return &Handler{broker: broker, log: log}
+func NewHandler(broker Broker, assets AssetTransferService, log *zap.Logger) *Handler {
+	return &Handler{broker: broker, assets: assets, log: log}
 }
 
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
@@ -41,6 +50,9 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/jobs/:id/complete", h.Complete)
 	r.POST("/jobs/:id/fail", h.Fail)
 	r.GET("/jobs/:id/cancelled", h.IsCancelled)
+	r.GET("/worker-assets/:asset_id/download", h.DownloadAsset)
+	r.POST("/worker-assets/uploads/initiate", h.InitiateUpload)
+	r.POST("/worker-assets/uploads/finalize", h.FinalizeUpload)
 }
 
 type registerWorkerRequest struct {
@@ -164,6 +176,61 @@ func (h *Handler) IsCancelled(c *gin.Context) {
 		return
 	}
 	apiutil.OK(c, gin.H{"cancelled": cancelled})
+}
+
+func (h *Handler) DownloadAsset(c *gin.Context) {
+	if h.assets == nil {
+		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		return
+	}
+	rc, filename, err := h.assets.Download(c.Request.Context(), c.Param("asset_id"))
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	defer rc.Close()
+	if filename != "" {
+		c.Header("X-Filename", filename)
+		c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	}
+	c.DataFromReader(http.StatusOK, -1, "application/octet-stream", rc, nil)
+}
+
+func (h *Handler) InitiateUpload(c *gin.Context) {
+	if h.assets == nil {
+		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		return
+	}
+	req, ok := apiutil.BindJSON[struct {
+		AssetID string `json:"asset_id"`
+	}](c)
+	if !ok {
+		return
+	}
+	out, err := h.assets.InitiateUpload(c.Request.Context(), req.AssetID)
+	if err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, out)
+}
+
+func (h *Handler) FinalizeUpload(c *gin.Context) {
+	if h.assets == nil {
+		apiutil.Error(c, http.StatusNotImplemented, "asset transfer service not configured")
+		return
+	}
+	req, ok := apiutil.BindJSON[struct {
+		AssetID string `json:"asset_id"`
+	}](c)
+	if !ok {
+		return
+	}
+	if err := h.assets.FinalizeUpload(c.Request.Context(), req.AssetID); err != nil {
+		apiutil.InternalError(c, err)
+		return
+	}
+	apiutil.OK(c, gin.H{"ok": true})
 }
 
 var _ = http.StatusOK

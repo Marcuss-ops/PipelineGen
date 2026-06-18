@@ -149,7 +149,7 @@ func (h *ScriptFlowHandler) GenerateFromClips(c *gin.Context) {
 	)
 
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       models.JobType(jobs.JobTypeClipScriptGenerate),
+		Type:       jobs.JobTypeClipScriptGenerate,
 		Payload:    payload,
 		MaxRetries: 2,
 	})

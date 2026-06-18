@@ -101,7 +101,7 @@ func (h *ScriptFlowHandler) GenerateFromCatalog(c *gin.Context) {
 	)
 
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:    models.JobType(jobs.JobTypeCatalogScriptGenerate),
+		Type:    jobs.JobTypeCatalogScriptGenerate,
 		Payload: payloadMap,
 	})
 	if err != nil {

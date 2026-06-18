@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 	"go.uber.org/zap"
@@ -27,7 +28,7 @@ func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 }
 
 // HandleBatchScriptGenerateJob processes the background job for script.generate_batch
-func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_batch job", zap.String("job_id", job.ID))
 	var req GenerateBatchRequest
 	if err := json.Unmarshal(job.Payload, &req); err != nil {

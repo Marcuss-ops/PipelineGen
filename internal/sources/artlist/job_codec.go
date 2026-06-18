@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.
@@ -90,8 +90,8 @@ func (c *JobCodec) RequestFromPayload(payload map[string]any) *RunTagRequest {
 	return req
 }
 
-// RequestFromJob extracts RunTagRequest from a models.Job.
-func (c *JobCodec) RequestFromJob(job *models.Job) *RunTagRequest {
+// RequestFromJob extracts RunTagRequest from a domain job.Job.
+func (c *JobCodec) RequestFromJob(job *domainjob.Job) *RunTagRequest {
 	if job.Payload == nil {
 		return &RunTagRequest{}
 	}
@@ -177,10 +177,10 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 	resp.Items = append(resp.Items, item)
 }
 
-// ResponseFromJob converts a models.Job to RunTagResponse.
-func (c *JobCodec) ResponseFromJob(job *models.Job) *RunTagResponse {
+// ResponseFromJob converts a domain job.Job to RunTagResponse.
+func (c *JobCodec) ResponseFromJob(job *domainjob.Job) *RunTagResponse {
 	resp := &RunTagResponse{
-		OK:        job.Status != models.StatusFailed,
+		OK:        job.Status != domainjob.StatusFailed,
 		RunID:     job.ID,
 		Status:    string(job.Status),
 		Error:     job.Error,
@@ -218,31 +218,27 @@ func (c *JobCodec) ResponseFromJob(job *models.Job) *RunTagResponse {
 		}
 	}
 
-	// Extract fields from result
-	if job.Result != nil {
-		resp.Found = getIntFromResult(job.Result, "found")
-		resp.Processed = getIntFromResult(job.Result, "processed")
-		resp.Skipped = getIntFromResult(job.Result, "skipped")
-		resp.Failed = getIntFromResult(job.Result, "failed")
-		resp.EstimatedSize = getIntFromResult(job.Result, "estimated_size")
-		if v, ok := job.Result["tag_folder_id"].(string); ok {
-			resp.TagFolderID = v
-		}
-		if v, ok := job.Result["last_processed_at"].(string); ok {
-			resp.LastProcessedAt = &v
-		}
-		// Extract items from result
-		if job.Result != nil {
-			// Handle both []any (from JSON) and []map[string]any (direct assignment)
-			if itemsRaw, ok := job.Result["items"].([]any); ok {
+	// Extract fields from result (json.RawMessage in domain)
+	if len(job.Result) > 0 && string(job.Result) != "null" {
+		var result map[string]any
+		if err := json.Unmarshal(job.Result, &result); err == nil {
+			resp.Found = getIntFromResult(result, "found")
+			resp.Processed = getIntFromResult(result, "processed")
+			resp.Skipped = getIntFromResult(result, "skipped")
+			resp.Failed = getIntFromResult(result, "failed")
+			resp.EstimatedSize = getIntFromResult(result, "estimated_size")
+			if v, ok := result["tag_folder_id"].(string); ok {
+				resp.TagFolderID = v
+			}
+			if v, ok := result["last_processed_at"].(string); ok {
+				resp.LastProcessedAt = &v
+			}
+			// Extract items from result
+			if itemsRaw, ok := result["items"].([]any); ok {
 				for _, itemRaw := range itemsRaw {
 					if itemMap, ok := itemRaw.(map[string]any); ok {
 						addItemFromMap(resp, itemMap)
 					}
-				}
-			} else if itemsRaw, ok := job.Result["items"].([]map[string]any); ok {
-				for _, itemMap := range itemsRaw {
-					addItemFromMap(resp, itemMap)
 				}
 			}
 		}

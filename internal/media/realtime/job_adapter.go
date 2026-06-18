@@ -8,7 +8,6 @@ import (
 
 	corejobs "github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // JobServiceAdapter wraps the jobs.Service to implement the JobService interface
@@ -35,7 +34,7 @@ func (a *JobServiceAdapter) EnqueueMediaGeneration(ctx context.Context, query st
 	_ = json.Unmarshal(data, &payloadMap)
 
 	job, err := a.svc.Enqueue(ctx, &jobs.EnqueueRequest{
-		Type:       models.JobTypeMediaGenerate,
+		Type:       "media.generate",
 		Payload:    payloadMap,
 		Priority:   1,
 		MaxRetries: 3,

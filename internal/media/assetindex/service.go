@@ -29,6 +29,10 @@ func (s *Service) FindBySource(ctx context.Context, source, sourceID string) (*A
 	return s.repo.FindBySource(ctx, source, sourceID)
 }
 
+func (s *Service) GetByID(ctx context.Context, assetID string) (*AssetRecord, error) {
+	return s.repo.GetByID(ctx, assetID)
+}
+
 func (s *Service) UpdateStatus(ctx context.Context, assetID, status string) error {
 	return s.repo.UpdateStatus(ctx, assetID, status)
 }

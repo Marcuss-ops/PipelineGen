@@ -144,7 +144,7 @@ func enqueueArtlistBackgroundJob(ctx context.Context, svc ClipServices, phrase s
 		"root_folder_id": svc.ArtlistFolder,
 	}
 	if _, err := svc.JobsSvc.Enqueue(bgCtx, &jobservice.EnqueueRequest{
-		Type:       models.JobTypeArtlistRun,
+		Type:       "artlist.run",
 		Payload:    payload,
 		MaxRetries: 2,
 	}); err != nil && svc.Logger != nil {

@@ -213,7 +213,7 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-			Type:          models.JobType(jobs.JobTypeBatchScriptGenerate),
+			Type:          jobs.JobTypeBatchScriptGenerate,
 			Priority:      5,
 			ActiveKey:     activeKey,
 			Payload:       payloadMap,

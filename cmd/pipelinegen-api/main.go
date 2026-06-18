@@ -13,10 +13,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	internalworker "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/internalworker"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobbroker/local"
+	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/domain"
+	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	jobrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/jobs"
+	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 	"go.uber.org/zap"
@@ -47,8 +52,13 @@ func main() {
 	router := api.NewRouter(cfg)
 	jobRepo := jobrepo.NewRepository(db.DB, log)
 	workerRepo := workernodes.NewRepository(db.DB)
+	assetIndexSvc := assetindex.NewService(assetindex.NewRepository(db.DB))
+	clipRepo := clipsrepo.NewRepository(db.DB, log)
+	imageRepo := imagerepo.NewRepository(db.DB)
+	voiceoverRepo := vorepo.NewRepository(db.DB)
 	broker := local.New(domain.NewSQLiteJobRepository(jobRepo), workerRepo)
-	router.SetWorkerHandler(internalworker.NewHandler(broker, log))
+	assetSvc := workerassets.NewService(assetIndexSvc, clipRepo, imageRepo, voiceoverRepo, log)
+	router.SetWorkerHandler(internalworker.NewHandler(broker, assetSvc, log))
 	engine := router.Setup()
 
 	server := &http.Server{

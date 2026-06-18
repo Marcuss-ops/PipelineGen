@@ -222,6 +222,46 @@ func (r *Repository) FindBySource(ctx context.Context, source, sourceID string) 
 	return rec, nil
 }
 
+func (r *Repository) GetByID(ctx context.Context, assetID string) (*AssetRecord, error) {
+	query := `
+        SELECT asset_id, asset_type, source, source_id, operation_key,
+               group_name, subfolder, local_path, drive_link, download_link,
+               file_hash, content_hash, status, metadata_json, created_at, updated_at
+        FROM asset_index
+        WHERE asset_id = ?
+        LIMIT 1
+    `
+	rec := &AssetRecord{}
+	var createdAtStr, updatedAtStr string
+	err := r.db.QueryRowContext(ctx, query, assetID).Scan(
+		&rec.AssetID,
+		&rec.AssetType,
+		&rec.Source,
+		&rec.SourceID,
+		&rec.OperationKey,
+		&rec.GroupName,
+		&rec.Subfolder,
+		&rec.LocalPath,
+		&rec.DriveLink,
+		&rec.DownloadLink,
+		&rec.FileHash,
+		&rec.ContentHash,
+		&rec.Status,
+		&rec.Metadata,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	rec.CreatedAt = timeutil.ParseRFC3339(createdAtStr)
+	rec.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr)
+	return rec, nil
+}
+
 func (r *Repository) UpdateStatus(ctx context.Context, assetID, status string) error {
 	query := `UPDATE asset_index SET status = ?, updated_at = ? WHERE asset_id = ?`
 	_, err := r.db.ExecContext(ctx, query, status, timeutil.FormatRFC3339(time.Now()), assetID)

@@ -204,7 +204,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 		}
 
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-			Type:       models.JobTypeArtlistRun,
+			Type:       "artlist.run",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),
 			MaxRetries: 3,
 		})

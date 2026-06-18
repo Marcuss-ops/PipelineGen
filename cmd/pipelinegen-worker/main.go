@@ -12,8 +12,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/worker"
 	"go.uber.org/zap"
 )
 
@@ -32,6 +34,7 @@ func main() {
 	}
 	token := os.Getenv("VELOX_WORKER_TOKEN")
 	broker := jobbrokerclient.New(brokerURL, token)
+	assetClient := assettransferclient.New(brokerURL, token)
 
 	workerID := envOr("VELOX_WORKER_ID", hostnameFallback())
 	workerName := envOr("VELOX_WORKER_NAME", workerID)
@@ -41,6 +44,10 @@ func main() {
 	workspaceRoot := filepath.Join(os.TempDir(), "pipelinegen", "jobs")
 	_ = os.MkdirAll(workspaceRoot, 0755)
 	log.Info("worker workspace ready", zap.String("workspace_root", workspaceRoot))
+	ws, err := worker.NewWorkspace(filepath.Join(os.TempDir(), "pipelinegen"))
+	if err != nil {
+		log.Fatal("workspace init failed", zap.Error(err))
+	}
 
 	session, err := broker.RegisterWorker(ctx, job.RegisterWorkerCommand{
 		WorkerID:     workerID,
@@ -55,21 +62,14 @@ func main() {
 	}
 	log.Info("worker registered", zap.String("worker_id", session.WorkerID), zap.String("session_id", session.SessionID))
 
-	ticker := time.NewTicker(25 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := broker.Heartbeat(ctx, job.HeartbeatCommand{
-				WorkerID:        workerID,
-				WorkerSessionID: session.SessionID,
-				SessionTTL:      90 * time.Second,
-			}); err != nil {
-				log.Warn("heartbeat failed", zap.Error(err))
-			}
-		}
+	registry := worker.NewRegistry()
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go heartbeatLoop(runCtx, broker, workerID, session.SessionID, log)
+
+	runner := worker.NewRunner(broker, registry, ws, assetClient, log, workerID, session.SessionID, caps.JobTypes)
+	if err := runner.Run(runCtx); err != nil && runCtx.Err() == nil {
+		log.Fatal("worker runner failed", zap.Error(err))
 	}
 }
 
@@ -97,4 +97,23 @@ func parseCaps(raw string) job.WorkerCapabilities {
 		return job.WorkerCapabilities{}
 	}
 	return caps
+}
+
+func heartbeatLoop(ctx context.Context, broker job.Broker, workerID, sessionID string, log *zap.Logger) {
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := broker.Heartbeat(ctx, job.HeartbeatCommand{
+				WorkerID:        workerID,
+				WorkerSessionID: sessionID,
+				SessionTTL:      90 * time.Second,
+			}); err != nil {
+				log.Warn("heartbeat failed", zap.Error(err))
+			}
+		}
+	}
 }

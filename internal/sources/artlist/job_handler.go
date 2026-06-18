@@ -6,17 +6,17 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 var jobCodec = &JobCodec{}
 
-func (a *JobAdapter) HandleJob(ctx context.Context, job *models.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (a *JobAdapter) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs.JobTools) (map[string]any, error) {
 	s := a.service
 	s.log.Info("handling artlist job",
 		zap.String("job_id", job.ID),
-		zap.String("type", string(job.Type)),
+		zap.String("type", job.Type),
 	)
 
 	// Use codec to extract request from job payload

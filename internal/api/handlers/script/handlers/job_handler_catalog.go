@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -43,7 +43,7 @@ type jobPayloadCatalogScript struct {
 //  3. Build source text from evidence + plan
 //  4. Generate script through common engine (WriteScript)
 //  5. Assemble result with catalog_report metadata
-func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_from_catalog job", zap.String("job_id", job.ID))
 
 	clipSvc := h.clipSourceBuilder

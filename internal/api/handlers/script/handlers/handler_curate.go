@@ -139,7 +139,7 @@ func (h *ScriptFlowHandler) Curate(c *gin.Context) {
 	)
 
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
-		Type:       models.JobType(jobs.JobTypeMediaCurate),
+		Type:       jobs.JobTypeMediaCurate,
 		Payload:    payload,
 		MaxRetries: 2,
 	})

@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
@@ -20,7 +21,7 @@ import (
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
 // RegisterJobHandlers (called from NewHandler).
-func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	// Job-level deadline so abandoned jobs can't sit half-done forever.
 	// Worker ctx only times out on shutdown, which leaves orphans otherwise.
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)

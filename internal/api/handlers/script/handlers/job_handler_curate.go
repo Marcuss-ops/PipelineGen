@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )
@@ -26,7 +26,7 @@ import (
 //     c. Plans narrative (LLM step 1)
 //     d. Generates script (common engine with intro/outro)
 //  3. Return the complete result with clip scenes, search results, timings
-func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *models.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.curate job", zap.String("job_id", job.ID))
 
 	curator := h.mediaCurator
