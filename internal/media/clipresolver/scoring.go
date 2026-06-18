@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -142,7 +142,7 @@ func (s *Service) scoreClipWeighted(ctx context.Context, entry *ClipScore, match
 	}
 }
 
-func (s *Service) calculateTextScore(clip *models.MediaAsset, query string) float64 {
+func (s *Service) calculateTextScore(clip *asset.MediaAsset, query string) float64 {
 	baseWeight := 0.45
 
 	searchTermsStr := strings.Join(clip.SearchTerms, " ")
@@ -172,7 +172,7 @@ func (s *Service) calculateTextScore(clip *models.MediaAsset, query string) floa
 	return score
 }
 
-func (s *Service) matchesTopic(clip *models.MediaAsset, topic string) bool {
+func (s *Service) matchesTopic(clip *asset.MediaAsset, topic string) bool {
 	topicTokens := textutil.Tokenize(topic)
 	if len(topicTokens) == 0 {
 		return false
@@ -195,7 +195,7 @@ func (s *Service) matchesTopic(clip *models.MediaAsset, topic string) bool {
 	return matched > 0
 }
 
-func (s *Service) clipContainsTerm(clip *models.MediaAsset, term string) bool {
+func (s *Service) clipContainsTerm(clip *asset.MediaAsset, term string) bool {
 	termLower := strings.ToLower(term)
 
 	searchTermsStr := strings.Join(clip.SearchTerms, " ")
@@ -214,7 +214,7 @@ func (s *Service) clipContainsTerm(clip *models.MediaAsset, term string) bool {
 	return false
 }
 
-func (s *Service) clipUsableFor(clip *models.MediaAsset, term string) bool {
+func (s *Service) clipUsableFor(clip *asset.MediaAsset, term string) bool {
 	if len(clip.UsableFor) == 0 {
 		return false
 	}

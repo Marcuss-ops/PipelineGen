@@ -26,10 +26,6 @@ internal/media/catalogsync/dispatcher_test.go
 internal/media/catalogsync/sync_persist.go
 internal/media/catalogsync/sync_recursive.go
 internal/media/clipcatalog/repository.go
-internal/media/clipresolver/scorer.go
-internal/media/clipresolver/scoring.go
-internal/media/clipresolver/types.go
-internal/media/clipresolver/utils.go
 internal/media/deletion.go
 internal/media/images/google_vids_assets.go
 internal/media/images/nvidia_animate.go

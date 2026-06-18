@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 func (s *Service) folderKeyFromPath(path string) string {
@@ -57,8 +57,8 @@ func (s *Service) buildRecommendReason(entry *ClipScore, req *RecommendRequest) 
 	return strings.Join(reasons, "; ")
 }
 
-func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *models.MediaAsset {
-	return &models.MediaAsset{
+func (s *Service) candidateToClip(cand clipcatalog.ClipCandidate) *asset.MediaAsset {
+	return &asset.MediaAsset{
 		ID:             cand.ID,
 		Name:           cand.Name,
 		DriveLink:      cand.DriveLink,
