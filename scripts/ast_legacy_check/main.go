@@ -190,7 +190,7 @@ func legacyImportAliases(tree *ast.File) (map[string]bool, bool) {
 }
 
 func isLegacyImport(importPath string) bool {
-	return importPath == targetImportPath || strings.HasSuffix(importPath, "/internal/media/models")
+	return importPath == targetImportPath || importPath == "internal/media/models" || strings.HasSuffix(importPath, "/internal/media/models")
 }
 
 func mustRel(path string) string {
