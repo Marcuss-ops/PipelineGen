@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -21,11 +21,11 @@ type registryAdapter struct {
 	log       *zap.Logger
 }
 
-func NewRegistryAdapter(repo *images.Repository, imagesDir string, log *zap.Logger) assetregistry.Registry {
+func NewRegistryAdapter(repo *images.Repository, imagesDir string, log *zap.Logger) artifacts.Registry {
 	return &registryAdapter{repo: repo, imagesDir: imagesDir, log: log}
 }
 
-func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *assetregistry.MediaRecord) error {
+func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *artifacts.MediaRecord) error {
 	if rec == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *assetregistry.Me
 	return err
 }
 
-func (a *registryAdapter) GetMedia(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
+func (a *registryAdapter) GetMedia(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	img, err := a.repo.GetImageByHash(ctx, imageRecordHash(id, ""))
 	if err != nil || img == nil {
 		return nil, err
@@ -66,12 +66,12 @@ func (a *registryAdapter) DeleteMedia(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, imageRecordHash(id, ""))
 }
 
-func (a *registryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*assetregistry.MediaRecord, error) {
+func (a *registryAdapter) GetAllWithDriveFileID(ctx context.Context) ([]*artifacts.MediaRecord, error) {
 	imagesList, err := a.repo.ListAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	records := make([]*assetregistry.MediaRecord, 0, len(imagesList))
+	records := make([]*artifacts.MediaRecord, 0, len(imagesList))
 	for _, img := range imagesList {
 		if strings.TrimSpace(img.DriveFileID) == "" {
 			continue
@@ -96,12 +96,12 @@ func imageRecordHash(id, fallback string) string {
 	return id
 }
 
-func imageToMediaRecord(img *models.ImageAsset, imagesDir string) *assetregistry.MediaRecord {
+func imageToMediaRecord(img *models.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}
 
-	rec := &assetregistry.MediaRecord{
+	rec := &artifacts.MediaRecord{
 		ID:          imageRecordHash(img.Hash, img.Hash),
 		Name:        img.Description,
 		Filename:    filepath.Base(img.PathRel),
@@ -122,7 +122,7 @@ func imageToMediaRecord(img *models.ImageAsset, imagesDir string) *assetregistry
 	return rec
 }
 
-func mergeImageMetadata(meta string, rec *assetregistry.MediaRecord, relPath string) string {
+func mergeImageMetadata(meta string, rec *artifacts.MediaRecord, relPath string) string {
 	payload := map[string]any{}
 	if strings.TrimSpace(meta) != "" && meta != "{}" {
 		_ = json.Unmarshal([]byte(meta), &payload)

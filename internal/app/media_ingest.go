@@ -5,7 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/mediaingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	imgreg "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	voingsvc "github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
@@ -44,7 +44,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		Store:       ingest.NewVoiceoverStoreAdapter(coreDeps.VoiceoverRepo),
 	}, log)
 
-	clipRegistry := assetregistry.NewClipsRegistry(
+	clipRegistry := artifacts.NewClipsRegistry(
 		coreDeps.DB.DB,
 		coreDeps.AssetRepo,
 		coreDeps.AssetQueryService,
@@ -64,7 +64,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		),
 	}, log)
 
-	stockRegistry := assetregistry.NewClipsRegistry(
+	stockRegistry := artifacts.NewClipsRegistry(
 		coreDeps.DB.DB,
 		coreDeps.AssetRepo,
 		coreDeps.AssetQueryService,

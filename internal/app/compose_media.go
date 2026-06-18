@@ -6,7 +6,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
@@ -46,7 +46,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 	imageRepo := images.NewRepository(dbs.main.DB)
 
 	// YouTube Lifecycle & Video Pipeline
-	clipsRegistry := assetregistry.NewClipsRegistry(
+	clipsRegistry := artifacts.NewClipsRegistry(
 		dbs.main.DB,
 		core.AssetRepo,
 		core.AssetQueryService,
