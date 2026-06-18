@@ -9,123 +9,192 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// ClaimNext picks the next eligible job (status='queued', lease expired)
-// and atomically transitions it to 'running' under the supplied lease.
-//
-// The legacy implementation used an explicit *sql.Tx wrapping the
-// SELECT + UPDATE, which doesn't translate to Postgres (where serializable
-// transactions are much heavier and the lock dialect differs). The
-// refactor uses the new Transition primitive with optimistic locking:
-//   1. SELECT the next eligible row with the canonical column list.
-//   2. Transition(queued → running, ExpectedRevision=row.Revision).
-//   3. If RowsAffected == 0, another worker raced us → return nil
-//      (caller polls again next tick).
-//
-// claimMu is preserved to serialise calls within the same process and
-// avoid thundering-herd SELECT scans.
-func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []models.JobType) (*models.Job, error) {
+// ── ClaimNext ───────────────────────────────────────────────────────────
+
+// ClaimNext atomically claims the next PENDING job, transitioning it to
+// LEASED under a fencing token (LeaseID). Returns (nil, nil) on empty queue.
+// Returns ErrAlreadyClaimed on optimistic-lock collision with another worker.
+func (r *Repository) ClaimNext(ctx context.Context, cmd ClaimNext) (*Lease, error) {
 	r.claimMu.Lock()
 	defer r.claimMu.Unlock()
 
-	candidate, err := r.findQueuedCandidate(ctx, time.Now(), types)
-	if err != nil {
-		return nil, err
-	}
-	if candidate == nil {
-		return nil, nil
-	}
-
-	leaseExpiry := time.Now().Add(leaseTTL)
 	now := time.Now()
-	updates := map[string]any{
-		"worker_id":   workerID,
-		"lease_expiry": leaseExpiry,
-	}
-	if candidate.StartedAt == nil {
-		updates["started_at"] = now
-	}
+	leaseExpiry := now.Add(cmd.LeaseTTL)
+	leaseExpiryStr := timeutil.FormatRFC3339(leaseExpiry)
+	nowStr := timeutil.FormatRFC3339(now)
 
-	claimed, err := r.Transition(ctx, TransitionRequest{
-		JobID:            candidate.ID,
-		ExpectedRevision: candidate.Revision,
-		ExpectedStatus:   models.StatusQueued,
-		NewStatus:        models.StatusRunning,
-		Updates:          updates,
-	})
-	if err != nil {
-		// Optimistic-lock collision is expected under contention: another
-		// worker beat us to the same job. Return nil so the caller polls
-		// again next tick instead of logging noise.
-		if errors.Is(err, ErrOptimisticLockFailed) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("claim: transition: %w", err)
-	}
-	return claimed, nil
-}
-
-// findQueuedCandidate is the SELECT half of ClaimNext. It returns the
-// single best candidate (highest priority, oldest) that is eligible,
-// or (nil, nil) when no row matches. Errors beyond ErrNoRows are
-// returned to the caller verbatim.
-func (r *Repository) findQueuedCandidate(ctx context.Context, now time.Time, types []models.JobType) (*models.Job, error) {
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE status = 'queued' AND (lease_expiry IS NULL OR lease_expiry < ?)`
-	args := []any{timeutil.FormatRFC3339(now)}
-
-	if len(types) > 0 {
-		placeholders := make([]string, len(types))
-		for i, t := range types {
+	// Find the best candidate
+	query := `SELECT ` + jobColumns + ` FROM jobs
+		WHERE status = 'PENDING' ORDER BY priority DESC, created_at ASC LIMIT 1`
+	args := []any{}
+	if len(cmd.Types) > 0 {
+		placeholders := make([]string, len(cmd.Types))
+		for i, t := range cmd.Types {
 			placeholders[i] = "?"
 			args = append(args, t)
 		}
-		query += ` AND type IN (` + strings.Join(placeholders, ",") + `)`
+		query = `SELECT ` + jobColumns + ` FROM jobs
+			WHERE status = 'PENDING' AND type IN (` + strings.Join(placeholders, ",") + `)
+			ORDER BY priority DESC, created_at ASC LIMIT 1`
 	}
-
-	query += ` ORDER BY priority DESC, created_at ASC LIMIT 1`
-
 	row := r.db.QueryRowContext(ctx, query, args...)
 	job := &models.Job{}
 	if err := scanJobColumns(row, job); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("findQueuedCandidate: scan: %w", err)
+		return nil, fmt.Errorf("claimNext: scan: %w", err)
 	}
-	return job, nil
-}
 
-func (r *Repository) RenewLease(ctx context.Context, jobID string, workerID string, leaseTTL time.Duration) error {
-	leaseExpiry := time.Now().Add(leaseTTL)
-	query := `UPDATE jobs SET lease_expiry = ?, updated_at = ? WHERE id = ? AND worker_id = ? AND status = 'running'`
-	_, err := r.db.ExecContext(ctx, query, timeutil.FormatRFC3339(leaseExpiry), timeutil.FormatRFC3339(time.Now()), jobID, workerID)
-	return err
-}
-
-// RequeueExpiredLeases runs as a background sweeper (see scanner.go) and
-// resets 'running' jobs whose lease has expired back to 'queued' so a
-// future worker can claim them. The UPDATE is unguarded here because
-// it's a sweep, not a transition: any running job with an expired lease
-// is unconditionally reclaimable.
-func (r *Repository) RequeueExpiredLeases(ctx context.Context) error {
-	now := time.Now()
-	query := `UPDATE jobs
-		SET status = 'queued', worker_id = '', lease_expiry = NULL, updated_at = ?
-		WHERE status = 'running' AND lease_expiry < ?`
-	_, err := r.db.ExecContext(ctx, query, timeutil.FormatRFC3339(now), timeutil.FormatRFC3339(now))
-	return err
-}
-
-func (r *Repository) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff time.Time, reason string) (int, error) {
-	result, err := r.db.ExecContext(ctx,
-		`UPDATE jobs SET status = ?, error = ?, updated_at = ? WHERE status = ? AND updated_at < ?`,
-		models.StatusFailed, reason, timeutil.FormatRFC3339(time.Now().UTC()),
-		models.StatusRunning, timeutil.FormatRFC3339(cutoff))
+	// Atomic CAS: PENDING → LEASED with fencing token
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET status = 'LEASED', worker_id = ?, lease_id = ?,
+		 lease_expiry = ?, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = 'PENDING' AND revision = ?`,
+		cmd.WorkerID, cmd.LeaseID, leaseExpiryStr, nowStr, job.ID, job.Revision,
+	)
 	if err != nil {
-		return 0, err
+		return nil, fmt.Errorf("claimNext: update: %w", err)
 	}
-	n, _ := result.RowsAffected()
-	return int(n), nil
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return nil, ErrAlreadyClaimed
+	}
+
+	job.Status = models.StatusLeased
+	job.WorkerID = cmd.WorkerID
+	job.LeaseID = cmd.LeaseID
+	job.LeaseExpiry = &leaseExpiry
+	job.Revision++
+
+	return &Lease{Job: job, LeaseID: cmd.LeaseID, LeaseExpiry: leaseExpiry}, nil
+}
+
+// ── Start ────────────────────────────────────────────────────────────────
+
+// Start transitions a LEASED or PENDING job to RUNNING.
+func (r *Repository) Start(ctx context.Context, cmd StartJob) (*models.Job, error) {
+	now := time.Now().UTC()
+	leaseExpiry := now.Add(cmd.LeaseTTL)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET status = 'RUNNING', started_at = ?,
+		 lease_expiry = ?, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('PENDING', 'LEASED')
+		 AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		timeutil.FormatRFC3339(now), timeutil.FormatRFC3339(leaseExpiry),
+		timeutil.FormatRFC3339(now),
+		cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.Revision,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("start: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return nil, ErrTransitionConflict
+	}
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	_, _ = r.db.ExecContext(ctx,
+		`INSERT INTO job_events (id, job_id, type, message, data_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, cmd.JobID, "job_running", "Job started", "{}", timeutil.FormatRFC3339(now),
+	)
+	return r.Get(ctx, cmd.JobID)
+}
+
+// ── RenewLease ───────────────────────────────────────────────────────────
+
+// RenewLease extends an existing lease for a RUNNING job.
+// Returns ErrLeaseLost if the worker/lease/revision don't match.
+func (r *Repository) RenewLease(ctx context.Context, cmd RenewLease) (*models.Job, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET lease_expiry = ?, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = 'RUNNING'
+		 AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		timeutil.FormatRFC3339(cmd.NewExpiration), timeutil.FormatRFC3339(time.Now()),
+		cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.Revision,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("renewLease: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return nil, ErrLeaseLost
+	}
+	return r.Get(ctx, cmd.JobID)
+}
+
+// ── RequeueExpiredLeases ────────────────────────────────────────────────
+
+// RequeueExpiredLeases reclaims LEASED/RUNNING jobs with expired leases.
+// Each row processed individually: remaining retries → RETRY_WAIT,
+// exhausted → FAILED. All in per-row transactions.
+func (r *Repository) RequeueExpiredLeases(ctx context.Context, now time.Time, limit int) ([]RequeueResult, error) {
+	nowStr := timeutil.FormatRFC3339(now)
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, retry_count, max_retries, revision
+		 FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < ?
+		 ORDER BY lease_expiry LIMIT ?`, nowStr, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("requeueExpired: select: %w", err)
+	}
+	defer rows.Close()
+
+	var results []RequeueResult
+	for rows.Next() {
+		var jobID string
+		var retryCount, maxRetries, revision int
+		if err := rows.Scan(&jobID, &retryCount, &maxRetries, &revision); err != nil {
+			return nil, fmt.Errorf("requeueExpired: scan: %w", err)
+		}
+		results = append(results, r.requeueSingle(ctx, jobID, retryCount, maxRetries, revision, now))
+	}
+	return results, nil
+}
+
+func (r *Repository) requeueSingle(ctx context.Context, jobID string, retryCount, maxRetries, revision int, now time.Time) RequeueResult {
+	nowStr := timeutil.FormatRFC3339(now)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("begin tx: %v", err)}
+	}
+	defer tx.Rollback()
+
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	if retryCount < maxRetries {
+		res, err := tx.ExecContext(ctx,
+			`UPDATE jobs SET status = 'RETRY_WAIT', worker_id = '',
+			 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
+			 WHERE id = ? AND status IN ('LEASED', 'RUNNING') AND lease_expiry < ? AND revision = ?`,
+			nowStr, jobID, nowStr, revision)
+		if err != nil || mustRowsAffected(res) == 0 {
+			return RequeueResult{JobID: jobID, Error: "rows affected 0"}
+		}
+		tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			evtID, jobID, "job_retry_wait", "Lease expired, retrying", "{}", nowStr)
+		tx.Commit()
+		return RequeueResult{JobID: jobID, NewStatus: models.StatusRetryWait}
+	}
+	// Exhausted → FAILED
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs SET status = 'FAILED', completed_at = ?, error = ?,
+		 worker_id = '', lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('LEASED', 'RUNNING') AND lease_expiry < ? AND revision = ?`,
+		nowStr, "max retries exhausted (reaper)", nowStr, jobID, nowStr, revision)
+	if err != nil || mustRowsAffected(res) == 0 {
+		return RequeueResult{JobID: jobID, Error: "rows affected 0"}
+	}
+	tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, jobID, "job_failed", "Max retries exhausted", "{}", nowStr)
+	tx.Commit()
+	return RequeueResult{JobID: jobID, NewStatus: models.StatusFailed}
+}
+
+func mustRowsAffected(res sql.Result) int {
+	n, _ := res.RowsAffected()
+	return int(n)
 }

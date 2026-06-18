@@ -2,224 +2,308 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// SetProgress updates the progress percentage and emits an event log
-// row when a human-readable message is supplied. Progress updates are
-// *not* an optimistic-lock operation: progress is monotonically
-// non-decreasing and a stale write is harmless (the next progress
-// update will overwrite it). Running this through Transition would
-// amplify DB contention on long-running jobs for no benefit.
+// SetProgress updates progress percentage and emits an event.
+// Not an optimistic-lock operation — progress is monotonically non-decreasing.
 func (r *Repository) SetProgress(ctx context.Context, jobID string, progress int, message string) error {
 	query := `UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?`
 	_, err := r.db.ExecContext(ctx, query, progress, timeutil.FormatRFC3339(time.Now()), jobID)
 	if err != nil {
-		return fmt.Errorf("failed to set progress: %w", err)
+		return fmt.Errorf("setProgress: %w", err)
 	}
-
 	if message != "" {
 		_ = r.AddEvent(ctx, jobID, "progress", message, map[string]any{"progress": progress})
 	}
-
 	return nil
 }
 
-// Complete marks a job as completed and persists the result payload.
-// Implemented as a Transition so a concurrent Cancel issued by the
-// operator does not silently overwrite our result row.
-func (r *Repository) Complete(ctx context.Context, jobID string, result map[string]any) error {
-	job, err := r.Get(ctx, jobID)
+// ── Complete (atomic transaction) ────────────────────────────────────────
+
+// Complete marks a job as SUCCEEDED inside an atomic transaction with
+// worker+fencing validation. Caller MUST pass WorkerID + LeaseID + Revision.
+func (r *Repository) Complete(ctx context.Context, cmd CompleteJob) (*models.Job, error) {
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+	resultJSON := string(cmd.ResultJSON)
+	if resultJSON == "" {
+		resultJSON = "{}"
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("complete: load job: %w", err)
+		return nil, fmt.Errorf("complete: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Validate ownership
+	var status models.JobStatus
+	var workerID, leaseID string
+	var revision int
+	err = tx.QueryRowContext(ctx, `SELECT status, worker_id, lease_id, revision FROM jobs WHERE id = ?`, cmd.JobID).
+		Scan(&status, &workerID, &leaseID, &revision)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrJobNotFound
+		}
+		return nil, fmt.Errorf("complete: select: %w", err)
+	}
+	if err := validateOwnership(cmd.JobID, status, workerID, leaseID, revision,
+		cmd.WorkerID, cmd.LeaseID, int64(cmd.Revision), models.StatusRunning); err != nil {
+		return nil, err
+	}
+
+	// Atomic update
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, completed_at = ?, result_json = ?,
+		 progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
+		 revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = ? AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		models.StatusSucceeded, nowStr, resultJSON, nowStr,
+		cmd.JobID, models.StatusRunning, cmd.WorkerID, cmd.LeaseID, cmd.Revision)
+	if err != nil {
+		return nil, fmt.Errorf("complete: update: %w", err)
+	}
+	if mustRowsAffected(res) == 0 {
+		return nil, ErrTransitionConflict
+	}
+
+	// Insert event
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	_, _ = tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, cmd.JobID, "job_succeeded", "Job completed successfully", "{}", nowStr)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("complete: commit: %w", err)
+	}
+	return r.Get(ctx, cmd.JobID)
+}
+
+// ── Fail (atomic transaction) ────────────────────────────────────────────
+
+// Fail marks a job as FAILED inside an atomic transaction with ownership validation.
+func (r *Repository) Fail(ctx context.Context, cmd FailJob) (*models.Job, error) {
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fail: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var status models.JobStatus
+	var workerID, leaseID string
+	var revision int
+	err = tx.QueryRowContext(ctx, `SELECT status, worker_id, lease_id, revision FROM jobs WHERE id = ?`, cmd.JobID).
+		Scan(&status, &workerID, &leaseID, &revision)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrJobNotFound
+		}
+		return nil, fmt.Errorf("fail: select: %w", err)
+	}
+	if err := validateOwnership(cmd.JobID, status, workerID, leaseID, revision,
+		cmd.WorkerID, cmd.LeaseID, int64(cmd.Revision), models.StatusRunning); err != nil {
+		return nil, err
+	}
+
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, completed_at = ?, error = ?,
+		 worker_id = '', lease_id = '', lease_expiry = NULL,
+		 revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = ? AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		models.StatusFailed, nowStr, cmd.Error, nowStr,
+		cmd.JobID, models.StatusRunning, cmd.WorkerID, cmd.LeaseID, cmd.Revision)
+	if err != nil {
+		return nil, fmt.Errorf("fail: update: %w", err)
+	}
+	if mustRowsAffected(res) == 0 {
+		return nil, ErrTransitionConflict
+	}
+
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	_, _ = tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, cmd.JobID, "job_failed", cmd.Error, "{}", nowStr)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("fail: commit: %w", err)
+	}
+	return r.Get(ctx, cmd.JobID)
+}
+
+// ── ScheduleRetry ────────────────────────────────────────────────────────
+
+// ScheduleRetry transitions a RUNNING job to RETRY_WAIT (or FAILED if retries exhausted).
+func (r *Repository) ScheduleRetry(ctx context.Context, cmd ScheduleRetry) (*models.Job, error) {
+	job, err := r.Get(ctx, cmd.JobID)
+	if err != nil {
+		return nil, err
 	}
 	if job == nil {
-		return fmt.Errorf("complete: job %s not found", jobID)
+		return nil, ErrJobNotFound
+	}
+	if job.RetryCount >= job.MaxRetries {
+		return r.Fail(ctx, FailJob{JobID: cmd.JobID, WorkerID: cmd.WorkerID, LeaseID: cmd.LeaseID, Revision: int64(job.Revision), Error: "max retries exhausted"})
 	}
 
-	resultJSON, _ := json.Marshal(result)
-	if resultJSON == nil {
-		resultJSON = []byte("{}")
-	}
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
 
-	now := time.Now()
-	_, err = r.Transition(ctx, TransitionRequest{
-		JobID:            jobID,
-		ExpectedRevision: job.Revision,
-		ExpectedStatus:   job.Status,
-		NewStatus:        models.StatusCompleted,
-		Updates: map[string]any{
-			"result_json":  string(resultJSON),
-			"progress":     100,
-			"completed_at": now,
-			"active_key":   "",
-		},
-	})
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("complete: %w", err)
+		return nil, fmt.Errorf("scheduleRetry: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx,
+		`UPDATE jobs SET status = 'RETRY_WAIT', error = ?,
+		 retry_count = retry_count + 1, worker_id = '', lease_id = '',
+		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = 'RUNNING'
+		 AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		"scheduled for retry by worker "+cmd.WorkerID, nowStr,
+		cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.Revision)
+	if err != nil {
+		return nil, fmt.Errorf("scheduleRetry: update: %w", err)
+	}
+	if mustRowsAffected(res) == 0 {
+		return nil, ErrTransitionConflict
 	}
 
-	_ = r.AddEvent(ctx, jobID, "completed", "Job completed successfully", nil)
-	return nil
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	_, _ = tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, cmd.JobID, "job_retry_wait", "Job scheduled for retry", "{}", nowStr)
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("scheduleRetry: commit: %w", err)
+	}
+	return r.Get(ctx, cmd.JobID)
 }
 
-// Fail marks a job as failed, recording the error message. Uses
-// Transition so a concurrent Retry or Cancel cannot race against
-// the failure termination.
-func (r *Repository) Fail(ctx context.Context, jobID string, errMsg string) error {
-	job, err := r.Get(ctx, jobID)
+// ── RequestCancel ────────────────────────────────────────────────────────
+
+// RequestCancel transitions a non-terminal job to CANCELLED. Idempotent.
+func (r *Repository) RequestCancel(ctx context.Context, cmd RequestCancel) (*models.Job, error) {
+	now := time.Now().UTC()
+	nowStr := timeutil.FormatRFC3339(now)
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, cancelled_at = ?, worker_id = '',
+		 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('PENDING', 'LEASED', 'RUNNING', 'RETRY_WAIT')`,
+		models.StatusCancelled, nowStr, nowStr, cmd.JobID)
 	if err != nil {
-		return fmt.Errorf("fail: load job: %w", err)
+		return nil, fmt.Errorf("requestCancel: %w", err)
 	}
-	if job == nil {
-		return fmt.Errorf("fail: job %s not found", jobID)
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		job, _ := r.Get(ctx, cmd.JobID)
+		if job != nil && job.Status.IsTerminal() {
+			return job, nil // idempotent
+		}
+		return nil, ErrTransitionConflict
 	}
 
-	now := time.Now()
-	_, err = r.Transition(ctx, TransitionRequest{
-		JobID:            jobID,
-		ExpectedRevision: job.Revision,
-		ExpectedStatus:   job.Status,
-		NewStatus:        models.StatusFailed,
-		Updates: map[string]any{
-			"error":        errMsg,
-			"completed_at": now,
-			"active_key":   "",
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("fail: %w", err)
-	}
-
-	_ = r.AddEvent(ctx, jobID, "failed", errMsg, nil)
-	return nil
+	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	_, _ = r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, cmd.JobID, "job_cancelled", "Job cancelled", "{}", nowStr)
+	return r.Get(ctx, cmd.JobID)
 }
 
-// DeadLetter archives a job that has exhausted its retries into the
-// dead_letter_jobs table. The main jobs row's status transition is
-// performed by the caller (Fail) so the operator-facing row stays
-// consistent; this method only writes the parallel DLQ record for
-// debugging from the dashboard without grep-ing logs.
-//
-// Note: dead-lettering is INSERT-only, so it does not need
-// optimistic-lock semantics on the parent row.
+// ── ConfirmCancelled ─────────────────────────────────────────────────────
+
+// ConfirmCancelled is called after a worker acknowledges a cancellation.
+func (r *Repository) ConfirmCancelled(ctx context.Context, cmd ConfirmCancelled) (*models.Job, error) {
+	now := timeutil.FormatRFC3339(time.Now())
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET cancelled_at = ?, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status = ? AND worker_id = ? AND lease_id = ? AND revision = ?`,
+		now, now, cmd.JobID, models.StatusCancelled, cmd.WorkerID, cmd.LeaseID, cmd.Revision)
+	if err != nil {
+		return nil, fmt.Errorf("confirmCancelled: %w", err)
+	}
+	if mustRowsAffected(res) == 0 {
+		return nil, ErrTransitionConflict
+	}
+	return r.Get(ctx, cmd.JobID)
+}
+
+// ── DeadLetter ───────────────────────────────────────────────────────────
+
 func (r *Repository) DeadLetter(ctx context.Context, jobID string, errMsg string) error {
 	job, err := r.Get(ctx, jobID)
-	if err != nil {
-		return fmt.Errorf("dead-letter: load job: %w", err)
+	if err != nil || job == nil {
+		return fmt.Errorf("deadLetter: load job: %w", err)
 	}
-	if job == nil {
-		return fmt.Errorf("dead-letter: job %s not found", jobID)
-	}
-
-	var jobType string
-	if job.Type != "" {
-		jobType = string(job.Type)
-	}
-
 	payload := string(job.Payload)
 	if payload == "" {
 		payload = "{}"
 	}
-
-	query := `INSERT INTO dead_letter_jobs
-		(job_id, job_type, correlation_id, error, payload_json, retry_count, failed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
-	_, err = r.db.ExecContext(ctx, query,
-		job.ID, jobType, job.CorrelationID, errMsg, payload, job.RetryCount,
-		timeutil.FormatRFC3339(time.Now()),
-	)
-	if err != nil {
-		return fmt.Errorf("dead-letter: insert: %w", err)
-	}
-	return nil
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO dead_letter_jobs (job_id, job_type, correlation_id, error, payload_json, retry_count, failed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, string(job.Type), job.CorrelationID, errMsg, payload, job.RetryCount, timeutil.FormatRFC3339(time.Now()))
+	return err
 }
 
-// Cancel marks a job as cancelled from any non-terminal state. The
-// worker that's currently running this job will see the new status on
-// its next IsCancelled probe (see worker.go) and abort cleanly.
-func (r *Repository) Cancel(ctx context.Context, jobID string) error {
-	job, err := r.Get(ctx, jobID)
-	if err != nil {
-		return fmt.Errorf("cancel: load job: %w", err)
-	}
-	if job == nil {
-		return fmt.Errorf("cancel: job %s not found", jobID)
-	}
+// ── Retry (transition RETRY_WAIT → PENDING via periodic scheduler) ──────
 
-	now := time.Now()
-	_, err = r.Transition(ctx, TransitionRequest{
-		JobID:            jobID,
-		ExpectedRevision: job.Revision,
-		ExpectedStatus:   job.Status,
-		NewStatus:        models.StatusCancelled,
-		Updates: map[string]any{
-			"cancelled_at": now,
-			"active_key":   "",
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("cancel: %w", err)
-	}
-
-	_ = r.AddEvent(ctx, jobID, "cancelled", "Job cancelled by user", nil)
-	return nil
-}
-
-// Retry transitions a failed job back to queued for another execution
-// cycle. Increments retry_count, clears progress + worker_id, and
-// resets the lease token. The Transition expects
-// ExpectedStatus='failed'; calling Retry on a non-failed job returns
-// the optimistic-lock error.
-//
-// Round-trip count is 2 (Get + Transition) versus the legacy 1 (a
-// single guarded UPDATE). The increased cost is negligible for
-// retry, which is a rare path relative to claim + run lifecycle.
-//
-// Note on `var clearLease`: declared as an explicit typed nil pointer
-// so the type switch in Repository.Transition reliably matches the
-// `*time.Time` arm and routes through timeutil.FormatPtrRFC3339,
-// which serialises nil pointers as SQL NULL. An inline
-// `Updates["lease_expiry"] = (*time.Time)(nil)` would be more compact
-// but the intent is non-obvious to future maintainers \u2014 using a
-// named local variable documents the contract.
 func (r *Repository) Retry(ctx context.Context, jobID string) (*models.Job, error) {
 	job, err := r.Get(ctx, jobID)
-	if err != nil {
-		return nil, fmt.Errorf("retry: load job: %w", err)
-	}
-	if job == nil {
+	if err != nil || job == nil {
 		return nil, fmt.Errorf("retry: job %s not found", jobID)
 	}
 	if job.RetryCount >= job.MaxRetries {
-		return nil, fmt.Errorf("retry: job %s has exhausted retries (%d/%d)", jobID, job.RetryCount, job.MaxRetries)
+		return nil, fmt.Errorf("retry: exhausted (%d/%d)", job.RetryCount, job.MaxRetries)
+	}
+	if job.Status != models.StatusRetryWait && job.Status != models.StatusFailed {
+		return nil, fmt.Errorf("retry: invalid status %q", job.Status)
 	}
 
-	// clearLease is a typed nil pointer; Transition routes it through
-	// the *time.Time arm of the type switch and emits SQL NULL.
-	var clearLease *time.Time
-	claimed, err := r.Transition(ctx, TransitionRequest{
-		JobID:            jobID,
-		ExpectedRevision: job.Revision,
-		ExpectedStatus:   models.StatusFailed,
-		NewStatus:        models.StatusQueued,
-		Updates: map[string]any{
-			"retry_count":  job.RetryCount + 1,
-			"error":        "",
-			"progress":     0,
-			"worker_id":    "",
-			"lease_expiry": clearLease,
-			// active_key is preserved so concurrent duplicate retries
-			// can still converge through enqueue idempotency.
-		},
-	})
+	now := timeutil.FormatRFC3339(time.Now())
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE jobs SET status = 'PENDING', progress = 0, error = '',
+		 worker_id = '', lease_id = '', lease_expiry = NULL,
+		 revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND status IN ('RETRY_WAIT', 'FAILED') AND revision = ?`,
+		now, jobID, job.Revision)
 	if err != nil {
 		return nil, fmt.Errorf("retry: %w", err)
 	}
-	return claimed, nil
+	if mustRowsAffected(res) == 0 {
+		return nil, ErrTransitionConflict
+	}
+
+	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))
+	_, _ = r.db.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		evtID, jobID, "job_pending", "Job retry activated", "{}", now)
+	return r.Get(ctx, jobID)
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+func validateOwnership(jobID string, currentStatus models.JobStatus,
+	currentWorker, currentLease string, currentRevision int,
+	expectedWorker, expectedLease string, expectedRevision int64,
+	expectedStatus models.JobStatus) error {
+	if currentStatus != expectedStatus {
+		return fmt.Errorf("%w: status %q, expected %q", ErrInvalidState, currentStatus, expectedStatus)
+	}
+	if currentWorker != expectedWorker {
+		return fmt.Errorf("%w: worker %q, expected %q", ErrLeaseLost, currentWorker, expectedWorker)
+	}
+	if currentLease != expectedLease {
+		return fmt.Errorf("%w: lease mismatch", ErrLeaseLost)
+	}
+	if int64(currentRevision) != expectedRevision {
+		return fmt.Errorf("%w: revision %d, expected %d", ErrTransitionConflict, currentRevision, expectedRevision)
+	}
+	return nil
 }
