@@ -91,7 +91,10 @@ func (r *Repository) LoadStockFolders() ([]StockClipRef, error) {
 	return folders, nil
 }
 
-// LoadStockCatalog loads individual stock clips.
+// LoadStockCatalog loads individual stock clips. folder_id, folder_path,
+// drive_link, and media_type are canonical columns (migration 059);
+// group_name stays in JSON because it is a stock-specific grouping
+// annotation, not a column on the schema.
 func (r *Repository) LoadStockCatalog() ([]StockClipRef, error) {
 	if r.stockRepo == nil {
 		return nil, nil
@@ -105,7 +108,7 @@ func (r *Repository) LoadStockCatalog() ([]StockClipRef, error) {
 			COALESCE(filename, ''),
 			COALESCE(folder_id, ''),
 			COALESCE(folder_path, ''),
-			COALESCE(group_name, ''),
+			COALESCE(json_extract(metadata_json, '$.group_name'), ''),
 			COALESCE(media_type, 'stock'),
 			COALESCE(drive_link, ''),
 			COALESCE(tags, ''),

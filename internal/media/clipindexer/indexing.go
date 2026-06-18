@@ -322,6 +322,9 @@ func (s *Service) setIndexedAt(ctx context.Context, clipID, contentHash string) 
 }
 
 func (s *Service) computeContentHash(ctx context.Context, clipID string) (hash string, hasTranscript bool, err error) {
+	// search_text is a canonical column (migration 059); clean_transcript
+	// stays in metadata_json because it's a clipindexer-derived helper,
+	// not a column on the schema.
 	var name, searchText, cleanTranscript string
 	err = s.db.QueryRowContext(ctx,
 		`SELECT
@@ -418,6 +421,7 @@ func (s *Service) indexViaAPI(ctx context.Context, clipID string) error {
 	}
 
 	// === Step 3: Multi-frame visual embedding ===
+	// local_path is a canonical column (migration 059).
 	var localPath string
 	_ = s.db.QueryRowContext(ctx,
 		`SELECT COALESCE(local_path, '') FROM media_assets WHERE id = ?`,
@@ -483,6 +487,7 @@ func (s *Service) indexViaScript(ctx context.Context, clipID string) error {
 		return ctx.Err()
 	}
 
+	// local_path is a canonical column (migration 059).
 	var name, localPath string
 	err := s.db.QueryRowContext(ctx, "SELECT name, COALESCE(local_path, '') FROM media_assets WHERE id = ?", clipID).Scan(&name, &localPath)
 	if err != nil {

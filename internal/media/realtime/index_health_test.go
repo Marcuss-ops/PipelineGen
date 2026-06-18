@@ -20,6 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
 // indexHealthStore is a minimal fake of vectorstore.Store that lets the
@@ -236,20 +237,14 @@ func TestIndexHealth_OKGateWithRealClipsAndOutbox(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = keeper.Close(); _ = db.Close() })
 
-	// Schema — minimal, just what clips.Repository and outbox.Repository need
-	// to satisfy IndexHealth reads (CountAll, CountIndexed, ListIndexedIDs,
-	// CountByStatus). The column names mirror the production migrations.
-	// metadata_json is required because clips queries use
-	// json_extract(metadata_json, '$.deleted_at'); embedding_json is the
-	// "has embedding" flag that drives CountIndexed / ListIndexedIDs.
-	schema := `
-CREATE TABLE media_assets (
-    id          TEXT PRIMARY KEY,
-    source      TEXT,
-    name        TEXT,
-    metadata_json TEXT,
-    embedding_json TEXT
-);
+	// Schema — clips.Repository and outbox.Repository read IndexHealth
+	// (CountAll / CountIndexed / ListIndexedIDs / CountByStatus). The
+	// media_assets block is composed from
+	// internal/storage/canonical.go::CanonicalMediaAssetsSchema so the
+	// 39-column projection in clips.Repository.mediaAssetColumns matches
+	// the schema verbatim. The outbox_events block stays inline because
+	// the realtime tests don't go through outbox.Repository.NewRepository.
+	schema := storage.CanonicalMediaAssetsSchema + "\n" + `
 CREATE TABLE outbox_events (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type      TEXT NOT NULL DEFAULT '',

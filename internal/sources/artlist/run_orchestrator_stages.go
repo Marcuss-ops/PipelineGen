@@ -68,44 +68,13 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 
 	for _, clip := range clips {
 		item := RunTagItem{
-			ClipID: clip.ID,
-			Name:   clip.Name,
-		}
-
-		// Read locations from canonical asset_locations instead of _underscore metadata keys
-		if o.svc.assetLocRepo != nil {
-			if locs, err := o.svc.assetLocRepo.ListByAsset(ctx, clip.ID); err == nil {
-				for _, loc := range locs {
-					switch loc.LocationKind {
-					case asset.LocationKindLocal:
-						item.LocalPath = loc.URI
-						item.FileHash = loc.FileHash
-					case asset.LocationKindDrive:
-						item.DriveFileID = loc.ExternalID
-						item.DriveLink = loc.AccessURL
-						item.DownloadLink = loc.DownloadURL
-						if item.FileHash == "" {
-							item.FileHash = loc.FileHash
-						}
-					}
-				}
-			}
-		}
-		// Fallback to deprecated struct fields for backward compat during migration
-		if item.DownloadLink == "" {
-			item.DownloadLink = clip.GetMetadataString("_download_link")
-		}
-		if item.DriveLink == "" {
-			item.DriveLink = clip.GetMetadataString("_drive_link")
-		}
-		if item.DriveFileID == "" {
-			item.DriveFileID = clip.GetMetadataString("_drive_file_id")
-		}
-		if item.LocalPath == "" {
-			item.LocalPath = clip.GetMetadataString("_local_path")
-		}
-		if item.FileHash == "" {
-			item.FileHash = clip.GetMetadataString("_file_hash")
+			ClipID:       clip.ID,
+			Name:         clip.Name,
+			DownloadLink: clip.GetMetadataString("_download_link"),
+			DriveLink:    clip.GetMetadataString("_drive_link"),
+			DriveFileID:  clip.GetMetadataString("_drive_file_id"),
+			LocalPath:    clip.GetMetadataString("_local_path"),
+			FileHash:     clip.GetMetadataString("_file_hash"),
 		}
 
 		item.ClipID = defaults.String(item.ClipID, clip.ID)
@@ -264,10 +233,8 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 }
 
 // stagePersistResults updates the DB records with pipeline results for each processed clip.
-// When the dispatcher is wired, UpsertClip + IndexClip are routed through
-// EnqueueAndIndex (atomic media_assets + outbox); otherwise the legacy
-// UpsertClip + async clipIndexer.IndexClip path remains.
-// Also writes location data to asset_locations when the location repo is wired.
+// Routing goes through dispatchBridge so the canonical-vs-legacy decision
+// lives in one place. See dispatch_bridge.go for canonical semantics.
 func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
 	if o.svc.artlistRepo == nil {
 		return
@@ -277,75 +244,34 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
-		if existingClip, err := o.svc.artlistRepo.GetClip(ctx, item.ClipID); err == nil && existingClip != nil {
-			existingClip.LocalPath = item.LocalPath
-			existingClip.DriveLink = item.DriveLink
-			existingClip.DriveFileID = item.DriveFileID
-			existingClip.FileHash = item.FileHash
-			existingClip.DownloadLink = item.DownloadLink
-			existingClip.Status = "processed"
-			existingClip.Source = "artlist"
-			existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
-
-			// Write locations to canonical asset_locations table
-			if o.svc.assetLocRepo != nil {
-				o.writeAssetLocations(ctx, item.ClipID, item)
-			}
-
-			if o.svc.dispatcher != nil {
-				if err := o.svc.dispatcher.EnqueueAndIndex(ctx, existingClip, existingClip.FileHash); err != nil {
-					o.svc.log.Warn("failed to update clip record after pipeline (dispatcher)",
-						zap.String("clip_id", item.ClipID),
-						zap.Error(err))
-				}
-			} else {
-				if err := o.svc.artlistRepo.UpsertClip(ctx, existingClip); err != nil {
-					o.svc.log.Warn("failed to update clip record after pipeline (legacy)",
-						zap.String("clip_id", item.ClipID),
-						zap.Error(err))
-				}
-			}
+		existingClip, err := o.svc.artlistRepo.GetClip(ctx, item.ClipID)
+		if err != nil {
+			o.svc.log.Warn("stagePersistResults: artlistRepo.GetClip failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			continue
 		}
-	}
-}
-
-// writeAssetLocations upserts location records for a processed clip into asset_locations.
-func (o *RunOrchestratorService) writeAssetLocations(ctx context.Context, clipID string, item RunTagItem) {
-	if item.LocalPath != "" {
-		loc := &asset.Location{
-			AssetID:      clipID,
-			LocationKind: asset.LocationKindLocal,
-			URI:          item.LocalPath,
-			FileHash:     item.FileHash,
-			IsPrimary:    true,
+		if existingClip == nil {
+			o.svc.log.Debug("stagePersistResults: clip absent in DB",
+				zap.String("clip_id", item.ClipID))
+			continue
 		}
-		if err := o.svc.assetLocRepo.Upsert(ctx, loc); err != nil {
-			o.svc.log.Warn("failed to upsert local location", zap.String("clip_id", clipID), zap.Error(err))
-		}
-	}
-	if item.DriveFileID != "" || item.DriveLink != "" {
-		uri := "drive://" + item.DriveFileID
-		if item.DriveFileID == "" {
-			uri = item.DriveLink
-		}
-		isPrimary := item.LocalPath == ""
-		loc := &asset.Location{
-			AssetID:      clipID,
-			LocationKind: asset.LocationKindDrive,
-			URI:          uri,
-			ExternalID:   item.DriveFileID,
-			AccessURL:    item.DriveLink,
-			DownloadURL:  item.DownloadLink,
-			FileHash:     item.FileHash,
-			IsPrimary:    isPrimary,
-		}
-		if err := o.svc.assetLocRepo.Upsert(ctx, loc); err != nil {
-			o.svc.log.Warn("failed to upsert drive location", zap.String("clip_id", clipID), zap.Error(err))
-		}
+		existingClip.LocalPath = item.LocalPath
+		existingClip.DriveLink = item.DriveLink
+		existingClip.DriveFileID = item.DriveFileID
+		existingClip.FileHash = item.FileHash
+		existingClip.DownloadLink = item.DownloadLink
+		existingClip.Status = "processed"
+		existingClip.Source = "artlist"
+		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
+		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash)
 	}
 }
 
 // stageEnrichAsync launches semantic enrichment in the background for processed clips.
+// We rehydrate the clip from the canonical clipRepository.GetClip (after
+// stagePersistResults has written fresh item values) instead of building
+// an inline &models.MediaAsset{} allocation. This drops one of the few
+// remaining direct constructions of the legacy type in the artlist path.
 func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *RunTagResponse) {
 	if o.svc.semanticEnricher == nil {
 		return
@@ -354,32 +280,39 @@ func (o *RunOrchestratorService) stageEnrichAsync(ctx context.Context, resp *Run
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
-		enrichClip := &models.MediaAsset{
-			ID:           item.ClipID,
-			Name:         item.Name,
-			LocalPath:    item.LocalPath,
-			DriveLink:    item.DriveLink,
-			DriveFileID:  item.DriveFileID,
-			DownloadLink: item.DownloadLink,
-			Tags:         []string{resp.Term},
+		existing, err := o.svc.artlistRepo.GetClip(ctx, item.ClipID)
+		if err != nil {
+			o.svc.log.Warn("stageEnrichAsync: artlistRepo.GetClip failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			continue
 		}
-		o.svc.semanticEnricher.EnrichAsync(ctx, enrichClip, resp.Term)
+		if existing == nil {
+			o.svc.log.Debug("stageEnrichAsync: clip absent in DB",
+				zap.String("clip_id", item.ClipID))
+			continue
+		}
+		o.svc.semanticEnricher.EnrichAsync(ctx, existing, resp.Term)
 	}
 }
 
 // stageIndexAsync launches clip indexing in the background for processed clips.
 // When the dispatcher is wired, the atomic UpsertClip + IndexClip is already
-// done by stagePersistResults (via EnqueueAndIndex); this stage is skipped
-// to avoid double-indexing. On the legacy path (dispatcher nil), this is the
-// async SafeGoFunc(clipIndexer.IndexClip) that callers used to rely on.
+// done by stagePersistResults (via dispatchBridge.EnqueueOrFallback); this
+// stage is skipped to avoid double-indexing. On the legacy path
+// (dispatcher nil), this is the async SafeGoFunc(clipIndexer.IndexClip)
+// that callers used to rely on.
 func (o *RunOrchestratorService) stageIndexAsync(ctx context.Context, resp *RunTagResponse) {
-	if o.svc.dispatcher != nil {
-		// stagePersistResults already handled UpsertClip + IndexClip atomically.
+	b := o.svc.newDispatchBridge()
+	if b.IsCanonical() {
+		// stagePersistResults already handled the atomic write+index via
+		// the canonical dispatcher through EnqueueOrFallback.
 		return
 	}
-	if o.svc.clipIndexer == nil || !o.svc.clipIndexer.IsEnabled() {
+	if b.clipIndexer == nil || !b.clipIndexer.IsEnabled() {
 		return
 	}
+	clipIndexer := b.clipIndexer
+	log := b.log
 	for _, item := range resp.Items {
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
@@ -394,13 +327,13 @@ func (o *RunOrchestratorService) stageIndexAsync(ctx context.Context, resp *RunT
 		}) {
 			idxCtx, cancel := context.WithTimeout(context.WithoutCancel(idxArg.Ctx), 30*time.Second)
 			defer cancel()
-			if err := o.svc.clipIndexer.IndexClip(idxCtx, idxArg.ID); err != nil {
-				o.svc.log.Warn("clipindexer failed after pipeline",
+			if err := clipIndexer.IndexClip(idxCtx, idxArg.ID); err != nil {
+				log.Warn("clipindexer failed after pipeline",
 					zap.String("clip_id", idxArg.ID),
 					zap.Duration("timeout", 30*time.Second),
 					zap.Error(err))
 			} else {
-				o.svc.log.Info("clip indexed for vector search",
+				log.Info("clip indexed for vector search",
 					zap.String("clip_id", idxArg.ID))
 			}
 		})

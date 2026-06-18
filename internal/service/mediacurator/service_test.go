@@ -13,32 +13,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
-// testSchema is the minimal media_assets table needed for LIKE fallback tests.
-const testSchema = `
-	CREATE TABLE media_assets (
-		id TEXT PRIMARY KEY,
-		source TEXT NOT NULL DEFAULT '',
-		name TEXT NOT NULL DEFAULT '',
-		tags TEXT NOT NULL DEFAULT '[]',
-		tags_norm TEXT NOT NULL DEFAULT '',
-		embedding_json TEXT NOT NULL DEFAULT '[]',
-		duration_ms INTEGER NOT NULL DEFAULT 0,
-		url TEXT NOT NULL DEFAULT '',
-		created_at TEXT,
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		drive_folder_id TEXT,
-		media_type TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'ready',
-		local_path TEXT,
-		relative_path TEXT,
-		drive_file_id TEXT,
-		drive_link TEXT,
-		download_link TEXT,
-		file_hash TEXT,
-		visual_embedding TEXT,
-		transcript_embedding TEXT,
-		updated_at TEXT
-	);`
+// testSchema composes the canonical media_assets CREATE TABLE from
+// internal/storage/canonical.go::CanonicalMediaAssetsSchema. The canonical
+// block covers all 39 columns clips.Repository.mediaAssetColumns ships
+// today and any future canonical column without touching this file.
+const testSchema = storage.CanonicalMediaAssetsSchema
 
 // insertTestClip is a helper to insert a test clip into the DB.
 func insertTestClip(t *testing.T, repo *clips.Repository, clip *models.MediaAsset) {

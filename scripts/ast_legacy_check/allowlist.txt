@@ -1,0 +1,24 @@
+# Legacy bridged files allowlist — read by scripts/ast_legacy_check.
+#
+# Format: one repo-relative path per line. Lines starting with `#` and
+# blank lines are ignored. Trailing `# comments` on the same line are
+# not currently parsed — keep each rule on its own line.
+#
+# Each entry is a deliberate exception granting one file to keep
+# importing internal/media/models.MediaAsset. The bridge must:
+#   1. Be on an active migration path (tying off in this quarter), AND
+#   2. Carry an inline comment justifying why the bridge is acceptable
+#      (typically: "needed because the legacy Repository still returns
+#      *models.MediaAsset and the alternative is two weeks of converter
+#      bureaucracy for marginal value").
+#
+# Why this file is empty: as of the AST guardrail introduction (PR
+# preceding this), no file legitimately bridges to the legacy package
+# in production paths. All real bridges live inside test fixtures, which
+# the scanner skips by default. When new test fixtures appear, add them
+# here with a one-line justification.
+#
+# Refusing to add production files to this list is the whole point —
+# any PR that adds a non-test entry must also ship the migration of that
+# file off models.MediaAsset, otherwise the AST guardrail will block
+# merging of the bridge entry together with the migration.

@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,10 @@ type MediaAsset struct {
 	DeletedAt      *time.Time     `json:"deleted_at,omitempty"`
 	// Extended fields for clip catalog
 	SearchText          string   `json:"search_text,omitempty"`
+	Width               int      `json:"width,omitempty"`
+	Height              int      `json:"height,omitempty"`
+	RelativePath        string   `json:"relative_path,omitempty"`
+	TagsNorm            string   `json:"tags_norm,omitempty"`
 	SceneType           string   `json:"scene_type,omitempty"`
 	QualityScore        float64  `json:"quality_score,omitempty"`
 	ReuseCount          int      `json:"reuse_count,omitempty"`
@@ -50,6 +55,27 @@ type MediaAsset struct {
 	VisualEmbedding     string   `json:"visual_embedding,omitempty"`
 	TranscriptEmbedding string   `json:"transcript_embedding,omitempty"`
 	ClipPageURL         string   `json:"clip_page_url,omitempty"` // Artlist clip page URL (per scraper download)
+	LifecycleState      string   `json:"lifecycle_state,omitempty"`
+}
+
+// DeletedAtString returns DeletedAt serialized as RFC3339, or empty string
+// when the clip is not deleted. Used as the SQL value for the canonical
+// deleted_at column (migration 059).
+func (m *MediaAsset) DeletedAtString() string {
+	if m.DeletedAt == nil {
+		return ""
+	}
+	return m.DeletedAt.UTC().Format(time.RFC3339)
+}
+
+// LifecycleStateOrDefault returns the canonical lifecycle_state value,
+// defaulting to "ready" when empty (matches the column DEFAULT and the
+// behaviour of SoftDeleteFilter on the repo).
+func (m *MediaAsset) LifecycleStateOrDefault() string {
+	if strings.TrimSpace(m.LifecycleState) == "" {
+		return "ready"
+	}
+	return m.LifecycleState
 }
 
 // MetadataJSON returns the Metadata map serialized as a JSON string.

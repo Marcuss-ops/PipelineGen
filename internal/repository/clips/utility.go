@@ -36,7 +36,7 @@ func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]
 	return clips, rows.Err()
 }
 
-// FindByPHash searches for a clip with the given perceptual hash (stored in metadata_json).
+// FindByPHash searches for a clip with the given perceptual hash (canonical column after migration 059).
 // Returns the clip ID if found, empty string if not.
 func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, error) {
 	if phash == "" {
@@ -54,7 +54,8 @@ func (r *Repository) FindByPHash(ctx context.Context, phash string) (string, err
 	return id, nil
 }
 
-// MarkUsed marks a clip as used, incrementing reuse_count and setting last_used_at.
+// MarkUsed marks a clip as used, incrementing reuse_count and setting last_used_at
+// on the canonical columns (migration 059).
 func (r *Repository) MarkUsed(ctx context.Context, clipID string) error {
 	if clipID == "" {
 		return nil

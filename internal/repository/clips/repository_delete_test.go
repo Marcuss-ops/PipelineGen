@@ -11,37 +11,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/storage"
 )
 
-const testSchema = `
-	CREATE TABLE media_assets (
-		id TEXT PRIMARY KEY,
-		source TEXT NOT NULL DEFAULT '',
-		name TEXT NOT NULL DEFAULT '',
-		tags TEXT NOT NULL DEFAULT '[]',
-		tags_norm TEXT NOT NULL DEFAULT '',
-		embedding_json TEXT NOT NULL DEFAULT '[]',
-		duration_ms INTEGER NOT NULL DEFAULT 0,
-		url TEXT NOT NULL DEFAULT '',
-		created_at TEXT,
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		drive_folder_id TEXT,
-		media_type TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL DEFAULT 'ready',
-		local_path TEXT,
-		relative_path TEXT,
-		drive_file_id TEXT,
-		drive_link TEXT,
-		download_link TEXT,
-		file_hash TEXT,
-		visual_embedding TEXT,
-		transcript_embedding TEXT,
-		updated_at TEXT,
-		-- Canonical soft-delete columns (migration 037). Required because
-		-- DeleteClip / RestoreClip / DeleteClipByDriveLink all UPDATE
-		-- lifecycle_state; without these columns those queries error with
-		-- "no such column: lifecycle_state".
-		lifecycle_state TEXT NOT NULL DEFAULT 'ready',
-		deleted_at TEXT NOT NULL DEFAULT ''
-	);
+// testSchema composes the canonical media_assets CREATE TABLE (see
+// internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus the
+// clip_folders companion table used by Repository.GetClipFolder /
+// ListClipFolders. DeleteClip / RestoreClip / DeleteClipByDriveLink all
+// UPDATE lifecycle_state (canonical soft-delete column from migration
+// 037) so the canonical block is mandatory here.
+const testSchema = storage.CanonicalMediaAssetsSchema + `
 
 	CREATE TABLE clip_folders (
 		id TEXT PRIMARY KEY,
@@ -101,7 +77,7 @@ func TestDeleteClip(t *testing.T) {
 	_ = err
 
 	var deletedAt sql.NullString
-	err = db.QueryRowContext(ctx, "SELECT json_extract(metadata_json, '$.deleted_at') FROM media_assets WHERE id = 'clip_1'").Scan(&deletedAt)
+	err = db.QueryRowContext(ctx, "SELECT deleted_at FROM media_assets WHERE id = 'clip_1'").Scan(&deletedAt)
 	if err != nil {
 		t.Fatalf("expected record to still exist in db, got err: %v", err)
 	}
@@ -180,7 +156,7 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 	}
 
 	var deletedAt sql.NullString
-	err := db.QueryRowContext(ctx, "SELECT json_extract(metadata_json, '$.deleted_at') FROM media_assets WHERE id = 'clip_2'").Scan(&deletedAt)
+	err := db.QueryRowContext(ctx, "SELECT deleted_at FROM media_assets WHERE id = 'clip_2'").Scan(&deletedAt)
 	if err != nil || !deletedAt.Valid || deletedAt.String == "" {
 		t.Fatalf("expected record to still exist with deleted_at set, got err: %v", err)
 	}

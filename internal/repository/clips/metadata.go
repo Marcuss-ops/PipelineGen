@@ -97,10 +97,17 @@ func metadataStringSliceText(meta map[string]any, key string) string {
 	return strings.Join(values, " ")
 }
 
+// clipSearchColumns returns the SQL column list used by LIKE-based search
+// across the catalog. After migration 059, search_text is a canonical
+// column; the other JSON-derived helpers (clean_title, clip_summary, hook,
+// topics, speakers, mentioned_people, people, clip_tags, search_keywords,
+// embedding_text) stay in metadata_json because they are populated by the
+// clipindexer PIPELINE and are too transient to justify a typed column.
 func clipSearchColumns() []string {
 	return []string{
 		"tags",
 		"name",
+		"search_text",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.clean_title')",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_summary')",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.hook')",
@@ -111,6 +118,5 @@ func clipSearchColumns() []string {
 		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags')",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords')",
 		"json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text')",
-		"COALESCE(search_text, '')",
 	}
 }

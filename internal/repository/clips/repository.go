@@ -28,9 +28,11 @@ import (
 )
 
 // mediaAssetColumns defines the columns selected from media_assets table.
-// Extended fields are stored in metadata_json and parsed into Metadata map.
+// All canonical fields are typed columns (migration 059); only true
+// non-canonical data lives in metadata_json (clipindexer state, transcript
+// search helpers, provider raw metadata).
 const (
-	mediaAssetColumns = `id, COALESCE(source, '') AS source, COALESCE(name, '') AS name, COALESCE(tags, '[]') AS tags, COALESCE(embedding_json, '[]') AS embedding_json, COALESCE(duration_ms, 0) AS duration_ms, COALESCE(url, '') AS url, created_at, COALESCE(metadata_json, '{}') AS metadata_json, COALESCE(drive_folder_id, '') AS drive_folder_id, COALESCE(visual_embedding, '[]') AS visual_embedding, COALESCE(transcript_embedding, '[]') AS transcript_embedding`
+	mediaAssetColumns = `id, COALESCE(source, '') AS source, COALESCE(name, '') AS name, COALESCE(tags, '[]') AS tags, COALESCE(tags_norm, '') AS tags_norm, COALESCE(embedding_json, '[]') AS embedding_json, COALESCE(duration_ms, 0) AS duration_ms, COALESCE(url, '') AS url, COALESCE(media_type, '') AS media_type, COALESCE(status, '') AS status, COALESCE(local_path, '') AS local_path, COALESCE(relative_path, '') AS relative_path, COALESCE(drive_file_id, '') AS drive_file_id, COALESCE(drive_folder_id, '') AS drive_folder_id, COALESCE(drive_link, '') AS drive_link, COALESCE(download_link, '') AS download_link, COALESCE(file_hash, '') AS file_hash, COALESCE(metadata_json, '{}') AS metadata_json, COALESCE(visual_embedding, '[]') AS visual_embedding, COALESCE(transcript_embedding, '[]') AS transcript_embedding, created_at, COALESCE(updated_at, '') AS updated_at, COALESCE(width, 0) AS width, COALESCE(height, 0) AS height, COALESCE(lifecycle_state, 'ready') AS lifecycle_state, COALESCE(deleted_at, '') AS deleted_at, COALESCE(folder_id, '') AS folder_id, COALESCE(parent_folder_id, '') AS parent_folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(category, '') AS category, COALESCE(filename, '') AS filename, COALESCE(error, '') AS error, COALESCE(thumb_url, '') AS thumb_url, COALESCE(phash, '') AS phash, COALESCE(search_text, '') AS search_text, COALESCE(scene_type, '') AS scene_type, COALESCE(quality_score, 0.0) AS quality_score, COALESCE(reuse_count, 0) AS reuse_count, COALESCE(last_used_at, '') AS last_used_at`
 	clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
 )
 
@@ -62,12 +64,19 @@ type Repository struct {
 }
 
 // NewRepository creates a new clips repository.
+// Migration 059 makes lifecycle_state a canonical column on every supported
+// media.db.sqlite, so the dual-read fallback to metadata_json.deleted_at is
+// no longer required.
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
-	return &Repository{db: db, log: log}
+	r := &Repository{db: db, log: log}
+	if log != nil {
+		log.Info("clips repository: canonical lifecycle_state column in use")
+	}
+	return r
 }
 
 // SoftDeleteFilter returns the SQL WHERE fragment that excludes soft-deleted
-// clips. Uses the canonical lifecycle_state typed column (migration 062).
+// clips. Always uses the canonical lifecycle_state column (migration 059).
 //
 // Exported so callers outside the clips package (e.g. sweepers) can compose
 // ad-hoc queries that respect the same filter.
@@ -89,7 +98,10 @@ func (r *Repository) DB() *sql.DB {
 func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, opts)
 } // UpsertClip inserts or updates a media asset (media_assets table).
-// Extended fields are stored in metadata_json as a JSON map.
+// Canonical columns are written directly from the typed MediaAsset struct;
+// metadata_json keeps ONLY non-canonical data (clipindexer state machine,
+// transcript-derivable search helpers, prompt/mood/subjects, provider
+// raw metadata, creative annotations).
 //
 // This is a thin wrapper around UpsertClipTx that opens its own transaction
 // for atomicity. Callers that are already in a transaction (e.g. composing
@@ -130,9 +142,13 @@ func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.
 	tagsNorm := normalizeTags(clip.Tags)
 	nowStr := timeutil.FormatRFC3339(time.Now())
 
+	lifecycle := clip.LifecycleStateOrDefault()
+	qualityScore := clip.QualityScore
+	reuseCount := clip.ReuseCount
+
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO media_assets (id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_folder_id, drive_link, download_link, file_hash, embedding_json, metadata_json, visual_embedding, transcript_embedding, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO media_assets (id, source, name, tags, tags_norm, duration_ms, url, media_type, status, local_path, relative_path, drive_file_id, drive_folder_id, drive_link, download_link, file_hash, embedding_json, metadata_json, visual_embedding, transcript_embedding, lifecycle_state, deleted_at, folder_id, parent_folder_id, folder_path, category, filename, error, thumb_url, phash, search_text, scene_type, quality_score, reuse_count, last_used_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source=excluded.source,
 			name=excluded.name,
@@ -153,18 +169,39 @@ func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.
 			metadata_json=excluded.metadata_json,
 			visual_embedding=excluded.visual_embedding,
 			transcript_embedding=excluded.transcript_embedding,
+			lifecycle_state=excluded.lifecycle_state,
+			deleted_at=excluded.deleted_at,
+			folder_id=excluded.folder_id,
+			parent_folder_id=excluded.parent_folder_id,
+			folder_path=excluded.folder_path,
+			category=excluded.category,
+			filename=excluded.filename,
+			error=excluded.error,
+			thumb_url=excluded.thumb_url,
+			phash=excluded.phash,
+			search_text=excluded.search_text,
+			scene_type=excluded.scene_type,
+			quality_score=excluded.quality_score,
+			reuse_count=excluded.reuse_count,
+			last_used_at=excluded.last_used_at,
 			updated_at=excluded.updated_at
 	`, clip.ID, clip.Source, clip.Name, string(tagsJSON), tagsNorm,
 		clip.Duration, clip.ExternalURL,
 		clip.MediaType, clip.Status, clip.LocalPath, clip.LocalPath,
 		clip.DriveFileID, clip.FolderID, clip.DriveLink, clip.DownloadLink,
 		clip.FileHash, clip.EmbeddingJSON,
-		metadataJSON, clip.VisualEmbedding, clip.TranscriptEmbedding, nowStr, nowStr)
+		metadataJSON, clip.VisualEmbedding, clip.TranscriptEmbedding,
+		lifecycle, clip.DeletedAtString(), clip.FolderID, clip.ParentFolderID,
+		clip.FolderPath, clip.Category, clip.Filename, clip.Error,
+		clip.ThumbURL, clip.PHash, clip.SearchText, clip.SceneType,
+		qualityScore, reuseCount, clip.LastUsedAt,
+		nowStr, nowStr)
 
 	return err
 }
 
-// DeleteClip soft-deletes a clip by its ID.
+// DeleteClip soft-deletes a clip by its ID (migration 059: only the
+// canonical columns are touched; metadata_json stays untouched).
 func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -180,7 +217,7 @@ func (r *Repository) DeleteClip(ctx context.Context, id string) error {
 	return err
 }
 
-// RestoreClip restores a soft-deleted clip by its ID.
+// RestoreClip restores a soft-deleted clip by its ID (migration 059).
 func (r *Repository) RestoreClip(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
