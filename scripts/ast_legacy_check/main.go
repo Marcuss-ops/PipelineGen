@@ -14,7 +14,7 @@
 // Actions workflow invokes this same command.
 //
 // Limitation v1: aliased imports like
-//     import m "internal/media/models"
+//     import m "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 // are still detected because the scanner compares the import path
 // directly (not the local name). However the X.Name of the SelectorExpr
 // must equal the LOCAL name (`m`) for it to count. If someone aliases the
@@ -41,7 +41,7 @@ import (
 
 // targetImportPath is the canonical path of the legacy package we hunt.
 // Anything imported and named MediaAsset from this path is flagged.
-const targetImportPath = "internal/media/models"
+const targetImportPath = "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 // Finding is one TRUE Go-AST reference to the legacy MediaAsset type.
 // Snippet is the trimmed source line (first non-whitespace content).

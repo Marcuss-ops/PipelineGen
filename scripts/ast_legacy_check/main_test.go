@@ -32,7 +32,7 @@ func TestWalkDetectsTrueSelectorReference(t *testing.T) {
 	root := writeTree(t, map[string]string{
 		"internal/x/y.go": `package x
 
-import "internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 var _ models.MediaAsset
 `,
@@ -60,13 +60,13 @@ func TestWalkIgnoresTestFilesByDefault(t *testing.T) {
 	root := writeTree(t, map[string]string{
 		"internal/x/repo.go": `package x
 
-import "internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 type Repo struct{ A models.MediaAsset }
 `,
 		"internal/x/repo_test.go": `package x
 
-import "internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 // tests may still reference the legacy type for migration tests
 var _ models.MediaAsset
@@ -99,7 +99,7 @@ func TestAllowListSkipsFile(t *testing.T) {
 	root := writeTree(t, map[string]string{
 		"internal/bridge/file.go": `package bridge
 
-import "internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
 
 var _ models.MediaAsset
 var _2 models.MediaAsset
@@ -143,7 +143,7 @@ var _ = strings.Contains(note, "models.MediaAsset")
 }
 
 func TestWalkIgnoresLocalVariableNamedModels(t *testing.T) {
-	// Without an actual `import "internal/media/models"`, a local
+	// Without an actual `import "github.com/Marcuss-ops/PipelineGen/internal/media/models"`, a local
 	// identifier called models should NOT be flagged — that's a key
 	// improvement over rg-based detection. (If any file does that, it's
 	// presumably its own thing.)
