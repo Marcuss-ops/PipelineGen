@@ -35,7 +35,7 @@ type ClaimNext struct {
 	WorkerID string
 	LeaseID  string
 	LeaseTTL time.Duration
-	Types    []models.JobType
+	Types    []string
 }
 
 // StartJob is the input for Repository.Start.

@@ -38,7 +38,7 @@ type Enqueuer interface {
 
 // EnqueueInput parameterises EnqueueAsync.
 type EnqueueInput struct {
-	Type          models.JobType
+	Type          string
 	Payload       map[string]any
 	Priority      int
 	ActiveKey     string
@@ -114,7 +114,7 @@ func ParsePagination(c *gin.Context, defaultLimit, maxLimit int) Pagination {
 // JobSummary is the standard job summary struct used by /api/*/jobs endpoints.
 type JobSummary struct {
 	ID          string           `json:"id"`
-	Type        models.JobType   `json:"type"`
+	Type        string           `json:"type"`
 	Status      models.JobStatus `json:"status"`
 	Progress    int              `json:"progress"`
 	Payload     map[string]any   `json:"payload,omitempty"`

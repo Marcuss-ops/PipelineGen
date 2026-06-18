@@ -11,39 +11,35 @@ import (
 	"time"
 )
 
-// Status is the canonical 5-state job lifecycle.
+// Status is the canonical 7-state job lifecycle (PR4: SSOT).
 //
-//   queued    → waiting for a worker
-//   running   → worker is executing
-//   completed → finished successfully (terminal)
-//   failed    → exhausted retries or non-retryable error (terminal)
-//   cancelled → operator cancelled (terminal)
+//	queued     → waiting for a worker
+//	leased     → worker has claimed the job (fencing token held)
+//	running    → worker is executing the handler
+//	retry_wait → job failed temporarily, waiting for retry backoff
+//	completed  → finished successfully (terminal)
+//	failed     → exhausted retries or non-retryable error (terminal)
+//	cancelled  → operator cancelled (terminal)
 //
 // Allowed transitions:
 //
-//	queued    → running, cancelled
-//	running   → completed, failed, cancelled, queued (retry / lease expiry)
-//	failed    → queued (retry)
-//	completed → (terminal)
-//	cancelled → (terminal)
-//
-// Legacy state mapping (models.JobStatus):
-//
-//	models.StatusPending   → job.StatusQueued
-//	models.StatusLeased    → not exposed — internal ClaimNext detail
-//	models.StatusRunning   → job.StatusRunning
-//	models.StatusSucceeded → job.StatusCompleted
-//	models.StatusRetryWait → internal — represented as queued + retry_count>0
-//	models.StatusFailed    → job.StatusFailed
-//	models.StatusCancelled → job.StatusCancelled
+//	queued     → leased, cancelled
+//	leased     → running, queued (lease expiry), cancelled
+//	running    → completed, failed, retry_wait, cancelled
+//	retry_wait → queued, failed, cancelled
+//	failed     → queued (retry)
+//	completed  → (terminal)
+//	cancelled  → (terminal)
 type Status string
 
 const (
-	StatusQueued    Status = "queued"
-	StatusRunning   Status = "running"
-	StatusCompleted Status = "completed"
-	StatusFailed    Status = "failed"
-	StatusCancelled Status = "cancelled"
+	StatusQueued     Status = "queued"
+	StatusLeased     Status = "leased"
+	StatusRunning    Status = "running"
+	StatusRetryWait  Status = "retry_wait"
+	StatusCompleted  Status = "completed"
+	StatusFailed     Status = "failed"
+	StatusCancelled  Status = "cancelled"
 )
 
 // Filter narrows job queries. All fields are optional; nil/zero means
@@ -56,13 +52,41 @@ type Filter struct {
 	Offset   int
 }
 
+// ── Job type string constants (PR4: SSOT) ───────────────────────────
+
+// Canonical job type identifiers for handler registration and job
+// routing. These are the single source of truth; legacy
+// models.JobType* constants will be removed.
+const (
+	JobTypeMediaExtract           = "media.extract"
+	JobTypeMediaStock             = "media.stock"
+	JobTypeVoiceoverBatch         = "voiceover.batch"
+	JobTypeSubtitleGenerate       = "subtitle.generate"
+	JobTypeRenderVideo            = "render.video"
+	JobTypeYouTubeUpload          = "youtube.upload"
+	JobTypeYouTubeClipExtract     = "youtube_clip.extract"
+	JobTypeCatalogSync            = "catalog.sync"
+	JobTypeArtlistRun             = "media.artlist"
+	JobTypeSystemCleanup          = "system.cleanup"
+	JobTypeMediaGenerate          = "media.generate_missing_asset"
+	JobTypeVideoGenerate          = "video.generate"
+	JobTypeBooksProcess           = "books.process"
+	JobTypeLessonsProcess         = "lessons.process"
+	JobTypeMediaReindex           = "media.reindex"
+	JobTypeYouTubeRebuildST       = "youtube.rebuild_search_text"
+	JobTypeBatchScriptGenerate    = "script.generate_batch"
+	JobTypeClipScriptGenerate     = "script.generate_from_clips"
+	JobTypeCatalogScriptGenerate  = "script.generate_from_catalog"
+	JobTypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips"
+	JobTypeDriveFolderSync        = "drive.folder.sync"
+)
+
 // Job is the canonical domain entity for a job in the system.
 //
-// Differences from models.Job:
-//   - Type is string (not models.JobType) — domain-agnostic
-//   - Status is job.Status (not models.JobStatus)
-//   - Result is json.RawMessage (not map[string]any)
-//   - LeaseExpiry is carried directly for lease-fencing operations
+// Type is string — domain-agnostic, matched against the Dispatcher
+// registry. Status is job.Status (the 7-state lifecycle). Result is
+// json.RawMessage (not map[string]any). LeaseID/LeaseExpiry/Revision
+// carry lease-fencing tokens for atomic state transitions.
 type Job struct {
 	ID             string          `json:"id"`
 	Type           string          `json:"type"`

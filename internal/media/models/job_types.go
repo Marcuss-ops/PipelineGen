@@ -38,34 +38,37 @@ const (
 
 type JobType string
 
+// Job type string constants (PR4: kept as legacy aliases during migration).
+// New code should use the canonical strings in internal/core/domain/job.
+// These will be removed when models/job_types.go is deleted.
 const (
-	JobTypeMediaExtract           JobType = "media.extract"
-	JobTypeMediaStock             JobType = "media.stock"
-	JobTypeVoiceoverBatch         JobType = "voiceover.batch"
-	JobTypeSubtitleGenerate       JobType = "subtitle.generate"
-	JobTypeRenderVideo            JobType = "render.video"
-	JobTypeYouTubeUpload          JobType = "youtube.upload"
-	JobTypeYouTubeClipExtract     JobType = "youtube_clip.extract"
-	JobTypeCatalogSync            JobType = "catalog.sync"
-	JobTypeArtlistRun             JobType = "media.artlist"
-	JobTypeSystemCleanup          JobType = "system.cleanup"
-	JobTypeMediaGenerate          JobType = "media.generate_missing_asset"
-	JobTypeVideoGenerate          JobType = "video.generate"
-	JobTypeBooksProcess           JobType = "books.process"
-	JobTypeLessonsProcess         JobType = "lessons.process"
-	JobTypeMediaReindex           JobType = "media.reindex"
-	JobTypeYouTubeRebuildST       JobType = "youtube.rebuild_search_text"
-	JobTypeBatchScriptGenerate    JobType = "script.generate_batch"
-	JobTypeClipScriptGenerate     JobType = "script.generate_from_clips"
-	JobTypeCatalogScriptGenerate  JobType = "script.generate_from_catalog"
-	JobTypeBulkUploadYouTubeClips JobType = "media.bulk_upload_youtube_clips"
-	JobTypeDriveFolderSync        JobType = "drive.folder.sync"
+	JobTypeMediaExtract           = "media.extract"
+	JobTypeMediaStock             = "media.stock"
+	JobTypeVoiceoverBatch         = "voiceover.batch"
+	JobTypeSubtitleGenerate       = "subtitle.generate"
+	JobTypeRenderVideo            = "render.video"
+	JobTypeYouTubeUpload          = "youtube.upload"
+	JobTypeYouTubeClipExtract     = "youtube_clip.extract"
+	JobTypeCatalogSync            = "catalog.sync"
+	JobTypeArtlistRun             = "media.artlist"
+	JobTypeSystemCleanup          = "system.cleanup"
+	JobTypeMediaGenerate          = "media.generate_missing_asset"
+	JobTypeVideoGenerate          = "video.generate"
+	JobTypeBooksProcess           = "books.process"
+	JobTypeLessonsProcess         = "lessons.process"
+	JobTypeMediaReindex           = "media.reindex"
+	JobTypeYouTubeRebuildST       = "youtube.rebuild_search_text"
+	JobTypeBatchScriptGenerate    = "script.generate_batch"
+	JobTypeClipScriptGenerate     = "script.generate_from_clips"
+	JobTypeCatalogScriptGenerate  = "script.generate_from_catalog"
+	JobTypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips"
+	JobTypeDriveFolderSync        = "drive.folder.sync"
 )
 
 // Job rappresenta un job nel sistema
 type Job struct {
 	ID            string          `json:"id"`
-	Type          JobType         `json:"type"`
+	Type          string          `json:"type"`
 	Status        JobStatus       `json:"status"`
 	Priority      int             `json:"priority"`
 	Project       string          `json:"project,omitempty"`
@@ -97,7 +100,7 @@ type Job struct {
 
 // CreateJobRequest richiesta per creare un nuovo job
 type CreateJobRequest struct {
-	Type       JobType         `json:"type"`
+	Type       string          `json:"type"`
 	Project    string          `json:"project"`
 	VideoName  string          `json:"video_name,omitempty"`
 	Payload    json.RawMessage `json:"payload,omitempty"`
@@ -135,7 +138,7 @@ type Queue struct {
 // JobFilter rappresenta i filtri per la ricerca dei job
 type JobFilter struct {
 	Status   *JobStatus
-	Type     *JobType
+	Type     *string
 	WorkerID string
 	Limit    int
 	Offset   int

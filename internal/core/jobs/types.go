@@ -1,12 +1,13 @@
 package jobs
 
-import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
-
-type JobType = models.JobType
+// JobType is a type alias for string, the canonical job type identifier.
+// The legacy models.JobType has been eliminated; all job types are now
+// plain strings matched against the Dispatcher registry.
+type JobType = string
 
 const (
-	JobTypeBatchScriptGenerate   JobType = models.JobTypeBatchScriptGenerate
-	JobTypeClipScriptGenerate    JobType = models.JobTypeClipScriptGenerate
-	JobTypeCatalogScriptGenerate JobType = models.JobTypeCatalogScriptGenerate
+	JobTypeBatchScriptGenerate   JobType = "script.generate_batch"
+	JobTypeClipScriptGenerate    JobType = "script.generate_from_clips"
+	JobTypeCatalogScriptGenerate JobType = "script.generate_from_catalog"
 	JobTypeMediaCurate           JobType = "media.curate"
 )
