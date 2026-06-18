@@ -111,9 +111,9 @@ func containsLegacyRef(file *ast.File) bool {
 
 	for _, imp := range file.Imports {
 		path := strings.Trim(imp.Path.Value, `"`)
-		// Match exact canonical path OR any path ending in /internal/media/models.
-		// The suffix match covers both relative and alternate-module imports.
-		if path == targetPath || strings.HasSuffix(path, "/internal/media/models") {
+		// Match exact canonical path OR any path ending in the canonical suffix.
+		// The anchored suffix prevents matching vendor/ or other non-canonical paths.
+		if path == targetPath || strings.HasSuffix(path, "/github.com/Marcuss-ops/PipelineGen/internal/media/models") {
 			if imp.Name != nil {
 				// Explicit alias: import foo "github.com/.../models" → use "foo"
 				if imp.Name.Name != "_" && imp.Name.Name != "." {

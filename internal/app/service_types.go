@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -109,4 +110,7 @@ type services struct {
 	assetRelationsRepo  *assetrelations.Repository
 	assetTagsRepo       *assettags.Repository
 	assetVersionsRepo   *assetversions.Repository
+
+	// assetQueryService is the canonical aggregate reader for asset state.
+	assetQueryService *assetquery.Service
 }

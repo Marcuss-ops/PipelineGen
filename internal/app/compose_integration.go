@@ -8,6 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -258,6 +259,18 @@ func composeIntegration(
 		log.Debug("asset lifecycle repos wired into youtube service")
 	}
 
+	// ── Asset Query Service (canonical aggregate reader) ────────────────
+	// The assetquery.Service is the single entry point for read access to
+	// an asset's full state (identity + locations + processing + version).
+	// It replaces direct reads of deprecated fields on asset.MediaAsset.
+	assetQuerySvc := assetquery.New(
+		core.AssetRepo,
+		assetLocRepo,
+		assetProcRepo,
+		assetversions.NewAdapter(assetVerRepo),
+	)
+	log.Info("assetquery.Service wired (canonical aggregate reader)")
+
 	return &services{
 		scriptGen:          core.ScriptGen,
 		docClient:          core.DocClient,
@@ -311,5 +324,6 @@ func composeIntegration(
 		assetRelationsRepo:  assetRelRepo,
 		assetTagsRepo:       assetTagRepo,
 		assetVersionsRepo:   assetVerRepo,
+		assetQueryService:   assetQuerySvc,
 	}, nil
 }

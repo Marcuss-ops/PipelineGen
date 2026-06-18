@@ -55,11 +55,6 @@ const selectColumns = `
 	COALESCE(child_count, 0)      AS child_count,
 	COALESCE(status, '')          AS status,
 	COALESCE(error, '')           AS err_msg,
-	COALESCE(drive_file_id, '')   AS drive_file_id,
-	COALESCE(drive_link, '')      AS drive_link,
-	COALESCE(download_link, '')   AS download_link,
-	COALESCE(local_path, '')      AS local_path,
-	COALESCE(file_hash, '')       AS file_hash,
 	created_at,
 	updated_at
 `
@@ -94,7 +89,6 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 		&a.SceneType, &qualityScore, &reuseCount, &a.LastUsedAt,
 		&usableForJSON, &avoidForJSON, &a.PHash, &childCount,
 		&a.Status, &a.Error,
-		&a.DriveFileID, &a.DriveLink, &a.DownloadLink, &a.LocalPath, &a.FileHash,
 		&createdAtStr, &updatedAtStr,
 	)
 	if err != nil {
