@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -33,7 +33,7 @@ type Processor struct {
 	videoCfg      ffmpeg.NormalizeOptions
 	scraperURL    string
 	embeddingURL  string
-	registry      assetregistry.Registry
+	registry      artifacts.Registry
 	driveUploader *drive.Uploader
 }
 
@@ -55,7 +55,7 @@ func NewProcessor(
 	ff VideoProcessor,
 	log *zap.Logger,
 	cfg ProcessorConfig,
-	registry assetregistry.Registry,
+	registry artifacts.Registry,
 	driveUploader *drive.Uploader,
 ) *Processor {
 	scraperURL := cfg.ScraperServerURL

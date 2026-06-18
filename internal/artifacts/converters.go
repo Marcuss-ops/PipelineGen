@@ -1,4 +1,4 @@
-package assetregistry
+package artifacts
 
 import (
 	"path/filepath"

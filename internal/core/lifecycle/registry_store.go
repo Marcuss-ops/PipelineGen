@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 )
 
-// RegistryStoreAdapter adapts a assetregistry.Registry to the AssetRecordStore interface.
+// RegistryStoreAdapter adapts a artifacts.Registry to the AssetRecordStore interface.
 type RegistryStoreAdapter struct {
-	registry assetregistry.Registry
+	registry artifacts.Registry
 }
 
 // NewRegistryStoreAdapter creates a new RegistryStoreAdapter.
-func NewRegistryStoreAdapter(registry assetregistry.Registry) AssetRecordStore {
+func NewRegistryStoreAdapter(registry artifacts.Registry) AssetRecordStore {
 	return &RegistryStoreAdapter{registry: registry}
 }
 
@@ -80,17 +80,17 @@ func (a *RegistryStoreAdapter) DeleteAssetRecord(ctx context.Context, id string)
 }
 
 // Upsert implements AssetRecordStore.
-func (a *RegistryStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error {
+func (a *RegistryStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
 	return a.registry.UpsertMedia(ctx, rec)
 }
 
 // Get implements AssetRecordStore.
-func (a *RegistryStoreAdapter) Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
+func (a *RegistryStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	return a.registry.GetMedia(ctx, id)
 }
 
-// mediaRecordToAssetRecord converts a assetregistry.MediaRecord to an AssetRecord.
-func mediaRecordToAssetRecord(rec *assetregistry.MediaRecord) *AssetRecord {
+// mediaRecordToAssetRecord converts a artifacts.MediaRecord to an AssetRecord.
+func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *AssetRecord {
 	if rec == nil {
 		return nil
 	}

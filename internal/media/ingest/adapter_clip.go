@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -38,7 +38,7 @@ func NewClipStoreAdapter(
 	}
 }
 
-func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error {
+func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
 	m := &asset.MediaAsset{
 		ID:             rec.ID,
 		Source:         rec.Source,
@@ -117,7 +117,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaR
 	return nil
 }
 
-func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
+func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	details, err := a.querySvc.Get(ctx, id)
 	if err != nil {
 		if err == asset.ErrNotFound {
@@ -228,11 +228,11 @@ func (a *clipStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) err
 	return a.assets.SoftDelete(ctx, id)
 }
 
-func detailsToMediaRecord(details *assetquery.Details) *assetregistry.MediaRecord {
+func detailsToMediaRecord(details *assetquery.Details) *artifacts.MediaRecord {
 	if details == nil || details.Asset == nil {
 		return nil
 	}
-	rec := &assetregistry.MediaRecord{
+	rec := &artifacts.MediaRecord{
 		ID:                  details.Asset.ID,
 		Name:                details.Asset.Name,
 		Filename:            details.Asset.Filename,

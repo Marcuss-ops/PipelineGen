@@ -6,16 +6,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 )
 
 // LifecycleDeps holds the dependencies needed to create a lifecycle service
 type LifecycleDeps struct {
-	Registry      assetregistry.Registry
+	Registry      artifacts.Registry
 	DriveClient   *gdrive.Service
 	AssetIndex    *assetindex.Service
-	DriveVerifier assetregistry.DriveVerifier
-	Finalizer     *assetregistry.Finalizer
+	DriveVerifier artifacts.DriveVerifier
+	Finalizer     *artifacts.Finalizer
 	Store         lifecycle.AssetRecordStore
 }
 
@@ -27,12 +27,12 @@ func NewLifecycleFromDeps(
 ) *lifecycle.Service {
 	// Create drive verifier if not provided
 	if deps.DriveVerifier == nil && deps.DriveClient != nil {
-		deps.DriveVerifier = assetregistry.NewAPIDriveVerifier(deps.DriveClient)
+		deps.DriveVerifier = artifacts.NewAPIDriveVerifier(deps.DriveClient)
 	}
 
 	// Create finalizer if not provided
 	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
-		deps.Finalizer = assetregistry.NewFinalizerWithAssetIndex(
+		deps.Finalizer = artifacts.NewFinalizerWithAssetIndex(
 			deps.Registry,
 			deps.DriveVerifier,
 			deps.AssetIndex,

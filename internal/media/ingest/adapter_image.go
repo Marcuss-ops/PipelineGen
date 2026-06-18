@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -24,7 +24,7 @@ func NewImageStoreAdapter(repo *imagerepo.Repository, imagesDir string) lifecycl
 	return &imageStoreAdapter{repo: repo, imagesDir: imagesDir}
 }
 
-func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error {
+func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
 	asset := &models.ImageAsset{
 		Hash:         stripKindPrefix(rec.ID),
 		SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
@@ -44,7 +44,7 @@ func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *assetregistry.Media
 	return err
 }
 
-func (a *imageStoreAdapter) Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error) {
+func (a *imageStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	img, err := a.repo.GetImageByHash(ctx, stripKindPrefix(id))
 	if err != nil || img == nil {
 		return nil, err
@@ -120,12 +120,12 @@ func (a *imageStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) er
 	return a.repo.Delete(ctx, stripKindPrefix(id))
 }
 
-func imageAssetToMediaRecord(img *models.ImageAsset, imagesDir string) *assetregistry.MediaRecord {
+func imageAssetToMediaRecord(img *models.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}
 
-	return &assetregistry.MediaRecord{
+	return &artifacts.MediaRecord{
 		ID:          img.Hash,
 		Name:        img.Description,
 		Filename:    filepath.Base(img.PathRel),
@@ -171,7 +171,7 @@ func relImagePath(imagesDir, fullPath string) string {
 	return rel
 }
 
-func mergeImageMetadataJSON(meta string, rec *assetregistry.MediaRecord, relPath string) string {
+func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath string) string {
 	payload := map[string]any{}
 	if strings.TrimSpace(meta) != "" && meta != "{}" {
 		_ = json.Unmarshal([]byte(meta), &payload)

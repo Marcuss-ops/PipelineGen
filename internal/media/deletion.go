@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
@@ -59,11 +59,11 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	s.log.Info("deleting clip", zap.String("source", source), zap.String("clip_id", clipID), zap.Bool("permanently", permanently))
 
 	// 1. Get Repo via centralized resolver
-	canonical := assetregistry.CanonicalSource(source)
+	canonical := artifacts.CanonicalSource(source)
 	if canonical == "" {
 		return fmt.Errorf("invalid source: %s", source)
 	}
-	resolver := assetregistry.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
+	resolver := artifacts.NewSourceResolver(s.artlistRepo, s.clipsRepo, s.stockRepo)
 	repo := resolver.ResolveRepo(source)
 	if repo == nil && canonical != "voiceover" && canonical != "images" {
 		return fmt.Errorf("invalid source: %s", source)
@@ -78,7 +78,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		if voErr != nil {
 			return fmt.Errorf("voiceover not found: %w", voErr)
 		}
-		clip := assetregistry.VoiceoverRecordToClip(rec)
+		clip := artifacts.VoiceoverRecordToClip(rec)
 		driveFileID = clip.DriveFileID
 		if driveFileID == "" {
 			driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
@@ -91,7 +91,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		if imgErr != nil {
 			return fmt.Errorf("image not found: %w", imgErr)
 		}
-		clip := assetregistry.ImageAssetToClip(img)
+		clip := artifacts.ImageAssetToClip(img)
 		driveFileID = clip.DriveFileID
 		if driveFileID == "" {
 			driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
@@ -203,13 +203,13 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 			voRepo := repo.(*voiceovers.Repository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
-				return assetregistry.VoiceoverRecordToClip(rec), source, nil
+				return artifacts.VoiceoverRecordToClip(rec), source, nil
 			}
 		case "images":
 			imgRepo := repo.(*images.Repository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
-				return assetregistry.ImageAssetToClip(img), source, nil
+				return artifacts.ImageAssetToClip(img), source, nil
 			}
 		}
 	}
