@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/artifacts"
 	"velox/go-master/internal/config"
 	"velox/go-master/internal/core/maintenance"
 	"velox/go-master/internal/core/processor"
@@ -58,6 +59,7 @@ type Handler struct {
 	clipIndexer    *clipindexer.Service
 	vectorStore    *vectorstore.Service
 	metaWriter     *semantic.MetadataWriter
+	artifactSvc    *artifacts.Service
 	log            *zap.Logger
 
 	// downloadCache prevents re-downloading the same YouTube video when
@@ -90,6 +92,11 @@ func (h *Handler) SetMetaWriter(mw *semantic.MetadataWriter) {
 	if h.SoundEffect != nil {
 		h.SoundEffect.metaWriter = mw
 	}
+}
+
+// SetArtifactService sets the artifact service for content-addressed file storage.
+func (h *Handler) SetArtifactService(svc *artifacts.Service) {
+	h.artifactSvc = svc
 }
 
 // NewHandler creates a new common media handler.

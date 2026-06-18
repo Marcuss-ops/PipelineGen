@@ -192,3 +192,15 @@ func (s *LocalBlobStore) CleanupStaging(ctx context.Context, maxAge int64) (int,
 	}
 	return removed, nil
 }
+
+// LocalPath resolves a storage key to a filesystem path.
+// Returns the absolute path to the blob on disk.
+func (s *LocalBlobStore) LocalPath(storageKey string) (string, error) {
+	if !strings.HasPrefix(storageKey, "sha256/") {
+		return "", fmt.Errorf("artifacts: invalid storage key: %s", storageKey)
+	}
+	return filepath.Join(s.dataDir, "blobs", storageKey), nil
+}
+
+// DataDir returns the root data directory for this blob store.
+func (s *LocalBlobStore) DataDir() string { return s.dataDir }

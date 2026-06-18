@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -14,10 +12,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"velox/go-master/internal/artifacts"
 	"velox/go-master/internal/media/models"
 	"velox/go-master/pkg/apiutil"
 	"velox/go-master/pkg/concurrent"
-	"velox/go-master/pkg/hashutil"
 )
 
 // UploadVideoClipResponse is returned after a successful video upload.
@@ -98,43 +96,55 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		zap.String("name", name),
 	)
 
-	// 4. Save file to temp directory
+	// 4. Stream uploaded file through artifact service (content-addressed storage)
+	// This replaces os.Create + io.Copy + hashutil.MD5File with a single
+	// Stage→Verify→Promote flow that computes SHA-256 and stores the blob
+	// at a canonical content-addressed path.
+	if h.artifactSvc == nil {
+		apiutil.InternalError(c, fmt.Errorf("artifact service not available"))
+		return
+	}
+
 	ext := filepath.Ext(header.Filename)
 	if ext == "" {
 		ext = ".mp4"
 	}
-	tempFilename := fmt.Sprintf("upload_%d%s", time.Now().UnixNano(), ext)
-	tempPath := filepath.Join(h.cfg.Storage.TempPath(), tempFilename)
+	clipID := "manual_" + fmt.Sprintf("%d", time.Now().UnixNano())[:12]
 
-	out, err := os.Create(tempPath)
-	if err != nil {
-		log.Error("failed to create temp file", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("failed to create temp file: %w", err))
-		return
+	mimeType := header.Header.Get("Content-Type")
+	if mimeType == "" {
+		mimeType = "video/mp4"
 	}
 
-	written, err := io.Copy(out, file)
-	out.Close()
+	artifact, err := h.artifactSvc.CreateAndVerify(ctx, artifacts.CreateInput{
+		ID:       clipID,
+		Kind:     "video",
+		MimeType: mimeType,
+		Reader:   file,
+	})
 	if err != nil {
-		os.Remove(tempPath)
-		log.Error("failed to save uploaded file", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("failed to save uploaded file: %w", err))
+		log.Error("failed to store artifact", zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("failed to store file: %w", err))
 		return
 	}
-	log.Info("saved uploaded file", zap.String("path", tempPath), zap.Int64("bytes", written))
+	log.Info("artifact stored",
+		zap.String("id", artifact.ID),
+		zap.String("sha256", artifact.SHA256),
+		zap.Int64("bytes", artifact.SizeBytes))
 
-	// 5. Compute MD5 hash for dedup
-	fileHash, err := hashutil.MD5File(tempPath)
+	// 5. Resolve local path for Drive upload and duration probing
+	fileHash := artifact.SHA256
+	// Re-derive clipID from content hash to preserve dedup-by-content behavior:
+	// uploading the same file twice gets the same clip ID → upsert instead of insert.
+	clipID = "manual_" + fileHash[:12]
+	localPath, err := h.artifactSvc.LocalPath(ctx, artifact.ID)
 	if err != nil {
-		os.Remove(tempPath)
-		log.Error("failed to hash file", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("failed to hash file: %w", err))
-		return
+		log.Warn("could not resolve local path for artifact",
+			zap.String("id", artifact.ID),
+			zap.Error(err))
+		// Fallback: use the artifact ID for Drive-less flows
+		localPath = ""
 	}
-	log.Info("computed file hash", zap.String("hash", fileHash))
-
-	// Generate clip ID from hash
-	clipID := fmt.Sprintf("manual_%s", fileHash[:12])
 
 	// 6. Resolve Drive target folder
 	targetFolderID := extractDriveFolderID(folderID)
@@ -170,9 +180,9 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	// 7. Upload file to Google Drive
 	driveFilename := fmt.Sprintf("%s%s", name, ext)
 	var uploadResult *driveUploadResult
-	if h.driveUploader != nil {
+	if h.driveUploader != nil && localPath != "" {
 		driveDescription := buildDriveDescription(name, description, "", tags, category, source, "", "")
-		result, err := h.driveUploader.UploadFileWithDescription(ctx, tempPath, targetFolderID, driveFilename, driveDescription)
+		result, err := h.driveUploader.UploadFileWithDescription(ctx, localPath, targetFolderID, driveFilename, driveDescription)
 		if err != nil {
 			log.Warn("Drive upload failed, continuing with local file only",
 				zap.Error(err))
@@ -218,7 +228,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		MediaType:  "video",
 		Tags:       tags,
 		SearchText: description,
-		LocalPath:  tempPath,
+		LocalPath:  localPath,
 		FileHash:   fileHash,
 		FolderID:   targetFolderID,
 		FolderPath: group,
@@ -234,7 +244,9 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	}
 
 	// 9. Probe video duration from local file
-	probeDuration(ctx, tempPath, clip, log)
+	if localPath != "" {
+		probeDuration(ctx, localPath, clip, log)
+	}
 
 	// 10. Save to database
 	if h.clipsRepo != nil {
@@ -275,7 +287,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		Source:      source,
 		Category:    category,
 		Tags:        tags,
-		LocalPath:   tempPath,
+		LocalPath:   localPath,
 		Indexed:     hasIndexer,
 		Duration:    clip.Duration,
 	})

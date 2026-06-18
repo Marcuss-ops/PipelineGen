@@ -138,8 +138,9 @@ func WireAssets(
 		log,
 	)
 	handler.SetMetaWriter(metaWriter)
-
-	mod := module.NewAssetsModule(cfg, log, handler)
+	if coreDeps.ArtifactService != nil {
+		handler.SetArtifactService(coreDeps.ArtifactService)
+	}
 	log.Info("created unified Assets module")
 
 	return &AssetsWiring{

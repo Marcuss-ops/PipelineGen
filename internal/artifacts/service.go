@@ -166,6 +166,28 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.repo.UpdateStatus(ctx, id, StatusDeleted, a.SHA256, a.SizeBytes)
 }
 
+// LocalPath resolves an artifact's storage key to a local filesystem path.
+// Returns the absolute path, or an error if the blob store is not local.
+func (s *Service) LocalPath(ctx context.Context, artifactID string) (string, error) {
+	a, err := s.repo.Get(ctx, artifactID)
+	if err != nil {
+		return "", fmt.Errorf("artifacts: get %s: %w", artifactID, err)
+	}
+	if a == nil {
+		return "", fmt.Errorf("artifacts: not found: %s", artifactID)
+	}
+	if a.StorageKey == "" {
+		return "", fmt.Errorf("artifacts: no storage key for %s (status=%s)", artifactID, a.Status)
+	}
+
+	// Type-assert to LocalBlobStore for path resolution
+	local, ok := s.blobs.(*LocalBlobStore)
+	if !ok {
+		return "", fmt.Errorf("artifacts: blob store is not local (backend=%s)", a.StorageBackend)
+	}
+	return local.LocalPath(a.StorageKey)
+}
+
 // CreateInput is the input for CreateAndVerify.
 type CreateInput struct {
 	ID              string
