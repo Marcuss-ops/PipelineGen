@@ -57,9 +57,9 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	// 2. Update Asset Tree (clipToAssetNode still expects legacy type)
+	// 2. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(assetregistry.ToLegacy(&clip))
+		node := clipToAssetNode(&clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}

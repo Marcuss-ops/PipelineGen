@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -45,7 +46,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {
 			for _, clip := range clipChildren {
-				children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
+				children = append(children, treeNodeToAssetNode(clipToAssetNode(assetregistry.ToCanonical(clip))))
 			}
 		} else {
 			err = clipErr
@@ -97,7 +98,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 			clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
 			if clipErr == nil {
 				for _, clip := range clipChildren {
-					children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
+					children = append(children, treeNodeToAssetNode(clipToAssetNode(assetregistry.ToCanonical(clip))))
 				}
 			}
 		}

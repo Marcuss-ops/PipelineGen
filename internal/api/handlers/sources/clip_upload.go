@@ -260,7 +260,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 11. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(assetregistry.ToLegacy(clip))
+		node := clipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}

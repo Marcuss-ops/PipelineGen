@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
@@ -35,8 +36,9 @@ func (h *Handler) resolveRepo(source string) *clips.Repository {
 	return resolver.ResolveRepo(source)
 }
 
-// clipToAssetNode converts a models.Clip to assettree.AssetNode for unified tree handling.
-func clipToAssetNode(clip *models.MediaAsset) *assettreerepo.AssetNode {
+// clipToAssetNode converts a canonical asset.MediaAsset to assettree.AssetNode
+// for unified tree handling.
+func clipToAssetNode(clip *asset.MediaAsset) *assettreerepo.AssetNode {
 	if clip == nil {
 		return nil
 	}

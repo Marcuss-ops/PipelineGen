@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -40,7 +41,7 @@ func (h *Handler) BulkAddTags(c *gin.Context) {
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(c.Request.Context(), id)
 			if err == nil {
-				node := clipToAssetNode(clip)
+				node := clipToAssetNode(assetregistry.ToCanonical(clip))
 				h.assetTreeSvc.UpsertNode(c.Request.Context(), node)
 			}
 		}
@@ -87,7 +88,7 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(c.Request.Context(), id)
 			if err == nil {
-				node := clipToAssetNode(clip)
+				node := clipToAssetNode(assetregistry.ToCanonical(clip))
 				h.assetTreeSvc.UpsertNode(c.Request.Context(), node)
 			}
 		}
