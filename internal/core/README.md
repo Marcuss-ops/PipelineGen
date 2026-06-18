@@ -39,7 +39,7 @@ L'unico processore per download, process, hash, upload.
 - `Processor` - interfaccia canonica
 - `ProcessInput` / `ProcessResult` - tipi di input/output
 
-*Nota*: L'implementazione attuale è in `internal/service/mediaasset/Processor`.
+*Nota*: L'implementazione attuale è in `internal/media/mediaasset/Processor` (adattato via `internal/media/mediaasset/adapter.go`).
 
 ### 5. Module
 **Package**: `internal/module/`
@@ -59,11 +59,11 @@ Se un modulo ha bisogno di un nuovo contratto, deve essere discusso e aggiunto q
 
 | Contratto | Package Core | Implementazione Attuale |
 |-----------|--------------|----------------------|
-| Asset | `internal/core/media/` | `internal/service/mediaasset/` (tipi), `internal/core/media/` (modelli) |
-| Job | `internal/core/jobs/` | `internal/service/jobs/` |
-| Destination | `internal/core/destination/` | `internal/service/assetdestination/`, `internal/service/drivedestination/` |
-| Processor | `internal/core/processor/` | `internal/service/mediaasset.Processor` |
-| Module | `internal/module/` | `internal/module/`, `internal/bootstrap/` |
+| Asset | `internal/core/media/` | `internal/media/mediaasset/` (tipi), `internal/core/media/` (modelli) |
+| Job | `internal/core/jobs/` | `internal/jobs/`, `internal/core/domain/job/` |
+| Destination | `internal/core/destination/` | `internal/service/assetdestination/adapter.go`, `internal/upload/drive/` |
+| Processor | `internal/core/processor/` | `internal/media/mediaasset.Processor` (adapter: `internal/media/mediaasset/adapter.go`) |
+| Module | `internal/module/` | `internal/module/`, `internal/app/registry.go` |
 
 ## Completato
 
@@ -73,5 +73,4 @@ Se un modulo ha bisogno di un nuovo contratto, deve essere discusso e aggiunto q
 
 ## Da Fare
 
-1. Rimuovere duplicati e adattare tutti i moduli ai contratti canonici
-2. CI checks: `scripts/ci-architectural-checks.sh` deve bloccare violazioni
+1. CI checks: `scripts/ci-architectural-checks.sh` deve bloccare violazioni dei contratti canonici

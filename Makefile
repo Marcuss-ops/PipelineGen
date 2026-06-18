@@ -65,7 +65,7 @@ run: build
 # Run system doctor check
 # Fails explicitly if the server is not running.
 doctor:
-	@curl -sS -f http://127.0.0.1:8080/api/system/doctor | jq . || { echo "Server not running? Try: make run"; exit 1; }
+	@curl -sS -f http://127.0.0.1:18080/api/system/doctor | jq . || { echo "Server not running? Try: make run"; exit 1; }
 
 # Run artlist with smart presets
 # Usage: make artlist TERM=technology LIMIT=10 PRESET=youtube_1080p_7s
@@ -73,18 +73,9 @@ TERM ?= technology
 LIMIT ?= 10
 PRESET ?= youtube_1080p_7s
 artlist:
-	@curl -sS -f -X POST http://127.0.0.1:8080/api/artlist/run-smart \
+	@curl -sS -f -X POST http://127.0.0.1:18080/api/artlist/run-smart \
 		-H "Content-Type: application/json" \
 		-d '{"term":"$(TERM)","limit":$(LIMIT),"preset":"$(PRESET)"}' | jq . || { echo "Server not running? Try: make run"; exit 1; }
-
-# DEPRECATED (June 2026): the `make workflow` target called
-# /api/workflows/content-package, which is no longer registered in
-# the Go code (no handler, no request type). The target has been
-# removed entirely. Use `make artlist` or one of the /api/script/*
-# endpoints documented in AGENTS.md to generate content.
-# Historical reference: the deleted curl payload was
-# `{"title":"...","style":"news","assets":"artlist"}` POSTed to
-# /api/workflows/content-package.
 
 # Development mode with hot reload (requires air)
 dev:
@@ -124,7 +115,7 @@ docker-build:
 
 # Docker run (requires docker-build)
 docker-run: docker-build
-	docker run -p 8080:8080 velox-go-master:latest
+	docker run -p 18080:18080 velox-go-master:latest
 
 # CI pipeline (runs all checks)
 ci: fmt vet lint test coverage-check build

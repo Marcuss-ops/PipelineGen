@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE - This is the single source of truth for API documentation.
 **Last Updated:** 2026-05-03
-**Base URL:** `http://127.0.0.1:8080`
+**Base URL:** `http://127.0.0.1:18080`
 
 ## Authentication
 
@@ -121,8 +121,9 @@ Note: `/api/voiceover/sync/status` was removed - was returning fake status (debt
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/script-docs/generate` | Generate script |
-| POST | `/api/script-docs/preview` | Preview script generation |
+| POST | `/api/script-docs/generate` | Generate script (sync, Python ReAct agent — 15min timeout) |
+
+> **Note (June 2026):** The unified script endpoints are now `POST /api/script/generate-from-clips` and `POST /api/script/generate-with-images`. The legacy `/api/script-docs/preview` and `/api/script-docs/modes` endpoints have been removed. See `AGENTS.md` — Script Generation Endpoints for details.
 
 ## Script History Endpoints
 
@@ -217,6 +218,6 @@ HTTP status codes:
 
 ## Notes
 
-- The `artlist_runs` table is **deprecated**. All Artlist runs now use the `jobs` table.
+- The `artlist_runs` table has been **removed** (June 2026). All Artlist runs use the `jobs` table exclusively.
 - Job system is the **only source of truth** for async operations.
 - All timestamps are in RFC3339 format (UTC).

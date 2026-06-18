@@ -35,7 +35,6 @@ var canonicalMissingTables = []string{
 	"pipeline_run_items",
 	"script_stock_matches",
 	"video_stats_history",
-	"artlist_runs",
 	"segment_embeddings",
 	"sketchfab_models",
 	"transcript_cache",
