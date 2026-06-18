@@ -24,7 +24,7 @@ type Repository struct {
 // new tracked column is a one-line change.
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-	worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision`
+	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision`
 
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
 	return &Repository{db: db, log: log}
@@ -34,8 +34,8 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
-			worker_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON, _ := json.Marshal(job.Payload)
@@ -58,7 +58,8 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 		job.ID, job.Type, job.Status, job.Priority, job.Project, job.VideoName, job.ActiveKey,
 		job.CorrelationID,
 		string(payloadJSON), string(resultJSON), job.Progress, job.Error,
-		job.RetryCount, job.MaxRetries, job.WorkerID, timeutil.FormatPtrRFC3339(job.LeaseExpiry),
+		job.RetryCount, job.MaxRetries, job.WorkerID, job.LeaseID,
+		timeutil.FormatPtrRFC3339(job.LeaseExpiry),
 		timeutil.FormatRFC3339(job.CreatedAt), timeutil.FormatRFC3339(job.UpdatedAt),
 		timeutil.FormatPtrRFC3339(job.StartedAt), timeutil.FormatPtrRFC3339(job.CompletedAt), nil, revision)
 	if err != nil {
@@ -74,11 +75,11 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 func scanJobColumns(s scanner, job *models.Job) error {
 	var payloadJSON, resultJSON string
 	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
-	if err := s.Scan(
+	if	err := s.Scan(
 		&job.ID, &job.Type, &job.Status, &job.Priority, &job.Project, &job.VideoName, &job.ActiveKey,
 		&job.CorrelationID,
 		&payloadJSON, &resultJSON, &job.Progress, &job.Error, &job.RetryCount, &job.MaxRetries,
-		&job.WorkerID, &leaseExpiry, &createdAt, &updatedAt,
+		&job.WorkerID, &job.LeaseID, &leaseExpiry, &createdAt, &updatedAt,
 		&startedAt, &completedAt, &cancelledAt, &job.Revision,
 	); err != nil {
 		return err
@@ -241,7 +242,7 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0) as imgs_gen,
 			SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as errs
 		FROM jobs
-		WHERE status IN ('completed', 'failed')
+		WHERE status IN ('SUCCEEDED', 'FAILED')
 		GROUP BY type
 		ORDER BY cnt DESC
 	`)
@@ -272,9 +273,9 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 		typeRow.Close()
 	}
 
-	// 5. Stale/zombie running jobs (status=running but lease_expiry is in the past)
+	// 5. Stale/zombie active jobs (status=LEASED or RUNNING but lease_expiry in past)
 	var staleCount sql.NullInt64
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status = 'running' AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
 		r.log.Warn("getStats: stale-running query failed", zap.Error(err))
 	} else if staleCount.Valid {
 		stats.StaleRunning = int(staleCount.Int64)
@@ -283,8 +284,8 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 	// 6. Recent 24h stats
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT
-			COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0)
 		FROM jobs
 		WHERE created_at > datetime('now', '-1 day')
@@ -296,7 +297,7 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 }
 
 func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*models.Job, error) {
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('queued', 'running') ORDER BY started_at DESC LIMIT 1`
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('PENDING', 'LEASED', 'RUNNING') ORDER BY started_at DESC LIMIT 1`
 	job := &models.Job{}
 	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, activeKey), job); err != nil {
 		if err == sql.ErrNoRows {
@@ -358,8 +359,9 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 
 	// Set depth for currently-observed type × status combinations.
 	allStatuses := []models.JobStatus{
-		models.StatusQueued, models.StatusRunning,
-		models.StatusFailed, models.StatusCompleted, models.StatusCancelled,
+		models.StatusPending, models.StatusLeased, models.StatusRunning,
+		models.StatusRetryWait,
+		models.StatusFailed, models.StatusSucceeded, models.StatusCancelled,
 	}
 	depthSeen := make(map[string]bool)
 	rows, err := r.db.QueryContext(ctx, `SELECT type, status, COUNT(*) FROM jobs GROUP BY type, status`)
@@ -392,7 +394,7 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 	// Oldest queued/retrying job per type (seconds since its created_at, or 0).
 	oldest, err := r.db.QueryContext(ctx, `
 		SELECT type, COALESCE(MAX((julianday('now') - julianday(created_at)) * 86400.0), 0)
-		FROM jobs WHERE status = 'queued' GROUP BY type`)
+		FROM jobs WHERE status = 'PENDING' GROUP BY type`)
 	if err != nil {
 		return fmt.Errorf("oldest pending query: %w", err)
 	}

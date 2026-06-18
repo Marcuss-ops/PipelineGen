@@ -7,26 +7,33 @@ import (
 
 type JobStatus string
 
-// Canonical job statuses (reduced from 10 to 5 — see docs/architecture/CONTROL_PLANE.md).
+// Canonical 7-state job lifecycle (PR-2: atomic lifecycle).
 //
-//   queued    → job is waiting for a worker
-//   running   → worker has claimed the job with a lease
-//   completed → job finished successfully
-//   failed    → job exhausted retries or hit a non-retryable error
-//   cancelled → operator cancelled the job
+//   PENDING     → job is waiting for a worker
+//   LEASED      → worker has claimed the job (fencing token)
+//   RUNNING     → worker has started executing the job
+//   SUCCEEDED   → job finished successfully (terminal)
+//   RETRY_WAIT  → job failed temporarily, waiting for retry backoff
+//   FAILED      → job exhausted retries or hit non-retryable error (terminal)
+//   CANCELLED   → operator cancelled the job (terminal)
 //
-// Removed (never persisted by the core worker):
-//   pending    → synonym of queued, never used at creation
-//   processing → synonym of running, never set by any code path
-//   paused     → no pause/resume endpoints existed
-//   zombie     → computed: status=running AND lease_expiry<now
-//   retrying   → reified to queued + retry_count>0
+// Allowed transitions:
+//   PENDING    → LEASED, CANCELLED
+//   LEASED     → RUNNING, PENDING (lease expiry), CANCELLED
+//   RUNNING    → SUCCEEDED, RETRY_WAIT, FAILED, CANCELLED
+//   RETRY_WAIT → PENDING, FAILED, CANCELLED
 const (
-	StatusQueued    JobStatus = "queued"
-	StatusRunning   JobStatus = "running"
-	StatusCompleted JobStatus = "completed"
-	StatusFailed    JobStatus = "failed"
-	StatusCancelled JobStatus = "cancelled"
+	StatusPending    JobStatus = "PENDING"
+	StatusLeased     JobStatus = "LEASED"
+	StatusRunning    JobStatus = "RUNNING"
+	StatusSucceeded  JobStatus = "SUCCEEDED"
+	StatusRetryWait  JobStatus = "RETRY_WAIT"
+	StatusFailed     JobStatus = "FAILED"
+	StatusCancelled  JobStatus = "CANCELLED"
+
+	// Legacy aliases (will be removed once all callers migrate)
+	StatusQueued    = StatusPending
+	StatusCompleted = StatusSucceeded
 )
 
 type JobType string
@@ -79,11 +86,13 @@ type Job struct {
 	Progress      int             `json:"progress"`
 	LeaseExpiry   *time.Time      `json:"lease_expiry,omitempty"`
 	// Revision is a per-row monotonic counter incremented on every status
-	// transition. It's the optimistic-lock token used by
-	// Repository.Transition — passed on read, decremented on write. See
-	// internal/core/domain/job for the canonical domain abstraction and
-	// migrations/sqlite/037_job_revision.sql for the schema.
-	Revision      int             `json:"revision"`
+	// transition. It's the optimistic-lock token used by the Repository —
+	// passed on read, verified on write.
+	Revision int `json:"revision"`
+	// LeaseID is the fencing token assigned by ClaimNext. It must match
+	// on all worker-originated operations (Start, RenewLease, Complete,
+	// Fail, ScheduleRetry, ConfirmCancelled).
+	LeaseID string `json:"lease_id,omitempty"`
 }
 
 // CreateJobRequest richiesta per creare un nuovo job
