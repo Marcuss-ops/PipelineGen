@@ -31,8 +31,9 @@ import (
 
 // Repository is the concrete SQLite implementation of asset.Repository.
 type Repository struct {
-	db  *sql.DB
-	log *zap.Logger
+	db       *sql.DB
+	log      *zap.Logger
+	enricher *asset.LocationEnricher
 }
 
 // Compile-time interface check.
@@ -44,6 +45,13 @@ func New(db *sql.DB, log *zap.Logger) *Repository {
 		log = zap.NewNop()
 	}
 	return &Repository{db: db, log: log}
+}
+
+// SetLocationEnricher injects the location enricher that hydrates deprecated
+// location fields (DriveFileID, LocalPath, etc.) from asset_locations on read.
+// Must be called after New and before any Get/List calls. Nil is safe (no-op).
+func (r *Repository) SetLocationEnricher(e *asset.LocationEnricher) {
+	r.enricher = e
 }
 
 // ── CRUD ───────────────────────────────────────────────────────────────
@@ -190,6 +198,7 @@ func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, err
 	if m.LifecycleState == asset.StateDeleted {
 		return nil, asset.ErrSoftDeleted
 	}
+	r.enricher.Enrich(ctx, m)
 	return m, nil
 }
 
@@ -253,7 +262,11 @@ func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.Me
 		}
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	r.enricher.EnrichSlice(ctx, out)
+	return out, nil
 }
 
 // Count returns the number of rows matching filter (no pagination).

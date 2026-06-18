@@ -235,6 +235,7 @@ func wireArtlistService(
 		coreDeps.DriveClient,
 		coreDeps.AssetProcessingRepo,
 		coreDeps.AssetVersionsRepo,
+		coreDeps.AssetLocationRepo,
 		log,
 	)
 

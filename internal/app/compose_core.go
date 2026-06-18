@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
@@ -149,6 +150,9 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// 4. Media Processing
 	clipsOnlyRepo := clips.NewRepository(dbs.main.DB, log)
 	assetRepo := assetrepo.New(dbs.main.DB, log)
+	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
+	assetLocEnricher := asset.NewLocationEnricher(assetLocRepo)
+	assetRepo.SetLocationEnricher(assetLocEnricher)
 	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log, driveUploader)
 
 	// 5. Asset Services

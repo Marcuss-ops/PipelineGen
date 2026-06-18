@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
 )
 
-func (s *Service) getCachedSearch(ctx context.Context, key string) ([]models.MediaAsset, bool) {
+func (s *Service) getCachedSearch(ctx context.Context, key string) ([]asset.MediaAsset, bool) {
 	if s.clipsRepo == nil || s.clipsRepo.DB() == nil {
 		return nil, false
 	}
@@ -34,14 +34,14 @@ func (s *Service) getCachedSearch(ctx context.Context, key string) ([]models.Med
 		return nil, false
 	}
 
-	var results []models.MediaAsset
+	var results []asset.MediaAsset
 	if err := json.Unmarshal([]byte(resultsJSON), &results); err != nil {
 		return nil, false
 	}
 	return results, true
 }
 
-func (s *Service) setCachedSearch(ctx context.Context, key string, results []models.MediaAsset) {
+func (s *Service) setCachedSearch(ctx context.Context, key string, results []asset.MediaAsset) {
 	if s.clipsRepo == nil || s.clipsRepo.DB() == nil {
 		return
 	}
