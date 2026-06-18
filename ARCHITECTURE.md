@@ -40,7 +40,7 @@ unified job queue; HTTP traffic is served by Gin.
 │                                                   ▼                   │
 │                   ┌─────────────────────────────────────────────┐    │
 │                   │  internal/app (composition)                  │    │
-│                   │  WireRegistry, ExportInitCoreMinimal        │    │
+│                   │  WireRegistry, WireServices                 │    │
 │                   │  builds CoreDeps once, hands to modules     │    │
 │                   └─────────┬─────────────────────┬─────────────┘    │
 │                             │                     │                  │

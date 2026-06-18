@@ -283,10 +283,10 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	}
 
 	// ── Delivery runner (always runs if deliveries service exists) ────
-	if svcs.deliverySvc != nil && svcs.deliveryRunner != nil {
+	if svcs.DeliveryService != nil && svcs.DeliveryRunner != nil {
 		concurrent.SafeGo("delivery-runner", func() {
 			log.Info("Delivery runner starting")
-			svcs.deliveryRunner.Start(ctx)
+			svcs.DeliveryRunner.Start(ctx)
 		})
 	}
 

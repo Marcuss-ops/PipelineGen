@@ -5,6 +5,7 @@ import (
 
 	"go.uber.org/zap"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
@@ -42,7 +43,7 @@ type TextTranslationService interface {
 
 // JobEnqueueService enqueues background jobs.
 type JobEnqueueService interface {
-	Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*models.Job, error)
+	Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*domainjob.Job, error)
 }
 
 // HarvestService enqueues clip harvest jobs.

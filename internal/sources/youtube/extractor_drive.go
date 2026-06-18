@@ -77,7 +77,7 @@ func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFold
 	}
 
 	folderID := fmt.Sprintf("clipfolder_youtube_%s", videoID)
-	existingFolder, err := s.clipsRepo.GetClipFolder(ctx, folderID)
+	existingFolder, err := s.clipsRepo.GetFolder(ctx, folderID)
 	if err == nil && existingFolder != nil {
 		s.log.Info("loaded existing clip folder", zap.String("folder_id", folderID))
 
@@ -335,7 +335,7 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *models.ClipFolde
 	}
 
 	// Upsert clip folder to DB
-	if err := s.folderMemory.UpsertClipFolder(ctx, clipFolder); err != nil {
+	if err := s.folderMemory.UpsertFolder(ctx, clipFolder); err != nil {
 		s.log.Warn("failed to upsert clip folder", zap.Error(err))
 	}
 }

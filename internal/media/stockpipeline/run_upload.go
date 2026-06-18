@@ -10,8 +10,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -122,7 +122,7 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 		tags = append(tags, q)
 	}
 
-	clip := &models.MediaAsset{
+	clip := &domainasset.MediaAsset{
 		ID:           upResult.FileID,
 		Name:         chunkTitle + ".mp4",
 		Filename:     chunkTitle + ".mp4",
@@ -136,13 +136,13 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 		Tags:         tags,
 		Source:       "stock",
 		Category:     "file",
-		Duration:     videoCfg.ChunkDuration,
+		DurationMs:   int64(videoCfg.ChunkDuration) * 1000,
 		SearchText:   semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStrings(chunkRes.SourceIDs...), " ")),
 		LocalPath:    chunkPath,
-		Status:       "ready",
 		CreatedAt:    time.Now().UTC(),
 		UpdatedAt:    time.Now().UTC(),
 	}
+	clip.SetMetadataString("status", "ready")
 	clip.SetMetadataString("local_path", chunkPath)
 	clip.SetMetadataString("folder_id", folderID)
 	clip.SetMetadataString("folder_path", input.Subfolder+"/"+input.FolderName)
@@ -176,7 +176,7 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 // job would hit the legacy branch. Both branches produce equivalent
 // visible state (the only difference is Qdrant indexing fire-right vs.
 // worker-pulled), so this is benign — the system is never crash-unsafe.
-func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *models.MediaAsset) error {
+func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *domainasset.MediaAsset) error {
 	// Always update search terms FIRST against the canonical row so the
 	// tags_norm / search_text columns never lag the embeddable record.
 	// Skipped for folder rows because UpdateSearchTerms rejects them in
@@ -206,8 +206,8 @@ func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *models.Media
 	if s.clipsRepo == nil {
 		return fmt.Errorf("upsertChunkAndDispatch: clipsRepo is nil and dispatcher is nil")
 	}
-	if err := s.clipsRepo.UpsertClip(ctx, clip); err != nil {
-		return fmt.Errorf("clipsRepo.UpsertClip: %w", err)
+	if err := s.clipsRepo.Upsert(ctx, clip); err != nil {
+		return fmt.Errorf("clipsRepo.Upsert: %w", err)
 	}
 	// Legacy async IndexClip — preserved when no dispatcher is wired. The
 	// !clip.IsFolder gate keeps folder metadata rows out of Qdrant.

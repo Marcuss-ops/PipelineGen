@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
@@ -146,15 +147,15 @@ func (s *Service) SetAssetRepo(r *assetrepo.Repository) {
 //      IndexClip atomically through the outbox_events. The carry-over from
 //      before PR12b.
 //
-//   3. legacy fallback: clipsRepo.UpsertClip. No outbox, no Qdrant side-effect.
+//   3. legacy fallback: clipsRepo.Upsert. No outbox, no Qdrant side-effect.
 //      Only reached when neither assetRepo nor dispatcher is wired (which is
 //      the case for tests that don't construct the full composition root).
 //
 // Used by enrichment.go + segment.go so both call sites share the same
 // crash-safety contract.
-func (s *Service) dispatchOrIndex(ctx context.Context, clip *models.MediaAsset, hash string) error {
+func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.MediaAsset, hash string) error {
 	if s.assetRepo != nil {
-		return s.assetRepo.Upsert(ctx, toAssetDomain(clip))
+		return s.assetRepo.Upsert(ctx, clip)
 	}
 	if s.dispatcher != nil {
 		return s.dispatcher.EnqueueAndIndex(ctx, clip, hash)
@@ -162,18 +163,18 @@ func (s *Service) dispatchOrIndex(ctx context.Context, clip *models.MediaAsset, 
 	if s.clipsRepo == nil {
 		return nil
 	}
-	return s.clipsRepo.UpsertClip(ctx, clip)
+	return s.clipsRepo.Upsert(ctx, clip)
 }
 
 // RegisterHandler registers this service as a handler for youtube_clip.extract jobs
 // and youtube.rebuild_search_text jobs.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(domainjob.TypeYouTubeClipExtract, s.HandleJob)
-		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", domainjob.TypeYouTubeClipExtract))
+		jobsSvc.RegisterHandler(domainjob.JobTypeYouTubeClipExtract, s.HandleJob)
+		s.log.Info("registered youtube_clip.extract job handler", zap.String("type", domainjob.JobTypeYouTubeClipExtract))
 
-		jobsSvc.RegisterHandler(domainjob.TypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
-		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", domainjob.TypeYouTubeRebuildST))
+		jobsSvc.RegisterHandler(domainjob.JobTypeYouTubeRebuildST, s.HandleRebuildSearchTextJob)
+		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", domainjob.JobTypeYouTubeRebuildST))
 	}
 }
 

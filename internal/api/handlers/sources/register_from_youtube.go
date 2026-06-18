@@ -12,8 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
@@ -169,7 +169,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 					"video_id":      videoID,
 					"name":          existingClip.Name,
 					"filename":      existingClip.Filename,
-					"duration_sec":  existingClip.Duration,
+					"duration_sec":  existingClip.DurationMs / 1000,
 					"drive_link":    existingClip.DriveLink,
 					"drive_file_id": existingClip.DriveFileID,
 					"file_hash":     existingClip.FileHash,
@@ -492,25 +492,24 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	// 7. Create MediaAsset record
 	now := time.Now().UTC()
-	clip := &models.MediaAsset{
-		ID:          clipID,
-		Name:        name,
-		Filename:    driveFilename,
-		Source:      source,
-		Category:    req.Category,
-		Group:       group,
-		MediaType:   "video",
-		Tags:        req.Tags,
-		SearchText:  description,
-		LocalPath:   downloadedPath,
-		FileHash:    fileHash,
-		FolderID:    targetFolderID,
-		FolderPath:  group,
-		ExternalURL: req.URL,
-		Status:      "processed",
-		Duration:    duration,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+	clip := &asset.MediaAsset{
+		ID:         clipID,
+		Name:       name,
+		Filename:   driveFilename,
+		Source:     source,
+		Category:   req.Category,
+		Group:      group,
+		MediaType:  "video",
+		Tags:       req.Tags,
+		SearchText: description,
+		LocalPath:  downloadedPath,
+		FileHash:   fileHash,
+		FolderID:   targetFolderID,
+		FolderPath: group,
+		SourceURL:  req.URL,
+		DurationMs: int64(duration) * 1000,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 
 	clip.SetMetadataString("youtube_video_id", videoID)

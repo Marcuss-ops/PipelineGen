@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -123,53 +124,160 @@ func NewRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical *assetrepo.Re
 
 // ── asset.Repository interface (PR1: canonical delegation) ──────────────
 
-func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.Upsert: canonical repo not wired")
+func (r *Repository) Upsert(ctx context.Context, clip *asset.MediaAsset) error {
+	if r.canonical != nil {
+		return r.canonical.Upsert(ctx, clip)
 	}
-	return r.canonical.Upsert(ctx, m)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		}
+	}()
+	if err := r.UpsertTx(ctx, tx, clip); err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			r.log.Warn("rollback failed", zap.Error(rbErr))
+		}
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, error) {
-	if r.canonical == nil {
-		return nil, fmt.Errorf("clips.Repository.Get: canonical repo not wired")
+	if r.canonical != nil {
+		return r.canonical.Get(ctx, id)
 	}
-	return r.canonical.Get(ctx, id)
+	query := r.buildMediaAssetQuery("") + " AND id = ? LIMIT 1"
+	row := r.db.QueryRowContext(ctx, query, id)
+	return r.scanCanonicalAssetRow(row)
 }
 
 func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.MediaAsset, error) {
-	if r.canonical == nil {
-		return nil, fmt.Errorf("clips.Repository.List: canonical repo not wired")
+	if r.canonical != nil {
+		return r.canonical.List(ctx, filter)
 	}
-	return r.canonical.List(ctx, filter)
+	return nil, fmt.Errorf("clips.Repository.List: canonical repo not wired")
 }
 
 func (r *Repository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
-	if r.canonical == nil {
-		return 0, fmt.Errorf("clips.Repository.Count: canonical repo not wired")
+	if r.canonical != nil {
+		return r.canonical.Count(ctx, filter)
 	}
-	return r.canonical.Count(ctx, filter)
+	return 0, fmt.Errorf("clips.Repository.Count: canonical repo not wired")
 }
 
 func (r *Repository) SoftDelete(ctx context.Context, id string) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.SoftDelete: canonical repo not wired")
+	if r.canonical != nil {
+		return r.canonical.SoftDelete(ctx, id)
 	}
-	return r.canonical.SoftDelete(ctx, id)
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip id is required")
+	}
+	now := timeutil.FormatRFC3339(time.Now())
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets SET lifecycle_state = 'deleted', deleted_at = ? WHERE id = ?`, now, id)
+	return err
 }
 
 func (r *Repository) Restore(ctx context.Context, id string) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.Restore: canonical repo not wired")
+	if r.canonical != nil {
+		return r.canonical.Restore(ctx, id)
 	}
-	return r.canonical.Restore(ctx, id)
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip id is required")
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = '' WHERE id = ?`, id)
+	return err
 }
 
 func (r *Repository) HardDelete(ctx context.Context, id string) error {
-	if r.canonical == nil {
-		return fmt.Errorf("clips.Repository.HardDelete: canonical repo not wired")
+	if r.canonical != nil {
+		return r.canonical.HardDelete(ctx, id)
 	}
-	return r.canonical.HardDelete(ctx, id)
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("clip id is required")
+	}
+	_, err := r.db.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
+	return err
+}
+
+// ── Legacy method aliases (PR2: bridge for callers not yet migrated) ─────
+
+// GetClip is a legacy alias for Get.
+func (r *Repository) GetClip(ctx context.Context, id string) (*asset.MediaAsset, error) {
+	return r.Get(ctx, id)
+}
+
+// UpsertClip is a legacy alias for Upsert.
+func (r *Repository) UpsertClip(ctx context.Context, clip *asset.MediaAsset) error {
+	return r.Upsert(ctx, clip)
+}
+
+// DeleteClip is a legacy alias for SoftDelete.
+func (r *Repository) DeleteClip(ctx context.Context, id string) error {
+	return r.SoftDelete(ctx, id)
+}
+
+// HardDeleteClip is a legacy alias for HardDelete.
+func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
+	return r.HardDelete(ctx, id)
+}
+
+// RestoreClip is a legacy alias for Restore.
+func (r *Repository) RestoreClip(ctx context.Context, id string) error {
+	return r.Restore(ctx, id)
+}
+
+// DeleteClipByDriveLink is a legacy alias for DeleteByDriveLink.
+func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
+	return r.DeleteByDriveLink(ctx, driveLink)
+}
+
+// UpsertClipTx is a legacy alias for UpsertTx.
+func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
+	return r.UpsertTx(ctx, tx, clip)
+}
+
+// GetClipByDriveFileID fetches a clip by its Google Drive file ID.
+func (r *Repository) GetClipByDriveFileID(ctx context.Context, driveFileID string) (*asset.MediaAsset, error) {
+	query := r.buildMediaAssetQuery("") + " AND drive_file_id = ? LIMIT 1"
+	row := r.db.QueryRowContext(ctx, query, driveFileID)
+	return r.scanCanonicalAssetRow(row)
+}
+
+// ── Legacy folder method aliases ─────────────────────────────────
+
+// UpsertClipFolder is a legacy alias for UpsertFolder.
+func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFolder) error {
+	return r.UpsertFolder(ctx, folder)
+}
+
+// ListClipFolders is a legacy alias for ListFolders.
+func (r *Repository) ListClipFolders(ctx context.Context, source string) ([]*models.ClipFolder, error) {
+	return r.ListFolders(ctx, source)
+}
+
+// DeleteClipFolder is a legacy alias for DeleteFolder.
+func (r *Repository) DeleteClipFolder(ctx context.Context, id string) error {
+	return r.DeleteFolder(ctx, id)
+}
+
+// GetClipFolder is a legacy alias for GetFolder.
+func (r *Repository) GetClipFolder(ctx context.Context, id string) (*models.ClipFolder, error) {
+	return r.GetFolder(ctx, id)
+}
+
+// GetClipFolderByVideoID is a legacy alias for GetFolderByVideoID.
+func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
+	return r.GetFolderByVideoID(ctx, videoID)
 }
 
 // ── Legacy write methods (PR2: converted to canonical *asset.MediaAsset) ─
@@ -186,33 +294,8 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 	return r.db.BeginTx(ctx, opts)
 }
 
-// UpsertClip inserts or updates a media asset. Now accepts *asset.MediaAsset.
-// Delegates to the canonical Upsert when canonical is wired; otherwise writes directly.
-func (r *Repository) UpsertClip(ctx context.Context, clip *asset.MediaAsset) error {
-	if r.canonical != nil {
-		return r.canonical.Upsert(ctx, clip)
-	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p)
-		}
-	}()
-	if err := r.UpsertClipTx(ctx, tx, clip); err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			r.log.Warn("rollback failed", zap.Error(rbErr))
-		}
-		return err
-	}
-	return tx.Commit()
-}
-
-// UpsertClipTx is the tx-aware variant of UpsertClip. Now accepts *asset.MediaAsset.
-func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
+// UpsertTx is the tx-aware variant of Upsert. Now accepts *asset.MediaAsset.
+func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
 	tagsJSON, err := json.Marshal(clip.Tags)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tags: %w", err)
@@ -284,41 +367,8 @@ func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.M
 	return err
 }
 
-// DeleteClip soft-deletes a clip by its ID.
-func (r *Repository) DeleteClip(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip id is required")
-	}
-	now := timeutil.FormatRFC3339(time.Now())
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'deleted', deleted_at = ? WHERE id = ?`, now, id)
-	return err
-}
-
-// RestoreClip restores a soft-deleted clip.
-func (r *Repository) RestoreClip(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip id is required")
-	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = '' WHERE id = ?`, id)
-	return err
-}
-
-// HardDeleteClip permanently deletes a clip.
-func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("clip id is required")
-	}
-	_, err := r.db.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
-	return err
-}
-
-// DeleteClipByDriveLink deletes a clip by its drive_link or download_link.
-func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
+// DeleteByDriveLink deletes a clip by its drive_link or download_link.
+func (r *Repository) DeleteByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {
 		return fmt.Errorf("drive link is required")

@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFolder) error {
+func (r *Repository) UpsertFolder(ctx context.Context, folder *models.ClipFolder) error {
 	now := time.Now()
 	// Compute search key: lowercase group + folder path, remove spaces
 	searchKey := strings.ToLower(folder.Group + " " + folder.FolderPath)
@@ -40,8 +40,8 @@ func (r *Repository) UpsertClipFolder(ctx context.Context, folder *models.ClipFo
 	return err
 }
 
-// DeleteClipFolder deletes a clip folder by its ID.
-func (r *Repository) DeleteClipFolder(ctx context.Context, id string) error {
+// DeleteFolder deletes a clip folder by its ID.
+func (r *Repository) DeleteFolder(ctx context.Context, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("clip folder id is required")
@@ -51,8 +51,8 @@ func (r *Repository) DeleteClipFolder(ctx context.Context, id string) error {
 	return err
 }
 
-// GetClipFolder retrieves a clip folder by ID
-func (r *Repository) GetClipFolder(ctx context.Context, id string) (*models.ClipFolder, error) {
+// GetFolder retrieves a clip folder by ID
+func (r *Repository) GetFolder(ctx context.Context, id string) (*models.ClipFolder, error) {
 	query := buildClipFolderQuery("") + " WHERE id = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, id)
 
@@ -73,8 +73,8 @@ func (r *Repository) GetClipFolder(ctx context.Context, id string) (*models.Clip
 	return &folder, nil
 }
 
-// GetClipFolderByVideoID retrieves a clip folder by video ID
-func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
+// GetFolderByVideoID retrieves a clip folder by video ID
+func (r *Repository) GetFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
 	query := buildClipFolderQuery("") + " WHERE video_id = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, videoID)
 
@@ -95,9 +95,9 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 	return &folder, nil
 }
 
-// ListClipsByFolderID returns all clips for a given folder ID (canonical column after migration 059).
-func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*asset.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
+// ListByFolderID returns all clips for a given folder ID (canonical column after migration 059).
+func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*asset.MediaAsset, error) {
+	query := r.buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
 	if err != nil {
 		return nil, err
@@ -115,9 +115,9 @@ func (r *Repository) ListClipsByFolderID(ctx context.Context, folderID string) (
 	return clips, rows.Err()
 }
 
-// ListClipsByFolderPath returns all clips for a given folder path (canonical column).
-func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*asset.MediaAsset, error) {
-	query := buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
+// ListByFolderPath returns all clips for a given folder path (canonical column).
+func (r *Repository) ListByFolderPath(ctx context.Context, folderPath string) ([]*asset.MediaAsset, error) {
+	query := r.buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
 		return nil, err
@@ -135,8 +135,8 @@ func (r *Repository) ListClipsByFolderPath(ctx context.Context, folderPath strin
 	return clips, rows.Err()
 }
 
-// CountClipsByFolderID returns the number of clips in a folder (folder_id is a canonical column).
-func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) (int, error) {
+// CountByFolderID returns the number of clips in a folder (folder_id is a canonical column).
+func (r *Repository) CountByFolderID(ctx context.Context, folderID string) (int, error) {
 	query := "SELECT COUNT(*) FROM media_assets WHERE folder_id = ?"
 	row := r.db.QueryRowContext(ctx, query, folderID)
 	var count int
@@ -144,8 +144,8 @@ func (r *Repository) CountClipsByFolderID(ctx context.Context, folderID string) 
 	return count, err
 }
 
-// ListClipFolders returns all clip folders, optionally filtered by source
-func (r *Repository) ListClipFolders(ctx context.Context, source string) ([]*models.ClipFolder, error) {
+// ListFolders returns all clip folders, optionally filtered by source
+func (r *Repository) ListFolders(ctx context.Context, source string) ([]*models.ClipFolder, error) {
 	query := buildClipFolderQuery(source)
 	if source != "" {
 		query += " ORDER BY updated_at DESC"
@@ -182,9 +182,9 @@ func (r *Repository) ListClipFolders(ctx context.Context, source string) ([]*mod
 	return folders, rows.Err()
 }
 
-// SearchClipFolders searches clip folders by keyword in source_url, video_id, group_name, or folder_path
+// SearchFolders searches clip folders by keyword in source_url, video_id, group_name, or folder_path
 // Uses LIKE search.
-func (r *Repository) SearchClipFolders(ctx context.Context, keyword string) ([]*models.ClipFolder, error) {
+func (r *Repository) SearchFolders(ctx context.Context, keyword string) ([]*models.ClipFolder, error) {
 	columns := []string{"source_url", "video_id", "group_name", "folder_path"}
 	keywords := strings.Fields(keyword)
 	if len(keywords) == 0 {

@@ -144,7 +144,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 	}
 
 	// Ricarichiamo il clip dal DB per non sovrascrivere campi aggiornati nel frattempo
-	existing, err := e.repo.GetClip(ctx, clip.ID)
+	existing, err := e.repo.Get(ctx, clip.ID)
 	if err != nil || existing == nil {
 		// Se non troviamo il clip usiamo quello in memoria
 		existing = clip
@@ -195,7 +195,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 	}
 
 	// Aggiorna il DB
-	if err := e.repo.UpsertClip(ctx, existing); err != nil {
+	if err := e.repo.Upsert(ctx, existing); err != nil {
 		return fmt.Errorf("upsert after enrichment: %w", err)
 	}
 
@@ -215,7 +215,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 			"term":                 term,
 			"filename":             existing.Filename,
 			"file_hash":            existing.FileHash,
-			"duration_sec":         existing.Duration,
+			"duration_sec":         existing.DurationMs / 1000,
 			"created_at":           existing.CreatedAt.Format(time.RFC3339),
 			"drive_file_id":        existing.DriveFileID,
 			"drive_link":           existing.DriveLink,

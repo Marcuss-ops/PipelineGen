@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // DriveFileChecker is the minimal interface we need from the Drive uploader
@@ -119,7 +118,7 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 // RegisterHandler registers the maintenance job handler.
 func (s *Service) RegisterHandler() error {
 	if s.jobsSvc != nil {
-		if err := s.jobsSvc.RegisterHandler(models.JobTypeSystemCleanup, s.HandleJob); err != nil {
+		if err := s.jobsSvc.RegisterHandler(domainjob.JobTypeSystemCleanup, s.HandleJob); err != nil {
 			return err
 		}
 		s.log.Info("Registered system maintenance job handler")

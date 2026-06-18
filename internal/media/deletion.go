@@ -78,22 +78,30 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 		if voErr != nil {
 			return fmt.Errorf("voiceover not found: %w", voErr)
 		}
-		driveFileID = driveutil.FileIDFromLink(rec.DriveLink)
+		clip := assetregistry.VoiceoverRecordToClip(rec)
+		driveFileID = clip.DriveFileID
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(rec.DownloadLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
+		}
+		if driveFileID == "" {
+			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink)
 		}
 	} else if canonical == "images" && s.imagesRepo != nil {
 		img, imgErr := s.imagesRepo.GetByID(ctx, clipID)
 		if imgErr != nil {
 			return fmt.Errorf("image not found: %w", imgErr)
 		}
-		driveFileID = driveutil.FileIDFromLink(img.DriveLink)
+		clip := assetregistry.ImageAssetToClip(img)
+		driveFileID = clip.DriveFileID
 		if driveFileID == "" {
-			driveFileID = driveutil.FileIDFromLink(img.DownloadLink)
+			driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
+		}
+		if driveFileID == "" {
+			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink)
 		}
 	} else if repo != nil {
 		var clip *asset.MediaAsset
-		clip, err = repo.GetClip(ctx, clipID)
+		clip, err = repo.Get(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("clip not found: %w", err)
 		}
@@ -124,7 +132,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	} else if canonical == "images" && s.imagesRepo != nil {
 		err = s.imagesRepo.Delete(ctx, clipID)
 	} else if repo != nil {
-		err = repo.DeleteClip(ctx, clipID)
+		err = repo.SoftDelete(ctx, clipID)
 	}
 
 	if err != nil {
@@ -187,7 +195,7 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 		switch source {
 		case "artlist", "clips", "stock":
 			clipRepo := repo.(*clips.Repository)
-			clip, err := clipRepo.GetClipByDriveFileID(ctx, fileID)
+			clip, err := clipRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && clip != nil {
 				return clip, source, nil
 			}
@@ -195,13 +203,13 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 			voRepo := repo.(*voiceovers.Repository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
-				return clip, source, nil
+				return assetregistry.VoiceoverRecordToClip(rec), source, nil
 			}
 		case "images":
 			imgRepo := repo.(*images.Repository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
-				return clip, source, nil
+				return assetregistry.ImageAssetToClip(img), source, nil
 			}
 		}
 	}

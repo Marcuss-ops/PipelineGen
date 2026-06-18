@@ -19,35 +19,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-func ExportInitCoreMinimal(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
+// InitCore bootstraps the core dependency graph.
+func InitCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
 	return initCoreMinimal(cfg, log, "")
-}
-
-// ExportInitCoreWithMode exposes the internal bootstrap with an explicit mode.
-// This is used by split binaries (api/scheduler) that need the same graph but
-// different background-job behavior.
-func ExportInitCoreWithMode(cfg *config.Config, log *zap.Logger, mode string) (*CoreDeps, CleanupFunc, error) {
-	return initCoreMinimal(cfg, log, mode)
-}
-
-// ExportInitCoreMinimalWithContext is like ExportInitCoreMinimal but derives
-// the app lifecycle context from the supplied parent (typically a
-// signal-derived context from main). When parent is nil, context.Background()
-// is used.
-func ExportInitCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, parent context.Context) (*CoreDeps, CleanupFunc, error) {
-	if parent == nil {
-		parent = context.Background()
-	}
-	return initCoreMinimalWithContext(cfg, log, "", parent)
-}
-
-// ExportInitCoreWithModeAndContext is the context-aware variant of
-// ExportInitCoreWithMode.
-func ExportInitCoreWithModeAndContext(cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*CoreDeps, CleanupFunc, error) {
-	if parent == nil {
-		parent = context.Background()
-	}
-	return initCoreMinimalWithContext(cfg, log, mode, parent)
 }
 
 // initCoreMinimal creates only the services needed by the text/doc server.

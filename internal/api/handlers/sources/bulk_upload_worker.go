@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
@@ -304,22 +305,22 @@ func (h *Handler) processOneClip(
 		category = strings.SplitN(cand.Subdir, "/", 2)[0]
 	}
 
-	clip := &models.MediaAsset{
-		ID:         clipID,
-		Name:       cand.DisplayName(),
-		Filename:   filepath.Base(cand.LocalPath),
-		Source:     source,
-		Category:   category,
-		MediaType:  "video",
-		SearchText: deriveSearchText(cand),
-		LocalPath:  cand.LocalPath,
-		FileHash:   fileHash,
-		FolderID:   targetFolderID,
-		FolderPath: cand.Subdir,
-		Status:     "uploaded",
-		Duration:   extractIntFromManifest(cand.Manifest, "duration_sec"),
-		CreatedAt:  now,
-		UpdatedAt:  now,
+	clip := &domainasset.MediaAsset{
+		ID:           clipID,
+		Name:         cand.DisplayName(),
+		Filename:     filepath.Base(cand.LocalPath),
+		Source:       source,
+		Category:     category,
+		MediaType:    "video",
+		SearchText:   deriveSearchText(cand),
+		LocalPath:    cand.LocalPath,
+		FileHash:     fileHash,
+		FolderID:     targetFolderID,
+		FolderPath:   cand.Subdir,
+		LifecycleState: domainasset.StateReady,
+		DurationMs:   int64(extractIntFromManifest(cand.Manifest, "duration_sec")) * 1000,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	// Store the YouTube ID and source URL if the manifest has them
 	if cand.Manifest != nil {
@@ -362,7 +363,7 @@ func (h *Handler) processOneClip(
 		}
 	}
 
-	if err := h.clipsRepo.UpsertClip(ctx, clip); err != nil {
+	if err := h.clipsRepo.Upsert(ctx, clip); err != nil {
 		failed.Add(1)
 		return fmt.Errorf("upsert clip: %w", err)
 	}

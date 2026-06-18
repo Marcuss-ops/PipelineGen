@@ -243,7 +243,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
-		existingClip, err := o.svc.artlistRepo.GetClip(ctx, item.ClipID)
+		existingClip, err := o.svc.artlistRepo.Get(ctx, item.ClipID)
 		if err != nil {
 			o.svc.log.Warn("stagePersistResults: artlistRepo.GetClip failed",
 				zap.String("clip_id", item.ClipID), zap.Error(err))
@@ -259,7 +259,8 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		existingClip.DriveFileID = item.DriveFileID
 		existingClip.FileHash = item.FileHash
 		existingClip.DownloadLink = item.DownloadLink
-		existingClip.Status = "processed"
+		existingClip.SetMetadataString("status", "processed")
+		existingClip.LifecycleState = asset.StateReady
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
 		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash)

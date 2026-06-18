@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
@@ -215,7 +215,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 	}
 
 	// 6. Save metadata record to SQLite DB
-	clip := models.MediaAsset{
+	clip := domainasset.MediaAsset{
 		ID:             "sfx_" + hashStr[:12],
 		Name:           name,
 		Filename:       filepath.Base(dest.LocalPath),
@@ -226,9 +226,9 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		DriveFileID:    driveFileID,
 		ParentFolderID: parentFolderID,
 		Source:         "sound_effect",
-		Duration:       int(duration * 1000),
+		DurationMs:     int64(duration * 1000),
 		LocalPath:      dest.LocalPath,
-		Status:         "ready",
+		LifecycleState: domainasset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		Tags:           tags,
@@ -236,7 +236,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 	}
 
 	if h.clipsRepo != nil {
-		if err := h.clipsRepo.UpsertClip(ctx, &clip); err != nil {
+		if err := h.clipsRepo.Upsert(ctx, &clip); err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to save clip record to DB: %w", err))
 			return
 		}
@@ -249,7 +249,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		"local":     clip.LocalPath,
 		"drive_id":  clip.DriveFileID,
 		"drive_url": clip.DriveLink,
-		"duration":  clip.Duration,
+		"duration":  clip.DurationMs,
 		"tags":      clip.Tags,
 	})
 }

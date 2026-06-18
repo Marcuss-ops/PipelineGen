@@ -30,7 +30,7 @@ func (h *Handler) ListFolders(c *gin.Context) {
 		limit = 500
 	}
 
-	folders, err := repo.ListClipFolders(c.Request.Context(), "")
+	folders, err := repo.ListFolders(c.Request.Context(), "")
 	if err != nil {
 		apiutil.InternalError(c, err)
 		return
@@ -63,10 +63,10 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Get folder
-	folder, err := repo.GetClipFolder(ctx, folderID)
+	folder, err := repo.GetFolder(ctx, folderID)
 	if err != nil {
 		// Try by folder_id (Drive ID)
-		folders, err2 := repo.ListClipFolders(ctx, "")
+		folders, err2 := repo.ListFolders(ctx, "")
 		if err2 != nil {
 			apiutil.InternalError(c, err2)
 			return
@@ -86,9 +86,9 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 	}
 
 	// Get clips in folder
-	clipList, _ := repo.ListClipsByFolderID(ctx, folder.FolderID)
+	clipList, _ := repo.ListByFolderID(ctx, folder.FolderID)
 	if len(clipList) == 0 {
-		clipList, _ = repo.ListClipsByFolderPath(ctx, folder.FolderPath)
+		clipList, _ = repo.ListByFolderPath(ctx, folder.FolderPath)
 	}
 
 	// Compute stats
@@ -149,7 +149,7 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 	var dbFolderID string
 	ctx := c.Request.Context()
 
-	folder, err := repo.GetClipFolder(ctx, folderID)
+	folder, err := repo.GetFolder(ctx, folderID)
 	if err == nil && folder != nil {
 		driveFolderID = folder.FolderID
 		dbFolderID = folder.ID
@@ -160,7 +160,7 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 		}
 	} else {
 		driveFolderID = folderID
-		folders, err2 := repo.ListClipFolders(ctx, "")
+		folders, err2 := repo.ListFolders(ctx, "")
 		if err2 == nil {
 			for _, f := range folders {
 				if f.FolderID == folderID {
@@ -189,7 +189,7 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 	}
 
 	if dbFolderID != "" {
-		if err := repo.DeleteClipFolder(ctx, dbFolderID); err != nil {
+		if err := repo.DeleteFolder(ctx, dbFolderID); err != nil {
 			h.log.Error("failed to delete folder from database", zap.String("id", dbFolderID), zap.Error(err))
 		}
 	}
@@ -217,7 +217,7 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 	var dbFolderID string
 	ctx := c.Request.Context()
 
-	folder, err := repo.GetClipFolder(ctx, folderID)
+	folder, err := repo.GetFolder(ctx, folderID)
 	if err == nil && folder != nil {
 		driveFolderID = folder.FolderID
 		dbFolderID = folder.ID
@@ -228,7 +228,7 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 		}
 	} else {
 		driveFolderID = folderID
-		folders, err2 := repo.ListClipFolders(ctx, "")
+		folders, err2 := repo.ListFolders(ctx, "")
 		if err2 == nil {
 			for _, f := range folders {
 				if f.FolderID == folderID {
@@ -257,7 +257,7 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 	}
 
 	if dbFolderID != "" {
-		if err := repo.DeleteClipFolder(ctx, dbFolderID); err != nil {
+		if err := repo.DeleteFolder(ctx, dbFolderID); err != nil {
 			h.log.Error("failed to delete folder from database", zap.String("id", dbFolderID), zap.Error(err))
 		}
 	}

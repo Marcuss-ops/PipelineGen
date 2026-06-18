@@ -144,6 +144,7 @@ func WireAssets(
 	if coreDeps.AssetRepo != nil {
 		handler.SetAssetRepo(coreDeps.AssetRepo)
 	}
+	mod := module.NewAssetsModule(cfg, log, handler)
 	log.Info("created unified Assets module")
 
 	return &AssetsWiring{

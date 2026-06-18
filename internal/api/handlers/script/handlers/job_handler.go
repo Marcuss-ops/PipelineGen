@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 
 	"go.uber.org/zap"
 )
@@ -15,13 +14,14 @@ import (
 // RegisterJobHandlers registers the handlers for script jobs
 func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobType("script.generate_batch"), h.HandleBatchScriptGenerateJob)
+		jobsSvc.RegisterHandler(domainjob.JobTypeBatchScriptGenerate, h.HandleBatchScriptGenerateJob)
 		h.log.Info("registered script.generate_batch job handler")
-		jobsSvc.RegisterHandler(models.JobType("script.generate_from_clips"), h.HandleClipScriptGenerateJob)
+		jobsSvc.RegisterHandler(domainjob.JobTypeClipScriptGenerate, h.HandleClipScriptGenerateJob)
 		h.log.Info("registered script.generate_from_clips job handler")
-		jobsSvc.RegisterHandler(models.JobType("script.generate_from_catalog"), h.HandleCatalogScriptGenerateJob)
+		jobsSvc.RegisterHandler(domainjob.JobTypeCatalogScriptGenerate, h.HandleCatalogScriptGenerateJob)
 		h.log.Info("registered script.generate_from_catalog job handler")
-		jobsSvc.RegisterHandler(models.JobType("script.curate"), h.HandleCurateJob)
+		// script.curate has no canonical domainjob constant yet, we can use the string literal directly.
+		jobsSvc.RegisterHandler("script.curate", h.HandleCurateJob)
 		h.log.Info("registered script.curate job handler")
 	}
 }

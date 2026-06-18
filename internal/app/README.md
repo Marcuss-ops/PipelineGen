@@ -23,7 +23,7 @@ Manages the concurrent lifecycle of background services. It ensures that when th
 - `lifecycle.go`: Sets up the core asset lifecycle service.
 - `media.go`, `artlist.go`, `youtubeclip.go`, etc.: Specialized wiring for feature-specific services.
 
-## Initialization Flow (ExportInitCore)
+## Initialization Flow
 
 The standard startup sequence follows these steps:
 1.  **Logger Initialization**: Setting up the global logger.
