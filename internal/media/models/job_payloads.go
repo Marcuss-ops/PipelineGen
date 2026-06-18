@@ -1,6 +1,10 @@
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+)
 
 // ── Typed job payloads (Punto 22) ─────────────────────────────────────────
 // Each job type has a corresponding payload struct and a factory that
@@ -143,12 +147,12 @@ type TypedPayload interface {
 
 // DecodePayload unmarshals the job's raw payload into the requested type T.
 // Returns an error if the payload cannot be decoded.
-func DecodePayload[T TypedPayload](job *Job) (*T, error) {
+func DecodePayload[T TypedPayload](j *job.Job) (*T, error) {
 	var payload T
-	if len(job.Payload) == 0 {
+	if len(j.Payload) == 0 {
 		return &payload, nil
 	}
-	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+	if err := json.Unmarshal(j.Payload, &payload); err != nil {
 		return nil, err
 	}
 	return &payload, nil

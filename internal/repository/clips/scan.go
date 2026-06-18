@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -17,62 +16,32 @@ type mediaAssetScanner interface {
 	Scan(dest ...any) error
 }
 
-// scanMediaAsset scans a media asset from any SQL scanner (sql.Rows or sql.Row).
-//
-// After migration 059 + this canonicalization round, every typed column on
-// media_assets is read directly from the column. The SELECT list
-// (mediaAssetColumns in repository.go) covers all 37 typed columns plus
-// metadata_json for non-canonical extras only (clipindexer search helpers,
-// prompt/mood/subjects, provider raw metadata, transcript-derivable search
-// fields, clipindexer state machine).
-//
-// IMPORTANT: every Scan target is a sql.NullX type so any column absence,
-// row-count mismatch, or table-mismatch surfaces as ErrNoRows / a typed
-// convertAssign error rather than a silent partial-population. Anywhere
-// the typed MediaAsset struct has no matching field (tags_norm,
-// relative_path, raw column reads), the target is a local sql.NullX still
-// required to keep the count math between SELECT and Scan in lockstep.
-//
-// The metadata_json fallbacks that previously lifted media_type / status /
-// local_path / drive_link / drive_file_id / download_link / file_hash from
-// the column-never-was-populated JSON map are GONE: migration 059 strips
-// those keys from metadata_json on the canonical column set, and UpsertClip
-// writes exclusively to the typed columns. Reading from the typed column
-// post-migration is the only path that yields non-empty values.
-//
-// Two fallbacks REMAIN because they have no canonical column:
-//   - drive_folder_id → folder_id piggyback (legacy column pre-030 still
-//     populated for backward compat with pre-migration rows)
-//   - group_name → clip.Group (source-specific annotation, not a column)
-func scanMediaAsset(s mediaAssetScanner) (*models.MediaAsset, error) {
-	var clip models.MediaAsset
+// scanMediaAsset scans a canonical asset.MediaAsset directly from any SQL scanner.
+// The SELECT list (mediaAssetColumns in repository.go) covers all typed columns plus
+// metadata_json for non-canonical extras.
+func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
+	var a asset.MediaAsset
 	var (
-		// Core identity / metadata.
 		idNull, sourceNull, nameNull, tagsNull, tagsNormNull sql.NullString
 		embeddingJSON                                        sql.NullString
 		duration                                             sql.NullInt64
 		urlNull                                              sql.NullString
-		// Per-source media info (added in canonical column extension).
-		mediaTypeNull, statusNull, localPathNull sql.NullString
-		relativePathNull, driveFileIDNull        sql.NullString
-		driveFolderID                            sql.NullString
-		driveLinkNull, downloadLinkNull          sql.NullString
-		fileHashNull                             sql.NullString
-		// Free-form extras (kept for non-canonical JSON helpers).
-		metadataStr           sql.NullString
-		visualEmb, transcriptEmb sql.NullString
-		// Timestamps.
-		createdAtStr, updatedAtStr sql.NullString
-		// Image dimensions (image rows; zero for non-image rows).
-		widthNull, heightNull sql.NullInt64
-		// Canonical columns (migration 059).
-		lifecycle, deletedAtStr                                  sql.NullString
-		folderIDNull, parentFolderIDNull, folderPathNull         sql.NullString
-		category, filename, errCol, thumbURL, phash              sql.NullString
-		searchText, sceneType                                    sql.NullString
-		qualityScore                                             sql.NullFloat64
-		reuseCount                                               sql.NullInt64
-		lastUsedAtNull                                           sql.NullString
+		mediaTypeNull, statusNull, localPathNull             sql.NullString
+		relativePathNull, driveFileIDNull                    sql.NullString
+		driveFolderID                                        sql.NullString
+		driveLinkNull, downloadLinkNull                      sql.NullString
+		fileHashNull                                         sql.NullString
+		metadataStr                                          sql.NullString
+		visualEmb, transcriptEmb                             sql.NullString
+		createdAtStr, updatedAtStr                           sql.NullString
+		widthNull, heightNull                                sql.NullInt64
+		lifecycle, deletedAtStr                              sql.NullString
+		folderIDNull, parentFolderIDNull, folderPathNull     sql.NullString
+		category, filename, errCol, thumbURL, phash          sql.NullString
+		searchText, sceneType                                sql.NullString
+		qualityScore                                         sql.NullFloat64
+		reuseCount                                           sql.NullInt64
+		lastUsedAtNull                                       sql.NullString
 	)
 
 	// Scan target order MUST match mediaAssetColumns in repository.go.
@@ -90,189 +59,109 @@ func scanMediaAsset(s mediaAssetScanner) (*models.MediaAsset, error) {
 		&lastUsedAtNull,
 	)
 	if err != nil {
-		// ErrNoRows, type mismatch, OR a column missing from the SELECT
-		// list all surface here. ALWAYS return nil on error — never a
-		// partially-populated clip, otherwise callers like GetClip will
-		// mistakenly return a non-nil clip after DeleteClip.
 		return nil, err
 	}
 
-	// Canonical column reads — mapped onto the typed MediaAsset struct.
-	clip.ID = idNull.String
-	clip.Source = sourceNull.String
-	clip.Name = nameNull.String
-	clip.TagsNorm = tagsNormNull.String
+	// Map onto canonical asset.MediaAsset.
+	a.ID = idNull.String
+	a.Source = sourceNull.String
+	a.Name = nameNull.String
 	if duration.Valid {
-		clip.Duration = int(duration.Int64)
+		a.DurationMs = duration.Int64
 	}
-	clip.ExternalURL = urlNull.String
-	clip.MediaType = mediaTypeNull.String
-	clip.Status = statusNull.String
-	clip.LocalPath = localPathNull.String
-	clip.RelativePath = relativePathNull.String
-	clip.DriveFileID = driveFileIDNull.String
-	clip.DriveLink = driveLinkNull.String
-	clip.DownloadLink = downloadLinkNull.String
-	clip.FileHash = fileHashNull.String
+	a.SourceURL = urlNull.String
+	a.ExternalURL = urlNull.String
+	a.MediaType = mediaTypeNull.String
+	a.LocalPath = localPathNull.String
+	a.DriveFileID = driveFileIDNull.String
+	a.DriveLink = driveLinkNull.String
+	a.DownloadLink = downloadLinkNull.String
+	a.FileHash = fileHashNull.String
 	if embeddingJSON.Valid {
-		clip.EmbeddingJSON = embeddingJSON.String
+		a.EmbeddingJSON = embeddingJSON.String
 	}
 	if visualEmb.Valid {
-		clip.VisualEmbedding = visualEmb.String
+		a.VisualEmbedding = visualEmb.String
 	}
 	if transcriptEmb.Valid {
-		clip.TranscriptEmbedding = transcriptEmb.String
+		a.TranscriptEmbedding = transcriptEmb.String
 	}
 
-	// Timestamps: created_at always populated by INSERT; updated_at
-	// separately maintained by the upsert path. Prefer updated_at when
-	// non-empty (UpsertClip refreshes it on every write); fall back to
-	// created_at so legacy callers that never updated updated_at still see
-	// a non-zero UpdatedAt.
+	// Timestamps.
 	if createdAtStr.Valid {
 		if t := timeutil.ParseRFC3339(createdAtStr.String); !t.IsZero() {
-			clip.CreatedAt = t
-			if clip.UpdatedAt.IsZero() {
-				clip.UpdatedAt = t
+			a.CreatedAt = t
+			if a.UpdatedAt.IsZero() {
+				a.UpdatedAt = t
 			}
 		}
 	}
 	if updatedAtStr.Valid {
 		if t := timeutil.ParseRFC3339(updatedAtStr.String); !t.IsZero() {
-			clip.UpdatedAt = t
+			a.UpdatedAt = t
 		}
 	}
 
-	// Image dimensions (zero for non-image rows; image_assets.repository
-	// also reads these directly via its own scan path).
 	if widthNull.Valid {
-		clip.Width = int(widthNull.Int64)
+		_ = widthNull.Int64 // width not on canonical struct
 	}
 	if heightNull.Valid {
-		clip.Height = int(heightNull.Int64)
+		_ = heightNull.Int64
 	}
 
-	// 15 canonical columns from migration 059.
-	clip.FolderID = folderIDNull.String
-	clip.ParentFolderID = parentFolderIDNull.String
-	clip.FolderPath = folderPathNull.String
-	clip.Category = category.String
-	clip.Filename = filename.String
-	clip.Error = errCol.String
-	clip.ThumbURL = thumbURL.String
-	clip.PHash = phash.String
-	clip.SearchText = searchText.String
-	clip.SceneType = sceneType.String
+	// Canonical columns from migration 059.
+	a.FolderID = folderIDNull.String
+	a.ParentFolderID = parentFolderIDNull.String
+	a.FolderPath = folderPathNull.String
+	a.Category = category.String
+	a.Filename = filename.String
+	a.ThumbnailURL = thumbURL.String
+	a.PHash = phash.String
+	a.SearchText = searchText.String
+	a.SceneType = sceneType.String
 	if qualityScore.Valid {
-		clip.QualityScore = qualityScore.Float64
+		a.QualityScore = qualityScore.Float64
 	}
 	if reuseCount.Valid {
-		clip.ReuseCount = int(reuseCount.Int64)
+		a.ReuseCount = int(reuseCount.Int64)
 	}
-	clip.LastUsedAt = lastUsedAtNull.String
+	a.LastUsedAt = lastUsedAtNull.String
 	if deletedAtStr.Valid && strings.TrimSpace(deletedAtStr.String) != "" {
 		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() {
-			clip.DeletedAt = &t
+			a.DeletedAt = &t
 		}
 	}
 	if lifecycle.Valid {
-		clip.LifecycleState = lifecycle.String
+		a.LifecycleState = asset.LifecycleState(lifecycle.String)
 	}
 
-	// Legacy fallback: if folder_id column is empty but the legacy
-	// drive_folder_id column has data, lift it into the canonical
-	// folder_id field. drive_folder_id is pre-migration-030 and a few
-	// pre-existing rows still have it; this piggyback keeps the service
-	// layer from needing to know about both columns.
-	if clip.FolderID == "" && driveFolderID.Valid && driveFolderID.String != "" {
-		clip.FolderID = driveFolderID.String
+	// Legacy fallback: drive_folder_id → folder_id.
+	if a.FolderID == "" && driveFolderID.Valid && driveFolderID.String != "" {
+		a.FolderID = driveFolderID.String
 	}
 
-	// Parse tags (the canonical column).
+	// Parse tags.
 	if tagsNull.Valid && tagsNull.String != "" && tagsNull.String != "[]" {
-		_ = json.Unmarshal([]byte(tagsNull.String), &clip.Tags)
+		_ = json.Unmarshal([]byte(tagsNull.String), &a.Tags)
 	}
 
-	// Parse metadata_json for non-canonical extras only (search helpers,
-	// prompt/mood/subjects, provider raw metadata, clipindexer state).
-	clip.SetMetadataJSON(metadataStr.String)
+	// Parse metadata_json for non-canonical extras only.
+	a.SetMetadataJSON(metadataStr.String)
 
-	// group_name (metadata_json-only, source-specific — no canonical
-	// column) is the last remaining non-canonical field that flows into
-	// the typed struct.
-	if clip.Group == "" {
-		clip.Group = clip.GetMetadataString("group_name")
+	// group_name from metadata_json.
+	if a.Group == "" {
+		a.Group = a.GetMetadataString("group_name")
 	}
 
-	return &clip, nil
-}
-
-// toCanonical converts a legacy MediaAsset to the canonical domain type.
-// Defined locally to avoid an import cycle (clips → assetregistry → assetindex → clips).
-func toCanonical(m *models.MediaAsset) *asset.MediaAsset {
-	if m == nil {
-		return nil
-	}
-	return &asset.MediaAsset{
-		ID:            m.ID,
-		Source:        m.Source,
-		Name:          m.Name,
-		Filename:      m.Filename,
-		MediaType:     m.MediaType,
-		Category:      m.Category,
-		Group:         m.Group,
-		Tags:          append([]string(nil), m.Tags...),
-		SearchTerms:   m.SearchTerms,
-		SearchText:    m.SearchText,
-		SourceURL:     m.ExternalURL,
-		ExternalURL:   m.ExternalURL,
-		ThumbnailURL:  m.ThumbURL,
-		ClipPageURL:   m.ClipPageURL,
-		DurationMs:    int64(m.Duration),
-		Metadata:      m.Metadata,
-		LifecycleState: asset.LifecycleState(m.LifecycleStateOrDefault()),
-		DeletedAt:     m.DeletedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		FolderID:      m.FolderID,
-		ParentFolderID: m.ParentFolderID,
-		FolderPath:    m.FolderPath,
-		Depth:         m.Depth,
-		IsFolder:      m.IsFolder,
-		DriveFileID:   m.DriveFileID,
-		DriveLink:     m.DriveLink,
-		DownloadLink:  m.DownloadLink,
-		LocalPath:     m.LocalPath,
-		FileHash:      m.FileHash,
-		ChildCount:    m.ChildCount,
-		SceneType:     m.SceneType,
-		QualityScore:  m.QualityScore,
-		ReuseCount:    m.ReuseCount,
-		LastUsedAt:    m.LastUsedAt,
-		PHash:         m.PHash,
-		EmbeddingJSON:       m.EmbeddingJSON,
-		VisualEmbedding:     m.VisualEmbedding,
-		TranscriptEmbedding: m.TranscriptEmbedding,
-		VisualEmbeddingJSON: m.VisualEmbeddingJSON,
-		UsableFor:           m.UsableFor,
-		AvoidFor:            m.AvoidFor,
-	}
+	return &a, nil
 }
 
 // scanCanonicalAssetRows scans a canonical asset from sql.Rows.
 func scanCanonicalAssetRows(rows *sql.Rows) (*asset.MediaAsset, error) {
-	m, err := scanMediaAsset(rows)
-	if err != nil {
-		return nil, err
-	}
-	return toCanonical(m), nil
+	return scanMediaAsset(rows)
 }
 
 // scanCanonicalAssetRow scans a single canonical asset from sql.Row.
 func (r *Repository) scanCanonicalAssetRow(row *sql.Row) (*asset.MediaAsset, error) {
-	m, err := scanMediaAsset(row)
-	if err != nil {
-		return nil, err
-	}
-	return toCanonical(m), nil
+	return scanMediaAsset(row)
 }

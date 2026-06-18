@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -98,7 +97,7 @@ const DefaultBatchConcurrency = 3
 // RegisterJobHandler registers the batch reindex job handler with the jobs service.
 func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeMediaReindex, s.HandleJob)
+		jobsSvc.RegisterHandler(domainjob.TypeMediaReindex, s.HandleJob)
 		s.log.Info("registered media.reindex job handler")
 	}
 }

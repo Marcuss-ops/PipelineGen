@@ -48,7 +48,7 @@ func (r *Repository) SearchStock(ctx context.Context, q string) ([]CatalogRecord
 						DriveID:   clip.ID,
 						MediaType: clip.MediaType,
 						Tags:      clip.Tags,
-						Duration:  clip.Duration,
+						Duration:  int(clip.DurationMs / 1000),
 					}
 					results = append(results, rec)
 				}

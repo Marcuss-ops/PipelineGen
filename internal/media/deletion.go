@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
@@ -70,46 +70,51 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 	}
 
 	// 2. Get Clip Data to find Drive file ID
-	var clip *models.MediaAsset
+	var driveFileID string
 	var err error
 
 	if canonical == "voiceover" && s.voiceoverRepo != nil {
-		rec, err := s.voiceoverRepo.GetByID(ctx, clipID)
-		if err != nil {
-			return fmt.Errorf("voiceover not found: %w", err)
+		rec, voErr := s.voiceoverRepo.GetByID(ctx, clipID)
+		if voErr != nil {
+			return fmt.Errorf("voiceover not found: %w", voErr)
 		}
-		clip = assetregistry.ToLegacy(assetregistry.VoiceoverRecordToClip(rec))
+		driveFileID = driveutil.FileIDFromLink(rec.DriveLink)
+		if driveFileID == "" {
+			driveFileID = driveutil.FileIDFromLink(rec.DownloadLink)
+		}
 	} else if canonical == "images" && s.imagesRepo != nil {
-		img, err := s.imagesRepo.GetByID(ctx, clipID)
-		if err != nil {
-			return fmt.Errorf("image not found: %w", err)
+		img, imgErr := s.imagesRepo.GetByID(ctx, clipID)
+		if imgErr != nil {
+			return fmt.Errorf("image not found: %w", imgErr)
 		}
-		clip = assetregistry.ToLegacy(assetregistry.ImageAssetToClip(img))
+		driveFileID = driveutil.FileIDFromLink(img.DriveLink)
+		if driveFileID == "" {
+			driveFileID = driveutil.FileIDFromLink(img.DownloadLink)
+		}
 	} else if repo != nil {
+		var clip *asset.MediaAsset
 		clip, err = repo.GetClip(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("clip not found: %w", err)
+		}
+		driveFileID = driveutil.FileIDFromLink(clip.DriveLink)
+		if driveFileID == "" {
+			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink)
 		}
 	} else {
 		return fmt.Errorf("repository for %s not available", source)
 	}
 
 	// 3. Delete from Drive
-	if s.driveUploader != nil {
-		fileID := driveutil.FileIDFromLink(clip.DriveLink)
-		if fileID == "" {
-			fileID = driveutil.FileIDFromLink(clip.DownloadLink)
+	if s.driveUploader != nil && driveFileID != "" {
+		var driveErr error
+		if permanently {
+			driveErr = s.driveUploader.DeleteFile(ctx, driveFileID)
+		} else {
+			driveErr = s.driveUploader.TrashFile(ctx, driveFileID)
 		}
-		if fileID != "" {
-			var driveErr error
-			if permanently {
-				driveErr = s.driveUploader.DeleteFile(ctx, fileID)
-			} else {
-				driveErr = s.driveUploader.TrashFile(ctx, fileID)
-			}
-			if driveErr != nil {
-				s.log.Warn("failed to delete drive file", zap.String("file_id", fileID), zap.Error(driveErr))
-			}
+		if driveErr != nil {
+			s.log.Warn("failed to delete drive file", zap.String("file_id", driveFileID), zap.Error(driveErr))
 		}
 	}
 
@@ -157,7 +162,7 @@ func (s *DeletionService) DeleteByDriveFile(ctx context.Context, fileID string, 
 }
 
 // FindClipByDriveFileID searches for a clip across repositories.
-func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*models.MediaAsset, string, error) {
+func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*asset.MediaAsset, string, error) {
 	repos := map[string]any{
 		"artlist":   s.artlistRepo,
 		"clips":     s.clipsRepo,
@@ -190,13 +195,13 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 			voRepo := repo.(*voiceovers.Repository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
-				return assetregistry.ToLegacy(assetregistry.VoiceoverRecordToClip(rec)), source, nil
+				return clip, source, nil
 			}
 		case "images":
 			imgRepo := repo.(*images.Repository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
-				return assetregistry.ToLegacy(assetregistry.ImageAssetToClip(img)), source, nil
+				return clip, source, nil
 			}
 		}
 	}

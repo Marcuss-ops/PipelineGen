@@ -1,3 +1,10 @@
+// Package jobs provides the canonical job repository with atomic CAS operations
+// for the 7-state job lifecycle.
+//
+// States: queued → leased → running → completed / retry_wait / failed / cancelled
+//
+// Implements job.Repository from internal/core/domain/job directly,
+// without conversion through legacy model types (PR4: Job SSOT).
 package jobs
 
 import (
@@ -8,7 +15,8 @@ import (
 	"sync"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -30,7 +38,10 @@ func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
 	return &Repository{db: db, log: log}
 }
 
-func (r *Repository) Create(ctx context.Context, job *models.Job) error {
+// Compile-time check: Repository implements job.Repository.
+var _ job.Repository = (*Repository)(nil)
+
+func (r *Repository) Create(ctx context.Context, j *job.Job) error {
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
@@ -38,30 +49,30 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	payloadJSON, _ := json.Marshal(job.Payload)
-	if payloadJSON == nil {
-		payloadJSON = []byte("{}")
+	payloadJSON := string(j.Payload)
+	if payloadJSON == "" || payloadJSON == "null" {
+		payloadJSON = "{}"
 	}
-	resultJSON, _ := json.Marshal(job.Result)
-	if resultJSON == nil {
-		resultJSON = []byte("{}")
+	resultJSON := string(j.Result)
+	if resultJSON == "" || resultJSON == "null" {
+		resultJSON = "{}"
 	}
 
 	// Revision is per-row monotonic counter; on creation it is 1 (the
 	// first revision before any transition fired).
-	revision := job.Revision
+	revision := j.Revision
 	if revision <= 0 {
 		revision = 1
 	}
 
 	_, err := r.db.ExecContext(ctx, query,
-		job.ID, job.Type, job.Status, job.Priority, job.Project, job.VideoName, job.ActiveKey,
-		job.CorrelationID,
-		string(payloadJSON), string(resultJSON), job.Progress, job.Error,
-		job.RetryCount, job.MaxRetries, job.WorkerID, job.LeaseID,
-		timeutil.FormatPtrRFC3339(job.LeaseExpiry),
-		timeutil.FormatRFC3339(job.CreatedAt), timeutil.FormatRFC3339(job.UpdatedAt),
-		timeutil.FormatPtrRFC3339(job.StartedAt), timeutil.FormatPtrRFC3339(job.CompletedAt), nil, revision)
+		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
+		j.CorrelationID,
+		payloadJSON, resultJSON, j.Progress, j.Error,
+		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
+		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
+		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
+		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
@@ -72,19 +83,19 @@ func (r *Repository) Create(ctx context.Context, job *models.Job) error {
 // scanJobColumns reads the canonical job column list into job, then
 // unmarshals the JSON payload/result and parses the time columns. Used by
 // Get, List, and FindActiveByKey.
-func scanJobColumns(s scanner, job *models.Job) error {
+func scanJobColumns(s scanner, j *job.Job) error {
 	var payloadJSON, resultJSON string
 	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
-	if	err := s.Scan(
-		&job.ID, &job.Type, &job.Status, &job.Priority, &job.Project, &job.VideoName, &job.ActiveKey,
-		&job.CorrelationID,
-		&payloadJSON, &resultJSON, &job.Progress, &job.Error, &job.RetryCount, &job.MaxRetries,
-		&job.WorkerID, &job.LeaseID, &leaseExpiry, &createdAt, &updatedAt,
-		&startedAt, &completedAt, &cancelledAt, &job.Revision,
+	if err := s.Scan(
+		&j.ID, &j.Type, &j.Status, &j.Priority, &j.Project, &j.VideoName, &j.ActiveKey,
+		&j.CorrelationID,
+		&payloadJSON, &resultJSON, &j.Progress, &j.Error, &j.RetryCount, &j.MaxRetries,
+		&j.WorkerID, &j.LeaseID, &leaseExpiry, &createdAt, &updatedAt,
+		&startedAt, &completedAt, &cancelledAt, &j.Revision,
 	); err != nil {
 		return err
 	}
-	unmarshalJobFields(job, payloadJSON, resultJSON, leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt)
+	unmarshalJobFields(j, payloadJSON, resultJSON, leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt)
 	return nil
 }
 
@@ -95,19 +106,19 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func (r *Repository) Get(ctx context.Context, id string) (*models.Job, error) {
+func (r *Repository) Get(ctx context.Context, id string) (*job.Job, error) {
 	query := `SELECT ` + jobColumns + ` FROM jobs WHERE id = ?`
-	job := &models.Job{}
-	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, id), job); err != nil {
+	j := &job.Job{}
+	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, id), j); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get job: %w", err)
 	}
-	return job, nil
+	return j, nil
 }
 
-func (r *Repository) List(ctx context.Context, filter models.JobFilter) ([]*models.Job, error) {
+func (r *Repository) List(ctx context.Context, filter job.Filter) ([]job.Job, error) {
 	query := `SELECT ` + jobColumns + ` FROM jobs WHERE 1=1`
 	args := []any{}
 
@@ -140,13 +151,13 @@ func (r *Repository) List(ctx context.Context, filter models.JobFilter) ([]*mode
 	}
 	defer rows.Close()
 
-	var out []*models.Job
+	var out []job.Job
 	for rows.Next() {
-		job := &models.Job{}
-		if err := scanJobColumns(rows, job); err != nil {
+		j := &job.Job{}
+		if err := scanJobColumns(rows, j); err != nil {
 			return nil, fmt.Errorf("failed to scan job: %w", err)
 		}
-		out = append(out, job)
+		out = append(out, *j)
 	}
 
 	return out, nil
@@ -154,9 +165,9 @@ func (r *Repository) List(ctx context.Context, filter models.JobFilter) ([]*mode
 
 // JobStats holds aggregated job statistics.
 type JobStats struct {
-	Total      int                                         `json:"total"`
-	ByStatus   map[models.JobStatus]int                    `json:"by_status"`
-	ByType     map[string]map[models.JobStatus]int `json:"by_type"`
+	Total      int                            `json:"total"`
+	ByStatus   map[job.Status]int             `json:"by_status"`
+	ByType     map[string]map[job.Status]int  `json:"by_type"`
 	DurationMs struct {
 		Overall float64 `json:"overall_ms"`
 		ByType  map[string]struct {
@@ -177,8 +188,8 @@ type JobStats struct {
 // GetStats returns aggregated job statistics for monitoring.
 func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 	stats := &JobStats{
-		ByStatus: make(map[models.JobStatus]int),
-		ByType:   make(map[string]map[models.JobStatus]int),
+		ByStatus: make(map[job.Status]int),
+		ByType:   make(map[string]map[job.Status]int),
 	}
 	stats.DurationMs.ByType = make(map[string]struct {
 		Count           int     `json:"count"`
@@ -193,7 +204,7 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 		r.log.Warn("getStats: by-status query failed", zap.Error(err))
 	} else {
 		for rows.Next() {
-			var status models.JobStatus
+			var status job.Status
 			var cnt int
 			if err := rows.Scan(&status, &cnt); err != nil {
 				r.log.Warn("getStats: scan by-status row", zap.Error(err))
@@ -212,13 +223,13 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 	} else {
 		for rows.Next() {
 			var jt string
-			var js models.JobStatus
+			var js job.Status
 			var cnt int
 			if err := rows.Scan(&jt, &js, &cnt); err != nil {
 				r.log.Warn("getStats: scan by-type row", zap.Error(err))
 			} else {
 				if _, ok := stats.ByType[jt]; !ok {
-					stats.ByType[jt] = make(map[models.JobStatus]int)
+					stats.ByType[jt] = make(map[job.Status]int)
 				}
 				stats.ByType[jt][js] = cnt
 			}
@@ -242,7 +253,7 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0) as imgs_gen,
 			SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as errs
 		FROM jobs
-		WHERE status IN ('SUCCEEDED', 'FAILED')
+		WHERE status IN ('completed', 'failed')
 		GROUP BY type
 		ORDER BY cnt DESC
 	`)
@@ -273,9 +284,9 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 		typeRow.Close()
 	}
 
-	// 5. Stale/zombie active jobs (status=LEASED or RUNNING but lease_expiry in past)
+	// 5. Stale/zombie active jobs (status=leased or running but lease_expiry in past)
 	var staleCount sql.NullInt64
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('LEASED', 'RUNNING') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status IN ('leased', 'running') AND lease_expiry < datetime('now')`).Scan(&staleCount); err != nil {
 		r.log.Warn("getStats: stale-running query failed", zap.Error(err))
 	} else if staleCount.Valid {
 		stats.StaleRunning = int(staleCount.Int64)
@@ -284,8 +295,8 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 	// 6. Recent 24h stats
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT
-			COALESCE(SUM(CASE WHEN status = 'SUCCEEDED' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CAST(json_extract(result_json, '$.stats.images_generated') AS INTEGER)), 0)
 		FROM jobs
 		WHERE created_at > datetime('now', '-1 day')
@@ -296,49 +307,40 @@ func (r *Repository) GetStats(ctx context.Context) (*JobStats, error) {
 	return stats, nil
 }
 
-func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*models.Job, error) {
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('PENDING', 'LEASED', 'RUNNING') ORDER BY started_at DESC LIMIT 1`
-	job := &models.Job{}
-	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, activeKey), job); err != nil {
+func (r *Repository) FindActiveByKey(ctx context.Context, activeKey string) (*job.Job, error) {
+	query := `SELECT ` + jobColumns + ` FROM jobs WHERE active_key = ? AND active_key != '' AND status IN ('queued', 'leased', 'running') ORDER BY started_at DESC LIMIT 1`
+	j := &job.Job{}
+	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, activeKey), j); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to find job by active key: %w", err)
 	}
-	return job, nil
+	return j, nil
 }
 
 // FindByTypeAndCorrelation returns the most recent job matching the
 // (type, correlation_id) pair regardless of status. Used by Service.Enqueue
 // to satisfy idempotency after a UNIQUE-constraint collision on the
-// idx_jobs_type_correlation index (see migrations/sqlite/036_job_idempotency.sql).
-//
-// Returns (nil, nil) when correlation_id is empty — callers should short
-// circuit before calling in that case so we never SELECT with a known-empty
-// value (the index excludes empty strings, but a SELECT with ” would match
-// no row anyway; the early return saves the round-trip).
-func (r *Repository) FindByTypeAndCorrelation(ctx context.Context, jobType string, correlationID string) (*models.Job, error) {
+// idx_jobs_type_correlation index.
+func (r *Repository) FindByTypeAndCorrelation(ctx context.Context, jobType string, correlationID string) (*job.Job, error) {
 	if correlationID == "" {
 		return nil, nil
 	}
 	query := `SELECT ` + jobColumns + ` FROM jobs WHERE type = ? AND correlation_id = ? ORDER BY created_at DESC, id DESC LIMIT 1`
-	job := &models.Job{}
-	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, jobType, correlationID), job); err != nil {
+	j := &job.Job{}
+	if err := scanJobColumns(r.db.QueryRowContext(ctx, query, jobType, correlationID), j); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to find job by type+correlation: %w", err)
 	}
-	return job, nil
+	return j, nil
 }
 
 // RefreshMetrics recomputes queue depth / oldest-pending seconds gauges
 // from the jobs table. Intended to be called periodically (e.g. every 30s)
 // by the worker pool so Prometheus has fresh snapshots.
-//
-// Side-effects: writes to metrics.JobQueueDepth and metrics.JobOldestPendingSeconds.
-// All known (active type) × (every status) combos are explicitly Set() to 0
-// when missing, so drained queues don't leave stale non-zero gauge values.
 func (r *Repository) RefreshMetrics(ctx context.Context) error {
 	// Enumerate types active in the last 7 days so we know the labels to reset.
 	activeTypes, err := r.db.QueryContext(ctx,
@@ -358,10 +360,10 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 	activeTypes.Close()
 
 	// Set depth for currently-observed type × status combinations.
-	allStatuses := []models.JobStatus{
-		models.StatusPending, models.StatusLeased, models.StatusRunning,
-		models.StatusRetryWait,
-		models.StatusFailed, models.StatusSucceeded, models.StatusCancelled,
+	allStatuses := []job.Status{
+		job.StatusQueued, job.StatusLeased, job.StatusRunning,
+		job.StatusRetryWait,
+		job.StatusFailed, job.StatusCompleted, job.StatusCancelled,
 	}
 	depthSeen := make(map[string]bool)
 	rows, err := r.db.QueryContext(ctx, `SELECT type, status, COUNT(*) FROM jobs GROUP BY type, status`)
@@ -369,36 +371,36 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 		return fmt.Errorf("queue depth query: %w", err)
 	}
 	for rows.Next() {
-		var jt models.JobType
-		var js models.JobStatus
+		var jt string
+		var js job.Status
 		var cnt int
 		if err := rows.Scan(&jt, &js, &cnt); err != nil {
 			rows.Close()
 			return fmt.Errorf("queue depth scan: %w", err)
 		}
-		metrics.JobQueueDepth.WithLabelValues(string(jt), string(js)).Set(float64(cnt))
-		depthSeen[string(jt)+"|"+string(js)] = true
+		metrics.JobQueueDepth.WithLabelValues(jt, string(js)).Set(float64(cnt))
+		depthSeen[jt+"|"+string(js)] = true
 	}
 	rows.Close()
 
 	// Reset gauges for combos that disappeared this tick.
 	for jt := range types {
 		for _, js := range allStatuses {
-			if depthSeen[string(jt)+"|"+string(js)] {
+			if depthSeen[jt+"|"+string(js)] {
 				continue
 			}
-			metrics.JobQueueDepth.WithLabelValues(string(jt), string(js)).Set(0)
+			metrics.JobQueueDepth.WithLabelValues(jt, string(js)).Set(0)
 		}
 	}
 
 	// Oldest queued/retrying job per type (seconds since its created_at, or 0).
 	oldest, err := r.db.QueryContext(ctx, `
 		SELECT type, COALESCE(MAX((julianday('now') - julianday(created_at)) * 86400.0), 0)
-		FROM jobs WHERE status = 'PENDING' GROUP BY type`)
+		FROM jobs WHERE status = 'queued' GROUP BY type`)
 	if err != nil {
 		return fmt.Errorf("oldest pending query: %w", err)
 	}
-		oldestSeen := make(map[string]bool)
+	oldestSeen := make(map[string]bool)
 	for oldest.Next() {
 		var jt string
 		var secs float64
@@ -406,14 +408,38 @@ func (r *Repository) RefreshMetrics(ctx context.Context) error {
 			oldest.Close()
 			return fmt.Errorf("oldest pending scan: %w", err)
 		}
-		metrics.JobOldestPendingSeconds.WithLabelValues(string(jt)).Set(secs)
+		metrics.JobOldestPendingSeconds.WithLabelValues(jt).Set(secs)
 		oldestSeen[jt] = true
 	}
 	oldest.Close()
 	for jt := range types {
 		if !oldestSeen[jt] {
-			metrics.JobOldestPendingSeconds.WithLabelValues(string(jt)).Set(0)
+			metrics.JobOldestPendingSeconds.WithLabelValues(jt).Set(0)
 		}
 	}
 	return nil
+}
+
+// ListEvents returns all events for a given job.
+func (r *Repository) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, job_id, type, message, data_json, created_at FROM job_events WHERE job_id = ? ORDER BY created_at ASC`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("listEvents: %w", err)
+	}
+	defer rows.Close()
+
+	var events []job.Event
+	for rows.Next() {
+		var evt job.Event
+		var dataJSON string
+		if err := rows.Scan(&evt.ID, &evt.JobID, &evt.Type, &evt.Message, &dataJSON, &evt.CreatedAt); err != nil {
+			return nil, fmt.Errorf("listEvents: scan: %w", err)
+		}
+		if len(dataJSON) > 0 {
+			json.Unmarshal([]byte(dataJSON), &evt.Data)
+		}
+		events = append(events, evt)
+	}
+	return events, nil
 }

@@ -3,26 +3,26 @@ package jobs
 import (
 	"encoding/json"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// unmarshalJobFields deserializza i campi JSON e temporali di un job dopo una Scan.
-func unmarshalJobFields(job *models.Job, payloadJSON, resultJSON string, leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string) {
+// unmarshalJobFields deserialises JSON payload/result and time fields after a Scan.
+func unmarshalJobFields(j *job.Job, payloadJSON, resultJSON string, leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string) {
 	if len(payloadJSON) > 0 {
-		json.Unmarshal([]byte(payloadJSON), &job.Payload)
+		json.Unmarshal([]byte(payloadJSON), &j.Payload)
 	}
 	if len(resultJSON) > 0 {
-		json.Unmarshal([]byte(resultJSON), &job.Result)
+		json.Unmarshal([]byte(resultJSON), &j.Result)
 	}
-	job.LeaseExpiry = timeutil.ParseRFC3339PtrString(leaseExpiry)
+	j.LeaseExpiry = timeutil.ParseRFC3339PtrString(leaseExpiry)
 	if t := timeutil.ParseRFC3339Ptr(timeutil.DerefString(createdAt)); t != nil {
-		job.CreatedAt = *t
+		j.CreatedAt = *t
 	}
 	if t := timeutil.ParseRFC3339Ptr(timeutil.DerefString(updatedAt)); t != nil {
-		job.UpdatedAt = *t
+		j.UpdatedAt = *t
 	}
-	job.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
-	job.CompletedAt = timeutil.ParseRFC3339PtrString(completedAt)
-	job.CancelledAt = timeutil.ParseRFC3339PtrString(cancelledAt)
+	j.StartedAt = timeutil.ParseRFC3339PtrString(startedAt)
+	j.CompletedAt = timeutil.ParseRFC3339PtrString(completedAt)
+	j.CancelledAt = timeutil.ParseRFC3339PtrString(cancelledAt)
 }

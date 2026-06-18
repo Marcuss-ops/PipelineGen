@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -19,41 +19,19 @@ var ErrOptimisticLockFailed = fmt.Errorf("optimistic lock failed: revision or st
 // transition. Every field except JobID, ExpectedStatus, and NewStatus is
 // optional.
 type TransitionRequest struct {
-	// JobID identifies the job row.
-	JobID string
-
-	// ExpectedRevision is the revision the caller last observed.
-	// Transition verifies it hasn't changed; if it has, the job was
-	// modified concurrently and this transition is rejected.
+	JobID            string
 	ExpectedRevision int
-
-	// ExpectedStatus is the status the caller last observed.
-	// Transition verifies the current row status matches this value;
-	// if it doesn't, the job is in an unexpected state and the
-	// transition is rejected.
-	ExpectedStatus models.JobStatus
-
-	// NewStatus is the target status after the transition.
-	NewStatus models.JobStatus
+	ExpectedStatus   job.Status
+	NewStatus        job.Status
 
 	// WorkerID and LeaseID carry the fencing tokens from the caller.
-	// When set, the Transition additionally verifies that the current
-	// worker_id and lease_id match — preventing stale-lease completion
-	// of a reassigned job. Omit both for non-worker operations (e.g.
-	// operator retry, cancel).
 	WorkerID string
 	LeaseID  string
 
-	// Updates is a map of column → value pairs appended to the SET
-	// clause. Supports normal values (string, int, map[string]any for
-	// JSON) and *time.Time (formatted via timeutil.FormatPtrRFC3339).
+	// Updates is a map of column → value pairs appended to the SET clause.
 	Updates map[string]any
 
-	// ExtraSets are raw SQL snippets appended to the SET clause
-	// without parameterisation. Used for expressions like
-	// "retry_count = retry_count + 1" that can't be expressed as
-	// key → value pairs. Callers MUST ensure these are safe;
-	// ExtraSets is not interpolated from user input.
+	// ExtraSets are raw SQL snippets appended to the SET clause.
 	ExtraSets []string
 
 	// Result, when non-nil, is serialised to result_json.
@@ -67,21 +45,7 @@ type TransitionRequest struct {
 }
 
 // Transition atomically executes a guarded status change on the jobs table.
-//
-// The UPDATE uses WHERE id = ? AND status = ? AND revision = ? as the
-// optimistic-lock guard. If the current status or revision has changed
-// since the caller last observed the job, the UPDATE affects 0 rows and
-// ErrOptimisticLockFailed is returned.
-//
-// When WorkerID and LeaseID are both set, the guard additionally includes
-// AND worker_id = ? AND lease_id = ? — this allows the adapter layer
-// (SQLiteJobRepository) to enforce lease-fencing for worker operations
-// without re-implementing the SQL pattern.
-//
-// On success, the revision is incremented and the updated job row is
-// re-fetched and returned. The caller must check the returned job's
-// revision for the next Transition call.
-func (r *Repository) Transition(ctx context.Context, req TransitionRequest) (*models.Job, error) {
+func (r *Repository) Transition(ctx context.Context, req TransitionRequest) (*job.Job, error) {
 	now := time.Now()
 
 	// Build the UPDATE query with parameterised SET clauses.
@@ -131,8 +95,7 @@ func (r *Repository) Transition(ctx context.Context, req TransitionRequest) (*mo
 	whereClause := "WHERE id = ? AND status = ? AND revision = ?"
 	whereArgs := []any{req.JobID, req.ExpectedStatus, req.ExpectedRevision}
 
-	// Lease-fencing: when WorkerID and LeaseID are both set, add them
-	// to the guard so only the owning worker can finalise the job.
+	// Lease-fencing: when WorkerID and LeaseID are both set.
 	if req.WorkerID != "" && req.LeaseID != "" {
 		whereClause += " AND worker_id = ? AND lease_id = ?"
 		whereArgs = append(whereArgs, req.WorkerID, req.LeaseID)
@@ -151,7 +114,7 @@ func (r *Repository) Transition(ctx context.Context, req TransitionRequest) (*mo
 		return nil, fmt.Errorf("transition %s: %w", req.JobID, ErrOptimisticLockFailed)
 	}
 
-	// Re-fetch the updated row so callers have fresh revision + status.
+	// Re-fetch the updated row.
 	updated, err := r.Get(ctx, req.JobID)
 	if err != nil {
 		return nil, fmt.Errorf("transition: re-fetch after update: %w", err)

@@ -50,8 +50,12 @@ fi
 ACTUAL_COUNT=$(echo "$ACTUAL" | grep -c '.' || true)
 ALLOWED_COUNT=$(echo "$ALLOWED" | grep -c '.' || true)
 
+if [[ "$ACTUAL_COUNT" -ne 0 ]]; then
+    echo "  FAIL: $ACTUAL_COUNT files still reference models.MediaAsset (must be 0)"
+    EXIT_CODE=1
+fi
 if [[ "$EXIT_CODE" -eq 0 ]]; then
-    echo "  OK: allowlist matches reality exactly ($ACTUAL_COUNT files)"
+    echo "  OK: zero legacy models.MediaAsset references ($ACTUAL_COUNT files)"
 else
     echo ""
     echo "  Summary: allowlist=$ALLOWED_COUNT, actual=$ACTUAL_COUNT"
@@ -59,24 +63,51 @@ fi
 
 # ── Check 2: legacy symbols still in use ────────────────────────────
 echo ""
-echo "Check 2: legacy symbols (populateAssetMetadata, DownloadProcessUpload, ToCoreProcessor)"
-LEGACY_SYMBOL_COUNT=$(rg -c 'populateAssetMetadata|DownloadProcessUpload|ToCoreProcessor' internal --glob '*.go' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
-echo "  INFO: legacy symbol occurrences: $LEGACY_SYMBOL_COUNT (target: 0)"
+echo "Check 2: legacy symbols (populateAssetMetadata, DownloadProcessUpload, ToCoreProcessor, ToCanonical, ToLegacy)"
+LEGACY_SYMBOL_COUNT=$(rg -c 'populateAssetMetadata|DownloadProcessUpload|ToCoreProcessor|ToCanonical|ToLegacy' internal --glob '*.go' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+if [[ "$LEGACY_SYMBOL_COUNT" -ne 0 ]]; then
+    echo "  FAIL: $LEGACY_SYMBOL_COUNT legacy symbol occurrences (must be 0)"
+    EXIT_CODE=1
+else
+    echo "  OK: zero legacy symbols"
+fi
 
 # ── Check 3: legacy fields read from metadata_json ──────────────────
 echo ""
 echo "Check 3: legacy fields read from metadata_json (should use typed columns)"
 LEGACY_FIELD_PATTERN='\.(search_text|category|local_path|drive_link|download_link|drive_file_id|file_hash|filename|folder_id|folder_path|media_type|status|error|deleted_at|phash|parent_folder_id)'
 LEGACY_READ_COUNT=$(rg -c "json_extract.*metadata_json.*$LEGACY_FIELD_PATTERN" internal --glob '*.go' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
-echo "  INFO: legacy field metadata_json reads: $LEGACY_READ_COUNT (target: 0)"
+if [[ "$LEGACY_READ_COUNT" -ne 0 ]]; then
+    echo "  FAIL: $LEGACY_READ_COUNT legacy metadata_json reads (must be 0)"
+    EXIT_CODE=1
+else
+    echo "  OK: zero legacy metadata_json reads"
+fi
 
 # ── Check 4: legacy clip model file ─────────────────────────────────
 echo ""
-echo "Check 4: legacy clip model file"
+echo "Check 4: legacy models and converters"
 if [[ -f "internal/media/models/clip.go" ]]; then
-    echo "  WARN: internal/media/models/clip.go still exists"
+    if rg -q 'type MediaAsset struct' internal/media/models/clip.go 2>/dev/null; then
+        echo "  FAIL: models.MediaAsset still exists in clip.go"
+        EXIT_CODE=1
+    else
+        echo "  OK: clip.go exists but MediaAsset struct removed"
+    fi
 else
     echo "  OK: models/clip.go deleted"
+fi
+if rg -q 'func ToCanonical|func ToLegacy' internal/media/assetregistry/converters.go 2>/dev/null; then
+    echo "  FAIL: ToCanonical/ToLegacy still exist in converters.go"
+    EXIT_CODE=1
+else
+    echo "  OK: ToCanonical/ToLegacy removed"
+fi
+if [[ -f "internal/repository/clips/canonical_projection.go" ]]; then
+    echo "  FAIL: canonical_projection.go still exists"
+    EXIT_CODE=1
+else
+    echo "  OK: canonical_projection.go deleted"
 fi
 
 echo ""

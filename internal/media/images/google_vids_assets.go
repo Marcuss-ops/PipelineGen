@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/audio"
@@ -72,17 +72,12 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		}
 	}
 
-	clip := &models.MediaAsset{
-		ID:          id,
-		Name:        name,
-		Source:      source,
-		MediaType:   "video",
-		LocalPath:   filePath,
-		DriveFileID: driveFileID,
-		DriveLink:   driveLink,
-		Status:      "ready",
-		Duration:    durationSec,
-		CreatedAt:   time.Now(),
+	clip := &asset.MediaAsset{
+		ID:        id,
+		Name:      name,
+		Source:    source,
+		MediaType: "video",
+		CreatedAt: time.Now(),
 	}
 	clip.SetMetadataString("prompt", description)
 	clip.SetMetadataString("style", style)

@@ -35,6 +35,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
@@ -57,11 +58,11 @@ type MediaRepository interface {
 	// UpsertClip inserts or updates a media asset in the `media_assets`
 	// table. Existing rows are replaced via the repository's
 	// conflict-resolution strategy (currently SQLite ON CONFLICT(id)).
-	UpsertClip(ctx context.Context, clip *models.MediaAsset) error
+	UpsertClip(ctx context.Context, clip *asset.MediaAsset) error
 
 	// GetClip fetches a single media asset by its ID. Returns sql.ErrNoRows
 	// (wrapped) if not found. Soft-deleted clips are excluded by default.
-	GetClip(ctx context.Context, id string) (*models.MediaAsset, error)
+	GetClip(ctx context.Context, id string) (*asset.MediaAsset, error)
 
 	// DeleteClip soft-deletes a clip (sets $.deleted_at in metadata_json).
 	DeleteClip(ctx context.Context, id string) error
@@ -78,7 +79,7 @@ type MediaRepository interface {
 
 	// GetClipByDriveFileID fetches a clip by its Google Drive file ID.
 	// Used by Drive ingest flows.
-	GetClipByDriveFileID(ctx context.Context, driveFileID string) (*models.MediaAsset, error)
+	GetClipByDriveFileID(ctx context.Context, driveFileID string) (*asset.MediaAsset, error)
 
 	// FindByPHash returns the asset ID of a clip matching the perceptual-hash
 	// fingerprint (or "" if no match). Used by deduplication sweeps.
@@ -90,18 +91,18 @@ type MediaRepository interface {
 	// ── CLIP list operations ─────────────────────────────────────────────
 	// ListClips returns all clips, optionally filtered by source.
 	// Used by association/providers.go to load the entire catalogue.
-	ListClips(ctx context.Context, source string) ([]*models.MediaAsset, error)
+	ListClips(ctx context.Context, source string) ([]*asset.MediaAsset, error)
 
 	// ListClipsPaged returns a page of clips with optional text query `q`.
 	// Used by API handlers for clip listing endpoints.
-	ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*models.MediaAsset, error)
+	ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*asset.MediaAsset, error)
 
 	// ListClipsByFolderID returns all clips belonging to a logical folder.
-	ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.MediaAsset, error)
+	ListClipsByFolderID(ctx context.Context, folderID string) ([]*asset.MediaAsset, error)
 
 	// ListClipsByFolderPath returns all clips under a Path-based folder
 	// (used by source fallback logic).
-	ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.MediaAsset, error)
+	ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*asset.MediaAsset, error)
 
 	// ── CLIP FOLDER CRUD ─────────────────────────────────────────────────
 	// UpsertClipFolder creates or updates a folder row in `clip_folders`.
@@ -156,11 +157,11 @@ func (r *SQLRepository) Log() *zap.Logger {
 
 // ── CLIP CRUD (delegate) ───────────────────────────────────────────────
 
-func (r *SQLRepository) UpsertClip(ctx context.Context, clip *models.MediaAsset) error {
+func (r *SQLRepository) UpsertClip(ctx context.Context, clip *asset.MediaAsset) error {
 	return r.inner.UpsertClip(ctx, clip)
 }
 
-func (r *SQLRepository) GetClip(ctx context.Context, id string) (*models.MediaAsset, error) {
+func (r *SQLRepository) GetClip(ctx context.Context, id string) (*asset.MediaAsset, error) {
 	return r.inner.GetClip(ctx, id)
 }
 
@@ -180,7 +181,7 @@ func (r *SQLRepository) DeleteClipByDriveLink(ctx context.Context, driveLink str
 	return r.inner.DeleteClipByDriveLink(ctx, driveLink)
 }
 
-func (r *SQLRepository) GetClipByDriveFileID(ctx context.Context, driveFileID string) (*models.MediaAsset, error) {
+func (r *SQLRepository) GetClipByDriveFileID(ctx context.Context, driveFileID string) (*asset.MediaAsset, error) {
 	return r.inner.GetClipByDriveFileID(ctx, driveFileID)
 }
 
@@ -190,19 +191,19 @@ func (r *SQLRepository) FindByPHash(ctx context.Context, phash string) (string, 
 
 // ── CLIP list operations (delegate) ────────────────────────────────────
 
-func (r *SQLRepository) ListClips(ctx context.Context, source string) ([]*models.MediaAsset, error) {
+func (r *SQLRepository) ListClips(ctx context.Context, source string) ([]*asset.MediaAsset, error) {
 	return r.inner.ListClips(ctx, source)
 }
 
-func (r *SQLRepository) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*models.MediaAsset, error) {
+func (r *SQLRepository) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*asset.MediaAsset, error) {
 	return r.inner.ListClipsPaged(ctx, source, limit, offset, q)
 }
 
-func (r *SQLRepository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*models.MediaAsset, error) {
+func (r *SQLRepository) ListClipsByFolderID(ctx context.Context, folderID string) ([]*asset.MediaAsset, error) {
 	return r.inner.ListClipsByFolderID(ctx, folderID)
 }
 
-func (r *SQLRepository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*models.MediaAsset, error) {
+func (r *SQLRepository) ListClipsByFolderPath(ctx context.Context, folderPath string) ([]*asset.MediaAsset, error) {
 	return r.inner.ListClipsByFolderPath(ctx, folderPath)
 }
 

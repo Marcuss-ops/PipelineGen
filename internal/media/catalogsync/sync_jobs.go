@@ -10,7 +10,6 @@ import (
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
@@ -69,7 +68,7 @@ func (s *Service) HandleJob(ctx context.Context, job *domainjob.Job, tools *jobs
 // RegisterHandler registers this service as a handler for catalog.sync jobs.
 func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeCatalogSync, s.HandleJob)
+		jobsSvc.RegisterHandler(domainjob.TypeCatalogSync, s.HandleJob)
 		s.log.Info("registered catalog.sync job handler")
 	}
 }
@@ -77,7 +76,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
 // RegisterDriveFolderSyncHandler registers the handler for async drive.folder.sync jobs.
 func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobTypeDriveFolderSync, s.HandleDriveFolderSyncJob)
+		jobsSvc.RegisterHandler(domainjob.TypeDriveFolderSync, s.HandleDriveFolderSyncJob)
 		s.log.Info("registered drive.folder.sync job handler")
 	}
 }
@@ -85,7 +84,12 @@ func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *jobservice.Service) {
 // HandleDriveFolderSyncJob processes an async drive.folder.sync job.
 // It wraps SyncFolderID with progress reporting and mutex serialization.
 func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *domainjob.Job, tools *jobservice.JobTools) (map[string]any, error) {
-	var payload models.DriveFolderSyncPayload
+	var payload struct {
+		DriveFolderID string `json:"drive_folder_id"`
+		Source        string `json:"source,omitempty"`
+		Name          string `json:"name,omitempty"`
+		MediaType     string `json:"media_type,omitempty"`
+	}
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal payload: %w", err)

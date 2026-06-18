@@ -93,6 +93,8 @@ type Job struct {
 	Status         Status          `json:"status"`
 	Priority       int             `json:"priority"`
 	Project        string          `json:"project,omitempty"`
+	VideoName      string          `json:"video_name,omitempty"`
+	ActiveKey      string          `json:"active_key,omitempty"`
 	Payload        json.RawMessage `json:"payload,omitempty"`
 	Result         json.RawMessage `json:"result,omitempty"`
 	Error          string          `json:"error,omitempty"`
@@ -111,4 +113,16 @@ type Job struct {
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	CancelledAt    *time.Time      `json:"cancelled_at,omitempty"`
+}
+
+// IsTerminal and CanRetry are defined in functions.go.
+
+// Event represents a discrete event in a job's timeline.
+type Event struct {
+	ID        string         `json:"id"`
+	JobID     string         `json:"job_id"`
+	Type      string         `json:"type"`
+	Message   string         `json:"message"`
+	Data      map[string]any `json:"data,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
 }

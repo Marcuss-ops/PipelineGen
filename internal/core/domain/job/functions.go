@@ -10,6 +10,14 @@ func (s Status) IsActive() bool {
 	return s == StatusLeased || s == StatusRunning
 }
 
+// IsTerminal returns true if the job has reached a terminal state.
+func (j *Job) IsTerminal() bool {
+	if j == nil {
+		return false
+	}
+	return j.Status.IsTerminal()
+}
+
 // CanRetry checks if the job can be retried.
 func (j *Job) CanRetry() bool {
 	if j == nil {

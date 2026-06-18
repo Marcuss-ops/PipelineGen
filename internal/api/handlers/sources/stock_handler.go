@@ -1,17 +1,25 @@
 package sources
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	corejobs "github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
+
+// stockPayloadToMap converts a StockRunPayload to map[string]any for job enqueue.
+func stockPayloadToMap(p *stockpipeline.StockRunPayload) map[string]any {
+	data, _ := json.Marshal(p)
+	var m map[string]any
+	_ = json.Unmarshal(data, &m)
+	return m
+}
 
 type StockHandler struct {
 	service *stockpipeline.Service
@@ -112,7 +120,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 		// (stockpipeline.Service.HandleJob) receives SearchQueries and
 		// resolves them via resolveQuery (yt-dlp) internally, then runs
 		// the full stock pipeline — no goroutines needed in the handler.
-		payload := &corejobs.StockRunPayload{
+		payload := &stockpipeline.StockRunPayload{
 			SearchQueries: searchQueries,
 			TotalMinutes:  req.TotalMinutes,
 			ChunkDuration: req.ChunkDuration,
@@ -124,28 +132,20 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 			Subfolder:     req.Subfolder,
 			FolderName:    req.FolderName,
 			FolderID:      req.FolderID,
-		}
-		if req.Metadata != nil {
-			payload.Metadata = &struct {
-				Title       string            `json:"title,omitempty"`
-				Description string            `json:"description,omitempty"`
-				Tags        []string          `json:"tags,omitempty"`
-				Category    string            `json:"category,omitempty"`
-				Author      string            `json:"author,omitempty"`
-				Extra       map[string]string `json:"extra,omitempty"`
-			}{
-				Title:       req.Metadata.Title,
-				Description: req.Metadata.Description,
-				Tags:        req.Metadata.Tags,
-				Category:    req.Metadata.Category,
-				Author:      req.Metadata.Author,
-				Extra:       req.Metadata.Extra,
-			}
+		}			if req.Metadata != nil {
+				payload.Metadata = &stockpipeline.StockRunPayloadMetadata{
+					Title:       req.Metadata.Title,
+					Description: req.Metadata.Description,
+					Tags:        req.Metadata.Tags,
+					Category:    req.Metadata.Category,
+					Author:      req.Metadata.Author,
+					Extra:       req.Metadata.Extra,
+				}
 		}
 
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 			Type:    "media.stock",
-			Payload: payload.ToMap(),
+			Payload: stockPayloadToMap(payload),
 		})
 		if err != nil {
 			h.log.Error("failed to enqueue stock pipeline job", zap.Error(err))
@@ -197,7 +197,7 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 }
 
 func (h *StockHandler) RunStockPipeline(c *gin.Context) {
-	var req corejobs.StockRunPayload
+	var req stockpipeline.StockRunPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -237,7 +237,7 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 	if h.jobsSvc != nil {
 		job, err := h.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 			Type:    "media.stock",
-			Payload: req.ToMap(),
+			Payload: stockPayloadToMap(&req),
 		})
 		if err != nil {
 			h.log.Error("failed to enqueue stock pipeline job", zap.Error(err))

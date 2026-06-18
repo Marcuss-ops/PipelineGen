@@ -2,11 +2,10 @@ package realtime
 
 import (
 	"context"
-	"encoding/json"
 
 	"go.uber.org/zap"
 
-	corejobs "github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
@@ -24,18 +23,9 @@ func NewJobServiceAdapter(svc *jobs.Service, log *zap.Logger) *JobServiceAdapter
 
 // EnqueueMediaGeneration enqueues a media.generate_missing_asset job.
 func (a *JobServiceAdapter) EnqueueMediaGeneration(ctx context.Context, query string, source string) (string, error) {
-	payload := corejobs.MediaGeneratePayload{
-		Query:  query,
-		Source: source,
-	}
-
-	payloadMap := make(map[string]any)
-	data, _ := json.Marshal(payload)
-	_ = json.Unmarshal(data, &payloadMap)
-
-	job, err := a.svc.Enqueue(ctx, &jobs.EnqueueRequest{
-		Type:       "media.generate",
-		Payload:    payloadMap,
+	j, err := a.svc.Enqueue(ctx, &jobs.EnqueueRequest{
+		Type:    job.TypeMediaGenerate,
+		Payload: map[string]any{"query": query, "source": source},
 		Priority:   1,
 		MaxRetries: 3,
 	})
@@ -44,9 +34,9 @@ func (a *JobServiceAdapter) EnqueueMediaGeneration(ctx context.Context, query st
 	}
 
 	a.log.Info("enqueued media generation job",
-		zap.String("job_id", job.ID),
+		zap.String("job_id", j.ID),
 		zap.String("query", query),
 		zap.String("source", source))
 
-	return job.ID, nil
+	return j.ID, nil
 }

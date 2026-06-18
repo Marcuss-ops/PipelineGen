@@ -3,11 +3,11 @@ package youtube
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 // extractYouTubeVideoID extracts the YouTube video ID from a clip ID (yt_{videoID}_*) or clip metadata.
-func extractYouTubeVideoID(clipID string, existing *models.MediaAsset) string {
+func extractYouTubeVideoID(clipID string, existing *asset.MediaAsset) string {
 	// Try from metadata first (most reliable)
 	if existing != nil {
 		vid := existing.GetMetadataString("youtube_video_id")
