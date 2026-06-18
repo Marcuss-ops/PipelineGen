@@ -1,6 +1,6 @@
 package ontology
 
-import "github.com/Marcuss-ops/PipelineGen/internal/media/models"
+import "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 
 // TopicRule defines the scoring rules for a specific topic.
 type TopicRule struct {
@@ -18,5 +18,5 @@ type Registry struct {
 
 // OntologyScorer defines the interface for applying ontology-based scoring.
 type OntologyScorer interface {
-	Apply(score float64, clip *models.MediaAsset, topic string) float64
+	Apply(score float64, clip *asset.MediaAsset, topic string) float64
 }

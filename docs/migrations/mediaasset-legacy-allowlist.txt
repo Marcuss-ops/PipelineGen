@@ -33,9 +33,6 @@ internal/media/clipresolver/utils.go
 internal/media/deletion.go
 internal/media/images/google_vids_assets.go
 internal/media/images/nvidia_animate.go
-internal/media/ontology/scorer.go
-internal/media/ontology/scorer_test.go
-internal/media/ontology/types.go
 internal/media/repository/repository.go
 internal/media/stockpipeline/run_upload.go
 internal/repository/clips/folders.go
