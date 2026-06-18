@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 )
 
 type AssetKind string
@@ -61,8 +61,8 @@ type AssetRecord = assetop.AssetRecord
 
 // AssetRecordStore defines the interface for asset record persistence
 type AssetRecordStore interface {
-	Upsert(ctx context.Context, rec *assetregistry.MediaRecord) error
-	Get(ctx context.Context, id string) (*assetregistry.MediaRecord, error)
+	Upsert(ctx context.Context, rec *artifacts.MediaRecord) error
+	Get(ctx context.Context, id string) (*artifacts.MediaRecord, error)
 	FindExisting(ctx context.Context, query ExistingAssetQuery) (*AssetRecord, error)
 	ListWithDriveFileID(ctx context.Context, source string) ([]*AssetRecord, error)
 	MarkDriveMissing(ctx context.Context, id string) error

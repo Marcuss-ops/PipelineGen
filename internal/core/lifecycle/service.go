@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
@@ -20,10 +20,10 @@ type Service struct {
 	dedupe        *assetop.DedupeService
 	reconcile     *assetop.ReconcileService
 	driveUploader *drive.Uploader
-	finalizer     *assetregistry.Finalizer
+	finalizer     *artifacts.Finalizer
 	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
-	registry      assetregistry.Registry
+	registry      artifacts.Registry
 	assetIndex    *assetindex.Service
 	log           *zap.Logger
 }
@@ -40,9 +40,9 @@ type Config struct {
 func NewService(
 	store AssetRecordStore,
 	driveSvc *gdrive.Service,
-	registry assetregistry.Registry,
+	registry artifacts.Registry,
 	assetIndex *assetindex.Service,
-	finalizer *assetregistry.Finalizer,
+	finalizer *artifacts.Finalizer,
 	cfg Config,
 	log *zap.Logger,
 ) *Service {
@@ -127,7 +127,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 
 	// Step 3: Persist to databases (if policy enabled)
 	if s.persistPolicy.SaveToAssetRegistry && s.finalizer != nil {
-		rec := &assetregistry.MediaRecord{
+		rec := &artifacts.MediaRecord{
 			ID:           input.ID,
 			Name:         input.Name,
 			Filename:     input.Filename,
@@ -149,7 +149,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			Subfolder:    input.Subfolder,
 		}
 
-		finalizeOpts := assetregistry.FinalizeOptions{
+		finalizeOpts := artifacts.FinalizeOptions{
 			RequireLocal: false,
 			RequireHash:  false,
 			RequireDrive: driveLink != "",

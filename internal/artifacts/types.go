@@ -337,7 +337,51 @@ func isUnderDir(path, dir string) bool {
 	return path == dir || (len(path) > len(dir) && path[:len(dir)] == dir && path[len(dir)] == '/')
 }
 
-// splitPath splits a path into segments.
+// MediaRecord is a legacy unified media record absorbed from media/assetregistry.
+type MediaRecord struct {
+	ID           string
+	Name         string
+	Filename     string
+	Source       string
+	Category     string
+	MediaType    string
+	ExternalURL  string
+	FolderID     string
+	FolderPath   string
+	Group        string
+	LocalPath    string
+	DriveLink    string
+	DriveFileID  string
+	DownloadLink string
+	FileHash     string
+	ContentHash  string
+	Metadata     string
+	Duration     int
+	Tags         []string
+	Status       string
+	Error        string
+	SourceID     string
+	Subfolder    string
+	PHash        string
+	VisualEmbeddingJSON string
+}
+
+type FinalizeOptions struct {
+	RequireLocal bool
+	RequireHash  bool
+	RequireDrive bool
+	VerifyDB     bool
+}
+
+type FinalizeResult struct {
+	OK            bool
+	Status        string
+	DBSaved       bool
+	LocalExists   bool
+	DriveUploaded bool
+	Error         string
+	Record        *MediaRecord
+}
 func splitPath(p string) []string {
 	var segs []string
 	start := 0
