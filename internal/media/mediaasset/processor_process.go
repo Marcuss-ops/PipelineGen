@@ -6,20 +6,22 @@ import (
 	"os"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 )
 
 // processStep normalizes/processes the video if needed.
-func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, processedPath string) (string, error) {
+func (p *Processor) processStep(ctx context.Context, input *processor.ProcessInput, rawPath, processedPath string) (string, error) {
 	shouldNormalize := input.Normalize == nil || *input.Normalize
 
-	// If normalization is not requested, just move the file
+	// If normalization is not requested, just move the file.
 	if !shouldNormalize {
 		p.log.Info("skipping normalization as requested, moving raw to processed path", zap.String("id", input.ID))
 		return p.moveRawToProcessed(rawPath, processedPath)
 	}
 
-	// Nil guard for ffmpeg
+	// Nil guard for ffmpeg.
 	if p.ffmpeg == nil {
 		p.log.Warn("ffmpeg is nil, skipping normalization, moving raw to processed path", zap.String("id", input.ID))
 		return p.moveRawToProcessed(rawPath, processedPath)
@@ -31,7 +33,7 @@ func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, 
 	info, err := p.ffmpeg.Probe(ctx, rawPath)
 	if err == nil && info != nil {
 		target := p.videoCfg
-		// Check if properties match (with some tolerance for FPS)
+		// Check if properties match (with some tolerance for FPS).
 		fpsMatch := info.FPS >= float64(target.FPS)-0.1 && info.FPS <= float64(target.FPS)+0.1
 		resMatch := info.Width == target.Width && info.Height == target.Height
 
@@ -72,7 +74,7 @@ func (p *Processor) processStep(ctx context.Context, input AssetInput, rawPath, 
 
 func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, error) {
 	if err := os.Rename(rawPath, processedPath); err != nil {
-		// If rename fails (cross-device), try copy
+		// If rename fails (cross-device), try copy.
 		p.log.Warn("rename failed, attempting copy", zap.Error(err))
 		if err := fileutil.CopyFile(rawPath, processedPath); err != nil {
 			return "", fmt.Errorf("failed to move raw file to processed path: %w", err)

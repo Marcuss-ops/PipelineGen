@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
@@ -18,14 +20,9 @@ import (
 
 var driveMetaMu sync.Mutex
 
-// MediaProcessor defines the contract for downloading, processing, and uploading media assets.
-// This interface is used across domains (artlist, youtubeclip, etc.) to avoid duplicate contracts.
-type MediaProcessor interface {
-	DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error)
-}
-
-// Processor implements MediaProcessor. It orchestrates download via yt-dlp or HTTP,
-// optional ffmpeg normalization, perceptual deduplication, file hashing, and Drive upload.
+// Processor orchestrates download via yt-dlp or HTTP, optional ffmpeg
+// normalization, perceptual deduplication, file hashing, and Drive upload.
+// It implements the canonical core/processor.Processor contract directly.
 type Processor struct {
 	dl            YTDLP
 	httpDL        HTTPDownloader
@@ -39,6 +36,8 @@ type Processor struct {
 	registry      assetregistry.Registry
 	driveUploader *drive.Uploader
 }
+
+var _ processor.Processor = (*Processor)(nil)
 
 // ProcessorConfig holds the constructor dependencies for Processor.
 type ProcessorConfig struct {
@@ -82,35 +81,40 @@ func NewProcessor(
 	}
 }
 
-// DownloadProcessUpload orchestrates the full pipeline: download, process, hash, upload.
+// Process orchestrates the full pipeline: download, process, hash, and upload.
 // It validates inputs, downloads the asset, optionally normalizes via ffmpeg,
 // checks for perceptual duplicates, computes the file hash, and returns metadata.
-func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput) (*AssetResult, error) {
-	result := &AssetResult{
+func (p *Processor) Process(ctx context.Context, input *processor.ProcessInput) (*processor.ProcessResult, error) {
+	if input == nil {
+		err := fmt.Errorf("processor.ProcessInput is required")
+		return &processor.ProcessResult{Status: "failed", Error: err.Error()}, err
+	}
+
+	result := &processor.ProcessResult{
 		ID:     input.ID,
 		Status: "failed",
 	}
 
-	// Validate required inputs
+	// Validate required inputs.
 	if input.ID == "" {
-		return result, fmt.Errorf("AssetInput.ID is required")
+		return result, fmt.Errorf("ProcessInput.ID is required")
 	}
 	if input.Name == "" {
-		return result, fmt.Errorf("AssetInput.Name is required")
+		return result, fmt.Errorf("ProcessInput.Name is required")
 	}
 	if input.SourceURL == "" {
-		return result, fmt.Errorf("AssetInput.SourceURL is required")
+		return result, fmt.Errorf("ProcessInput.SourceURL is required")
 	}
 	if p.dl == nil {
 		return result, fmt.Errorf("Processor.dl (YTDLP) is nil - cannot download")
 	}
 
-	// Setup paths
+	// Setup paths.
 	tmpDir, saveDir := p.setupDirectories(input)
 	finalFilename := textutil.SafeName(input.Name) + " " + input.ID + ".mp4"
 	processedPath := OutputPath(saveDir, finalFilename)
 
-	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly)
+	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly).
 	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
 	actualRawPath, err := p.downloadStep(ctx, input, rawPath)
 	if err != nil {
@@ -118,7 +122,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		return result, err
 	}
 
-	// Step 2: Process/Normalize
+	// Step 2: Process/Normalize.
 	processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
 	if err != nil {
 		_ = os.Remove(actualRawPath)
@@ -126,7 +130,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		return result, err
 	}
 
-	// New: Perceptual Deduplication
+	// Perceptual deduplication.
 	duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
 	if duplicateID != "" {
 		p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
@@ -137,7 +141,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 			result.DownloadLink = existing.DownloadLink
 			result.Status = "duplicate"
 
-			// Clean up local files to avoid duplicate storage
+			// Clean up local files to avoid duplicate storage.
 			_ = os.Remove(actualRawPath)
 			_ = os.Remove(processedPath)
 
@@ -146,7 +150,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 		}
 	}
 
-	// Step 3: Hash
+	// Step 3: Hash.
 	fileHash, err := p.hashStep(ctx, processedPath)
 	if err != nil {
 		_ = os.Remove(actualRawPath)
@@ -158,7 +162,7 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 	result.LocalPath = processedPath
 	result.Filename = filepath.Base(processedPath)
 
-	// Step 4: Upload to Google Drive (if configured)
+	// Step 4: Upload to Google Drive (if configured).
 	if p.driveUploader != nil && input.FolderID != "" {
 		uploadResult, uploadErr := p.driveUploader.UploadFile(ctx, processedPath, input.FolderID, result.Filename)
 		if uploadErr != nil {
@@ -198,14 +202,14 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 			"source_url":    input.SourceURL,
 			"duplicate_of":  result.DuplicateOf,
 		}
-		// Merge any extra metadata provided in the input
+		// Merge any extra metadata provided in the input.
 		for k, v := range input.Metadata {
 			if _, exists := metaData[k]; !exists {
 				metaData[k] = v
 			}
 		}
 
-		// Maintain a single metadata.json locally under lock to avoid concurrency races
+		// Maintain a single metadata.json locally under lock to avoid concurrency races.
 		driveMetaMu.Lock()
 		localMetaPath := filepath.Join(filepath.Dir(processedPath), "metadata.json")
 		var localExisting []map[string]any
@@ -224,17 +228,17 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 			localExisting = append(localExisting, metaData)
 		}
 		if data, err := json.MarshalIndent(localExisting, "", "  "); err == nil {
-			if writeErr := os.WriteFile(localMetaPath, data, 0644); writeErr != nil {
+			if writeErr := os.WriteFile(localMetaPath, data, 0o644); writeErr != nil {
 				p.log.Warn("failed to write metadata JSON locally", zap.String("id", input.ID), zap.Error(writeErr))
 			}
 		}
 
-		// Maintain and upload a single cumulative metadata.json to Google Drive
+		// Maintain and upload a single cumulative metadata.json to Google Drive.
 		p.updateCumulativeMetadataJSON(ctx, input.FolderID, input.ID, metaData)
 		driveMetaMu.Unlock()
 	}
 
-	// Cleanup raw file after processing
+	// Cleanup raw file after processing.
 	_ = os.Remove(actualRawPath)
 
 	result.Status = "processed"
@@ -242,9 +246,9 @@ func (p *Processor) DownloadProcessUpload(ctx context.Context, input AssetInput)
 }
 
 // setupDirectories creates temp and save directories, returning their paths.
-func (p *Processor) setupDirectories(input AssetInput) (tmpDir, saveDir string) {
+func (p *Processor) setupDirectories(input *processor.ProcessInput) (tmpDir, saveDir string) {
 	tmpDir = filepath.Join(p.dataDir, p.tempDir)
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		p.log.Error("failed to create temp directory", zap.String("dir", tmpDir), zap.Error(err))
 		tmpDir = os.TempDir()
 	}
@@ -253,7 +257,7 @@ func (p *Processor) setupDirectories(input AssetInput) (tmpDir, saveDir string) 
 	if saveDir == "" {
 		saveDir = filepath.Join(p.dataDir, "mediaassets", textutil.SafeName(input.Term))
 	}
-	if err := os.MkdirAll(saveDir, 0755); err != nil {
+	if err := os.MkdirAll(saveDir, 0o755); err != nil {
 		p.log.Error("failed to create save directory", zap.String("dir", saveDir), zap.Error(err))
 		saveDir = tmpDir
 	}
@@ -303,7 +307,7 @@ func (p *Processor) updateCumulativeMetadataJSON(ctx context.Context, folderID, 
 		return
 	}
 	metaTempPath := filepath.Join(os.TempDir(), fmt.Sprintf("meta_%s_%d.json", clipID, time.Now().UnixNano()))
-	if err := os.WriteFile(metaTempPath, jsonBytes, 0644); err != nil {
+	if err := os.WriteFile(metaTempPath, jsonBytes, 0o644); err != nil {
 		p.log.Warn("failed to write metadata json temp file", zap.Error(err))
 		return
 	}
