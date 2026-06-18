@@ -39,6 +39,27 @@ CREATE TABLE IF NOT EXISTS artifacts (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_sha256 ON artifacts(sha256) WHERE sha256 != '';
 CREATE INDEX IF NOT EXISTS idx_artifacts_job ON artifacts(job_id);
 CREATE INDEX IF NOT EXISTS idx_artifacts_status ON artifacts(status);
+
+CREATE TABLE IF NOT EXISTS artifact_sources (
+    source_id         TEXT PRIMARY KEY,
+    artifact_id       TEXT NOT NULL,
+    source_type       TEXT NOT NULL DEFAULT '',
+    source_reference  TEXT NOT NULL DEFAULT '',
+    source_account_id TEXT NOT NULL DEFAULT '',
+    imported_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_artifact_sources_artifact ON artifact_sources(artifact_id);
+
+CREATE TABLE IF NOT EXISTS job_artifacts (
+    job_id      TEXT NOT NULL,
+    artifact_id TEXT NOT NULL,
+    role        TEXT NOT NULL DEFAULT '',
+    ordinal     INTEGER NOT NULL DEFAULT 0,
+    required    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (job_id, artifact_id)
+);
+CREATE INDEX IF NOT EXISTS idx_job_artifacts_job ON job_artifacts(job_id);
 `
 }
 
@@ -180,6 +201,90 @@ func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string) ([]Artif
 		artifacts = append(artifacts, a)
 	}
 	return artifacts, rows.Err()
+}
+
+// ── Provenance (PR3) ─────────────────────────────────────────────────
+
+// CreateSource inserts an artifact source record.
+func (r *SQLiteRepository) CreateSource(ctx context.Context, s *ArtifactSource) error {
+	if s.ImportedAt.IsZero() {
+		s.ImportedAt = time.Now().UTC()
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO artifact_sources (source_id, artifact_id, source_type,
+			source_reference, source_account_id, imported_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, s.SourceID, s.ArtifactID, s.SourceType,
+		s.SourceReference, s.SourceAccountID,
+		s.ImportedAt.UTC().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("artifacts: create source %s: %w", s.SourceID, err)
+	}
+	return nil
+}
+
+// ── Job-artifact linking (PR3) ──────────────────────────────────────
+
+// UpsertJobArtifact inserts or updates a job-artifact link.
+func (r *SQLiteRepository) UpsertJobArtifact(ctx context.Context, ja *JobArtifact) error {
+	if ja.CreatedAt.IsZero() {
+		ja.CreatedAt = time.Now().UTC()
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO job_artifacts (job_id, artifact_id, role, ordinal, required, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(job_id, artifact_id) DO UPDATE SET
+			role = excluded.role, ordinal = excluded.ordinal,
+			required = excluded.required
+	`, ja.JobID, ja.ArtifactID, ja.Role, ja.Ordinal, ja.Required,
+		ja.CreatedAt.UTC().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("artifacts: upsert job artifact %s/%s: %w", ja.JobID, ja.ArtifactID, err)
+	}
+	return nil
+}
+
+// ListJobArtifacts returns all artifact links for a job.
+func (r *SQLiteRepository) ListJobArtifacts(ctx context.Context, jobID string) ([]JobArtifact, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT job_id, artifact_id, role, ordinal, required, created_at
+		FROM job_artifacts WHERE job_id = ? ORDER BY ordinal
+	`, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: list job artifacts %s: %w", jobID, err)
+	}
+	defer rows.Close()
+
+	var artifacts []JobArtifact
+	for rows.Next() {
+		var ja JobArtifact
+		var createdAt string
+		if err := rows.Scan(&ja.JobID, &ja.ArtifactID, &ja.Role, &ja.Ordinal, &ja.Required, &createdAt); err != nil {
+			return nil, fmt.Errorf("artifacts: scan job artifact: %w", err)
+		}
+		ja.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		artifacts = append(artifacts, ja)
+	}
+	return artifacts, rows.Err()
+}
+
+// GetJobArtifact retrieves a single job-artifact link.
+func (r *SQLiteRepository) GetJobArtifact(ctx context.Context, jobID, artifactID string) (*JobArtifact, error) {
+	var ja JobArtifact
+	var createdAt string
+
+	err := r.db.QueryRowContext(ctx, `
+		SELECT job_id, artifact_id, role, ordinal, required, created_at
+		FROM job_artifacts WHERE job_id = ? AND artifact_id = ?
+	`, jobID, artifactID).Scan(&ja.JobID, &ja.ArtifactID, &ja.Role, &ja.Ordinal, &ja.Required, &createdAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("artifacts: get job artifact %s/%s: %w", jobID, artifactID, err)
+	}
+	ja.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return &ja, nil
 }
 
 // Compile-time check
