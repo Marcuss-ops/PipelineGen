@@ -118,6 +118,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		StockDriveRepo:     svcs.stockDriveRepo,
 		ArtlistRepo:        svcs.artlistRepo,
 		ClipsOnlyRepo:      svcs.clipsOnlyRepo,
+		AssetRepo:          svcs.assetRepo,
 		MonitorsRepo:       svcs.monitorsRepo,
 		VoiceoverRepo:      voRepo,
 		VoiceoverService:   svcs.voiceoverService,

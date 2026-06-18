@@ -57,6 +57,7 @@ type services struct {
 	imageService       *imgservice.Service
 	stockDriveRepo     *clips.Repository
 	clipsOnlyRepo      *clips.Repository
+	assetRepo          asset.Repository
 	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
 	monitorsRepo       *monitors.Repository
 	voiceoverService   *voiceover.Service

@@ -10,7 +10,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -40,6 +42,7 @@ type CoreInfra struct {
 	DriveDests    *DriveDestinations // resolved Drive folder IDs (immutable Config)
 
 	ClipsOnlyRepo      *clips.Repository
+	AssetRepo          asset.Repository
 	MediaProcessor     processor.Processor
 	AssetIndexService  *assetindex.Service
 	AssetTreeService   *assettree.Service
@@ -145,6 +148,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 
 	// 4. Media Processing
 	clipsOnlyRepo := clips.NewRepository(dbs.main.DB, log)
+	assetRepo := assetrepo.New(dbs.main.DB, log)
 	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log, driveUploader)
 
 	// 5. Asset Services
@@ -257,6 +261,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		DriveDests:    dests,
 
 		ClipsOnlyRepo:      clipsOnlyRepo,
+		AssetRepo:          assetRepo,
 		MediaProcessor:     mediaProcessor,
 		AssetIndexService:  assetIndexService,
 		AssetTreeService:   assetTreeService,
