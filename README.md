@@ -1,17 +1,23 @@
 # 🚀 PipelineGen - Advanced Media Processing Engine
 
-PipelineGen is a powerful Go-based backend service designed to automate media processing pipelines. It handles content ingestion from various sources (Artlist, YouTube), performs AI-driven processing (Voiceovers, Image Generation), and manages storage synchronization with Google Drive.
+PipelineGen is a Go-based backend service that manages media processing pipelines
+for YouTube clips and Artlist assets. It provides AI-driven script generation,
+voiceover synthesis, image generation, and Google Drive synchronization.
 
 ## ✨ Features
 
-- **📺 YouTube Clips**: Search and extract clips from YouTube with automatic metadata enrichment and storage on Google Drive.
-- **🎵 Artlist Ingestion**: Automated searching and downloading of premium assets from Artlist.
-- **🎙️ AI Voiceovers**: Batch generation of voiceovers using advanced TTS engines with full async support.
-- **🖼️ Image Generation**: Integration with NVIDIA NIM and Flux AI for high-quality image assets.
-- **🔄 Job System**: Robust, SQLite-backed asynchronous job queue with progress tracking and event logging.
-- **📂 Cloud Sync**: Deep integration with Google Drive for asset organization and synchronization.
-- **📈 Google Accounting**: Automated export and download of video assets from Google Vids Pro using Playwright.
-- **📚 Comic Video Maker**: Advanced analysis of comic PDFs with panel extraction and OCR support.
+- **📺 YouTube Clips**: Search and extract clips from YouTube with automatic metadata
+  enrichment and storage on Google Drive.
+- **🎵 Artlist Ingestion**: Automated searching and downloading of premium assets from
+  Artlist.
+- **🎙️ AI Voiceovers**: Batch generation of voiceovers using advanced TTS engines with
+  full async support.
+- **🖼️ Image Generation**: Integration with NVIDIA NIM and Flux AI for high-quality
+  image assets.
+- **🔄 Job System**: Robust, SQLite-backed asynchronous job queue with progress tracking
+  and event logging.
+- **📂 Cloud Sync**: Deep integration with Google Drive for asset organization and
+  synchronization.
 
 ## 🛠 Tech Stack
 
@@ -25,13 +31,14 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - Go 1.25+
 - Python 3.10+
 - `yt-dlp` installed in your path
 - FFmpeg
-- Playwright (for Google Accounting)
 
 ### Installation
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/Marcuss-ops/PipelineGen.git
@@ -44,14 +51,7 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
    # Edit config.yaml with your credentials and paths
    ```
 
-3. Install Python dependencies:
-   ```bash
-   pip install -r scripts/requirements.txt
-   pip install -r google-accounting/requirements.txt
-   playwright install chromium
-   ```
-
-4. Build and Run:
+3. Build and Run:
    ```bash
    go build -o pipelinegen ./cmd/server/
    ./pipelinegen --mode all
@@ -64,11 +64,13 @@ PipelineGen is a powerful Go-based backend service designed to automate media pr
 - **Job Status**: `GET /api/jobs/:id`
 - **Images**: `POST /api/images/generate/nvidia`
 - **Artlist**: `POST /api/artlist/run`
-- **Google Accounting**: `GET http://localhost:8000/list`
 
 ## 🧠 Job System
 
-PipelineGen uses a unified job system for all long-running operations. Jobs are stored in `data/media/media.db.sqlite` (Main Database) and are processed by background workers. You can track job progress via the `/api/jobs` endpoints.
+PipelineGen uses a unified job system for all long-running operations. Jobs are
+stored in `data/media/media.db.sqlite` and processed by background workers.
+See `docs/ARCHITECTURE.md` for the full system diagram and module registry.
+Track job progress via the `/api/jobs` endpoints.
 
 ## 📁 Project Structure
 
@@ -76,30 +78,23 @@ PipelineGen uses a unified job system for all long-running operations. Jobs are 
 - `internal/core/`: Canonical contracts and interfaces.
 - `internal/service/`: Business logic and service implementations.
 - `internal/api/handlers/`: REST API handlers (modularized).
-- `google-accounting/`: FastAPI service for Google Vids automation.
-- `comic-video-maker/`: Node.js/Python toolkit for comic analysis.
-- `pkg/models/`: Shared data models.
+- `internal/media/`: Media processing pipelines (images, voiceover, semantic search).
+- `internal/repository/`: Data access layer (scripts, clips, jobs).
+- `pkg/`: Leaf utility packages (retry, textutil, hashutil, etc.).
 - `scripts/`: Utility and AI processing scripts.
+- `migrations/sqlite/`: SQLite migrations applied at startup.
+- `config/`: YAML configuration and presets.
 
 ## 📝 Documentation
-- [AGENTS.md](./AGENTS.md): Critical system rules and architectural overview.
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md): Canonical system architecture, data flows,
+  module registry, and day-1 commands.
+- [AGENTS.md](./AGENTS.md): Critical system rules and instructions for AI agents.
 - [PROJECT_GUIDE.md](./PROJECT_GUIDE.md): Italian language getting started guide.
-- [docs/PARALLELIZATION.md](./docs/PARALLELIZATION.md): Parallel execution architecture, warm pool configuration, and tuning.
-- [docs/](./docs/): Detailed technical documentation.
-
-## 🗄️ Database Migrations
-
-All migrations live in `migrations/sqlite/` and are auto-applied at
-startup by `internal/app/migrations.go`. Latest additions:
-
-- **028** `028_scripts_add_columns.sql` — new columns on `scripts`.
-- **029** `029_script_research_sources_unique.sql` — unique index on
-  `(script_id, url, query)` plus `ON CONFLICT DO UPDATE` in
-  `SaveResearchSources` to dedupe research sources across retries,
-  parallel chapters, and source splits.
-- **030** `030_outline_sections_emotional_role.sql` — `emotional_role`
-  column on `script_outline_sections` to persist the full per-section
-  `ScriptPlan` (purpose, key_points, emotional_role).
+- [docs/SCRIPT_PIPELINE.md](./docs/SCRIPT_PIPELINE.md): Complete script pipeline
+  documentation.
+- [docs/](./docs/): Additional technical documentation.
 
 ---
+
 *Developed by the Marcuss-ops Team*
