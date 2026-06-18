@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	_ "github.com/mattn/go-sqlite3"

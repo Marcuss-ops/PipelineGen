@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 // ── Mock vector store for testing hybrid search ─────────────────────────

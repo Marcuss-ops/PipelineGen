@@ -1,7 +1,9 @@
 package artifacts
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"time"
@@ -188,4 +190,121 @@ func (s *Service) LocalPath(ctx context.Context, artifactID string) (string, err
 	return local.LocalPath(a.StorageKey)
 }
 
+// ResolveAndRegister buffers content, computes SHA-256, deduplicates against
+// existing artifacts, stores the blob if new, and records provenance.
+// Ported from assetregistry.Service.ResolveAndRegister (PR3 merge).
+//
+// Content is buffered for SHA-256 computation before the dedup check.
+// The blob is only written to storage if the content is truly new
+// (no matching SHA-256 in the database).
+func (s *Service) ResolveAndRegister(ctx context.Context, input ResolveAndRegisterInput) (*ResolveAndRegisterResult, error) {
+	// Step 1: Buffer content and compute SHA-256 BEFORE touching blob store.
+	const maxBufferSize = 500 * 1024 * 1024 // 500 MB limit
+	limitedReader := io.LimitReader(input.Content, maxBufferSize+1)
 
+	var buf bytes.Buffer
+	hasher := sha256.New()
+	teeReader := io.TeeReader(limitedReader, hasher)
+
+	written, err := io.Copy(&buf, teeReader)
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: read content: %w", err)
+	}
+	if written > maxBufferSize {
+		return nil, fmt.Errorf("artifacts: content exceeds max size (%d bytes)", maxBufferSize)
+	}
+
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+
+	// Step 2: Check for duplicate by SHA-256 BEFORE writing to blob store
+	existing, err := s.repo.GetBySHA256(ctx, hash)
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: dedup check: %w", err)
+	}
+	if existing != nil {
+		s.log.Info("artifact deduplicated",
+			zap.String("existing_id", existing.ID),
+			zap.String("sha256", hash),
+		)
+
+		// Record provenance even for deduplicated artifacts
+		sourceID := "src_" + hashutil.RandomString(16)
+		source := &ArtifactSource{
+			SourceID:        sourceID,
+			ArtifactID:      existing.ID,
+			SourceType:      input.SourceType,
+			SourceReference: input.SourceRef,
+			SourceAccountID: input.AccountID,
+			ImportedAt:      time.Now().UTC(),
+		}
+		if err := s.repo.CreateSource(ctx, source); err != nil {
+			s.log.Warn("failed to record provenance for deduplicated artifact", zap.Error(err))
+		}
+
+		return &ResolveAndRegisterResult{
+			Artifact:     existing,
+			SHA256:       hash,
+			NewlyCreated: false,
+		}, nil
+	}
+
+	// Step 3: Create artifact via CreateAndVerify (handles staging→verify→promote)
+	artifact, err := s.CreateAndVerify(ctx, CreateInput{
+		Kind:           input.Kind,
+		MimeType:       input.MimeType,
+		Reader:         bytes.NewReader(buf.Bytes()),
+		ExpectedSHA256: hash,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: create and verify: %w", err)
+	}
+
+	// Step 4: Record provenance
+	sourceID := "src_" + hashutil.RandomString(16)
+	source := &ArtifactSource{
+		SourceID:        sourceID,
+		ArtifactID:      artifact.ID,
+		SourceType:      input.SourceType,
+		SourceReference: input.SourceRef,
+		SourceAccountID: input.AccountID,
+		ImportedAt:      time.Now().UTC(),
+	}
+	if err := s.repo.CreateSource(ctx, source); err != nil {
+		s.log.Warn("failed to record provenance", zap.Error(err))
+	}
+
+	s.log.Info("artifact registered",
+		zap.String("artifact_id", artifact.ID),
+		zap.String("kind", input.Kind),
+		zap.String("sha256", hash),
+		zap.Int64("size_bytes", artifact.SizeBytes),
+	)
+
+	return &ResolveAndRegisterResult{
+		Artifact:     artifact,
+		SHA256:       hash,
+		NewlyCreated: true,
+	}, nil
+}
+
+// TouchAccess updates the last-accessed timestamp for an artifact (PR3: from assetregistry).
+func (s *Service) TouchAccess(ctx context.Context, artifactID string) error {
+	return s.repo.TouchAccess(ctx, artifactID)
+}
+
+// ── Job Artifact Linking (PR3: from assetregistry) ─────────────────────
+
+// LinkJobArtifact creates a job_artifact association.
+func (s *Service) LinkJobArtifact(ctx context.Context, ja *JobArtifact) error {
+	return s.repo.UpsertJobArtifact(ctx, ja)
+}
+
+// GetJobArtifact retrieves a specific job-artifact link.
+func (s *Service) GetJobArtifact(ctx context.Context, jobID, artifactID string) (*JobArtifact, error) {
+	return s.repo.GetJobArtifact(ctx, jobID, artifactID)
+}
+
+// ListJobArtifacts lists all artifacts for a job.
+func (s *Service) ListJobArtifacts(ctx context.Context, jobID string) ([]JobArtifact, error) {
+	return s.repo.ListJobArtifacts(ctx, jobID)
+}

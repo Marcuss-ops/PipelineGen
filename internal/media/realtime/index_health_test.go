@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 // indexHealthStore is a minimal fake of vectorstore.Store that lets the

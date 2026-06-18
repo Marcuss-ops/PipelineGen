@@ -7,7 +7,7 @@ import (
 	lessonshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/lessons"
 	realtimehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"

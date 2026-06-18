@@ -9,7 +9,7 @@ import (
 	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/drive"
 	scraperhandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/scraper"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/system"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // SystemModule handles system diagnostic routes.

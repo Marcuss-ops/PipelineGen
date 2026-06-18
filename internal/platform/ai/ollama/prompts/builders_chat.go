@@ -3,7 +3,7 @@ package prompts
 import (
 	"fmt"
 	"strings"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 )
 
 // BuildChatMessages builds the message list for the chat API.

@@ -34,7 +34,7 @@ config.yaml
 # ============================================
 pipelinegen
 server
-admin
+/admin
 *.exe
 *.dll
 *.so

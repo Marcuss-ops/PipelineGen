@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 
 func (s *Service) Match(ctx context.Context, req *MatchRequest) (*MatchResponse, error) {

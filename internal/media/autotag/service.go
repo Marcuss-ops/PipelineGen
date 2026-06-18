@@ -12,7 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 )
 
 type Service struct {

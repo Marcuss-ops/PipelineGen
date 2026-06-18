@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 )
@@ -38,3 +38,14 @@ func resolveRuntimeDestinations(ctx context.Context, db *sql.DB, driveClient *gd
 		videoAIFolder:    cfg.Drive.VideoAIFolder(),
 	}
 }
+
+func configOnlyDestinations(cfg *config.Config) *DriveDestinations {
+	return &DriveDestinations{
+		MediaRoot:        cfg.Drive.RootFolder(),
+		VideoAIRoot:      cfg.Drive.VideoAIRootFolder,
+		SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder,
+		imagesFolder:     cfg.Drive.ImagesFolder(),
+		videoAIFolder:    cfg.Drive.VideoAIFolder(),
+	}
+}
+

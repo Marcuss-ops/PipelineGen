@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 

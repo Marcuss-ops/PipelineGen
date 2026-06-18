@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -21,18 +21,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
 	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
-	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/translations"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 )
 
 // CoreInfra holds core infrastructure services produced by composeCoreInfra.
@@ -156,7 +156,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// 4. Media Processing
 	assetRepo := assetrepo.New(dbs.main.DB, log)
 	clipsOnlyRepo := clips.NewRepositoryCanonical(dbs.main.DB, log, assetRepo)
-	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
+	assetLocRepo := assetlocations.NewAdapter(assetlocations.NewRepository(dbs.main.DB))
 	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
 	assetVerRepo := assetversions.NewRepository(dbs.main.DB)
 	assetQuerySvc := assetquery.New(

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
 
-	drivequery "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	drivequery "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 )
 
 // GetOrCreateFolder gets an existing folder or creates it.

@@ -28,7 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
@@ -45,7 +45,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

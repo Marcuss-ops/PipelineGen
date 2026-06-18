@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -30,7 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"

@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )

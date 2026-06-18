@@ -5,7 +5,7 @@ import (
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

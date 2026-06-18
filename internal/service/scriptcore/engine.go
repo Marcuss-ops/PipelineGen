@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"

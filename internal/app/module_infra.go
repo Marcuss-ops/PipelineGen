@@ -2,7 +2,7 @@ package app
 
 import (
 	scraperhandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/scraper"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 
 	"go.uber.org/zap"

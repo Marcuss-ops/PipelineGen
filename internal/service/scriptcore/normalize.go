@@ -6,9 +6,9 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/prompts"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/prompts"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 

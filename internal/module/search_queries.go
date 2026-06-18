@@ -2,7 +2,7 @@ package module
 
 import (
 	searchquerieshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/searchqueries"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 
 	"go.uber.org/zap"

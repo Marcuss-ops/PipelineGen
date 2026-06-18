@@ -2,7 +2,7 @@ package app
 
 import (
 	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/fullimages"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"

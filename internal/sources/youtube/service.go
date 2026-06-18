@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"

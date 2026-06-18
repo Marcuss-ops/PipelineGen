@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 )
 
 // CheckHealth checks if Ollama is reachable

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 // testSchema is a minimal subset of the production schema that covers

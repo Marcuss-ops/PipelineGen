@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 func setupTestService(t *testing.T) (*Service, func()) {

@@ -1,15 +1,15 @@
 // Package bindings provides BindingExtractor implementations for job payload types.
-// Each extractor knows how to pull asset references from a job payload
-// and rewrite them with canonical velox-asset:// URIs.
+// Each extractor knows how to pull artifact references from a job payload
+// and rewrite them with canonical velox-artifact:// URIs.
 package bindings
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/assetregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 )
 
 // ── Voiceover Binding Extractor ────────────────────────────────────────
 
-// VoiceoverBindings extracts voiceover audio assets from a job payload.
+// VoiceoverBindings extracts voiceover audio artifacts from a job payload.
 type VoiceoverBindings struct{}
 
 // NewVoiceoverBindings creates a voiceover binding extractor.
@@ -22,17 +22,17 @@ func (e *VoiceoverBindings) JobType() string { return "voiceover_batch" }
 
 // Extract finds voiceover references in the payload.
 // Looks for: voiceover_file, audio_path, and assets[].voiceover fields.
-func (e *VoiceoverBindings) Extract(payload map[string]any) ([]assetregistry.Binding, error) {
-	var bindings []assetregistry.Binding
+func (e *VoiceoverBindings) Extract(payload map[string]any) ([]artifacts.Binding, error) {
+	var bindings []artifacts.Binding
 	ordinal := 0
 
 	// voiceover_file: single voiceover reference
 	if ref, ok := getString(payload, "voiceover_file"); ok && ref != "" {
-		bindings = append(bindings, assetregistry.Binding{
-			Role:    assetregistry.RoleVoiceover,
-			Ordinal: ordinal,
+		bindings = append(bindings, artifacts.Binding{
+			Role:     artifacts.Role("voiceover"),
+			Ordinal:  ordinal,
 			Required: true,
-			Source: assetregistry.Reference{
+			Source: artifacts.Reference{
 				Scheme: detectScheme(ref),
 				Raw:    ref,
 			},
@@ -42,11 +42,11 @@ func (e *VoiceoverBindings) Extract(payload map[string]any) ([]assetregistry.Bin
 
 	// audio_path: alternative field name
 	if ref, ok := getString(payload, "audio_path"); ok && ref != "" {
-		bindings = append(bindings, assetregistry.Binding{
-			Role:    assetregistry.RoleVoiceover,
-			Ordinal: ordinal,
+		bindings = append(bindings, artifacts.Binding{
+			Role:     artifacts.Role("voiceover"),
+			Ordinal:  ordinal,
 			Required: true,
-			Source: assetregistry.Reference{
+			Source: artifacts.Reference{
 				Scheme: detectScheme(ref),
 				Raw:    ref,
 			},
@@ -57,12 +57,12 @@ func (e *VoiceoverBindings) Extract(payload map[string]any) ([]assetregistry.Bin
 	return bindings, nil
 }
 
-// Rewrite replaces references in the payload with canonical velox-asset:// URIs.
-func (e *VoiceoverBindings) Rewrite(payload map[string]any, resolved []assetregistry.ResolvedBinding) error {
+// Rewrite replaces references in the payload with canonical velox-artifact:// URIs.
+func (e *VoiceoverBindings) Rewrite(payload map[string]any, resolved []artifacts.ResolvedBinding) error {
 	for _, rb := range resolved {
-		uri := "velox-asset://" + rb.AssetID
+		uri := "velox-artifact://" + rb.ArtifactID
 		switch rb.Binding.Role {
-		case assetregistry.RoleVoiceover:
+		case "voiceover":
 			if _, ok := payload["voiceover_file"]; ok {
 				payload["voiceover_file"] = uri
 			}
@@ -76,7 +76,7 @@ func (e *VoiceoverBindings) Rewrite(payload map[string]any, resolved []assetregi
 
 // ── Scene Image Binding Extractor ──────────────────────────────────────
 
-// SceneImageBindings extracts scene image assets from a job payload.
+// SceneImageBindings extracts scene image artifacts from a job payload.
 type SceneImageBindings struct{}
 
 // NewSceneImageBindings creates a scene image binding extractor.
@@ -89,19 +89,19 @@ func (e *SceneImageBindings) JobType() string { return "script.generate_from_cli
 
 // Extract finds scene image references in the payload.
 // Looks for: scenes[].image_path, scene_images[], and image_paths[].
-func (e *SceneImageBindings) Extract(payload map[string]any) ([]assetregistry.Binding, error) {
-	var bindings []assetregistry.Binding
+func (e *SceneImageBindings) Extract(payload map[string]any) ([]artifacts.Binding, error) {
+	var bindings []artifacts.Binding
 
 	// scenes[].image_path
 	if scenes, ok := getArray(payload, "scenes"); ok {
 		for i, scene := range scenes {
 			if sceneMap, ok := scene.(map[string]any); ok {
 				if ref, ok := getString(sceneMap, "image_path"); ok && ref != "" {
-					bindings = append(bindings, assetregistry.Binding{
-						Role:     assetregistry.RoleSceneImage,
+					bindings = append(bindings, artifacts.Binding{
+						Role:     artifacts.Role("scene_image"),
 						Ordinal:  i,
 						Required: false, // images are optional enhancers
-						Source: assetregistry.Reference{
+						Source: artifacts.Reference{
 							Scheme: detectScheme(ref),
 							Raw:    ref,
 						},
@@ -114,11 +114,11 @@ func (e *SceneImageBindings) Extract(payload map[string]any) ([]assetregistry.Bi
 	// scene_images[]: flat array
 	if sceneImages, ok := getStringArray(payload, "scene_images"); ok {
 		for i, ref := range sceneImages {
-			bindings = append(bindings, assetregistry.Binding{
-				Role:     assetregistry.RoleSceneImage,
+			bindings = append(bindings, artifacts.Binding{
+				Role:     artifacts.Role("scene_image"),
 				Ordinal:  i,
 				Required: false,
-				Source: assetregistry.Reference{
+				Source: artifacts.Reference{
 					Scheme: detectScheme(ref),
 					Raw:    ref,
 				},
@@ -129,12 +129,12 @@ func (e *SceneImageBindings) Extract(payload map[string]any) ([]assetregistry.Bi
 	return bindings, nil
 }
 
-// Rewrite replaces image references with velox-asset:// URIs.
-func (e *SceneImageBindings) Rewrite(payload map[string]any, resolved []assetregistry.ResolvedBinding) error {
+// Rewrite replaces image references with velox-artifact:// URIs.
+func (e *SceneImageBindings) Rewrite(payload map[string]any, resolved []artifacts.ResolvedBinding) error {
 	resolvedByOrdinal := make(map[int]string)
 	for _, rb := range resolved {
-		if rb.Binding.Role == assetregistry.RoleSceneImage {
-			resolvedByOrdinal[rb.Binding.Ordinal] = "velox-asset://" + rb.AssetID
+		if rb.Binding.Role == "scene_image" {
+			resolvedByOrdinal[rb.Binding.Ordinal] = "velox-artifact://" + rb.ArtifactID
 		}
 	}
 
@@ -176,17 +176,17 @@ func NewStockClipBindings() *StockClipBindings {
 func (e *StockClipBindings) JobType() string { return "script.generate_from_clips" }
 
 // Extract finds stock clip references in the payload.
-func (e *StockClipBindings) Extract(payload map[string]any) ([]assetregistry.Binding, error) {
-	var bindings []assetregistry.Binding
+func (e *StockClipBindings) Extract(payload map[string]any) ([]artifacts.Binding, error) {
+	var bindings []artifacts.Binding
 
 	// stock_clips[]: array of clip references
 	if clips, ok := getStringArray(payload, "stock_clips"); ok {
 		for i, ref := range clips {
-			bindings = append(bindings, assetregistry.Binding{
-				Role:     assetregistry.RoleStockClip,
+			bindings = append(bindings, artifacts.Binding{
+				Role:     artifacts.Role("stock_clip"),
 				Ordinal:  i,
 				Required: false,
-				Source: assetregistry.Reference{
+				Source: artifacts.Reference{
 					Scheme: detectScheme(ref),
 					Raw:    ref,
 				},
@@ -198,11 +198,11 @@ func (e *StockClipBindings) Extract(payload map[string]any) ([]assetregistry.Bin
 	if clips, ok := getStringArray(payload, "clips"); ok {
 		startIdx := len(bindings)
 		for i, ref := range clips {
-			bindings = append(bindings, assetregistry.Binding{
-				Role:     assetregistry.RoleStockClip,
+			bindings = append(bindings, artifacts.Binding{
+				Role:     artifacts.Role("stock_clip"),
 				Ordinal:  startIdx + i,
 				Required: false,
-				Source: assetregistry.Reference{
+				Source: artifacts.Reference{
 					Scheme: detectScheme(ref),
 					Raw:    ref,
 				},
@@ -213,12 +213,12 @@ func (e *StockClipBindings) Extract(payload map[string]any) ([]assetregistry.Bin
 	return bindings, nil
 }
 
-// Rewrite replaces stock clip references with velox-asset:// URIs.
-func (e *StockClipBindings) Rewrite(payload map[string]any, resolved []assetregistry.ResolvedBinding) error {
+// Rewrite replaces stock clip references with velox-artifact:// URIs.
+func (e *StockClipBindings) Rewrite(payload map[string]any, resolved []artifacts.ResolvedBinding) error {
 	resolvedByOrdinal := make(map[int]string)
 	for _, rb := range resolved {
-		if rb.Binding.Role == assetregistry.RoleStockClip {
-			resolvedByOrdinal[rb.Binding.Ordinal] = "velox-asset://" + rb.AssetID
+		if rb.Binding.Role == "stock_clip" {
+			resolvedByOrdinal[rb.Binding.Ordinal] = "velox-artifact://" + rb.ArtifactID
 		}
 	}
 
@@ -258,16 +258,16 @@ func NewMusicBindings() *MusicBindings { return &MusicBindings{} }
 func (e *MusicBindings) JobType() string { return "script.generate_from_clips" }
 
 // Extract finds music references in the payload.
-func (e *MusicBindings) Extract(payload map[string]any) ([]assetregistry.Binding, error) {
-	var bindings []assetregistry.Binding
+func (e *MusicBindings) Extract(payload map[string]any) ([]artifacts.Binding, error) {
+	var bindings []artifacts.Binding
 
 	// music_track: single music reference
 	if ref, ok := getString(payload, "music_track"); ok && ref != "" {
-		bindings = append(bindings, assetregistry.Binding{
-			Role:     assetregistry.RoleMusic,
+		bindings = append(bindings, artifacts.Binding{
+			Role:     artifacts.Role("music"),
 			Ordinal:  0,
 			Required: false,
-			Source: assetregistry.Reference{
+			Source: artifacts.Reference{
 				Scheme: detectScheme(ref),
 				Raw:    ref,
 			},
@@ -276,11 +276,11 @@ func (e *MusicBindings) Extract(payload map[string]any) ([]assetregistry.Binding
 
 	// background_music: alternative field
 	if ref, ok := getString(payload, "background_music"); ok && ref != "" {
-		bindings = append(bindings, assetregistry.Binding{
-			Role:     assetregistry.RoleMusic,
+		bindings = append(bindings, artifacts.Binding{
+			Role:     artifacts.Role("music"),
 			Ordinal:  1,
 			Required: false,
-			Source: assetregistry.Reference{
+			Source: artifacts.Reference{
 				Scheme: detectScheme(ref),
 				Raw:    ref,
 			},
@@ -290,13 +290,13 @@ func (e *MusicBindings) Extract(payload map[string]any) ([]assetregistry.Binding
 	return bindings, nil
 }
 
-// Rewrite replaces music references with velox-asset:// URIs.
-func (e *MusicBindings) Rewrite(payload map[string]any, resolved []assetregistry.ResolvedBinding) error {
+// Rewrite replaces music references with velox-artifact:// URIs.
+func (e *MusicBindings) Rewrite(payload map[string]any, resolved []artifacts.ResolvedBinding) error {
 	for _, rb := range resolved {
-		if rb.Binding.Role != assetregistry.RoleMusic {
+		if rb.Binding.Role != "music" {
 			continue
 		}
-		uri := "velox-asset://" + rb.AssetID
+		uri := "velox-artifact://" + rb.ArtifactID
 		switch rb.Binding.Ordinal {
 		case 0:
 			payload["music_track"] = uri
@@ -319,14 +319,14 @@ func NewThumbnailBindings() *ThumbnailBindings { return &ThumbnailBindings{} }
 func (e *ThumbnailBindings) JobType() string { return "script.generate_from_clips" }
 
 // Extract finds thumbnail references in the payload.
-func (e *ThumbnailBindings) Extract(payload map[string]any) ([]assetregistry.Binding, error) {
+func (e *ThumbnailBindings) Extract(payload map[string]any) ([]artifacts.Binding, error) {
 	// thumbnail_path: single thumbnail reference
 	if ref, ok := getString(payload, "thumbnail_path"); ok && ref != "" {
-		return []assetregistry.Binding{{
-			Role:     assetregistry.RoleThumbnail,
+		return []artifacts.Binding{{
+			Role:     artifacts.Role("thumbnail"),
 			Ordinal:  0,
 			Required: false,
-			Source: assetregistry.Reference{
+			Source: artifacts.Reference{
 				Scheme: detectScheme(ref),
 				Raw:    ref,
 			},
@@ -335,11 +335,11 @@ func (e *ThumbnailBindings) Extract(payload map[string]any) ([]assetregistry.Bin
 	return nil, nil
 }
 
-// Rewrite replaces the thumbnail reference with a velox-asset:// URI.
-func (e *ThumbnailBindings) Rewrite(payload map[string]any, resolved []assetregistry.ResolvedBinding) error {
+// Rewrite replaces the thumbnail reference with a velox-artifact:// URI.
+func (e *ThumbnailBindings) Rewrite(payload map[string]any, resolved []artifacts.ResolvedBinding) error {
 	for _, rb := range resolved {
-		if rb.Binding.Role == assetregistry.RoleThumbnail {
-			payload["thumbnail_path"] = "velox-asset://" + rb.AssetID
+		if rb.Binding.Role == "thumbnail" {
+			payload["thumbnail_path"] = "velox-artifact://" + rb.ArtifactID
 			return nil
 		}
 	}
@@ -419,9 +419,9 @@ func getArray(m map[string]any, key string) ([]interface{}, bool) {
 
 // Compile-time checks
 var (
-	_ assetregistry.BindingExtractor = (*VoiceoverBindings)(nil)
-	_ assetregistry.BindingExtractor = (*SceneImageBindings)(nil)
-	_ assetregistry.BindingExtractor = (*StockClipBindings)(nil)
-	_ assetregistry.BindingExtractor = (*MusicBindings)(nil)
-	_ assetregistry.BindingExtractor = (*ThumbnailBindings)(nil)
+	_ artifacts.BindingExtractor = (*VoiceoverBindings)(nil)
+	_ artifacts.BindingExtractor = (*SceneImageBindings)(nil)
+	_ artifacts.BindingExtractor = (*StockClipBindings)(nil)
+	_ artifacts.BindingExtractor = (*MusicBindings)(nil)
+	_ artifacts.BindingExtractor = (*ThumbnailBindings)(nil)
 )

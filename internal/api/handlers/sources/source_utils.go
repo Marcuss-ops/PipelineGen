@@ -13,7 +13,7 @@ import (
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

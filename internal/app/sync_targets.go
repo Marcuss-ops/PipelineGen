@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )

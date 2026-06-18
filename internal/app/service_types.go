@@ -22,8 +22,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
@@ -35,16 +35,14 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
-	assetlocations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
-	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/scheduler"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
 )
 
@@ -58,6 +56,7 @@ type services struct {
 	imageRepo          *images.Repository
 	imageService       *imgservice.Service
 	stockDriveRepo     *clips.Repository
+	artlistRepo        *clips.Repository
 	clipsOnlyRepo      *clips.Repository
 	assetRepo          asset.Repository
 	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
@@ -106,7 +105,7 @@ type services struct {
 	outboxEventsRegistry *outboxevents.HandlerRegistry
 
 	// Asset satellite tables (canonical model completion, PR0)
-	assetLocationsRepo  *assetlocations.Repository
+	assetLocationsRepo  asset.LocationRepository
 	assetProcessingRepo asset.ProcessingRepository
 	assetRelationsRepo  *assetrelations.Repository
 	assetTagsRepo       *assettags.Repository

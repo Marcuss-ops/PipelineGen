@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 
 	"github.com/gin-gonic/gin"

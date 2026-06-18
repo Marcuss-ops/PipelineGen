@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 

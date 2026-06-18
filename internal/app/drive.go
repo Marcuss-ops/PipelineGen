@@ -2,9 +2,9 @@ package app
 
 import (
 	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
 	"go.uber.org/zap"
@@ -32,7 +32,7 @@ func WireDrive(
 	// Create drive reconcile service
 	var reconcileSvc *drivecleanup.Service
 	if driveUploader != nil {
-		reconcileSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, driveUploader, log, true)
+		reconcileSvc = drivecleanup.NewService()
 		log.Info("drive reconcile service initialized")
 	}
 

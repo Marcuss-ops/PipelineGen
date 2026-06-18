@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )

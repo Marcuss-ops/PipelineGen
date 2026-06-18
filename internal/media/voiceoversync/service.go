@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/storage/drive"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"

@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/logger"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 )
 
 func main() {

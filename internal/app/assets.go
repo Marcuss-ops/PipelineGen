@@ -5,7 +5,7 @@ import (
 
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/sources"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/storage/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
@@ -74,7 +74,7 @@ func WireAssets(
 	// Create drive cleanup service
 	var driveCleanupSvc *drivecleanup.Service
 	if driveUploader != nil {
-		driveCleanupSvc = drivecleanup.NewService(coreDeps.ArtlistRepo, driveUploader, log, true)
+		driveCleanupSvc = drivecleanup.NewService()
 	}
 
 	// Create deletion service

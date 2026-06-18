@@ -17,7 +17,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/module"
 )
 

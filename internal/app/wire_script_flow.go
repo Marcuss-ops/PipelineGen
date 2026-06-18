@@ -4,11 +4,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/scriptcore"
 )

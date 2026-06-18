@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/mediaingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetregistry"
 	imgreg "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
