@@ -4,12 +4,13 @@ import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 )
 
 // VoiceoverRecordToClip converts a voiceover.Record to models.Clip for unified handling.
 // This is the canonical converter — do NOT create copies in handlers or services.
-func VoiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
+func VoiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
 	if rec == nil {
 		return nil
 	}
@@ -20,7 +21,7 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
 			name = name[:50]
 		}
 	}
-	clip := &models.MediaAsset{
+	clip := &asset.MediaAsset{
 		ID:           rec.ID,
 		Name:         name,
 		Filename:     rec.Filename,
@@ -42,35 +43,35 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *models.MediaAsset {
 }
 
 // ImageAssetToClip converts an models.ImageAsset to models.Clip for unified handling.
-// Uses SlugID as ID (consistent with admin UI) and Hash as FileHash.
+// Uses SlugID as ID (consistent with asset index) and Hash as FileHash.
 // This is the canonical converter — do NOT create copies in handlers or services.
-func ImageAssetToClip(asset *models.ImageAsset) *models.MediaAsset {
-	if asset == nil {
+func ImageAssetToClip(assetItem *models.ImageAsset) *asset.MediaAsset {
+	if assetItem == nil {
 		return nil
 	}
-	name := asset.Description
+	name := assetItem.Description
 	if name == "" {
-		name = filepath.Base(asset.PathRel)
+		name = filepath.Base(assetItem.PathRel)
 	}
 	// Use SlugID as primary ID for consistency with the asset index.
 	// Fall back to Hash if SlugID is empty.
-	id := asset.SlugID
+	id := assetItem.SlugID
 	if id == "" {
-		id = asset.Hash
+		id = assetItem.Hash
 	}
-	return &models.MediaAsset{
+	return &asset.MediaAsset{
 		ID:          id,
 		Name:        name,
-		Filename:    filepath.Base(asset.PathRel),
-		DriveLink:   asset.SourceURL,
-		DriveFileID: asset.DriveFileID,
-		FileHash:    asset.Hash,
-		LocalPath:   asset.PathRel,
+		Filename:    filepath.Base(assetItem.PathRel),
+		DriveLink:   assetItem.SourceURL,
+		DriveFileID: assetItem.DriveFileID,
+		FileHash:    assetItem.Hash,
+		LocalPath:   assetItem.PathRel,
 		Source:      "images",
 		MediaType:   "image",
-		Tags:        asset.Tags,
-		SearchTerms: []string{asset.Description},
-		CreatedAt:   asset.CreatedAt,
-		UpdatedAt:   asset.CreatedAt,
+		Tags:        assetItem.Tags,
+		SearchTerms: []string{assetItem.Description},
+		CreatedAt:   assetItem.CreatedAt,
+		UpdatedAt:   assetItem.CreatedAt,
 	}
 }
