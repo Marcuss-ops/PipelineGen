@@ -56,7 +56,6 @@ func toAssetDomain(m *models.MediaAsset) *asset.MediaAsset {
 		DriveFileID:  m.DriveFileID,
 		DownloadLink: m.DownloadLink,
 		FileHash:     m.FileHash,
-		Status:       m.Status,
 		FolderID:     m.FolderID,
 	}
 	if m.Metadata != nil {

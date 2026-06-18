@@ -2,104 +2,229 @@ package assetregistry
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 )
 
 type ClipsRegistry struct {
-	repo *clips.Repository
+	db         *sql.DB
+	assets     asset.Repository
+	querySvc   *assetquery.Service
+	locations  asset.LocationRepository
+	processing asset.ProcessingRepository
 }
 
-func NewClipsRegistry(repo *clips.Repository) *ClipsRegistry {
-	return &ClipsRegistry{repo: repo}
+func NewClipsRegistry(
+	db *sql.DB,
+	assets asset.Repository,
+	querySvc *assetquery.Service,
+	locations asset.LocationRepository,
+	processing asset.ProcessingRepository,
+) *ClipsRegistry {
+	return &ClipsRegistry{
+		db:         db,
+		assets:     assets,
+		querySvc:   querySvc,
+		locations:  locations,
+		processing: processing,
+	}
 }
 
 func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
-	clip := &models.MediaAsset{
+	m := &asset.MediaAsset{
 		ID:                  rec.ID,
+		Source:              rec.Source,
 		Name:                rec.Name,
 		Filename:            rec.Filename,
+		MediaType:           rec.MediaType,
+		Category:            rec.Category,
+		Group:               rec.Group,
+		SourceURL:           rec.ExternalURL,
+		ExternalURL:         rec.ExternalURL,
+		DurationMs:          int64(rec.Duration),
+		Tags:                append([]string(nil), rec.Tags...),
+		LifecycleState:      asset.StateReady,
+		CreatedAt:           time.Now().UTC(),
+		UpdatedAt:           time.Now().UTC(),
 		FolderID:            rec.FolderID,
 		FolderPath:          rec.FolderPath,
-		Group:               rec.Group,
-		MediaType:           rec.MediaType,
-		DriveLink:           rec.DriveLink,
-		DriveFileID:         rec.DriveFileID,
-		DownloadLink:        rec.DownloadLink,
-		Tags:                rec.Tags,
-		Source:              rec.Source,
-		Category:            rec.Category,
-		ExternalURL:         rec.ExternalURL,
-		Duration:            rec.Duration,
-		FileHash:            rec.FileHash,
-		LocalPath:           rec.LocalPath,
-		Status:              rec.Status,
-		Error:               rec.Error,
 		PHash:               rec.PHash,
 		VisualEmbeddingJSON: rec.VisualEmbeddingJSON,
-		UpdatedAt:           time.Now(),
 	}
-	clip.SetMetadataJSON(rec.Metadata)
-	return r.repo.UpsertClip(ctx, clip)
+	m.SetMetadataJSON(rec.Metadata)
+
+	if rec.Status == "deleted" {
+		m.LifecycleState = asset.StateDeleted
+	}
+
+	if err := r.assets.Upsert(ctx, m); err != nil {
+		return err
+	}
+
+	// Write locations
+	if rec.LocalPath != "" {
+		loc := &asset.Location{
+			AssetID:      rec.ID,
+			LocationKind: asset.LocationKindLocal,
+			URI:          rec.LocalPath,
+			FileHash:     rec.FileHash,
+			IsPrimary:    true,
+		}
+		if err := r.locations.Upsert(ctx, loc); err != nil {
+			return err
+		}
+	}
+	if rec.DriveLink != "" || rec.DriveFileID != "" {
+		loc := &asset.Location{
+			AssetID:      rec.ID,
+			LocationKind: asset.LocationKindDrive,
+			URI:          "drive://" + rec.DriveFileID,
+			ExternalID:   rec.DriveFileID,
+			AccessURL:    rec.DriveLink,
+			DownloadURL:  rec.DownloadLink,
+			IsPrimary:    rec.LocalPath == "",
+		}
+		if err := r.locations.Upsert(ctx, loc); err != nil {
+			return err
+		}
+	}
+
+	// Write status/processing step if present
+	if rec.Status != "" {
+		step := string(asset.StageUpload)
+		if rec.MediaType == "audio" {
+			step = string(asset.StageDownload)
+		}
+		if rec.Status == "failed" {
+			_ = r.processing.Start(ctx, rec.ID, step)
+			_ = r.processing.Fail(ctx, rec.ID, step, rec.Error)
+		} else if rec.Status == "ready" || rec.Status == "completed" {
+			_ = r.processing.Start(ctx, rec.ID, step)
+			_ = r.processing.Complete(ctx, rec.ID, step)
+		} else {
+			_ = r.processing.Start(ctx, rec.ID, step)
+		}
+	}
+
+	return nil
 }
 
 func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, error) {
-	clip, err := r.repo.GetClip(ctx, id)
+	details, err := r.querySvc.Get(ctx, id)
 	if err != nil {
+		if err == asset.ErrNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
-	if clip == nil {
-		return nil, nil
-	}
-	return clipToMediaRecord(clip), nil
+	return detailsToMediaRecord(details), nil
 }
 
 func (r *ClipsRegistry) DeleteMedia(ctx context.Context, id string) error {
-	return r.repo.DeleteClip(ctx, id)
+	return r.assets.SoftDelete(ctx, id)
 }
 
 func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error) {
-	clips, err := r.repo.GetAllWithDriveFileID(ctx)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id FROM media_assets 
+		WHERE drive_file_id IS NOT NULL AND drive_file_id != '' 
+		  AND lifecycle_state != 'deleted'
+	`)
 	if err != nil {
 		return nil, err
 	}
-	records := make([]*MediaRecord, 0, len(clips))
-	for _, clip := range clips {
-		records = append(records, clipToMediaRecord(clip))
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	var records []*MediaRecord
+	for _, id := range ids {
+		rec, err := r.GetMedia(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if rec != nil {
+			records = append(records, rec)
+		}
 	}
 	return records, nil
 }
 
 func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, error) {
-	return r.repo.FindByPHash(ctx, phash)
+	if phash == "" {
+		return "", nil
+	}
+	var id string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id FROM media_assets 
+		WHERE phash = ? AND lifecycle_state != 'deleted' 
+		LIMIT 1
+	`, phash).Scan(&id)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
-func clipToMediaRecord(clip *models.MediaAsset) *MediaRecord {
-	rec := &MediaRecord{
-		ID:                  clip.ID,
-		Name:                clip.Name,
-		Filename:            clip.Filename,
-		FolderID:            clip.FolderID,
-		FolderPath:          clip.FolderPath,
-		Group:               clip.Group,
-		MediaType:           clip.MediaType,
-		DriveLink:           clip.DriveLink,
-		DriveFileID:         clip.DriveFileID,
-		DownloadLink:        clip.DownloadLink,
-		Tags:                clip.Tags,
-		Source:              clip.Source,
-		Category:            clip.Category,
-		ExternalURL:         clip.ExternalURL,
-		Duration:            clip.Duration,
-		FileHash:            clip.FileHash,
-		LocalPath:           clip.LocalPath,
-		Status:              clip.Status,
-		Error:               clip.Error,
-		PHash:               clip.PHash,
-		VisualEmbeddingJSON: clip.VisualEmbeddingJSON,
+func detailsToMediaRecord(details *assetquery.Details) *MediaRecord {
+	if details == nil || details.Asset == nil {
+		return nil
 	}
-	rec.Metadata = clip.MetadataJSON()
+	rec := &MediaRecord{
+		ID:                  details.Asset.ID,
+		Name:                details.Asset.Name,
+		Filename:            details.Asset.Filename,
+		Source:              details.Asset.Source,
+		Category:            details.Asset.Category,
+		MediaType:           details.Asset.MediaType,
+		ExternalURL:         details.Asset.ExternalURL,
+		FolderID:            details.Asset.FolderID,
+		FolderPath:          details.Asset.FolderPath,
+		Group:               details.Asset.Group,
+		Tags:                append([]string(nil), details.Asset.Tags...),
+		Duration:            int(details.Asset.DurationMs),
+		VisualEmbeddingJSON: details.Asset.VisualEmbeddingJSON,
+	}
+	rec.Metadata = details.Asset.MetadataJSON()
+
+	for _, loc := range details.Locations {
+		if loc.LocationKind == asset.LocationKindLocal {
+			rec.LocalPath = loc.URI
+			rec.FileHash = loc.FileHash
+		} else if loc.LocationKind == asset.LocationKindDrive {
+			rec.DriveFileID = loc.ExternalID
+			rec.DriveLink = loc.AccessURL
+			rec.DownloadLink = loc.DownloadURL
+		}
+	}
+
+	for _, proc := range details.Processing {
+		if proc.Status == asset.StatusFailed {
+			rec.Status = "failed"
+			rec.Error = proc.ErrorMessage
+			break
+		} else if proc.Status == asset.StatusRunning {
+			rec.Status = "processing"
+		} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
+			rec.Status = "ready"
+		}
+	}
+	if rec.Status == "" {
+		rec.Status = "ready"
+	}
+
 	return rec
 }

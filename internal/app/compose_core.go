@@ -25,6 +25,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/ml/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
+	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
+	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/service/translations"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -43,6 +47,9 @@ type CoreInfra struct {
 
 	ClipsOnlyRepo      *clips.Repository
 	AssetRepo          asset.Repository
+	AssetLocationRepo  asset.LocationRepository
+	AssetProcessingRepo asset.ProcessingRepository
+	AssetQueryService   *assetquery.Service
 	MediaProcessor     processor.Processor
 	AssetIndexService  *assetindex.Service
 	AssetTreeService   *assettree.Service
@@ -149,7 +156,16 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// 4. Media Processing
 	clipsOnlyRepo := clips.NewRepository(dbs.main.DB, log)
 	assetRepo := assetrepo.New(dbs.main.DB, log)
-	mediaProcessor := initMediaProcessor(cfg, clipsOnlyRepo, log, driveUploader)
+	assetLocRepo := assetlocations.NewRepository(dbs.main.DB)
+	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
+	assetVerRepo := assetversions.NewRepository(dbs.main.DB)
+	assetQuerySvc := assetquery.New(
+		assetRepo,
+		assetLocRepo,
+		assetProcRepo,
+		assetversions.NewAdapter(assetVerRepo),
+	)
+	mediaProcessor := initMediaProcessor(cfg, dbs.main.DB, assetRepo, assetQuerySvc, assetLocRepo, assetProcRepo, log, driveUploader)
 
 	// 5. Asset Services
 	assetIndexService, assetTreeService, err := initAssetServices(dbs, log)
@@ -260,9 +276,12 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		StyleRegistry: styleRegistry,
 		DriveDests:    dests,
 
-		ClipsOnlyRepo:      clipsOnlyRepo,
-		AssetRepo:          assetRepo,
-		MediaProcessor:     mediaProcessor,
+		ClipsOnlyRepo:       clipsOnlyRepo,
+		AssetRepo:           assetRepo,
+		AssetLocationRepo:   assetLocRepo,
+		AssetProcessingRepo: assetProcRepo,
+		AssetQueryService:   assetQuerySvc,
+		MediaProcessor:      mediaProcessor,
 		AssetIndexService:  assetIndexService,
 		AssetTreeService:   assetTreeService,
 		ClipIndexerService: clipIndexerService,

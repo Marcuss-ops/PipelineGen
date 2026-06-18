@@ -44,20 +44,44 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		Store:       ingest.NewVoiceoverStoreAdapter(coreDeps.VoiceoverRepo),
 	}, log)
 
-	clipRegistry := assetregistry.NewClipsRegistry(coreDeps.ClipsOnlyRepo)
+	clipRegistry := assetregistry.NewClipsRegistry(
+		coreDeps.DB.DB,
+		coreDeps.AssetRepo,
+		coreDeps.AssetQueryService,
+		coreDeps.AssetLocationRepo,
+		coreDeps.AssetProcessingRepo,
+	)
 	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipRegistry,
 		DriveClient: coreDeps.DriveClient,
 		AssetIndex:  coreDeps.AssetIndexService,
-		Store:       ingest.NewClipStoreAdapter(coreDeps.ClipsOnlyRepo),
+		Store: ingest.NewClipStoreAdapter(
+			coreDeps.DB.DB,
+			coreDeps.AssetRepo,
+			coreDeps.AssetQueryService,
+			coreDeps.AssetLocationRepo,
+			coreDeps.AssetProcessingRepo,
+		),
 	}, log)
 
-	stockRegistry := assetregistry.NewClipsRegistry(coreDeps.StockDriveRepo)
+	stockRegistry := assetregistry.NewClipsRegistry(
+		coreDeps.DB.DB,
+		coreDeps.AssetRepo,
+		coreDeps.AssetQueryService,
+		coreDeps.AssetLocationRepo,
+		coreDeps.AssetProcessingRepo,
+	)
 	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    stockRegistry,
 		DriveClient: coreDeps.DriveClient,
 		AssetIndex:  coreDeps.AssetIndexService,
-		Store:       ingest.NewClipStoreAdapter(coreDeps.StockDriveRepo),
+		Store: ingest.NewClipStoreAdapter(
+			coreDeps.DB.DB,
+			coreDeps.AssetRepo,
+			coreDeps.AssetQueryService,
+			coreDeps.AssetLocationRepo,
+			coreDeps.AssetProcessingRepo,
+		),
 	}, log)
 
 	svc := ingest.NewService(cfg, log, coreDeps.DriveClient, map[ingest.Kind]*ingest.Pipeline{

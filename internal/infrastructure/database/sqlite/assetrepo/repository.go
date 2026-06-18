@@ -89,6 +89,7 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			scene_type, metadata_json, is_folder, depth,
 			folder_id, parent_folder_id, folder_path,
 			usable_for, avoid_for, phash, child_count,
+			drive_file_id, drive_link, download_link, local_path, relative_path, file_hash,
 			created_at, updated_at
 		) VALUES (
 			?, ?, ?, ?, ?, ?, ?,
@@ -99,6 +100,7 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			?, ?, ?, ?,
 			?, ?, ?,
 			?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?,
 			?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
@@ -132,9 +134,15 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 			usable_for     = excluded.usable_for,
 			avoid_for      = excluded.avoid_for,
 			phash          = excluded.phash,
-			child_count    = excluded.child_count
+			child_count    = excluded.child_count,
+			drive_file_id  = excluded.drive_file_id,
+			drive_link     = excluded.drive_link,
+			download_link  = excluded.download_link,
+			local_path     = excluded.local_path,
+			relative_path  = excluded.relative_path,
+			file_hash      = excluded.file_hash
 	`,
-		// Values (matches the 33 ? placeholders above in order)
+		// Values (matches placeholders above in order)
 		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
 		m.SourceURL, m.ClipPageURL, m.ThumbnailURL, m.ExternalURL,
 		m.DurationMs, string(tagsJSON), string(searchTermsJSON), m.SearchText,
@@ -143,6 +151,7 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 		m.SceneType, m.MetadataJSON(), boolToInt(m.IsFolder), m.Depth,
 		m.FolderID, m.ParentFolderID, m.FolderPath,
 		mustJSONArray(m.UsableFor), mustJSONArray(m.AvoidFor), m.PHash, m.ChildCount,
+		m.DriveFileID, m.DriveLink, m.DownloadLink, m.LocalPath, m.LocalPath, m.FileHash,
 		nowStr, nowStr,
 	)
 	if err != nil {

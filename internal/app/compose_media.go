@@ -46,7 +46,13 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 	imageRepo := images.NewRepository(dbs.main.DB)
 
 	// YouTube Lifecycle & Video Pipeline
-	clipsRegistry := assetregistry.NewClipsRegistry(core.ClipsOnlyRepo)
+	clipsRegistry := assetregistry.NewClipsRegistry(
+		dbs.main.DB,
+		core.AssetRepo,
+		core.AssetQueryService,
+		core.AssetLocationRepo,
+		core.AssetProcessingRepo,
+	)
 	ytLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
 		DriveClient: core.DriveClient,
