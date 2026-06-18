@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
@@ -16,13 +15,13 @@ import (
 // RegisterJobHandlers registers the handlers for script jobs
 func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeBatchScriptGenerate), h.HandleBatchScriptGenerateJob)
+		jobsSvc.RegisterHandler(models.JobType("script.generate_batch"), h.HandleBatchScriptGenerateJob)
 		h.log.Info("registered script.generate_batch job handler")
-		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeClipScriptGenerate), h.HandleClipScriptGenerateJob)
+		jobsSvc.RegisterHandler(models.JobType("script.generate_from_clips"), h.HandleClipScriptGenerateJob)
 		h.log.Info("registered script.generate_from_clips job handler")
-		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeCatalogScriptGenerate), h.HandleCatalogScriptGenerateJob)
+		jobsSvc.RegisterHandler(models.JobType("script.generate_from_catalog"), h.HandleCatalogScriptGenerateJob)
 		h.log.Info("registered script.generate_from_catalog job handler")
-		jobsSvc.RegisterHandler(models.JobType(jobs.JobTypeMediaCurate), h.HandleCurateJob)
+		jobsSvc.RegisterHandler(models.JobType("script.curate"), h.HandleCurateJob)
 		h.log.Info("registered script.curate job handler")
 	}
 }
