@@ -76,3 +76,9 @@ internal/sources/youtube/searcher_cache.go
 internal/sources/youtube/searcher.go
 internal/sources/youtube/search_topic.go
 internal/sources/youtube/service.go
+# PR5: new canonical repository (reads models for backward compat scanning)
+internal/infrastructure/database/sqlite/assetrepo/scanner.go
+# PR7: bridge adapters (converts models→asset and asset→models)
+internal/sources/artlist/legacy_bridge.go
+# PR8: bridge adapters (converts models→asset and asset→models)
+internal/sources/youtube/legacy_bridge.go
