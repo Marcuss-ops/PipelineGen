@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/outboxhandlers"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 func TestWorkflowStepCompletedHandler_EventType(t *testing.T) {

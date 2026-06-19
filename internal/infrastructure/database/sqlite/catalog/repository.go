@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 )
 
 type Repository struct {

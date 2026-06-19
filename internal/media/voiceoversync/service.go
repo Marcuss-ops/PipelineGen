@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )

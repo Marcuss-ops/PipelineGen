@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 

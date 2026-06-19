@@ -8,7 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"github.com/stretchr/testify/assert"

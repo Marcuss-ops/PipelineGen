@@ -7,7 +7,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/workernodes"
 )
 
 type Broker struct {

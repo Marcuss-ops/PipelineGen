@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 )
 
 // clipSourceTestSchema composes the canonical media_assets CREATE TABLE

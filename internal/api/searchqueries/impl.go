@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
+	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/searchqueries"
 )
 
 // SearchqueriesHandler handles CRUD operations for search_queries (scheduled YouTube topic searches).

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
 )
 
 // voiceoverRootID is the canonical voiceover-routing tree root this resolver

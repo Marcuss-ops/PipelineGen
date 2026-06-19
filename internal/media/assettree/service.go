@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	repo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
+	repo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 )
 

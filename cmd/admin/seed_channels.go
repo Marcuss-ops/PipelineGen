@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
+	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"go.uber.org/zap"
