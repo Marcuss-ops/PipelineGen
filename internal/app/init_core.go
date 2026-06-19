@@ -95,7 +95,6 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		VoiceoverRepo:      voRepo,
 		VoiceoverService:   svcs.voiceoverService,
 		VoiceoverSync:      svcs.voiceoverSync,
-		IndexingService:    svcs.indexingService,
 		ClipIndexerService: svcs.clipIndexerService,
 		CatalogSyncService: svcs.catalogSync,
 		ChannelMonitor:     jobs.channelMonitor,

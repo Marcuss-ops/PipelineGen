@@ -1,10 +1,10 @@
 // PR12b integration test: verifies that youtube.Service.dispatchOrIndex,
-// when wired with an assetrepo.Repository via SetAssetRepo, routes through
+// when wired with an assets.Repository via SetAssetRepo, routes through
 // the canonical writer AND legacy readers (clips.Repository) observe the
 // same row data.
 //
 // Schema matches the production `media_assets` columns written by
-// `internal/infrastructure/database/sqlite/assetrepo.Upsert` (40 columns)
+// `internal/infrastructure/database/sqlite/assets.Upsert` (40 columns)
 // PLUS the legacy columns that `internal/repository/clips.UpsertClip` reads
 // and writes (`tags_norm`, `embedding_json`, `visual_embedding`,
 // `transcript_embedding`, `relative_path`, `drive_folder_id`, `width`,
@@ -25,74 +25,92 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
-// pr12bYoutubeSchema mirrors the production `media_assets` (40 columns)
-// written by `internal/infrastructure/database/sqlite/assetrepo.Upsert` plus
-// the legacy columns clips.Repository.UpsertClip expects
-// (tags_norm, embedding_json, visual_embedding, transcript_embedding,
-// relative_path, drive_folder_id, width, height) plus `outbox_events` so
-// the upsert's transactional outbox emit succeeds inside the test.
+// pr12bYoutubeSchema mirrors the full production table definitions for testing.
 const pr12bYoutubeSchema = `
 CREATE TABLE IF NOT EXISTS media_assets (
-    id                  TEXT    PRIMARY KEY,
-    source              TEXT    NOT NULL DEFAULT '',
-    name                TEXT    NOT NULL DEFAULT '',
-    filename            TEXT    NOT NULL DEFAULT '',
-    media_type          TEXT    NOT NULL DEFAULT '',
-    category            TEXT    NOT NULL DEFAULT '',
-    group_name          TEXT    NOT NULL DEFAULT '',
-    url                 TEXT    NOT NULL DEFAULT '',
-    clip_page_url       TEXT    NOT NULL DEFAULT '',
-    thumbnail_url       TEXT    NOT NULL DEFAULT '',
-    external_url        TEXT    NOT NULL DEFAULT '',
-    duration_ms         INTEGER NOT NULL DEFAULT 0,
-    tags                TEXT    NOT NULL DEFAULT '[]',
-    search_terms        TEXT    NOT NULL DEFAULT '[]',
-    search_text         TEXT    NOT NULL DEFAULT '',
-    lifecycle_state     TEXT    NOT NULL DEFAULT '',
-    deleted_at          TEXT    NOT NULL DEFAULT '',
-    quality_score       REAL    NOT NULL DEFAULT 0.0,
-    reuse_count         INTEGER NOT NULL DEFAULT 0,
-    last_used_at        TEXT    NOT NULL DEFAULT '',
-    scene_type          TEXT    NOT NULL DEFAULT '',
-    metadata_json       TEXT    NOT NULL DEFAULT '{}',
-    is_folder           INTEGER NOT NULL DEFAULT 0,
-    depth               INTEGER NOT NULL DEFAULT 0,
-    folder_id           TEXT    NOT NULL DEFAULT '',
-    parent_folder_id    TEXT    NOT NULL DEFAULT '',
-    folder_path         TEXT    NOT NULL DEFAULT '',
-    usable_for          TEXT    NOT NULL DEFAULT '[]',
-    avoid_for           TEXT    NOT NULL DEFAULT '[]',
-    phash               TEXT    NOT NULL DEFAULT '',
-    child_count         INTEGER NOT NULL DEFAULT 0,
-    thumb_url           TEXT    NOT NULL DEFAULT '',
-    status              TEXT    NOT NULL DEFAULT '',
-    error               TEXT    NOT NULL DEFAULT '',
-    drive_file_id       TEXT    NOT NULL DEFAULT '',
-    drive_link          TEXT    NOT NULL DEFAULT '',
-    download_link       TEXT    NOT NULL DEFAULT '',
-    local_path          TEXT    NOT NULL DEFAULT '',
-    file_hash           TEXT    NOT NULL DEFAULT '',
-    created_at          TEXT    NOT NULL DEFAULT '',
-    updated_at          TEXT    NOT NULL DEFAULT '',
+	id TEXT PRIMARY KEY,
+	source TEXT NOT NULL,
+	name TEXT NOT NULL,
+	filename TEXT NOT NULL,
+	media_type TEXT NOT NULL,
+	category TEXT NOT NULL DEFAULT '',
+	group_name TEXT NOT NULL DEFAULT '',
+	url TEXT NOT NULL DEFAULT '',
+	clip_page_url TEXT NOT NULL DEFAULT '',
+	thumbnail_url TEXT NOT NULL DEFAULT '',
+	external_url TEXT NOT NULL DEFAULT '',
+	duration_ms INTEGER NOT NULL DEFAULT 0,
+	tags TEXT NOT NULL DEFAULT '[]',
+	search_terms TEXT NOT NULL DEFAULT '[]',
+	search_text TEXT NOT NULL DEFAULT '',
+	lifecycle_state TEXT NOT NULL DEFAULT 'ready',
+	deleted_at TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	folder_id TEXT NOT NULL DEFAULT '',
+	parent_folder_id TEXT NOT NULL DEFAULT '',
+	folder_path TEXT NOT NULL DEFAULT '',
+	depth INTEGER NOT NULL DEFAULT 0,
+	is_folder INTEGER NOT NULL DEFAULT 0,
+	child_count INTEGER NOT NULL DEFAULT 0,
+	scene_type TEXT NOT NULL DEFAULT '',
+	usable_for TEXT NOT NULL DEFAULT '[]',
+	avoid_for TEXT NOT NULL DEFAULT '[]',
+	phash TEXT NOT NULL DEFAULT '',
+	quality_score REAL NOT NULL DEFAULT 0.0,
+	reuse_count INTEGER NOT NULL DEFAULT 0,
+	last_used_at TEXT NOT NULL DEFAULT '',
+	drive_file_id TEXT NOT NULL DEFAULT '',
+	drive_link TEXT NOT NULL DEFAULT '',
+	download_link TEXT NOT NULL DEFAULT '',
+	local_path TEXT NOT NULL DEFAULT '',
+	relative_path TEXT NOT NULL DEFAULT '',
+	file_hash TEXT NOT NULL DEFAULT '',
+	embedding_json TEXT NOT NULL DEFAULT '[]',
+	visual_embedding TEXT NOT NULL DEFAULT '[]',
+	transcript_embedding TEXT NOT NULL DEFAULT '[]',
+	visual_embedding_json TEXT NOT NULL DEFAULT '[]',
+	tags_norm TEXT NOT NULL DEFAULT '',
+	drive_folder_id TEXT NOT NULL DEFAULT '',
+	thumb_url TEXT NOT NULL DEFAULT '',
+	error TEXT NOT NULL DEFAULT ''
+);
 
-    -- Legacy columns read/written by clips.Repository.UpsertClip
-    tags_norm           TEXT    NOT NULL DEFAULT '',
-    embedding_json      TEXT    NOT NULL DEFAULT '[]',
-    visual_embedding    TEXT,
-    transcript_embedding TEXT,
-    relative_path       TEXT    NOT NULL DEFAULT '',
-    drive_folder_id     TEXT    NOT NULL DEFAULT '',
-    width               INTEGER NOT NULL DEFAULT 0,
-    height              INTEGER NOT NULL DEFAULT 0,
-    visual_embedding_json TEXT  NOT NULL DEFAULT ''
+CREATE TABLE IF NOT EXISTS asset_locations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	asset_id TEXT NOT NULL,
+	location_kind TEXT NOT NULL,
+	uri TEXT NOT NULL,
+	external_id TEXT NOT NULL DEFAULT '',
+	web_view_link TEXT NOT NULL DEFAULT '',
+	download_url TEXT NOT NULL DEFAULT '',
+	mime_type TEXT NOT NULL DEFAULT '',
+	file_size_bytes INTEGER NOT NULL DEFAULT 0,
+	file_hash TEXT NOT NULL DEFAULT '',
+	is_primary INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	UNIQUE(asset_id, location_kind)
 );
 
 CREATE TABLE IF NOT EXISTS outbox_events (
-    id           TEXT    PRIMARY KEY,
-    aggregate_id TEXT    NOT NULL,
-    event_type   TEXT    NOT NULL,
-    payload_json TEXT    NOT NULL DEFAULT '{}',
-    created_at   TEXT    NOT NULL DEFAULT ''
+	id TEXT PRIMARY KEY,
+	aggregate_id TEXT NOT NULL DEFAULT '',
+	aggregate_type TEXT NOT NULL DEFAULT '',
+	event_type TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	event_key TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	max_attempts INTEGER NOT NULL DEFAULT 10,
+	last_error TEXT NOT NULL DEFAULT '',
+	next_attempt_at TEXT,
+	worker_id TEXT NOT NULL DEFAULT '',
+	lease_id TEXT NOT NULL DEFAULT '',
+	lease_expiry TEXT,
+	completed_at TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id);

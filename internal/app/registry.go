@@ -213,11 +213,6 @@ func WireRegistry(
 		}
 	}
 
-	if coreDeps.IndexingService != nil && wiring.MediaIngest != nil {
-		coreDeps.IndexingService.SetIngestService(wiring.MediaIngest.Service)
-		log.Info("injected MediaIngest service into IndexingService")
-	}
-
 	// ── ScriptHistory (dynamic module) ─────────────────────────────────
 	if coreDeps.ScriptsRepo != nil {
 		registerModule(registry, log, module.NewScriptHistoryModule(
