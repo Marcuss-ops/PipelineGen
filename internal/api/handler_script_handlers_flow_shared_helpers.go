@@ -179,41 +179,6 @@ func generateSceneVoiceovers(
 	return successCount
 }
 
-// resolveTitleAndOutputName resolves title and outputName with sensible defaults.
-func resolveTitleAndOutputName(title, topic string) (resolvedTitle, outputName string) {
-	resolvedTitle = strings.TrimSpace(title)
-	if resolvedTitle == "" {
-		resolvedTitle = strings.TrimSpace(topic)
-	}
-	if resolvedTitle == "" {
-		resolvedTitle = "Generated Script"
-	}
-
-	outputName = textutil.Slugify(resolvedTitle)
-	if outputName == "" {
-		outputName = "generated-script"
-	}
-	return resolvedTitle, outputName
-}
-
-// resolveTargetWords calculates target words from multiple fallback sources.
-func resolveTargetWords(targetWords, minWords, duration, minWordFloor int) int {
-	tw := targetWords
-	if tw <= 0 {
-		tw = minWords
-	}
-	if tw <= 0 && duration > 0 {
-		tw = (duration * 150) / 60
-	}
-	if tw <= 0 {
-		tw = minWordFloor
-	}
-	if tw <= 0 {
-		tw = 1200
-	}
-	return tw
-}
-
 // resolveDriveFolderID takes an input which could be a raw folder ID or a folder name/path.
 // If it is a name or a path, it searches for it or walks/creates folders under the given defaultRootID on Google Drive
 // using the uploader, returning the resolved folder ID.

@@ -179,8 +179,6 @@ func (h *ScriptFlowHandler) SetHarvestService(svc AutoHarvestService) {
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate-batch", h.GenerateBatch)
 	r.GET("/generate-batch/progress", h.GetBatchProgress)
-	r.POST("/generate-from-clips", h.GenerateFromClips)
-	r.POST("/generate-with-images", h.GenerateWithImages)
 	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
 	r.GET("/jobs/:job_id", h.GetJobStatus)
