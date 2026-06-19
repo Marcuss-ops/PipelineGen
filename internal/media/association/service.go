@@ -10,9 +10,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	termutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // Service matches script segments against media assets (stock, artlist, clips, Drive)

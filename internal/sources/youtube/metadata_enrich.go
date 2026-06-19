@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"go.uber.org/zap"
 )

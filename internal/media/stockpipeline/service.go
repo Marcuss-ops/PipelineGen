@@ -19,8 +19,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -77,7 +77,7 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 		driveSvc:   driveSvc,
 		driveUp:    &driveup.Uploader{Service: driveSvc, Log: log},
 		ytdlp:      downloader.NewYTDLP(cfg),
-		ffmpegProc: ffmpeg.New(cfg),
+		ffmpegProc: ffmpeg.NewFromConfig(cfg),
 		pcfg: PipelineConfig{
 			ChunkDuration:  v.ChunkDuration,
 			MaxResults:     v.MaxClipsPerSource,

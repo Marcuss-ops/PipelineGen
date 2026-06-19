@@ -11,7 +11,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // BatchReindexResult holds progress info for a batch reindex operation.

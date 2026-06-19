@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"

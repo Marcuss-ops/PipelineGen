@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 )
 
 // downloadStep downloads the asset from the source URL.

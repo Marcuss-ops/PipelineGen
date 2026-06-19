@@ -14,7 +14,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
@@ -22,7 +21,7 @@ import (
 
 type Service struct {
 	assetIndex    *assetindex.Service
-	querySvc      *assetquery.Service
+	querySvc      *assets.Service
 	imagesRepo    *images.Repository
 	voiceoverRepo *voiceovers.Repository
 	uploadRoot    string
@@ -43,11 +42,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, querySvc *assetquery.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, log *zap.Logger) *Service {
+func NewService(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, log *zap.Logger) *Service {
 	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *assetquery.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, uploadRoot string, log *zap.Logger) *Service {
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, uploadRoot string, log *zap.Logger) *Service {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}
@@ -301,7 +300,7 @@ func convertAssetRecord(assetID, localPath, driveLink, downloadLink, fallbackID 
 	}
 }
 
-func convertMediaAsset(details *assetquery.Details) *resolvedAsset {
+func convertMediaAsset(details *assets.Details) *resolvedAsset {
 	assetItem := details.Asset
 	filename := assetItem.Filename
 	localPath := ""

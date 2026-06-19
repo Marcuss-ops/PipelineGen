@@ -1,0 +1,128 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+)
+
+type ScraperHandler struct {
+	nodeScraperDir string
+}
+
+func NewScraperHandler(nodeScraperDir string) *ScraperHandler {
+	return &ScraperHandler{nodeScraperDir: nodeScraperDir}
+}
+
+func (h *ScraperHandler) RegisterRoutes(r *gin.RouterGroup) {
+	r.POST("/search", h.Search)
+}
+
+type searchRequest struct {
+	SearchTerm string `json:"search_term"`
+	Term       string `json:"term"`
+	Limit      int    `json:"limit"`
+}
+
+type clipResult struct {
+	Title       string   `json:"title"`
+	ClipPageURL string   `json:"clip_page_url"`
+	StreamURLs  []string `json:"stream_urls"`
+	PrimaryURL  string   `json:"primary_url"`
+	ClipID      string   `json:"clip_id"`
+}
+
+type searchResponse struct {
+	OK        bool         `json:"ok"`
+	Term      string       `json:"term"`
+	SearchURL string       `json:"search_url"`
+	Saved     int          `json:"saved"`
+	Clips     []clipResult `json:"clips"`
+	Error     string       `json:"error,omitempty"`
+	RawStderr string       `json:"raw_stderr,omitempty"`
+}
+
+func (h *ScraperHandler) Search(c *gin.Context) {
+	if strings.TrimSpace(h.nodeScraperDir) == "" {
+		apiutil.Error(c, http.StatusServiceUnavailable, "node scraper directory is not configured")
+		return
+	}
+
+	var req searchRequest
+	_ = c.ShouldBindJSON(&req)
+
+	term := strings.TrimSpace(req.SearchTerm)
+	if term == "" {
+		term = strings.TrimSpace(req.Term)
+	}
+	if term == "" {
+		term = strings.TrimSpace(c.Query("search_term"))
+	}
+	if term == "" {
+		term = strings.TrimSpace(c.Query("term"))
+	}
+	if term == "" {
+		apiutil.BadRequest(c, "missing search_term")
+		return
+	}
+
+	limit := apiutil.ClampLimit(req.Limit, 8, 20)
+	if q := strings.TrimSpace(c.Query("limit")); q != "" {
+		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
+			limit = apiutil.ClampLimit(parsed, 8, 20)
+		}
+	}
+
+	scraperDir := h.nodeScraperDir
+	if absDir, err := filepath.Abs(scraperDir); err == nil {
+		scraperDir = absDir
+	}
+	scriptPath := filepath.Join(scraperDir, "artlist_search.js")
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 4*time.Minute)
+	defer cancel()
+
+	args := []string{
+		scriptPath,
+		"--term", term,
+		"--limit", strconv.Itoa(limit),
+	}
+
+	cmd := exec.CommandContext(ctx, "node", args...)
+	cmd.Dir = scraperDir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		resp := searchResponse{
+			OK:        false,
+			Term:      term,
+			Error:     err.Error(),
+			RawStderr: strings.TrimSpace(stderr.String()),
+		}
+		c.JSON(http.StatusInternalServerError, resp)
+		return
+	}
+
+	var payload searchResponse
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"ok":    false,
+			"error": fmt.Sprintf("failed to decode scraper response: %v", err),
+			"raw":   stdout.String(),
+		})
+		return
+	}
+
+	payload.OK = true
+	c.JSON(http.StatusOK, payload)
+}

@@ -3,13 +3,13 @@ package app
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/mediaingest"
+	mediaingestHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	imgreg "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	voingsvc "github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"go.uber.org/zap"
 )
@@ -46,10 +46,10 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 
 	clipRegistry := artifacts.NewClipsRegistry(
 		coreDeps.DB.DB,
-		coreDeps.AssetRepo,
-		coreDeps.AssetQueryService,
-		coreDeps.AssetLocationRepo,
-		coreDeps.AssetProcessingRepo,
+		coreDeps.Assets.Repository(),
+		coreDeps.Assets,
+		coreDeps.Assets.LocationRepository(),
+		coreDeps.Assets.ProcessingRepository(),
 	)
 	clipLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipRegistry,
@@ -57,19 +57,19 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		AssetIndex:  coreDeps.AssetIndexService,
 		Store: ingest.NewClipStoreAdapter(
 			coreDeps.DB.DB,
-			coreDeps.AssetRepo,
-			coreDeps.AssetQueryService,
-			coreDeps.AssetLocationRepo,
-			coreDeps.AssetProcessingRepo,
+			coreDeps.Assets.Repository(),
+			coreDeps.Assets,
+			coreDeps.Assets.LocationRepository(),
+			coreDeps.Assets.ProcessingRepository(),
 		),
 	}, log)
 
 	stockRegistry := artifacts.NewClipsRegistry(
 		coreDeps.DB.DB,
-		coreDeps.AssetRepo,
-		coreDeps.AssetQueryService,
-		coreDeps.AssetLocationRepo,
-		coreDeps.AssetProcessingRepo,
+		coreDeps.Assets.Repository(),
+		coreDeps.Assets,
+		coreDeps.Assets.LocationRepository(),
+		coreDeps.Assets.ProcessingRepository(),
 	)
 	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    stockRegistry,
@@ -77,10 +77,10 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		AssetIndex:  coreDeps.AssetIndexService,
 		Store: ingest.NewClipStoreAdapter(
 			coreDeps.DB.DB,
-			coreDeps.AssetRepo,
-			coreDeps.AssetQueryService,
-			coreDeps.AssetLocationRepo,
-			coreDeps.AssetProcessingRepo,
+			coreDeps.Assets.Repository(),
+			coreDeps.Assets,
+			coreDeps.Assets.LocationRepository(),
+			coreDeps.Assets.ProcessingRepository(),
 		),
 	}, log)
 
@@ -119,7 +119,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		},
 	})
 
-	handler := mediaingest.NewHandler(svc)
+	handler := mediaingest.NewMediaingestHandler(svc)
 	mod := module.NewMediaIngestModule(cfg, log, handler)
 
 	return &MediaIngestWiring{

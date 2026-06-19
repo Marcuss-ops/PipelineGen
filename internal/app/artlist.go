@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/sources"
+	sourcesHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
@@ -18,11 +18,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/pkg/matchingconfig"
+	matchingconfig "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // ArtlistWiring holds the Artlist module wiring
@@ -122,10 +122,10 @@ func wireArtlistHandler(
 func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
 	clipsRegistry := artifacts.NewClipsRegistry(
 		coreDeps.DB.DB,
-		coreDeps.AssetRepo,
-		coreDeps.AssetQueryService,
-		coreDeps.AssetLocationRepo,
-		coreDeps.AssetProcessingRepo,
+		coreDeps.Assets.Repository(),
+		coreDeps.Assets,
+		coreDeps.Assets.LocationRepository(),
+		coreDeps.Assets.ProcessingRepository(),
 	)
 	return NewLifecycleFromDeps(&LifecycleDeps{
 		Registry:    clipsRegistry,
@@ -239,9 +239,9 @@ func wireArtlistService(
 		clipIndexerSvc,
 		coreDeps.JobsService,
 		coreDeps.DriveClient,
-		coreDeps.AssetProcessingRepo,
-		coreDeps.AssetVersionsRepo,
-		coreDeps.AssetLocationRepo,
+		coreDeps.Assets.ProcessingRepository(),
+		coreDeps.Assets.VersionRepository(),
+		coreDeps.Assets.LocationRepository(),
 		log,
 	)
 

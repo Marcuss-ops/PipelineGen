@@ -18,7 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 )
 
 // MediaDomain holds media-specific services produced by composeMediaDomain.
@@ -49,7 +49,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 	clipsRegistry := artifacts.NewClipsRegistry(
 		dbs.main.DB,
 		core.AssetRepo,
-		core.AssetQueryService,
+		core.AssetsSvc,
 		core.AssetLocationRepo,
 		core.AssetProcessingRepo,
 	)

@@ -13,13 +13,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -58,11 +56,11 @@ type Service struct {
 	// assetrepo.Upsert — which writes both legacy and canonical columns in
 	// the same row and emits the asset.upserted outbox event in the same
 	// transaction.
-	assetRepo *assetrepo.Repository
+	assetRepo assets.Repository
 	// assetProcessing tracks clip processing state (download_and_cut step).
 	assetProcessing assets.ProcessingRepository
 	// assetVersions records file identity on successful processing.
-	assetVersions *assetversions.Repository
+	assetVersions assets.VersionRepository
 }
 
 func NewService(
@@ -78,7 +76,7 @@ func NewService(
 	assetDestResolver destination.Resolver,
 	ollamaClient *client.Client,
 	assetProcRepo assets.ProcessingRepository,
-	assetVerRepo *assetversions.Repository,
+	assetVerRepo assets.VersionRepository,
 ) *Service {
 	// Create folder memory service
 	folderMemory := foldermemory.NewService(log, clipsRepo)
@@ -103,7 +101,8 @@ func NewService(
 
 // SetAssetRepos injects the asset lifecycle repositories (late-binding).
 // Called from composeIntegration after the repos are constructed.
-func (s *Service) SetAssetRepos(assetProc assets.ProcessingRepository, assetVer *assetversions.Repository) {
+// In tests, assetVer can be nil/mocked if version tracking is disabled.
+func (s *Service) SetAssetRepos(assetProc assets.ProcessingRepository, assetVer assets.VersionRepository) {
 	s.assetProcessing = assetProc
 	s.assetVersions = assetVer
 }
@@ -122,13 +121,13 @@ func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
 	s.dispatcher = d
 }
 
-// SetAssetRepo injects the canonical assetrepo.Repository (PR12b). Mirrors
+// SetAssetRepo injects the canonical Repository. Mirrors
 // SetDispatcher semantics: late-bound once during composition root, idempotent,
 // nil-safe (legacy callers fall through to dispatcher / clipsRepo paths).
 // When wired, dispatchOrIndex prefers assetRepo over dispatcher so the
 // canonical SQL upsert writes both legacy + canonical columns + outbox row
 // in a single transaction.
-func (s *Service) SetAssetRepo(r *assetrepo.Repository) {
+func (s *Service) SetAssetRepo(r assets.Repository) {
 	s.assetRepo = r
 }
 

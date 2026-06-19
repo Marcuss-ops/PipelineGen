@@ -8,13 +8,12 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 )
 
 // initMediaProcessor initializes the media processing engine.
@@ -22,7 +21,7 @@ func initMediaProcessor(
 	cfg *config.Config,
 	db *sql.DB,
 	assetsRepo assets.Repository,
-	querySvc *assetquery.Service,
+	querySvc *assets.Service,
 	locations assets.LocationRepository,
 	processing assets.ProcessingRepository,
 	log *zap.Logger,

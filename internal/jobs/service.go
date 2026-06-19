@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	corid "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
 )
 
 // MaxPayloadSize is the maximum allowed size for a serialized job payload in bytes.

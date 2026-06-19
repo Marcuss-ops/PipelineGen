@@ -11,11 +11,10 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	defaults "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // clipWork pairs a RunTagItem with its processor input.
@@ -201,15 +200,15 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			// Track asset version: create version record for the processed file.
 			if o.svc.assetVersions != nil && result.FileHash != "" {
 				fileSize := fileSizeFromPath(result.LocalPath)
-				if _, err := o.svc.assetVersions.CreateNext(ctx, arg.w.item.ClipID, assetversions.VersionInput{
-					ContentHash:   result.FileHash,
+				v := &assets.Version{
+					AssetID:       arg.w.item.ClipID,
 					FileHash:      result.FileHash,
 					FileSizeBytes: fileSize,
 					MimeType:      "video/mp4",
-					MetadataJSON:  `{"pipeline":"artlist","source":"download"}`,
-					CreatedBy:     "artlist-pipeline",
-				}); err != nil {
-					o.svc.log.Warn("asset_versions.CreateNext failed",
+					MetadataJSON:  `{"pipeline":"artlist","source":"download","createdBy":"artlist-pipeline"}`,
+				}
+				if err := o.svc.assetVersions.Append(ctx, v); err != nil {
+					o.svc.log.Warn("asset_versions.Append failed",
 						zap.String("clip_id", arg.w.item.ClipID),
 						zap.Error(err))
 				}

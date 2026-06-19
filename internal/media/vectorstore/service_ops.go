@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {

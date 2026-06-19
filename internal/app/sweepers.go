@@ -13,8 +13,8 @@ import (
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
-	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // startResearchCacheSweeper deletes research_cache rows whose last_used is

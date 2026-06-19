@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	retry "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // ===== cleanClipName tests =====
@@ -187,7 +187,7 @@ func TestRetry_SuccessFirstAttempt(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return nil
-	}, retry.Options{MaxAttempts: 3})
+	}, retry.RetryOptions{MaxAttempts: 3})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestRetry_SuccessAfterRetry(t *testing.T) {
 			return errors.New("timeout")
 		}
 		return nil
-	}, retry.Options{MaxAttempts: 3, IsRetryable: func(err error) bool { return textutil.ContainsCI(err.Error(), "timeout") }})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: func(err error) bool { return textutil.ContainsCI(err.Error(), "timeout") }})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestRetry_PermanentErrorFailsImmediately(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("Video unavailable")
-	}, retry.Options{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -232,7 +232,7 @@ func TestRetry_ExhaustsRetries(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("connection reset")
-	}, retry.Options{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -250,7 +250,7 @@ func TestRetry_ContextCanceled(t *testing.T) {
 			cancel() // cancel after first attempt
 		}
 		return errors.New("timeout")
-	}, retry.Options{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -261,7 +261,7 @@ func TestRetry_NoRetriesRequested(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("timeout")
-	}, retry.Options{MaxAttempts: 1})
+	}, retry.RetryOptions{MaxAttempts: 1})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -442,7 +442,7 @@ func TestRetry_BackoffTiming(t *testing.T) {
 	err := retry.Do(context.Background(), func() error {
 		calls++
 		return errors.New("timeout")
-	}, retry.Options{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
+	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: isTransientDownloadError})
 	elapsed := time.Since(start)
 
 	if err == nil {

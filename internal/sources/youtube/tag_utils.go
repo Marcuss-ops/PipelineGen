@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // ── Rich metadata normalization ────────────────────────────────────────────

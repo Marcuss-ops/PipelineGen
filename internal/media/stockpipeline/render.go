@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/executil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	platform "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 )
 
 // renderChunk concatenates clips into a single output video with transition and effects.
@@ -259,7 +259,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 	}
 
 	s.log.Info("rendering complex chunk with ffmpeg", zap.Int("chunk", chunkIdx), zap.String("output_path", outputPath))
-	_, err = executil.Run(ctx, s.ffmpegProc.Path(), args, executil.Options{
+	_, err = platform.Run(ctx, s.ffmpegProc.Path(), args, platform.ExecOptions{
 		Timeout: 20 * time.Minute,
 	})
 	if err != nil {

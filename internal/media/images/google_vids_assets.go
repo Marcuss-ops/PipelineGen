@@ -12,8 +12,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/audio"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	audio "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // RegisterVideoAsset uploada su Drive e crea un record in media_assets per un video generato.

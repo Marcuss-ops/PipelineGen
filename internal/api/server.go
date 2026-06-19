@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
 )
 
 // Server represents the HTTP server.
@@ -29,7 +28,7 @@ type Server struct {
 // NewServer creates a new HTTP server with module registry support.
 func NewServer(
 	cfg *config.Config,
-	registry *module.Registry,
+	registry *Registry,
 ) *Server {
 	router := NewRouter(cfg)
 	router.SetRegistry(registry)

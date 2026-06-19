@@ -32,8 +32,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	veloxclient "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 func main() {

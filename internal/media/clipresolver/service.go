@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
-	"github.com/Marcuss-ops/PipelineGen/pkg/matchingconfig"
+	matchingconfig "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // Service provides clip recommendation functionality.

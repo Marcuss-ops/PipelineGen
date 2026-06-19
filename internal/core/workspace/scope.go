@@ -1,6 +1,6 @@
 package workspace
 
-import "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 // Scope represents a workspace and project context.
 type Scope struct {
@@ -19,7 +19,7 @@ func DefaultScope() Scope {
 // NewScope creates a new Scope, normalizing empty values to "default".
 func NewScope(workspaceID, projectID string) Scope {
 	return Scope{
-		WorkspaceID: defaults.String(workspaceID, "default"),
-		ProjectID:   defaults.String(projectID, "default"),
+		WorkspaceID: platform.String(workspaceID, "default"),
+		ProjectID:   platform.String(projectID, "default"),
 	}
 }

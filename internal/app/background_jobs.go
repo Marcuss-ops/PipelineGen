@@ -14,7 +14,7 @@ import (
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type backgroundJobs struct {

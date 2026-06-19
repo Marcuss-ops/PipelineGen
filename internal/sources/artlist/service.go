@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 )
@@ -52,7 +51,7 @@ type Service struct {
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
 	assetProcessing assets.ProcessingRepository
-	assetVersions   *assetversions.Repository
+	assetVersions   assets.VersionRepository
 
 	// Asset locations: canonical source of truth for local/drive paths.
 	assetLocRepo assets.LocationRepository
@@ -61,7 +60,7 @@ type Service struct {
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
 	assetProcRepo assets.ProcessingRepository,
-	assetVerRepo *assetversions.Repository,
+	assetVerRepo assets.VersionRepository,
 	assetLocRepo assets.LocationRepository,
 	log *zap.Logger,
 ) (*Service, error) {

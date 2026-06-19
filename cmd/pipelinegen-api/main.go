@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	internalworker "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/internalworker"
+	internalworker "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobbroker/local"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -22,11 +22,7 @@ import (
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/workernodes"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
-	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"go.uber.org/zap"
 )
 
@@ -60,15 +56,12 @@ func main() {
 	voiceoverRepo := vorepo.NewRepository(db.DB)
 
 	// Canonical asset repositories and query service
-	assetsRepo := assetrepo.New(db.DB, log)
-	locationsRepo := assetlocations.NewAdapter(assetlocations.NewRepository(db.DB))
-	processingRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(db.DB))
-	versionsRepo := assetversions.NewAdapter(assetversions.NewRepository(db.DB))
-	querySvc := assetquery.New(assetsRepo, locationsRepo, processingRepo, versionsRepo)
+	assetsStore := assets.NewAssetStoreSQLite(db.DB, log)
+	querySvc := assets.NewService(assetsStore, log)
 
 	broker := local.New(jobRepo, workerRepo)
 	assetSvc := workerassets.NewServiceWithUploadRoot(assetIndexSvc, querySvc, imageRepo, voiceoverRepo, filepath.Join(cfg.Storage.DataDir, "worker-uploads"), log)
-	router.SetWorkerHandler(internalworker.NewHandler(broker, assetSvc, log))
+	router.SetWorkerHandler(internalworker.NewInternalworkerHandler(broker, assetSvc, log))
 	engine := router.Setup()
 
 	server := &http.Server{

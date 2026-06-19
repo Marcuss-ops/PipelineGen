@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // validateCheckpointMode ensures the env-supplied SQLite WAL checkpoint mode

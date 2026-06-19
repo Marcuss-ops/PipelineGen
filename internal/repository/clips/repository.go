@@ -1,34 +1,19 @@
-// Package clips provides the repository for media assets (media_assets table).
-//
-// This repository manages:
-//   - Video clips and their metadata
-//   - Clip folders for organization
-//   - Segment embeddings for timeline generation
-//
-// Database: media.db.sqlite (unified single database)
-// Table: media_assets (unified schema with metadata_json for flexible fields)
-//
-// Note: All sources (youtube, artlist, stock) share the same unified database
-// (media.db.sqlite) and are differentiated by the `source` column.
-// Different Repository instances may be created for ergonomic source-filtering
-// but they all wrap the same underlying DB.
 package clips
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
-// mediaAssetColumns defines the columns selected from media_assets table.
 const mediaAssetColumns = `
 	id,
 	COALESCE(source, '') AS source,
@@ -70,111 +55,99 @@ const mediaAssetColumns = `
 	COALESCE(reuse_count, 0) AS reuse_count,
 	COALESCE(last_used_at, '') AS last_used_at`
 
-const (
-	clipFolderColumns = `id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at`
-)
-
-func buildClipFolderQuery(source string) string {
-	query := "SELECT " + clipFolderColumns + " FROM clip_folders"
-	if source != "" && source != "all" && source != "unified" {
-		query += " WHERE source = ?"
-	}
-	return query
-}
-
-func (r *Repository) buildMediaAssetQuery(source string) string {
-	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE " + r.SoftDeleteFilter()
-	if source != "" && source != "all" && source != "unified" {
-		query += " AND source = ?"
-	}
-	return query
-}
-
-// Repository handles persistence for clips.
-//
-// PR1: Repository always delegates canonical CRUD (Upsert/Get/List/
-// SoftDelete/Restore/HardDelete) to an embedded assetrepo.Repository,
-// which is auto-created by NewRepository. Callers that previously wired
-// a separate canonical via NewRepositoryCanonical get graceful overlap
-// (the explicitly-passed canonical is used). Custom queries (SearchClips,
-// folders, dedup, scoring) remain on this type.
 type Repository struct {
-	db        *sql.DB
-	log       *zap.Logger
-	canonical *assetrepo.Repository
+	*assets.AssetStoreSQLite
+	db  *sql.DB
+	log *zap.Logger
 }
 
-// NewRepository creates a Repository backed by db, with an auto-created
-// canonical assetrepo.Repository. All callers get canonical delegation
-// for free — no migration needed.
 func NewRepository(db *sql.DB, log *zap.Logger) *Repository {
-	r := &Repository{
-		db:        db,
-		log:       log,
-		canonical: assetrepo.New(db, log),
+	return &Repository{
+		AssetStoreSQLite: assets.NewAssetStoreSQLite(db, log),
+		db:               db,
+		log:              log,
 	}
-	if log != nil {
-		log.Info("clips repository: canonical assetrepo auto-wired (PR1)")
-	}
-	return r
 }
 
-// NewRepositoryCanonical wraps an existing canonical assetrepo.Repository.
-// For backward compatibility with callers that previously created the
-// canonical externally (e.g., compose_core.go). When nil, auto-creates one.
-func NewRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical *assetrepo.Repository) *Repository {
-	if canonical == nil {
-		canonical = assetrepo.New(db, log)
-	}
-	r := &Repository{db: db, log: log, canonical: canonical}
-	if log != nil {
-		log.Info("clips repository: canonical lifecycle_state column in use",
-			zap.Bool("canonical_wired", true))
-	}
-	return r
+func NewRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Repository {
+	return NewRepository(db, log)
 }
-
-// ── asset.Repository interface (PR1: always delegated to canonical) ────
 
 func (r *Repository) Upsert(ctx context.Context, m *assets.Asset) error {
-	return r.canonical.Upsert(ctx, m)
+	return r.AssetStoreSQLite.Save(ctx, &assets.Details{Asset: m})
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (*assets.Asset, error) {
-	return r.canonical.Get(ctx, id)
+	details, err := r.AssetStoreSQLite.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if details == nil {
+		return nil, nil
+	}
+	return details.Asset, nil
 }
 
-func (r *Repository) List(ctx context.Context, filter assets.Filter) ([]*assets.Asset, error) {
-	return r.canonical.List(ctx, filter)
+func (r *Repository) GetClip(ctx context.Context, id string) (*assets.Asset, error) {
+	return r.Get(ctx, id)
 }
 
 func (r *Repository) Count(ctx context.Context, filter assets.Filter) (int64, error) {
-	return r.canonical.Count(ctx, filter)
+	args := []any{}
+	conds := []string{"1=1"}
+	if filter.Source != "" {
+		conds = append(conds, "source = ?")
+		args = append(args, filter.Source)
+	}
+	if filter.MediaType != "" {
+		conds = append(conds, "media_type = ?")
+		args = append(args, filter.MediaType)
+	}
+	if len(filter.States) > 0 {
+		conds = append(conds, inClause(len(filter.States), "lifecycle_state"))
+		for _, s := range filter.States {
+			args = append(args, s)
+		}
+	}
+	query := "SELECT COUNT(*) FROM media_assets WHERE " + strings.Join(conds, " AND ")
+	var n int64
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
 }
 
 func (r *Repository) SoftDelete(ctx context.Context, id string) error {
-	return r.canonical.SoftDelete(ctx, id)
+	return r.AssetStoreSQLite.Delete(ctx, id)
 }
 
 func (r *Repository) Restore(ctx context.Context, id string) error {
-	return r.canonical.Restore(ctx, id)
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	_, err := r.db.ExecContext(ctx, "UPDATE media_assets SET lifecycle_state = 'ready', deleted_at = NULL, updated_at = ? WHERE id = ?", nowStr, id)
+	return err
 }
 
 func (r *Repository) HardDelete(ctx context.Context, id string) error {
-	return r.canonical.HardDelete(ctx, id)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_locations WHERE asset_id = ?", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_processing WHERE asset_id = ?", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM asset_versions WHERE asset_id = ?", id)
+	_, err = tx.ExecContext(ctx, "DELETE FROM media_assets WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-// Canonical returns the embedded assetrepo.Repository for callers that
-// need direct access (e.g., WithTx, UpsertTx).
-func (r *Repository) Canonical() *assetrepo.Repository {
-	return r.canonical
+func (r *Repository) Canonical() *Repository {
+	return r
 }
 
-// ── Legacy write methods (PR2: converted to canonical *assets.Asset) ─
-
-// SoftDeleteFilter returns the SQL WHERE fragment that excludes soft-deleted clips.
 func (r *Repository) SoftDeleteFilter() string {
-	return "lifecycle_state != 'deleted'"
+	return "lifecycle_state != 'deleted' AND lifecycle_state != 'DELETED'"
 }
 
 func (r *Repository) Log() *zap.Logger { return r.log }
@@ -184,47 +157,88 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 	return r.db.BeginTx(ctx, opts)
 }
 
-// UpsertClip inserts or updates a media asset. PR1: always delegates to
-// the canonical assetrepo.Repository. Same semantics as before.
 func (r *Repository) UpsertClip(ctx context.Context, clip *assets.Asset) error {
-	return r.canonical.Upsert(ctx, clip)
+	return r.Upsert(ctx, clip)
 }
 
-// GetByDriveFileID is a legacy alias for GetClipByDriveFileID.
 func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*assets.Asset, error) {
 	return r.GetClipByDriveFileID(ctx, fileID)
 }
 
-// GetClipFolderByVideoID is a legacy alias for GetFolderByVideoID.
 func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
 	return r.GetFolderByVideoID(ctx, videoID)
 }
 
-
-
-// UpsertClipTx is the tx-aware variant of UpsertClip. PR1: delegates to
-// the canonical assetrepo.Repository.UpsertTx. The caller owns the
-// transaction lifecycle and outbox emission.
 func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *assets.Asset) error {
-	return r.canonical.UpsertTx(ctx, tx, clip)
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	tagsJSON, _ := json.Marshal(clip.Tags)
+	searchTermsJSON, _ := json.Marshal(clip.SearchTerms)
+	metadataJSON, _ := json.Marshal(clip.Metadata)
+	deletedAtStr := ""
+	if clip.DeletedAt != nil {
+		deletedAtStr = timeutil.FormatRFC3339(*clip.DeletedAt)
+	}
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO media_assets (
+			id, source, name, filename, media_type, category, group_name,
+			url, clip_page_url, thumbnail_url, duration_ms, tags, search_terms,
+			search_text, lifecycle_state, deleted_at, metadata_json,
+			created_at, updated_at, folder_id, parent_folder_id, folder_path,
+			scene_type, phash, last_used_at, quality_score, reuse_count,
+			embedding_json, visual_embedding, transcript_embedding
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			source = excluded.source,
+			name = excluded.name,
+			filename = excluded.filename,
+			media_type = excluded.media_type,
+			category = excluded.category,
+			group_name = excluded.group_name,
+			url = excluded.url,
+			clip_page_url = excluded.clip_page_url,
+			thumbnail_url = excluded.thumbnail_url,
+			duration_ms = excluded.duration_ms,
+			tags = excluded.tags,
+			search_terms = excluded.search_terms,
+			search_text = excluded.search_text,
+			lifecycle_state = excluded.lifecycle_state,
+			deleted_at = excluded.deleted_at,
+			metadata_json = excluded.metadata_json,
+			updated_at = excluded.updated_at,
+			folder_id = excluded.folder_id,
+			parent_folder_id = excluded.parent_folder_id,
+			folder_path = excluded.folder_path,
+			scene_type = excluded.scene_type,
+			phash = excluded.phash,
+			last_used_at = excluded.last_used_at,
+			quality_score = excluded.quality_score,
+			reuse_count = excluded.reuse_count,
+			embedding_json = excluded.embedding_json,
+			visual_embedding = excluded.visual_embedding,
+			transcript_embedding = excluded.transcript_embedding
+	`,
+		clip.ID, string(clip.Source), clip.Name, clip.Filename, string(clip.MediaType), clip.Category, clip.Group,
+		clip.SourceURL, clip.ClipPageURL, clip.ThumbnailURL, clip.Duration.Milliseconds(), string(tagsJSON), string(searchTermsJSON),
+		clip.SearchText, string(clip.LifecycleState), deletedAtStr, string(metadataJSON),
+		timeutil.FormatRFC3339(clip.CreatedAt), nowStr, clip.FolderID(), clip.ParentFolderID(), clip.FolderPath(),
+		clip.SceneType(), clip.PHash(), clip.LastUsedAt(), clip.QualityScore(), clip.ReuseCount(),
+		clip.EmbeddingJSON(), clip.VisualEmbedding(), clip.TranscriptEmbedding(),
+	)
+	return err
 }
 
-// DeleteClip soft-deletes a clip by its ID. PR1: delegates to canonical.
 func (r *Repository) DeleteClip(ctx context.Context, id string) error {
-	return r.canonical.SoftDelete(ctx, id)
+	return r.SoftDelete(ctx, id)
 }
 
-// RestoreClip restores a soft-deleted clip. PR1: delegates to canonical.
 func (r *Repository) RestoreClip(ctx context.Context, id string) error {
-	return r.canonical.Restore(ctx, id)
+	return r.Restore(ctx, id)
 }
 
-// HardDeleteClip permanently deletes a clip. PR1: delegates to canonical.
 func (r *Repository) HardDeleteClip(ctx context.Context, id string) error {
-	return r.canonical.HardDelete(ctx, id)
+	return r.HardDelete(ctx, id)
 }
 
-// DeleteClipByDriveLink deletes a clip by its drive_link or download_link.
 func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string) error {
 	driveLink = strings.TrimSpace(driveLink)
 	if driveLink == "" {
@@ -237,40 +251,21 @@ func (r *Repository) DeleteClipByDriveLink(ctx context.Context, driveLink string
 	return err
 }
 
-// CountAll returns the total row count excluding soft-deleted.
 func (r *Repository) CountAll(ctx context.Context) (int64, error) {
-	if r.db == nil {
-		return 0, fmt.Errorf("clips.Repository: db is nil")
-	}
 	var n int64
-	err := r.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM media_assets WHERE "+r.SoftDeleteFilter()).Scan(&n)
-	if err != nil {
-		return 0, fmt.Errorf("clips.CountAll: %w", err)
-	}
-	return n, nil
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM media_assets WHERE "+r.SoftDeleteFilter()).Scan(&n)
+	return n, err
 }
 
-// CountIndexed returns count of rows with populated embedding_json.
 func (r *Repository) CountIndexed(ctx context.Context) (int64, error) {
-	if r.db == nil {
-		return 0, fmt.Errorf("clips.Repository: db is nil")
-	}
 	var n int64
 	err := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM media_assets WHERE `+r.SoftDeleteFilter()+`
 		   AND embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]'`).Scan(&n)
-	if err != nil {
-		return 0, fmt.Errorf("clips.CountIndexed: %w", err)
-	}
-	return n, nil
+	return n, err
 }
 
-// ListIndexedIDs returns up to limit asset IDs with populated embedding_json.
 func (r *Repository) ListIndexedIDs(ctx context.Context, limit int) ([]string, error) {
-	if r.db == nil {
-		return nil, fmt.Errorf("clips.Repository: db is nil")
-	}
 	if limit <= 0 {
 		return []string{}, nil
 	}
@@ -278,35 +273,176 @@ func (r *Repository) ListIndexedIDs(ctx context.Context, limit int) ([]string, e
 		`SELECT id FROM media_assets WHERE `+r.SoftDeleteFilter()+`
 		   AND embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' LIMIT ?`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("clips.ListIndexedIDs: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 	out := make([]string, 0, limit)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("clips.ListIndexedIDs scan: %w", err)
+			return nil, err
 		}
 		out = append(out, id)
 	}
 	return out, rows.Err()
 }
 
-func normalizeTags(tags []string) string {
-	var b strings.Builder
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-		low := strings.ToLower(t)
-		low = strings.NewReplacer(
-			"à", "a", "è", "e", "é", "e", "ì", "i", "ò", "o", "ù", "u",
-		).Replace(low)
-		if b.Len() > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(low)
+func (r *Repository) List(ctx context.Context, filter assets.Filter) ([]*assets.Asset, error) {
+	args := []any{}
+	conds := []string{"1=1"}
+	if filter.Source != "" {
+		conds = append(conds, "source = ?")
+		args = append(args, filter.Source)
 	}
-	return b.String()
+	if filter.MediaType != "" {
+		conds = append(conds, "media_type = ?")
+		args = append(args, filter.MediaType)
+	}
+	if len(filter.States) > 0 {
+		conds = append(conds, inClause(len(filter.States), "lifecycle_state"))
+		for _, s := range filter.States {
+			args = append(args, s)
+		}
+	}
+	if len(filter.IDs) > 0 {
+		conds = append(conds, inClause(len(filter.IDs), "id"))
+		for _, id := range filter.IDs {
+			args = append(args, id)
+		}
+	}
+	if len(filter.ExcludeIDs) > 0 {
+		conds = append(conds, inClause(len(filter.ExcludeIDs), "id", "NOT"))
+		for _, id := range filter.ExcludeIDs {
+			args = append(args, id)
+		}
+	}
+	if filter.IsFolder != nil {
+		conds = append(conds, "is_folder = ?")
+		isFolderInt := 0
+		if *filter.IsFolder {
+			isFolderInt = 1
+		}
+		args = append(args, isFolderInt)
+	}
+
+	query := "SELECT " + mediaAssetColumns + " FROM media_assets WHERE " +
+		strings.Join(conds, " AND ") + " ORDER BY created_at DESC"
+	if filter.Limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, filter.Limit)
+		if filter.Offset > 0 {
+			query += " OFFSET ?"
+			args = append(args, filter.Offset)
+		}
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("clips.List: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*assets.Asset
+	for rows.Next() {
+		m, err := assets.ScanCanonicalAssetRowsPublic(rows)
+		if err != nil {
+			return nil, fmt.Errorf("clips.List scan: %w", err)
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
+
+func (r *Repository) UpsertFolder(ctx context.Context, folder *models.ClipFolder) error {
+	mBytes, err := json.Marshal(folder)
+	if err != nil {
+		return err
+	}
+	var assetsFolder assets.ClipFolder
+	if err := json.Unmarshal(mBytes, &assetsFolder); err != nil {
+		return err
+	}
+	return r.AssetStoreSQLite.UpsertFolder(ctx, &assetsFolder)
+}
+
+func (r *Repository) GetFolder(ctx context.Context, folderID string) (*models.ClipFolder, error) {
+	folder, err := r.AssetStoreSQLite.GetFolder(ctx, folderID)
+	if err != nil {
+		return nil, err
+	}
+	if folder == nil {
+		return nil, nil
+	}
+	mBytes, _ := json.Marshal(folder)
+	var mFolder models.ClipFolder
+	_ = json.Unmarshal(mBytes, &mFolder)
+	return &mFolder, nil
+}
+
+func (r *Repository) GetFolderByVideoID(ctx context.Context, videoID string) (*models.ClipFolder, error) {
+	folder, err := r.AssetStoreSQLite.GetFolderByVideoID(ctx, videoID)
+	if err != nil {
+		return nil, err
+	}
+	if folder == nil {
+		return nil, nil
+	}
+	mBytes, _ := json.Marshal(folder)
+	var mFolder models.ClipFolder
+	_ = json.Unmarshal(mBytes, &mFolder)
+	return &mFolder, nil
+}
+
+func (r *Repository) GetFolderByPath(ctx context.Context, folderPath string) (*models.ClipFolder, error) {
+	query := "SELECT id, source, COALESCE(source_url, '') AS source_url, COALESCE(video_id, '') AS video_id, COALESCE(folder_id, '') AS folder_id, COALESCE(folder_path, '') AS folder_path, COALESCE(local_folder_path, '') AS local_folder_path, COALESCE(group_name, '') AS group_name, COALESCE(manifest_txt_path, '') AS manifest_txt_path, COALESCE(manifest_json_path, '') AS manifest_json_path, clip_count, processed_count, failed_count, skipped_count, COALESCE(last_error, '') AS last_error, COALESCE(metadata, '{}') AS metadata, created_at, updated_at FROM clip_folders WHERE folder_path = ? LIMIT 1"
+	row := r.db.QueryRowContext(ctx, query, folderPath)
+	var folder models.ClipFolder
+	var createdAt, updatedAt string
+	err := row.Scan(&folder.ID, &folder.Source, &folder.SourceURL, &folder.VideoID, &folder.FolderID,
+		&folder.FolderPath, &folder.LocalFolderPath, &folder.Group, &folder.ManifestTXTPath,
+		&folder.ManifestJSONPath, &folder.ClipCount, &folder.ProcessedCount, &folder.FailedCount,
+		&folder.SkippedCount, &folder.LastError, &folder.Metadata, &createdAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	folder.CreatedAt = timeutil.ParseRFC3339(createdAt)
+	folder.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
+	return &folder, nil
+}
+
+func (r *Repository) ListFolders(ctx context.Context, source string) ([]*models.ClipFolder, error) {
+	folders, err := r.AssetStoreSQLite.ListFolders(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*models.ClipFolder, len(folders))
+	for i, f := range folders {
+		mBytes, _ := json.Marshal(f)
+		var mFolder models.ClipFolder
+		_ = json.Unmarshal(mBytes, &mFolder)
+		out[i] = &mFolder
+	}
+	return out, nil
+}
+
+func inClause(n int, col string, notOpt ...string) string {
+	if n <= 0 {
+		return "1=1"
+	}
+	op := "IN"
+	if len(notOpt) > 0 && strings.EqualFold(notOpt[0], "NOT") {
+		op = "NOT IN"
+	}
+	placeholders := make([]string, n)
+	for i := 0; i < n; i++ {
+		placeholders[i] = "?"
+	}
+	return col + " " + op + " (" + strings.Join(placeholders, ",") + ")"
+}
+
+type AdvancedSearchRequest = assets.AdvancedSearchRequest
+type AdvancedSearchResult = assets.AdvancedSearchResult
+type SegmentEmbeddingRecord = assets.SegmentEmbeddingRecord

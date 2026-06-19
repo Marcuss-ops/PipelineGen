@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // mediaAssetScanner abstracts away sql.Rows vs sql.Row so callers
@@ -158,4 +158,15 @@ func scanCanonicalAssetRows(rows *sql.Rows) (*Asset, error) {
 func (s *AssetStoreSQLite) scanCanonicalAssetRow(row *sql.Row) (*Asset, error) {
 	return scanMediaAsset(row)
 }
+
+// ScanCanonicalAssetRowsPublic is an exported wrapper for scanCanonicalAssetRows.
+func ScanCanonicalAssetRowsPublic(rows *sql.Rows) (*Asset, error) {
+	return scanCanonicalAssetRows(rows)
+}
+
+// ScanCanonicalAssetRowPublic is an exported wrapper for scanCanonicalAssetRow.
+func (s *AssetStoreSQLite) ScanCanonicalAssetRowPublic(row *sql.Row) (*Asset, error) {
+	return s.scanCanonicalAssetRow(row)
+}
+
 

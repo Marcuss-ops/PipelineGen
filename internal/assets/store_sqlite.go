@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 	"go.uber.org/zap"
 )
 

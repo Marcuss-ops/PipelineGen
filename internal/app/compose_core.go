@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -25,10 +24,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
-	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -45,12 +40,12 @@ type CoreInfra struct {
 	StyleRegistry *generation.StyleRegistry
 	DriveDests    *DriveDestinations // resolved Drive folder IDs (immutable Config)
 
-	ClipsOnlyRepo      *clips.Repository
-	AssetRepo          assets.Repository
-	AssetLocationRepo  assets.LocationRepository
+	ClipsOnlyRepo       *clips.Repository
+	AssetRepo           assets.Repository
+	AssetLocationRepo   assets.LocationRepository
 	AssetProcessingRepo assets.ProcessingRepository
-	AssetQueryService   *assetquery.Service
-	MediaProcessor     processor.Processor
+	AssetsSvc           *assets.Service
+	MediaProcessor      processor.Processor
 	AssetIndexService  *assetindex.Service
 	AssetTreeService   *assettree.Service
 	ClipIndexerService *clipindexer.Service
@@ -154,18 +149,14 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	}
 
 	// 4. Media Processing
-	assetRepo := assetrepo.New(dbs.main.DB, log)
+	assetsStore := assets.NewAssetStoreSQLite(dbs.main.DB, log)
+	assetsSvc := assets.NewService(assetsStore, log)
+
+	assetRepo := assetsSvc.Repository()
 	clipsOnlyRepo := clips.NewRepositoryCanonical(dbs.main.DB, log, assetRepo)
-	assetLocRepo := assetlocations.NewAdapter(assetlocations.NewRepository(dbs.main.DB))
-	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
-	assetVerRepo := assetversions.NewRepository(dbs.main.DB)
-	assetQuerySvc := assetquery.New(
-		assetRepo,
-		assetLocRepo,
-		assetProcRepo,
-		assetversions.NewAdapter(assetVerRepo),
-	)
-	mediaProcessor := initMediaProcessor(cfg, dbs.main.DB, assetRepo, assetQuerySvc, assetLocRepo, assetProcRepo, log, driveUploader)
+	assetLocRepo := assetsSvc.LocationRepository()
+	assetProcRepo := assetsSvc.ProcessingRepository()
+	mediaProcessor := initMediaProcessor(cfg, dbs.main.DB, assetRepo, assetsSvc, assetLocRepo, assetProcRepo, log, driveUploader)
 
 	// 5. Asset Services
 	assetIndexService, assetTreeService, err := initAssetServices(dbs, log)
@@ -280,7 +271,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		AssetRepo:           assetRepo,
 		AssetLocationRepo:   assetLocRepo,
 		AssetProcessingRepo: assetProcRepo,
-		AssetQueryService:   assetQuerySvc,
+		AssetsSvc:           assetsSvc,
 		MediaProcessor:      mediaProcessor,
 		AssetIndexService:  assetIndexService,
 		AssetTreeService:   assetTreeService,

@@ -10,8 +10,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"go.uber.org/zap"
 )
@@ -185,9 +185,9 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 		assets = appendAssetFile(assets, filename)
 	}
 
-	subjects := textutil.UniqueStrings(append(existingStringSlice(existingMeta, "subjects"), rec.Group, rec.Category, rec.Source)...)
-	tags := textutil.UniqueStrings(append(existingStringSlice(existingMeta, "tags"), rec.Tags...)...)
-	categories := textutil.UniqueStrings(append(existingStringSlice(existingMeta, "categories"), rec.Category, rec.Group, rec.MediaType)...)
+	subjects := textutil.UniqueStringsVar(append(existingStringSlice(existingMeta, "subjects"), rec.Group, rec.Category, rec.Source)...)
+	tags := textutil.UniqueStringsVar(append(existingStringSlice(existingMeta, "tags"), rec.Tags...)...)
+	categories := textutil.UniqueStringsVar(append(existingStringSlice(existingMeta, "categories"), rec.Category, rec.Group, rec.MediaType)...)
 	style := existingStringSlice(existingMeta, "style")
 	mood := existingStringSlice(existingMeta, "mood")
 	searchText := firstString(existingMeta, "search_text", semantic.MergeMetadataSearchText(rec.Name, rec.Filename, rec.Source, rec.Category, rec.Group, rec.FolderPath, strings.Join(rec.Tags, " ")))

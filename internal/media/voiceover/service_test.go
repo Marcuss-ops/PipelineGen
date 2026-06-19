@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"github.com/stretchr/testify/assert"
 )
