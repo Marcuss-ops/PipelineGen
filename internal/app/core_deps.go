@@ -6,7 +6,7 @@ import (
 	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api"
 	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
-	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -81,7 +81,7 @@ type CoreDeps struct {
 	MaintenanceService *maintenance.Service
 	MemoryService      *gemmamemory.Service
 	ScriptEngine       *scriptcore.Engine
-	ScriptFlowHandler  *handlers.ScriptFlowHandler
+	ScriptFlowHandler  *scriptpkg.ScriptFlowHandler
 	BooksService       *booksService.Service
 	BooksHandler       *booksHandler.BooksHandler
 	LessonsService     *lessonsService.Service

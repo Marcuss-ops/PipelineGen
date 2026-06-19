@@ -3,7 +3,7 @@ package app
 import (
 	"go.uber.org/zap"
 
-	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
@@ -19,7 +19,7 @@ import (
 // path (HTTP routes) and the compose-integration path (job handlers) stay in
 // sync.
 func wireScriptFlowExtras(
-	handler *handlers.ScriptFlowHandler,
+	handler *scriptpkg.ScriptFlowHandler,
 	ollamaClient *client.Client,
 	vectorStore *vectorstore.Service,
 	clipsOnlyRepo *clips.Repository,

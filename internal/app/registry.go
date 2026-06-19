@@ -80,7 +80,7 @@ func WireRegistry(
 		memoryRepo := gemmamemory.NewRepository(coreDeps.DB.DB)
 		memorySvc := gemmamemory.NewService(memoryRepo, log)
 		engine := scriptcore.NewEngine(coreDeps.ScriptGen, memorySvc, coreDeps.ScriptsRepo, log)
-		handler := handlers.NewScriptFlowHandler(
+		handler := scriptapi.NewScriptFlowHandler(
 			coreDeps.ScriptGen, engine, coreDeps.ImageService, coreDeps.RealtimeService,
 			coreDeps.AssocService, coreDeps.VoiceoverService, coreDeps.AssetTreeService,
 			coreDeps.DocClient,
@@ -231,8 +231,8 @@ func WireRegistry(
 
 	// ── ScriptHistory (dynamic module) ─────────────────────────────────
 	if coreDeps.ScriptsRepo != nil {
-		registerModule(registry, log, module.NewScriptHistoryModule(
-			cfg, log, handlers.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log),
+		registerModule(registry, log, scriptapi.NewScriptHistoryModule(
+			cfg, log, scriptapi.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log),
 		))
 	}
 
