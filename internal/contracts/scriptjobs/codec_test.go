@@ -2,6 +2,7 @@ package scriptjobs_test
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
@@ -83,12 +84,12 @@ func TestGeneratePayloadRoundTrip(t *testing.T) {
 }
 
 func TestGeneratePayloadDecodeEmpty(t *testing.T) {
-	p, err := scriptjobs.DecodeGeneratePayload(nil)
-	if err != nil {
-		t.Fatalf("empty payload should decode: %v", err)
+	_, err := scriptjobs.DecodeGeneratePayload(nil)
+	if err == nil {
+		t.Fatal("empty payload should return an error")
 	}
-	if p.Version != 0 {
-		t.Errorf("empty payload version should be 0, got %d", p.Version)
+	if !errors.Is(err, scriptjobs.ErrInvalidPayload) {
+		t.Errorf("expected ErrInvalidPayload, got %v", err)
 	}
 }
 
@@ -142,5 +143,52 @@ func TestGenerationSpecHasText(t *testing.T) {
 				t.Errorf("HasText() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestDecodeLegacyFlatPayload(t *testing.T) {
+	// Simulate a legacy payload created before the versioned envelope existed.
+	raw := json.RawMessage(`{
+		"topic": "Climate Change",
+		"clip_ids": ["clip-a", "clip-b"],
+		"language": "en",
+		"tone": "serious",
+		"generate_scene_images": true,
+		"target_words": 1500
+	}`)
+
+	p, err := scriptjobs.DecodeGeneratePayload(raw)
+	if err != nil {
+		t.Fatalf("legacy flat payload should decode: %v", err)
+	}
+	if p.Version != 1 {
+		t.Errorf("expected version 1 after migration, got %d", p.Version)
+	}
+	if p.Preset != scriptjobs.PresetCustom {
+		t.Errorf("expected PresetCustom for legacy, got %s", p.Preset)
+	}
+	if p.Spec.Topic != "Climate Change" {
+		t.Errorf("topic mismatch: %s", p.Spec.Topic)
+	}
+	if len(p.Spec.ClipIDs) != 2 {
+		t.Errorf("expected 2 clip IDs, got %d", len(p.Spec.ClipIDs))
+	}
+	if p.Spec.TargetWords != 1500 {
+		t.Errorf("target_words mismatch: %d", p.Spec.TargetWords)
+	}
+	if !p.Spec.GenerateSceneImages {
+		t.Error("expected generate_scene_images to be true")
+	}
+}
+
+func TestDecodeOnlyClipsIsValid(t *testing.T) {
+	// clip_ids alone should satisfy legacy validation.
+	raw := json.RawMessage(`{"clip_ids":["x"],"generate_scene_images":true}`)
+	p, err := scriptjobs.DecodeGeneratePayload(raw)
+	if err != nil {
+		t.Fatalf("clip-only legacy payload should decode: %v", err)
+	}
+	if !p.Spec.GenerateSceneImages {
+		t.Error("expected generate_scene_images true")
 	}
 }

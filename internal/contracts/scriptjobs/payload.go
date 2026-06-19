@@ -41,18 +41,42 @@ func NewGeneratePayload(preset Preset, spec GenerationSpec) GeneratePayload {
 }
 
 // DecodeGeneratePayload unmarshals a raw job payload into GeneratePayload.
-// Returns an error if the payload is invalid JSON or the version is
-// unsupported.
+//
+// Supports two formats:
+//  1. Versioned envelope (current): {"version":1,"preset":"custom","spec":{...}}
+//  2. Legacy flat payload: {"topic":"...","clip_ids":["a"],...}
+//
+// Returns an error if the payload is invalid JSON, the version is
+// unsupported, or both formats produce an empty spec.
 func DecodeGeneratePayload(raw json.RawMessage) (*GeneratePayload, error) {
-	var p GeneratePayload
 	if len(raw) == 0 {
-		return &p, nil
+		return nil, ErrInvalidPayload
 	}
-	if err := json.Unmarshal(raw, &p); err != nil {
+
+	// Try current versioned envelope first.
+	var envelope GeneratePayload
+	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, err
 	}
-	if p.Version != 0 && p.Version != 1 {
-		return nil, ErrUnsupportedVersion
+
+	// If the envelope populated a spec or carries an explicit version,
+	// it's the new format.
+	if envelope.Version > 0 || envelope.Spec.HasText() || envelope.Spec.HasClips() {
+		if envelope.Version != 1 {
+			return nil, ErrUnsupportedVersion
+		}
+		return &envelope, nil
 	}
-	return &p, nil
+
+	// Legacy flat payload: the entire JSON object is a GenerationSpec.
+	var legacy GenerationSpec
+	if err := json.Unmarshal(raw, &legacy); err != nil {
+		return nil, err
+	}
+	if !legacy.HasText() && !legacy.HasClips() {
+		return nil, ErrInvalidPayload
+	}
+
+	payload := NewGeneratePayload(PresetCustom, legacy)
+	return &payload, nil
 }

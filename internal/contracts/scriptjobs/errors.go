@@ -19,4 +19,8 @@ var (
 	// ErrUnsupportedVersion means the payload version is not
 	// recognized by this worker.
 	ErrUnsupportedVersion = errors.New("scriptjobs: unsupported payload version")
+
+	// ErrInvalidPayload means the payload is empty, not valid
+	// JSON, or contains neither text nor clips.
+	ErrInvalidPayload = errors.New("scriptjobs: invalid or empty payload")
 )
