@@ -50,6 +50,9 @@ jobs:
     - name: Run Legacy Detector Self-tests
       run: go test ./scripts/ast_legacy_check/...
 
+    - name: Build all packages
+      run: go build ./...
+
     - name: Build all binaries
       run: |
         go build -o /dev/null ./cmd/server/
