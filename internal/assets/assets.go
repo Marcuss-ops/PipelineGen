@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // ErrNotFound is returned when an asset, artifact, or delivery is not found.
@@ -246,14 +248,66 @@ type Filter struct {
 	Offset       int      `json:"offset,omitempty"`
 }
 
+// ── Details & Summary ───────────────────────────────────────────────
+
+type Details struct {
+	Asset      *Asset              `json:"asset"`
+	Locations  []*Location         `json:"locations,omitempty"`
+	Processing []*ProcessingRecord `json:"processing,omitempty"`
+	Versions   []*Version          `json:"versions,omitempty"`
+}
+
+type Summary struct {
+	ID             string         `json:"id"`
+	Source         Source         `json:"source"`
+	Name           string         `json:"name"`
+	Filename       string         `json:"filename"`
+	MediaType      MediaType      `json:"media_type"`
+	Category       string         `json:"category"`
+	LifecycleState LifecycleState `json:"lifecycle_state"`
+	PrimaryURI     string         `json:"primary_uri,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
 // ── Store Interfaces ────────────────────────────────────────────────
 
 // Store represents the unified CRUD repository for assets.
 type Store interface {
-	Get(ctx context.Context, id string) (*Asset, error)
-	List(ctx context.Context, filter Filter) ([]*Asset, error)
-	Save(ctx context.Context, asset *Asset) error
+	Get(ctx context.Context, id string) (*Details, error)
+	List(ctx context.Context, filter Filter) ([]*Summary, error)
+	Save(ctx context.Context, details *Details) error
 	Delete(ctx context.Context, id string) error
+}
+
+// ── Service Class ───────────────────────────────────────────────────
+
+type Service struct {
+	store Store
+	log   *zap.Logger
+}
+
+func NewService(store Store, log *zap.Logger) *Service {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &Service{store: store, log: log}
+}
+
+func (s *Service) Get(ctx context.Context, id string) (*Details, error) {
+	return s.store.Get(ctx, id)
+}
+
+func (s *Service) List(ctx context.Context, filter Filter) ([]*Summary, error) {
+	return s.store.List(ctx, filter)
+}
+
+func (s *Service) Save(ctx context.Context, details *Details) error {
+	return s.store.Save(ctx, details)
+}
+
+func (s *Service) Delete(ctx context.Context, id string) error {
+	return s.store.Delete(ctx, id)
 }
 
 // Repository represents the legacy/intermediate repository interface for assets.
