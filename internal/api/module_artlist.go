@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	artlistService "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
@@ -33,6 +34,6 @@ func NewArtlistModule(
 			}
 			return nil
 		}),
-		WithMiddleware(ArtlistEnabled(cfg)),
+		WithMiddleware(middleware.ArtlistEnabled(cfg)),
 	)
 }
