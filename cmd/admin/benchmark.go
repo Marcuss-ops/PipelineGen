@@ -1,16 +1,3 @@
-// Command benchmark runs the retrieval quality benchmark against a running
-// PipelineGen server. It loads labeled queries from a JSON file, executes
-// them via the semantic search HTTP API, computes IR metrics (Recall@K, MRR,
-// nDCG@K), and writes a detailed JSON report.
-//
-// Usage:
-//
-//	go run ./cmd/benchmark/ \
-//	    --server http://localhost:8080 \
-//	    --queries config/benchmark_queries.json \
-//	    --output /tmp/benchmark_report.json
-//
-// If --server is omitted, it defaults to http://localhost:8080.
 package main
 
 import (
@@ -28,50 +15,42 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime/benchmark"
 )
 
-func main() {
-	serverURL := flag.String("server", "http://localhost:8080", "PipelineGen server base URL")
-	queriesPath := flag.String("queries", "config/benchmark_queries.json", "Path to labeled queries JSON")
-	outputPath := flag.String("output", "/tmp/benchmark_report.json", "Path for JSON report output")
-	searchLimit := flag.Int("limit", 20, "Max results per query")
-	timeoutSec := flag.Int("timeout", 30, "HTTP request timeout in seconds")
-	authToken := flag.String("token", "", "Admin auth token (or set VELOX_ADMIN_TOKEN env var)")
-	flag.Parse()
+func runBenchmark(args []string) error {
+	fs := flag.NewFlagSet("benchmark", flag.ExitOnError)
+	serverURL := fs.String("server", "http://localhost:8080", "PipelineGen server base URL")
+	queriesPath := fs.String("queries", "config/benchmark_queries.json", "Path to labeled queries JSON")
+	outputPath := fs.String("output", "/tmp/benchmark_report.json", "Path for JSON report output")
+	searchLimit := fs.Int("limit", 20, "Max results per query")
+	timeoutSec := fs.Int("timeout", 30, "HTTP request timeout in seconds")
+	authToken := fs.String("token", "", "Admin auth token (or set VELOX_ADMIN_TOKEN env var)")
+	fs.Parse(args)
 
-	// Auth token: flag takes precedence, then env var
 	token := *authToken
 	if token == "" {
 		token = os.Getenv("VELOX_ADMIN_TOKEN")
 	}
 
-	// Load queries
 	qf, err := benchmark.LoadQueries(*queriesPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load queries: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("load queries: %w", err)
 	}
 
-	// Build HTTP search function
 	searchFn := httpSearchFunc(*serverURL, *searchLimit, time.Duration(*timeoutSec)*time.Second, token)
 
-	// Run benchmark
 	ctx := context.Background()
 	report := benchmark.Run(ctx, qf.Queries, searchFn, *searchLimit)
 	report.Description = qf.Description
 	report.Version = qf.Version
 
-	// Print summary
 	fmt.Println(benchmark.PrintSummary(report))
 
-	// Save report
 	if err := benchmark.SaveReport(report, *outputPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to save report: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("save report: %w", err)
 	}
 	fmt.Printf("\nReport saved to %s\n", *outputPath)
+	return nil
 }
 
-// httpSearchFunc creates a benchmark.SearchFunc that calls the PipelineGen
-// semantic search HTTP API (GET /api/media/semantic-search?mode=hybrid).
 func httpSearchFunc(serverURL string, defaultLimit int, timeout time.Duration, authToken string) benchmark.SearchFunc {
 	baseURL := strings.TrimRight(serverURL, "/")
 	client := &http.Client{Timeout: timeout}
