@@ -15,7 +15,7 @@ import (
 )
 
 type MediaIngestWiring struct {
-	Handler *api.MediaingestHandler
+	Handler *mediaingest.MediaingestHandler
 	Module  api.Module
 	Service *ingest.Service
 }
@@ -119,7 +119,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		},
 	})
 
-	handler := api.NewMediaingestHandler(svc)
+	handler := mediaingest.NewMediaingestHandler(svc)
 	mod := mediaingest.NewMediaIngestModule(cfg, log, handler)
 
 	return &MediaIngestWiring{

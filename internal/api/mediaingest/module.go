@@ -12,7 +12,7 @@ import (
 func NewMediaIngestModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *api.MediaingestHandler,
+	handler *MediaingestHandler,
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"media-ingest",
