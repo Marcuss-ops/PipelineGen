@@ -4,7 +4,7 @@ import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
+	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/searchqueries"
 
 	"go.uber.org/zap"
 )

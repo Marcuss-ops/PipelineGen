@@ -16,7 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

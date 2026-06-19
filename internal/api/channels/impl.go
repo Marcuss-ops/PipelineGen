@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
+	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/channels"
 )
 
 // ChannelsHandler handles CRUD operations for category_channels (channel subscriptions per Drive folder).

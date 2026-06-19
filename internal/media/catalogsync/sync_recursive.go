@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )

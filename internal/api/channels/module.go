@@ -3,7 +3,7 @@ package channels
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
+	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/channels"
 
 	"go.uber.org/zap"
 )

@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 

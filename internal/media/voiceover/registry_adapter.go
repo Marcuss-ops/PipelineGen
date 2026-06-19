@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
 	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 

@@ -18,8 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	clipsRepo "github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	imagesRepo "github.com/Marcuss-ops/PipelineGen/internal/repository/images"
+	clipsRepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	imagesRepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
