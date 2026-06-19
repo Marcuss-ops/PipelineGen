@@ -2,13 +2,12 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 // Handler is a migration alias for SourcesHandler.
-// Files moved from internal/api/handlers/sources/ still use the old receiver name.
-// Once all files are updated to use SourcesHandler, this alias can be removed.
-type Handler = SourcesHandler
+type Handler = sources.SourcesHandler
 
 // Package-level compatibility structs so that collapsed handler/middleware files
 // using package prefixes (apiutil.X, handlerutil.Y) compile without refactoring all method bodies.

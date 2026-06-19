@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	artlistService "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 
@@ -13,7 +14,7 @@ func NewArtlistModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *artlistService.Service,
-	handler *ArtlistHandler,
+	handler *sources.ArtlistHandler,
 ) *RouteModule {
 	return NewRouteModule(
 		"artlist",

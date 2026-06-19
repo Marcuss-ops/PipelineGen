@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	sources "github.com/Marcuss-ops/PipelineGen/internal/api"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"

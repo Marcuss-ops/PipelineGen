@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
@@ -14,7 +15,7 @@ func NewClipsModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *youtube.Service,
-	handler *YouTubeClipHandler,
+	handler *sources.YouTubeClipHandler,
 	jobsSvc *jobservice.Service,
 ) *RouteModule {
 	return NewRouteModule(

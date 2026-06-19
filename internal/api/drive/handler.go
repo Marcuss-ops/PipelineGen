@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
@@ -57,7 +58,7 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 		return
 	}
 
-	parentID := api.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
+	parentID := sources.ExtractDriveFolderID(strings.TrimSpace(req.ParentID))
 	if parentID == "" {
 		api.BadRequest(c, "parent_id is required")
 		return
@@ -246,7 +247,7 @@ func (h *DriveHandler) ResolveByIDs(c *gin.Context) {
 	var wg sync.WaitGroup
 
 	for i, raw := range req.IDs {
-		id := api.ExtractDriveFolderID(strings.TrimSpace(raw))
+		id := sources.ExtractDriveFolderID(strings.TrimSpace(raw))
 		if id == "" {
 			errorsByIdx[i] = fmt.Sprintf("empty id in input: %q", raw)
 			continue
