@@ -5,15 +5,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ValidateSource checks the source parameter against known sources and writes
@@ -22,7 +23,7 @@ import (
 //	if !ValidateSource(c, source) { return }
 func ValidateSource(c *gin.Context, source string) bool {
 	if !artifacts.IsValidSource(source) {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return false
 	}
 	return true
@@ -35,37 +36,9 @@ func (h *Handler) resolveRepo(source string) *clips.Repository {
 	return resolver.ResolveRepo(source)
 }
 
-// clipToAssetNode converts a canonical assets.Asset to assettree.AssetNode
-// for unified tree handling.
-func clipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
-	if clip == nil {
-		return nil
-	}
-	nodeType := "file"
-	if clip.IsFolder() {
-		nodeType = "folder"
-	} else if clip.MediaType != "" {
-		nodeType = string(clip.MediaType)
-	}
-
-	return &assettreerepo.AssetNode{
-		ID:          clip.ID,
-		Source:      string(clip.Source),
-		AssetID:     clip.ID,
-		Name:        clip.Name,
-		Type:        nodeType,
-		ParentID:    clip.ParentFolderID(),
-		Path:        clip.FolderPath(),
-		Depth:       clip.Depth(),
-		IsFolder:    clip.IsFolder(),
-		DriveFileID: clip.DriveFileID(),
-		DriveLink:   clip.DriveLink(),
-		Metadata:    clip.MetadataJSON(),
-		CreatedAt:   clip.CreatedAt,
-		UpdatedAt:   clip.UpdatedAt,
-		ChildCount:  clip.ChildCount(),
-	}
-}
+// clipToAssetNode moved to internal/api/sources/clips/helpers.go in PR-A
+// Phase 4 BULK. All clips/* handlers in the new subpackage are its sole
+// callers; sources/ no longer needs it.
 
 // voiceoverRecordToAssetNode converts a models.VoiceoverRecord to assettree.AssetNode.
 func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
@@ -229,24 +202,6 @@ func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Rep
 	return result
 }
 
-func treeNodeToAssetNode(tn *assettreerepo.AssetNode) *models.AssetNode {
-	if tn == nil {
-		return nil
-	}
-	return &models.AssetNode{
-		ID:          tn.ID,
-		Source:      tn.Source,
-		AssetID:     tn.AssetID,
-		Name:        tn.Name,
-		Type:        tn.Type,
-		ParentID:    tn.ParentID,
-		RootID:      tn.RootID,
-		Path:        tn.Path,
-		Depth:       tn.Depth,
-		IsFolder:    tn.IsFolder,
-		DriveFileID: tn.DriveFileID,
-		DriveLink:   tn.DriveLink,
-		Metadata:    tn.Metadata,
-		ChildCount:  tn.ChildCount,
-	}
-}
+// treeNodeToAssetNode moved to internal/api/sources/clips/helpers.go in PR-A
+// Phase 4 BULK. The lone caller (clips/folder_tree.go) now sits in the
+// clips subpackage alongside the helper.

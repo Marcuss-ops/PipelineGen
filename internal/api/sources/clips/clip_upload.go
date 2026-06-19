@@ -1,4 +1,4 @@
-package sources
+package clips
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -48,14 +49,14 @@ type UploadVideoClipResponse struct {
 func (h *Handler) UploadVideoClip(c *gin.Context) {
 	// 1. Parse multipart form (max 500MB)
 	if err := c.Request.ParseMultipartForm(500 << 20); err != nil {
-		apiutil.BadRequest(c, fmt.Sprintf("failed to parse multipart form: %v", err))
+		internal.APIUtil.BadRequest(c, fmt.Sprintf("failed to parse multipart form: %v", err))
 		return
 	}
 
 	// 2. Get the video file
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		apiutil.BadRequest(c, "file field is required: "+err.Error())
+		internal.APIUtil.BadRequest(c, "file field is required: "+err.Error())
 		return
 	}
 	defer file.Close()
@@ -99,7 +100,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	// Stage→Verify→Promote flow that computes SHA-256 and stores the blob
 	// at a canonical content-addressed path.
 	if h.artifactSvc == nil {
-		apiutil.InternalError(c, fmt.Errorf("artifact service not available"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("artifact service not available"))
 		return
 	}
 
@@ -122,7 +123,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error("failed to store artifact", zap.Error(err))
-		apiutil.InternalError(c, fmt.Errorf("failed to store file: %w", err))
+		internal.APIUtil.InternalError(c, fmt.Errorf("failed to store file: %w", err))
 		return
 	}
 	log.Info("artifact stored",
@@ -249,7 +250,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	if h.assetRepo != nil {
 		if err := h.assetRepo.Upsert(ctx, clip); err != nil {
 			log.Error("failed to save clip to DB", zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("failed to save clip: %w", err))
+			internal.APIUtil.InternalError(c, fmt.Errorf("failed to save clip: %w", err))
 			return
 		}
 		log.Info("saved clip to DB", zap.String("clip_id", clip.ID))
@@ -274,7 +275,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	}
 
 	// 13. Return success response
-	apiutil.OK(c, UploadVideoClipResponse{
+	internal.APIUtil.OK(c, UploadVideoClipResponse{
 		OK:          true,
 		ClipID:      clip.ID,
 		Name:        clip.Name,

@@ -1,4 +1,4 @@
-package sources
+package clips
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
 // isLocalFolderAllowed returns true if abs lives under any of the configured
@@ -99,7 +99,7 @@ func sanitiseDriveName(name string) string {
 	return out
 }
 
-func buildBulkDriveDescription(cand clipCandidate, fileHash string, payload jobs.BulkUploadYouTubeClipsPayload) string {
+func buildBulkDriveDescription(cand clipCandidate, fileHash string, payload jobservice.BulkUploadYouTubeClipsPayload) string {
 	var b strings.Builder
 	b.WriteString("Bulk-uploaded YouTube clip\n")
 	b.WriteString("Source: " + payload.Source + "\n")
@@ -177,13 +177,4 @@ func extractIntFromManifest(m map[string]any, key string) int {
 		return int(x)
 	}
 	return 0
-}
-
-// RegisterJobHandlers registers this package's job handlers on the provided
-// jobs service. Called from NewHandler when jobsSvc is available.
-func (h *Handler) RegisterJobHandlers() error {
-	if h.jobsSvc == nil {
-		return fmt.Errorf("jobs service not available")
-	}
-	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.HandleBulkUploadYouTubeClipsJob)
 }

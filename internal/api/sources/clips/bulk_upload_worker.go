@@ -1,4 +1,4 @@
-package sources
+package clips
 
 import (
 	"context"
@@ -13,10 +13,11 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by

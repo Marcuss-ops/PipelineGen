@@ -1,13 +1,14 @@
-package sources
+package clips
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/gin-gonic/gin"
 )
 
 // GetClip returns a single clip.
@@ -19,30 +20,30 @@ func (h *Handler) GetClip(c *gin.Context) {
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 		rec, err := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
 		if err != nil {
-			apiutil.NotFound(c, "voiceover not found")
+			internal.APIUtil.NotFound(c, "voiceover not found")
 			return
 		}
 		clip := artifacts.VoiceoverRecordToClip(rec)
-		apiutil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
+		internal.APIUtil.OK(c, gin.H{"ok": true, "source": source, "clip": clip})
 		return
 	}
 
 	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
 	if err != nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
 		"clip":   clip,
@@ -55,16 +56,16 @@ func (h *Handler) ClipStatus(c *gin.Context) {
 	clipID := c.Param("id")
 
 	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
 	if err != nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 
@@ -78,7 +79,7 @@ func (h *Handler) ClipStatus(c *gin.Context) {
 		status = "pending"
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":             true,
 		"source":         source,
 		"clip_id":        clipID,
@@ -110,12 +111,12 @@ func (h *Handler) ListClips(c *gin.Context) {
 
 	if sourceLower == "voiceover" {
 		if h.voiceoverRepo == nil {
-			apiutil.BadRequest(c, "voiceover repo not available")
+			internal.APIUtil.BadRequest(c, "voiceover repo not available")
 			return
 		}
 		records, err := h.voiceoverRepo.ListAll(ctx)
 		if err != nil {
-			apiutil.InternalError(c, err)
+			internal.APIUtil.InternalError(c, err)
 			return
 		}
 		for _, rec := range records {
@@ -123,12 +124,12 @@ func (h *Handler) ListClips(c *gin.Context) {
 		}
 	} else if sourceLower == "images" {
 		if h.imagesRepo == nil {
-			apiutil.BadRequest(c, "images repo not available")
+			internal.APIUtil.BadRequest(c, "images repo not available")
 			return
 		}
 		assets, err := h.imagesRepo.ListAll(ctx)
 		if err != nil {
-			apiutil.InternalError(c, err)
+			internal.APIUtil.InternalError(c, err)
 			return
 		}
 		for _, img := range assets {
@@ -136,7 +137,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 		}
 	} else {
 		if h.assetRepo == nil {
-			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+			internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 			return
 		}
 		if q == "" {
@@ -147,7 +148,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 				Offset: offset,
 			})
 			if err != nil {
-				apiutil.InternalError(c, err)
+				internal.APIUtil.InternalError(c, err)
 				return
 			}
 			allClips = clips
@@ -155,12 +156,12 @@ func (h *Handler) ListClips(c *gin.Context) {
 			// Text search — fall back to legacy clipsRepo (assets.Filter has no search yet).
 			repo := h.resolveRepo(source)
 			if repo == nil {
-				apiutil.BadRequest(c, "invalid source: "+source)
+				internal.APIUtil.BadRequest(c, "invalid source: "+source)
 				return
 			}
 			legacyClips, err := repo.ListClipsPaged(ctx, source, limit, offset, q)
 			if err != nil {
-				apiutil.InternalError(c, err)
+				internal.APIUtil.InternalError(c, err)
 				return
 			}
 			allClips = make([]*assets.Asset, len(legacyClips))
@@ -197,7 +198,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 		}
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
 		"count":  len(allClips),

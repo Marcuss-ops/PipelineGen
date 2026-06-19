@@ -1,11 +1,12 @@
-package sources
+package clips
 
 import (
 	"strconv"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
 // GetFolderChildren returns the children of a specific folder.
@@ -19,7 +20,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -52,11 +53,11 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 	}
 
 	if err != nil {
-		apiutil.InternalError(c, err)
+		internal.APIUtil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":       true,
 		"source":   source,
 		"count":    len(children),
@@ -74,14 +75,14 @@ func (h *Handler) GetTree(c *gin.Context) {
 	}
 
 	if h.assetTreeSvc == nil {
-		apiutil.InternalError(c, nil)
+		internal.APIUtil.InternalError(c, nil)
 		return
 	}
 
 	treeNodes, err := h.assetTreeSvc.ListChildren(c.Request.Context(), source, parentID)
 	if err != nil {
 		h.log.Error("failed to list children", zap.Error(err), zap.String("source", source), zap.String("parent_id", parentID))
-		apiutil.InternalError(c, err)
+		internal.APIUtil.InternalError(c, err)
 		return
 	}
 
@@ -101,7 +102,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 			}
 		}
 	}
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":       true,
 		"source":   source,
 		"children": children,
@@ -114,23 +115,23 @@ func (h *Handler) GetBreadcrumb(c *gin.Context) {
 	id := c.Query("id")
 
 	if id == "" {
-		apiutil.BadRequest(c, "missing id parameter")
+		internal.APIUtil.BadRequest(c, "missing id parameter")
 		return
 	}
 
 	if h.assetTreeSvc == nil {
-		apiutil.InternalError(c, nil)
+		internal.APIUtil.InternalError(c, nil)
 		return
 	}
 
 	breadcrumb, err := h.assetTreeSvc.GetBreadcrumb(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get breadcrumb", zap.Error(err), zap.String("source", source), zap.String("id", id))
-		apiutil.InternalError(c, err)
+		internal.APIUtil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":         true,
 		"source":     source,
 		"breadcrumb": breadcrumb,

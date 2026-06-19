@@ -1,4 +1,4 @@
-package sources
+package clips
 
 import (
 	"fmt"
@@ -8,14 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ReprocessClip reprocesses a clip (download/process/upload).
@@ -24,23 +25,23 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	clipID := c.Param("id")
 
 	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	ctx := c.Request.Context()
 	clip, err := h.assetRepo.Get(ctx, clipID)
 	if err != nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 
 	if h.mediaProcessor == nil {
-		apiutil.InternalError(c, fmt.Errorf("media processor not configured"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("media processor not configured"))
 		return
 	}
 
@@ -67,7 +68,7 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 	// Process the asset
 	result, err := h.mediaProcessor.Process(ctx, processInput)
 	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("reprocess failed: %w", err))
+		internal.APIUtil.InternalError(c, fmt.Errorf("reprocess failed: %w", err))
 		return
 	}
 
@@ -84,11 +85,11 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 
 	// Save to DB
 	if err := h.assetRepo.Upsert(ctx, clip); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
+		internal.APIUtil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":            true,
 		"source":        source,
 		"clip_id":       clipID,
@@ -112,24 +113,24 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {
 		rec, getErr := h.voiceoverRepo.GetByID(c.Request.Context(), clipID)
 		if getErr != nil {
-			apiutil.NotFound(c, "voiceover not found: "+clipID)
+			internal.APIUtil.NotFound(c, "voiceover not found: "+clipID)
 			return
 		}
 		clip = artifacts.VoiceoverRecordToClip(rec)
 	} else {
 		if h.assetRepo == nil {
-			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+			internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 			return
 		}
 
 		var getErr error
 		clip, getErr = h.assetRepo.Get(c.Request.Context(), clipID)
 		if getErr != nil {
-			apiutil.NotFound(c, "clip not found: "+clipID)
+			internal.APIUtil.NotFound(c, "clip not found: "+clipID)
 			return
 		}
 		if clip == nil {
-			apiutil.NotFound(c, "clip not found: "+clipID)
+			internal.APIUtil.NotFound(c, "clip not found: "+clipID)
 			return
 		}
 	}
@@ -139,7 +140,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		if info, err := os.Stat(clip.LocalPath()); err == nil && !info.IsDir() {
 			ext := strings.ToLower(filepath.Ext(clip.LocalPath()))
 			if ext == ".txt" || ext == ".json" || ext == ".md" {
-				apiutil.BadRequest(c, "file is not a video: "+ext)
+				internal.APIUtil.BadRequest(c, "file is not a video: "+ext)
 				return
 			}
 			c.File(clip.LocalPath())
@@ -165,21 +166,21 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		meta, err := h.driveUploader.GetFileMeta(c.Request.Context(), driveID)
 		if err != nil {
 			h.log.Error("failed to get drive file metadata", zap.Error(err), zap.String("id", driveID))
-			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", err))
+			internal.APIUtil.InternalError(c, fmt.Errorf("failed to reach drive: %w", err))
 			return
 		}
 
 		// BLOCK non-media MIME types from Drive
 		if !strings.HasPrefix(meta.MimeType, "video/") && !strings.HasPrefix(meta.MimeType, "audio/") && meta.MimeType != "application/octet-stream" {
 			h.log.Warn("refusing to proxy non-media file from drive", zap.String("mime", meta.MimeType))
-			apiutil.BadRequest(c, "drive file is not media: "+meta.MimeType)
+			internal.APIUtil.BadRequest(c, "drive file is not media: "+meta.MimeType)
 			return
 		}
 
 		body, contentType, err := h.driveUploader.DownloadFile(c.Request.Context(), driveID)
 		if err != nil {
 			h.log.Error("failed to download from drive", zap.Error(err), zap.String("id", driveID))
-			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", err))
+			internal.APIUtil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", err))
 			return
 		}
 		defer body.Close()
@@ -198,7 +199,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		return
 	}
 
-	apiutil.NotFound(c, "clip video not available (no local file and no drive ID)")
+	internal.APIUtil.NotFound(c, "clip video not available (no local file and no drive ID)")
 }
 
 // ReuploadClip reuploads a clip to Drive.
@@ -207,35 +208,35 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	clipID := c.Param("id")
 
 	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	ctx := c.Request.Context()
 	clip, err := h.assetRepo.Get(ctx, clipID)
 	if err != nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 
 	// Check local file
 	if clip.LocalPath() == "" {
-		apiutil.BadRequest(c, "clip has no local path")
+		internal.APIUtil.BadRequest(c, "clip has no local path")
 		return
 	}
 
 	if _, err := os.Stat(clip.LocalPath()); err != nil {
-		apiutil.BadRequest(c, "local file not found: "+clip.LocalPath())
+		internal.APIUtil.BadRequest(c, "local file not found: "+clip.LocalPath())
 		return
 	}
 
 	// Check if uploader is available
 	if h.driveUploader == nil {
-		apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 		return
 	}
 
@@ -270,7 +271,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 					}
 					id, err := h.driveUploader.GetOrCreateFolder(ctx, seg, currentID)
 					if err != nil {
-						apiutil.InternalError(c, fmt.Errorf("failed to create drive folder %s: %w", seg, err))
+						internal.APIUtil.InternalError(c, fmt.Errorf("failed to create drive folder %s: %w", seg, err))
 						return
 					}
 					currentID = id
@@ -281,7 +282,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 		}
 
 		if folderID == "" {
-			apiutil.BadRequest(c, "clip has no folder ID and dynamic resolution failed (check local path format)")
+			internal.APIUtil.BadRequest(c, "clip has no folder ID and dynamic resolution failed (check local path format)")
 			return
 		}
 	}
@@ -294,7 +295,7 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 
 	result, err := h.driveUploader.UploadFile(ctx, clip.LocalPath(), folderID, filename)
 	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("upload failed: %w", err))
+		internal.APIUtil.InternalError(c, fmt.Errorf("upload failed: %w", err))
 		return
 	}
 
@@ -312,11 +313,11 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 
 	// Save to DB
 	if err := h.assetRepo.Upsert(ctx, clip); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
+		internal.APIUtil.InternalError(c, fmt.Errorf("failed to update clip: %w", err))
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":          true,
 		"source":      source,
 		"clip_id":     clipID,
@@ -332,22 +333,22 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	clipID := c.Param("id")
 
 	if h.assetRepo == nil {
-		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
+		internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
 	if err != nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
+		internal.APIUtil.NotFound(c, "clip not found")
 		return
 	}
 
 	if clip.FileHash() == "" {
-		apiutil.OK(c, gin.H{
+		internal.APIUtil.OK(c, gin.H{
 			"ok":         true,
 			"source":     source,
 			"clip_id":    clipID,
@@ -392,7 +393,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		}
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":         true,
 		"source":     source,
 		"clip_id":    clipID,
