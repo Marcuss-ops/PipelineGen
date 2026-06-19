@@ -72,5 +72,3 @@ INSERT OR IGNORE INTO asset_tree_nodes (
      '{"kind":"voiceover_category"}', datetime('now'), datetime('now'));
 
 
--- Record the migration in schema_migrations so the app skips on next boot.
-INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES ('035_seed_voiceover_categories', datetime('now'));
