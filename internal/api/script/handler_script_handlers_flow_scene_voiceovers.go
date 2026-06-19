@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )

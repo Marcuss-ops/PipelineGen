@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"

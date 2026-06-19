@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
