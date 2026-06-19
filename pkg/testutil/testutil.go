@@ -1,5 +1,5 @@
-// Package testutil provides shared test helpers for the velox codebase.
-package platform
+// Package testutil provides shared test helpers.
+package testutil
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 )
 
 // MustMarshalJSON marshals v to JSON or fails the test.
-// Replaces duplicated mustJSON/mustMarshal helpers across test files.
 func MustMarshalJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	data, err := json.Marshal(v)

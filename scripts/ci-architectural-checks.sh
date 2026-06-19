@@ -221,6 +221,19 @@ ROOT_INFRA_IMPORT=$(rg -l '"github\.com/Marcuss-ops/PipelineGen/internal/infrast
 echo "  Files importing internal/infrastructure root (tracked): ${ROOT_INFRA_IMPORT:-0}"
 echo "  Migration target: 0 (use pkg/ or internal/infrastructure/<sub>/)."
 
+# ── Check 12: testing import in production files ──────────────────
+echo ""
+echo "Check 12: testing import in production files"
+# The testing package must only appear in _test.go files.
+# All known violations have been migrated.
+if rg -n '"testing"' --glob '*.go' --glob '!*_test.go' 2>/dev/null \
+  | grep -v 'pkg/testutil/'; then
+    echo "FAIL: testing package imported in production file"
+    echo "Testing helpers belong in pkg/testutil/ or _test.go files."
+    exit 1
+fi
+echo "  OK: no testing import in production files"
+
 # ── Run legacy asset guard if it exists ────────────────────────────
 echo ""
 if [[ -x "scripts/ci-legacy-asset-guard.sh" ]]; then
