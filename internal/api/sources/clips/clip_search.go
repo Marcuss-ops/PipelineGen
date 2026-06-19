@@ -57,7 +57,6 @@ func NewSearchHandler(repos map[string]*clips.Repository, log *zap.Logger) *Sear
 //	@Tags			search
 //	@Accept			json
 //	@Produce		json
-//	@Param			body body object true "Filter request (see clips.AdvancedSearchRequest for fields)"
 //	@Success		200  {object} object
 //	@Router			/api/media/search/advanced [post]
 func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
@@ -67,11 +66,11 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 		return
 	}
 
-	// Preserve legacy behavior: trim surrounding whitespace from the
-	// query string so callers don't accidentally send "  hello  " and
-	// miss matches because of search-time LIKE padding. Dropping the trim
-	// would be a silent wire-shape regression vs. the previous local
-	// AdvancedSearchRequest that did this automatically.
+	// Preserve legacy behavior: only `q` is whitespace-trimmed before the
+	// fan-out. Other string fields (Source, Category, SortBy, etc.) are
+	// intentionally passed raw to match the pre-consolidation behavior of
+	// the local AdvancedSearchRequest that did the same. Don't extend the
+	// trim "for consistency" - that would be a silent wire-shape change.
 	req.Q = strings.TrimSpace(req.Q)
 
 	ctx := c.Request.Context()
