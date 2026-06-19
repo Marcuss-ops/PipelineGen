@@ -6,6 +6,8 @@
 package clips
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -55,7 +57,7 @@ func NewSearchHandler(repos map[string]*clips.Repository, log *zap.Logger) *Sear
 //	@Tags			search
 //	@Accept			json
 //	@Produce		json
-//	@Param			body body clips.AdvancedSearchRequest true "Filter request"
+//	@Param			body body object true "Filter request (see clips.AdvancedSearchRequest for fields)"
 //	@Success		200  {object} object
 //	@Router			/api/media/search/advanced [post]
 func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
@@ -64,6 +66,13 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
+
+	// Preserve legacy behavior: trim surrounding whitespace from the
+	// query string so callers don't accidentally send "  hello  " and
+	// miss matches because of search-time LIKE padding. Dropping the trim
+	// would be a silent wire-shape regression vs. the previous local
+	// AdvancedSearchRequest that did this automatically.
+	req.Q = strings.TrimSpace(req.Q)
 
 	ctx := c.Request.Context()
 	var allClips []any

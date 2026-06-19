@@ -7,12 +7,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
@@ -25,13 +30,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
@@ -70,10 +70,10 @@ type SourcesHandler struct {
 	downloadCache sync.Map
 
 	// Sub-handlers
-	Voiceover    *VoiceoverHandler
-	SoundEffect  *SoundEffectHandler
-	clipsDelete  *clipsources.DeleteHandler // PR-A Phase 4-min: clip trash/delete endpoints
-	clipsSearch  *clipsources.SearchHandler // PR-A Phase 4 sub-2: clip advanced search endpoint
+	Voiceover   *VoiceoverHandler
+	SoundEffect *SoundEffectHandler
+	clipsDelete *clipsources.DeleteHandler // PR-A Phase 4-min: clip trash/delete endpoints
+	clipsSearch *clipsources.SearchHandler // PR-A Phase 4 sub-2: clip advanced search endpoint
 }
 
 // SetRealtimeService sets the realtime service for semantic search.
