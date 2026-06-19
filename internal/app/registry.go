@@ -7,6 +7,7 @@ import (
 	lessonshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	realtimehandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
+	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
@@ -90,7 +91,7 @@ func WireRegistry(
 			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
 			handler.SetHarvestService(harvestSvc)
 		}
-		mod := module.NewScriptFlowModule(cfg, log, handler)
+		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler))
 		registerModule(registry, log, mod)
 	}
 
