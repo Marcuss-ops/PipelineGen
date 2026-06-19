@@ -1,4 +1,8 @@
--- migrations/sqlite/035_seed_voiceover_categories.sql
+-- migrations/sqlite/037_seed_voiceover_categories.sql
+--
+-- NOTE: this file was renumbered from 035 to 037 to resolve a duplicate
+-- version collision (two .sql files previously claimed v035). The actual
+-- schema work for v035 stays in 035_artifact_registry_unify.sql.
 --
 -- Idempotent seed of the 9 voiceover category folders under the shared
 -- Voiceover root (1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A) into asset_tree_nodes.
@@ -72,5 +76,3 @@ INSERT OR IGNORE INTO asset_tree_nodes (
      '{"kind":"voiceover_category"}', datetime('now'), datetime('now'));
 
 
--- Record the migration in schema_migrations so the app skips on next boot.
-INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES ('035_seed_voiceover_categories', datetime('now'));
