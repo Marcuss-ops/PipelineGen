@@ -1,7 +1,7 @@
 package app
 
 import (
-	imghandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	imghandler "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"

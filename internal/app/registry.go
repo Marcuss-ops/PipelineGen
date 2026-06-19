@@ -189,7 +189,7 @@ func WireRegistry(
 
 	// ── Books ──────────────────────────────────────────────────────────
 	if coreDeps.BooksService != nil {
-		handler := handlers.NewBooksHandler(coreDeps.BooksService, coreDeps.JobsService, log)
+		handler := booksapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobsService, log)
 		thin := booksapi.NewHandler(handler)
 		mod := booksapi.NewModule(cfg, log, thin)
 		registerModule(registry, log, mod)
@@ -197,7 +197,7 @@ func WireRegistry(
 
 	// ── Lessons ────────────────────────────────────────────────────────
 	if coreDeps.LessonsService != nil {
-		handler := handlers.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobsService, log)
+		handler := lessonsapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobsService, log)
 		thin := lessonsapi.NewHandler(handler)
 		mod := lessonsapi.NewModule(cfg, log, thin)
 		registerModule(registry, log, mod)

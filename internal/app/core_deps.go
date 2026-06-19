@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 
-	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api"
-	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
 	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
@@ -83,9 +83,9 @@ type CoreDeps struct {
 	ScriptEngine       *scriptcore.Engine
 	ScriptFlowHandler  *handlers.ScriptFlowHandler
 	BooksService       *booksService.Service
-	BooksHandler       *booksHandler.Handler
+	BooksHandler       *booksHandler.BooksHandler
 	LessonsService     *lessonsService.Service
-	LessonsHandler     *lessonsHandler.Handler
+	LessonsHandler     *lessonsHandler.LessonsHandler
 	MediaStore         *mediastorage.Store
 	ArtifactService    *artifacts.Service
 	DeliveryService    *deliveries.Service

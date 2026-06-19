@@ -3,16 +3,15 @@ package searchqueries
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler is the thin HTTP transport for /api/search-queries endpoints.
 type Handler struct {
-	inner *api.SearchqueriesHandler
+	inner *SearchqueriesHandler
 }
 
 // NewHandler creates a new searchqueries Handler.
-func NewHandler(inner *api.SearchqueriesHandler) *Handler {
+func NewHandler(inner *SearchqueriesHandler) *Handler {
 	return &Handler{inner: inner}
 }
 

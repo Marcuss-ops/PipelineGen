@@ -13,7 +13,7 @@ func NewModule(
 	log *zap.Logger,
 	repo *searchqueriesrepo.Repository,
 ) *api.RouteModule {
-	inner := api.NewSearchqueriesHandler(repo, log)
+	inner := NewSearchqueriesHandler(repo, log)
 	return api.NewRouteModule(
 		"search_queries",
 		func(cfg *config.Config) bool { return repo != nil },

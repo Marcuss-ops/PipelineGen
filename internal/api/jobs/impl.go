@@ -1,6 +1,7 @@
-package api
+package jobs
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +34,7 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 func (h *JobsHandler) Enqueue(c *gin.Context) {
-	req, ok := BindJSON[jobs.EnqueueRequest](c)
+	req, ok := api.BindJSON[jobs.EnqueueRequest](c)
 	if !ok {
 		return
 	}
@@ -41,11 +42,11 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 	j, err := h.service.Enqueue(c.Request.Context(), &req)
 	if err != nil {
 		h.log.Error("failed to enqueue job", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.Accepted(c, gin.H{
+	api.Accepted(c, gin.H{
 		"job_id": j.ID,
 		"job": gin.H{
 			"id":       j.ID,
@@ -62,11 +63,11 @@ func (h *JobsHandler) Get(c *gin.Context) {
 
 	j, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
-		apiutil.NotFound(c, "job not found")
+		api.NotFound(c, "job not found")
 		return
 	}
 
-	apiutil.OK(c, gin.H{"job": j})
+	api.OK(c, gin.H{"job": j})
 }
 
 func (h *JobsHandler) List(c *gin.Context) {
@@ -92,11 +93,11 @@ func (h *JobsHandler) List(c *gin.Context) {
 	jobsList, err := h.service.List(c.Request.Context(), filter)
 	if err != nil {
 		h.log.Error("failed to list jobs", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"jobs": jobsList, "count": len(jobsList)})
+	api.OK(c, gin.H{"jobs": jobsList, "count": len(jobsList)})
 }
 
 func (h *JobsHandler) Cancel(c *gin.Context) {
@@ -104,11 +105,11 @@ func (h *JobsHandler) Cancel(c *gin.Context) {
 
 	if err := h.service.Cancel(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to cancel job", zap.String("job_id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"message": "job cancelled"})
+	api.OK(c, gin.H{"message": "job cancelled"})
 }
 
 func (h *JobsHandler) Retry(c *gin.Context) {
@@ -117,11 +118,11 @@ func (h *JobsHandler) Retry(c *gin.Context) {
 	j, err := h.service.Retry(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to retry job", zap.String("job_id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"job": j})
+	api.OK(c, gin.H{"job": j})
 }
 
 func (h *JobsHandler) Events(c *gin.Context) {
@@ -130,11 +131,11 @@ func (h *JobsHandler) Events(c *gin.Context) {
 	events, err := h.service.ListEvents(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"events": events, "count": len(events)})
+	api.OK(c, gin.H{"events": events, "count": len(events)})
 }
 
 // Stats returns aggregated job statistics for monitoring.
@@ -142,10 +143,10 @@ func (h *JobsHandler) Stats(c *gin.Context) {
 	stats, err := h.service.GetStats(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to get job stats", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"stats": stats})
+	api.OK(c, gin.H{"stats": stats})
 }
 
 func (h *JobsHandler) GetFull(c *gin.Context) {
@@ -153,11 +154,11 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 
 	j, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
-		apiutil.NotFound(c, "job not found")
+		api.NotFound(c, "job not found")
 		return
 	}
 	if j == nil {
-		apiutil.NotFound(c, "job not found")
+		api.NotFound(c, "job not found")
 		return
 	}
 
@@ -169,7 +170,7 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 
 	retryable := j.CanRetry()
 
-	apiutil.OK(c, gin.H{
+	api.OK(c, gin.H{
 		"id":           j.ID,
 		"type":         j.Type,
 		"status":       j.Status,
