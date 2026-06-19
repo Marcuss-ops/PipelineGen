@@ -1,9 +1,9 @@
-package script
+package curation
 
 import (
-
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"regexp"
@@ -14,23 +14,48 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
-// HandleCurateJob processes a background script.curate job.
-//
-// Pipeline:
-//  1. Parse the natural language query from the job payload
-//  2. Call MediaCurator.Curate() which internally:
-//     a. Searches Qdrant for matching clips
-//     b. Hydrates clips and builds evidence cards
-//     c. Plans narrative (LLM step 1)
-//     d. Generates script (common engine with intro/outro)
-//  3. Return the complete result with clip scenes, search results, timings
-func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
-	h.log.Info("handling script.curate job", zap.String("job_id", job.ID))
+// Service handles background script.curate jobs.
+type Service struct {
+	mediaCurator    *mediacurator.Service
+	voService       *voiceover.Service
+	cfg             *config.Config
+	log             *zap.Logger
+	resolveFolder   func(ctx context.Context, input, defaultRootID string) (string, error)
+	groupsResolver  *voiceover.GroupsResolver
+	maybeCreateDoc  func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string)
+}
 
-	curator := h.mediaCurator
+// NewService creates a new curation job service.
+func NewService(
+	mediaCurator *mediacurator.Service,
+	voService *voiceover.Service,
+	cfg *config.Config,
+	log *zap.Logger,
+	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
+	groupsResolver *voiceover.GroupsResolver,
+	maybeCreateDoc func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string),
+) *Service {
+	return &Service{
+		mediaCurator:   mediaCurator,
+		voService:      voService,
+		cfg:            cfg,
+		log:            log,
+		resolveFolder:  resolveFolder,
+		groupsResolver: groupsResolver,
+		maybeCreateDoc: maybeCreateDoc,
+	}
+}
+
+// HandleCurateJob processes a background script.curate job.
+func (s *Service) HandleCurateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+	s.log.Info("handling script.curate job", zap.String("job_id", job.ID))
+
+	curator := s.mediaCurator
 	if curator == nil {
 		return nil, fmt.Errorf("media curator not initialized")
 	}
@@ -40,7 +65,7 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice
 		return nil, fmt.Errorf("failed to parse job payload: %w", err)
 	}
 
-	h.log.Info("curate job params",
+	s.log.Info("curate job params",
 		zap.String("query", payload.Query),
 		zap.String("language", payload.Language),
 		zap.String("tone", payload.Tone),
@@ -51,7 +76,6 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice
 		tools.Progress(5, fmt.Sprintf("Searching clips for: %s", payload.Query))
 	}
 
-	// ── Step 1: Run curation ───────────────────────────────────────────────
 	req := mediacurator.CurateRequest{
 		Query:             payload.Query,
 		Title:             payload.Title,
@@ -84,35 +108,40 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice
 		tools.Progress(90, "Creating Google Doc...")
 	}
 
-	// ── Step 2: Create Google Doc (error-resilient) ────────────────────────
 	var docLink, docID, docErr string
 	docContent := buildCurateDocContent(result.Title, result.ClipScenes)
-	if l, id := h.maybeCreateGoogleDoc(ctx, result.Title, docContent, "", true); l != "" {
-		docLink = l
-		docID = id
-	} else {
+	if s.maybeCreateDoc != nil {
+		if l, id := s.maybeCreateDoc(ctx, result.Title, docContent, "", true); l != "" {
+			docLink = l
+			docID = id
+		}
+	}
+	if docLink == "" {
 		docErr = "google doc creation failed (non-fatal)"
-		h.log.Warn("Google Doc creation failed, continuing without it")
+		s.log.Warn("Google Doc creation failed, continuing without it")
 	}
 
-	// ── Step 3 (optional): Generate voiceovers per scene ────────────────────
 	voiceoverResults := make([]map[string]any, 0)
-	if payload.GenerateVoiceover && h.voService != nil && len(result.ClipScenes) > 0 {
+	if payload.GenerateVoiceover && s.voService != nil && len(result.ClipScenes) > 0 {
 		if tools.Progress != nil {
 			tools.Progress(95, "Generating voiceovers for each scene...")
 		}
 
 		voRootID := payload.VoiceoverFolderID
-		if voRootID == "" && h.cfg != nil {
-			voRootID = h.cfg.Drive.VoiceoverFolder()
+		if voRootID == "" && s.cfg != nil {
+			voRootID = s.cfg.Drive.VoiceoverFolder()
 		}
-		destReq := buildVoiceoverDestination(ctx, h.resolveDriveFolderID, h.log, result.Title, payload.VoiceoverFolderID, payload.VoiceoverGroup, voRootID, h.groupsResolver)
+		destReq := buildVoiceoverDestination(
+			ctx, s.resolveFolder, s.log, result.Title,
+			payload.VoiceoverFolderID, payload.VoiceoverGroup,
+			voRootID, s.groupsResolver,
+		)
 		if destReq != nil {
 			scenes := make([]voiceoverSceneItem, len(result.ClipScenes))
 			for i, sc := range result.ClipScenes {
 				scenes[i] = voiceoverSceneItem{Text: sc.Text, SceneIndex: sc.SceneIndex}
 			}
-			generateSceneVoiceovers(ctx, h.voService, scenes, payload.Language, destReq, h.log, tools.Progress, 95, 5)
+			generateSceneVoiceovers(ctx, s.voService, scenes, payload.Language, destReq, s.log, tools.Progress, 95, 5)
 		}
 	}
 
@@ -120,7 +149,6 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice
 		tools.Progress(100, "Curation completed")
 	}
 
-	// ── Step 3: Build result ───────────────────────────────────────────────
 	clipScenesJSON := make([]map[string]any, 0, len(result.ClipScenes))
 	for _, sc := range result.ClipScenes {
 		m := map[string]any{
@@ -186,18 +214,161 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice
 	return response, nil
 }
 
+// ── Helpers (moved from script package) ────────────────────────────────────
+
+// voiceoverSceneItem describes a scene for voiceover generation.
+type voiceoverSceneItem struct {
+	Text       string
+	SceneIndex int
+}
+
+// buildVoiceoverDestination builds a *voiceover.DestinationRequest from the
+// provided parameters.
+func buildVoiceoverDestination(
+	ctx context.Context,
+	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
+	log *zap.Logger,
+	title, voiceoverFolderID, voiceoverGroup, voRootID string,
+	groupsResolver *voiceover.GroupsResolver,
+) *voiceover.DestinationRequest {
+	subfolderName := slugifyWithMax(title, 40)
+
+	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {
+		return &voiceover.DestinationRequest{
+			FolderID:        folderID,
+			SubfolderName:   subfolderName,
+			CreateSubfolder: true,
+		}
+	}
+
+	if groupsResolver != nil && strings.TrimSpace(voiceoverGroup) != "" {
+		entry, err := groupsResolver.ResolveByName(ctx, voRootID, voiceoverGroup)
+		switch {
+		case err == nil && entry.FolderID != "":
+			if log != nil {
+				log.Info("routed voiceover via DB groups_resolver",
+					zap.String("voiceover_group", voiceoverGroup),
+					zap.String("folder_id", entry.FolderID),
+					zap.String("parent_id", voRootID))
+			}
+			return &voiceover.DestinationRequest{
+				FolderID:        entry.FolderID,
+				SubfolderName:   subfolderName,
+				CreateSubfolder: true,
+			}
+		case err != nil && !errors.Is(err, voiceover.ErrGroupNotFound):
+			if log != nil {
+				log.Warn("groups_resolver lookup failed unexpectedly, falling back to Drive deep-search",
+					zap.String("voiceover_group", voiceoverGroup),
+					zap.Error(err))
+			}
+		}
+	}
+
+	targetFolderOrGroup := voiceoverGroup
+	if targetFolderOrGroup != "" && resolveFolder != nil {
+		resolvedVOFolder, err := resolveFolder(ctx, targetFolderOrGroup, voRootID)
+		if err != nil {
+			if log != nil {
+				log.Warn("failed to resolve custom voiceover folder name/path, using default root", zap.Error(err))
+			}
+			resolvedVOFolder = voRootID
+		}
+		if resolvedVOFolder != "" {
+			return &voiceover.DestinationRequest{
+				FolderID:        resolvedVOFolder,
+				SubfolderName:   subfolderName,
+				CreateSubfolder: true,
+			}
+		}
+	}
+
+	if voRootID != "" {
+		return &voiceover.DestinationRequest{
+			FolderID:        voRootID,
+			SubfolderName:   subfolderName,
+			CreateSubfolder: true,
+		}
+	}
+
+	grp := voiceoverGroup
+	if grp == "" {
+		grp = "curation"
+	}
+	return &voiceover.DestinationRequest{
+		Group:           grp,
+		SubfolderName:   subfolderName,
+		CreateSubfolder: true,
+	}
+}
+
+// generateSceneVoiceovers generates voiceovers for each scene item.
+func generateSceneVoiceovers(
+	ctx context.Context,
+	voService *voiceover.Service,
+	scenes []voiceoverSceneItem,
+	language string,
+	destReq *voiceover.DestinationRequest,
+	log *zap.Logger,
+	onProgress func(pct int, msg string),
+	basePct, pctRange int,
+) int {
+	if voService == nil || destReq == nil || len(scenes) == 0 {
+		return 0
+	}
+	voCtx := context.WithoutCancel(ctx)
+	successCount := 0
+	for i, sc := range scenes {
+		sceneText := strings.TrimSpace(sc.Text)
+		if sceneText == "" {
+			continue
+		}
+		sceneSlug := slugifyWithMax(sceneText, 30)
+		filename := sceneSlug
+
+		if onProgress != nil && len(scenes) > 0 {
+			onProgress(basePct+(i*pctRange/len(scenes)), "")
+		}
+
+		voRes, voErr := voService.GenerateWithDestination(voCtx, sceneText, language, filename, destReq)
+		if voErr != nil {
+			if log != nil {
+				log.Warn("voiceover generation failed for scene",
+					zap.Int("scene_index", sc.SceneIndex),
+					zap.Error(voErr))
+			}
+			continue
+		}
+		if voRes != nil {
+			successCount++
+		}
+	}
+	return successCount
+}
+
+func slugifyWithMax(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		} else if r == ' ' || r == '_' {
+			b.WriteRune('-')
+		}
+	}
+	result := b.String()
+	result = strings.Trim(result, "-")
+	if len(result) > max {
+		result = result[:max]
+		result = strings.TrimRight(result, "-")
+	}
+	return result
+}
+
 // buildCurateDocContent builds HTML content for a Google Doc from curate output.
-// Shows each scene as readable paragraphs, not raw JSON with escaped \n.
-//
-// Per-scene template version: 2026-06-17. Each scene gets:
-//   - A label (clip id OR intro/outro marker)
-//   - A "description" line: what happens next (first sentence preview) + word count + read-time
-//   - A clean drive link (no emoji decoration)
-//   - The narration prose itself
-//
-// The description line gives a reader (or LLM consumer) a fast per-scene
-// snapshot — useful for compilations where the viewer wants to skim the
-// lineup before reading the prose.
 func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string {
 	var b strings.Builder
 	b.WriteString("<html><head><style>")
@@ -218,7 +389,6 @@ func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string 
 		words := countWords(sc.Text)
 		duration := approxReadingSeconds(words)
 
-		// ── Label: clip scene vs narration scene ──────────────────────────
 		if sc.ClipID != "" {
 			b.WriteString(fmt.Sprintf(
 				"<p class=\"scene-label\">🎬 Scene %d — Clip: %s</p>",
@@ -226,9 +396,6 @@ func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string 
 		} else {
 			label := "Intro"
 			if sc.SceneIndex > 1 {
-				// Crude but reliable: opening scene = 1, the last narration-only
-				// scene in a list is "Outro". With clip scenes mixed in, anything
-				// in the middle without a clip id is "Transition".
 				if isLikelyOutro(sc, clipScenes) {
 					label = "Outro"
 				} else {
@@ -238,7 +405,6 @@ func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string 
 			fmt.Fprintf(&b, "<p class=\"scene-label\">📝 Scene %d — %s</p>", sc.SceneIndex, label)
 		}
 
-		// ── Description: word count + read-time + "what happens" preview ───
 		b.WriteString(fmt.Sprintf(
 			"<p class=\"scene-meta\">~%d words · ~%ds read</p>",
 			words, duration))
@@ -249,14 +415,12 @@ func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string 
 			b.WriteString("</p>")
 		}
 
-		// ── Drive link (no emoji decoration) ───────────────────────────────
 		if sc.ClipID != "" && sc.DriveLink != "" {
 			b.WriteString(fmt.Sprintf(
 				"<p class=\"drive-link\"><a href=\"%s\">Drive link</a></p>",
 				html.EscapeString(sc.DriveLink)))
 		}
 
-		// ── Narration text: split by newlines into paragraphs ──────────────
 		for _, para := range strings.Split(sc.Text, "\n") {
 			para = strings.TrimSpace(para)
 			if para != "" {
@@ -271,37 +435,22 @@ func buildCurateDocContent(title string, clipScenes []scripts.ClipScene) string 
 	return b.String()
 }
 
-// countWords returns the number of whitespace-separated tokens in text.
-// Empty / whitespace-only input returns 0.
 func countWords(text string) int {
 	return len(strings.Fields(text))
 }
 
-// approxReadingSeconds estimates voiceover read-time at the standard 150wpm
-// narration pace. Returns 0 for empty input (avoid showing "0s").
 func approxReadingSeconds(words int) int {
 	if words <= 0 {
 		return 0
 	}
-	secs := (words * 60) / 150
-	if secs < 1 {
-		secs = 1
-	}
-	return secs
+	return max(1, (words*60)/150)
 }
 
-// firstSentencePreview returns up to maxChars from the prose's first sentence
-// so a reader gets a one-line "what happens next" hint. Falls back to the first
-// maxChars of prose when no sentence boundary is reachable. Trims and
-// ellipsizes cleanly. Returns "" for empty input.
 func firstSentencePreview(text string, maxChars int) string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return ""
 	}
-	// Strip scene markers — they're handles, not prose. [Narration: ...] AND
-	// [Clip: <id>] both leak into Text when the LLM keeps the source structure;
-	// the preview must lead with the narrative sentence, not a handle.
 	text = narrationMarkerRe.ReplaceAllString(text, "")
 	text = clipMarkerRe.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
@@ -313,7 +462,7 @@ func firstSentencePreview(text string, maxChars int) string {
 	for _, sep := range []string{". ", "!\n", "?\n", ".\n"} {
 		if i := strings.Index(text, sep); i > 0 {
 			if cutAt < 0 || i < cutAt {
-				cutAt = i + len(sep) // include the separator character
+				cutAt = i + len(sep)
 			}
 		}
 	}
@@ -322,10 +471,9 @@ func firstSentencePreview(text string, maxChars int) string {
 		preview = text[:cutAt]
 	}
 	preview = strings.TrimRight(preview, " \t\n")
-	preview = strings.TrimSuffix(preview, ".") // we'll re-add a single trailing dot + ellipsis
+	preview = strings.TrimSuffix(preview, ".")
 
 	if len(preview) > maxChars {
-		// Cut on the last space before maxChars so we don't split mid-word.
 		truncated := preview[:maxChars]
 		if i := strings.LastIndex(truncated, " "); i > maxChars/2 {
 			truncated = truncated[:i]
@@ -337,10 +485,6 @@ func firstSentencePreview(text string, maxChars int) string {
 	return preview
 }
 
-// isLikelyOutro returns true if `sc` is the LAST scene in the list AND has no
-// clip_id, OR it's the second scene with no clip_id when there are 2+
-// narration-only scenes. Used to label narration-only scenes as Intro/Outro/
-// Transition for the doc reader.
 func isLikelyOutro(sc scripts.ClipScene, all []scripts.ClipScene) bool {
 	if sc.ClipID != "" {
 		return false
@@ -348,8 +492,6 @@ func isLikelyOutro(sc scripts.ClipScene, all []scripts.ClipScene) bool {
 	if sc.SceneIndex == len(all) {
 		return true
 	}
-	// Count how many narration-only scenes appear AFTER this one. If it's the
-	// last narration-only scene and there are >=1 before it, it's Outro.
 	narrationAfter := 0
 	for _, c := range all {
 		if c.SceneIndex > sc.SceneIndex && c.ClipID == "" {
@@ -359,10 +501,5 @@ func isLikelyOutro(sc scripts.ClipScene, all []scripts.ClipScene) bool {
 	return narrationAfter == 0
 }
 
-// narrationMarkerRe strips scene markers like [Narration: opening] so the
-// preview doesn't lead with the marker name. Compilation choice.
 var narrationMarkerRe = regexp.MustCompile(`(?m)^\s*\[Narration:\s*[a-z_]+\s*\]\s*`)
-
-// clipMarkerRe strips [Clip: <id>] handles that survive in the prose so the
-// preview leads with the narrative sentence, not the handle.
 var clipMarkerRe = regexp.MustCompile(`(?m)^\s*\[Clip:\s*[^\]]+\s*\]\s*`)
