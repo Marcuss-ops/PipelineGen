@@ -1,13 +1,11 @@
 // Package clips hosts the HTTP handlers for the clip search / discovery
 // endpoints. PR-A Phase 4 sub-2: clip_search.go exits the flat
 // handler_sources_clip_search_handlers.go and lands in the new clips
-// subpackage so callers can `internal/api/sources/clips`'s register the
-// route instead of `*sources.SourcesHandler` carrying the method.
+// subpackage so callers can hook `internal/api/sources/clips`'s
+// SearchHandler instead of carrying the method on *sources.SourcesHandler.
 package clips
 
 import (
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -16,8 +14,14 @@ import (
 )
 
 // AllSources is the canonical list of clip source names covered by the
-// multi-source AdvancedSearch fan-out. Adding a new source? Append once
-// here, then add the matching repository field on SearchHandler.
+// multi-source AdvancedSearch fan-out. Adding a new source is single-site:
+//  1. Append here.
+//  2. Add the matching field on *sources.SourcesHandler in its constructors.
+//  3. Add the matching entry to the map passed to NewSearchHandler at the
+//     SourcesHandler wiring site.
+//
+// Single source of truth for the source fan-out avoids drift between the
+// iteration list and the repo map.
 var AllSources = []string{"youtube", "artlist", "stock"}
 
 // SearchHandler owns the clip search / discovery endpoints. The single
@@ -29,37 +33,17 @@ var AllSources = []string{"youtube", "artlist", "stock"}
 // handler_sources_clip_search_handlers.go — same behavior, same wire
 // shape, just a fresh receiver and subpackage.
 type SearchHandler struct {
-	clipsRepo   *clips.Repository
-	artlistRepo *clips.Repository
-	stockRepo   *clips.Repository
-	log         *zap.Logger
+	repos map[string]*clips.Repository
+	log   *zap.Logger
 }
 
-// NewSearchHandler builds the SearchHandler.
-func NewSearchHandler(clipsRepo, artlistRepo, stockRepo *clips.Repository, log *zap.Logger) *SearchHandler {
+// NewSearchHandler builds the SearchHandler. Pass a map keyed by every
+// entry in AllSources; missing keys are skipped at fan-out time.
+func NewSearchHandler(repos map[string]*clips.Repository, log *zap.Logger) *SearchHandler {
 	return &SearchHandler{
-		clipsRepo:   clipsRepo,
-		artlistRepo: artlistRepo,
-		stockRepo:   stockRepo,
-		log:         log,
+		repos: repos,
+		log:   log,
 	}
-}
-
-// AdvancedSearchRequest is the JSON body for POST /api/media/search/advanced.
-type AdvancedSearchRequest struct {
-	Q             string `json:"q"`
-	Source        string `json:"source"`
-	Category      string `json:"category"`
-	MinDuration   int    `json:"min_duration"` // seconds
-	MaxDuration   int    `json:"max_duration"` // seconds
-	HasTranscript bool   `json:"has_transcript"`
-	HasDriveLink  bool   `json:"has_drive_link"`
-	CreatedAfter  string `json:"created_after"`  // RFC3339
-	CreatedBefore string `json:"created_before"` // RFC3339
-	SortBy        string `json:"sort_by"`        // created_at, duration, name, source
-	SortAsc       bool   `json:"sort_asc"`
-	Limit         int    `json:"limit"`
-	Offset        int    `json:"offset"`
 }
 
 // AdvancedSearch performs an advanced multi-source clip search with
@@ -71,56 +55,32 @@ type AdvancedSearchRequest struct {
 //	@Tags			search
 //	@Accept			json
 //	@Produce		json
-//	@Param			body body AdvancedSearchRequest true "Filter request"
+//	@Param			body body clips.AdvancedSearchRequest true "Filter request"
 //	@Success		200  {object} object
 //	@Router			/api/media/search/advanced [post]
 func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
-	var req AdvancedSearchRequest
+	var req clips.AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
 		return
-	}
-
-	// Map to repo-level request
-	repoReq := clips.AdvancedSearchRequest{
-		Q:             strings.TrimSpace(req.Q),
-		Source:        req.Source,
-		Category:      req.Category,
-		MinDuration:   req.MinDuration,
-		MaxDuration:   req.MaxDuration,
-		HasTranscript: req.HasTranscript,
-		HasDriveLink:  req.HasDriveLink,
-		CreatedAfter:  req.CreatedAfter,
-		CreatedBefore: req.CreatedBefore,
-		SortBy:        req.SortBy,
-		SortAsc:       req.SortAsc,
-		Limit:         req.Limit,
-		Offset:        req.Offset,
 	}
 
 	ctx := c.Request.Context()
 	var allClips []any
 	var totalCount int
 
-	// Search across all available repos
-	repos := map[string]*clips.Repository{
-		"youtube": h.clipsRepo,
-		"artlist": h.artlistRepo,
-		"stock":   h.stockRepo,
-	}
-
 	sources := AllSources
-	if repoReq.Source != "" && repoReq.Source != "all" {
-		sources = []string{repoReq.Source}
+	if req.Source != "" && req.Source != "all" {
+		sources = []string{req.Source}
 	}
 
 	for _, src := range sources {
-		repo, ok := repos[src]
+		repo, ok := h.repos[src]
 		if !ok || repo == nil {
 			continue
 		}
 
-		srcReq := repoReq
+		srcReq := req
 		srcReq.Source = src
 		srcReq.Limit = 0 // no per-source limit; merge first
 
@@ -138,11 +98,11 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 	}
 
 	// Apply global limit/offset
-	limit := repoReq.Limit
+	limit := req.Limit
 	if limit <= 0 {
 		limit = 50
 	}
-	offset := repoReq.Offset
+	offset := req.Offset
 	if offset > 0 && offset < len(allClips) {
 		allClips = allClips[offset:]
 	} else if offset >= len(allClips) {
@@ -157,7 +117,7 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 		"total":  totalCount,
 		"count":  len(allClips),
 		"limit":  limit,
-		"offset": repoReq.Offset,
+		"offset": req.Offset,
 		"clips":  allClips,
 	})
 }
