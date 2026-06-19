@@ -11,13 +11,12 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // InitCore bootstraps the core dependency graph.
@@ -71,9 +70,8 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 	// 5. Background Jobs (creates runner but does NOT start it yet)
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
-	// 6. Create VoiceoverRepo and canonical AssetStore
+	// 6. Create VoiceoverRepo
 	voRepo := voiceovers.NewRepository(dbs.main.DB)
-	assetStore := assets.NewAssetStoreSQLite(dbs.main.DB, log)
 
 	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)
@@ -92,11 +90,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		ImageRepo:          svcs.imageRepo,
 		ImageService:       svcs.imageService,
 		ClipsRepo:          svcs.clipsRepo,
-		AssetStore:         assetStore,
-		AssetRepo:          svcs.assetRepo,
-		AssetLocationRepo:  svcs.assetLocationsRepo,
-		AssetProcessingRepo: svcs.assetProcessingRepo,
-		AssetQueryService:   svcs.assetQueryService,
+		Assets:             svcs.assetsSvc,
 		MonitorsRepo:       svcs.monitorsRepo,
 		VoiceoverRepo:      voRepo,
 		VoiceoverService:   svcs.voiceoverService,

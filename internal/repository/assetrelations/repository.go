@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // ── Canonical relation types ───────────────────────────────────────────

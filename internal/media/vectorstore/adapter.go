@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // ClipIndexerAdapter implements clipindexer.VectorStoreIndexer.

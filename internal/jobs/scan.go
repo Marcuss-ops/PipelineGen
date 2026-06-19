@@ -3,7 +3,7 @@ package jobs
 import (
 	"encoding/json"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // unmarshalJobFields deserialises JSON payload/result and time fields after a Scan.

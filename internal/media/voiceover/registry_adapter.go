@@ -6,7 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type voiceoverRegistryAdapter struct {

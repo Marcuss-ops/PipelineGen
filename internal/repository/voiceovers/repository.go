@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type Record struct {

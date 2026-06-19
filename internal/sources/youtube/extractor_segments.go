@@ -10,10 +10,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"go.uber.org/zap"
 )

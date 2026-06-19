@@ -14,8 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 var driveMetaMu sync.Mutex

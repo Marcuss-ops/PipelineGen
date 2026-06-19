@@ -3,7 +3,7 @@ package association
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // collectTerms estrae i termini di ricerca dalla richiesta.

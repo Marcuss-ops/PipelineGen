@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"go.uber.org/zap"
 )

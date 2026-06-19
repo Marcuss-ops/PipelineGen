@@ -4,7 +4,7 @@ import (
 	"go.uber.org/zap"
 
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/sources"
+	sourcesHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
@@ -90,7 +90,7 @@ func WireAssets(
 		log,
 	)
 
-	handler := sources.NewHandler(
+	handler := sources.NewSourcesHandler(
 		cfg,
 		artlistSvc,
 		youtubeSvc,
@@ -141,8 +141,8 @@ func WireAssets(
 	if coreDeps.ArtifactService != nil {
 		handler.SetArtifactService(coreDeps.ArtifactService)
 	}
-	if coreDeps.AssetRepo != nil {
-		handler.SetAssetRepo(coreDeps.AssetRepo)
+	if coreDeps.Assets != nil {
+		handler.SetAssetRepo(coreDeps.Assets.Repository())
 	}
 	mod := module.NewAssetsModule(cfg, log, handler)
 	log.Info("created unified Assets module")

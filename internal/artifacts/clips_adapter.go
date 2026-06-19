@@ -5,14 +5,13 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 type ClipsRegistry struct {
 	db         *sql.DB
 	assets     assets.Repository
-	querySvc   *assetquery.Service
+	querySvc   *assets.Service
 	locations  assets.LocationRepository
 	processing assets.ProcessingRepository
 }
@@ -20,7 +19,7 @@ type ClipsRegistry struct {
 func NewClipsRegistry(
 	db *sql.DB,
 	assets assets.Repository,
-	querySvc *assetquery.Service,
+	querySvc *assets.Service,
 	locations assets.LocationRepository,
 	processing assets.ProcessingRepository,
 ) *ClipsRegistry {
@@ -179,7 +178,7 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 	return id, nil
 }
 
-func detailsToMediaRecord(details *assetquery.Details) *MediaRecord {
+func detailsToMediaRecord(details *assets.Details) *MediaRecord {
 	if details == nil || details.Asset == nil {
 		return nil
 	}
@@ -212,14 +211,16 @@ func detailsToMediaRecord(details *assetquery.Details) *MediaRecord {
 	}
 
 	for _, proc := range details.Processing {
-		if proc.Status == assets.StatusFailed {
-			rec.Status = "failed"
-			rec.Error = proc.ErrorMessage
-			break
-		} else if proc.Status == assets.StatusRunning {
-			rec.Status = "processing"
-		} else if rec.Status == "" && proc.Status == assets.StatusCompleted {
-			rec.Status = "ready"
+		if proc != nil {
+			if proc.Status == assets.StatusFailed {
+				rec.Status = "failed"
+				rec.Error = proc.ErrorMessage
+				break
+			} else if proc.Status == assets.StatusRunning {
+				rec.Status = "processing"
+			} else if rec.Status == "" && proc.Status == assets.StatusCompleted {
+				rec.Status = "ready"
+			}
 		}
 	}
 	if rec.Status == "" {

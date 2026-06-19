@@ -7,7 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*RecommendResponse, error) {

@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
+	corid "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // JobType is a string alias for the timeout registry. Passaggio 6 will

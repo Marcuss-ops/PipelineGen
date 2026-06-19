@@ -1,9 +1,9 @@
 package app
 
 import (
-	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/drive"
+	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 

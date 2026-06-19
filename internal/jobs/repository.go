@@ -16,8 +16,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
-	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type SQLiteStore struct {

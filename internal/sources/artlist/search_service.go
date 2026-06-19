@@ -7,8 +7,7 @@ import (
 	"go.uber.org/zap"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
-	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	defaults "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // SearchService gestisce tutte le operazioni di ricerca Artlist.
@@ -21,13 +20,13 @@ type SearchService struct {
 	// routes through assetrepo.Upsert — which writes both the new canonical
 	// columns and the legacy columns in the same row so legacy readers
 	// (clips.Repository) continue to see the data unchanged.
-	assetRepo *assetrepo.Repository
+	assetRepo assets.Repository
 }
 
-// SetAssetRepo injects the canonical assetrepo.Repository. Mirrors the
+// SetAssetRepo injects the canonical assetRepo. Mirrors the
 // SetDispatcher pattern already used in youtube.Service. Idempotent and
 // safe to call once during composition root wiring.
-func (ss *SearchService) SetAssetRepo(r *assetrepo.Repository) {
+func (ss *SearchService) SetAssetRepo(r assets.Repository) {
 	ss.assetRepo = r
 }
 

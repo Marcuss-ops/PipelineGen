@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // ── Search (with multi-query expansion) ───────────────────────────────────

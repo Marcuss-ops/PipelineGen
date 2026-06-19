@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 func (s *Service) EnsureCollection(ctx context.Context) error {

@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
-	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
+	corid "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {

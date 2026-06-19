@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 )
 
 type fakeYTDLP struct {

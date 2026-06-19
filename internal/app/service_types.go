@@ -1,8 +1,7 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -36,7 +35,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
@@ -106,10 +104,9 @@ type services struct {
 	assetProcessingRepo assets.ProcessingRepository
 	assetRelationsRepo  *assetrelations.Repository
 	assetTagsRepo       *assettags.Repository
-	assetVersionsRepo   *assetversions.Repository
+	assetVersionsRepo   assets.VersionRepository
 
-	// assetQueryService is the canonical aggregate reader for asset state.
-	assetQueryService *assetquery.Service
+	assetsSvc *assets.Service
 
 	DeliveryService *deliveries.Service
 	DeliveryRunner  *deliveries.Runner

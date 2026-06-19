@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
 
 	drivequery "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
 )

@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
 )
 
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*models.ImageAsset, error) {

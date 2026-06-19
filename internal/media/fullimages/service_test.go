@@ -3,7 +3,7 @@ package fullimages
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 func TestSafeFolderName_RemovesSpecialChars(t *testing.T) {

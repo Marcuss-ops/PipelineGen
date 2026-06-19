@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 
-	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/books"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
-	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
+	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api"
+	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -34,8 +34,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 
@@ -60,13 +58,8 @@ type CoreDeps struct {
 	ScriptsRepo        *scriptcore.ScriptRepository
 	ImageRepo          *images.Repository
 	ImageService       *imgservice.Service
-	ClipsRepo          *clips.Repository // canonical unified clips repository (replaces StockDriveRepo + ArtlistRepo + ClipsOnlyRepo)
-	AssetStore         *assets.AssetStoreSQLite // canonical asset persistence (media_assets table)
-	AssetRepo          assets.Repository
-	AssetLocationRepo  assets.LocationRepository
-	AssetProcessingRepo assets.ProcessingRepository
-	AssetVersionsRepo   *assetversions.Repository
-	AssetQueryService   *assetquery.Service
+	ClipsRepo          *clips.Repository // canonical unified clips repository
+	Assets             *assets.Service   // unified assets service authority (PR2)
 	MonitorsRepo       *monitors.Repository
 	VoiceoverRepo      *voiceovers.Repository
 	VoiceoverService   *voiceover.Service

@@ -3,9 +3,9 @@ package youtube
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // ===== getGroupFromDestination tests =====

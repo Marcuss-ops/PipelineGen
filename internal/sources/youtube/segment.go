@@ -12,13 +12,13 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
-	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	retry "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"go.uber.org/zap"
 )
@@ -162,7 +162,7 @@ func (s *Service) processSegment(
 		var dlErr error
 		result, dlErr = s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, cutReq)
 		return dlErr
-	}, retry.Options{
+	}, retry.RetryOptions{
 		MaxAttempts: 3,
 		IsRetryable: isTransientDownloadError,
 	})
@@ -197,15 +197,15 @@ func (s *Service) processSegment(
 		versionHash, _ := hashutil.MD5File(result.LocalPath)
 		fileSize := fileSizeFromPath(result.LocalPath)
 		if versionHash != "" {
-			if _, verErr := s.assetVersions.CreateNext(ctx, clipID, assetversions.VersionInput{
-				ContentHash:   versionHash,
+			v := &assets.Version{
+				AssetID:       clipID,
 				FileHash:      versionHash,
 				FileSizeBytes: fileSize,
 				MimeType:      "video/mp4",
-				MetadataJSON:  `{"pipeline":"youtube","source":"download_and_cut"}`,
-				CreatedBy:     "youtube-pipeline",
-			}); verErr != nil {
-				s.log.Warn("asset_versions.CreateNext failed",
+				MetadataJSON:  `{"pipeline":"youtube","source":"download_and_cut","createdBy":"youtube-pipeline"}`,
+			}
+			if verErr := s.assetVersions.Append(ctx, v); verErr != nil {
+				s.log.Warn("asset_versions.Append failed",
 					zap.String("clip_id", clipID),
 					zap.Error(verErr))
 			}

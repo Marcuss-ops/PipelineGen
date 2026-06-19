@@ -1,11 +1,11 @@
 package app
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/sources"
+	sourcesHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"go.uber.org/zap"
 )

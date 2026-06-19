@@ -10,7 +10,7 @@ import (
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	retry "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"go.uber.org/zap"
 )
@@ -163,7 +163,7 @@ func (e *Engine) GenerateAndNormalizeWithRetry(ctx context.Context, req Generate
 	result, err := retry.DoWithValue(ctx, func() (*GenerateResult, error) {
 		retryCount++
 		return e.GenerateAndNormalize(ctx, req, guidelines)
-	}, retry.Options{
+	}, retry.RetryOptions{
 		MaxAttempts:    maxAttempts,
 		InitialBackoff: 2 * time.Second,
 		BackoffFactor:  1.0,

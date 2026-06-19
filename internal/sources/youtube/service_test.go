@@ -11,9 +11,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
-	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

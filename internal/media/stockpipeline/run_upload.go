@@ -14,8 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // uploadAndIndexChunk uploads a rendered chunk to Drive, saves metadata to
@@ -80,7 +80,7 @@ func (s *Service) indexChunkToAssetIndex(ctx context.Context, chunkIdx int, chun
 			"folder_path":      input.Subfolder + "/" + input.FolderName + "/" + chunkTitle + ".mp4",
 			"media_type":       "stock_clip",
 			"category":         "file",
-			"source_video_ids": textutil.UniqueStrings(chunkRes.SourceIDs...),
+			"source_video_ids": textutil.UniqueStringsVar(chunkRes.SourceIDs...),
 		},
 	}, nil)
 	metaJSON, _ := json.Marshal(meta)
@@ -132,7 +132,7 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 		Source:     assets.Source("stock"),
 		Category:   "file",
 		Duration:   time.Duration(videoCfg.ChunkDuration) * time.Second,
-		SearchText: semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStrings(chunkRes.SourceIDs...), " ")),
+		SearchText: semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStringsVar(chunkRes.SourceIDs...), " ")),
 		CreatedAt:  time.Now().UTC(),
 		UpdatedAt:  time.Now().UTC(),
 	}
@@ -149,7 +149,7 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 	clip.SetMetadataString("timeline_end", formatDuration(chunkRes.TimelineEnd))
 	if len(chunkRes.SourceIDs) > 0 {
 		chunkMeta := map[string]any{}
-		chunkMeta["source_video_ids"] = textutil.UniqueStrings(chunkRes.SourceIDs...)
+		chunkMeta["source_video_ids"] = textutil.UniqueStringsVar(chunkRes.SourceIDs...)
 		b, _ := json.Marshal(chunkMeta)
 		clip.SetMetadataString("stock_chunk_metadata", string(b))
 	}

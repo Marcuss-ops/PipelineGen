@@ -10,14 +10,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type clipStoreAdapter struct {
 	db         *sql.DB
 	assets     assets.Repository
-	querySvc   *assetquery.Service
+	querySvc   *assets.Service
 	locations  assets.LocationRepository
 	processing assets.ProcessingRepository
 }
@@ -25,7 +24,7 @@ type clipStoreAdapter struct {
 func NewClipStoreAdapter(
 	db *sql.DB,
 	assets assets.Repository,
-	querySvc *assetquery.Service,
+	querySvc *assets.Service,
 	locations assets.LocationRepository,
 	processing assets.ProcessingRepository,
 ) lifecycle.AssetRecordStore {
@@ -228,7 +227,7 @@ func (a *clipStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) err
 	return a.assets.SoftDelete(ctx, id)
 }
 
-func detailsToMediaRecord(details *assetquery.Details) *artifacts.MediaRecord {
+func detailsToMediaRecord(details *assets.Details) *artifacts.MediaRecord {
 	if details == nil || details.Asset == nil {
 		return nil
 	}
@@ -262,14 +261,16 @@ func detailsToMediaRecord(details *assetquery.Details) *artifacts.MediaRecord {
 	}
 
 	for _, proc := range details.Processing {
-		if proc.Status == assets.StatusFailed {
-			rec.Status = "failed"
-			rec.Error = proc.ErrorMessage
-			break
-		} else if proc.Status == assets.StatusRunning {
-			rec.Status = "processing"
-		} else if rec.Status == "" && proc.Status == assets.StatusCompleted {
-			rec.Status = "ready"
+		if proc != nil {
+			if proc.Status == assets.StatusFailed {
+				rec.Status = "failed"
+				rec.Error = proc.ErrorMessage
+				break
+			} else if proc.Status == assets.StatusRunning {
+				rec.Status = "processing"
+			} else if rec.Status == "" && proc.Status == assets.StatusCompleted {
+				rec.Status = "ready"
+			}
 		}
 	}
 	if rec.Status == "" {

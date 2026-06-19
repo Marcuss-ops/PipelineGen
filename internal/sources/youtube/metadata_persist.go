@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 )
 
 // ── Metadata helpers ────────────────────────────────────────────────────────

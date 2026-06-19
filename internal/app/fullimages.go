@@ -1,11 +1,11 @@
 package app
 
 import (
-	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/fullimages"
+	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
-	"github.com/Marcuss-ops/PipelineGen/internal/module"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 
 	"go.uber.org/zap"
 )

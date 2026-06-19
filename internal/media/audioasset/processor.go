@@ -12,8 +12,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/audio"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	audio "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
 )
 
 type Processor struct {

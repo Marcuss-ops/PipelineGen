@@ -11,10 +11,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/pkg/fileutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
-	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/pkg/media/ffmpeg"
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // YouTubeCutRequest contains all parameters for downloading and cutting a YouTube clip.

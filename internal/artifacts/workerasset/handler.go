@@ -36,7 +36,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	apiutil "github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler serves artifact content to authenticated workers with lease verification.

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
 )
 
 // hashStep calculates the MD5 hash of the processed file.

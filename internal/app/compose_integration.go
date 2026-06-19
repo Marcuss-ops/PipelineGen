@@ -6,9 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/common"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api"
+	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -22,11 +21,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/outboxhandlers"
-	"github.com/Marcuss-ops/PipelineGen/internal/repository/assetlocations"
-	assetprocessing "github.com/Marcuss-ops/PipelineGen/internal/repository/assetprocessing"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
-	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -34,7 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // composeIntegration initializes cross-domain integration services and builds the final services struct.
@@ -246,11 +242,11 @@ func composeIntegration(
 	lessonsSvc.RegisterJobHandler(jobsService)
 
 	// ── Asset Satellite Repositories (canonical model completion, PR0) ────
-	assetLocRepo := assetlocations.NewAdapter(assetlocations.NewRepository(dbs.main.DB))
-	assetProcRepo := assetprocessing.NewAdapter(assetprocessing.NewRepository(dbs.main.DB))
+	assetLocRepo := core.AssetsSvc.LocationRepository()
+	assetProcRepo := core.AssetsSvc.ProcessingRepository()
 	assetRelRepo := assetrelations.NewRepository(dbs.main.DB)
 	assetTagRepo := assettags.NewRepository(dbs.main.DB)
-	assetVerRepo := assetversions.NewRepository(dbs.main.DB)
+	assetVerRepo := core.AssetsSvc.VersionRepository()
 
 	// Wire asset lifecycle repos into YouTube service (late-binding).
 	if mediaDomain.YoutubeClipService != nil {
@@ -259,16 +255,8 @@ func composeIntegration(
 	}
 
 	// ── Asset Query Service (canonical aggregate reader) ────────────────
-	// The assetquery.Service is the single entry point for read access to
-	// an asset's full state (identity + locations + processing + version).
-	// It replaces direct reads of deprecated fields on assets.Asset.
-	assetQuerySvc := assetquery.New(
-		core.AssetRepo,
-		assetLocRepo,
-		assetProcRepo,
-		assetversions.NewAdapter(assetVerRepo),
-	)
-	log.Info("assetquery.Service wired (canonical aggregate reader)")
+	assetsSvc := core.AssetsSvc
+	log.Info("assets.Service wired (canonical aggregate reader)")
 
 	return &services{
 		scriptGen:          core.ScriptGen,
@@ -322,6 +310,6 @@ func composeIntegration(
 		assetRelationsRepo:  assetRelRepo,
 		assetTagsRepo:       assetTagRepo,
 		assetVersionsRepo:   assetVerRepo,
-		assetQueryService:   assetQuerySvc,
+		assetsSvc:           assetsSvc,
 	}, nil
 }

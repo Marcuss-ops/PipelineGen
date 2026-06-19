@@ -20,8 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
@@ -101,13 +100,14 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown.
-func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *clips.Repository, assetRepo *assetrepo.Repository) {
+func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *clips.Repository, assetRepo assets.Repository) {
 	t.Helper()
 	db = storage.NewTestDBWithSchema(t, pr12bYoutubeSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = clips.NewRepository(db, log)
-	assetRepo = assetrepo.New(db, log)
+	assetStore := assets.NewAssetStoreSQLite(db, log)
+	assetRepo = assetStore.AssetRepository()
 	return
 }
 
@@ -120,7 +120,7 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	db, clipsRepo, assetRepo := setupYoutubePR12b(t)
 
 	now := time.Now().UTC().Truncate(time.Second)
-	clip := &models.MediaAsset{
+	clip := &assets.Asset{
 		ID:           "pr12b-youtube-001",
 		Name:         "PR12b Canonical Writer Test (YouTube)",
 		Source:       "youtube",
@@ -132,7 +132,7 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 		DownloadLink: "https://youtube.com/download/pr12b-youtube-001.mp4",
 		ClipPageURL:  "https://youtube.com/watch?v=pr12b-youtube-001",
 		ThumbURL:     "https://i.ytimg.com/vi/pr12b-youtube-001/hqdefault.jpg",
-		Duration:     120,
+		Duration:     120 * time.Millisecond,
 		Status:       "ready",
 		LocalPath:    "data/youtube/pr12b-youtube-001.mp4",
 		DriveLink:    "https://drive.google.com/file/d/pr12b-youtube-001",
@@ -173,8 +173,8 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	if canonical.MediaType != clip.MediaType {
 		t.Errorf("canonical MediaType mismatch: want %q, got %q", clip.MediaType, canonical.MediaType)
 	}
-	if canonical.DurationMs != int64(clip.Duration) {
-		t.Errorf("canonical DurationMs mismatch: want %d, got %d", clip.Duration, canonical.DurationMs)
+	if canonical.Duration != clip.Duration {
+		t.Errorf("canonical Duration mismatch: want %v, got %v", clip.Duration, canonical.Duration)
 	}
 
 	// ── Assert 2: legacy reader sees the SAME row ──
@@ -225,7 +225,7 @@ func TestYoutubePR12b_DispatchOrIndexWithoutAssetRepoFallsBack(t *testing.T) {
 	}
 	// (No SetAssetRepo, no SetDispatcher calls)
 
-	clip := &models.MediaAsset{
+	clip := &assets.Asset{
 		ID:           "pr12b-youtube-fallback-001",
 		Name:         "Fallback Test",
 		Source:       "youtube",

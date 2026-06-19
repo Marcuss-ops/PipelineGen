@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 func (s *Service) buildFilename(req *BatchRequest, language, textHash string) string {

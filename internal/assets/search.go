@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	
-	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
+	sqlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // SearchClips searches clips by tag or name.
