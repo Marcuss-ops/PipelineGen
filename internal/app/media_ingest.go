@@ -119,6 +119,9 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		},
 	})
 
+	// Canonical constructor and type live in the mediaingest sub-package
+	// (PR12 wrapper-removal pattern). The previous api.* type alias created
+	// an import cycle (api → mediaingest → api) and was removed.
 	handler := mediaingest.NewMediaingestHandler(svc)
 	mod := mediaingest.NewMediaIngestModule(cfg, log, handler)
 

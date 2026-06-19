@@ -9,6 +9,9 @@ import (
 )
 
 // NewMediaIngestModule creates the MediaIngest module factory for the API registry.
+// The handler is the canonical MediaingestHandler defined in this same package
+// (impl.go). It is NOT an api.MediaingestHandler alias because that would create
+// an import cycle (api → mediaingest → api).
 func NewMediaIngestModule(
 	cfg *config.Config,
 	log *zap.Logger,
