@@ -10,7 +10,7 @@ import (
 
 // JobsWiring holds the Jobs module wiring
 type JobsWiring struct {
-	Handler *jobshandler.Handler
+	Handler *jobshandler.JobsHandler
 	Module  module.Module
 }
 
@@ -20,7 +20,7 @@ func WireJobs(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*JobsWiring, error) {
-	handler := jobshandler.NewHandler(coreDeps.JobsService, log)
+	handler := jobshandler.NewJobsHandler(coreDeps.JobsService, log)
 
 	mod := module.NewRouteModule("jobs", nil, "/jobs", handler, log)
 	log.Info("created Jobs module using RouteModule")
