@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
-	platform "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	platform "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // PythonScriptEmbedder generates embeddings by shelling out to a Python
