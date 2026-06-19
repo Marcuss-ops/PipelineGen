@@ -18,11 +18,14 @@ func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 		h.log.Info("registered script.generate_batch job handler")
 		jobsSvc.RegisterHandler(jobservice.JobTypeClipScriptGenerate, h.HandleClipScriptGenerateJob)
 		h.log.Info("registered script.generate_from_clips job handler")
-		jobsSvc.RegisterHandler(jobservice.JobTypeCatalogScriptGenerate, h.HandleCatalogScriptGenerateJob)
-		h.log.Info("registered script.generate_from_catalog job handler")
-		// script.curate has no canonical domainjob constant yet, we can use the string literal directly.
-		jobsSvc.RegisterHandler("script.curate", h.HandleCurateJob)
-		h.log.Info("registered script.curate job handler")
+		if h.catalogJobService != nil {
+			jobsSvc.RegisterHandler(jobservice.JobTypeCatalogScriptGenerate, h.catalogJobService.HandleCatalogScriptGenerateJob)
+			h.log.Info("registered script.generate_from_catalog job handler")
+		}
+		if h.curationJobService != nil {
+			jobsSvc.RegisterHandler("script.curate", h.curationJobService.HandleCurateJob)
+			h.log.Info("registered script.curate job handler")
+		}
 	}
 }
 

@@ -28,6 +28,8 @@ type ScriptFlowHandler struct {
 	engine            *scripts.Engine
 	batchService      *batch.BatchService
 	curationService   *curation.CurationService
+	curationJobService CurationJobService
+	catalogJobService  CatalogJobService
 	imgService        *images.Service
 	realtimeSvc       *realtime.Service
 	associationSvc    *association.Service
@@ -191,6 +193,16 @@ func (h *ScriptFlowHandler) SetCurationClipSourceBuilder(b *scripts.ClipSourceBu
 	}
 }
 
+// SetCurationJobService wires the curation job service for background script.curate jobs.
+func (h *ScriptFlowHandler) SetCurationJobService(svc CurationJobService) {
+	h.curationJobService = svc
+}
+
+// SetCatalogJobService wires the catalog job service for background catalog jobs.
+func (h *ScriptFlowHandler) SetCatalogJobService(svc CatalogJobService) {
+	h.catalogJobService = svc
+}
+
 // RegisterRoutes mounts ALL script generation endpoints (full-fat registration).
 //
 // DEPRECATED: PR 2-3 moved generation routes to api/script/handler.go.
@@ -235,4 +247,24 @@ func (h *ScriptFlowHandler) resolveSourceText(ctx context.Context, raw string) (
 		return h.youTubeAwareSourceResolver()(ctx, raw)
 	}
 	return batch.ResolveBatchSourceText(ctx, h.cfg, raw)
+}
+
+// GetVoiceoverService returns the voiceover service for wiring job services.
+func (h *ScriptFlowHandler) GetVoiceoverService() *voiceover.Service {
+	return h.voService
+}
+
+// GetGroupsResolver returns the groups resolver for wiring job services.
+func (h *ScriptFlowHandler) GetGroupsResolver() *voiceover.GroupsResolver {
+	return h.groupsResolver
+}
+
+// ResolveDriveFolderID delegates to the unexported resolver used by job services.
+func (h *ScriptFlowHandler) ResolveDriveFolderID(ctx context.Context, input, defaultRootID string) (string, error) {
+	return h.resolveDriveFolderID(ctx, input, defaultRootID)
+}
+
+// MaybeCreateGoogleDoc delegates to the unexported doc creator used by job services.
+func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, content, folderID string, createDoc bool) (string, string) {
+	return h.maybeCreateGoogleDoc(ctx, title, content, folderID, createDoc)
 }

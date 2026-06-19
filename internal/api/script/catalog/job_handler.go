@@ -1,4 +1,4 @@
-package script
+package catalog
 
 import (
 	"context"
@@ -14,22 +14,35 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
-// HandleCatalogScriptGenerateJob processes a background script.generate_from_catalog job.
-//
-// Pipeline:
-//  1. Hydrate selected clips → build evidence cards
-//  2. Narrative planning (LLM step 1)
-//  3. Build source text from evidence + plan
-//  4. Generate script through common engine (WriteScript)
-//  5. Assemble result with catalog_report metadata
-func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
-	h.log.Info("handling script.generate_from_catalog job", zap.String("job_id", job.ID))
+// Service handles background script.generate_from_catalog jobs.
+type Service struct {
+	clipSourceBuilder *scripts.ClipSourceBuilder
+	engine            *scripts.Engine
+	log               *zap.Logger
+}
 
-	clipSvc := h.clipSourceBuilder
+// NewService creates a new catalog job service.
+func NewService(
+	clipSourceBuilder *scripts.ClipSourceBuilder,
+	engine *scripts.Engine,
+	log *zap.Logger,
+) *Service {
+	return &Service{
+		clipSourceBuilder: clipSourceBuilder,
+		engine:            engine,
+		log:               log,
+	}
+}
+
+// HandleCatalogScriptGenerateJob processes a background script.generate_from_catalog job.
+func (s *Service) HandleCatalogScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+	s.log.Info("handling script.generate_from_catalog job", zap.String("job_id", job.ID))
+
+	clipSvc := s.clipSourceBuilder
 	if clipSvc == nil {
 		return nil, fmt.Errorf("clip source builder not initialized")
 	}
-	if h.engine == nil {
+	if s.engine == nil {
 		return nil, fmt.Errorf("script engine not initialized")
 	}
 
@@ -62,21 +75,18 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 		tools.Progress(15, "Hydrating clips and building evidence cards")
 	}
 
-	// Step 1-3: BuildClipContext = hydrate + validate + narrative plan + source text
 	pack, plan, sourceText, err := clipSvc.BuildClipContext(ctx, payload.ClipIDs, opts)
 	if err != nil {
 		return nil, fmt.Errorf("clip context building failed: %w", err)
 	}
 
-	// Compute source fingerprint for memory gate cache key
 	sourceFingerprint := clipSvc.ComputeFingerprint(payload.ClipIDs, pack, opts, scripts.NewFingerprintContext(opts.Model, opts.Model))
 
 	if tools.Progress != nil {
 		tools.Progress(50, "Generating script via common engine (MemoryGate, normalization)...")
 	}
 
-	// Step 4: Generate script through the common engine
-	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{
+	writeResult, err := s.engine.WriteScript(ctx, scripts.WriteScriptRequest{
 		Plan: &scripts.ScriptGenerationPlan{
 			Title:       plan.Title,
 			Topic:       plan.Title,
@@ -102,8 +112,8 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 		UseMemory:   !payload.ForceRefresh,
 		SaveToDB:    payload.SaveToDB,
 		SaveTimeout: 60,
-		Type:        opts.Type, // PR3: structural strategy
-		ClipPack:    pack,      // PR3: enable quality gate
+		Type:        opts.Type,
+		ClipPack:    pack,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("script generation failed: %w", err)
@@ -115,7 +125,6 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 		tools.Progress(90, "Finalizing...")
 	}
 
-	// Build result with structured output
 	result := map[string]any{
 		"ok":           true,
 		"script_id":    writeResult.ScriptID,
@@ -138,7 +147,6 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 		"narrative_plan":     plan,
 	}
 
-	// Add excluded clips
 	if len(pack.ExcludedClips) > 0 {
 		excluded := make([]map[string]any, 0, len(pack.ExcludedClips))
 		for _, ec := range pack.ExcludedClips {
