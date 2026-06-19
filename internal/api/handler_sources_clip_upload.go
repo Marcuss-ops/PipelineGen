@@ -146,7 +146,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	}
 
 	// 6. Resolve Drive target folder
-	targetFolderID := extractDriveFolderID(folderID)
+	targetFolderID := ExtractDriveFolderID(folderID)
 	if targetFolderID == "" {
 		// Use the MediaRootFolder as default root
 		targetFolderID = h.cfg.Drive.RootFolder()

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	internalworker "github.com/Marcuss-ops/PipelineGen/internal/api"
+	internalworker "github.com/Marcuss-ops/PipelineGen/internal/api/workers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobbroker/local"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"

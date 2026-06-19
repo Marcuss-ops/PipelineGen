@@ -1,7 +1,8 @@
 package app
 
 import (
-	scraperhandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	scraperapi "github.com/Marcuss-ops/PipelineGen/internal/api/scraper"
+	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
@@ -15,7 +16,7 @@ type SystemWiring struct {
 
 // ScraperWiring holds the Scraper module wiring
 type ScraperWiring struct {
-	Handler *scraperhandler.ScraperHandler
+	Handler *scraperapi.ScraperHandler
 	Module  module.Module
 }
 
@@ -25,8 +26,8 @@ func WireScraper(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ScraperWiring, error) {
-	handler := scraperhandler.NewScraperHandler(cfg.External.NodeScraperDir)
-	mod := module.NewScraperModule(log, handler)
+	handler := scraperapi.NewScraperHandler(cfg.External.NodeScraperDir)
+	mod := scraperapi.NewModule(log, handler)
 	log.Info("created Scraper module")
 
 	return &ScraperWiring{
@@ -40,7 +41,7 @@ func WireSystem(
 	cfg *config.Config,
 	log *zap.Logger,
 ) *SystemWiring {
-	mod := module.NewSystemModule(cfg, log)
+	mod := systemapi.NewModule(cfg, log)
 	log.Info("created System module")
 
 	return &SystemWiring{

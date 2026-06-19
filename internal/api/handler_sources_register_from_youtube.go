@@ -231,7 +231,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		zap.String("name", name))
 
 	// 2. Resolve Drive target folder
-	targetFolderID := extractDriveFolderID(strings.TrimSpace(req.FolderID))
+	targetFolderID := ExtractDriveFolderID(strings.TrimSpace(req.FolderID))
 	if targetFolderID == "" {
 		targetFolderID = h.cfg.Drive.ClipsFolder()
 		if targetFolderID == "" {

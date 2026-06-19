@@ -1,4 +1,4 @@
-package api
+package system
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
 // SystemHandler handles system diagnostic endpoints

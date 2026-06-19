@@ -1,4 +1,4 @@
-package api
+package scraper
 
 import (
 	"bytes"
@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 type ScraperHandler struct {
@@ -53,7 +55,7 @@ type searchResponse struct {
 
 func (h *ScraperHandler) Search(c *gin.Context) {
 	if strings.TrimSpace(h.nodeScraperDir) == "" {
-		apiutil.Error(c, http.StatusServiceUnavailable, "node scraper directory is not configured")
+		api.Error(c, http.StatusServiceUnavailable, "node scraper directory is not configured")
 		return
 	}
 
@@ -71,14 +73,14 @@ func (h *ScraperHandler) Search(c *gin.Context) {
 		term = strings.TrimSpace(c.Query("term"))
 	}
 	if term == "" {
-		apiutil.BadRequest(c, "missing search_term")
+		api.BadRequest(c, "missing search_term")
 		return
 	}
 
-	limit := apiutil.ClampLimit(req.Limit, 8, 20)
+	limit := api.ClampLimit(req.Limit, 8, 20)
 	if q := strings.TrimSpace(c.Query("limit")); q != "" {
 		if parsed, err := strconv.Atoi(q); err == nil && parsed > 0 {
-			limit = apiutil.ClampLimit(parsed, 8, 20)
+			limit = api.ClampLimit(parsed, 8, 20)
 		}
 	}
 
