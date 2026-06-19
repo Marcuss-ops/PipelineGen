@@ -72,13 +72,13 @@ type jobserviceEnqueueRequest struct {
 	MaxRetries int
 }
 
-func (m *mockJobEnqueuer) Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*models.Job, error) {
+func (m *mockJobEnqueuer) Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*jobservice.Job, error) {
 	m.enqueued = append(m.enqueued, &jobserviceEnqueueRequest{
 		Type:       req.Type,
 		Payload:    req.Payload,
 		MaxRetries: req.MaxRetries,
 	})
-	return &models.Job{ID: "test-job"}, nil
+	return &jobservice.Job{ID: "test-job"}, nil
 }
 
 type mockImageSearch struct {

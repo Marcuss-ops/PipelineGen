@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 )
 
@@ -73,7 +73,7 @@ func (m *mockQdrantStore) ScrollAssetIDsPage(ctx context.Context, batchSize int,
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 // insertTestClipFrom is a helper to insert a test clip into the DB.
-func insertTestClipFrom(t *testing.T, repo *clips.Repository, clip *models.MediaAsset) {
+func insertTestClipFrom(t *testing.T, repo *clips.Repository, clip *assets.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -82,15 +82,16 @@ func insertTestClipFrom(t *testing.T, repo *clips.Repository, clip *models.Media
 }
 
 // makeClip creates a MediaAsset with a transcript, suitable for catalog search.
-func makeClip(id, name, transcript, summary, topics string) *models.MediaAsset {
-	clip := &models.MediaAsset{
-		ID:        id,
-		Name:      name,
-		Source:    "youtube",
-		Duration:  120,
-		Tags:      []string{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+func makeClip(id, name, transcript, summary, topics string) *assets.Asset {
+	clip := &assets.Asset{
+		ID:             id,
+		Name:           name,
+		Source:         "youtube",
+		Duration:       120 * time.Second,
+		Tags:           []string{},
+		LifecycleState: assets.StateReady,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 	if transcript != "" {
 		clip.SetMetadataString("clean_transcript", transcript)
@@ -485,14 +486,15 @@ func TestSelectClipsForTopic_FiltersClipsWithoutTranscript(t *testing.T) {
 	builder, repo := newCatalogTestBuilder(t)
 
 	// Clip without transcript — should be filtered out by toSearchSummary
-	noTranscript := &models.MediaAsset{
-		ID:        "no-transcript-tag",
-		Name:      "No Transcript Pompeii",
-		Source:    "youtube",
-		Duration:  120,
-		Tags:      []string{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	noTranscript := &assets.Asset{
+		ID:             "no-transcript-tag",
+		Name:           "No Transcript Pompeii",
+		Source:         "youtube",
+		Duration:       120 * time.Second,
+		Tags:           []string{},
+		LifecycleState: assets.StateReady,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 	insertTestClipFrom(t, repo, noTranscript)
 
@@ -630,7 +632,7 @@ func TestToSearchSummary_FiltersNoTranscript(t *testing.T) {
 	_ = repo // not needed for this test
 
 	// Clip without transcript → nil
-	noTranscript := &models.MediaAsset{
+	noTranscript := &assets.Asset{
 		ID:   "no-tx",
 		Name: "No Transcript",
 	}
@@ -640,7 +642,7 @@ func TestToSearchSummary_FiltersNoTranscript(t *testing.T) {
 	}
 
 	// Clip with transcript → non-nil summary
-	withTranscript := &models.MediaAsset{
+	withTranscript := &assets.Asset{
 		ID:   "has-tx",
 		Name: "Has Transcript",
 	}

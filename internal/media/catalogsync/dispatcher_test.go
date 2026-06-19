@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
@@ -68,17 +68,18 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
 
-	clip := &models.MediaAsset{
-		ID:        "test_clip_001",
-		Source:    "youtube",
-		Name:      "Test clip",
-		MediaType: "video",
-		IsFolder:  false,
-		FileHash:  "abc123",
-		Tags:      []string{"nature"},
-		Group:     "youtube",
-		DriveLink: "https://drive.google.com/file/d/abc",
+	clip := &assets.Asset{
+		ID:             "test_clip_001",
+		Source:         "youtube",
+		Name:           "Test clip",
+		MediaType:      "video",
+		Tags:           []string{"nature"},
+		Group:          "youtube",
+		LifecycleState: assets.StateReady,
 	}
+	clip.SetIsFolder(false)
+	clip.SetFileHash("abc123")
+	clip.SetDriveLink("https://drive.google.com/file/d/abc")
 
 	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, clip))
 
@@ -86,10 +87,10 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	stored, err := repo.GetClip(ctx, "test_clip_001")
 	require.NoError(t, err)
 	require.NotNil(t, stored)
-	assert.Equal(t, "youtube", stored.Source)
+	assert.Equal(t, assets.Source("youtube"), stored.Source)
 	assert.Equal(t, "Test clip", stored.Name)
-	assert.Equal(t, "abc123", stored.FileHash)
-	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink)
+	assert.Equal(t, "abc123", stored.FileHash())
+	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink())
 
 	// outbox_events row must be present — this is what the legacy
 	// SafeGoFunc(IndexClip) pattern achieved via fire-and-forget goroutine.
@@ -117,13 +118,14 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
 
-	folder := &models.MediaAsset{
-		ID:       "test_folder_001",
-		Source:   "youtube",
-		Name:     "Root Folder",
-		IsFolder: true,
-		FolderID: "test_folder_001",
+	folder := &assets.Asset{
+		ID:             "test_folder_001",
+		Source:         "youtube",
+		Name:           "Root Folder",
+		LifecycleState: assets.StateReady,
 	}
+	folder.SetIsFolder(true)
+	folder.SetFolderID("test_folder_001")
 
 	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, folder))
 
@@ -132,7 +134,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, stored, "folder metadata must be persisted even though IsFolder is not a DB column")
 	assert.Equal(t, "Root Folder", stored.Name)
-	assert.Equal(t, "test_folder_001", stored.FolderID)
+	assert.Equal(t, "test_folder_001", stored.FolderID())
 
 	// NO outbox_events row — folders are not vector-indexable.
 	var outboxCount int
@@ -156,14 +158,15 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	svc := &Service{log: zap.NewNop()}
 	// Note: SetDispatcher NOT called.
 
-	clip := &models.MediaAsset{
-		ID:        "legacy_clip_001",
-		Source:    "youtube",
-		Name:      "Legacy clip",
-		MediaType: "video",
-		IsFolder:  false,
-		FileHash:  "legacy_hash",
+	clip := &assets.Asset{
+		ID:             "legacy_clip_001",
+		Source:         "youtube",
+		Name:           "Legacy clip",
+		MediaType:      "video",
+		LifecycleState: assets.StateReady,
 	}
+	clip.SetIsFolder(false)
+	clip.SetFileHash("legacy_hash")
 
 	require.NoError(t, svc.upsertPreservingExisting(ctx, repo, clip))
 
@@ -171,7 +174,7 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	stored, err := repo.GetClip(ctx, "legacy_clip_001")
 	require.NoError(t, err)
 	require.NotNil(t, stored)
-	assert.Equal(t, "legacy_hash", stored.FileHash)
+	assert.Equal(t, "legacy_hash", stored.FileHash())
 
 	// NO outbox_events row — legacy path doesn't use the outbox.
 	var outboxCount int

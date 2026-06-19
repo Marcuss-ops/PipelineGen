@@ -149,7 +149,7 @@ func TestSolarPanelSearch(t *testing.T) {
 	require.NoError(t, err)
 	fmt.Printf("  Clips in DB: %d\n", len(dbResp2.Clips))
 	for i, c := range dbResp2.Clips {
-		fmt.Printf("    [%d] ID=%s Name=%q Tags=%v DownloadLink=%q\n", i, c.ID, c.Name, c.Tags, c.DownloadLink)
+		fmt.Printf("    [%d] ID=%s Name=%q Tags=%v DownloadLink=%q\n", i, c.ID, c.Name, c.Tags, c.DownloadLink())
 	}
 
 	// ── 5. Search terms index ──

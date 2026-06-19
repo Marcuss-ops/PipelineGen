@@ -189,14 +189,14 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 	if legacy.Name != clip.Name {
 		t.Errorf("legacy Name mismatch: want %q, got %q", clip.Name, legacy.Name)
 	}
-	if legacy.DriveLink != clip.DriveLink() {
-		t.Errorf("legacy DriveLink mismatch: want %q, got %q (assetrepo must persist legacy columns)", clip.DriveLink(), legacy.DriveLink)
+	if legacy.DriveLink() != clip.DriveLink() {
+		t.Errorf("legacy DriveLink mismatch: want %q, got %q (assetrepo must persist legacy columns)", clip.DriveLink(), legacy.DriveLink())
 	}
-	if legacy.LocalPath != clip.LocalPath() {
-		t.Errorf("legacy LocalPath mismatch: want %q, got %q", clip.LocalPath(), legacy.LocalPath)
+	if legacy.LocalPath() != clip.LocalPath() {
+		t.Errorf("legacy LocalPath mismatch: want %q, got %q", clip.LocalPath(), legacy.LocalPath())
 	}
-	if legacy.DownloadLink != clip.DownloadLink() {
-		t.Errorf("legacy DownloadLink mismatch: want %q, got %q", clip.DownloadLink(), legacy.DownloadLink)
+	if legacy.DownloadLink() != clip.DownloadLink() {
+		t.Errorf("legacy DownloadLink mismatch: want %q, got %q", clip.DownloadLink(), legacy.DownloadLink())
 	}
 
 	// ── Assert 3: outbox_events row was emitted by the canonical upsert ──

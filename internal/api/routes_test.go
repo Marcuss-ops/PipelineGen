@@ -20,7 +20,7 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 		},
 	}
 
-	registry := module.NewRegistry()
+	registry := NewRegistry()
 
 	// Create mock modules that simulate the FIXED behavior (creating sub-groups)
 	artlistModule := &mockModuleWithGroup{name: "artlist", prefix: "/artlist", enabled: true}

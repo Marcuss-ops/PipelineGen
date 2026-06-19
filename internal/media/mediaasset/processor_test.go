@@ -52,10 +52,10 @@ func (f *fakeFFmpeg) RemuxHLS(ctx context.Context, sourceURL, outputPath string)
 
 func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error) {
 	return &ffmpeg.MediaInfo{
-		Width:  1920,
-		Height: 1080,
-		FPS:    30,
-		Codec:  "h264",
+		Width:      1920,
+		Height:     1080,
+		FPS:        30,
+		VideoCodec:  "h264",
 	}, nil
 }
 

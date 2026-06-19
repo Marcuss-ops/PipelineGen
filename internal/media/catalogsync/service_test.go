@@ -75,7 +75,7 @@ func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 			UpdatedAt:  now,
 		},
 	} {
-		if err := repo.UpsertClipFolder(ctx, folder); err != nil {
+		if err := repo.UpsertFolder(ctx, folder); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -89,7 +89,7 @@ func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 		t.Fatalf("pruneMissingFolders failed: %v", err)
 	}
 
-	folders, err := repo.ListClipFolders(ctx, "artlist")
+	folders, err := repo.ListFolders(ctx, "artlist")
 	if err != nil {
 		t.Fatal(err)
 	}
