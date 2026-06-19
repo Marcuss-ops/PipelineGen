@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
@@ -28,6 +29,20 @@ type Service struct {
 	engine         *Engine
 	clipSearch     *ClipSearchAssociation
 	scriptsDir     string
+	// embedder (PR-D.5.1): injected at construction time by internal/app/
+	// composition root via infra/embeddings.NewPythonScriptEmbedder.
+	// Embedding generation used to live inside this Service as os/exec
+	// (embeddings.go). It is now behind an interface per AGENTS.md
+	// architectural split so os/exec stays out of application/.
+	embedder embedding.Embedder
+}
+
+// SetEmbedder injects the canonical embedding.Embedder used by
+// Service.GenerateEmbedding. Called once during composition in
+// internal/app/dependencies.go after NewService; the field is private
+// to keep the post-PR-D.1 contract unchanged for external callers.
+func (s *Service) SetEmbedder(e embedding.Embedder) {
+	s.embedder = e
 }
 
 // NewService creates an association service with the default engine and sources.
