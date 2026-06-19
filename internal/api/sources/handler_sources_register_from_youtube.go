@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	clipssources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
+	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -232,7 +232,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		zap.String("name", name))
 
 	// 2. Resolve Drive target folder
-	targetFolderID := clipssources.ExtractDriveFolderID(strings.TrimSpace(req.FolderID))
+	targetFolderID := clipsources.ExtractDriveFolderID(strings.TrimSpace(req.FolderID))
 	if targetFolderID == "" {
 		targetFolderID = h.cfg.Drive.ClipsFolder()
 		if targetFolderID == "" {
@@ -241,7 +241,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	}
 	group := strings.TrimSpace(req.Group)
 	if group != "" && targetFolderID != "" {
-		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && clipssources.CleanFolderName(existingName) == clipssources.CleanFolderName(group) {
+		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && clipsources.CleanFolderName(existingName) == clipsources.CleanFolderName(group) {
 			log.Info("folder_id already points to group folder, reusing it",
 				zap.String("folder_id", targetFolderID),
 				zap.String("name", existingName))
@@ -409,15 +409,15 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	// 5. Upload to Google Drive
 	ext := ".mp4"
 	driveFilename := fmt.Sprintf("%s - %s%s", videoID, name, ext)
-	var uploadResult *driveUploadResult
+	var uploadResult *clipsources.DriveUploadResult
 	if h.driveUploader != nil {
-		driveDescription := clipssources.BuildDriveDescription(name, req.Description, description, req.Tags, req.Category, req.Source, req.URL, videoID)
+		driveDescription := clipsources.BuildDriveDescription(name, req.Description, description, req.Tags, req.Category, req.Source, req.URL, videoID)
 		result, err := h.driveUploader.UploadFileWithDescription(ctx, downloadedPath, targetFolderID, driveFilename, driveDescription)
 		if err != nil {
 			log.Warn("Drive upload failed, continuing with local file only",
 				zap.Error(err))
 		} else {
-			uploadResult = &driveUploadResult{
+			uploadResult = &clipsources.DriveUploadResult{
 				FileID:       result.FileID,
 				WebViewLink:  result.WebViewLink,
 				DownloadLink: result.DownloadLink,
@@ -478,7 +478,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 			clipEntry["drive_link"] = uploadResult.WebViewLink
 		}
 
-		clipssources.UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
+		clipsources.UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
 	// 6. Compute duration
@@ -562,7 +562,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	// 9. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(clip)
+		node := clipsources.ClipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -572,7 +572,9 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	hasIndexer := h.clipIndexer != nil || h.vectorStore != nil || h.metaWriter != nil
 	if hasIndexer {
 		concurrent.SafeGo("yt-register-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), clip, source)
+			if h.clips != nil {
+				h.clips.EnrichAndIndexClip(context.WithoutCancel(ctx), clip, source)
+			}
 		})
 		log.Info("triggered async Qdrant indexing and enrichment",
 			zap.String("clip_id", clip.ID))

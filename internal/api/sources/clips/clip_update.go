@@ -84,7 +84,7 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 
 	// Also update Asset Tree if service is available
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(clip)
+		node := ClipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clipID), zap.Error(err))
 		}

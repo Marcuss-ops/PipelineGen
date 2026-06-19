@@ -161,7 +161,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		}
 	} else if group != "" {
 		// Check if the target folder already IS the group folder (avoid nested duplicates)
-		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && cleanFoldName(existingName) == cleanFoldName(group) {
+		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && CleanFolderName(existingName) == CleanFolderName(group) {
 			log.Info("folder_id already points to group folder, reusing it",
 				zap.String("folder_id", targetFolderID),
 				zap.String("name", existingName))
@@ -178,15 +178,15 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 7. Upload file to Google Drive
 	driveFilename := fmt.Sprintf("%s%s", name, ext)
-	var uploadResult *driveUploadResult
+	var uploadResult *DriveUploadResult
 	if h.driveUploader != nil && localPath != "" {
-		driveDescription := buildDriveDescription(name, description, "", tags, category, source, "", "")
+		driveDescription := BuildDriveDescription(name, description, "", tags, category, source, "", "")
 		result, err := h.driveUploader.UploadFileWithDescription(ctx, localPath, targetFolderID, driveFilename, driveDescription)
 		if err != nil {
 			log.Warn("Drive upload failed, continuing with local file only",
 				zap.Error(err))
 		} else {
-			uploadResult = &driveUploadResult{
+			uploadResult = &DriveUploadResult{
 				FileID:       result.FileID,
 				WebViewLink:  result.WebViewLink,
 				DownloadLink: result.DownloadLink,
@@ -212,7 +212,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 			clipEntry["drive_file_id"] = uploadResult.FileID
 			clipEntry["drive_link"] = uploadResult.WebViewLink
 		}
-		h.updateCumulativeMetadataJSON(ctx, targetFolderID, clipID, clipEntry, log)
+		UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
 	// 8. Build the MediaAsset record
@@ -258,7 +258,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 11. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(clip)
+		node := ClipToAssetNode(clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -269,7 +269,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	if hasIndexer {
 		temp := *clip // dereference for goroutine-safe struct copy
 		concurrent.SafeGo("upload-video-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), &temp, source)
+			h.EnrichAndIndexClip(context.WithoutCancel(ctx), &temp, source)
 		})
 		log.Info("triggered async enrichment + Qdrant indexing", zap.String("clip_id", clip.ID))
 	}
@@ -292,8 +292,10 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	})
 }
 
-// driveUploadResult is a simplified drive upload result for internal use.
-type driveUploadResult struct {
+// DriveUploadResult is a simplified drive upload result, exported so
+// the sibling sources package (handler_sources_register_from_youtube.go)
+// can construct one without depending on clips package internals.
+type DriveUploadResult struct {
 	FileID       string
 	WebViewLink  string
 	DownloadLink string

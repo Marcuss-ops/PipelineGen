@@ -4,21 +4,21 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	domainartlist "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	"go.uber.org/zap"
 )
 
 // JobHarvestService implements ArtlistHarvestService using the jobs service
 type JobHarvestService struct {
 	jobsSvc       *jobs.Service
 	log           *zap.Logger
-	presetsConfig *jobservice.PresetsConfig
+	presetsConfig *domainartlist.PresetsConfig
 	rootFolderID  string
 }
 
 // NewJobHarvestService creates a new JobHarvestService
-func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger, presetsConfig *jobservice.PresetsConfig, rootFolderID string) *JobHarvestService {
+func NewJobHarvestService(jobsSvc *jobs.Service, log *zap.Logger, presetsConfig *domainartlist.PresetsConfig, rootFolderID string) *JobHarvestService {
 	return &JobHarvestService{
 		jobsSvc:       jobsSvc,
 		log:           log,
@@ -34,7 +34,7 @@ func (s *JobHarvestService) EnqueueHarvest(ctx context.Context, term string, lim
 	}
 
 	// Build RunTagRequest from preset
-	req := &jobservice.RunTagRequest{
+	req := &domainartlist.RunTagRequest{
 		Term:     term,
 		Limit:    limit,
 		Strategy: "verify",
@@ -63,9 +63,9 @@ func (s *JobHarvestService) EnqueueHarvest(ctx context.Context, term string, lim
 	// Enqueue job
 	job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
 		Type:       "artlist.run",
-		Payload:    (&jobservice.JobCodec{}).PayloadFromRequest(req),
+		Payload:    (&domainartlist.JobCodec{}).PayloadFromRequest(req),
 		MaxRetries: 3,
-		ActiveKey:  jobservice.RunDedupKey(term, req.RootFolderID, req.Strategy, false),
+		ActiveKey:  domainartlist.RunDedupKey(term, req.RootFolderID, req.Strategy, false),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to enqueue harvest job: %w", err)

@@ -13,7 +13,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"

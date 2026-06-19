@@ -6,9 +6,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
-// clipToAssetNode converts a canonical assets.Asset to assettree.AssetNode
-// for unified tree handling.
-func clipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
+// ClipToAssetNode converts a canonical assets.Asset to assettree.AssetNode
+// for unified tree handling. Exported so the sibling sources package
+// (handler_sources_register_from_youtube.go) can build asset-tree nodes
+// without depending on clips package internals.
+func ClipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
 	if clip == nil {
 		return nil
 	}
