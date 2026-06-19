@@ -2,7 +2,7 @@
 
 **Status:** Tracking — surfaced during rebase validation of PR-12 + storage facade
 **Branch:** `main` @ `bcca7d6` (origin/main @ `812e980`)
-**Severity:** Medium — `go build ./...` does not pass on either branch. `go build ./internal/media/storage/...`, `./internal/media/images/...`, `./internal/media/fullimages/...`, `./internal/api/handlers/sources/...`, `./internal/sources/artlist/...` all compile.
+**Severity:** Medium — `go build ./...` does not pass on either branch. `go build ./internal/media/storage/...`, `./docs/images/...`, `./internal/media/fullimages/...`, `./internal/api/handlers/sources/...`, `./internal/sources/artlist/...` all compile.
 
 ---
 
@@ -56,7 +56,7 @@ go build ./...
 - `812e980` is the apex of the team's PR-12 (asset repo migration). It added `LocationEnricher`, wired `assetrepo.Repository` into `compose_core.go`, and removed the dual-write bridge.
 - The wiring changes require consumer updates (`DriveDestinations`, `coreDeps.Asset*Repo`, `services.deliverySvc`, the rebuilt `drivecleanup.NewService` signature, and the `JobType` typed-constant migration). The consumer files in `internal/app/` appear to have been left at the old shape — possibly because PR-12 was merged mid-refactor, or because the consumer migration belongs to a follow-up PR.
 - The `scheduler.NewLifecycleScheduler(cfg, jobsService, log)` call site at `compose_integration.go:185` exists, but `service_types.go:80` references a type (`*scheduler.LifecycleScheduler`) that should have been declared in the scheduler package — the type wasn't introduced.
-- `outboxevents.Pool` and `mod` look like the team introduced scoped export aliases (likely in `internal/repository/outboxevents/` and a `module` package rename) but didn't update the consumer field.
+- `outboxevents.Pool` and `mod` look like the team introduced scoped export aliases (likely in `Removed: outboxevents/` and a `module` package rename) but didn't update the consumer field.
 
 ---
 
@@ -68,7 +68,7 @@ go build ./...
    type DriveDestinations struct { SoundEffects, ImageVideo, … string }
    ```
 2. **scheduler.LifecycleScheduler**: declare the type in `internal/app/scheduler/` if missing; instantiate as today.
-3. **outboxevents.Pool**: declare the type in `internal/repository/outboxevents/` (likely `type Pool struct { … }`).
+3. **outboxevents.Pool**: declare the type in `Removed: outboxevents/` (likely `type Pool struct { … }`).
 4. **mod**: investigate rename — likely `internal.app.module` was renamed to `internal.app.mod`. Roll-back alias OR update the reference at `assets.go:148`.
 5. **AssetProcessingRepo / AssetVersionsRepo + services.deliverySvc**: add the missing fields to `CoreDeps` / `services` structs (likely zero-value nil is acceptable).
 6. **drivecleanup.NewService**: re-introduce the dropped `(artlistRepo, driveUploader, log, dryRun bool)` signature; update both call-sites to use the new args.

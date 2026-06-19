@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/googleaccounting"
 )
 
@@ -30,7 +30,7 @@ type RemoteImageJob struct {
 // GenerateRemoteImage generates an image via the remote Google Flow endpoint.
 // The remote service runs the generation, then we poll job status and download
 // the artifact files directly from /v1/jobs/{job_id}/artifact/{name}.
-func (s *Service) GenerateRemoteImage(ctx context.Context, slug, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) GenerateRemoteImage(ctx context.Context, slug, prompt, style, model string, width, height int, tags []string, skipDrive bool) (*media.ImageAsset, error) {
 	if s.remoteImageEndpointURL == "" {
 		return nil, fmt.Errorf("remote image endpoint URL not configured")
 	}
@@ -119,7 +119,7 @@ func (s *Service) GenerateRemoteImage(ctx context.Context, slug, prompt, style, 
 	description := fmt.Sprintf("AI generated image via Google Flow for prompt: %s", prompt)
 	generator := "google-flow"
 
-	var firstAsset *models.ImageAsset
+	var firstAsset *media.ImageAsset
 	for idx, imageName := range imageNames {
 		imageURL := fmt.Sprintf("%s/v1/jobs/%s/artifact/%s", baseURL, startResp.JobID, url.PathEscape(imageName))
 		s.log.Info("GenerateRemoteImage: downloading artifact",

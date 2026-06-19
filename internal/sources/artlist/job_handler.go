@@ -19,7 +19,7 @@ func (a *JobAdapter) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.J
 		zap.String("type", job.Type),
 	)
 
-	// Extract request from job payload directly (domain *job.Job)
+	// Extract request from job payload directly (domain *jobs.Job)
 	var payloadMap map[string]any
 	if err := json.Unmarshal(job.Payload, &payloadMap); err != nil {
 		payloadMap = map[string]any{}

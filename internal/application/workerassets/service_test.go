@@ -39,7 +39,7 @@ func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func())
 		updated_at TEXT NOT NULL
 	);
 	`
-	db := storage.NewTestDBWithSchema(t, schema)
+	db := drive.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)
 	svc := assetindex.NewService(repo)
 	workerSvc := NewService(svc, nil, nil, nil, zap.NewNop())

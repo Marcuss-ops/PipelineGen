@@ -4,16 +4,16 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ClipDriveAssociation cerca clip specifiche nel database delle clip scaricate.
 type ClipDriveAssociation struct {
-	repo *clips.Repository
+	repo *sqlite.ClipsRepository
 }
 
-func NewClipDriveAssociation(repo *clips.Repository) *ClipDriveAssociation {
+func NewClipDriveAssociation(repo *sqlite.ClipsRepository) *ClipDriveAssociation {
 	return &ClipDriveAssociation{repo: repo}
 }
 

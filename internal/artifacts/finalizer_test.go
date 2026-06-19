@@ -366,7 +366,7 @@ func setupTestAssetIndex(t *testing.T) *assetindex.Service {
 	CREATE INDEX IF NOT EXISTS idx_asset_status ON asset_index(status);
 	`
 
-	db := storage.NewTestDBWithSchema(t, schema)
+	db := drive.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)
 	return assetindex.NewService(repo)
 }

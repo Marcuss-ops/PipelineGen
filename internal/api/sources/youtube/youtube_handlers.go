@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 )
 
@@ -32,7 +32,7 @@ type YouTubeClipHandler struct {
 	service   *youtube.Service
 	log       *zap.Logger
 	jobsSvc   *jobservice.Service
-	clipsRepo *clips.Repository
+	clipsRepo *sqlite.ClipsRepository
 }
 
 // NewYouTubeClipHandler builds the YouTubeClipHandler.
@@ -49,7 +49,7 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *j
 }
 
 // SetClipsRepo sets the clips repository for advanced search.
-func (h *YouTubeClipHandler) SetClipsRepo(repo *clips.Repository) {
+func (h *YouTubeClipHandler) SetClipsRepo(repo *sqlite.ClipsRepository) {
 	h.clipsRepo = repo
 }
 
@@ -233,7 +233,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 
 // SearchAdvanced performs advanced clip search with structured filters.
 func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
-	var req clips.AdvancedSearchRequest
+	var req sqlite.AdvancedSearchRequest
 
 	// Support both GET (query params) and POST (JSON body)
 	if c.Request.Method == "GET" {
@@ -321,8 +321,8 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 // getAllClipRepos returns all available clip repositories keyed by source.
 // Currently only YouTube has a registered clips repo; other sources can be
 // added here once their repo wiring is migrated.
-func (h *YouTubeClipHandler) getAllClipRepos() map[string]*clips.Repository {
-	repos := make(map[string]*clips.Repository)
+func (h *YouTubeClipHandler) getAllClipRepos() map[string]*sqlite.ClipsRepository {
+	repos := make(map[string]*sqlite.ClipsRepository)
 	if h.clipsRepo != nil {
 		repos["youtube"] = h.clipsRepo
 	}

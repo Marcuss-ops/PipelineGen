@@ -10,22 +10,22 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type imageStoreAdapter struct {
-	repo      *imagerepo.Repository
+	repo      *imagerepo.ImagesRepository
 	imagesDir string
 }
 
-func NewImageStoreAdapter(repo *imagerepo.Repository, imagesDir string) lifecycle.AssetRecordStore {
+func NewImageStoreAdapter(repo *imagerepo.ImagesRepository, imagesDir string) lifecycle.AssetRecordStore {
 	return &imageStoreAdapter{repo: repo, imagesDir: imagesDir}
 }
 
 func (a *imageStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
-	asset := &models.ImageAsset{
+	asset := &media.ImageAsset{
 		Hash:         stripKindPrefix(rec.ID),
 		SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 		PathRel:      relImagePath(a.imagesDir, rec.LocalPath),
@@ -120,7 +120,7 @@ func (a *imageStoreAdapter) DeleteAssetRecord(ctx context.Context, id string) er
 	return a.repo.Delete(ctx, stripKindPrefix(id))
 }
 
-func imageAssetToMediaRecord(img *models.ImageAsset, imagesDir string) *artifacts.MediaRecord {
+func imageAssetToMediaRecord(img *media.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}

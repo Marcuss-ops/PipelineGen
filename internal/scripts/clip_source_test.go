@@ -10,18 +10,18 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // clipSourceTestSchema composes the canonical media_assets CREATE TABLE
 // from internal/storage/canonical.go::CanonicalMediaAssetsSchema. The
-// canonical block covers all 39 columns clips.Repository.mediaAssetColumns
+// canonical block covers all 39 columns sqlite.ClipsRepository.mediaAssetColumns
 // ships today (and any column added by a future canonical migration
 // without touching this file).
-const clipSourceTestSchema = storage.CanonicalMediaAssetsSchema
+const clipSourceTestSchema = drive.CanonicalMediaAssetsSchema
 
 // insertTestClip is a helper to insert a test clip into the DB.
-func insertTestClip(t *testing.T, repo *clips.Repository, clip *assets.Asset) {
+func insertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *assets.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -30,11 +30,11 @@ func insertTestClip(t *testing.T, repo *clips.Repository, clip *assets.Asset) {
 }
 
 // newClipSourceBuilder creates a ClipSourceBuilder backed by an in-memory SQLite DB.
-func newClipSourceBuilder(t *testing.T) (*ClipSourceBuilder, *clips.Repository) {
+func newClipSourceBuilder(t *testing.T) (*ClipSourceBuilder, *sqlite.ClipsRepository) {
 	t.Helper()
-	db := storage.NewTestDBWithSchema(t, clipSourceTestSchema)
+	db := drive.NewTestDBWithSchema(t, clipSourceTestSchema)
 	t.Cleanup(func() { db.Close() })
-	repo := clips.NewRepository(db, zap.NewNop())
+	repo := sqlite.NewClipsRepository(db, zap.NewNop())
 	builder := NewClipSourceBuilder(repo, nil, zap.NewNop())
 	return builder, repo
 }

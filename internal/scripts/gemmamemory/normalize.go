@@ -104,7 +104,7 @@ func simpleStem(word string) string {
 	return word
 }
 
-// ChunkScript splits a script text into paragraph-level chunks for storage.
+// ChunkScript splits a script text into paragraph-level chunks for drive.
 func ChunkScript(text string, maxChunkLen int) []string {
 	if maxChunkLen <= 0 {
 		maxChunkLen = 500

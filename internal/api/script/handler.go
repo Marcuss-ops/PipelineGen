@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/generate"
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // Handler is the HTTP transport for /api/script endpoints.
@@ -36,10 +36,10 @@ func NewHandler(inner *ScriptFlowHandler, gen GenerationService) *Handler {
 // GenerationService is a local interface adapter for the application-layer
 // generation use case, decoupling the HTTP transport from the concrete
 // package. This avoids an import cycle when commands.go is removed and
-// the service accepts scriptjobs.GenerationSpec directly.
+// the service accepts script.GenerationSpec directly.
 type GenerationService interface {
-	EnqueueFromClips(ctx context.Context, spec scriptjobs.GenerationSpec) (*generate.FromClipsResult, error)
-	EnqueueWithImages(ctx context.Context, spec scriptjobs.GenerationSpec) (*generate.FromClipsResult, error)
+	EnqueueFromClips(ctx context.Context, spec script.GenerationSpec) (*generate.FromClipsResult, error)
+	EnqueueWithImages(ctx context.Context, spec script.GenerationSpec) (*generate.FromClipsResult, error)
 }
 
 // ── Generation endpoints (thin transport) ───────────────────────────────────
@@ -96,15 +96,15 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 func mapErrorToHTTP(err error) (int, string) {
 	msg := err.Error()
 	switch {
-	case errors.Is(err, scriptjobs.ErrValidation):
+	case errors.Is(err, script.ErrValidation):
 		return http.StatusBadRequest, msg
-	case errors.Is(err, scriptjobs.ErrInvalidPayload):
+	case errors.Is(err, script.ErrInvalidPayload):
 		return http.StatusBadRequest, msg
-	case errors.Is(err, scriptjobs.ErrUnsupportedVersion):
+	case errors.Is(err, script.ErrUnsupportedVersion):
 		return http.StatusBadRequest, msg
-	case errors.Is(err, scriptjobs.ErrUnavailable):
+	case errors.Is(err, script.ErrUnavailable):
 		return http.StatusServiceUnavailable, msg
-	case errors.Is(err, scriptjobs.ErrConflict):
+	case errors.Is(err, script.ErrConflict):
 		return http.StatusConflict, msg
 	default:
 		return http.StatusInternalServerError, msg
@@ -145,8 +145,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 // ── Request mapping helpers ─────────────────────────────────────────────────
 
-func fromClipsRequestToSpec(req *GenerateFromClipsRequest) scriptjobs.GenerationSpec {
-	return scriptjobs.GenerationSpec{
+func fromClipsRequestToSpec(req *GenerateFromClipsRequest) script.GenerationSpec {
+	return script.GenerationSpec{
 		Topic:                req.Topic,
 		SourceText:           req.SourceText,
 		Guidelines:           req.Guidelines,
@@ -186,8 +186,8 @@ func fromClipsRequestToSpec(req *GenerateFromClipsRequest) scriptjobs.Generation
 	}
 }
 
-func withImagesRequestToSpec(req *GenerateWithImagesRequest) scriptjobs.GenerationSpec {
-	return scriptjobs.GenerationSpec{
+func withImagesRequestToSpec(req *GenerateWithImagesRequest) script.GenerationSpec {
+	return script.GenerationSpec{
 		Topic:                req.Topic,
 		SourceText:           req.SourceText,
 		Guidelines:           req.Guidelines,

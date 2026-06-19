@@ -1,4 +1,4 @@
-package assetindex
+﻿package assetindex
 
 import (
 	"context"
@@ -7,26 +7,26 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
+
 )
 
 // Resolver provides a unified way to resolve assets across all databases.
 // It queries asset_index first (fast), then falls back to specific DBs if needed.
 type Resolver struct {
 	svc           *Service
-	clipsRepos    map[string]*clips.Repository // source -> repo (youtube, stock, artlist)
-	imageRepo     *images.Repository
-	voiceoverRepo *voiceovers.Repository
+	clipsRepos    map[string]*sqlite.ClipsRepository // source -> repo (youtube, stock, artlist)
+	imageRepo     *sqlite.ImagesRepository
+	voiceoverRepo *sqlite.VoiceoversRepository
 	log           *zap.Logger
 }
 
 // ResolverConfig holds the configuration for the AssetResolver
 type ResolverConfig struct {
-	ClipsRepos    map[string]*clips.Repository
-	ImageRepo     *images.Repository
-	VoiceoverRepo *voiceovers.Repository
+	ClipsRepos    map[string]*sqlite.ClipsRepository
+	ImageRepo     *sqlite.ImagesRepository
+	VoiceoverRepo *sqlite.VoiceoversRepository
 }
 
 // NewResolver creates a new AssetResolver
@@ -133,7 +133,7 @@ func (r *Resolver) resolveImageFromDB(ctx context.Context, id string) (*AssetRec
 		return nil, nil
 	}
 
-	// Note: images.Repository needs a Get method - check if available
+	// Note: sqlite.ImagesRepository needs a Get method - check if available
 	// For now, return nil as placeholder
 	r.log.Warn("image resolution from DB not fully implemented")
 	return nil, nil
@@ -154,7 +154,7 @@ func (r *Resolver) resolveVoiceoverFromDB(ctx context.Context, id string) (*Asse
 		return nil, nil
 	}
 
-	// Convert voiceovers.Record to AssetRecord
+	// Convert sqlite.Record to AssetRecord
 	return voiceoverToAssetRecord(rec), nil
 }
 
@@ -179,8 +179,8 @@ func clipToAssetRecord(source string, clip *assets.Asset) *AssetRecord {
 	return rec
 }
 
-// voiceoverToAssetRecord converts a voiceovers.Record to an AssetRecord
-func voiceoverToAssetRecord(rec *voiceovers.Record) *AssetRecord {
+// voiceoverToAssetRecord converts a sqlite.Record to an AssetRecord
+func voiceoverToAssetRecord(rec *sqlite.Record) *AssetRecord {
 	return &AssetRecord{
 		AssetID:   "voiceover_" + rec.ID,
 		AssetType: "voiceover",

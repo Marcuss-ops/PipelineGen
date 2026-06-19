@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"go.uber.org/zap"
 )
@@ -83,17 +83,17 @@ func (m *mockJobEnqueuer) Enqueue(ctx context.Context, req *jobservice.EnqueueRe
 }
 
 type mockImageSearch struct {
-	searchResult   *models.ImageAsset
+	searchResult   *media.ImageAsset
 	searchErr      error
-	generateResult *models.ImageAsset
+	generateResult *media.ImageAsset
 	generateErr    error
 }
 
-func (m *mockImageSearch) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*models.ImageAsset, error) {
+func (m *mockImageSearch) SearchAndDownload(ctx context.Context, subjectSlug, displayName, query, lang string, tags []string) (*media.ImageAsset, error) {
 	return m.searchResult, m.searchErr
 }
 
-func (m *mockImageSearch) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*models.ImageAsset, error) {
+func (m *mockImageSearch) GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*media.ImageAsset, error) {
 	return m.generateResult, m.generateErr
 }
 
@@ -477,7 +477,7 @@ func TestScriptInsightBuilder_Build_WithArtlistClips(t *testing.T) {
 func TestScriptInsightBuilder_Build_WithEntityImages(t *testing.T) {
 	logger := nopLogger()
 	imgSvc := &mockImageSearch{
-		searchResult: &models.ImageAsset{
+		searchResult: &media.ImageAsset{
 			Hash:         "hash123",
 			SourceURL:    "https://example.com/rome.jpg",
 			PathRel:      "images/rome.jpg",

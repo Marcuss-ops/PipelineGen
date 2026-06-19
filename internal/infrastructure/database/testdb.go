@@ -29,7 +29,7 @@ type TestDBOpts struct {
 //
 // Usage:
 //
-//	db := storage.NewTestDB(t, nil)
+//	db := drive.NewTestDB(t, nil)
 //	defer db.Close()
 func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 	t.Helper()
@@ -100,7 +100,7 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 //
 // Usage:
 //
-//	db := storage.NewTestDBWithSchema(t, testSchema)
+//	db := drive.NewTestDBWithSchema(t, testSchema)
 //	defer db.Close()
 func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 	t.Helper()
@@ -120,7 +120,7 @@ func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 //
 // Example:
 //
-//	storage.MustExec(t, db, "INSERT INTO clips (id, name) VALUES (?, ?)", "cl_1", "Test clip")
+//	drive.MustExec(t, db, "INSERT INTO clips (id, name) VALUES (?, ?)", "cl_1", "Test clip")
 func MustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {
@@ -163,8 +163,8 @@ func AssertNoRows(t *testing.T, db *sql.DB, query string, args ...any) {
 //
 // Usage:
 //
-//	schema := storage.TestSchema("clips", "id TEXT PRIMARY KEY, name TEXT, tags TEXT")
-//	db := storage.NewTestDBWithSchema(t, schema)
+//	schema := drive.TestSchema("clips", "id TEXT PRIMARY KEY, name TEXT, tags TEXT")
+//	db := drive.NewTestDBWithSchema(t, schema)
 func TestSchema(tableName string, columns ...string) string {
 	schema := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n", tableName)
 	for i, col := range columns {

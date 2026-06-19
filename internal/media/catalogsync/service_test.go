@@ -7,8 +7,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
@@ -52,12 +52,12 @@ const catalogSyncTestSchema = `
 func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 	ctx := context.Background()
 
-	db := storage.NewTestDBWithSchema(t, catalogSyncTestSchema)
+	db := drive.NewTestDBWithSchema(t, catalogSyncTestSchema)
 	defer db.Close()
 
-	repo := clips.NewRepository(db, zap.NewNop())
+	repo := sqlite.NewClipsRepository(db, zap.NewNop())
 	now := time.Now().UTC()
-	for _, folder := range []*models.ClipFolder{
+	for _, folder := range []*media.ClipFolder{
 		{
 			ID:         "folder_row_keep",
 			Source:     "artlist",

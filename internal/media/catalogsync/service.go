@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
@@ -19,7 +19,7 @@ type Target struct {
 	RootFolderID string
 	Source       string
 	MediaType    string
-	Repo         *clips.Repository
+	Repo         *sqlite.ClipsRepository
 }
 
 type RootSummary struct {

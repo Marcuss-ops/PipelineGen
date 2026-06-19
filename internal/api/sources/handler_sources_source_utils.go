@@ -8,11 +8,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
-	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -31,7 +31,7 @@ func ValidateSource(c *gin.Context, source string) bool {
 
 // resolveRepo returns the appropriate repository for the given source.
 // Uses centralized SourceResolver from artifacts.
-func (h *Handler) resolveRepo(source string) *clips.Repository {
+func (h *Handler) resolveRepo(source string) *sqlite.ClipsRepository {
 	resolver := artifacts.NewSourceResolver(h.artlistRepo, h.clipsRepo, h.stockRepo)
 	return resolver.ResolveRepo(source)
 }
@@ -40,12 +40,12 @@ func (h *Handler) resolveRepo(source string) *clips.Repository {
 // Phase 4 BULK. All clips/* handlers in the new subpackage are its sole
 // callers; sources/ no longer needs it.
 
-// voiceoverRecordToAssetNode converts a models.VoiceoverRecord to assettree.AssetNode.
-func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
+// voiceoverRecordToAssetNode converts a media.VoiceoverRecord to sqlite.AssetNode.
+func voiceoverRecordToAssetNode(r *sqlite.Record) *sqlite.AssetNode {
 	if r == nil {
 		return nil
 	}
-	return &assettreerepo.AssetNode{
+	return &sqlite.AssetNode{
 		ID:          r.ID,
 		Source:      "voiceover",
 		AssetID:     r.ID,
@@ -63,17 +63,17 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 }
 
 // voiceoverRecordToClip delegates to the canonical converter in artifacts.
-func voiceoverRecordToClip(rec *voiceovers.Record) *assets.Asset {
+func voiceoverRecordToClip(rec *sqlite.Record) *assets.Asset {
 	return artifacts.VoiceoverRecordToClip(rec)
 }
 
 // imageAssetToClip uses the canonical converter from artifacts.
-func imageAssetToClip(a *models.ImageAsset) *assets.Asset {
+func imageAssetToClip(a *media.ImageAsset) *assets.Asset {
 	return artifacts.ImageAssetToClip(a)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *assets.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *assets.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

@@ -157,7 +157,7 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 	resp.Items = append(resp.Items, item)
 }
 
-// ResponseFromJob converts a domain job.Job to RunTagResponse.
+// ResponseFromJob converts a domain jobs.Job to RunTagResponse.
 // (domain job.Result is json.RawMessage, so we unmarshal it first)
 func (c *JobCodec) ResponseFromJob(job *jobs.Job) *RunTagResponse {
 	resp := &RunTagResponse{
@@ -226,5 +226,5 @@ func (c *JobCodec) ResponseFromJob(job *jobs.Job) *RunTagResponse {
 	return resp
 }
 
-// ResponseFromLegacyJob is removed — all callers now use domain *job.Job directly.
+// ResponseFromLegacyJob is removed — all callers now use domain *jobs.Job directly.
 // Kept as a compile-time reference for the diff; callers should use ResponseFromJob.

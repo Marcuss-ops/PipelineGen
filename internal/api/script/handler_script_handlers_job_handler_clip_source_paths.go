@@ -8,11 +8,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
@@ -31,7 +31,7 @@ func sceneCountWithKind(scenes []scripts.ClipScene, kind string) int {
 }
 
 // handleClipPathExplicit is Path 1: generate script from explicit clip IDs.
-func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload *scriptjobs.GenerationSpec, tools *jobservice.JobTools) (*clipSourcePathResult, error) {
+func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload *script.GenerationSpec, tools *jobservice.JobTools) (*clipSourcePathResult, error) {
 	h.log.Info("clip-aware path: generating script from explicit clip IDs",
 		zap.Int("clip_ids", len(payload.ClipIDs)))
 
@@ -126,7 +126,7 @@ func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload 
 }
 
 // handleClipPathAutoSearch is Path 2: search clips via MediaCurator and generate script.
-func (h *ScriptFlowHandler) handleClipPathAutoSearch(ctx context.Context, payload *scriptjobs.GenerationSpec, tools *jobservice.JobTools) (*clipSourcePathResult, error) {
+func (h *ScriptFlowHandler) handleClipPathAutoSearch(ctx context.Context, payload *script.GenerationSpec, tools *jobservice.JobTools) (*clipSourcePathResult, error) {
 	h.log.Info("auto-search path: searching clips via media curator",
 		zap.String("topic", payload.Topic),
 		zap.Int("num_clips", payload.NumClips))
@@ -135,7 +135,7 @@ func (h *ScriptFlowHandler) handleClipPathAutoSearch(ctx context.Context, payloa
 		tools.Progress(10, "Searching for clips and generating script...")
 	}
 
-	curateReq := mediacurator.CurateRequest{
+	curateReq := curation.CurateRequest{
 		Query:             payload.Topic,
 		Title:             payload.Title,
 		Language:          payload.Language,
@@ -183,7 +183,7 @@ func (h *ScriptFlowHandler) handleClipPathAutoSearch(ctx context.Context, payloa
 
 // handleClipPathTextOnly is Path 3: text-only script generation (fallback).
 // Also used when the user requested clips but the curator was unavailable.
-func (h *ScriptFlowHandler) handleClipPathTextOnly(ctx context.Context, payload *scriptjobs.GenerationSpec, tools *jobservice.JobTools) (*clipSourcePathResult, error) {
+func (h *ScriptFlowHandler) handleClipPathTextOnly(ctx context.Context, payload *script.GenerationSpec, tools *jobservice.JobTools) (*clipSourcePathResult, error) {
 	// Log a warning if user wanted clips but curator was unavailable
 	if payload.NumClips > 0 && len(payload.ClipIDs) == 0 {
 		h.log.Warn("media curator not available, falling back to text-only generation",

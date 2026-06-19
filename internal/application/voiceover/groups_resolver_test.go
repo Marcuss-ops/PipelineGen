@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // voiceoverRootID is the canonical voiceover-routing tree root this resolver
@@ -107,7 +107,7 @@ func newTestResolver(t *testing.T) (*GroupsResolver, *sql.DB) {
 	t.Helper()
 	db := setupTestDB(t)
 
-	repo, err := assettreerepo.NewRepository(db, zap.NewNop())
+	repo, err := sqlite.NewAssetTreeRepository(db, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewRepository: %v", err)
 	}

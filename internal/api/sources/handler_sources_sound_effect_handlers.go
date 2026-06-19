@@ -14,29 +14,28 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 type SoundEffectHandler struct {
-	clipsRepo              *clips.Repository
+	clipsRepo              *sqlite.ClipsRepository
 	driveUploader          *drive.Uploader
 	metaWriter             *semantic.MetadataWriter
-	resolver               *storage.Resolver
+	resolver               *drive.Resolver
 	soundEffectsRootFolder string
 	log                    *zap.Logger
 }
 
 func NewSoundEffectHandler(
-	clipsRepo *clips.Repository,
+	clipsRepo *sqlite.ClipsRepository,
 	driveUploader *drive.Uploader,
 	metaWriter *semantic.MetadataWriter,
 	soundEffectsRootFolder string,
 	log *zap.Logger,
 ) *SoundEffectHandler {
-	r := storage.NewResolver("data", "")
+	r := drive.NewResolver("data", "")
 	return &SoundEffectHandler{
 		clipsRepo:              clipsRepo,
 		driveUploader:          driveUploader,
@@ -117,7 +116,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 	hashStr := fmt.Sprintf("%x", hsh.Sum(nil))
 
 	// 3. Resolve destination paths
-	destReq := storage.AssetDestinationRequest{
+	destReq := drive.AssetDestinationRequest{
 		Source:    "sound_effect",
 		MediaType: "sound_effect",
 		Group:     name,

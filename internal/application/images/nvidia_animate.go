@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {
@@ -54,9 +54,9 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 	var driveVideoID string
 	var driveLink string
 	if s.mediaStore != nil {
-		fileID, wl, err := s.mediaStore.UploadToDrive(ctx, storage.AssetDestinationRequest{
-			Source:    storage.SourceImage,
-			MediaType: storage.MediaTypeImageVideo,
+		fileID, wl, err := s.mediaStore.UploadToDrive(ctx, drive.AssetDestinationRequest{
+			Source:    drive.SourceImage,
+			MediaType: drive.MediaTypeImageVideo,
 			Subject:   asset.SubjectID,
 			Hash:      imageHash,
 			Ext:       ".mp4",

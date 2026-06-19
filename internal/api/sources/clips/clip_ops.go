@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 )
 
@@ -215,7 +215,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 // imageAssetToClip / voiceoverRecordToClip private methods were dropped
 // in favor of the canonical artifacts.* converters.
 
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *clipsrepo.Repository, clip *assets.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *assets.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

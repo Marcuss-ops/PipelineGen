@@ -34,7 +34,7 @@ type Service struct {
 
 	// IndexHealth cross-check inputs — narrow interface seams defined in
 	// index_health.go (IndexHealthClips / IndexHealthOutbox). Concrete
-	// *clips.Repository / *outbox.Repository satisfy these structurally,
+	// *sqlite.ClipsRepository / *outbox.Repository satisfy these structurally,
 	// so production callers compile unchanged. Both deps are nil-safe —
 	// a nil dep falls back to zeros in IndexHealth + a soft warning log.
 	clips  IndexHealthClips

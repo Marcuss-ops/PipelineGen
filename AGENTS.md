@@ -7,7 +7,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 
 - **This file (AGENTS.md)**: Critical rules and instructions for all agents
 - **docs/api-package-boundaries.md**: Target API structure, dependency rules, size limits, migration plan
-- **internal/media/images/GEMINI.md**: Image generation strategy and Go-Python integration
+- **docs/images/GEMINI.md**: Image generation strategy and Go-Python integration
 - **google-accounting/GEMINI.md**: Python automation details and image capture logic
 - **docs/INTELLIGENCE_ROADMAP.md**: Roadmap for advanced AI features and Hybrid Search evolutions
 - **docs/archive/sqlite-databases.md**: Complete database schema, boundaries, and migration strategy
@@ -252,12 +252,12 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 | Vettori Qdrant (interfaccia canonica) | `vectorstore.Service` | `internal/media/vectorstore/` — mai HTTP diretto |
 | Reranker CrossEncoder BGE-reranker-v2-m3 | `reranker.Client` | `internal/reranker/` |
 | Embeddings/chat LLM (con retry + fallback) | `ollama.client.Client` | `internal/ml/ollama/client/` |
-| Read media_assets | `clips.Repository` | `internal/repository/clips/` — GetClip, SearchByTags |
+| Read media_assets | `clips.Repository` | `Removed: clips/` — GetClip, SearchByTags |
 | Script generation core | `scriptcore.Engine` | `internal/service/scriptcore/` — WriteScript |
 | Script→asset semantic match | `association.Service` | `internal/media/association/` |
 | Real-time clip search (post-Qdrant) | `realtime.Service` | `internal/media/realtime/` |
 | Topic-by-DB routing (folder risoluzione) | `voiceover.GroupsResolver` | `internal/media/voiceover/` |
-| Salva con idempotency / outbox | `outbox.Dispatcher` | `internal/repository/outbox/` |
+| Salva con idempotency / outbox | `outbox.Dispatcher` | `Removed: outbox/` |
 | Google Drive upload / Doc creation | `drive.Uploader`, `drive.DocClient` | `internal/upload/drive/` |
 | Channel monitor background | `monitor.ChannelMonitor` | `internal/media/monitor/` |
 
@@ -293,7 +293,7 @@ func (h *XHandler) NewAction(c *gin.Context) {
 ### Pattern 2 — Aggiungere una tabella DB
 
 1. Crea `migrations/sqlite/0XX_<descriptive_name>.sql` (numero progressivo; **mai** modificare migration esistenti).
-2. Crea `internal/repository/<domain>/repository.go` con i metodi CRUD tipizzati.
+2. Crea `Removed: <domain>/repository.go` con i metodi CRUD tipizzati.
 3. Test di round-trip: insert + select dopo migrate, deve tornare uguale.
 4. **VIETATO** applicare migration generiche cross-DB (anche se ora c'è un solo DB, il principio resta).
 5. **FTS5 bandito**: per full-text usa `pkg/sqlutil.BuildFallbackLikeConditions`.
@@ -395,7 +395,7 @@ Se l'utility che cerchi **non è nella sezione 🧰 Utilities**: probabilmente d
 
 **Vietato importare in `internal/api/**`:**
 - `database/sql`
-- `internal/repository/` (repository concreti)
+- `Removed: ` (repository concreti)
 - `google.golang.org/api/drive/v3` (Google Drive SDK)
 - `internal/infrastructure/media/ffmpeg` (FFmpeg/process execution)
 - `os/exec`

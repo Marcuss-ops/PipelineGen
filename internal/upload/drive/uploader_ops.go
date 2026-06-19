@@ -10,8 +10,6 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-
-	drivequery "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 )
 
 // GetOrCreateFolder gets an existing folder or creates it.
@@ -41,7 +39,7 @@ func (u *Uploader) GetOrCreateFolder(ctx context.Context, name, parentID string)
 	}
 
 	// Search for existing folder using exact case-sensitive query (as fallback)
-	query := drivequery.BuildNameQuery(parentID, name, "application/vnd.google-apps.folder")
+	query := BuildNameQuery(parentID, name, "application/vnd.google-apps.folder")
 	list, err := u.Service.Files.List().Q(query).Fields("files(id, name)").Context(ctx).Do()
 	if err == nil && len(list.Files) > 0 {
 		u.Log.Info("found existing folder via exact fallback search",

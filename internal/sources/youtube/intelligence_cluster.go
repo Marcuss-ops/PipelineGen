@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ── Topic clustering ──────────────────────────────────────────────────
@@ -83,7 +83,7 @@ func chooseBestManifestClip(records []*clipIntelligenceRecord, members []int) in
 	return best
 }
 
-func compareManifestClips(a, b *models.ClipManifestItem) int {
+func compareManifestClips(a, b *media.ClipManifestItem) int {
 	if a == nil || b == nil {
 		return 0
 	}
@@ -110,7 +110,7 @@ func compareManifestClips(a, b *models.ClipManifestItem) int {
 	return strings.Compare(a.ID, b.ID)
 }
 
-func qualityForManifest(item *models.ClipManifestItem) float64 {
+func qualityForManifest(item *media.ClipManifestItem) float64 {
 	if item == nil {
 		return 0
 	}

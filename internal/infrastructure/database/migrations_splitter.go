@@ -196,7 +196,7 @@ func isConditionalInsertOnMissingTable(errMsg, stmt string) bool {
 // TRANSACTION, ROLLBACK).
 //
 // These appear inside migration files the author wrote expecting to need
-// explicit tx boundaries, but storage.RunMigrations already wraps each
+// explicit tx boundaries, but drive.RunMigrations already wraps each
 // migration in an outer transaction, so nested BEGIN/COMMIT consistently
 // errors with "cannot start a transaction within a transaction".
 //

@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )

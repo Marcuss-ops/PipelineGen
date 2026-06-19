@@ -82,7 +82,7 @@ type JobArtifact struct {
 
 // ── BlobStore ──────────────────────────────────────────────────────
 
-// BlobStore is the abstraction over content-addressed blob storage.
+// BlobStore is the abstraction over content-addressed blob drive.
 // Implementations: LocalBlobStore (filesystem), S3BlobStore (future).
 type BlobStore interface {
 	// Stage writes the contents of r to a temporary staging area and returns
@@ -97,7 +97,7 @@ type BlobStore interface {
 	// Open returns a reader for the blob at the given canonical key.
 	Open(ctx context.Context, storageKey string) (io.ReadCloser, error)
 
-	// Delete removes a blob from storage.
+	// Delete removes a blob from drive.
 	Delete(ctx context.Context, storageKey string) error
 
 	// Stat returns metadata about a stored blob.

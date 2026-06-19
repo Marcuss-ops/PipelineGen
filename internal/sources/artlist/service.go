@@ -12,10 +12,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
 // Service è un facade leggero che delega a componenti specializzati.
@@ -37,7 +37,7 @@ type Service struct {
 	diagnosticsService *DiagnosticsService
 
 	// Dipendenze condivise
-	artlistRepo       *clips.Repository
+	artlistRepo       *sqlite.ClipsRepository
 	mediaProcessor    processor.Processor
 	lifecycleService  *lifecycle.Service
 	assetDestResolver destination.Resolver
@@ -58,7 +58,7 @@ type Service struct {
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
-func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
+func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *sqlite.ClipsRepository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
 	assetProcRepo assets.ProcessingRepository,
 	assetVerRepo assets.VersionRepository,
 	assetLocRepo assets.LocationRepository,

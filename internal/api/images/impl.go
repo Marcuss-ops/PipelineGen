@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 

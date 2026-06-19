@@ -4,16 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // DBProvider searches the local database for indexed clips.
 type DBProvider struct {
-	repo *clips.Repository
+	repo *sqlite.ClipsRepository
 }
 
 // NewDBProvider creates a new DBProvider.
-func NewDBProvider(repo *clips.Repository) *DBProvider {
+func NewDBProvider(repo *sqlite.ClipsRepository) *DBProvider {
 	return &DBProvider{repo: repo}
 }
 

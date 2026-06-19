@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
@@ -46,9 +46,9 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		driveFileID = existingDriveFileID
 		driveLink = existingDriveLink
 	} else if s.mediaStore != nil {
-		req := storage.AssetDestinationRequest{
-			Source:    storage.SourceImage,
-			MediaType: storage.MediaTypeImageVideo,
+		req := drive.AssetDestinationRequest{
+			Source:    drive.SourceImage,
+			MediaType: drive.MediaTypeImageVideo,
 			Subject:   subject,
 			Hash:      id,
 			Ext:       ".mp4",
@@ -121,7 +121,7 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 
 // uploadVideoMetadata calls the unified semantic.MetadataWriter and uploads metadata.json to Drive.
 // Returns the payload for use in DB fields (search_text, tags, etc.).
-func (s *Service) uploadVideoMetadata(ctx context.Context, req storage.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) *SemanticMetadataPayload {
+func (s *Service) uploadVideoMetadata(ctx context.Context, req drive.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) *SemanticMetadataPayload {
 	if s.metaWriter == nil {
 		s.log.Warn("uploadVideoMetadata: metadata writer not configured")
 		return nil
@@ -179,9 +179,9 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 	}
 	defer os.Remove(audioPath)
 
-	req := storage.AssetDestinationRequest{
-		Source:    storage.SourceSoundEffect,
-		MediaType: storage.MediaTypeSoundEffect,
+	req := drive.AssetDestinationRequest{
+		Source:    drive.SourceSoundEffect,
+		MediaType: drive.MediaTypeSoundEffect,
 		Subject:   subject,
 		Hash:      videoID + "_audio",
 		Ext:       ".mp3",

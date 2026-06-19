@@ -12,22 +12,22 @@ import (
 	"time"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	clipsRepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	imagesRepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
 type Service struct {
 	cfg        *config.Config
-	repo       *imagesRepo.Repository
-	stockRepo  *clipsRepo.Repository
+	repo       *sqlite.ImagesRepository
+	stockRepo  *sqlite.ClipsRepository
 	driveSvc   *driveapi.Service
 	log        *zap.Logger
 	tempDir    string
@@ -64,7 +64,7 @@ type Service struct {
 	animationsDir string
 
 	// Unified media store for Drive operations (replaces raw driveSvc calls)
-	mediaStore *storage.Store
+	mediaStore *drive.Store
 
 	// NEW: Intelligence & Search
 	llmGen    *ollama.Generator
@@ -88,7 +88,7 @@ type DiagnosticsReport struct {
 	WikidataWorks    bool     `json:"wikidata_works"`
 }
 
-func NewService(cfg *config.Config, repo *imagesRepo.Repository, stockRepo *clipsRepo.Repository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
+func NewService(cfg *config.Config, repo *sqlite.ImagesRepository, stockRepo *sqlite.ClipsRepository, driveSvc *driveapi.Service, styleRegistry *generation.StyleRegistry, log *zap.Logger) *Service {
 	s := &Service{
 		cfg:           cfg,
 		repo:          repo,
@@ -143,7 +143,7 @@ func (s *Service) SetIngestService(svc *ingest.Service) {
 }
 
 // SetMediaStore sets the unified media store for Drive operations.
-func (s *Service) SetMediaStore(store *storage.Store) {
+func (s *Service) SetMediaStore(store *drive.Store) {
 	s.mediaStore = store
 }
 
@@ -188,7 +188,7 @@ func (s *Service) SetGoogleAccountingConfig(serverURL, downloadDir, vidsProjectI
 }
 
 // Repo returns the underlying images repository.
-func (s *Service) Repo() *imagesRepo.Repository {
+func (s *Service) Repo() *sqlite.ImagesRepository {
 	return s.repo
 }
 
@@ -209,7 +209,7 @@ type SemanticMetadataPayload = semantic.Payload
 // fast with an explicit error so the operator can see the gap instead of
 // silently rendering an empty asset. The caller already wraps this error
 // with "%w" so the message remains visible in the script job log.
-func (s *Service) generateGoogleSlidesImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, width, height int, skipDrive bool) (*models.ImageAsset, error) {
+func (s *Service) generateGoogleSlidesImage(ctx context.Context, cleanPrompt, styledPrompt, subject, style string, tags []string, width, height int, skipDrive bool) (*media.ImageAsset, error) {
 	if s == nil {
 		return nil, fmt.Errorf("generateGoogleSlidesImage: nil service")
 	}

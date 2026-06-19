@@ -11,20 +11,20 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
+
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
-// DeletionService handles synchronized deletion between database and cloud storage.
+// DeletionService handles synchronized deletion between database and cloud drive.
 type DeletionService struct {
-	artlistRepo   *clips.Repository
-	clipsRepo     *clips.Repository
-	stockRepo     *clips.Repository
-	voiceoverRepo *voiceovers.Repository
-	imagesRepo    *images.Repository
+	artlistRepo   *sqlite.ClipsRepository
+	clipsRepo     *sqlite.ClipsRepository
+	stockRepo     *sqlite.ClipsRepository
+	voiceoverRepo *sqlite.VoiceoversRepository
+	imagesRepo    *sqlite.ImagesRepository
 	driveUploader *drive.Uploader
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service
@@ -33,9 +33,9 @@ type DeletionService struct {
 
 // NewDeletionService creates a new deletion service.
 func NewDeletionService(
-	artlistRepo, clipsRepo, stockRepo *clips.Repository,
-	voiceoverRepo *voiceovers.Repository,
-	imagesRepo *images.Repository,
+	artlistRepo, clipsRepo, stockRepo *sqlite.ClipsRepository,
+	voiceoverRepo *sqlite.VoiceoversRepository,
+	imagesRepo *sqlite.ImagesRepository,
 	driveUploader *drive.Uploader,
 	assetTreeSvc *assettree.Service,
 	assetIndexSvc *assetindex.Service,
@@ -194,19 +194,19 @@ func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID stri
 
 		switch source {
 		case "artlist", "clips", "stock":
-			clipRepo := repo.(*clips.Repository)
+			clipRepo := repo.(*sqlite.ClipsRepository)
 			clip, err := clipRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && clip != nil {
 				return clip, source, nil
 			}
 		case "voiceover":
-			voRepo := repo.(*voiceovers.Repository)
+			voRepo := repo.(*sqlite.VoiceoversRepository)
 			rec, err := voRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && rec != nil {
 				return artifacts.VoiceoverRecordToClip(rec), source, nil
 			}
 		case "images":
-			imgRepo := repo.(*images.Repository)
+			imgRepo := repo.(*sqlite.ImagesRepository)
 			img, err := imgRepo.GetByDriveFileID(ctx, fileID)
 			if err == nil && img != nil {
 				return artifacts.ImageAssetToClip(img), source, nil

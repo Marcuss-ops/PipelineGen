@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // ListFolders lists all folders for a source.
@@ -92,7 +92,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 	}
 
 	// Compute stats
-	stats := models.ClipFolderStats{}
+	stats := media.ClipFolderStats{}
 	for _, clip := range clipList {
 		stats.ClipCount++
 		if clip.DriveLink() != "" || clip.DownloadLink() != "" {

@@ -2,15 +2,15 @@ package clips
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
-// ClipToAssetNode converts a canonical assets.Asset to assettree.AssetNode
+// ClipToAssetNode converts a canonical assets.Asset to sqlite.AssetNode
 // for unified tree handling. Exported so the sibling sources package
 // (handler_sources_register_from_youtube.go) can build asset-tree nodes
 // without depending on clips package internals.
-func ClipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
+func ClipToAssetNode(clip *assets.Asset) *sqlite.AssetNode {
 	if clip == nil {
 		return nil
 	}
@@ -21,7 +21,7 @@ func ClipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
 		nodeType = string(clip.MediaType)
 	}
 
-	return &assettreerepo.AssetNode{
+	return &sqlite.AssetNode{
 		ID:          clip.ID,
 		Source:      string(clip.Source),
 		AssetID:     clip.ID,
@@ -42,11 +42,11 @@ func ClipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
 
 // treeNodeToAssetNode converts a sqlite/assettree node to the older
 // media/models type used in some response shapes.
-func treeNodeToAssetNode(tn *assettreerepo.AssetNode) *models.AssetNode {
+func treeNodeToAssetNode(tn *sqlite.AssetNode) *media.AssetNode {
 	if tn == nil {
 		return nil
 	}
-	return &models.AssetNode{
+	return &media.AssetNode{
 		ID:          tn.ID,
 		Source:      tn.Source,
 		AssetID:     tn.AssetID,

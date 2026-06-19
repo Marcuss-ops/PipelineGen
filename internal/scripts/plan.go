@@ -1,5 +1,9 @@
 package scripts
 
+import (
+	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
 // ScriptGenerationPlan is the unified plan that every generation endpoint
 // (GenerateText, GenerateBatch, GenerateFromClips, agent_script_writer)
 // populates before calling the Engine.  This replaces the ad-hoc per-endpoint
@@ -72,7 +76,7 @@ type ResearchPack struct {
 	Timeline        []TimelineEntry  `json:"timeline,omitempty"`
 	Controversies   []string         `json:"controversies,omitempty"`
 	ImportantQuotes []string         `json:"important_quotes,omitempty"`
-	Sources         []ResearchSource `json:"sources,omitempty"`
+	Sources         []script.ResearchSource `json:"sources,omitempty"`
 	SuggestedAngles []string         `json:"suggested_angles,omitempty"`
 	Warnings        []string         `json:"warnings,omitempty"`
 

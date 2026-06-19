@@ -8,18 +8,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/searchqueries"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // SearchqueriesHandler handles CRUD operations for search_queries (scheduled YouTube topic searches).
 type SearchqueriesHandler struct {
-	repo *searchqueriesrepo.Repository
+	repo *sqlite.SearchQueriesRepository
 	log  *zap.Logger
 }
 
 // NewHandler creates a new search queries API handler.
-func NewSearchqueriesHandler(repo *searchqueriesrepo.Repository, log *zap.Logger) *SearchqueriesHandler {
+func NewSearchqueriesHandler(repo *sqlite.SearchQueriesRepository, log *zap.Logger) *SearchqueriesHandler {
 	return &SearchqueriesHandler{repo: repo, log: log}
 }
 
@@ -94,7 +94,7 @@ func (h *SearchqueriesHandler) Upsert(c *gin.Context) {
 		return
 	}
 
-	q := &models.SearchQuery{
+	q := &media.SearchQuery{
 		ID:                   req.ID,
 		Query:                req.Query,
 		Category:             req.Category,

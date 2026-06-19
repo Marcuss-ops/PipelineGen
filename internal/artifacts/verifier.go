@@ -6,7 +6,7 @@ import (
 	"time"
 
 	driveapi "google.golang.org/api/drive/v3"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

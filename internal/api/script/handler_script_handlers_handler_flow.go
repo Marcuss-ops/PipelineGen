@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+// duplicate curation import removed
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
@@ -38,7 +38,7 @@ type ScriptFlowHandler struct {
 	assetTreeSvc      *assettree.Service
 	groupsResolver    *voiceover.GroupsResolver
 	clipSourceBuilder *scripts.ClipSourceBuilder
-	mediaCurator      *mediacurator.Service
+	mediaCurator      *curation.MediaCurator
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      ClipServices
 	docClient         drive.DocClient
@@ -161,7 +161,7 @@ func (h *ScriptFlowHandler) SetClipSourceBuilder(b *scripts.ClipSourceBuilder) {
 }
 
 // SetMediaCurator sets the MediaCurator for query-based compilation generation.
-func (h *ScriptFlowHandler) SetMediaCurator(m *mediacurator.Service) {
+func (h *ScriptFlowHandler) SetMediaCurator(m *curation.MediaCurator) {
 	h.mediaCurator = m
 }
 

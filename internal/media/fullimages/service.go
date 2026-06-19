@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
@@ -46,13 +46,13 @@ type Result struct {
 type Service struct {
 	imgService *imgservice.Service
 	ffmpegProc *ffmpeg.Processor
-	mediaStore *storage.Store
+	mediaStore *drive.Store
 	imagesDir  string
 	log        *zap.Logger
 }
 
 // NewService creates a FullImages video-generation service.
-func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, mediaStore *storage.Store, imagesDir string, log *zap.Logger) *Service {
+func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, mediaStore *drive.Store, imagesDir string, log *zap.Logger) *Service {
 	return &Service{
 		imgService: imgService,
 		ffmpegProc: ffmpegProc,
@@ -302,9 +302,9 @@ func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, vid
 		}
 	}
 
-	req := storage.AssetDestinationRequest{
+	req := drive.AssetDestinationRequest{
 		Source:    "fullimages",
-		MediaType: storage.MediaTypeImageVideo,
+		MediaType: drive.MediaTypeImageVideo,
 		Style:     style,
 		Subject:   genID,
 		Hash:      genID,

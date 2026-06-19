@@ -176,7 +176,7 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// (e.g. /etc) and upload their contents to Drive.
 	if !isLocalFolderAllowed(abs, h.cfg) {
 		internal.APIUtil.BadRequest(c, fmt.Sprintf(
-			"local_folder %q is not under any allowed base path (storage.media_dir, storage.temp_dir, storage.data_dir, or a path explicitly added via config)",
+			"local_folder %q is not under any allowed base path (drive.media_dir, drive.temp_dir, drive.data_dir, or a path explicitly added via config)",
 			abs))
 		return
 	}

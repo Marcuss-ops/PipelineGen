@@ -25,7 +25,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 )
 
@@ -43,7 +43,7 @@ import (
 //	}
 type dispatchBridge struct {
 	dispatcher  *outbox.Dispatcher
-	clipsRepo   *clips.Repository
+	clipsRepo   *sqlite.ClipsRepository
 	clipIndexer *clipindexer.Service
 	log         *zap.Logger
 }

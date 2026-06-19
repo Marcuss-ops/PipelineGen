@@ -8,20 +8,20 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )
 
 type registryAdapter struct {
-	repo      *images.Repository
+	repo      *sqlite.ImagesRepository
 	imagesDir string
 	log       *zap.Logger
 }
 
-func NewRegistryAdapter(repo *images.Repository, imagesDir string, log *zap.Logger) artifacts.Registry {
+func NewRegistryAdapter(repo *sqlite.ImagesRepository, imagesDir string, log *zap.Logger) artifacts.Registry {
 	return &registryAdapter{repo: repo, imagesDir: imagesDir, log: log}
 }
 
@@ -30,7 +30,7 @@ func (a *registryAdapter) UpsertMedia(ctx context.Context, rec *artifacts.MediaR
 		return nil
 	}
 
-	asset := &models.ImageAsset{
+	asset := &media.ImageAsset{
 		Hash:        imageRecordHash(rec.ID, rec.FileHash),
 		SubjectID:   textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 		SourceURL:   textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
@@ -96,7 +96,7 @@ func imageRecordHash(id, fallback string) string {
 	return id
 }
 
-func imageToMediaRecord(img *models.ImageAsset, imagesDir string) *artifacts.MediaRecord {
+func imageToMediaRecord(img *media.ImageAsset, imagesDir string) *artifacts.MediaRecord {
 	if img == nil {
 		return nil
 	}

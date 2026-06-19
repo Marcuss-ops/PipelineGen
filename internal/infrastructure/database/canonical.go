@@ -1,7 +1,7 @@
 package storage
 
 // CanonicalMediaAssetsSchema is the single source of truth for the
-// in-memory CREATE TABLE block required by clips.Repository.UpsertClipTx
+// in-memory CREATE TABLE block required by sqlite.ClipsRepository.UpsertClipTx
 // (37 INSERT columns) and scanMediaAsset (39-column SELECT projection).
 //
 // The 39 columns resolve in three layers, oldest at the top of the
@@ -22,7 +22,7 @@ package storage
 //     folder_path, category, filename, error, thumb_url, phash,
 //     search_text, scene_type, quality_score, reuse_count, last_used_at).
 //
-// Test fixtures that call storage.NewTestDBWithSchema MUST embed this
+// Test fixtures that call drive.NewTestDBWithSchema MUST embed this
 // constant so their schema stays in lockstep with the production
 // schema. When migration adds another canonical column it should:
 //  - append a column definition here, AND

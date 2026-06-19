@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
@@ -26,7 +26,7 @@ func (s *Service) GenerateSmartImage(
 	width, height int,
 	model string,
 	skipDrive bool,
-) (*models.ImageAsset, error) {
+) (*media.ImageAsset, error) {
 	cleanPrompt := pickImagePrompt(subject, topic, prompts)
 	if cleanPrompt == "" {
 		return nil, fmt.Errorf("missing image prompt")
@@ -37,7 +37,7 @@ func (s *Service) GenerateSmartImage(
 		// Escape LIKE wildcards in prompt to prevent false dedup matches
 		escapedPrompt := strings.ReplaceAll(strings.ReplaceAll(cleanPrompt, "%", "\\%"), "_", "\\_")
 		descPattern := "%for prompt: " + escapedPrompt
-		var img models.ImageAsset
+		var img media.ImageAsset
 		var name, urlVal, tagsJSON, metaJSON, createdAtStr, fileHash, localPath, driveFileID sql.NullString
 		err := s.repo.DB().QueryRowContext(ctx, `
 			SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id

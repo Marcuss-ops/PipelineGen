@@ -56,7 +56,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		FOREIGN KEY(job_id) REFERENCES jobs(id)
 	);
 	`
-	return storage.NewTestDBWithSchema(t, schema)
+	return drive.NewTestDBWithSchema(t, schema)
 }
 
 func setupTestService(t *testing.T) (*Service, func()) {

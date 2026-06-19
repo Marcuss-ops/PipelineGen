@@ -6,16 +6,16 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ArtlistStockAssociation searches in the Artlist clip database using multiple terms.
 type ArtlistStockAssociation struct {
-	repo *clips.Repository
+	repo *sqlite.ClipsRepository
 }
 
-func NewArtlistStockAssociation(repo *clips.Repository) *ArtlistStockAssociation {
+func NewArtlistStockAssociation(repo *sqlite.ClipsRepository) *ArtlistStockAssociation {
 	return &ArtlistStockAssociation{repo: repo}
 }
 

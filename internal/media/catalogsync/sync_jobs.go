@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // HandleJob processes a catalog.sync job.
@@ -148,8 +148,8 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *jobservice.
 	}, nil
 }
 
-// resolveRepo returns the clips.Repository for the given source name.
-func (s *Service) resolveRepo(source string) *clips.Repository {
+// resolveRepo returns the sqlite.ClipsRepository for the given source name.
+func (s *Service) resolveRepo(source string) *sqlite.ClipsRepository {
 	for _, t := range s.targets {
 		if strings.EqualFold(t.Source, source) {
 			return t.Repo

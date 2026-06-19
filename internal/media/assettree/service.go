@@ -6,18 +6,18 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	repo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	repo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 // Service provides utility functions for asset trees
 type Service struct {
-	repo *repo.Repository
+	repo *repo.AssetTreeRepository
 	log  *zap.Logger
 }
 
 // NewService creates a new asset tree service
-func NewService(r *repo.Repository, log *zap.Logger) *Service {
+func NewService(r *repo.AssetTreeRepository, log *zap.Logger) *Service {
 	return &Service{
 		repo: r,
 		log:  log,

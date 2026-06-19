@@ -159,7 +159,7 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	ctx := context.Background()
 
 	// 1. Set up a real test database with all required tables.
-	db := storage.NewTestDBWithSchema(t, minimalTestSchema)
+	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
 	repo := scripts.NewScriptRepository(db)
 
@@ -215,7 +215,7 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	assert.Equal(t, "completed", status, "status should be completed")
 
 	// 8. Verify script_sections were created.
-	sectionCount := storage.CountRows(t, db, "SELECT COUNT(*) FROM script_sections WHERE script_id = ?", scriptID)
+	sectionCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM script_sections WHERE script_id = ?", scriptID)
 	assert.Greater(t, sectionCount, 0, "should have at least one section")
 
 	// 9. Verify script_sections have new fields (word_count, status).
@@ -231,11 +231,11 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	assert.Equal(t, "completed", secStatus, "section status should be completed")
 
 	// 10. Verify script_outline_sections were created.
-	outlineCount := storage.CountRows(t, db, "SELECT COUNT(*) FROM script_outline_sections WHERE script_id = ?", scriptID)
+	outlineCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM script_outline_sections WHERE script_id = ?", scriptID)
 	assert.Equal(t, len(req.BatchTopics), outlineCount, "outline_sections should match batch topic count")
 
 	// 11. Verify script_generation_logs were created.
-	logCount := storage.CountRows(t, db, "SELECT COUNT(*) FROM script_generation_logs WHERE script_id = ?", scriptID)
+	logCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM script_generation_logs WHERE script_id = ?", scriptID)
 	assert.Greater(t, logCount, 0, "should have at least one generation log")
 
 	// 12. Verify the script content is clean (no markdown artifacts).
@@ -247,7 +247,7 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 func TestExecuteBatchGeneration_WithNoChapters_SavesSections(t *testing.T) {
 	ctx := context.Background()
 
-	db := storage.NewTestDBWithSchema(t, minimalTestSchema)
+	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
 	repo := scripts.NewScriptRepository(db)
 
@@ -278,17 +278,17 @@ func TestExecuteBatchGeneration_WithNoChapters_SavesSections(t *testing.T) {
 		t.Fatalf("script not found: %v", err)
 	}
 
-	sectionCount := storage.CountRows(t, db, "SELECT COUNT(*) FROM script_sections WHERE script_id = ?", scriptID)
+	sectionCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM script_sections WHERE script_id = ?", scriptID)
 	assert.Greater(t, sectionCount, 0, "should have sections even with no chapters")
 
-	outlineCount := storage.CountRows(t, db, "SELECT COUNT(*) FROM script_outline_sections WHERE script_id = ?", scriptID)
+	outlineCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM script_outline_sections WHERE script_id = ?", scriptID)
 	assert.Greater(t, outlineCount, 0, "should have outline sections")
 }
 
 func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 	ctx := context.Background()
 
-	db := storage.NewTestDBWithSchema(t, minimalTestSchema)
+	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
 	repo := scripts.NewScriptRepository(db)
 
@@ -314,6 +314,6 @@ func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	scriptCount := storage.CountRows(t, db, "SELECT COUNT(*) FROM scripts WHERE topic = ?", req.DocTitle)
+	scriptCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM scripts WHERE topic = ?", req.DocTitle)
 	assert.Equal(t, 0, scriptCount, "should not persist script when SaveToDB=false")
 }

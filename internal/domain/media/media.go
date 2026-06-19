@@ -33,12 +33,14 @@ const (
 	SourceImage SourceType = "image"
 	// SourceGenerated indicates generated content (script, voiceover).
 	SourceGenerated SourceType = "generated"
+	// SourceSoundEffect indicates a sound effect asset.
+	SourceSoundEffect SourceType = "sound_effect"
 )
 
 // IsValid reports whether the SourceType matches a known constant.
 func (s SourceType) IsValid() bool {
 	switch s {
-	case SourceStock, SourceArtlist, SourceYoutubeClip, SourceClipDrive, SourceImage, SourceGenerated:
+	case SourceStock, SourceArtlist, SourceYoutubeClip, SourceClipDrive, SourceImage, SourceGenerated, SourceSoundEffect:
 		return true
 	}
 	return false
@@ -58,12 +60,16 @@ const (
 	MediaTypeAudio MediaType = "audio"
 	// MediaTypeDocument refers to a document (Google Doc).
 	MediaTypeDocument MediaType = "document"
+	// MediaTypeImageVideo is for generated video files.
+	MediaTypeImageVideo MediaType = "image_video"
+	// MediaTypeSoundEffect is for extracted sound effect audio clips.
+	MediaTypeSoundEffect MediaType = "sound_effect"
 )
 
 // IsValid reports whether the MediaType matches a known constant.
 func (m MediaType) IsValid() bool {
 	switch m {
-	case MediaTypeStock, MediaTypeClip, MediaTypeImage, MediaTypeAudio, MediaTypeDocument:
+	case MediaTypeStock, MediaTypeClip, MediaTypeImage, MediaTypeAudio, MediaTypeDocument, MediaTypeImageVideo, MediaTypeSoundEffect:
 		return true
 	}
 	return false

@@ -79,7 +79,7 @@ Track job progress via the `/api/jobs` endpoints.
 - `internal/service/`: Business logic and service implementations.
 - `internal/api/handlers/`: REST API handlers (modularized).
 - `internal/media/`: Media processing pipelines (images, voiceover, semantic search).
-- `internal/repository/`: Data access layer (scripts, clips, jobs).
+- `Removed: `: Data access layer (scripts, clips, jobs).
 - `pkg/`: Leaf utility packages (retry, textutil, hashutil, etc.).
 - `scripts/`: Utility and AI processing scripts.
 - `migrations/sqlite/`: SQLite migrations applied at startup.

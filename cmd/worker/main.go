@@ -15,7 +15,7 @@ import (
 	assettransferclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/assettransferclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
-	"github.com/Marcuss-ops/PipelineGen/internal/worker"
+	"github.com/Marcuss-ops/PipelineGen/internal/jobs/worker"
 	"go.uber.org/zap"
 )
 

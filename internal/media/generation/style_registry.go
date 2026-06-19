@@ -7,20 +7,20 @@ import (
 	"sync"
 
 	"gopkg.in/yaml.v3"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	domainmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // StyleRegistry manages a collection of generation styles
 type StyleRegistry struct {
-	styles map[string]models.GenerationStyle
+	styles map[string]domainmedia.GenerationStyle
 	mu     sync.RWMutex
 }
 
 // NewStyleRegistry creates a new registry and loads styles from the given YAML file
 func NewStyleRegistry(yamlPath string) (*StyleRegistry, error) {
 	r := &StyleRegistry{
-		styles: make(map[string]models.GenerationStyle),
+		styles: make(map[string]domainmedia.GenerationStyle),
 	}
 
 	if err := r.Load(yamlPath); err != nil {
@@ -37,7 +37,7 @@ func (r *StyleRegistry) Load(yamlPath string) error {
 		return fmt.Errorf("failed to read styles file: %w", err)
 	}
 
-	var container models.GenerationStyles
+	var container domainmedia.GenerationStyles
 	if err := yaml.Unmarshal(data, &container); err != nil {
 		return fmt.Errorf("failed to unmarshal styles: %w", err)
 	}
@@ -46,7 +46,7 @@ func (r *StyleRegistry) Load(yamlPath string) error {
 	defer r.mu.Unlock()
 
 	// Reset if loading again
-	r.styles = make(map[string]models.GenerationStyle)
+	r.styles = make(map[string]domainmedia.GenerationStyle)
 	for _, s := range container.Styles {
 		r.styles[strings.ToLower(s.Name)] = s
 	}
@@ -55,7 +55,7 @@ func (r *StyleRegistry) Load(yamlPath string) error {
 }
 
 // Get retrieves a style by name (case-insensitive)
-func (r *StyleRegistry) Get(name string) (models.GenerationStyle, bool) {
+func (r *StyleRegistry) Get(name string) (domainmedia.GenerationStyle, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -64,11 +64,11 @@ func (r *StyleRegistry) Get(name string) (models.GenerationStyle, bool) {
 }
 
 // List returns all available styles
-func (r *StyleRegistry) List() []models.GenerationStyle {
+func (r *StyleRegistry) List() []domainmedia.GenerationStyle {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	res := make([]models.GenerationStyle, 0, len(r.styles))
+	res := make([]domainmedia.GenerationStyle, 0, len(r.styles))
 	for _, s := range r.styles {
 		res = append(res, s)
 	}

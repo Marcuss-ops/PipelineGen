@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -21,7 +21,7 @@ import (
 //
 // The unique index on outbox_events(event_key) makes Dispatcher.EnqueueAndIndex
 // idempotent: a duplicate Enqueue with the same event_key is silently swallowed.
-const dispatcherTestSchema = storage.CanonicalMediaAssetsSchema + `
+const dispatcherTestSchema = drive.CanonicalMediaAssetsSchema + `
 	CREATE TABLE outbox_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		event_type TEXT NOT NULL,
@@ -54,10 +54,10 @@ const dispatcherTestSchema = storage.CanonicalMediaAssetsSchema + `
 // is no goroutine: the outbox event IS the indexing trigger.
 func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	ctx := context.Background()
-	db := storage.NewTestDBWithSchema(t, dispatcherTestSchema)
+	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
-	repo := clips.NewRepository(db, zap.NewNop())
+	repo := sqlite.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	// Direct single-repo dispatcher for the test — production wiring uses
@@ -107,10 +107,10 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 // only, skipping the outbox enqueue (folders are not vector-indexable).
 func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T) {
 	ctx := context.Background()
-	db := storage.NewTestDBWithSchema(t, dispatcherTestSchema)
+	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
-	repo := clips.NewRepository(db, zap.NewNop())
+	repo := sqlite.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
 	txmgr := outbox.NewManager(db, zap.NewNop())
 	dispatcher := outbox.NewDispatcher(repo, outboxEventsRepo, txmgr, zap.NewNop())
@@ -150,10 +150,10 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 // is taken.
 func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	ctx := context.Background()
-	db := storage.NewTestDBWithSchema(t, dispatcherTestSchema)
+	db := drive.NewTestDBWithSchema(t, dispatcherTestSchema)
 	defer db.Close()
 
-	repo := clips.NewRepository(db, zap.NewNop())
+	repo := sqlite.NewClipsRepository(db, zap.NewNop())
 
 	svc := &Service{log: zap.NewNop()}
 	// Note: SetDispatcher NOT called.

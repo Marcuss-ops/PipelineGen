@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -359,7 +359,7 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	}
 
 	duplicates := []gin.H{}
-	repos := map[string]*clips.Repository{
+	repos := map[string]*sqlite.ClipsRepository{
 		"artlist": h.artlistRepo,
 		"youtube": h.clipsRepo,
 		"stock":   h.stockRepo,

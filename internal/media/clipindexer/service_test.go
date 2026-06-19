@@ -30,7 +30,7 @@ func (m *mockVectorStoreIndexer) UpsertFromClips(ctx context.Context, clipIDs []
 
 func TestIndexingDoesNotSpawnPythonPerClip(t *testing.T) {
 	// 1. Create in-memory SQLite DB with schema
-	db := storage.NewTestDBWithSchema(t, `
+	db := drive.NewTestDBWithSchema(t, `
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
 			name TEXT,
