@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type LocalToDriveRequest struct {

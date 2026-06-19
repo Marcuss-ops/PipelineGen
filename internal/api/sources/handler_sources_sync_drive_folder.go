@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // SyncDriveFolderRequest is the JSON body for POST /api/media/sync-drive-folder.

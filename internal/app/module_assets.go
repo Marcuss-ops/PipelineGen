@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"

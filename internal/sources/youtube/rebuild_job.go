@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
 )
 
 // {"concurrency": 1}    – parallel workers (default 1, safe for yt-dlp rate limits)
-func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
 	if s.clipsRepo == nil {
 		return nil, fmt.Errorf("clips repository not available")
 	}

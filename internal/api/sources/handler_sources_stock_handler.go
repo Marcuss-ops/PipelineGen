@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
 )
 
@@ -62,7 +62,7 @@ type StockSearchAndRunRequest struct {
 }
 
 type StockPipelineResponse struct {
-	Status      string                      `json:"status"`
+	job.Status      string                      `json:"status"`
 	TotalClips  int                         `json:"total_clips"`
 	TotalChunks int                         `json:"total_chunks"`
 	Chunks      []stockpipeline.ChunkResult `json:"chunks"`
@@ -182,14 +182,14 @@ func (h *StockHandler) SearchAndRun(c *gin.Context) {
 	if err != nil {
 		h.log.Error("stock pipeline failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, StockPipelineResponse{
-			Status: "failed",
+			job.Status: "failed",
 			Error:  err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, StockPipelineResponse{
-		Status:      "completed",
+		job.Status:      "completed",
 		TotalClips:  result.TotalClips,
 		TotalChunks: result.TotalChunks,
 		Chunks:      result.Chunks,
@@ -282,14 +282,14 @@ func (h *StockHandler) RunStockPipeline(c *gin.Context) {
 	if err != nil {
 		h.log.Error("stock pipeline failed", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, StockPipelineResponse{
-			Status: "failed",
+			job.Status: "failed",
 			Error:  err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, StockPipelineResponse{
-		Status:      "completed",
+		job.Status:      "completed",
 		TotalClips:  result.TotalClips,
 		TotalChunks: result.TotalChunks,
 		Chunks:      result.Chunks,

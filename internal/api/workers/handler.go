@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/application/workerassets"
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type Broker interface {

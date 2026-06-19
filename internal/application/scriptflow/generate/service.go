@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -35,7 +35,7 @@ func NewGenerationService(jobsSvc *jobs.Service, cfg *config.Config, log *zap.Lo
 type FromClipsResult struct {
 	OK        bool
 	JobID     string
-	Status    string
+	job.Status    string
 	ClipCount int
 }
 
@@ -196,7 +196,7 @@ func (s *GenerationService) enqueue(
 	return &FromClipsResult{
 		OK:        true,
 		JobID:     job.ID,
-		Status:    string(job.Status),
+		job.Status:    string(job.job.Status),
 		ClipCount: clipCount,
 	}, nil
 }

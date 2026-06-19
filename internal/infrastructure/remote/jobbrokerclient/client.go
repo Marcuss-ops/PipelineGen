@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Client is an HTTP implementation of job.Broker for remote workers.

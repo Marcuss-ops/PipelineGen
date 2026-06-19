@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
 
@@ -151,11 +151,11 @@ func (s *Service) SearchClips(ctx context.Context, term string) []*assets.Asset 
 }
 
 // HandleJob gestisce un job dalla coda.
-func (s *Service) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
 	return s.jobAdapter.HandleJob(ctx, job, tools)
 }
 
 // GetJobByRunID ottiene un job per run ID.
-func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*jobs.Job, error) {
+func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*job.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
 }

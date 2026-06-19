@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
@@ -142,7 +142,7 @@ func (s *Service) GenerateWithDestination(ctx context.Context, text, language, f
 
 	item := resp.Items[0]
 	if item.Error != "" {
-		return nil, fmt.Errorf("%s (status: %s)", item.Error, item.Status)
+		return nil, fmt.Errorf("%s (status: %s)", item.Error, item.job.Status)
 	}
 
 	return &VoiceoverResult{
