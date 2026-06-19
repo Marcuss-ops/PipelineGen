@@ -15,7 +15,7 @@ type SystemWiring struct {
 
 // ScraperWiring holds the Scraper module wiring
 type ScraperWiring struct {
-	Handler *scraperhandler.Handler
+	Handler *scraperhandler.ScraperHandler
 	Module  module.Module
 }
 
@@ -25,7 +25,7 @@ func WireScraper(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ScraperWiring, error) {
-	handler := scraperhandler.NewHandler(cfg.External.NodeScraperDir)
+	handler := scraperhandler.NewScraperHandler(cfg.External.NodeScraperDir)
 	mod := module.NewScraperModule(log, handler)
 	log.Info("created Scraper module")
 

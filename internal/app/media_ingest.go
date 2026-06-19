@@ -15,7 +15,7 @@ import (
 )
 
 type MediaIngestWiring struct {
-	Handler *mediaingest.Handler
+	Handler *mediaingest.MediaingestHandler
 	Module  module.Module
 	Service *ingest.Service
 }
