@@ -10,7 +10,7 @@ import (
 
 // ImagesWiring holds the Images module wiring
 type ImagesWiring struct {
-	Handler *imghandler.Handler
+	Handler *imghandler.ImagesHandler
 	Module  module.Module
 }
 
@@ -20,7 +20,7 @@ func WireImages(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*ImagesWiring, error) {
-	handler := imghandler.NewHandler(coreDeps.ImageService)
+	handler := imghandler.NewImagesHandler(coreDeps.ImageService)
 
 	mod := module.NewRouteModule(
 		"images",
