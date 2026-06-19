@@ -1,18 +1,19 @@
-package api
+package fullimages
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
+	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
 )
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
 type FullImagesHandler struct {
-	service *fullimages.Service
+	service *mediafullimages.Service
 }
 
 // NewFullImagesHandler creates a FullImages HTTP handler.
-func NewFullImagesHandler(svc *fullimages.Service) *FullImagesHandler {
+func NewFullImagesHandler(svc *mediafullimages.Service) *FullImagesHandler {
 	return &FullImagesHandler{service: svc}
 }
 
@@ -23,7 +24,7 @@ func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // GenerateFullImagesRequest is the JSON body for the endpoint.
 type GenerateFullImagesRequest struct {
-	Sections []fullimages.Section `json:"sections" binding:"required,min=1"`
+	Sections []mediafullimages.Section `json:"sections" binding:"required,min=1"`
 	Topic    string               `json:"topic" example:"Medieval Europe"`
 	Language string               `json:"language" example:"en"`
 	// DefaultStyle is applied to every section that doesn't specify its own style.
@@ -33,7 +34,7 @@ type GenerateFullImagesRequest struct {
 // GenerateFullImagesResponse is returned on success.
 type GenerateFullImagesResponse struct {
 	OK     bool                      `json:"ok"`
-	Videos []fullimages.SectionVideo `json:"videos"`
+	Videos []mediafullimages.SectionVideo `json:"videos"`
 }
 
 // GenerateFullImages handles POST /images/generate/fullimages.
@@ -42,7 +43,7 @@ type GenerateFullImagesResponse struct {
 func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 	var req GenerateFullImagesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 
@@ -65,7 +66,7 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 	result, err := h.service.GenerateForSections(c.Request.Context(), req.Sections, req.Topic, req.Language)
 	if err != nil {
 		zap.L().Error("fullimages: generation failed", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
@@ -73,7 +74,7 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 		zap.Int("total", len(result.Videos)),
 	)
 
-	apiutil.OK(c, GenerateFullImagesResponse{
+	api.OK(c, GenerateFullImagesResponse{
 		OK:     true,
 		Videos: result.Videos,
 	})

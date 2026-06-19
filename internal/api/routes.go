@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 )
 
@@ -106,7 +107,7 @@ func (r *Router) Setup() *gin.Engine {
 	}
 
 	// Health checks (public — no auth/rate limit)
-	healthHandler := NewHealthHandler(r.cfg)
+	healthHandler := common.NewHealthHandler(r.cfg)
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/api/health", healthHandler.Health)
 	engine.GET("/api/health/deep", middleware.Auth(r.cfg), healthHandler.DeepHealth)

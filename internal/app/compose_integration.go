@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	common "github.com/Marcuss-ops/PipelineGen/internal/api"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
