@@ -50,10 +50,6 @@ CREATE TABLE IF NOT EXISTS deliveries (
     last_error_code   TEXT NOT NULL DEFAULT '',
     last_error_message TEXT NOT NULL DEFAULT '',
     idempotency_key   TEXT NOT NULL DEFAULT '',
-    storage_key       TEXT NOT NULL DEFAULT '',
-    sha256            TEXT NOT NULL DEFAULT '',
-    size_bytes        INTEGER NOT NULL DEFAULT 0,
-    mime_type         TEXT NOT NULL DEFAULT '',
     created_at        TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
     completed_at      TEXT
