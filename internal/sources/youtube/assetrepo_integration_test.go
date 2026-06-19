@@ -5,8 +5,8 @@
 //
 // Schema matches the production `media_assets` columns written by
 // `internal/infrastructure/database/sqlite/assets.Upsert` (40 columns)
-// PLUS the legacy columns that `internal/repository/clips.UpsertClip` reads
-// and writes (`tags_norm`, `embedding_json`, `visual_embedding`,
+// PLUS the legacy columns that `internal/infrastructure/database/sqlite.ClipsRepository.UpsertClip`
+// reads and writes (`tags_norm`, `embedding_json`, `visual_embedding`,
 // `transcript_embedding`, `relative_path`, `drive_folder_id`, `width`,
 // `height`) plus `outbox_events` so the canonical upsert's outbox emit
 // succeeds inside the test transaction.
@@ -22,7 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // pr12bYoutubeSchema mirrors the full production table definitions for testing.

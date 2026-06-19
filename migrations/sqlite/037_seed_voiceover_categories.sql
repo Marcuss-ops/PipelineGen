@@ -12,8 +12,8 @@
 --
 -- After this runs, GET /api/media/voiceover/groups will return the mapping
 -- and any endpoint that accepts voiceover_group can resolve it via
--- internal/repository/assettree (FindByName) without falling back to
--- Drive-side deep search.
+-- internal/infrastructure/database/sqlite/assettree_repository (FindByName)
+-- without falling back to Drive-side deep search.
 
 INSERT OR IGNORE INTO asset_tree_nodes (
     id, source, asset_id, name, type, parent_id, root_id, path, depth,
