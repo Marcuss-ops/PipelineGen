@@ -59,7 +59,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 		AssetIndex:  core.AssetIndexService,
 	}, log)
 
-	clipProcessor := pkgffmpeg.New(cfg)
+	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 
 	// YouTube Clip Service

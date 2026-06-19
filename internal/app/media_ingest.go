@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	mediaingestHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	mediaingest "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	imgreg "github.com/Marcuss-ops/PipelineGen/internal/media/images"

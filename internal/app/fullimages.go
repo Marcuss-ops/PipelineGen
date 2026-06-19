@@ -29,7 +29,7 @@ func WireFullImages(
 
 	svc := fullimages.NewService(
 		coreDeps.ImageService,
-		ffmpeg.New(cfg),
+		ffmpeg.NewFromConfig(cfg),
 		coreDeps.MediaStore,
 		cfg.Storage.ImagesPath(),
 		log,

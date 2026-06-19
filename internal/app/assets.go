@@ -4,7 +4,7 @@ import (
 	"go.uber.org/zap"
 
 	"fmt"
-	sourcesHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
