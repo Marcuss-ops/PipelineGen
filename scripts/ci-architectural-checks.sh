@@ -42,7 +42,7 @@ if rg -n 'sql\.Open|db\.QueryRow|db\.ExecContext|db\.QueryContext' internal/api/
   | grep -v 'health.go' \
   | grep -v 'index_health_handler.go'; then
     echo "FAIL: direct database operations found in handlers"
-    echo "Handlers must delegate data access to internal/service/ or internal/repository/."
+    echo "Handlers must delegate data access to internal/service/ or internal/infrastructure/database/sqlite/."
     exit 1
 fi
 echo "  OK: no business logic leaks in handlers"
@@ -131,7 +131,7 @@ if rg -n '"database/sql"' internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v '/common/health\.go' \
   | grep -v '/middleware/middleware_logger\.go'; then
     echo "FAIL: database/sql imported in API layer"
-    echo "Handlers must delegate DB access to internal/repository/ or internal/service/."
+    echo "Handlers must delegate DB access to internal/infrastructure/database/sqlite/ or internal/service/."
     echo "See docs/api-package-boundaries.md."
     exit 1
 fi

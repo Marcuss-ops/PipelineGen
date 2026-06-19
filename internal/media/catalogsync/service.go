@@ -58,8 +58,8 @@ type Service struct {
 	// Initial nil so existing tests (which construct `Service{}` directly
 	// or via NewService without an outbox) keep their legacy behaviour.
 	// Production wiring sets it via SetDispatcher after composeIntegration
-	// creates the Dispatcher. See internal/repository/outbox/dispatcher.go
-	// for the contract.
+	// creates the Dispatcher. See internal/infrastructure/database/sqlite/outbox
+	// (package) for the contract.
 	dispatcher *outbox.Dispatcher
 	mu         sync.Mutex
 }
