@@ -97,7 +97,7 @@ func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
 	}
 	logger.Info("cleared schema_migrations; re-applying all migrations")
 
-	if err := drive.RunMigrationsOnDB(dbPath, logger, migrationsDir); err != nil {
+	if err := storage.RunMigrationsOnDB(dbPath, logger, migrationsDir); err != nil {
 		return fmt.Errorf("RunMigrationsOnDB: %w", err)
 	}
 
