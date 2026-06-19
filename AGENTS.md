@@ -6,6 +6,7 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 ## Documentation Map
 
 - **This file (AGENTS.md)**: Critical rules and instructions for all agents
+- **docs/api-package-boundaries.md**: Target API structure, dependency rules, size limits, migration plan
 - **internal/media/images/GEMINI.md**: Image generation strategy and Go-Python integration
 - **google-accounting/GEMINI.md**: Python automation details and image capture logic
 - **docs/INTELLIGENCE_ROADMAP.md**: Roadmap for advanced AI features and Hybrid Search evolutions
@@ -174,6 +175,7 @@ The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 | `internal/jobs/worker.go` (finalizationCtx, lines ~142-146) | Finalization context for job outcome persistence (30s timeout) — must survive handler timeout so the worker can still mark the job as failed/completed/dead-lettered in the DB. Detached from `jobCtx` by design; detaching from `ctx` (worker lifecycle) would lose the outcome if the worker is shut down mid-job. |
 | `internal/app/init_core.go` | Top-level composition root (no parent context exists) |
 | `internal/api/server.go` | `signal.NotifyContext()` — canonical Go pattern |
+| `internal/api/module_base.go` (line ~105) | Rollback context for module startup failure — must survive parent cancel so Stop() can run |
 | `internal/service/translations/cache.go` | Defensive fallback when parentCtx is nil |
 | `internal/sources/artlist/search_cache.go` | Defensive fallback when parentCtx is nil |
 
@@ -269,11 +271,12 @@ Quando modifichi il codebase, **modularizza**: una decisione per sezione, una mo
 
 ### Pattern 1 — Aggiungere un HTTP handler
 
-1. Crea `internal/api/handlers/<domain>/<file>.go` (un handler per file, non di più).
-2. Definisci request/response types nello stesso file o in `types_<domain>.go` se condivisi.
-3. Registra in `internal/api/routes.go::RegisterRoutes` OPPURE via il modulo in `internal/module/<domain>.go::RegisterRoutes`.
-4. **VIETATO** aggiungere handler a file `god_object.go` esistenti. Se >300 righe, splittalo prima (Pattern 5).
-5. **Mai** chiamare business logic direttamente dal handler — passa per `internal/service/<X>` o `internal/media/<X>`.
+1. Crea `internal/api/<feature>/<file>.go` (un handler per feature, 5-8 file max).
+   Per la struttura target vedi `docs/api-package-boundaries.md`.
+2. Definisci request/response types in `requests.go` / `responses.go` della feature.
+3. Registra via `RegisterRoutes(*gin.RouterGroup)` della feature, chiamato dal modulo in `internal/app/registry.go`.
+4. **VIETATO** aggiungere handler a file `god_object.go` esistenti. Se >30 file in una directory, splitta per capability (Pattern 5).
+5. **Mai** chiamare business logic direttamente dal handler — passa per use case in `internal/application/<feature>/`.
 
 ```go
 // Shape canonica
@@ -313,15 +316,24 @@ func (h *XHandler) NewAction(c *gin.Context) {
 4. **VIETATO** import da `internal/` dentro `pkg/` — `pkg/` è leaf per definizione (vedi ARCHITECTURE §13).
 5. Se la utility sostituisce duplicazione esistente, fai la migration in PR separata per `code-search` agent così individui tutti i call site.
 
-### Pattern 5 — Splittare un god object
+### Pattern 5 — Splittare un package (regola corretta — Giugno 2026 v2)
 
-Quando un file supera ~300-400 righe o ha >2-3 responsabilità distinte:
+**⚠️ Il flattening di Giugno 2026 ha risolto i file enormi ma ha creato un
+mega-package da 153 file in `internal/api/`. La regola corretta è:**
 
-1. Identifica i "tagli naturali" (gruppi di funzioni che condividono uno stato minimo).
-2. Crea un file per **concetto** (es. `voiceover_<feature>.go`, `monitor_<phase>.go`), **non** per tipo.
-3. Condividi lo stato via una struct receiver (es. `Service` con metodi splittati tra file).
-4. Ogni file inizia con section header: `// Package voiceover — split-out file per scene batching` (vedi canonical_pattern in `internal/jobs/types.go` o `internal/media/realtime/*.go`).
-5. Non cambiare la signature pubblica — solo sposta codice.
+1. **Prima dividi per capability stabile**, poi dividi i file all'interno.
+2. Un package API **non deve contenere business orchestration** — solo transport HTTP.
+3. `internal/api/` root deve restare sotto **15 file produttivi**.
+4. Una directory con oltre **30 file produttivi** richiede architecture review.
+5. Oltre **40 file produttivi** il CI deve fallire (salvo allowlist documentata).
+6. Ogni feature API espone al massimo **1 Handler** principale e **1 funzione** di registrazione route.
+7. Le feature API **non possono importarsi tra loro**.
+
+**Struttura target**: vedi `docs/api-package-boundaries.md`.
+
+Vecchia regola (deprecata — portava al mega-package):
+
+> ~~Quando un file supera ~300-400 righe o ha >2-3 responsabilità distinte, crea un file per concetto nello stesso package.~~
 
 Esempi già fatti (stato a Giugno 2026 — numeri verificati via `ls`): channel_monitor (11 file in `internal/media/monitor/`), extractor_process (10), handler_batch_phases (13), clipindexer (6), voiceover (11). **← valori snapshot**: se il numero è cambiato, rifai `ls <dir> | wc -l` per verificarlo; aggiorna qui quando splitti un nuovo file.
 
@@ -377,11 +389,47 @@ Prima di scrivere logica nuova, chiediti: esiste già un servizio per X?
 
 Se l'utility che cerchi **non è nella sezione 🧰 Utilities**: probabilmente devi creare un servizio condiviso in `internal/service/<X>/` PIUTTOSTO che duplicare logica. Una `code-search` veloce (`rg -l "<func_name>"`) conferma se è già implementato altrove.
 
+### Pattern 8 — API package: thin transport only
+
+**Regola**: `internal/api/**` non deve contenere business orchestration.
+
+**Vietato importare in `internal/api/**`:**
+- `database/sql`
+- `internal/repository/` (repository concreti)
+- `google.golang.org/api/drive/v3` (Google Drive SDK)
+- `internal/platform/ffmpeg` (FFmpeg/process execution)
+- `os/exec`
+
+Queste dipendenze devono passare attraverso use case o interfacce definite in
+`internal/core/` o `internal/application/`.
+
+**Shape canonica di un handler HTTP:**
+
+```go
+type Handler struct {
+    generateFromClips GenerateFromClipsUseCase
+    generateImages    GenerateWithImagesUseCase
+    generateBatch     GenerateBatchUseCase
+    curate            CurateUseCase
+}
+
+func (h *Handler) GenerateFromClips(c *gin.Context) {
+    req, ok := apiutil.BindJSON[GenerateFromClipsRequest](c)
+    if !ok { return }
+    result, err := h.generateFromClips.Execute(c.Request.Context(), toCommand(req))
+    if err != nil { apiutil.HandleError(c, err); return }
+    apiutil.OK(c, result)
+}
+```
+
+Documento completo: `docs/api-package-boundaries.md`.
+
 ---
 
 ## File Structure (quick reference)
 
-See `ARCHITECTURE.md` for the full diagram. Quick reference:
+See `ARCHITECTURE.md` for the full diagram and `docs/api-package-boundaries.md` for
+the target API structure. Quick reference:
 
 ```
 .
@@ -389,13 +437,18 @@ See `ARCHITECTURE.md` for the full diagram. Quick reference:
 ├── cmd/admin/main.go         # One-shot admin CLI
 ├── internal/
 │   ├── core/                 # Canonical contracts
-│   ├── api/handlers/         # HTTP handlers
+│   ├── api/                  # HTTP transport (thin — no business logic)
+│   │   ├── server.go
+│   │   ├── routes.go
+│   │   ├── middleware/
+│   │   ├── script/           # Script endpoints (target: 5-8 files)
+│   │   ├── sources/          # Source endpoints (target: 5-8 files)
+│   │   └── <feature>/        # One dir per feature (max 30 files)
 │   ├── app/                  # Composition root, wiring, migrations
-│   ├── service/              # Business logic (scriptcore, gemmamemory, translations)
-│   ├── media/                # Media pipelines (images, voiceover, monitor, semantic, ...)
+│   ├── application/          # Use-case orchestration (new, growing)
+│   ├── media/                # Media pipelines (images, voiceover, monitor, ...)
 │   ├── sources/              # Artlist + YouTube providers
 │   ├── jobs/                 # Job queue + workers
-│   ├── module/               # Registry modules (9 modules)
 │   ├── repository/           # Data access layer (scripts, clips, jobs, ...)
 │   └── storage/              # DB connection config
 ├── pkg/                      # Leaf utilities only
