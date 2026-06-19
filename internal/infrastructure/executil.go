@@ -1,89 +1,38 @@
+// Package process provides a safe process runner that preserves
+// os.Environ(), applies a default timeout, limits stdout/stderr,
+// and redacts tokens and secrets from output.
+//
+// Deprecated: use internal/infrastructure/process instead.
+// This file delegates to the canonical implementation.
 package platform
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"os/exec"
-	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // ExecOptions configures how a command is run.
-type ExecOptions struct {
-	Timeout        time.Duration
-	WorkDir        string
-	Env            []string
-	CombinedOutput bool
-}
+type ExecOptions = process.Options
 
 // Result holds the output from a command execution.
-type Result struct {
-	Stdout string
-	Stderr string
-	Output string // Combined output if CombinedOutput is true
-}
+type Result = process.Result
 
-// DefaultExecOptions returns sensible defaults.
-func DefaultExecOptions() ExecOptions {
-	return ExecOptions{
-		Timeout:        10 * time.Minute,
-		CombinedOutput: true,
-	}
-}
+// Deprecated: use process.DefaultOptions.
+func DefaultExecOptions() ExecOptions { return process.DefaultOptions() }
 
-// Run executes a command with the given options.
-// Uses exec.CommandContext to prevent injection attacks (no shell).
+// Deprecated: use process.Run.
 func Run(ctx context.Context, name string, args []string, opts ExecOptions) (*Result, error) {
-	if opts.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
-		defer cancel()
-	}
-
-	cmd := exec.CommandContext(ctx, name, args...)
-
-	if opts.WorkDir != "" {
-		cmd.Dir = opts.WorkDir
-	}
-	if len(opts.Env) > 0 {
-		cmd.Env = opts.Env
-	}
-
-	result := &Result{}
-
-	if opts.CombinedOutput {
-		out, err := cmd.CombinedOutput()
-		result.Output = string(out)
-		if err != nil {
-			return result, fmt.Errorf("command %s failed: %w (output: %s)", name, err, result.Output)
-		}
-	} else {
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
-		err := cmd.Run()
-		result.Stdout = stdout.String()
-		result.Stderr = stderr.String()
-		if err != nil {
-			return result, fmt.Errorf("command %s failed: %w (stdout: %s, stderr: %s)", name, err, result.Stdout, result.Stderr)
-		}
-	}
-
-	return result, nil
+	return process.Run(ctx, name, args, opts)
 }
 
-// RunSimple is a convenience wrapper around Run with default options.
+// Deprecated: use process.RunSimple.
 func RunSimple(ctx context.Context, name string, args ...string) (*Result, error) {
-	return Run(ctx, name, args, DefaultExecOptions())
+	return process.RunSimple(ctx, name, args...)
 }
 
-// LookPath checks if a command exists in PATH.
-func LookPath(name string) (string, error) {
-	return exec.LookPath(name)
-}
+// Deprecated: use process.LookPath.
+func LookPath(name string) (string, error) { return process.LookPath(name) }
 
-// CommandExists checks if a command exists.
-func CommandExists(name string) bool {
-	_, err := LookPath(name)
-	return err == nil
-}
+// Deprecated: use process.CommandExists.
+func CommandExists(name string) bool { return process.CommandExists(name) }
