@@ -57,6 +57,7 @@ import (
 	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 )
 
 type services struct {
@@ -669,6 +670,11 @@ func composeIntegration(
 
 	assocService := association.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
 		core.ClipsOnlyRepo, core.ClipsOnlyRepo, core.ClipsOnlyRepo, catalogRepo)
+	// PR-D.5.1: inject the canonical Embedder (Python subprocess) so
+	// application/association/embeddings.go no longer shells out directly.
+	embedder := embeddings.NewPythonScriptEmbedder("python3", cfg.Paths.PythonScriptsDir)
+	assocService.SetEmbedder(embedder)
+	log.Info("embedding.Embedder injected into association service (infrastructure/embeddings/python)")
 	if core.VectorSvc != nil {
 		assocService.SetVectorStore(core.VectorSvc)
 		log.Info("vector store wired into association service for hybrid search")
