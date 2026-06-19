@@ -1,61 +1,61 @@
 package app
 
 import (
-	"fmt"
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"path/filepath"
 	"context"
+	"database/sql"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
-	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/monitors"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	gdrive "google.golang.org/api/drive/v3"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
+	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/media/storage"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	"database/sql"
-	"strings"
-	"time"
-	driveapi "google.golang.org/api/drive/v3"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	"os"
-	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+
 	_ "github.com/mattn/go-sqlite3"
+	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 )
 
 // CleanupFunc is returned by initialization functions to handle teardown.
@@ -244,7 +244,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		startJobRunner: func() {
 			if jobs.jobRunner != nil {
 				svcs.jobsDispatcher.Freeze()
-				concurrent.SafeGo("job-runner", func() { jobs.jobRunner.Start(ctx) })
+				pf.SafeGo("job-runner", func() { jobs.jobRunner.Start(ctx) })
 				log.Info("Job runner started after full wiring",
 					zap.Int("workers", cfg.Jobs.MaxParallelPerProject))
 			}
@@ -252,7 +252,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 	}, cleanup, nil
 }
 
-func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *driveapi.Service, cfg *config.Config, log *zap.Logger) {
+func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) {
 	if cfg.Drive.MediaRootFolder == "" || driveClient == nil {
 		return
 	}
@@ -276,7 +276,7 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *dr
 		}
 
 		// 3. Cache in DB to make future startups near-instantaneous
-		now := timeutil.FormatRFC3339(time.Now())
+		now := pf.FormatRFC3339(time.Now())
 		searchKey := strings.ToLower(source + name)
 		searchKey = strings.ReplaceAll(searchKey, " ", "")
 		_, _ = db.ExecContext(ctx, `
@@ -326,7 +326,7 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *dr
 				log.Warn("Failed to create scripts subfolder on Drive", zap.String("name", name), zap.Error(err))
 				return ""
 			}
-			now := timeutil.FormatRFC3339(time.Now())
+			now := pf.FormatRFC3339(time.Now())
 			searchKey := strings.ToLower(source + name)
 			searchKey = strings.ReplaceAll(searchKey, " ", "")
 			_, _ = db.ExecContext(ctx, `INSERT OR IGNORE INTO clip_folders (id, source, source_url, folder_id, folder_path, group_name, created_at, updated_at, search_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -361,7 +361,7 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *dr
 // migrateLegacyScriptDocs moves any Google Docs sitting directly in the Scripts root folder
 // into the Generate subfolder. This is a one-time idempotent migration for docs created
 // before the subfolder split was introduced.
-func migrateLegacyScriptDocs(ctx context.Context, driveClient *driveapi.Service, cfg *config.Config, log *zap.Logger) {
+func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) {
 	rootID := strings.TrimSpace(cfg.Drive.ScriptsRootFolder)
 	targetID := strings.TrimSpace(cfg.Drive.ScriptsGenerateFolder)
 	if rootID == "" || targetID == "" || rootID == targetID || driveClient == nil {

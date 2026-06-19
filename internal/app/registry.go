@@ -46,7 +46,7 @@ import (
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	matchingconfig "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"fmt"
 	sourcespkg "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -561,7 +561,7 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
 	}
 
-	matchingCfg, err := matchingconfig.LoadMatchingConfig("config/matching.yaml")
+	matchingCfg, err := pf.LoadMatchingConfig("config/matching.yaml")
 	if err != nil {
 		log.Warn("failed to load matching config, using defaults", zap.Error(err))
 	}
