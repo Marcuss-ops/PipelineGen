@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // dispatcherTestSchema composes the canonical media_assets CREATE TABLE

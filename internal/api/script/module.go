@@ -5,7 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // NewModule creates the script-flow module for the API registry.

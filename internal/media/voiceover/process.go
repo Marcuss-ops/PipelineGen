@@ -12,10 +12,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/audioasset"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

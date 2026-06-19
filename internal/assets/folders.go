@@ -8,8 +8,8 @@ import (
 
 	
 	
-	sqlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	sqlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func (s *AssetStoreSQLite) UpsertFolder(ctx context.Context, folder *ClipFolder) error {

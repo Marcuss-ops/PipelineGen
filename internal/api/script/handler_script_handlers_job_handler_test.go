@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ── Test A: Research Cache — base get/save ──────────────────────────────

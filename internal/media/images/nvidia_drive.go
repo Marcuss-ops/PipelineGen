@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func (s *Service) SyncAssets() error {

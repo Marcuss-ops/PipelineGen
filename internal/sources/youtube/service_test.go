@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

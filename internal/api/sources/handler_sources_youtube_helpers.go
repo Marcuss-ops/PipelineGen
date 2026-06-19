@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // resolveDownloadedPath finds the actual file yt-dlp wrote, handling

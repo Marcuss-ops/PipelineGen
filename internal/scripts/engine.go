@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	retry "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	retry "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

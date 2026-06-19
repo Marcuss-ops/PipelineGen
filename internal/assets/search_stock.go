@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	
-	sqlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	sqlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // SearchStockByKeywords searches stock clips by keywords using LIKE on the media_assets table.

@@ -10,8 +10,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // GenerateSmartImage generates an AI image exclusively via Google Slides.

@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	ollama "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
+	ollama "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // minimalTestSchema is a minimal subset of the production schema covering

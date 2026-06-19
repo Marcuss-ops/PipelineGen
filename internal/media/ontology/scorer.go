@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // Scorer implements the OntologyScorer interface.

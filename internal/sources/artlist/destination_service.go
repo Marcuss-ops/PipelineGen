@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // DestinationInfo rappresenta una destinazione risolta per i clip

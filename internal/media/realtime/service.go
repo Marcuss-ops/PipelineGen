@@ -7,9 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 )
 
 type EmbeddingClient interface {

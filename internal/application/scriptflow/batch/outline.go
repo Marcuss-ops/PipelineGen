@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 
 	"go.uber.org/zap"
 )

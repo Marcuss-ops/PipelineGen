@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // chapterAnchor creates an HTML anchor from chapter index and title.

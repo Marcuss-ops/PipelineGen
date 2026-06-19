@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	retry "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	retry "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ===== cleanClipName tests =====

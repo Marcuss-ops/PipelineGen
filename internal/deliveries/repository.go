@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // SQLiteRepository persists delivery records in the unified database.

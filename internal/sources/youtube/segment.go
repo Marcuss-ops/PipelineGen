@@ -13,12 +13,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
-	retry "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	retry "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

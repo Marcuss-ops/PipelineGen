@@ -5,7 +5,7 @@ import (
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	artlistService "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 
 	"go.uber.org/zap"

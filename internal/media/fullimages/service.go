@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 // Section describes a single text part for which a video should be generated.

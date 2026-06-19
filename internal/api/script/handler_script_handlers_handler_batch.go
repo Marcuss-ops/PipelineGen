@@ -13,10 +13,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	corid "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	corid "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {

@@ -15,15 +15,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
-	testutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	testutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // artlistTestSchema composes the full canonical media_assets CREATE TABLE

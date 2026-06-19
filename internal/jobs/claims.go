@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ── ClaimNext ───────────────────────────────────────────────────────────

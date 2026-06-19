@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ── Phase: Pipelined Web Search → Chapter Generation ──────────────────────────

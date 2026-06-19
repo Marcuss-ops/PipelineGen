@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {

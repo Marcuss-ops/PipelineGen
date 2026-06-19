@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	similarity "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	similarity "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ── Semantic text builder ──────────────────────────────────────────────

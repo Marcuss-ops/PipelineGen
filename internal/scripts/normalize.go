@@ -6,10 +6,10 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/prompts"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/prompts"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // WordCountBounds returns the acceptable word count range using percentage-based

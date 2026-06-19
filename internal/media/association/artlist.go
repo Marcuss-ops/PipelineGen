@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ArtlistStockAssociation searches in the Artlist clip database using multiple terms.

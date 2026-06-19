@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type ProcessFromDriveRequest struct {

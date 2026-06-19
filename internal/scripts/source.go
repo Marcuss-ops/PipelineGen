@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

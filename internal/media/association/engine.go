@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // SegmentInput provides data for association matching.

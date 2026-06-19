@@ -8,8 +8,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
-	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	translations "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 

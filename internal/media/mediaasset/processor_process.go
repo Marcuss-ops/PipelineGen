@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // processStep normalizes/processes the video if needed.

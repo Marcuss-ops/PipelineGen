@@ -8,8 +8,8 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ScriptEntityImage represents an enriched image for a named entity.

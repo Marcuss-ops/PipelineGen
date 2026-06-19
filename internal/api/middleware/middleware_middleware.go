@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-	corid "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	corid "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

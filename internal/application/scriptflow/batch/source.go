@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type youtubeMetadata struct {

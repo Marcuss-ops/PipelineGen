@@ -9,13 +9,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // uploadAndIndexChunk uploads a rendered chunk to Drive, saves metadata to

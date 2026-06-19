@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 const (

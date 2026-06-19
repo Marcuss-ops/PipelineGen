@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
-	corid "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	corid "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {

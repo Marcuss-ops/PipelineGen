@@ -397,7 +397,7 @@ Se l'utility che cerchi **non è nella sezione 🧰 Utilities**: probabilmente d
 - `database/sql`
 - `internal/repository/` (repository concreti)
 - `google.golang.org/api/drive/v3` (Google Drive SDK)
-- `internal/platform/ffmpeg` (FFmpeg/process execution)
+- `internal/infrastructure/media/ffmpeg` (FFmpeg/process execution)
 - `os/exec`
 
 Queste dipendenze devono passare attraverso use case o interfacce definite in

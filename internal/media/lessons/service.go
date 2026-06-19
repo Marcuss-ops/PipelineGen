@@ -10,11 +10,11 @@ import (
 	"go.uber.org/zap"
 
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // Service provides web lesson generation from source text.

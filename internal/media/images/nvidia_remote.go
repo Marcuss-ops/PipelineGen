@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/platform/googleaccounting"
+	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/googleaccounting"
 )
 
 // RemoteImageJob represents the job status response from the remote image endpoint.

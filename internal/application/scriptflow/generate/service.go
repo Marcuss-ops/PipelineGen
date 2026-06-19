@@ -8,8 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // GenerationService orchestrates script generation (use case layer).

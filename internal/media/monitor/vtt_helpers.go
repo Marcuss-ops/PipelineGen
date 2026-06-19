@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func regexRemoveVTTHeader(content string) string {

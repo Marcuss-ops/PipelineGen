@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func buildAssetID(kind Kind, hash string) string {

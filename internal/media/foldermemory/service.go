@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 type Service struct {

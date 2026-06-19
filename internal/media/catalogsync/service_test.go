@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 const catalogSyncTestSchema = `

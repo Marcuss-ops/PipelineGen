@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

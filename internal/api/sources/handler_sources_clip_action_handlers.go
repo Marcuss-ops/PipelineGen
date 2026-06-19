@@ -14,8 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ReprocessClip reprocesses a clip (download/process/upload).

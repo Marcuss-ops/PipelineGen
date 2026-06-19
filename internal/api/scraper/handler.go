@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type ScraperHandler struct {

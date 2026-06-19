@@ -15,8 +15,8 @@ import (
 	"go.uber.org/zap"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type ImagesHandler struct {

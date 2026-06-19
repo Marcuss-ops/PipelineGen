@@ -7,7 +7,7 @@ import (
 	"image/png"
 	"testing"
 
-	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // Helper to decode dimensions using the same function used in production

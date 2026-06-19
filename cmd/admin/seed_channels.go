@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"go.uber.org/zap"
 )
