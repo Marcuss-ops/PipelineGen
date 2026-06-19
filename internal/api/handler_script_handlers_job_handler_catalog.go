@@ -7,32 +7,12 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
-
-// jobPayloadCatalogScript is the runtime payload for catalog-first script generation.
-// Reuses the same fields as jobPayloadClipScript since the pipeline after clip selection is identical.
-type jobPayloadCatalogScript struct {
-	ClipIDs          []string `json:"clip_ids"`
-	Title            string   `json:"title"`
-	OutputName       string   `json:"output_name"`
-	Language         string   `json:"language"`
-	Tone             string   `json:"tone"`
-	Model            string   `json:"model"`
-	TargetWords      int      `json:"target_words"`
-	Duration         int      `json:"duration"`
-	TranscriptPolicy string   `json:"transcript_policy"`
-	OrderingStrategy string   `json:"ordering_strategy"`
-	CreateDoc        bool     `json:"create_doc"`
-	SaveToDB         bool     `json:"save_to_db"`
-	ForceRefresh     bool     `json:"force_refresh"`
-
-	MinQualityScore    *float64 `json:"min_quality_score,omitempty"`
-	MinTranscriptWords *int     `json:"min_transcript_words,omitempty"`
-}
 
 // HandleCatalogScriptGenerateJob processes a background script.generate_from_catalog job.
 //
@@ -53,7 +33,7 @@ func (h *ScriptFlowHandler) HandleCatalogScriptGenerateJob(ctx context.Context, 
 		return nil, fmt.Errorf("script engine not initialized")
 	}
 
-	var payload jobPayloadCatalogScript
+	var payload curation.JobPayloadCatalogScript
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("failed to parse job payload: %w", err)
 	}

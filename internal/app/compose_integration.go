@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
+	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
@@ -152,6 +153,10 @@ func composeIntegration(
 	// ── Batch Service ───────────────────────────────────────────────────
 	batchSvc := batchpkg.NewBatchService(cfg, log, core.ScriptGen, engine, core.DocClient, mediaDomain.VoiceoverService, mediaDomain.ScriptsRepo)
 	scriptFlowHandler.SetBatchService(batchSvc)
+
+	// ── Curation Service ───────────────────────────────────────────────
+	curationSvc := curationpkg.NewCurationService(nil, jobsService, log)
+	scriptFlowHandler.SetCurationService(curationSvc)
 
 	// ── ClipSourceBuilder (Clip→Script + Catalog→Script) ───────────────
 	wireScriptFlowExtras(scriptFlowHandler, core.OllamaClient, core.VectorSvc, core.ClipsOnlyRepo, engine, cfg, log)

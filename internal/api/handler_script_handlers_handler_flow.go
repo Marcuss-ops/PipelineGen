@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -26,6 +27,7 @@ type ScriptFlowHandler struct {
 	generator         *ollama.Generator
 	engine            *scripts.Engine
 	batchService      *batch.BatchService
+	curationService   *curation.CurationService
 	imgService        *images.Service
 	realtimeSvc       *realtime.Service
 	associationSvc    *association.Service
@@ -177,6 +179,18 @@ func (h *ScriptFlowHandler) SetBatchService(svc *batch.BatchService) {
 	h.batchService = svc
 }
 
+// SetCurationService sets the curation (catalog + curate) service.
+func (h *ScriptFlowHandler) SetCurationService(svc *curation.CurationService) {
+	h.curationService = svc
+}
+
+// SetCurationClipSourceBuilder wires the ClipSourceBuilder into the curation service.
+func (h *ScriptFlowHandler) SetCurationClipSourceBuilder(b *scripts.ClipSourceBuilder) {
+	if h.curationService != nil {
+		h.curationService.SetClipSourceBuilder(b)
+	}
+}
+
 // RegisterRoutes mounts ALL script generation endpoints (full-fat registration).
 //
 // DEPRECATED: PR 2-3 moved generation routes to api/script/handler.go.
@@ -186,8 +200,6 @@ func (h *ScriptFlowHandler) SetBatchService(svc *batch.BatchService) {
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate-batch", h.GenerateBatch)
 	r.GET("/generate-batch/progress", h.GetBatchProgress)
-	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
-	r.POST("/curate", h.Curate)
 	r.GET("/jobs/:job_id", h.GetJobStatus)
 	r.GET("/jobs/:job_id/full", h.GetJobFullStatus)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
@@ -197,17 +209,21 @@ func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 // RegisterRoutesRemaining mounts the non-generation endpoints only.
 // Generation routes (/generate-from-clips, /generate-with-images,
 // /generate-batch) are handled by the thin Handler in api/script/.
+// Curation routes (/generate-from-catalog, /curate) delegate to the
+// CurationService in application/scriptflow/curation/.
 //
 // Active endpoints:
-//   - POST /generate-from-catalog  — catalog query variant
-//   - POST /curate                 — natural-language query → clip compilation
+//   - POST /generate-from-catalog  — catalog query variant (→ curationService)
+//   - POST /curate                 — natural-language query → clip compilation (→ curationService)
 //   - GET  /jobs/:job_id           — job status lookup
 //   - GET  /jobs/:job_id/full      — full job status
 //   - POST /:id/sections/:section_id/regenerate — section regeneration
 //   - POST /cache/evict            — cache eviction
 func (h *ScriptFlowHandler) RegisterRoutesRemaining(r *gin.RouterGroup) {
-	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
-	r.POST("/curate", h.Curate)
+	if h.curationService != nil {
+		r.POST("/generate-from-catalog", h.curationService.GenerateFromCatalog)
+		r.POST("/curate", h.curationService.Curate)
+	}
 	r.GET("/jobs/:job_id", h.GetJobStatus)
 	r.GET("/jobs/:job_id/full", h.GetJobFullStatus)
 	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
