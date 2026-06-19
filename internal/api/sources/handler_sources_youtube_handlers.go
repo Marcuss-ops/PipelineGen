@@ -3,7 +3,6 @@ package sources
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 )
@@ -162,21 +162,21 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 			ytdlpPath := cfg.External.ResolvedYtdlpPath()
 
 			// Check yt-dlp
-			if _, err := exec.LookPath(ytdlpPath); err != nil {
+			if _, err := executil.LookPath(ytdlpPath); err != nil {
 				checks["ytdlp"] = "not_found"
 			} else {
 				checks["ytdlp"] = "ok"
 			}
 
 			// Check ffmpeg
-			if _, err := exec.LookPath("ffmpeg"); err != nil {
+			if _, err := executil.LookPath("ffmpeg"); err != nil {
 				checks["ffmpeg"] = "not_found"
 			} else {
 				checks["ffmpeg"] = "ok"
 			}
 
 			// Check Node.js (for YouTube signature solving)
-			if _, err := exec.LookPath("node"); err != nil {
+			if _, err := executil.LookPath("node"); err != nil {
 				checks["node"] = "not_found"
 			} else {
 				checks["node"] = "ok"

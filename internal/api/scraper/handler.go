@@ -1,12 +1,10 @@
 package scraper
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type ScraperHandler struct {
@@ -98,29 +97,27 @@ func (h *ScraperHandler) Search(c *gin.Context) {
 		"--limit", strconv.Itoa(limit),
 	}
 
-	cmd := exec.CommandContext(ctx, "node", args...)
-	cmd.Dir = scraperDir
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
+	result, err := executil.Run(ctx, "node", args, executil.ExecOptions{
+		WorkDir:        scraperDir,
+		CombinedOutput: false,
+	})
+	if err != nil {
 		resp := searchResponse{
 			OK:        false,
 			Term:      term,
 			Error:     err.Error(),
-			RawStderr: strings.TrimSpace(stderr.String()),
+			RawStderr: strings.TrimSpace(result.Stderr),
 		}
 		c.JSON(http.StatusInternalServerError, resp)
 		return
 	}
 
 	var payload searchResponse
-	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+	if err := json.Unmarshal([]byte(result.Stdout), &payload); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"ok":    false,
 			"error": fmt.Sprintf("failed to decode scraper response: %v", err),
-			"raw":   stdout.String(),
+			"raw":   result.Stdout,
 		})
 		return
 	}

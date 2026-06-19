@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -155,30 +154,17 @@ func TestResearchCacheTimeout(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	// exec.CommandContext with a cancelled context must fail immediately on Start
-	cmd := exec.CommandContext(ctx, "python3", "--version")
-	// StdoutPipe is called before Start, must succeed even with cancelled context
-	_, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatalf("StdoutPipe failed: %v", err)
+	// executil.Run with a cancelled context must fail immediately
+	_, err1 := concurrent.Run(ctx, "python3", []string{"--version"}, concurrent.DefaultExecOptions())
+	if err1 == nil {
+		t.Fatal("expected error from cancelled context, got nil")
 	}
-	// Start must fail because context is already cancelled
-	err = cmd.Start()
-	if err == nil {
-		// If Start somehow succeeds, Wait should return the context error
-		waitErr := cmd.Wait()
-		if waitErr == nil || !errors.Is(waitErr, context.Canceled) {
-			cmd.Process.Kill()
-			t.Fatalf("expected context.Canceled from Wait, got: %v", waitErr)
+	if !errors.Is(err1, context.Canceled) {
+		// executil wraps errors, so check for Canceled anywhere in the chain
+		if !errors.Is(err1, context.DeadlineExceeded) {
+			t.Logf("executil with cancelled context failed with: %v (not Canceled but expected)", err1)
 		}
-		t.Logf("exec.CommandContext correctly failed with Canceled on Wait")
-		return
 	}
-	// Start() failed because context is cancelled — this is also valid
-	if !errors.Is(err, context.Canceled) {
-		t.Logf("Start() failed with: %v (not Canceled but still expected)", err)
-	}
-	t.Logf("exec.CommandContext with cancelled context correctly handled: %v", err)
 }
 
 // ── Test F: Segmentazione — word count per scena 35-75 ──────────────────

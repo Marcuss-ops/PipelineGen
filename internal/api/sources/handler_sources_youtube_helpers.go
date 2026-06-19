@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
+
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // resolveDownloadedPath finds the actual file yt-dlp wrote, handling
@@ -59,10 +60,9 @@ func cutVideoSegment(inputPath, outputPath string, startSec, endSec float64) err
 		"-avoid_negative_ts", "make_zero",
 		outputPath,
 	}
-	cmd := exec.Command("ffmpeg", args...)
-	output, err := cmd.CombinedOutput()
+	result, err := executil.Run(context.Background(), "ffmpeg", args, executil.DefaultExecOptions())
 	if err != nil {
-		return fmt.Errorf("ffmpeg cut failed: %w, output: %s", err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("ffmpeg cut failed: %w, output: %s", err, strings.TrimSpace(result.Output))
 	}
 	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
@@ -81,22 +81,22 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 	tempWav := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.wav", time.Now().UnixNano()))
 	tempFile := filepath.Join(tempDir, fmt.Sprintf("sfx_raw_%d.mp3", time.Now().UnixNano()))
 
-	synthCmd := exec.CommandContext(ctx, "python3", "scripts/synth_sfx.py",
+	result, err := executil.Run(ctx, "python3", []string{"scripts/synth_sfx.py",
 		"--name", name,
 		"--duration", fmt.Sprintf("%f", duration),
 		"--output", tempWav,
-	)
-	if out, err := synthCmd.CombinedOutput(); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("python synth failed: %w, output: %s", err, string(out)))
+	}, executil.DefaultExecOptions())
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("python synth failed: %w, output: %s", err, result.Output))
 		return
 	}
 	defer os.Remove(tempWav)
 
-	ffmpegCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", tempWav,
+	result, err = executil.Run(ctx, "ffmpeg", []string{"-y", "-i", tempWav,
 		"-acodec", "libmp3lame", tempFile,
-	)
-	if out, err := ffmpegCmd.CombinedOutput(); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("ffmpeg conversion failed: %w, output: %s", err, string(out)))
+	}, executil.DefaultExecOptions())
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("ffmpeg conversion failed: %w, output: %s", err, result.Output))
 		return
 	}
 	defer os.Remove(tempFile)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -381,10 +380,9 @@ func probeMediaInfo(ctx context.Context, localPath string) int {
 
 // execCmd runs a command and returns stdout as a string.
 func execCmd(ctx context.Context, name string, args []string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	output, err := cmd.Output()
+	result, err := concurrent.RunSimple(ctx, name, args...)
 	if err != nil {
 		return "", err
 	}
-	return string(output), nil
+	return strings.TrimSpace(result.Output), nil
 }
