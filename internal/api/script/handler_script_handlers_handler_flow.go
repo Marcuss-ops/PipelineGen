@@ -9,6 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -264,7 +265,11 @@ func (h *ScriptFlowHandler) ResolveDriveFolderID(ctx context.Context, input, def
 	return h.resolveDriveFolderID(ctx, input, defaultRootID)
 }
 
-// MaybeCreateGoogleDoc delegates to the unexported doc creator used by job services.
+// MaybeCreateGoogleDoc creates a Google Doc via the documents service.
 func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, content, folderID string, createDoc bool) (string, string) {
-	return h.maybeCreateGoogleDoc(ctx, title, content, folderID, createDoc)
+	if !createDoc {
+		return "", ""
+	}
+	docsSvc := documents.NewService(h.docClient, h.log, h.driveFolderID)
+	return docsSvc.CreateDoc(ctx, title, content, h.resolveDriveFolderID, folderID)
 }

@@ -2,7 +2,6 @@ package generate
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -149,8 +148,8 @@ func validateGeneration(spec *scriptjobs.GenerationSpec) error {
 	return nil
 }
 
-// enqueue builds the GeneratePayload, converts it to the job system's
-// map[string]any format, and enqueues the script.generate_from_clips job.
+// enqueue builds the GeneratePayload and enqueues the
+// script.generate_from_clips job with the typed payload.
 func (s *GenerationService) enqueue(
 	ctx context.Context,
 	spec scriptjobs.GenerationSpec,
@@ -162,10 +161,6 @@ func (s *GenerationService) enqueue(
 	}
 
 	payload := scriptjobs.NewGeneratePayload(preset, spec)
-	payloadMap, err := toMap(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize payload: %w", err)
-	}
 
 	mode := "text-only"
 	if spec.HasClips() {
@@ -185,7 +180,7 @@ func (s *GenerationService) enqueue(
 
 	job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
 		Type:       scriptjobs.JobTypeGenerateFromClips,
-		Payload:    payloadMap,
+		Payload:    payload,
 		MaxRetries: 2,
 	})
 	if err != nil {
@@ -204,21 +199,6 @@ func (s *GenerationService) enqueue(
 		Status:    string(job.Status),
 		ClipCount: clipCount,
 	}, nil
-}
-
-// toMap converts a typed value to map[string]any via JSON round-trip.
-// Used to bridge the typed GenerationSpec contract with the job system's
-// map[string]any Payload field.
-func toMap(v interface{}) (map[string]any, error) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
