@@ -3,20 +3,20 @@ package realtime
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler is the thin HTTP transport for realtime endpoints.
+// It wraps the MatchHandler implementation that lives in impl.go (same package).
 type Handler struct {
-	inner *api.MatchHandler
+	inner *MatchHandler
 }
 
-// NewHandler creates a new realtime Handler.
-func NewHandler(inner *api.MatchHandler) *Handler {
+// NewHandler creates a new realtime Handler wrapping the MatchHandler impl.
+func NewHandler(inner *MatchHandler) *Handler {
 	return &Handler{inner: inner}
 }
 
-// RegisterRoutes delegates to the inner handler.
+// RegisterRoutes delegates to the inner MatchHandler implementation.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	if h.inner == nil {
 		return

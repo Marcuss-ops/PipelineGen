@@ -52,7 +52,7 @@ func WireStockPipeline(
 
 	handler := sources.NewStockHandler(svc, coreDeps.JobsService, log)
 
-	mod := module.NewStockPipelineModule(cfg, log, handler)
+	mod := sources.NewStockPipelineModule(cfg, log, handler)
 
 	svc.RegisterHandler(coreDeps.JobsService)
 
