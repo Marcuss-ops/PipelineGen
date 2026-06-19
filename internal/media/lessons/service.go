@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // Service provides web lesson generation from source text.

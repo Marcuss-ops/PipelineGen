@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

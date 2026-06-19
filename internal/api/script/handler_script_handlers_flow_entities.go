@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
-	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // EntityScriptExtractor extracts entities from a script.

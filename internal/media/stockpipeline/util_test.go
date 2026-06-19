@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ===== Utility function tests =====

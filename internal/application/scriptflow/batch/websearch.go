@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
 )

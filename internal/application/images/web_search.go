@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // SearchWebImage searches for a real image matching the prompt via DuckDuckGo,

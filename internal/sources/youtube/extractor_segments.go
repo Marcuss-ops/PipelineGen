@@ -12,8 +12,8 @@ import (
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

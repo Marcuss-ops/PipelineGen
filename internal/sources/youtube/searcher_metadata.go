@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *GenerateBatchRequest, onProgress func(int, string)) (BatchGenerateResponse, error) {

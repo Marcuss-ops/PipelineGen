@@ -14,8 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // uploadAndIndexChunk uploads a rendered chunk to Drive, saves metadata to

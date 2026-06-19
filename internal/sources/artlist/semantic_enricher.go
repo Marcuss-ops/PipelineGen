@@ -18,8 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 var enrichMetaMu sync.Mutex

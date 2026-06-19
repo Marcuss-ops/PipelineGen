@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type assetSearchTarget struct {

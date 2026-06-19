@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Curate runs the full media curation pipeline:

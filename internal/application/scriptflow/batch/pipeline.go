@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Phase: Pipelined Web Search → Chapter Generation ──────────────────────────

@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // LessonsHandler exposes lesson generation endpoints.

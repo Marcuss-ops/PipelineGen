@@ -2,9 +2,13 @@
 package textutil
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -314,4 +318,99 @@ func Float64To32(in []float64) []float32 {
 		out[i] = float32(v)
 	}
 	return out
+}
+
+var (
+	stopwordsMap  map[string]bool
+	stopwordsOnce sync.Once
+)
+
+func ensureStopwords() {
+	stopwordsOnce.Do(func() {
+		stopwordsMap = make(map[string]bool)
+		loadStopwordsFromDir("config/stopwords")
+	})
+}
+
+func loadStopwordsFromDir(dir string) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, file := range files {
+		if file.IsDir() || filepath.Ext(file.Name()) != ".txt" {
+			continue
+		}
+		path := filepath.Join(dir, file.Name())
+		loadStopwordsFile(path)
+	}
+}
+
+func loadStopwordsFile(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		word := strings.TrimSpace(scanner.Text())
+		if word != "" && !strings.HasPrefix(word, "#") {
+			stopwordsMap[strings.ToLower(word)] = true
+		}
+	}
+}
+
+// IsStopWord checks if a term is a common stop word loaded from config files.
+func IsStopWord(term string) bool {
+	ensureStopwords()
+	return stopwordsMap[strings.ToLower(term)]
+}
+
+// TokenizeWithStopWords removes stop words from tokenization.
+func TokenizeWithStopWords(text string) []string {
+	tokens := Tokenize(text)
+	result := make([]string, 0, len(tokens))
+	for _, tok := range tokens {
+		if len(tok) >= 3 && !IsStopWord(tok) {
+			result = append(result, tok)
+		}
+	}
+	return result
+}
+
+// UniqueStringsVar returns a deduplicated slice preserving first-occurrence order.
+func UniqueStringsVar(items ...string) []string {
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key := strings.ToLower(item)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+// LangFullName returns the full language name for a language code.
+func LangFullName(code string) string {
+	names := map[string]string{
+		"it": "Italian", "es": "Spanish", "fr": "French", "de": "German",
+		"pt": "Portuguese", "nl": "Dutch", "pl": "Polish", "ru": "Russian",
+		"ja": "Japanese", "zh": "Chinese", "ko": "Korean", "ar": "Arabic",
+		"hi": "Hindi", "tr": "Turkish", "sv": "Swedish", "da": "Danish",
+		"fi": "Finnish", "no": "Norwegian", "cs": "Czech", "ro": "Romanian",
+		"hu": "Hungarian", "el": "Greek", "he": "Hebrew", "th": "Thai",
+		"vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
+	}
+	if name, ok := names[code]; ok {
+		return name
+	}
+	return code
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) materializeImage(sourcePath, filename string, req *Request) (string, string, func(), error) {

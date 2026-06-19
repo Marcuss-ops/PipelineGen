@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // ChannelsRepository handles persistence for categoryâ†”channel associations.

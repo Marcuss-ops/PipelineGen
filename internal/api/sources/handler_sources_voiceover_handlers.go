@@ -13,7 +13,7 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // VoiceoverHandler is the unified handler for all voiceover operations:

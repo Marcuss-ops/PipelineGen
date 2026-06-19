@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // BuildMetadataLanguages builds the list of languages for metadata generation.

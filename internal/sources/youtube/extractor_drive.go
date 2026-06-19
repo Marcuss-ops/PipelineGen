@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
 	"go.uber.org/zap"
 )

@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	corid "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 

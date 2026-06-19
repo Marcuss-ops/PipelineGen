@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

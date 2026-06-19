@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )

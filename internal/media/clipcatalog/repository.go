@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	sqlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // Repository handles database operations for clip metadata

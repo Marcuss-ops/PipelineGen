@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // UpsertAsset indexes a single asset as a point with named vectors.

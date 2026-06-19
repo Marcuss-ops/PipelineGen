@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
-	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 // ── ScriptInsightBuilder ──────────────────────────────────────────────────────

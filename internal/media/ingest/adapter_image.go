@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	imagerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type imageStoreAdapter struct {

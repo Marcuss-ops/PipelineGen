@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ── Semantic field derivation ──────────────────────────────────────────────

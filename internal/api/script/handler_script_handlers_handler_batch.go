@@ -15,8 +15,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	corid "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {

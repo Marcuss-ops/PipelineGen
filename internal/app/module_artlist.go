@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
@@ -94,7 +93,7 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	if coreDeps.JobsService != nil {
 		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
 	}
-	matchingCfg, err := pf.LoadMatchingConfig("config/matching.yaml")
+	matchingCfg, err := config.LoadMatchingConfig("config/matching.yaml")
 	if err != nil {
 		log.Warn("failed to load matching config, using defaults", zap.Error(err))
 	}

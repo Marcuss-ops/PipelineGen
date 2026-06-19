@@ -14,7 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	process "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // UploadVideoClipResponse is returned after a successful video upload.
@@ -383,7 +384,7 @@ func probeMediaInfo(ctx context.Context, localPath string) int {
 
 // execCmd runs a command and returns stdout as a string.
 func execCmd(ctx context.Context, name string, args []string) (string, error) {
-	result, err := concurrent.RunSimple(ctx, name, args...)
+	result, err := process.RunSimple(ctx, name, args...)
 	if err != nil {
 		return "", err
 	}

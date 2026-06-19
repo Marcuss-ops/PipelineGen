@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
@@ -84,7 +84,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		"--name", name,
 		"--duration", fmt.Sprintf("%f", duration),
 		"--output", tempWav,
-	}, executil.DefaultExecOptions())
+	}, executil.DefaultOptions())
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("python synth failed: %w, output: %s", err, result.Output))
 		return
@@ -93,7 +93,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 
 	result, err = executil.Run(ctx, "ffmpeg", []string{"-y", "-i", tempWav,
 		"-acodec", "libmp3lame", tempFile,
-	}, executil.DefaultExecOptions())
+	}, executil.DefaultOptions())
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("ffmpeg conversion failed: %w, output: %s", err, result.Output))
 		return

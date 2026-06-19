@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // ErrOptimisticLockFailed is returned by Transition when the optimistic-lock

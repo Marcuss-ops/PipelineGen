@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 type youtubeMetadata struct {

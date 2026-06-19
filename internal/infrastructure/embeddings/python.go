@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
-	platform "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	process "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // PythonScriptEmbedder generates embeddings by shelling out to a Python
@@ -32,14 +32,14 @@ import (
 // Future: spawn a long-running sidecar server (HTTPEmbedder) instead
 // of per-call subprocess startup, which costs ~1s on every call.
 //
-// Security: invocations go through platform.Run (which uses
+// Security: invocations go through process.Run (which uses
 // exec.CommandContext with no shell) per AGENTS.md 🧰 utilities —
 // Direct shell invocation via -c $cmd would be an injection risk and
 // is explicitly forbidden.
 type PythonScriptEmbedder struct {
 	pythonBin  string
 	scriptPath string
-	opts       platform.ExecOptions
+	opts       process.Options
 }
 
 // NewPythonScriptEmbedder creates an Embedder that runs
@@ -53,7 +53,7 @@ func NewPythonScriptEmbedder(pythonBin, scriptsDir string) coreembedding.Embedde
 	return &PythonScriptEmbedder{
 		pythonBin:  pythonBin,
 		scriptPath: filepath.Join(scriptsDir, "bridges", "generate_embedding.py"),
-		opts:       platform.DefaultExecOptions(),
+		opts:       process.DefaultOptions(),
 	}
 }
 
@@ -66,7 +66,7 @@ func (e *PythonScriptEmbedder) Embed(ctx context.Context, text string) ([]float3
 		return nil, nil
 	}
 
-	result, err := platform.Run(ctx, e.pythonBin,
+	result, err := process.Run(ctx, e.pythonBin,
 		[]string{e.scriptPath, "--text", text},
 		e.opts,
 	)

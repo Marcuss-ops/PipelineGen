@@ -12,11 +12,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

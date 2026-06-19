@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // sceneCountWithKind counts how many ClipScenes have a matching Kind value.

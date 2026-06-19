@@ -10,9 +10,9 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
 	"go.uber.org/zap"
 )

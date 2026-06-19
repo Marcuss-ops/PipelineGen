@@ -3,7 +3,7 @@ package common
 import (
 	"net/http"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/gin-gonic/gin"
 )

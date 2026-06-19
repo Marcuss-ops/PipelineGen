@@ -2,7 +2,7 @@ package association
 
 import (
 	"strings"
-	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 
 type CandidatesRequest struct {

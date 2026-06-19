@@ -26,3 +26,9 @@ func Bool(v bool) *bool {
 func Str(v string) *string {
 	return &v
 }
+
+// BoolDefault returns the value of a *bool or def if nil.
+func BoolDefault(v *bool, def bool) bool {
+	return DerefOr(v, def)
+}
+

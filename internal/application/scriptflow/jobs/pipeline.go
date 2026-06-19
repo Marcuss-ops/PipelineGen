@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Pipeline ────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ package client
 import (
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func tokenSet(text string) map[string]struct{} {

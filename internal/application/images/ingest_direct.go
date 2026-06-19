@@ -13,8 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*media.ImageAsset, error) {
