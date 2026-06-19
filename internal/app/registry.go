@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"time"
 	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
@@ -1252,9 +1253,10 @@ func buildSyncTargets(
 
 	return targets
 }
-// YouTubeClipWiring holds the YouTube Clip module wiring
+// YouTubeClipWiring holds the YouTube Clip module wiring.
+// Handler uses the new youtube subpackage type (PR-A Phase 2).
 type YouTubeClipWiring struct {
-	Handler *sources.YouTubeClipHandler
+	Handler *ytsources.YouTubeClipHandler
 	Module  module.Module
 	Service *youtube.Service
 }
@@ -1265,7 +1267,7 @@ func WireYouTubeClip(
 	log *zap.Logger,
 	coreDeps *CoreDeps,
 ) (*YouTubeClipWiring, error) {
-	handler := sources.NewYouTubeClipHandler(coreDeps.YoutubeClipService, log, coreDeps.JobsService)
+	handler := ytsources.NewYouTubeClipHandler(coreDeps.YoutubeClipService, log, coreDeps.JobsService)
 
 	var mod module.Module
 	if coreDeps.YoutubeClipService != nil {

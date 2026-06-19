@@ -1,4 +1,12 @@
-package sources
+// Package youtube hosts the HTTP handlers for the YouTube clip download,
+// info, extract, search, and diagnostics endpoints. Split out from the
+// legacy flat internal/api/sources/ package as part of PR-A to keep the
+// YouTube transport isolated from the rest of the SourcesHandler.
+//
+// All handlers share the same SetClipsRepo(...) injection pattern as the
+// legacy file: the clip-repository is wired in from the registry after
+// the handler is constructed.
+package youtube
 
 import (
 	"encoding/json"
@@ -8,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -15,6 +24,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 )
 
+// YouTubeClipHandler owns the HTTP transport for YouTube clip operations:
+// download, info, advanced search, diagnostics, and stats. Construction
+// mirrors the legacy api/sources package, but lives here (in package
+// youtube) so sub-handlers can be tested in isolation.
 type YouTubeClipHandler struct {
 	service   *youtube.Service
 	log       *zap.Logger
@@ -22,6 +35,11 @@ type YouTubeClipHandler struct {
 	clipsRepo *clips.Repository
 }
 
+// NewYouTubeClipHandler builds the YouTubeClipHandler.
+//
+//		service - YouTube service used by this handler.
+//		log     - zap logger for diagnostics.
+//		jobsSvc - job system used by the async extract endpoint.
 func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service: service,
@@ -35,6 +53,8 @@ func (h *YouTubeClipHandler) SetClipsRepo(repo *clips.Repository) {
 	h.clipsRepo = repo
 }
 
+// RegisterRoutes wires the YouTube clip endpoints onto the supplied
+// gin router group. Mounts on /api/media/clips/* in production.
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Extract)
 	r.GET("/info", h.GetVideoInfo)
@@ -44,15 +64,17 @@ func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/stats", h.Stats)
 }
 
+// SearchTopics topic-search endpoint, kept for backward compatibility
+// (deprecated in favor of YouTubeClipHandler.SearchAdvanced).
 func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 	var req youtube.TopicSearchRequest
 	if err := c.ShouldBind(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		internal.APIUtil.BadRequest(c, err.Error())
 		return
 	}
 
 	if req.Q == "" {
-		apiutil.BadRequest(c, "q parameter is required")
+		internal.APIUtil.BadRequest(c, "q parameter is required")
 		return
 	}
 	if req.Limit <= 0 {
@@ -64,45 +86,45 @@ func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 
 	resp, err := h.service.SearchTopicVideos(c.Request.Context(), req.Q, req.Limit, req.Sort)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		internal.APIUtil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, resp)
+	internal.APIUtil.OK(c, resp)
 }
 
+// GetVideoInfo returns metadata for a single YouTube URL.
 func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 	url := c.Query("url")
 	if url == "" {
-		apiutil.BadRequest(c, "url parameter is required")
+		internal.APIUtil.BadRequest(c, "url parameter is required")
 		return
 	}
 
 	metadata, err := h.service.GetVideoInfo(c.Request.Context(), url)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		internal.APIUtil.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, metadata)
+	internal.APIUtil.OK(c, metadata)
 }
 
+// Extract enqueues a YouTube clip extraction job. When Destination.Group
+// is set the caller's root folder is rewritten to a per-group channel
+// subfolder so clips land in Root/<Group>/video-title/.
 func (h *YouTubeClipHandler) Extract(c *gin.Context) {
-	req, ok := bindJSON[youtube.ExtractRequest](c)
+	req, ok := internal.BindJSON[youtube.ExtractRequest](c)
 	if !ok {
 		return
 	}
 
 	// ── Pre-resolve per-Group (channel) Drive subfolder ──────────────
-	// When the caller provides a root folder_id and a group name
-	// (e.g. folder_id="ComedyRoot", group="AmeliaDimoldenberg"), look up
-	// or create the channel subfolder and use its ID instead of the root.
-	// This ensures clips go into Root/AmeliaDimoldenberg/video-title/
-	// instead of flat Root/video-title/.
-	//
-	// This only runs in the HTTP handler path (direct API calls).
-	// The monitor pre-resolves separately in downloadClip() before
-	// calling Extract directly on the service.
+	// When the caller provides a root folder_id and a group name,
+	// look up or create the channel subfolder and use its ID instead
+	// of the root. This only runs in the HTTP handler path (direct API
+	// calls). The monitor pre-resolves separately in downloadClip()
+	// before calling Extract directly on the YouTube service.
 	if req.Destination != nil && req.Destination.FolderID != "" && req.Destination.Group != "" {
 		channelFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), req.Destination.Group, req.Destination.FolderID)
 		if err == nil && channelFolderID != req.Destination.FolderID {
@@ -117,12 +139,12 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 	if h.jobsSvc != nil {
 		payloadBytes, err := json.Marshal(req)
 		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+			internal.APIUtil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
 			return
 		}
 		var payloadMap map[string]any
 		if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
+			internal.APIUtil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
 			return
 		}
 
@@ -131,11 +153,11 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 			Payload: payloadMap,
 		})
 		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+			internal.APIUtil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 			return
 		}
 
-		apiutil.OK(c, gin.H{
+		internal.APIUtil.OK(c, gin.H{
 			"job_id":     job.ID,
 			"message":    "YouTube clip extraction job enqueued",
 			"status_url": "/api/jobs/" + job.ID + "/full",
@@ -143,7 +165,7 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		return
 	}
 
-	apiutil.InternalError(c, fmt.Errorf("jobs service not available"))
+	internal.APIUtil.InternalError(c, fmt.Errorf("jobs service not available"))
 }
 
 // Diagnostics returns YouTube clip module health and dependency status.
@@ -203,7 +225,7 @@ func (h *YouTubeClipHandler) Diagnostics(c *gin.Context) {
 		}
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     serviceAvailable && jobsAvailable,
 		"checks": checks,
 	})
@@ -230,7 +252,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		req.SortAsc = c.Query("sort_asc") == "true"
 	} else {
 		if err := c.ShouldBindJSON(&req); err != nil {
-			apiutil.BadRequest(c, err.Error())
+			internal.APIUtil.BadRequest(c, err.Error())
 			return
 		}
 	}
@@ -263,7 +285,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		allClips = allClips[:req.Limit]
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":    true,
 		"count": len(allClips),
 		"total": total,
@@ -289,14 +311,16 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 		totalClips += count
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":        true,
 		"total":     totalClips,
 		"by_source": stats,
 	})
 }
 
-// getAllClipRepos returns all available clip repositories.
+// getAllClipRepos returns all available clip repositories keyed by source.
+// Currently only YouTube has a registered clips repo; other sources can be
+// added here once their repo wiring is migrated.
 func (h *YouTubeClipHandler) getAllClipRepos() map[string]*clips.Repository {
 	repos := make(map[string]*clips.Repository)
 	if h.clipsRepo != nil {
