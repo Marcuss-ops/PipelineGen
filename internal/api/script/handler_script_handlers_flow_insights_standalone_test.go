@@ -10,9 +10,9 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"go.uber.org/zap"
 )
 

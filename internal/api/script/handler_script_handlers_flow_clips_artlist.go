@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
