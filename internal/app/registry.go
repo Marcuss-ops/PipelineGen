@@ -7,6 +7,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	booksapi "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
+	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	lessonsapi "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
@@ -89,6 +90,9 @@ func WireRegistry(
 
 		batchSvc := batchpkg.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, coreDeps.ScriptsRepo)
 		handler.SetBatchService(batchSvc)
+
+		curationSvc := curationpkg.NewCurationService(nil, coreDeps.JobsService, log)
+		handler.SetCurationService(curationSvc)
 
 		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore,
 			coreDeps.ClipsRepo, engine, cfg, log)

@@ -53,6 +53,11 @@ func wireScriptFlowExtras(
 	handler.SetClipSourceBuilder(clipSourceBuilder)
 	log.Info("clip source builder initialized for Clip→Script and Catalog→Script generation")
 
+	// Wire ClipSourceBuilder into the curation service for GenerateFromCatalog endpoint.
+	// The CurationService is created before wireScriptFlowExtras with nil ClipSourceBuilder
+	// (late-binding pattern — same as how it's done on ScriptFlowHandler).
+	handler.SetCurationClipSourceBuilder(clipSourceBuilder)
+
 	if (vectorStore != nil || clipsOnlyRepo != nil) && engine != nil {
 		embedderURL := cfg.ClipIndexer.ServerURL
 		mediaCurator := mediacurator.NewService(vectorStore, embedderURL, clipsOnlyRepo, clipSourceBuilder, engine, log)

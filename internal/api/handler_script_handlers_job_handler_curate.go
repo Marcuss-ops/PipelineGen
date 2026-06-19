@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
@@ -33,7 +34,7 @@ func (h *ScriptFlowHandler) HandleCurateJob(ctx context.Context, job *jobservice
 		return nil, fmt.Errorf("media curator not initialized")
 	}
 
-	var payload jobPayloadCurate
+	var payload curation.JobPayloadCurate
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("failed to parse job payload: %w", err)
 	}
