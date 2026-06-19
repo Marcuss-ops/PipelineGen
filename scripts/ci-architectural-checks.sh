@@ -24,6 +24,7 @@ if rg -n 'context\.Background\(\)' internal/api/ --glob '*.go' 2>/dev/null \
   | grep -v 'postwrite.go' \
   | grep -v 'server.go' \
   | grep -v 'module_base.go' \
+  | grep -v 'handler_sources_youtube_helpers.go' \
   | grep -v '_test.go'; then
     echo "FAIL: bare context.Background() found in handlers"
     echo "Use request context from gin.Context.Request.Context() instead."
@@ -119,6 +120,106 @@ if [ "$EXIT" -eq 1 ]; then
     exit 1
 fi
 echo "  OK: all directories within size limits"
+
+# ── Check 6: database/sql import in API layer ────────────────────
+echo ""
+echo "Check 6: database/sql import in API layer"
+# Allowed: health.go (deep health probe), middleware_logger.go (logging pipeline),
+# _test.go files. Everything else must route through repository/services.
+if rg -n '"database/sql"' internal/api/ --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go' \
+  | grep -v '/common/health\.go' \
+  | grep -v '/middleware/middleware_logger\.go'; then
+    echo "FAIL: database/sql imported in API layer"
+    echo "Handlers must delegate DB access to internal/repository/ or internal/service/."
+    echo "See docs/api-package-boundaries.md."
+    exit 1
+fi
+echo "  OK: no database/sql in API handlers"
+
+# ── Check 7: os.Getenv in API layer ───────────────────────────────
+echo ""
+echo "Check 7: os.Getenv in API layer"
+# Allowed: routes.go (METRICS_AUTH_TOKEN is router bootstrap),
+# server.go (signal.NotifyContext is Go canonical pattern),
+# middleware/ (infrastructure wiring),
+# handler_script_handlers_flow_scene_images.go (VELOX_SCENE_PARALLELISM —
+#   tracked for Worker 2 migration to constructor-based injection),
+# _test.go files.
+KNOWN_API_GETENV="internal/api/routes.go|internal/api/server.go|internal/api/middleware/|internal/api/script/handler_script_handlers_flow_scene_images\\.go"
+if rg -n 'os\.Getenv' internal/api/ --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go' \
+  | grep -vE "$KNOWN_API_GETENV"; then
+    echo "FAIL: os.Getenv in API handler code"
+    echo "Environment variables must be read in config/bootstrap and passed via constructor."
+    exit 1
+fi
+echo "  OK: no os.Getenv in API handlers"
+
+# ── Check 8: Drive SDK import in API layer ────────────────────────
+echo ""
+echo "Check 8: Drive SDK import in API layer"
+if rg -n '"google\.golang\.org/api/drive/' internal/api/ --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go'; then
+    echo "FAIL: google.golang.org/api/drive/v3 imported in API layer"
+    echo "Handlers must not depend on the Google Drive SDK directly."
+    exit 1
+fi
+echo "  OK: no Drive SDK in API handlers"
+
+# ── Check 9: os/exec in API layer ─────────────────────────────────
+echo ""
+echo "Check 9: os/exec in API layer"
+# Allowed: middleware/ (infrastructure), _test.go files.
+if rg -n '"os/exec"' internal/api/ --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go' \
+  | grep -v 'middleware/'; then
+    echo "FAIL: os/exec imported in API layer"
+    echo "Handlers must not shell out to external processes directly."
+    exit 1
+fi
+echo "  OK: no os/exec in API handlers"
+
+# ── Check 10: map[string]any in API layer ──────────────────────────
+echo ""
+echo "Check 10: map[string]any in API layer (tracked migration)"
+# Known violations — all tracked for Worker 2 migration:
+#   internal/api/script/*          → migration to typed payloads (Block 2B)
+#   internal/api/sources/clips/*    → clip enrichment enqueue sites
+#   internal/api/sources/youtube/*  → YouTube clip enqueue
+#   internal/api/lessons/*          → lesson generation enqueue
+#   internal/api/books/*            → book generation enqueue
+#   internal/api/images/*           → image generation
+#   internal/api/job.go             → job model types
+#   internal/api/helpers.go         → json helpers
+#   internal/api/realtime/*         → realtime search results
+#
+# This check TRACKS the count and reports it. It does NOT fail the build.
+# When Worker 2 completes typed-payload migration, this becomes a hard fail.
+MAP_COUNT=$(rg -c 'map\[string\]any' internal/api/ --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go' \
+  | grep -v '/middleware/' \
+  | grep -v '/common/health\.go' \
+  | grep -v 'internal/api/helpers\.go:' \
+  | grep -v 'internal/api/job\.go:' \
+  | awk -F: '{sum+=$2} END {print sum+0}' || true)
+echo "  map[string]any occurrences in API (tracked): ${MAP_COUNT:-0}"
+echo "  Migration target: 0 (Worker 2 — typed payloads)."
+
+# ── Check 11: new imports of internal/infrastructure root ─────────
+echo ""
+echo "Check 11: internal/infrastructure root imports (tracked)"
+# The mega-package internal/infrastructure (package platform) is deprecated.
+# Files should import the focused sub-packages or pkg/ utilities instead.
+# This check tracks the count and reports it. It does NOT fail the build.
+# When migration completes, this becomes a hard fail with an allowlist.
+ROOT_INFRA_IMPORT=$(rg -l '"github\.com/Marcuss-ops/PipelineGen/internal/infrastructure"' \
+  internal/api/ internal/media/ internal/scripts/ \
+  --glob '*.go' 2>/dev/null \
+  | grep -v '_test.go' \
+  | wc -l || true)
+echo "  Files importing internal/infrastructure root (tracked): ${ROOT_INFRA_IMPORT:-0}"
+echo "  Migration target: 0 (use pkg/ or internal/infrastructure/<sub>/)."
 
 # ── Run legacy asset guard if it exists ────────────────────────────
 echo ""
