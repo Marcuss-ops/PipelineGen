@@ -193,7 +193,11 @@ func NewSourcesHandler(
 	)
 	h.SoundEffect = NewSoundEffectHandler(clipsRepo, driveUploader, h.metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
 	h.clipsDelete = clipsources.NewDeleteHandler(deletionSvc)
-	h.clipsSearch = clipsources.NewSearchHandler(clipsRepo, artlistRepo, stockRepo, log)
+	h.clipsSearch = clipsources.NewSearchHandler(map[string]*clips.Repository{
+		"youtube": clipsRepo,
+		"artlist": artlistRepo,
+		"stock":   stockRepo,
+	}, log)
 
 	// Register job handlers for this package (bulk upload, etc.)
 	if jobsSvc != nil {
