@@ -236,7 +236,7 @@ Prima di scrivere custom code, **controlla se esiste già in `pkg/`**. Ogni util
 | Term/name parsing + topic match | `pkg/termutil` | `SubjectMatchesTopic`, `ExtractLikelyNames`, `TermsFromText`, `TopicTokens` |
 | Similarity math | `pkg/similarity` | `Jaccard(a, b)`, `TokenSet(text)`, `OverlapRatio(startA, endA, startB, endB)` |
 | Matching thresholds config | `pkg/matchingconfig` | `LoadMatchingConfig(path)` — **nicho**, solo se tocchi semantic/similarity scoring |
-| Media filesystem scanning | `pkg/mediascan` | `ScanDirectory(root, urlPrefix)` — **nicho**, solo se enumari file media locali |
+
 | Test helpers | `pkg/testutil` | `MustMarshalJSON(t, v)` |
 | Job HTTP client riusabile | `pkg/veloxclient` | `New(baseURL, token)` → `SubmitAsync`, `GetJobStatus`, `IsTerminal` |
 | Time RFC3339 | `pkg/timeutil` | `ParseRFC3339`, `FormatNow`, `ParseRFC3339PtrString` |
