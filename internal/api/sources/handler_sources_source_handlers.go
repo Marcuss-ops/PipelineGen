@@ -371,10 +371,11 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/register-batch", h.BatchRegisterFromYouTube)
 
 	// Bulk upload local .mp4 folders to Drive + DB + embeddings + Qdrant (async job).
-	// The handler is registered on SourcesHandler (legacy h.BulkUploadYouTubeClips)
-	// but the worker function lives on clips.Handler (clipsources.Handler).
-	// Both share the same jobsSvc so the enqueue + worker pair is internally consistent.
-	r.POST("/bulk-upload-youtube-clips", h.BulkUploadYouTubeClips)
+	// Delegate to clipsources.Handler.BulkUploadYouTubeClips (the worker function
+	// and route body live in the clips subpackage post Phase 4 BULK).
+	if h.clips != nil {
+		r.POST("/bulk-upload-youtube-clips", h.clips.BulkUploadYouTubeClips)
+	}
 
 	// System diagnostics
 	r.GET("/diagnostics", h.GetDiagnostics)

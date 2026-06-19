@@ -1,8 +1,5 @@
-// Package clips hosts the HTTP handlers for the clip search / discovery
-// endpoints. PR-A Phase 4 sub-2: clip_search.go exits the flat
-// handler_sources_clip_search_handlers.go and lands in the new clips
-// subpackage so callers can hook `internal/api/sources/clips`'s
-// SearchHandler instead of carrying the method on *sources.SourcesHandler.
+// Package clips — AdvancedSearch endpoint (PR-A Phase 4 BULK:
+// SearchHandler folded onto unified *Handler).
 package clips
 
 import (
@@ -17,39 +14,11 @@ import (
 
 // AllSources is the canonical list of clip source names covered by the
 // multi-source AdvancedSearch fan-out. Adding a new source is single-site:
-//  1. Append here.
-//  2. Add the matching field on *sources.SourcesHandler in its constructors.
-//  3. Add the matching entry to the map passed to NewSearchHandler at the
-//     SourcesHandler wiring site.
-//
-// Single source of truth for the source fan-out avoids drift between the
-// iteration list and the repo map.
+// append here and the resolver loop picks it up automatically (the repos
+// map is built in AdvancedSearch from clipsRepo/artlistRepo/stockRepo).
 var AllSources = []string{"youtube", "artlist", "stock"}
 
-// SearchHandler owns the clip search / discovery endpoints. The single
-// endpoint currently mounted is AdvancedSearch (POST /search/advanced),
-// which dispatches a multi-source filter query across the YouTube,
-// Artlist, and Stock clip repositories.
-//
-// Methods are extracted from the legacy flat
-// handler_sources_clip_search_handlers.go — same behavior, same wire
-// shape, just a fresh receiver and subpackage.
-type SearchHandler struct {
-	repos map[string]*clips.Repository
-	log   *zap.Logger
-}
-
-// NewSearchHandler builds the SearchHandler. Pass a map keyed by every
-// entry in AllSources; missing keys are skipped at fan-out time.
-func NewSearchHandler(repos map[string]*clips.Repository, log *zap.Logger) *SearchHandler {
-	return &SearchHandler{
-		repos: repos,
-		log:   log,
-	}
-}
-
-// AdvancedSearch performs an advanced multi-source clip search with
-// structured filters.
+// AdvancedSearch performs a multi-source clip search with structured filters.
 //
 //	@Summary		Advanced clip search with filters
 //	@Description	Search media assets with structured filters (category, date range,
@@ -59,19 +28,22 @@ func NewSearchHandler(repos map[string]*clips.Repository, log *zap.Logger) *Sear
 //	@Produce		json
 //	@Success		200  {object} object
 //	@Router			/api/media/search/advanced [post]
-func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
+func (h *Handler) AdvancedSearch(c *gin.Context) {
 	var req clips.AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
-	// Preserve legacy behavior: only `q` is whitespace-trimmed before the
-	// fan-out. Other string fields (Source, Category, SortBy, etc.) are
-	// intentionally passed raw to match the pre-consolidation behavior of
-	// the local AdvancedSearchRequest that did the same. Don't extend the
-	// trim "for consistency" - that would be a silent wire-shape change.
+	// Preserve legacy behavior: only `q` is whitespace-trimmed before fan-out.
 	req.Q = strings.TrimSpace(req.Q)
+
+	// Build the per-source repo lookup. nil repos are skipped (no error).
+	repos := map[string]*clips.Repository{
+		"youtube": h.clipsRepo,
+		"artlist": h.artlistRepo,
+		"stock":   h.stockRepo,
+	}
 
 	ctx := c.Request.Context()
 	var allClips []any
@@ -83,7 +55,7 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 	}
 
 	for _, src := range sources {
-		repo, ok := h.repos[src]
+		repo, ok := repos[src]
 		if !ok || repo == nil {
 			continue
 		}
@@ -128,9 +100,4 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 		"offset": req.Offset,
 		"clips":  allClips,
 	})
-}
-
-// RegisterRoutes mounts AdvancedSearch onto the supplied gin router group.
-func (h *SearchHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/search/advanced", h.AdvancedSearch)
 }

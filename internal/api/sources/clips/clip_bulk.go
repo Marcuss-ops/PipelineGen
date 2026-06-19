@@ -40,7 +40,7 @@ func (h *Handler) BulkAddTags(c *gin.Context) {
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(c.Request.Context(), id)
 			if err == nil {
-				node := clipToAssetNode(clip)
+				node := ClipToAssetNode(clip)
 				h.assetTreeSvc.UpsertNode(c.Request.Context(), node)
 			}
 		}
@@ -87,7 +87,7 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		for _, id := range req.IDs {
 			clip, err := repo.GetClip(c.Request.Context(), id)
 			if err == nil {
-				node := clipToAssetNode(clip)
+				node := ClipToAssetNode(clip)
 				h.assetTreeSvc.UpsertNode(c.Request.Context(), node)
 			}
 		}

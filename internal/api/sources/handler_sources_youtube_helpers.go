@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 

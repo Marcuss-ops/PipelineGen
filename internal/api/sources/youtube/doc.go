@@ -1,11 +1,4 @@
-// Package youtube contains the YouTube-specific HTTP handlers that
-// were previously part of the flat api/sources/ package.
-//
-// Phase 1 of PR-A: scaffold only. Files will be moved here in subsequent
-// commits to keep the diff reviewable. See internal/api/sources/handler
-// for the route-registration bridge that delegates to sub-handlers in
-// this package.
+// Package youtube owns the YouTube-specific HTTP handlers. Moved here
+// from the flat api/sources/ package in PR-A phase 2 (commits
+// 96edbb26, a8173dcd).
 package youtube
-
-// Placeholder. Real handlers (YouTubeClipHandler, RegisterFromYouTube,
-// BulkUploadYouTubeClips, etc.) will move here in PR-A phase 2.

@@ -58,7 +58,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	// 2. Update Asset Tree
 	if h.assetTreeSvc != nil {
-		node := clipToAssetNode(&clip)
+		node := ClipToAssetNode(&clip)
 		if err := h.assetTreeSvc.UpsertNode(ctx, node); err != nil {
 			h.log.Warn("failed to upsert to asset tree", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
@@ -70,7 +70,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 	if h.metaWriter != nil || h.clipIndexer != nil || h.vectorStore != nil {
 		clipCopy := clip
 		concurrent.SafeGo("clip-create-enrich", func() {
-			h.enrichAndIndexClip(context.WithoutCancel(ctx), &clipCopy, source)
+			h.EnrichAndIndexClip(context.WithoutCancel(ctx), &clipCopy, source)
 		})
 	}
 

@@ -45,7 +45,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {
 			for _, clip := range clipChildren {
-				children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
+				children = append(children, treeNodeToAssetNode(ClipToAssetNode(clip)))
 			}
 		} else {
 			err = clipErr
@@ -97,7 +97,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 			clipChildren, clipErr := repo.GetFolderChildren(c.Request.Context(), parentID)
 			if clipErr == nil {
 				for _, clip := range clipChildren {
-					children = append(children, treeNodeToAssetNode(clipToAssetNode(clip)))
+					children = append(children, treeNodeToAssetNode(ClipToAssetNode(clip)))
 				}
 			}
 		}
