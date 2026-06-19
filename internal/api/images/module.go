@@ -1,18 +1,19 @@
-package api
+package images
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
 
-// NewImagesModule creates a new Images module using RouteModule
-func NewImagesModule(
+// NewModule creates the Images module for the API registry.
+func NewModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *ImagesHandler,
-) *RouteModule {
-	return NewRouteModule(
+	handler *Handler,
+) *api.RouteModule {
+	return api.NewRouteModule(
 		"images",
 		func(cfg *config.Config) bool { return cfg.Features.ImagesEnabled },
 		"/images",

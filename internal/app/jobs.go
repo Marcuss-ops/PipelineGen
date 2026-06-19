@@ -2,6 +2,7 @@ package app
 
 import (
 	jobshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
@@ -22,8 +23,8 @@ func WireJobs(
 ) (*JobsWiring, error) {
 	handler := jobshandler.NewJobsHandler(coreDeps.JobsService, log)
 
-	mod := module.NewRouteModule("jobs", nil, "/jobs", handler, log)
-	log.Info("created Jobs module using RouteModule")
+	mod := jobsapi.NewModule(cfg, log, jobsapi.NewHandler(handler))
+	log.Info("created Jobs module using api/jobs")
 
 	return &JobsWiring{
 		Handler: handler,

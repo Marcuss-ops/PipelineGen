@@ -3,16 +3,18 @@ package app
 import (
 	"context"
 
-	bookshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
-	lessonshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
-	realtimehandler "github.com/Marcuss-ops/PipelineGen/internal/api"
 	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	booksapi "github.com/Marcuss-ops/PipelineGen/internal/api/books"
+	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
+	lessonsapi "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
+	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
+	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/channels"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
@@ -171,36 +173,39 @@ func WireRegistry(
 
 	// ── Realtime ───────────────────────────────────────────────────────
 	if coreDeps.RealtimeService != nil {
-		handler := realtimehandler.NewMatchHandler(coreDeps.RealtimeService, log)
-		mod := module.NewRealtimeModule(cfg, log, handler)
+		handler := handlers.NewMatchHandler(coreDeps.RealtimeService, log)
+		thin := realtimeapi.NewHandler(handler)
+		mod := realtimeapi.NewModule(cfg, log, thin)
 		registerModule(registry, log, mod)
 	}
 
 	// ── Books ──────────────────────────────────────────────────────────
 	if coreDeps.BooksService != nil {
-		handler := bookshandler.NewBooksHandler(coreDeps.BooksService, coreDeps.JobsService, log)
-		mod := module.NewBooksModule(cfg, log, handler)
+		handler := handlers.NewBooksHandler(coreDeps.BooksService, coreDeps.JobsService, log)
+		thin := booksapi.NewHandler(handler)
+		mod := booksapi.NewModule(cfg, log, thin)
 		registerModule(registry, log, mod)
 	}
 
 	// ── Lessons ────────────────────────────────────────────────────────
 	if coreDeps.LessonsService != nil {
-		handler := lessonshandler.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobsService, log)
-		mod := module.NewLessonsModule(cfg, log, handler)
+		handler := handlers.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobsService, log)
+		thin := lessonsapi.NewHandler(handler)
+		mod := lessonsapi.NewModule(cfg, log, thin)
 		registerModule(registry, log, mod)
 	}
 
 	// ── Channels ───────────────────────────────────────────────────────
 	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
 		repo := channelsrepo.NewRepository(coreDeps.DB.DB)
-		mod := module.NewChannelsModule(log, repo)
+		mod := channelsapi.NewModule(log, repo)
 		registerModule(registry, log, mod)
 	}
 
 	// ── SearchQueries ──────────────────────────────────────────────────
 	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
 		repo := searchqueriesrepo.NewRepository(coreDeps.DB.DB)
-		mod := module.NewSearchQueriesModule(log, repo)
+		mod := searchqueriesapi.NewModule(log, repo)
 		registerModule(registry, log, mod)
 	}
 
