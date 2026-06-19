@@ -181,24 +181,21 @@ func WireRegistry(
 	// ── Realtime ───────────────────────────────────────────────────────
 	if coreDeps.RealtimeService != nil {
 		handler := realtimeapi.NewMatchHandler(coreDeps.RealtimeService, log)
-		thin := realtimeapi.NewHandler(handler)
-		mod := realtimeapi.NewModule(cfg, log, thin)
+		mod := realtimeapi.NewModule(cfg, log, handler)
 		registerModule(registry, log, mod)
 	}
 
 	// ── Books ──────────────────────────────────────────────────────────
 	if coreDeps.BooksService != nil {
 		handler := booksapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobsService, log)
-		thin := booksapi.NewHandler(handler)
-		mod := booksapi.NewModule(cfg, log, thin)
+		mod := booksapi.NewModule(cfg, log, handler)
 		registerModule(registry, log, mod)
 	}
 
 	// ── Lessons ────────────────────────────────────────────────────────
 	if coreDeps.LessonsService != nil {
 		handler := lessonsapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobsService, log)
-		thin := lessonsapi.NewHandler(handler)
-		mod := lessonsapi.NewModule(cfg, log, thin)
+		mod := lessonsapi.NewModule(cfg, log, handler)
 		registerModule(registry, log, mod)
 	}
 
