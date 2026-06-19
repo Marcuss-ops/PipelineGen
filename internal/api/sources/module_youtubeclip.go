@@ -5,7 +5,7 @@ import (
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 

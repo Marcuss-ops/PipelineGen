@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // JobsHandler exposes HTTP endpoints for job lifecycle management.
@@ -51,7 +51,7 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		"job": gin.H{
 			"id":       j.ID,
 			"type":     j.Type,
-			"status":   j.Status,
+			"status":   j.job.Status,
 			"project":  j.Project,
 			"progress": j.Progress,
 		},
@@ -71,11 +71,11 @@ func (h *JobsHandler) Get(c *gin.Context) {
 }
 
 func (h *JobsHandler) List(c *gin.Context) {
-	var filter jobs.Filter
+	var filter job.Filter
 
 	if status := c.Query("status"); status != "" {
-		s := jobs.Status(status)
-		filter.Status = &s
+		s := job.job.Status(status)
+		filter.job.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
 		filter.Type = &jobType
@@ -165,7 +165,7 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	events, err := h.service.ListEvents(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
-		events = make([]jobs.Event, 0)
+		events = make([]job.Event, 0)
 	}
 
 	retryable := j.CanRetry()
@@ -173,9 +173,9 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	api.OK(c, gin.H{
 		"id":           j.ID,
 		"type":         j.Type,
-		"status":       j.Status,
+		"status":       j.job.Status,
 		"progress":     j.Progress,
-		"current_step": j.Status,
+		"current_step": j.job.Status,
 		"events":       events,
 		"result":       j.Result,
 		"retryable":    retryable,

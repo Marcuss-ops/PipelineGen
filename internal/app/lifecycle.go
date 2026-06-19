@@ -14,7 +14,7 @@ import (
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"

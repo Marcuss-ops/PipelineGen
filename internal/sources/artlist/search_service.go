@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )

@@ -16,7 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
@@ -233,7 +233,7 @@ func (s *CurationService) Curate(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{
 		"ok":        true,
 		"job_id":    job.ID,
-		"status":    string(job.Status),
+		"status":    string(job.job.Status),
 		"query":     req.Query,
 		"max_clips": req.MaxClips,
 	})

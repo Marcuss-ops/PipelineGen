@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
-	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"
 )

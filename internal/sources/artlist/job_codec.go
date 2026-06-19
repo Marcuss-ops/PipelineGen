@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.
@@ -108,7 +108,7 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 				"clip_id":       item.ClipID,
 				"name":          item.Name,
 				"filename":      item.Filename,
-				"status":        item.Status,
+				"status":        item.job.Status,
 				"drive_link":    item.DriveLink,
 				"drive_file_id": item.DriveFileID,
 				"download_link": item.DownloadLink,
@@ -134,7 +134,7 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 		item.Filename = v
 	}
 	if v, ok := itemMap["status"].(string); ok {
-		item.Status = v
+		item.job.Status = v
 	}
 	if v, ok := itemMap["drive_link"].(string); ok {
 		item.DriveLink = v
@@ -157,13 +157,13 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 	resp.Items = append(resp.Items, item)
 }
 
-// ResponseFromJob converts a domain jobs.Job to RunTagResponse.
+// ResponseFromJob converts a domain job.Job to RunTagResponse.
 // (domain job.Result is json.RawMessage, so we unmarshal it first)
-func (c *JobCodec) ResponseFromJob(job *jobs.Job) *RunTagResponse {
+func (c *JobCodec) ResponseFromJob(job *job.Job) *RunTagResponse {
 	resp := &RunTagResponse{
-		OK:        job.Status != jobs.StatusFailed,
+		OK:        job.job.Status != job.StatusFailed,
 		RunID:     job.ID,
-		Status:    string(job.Status),
+		job.Status:    string(job.job.Status),
 		Error:     job.Error,
 		Found:     0,
 		Processed: 0,
@@ -226,5 +226,5 @@ func (c *JobCodec) ResponseFromJob(job *jobs.Job) *RunTagResponse {
 	return resp
 }
 
-// ResponseFromLegacyJob is removed — all callers now use domain *jobs.Job directly.
+// ResponseFromLegacyJob is removed — all callers now use domain *job.Job directly.
 // Kept as a compile-time reference for the diff; callers should use ResponseFromJob.

@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -165,7 +165,7 @@ func (p *Pipeline) Run(
 		voiceovers = p.scenes.GenerateVoiceovers(ctx, spec, phase2Scenes)
 		okVoices := 0
 		for _, v := range voiceovers {
-			if v.Status == "completed" {
+			if v.job.Status == "completed" {
 				okVoices++
 			}
 		}

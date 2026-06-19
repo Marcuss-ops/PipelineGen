@@ -16,9 +16,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -295,7 +295,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.Proce
 	if f.err != nil {
 		return &processor.ProcessResult{
 			ID:     input.ID,
-			Status: "failed",
+			job.Status: "failed",
 			Error:  f.err.Error(),
 		}, f.err
 	}
@@ -309,7 +309,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.Proce
 		Filename:  input.Name + ".mp4",
 		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",
 		FileHash:  "hash-test",
-		Status:    "processed",
+		job.Status:    "processed",
 	}, nil
 }
 
@@ -393,7 +393,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, 1, resp.Failed)
 	require.Len(t, resp.Items, 1)
-	assert.Equal(t, "media_process_failed", resp.Items[0].Status)
+	assert.Equal(t, "media_process_failed", resp.Items[0].job.Status)
 	assert.Contains(t, resp.Items[0].Error, "download failed")
 }
 
@@ -557,7 +557,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	job := &domainjob.Job{
 		ID:        "test-job-1",
 		Type:      string(domainjob.JobTypeArtlistRun),
-		Status:    domainjob.StatusRunning,
+		job.Status:    domainjob.StatusRunning,
 		Payload:   payload,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),

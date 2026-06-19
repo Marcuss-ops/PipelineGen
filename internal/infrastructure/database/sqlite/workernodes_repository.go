@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -20,7 +20,7 @@ type WorkerNodesRepository struct {
 type WorkerNode struct {
 	ID              string
 	Name            string
-	Status          string
+	job.Status          string
 	SessionID       string
 	SessionExpiresAt time.Time
 	CapabilitiesJSON string

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 func (a *JobAdapter) GetJobByRunID(ctx context.Context, runID string) (*job.Job, error) {

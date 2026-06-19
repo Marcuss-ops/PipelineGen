@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
@@ -82,7 +82,7 @@ func (h *BooksHandler) ProcessBook(c *gin.Context) {
 		}
 		h.log.Info("enqueuing async book process job", zap.String("file", req.FilePath))
 			api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
-			Type: jobs.JobTypeBooksProcess,
+			Type: job.TypeBooksProcess,
 			Payload: map[string]any{
 				"file_path":       req.FilePath,
 				"google_doc_url":  req.GoogleDocURL,
@@ -165,11 +165,11 @@ func (h *BooksHandler) ListJobs(c *gin.Context) {
 	}
 
 	pag := api.ParsePagination(c, 20, 1000)
-	jobType := jobs.JobTypeBooksProcess
+	jobType := job.TypeBooksProcess
 
-	filter := jobs.Filter{
+	filter := job.Filter{
 		Type:   &jobType,
-		Status: (*jobs.Status)(api.ParseJobStatusFilter(c)),
+		job.Status: (*job.job.Status)(api.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}

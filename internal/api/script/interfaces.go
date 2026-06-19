@@ -3,7 +3,7 @@ package script
 import (
 	"context"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // CurationJobService handles background curation jobs (script.curate).

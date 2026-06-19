@@ -7,19 +7,19 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 var jobCodec = &JobCodec{}
 
-func (a *JobAdapter) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (a *JobAdapter) HandleJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
 	s := a.service
 	s.log.Info("handling artlist job",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type),
 	)
 
-	// Extract request from job payload directly (domain *jobs.Job)
+	// Extract request from job payload directly (domain *job.Job)
 	var payloadMap map[string]any
 	if err := json.Unmarshal(job.Payload, &payloadMap); err != nil {
 		payloadMap = map[string]any{}

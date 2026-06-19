@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -78,7 +78,7 @@ func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
 		}
 		h.log.Info("enqueuing async lesson generate job", zap.String("title", req.Title))
 		api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
-			Type: jobs.JobTypeLessonsProcess,
+			Type: job.TypeLessonsProcess,
 			Payload: map[string]any{
 				"source_text":     req.SourceText,
 				"title":           req.Title,
@@ -159,11 +159,11 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 	}
 
 	pag := api.ParsePagination(c, 20, 1000)
-	jobType := jobs.JobTypeLessonsProcess
+	jobType := job.TypeLessonsProcess
 
-	filter := jobs.Filter{
+	filter := job.Filter{
 		Type:   &jobType,
-		Status: (*jobs.Status)(api.ParseJobStatusFilter(c)),
+		job.Status: (*job.job.Status)(api.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}

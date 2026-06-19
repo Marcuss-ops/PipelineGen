@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -18,12 +18,12 @@ import (
 
 // AsyncJobResponse builds the standard async job response used by all
 // handlers that support background processing.
-func AsyncJobResponse(c *gin.Context, j *jobs.Job, message string) {
+func AsyncJobResponse(c *gin.Context, j *job.Job, message string) {
 	OK(c, gin.H{
 		"ok":         true,
 		"async":      true,
 		"job_id":     j.ID,
-		"status":     string(j.Status),
+		"status":     string(j.job.Status),
 		"message":    message + " Poll /api/jobs/" + j.ID + "/full for status.",
 		"status_url": "/api/jobs/" + j.ID + "/full",
 	})
@@ -31,7 +31,7 @@ func AsyncJobResponse(c *gin.Context, j *jobs.Job, message string) {
 
 // Enqueuer is the minimal interface consumed by EnqueueAsync.
 type Enqueuer interface {
-	Enqueue(ctx context.Context, req *jobs.EnqueueRequest) (*jobs.Job, error)
+	Enqueue(ctx context.Context, req *jobs.EnqueueRequest) (*job.Job, error)
 }
 
 // EnqueueInput parameterises EnqueueAsync.
@@ -111,7 +111,7 @@ func ParsePagination(c *gin.Context, defaultLimit, maxLimit int) Pagination {
 type JobSummary struct {
 	ID          string    `json:"id"`
 	Type        string    `json:"type"`
-	Status      jobs.Status `json:"status"`
+	job.Status      job.job.Status `json:"status"`
 	Progress    int       `json:"progress"`
 	Payload     map[string]any `json:"payload,omitempty"`
 	Result      map[string]any `json:"result,omitempty"`
@@ -123,13 +123,13 @@ type JobSummary struct {
 
 // BuildJobSummaries converts a slice of Job models into the standard
 // JobSummary response format.
-func BuildJobSummaries(jobsList []jobs.Job) []JobSummary {
+func BuildJobSummaries(jobsList []job.Job) []JobSummary {
 	summaries := make([]JobSummary, 0, len(jobsList))
 	for _, j := range jobsList {
 		s := JobSummary{
 			ID:        j.ID,
 			Type:      j.Type,
-			Status:    j.Status,
+			job.Status:    j.job.Status,
 			Progress:  j.Progress,
 			Error:     j.Error,
 			CreatedAt: timeutil.FormatRFC3339(j.CreatedAt),
@@ -165,9 +165,9 @@ func ListJobsResponse(c *gin.Context, summaries []JobSummary) {
 }
 
 // ParseJobStatusFilter parses an optional status query parameter.
-func ParseJobStatusFilter(c *gin.Context) *jobs.Status {
+func ParseJobStatusFilter(c *gin.Context) *job.job.Status {
 	if status := c.Query("status"); status != "" {
-		s := jobs.Status(strings.TrimSpace(status))
+		s := job.job.Status(strings.TrimSpace(status))
 		return &s
 	}
 	return nil

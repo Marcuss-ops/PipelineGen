@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -96,7 +96,7 @@ const DefaultBatchConcurrency = 3
 // RegisterJobHandler registers the batch reindex job handler with the jobs service.
 func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(jobs.JobTypeMediaReindex, s.HandleJob)
+		jobsSvc.RegisterHandler(job.TypeMediaReindex, s.HandleJob)
 		s.log.Info("registered media.reindex job handler")
 	}
 }
@@ -104,7 +104,7 @@ func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
 // HandleJob processes a batch reindex job from the job system.
 // Payload: {"source": "artlist", "media_type": "video", "limit": 100}
 // Reports progress via tools.Progress(pct, msg).
-func (s *Service) HandleJob(ctx context.Context, job *jobs.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
 	var req struct {
 		Source    string `json:"source"`
 		MediaType string `json:"media_type"`
