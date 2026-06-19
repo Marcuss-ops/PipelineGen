@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 const catalogSyncTestSchema = `
