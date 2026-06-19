@@ -121,24 +121,26 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 	clip := &assets.Asset{
-		ID:           "pr12b-youtube-001",
-		Name:         "PR12b Canonical Writer Test (YouTube)",
-		Source:       "youtube",
-		Filename:     "pr12b-youtube-001.mp4",
-		Group:        "youtube-fixtures",
-		MediaType:    "video",
-		Tags:         []string{"pr12b", "canonical-writer", "youtube"},
-		ExternalURL:  "https://youtube.com/watch?v=pr12b-youtube-001",
-		DownloadLink: "https://youtube.com/download/pr12b-youtube-001.mp4",
-		ClipPageURL:  "https://youtube.com/watch?v=pr12b-youtube-001",
-		ThumbURL:     "https://i.ytimg.com/vi/pr12b-youtube-001/hqdefault.jpg",
-		Duration:     120 * time.Millisecond,
-		Status:       "ready",
-		LocalPath:    "data/youtube/pr12b-youtube-001.mp4",
-		DriveLink:    "https://drive.google.com/file/d/pr12b-youtube-001",
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		DeletedAt:    &zeroTime,
+		ID:             "pr12b-youtube-001",
+		Name:           "PR12b Canonical Writer Test (YouTube)",
+		Source:         "youtube",
+		Filename:       "pr12b-youtube-001.mp4",
+		Group:          "youtube-fixtures",
+		MediaType:      "video",
+		Tags:           []string{"pr12b", "canonical-writer", "youtube"},
+		SourceURL:      "https://youtube.com/watch?v=pr12b-youtube-001",
+		ClipPageURL:    "https://youtube.com/watch?v=pr12b-youtube-001",
+		ThumbnailURL:   "https://i.ytimg.com/vi/pr12b-youtube-001/hqdefault.jpg",
+		Duration:       120 * time.Millisecond,
+		LifecycleState: assets.StateReady,
+		Metadata: assets.Metadata{
+			"download_link": "https://youtube.com/download/pr12b-youtube-001.mp4",
+			"local_path":    "data/youtube/pr12b-youtube-001.mp4",
+			"drive_link":    "https://drive.google.com/file/d/pr12b-youtube-001",
+		},
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		DeletedAt:      &zeroTime,
 	}
 
 	svc := &Service{
@@ -191,14 +193,14 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	if legacy.Name != clip.Name {
 		t.Errorf("legacy Name mismatch: want %q, got %q", clip.Name, legacy.Name)
 	}
-	if legacy.DriveLink != clip.DriveLink {
-		t.Errorf("legacy DriveLink mismatch: want %q, got %q", clip.DriveLink, legacy.DriveLink)
+	if legacy.DriveLink() != clip.DriveLink() {
+		t.Errorf("legacy DriveLink mismatch: want %q, got %q", clip.DriveLink(), legacy.DriveLink())
 	}
-	if legacy.LocalPath != clip.LocalPath {
-		t.Errorf("legacy LocalPath mismatch: want %q, got %q", clip.LocalPath, legacy.LocalPath)
+	if legacy.LocalPath() != clip.LocalPath() {
+		t.Errorf("legacy LocalPath mismatch: want %q, got %q", clip.LocalPath(), legacy.LocalPath())
 	}
-	if legacy.DownloadLink != clip.DownloadLink {
-		t.Errorf("legacy DownloadLink mismatch: want %q, got %q", clip.DownloadLink, legacy.DownloadLink)
+	if legacy.DownloadLink() != clip.DownloadLink() {
+		t.Errorf("legacy DownloadLink mismatch: want %q, got %q", clip.DownloadLink(), legacy.DownloadLink())
 	}
 
 	// ── Assert 3: outbox row was emitted ──
@@ -226,15 +228,17 @@ func TestYoutubePR12b_DispatchOrIndexWithoutAssetRepoFallsBack(t *testing.T) {
 	// (No SetAssetRepo, no SetDispatcher calls)
 
 	clip := &assets.Asset{
-		ID:           "pr12b-youtube-fallback-001",
-		Name:         "Fallback Test",
-		Source:       "youtube",
-		ExternalURL:  "https://youtube.com/watch?v=fallback",
-		DownloadLink: "https://youtube.com/fallback",
-		Status:       "ready",
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
-		DeletedAt:    &zeroTime,
+		ID:             "pr12b-youtube-fallback-001",
+		Name:           "Fallback Test",
+		Source:         "youtube",
+		SourceURL:      "https://youtube.com/watch?v=fallback",
+		LifecycleState: assets.StateReady,
+		Metadata: assets.Metadata{
+			"download_link": "https://youtube.com/fallback",
+		},
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+		DeletedAt:      &zeroTime,
 	}
 
 	ctx := context.Background()

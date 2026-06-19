@@ -144,7 +144,7 @@ func newTestHandlerWithMockOllama(t *testing.T, scriptText string, repo *scripts
 	// Wire up a real engine so tests exercise the full pipeline
 	// (memory gate, GenerateAndNormalize, length normalization,
 	// DB persistence) instead of the fallback path.
-	engine := scriptcore.NewEngine(gen, nil, repo, zap.NewNop())
+	engine := scripts.NewEngine(gen, nil, repo, zap.NewNop())
 
 	return &ScriptFlowHandler{
 		generator:   gen,

@@ -8,7 +8,7 @@ import (
 )
 
 func TestDefaultOptions(t *testing.T) {
-	opts := DefaultOptions()
+	opts := DefaultExecOptions()
 	if opts.Timeout != 10*time.Minute {
 		t.Errorf("expected Timeout=10m, got %v", opts.Timeout)
 	}
@@ -18,7 +18,7 @@ func TestDefaultOptions(t *testing.T) {
 }
 
 func TestRun_Echo(t *testing.T) {
-	result, err := Run(context.Background(), "echo", []string{"hello world"}, DefaultOptions())
+	result, err := Run(context.Background(), "echo", []string{"hello world"}, DefaultExecOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestRun_WorkDir(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	result, err := Run(context.Background(), "pwd", nil, Options{
+	result, err := Run(context.Background(), "pwd", nil, ExecOptions{
 		WorkDir:        tmpDir,
 		Timeout:        5 * time.Second,
 		CombinedOutput: true,
@@ -48,7 +48,7 @@ func TestRun_WorkDir(t *testing.T) {
 }
 
 func TestRun_CombinedOutput(t *testing.T) {
-	result, err := Run(context.Background(), "echo", []string{"test"}, Options{
+	result, err := Run(context.Background(), "echo", []string{"test"}, ExecOptions{
 		CombinedOutput: false,
 		Timeout:        5 * time.Second,
 	})
@@ -64,7 +64,7 @@ func TestRun_CombinedOutput(t *testing.T) {
 }
 
 func TestRun_Env(t *testing.T) {
-	result, err := Run(context.Background(), "sh", []string{"-c", "echo $TEST_VAR"}, Options{
+	result, err := Run(context.Background(), "sh", []string{"-c", "echo $TEST_VAR"}, ExecOptions{
 		Env:            append(os.Environ(), "TEST_VAR=hello"),
 		Timeout:        5 * time.Second,
 		CombinedOutput: true,
@@ -78,7 +78,7 @@ func TestRun_Env(t *testing.T) {
 }
 
 func TestRun_Timeout(t *testing.T) {
-	_, err := Run(context.Background(), "sleep", []string{"10"}, Options{
+	_, err := Run(context.Background(), "sleep", []string{"10"}, ExecOptions{
 		Timeout: 100 * time.Millisecond,
 	})
 	if err == nil {
@@ -87,7 +87,7 @@ func TestRun_Timeout(t *testing.T) {
 }
 
 func TestRun_CommandNotFound(t *testing.T) {
-	_, err := Run(context.Background(), "nonexistent-command-xyz", nil, DefaultOptions())
+	_, err := Run(context.Background(), "nonexistent-command-xyz", nil, DefaultExecOptions())
 	if err == nil {
 		t.Error("expected error for nonexistent command")
 	}
@@ -129,7 +129,7 @@ func TestCommandExists(t *testing.T) {
 func TestRun_Cancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := Run(ctx, "echo", []string{"hello"}, DefaultOptions())
+	_, err := Run(ctx, "echo", []string{"hello"}, DefaultExecOptions())
 	if err == nil {
 		t.Error("expected error for cancelled context")
 	}

@@ -8,19 +8,19 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // fakeClips records UpsertClipTx invocations and argument order so tests
 // can assert the upsert comes BEFORE the outbox enqueue (single tx).
 type fakeClips struct {
 	mu        sync.Mutex
-	upserts   []*models.MediaAsset
+	upserts   []*assets.Asset
 	orderLog  []string
 	upsertErr error
 }
 
-func (f *fakeClips) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *models.MediaAsset) error {
+func (f *fakeClips) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *assets.Asset) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.upserts = append(f.upserts, clip)
@@ -47,7 +47,7 @@ func (txMgrNoop) DB() *sql.DB { return nil }
 // without dereferencing any field.
 func TestDispatcher_NilPointerRejected(t *testing.T) {
 	var d *Dispatcher
-	err := d.EnqueueAndIndex(context.Background(), &models.MediaAsset{ID: "x"}, "hash")
+	err := d.EnqueueAndIndex(context.Background(), &assets.Asset{ID: "x"}, "hash")
 	if err == nil {
 		t.Fatal("nil *Dispatcher must return error before any field access")
 	}
@@ -57,7 +57,7 @@ func TestDispatcher_NilPointerRejected(t *testing.T) {
 // before any tx is opened (txMgrNoop would catch a bug).
 func TestDispatcher_MissingClipIDRejected(t *testing.T) {
 	d := NewDispatcher(&fakeClips{}, nil, txMgrNoop{}, zap.NewNop())
-	err := d.EnqueueAndIndex(context.Background(), &models.MediaAsset{ID: ""}, "hash")
+	err := d.EnqueueAndIndex(context.Background(), &assets.Asset{ID: ""}, "hash")
 	if err == nil {
 		t.Fatal("empty clip ID must return error before txmgr.InTransaction is reached")
 	}
@@ -67,7 +67,7 @@ func TestDispatcher_MissingClipIDRejected(t *testing.T) {
 // runs before any tx is opened.
 func TestDispatcher_MissingOutboxEventsRejected(t *testing.T) {
 	d := &Dispatcher{clips: &fakeClips{}, outboxEventsRepo: nil, txmgr: txMgrNoop{}}
-	err := d.EnqueueAndIndex(context.Background(), &models.MediaAsset{ID: "x"}, "hash")
+	err := d.EnqueueAndIndex(context.Background(), &assets.Asset{ID: "x"}, "hash")
 	if err == nil {
 		t.Fatal("nil outboxEventsRepo must return error before tx is reached")
 	}
@@ -77,7 +77,7 @@ func TestDispatcher_MissingOutboxEventsRejected(t *testing.T) {
 // before any tx is opened.
 func TestDispatcher_MissingTxMgrRejected(t *testing.T) {
 	d := &Dispatcher{clips: &fakeClips{}, outboxEventsRepo: nil}
-	err := d.EnqueueAndIndex(context.Background(), &models.MediaAsset{ID: "x"}, "hash")
+	err := d.EnqueueAndIndex(context.Background(), &assets.Asset{ID: "x"}, "hash")
 	if err == nil {
 		t.Fatal("nil txmgr must return error before any field access")
 	}

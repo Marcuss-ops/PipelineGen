@@ -14,7 +14,7 @@ func TestDo_Success(t *testing.T) {
 	err := Do(context.Background(), func() error {
 		attempts++
 		return nil
-	}, DefaultOptions())
+	}, DefaultRetryOptions())
 	if err != nil {
 		t.Errorf("expected nil, got %v", err)
 	}
@@ -31,7 +31,7 @@ func TestDo_FailureThenSuccess(t *testing.T) {
 			return errFake
 		}
 		return nil
-	}, Options{MaxAttempts: 5, InitialBackoff: 1 * time.Millisecond})
+	}, RetryOptions{MaxAttempts: 5, InitialBackoff: 1 * time.Millisecond})
 	if err != nil {
 		t.Errorf("expected nil after retries, got %v", err)
 	}
@@ -45,7 +45,7 @@ func TestDo_AllFailures(t *testing.T) {
 	err := Do(context.Background(), func() error {
 		attempts++
 		return errFake
-	}, Options{MaxAttempts: 3, InitialBackoff: 1 * time.Millisecond})
+	}, RetryOptions{MaxAttempts: 3, InitialBackoff: 1 * time.Millisecond})
 	if err == nil {
 		t.Error("expected error after all retries exhausted")
 	}
@@ -60,7 +60,7 @@ func TestDo_ContextCancelled(t *testing.T) {
 
 	err := Do(ctx, func() error {
 		return errFake
-	}, Options{MaxAttempts: 5, InitialBackoff: 1 * time.Hour})
+	}, RetryOptions{MaxAttempts: 5, InitialBackoff: 1 * time.Hour})
 	if err != context.Canceled {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
@@ -72,7 +72,7 @@ func TestDo_NonRetryableError(t *testing.T) {
 	err := Do(context.Background(), func() error {
 		attempts++
 		return nonRetryable
-	}, Options{
+	}, RetryOptions{
 		MaxAttempts:    5,
 		InitialBackoff: 1 * time.Millisecond,
 		IsRetryable: func(err error) bool {
@@ -97,7 +97,7 @@ func TestDo_ContextCancelledDuringBackoff(t *testing.T) {
 	t0 := time.Now()
 	err := Do(ctx, func() error {
 		return errFake
-	}, Options{MaxAttempts: 10, InitialBackoff: 5 * time.Second})
+	}, RetryOptions{MaxAttempts: 10, InitialBackoff: 5 * time.Second})
 	if err != context.Canceled {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDo_ContextCancelledDuringBackoff(t *testing.T) {
 func TestDoWithValue_Success(t *testing.T) {
 	val, err := DoWithValue(context.Background(), func() (string, error) {
 		return "hello", nil
-	}, DefaultOptions())
+	}, DefaultRetryOptions())
 	if err != nil {
 		t.Errorf("expected nil, got %v", err)
 	}
@@ -126,7 +126,7 @@ func TestDoWithValue_Retry(t *testing.T) {
 			return 0, errFake
 		}
 		return 42, nil
-	}, Options{MaxAttempts: 5, InitialBackoff: 1 * time.Millisecond})
+	}, RetryOptions{MaxAttempts: 5, InitialBackoff: 1 * time.Millisecond})
 	if err != nil {
 		t.Errorf("expected nil, got %v", err)
 	}
@@ -138,7 +138,7 @@ func TestDoWithValue_Retry(t *testing.T) {
 func TestDoWithValue_AllFailures(t *testing.T) {
 	val, err := DoWithValue(context.Background(), func() (int, error) {
 		return 0, errFake
-	}, Options{MaxAttempts: 3, InitialBackoff: 1 * time.Millisecond})
+	}, RetryOptions{MaxAttempts: 3, InitialBackoff: 1 * time.Millisecond})
 	if err == nil {
 		t.Error("expected error")
 	}
@@ -147,8 +147,8 @@ func TestDoWithValue_AllFailures(t *testing.T) {
 	}
 }
 
-func TestDefaultOptions(t *testing.T) {
-	opts := DefaultOptions()
+func TestDefaultRetryOptions(t *testing.T) {
+	opts := DefaultRetryOptions()
 	if opts.MaxAttempts != 3 {
 		t.Errorf("expected MaxAttempts=3, got %d", opts.MaxAttempts)
 	}
@@ -164,7 +164,7 @@ func TestDefaultOptions(t *testing.T) {
 }
 
 func TestNorm_Defaults(t *testing.T) {
-	opts := norm(Options{})
+	opts := norm(RetryOptions{})
 	if opts.MaxAttempts != 3 {
 		t.Errorf("expected MaxAttempts=3, got %d", opts.MaxAttempts)
 	}
@@ -180,7 +180,7 @@ func TestNorm_Defaults(t *testing.T) {
 }
 
 func TestNorm_PreservesValues(t *testing.T) {
-	opts := norm(Options{
+	opts := norm(RetryOptions{
 		MaxAttempts:    5,
 		InitialBackoff: 5 * time.Second,
 		MaxBackoff:     60 * time.Second,
@@ -201,7 +201,7 @@ func TestNorm_PreservesValues(t *testing.T) {
 }
 
 func TestSleepDuration(t *testing.T) {
-	opts := Options{
+	opts := RetryOptions{
 		InitialBackoff: 1 * time.Second,
 		MaxBackoff:     30 * time.Second,
 		BackoffFactor:  2.0,
@@ -229,7 +229,7 @@ func TestSleepDuration(t *testing.T) {
 }
 
 func TestSleepDuration_CustomFactor(t *testing.T) {
-	opts := Options{
+	opts := RetryOptions{
 		InitialBackoff: 1 * time.Second,
 		MaxBackoff:     100 * time.Second,
 		BackoffFactor:  3.0,

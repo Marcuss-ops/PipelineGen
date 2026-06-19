@@ -33,10 +33,10 @@ func TestIsYouTubeURL(t *testing.T) {
 	}
 }
 
-// ─── Block 9: ResearchSource.ToDB ─────────────────────────────────────
+// ─── Block 9: ResolvedResearchSource.ToDB ─────────────────────────────────────
 
-func TestResearchSourceToDB(t *testing.T) {
-	source := ResearchSource{
+func TestResolvedResearchSourceToDB(t *testing.T) {
+	source := ResolvedResearchSource{
 		Query:          "test query",
 		URL:            "https://example.com",
 		Title:          "Test title",
@@ -67,8 +67,8 @@ func TestResearchSourceToDB(t *testing.T) {
 	}
 }
 
-func TestResearchSourceToDB_YoutubeType(t *testing.T) {
-	source := ResearchSource{
+func TestResolvedResearchSourceToDB_YoutubeType(t *testing.T) {
+	source := ResolvedResearchSource{
 		Query:          "YouTube transcript",
 		URL:            "https://youtube.com/watch?v=abc123",
 		Title:          "Interview",
@@ -87,8 +87,8 @@ func TestResearchSourceToDB_YoutubeType(t *testing.T) {
 	}
 }
 
-func TestResearchSourceToDB_TranscriptType(t *testing.T) {
-	source := ResearchSource{
+func TestResolvedResearchSourceToDB_TranscriptType(t *testing.T) {
+	source := ResolvedResearchSource{
 		SourceType: "transcript",
 	}
 

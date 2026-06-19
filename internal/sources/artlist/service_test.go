@@ -16,10 +16,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/core/domain/job"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
@@ -48,67 +48,13 @@ func createTestDB(t *testing.T) *sql.DB {
 }
 
 // insertTestClip inserts a test clip into the database
-func insertTestClip(t *testing.T, db *sql.DB, clip *models.MediaAsset) {
+func insertTestClip(t *testing.T, db *sql.DB, clip *assets.Asset) {
 	t.Helper()
 
 	clip.CreatedAt = time.Now().UTC()
 	clip.UpdatedAt = clip.CreatedAt
 	if clip.Metadata == nil {
 		clip.Metadata = make(map[string]any)
-	}
-	if clip.Filename != "" {
-		clip.SetMetadataString("filename", clip.Filename)
-	}
-	if clip.FolderID != "" {
-		clip.SetMetadataString("folder_id", clip.FolderID)
-	}
-	if clip.FolderPath != "" {
-		clip.SetMetadataString("folder_path", clip.FolderPath)
-	}
-	if clip.Group != "" {
-		clip.SetMetadataString("group_name", clip.Group)
-	}
-	if clip.MediaType != "" {
-		clip.SetMetadataString("media_type", clip.MediaType)
-	}
-	if clip.DriveLink != "" {
-		clip.SetMetadataString("drive_link", clip.DriveLink)
-	}
-	if clip.DriveFileID != "" {
-		clip.SetMetadataString("drive_file_id", clip.DriveFileID)
-	}
-	if clip.DownloadLink != "" {
-		clip.SetMetadataString("download_link", clip.DownloadLink)
-	}
-	if clip.Category != "" {
-		clip.SetMetadataString("category", clip.Category)
-	}
-	if clip.ExternalURL != "" {
-		clip.SetMetadataString("external_url", clip.ExternalURL)
-	}
-	if clip.FileHash != "" {
-		clip.SetMetadataString("file_hash", clip.FileHash)
-	}
-	if clip.LocalPath != "" {
-		clip.SetMetadataString("local_path", clip.LocalPath)
-	}
-	if clip.Status != "" {
-		clip.SetMetadataString("status", clip.Status)
-	}
-	if clip.Error != "" {
-		clip.SetMetadataString("error", clip.Error)
-	}
-	if clip.ThumbURL != "" {
-		clip.SetMetadataString("thumb_url", clip.ThumbURL)
-	}
-	if clip.PHash != "" {
-		clip.SetMetadataString("phash", clip.PHash)
-	}
-	if clip.VisualEmbeddingJSON != "" {
-		clip.SetMetadataString("visual_embedding_json", clip.VisualEmbeddingJSON)
-	}
-	if clip.SearchText != "" {
-		clip.SetMetadataString("search_text", clip.SearchText)
 	}
 
 	repo := clips.NewRepository(db, zap.NewNop())
@@ -190,14 +136,15 @@ func TestArtlistSearchRequest(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert test clip
-	clip := &models.MediaAsset{
-		ID:           "artlist_search_001",
-		Name:         "Search Test Clip",
-		ExternalURL:  "https://artlist.io/clip/search",
-		DownloadLink: "https://artlist.io/hls/search.m3u8",
-		Tags:         []string{"search"},
-		Source:       "artlist",
+	clip := &assets.Asset{
+		ID:             "artlist_search_001",
+		Name:           "Search Test Clip",
+		SourceURL:      "https://artlist.io/clip/search",
+		Source:         "artlist",
+		LifecycleState: assets.StateReady,
+		Tags:           []string{"search"},
 	}
+	clip.SetDownloadLink("https://artlist.io/hls/search.m3u8")
 	insertTestClip(t, db, clip)
 
 	// Test search
@@ -216,14 +163,15 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 	defer db.Close()
 
 	// Insert a clip directly
-	clip := &models.MediaAsset{
-		ID:           "artlist_store_001",
-		Name:         "Store Test Clip",
-		ExternalURL:  "https://artlist.io/clip/store",
-		DownloadLink: "https://artlist.io/hls/store.m3u8",
-		Tags:         []string{"store"},
-		Source:       "artlist",
+	clip := &assets.Asset{
+		ID:             "artlist_store_001",
+		Name:           "Store Test Clip",
+		SourceURL:      "https://artlist.io/clip/store",
+		Source:         "artlist",
+		LifecycleState: assets.StateReady,
+		Tags:           []string{"store"},
 	}
+	clip.SetDownloadLink("https://artlist.io/hls/store.m3u8")
 	insertTestClip(t, db, clip)
 
 	// Verify clip is in database
@@ -253,16 +201,17 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	defer db.Close()
 
 	// Insert a clip with drive link
-	clip := &models.MediaAsset{
-		ID:           "artlist_drive_001",
-		Name:         "Drive Link Test Clip",
-		ExternalURL:  "https://artlist.io/clip/drive",
-		DownloadLink: "https://artlist.io/hls/drive.m3u8",
-		DriveLink:    "https://drive.google.com/file/d/drivelink123/view",
-		FileHash:     "drivehash123",
-		Tags:         []string{"drive"},
-		Source:       "artlist",
+	clip := &assets.Asset{
+		ID:             "artlist_drive_001",
+		Name:           "Drive Link Test Clip",
+		SourceURL:      "https://artlist.io/clip/drive",
+		Source:         "artlist",
+		LifecycleState: assets.StateReady,
+		Tags:           []string{"drive"},
 	}
+	clip.SetDownloadLink("https://artlist.io/hls/drive.m3u8")
+	clip.SetDriveLink("https://drive.google.com/file/d/drivelink123/view")
+	clip.SetFileHash("drivehash123")
 	insertTestClip(t, db, clip)
 
 	// Verify drive link is persisted — drive_link is now a canonical
@@ -273,8 +222,8 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 		t.Fatalf("failed to query drive link: %v", err)
 	}
 
-	if driveLink != clip.DriveLink {
-		t.Errorf("expected drive link %s, got %s", clip.DriveLink, driveLink)
+	if driveLink != clip.DriveLink() {
+		t.Errorf("expected drive link %s, got %s", clip.DriveLink(), driveLink)
 	}
 
 	t.Log("Drive link correctly persisted in SQLite")
@@ -399,14 +348,16 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	insertTestClip(t, db, &models.MediaAsset{
-		ID:           "clip-1",
-		Name:         "City Night",
-		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
-		DownloadLink: "https://cdn.artlist.io/video.m3u8",
-		Tags:         []string{"city", "night"},
-		Source:       "artlist",
-	})
+	clip := &assets.Asset{
+		ID:             "clip-1",
+		Name:           "City Night",
+		SourceURL:      "https://cdn.artlist.io/video.m3u8",
+		Source:         "artlist",
+		LifecycleState: assets.StateReady,
+		Tags:           []string{"city", "night"},
+	}
+	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
+	insertTestClip(t, db, clip)
 
 	processor := &fakeMediaProcessor{
 		err: errors.New("download failed"),
@@ -481,14 +432,16 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	insertTestClip(t, db, &models.MediaAsset{
-		ID:           "clip-1",
-		Name:         "City Night",
-		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
-		DownloadLink: "https://cdn.artlist.io/video.m3u8",
-		Tags:         []string{"city", "night"},
-		Source:       "artlist",
-	})
+	clip := &assets.Asset{
+		ID:             "clip-1",
+		Name:           "City Night",
+		SourceURL:      "https://cdn.artlist.io/video.m3u8",
+		Source:         "artlist",
+		LifecycleState: assets.StateReady,
+		Tags:           []string{"city", "night"},
+	}
+	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
+	insertTestClip(t, db, clip)
 
 	processor := &fakeMediaProcessor{}
 
@@ -565,14 +518,16 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	artlistRepo := clips.NewRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	insertTestClip(t, db, &models.MediaAsset{
-		ID:           "clip-1",
-		Name:         "City Night",
-		ExternalURL:  "https://cdn.artlist.io/video.m3u8",
-		DownloadLink: "https://cdn.artlist.io/video.m3u8",
-		Tags:         []string{"city", "night"},
-		Source:       "artlist",
-	})
+	clip := &assets.Asset{
+		ID:             "clip-1",
+		Name:           "City Night",
+		SourceURL:      "https://cdn.artlist.io/video.m3u8",
+		Source:         "artlist",
+		LifecycleState: assets.StateReady,
+		Tags:           []string{"city", "night"},
+	}
+	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
+	insertTestClip(t, db, clip)
 
 	processor := &fakeMediaProcessor{
 		err: errors.New("download failed"),
@@ -601,7 +556,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	payload := testutil.MustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})
 	job := &domainjob.Job{
 		ID:        "test-job-1",
-		Type:      string(models.JobTypeArtlistRun),
+		Type:      string(domainjob.JobTypeArtlistRun),
 		Status:    domainjob.StatusRunning,
 		Payload:   payload,
 		CreatedAt: time.Now().UTC(),

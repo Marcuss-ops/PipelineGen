@@ -2,7 +2,6 @@ package files
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,7 +28,8 @@ func BuildTimestampedSlug(name string, t time.Time) string {
 // Paths follow the pattern: images/downloaded/{source}/{style}/{subStyle}/{genID}/{hash}.ext
 // or: images/generated/{style}/{subStyle}/{genID}/{hash}.ext
 func ExtractStyleFromPath(pathRel string) string {
-	parts := strings.Split(pathRel, string(filepath.Separator))
+	normalized := strings.ReplaceAll(pathRel, "\\", "/")
+	parts := strings.Split(normalized, "/")
 	if len(parts) < 3 {
 		return ""
 	}
