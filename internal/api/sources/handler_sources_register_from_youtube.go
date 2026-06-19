@@ -12,12 +12,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	clipssources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // RegisterFromYouTubeRequest is the JSON body for registering a clip from a YouTube URL.
@@ -231,7 +232,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		zap.String("name", name))
 
 	// 2. Resolve Drive target folder
-	targetFolderID := ExtractDriveFolderID(strings.TrimSpace(req.FolderID))
+	targetFolderID := clipssources.ExtractDriveFolderID(strings.TrimSpace(req.FolderID))
 	if targetFolderID == "" {
 		targetFolderID = h.cfg.Drive.ClipsFolder()
 		if targetFolderID == "" {
@@ -240,7 +241,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	}
 	group := strings.TrimSpace(req.Group)
 	if group != "" && targetFolderID != "" {
-		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && cleanFoldName(existingName) == cleanFoldName(group) {
+		if existingName, err := h.driveUploader.GetFolderName(ctx, targetFolderID); err == nil && clipssources.CleanFolderName(existingName) == clipssources.CleanFolderName(group) {
 			log.Info("folder_id already points to group folder, reusing it",
 				zap.String("folder_id", targetFolderID),
 				zap.String("name", existingName))
@@ -410,7 +411,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	driveFilename := fmt.Sprintf("%s - %s%s", videoID, name, ext)
 	var uploadResult *driveUploadResult
 	if h.driveUploader != nil {
-		driveDescription := buildDriveDescription(name, req.Description, description, req.Tags, req.Category, req.Source, req.URL, videoID)
+		driveDescription := clipssources.BuildDriveDescription(name, req.Description, description, req.Tags, req.Category, req.Source, req.URL, videoID)
 		result, err := h.driveUploader.UploadFileWithDescription(ctx, downloadedPath, targetFolderID, driveFilename, driveDescription)
 		if err != nil {
 			log.Warn("Drive upload failed, continuing with local file only",
@@ -477,7 +478,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 			clipEntry["drive_link"] = uploadResult.WebViewLink
 		}
 
-		h.updateCumulativeMetadataJSON(ctx, targetFolderID, clipID, clipEntry, log)
+		clipssources.UpdateCumulativeMetadataJSON(ctx, h.driveUploader, h.cfg.Storage.TempPath(), targetFolderID, clipID, clipEntry, log)
 	}
 
 	// 6. Compute duration

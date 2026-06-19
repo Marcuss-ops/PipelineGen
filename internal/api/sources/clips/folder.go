@@ -1,4 +1,4 @@
-package sources
+package clips
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 )
 
@@ -17,7 +18,7 @@ func (h *Handler) ListFolders(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -31,7 +32,7 @@ func (h *Handler) ListFolders(c *gin.Context) {
 
 	folders, err := repo.ListFolders(c.Request.Context(), "")
 	if err != nil {
-		apiutil.InternalError(c, err)
+		internal.APIUtil.InternalError(c, err)
 		return
 	}
 
@@ -40,7 +41,7 @@ func (h *Handler) ListFolders(c *gin.Context) {
 		folders = folders[:limit]
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
 		"count":   len(folders),
@@ -55,7 +56,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -67,7 +68,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 		// Try by folder_id (Drive ID)
 		folders, err2 := repo.ListFolders(ctx, "")
 		if err2 != nil {
-			apiutil.InternalError(c, err2)
+			internal.APIUtil.InternalError(c, err2)
 			return
 		}
 		found := false
@@ -79,7 +80,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 			}
 		}
 		if !found {
-			apiutil.NotFound(c, "folder not found")
+			internal.APIUtil.NotFound(c, "folder not found")
 			return
 		}
 	}
@@ -99,7 +100,7 @@ func (h *Handler) FolderStatus(c *gin.Context) {
 		}
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":         true,
 		"source":     source,
 		"folder":     folder,
@@ -115,18 +116,18 @@ func (h *Handler) RegenerateManifest(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
 	if h.folderMemSvc == nil {
-		apiutil.InternalError(c, nil)
+		internal.APIUtil.InternalError(c, nil)
 		return
 	}
 
 	h.log.Info("regenerating manifest for folder", zap.String("id", folderID))
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     true,
 		"source": source,
 		"folder": folderID,
@@ -140,7 +141,7 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -177,12 +178,12 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 
 	if driveFolderID != "" {
 		if h.driveUploader == nil {
-			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
+			internal.APIUtil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 			return
 		}
 		if err := h.driveUploader.TrashFolder(ctx, driveFolderID); err != nil {
 			h.log.Error("failed to trash folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
-			apiutil.InternalError(c, err)
+			internal.APIUtil.InternalError(c, err)
 			return
 		}
 	}
@@ -193,7 +194,7 @@ func (h *Handler) TrashFolder(c *gin.Context) {
 		}
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     true,
 		"action": "trashed",
 		"source": source,
@@ -208,7 +209,7 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		apiutil.BadRequest(c, "invalid source: "+source)
+		internal.APIUtil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -245,12 +246,12 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 
 	if driveFolderID != "" {
 		if h.driveUploader == nil {
-			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
+			internal.APIUtil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 			return
 		}
 		if err := h.driveUploader.DeleteFolder(ctx, driveFolderID); err != nil {
 			h.log.Error("failed to delete folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
-			apiutil.InternalError(c, err)
+			internal.APIUtil.InternalError(c, err)
 			return
 		}
 	}
@@ -261,7 +262,7 @@ func (h *Handler) DeleteFolder(c *gin.Context) {
 		}
 	}
 
-	apiutil.OK(c, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     true,
 		"action": "deleted",
 		"source": source,

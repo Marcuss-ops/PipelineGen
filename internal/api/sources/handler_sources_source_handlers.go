@@ -1,3 +1,9 @@
+// Package sources owns the legacy flat HTTP handlers for media sources
+// (YouTube, Artlist, Stock, Voiceover, SoundEffect, Drive ops) and the
+// SourcesHandler that routes them. PR-A Phase 4 BULK moved the clip
+// surface into the clips subpackage; SourcesHandler now delegates every
+// clip route via the single h.clips.RegisterRoutes(r) call and keeps
+// only non-clip routes in this file.
 package sources
 
 import (
@@ -35,7 +41,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
-// SourcesHandler handles common media operations.
+// SourcesHandler handles non-clip media operations and routes the clip
+// surface via the embedded clipsources.Handler.
+//
+// PR-A Phase 4 BULK: clipsDelete + clipsSearch subhandlers are now folded
+// into the unified clipsources.Handler. SourcesHandler is a thin router
+// for the legacy non-clip area (Voiceover, SoundEffect, recommend,
+// register-from-youtube, Drive ops, diagnostics) and the holder of dep
+// singletons that both sub-handlers and clips.Handler need.
 type SourcesHandler struct {
 	cfg            *config.Config
 	artlistSvc     *artlist.Service
@@ -72,8 +85,9 @@ type SourcesHandler struct {
 	// Sub-handlers
 	Voiceover   *VoiceoverHandler
 	SoundEffect *SoundEffectHandler
-	clipsDelete *clipsources.DeleteHandler // PR-A Phase 4-min: clip trash/delete endpoints
-	clipsSearch *clipsources.SearchHandler // PR-A Phase 4 sub-2: clip advanced search endpoint
+	// clips owns ALL clip routes via clipsources.Handler.RegisterRoutes.
+	// SourcesHandler just delegates; no fan-out infra in this file.
+	clips *clipsources.Handler
 }
 
 // SetRealtimeService sets the realtime service for semantic search.
@@ -82,35 +96,100 @@ func (h *SourcesHandler) SetRealtimeService(svc *realtime.Service) {
 }
 
 // SetClipIndexer sets the clip indexer for generating search_text/embeddings.
+// Forwards to h.clips so the same instance is reachable from the unified
+// clips.Handler. Late-binding after NewSourcesHandler is supported.
 func (h *SourcesHandler) SetClipIndexer(ci *clipindexer.Service) {
 	h.clipIndexer = ci
+	if h.clips != nil {
+		h.clips.SetClipIndexer(ci)
+	}
 }
 
 // SetVectorStore sets the vector store for Qdrant upsert after indexing.
+// Forwards to h.clips (same reach from clips.Handler).
 func (h *SourcesHandler) SetVectorStore(vs *vectorstore.Service) {
 	h.vectorStore = vs
+	if h.clips != nil {
+		h.clips.SetVectorStore(vs)
+	}
 }
 
 // SetMetaWriter sets the unified metadata writer for semantic enrichment.
+// Forwards to h.clips and to SoundEffect (legacy in-package wiring).
 func (h *SourcesHandler) SetMetaWriter(mw *semantic.MetadataWriter) {
 	h.metaWriter = mw
 	if h.SoundEffect != nil {
 		h.SoundEffect.metaWriter = mw
 	}
+	if h.clips != nil {
+		h.clips.SetMetaWriter(mw)
+	}
 }
 
 // SetArtifactService sets the artifact service for content-addressed file storage.
+// Forwards to h.clips so UploadVideoClip's content-addressed blob storage
+// sees the late-bound service. Same late-binding semantics as the other
+// Set* setters that delegate.
 func (h *SourcesHandler) SetArtifactService(svc *artifacts.Service) {
 	h.artifactSvc = svc
+	if h.clips != nil {
+		h.clips.SetArtifactSvc(svc)
+	}
 }
 
 // SetAssetRepo sets the canonical asset repository (replaces clips.Repository
-// for handlers that have been migrated to use assets.Asset directly).
+// for handlers that have been migrated to use assets.Asset directly). The
+// assetRepo lives only on SourcesHandler because clips.Handler received it
+// at construction time via Deps — late rebinding here does NOT update
+// h.clips (the clips.Handler assetRepo is unchanged). Callers that need to
+// rewire assets.Repository across both must rebuild h.clips; in practice
+// assetRepo is set once at startup so this limitation is theoretical.
 func (h *SourcesHandler) SetAssetRepo(repo assets.Repository) {
 	h.assetRepo = repo
 }
 
-// NewHandler creates a new common media handler.
+// SetVoiceoverRepo sets the voiceover repository. Forwards to h.clips so
+// DownloadClip's voiceover-source branch sees the late-bound repo. Both
+// handlers hold the same reference; switching repos mid-process picks up
+// on the next handler invocation.
+func (h *SourcesHandler) SetVoiceoverRepo(repo *voiceovers.Repository) {
+	h.voiceoverRepo = repo
+	if h.clips != nil {
+		h.clips.SetVoiceoverRepo(repo)
+	}
+}
+
+// SetImagesRepo sets the images repository. clips.Handler reads it in
+// ListClips for the "source=images" branch, so this setter forwards to
+// h.clips as well as Self.imagesRepo (legacy sources/ search_handlers.go,
+// semantic_handlers.go also use it directly).
+func (h *SourcesHandler) SetImagesRepo(repo *images.Repository) {
+	h.imagesRepo = repo
+	if h.clips != nil {
+		h.clips.SetImagesRepo(repo)
+	}
+}
+
+// SetFolderMemSvc sets the folder memory service. clips.Handler reads it
+// in RegenerateManifest for the folder heuristic. sources/ search_handlers.go
+// also uses folderMemSvc directly for legacy path resolution.
+func (h *SourcesHandler) SetFolderMemSvc(svc *foldermemory.Service) {
+	h.folderMemSvc = svc
+	if h.clips != nil {
+		h.clips.SetFolderMemSvc(svc)
+	}
+}
+
+// NewSourcesHandler creates a new common media handler. The clips.Handler
+// embedded in this SourcesHandler is wired from the same dep singletons
+// so it shares the repos/uploads/jobs as the legacy in-package methods.
+//
+// params:
+//
+//	cfg, artlistSvc, youtubeSvc, voiceoverSvc, voiceoverSync, jobsSvc,
+//	catalogRepo, assetIndexSvc, artlistRepo, clipsRepo, stockRepo,
+//	cleanupSvc, folderMemSvc, assetTreeSvc, driveUploader,
+//	mediaProcessor, deletionSvc, catalogSync, maintenanceSvc, log
 func NewSourcesHandler(
 	cfg *config.Config,
 	artlistSvc *artlist.Service,
@@ -192,12 +271,31 @@ func NewSourcesHandler(
 		log,
 	)
 	h.SoundEffect = NewSoundEffectHandler(clipsRepo, driveUploader, h.metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
-	h.clipsDelete = clipsources.NewDeleteHandler(deletionSvc)
-	h.clipsSearch = clipsources.NewSearchHandler(map[string]*clips.Repository{
-		"youtube": clipsRepo,
-		"artlist": artlistRepo,
-		"stock":   stockRepo,
-	}, log)
+
+	// PR-A Phase 4 BULK: build the unified clips.Handler with all 15 deps.
+	// voiceoverRepo is set post-construction by SetVoiceoverRepo when
+	// composition reaches that wiring point; nil here is fine because
+	// every clip.Handler method that touches it nil-checks first.
+	h.clips = clipsources.NewHandler(clipsources.Deps{
+		AssetRepo:      h.assetRepo,
+		ClipsRepo:      h.clipsRepo,
+		StockRepo:      h.stockRepo,
+		ArtlistRepo:    h.artlistRepo,
+		DeletionSvc:    h.deletionSvc,
+		DriveUploader:  h.driveUploader,
+		MediaProcessor: h.mediaProcessor,
+		AssetTreeSvc:   h.assetTreeSvc,
+		MetaWriter:     h.metaWriter,
+		ClipIndexer:    h.clipIndexer,
+		VectorStore:    h.vectorStore,
+		JobsSvc:        h.jobsSvc,
+		Cfg:            h.cfg,
+		Log:            h.log,
+		VoiceoverRepo:  h.voiceoverRepo,
+		ImagesRepo:     h.imagesRepo,
+		ArtifactSvc:    h.artifactSvc,
+		FolderMemSvc:   h.folderMemSvc,
+	})
 
 	// Register job handlers for this package (bulk upload, etc.)
 	if jobsSvc != nil {
@@ -209,54 +307,50 @@ func NewSourcesHandler(
 	return h
 }
 
-// SetVoiceoverRepo sets the voiceover repository.
-func (h *SourcesHandler) SetVoiceoverRepo(repo *voiceovers.Repository) {
-	h.voiceoverRepo = repo
+// RegisterJobHandlers delegates to h.clips.RegisterJobHandlers.
+// Kept on SourcesHandler so composition sites (init_core.go /
+// compose_media.go) keep their existing h.RegisterJobHandlers() call
+// shape without churn.
+func (h *SourcesHandler) RegisterJobHandlers() error {
+	if h.clips == nil {
+		return nil
+	}
+	return h.clips.RegisterJobHandlers()
 }
 
-// SetImagesRepo sets the images repository.
-func (h *SourcesHandler) SetImagesRepo(repo *images.Repository) {
-	h.imagesRepo = repo
+// Clips exposes the embedded clips.Handler for callers (mainly tests /
+// integration suites) that want to drive clip routes through the same
+// receiver the router uses. Returns nil if NewSourcesHandler has not run.
+func (h *SourcesHandler) Clips() *clipsources.Handler {
+	return h.clips
 }
 
 // RegisterRoutes registers media routes with source parameter.
+//
+// PR-A Phase 4 BULK: h.clips.RegisterRoutes(r) covers the entire clip
+// route surface in one delegation call. SourcesHandler only registers
+// non-clip routes (voiceover/sound_effect sub-routes, Drive ops,
+// register-from-youtube, diagnostics, qdrant ops).
 func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering common media routes")
 
-	// Clip-level endpoints
-	r.POST("/:source/clips", h.CreateClip)
-	r.GET("/:source/clips/:id", h.GetClip)
-	r.PATCH("/:source/clips/:id", h.UpdateClip)
-	r.POST("/:source/clips/:id/status", h.ClipStatus)
-	r.POST("/:source/clips/:id/verify", h.VerifyClip)
-	r.POST("/:source/clips/:id/trash", h.clipsDelete.TrashClip)
-	r.POST("/:source/clips/:id/delete", h.clipsDelete.DeleteClip)
-	r.POST("/:source/clips/:id/reupload", h.ReuploadClip)
-	r.POST("/:source/clips/:id/reprocess", h.ReprocessClip)
-	r.POST("/:source/clips/:id/reindex", h.ReindexClip)
-	r.POST("/enrich", h.EnrichMedia)
-	r.POST("/enrich/batch", h.BatchReindex)
-	r.GET("/:source/clips/:id/duplicates", h.FindDuplicates)
-	r.GET("/:source/clips/:id/download", h.DownloadClip)
-	r.POST("/:source/bulk/tags/add", h.BulkAddTags)
-	r.POST("/:source/bulk/tags/remove", h.BulkRemoveTags)
+	// Clip routes — single delegation to the unified clips.Handler.
+	// This drops: CreateClip, GetClip, UpdateClip, TrashClip, DeleteClip,
+	// VerifyClip, ReuploadClip, ReprocessClip, ReindexClip, ListClips,
+	// FoldBrowse (List/FolderStatus/RegenerateManifest/TrashFolder/
+	// DeleteFolder/GetFolderChildren/GetTree/GetBreadcrumb), BulkAddTags,
+	// BulkRemoveTags, Reconcile, Cleanup, EnrichMedia, BatchReindex,
+	// UploadVideoClip, AdvancedSearch, FindDuplicates, DownloadClip.
+	// All of those routes are now registered exactly once here, with
+	// the receiver owned by h.clips (single source of truth).
+	if h.clips != nil {
+		h.clips.RegisterRoutes(r)
+	}
 
-	// Source-level endpoints
+	// Source-level non-clip endpoints
 	r.GET("/search", h.Search)
 	r.GET("/semantic-search", h.SemanticSearch)
-	r.POST("/search/advanced", h.clipsSearch.AdvancedSearch)
 	r.POST("/recommend", h.RecommendClips)
-	r.GET("/:source/clips", h.ListClips)
-	r.POST("/:source/reconcile", h.Reconcile)
-	r.POST("/:source/cleanup", h.Cleanup)
-	r.GET("/:source/folders", h.ListFolders)
-	r.GET("/:source/folders/:id", h.FolderStatus)
-	r.POST("/:source/folders/:id/manifest", h.RegenerateManifest)
-	r.POST("/:source/folders/:id/trash", h.TrashFolder)
-	r.POST("/:source/folders/:id/delete", h.DeleteFolder)
-	r.GET("/:source/folders/:id/children", h.GetFolderChildren)
-	r.GET("/:source/tree", h.GetTree)
-	r.GET("/:source/breadcrumb", h.GetBreadcrumb)
 
 	// Voiceover specific routes
 	voiceover := r.Group("/voiceover")
@@ -270,16 +364,16 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 		h.SoundEffect.RegisterRoutes(sfxGroup)
 	}
 
-	// Video upload (multipart form — file + metadata)
-	r.POST("/upload-video", h.UploadVideoClip)
-
 	// Register from YouTube URL (download + metadata + Drive + Qdrant)
 	r.POST("/register-from-youtube", h.RegisterFromYouTube)
 
 	// Batch register multiple YouTube clips
 	r.POST("/register-batch", h.BatchRegisterFromYouTube)
 
-	// Bulk upload local .mp4 folders to Drive + DB + embeddings + Qdrant (async job)
+	// Bulk upload local .mp4 folders to Drive + DB + embeddings + Qdrant (async job).
+	// The handler is registered on SourcesHandler (legacy h.BulkUploadYouTubeClips)
+	// but the worker function lives on clips.Handler (clipsources.Handler).
+	// Both share the same jobsSvc so the enqueue + worker pair is internally consistent.
 	r.POST("/bulk-upload-youtube-clips", h.BulkUploadYouTubeClips)
 
 	// System diagnostics
