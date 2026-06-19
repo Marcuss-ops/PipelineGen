@@ -7,6 +7,7 @@ package script
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -55,7 +56,8 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 	}
 	result, err := h.generate.EnqueueFromClips(c.Request.Context(), fromClipsRequestToSpec(&req))
 	if err != nil {
-		api.Error(c, http.StatusInternalServerError, err.Error())
+		code, msg := mapErrorToHTTP(err)
+		api.Error(c, code, msg)
 		return
 	}
 	api.OK(c, GenerateFromClipsResponse{
@@ -78,7 +80,8 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 	}
 	result, err := h.generate.EnqueueWithImages(c.Request.Context(), withImagesRequestToSpec(&req))
 	if err != nil {
-		api.Error(c, http.StatusInternalServerError, err.Error())
+		code, msg := mapErrorToHTTP(err)
+		api.Error(c, code, msg)
 		return
 	}
 	api.OK(c, GenerateFromClipsResponse{
@@ -87,6 +90,25 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 		Status:    result.Status,
 		ClipCount: result.ClipCount,
 	})
+}
+
+// mapErrorToHTTP maps typed application errors to HTTP status codes.
+func mapErrorToHTTP(err error) (int, string) {
+	msg := err.Error()
+	switch {
+	case errors.Is(err, scriptjobs.ErrValidation):
+		return http.StatusBadRequest, msg
+	case errors.Is(err, scriptjobs.ErrInvalidPayload):
+		return http.StatusBadRequest, msg
+	case errors.Is(err, scriptjobs.ErrUnsupportedVersion):
+		return http.StatusBadRequest, msg
+	case errors.Is(err, scriptjobs.ErrUnavailable):
+		return http.StatusServiceUnavailable, msg
+	case errors.Is(err, scriptjobs.ErrConflict):
+		return http.StatusConflict, msg
+	default:
+		return http.StatusInternalServerError, msg
+	}
 }
 
 // GenerateBatch handles POST /api/script/generate-batch.

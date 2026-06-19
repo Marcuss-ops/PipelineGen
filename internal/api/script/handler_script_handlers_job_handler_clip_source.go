@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
@@ -88,6 +89,18 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		return nil, fmt.Errorf("failed to decode job payload: %w", err)
 	}
 	spec := &genPayload.Spec
+
+	// Construct the scenes service (application-layer) using dependencies
+	// available on the handler. This avoids touching app wiring.
+	scenesSvc := scenes.NewService(
+		h.clipServices.ImgSvc,
+		h.clipServices.VoSvc,
+		h.log,
+		h.cfg,
+		h.resolveDriveFolderID,
+		h.groupsResolver,
+		0, // use VELOX_SCENE_PARALLELISM env var
+	)
 
 	// Phase 0 (best-effort Playwright prewarm): fire sidecar POST /prewarm-pages
 	// in parallel with Phase 1's LLM call. By the time generateSceneImages (Phase 2)
@@ -190,7 +203,11 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 			group.Go("scene_images", func() error {
 				stageScenes := stageLog(h.log, job.ID, "scene_images")
 				scenesStart := time.Now()
-				scns := h.generateSceneImages(groupCtx, spec, pathResult.WriteResult.Script, tools)
+				var progressFn scenes.ProgressReporter
+				if tools != nil {
+					progressFn = tools.Progress
+				}
+				scns := scenesSvc.GenerateImages(groupCtx, spec, pathResult.WriteResult.Script, progressFn)
 				okScenes := 0
 				for _, s := range scns {
 					if len(s.Images) > 0 {
@@ -228,7 +245,7 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		}
 		stageVoiceover := stageLog(h.log, job.ID, "scene_voiceovers")
 		voStart := time.Now()
-		voiceovers = h.generateSceneVoiceovers(ctx, spec, scenes)
+		voiceovers = scenesSvc.GenerateVoiceovers(ctx, spec, scenes)
 		okVoices := 0
 		for _, v := range voiceovers {
 			if v.Status == "completed" {

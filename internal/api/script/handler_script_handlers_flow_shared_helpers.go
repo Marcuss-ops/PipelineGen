@@ -2,7 +2,6 @@ package script
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -21,118 +20,6 @@ type voiceoverSceneItem struct {
 	SceneIndex int
 }
 
-// buildVoiceoverDestination builds a *voiceover.DestinationRequest from the
-// provided parameters. It resolves voiceoverFolderID (explicit) or falls back
-// to voiceoverGroup-based resolution.
-//
-// Resolution order (highest priority first):
-//  1. voiceoverFolderID — raw Drive folder ID passed by the caller.
-//  2. groupsResolver.ResolveByName(voRootID, voiceoverGroup) — DB-backed
-//     category lookup (asset_tree_nodes). Avoids the legacy fall-through
-//     that would create a brand-new folder instead of routing to the
-//     canonical one. groupsResolver may be nil (callers without DB
-//     plumbing skip this step); a non-existent name falls through to (3).
-//  3. resolveFolder(...) — Drive deep-search by name (legacy).
-//     Falls back to voRootID on failure (creates a new path under root).
-//  4. Group label only — when nothing else matched.
-func buildVoiceoverDestination(
-	ctx context.Context,
-	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
-	log *zap.Logger,
-	title, voiceoverFolderID, voiceoverGroup, voRootID string,
-	groupsResolver *voiceover.GroupsResolver,
-) *voiceover.DestinationRequest {
-	subfolderName := textutil.SlugifyWithMax(title, 40)
-
-	// No magic fallback for voRootID: callers MUST pass the configured
-	// voiceover root (cfg.Drive.VoiceoverRootFolder) explicitly. Empty here
-	// disables DB-backed groups_resolver lookups cleanly (ResolveByName fails
-	// fast) and the Drive deep-search below gracefully returns an error.
-	// This keeps DB seed migration and handler in sync via config, not via
-	// duplicated literals.
-
-	// Step 1: explicit folder ID takes precedence.
-	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {
-		return &voiceover.DestinationRequest{
-			FolderID:        folderID,
-			SubfolderName:   subfolderName,
-			CreateSubfolder: true,
-		}
-	}
-
-	// Step 2: DB-backed category lookup. Nil resolver is fine (boot path
-	// without asset_tree wiring); ErrGroupNotFound falls through to Drive
-	// deep-search so legacy callers keep working for ad-hoc names.
-	if groupsResolver != nil && strings.TrimSpace(voiceoverGroup) != "" {
-		entry, err := groupsResolver.ResolveByName(ctx, voRootID, voiceoverGroup)
-		switch {
-		case err == nil && entry.FolderID != "":
-			if log != nil {
-				log.Info("routed voiceover via DB groups_resolver",
-					zap.String("voiceover_group", voiceoverGroup),
-					zap.String("folder_id", entry.FolderID),
-					zap.String("parent_id", voRootID))
-			}
-			return &voiceover.DestinationRequest{
-				FolderID:        entry.FolderID,
-				SubfolderName:   subfolderName,
-				CreateSubfolder: true,
-			}
-		case err != nil && !errors.Is(err, voiceover.ErrGroupNotFound):
-			if log != nil {
-				log.Warn("groups_resolver lookup failed unexpectedly, falling back to Drive deep-search",
-					zap.String("voiceover_group", voiceoverGroup),
-					zap.Error(err))
-			}
-		}
-	}
-
-	// Step 3: legacy Drive deep-search by name OR raw folder ID pass-through.
-	targetFolderOrGroup := voiceoverGroup
-	if targetFolderOrGroup != "" {
-		resolvedVOFolder, err := resolveFolder(ctx, targetFolderOrGroup, voRootID)
-		if err != nil {
-			if log != nil {
-				log.Warn("failed to resolve custom voiceover folder name/path, using default root", zap.Error(err))
-			}
-			resolvedVOFolder = voRootID
-		}
-
-		if resolvedVOFolder != "" {
-			return &voiceover.DestinationRequest{
-				FolderID:        resolvedVOFolder,
-				SubfolderName:   subfolderName,
-				CreateSubfolder: true,
-			}
-		}
-	}
-
-	// Step 4 fallback: use the caller-provided voRootID (typically the
-	// script folder, set in flow_entity_images.go:262-265 as
-	// `voRootID := payload.DriveFolderID`). This avoids the
-	// voiceover/process.go:88 fallback to `cfg.Drive.VoiceoverFolder()`
-	// (top-level voiceover root) which placed generated voiceovers in the
-	// Drive root instead of alongside the script.
-	if voRootID != "" {
-		return &voiceover.DestinationRequest{
-			FolderID:        voRootID,
-			SubfolderName:   subfolderName,
-			CreateSubfolder: true,
-		}
-	}
-
-	// Step 5: nothing matched — use the group label as-is for bookkeeping
-	// only. Will fall through to process.go:88 → cfg.Drive.VoiceoverFolder().
-	grp := voiceoverGroup
-	if grp == "" {
-		grp = "curation"
-	}
-	return &voiceover.DestinationRequest{
-		Group:           grp,
-		SubfolderName:   subfolderName,
-		CreateSubfolder: true,
-	}
-}
 
 // generateSceneVoiceovers generates voiceovers for each scene item.
 // Returns the number of successful generations.
