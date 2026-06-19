@@ -1,31 +1,13 @@
+// Deprecated: use pkg/concurrent.SafeGo / SafeGoFunc instead.
+// This file delegates to the canonical implementation in pkg/concurrent/.
 package platform
 
-import "log"
+import (
+	pkgconcurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+)
 
-// SafeGo runs fn in a new goroutine with panic recovery.
-// If fn panics, the panic is recovered and logged with the goroutine name.
-// Use this for all fire-and-forget goroutines to prevent a single panic
-// from crashing the entire process.
-func SafeGo(name string, fn func()) {
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[panic recovery] goroutine %q panicked: %v", name, r)
-			}
-		}()
-		fn()
-	}()
-}
+// Deprecated: use pkg/concurrent.SafeGo.
+func SafeGo(name string, fn func()) { pkgconcurrent.SafeGo(name, fn) }
 
-// SafeGoFunc runs fn(arg) in a new goroutine with panic recovery.
-// Useful when you need to pass a captured argument to avoid closure variable issues.
-func SafeGoFunc[T any](name string, arg T, fn func(T)) {
-	go func(a T) {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[panic recovery] goroutine %q panicked: %v", name, r)
-			}
-		}()
-		fn(a)
-	}(arg)
-}
+// Deprecated: use pkg/concurrent.SafeGoFunc.
+func SafeGoFunc[T any](name string, arg T, fn func(T)) { pkgconcurrent.SafeGoFunc(name, arg, fn) }

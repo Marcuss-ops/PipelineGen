@@ -1,32 +1,21 @@
-// Package corid exposes a context key and helpers for propagating a single
-// correlation id (the same value the API layer exposes as the
-// X-Request-ID header) from the HTTP request down through background
-// jobs, the Ollama client, and the Python scripts we exec into.
+// Package corid provides correlation ID context helpers.
 //
-// Storing it under one type-safe key means any layer that needs to log
-// "the trace that produced this log line" can pull it out without
-// having to know who set it.
+// Deprecated: use pkg/corid instead. This file delegates to the canonical
+// implementation in pkg/corid/ so call sites can migrate incrementally.
 package platform
 
-import "context"
+import (
+	"context"
 
-type key struct{}
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
+)
 
-// WithCorrelationID returns a new context carrying the given correlation id.
-// An empty id is ignored, so callers do not need to guard for it.
+// Deprecated: use pkg/corid.WithCorrelationID.
 func WithCorrelationID(ctx context.Context, id string) context.Context {
-	if id == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, key{}, id)
+	return corid.WithCorrelationID(ctx, id)
 }
 
-// FromContext returns the correlation id stored in ctx, or "" if none was
-// set. Safe to call from anywhere in the call chain.
+// Deprecated: use pkg/corid.FromContext.
 func FromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	v, _ := ctx.Value(key{}).(string)
-	return v
+	return corid.FromContext(ctx)
 }

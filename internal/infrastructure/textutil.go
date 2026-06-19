@@ -1,85 +1,72 @@
-// Package textutil provides common text processing utilities used across the codebase.
+// Deprecated: use pkg/textutil instead.
+// This file delegates to the canonical implementation in pkg/textutil/.
 package platform
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
-	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// Slugify converts a string to a lowercase slug with hyphens.
-// Preserves Unicode letters (è, ñ, ü, etc.) while stripping punctuation and spaces.
-func Slugify(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	b := make([]rune, 0, len(s))
-	prevDash := false
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b = append(b, r)
-			prevDash = false
-		} else {
-			if !prevDash {
-				b = append(b, '-')
-				prevDash = true
-			}
-		}
-	}
-	return strings.Trim(string(b), "-")
-}
+// Deprecated: use pkg/textutil.Slugify.
+func Slugify(s string) string { return textutil.Slugify(s) }
 
-// SlugifyWithMax is like Slugify but truncates to maxLen runes, trimming trailing hyphens.
-// Uses rune-based truncation to safely handle multi-byte Unicode characters.
-func SlugifyWithMax(s string, maxLen int) string {
-	s = Slugify(s)
-	if maxLen > 0 {
-		r := []rune(s)
-		if len(r) > maxLen {
-			s = string(r[:maxLen])
-			s = strings.TrimRight(s, "-")
-		}
-	}
-	return s
-}
+// Deprecated: use pkg/textutil.SlugifyWithMax.
+func SlugifyWithMax(s string, maxLen int) string { return textutil.SlugifyWithMax(s, maxLen) }
 
-// SafeName replaces filesystem-unsafe characters with spaces,
-// collapses multiple spaces, and returns a trimmed result.
-// Falls back to "untitled" for empty input.
-func SafeName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "untitled"
-	}
+// Deprecated: use pkg/textutil.SafeName.
+func SafeName(name string) string { return textutil.SafeName(name) }
 
-	name = strings.NewReplacer(
-		"/", " ", "\\", " ", ":", " ", "*", " ", "?", " ",
-		"\"", " ", "<", " ", ">", " ", "|", " ", "@", " ",
-		"#", " ", "$", " ", "%", " ", "^", " ", "&", " ",
-		"(", " ", ")", " ", "[", " ", "]", " ", "{", " ",
-		"}", " ", "'", " ", "`", " ", "~", " ", "!", " ",
-		";", " ", ",", " ", "-", " ", "_", " ", ".", " ",
-	).Replace(name)
+// Deprecated: use pkg/textutil.SanitizeFilename.
+func SanitizeFilename(name string) string { return textutil.SanitizeFilename(name) }
 
-	result := strings.Join(strings.Fields(name), " ")
-	if result == "" {
-		return "untitled"
-	}
-	return result
-}
+// Deprecated: use pkg/textutil.Truncate.
+func Truncate(s string, n int) string { return textutil.Truncate(s, n) }
+
+// Deprecated: use pkg/textutil.CountWords.
+func CountWords(text string) int { return textutil.CountWords(text) }
+
+// Deprecated: use pkg/textutil.FirstNonEmpty.
+func FirstNonEmpty(values ...string) string { return textutil.FirstNonEmpty(values...) }
+
+// Deprecated: use pkg/textutil.ContainsCI.
+func ContainsCI(s, substr string) bool { return textutil.ContainsCI(s, substr) }
+
+// Deprecated: use pkg/textutil.SplitCSV.
+func SplitCSV(text string) []string { return textutil.SplitCSV(text) }
+
+// Deprecated: use pkg/textutil.NormalizeStringSlice.
+func NormalizeStringSlice(tags []string) []string { return textutil.NormalizeStringSlice(tags) }
+
+// Deprecated: use pkg/textutil.Tokenize.
+func Tokenize(text string) []string { return textutil.Tokenize(text) }
+
+// Deprecated: use pkg/textutil.ParseVTTTimestamp.
+func ParseVTTTimestamp(ts string) float64 { return textutil.ParseVTTTimestamp(ts) }
+
+// Deprecated: use pkg/textutil.FormatSecondsToTimestamp.
+func FormatSecondsToTimestamp(seconds int) string { return textutil.FormatSecondsToTimestamp(seconds) }
+
+// Deprecated: use pkg/textutil.CleanSubtitleText.
+func CleanSubtitleText(text string) string { return textutil.CleanSubtitleText(text) }
+
+// Deprecated: use pkg/textutil.ParseTimestamp.
+func ParseTimestamp(ts string) (int, error) { return textutil.ParseTimestamp(ts) }
+
+// ── Stopwords (file I/O — not suitable for leaf pkg/) ──────────────────
 
 var (
-	stopwords     map[string]bool
+	stopwordsMap  map[string]bool
 	stopwordsOnce sync.Once
 )
 
-// ensureStopwords loads stopwords lazily on first access instead of using init().
 func ensureStopwords() {
 	stopwordsOnce.Do(func() {
-		stopwords = make(map[string]bool)
+		stopwordsMap = make(map[string]bool)
 		loadStopwordsFromDir("config/stopwords")
 	})
 }
@@ -89,7 +76,6 @@ func loadStopwordsFromDir(dir string) {
 	if err != nil {
 		return
 	}
-
 	for _, file := range files {
 		if file.IsDir() || filepath.Ext(file.Name()) != ".txt" {
 			continue
@@ -105,34 +91,24 @@ func loadStopwordsFile(path string) {
 		return
 	}
 	defer file.Close()
-
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		word := strings.TrimSpace(scanner.Text())
 		if word != "" && !strings.HasPrefix(word, "#") {
-			stopwords[strings.ToLower(word)] = true
+			stopwordsMap[strings.ToLower(word)] = true
 		}
 	}
 }
 
-// Tokenize splits text into tokens using unicode-aware word boundaries.
-func Tokenize(text string) []string {
-	text = strings.ToLower(text)
-	return strings.FieldsFunc(text, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	})
-}
-
 // IsStopWord checks if a term is a common stop word loaded from config files.
-// Lazily loads stopwords on first call instead of using init().
 func IsStopWord(term string) bool {
 	ensureStopwords()
-	return stopwords[strings.ToLower(term)]
+	return stopwordsMap[strings.ToLower(term)]
 }
 
 // TokenizeWithStopWords removes stop words from tokenization.
 func TokenizeWithStopWords(text string) []string {
-	tokens := Tokenize(text)
+	tokens := textutil.Tokenize(text)
 	result := make([]string, 0, len(tokens))
 	for _, tok := range tokens {
 		if len(tok) >= 3 && !IsStopWord(tok) {
@@ -142,255 +118,24 @@ func TokenizeWithStopWords(text string) []string {
 	return result
 }
 
-// SanitizeFilename removes potentially dangerous characters from a filename.
-func SanitizeFilename(name string) string {
-	name = strings.ReplaceAll(name, "..", "")
-	name = strings.ReplaceAll(name, "/", "")
-	name = strings.ReplaceAll(name, "\\", "")
-	name = strings.ReplaceAll(name, "\x00", "")
+// Deprecated: use pkg/textutil.CleanForVoiceover.
+func CleanForVoiceover(text string) string { return textutil.CleanForVoiceover(text) }
 
-	// Keep only safe characters
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' || c == ' ') {
-			name = name[:i] + name[i+1:]
-			i--
-		}
-	}
+// Deprecated: use pkg/textutil.SplitScriptSentences.
+func SplitScriptSentences(text string) []string { return textutil.SplitScriptSentences(text) }
 
-	name = strings.TrimSpace(name)
-	if len(name) > 255 {
-		name = name[:255]
-	}
-	if name == "" {
-		name = "unnamed"
-	}
-	return name
-}
-
-// NormalizeStringSlice normalizes a slice of strings (trim, lowercase, filter empty).
-func NormalizeStringSlice(tags []string) []string {
-	out := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
-		}
-		tag = strings.ToLower(tag)
-		out = append(out, tag)
-	}
-	return out
-}
-
-// ExtractJSONArray attempts to find and extract the first JSON array from a string.
-func ExtractJSONArray(s string) string {
-	start := strings.Index(s, "[")
-	end := strings.LastIndex(s, "]")
-	if start == -1 || end == -1 || end < start {
-		return s
-	}
-	return s[start : end+1]
-}
-
-// ContainsCI reports whether substr is within s, case-insensitively.
-// Returns false if substr is empty.
-func ContainsCI(s, substr string) bool {
-	if substr == "" {
-		return false
-	}
-	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
-}
-
-// Truncate returns a truncated string with '...' if it exceeds length n.
-// Uses rune-based truncation to safely handle multi-byte Unicode characters
-// (accents, emoji, CJK, etc.) without breaking at byte boundaries.
-func Truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	if n < 3 {
-		return string(r[:n])
-	}
-	return string(r[:n-3]) + "..."
-}
-
-// SplitCSV splits a comma-separated string into a trimmed slice.
-func SplitCSV(text string) []string {
-	if text == "" {
-		return nil
-	}
-	parts := strings.Split(text, ",")
-	var result []string
-	for _, p := range parts {
-		if p = strings.TrimSpace(p); p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// ── VTT Subtitle Helpers ────────────────────────────────────────────────
-
-// FormatSecondsToTimestamp converts seconds to HH:MM:SS format.
-func FormatSecondsToTimestamp(seconds int) string {
-	h := seconds / 3600
-	m := (seconds % 3600) / 60
-	s := seconds % 60
-	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
-}
-
-// ParseVTTTimestamp parses a VTT/SSA timestamp string to seconds as float64.
-func ParseVTTTimestamp(ts string) float64 {
-	ts = strings.TrimSpace(ts)
-	parts := strings.Split(ts, ":")
-	if len(parts) == 3 {
-		var h, m, s float64
-		fmt.Sscanf(parts[0], "%f", &h)
-		fmt.Sscanf(parts[1], "%f", &m)
-		fmt.Sscanf(parts[2], "%f", &s)
-		return h*3600 + m*60 + s
-	} else if len(parts) == 2 {
-		var m, s float64
-		fmt.Sscanf(parts[0], "%f", &m)
-		fmt.Sscanf(parts[1], "%f", &s)
-		return m*60 + s
-	}
-	return 0
-}
-
-// CleanSubtitleText removes HTML/VTT tags from subtitle text.
-func CleanSubtitleText(text string) string {
-	text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, "")
-	text = strings.TrimSpace(text)
-	return text
-}
-
-// scriptSentenceRe matches sentences in a script text.
-var scriptSentenceRe = regexp.MustCompile(`(?m)([^.!?]+[.!?]+|[^.!?]+$)`)
-
-// SplitScriptSentences splits script text into sentences for scene generation.
-func SplitScriptSentences(text string) []string {
-	text = strings.ReplaceAll(text, "\r\n", " ")
-	text = strings.ReplaceAll(text, "\n", " ")
-	parts := scriptSentenceRe.FindAllString(text, -1)
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		part = strings.Trim(part, "•-* \t")
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
-// BuildSceneQuery builds the canonical query used for both image
-// matching and clip recommendation by joining non-empty parts with " | ".
+// Deprecated: use pkg/textutil.BuildSceneQuery.
 func BuildSceneQuery(sentence, topic, style, language string) string {
-	parts := []string{strings.TrimSpace(sentence)}
-	if t := strings.TrimSpace(topic); t != "" {
-		parts = append(parts, t)
-	}
-	if s := strings.TrimSpace(style); s != "" {
-		parts = append(parts, s)
-	}
-	if l := strings.TrimSpace(language); l != "" {
-		parts = append(parts, l)
-	}
-	return strings.Join(parts, " | ")
+	return textutil.BuildSceneQuery(sentence, topic, style, language)
 }
 
-// CountWords returns the number of words in a text (fields split on whitespace).
-func CountWords(text string) int {
-	return len(strings.Fields(strings.TrimSpace(text)))
-}
+// Deprecated: use pkg/textutil.ExtractJSONArray.
+func ExtractJSONArray(s string) string { return textutil.ExtractJSONArray(s) }
 
-// langFullName returns the full language name for a language code.
-func LangFullName(code string) string {
-	names := map[string]string{
-		"it": "Italian", "es": "Spanish", "fr": "French", "de": "German",
-		"pt": "Portuguese", "nl": "Dutch", "pl": "Polish", "ru": "Russian",
-		"ja": "Japanese", "zh": "Chinese", "ko": "Korean", "ar": "Arabic",
-		"hi": "Hindi", "tr": "Turkish", "sv": "Swedish", "da": "Danish",
-		"fi": "Finnish", "no": "Norwegian", "cs": "Czech", "ro": "Romanian",
-		"hu": "Hungarian", "el": "Greek", "he": "Hebrew", "th": "Thai",
-		"vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
-	}
-	if name, ok := names[code]; ok {
-		return name
-	}
-	return code
-}
-
-// ── Markdown / Voiceover Cleaning ───────────────────────────────────────
-
-// Pre-compiled regexes for CleanForVoiceover.
-var (
-	voReHeadingMarker    = regexp.MustCompile(`(?m)^#+\s+`)
-	voReTrailingHash     = regexp.MustCompile(`\s+#+\s+`)
-	voReHorizontalRule   = regexp.MustCompile(`(?m)^[\-\_\*\=]{3,}\s*$`)
-	voReBoldMarker       = regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	voReItalicMarker     = regexp.MustCompile(`(?:^|\s)\*([^*\s][^*]*?)\*(?:\s|$|[.,;!?])`)
-	voReBracketArtifact  = regexp.MustCompile(`\[[^\]]*\]`)
-	voReBlockquoteMarker = regexp.MustCompile(`(?m)^>+\s*`)
-	voReChapterLabel     = regexp.MustCompile(`(?mi)^(?:Table\s+of\s+Contents|Item|Chapter|Parte|Capitolo|Chapitre|Capítulo|Kapitel)\s+\d+[\.:]?\s*`)
-	voReMultipleNewlines = regexp.MustCompile(`\n{3,}`)
-	voReMultipleSpaces   = regexp.MustCompile(` {2,}`)
-)
-
-// CleanForVoiceover strips markdown formatting artifacts and structural labels
-// that would be read aloud by TTS or render as ugly characters in Google Docs.
-//
-// SAFETY: this function MUST NOT destroy legitimate text. The patterns only
-// strip # and * when they appear as Markdown markers (start-of-line headings,
-// trailing section numbers, or paired bold/italic).
-func CleanForVoiceover(text string) string {
-	// Markdown headings at line start: "# Title", "## Section"
-	text = voReHeadingMarker.ReplaceAllString(text, "")
-	// Trailing section numbers: "Section #1" → "Section 1"
-	text = voReTrailingHash.ReplaceAllString(text, " ")
-	// Horizontal rules on their own line: "---", "***", "==="
-	text = voReHorizontalRule.ReplaceAllString(text, "")
-	// Unwrap **bold** → bold
-	text = voReBoldMarker.ReplaceAllString(text, "$1")
-	// Unwrap *italic* (word-boundary safe: "5*3=15" stays intact)
-	text = voReItalicMarker.ReplaceAllString(text, "$1")
-	// [music] / [♪] / [Applause] brackets
-	text = voReBracketArtifact.ReplaceAllString(text, "")
-	// > blockquote markers at line start
-	text = voReBlockquoteMarker.ReplaceAllString(text, "")
-	// "Chapter 1: ..." / "Capitolo 2: ..." / etc. at line start
-	text = voReChapterLabel.ReplaceAllString(text, "")
-	// Collapse multiple newlines
-	text = voReMultipleNewlines.ReplaceAllString(text, "\n\n")
-	// Collapse multiple spaces
-	text = voReMultipleSpaces.ReplaceAllString(text, " ")
-	return strings.TrimSpace(text)
-}
-
-// FirstNonEmpty returns the first non-empty (after trim) string from the arguments.
-// Returns "" if all inputs are empty.
-func FirstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-// Float64To32 converts a slice of float64 to float32.
-func Float64To32(in []float64) []float32 {
-	out := make([]float32, len(in))
-	for i, v := range in {
-		out[i] = float32(v)
-	}
-	return out
-}
+// Deprecated: use pkg/textutil.Float64To32.
+func Float64To32(in []float64) []float32 { return textutil.Float64To32(in) }
 
 // UniqueStringsVar returns a deduplicated slice preserving first-occurrence order.
-// Each item is trimmed and compared case-insensitively. Empty strings are skipped.
 func UniqueStringsVar(items ...string) []string {
 	seen := make(map[string]struct{}, len(items))
 	out := make([]string, 0, len(items))
@@ -409,43 +154,19 @@ func UniqueStringsVar(items ...string) []string {
 	return out
 }
 
-// ParseTimestamp parses a timestamp string to seconds.
-// Accepts HH:MM:SS, MM:SS, or SS formats.
-func ParseTimestamp(ts string) (int, error) {
-	ts = strings.TrimSpace(ts)
-	if ts == "" {
-		return 0, fmt.Errorf("empty timestamp")
+// LangFullName returns the full language name for a language code.
+func LangFullName(code string) string {
+	names := map[string]string{
+		"it": "Italian", "es": "Spanish", "fr": "French", "de": "German",
+		"pt": "Portuguese", "nl": "Dutch", "pl": "Polish", "ru": "Russian",
+		"ja": "Japanese", "zh": "Chinese", "ko": "Korean", "ar": "Arabic",
+		"hi": "Hindi", "tr": "Turkish", "sv": "Swedish", "da": "Danish",
+		"fi": "Finnish", "no": "Norwegian", "cs": "Czech", "ro": "Romanian",
+		"hu": "Hungarian", "el": "Greek", "he": "Hebrew", "th": "Thai",
+		"vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
 	}
-	parts := strings.Split(ts, ":")
-	switch len(parts) {
-	case 3:
-		var h, m, s int
-		if _, err := fmt.Sscanf(parts[0], "%d", &h); err != nil {
-			return 0, err
-		}
-		if _, err := fmt.Sscanf(parts[1], "%d", &m); err != nil {
-			return 0, err
-		}
-		if _, err := fmt.Sscanf(parts[2], "%d", &s); err != nil {
-			return 0, err
-		}
-		return h*3600 + m*60 + s, nil
-	case 2:
-		var m, s int
-		if _, err := fmt.Sscanf(parts[0], "%d", &m); err != nil {
-			return 0, err
-		}
-		if _, err := fmt.Sscanf(parts[1], "%d", &s); err != nil {
-			return 0, err
-		}
-		return m*60 + s, nil
-	case 1:
-		var seconds int
-		if _, err := fmt.Sscanf(ts, "%d", &seconds); err != nil {
-			return 0, err
-		}
-		return seconds, nil
-	default:
-		return 0, fmt.Errorf("invalid timestamp format: %s", ts)
+	if name, ok := names[code]; ok {
+		return name
 	}
+	return code
 }

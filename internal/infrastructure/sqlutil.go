@@ -1,67 +1,19 @@
+// Package sqlutil provides SQL LIKE fallback builders.
+//
+// Deprecated: use pkg/sqlutil instead. This file delegates to the canonical
+// implementation in pkg/sqlutil/ so call sites can migrate incrementally.
 package platform
 
-import "strings"
+import (
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
+)
 
+// Deprecated: use pkg/sqlutil.BuildFallbackLikeConditions.
 func BuildFallbackLikeConditions(tokens []string, columns []string) (string, []any) {
-	if len(tokens) == 0 || len(columns) == 0 {
-		return "", nil
-	}
-
-	var andConditions []string
-	var args []any
-
-	for _, token := range tokens {
-		token = strings.TrimSpace(token)
-		if len(token) < 2 {
-			continue
-		}
-
-		var colConditions []string
-		for _, col := range columns {
-			colConditions = append(colConditions, col+" LIKE ?")
-			args = append(args, "%"+token+"%")
-		}
-
-		andConditions = append(andConditions, "("+strings.Join(colConditions, " OR ")+")")
-	}
-
-	if len(andConditions) == 0 {
-		return "", nil
-	}
-
-	return "(" + strings.Join(andConditions, " AND ") + ")", args
+	return sqlutil.BuildFallbackLikeConditions(tokens, columns)
 }
 
-// BuildFallbackLikeConditionsOR builds LIKE conditions with OR semantics across keywords.
-// Unlike BuildFallbackLikeConditions (which requires ALL keywords to match — AND),
-// this returns clips where ANY keyword matches. Useful as a broadening fallback when
-// AND yields zero results.
+// Deprecated: use pkg/sqlutil.BuildFallbackLikeConditionsOR.
 func BuildFallbackLikeConditionsOR(tokens []string, columns []string) (string, []any) {
-	if len(tokens) == 0 || len(columns) == 0 {
-		return "", nil
-	}
-
-	var orConditions []string
-	var args []any
-
-	for _, token := range tokens {
-		token = strings.TrimSpace(token)
-		if len(token) < 2 {
-			continue
-		}
-
-		var colConditions []string
-		for _, col := range columns {
-			colConditions = append(colConditions, col+" LIKE ?")
-			args = append(args, "%"+token+"%")
-		}
-
-		orConditions = append(orConditions, "("+strings.Join(colConditions, " OR ")+")")
-	}
-
-	if len(orConditions) == 0 {
-		return "", nil
-	}
-
-	return "(" + strings.Join(orConditions, " OR ") + ")", args
+	return sqlutil.BuildFallbackLikeConditionsOR(tokens, columns)
 }
