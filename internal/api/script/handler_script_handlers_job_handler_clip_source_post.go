@@ -60,45 +60,6 @@ func (h *ScriptFlowHandler) handlePostGeneration(
 	return entitiesJSON, insights, videoMetadata
 }
 
-// handleCreateDoc builds the Google Doc content and creates the document.
-func (h *ScriptFlowHandler) handleCreateDoc(
-	ctx context.Context,
-	payload *scriptjobs.GenerationSpec,
-	pathResult *clipSourcePathResult,
-	entitiesJSON string,
-	insights ScriptInsights,
-	videoMetadata []VideoMetadata,
-	scenes []ScriptSceneImage,
-) (docLink, docID string) {
-	if pathResult == nil || pathResult.WriteResult == nil {
-		return "", ""
-	}
-
-	docContent := buildGeneratedTextDocContent(
-		payload.Title,
-		pathResult.WriteResult.Script,
-		payload.TargetWords,
-		videoMetadata,
-		entitiesJSON,
-		insights,
-		scenes,
-	)
-	resolvedDriveFolderID, err := h.resolveDriveFolderID(ctx, payload.DriveFolderID, "1qfTiJNqnce18MmeDrV4ORh6n5jLW4dR5")
-	if err != nil {
-		h.log.Warn("failed to resolve custom drive folder name/path, using default root", zap.Error(err))
-		resolvedDriveFolderID = "1qfTiJNqnce18MmeDrV4ORh6n5jLW4dR5"
-	}
-
-	if l, id := h.maybeCreateGoogleDoc(ctx, payload.Title, docContent, resolvedDriveFolderID, true); l != "" {
-		docLink = l
-		docID = id
-		h.log.Info("Google Doc created", zap.String("doc_id", docID))
-	} else {
-		h.log.Warn("Google Doc creation failed (non-fatal)")
-	}
-	return docLink, docID
-}
-
 // buildFinalResult assembles the final result map sent back to the client.
 func (h *ScriptFlowHandler) buildFinalResult(
 	payload *scriptjobs.GenerationSpec,

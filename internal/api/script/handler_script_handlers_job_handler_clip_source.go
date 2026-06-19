@@ -3,17 +3,17 @@ package script
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // clipSourcePathResult is the result produced by a single script generation path.
@@ -50,6 +50,45 @@ func stageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 // scriptGenSemaphore limits the number of concurrent script generation processes to 2
 // to prevent overloading CPU/GPU models and Playwright browser instances.
 var scriptGenSemaphore = make(chan struct{}, 2)
+
+// wrapPostGeneration adapts handlePostGeneration to the Pipeline's callback
+// signature (returns any instead of ScriptInsights, []documents.VideoMetadata
+// instead of []VideoMetadata). The real pathResult is passed through so
+// handlePostGeneration has access to all path result fields.
+func (h *ScriptFlowHandler) wrapPostGeneration(
+	ctx context.Context,
+	spec *scriptjobs.GenerationSpec,
+	script string,
+) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata) {
+	return h.wrapPostGenerationWithPath(ctx, spec, script, nil)
+}
+
+// wrapPostGenerationWithPath is called by HandleClipScriptGenerateJob with the
+// real pathResult so handlePostGeneration has access to all path result fields.
+func (h *ScriptFlowHandler) wrapPostGenerationWithPath(
+	ctx context.Context,
+	spec *scriptjobs.GenerationSpec,
+	script string,
+	pathResult *clipSourcePathResult,
+) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata) {
+	if pathResult == nil {
+		pathResult = &clipSourcePathResult{
+			WriteResult: &scripts.WriteScriptResult{Script: script},
+		}
+	}
+	ents, ins, meta := h.handlePostGeneration(ctx, spec, pathResult)
+
+	docMeta := make([]documents.VideoMetadata, len(meta))
+	for i, m := range meta {
+		docMeta[i] = documents.VideoMetadata{
+			Language:    m.Language,
+			Title:       m.Title,
+			Description: m.Description,
+			Tags:        m.Tags,
+		}
+	}
+	return ents, ins, docMeta
+}
 
 // HandleClipScriptGenerateJob processes the unified script generation job.
 // Supports three paths:
@@ -90,8 +129,8 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 	}
 	spec := &genPayload.Spec
 
-	// Construct the scenes service (application-layer) using dependencies
-	// available on the handler. This avoids touching app wiring.
+	// Construct application-layer services using dependencies available
+	// on the handler. This avoids touching app wiring.
 	scenesSvc := scenes.NewService(
 		h.clipServices.ImgSvc,
 		h.clipServices.VoSvc,
@@ -100,6 +139,15 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		h.resolveDriveFolderID,
 		h.groupsResolver,
 		0, // use VELOX_SCENE_PARALLELISM env var
+	)
+	docsSvc := documents.NewService(h.docClient, h.log, h.driveFolderID)
+	pipeline := jobs.NewPipeline(
+		h.log,
+		job.ID,
+		scenesSvc,
+		docsSvc,
+		h.wrapPostGeneration,
+		h.resolveDriveFolderID,
 	)
 
 	// Phase 0 (best-effort Playwright prewarm): fire sidecar POST /prewarm-pages
@@ -163,126 +211,50 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		zap.String("cache_status", pathResult.WriteResult.CacheStatus),
 		zap.Int64("path_ms", time.Since(pathStart).Milliseconds()))
 
-	// Phase 2 (parallel): entity_metadata ‖ scene_images
-	var (
-		phase2Mu        sync.Mutex
-		phase2Entities  string
-		phase2Insights  ScriptInsights
-		phase2VideoMeta []VideoMetadata
-		phase2Scenes    []ScriptSceneImage
-	)
-	phase2Run := spec.ExtractEntities || spec.GenerateMetadata || spec.GenerateSceneImages
-	if phase2Run {
-		if tools.Progress != nil {
-			tools.Progress(70, "Phase 2: entities + scene images (parallel)...")
-		}
-		phase2Start := time.Now()
-		h.log.Info("phase2_fanout_started",
-			zap.String("job_id", job.ID),
-			zap.Bool("entity_metadata_enabled", spec.ExtractEntities || spec.GenerateMetadata),
-			zap.Bool("scene_images_enabled", spec.GenerateSceneImages))
-		group, groupCtx := concurrent.WithContext(ctx)
-		if spec.ExtractEntities || spec.GenerateMetadata {
-			group.Go("entity_metadata", func() error {
-				stagePost := stageLog(h.log, job.ID, "entity_metadata")
-				postStart := time.Now()
-				ents, ins, meta := h.handlePostGeneration(groupCtx, spec, pathResult)
-				phase2Mu.Lock()
-				phase2Entities = ents
-				phase2Insights = ins
-				phase2VideoMeta = meta
-				phase2Mu.Unlock()
-				stagePost(
-					zap.Int("entities_chars", len(ents)),
-					zap.Int("metadata_count", len(meta)),
-					zap.Int64("post_ms", time.Since(postStart).Milliseconds()))
-				return nil
-			})
-		}
-		if spec.GenerateSceneImages {
-			group.Go("scene_images", func() error {
-				stageScenes := stageLog(h.log, job.ID, "scene_images")
-				scenesStart := time.Now()
-				var progressFn scenes.ProgressReporter
-				if tools != nil {
-					progressFn = tools.Progress
-				}
-				scns := scenesSvc.GenerateImages(groupCtx, spec, pathResult.WriteResult.Script, progressFn)
-				okScenes := 0
-				for _, s := range scns {
-					if len(s.Images) > 0 {
-						okScenes++
-					}
-				}
-				phase2Mu.Lock()
-				phase2Scenes = scns
-				phase2Mu.Unlock()
-				stageScenes(
-					zap.Int("total_scenes", len(scns)),
-					zap.Int("ok_scenes", okScenes),
-					zap.Int64("scenes_ms", time.Since(scenesStart).Milliseconds()))
-				return nil
-			})
-		}
-		if waitErr := group.Wait(); waitErr != nil {
-			h.log.Warn("phase2_fanout_partial_errors",
-				zap.String("job_id", job.ID), zap.Error(waitErr))
-		}
-		h.log.Info("phase2_fanout_completed",
-			zap.String("job_id", job.ID),
-			zap.Int64("phase2_ms", time.Since(phase2Start).Milliseconds()))
-	}
-	entitiesJSON := phase2Entities
-	insights := phase2Insights
-	videoMetadata := phase2VideoMeta
-	scenes := phase2Scenes
-
-	// Phase 3 (sequential after Phase 2): scene voiceovers
-	var voiceovers []SceneVoiceover
-	if spec.GenerateVoiceover && h.clipServices.VoSvc != nil {
-		if tools.Progress != nil {
-			tools.Progress(80, "Generating scene-by-scene voiceovers...")
-		}
-		stageVoiceover := stageLog(h.log, job.ID, "scene_voiceovers")
-		voStart := time.Now()
-		voiceovers = scenesSvc.GenerateVoiceovers(ctx, spec, scenes)
-		okVoices := 0
-		for _, v := range voiceovers {
-			if v.Status == "completed" {
-				okVoices++
-			}
-		}
-		stageVoiceover(
-			zap.Int("voiceover_total", len(voiceovers)),
-			zap.Int("voiceover_ok", okVoices),
-			zap.Int64("voiceover_ms", time.Since(voStart).Milliseconds()))
+	// Phases 2-4: post-generation pipeline (entity_metadata, scene_images,
+	// scene_voiceovers, google_doc). Delegated to the application-layer Pipeline.
+	// Pass the real pathResult so post-generation has access to all path fields.
+	pipelineResult, pipeErr := pipeline.Run(ctx, spec, pathResult.WriteResult.Script, tools)
+	if pipeErr != nil {
+		return nil, pipeErr
 	}
 
-	// Phase 4: Google Doc
-	if tools.Progress != nil {
-		tools.Progress(85, "Creating Google Doc...")
-	}
-	stageDoc := stageLog(h.log, job.ID, "google_doc")
-	docStart := time.Now()
-	docLink, docID := h.handleCreateDoc(ctx, spec, pathResult, entitiesJSON, insights, videoMetadata, scenes)
-	if docLink != "" {
-		stageDoc(zap.String("status", "ok"), zap.String("doc_id", docID), zap.Int64("doc_ms", time.Since(docStart).Milliseconds()))
-	} else {
-		stageDoc(zap.String("status", "skipped_or_failed"), zap.Int64("doc_ms", time.Since(docStart).Milliseconds()))
-	}
-
+	// Total wall time from job start (includes Phase 0–4).
 	totalDurMs := time.Since(startAll).Milliseconds()
 
 	h.log.Info("pipeline_completed",
 		zap.String("job_id", job.ID),
 		zap.Int64("total_ms", totalDurMs),
-		zap.Int("scenes", len(scenes)),
-		zap.Int("voiceovers", len(voiceovers)),
-		zap.Bool("has_doc", docLink != ""))
+		zap.Int("scenes", len(pipelineResult.Scenes)),
+		zap.Int("voiceovers", len(pipelineResult.Voiceovers)),
+		zap.Bool("has_doc", pipelineResult.DocLink != ""))
 
 	if tools.Progress != nil {
 		tools.Progress(100, "Generation completed")
 	}
 
-	return h.buildFinalResult(spec, pathResult, entitiesJSON, insights, videoMetadata, docLink, docID, scenes, voiceovers, totalDurMs), nil
+	// Convert pipeline result types to handler-local types where needed.
+	var scriptInsights ScriptInsights
+	if ins, ok := pipelineResult.Insights.(ScriptInsights); ok {
+		scriptInsights = ins
+	}
+	scriptMeta := make([]VideoMetadata, len(pipelineResult.VideoMetadata))
+	for i, m := range pipelineResult.VideoMetadata {
+		scriptMeta[i] = VideoMetadata{
+			Language:    m.Language,
+			Title:       m.Title,
+			Description: m.Description,
+			Tags:        m.Tags,
+		}
+	}
+
+	return h.buildFinalResult(spec, pathResult,
+		pipelineResult.EntitiesJSON,
+		scriptInsights,
+		scriptMeta,
+		pipelineResult.DocLink,
+		pipelineResult.DocID,
+		pipelineResult.Scenes,
+		pipelineResult.Voiceovers,
+		totalDurMs), nil
 }

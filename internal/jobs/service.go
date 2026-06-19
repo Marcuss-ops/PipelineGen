@@ -56,9 +56,6 @@ func validateEnqueueRequest(req *EnqueueRequest) error {
 	if req.MaxRetries < -1 {
 		return fmt.Errorf("max_retries must be >= -1, got %d", req.MaxRetries)
 	}
-	if len(req.Payload) > MaxPayloadSize {
-		return fmt.Errorf("payload size %d exceeds maximum %d bytes", len(req.Payload), MaxPayloadSize)
-	}
 	return nil
 }
 
@@ -106,11 +103,15 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*Job, error
 
 	now := time.Now()
 
+	// Marshal the payload (typed struct or map[string]any).
 	var payload json.RawMessage
 	if req.Payload != nil {
 		payloadBytes, err := json.Marshal(req.Payload)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
+		if len(payloadBytes) > MaxPayloadSize {
+			return nil, fmt.Errorf("payload size %d exceeds maximum %d bytes", len(payloadBytes), MaxPayloadSize)
 		}
 		payload = payloadBytes
 	}
