@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"

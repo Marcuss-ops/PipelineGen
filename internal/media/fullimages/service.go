@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
