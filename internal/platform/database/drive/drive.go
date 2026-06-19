@@ -1,11 +1,11 @@
 // Package drive provides compatibility helpers for legacy storage code.
 package drive
 
-import "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+import "github.com/Marcuss-ops/PipelineGen/internal/platform"
 
 // FileIDFromLink extracts a Google Drive file or folder ID from a URL.
 func FileIDFromLink(link string) string {
-	id, _ := urlutil.FileIDFromDriveLink(link)
+	id, _ := platform.FileIDFromDriveLink(link)
 	return id
 }
 

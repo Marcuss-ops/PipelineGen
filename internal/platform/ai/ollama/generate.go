@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
-	"github.com/Marcuss-ops/PipelineGen/pkg/metrics"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 
 	"go.uber.org/zap"
 )
