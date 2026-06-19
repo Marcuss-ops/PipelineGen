@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -62,7 +64,7 @@ func sceneParallelismClampNote(raw string) string {
 }
 
 // generateSceneImages splits the script into scenes and generates AI images.
-func (h *ScriptFlowHandler) generateSceneImages(ctx context.Context, payload *jobPayloadUnified, script string, tools *jobservice.JobTools) []ScriptSceneImage {
+func (h *ScriptFlowHandler) generateSceneImages(ctx context.Context, payload *scriptjobs.GenerationSpec, script string, tools *jobservice.JobTools) []ScriptSceneImage {
 	if h.clipServices.ImgSvc == nil || strings.TrimSpace(script) == "" {
 		return nil
 	}

@@ -2,79 +2,18 @@ package script
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
-
-// jobPayloadUnified is the runtime payload for the unified script generation job.
-type jobPayloadUnified struct {
-	// Text generation
-	Topic      string `json:"topic"`
-	SourceText string `json:"source_text"`
-	Guidelines string `json:"guidelines"`
-
-	// Clip-aware
-	ClipIDs  []string `json:"clip_ids"`
-	NumClips int      `json:"num_clips"`
-
-	// Identity
-	Title      string `json:"title"`
-	OutputName string `json:"output_name"`
-	Language   string `json:"language"`
-	Tone       string `json:"tone"`
-	Style      string `json:"style"`
-	Model      string `json:"model"`
-
-	// Sizing
-	TargetWords int `json:"target_words"`
-	Duration    int `json:"duration"`
-	MinWords    int `json:"min_words"`
-
-	// Feature flags
-	ExtractEntities     bool   `json:"extract_entities"`
-	GenerateSceneImages bool   `json:"generate_scene_images"`
-	ArtlistSearch       bool   `json:"artlist_search"`
-	StockSearch         bool   `json:"stock_search"`
-	GenerateMetadata    bool   `json:"generate_metadata"`
-	GenerateVoiceover   bool   `json:"generate_voiceover"`
-	VoiceoverGroup      string `json:"voiceover_group,omitempty"`
-	VoiceoverFolderID   string `json:"voiceover_folder_id,omitempty"`
-
-	// Multilingual
-	Languages []string `json:"languages"`
-
-	// Clip pipeline
-	TranscriptPolicy string `json:"transcript_policy"`
-	OrderingStrategy string `json:"ordering_strategy"`
-	SaveToDB         bool   `json:"save_to_db"`
-	GenerateTimeline bool   `json:"generate_timeline"`
-	ForceRefresh     bool   `json:"force_refresh"`
-
-	// Quality
-	MinQualityScore    float64 `json:"min_quality_score"`
-	MinTranscriptWords int     `json:"min_transcript_words"`
-
-	// Drive
-	DriveFolderID string `json:"drive_folder_id"`
-
-	// Prompt versioning
-	PromptVersion       string `json:"prompt_version"`
-	EditorPromptVersion string `json:"editor_prompt_version"`
-	QAPromptVersion     string `json:"qa_prompt_version"`
-
-	// Scene images config
-	SentencesPerImage int `json:"sentences_per_image"`
-	ImagesPerScene    int `json:"images_per_scene"`
-}
 
 // clipSourcePathResult is the result produced by a single script generation path.
 // The same struct is used regardless of which path was taken (clip, auto-search, text-only).
@@ -144,10 +83,11 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 
 	startAll := time.Now()
 
-	var payload jobPayloadUnified
-	if err := json.Unmarshal(job.Payload, &payload); err != nil {
-		return nil, fmt.Errorf("failed to parse job payload: %w", err)
+	genPayload, err := scriptjobs.DecodeGeneratePayload(job.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode job payload: %w", err)
 	}
+	spec := &genPayload.Spec
 
 	// Phase 0 (best-effort Playwright prewarm): fire sidecar POST /prewarm-pages
 	// in parallel with Phase 1's LLM call. By the time generateSceneImages (Phase 2)
@@ -157,7 +97,7 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 	// Triggered AFTER scriptGenSemaphore acquire so we never warm a tab that would
 	// age out (CONTEXT_MAX_AGE=30m) while waiting in the queue. Best-effort by design.
 	if h.clipServices.ImgSvc != nil &&
-		(payload.GenerateSceneImages || len(payload.ClipIDs) > 0 || payload.NumClips > 0) {
+		(spec.GenerateSceneImages || len(spec.ClipIDs) > 0 || spec.NumClips > 0) {
 		go func() {
 			prewarmCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			defer cancel()
@@ -167,19 +107,18 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 
 	h.log.Info("pipeline_dispatch_decided",
 		zap.String("job_id", job.ID),
-		zap.Int("clip_ids", len(payload.ClipIDs)),
-		zap.Int("num_clips", payload.NumClips),
-		zap.Bool("extract_entities", payload.ExtractEntities),
-		zap.Bool("generate_scene_images", payload.GenerateSceneImages),
-		zap.Bool("generate_voiceover", payload.GenerateVoiceover),
-		zap.Int("sentences_per_image", payload.SentencesPerImage),
-		zap.Int("images_per_scene", payload.ImagesPerScene),
-		zap.String("language", payload.Language),
-		zap.String("style", payload.Style))
+		zap.Int("clip_ids", len(spec.ClipIDs)),
+		zap.Int("num_clips", spec.NumClips),
+		zap.Bool("extract_entities", spec.ExtractEntities),
+		zap.Bool("generate_scene_images", spec.GenerateSceneImages),
+		zap.Bool("generate_voiceover", spec.GenerateVoiceover),
+		zap.Int("sentences_per_image", spec.SentencesPerImage),
+		zap.Int("images_per_scene", spec.ImagesPerScene),
+		zap.String("language", spec.Language),
+		zap.String("style", spec.Style))
 
 	// Phase 1: dispatch to path
 	var pathResult *clipSourcePathResult
-	var err error
 	stagePath := stageLog(h.log, job.ID, "script_generation")
 	pathStart := time.Now()
 
@@ -187,18 +126,18 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 	// to text-only when the user requested a clip-aware flow but the required
 	// builder is unavailable.
 	switch {
-	case len(payload.ClipIDs) > 0:
+	case len(spec.ClipIDs) > 0:
 		if h.clipSourceBuilder == nil {
-			return nil, fmt.Errorf("clip pipeline unavailable: %d clip_ids provided but clipSourceBuilder is not initialized in this deployment; check app wiring (SetClipSourceBuilder)", len(payload.ClipIDs))
+			return nil, fmt.Errorf("clip pipeline unavailable: %d clip_ids provided but clipSourceBuilder is not initialized in this deployment; check app wiring (SetClipSourceBuilder)", len(spec.ClipIDs))
 		}
-		pathResult, err = h.handleClipPathExplicit(ctx, &payload, tools)
-	case payload.NumClips > 0:
+		pathResult, err = h.handleClipPathExplicit(ctx, spec, tools)
+	case spec.NumClips > 0:
 		if h.mediaCurator == nil {
-			return nil, fmt.Errorf("auto-search pipeline unavailable: num_clips=%d requested but mediaCurator is not initialized in this deployment; check app wiring (SetMediaCurator)", payload.NumClips)
+			return nil, fmt.Errorf("auto-search pipeline unavailable: num_clips=%d requested but mediaCurator is not initialized in this deployment; check app wiring (SetMediaCurator)", spec.NumClips)
 		}
-		pathResult, err = h.handleClipPathAutoSearch(ctx, &payload, tools)
+		pathResult, err = h.handleClipPathAutoSearch(ctx, spec, tools)
 	default:
-		pathResult, err = h.handleClipPathTextOnly(ctx, &payload, tools)
+		pathResult, err = h.handleClipPathTextOnly(ctx, spec, tools)
 	}
 	if err != nil {
 		stagePath(zap.String("status", "failed"), zap.String("error", err.Error()))
@@ -219,7 +158,7 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		phase2VideoMeta []VideoMetadata
 		phase2Scenes    []ScriptSceneImage
 	)
-	phase2Run := payload.ExtractEntities || payload.GenerateMetadata || payload.GenerateSceneImages
+	phase2Run := spec.ExtractEntities || spec.GenerateMetadata || spec.GenerateSceneImages
 	if phase2Run {
 		if tools.Progress != nil {
 			tools.Progress(70, "Phase 2: entities + scene images (parallel)...")
@@ -227,14 +166,14 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		phase2Start := time.Now()
 		h.log.Info("phase2_fanout_started",
 			zap.String("job_id", job.ID),
-			zap.Bool("entity_metadata_enabled", payload.ExtractEntities || payload.GenerateMetadata),
-			zap.Bool("scene_images_enabled", payload.GenerateSceneImages))
+			zap.Bool("entity_metadata_enabled", spec.ExtractEntities || spec.GenerateMetadata),
+			zap.Bool("scene_images_enabled", spec.GenerateSceneImages))
 		group, groupCtx := concurrent.WithContext(ctx)
-		if payload.ExtractEntities || payload.GenerateMetadata {
+		if spec.ExtractEntities || spec.GenerateMetadata {
 			group.Go("entity_metadata", func() error {
 				stagePost := stageLog(h.log, job.ID, "entity_metadata")
 				postStart := time.Now()
-				ents, ins, meta := h.handlePostGeneration(groupCtx, &payload, pathResult)
+				ents, ins, meta := h.handlePostGeneration(groupCtx, spec, pathResult)
 				phase2Mu.Lock()
 				phase2Entities = ents
 				phase2Insights = ins
@@ -247,11 +186,11 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 				return nil
 			})
 		}
-		if payload.GenerateSceneImages {
+		if spec.GenerateSceneImages {
 			group.Go("scene_images", func() error {
 				stageScenes := stageLog(h.log, job.ID, "scene_images")
 				scenesStart := time.Now()
-				scns := h.generateSceneImages(groupCtx, &payload, pathResult.WriteResult.Script, tools)
+				scns := h.generateSceneImages(groupCtx, spec, pathResult.WriteResult.Script, tools)
 				okScenes := 0
 				for _, s := range scns {
 					if len(s.Images) > 0 {
@@ -283,13 +222,13 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 
 	// Phase 3 (sequential after Phase 2): scene voiceovers
 	var voiceovers []SceneVoiceover
-	if payload.GenerateVoiceover && h.clipServices.VoSvc != nil {
+	if spec.GenerateVoiceover && h.clipServices.VoSvc != nil {
 		if tools.Progress != nil {
 			tools.Progress(80, "Generating scene-by-scene voiceovers...")
 		}
 		stageVoiceover := stageLog(h.log, job.ID, "scene_voiceovers")
 		voStart := time.Now()
-		voiceovers = h.generateSceneVoiceovers(ctx, &payload, scenes)
+		voiceovers = h.generateSceneVoiceovers(ctx, spec, scenes)
 		okVoices := 0
 		for _, v := range voiceovers {
 			if v.Status == "completed" {
@@ -308,7 +247,7 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 	}
 	stageDoc := stageLog(h.log, job.ID, "google_doc")
 	docStart := time.Now()
-	docLink, docID := h.handleCreateDoc(ctx, &payload, pathResult, entitiesJSON, insights, videoMetadata, scenes)
+	docLink, docID := h.handleCreateDoc(ctx, spec, pathResult, entitiesJSON, insights, videoMetadata, scenes)
 	if docLink != "" {
 		stageDoc(zap.String("status", "ok"), zap.String("doc_id", docID), zap.Int64("doc_ms", time.Since(docStart).Milliseconds()))
 	} else {
@@ -328,5 +267,5 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		tools.Progress(100, "Generation completed")
 	}
 
-	return h.buildFinalResult(&payload, pathResult, entitiesJSON, insights, videoMetadata, docLink, docID, scenes, voiceovers, totalDurMs), nil
+	return h.buildFinalResult(spec, pathResult, entitiesJSON, insights, videoMetadata, docLink, docID, scenes, voiceovers, totalDurMs), nil
 }

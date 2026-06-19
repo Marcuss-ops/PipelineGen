@@ -8,13 +8,15 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // generateSceneVoiceovers generates voiceovers for each scene in parallel.
-func (h *ScriptFlowHandler) generateSceneVoiceovers(ctx context.Context, payload *jobPayloadUnified, scenes []ScriptSceneImage) []SceneVoiceover {
+func (h *ScriptFlowHandler) generateSceneVoiceovers(ctx context.Context, payload *scriptjobs.GenerationSpec, scenes []ScriptSceneImage) []SceneVoiceover {
 	if h.clipServices.VoSvc == nil || !payload.GenerateVoiceover || len(scenes) == 0 {
 		return nil
 	}
