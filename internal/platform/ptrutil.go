@@ -1,0 +1,20 @@
+// Package ptrutil provides utilities for working with pointer types.
+package platform
+
+// BoolDefault returns the value of the bool pointer, or the default value if nil.
+func BoolDefault(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+// Bool returns a pointer to the given bool value.
+func Bool(v bool) *bool {
+	return &v
+}
+
+// Str returns a pointer to the given string value.
+func Str(v string) *string {
+	return &v
+}

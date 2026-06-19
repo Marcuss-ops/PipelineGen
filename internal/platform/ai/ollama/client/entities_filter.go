@@ -5,7 +5,7 @@ import (
 	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 func sanitizeEntityExtractionResult(segment string, result *core.EntityExtractionResult, limit int) *core.EntityExtractionResult {
