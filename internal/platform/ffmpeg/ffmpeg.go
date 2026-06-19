@@ -242,3 +242,45 @@ func RemoveSilence(ctx context.Context, ffmpegPath, input, output string) error 
 	})
 	return err
 }
+
+// ExtractFrame extracts a single frame at the specified timestamp as a high-quality PNG.
+func (p *Processor) ExtractFrame(ctx context.Context, input, output string, timestamp float64) error {
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-ss", fmt.Sprintf("%.3f", timestamp),
+		"-i", input,
+		"-frames:v", "1",
+		"-q:v", "2",
+		output,
+	}
+
+	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+		Timeout: 10 * time.Minute,
+	})
+	return err
+}
+
+// RemuxHLS downloads an HLS playlist and remuxes it into an MP4 container
+// without re-encoding. It is intended for already-resolved .m3u8 media URLs.
+func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error {
+	args := []string{
+		"-y",
+		"-hide_banner",
+		"-loglevel", "warning",
+		"-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+		"-i", inputURL,
+		"-c", "copy",
+		"-bsf:a", "aac_adtstoasc",
+		"-movflags", "+faststart",
+		output,
+	}
+
+	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+		Timeout: 15 * time.Minute,
+	})
+	return err
+}
+
+
