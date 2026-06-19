@@ -2,25 +2,33 @@ package media
 
 import "time"
 
+// ── Subjects ────────────────────────────────────────────────────────
+
 // Subject represents a known entity (person, place, thing) for image generation.
 type Subject struct {
 	ID          int64     `json:"id"`
 	Slug        string    `json:"slug"`
 	DisplayName string    `json:"display_name"`
 	WikidataID  string    `json:"wikidata_id,omitempty"`
-	Aliases     []string  `json:"aliases"`
+	Aliases     []string  `json:"aliases"` // Stored as JSON in the DB.
 	Category    string    `json:"category"`
 	Notes       string    `json:"notes"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// ImageAsset represents a generated or sourced image.
+// ── Image Assets ────────────────────────────────────────────────────
+
+// ImageAsset represents an image stored in the asset index.
+//
+// SubjectID is a string (TEXT in the database) holding the Subject's slug.
+// SlugID is an explicit alias used by some callers and stays equivalent to
+// SubjectID in practice; preserve both for backward compat.
 type ImageAsset struct {
 	ID           int64     `json:"id"`
 	Hash         string    `json:"hash"`
-	SubjectID    int64     `json:"subject_id"`
-	SlugID       string    `json:"slug_id,omitempty"`
+	SubjectID    string    `json:"subject_id"`        // TEXT in database (slug)
+	SlugID       string    `json:"slug_id,omitempty"` // Alias for internal logic
 	PathRel      string    `json:"path_rel"`
 	SourceURL    string    `json:"source_url"`
 	License      string    `json:"license"`
@@ -37,7 +45,7 @@ type ImageAsset struct {
 	Tags         []string  `json:"tags,omitempty"`
 }
 
-// ImageUsage tracks where an image has been used.
+// ImageUsage tracks usage of an image inside a rendered video.
 type ImageUsage struct {
 	ID      int64     `json:"id"`
 	ImageID int64     `json:"image_id"`
@@ -45,48 +53,79 @@ type ImageUsage struct {
 	UsedAt  time.Time `json:"used_at"`
 }
 
-// ImageTag is a tag for image categorization.
+// ImageTag represents a tag associated with an image.
 type ImageTag struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Type string `json:"type"`
 }
 
-// GenerationStyle defines a named style for image/video generation.
-type GenerationStyle struct {
-	Name        string `yaml:"name" json:"name"`
-	Description string `yaml:"description" json:"description"`
-}
+// Note: GenerationStyle / GenerationStyles are intentionally kept in
+// internal/media/models/style.go because the YAML loader lives in
+// internal/media/generation/style_registry.go and depends on yaml.v3 at
+// the consumer site; the alias in models cements that contract.
 
-// GenerationStyles is a collection of generation styles.
-type GenerationStyles struct {
-	Styles []GenerationStyle `yaml:"styles" json:"styles"`
-}
+// ── Categories ──────────────────────────────────────────────────────
 
-// CategoryChannel maps a category to a YouTube channel for monitoring.
+// CategoryChannel represents a YouTube channel subscribed to a specific
+// category/folder. Each Drive folder category (e.g. "boxe", "rap",
+// "comedy") can have multiple channels; when the channel monitor runs it
+// checks these channels and downloads clips that match the category.
 type CategoryChannel struct {
-	ID               string `json:"id"`
-	Category         string `json:"category"`
-	ChannelURL       string `json:"channel_url"`
-	ChannelName      string `json:"channel_name,omitempty"`
-	Keywords         string `json:"keywords,omitempty"`
-	MinViews         int    `json:"min_views,omitempty"`
-	MaxClipDuration  int    `json:"max_clip_duration,omitempty"`
-	DriveFolderID    string `json:"drive_folder_id,omitempty"`
+	ID              string `json:"id"`
+	Category        string `json:"category"`
+	ChannelURL      string `json:"channel_url"`
+	ChannelName     string `json:"channel_name,omitempty"`
+	Keywords        string `json:"keywords,omitempty"` // JSON array — title-level keyword match.
+	MinViews        int    `json:"min_views,omitempty"`
+	MaxClipDuration int    `json:"max_clip_duration,omitempty"`
+	DriveFolderID   string `json:"drive_folder_id,omitempty"`
+
+	// SemanticKeywords enables transcript-level content matching.
+	// JSON array of themes/topics (e.g. '["health","dieta","fitness"]').
+	// When set, monitor downloads subtitles and asks Ollama for relevance score.
 	SemanticKeywords string `json:"semantic_keywords,omitempty"`
-	MinSemanticScore int    `json:"min_semantic_score,omitempty"`
-	PlaylistEnd      int    `json:"playlist_end,omitempty"`
-	CheckInterval    string `json:"check_interval,omitempty"`
-	MaxVideosPerRun  int    `json:"max_videos_per_run,omitempty"`
-	Priority         int    `json:"priority,omitempty"`
-	LookbackDays     int    `json:"lookback_days,omitempty"`
-	MaxSegments      int    `json:"max_segments,omitempty"`
-	SegmentPrompt    string `json:"segment_prompt,omitempty"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
+
+	// MinSemanticScore is the minimum Ollama confidence (0-100) to accept
+	// a match. Default 60. Higher = fewer but more relevant clips.
+	MinSemanticScore int `json:"min_semantic_score,omitempty"`
+
+	// PlaylistEnd overrides the global playlist_end for retroactive full-scan.
+	// 0 = all videos, -1 = use global default, >0 = specific count.
+	PlaylistEnd int `json:"playlist_end,omitempty"`
+
+	// CheckInterval overrides the global check interval for this channel.
+	// Format: "7d", "24h", "30m". Default "7d".
+	CheckInterval string `json:"check_interval,omitempty"`
+
+	// MaxVideosPerRun limits how many videos are processed per check. 0 = no limit.
+	MaxVideosPerRun int `json:"max_videos_per_run,omitempty"`
+
+	// Priority: 1=hot (check 2x), 2=normal, 3=cold (check 0.5x). Default 2.
+	Priority int `json:"priority,omitempty"`
+
+	// LookbackDays limits the scan to videos published within N days. 0 = no limit.
+	LookbackDays int `json:"lookback_days,omitempty"`
+
+	// MaxSegments limits how many segments to extract per video. Default 2.
+	MaxSegments int `json:"max_segments,omitempty"`
+
+	// SegmentPrompt is a custom prompt for the AI segment finder.
+	SegmentPrompt string `json:"segment_prompt,omitempty"`
+
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
-// SearchQuery represents a saved search query for automated monitoring.
+// TableName returns the database table name for the CategoryChannel model.
+func (CategoryChannel) TableName() string {
+	return "category_channels"
+}
+
+// ── Search Queries ──────────────────────────────────────────────────
+
+// SearchQuery represents a recurring YouTube topic search.
+// E.g. "Floyd Mayweather interview" → monitor finds new videos periodically.
 type SearchQuery struct {
 	ID                   string `json:"id"`
 	Query                string `json:"query"`
@@ -102,9 +141,11 @@ type SearchQuery struct {
 	UpdatedAt            string `json:"updated_at"`
 }
 
+// TableName returns the database table name for SearchQuery.
 func (SearchQuery) TableName() string { return "search_queries" }
 
-// SearchQueryResult is a result from a search query execution.
+// SearchQueryResult records a processed video from a search query.
+// Used for dedup — prevents re-processing the same video.
 type SearchQueryResult struct {
 	QueryID     string `json:"query_id"`
 	VideoID     string `json:"video_id"`
@@ -115,4 +156,5 @@ type SearchQueryResult struct {
 	Score       int    `json:"score"`
 }
 
+// TableName returns the database table name for SearchQueryResult.
 func (SearchQueryResult) TableName() string { return "search_query_results" }
