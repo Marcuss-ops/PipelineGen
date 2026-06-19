@@ -11,10 +11,10 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // clipWork pairs a RunTagItem with its processor input.

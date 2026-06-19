@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type Repository struct {

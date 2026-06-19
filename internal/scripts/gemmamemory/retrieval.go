@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // RetrieveRelevantContext implements the 3-level memory retrieval:

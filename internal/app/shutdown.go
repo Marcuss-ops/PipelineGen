@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 	"go.uber.org/zap"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // buildCleanup constructs a cleanup function that stops background jobs,

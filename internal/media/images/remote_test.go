@@ -3,7 +3,7 @@ package images
 import (
 	"testing"
 
-	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/platform/googleaccounting"
+	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/googleaccounting"
 )
 
 func TestExtractRemoteImageNamesFromResultImages(t *testing.T) {

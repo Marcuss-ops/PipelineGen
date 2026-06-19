@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 func TestUsableCachedClipIgnoresEmptyFiles(t *testing.T) {

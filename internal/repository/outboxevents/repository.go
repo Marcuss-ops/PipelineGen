@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ErrLeaseLost is returned by MarkCompleted and MarkFailed when the

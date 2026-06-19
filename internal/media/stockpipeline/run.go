@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // Run executes the full stock pipeline: resolve sources, download, extract clips,

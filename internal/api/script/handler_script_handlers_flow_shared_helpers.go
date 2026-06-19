@@ -11,8 +11,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // voiceoverSceneItem describes a scene for voiceover generation.

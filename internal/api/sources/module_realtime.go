@@ -3,7 +3,7 @@ package sources
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 
 	"go.uber.org/zap"
 )

@@ -9,10 +9,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
-	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	termutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	termutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // Service matches script segments against media assets (stock, artlist, clips, Drive)

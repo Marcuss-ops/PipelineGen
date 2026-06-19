@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func TestBuildBatchWorkItemsSplitsLongSource(t *testing.T) {

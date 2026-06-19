@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 func (s *Service) materializeImage(sourcePath, filename string, req *Request) (string, string, func(), error) {

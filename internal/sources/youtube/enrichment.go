@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 
 	"go.uber.org/zap"
 )

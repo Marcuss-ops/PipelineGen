@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

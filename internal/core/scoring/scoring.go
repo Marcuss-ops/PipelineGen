@@ -3,7 +3,7 @@ package scoring
 import (
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type Params struct {

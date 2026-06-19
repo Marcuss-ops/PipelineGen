@@ -90,7 +90,7 @@ internal/api/
 | `database/sql` | 🚫 | Pass through use-case interface |
 | `github.com/Marcuss-ops/PipelineGen/internal/repository/` | 🚫 | Pass through use-case interface |
 | `google.golang.org/api/drive/v3` | 🚫 | Pass through use-case interface |
-| `github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg` | 🚫 | Pass through use-case interface |
+| `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg` | 🚫 | Pass through use-case interface |
 | `os/exec` | 🚫 | Pass through use-case interface |
 | `github.com/Marcuss-ops/PipelineGen/internal/media/` | 🚫 | Pass through use-case interface |
 | `github.com/Marcuss-ops/PipelineGen/internal/sources/` | 🚫 | Pass through use-case interface |

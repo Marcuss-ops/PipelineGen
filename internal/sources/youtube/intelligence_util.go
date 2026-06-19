@@ -3,7 +3,7 @@ package youtube
 import (
 	"strings"
 
-	similarity "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	similarity "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ── Text normalization ────────────────────────────────────────────────

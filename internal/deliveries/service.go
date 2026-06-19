@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // Service manages the delivery lifecycle for artifacts.

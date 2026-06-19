@@ -8,12 +8,12 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // sceneCountWithKind counts how many ClipScenes have a matching Kind value.

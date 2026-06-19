@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 )
 
 // ── Catalog types ──────────────────────────────────────────────────────

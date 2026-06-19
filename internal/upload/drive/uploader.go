@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // Uploader handles Google Drive file operations.

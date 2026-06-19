@@ -3,8 +3,8 @@ package mediaasset
 import (
 	"context"
 
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
+	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 type YTDLP interface {

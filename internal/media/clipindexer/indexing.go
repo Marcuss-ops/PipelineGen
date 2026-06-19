@@ -15,8 +15,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 const (

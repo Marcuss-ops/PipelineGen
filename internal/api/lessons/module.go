@@ -2,7 +2,7 @@ package lessons
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 
 	"go.uber.org/zap"
 )

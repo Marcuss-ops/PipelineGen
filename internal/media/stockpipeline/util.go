@@ -8,7 +8,7 @@ import (
 	"time"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // resolveFolderTarget resolves the Google Drive folder ID for upload.

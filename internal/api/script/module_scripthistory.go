@@ -3,7 +3,7 @@ package script
 import (
 	"context"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 
 	"github.com/gin-gonic/gin"
 

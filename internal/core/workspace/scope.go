@@ -1,6 +1,6 @@
 package workspace
 
-import "github.com/Marcuss-ops/PipelineGen/internal/platform"
+import "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 // Scope represents a workspace and project context.
 type Scope struct {

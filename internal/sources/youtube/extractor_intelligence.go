@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type clipIntelligenceRecord struct {

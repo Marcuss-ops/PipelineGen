@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	platform "github.com/Marcuss-ops/PipelineGen/internal/platform"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/platform/ffmpeg"
+	platform "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
 // renderChunk concatenates clips into a single output video with transition and effects.

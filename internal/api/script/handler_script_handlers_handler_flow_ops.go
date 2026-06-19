@@ -12,8 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type RegenerateSectionRequest struct {

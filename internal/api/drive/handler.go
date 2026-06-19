@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 

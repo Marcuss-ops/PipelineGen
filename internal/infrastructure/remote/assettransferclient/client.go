@@ -1,130 +1,125 @@
+// Package assettransferclient provides an HTTP client implementation of the
+// worker.AssetClient interface for remote workers.
 package assettransferclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
+// Client is an HTTP implementation of worker.AssetClient for remote workers.
 type Client struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	baseURL    string
+	token      string
+	httpClient *http.Client
 }
 
-type UploadResponse struct {
-	UploadID string `json:"upload_id"`
-	URL      string `json:"url,omitempty"`
-}
-
+// New creates a new asset transfer client.
 func New(baseURL, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
-		http:    &http.Client{Timeout: 90 * time.Second},
+		httpClient: &http.Client{
+			Timeout: 0, // no timeout for large file transfers
+		},
 	}
 }
 
+// Download fetches an asset from the server and returns a reader, filename, and error.
 func (c *Client) Download(ctx context.Context, assetID string) (io.ReadCloser, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/internal/v1/worker-assets/"+url.PathEscape(assetID)+"/download", nil)
+	url := fmt.Sprintf("%s/api/worker-assets/%s/download", c.baseURL, assetID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("create download request: %w", err)
 	}
-	c.applyAuth(req)
-	resp, err := c.http.Do(req)
+	c.setAuth(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("download request: %w", err)
 	}
-	if resp.StatusCode >= 300 {
+	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
-		return nil, "", fmt.Errorf("asset download failed: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, "", fmt.Errorf("download HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return resp.Body, resp.Header.Get("X-Filename"), nil
+	filename := resp.Header.Get("X-Filename")
+	if filename == "" {
+		filename = assetID
+	}
+	return resp.Body, filename, nil
 }
 
-func (c *Client) Initiate(ctx context.Context, assetID string) (*UploadResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/v1/worker-assets/uploads/initiate", strings.NewReader(`{"asset_id":"`+assetID+`"}`))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	c.applyAuth(req)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("asset transfer failed: %s", resp.Status)
-	}
-	var out UploadResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-func (c *Client) Finalize(ctx context.Context, assetID string) error {
-	return c.do(ctx, http.MethodPost, "/internal/v1/worker-assets/uploads/finalize", assetID)
-}
-
+// UploadFile uploads a local file to the server as an asset.
 func (c *Client) UploadFile(ctx context.Context, assetID, filePath string) error {
-	init, err := c.Initiate(ctx, assetID)
-	if err != nil {
-		return err
+	// Step 1: Initiate upload
+	initBody := fmt.Sprintf(`{"asset_id":"%s"}`, assetID)
+	if _, err := c.doPost(ctx, "/api/worker-assets/uploads/initiate", strings.NewReader(initBody)); err != nil {
+		return fmt.Errorf("initiate upload: %w", err)
 	}
-	if init == nil || init.URL == "" {
-		return fmt.Errorf("upload url not returned for asset %s", assetID)
-	}
+
+	// Step 2: Upload file content
 	f, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open file for upload: %w", err)
 	}
 	defer f.Close()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+init.URL, f)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("X-Filename", filepath.Base(filePath))
-	c.applyAuth(req)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("asset upload failed: %s", resp.Status)
-	}
-	return c.Finalize(ctx, assetID)
-}
 
-func (c *Client) do(ctx context.Context, method, path, assetID string) error {
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, strings.NewReader(`{"asset_id":"`+assetID+`"}`))
+	filename := filepath.Base(filePath)
+	url := fmt.Sprintf("%s/api/worker-assets/uploads/%s/content?filename=%s", c.baseURL, assetID, filename)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, f)
 	if err != nil {
-		return err
+		return fmt.Errorf("create upload request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	c.applyAuth(req)
-	resp, err := c.http.Do(req)
+	c.setAuth(req)
+	req.Header.Set("X-Filename", filename)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("upload content: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("asset transfer failed: %s", resp.Status)
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("upload content HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
+
+	// Step 3: Finalize upload
+	finalizeBody := fmt.Sprintf(`{"asset_id":"%s"}`, assetID)
+	if _, err := c.doPost(ctx, "/api/worker-assets/uploads/finalize", strings.NewReader(finalizeBody)); err != nil {
+		return fmt.Errorf("finalize upload: %w", err)
+	}
+
 	return nil
 }
 
-func (c *Client) applyAuth(req *http.Request) {
+func (c *Client) doPost(ctx context.Context, path string, body io.Reader) ([]byte, error) {
+	url := c.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, "POST", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.setAuth(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(respBytes)))
+	}
+	return respBytes, nil
+}
+
+func (c *Client) setAuth(req *http.Request) {
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}

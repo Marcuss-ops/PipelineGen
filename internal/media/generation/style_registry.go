@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // StyleRegistry manages a collection of generation styles

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/files"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 func TestCleanFolderName(t *testing.T) {

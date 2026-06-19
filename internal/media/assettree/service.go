@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	repo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 )
 
 // Service provides utility functions for asset trees
