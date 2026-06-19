@@ -1,8 +1,9 @@
-package api
+package sources
 
 import (
 	"context"
-	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
@@ -15,20 +16,20 @@ func NewClipsModule(
 	cfg *config.Config,
 	log *zap.Logger,
 	service *youtube.Service,
-	handler *sources.YouTubeClipHandler,
+	handler *YouTubeClipHandler,
 	jobsSvc *jobservice.Service,
-) *RouteModule {
-	return NewRouteModule(
+) *api.RouteModule {
+	return api.NewRouteModule(
 		"clips",
 		func(cfg *config.Config) bool { return cfg.Features.YouTubeEnabled },
 		"/clips",
 		handler,
 		log,
-		WithStart(func(ctx context.Context) error {
+		api.WithStart(func(ctx context.Context) error {
 			log.Info("starting clips module")
 			return nil
 		}),
-		WithStop(func(ctx context.Context) error {
+		api.WithStop(func(ctx context.Context) error {
 			log.Info("stopping clips module")
 			return nil
 		}),

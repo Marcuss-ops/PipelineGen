@@ -1,4 +1,4 @@
-package api
+package realtime
 
 import (
 	"context"
@@ -7,16 +7,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 )
 
 // RealtimeMatcher is the interface for real-time asset matching.
-// This allows test mocks without importing the realtime package's concrete type.
+// This allows test mocks without importing the realtime service's concrete type.
 type RealtimeMatcher interface {
-	Match(ctx context.Context, req *realtime.MatchRequest) (*realtime.MatchResponse, error)
+	Match(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error)
 }
 
 // MatchHandler handles the POST /api/realtime/match endpoint.
+//
+// This is the implementation. The thin HTTP transport wrapper lives in
+// handler.go in this same package.
 type MatchHandler struct {
 	svc RealtimeMatcher
 	log *zap.Logger
@@ -37,7 +40,7 @@ func (h *MatchHandler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // Match handles the real-time asset matching request.
 func (h *MatchHandler) Match(c *gin.Context) {
-	var req realtime.MatchRequest
+	var req mediarealtime.MatchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"ok":    false,

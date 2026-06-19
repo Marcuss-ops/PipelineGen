@@ -1,4 +1,4 @@
-package api
+package realtime
 
 import (
 	"bytes"
@@ -13,15 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	mediarealtime "github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 )
 
 // mockRealtimeSvc implements realtime matching for handler tests.
 type mockRealtimeSvc struct {
-	matchFn func(ctx context.Context, req *realtime.MatchRequest) (*realtime.MatchResponse, error)
+	matchFn func(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error)
 }
 
-func (m *mockRealtimeSvc) Match(ctx context.Context, req *realtime.MatchRequest) (*realtime.MatchResponse, error) {
+func (m *mockRealtimeSvc) Match(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error) {
 	return m.matchFn(ctx, req)
 }
 
@@ -29,14 +29,14 @@ func TestMatchHandler_HappyPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mockSvc := &mockRealtimeSvc{
-		matchFn: func(ctx context.Context, req *realtime.MatchRequest) (*realtime.MatchResponse, error) {
+		matchFn: func(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error) {
 			assert.Equal(t, "gatto spaziale", req.Query)
 			assert.Equal(t, "visual", req.Mode)
-			return &realtime.MatchResponse{
+			return &mediarealtime.MatchResponse{
 				OK:        true,
 				Status:    "instant_match",
 				LatencyMs: 37,
-				Asset: &realtime.MatchAsset{
+				Asset: &mediarealtime.MatchAsset{
 					ID:    "artlist_001",
 					Score: 0.91,
 					Name:  "Space cat",
@@ -61,7 +61,7 @@ func TestMatchHandler_HappyPath(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var resp realtime.MatchResponse
+	var resp mediarealtime.MatchResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.True(t, resp.OK)
@@ -96,7 +96,7 @@ func TestMatchHandler_ServiceError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mockSvc := &mockRealtimeSvc{
-		matchFn: func(ctx context.Context, req *realtime.MatchRequest) (*realtime.MatchResponse, error) {
+		matchFn: func(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error) {
 			return nil, assert.AnError
 		},
 	}
@@ -122,13 +122,13 @@ func TestMatchHandler_FallbackGenerating(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	mockSvc := &mockRealtimeSvc{
-		matchFn: func(ctx context.Context, req *realtime.MatchRequest) (*realtime.MatchResponse, error) {
-			return &realtime.MatchResponse{
+		matchFn: func(ctx context.Context, req *mediarealtime.MatchRequest) (*mediarealtime.MatchResponse, error) {
+			return &mediarealtime.MatchResponse{
 				OK:              true,
 				Status:          "fallback_generating",
 				LatencyMs:       42,
 				GenerationJobID: "job_gen_abc",
-				FallbackAsset: &realtime.MatchAsset{
+				FallbackAsset: &mediarealtime.MatchAsset{
 					ID:    "stock_002",
 					Score: 0.63,
 				},
@@ -152,7 +152,7 @@ func TestMatchHandler_FallbackGenerating(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var resp realtime.MatchResponse
+	var resp mediarealtime.MatchResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "fallback_generating", resp.Status)
 	assert.Equal(t, "job_gen_abc", resp.GenerationJobID)

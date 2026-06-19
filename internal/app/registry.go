@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 
-	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	booksapi "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
@@ -181,7 +180,7 @@ func WireRegistry(
 
 	// ── Realtime ───────────────────────────────────────────────────────
 	if coreDeps.RealtimeService != nil {
-		handler := handlers.NewMatchHandler(coreDeps.RealtimeService, log)
+		handler := realtimeapi.NewMatchHandler(coreDeps.RealtimeService, log)
 		thin := realtimeapi.NewHandler(handler)
 		mod := realtimeapi.NewModule(cfg, log, thin)
 		registerModule(registry, log, mod)

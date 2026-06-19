@@ -87,7 +87,7 @@ func WireArtlist(
 	// 7. Module
 	var mod module.Module
 	if artlistSvc != nil && handler != nil {
-		mod = module.NewArtlistModule(cfg, log, artlistSvc, handler)
+		mod = sources.NewArtlistModule(cfg, log, artlistSvc, handler)
 		log.Info("created Artlist module")
 	}
 

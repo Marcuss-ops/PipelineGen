@@ -145,7 +145,7 @@ func WireAssets(
 		handler.SetAssetRepo(coreDeps.Assets.Repository())
 	}
 	thin := sourcespkg.NewRouteHandler(handler)
-	mod := module.NewSourcesModule(cfg, log, thin)
+	mod := sourcespkg.NewSourcesModule(cfg, log, thin)
 	log.Info("created unified Assets module")
 
 	return &AssetsWiring{

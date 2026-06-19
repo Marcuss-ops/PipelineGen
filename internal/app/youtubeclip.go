@@ -26,7 +26,7 @@ func WireYouTubeClip(
 
 	var mod module.Module
 	if coreDeps.YoutubeClipService != nil {
-		mod = module.NewClipsModule(cfg, log, coreDeps.YoutubeClipService, handler, coreDeps.JobsService)
+		mod = sources.NewClipsModule(cfg, log, coreDeps.YoutubeClipService, handler, coreDeps.JobsService)
 		log.Info("created Clips module")
 
 		// Register job handler for youtube_clip.extract jobs

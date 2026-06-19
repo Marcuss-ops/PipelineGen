@@ -1,9 +1,9 @@
-package api
+package sources
 
 import (
 	"context"
 
-	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -14,15 +14,15 @@ import (
 func NewSourcesModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *sources.RouteHandler,
-) *RouteModule {
-	return NewRouteModule(
+	handler *RouteHandler,
+) *api.RouteModule {
+	return api.NewRouteModule(
 		"assets",
 		func(cfg *config.Config) bool { return handler != nil },
 		"/media",
 		handler,
 		log,
-		WithStart(func(ctx context.Context) error {
+		api.WithStart(func(ctx context.Context) error {
 			log.Info("starting assets module")
 			return nil
 		}),
