@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
 	"time"
 	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	artsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/artlist"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
@@ -431,7 +432,7 @@ func wireScriptFlowExtras(
 }
 // ArtlistWiring holds the Artlist module wiring
 type ArtlistWiring struct {
-	Handler *sources.ArtlistHandler
+	Handler *artsources.ArtlistHandler
 	Module  module.Module
 	Service *artlistPkg.Service
 }
@@ -508,11 +509,11 @@ func wireArtlistHandler(
 	coreDeps *CoreDeps,
 	clipResolver *clipresolver.Service,
 	log *zap.Logger,
-) *sources.ArtlistHandler {
+) *artsources.ArtlistHandler {
 	if artlistSvc == nil {
 		return nil
 	}
-	return sources.NewArtlistHandler(
+	return artsources.NewArtlistHandler(
 		artlistSvc,
 		coreDeps.CatalogSyncService,
 		coreDeps.JobsService,
