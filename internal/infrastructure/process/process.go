@@ -6,22 +6,25 @@ package process
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
+	"syscall"
 	"time"
 )
 
 // Options configures how a command is run.
 type Options struct {
-	// Timeout is the maximum duration. Zero means DefaultTimeout (10 min).
+	// Timeout is the maximum duration. Zero or negative means DefaultTimeout (10 min).
 	Timeout time.Duration
 
 	// WorkDir sets the working directory. Empty means current.
 	WorkDir string
 
-	// Env sets environment variables. Nil means os.Environ().
+	// Env adds extra environment variables. When set, these are appended
+	// to os.Environ() — the provided entries take precedence on duplicates.
 	Env []string
 
 	// CombinedOutput returns both stdout and stderr together in Output.
@@ -33,9 +36,12 @@ type Options struct {
 
 // Result holds the output from a command execution.
 type Result struct {
-	Stdout string
-	Stderr string
-	Output string // Combined output if CombinedOutput is true
+	Stdout   string
+	Stderr   string
+	Output   string // Combined output if CombinedOutput is true
+	ExitCode int
+	Duration time.Duration
+	TimedOut bool
 }
 
 // DefaultTimeout is the fallback when no timeout is configured.
@@ -49,32 +55,70 @@ func DefaultOptions() Options {
 	}
 }
 
+// mergeEnv appends opts.Env to os.Environ(). Duplicate keys (matching on
+// KEY= prefix) from opts.Env replace the os.Environ() entries, while
+// preserving all other os.Environ() entries.
+func mergeEnv(extra []string) []string {
+	if len(extra) == 0 {
+		return os.Environ()
+	}
+	base := os.Environ()
+	dedup := make(map[string]int)
+	for i, e := range base {
+		for j := 0; j < len(e); j++ {
+			if e[j] == '=' {
+				dedup[e[:j+1]] = i
+				break
+			}
+		}
+	}
+	for _, e := range extra {
+		prefix := ""
+		for j := 0; j < len(e); j++ {
+			if e[j] == '=' {
+				prefix = e[:j+1]
+				break
+			}
+		}
+		if prefix == "" {
+			base = append(base, e)
+			continue
+		}
+		if idx, ok := dedup[prefix]; ok {
+			base[idx] = e
+		} else {
+			base = append(base, e)
+		}
+	}
+	return base
+}
+
 // Run executes a command with the given options. Uses exec.CommandContext
 // to prevent injection attacks (no shell).
 func Run(ctx context.Context, name string, args []string, opts Options) (*Result, error) {
-	if opts.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
-		defer cancel()
+	if opts.Timeout <= 0 {
+		opts.Timeout = DefaultTimeout
 	}
+	ctx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
 
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
-	if opts.Env == nil {
-		cmd.Env = os.Environ()
-	} else {
-		cmd.Env = opts.Env
-	}
+	cmd.Env = mergeEnv(opts.Env)
 
 	var stdout, stderr bytes.Buffer
 	result := &Result{}
+	start := time.Now()
 
 	if opts.CombinedOutput {
 		out, err := cmd.CombinedOutput()
+		result.Duration = time.Since(start)
 		result.Output = truncateSafe(string(out), opts.MaxOutputBytes)
+		result.ExitCode = exitCode(err)
+		result.TimedOut = isTimeout(err)
 		if err != nil {
 			return result, fmt.Errorf("command %s failed: %w (output: %s)", name, err, redactSecrets(result.Output))
 		}
@@ -82,8 +126,11 @@ func Run(ctx context.Context, name string, args []string, opts Options) (*Result
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		err := cmd.Run()
+		result.Duration = time.Since(start)
 		result.Stdout = truncateSafe(stdout.String(), opts.MaxOutputBytes)
 		result.Stderr = truncateSafe(stderr.String(), opts.MaxOutputBytes)
+		result.ExitCode = exitCode(err)
+		result.TimedOut = isTimeout(err)
 		if err != nil {
 			return result, fmt.Errorf("command %s failed: %w (stdout: %s, stderr: %s)",
 				name, err, redactSecrets(result.Stdout), redactSecrets(result.Stderr))
@@ -107,6 +154,25 @@ func LookPath(name string) (string, error) {
 func CommandExists(name string) bool {
 	_, err := LookPath(name)
 	return err == nil
+}
+
+// ── Exit code & timeout helpers ────────────────────────────────────────
+
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	if ee, ok := err.(*exec.ExitError); ok {
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok {
+			return ws.ExitStatus()
+		}
+		return 1
+	}
+	return -1
+}
+
+func isTimeout(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 // ── Secret redaction ───────────────────────────────────────────────────

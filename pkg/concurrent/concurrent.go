@@ -124,11 +124,12 @@ func asString(v any) string {
 	}
 }
 
-// ── ParallelMap — bounded parallel map/reduce ──────────────────────────
+// ── Map — bounded parallel map/reduce with worker pool ────────────────
 
-// Map executes fn for each item in parallel with at most workers concurrent
-// goroutines. Returns results in the same order as items. On first error,
-// remaining items are cancelled via context.
+// Map executes fn for each item using a bounded worker pool of at most
+// workers goroutines. Results are returned in item order. On first error,
+// the context is cancelled and remaining work items are skipped.
+// The fn callback runs inside a panic-recovery wrapper.
 func Map[T, R any](
 	ctx context.Context,
 	items []T,
@@ -150,54 +151,110 @@ func Map[T, R any](
 		val R
 		err error
 	}
+	type job struct {
+		idx  int
+		item T
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	results := make(chan result, len(items))
-	sem := make(chan struct{}, workers)
+	jobsCh := make(chan job, len(items))
+	results := make([]result, len(items))
 
+	var (
+		wg       sync.WaitGroup
+		firstErr error
+		errMu    sync.Mutex
+	)
+
+	// Bounded worker pool: exactly `workers` goroutines consume from the
+	// jobs channel. No goroutine-per-item explosion.
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobsCh {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				// Panic recovery per work item.
+				var (
+					res R
+					err error
+				)
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("[panic recovery] Map worker panicked: %v", r)
+							err = &errPanic{
+								name: fmt.Sprintf("map-worker-%d", j.idx),
+								val:  r,
+							}
+						}
+					}()
+					res, err = fn(ctx, j.idx, j.item)
+				}()
+
+				results[j.idx] = result{idx: j.idx, val: res, err: err}
+
+				if err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+						cancel()
+					}
+					errMu.Unlock()
+				}
+			}
+		}()
+	}
+
+	// Enqueue all jobs.
+loop:
+	for i, item := range items {
+		select {
+		case jobsCh <- job{idx: i, item: item}:
+		case <-ctx.Done():
+			break loop
+		}
+	}
+	close(jobsCh)
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+
+	out := make([]R, len(items))
+	for _, r := range results {
+		out[r.idx] = r.val
+	}
+	return out, nil
+}
+
+// ParallelMap is the legacy name kept for backward compatibility.
+// Deprecated: use Map.
+func ParallelMap[T, R any](
+	items []T,
+	concurrency int,
+	fn func(int, T) R,
+) []R {
+	results := make([]R, len(items))
 	var wg sync.WaitGroup
+	sem := make(chan struct{}, concurrency)
 	for i, item := range items {
 		wg.Add(1)
 		go func(idx int, it T) {
 			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
+			sem <- struct{}{}
 			defer func() { <-sem }()
-
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			r, err := fn(ctx, idx, it)
-			select {
-			case results <- result{idx: idx, val: r, err: err}:
-			case <-ctx.Done():
-			}
+			results[idx] = fn(idx, it)
 		}(i, item)
 	}
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	out := make([]R, len(items))
-	var firstErr error
-	for res := range results {
-		if res.err != nil && firstErr == nil {
-			firstErr = res.err
-			cancel() // cancel remaining goroutines
-		}
-		if res.err == nil {
-			out[res.idx] = res.val
-		}
-	}
-	return out, firstErr
+	wg.Wait()
+	return results
 }

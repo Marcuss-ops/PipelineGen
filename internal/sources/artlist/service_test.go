@@ -23,7 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	testutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
 )
 
 // artlistTestSchema composes the full canonical media_assets CREATE TABLE
