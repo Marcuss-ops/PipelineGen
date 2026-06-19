@@ -10,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -69,8 +70,9 @@ type SourcesHandler struct {
 	downloadCache sync.Map
 
 	// Sub-handlers
-	Voiceover   *VoiceoverHandler
-	SoundEffect *SoundEffectHandler
+	Voiceover    *VoiceoverHandler
+	SoundEffect  *SoundEffectHandler
+	clipsDelete  *clipsources.DeleteHandler // PR-A Phase 4: clip trash/delete endpoints
 }
 
 // SetRealtimeService sets the realtime service for semantic search.
@@ -189,6 +191,7 @@ func NewSourcesHandler(
 		log,
 	)
 	h.SoundEffect = NewSoundEffectHandler(clipsRepo, driveUploader, h.metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
+	h.clipsDelete = clipsources.NewDeleteHandler(deletionSvc, log)
 
 	// Register job handlers for this package (bulk upload, etc.)
 	if jobsSvc != nil {
@@ -220,8 +223,8 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PATCH("/:source/clips/:id", h.UpdateClip)
 	r.POST("/:source/clips/:id/status", h.ClipStatus)
 	r.POST("/:source/clips/:id/verify", h.VerifyClip)
-	r.POST("/:source/clips/:id/trash", h.TrashClip)
-	r.POST("/:source/clips/:id/delete", h.DeleteClip)
+	r.POST("/:source/clips/:id/trash", h.clipsDelete.TrashClip)
+	r.POST("/:source/clips/:id/delete", h.clipsDelete.DeleteClip)
 	r.POST("/:source/clips/:id/reupload", h.ReuploadClip)
 	r.POST("/:source/clips/:id/reprocess", h.ReprocessClip)
 	r.POST("/:source/clips/:id/reindex", h.ReindexClip)
