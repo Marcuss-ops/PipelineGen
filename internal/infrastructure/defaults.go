@@ -1,30 +1,18 @@
-// Package defaults provides coalesce-style helper functions for applying
-// default values when a variable is zero or empty. These are useful for
-// simplifying the common pattern: if x == "" { x = y } or if x <= 0 { x = y }.
+// Package defaults provides coalesce-style helper functions.
+//
+// Deprecated: use pkg/defaults instead. This file delegates to the canonical
+// implementation in pkg/defaults/ so call sites can migrate incrementally.
 package platform
 
-import "strings"
+import (
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+)
 
-// String returns val if it is non-empty (after trimming whitespace), otherwise fallback.
-func String(val, fallback string) string {
-	if strings.TrimSpace(val) != "" {
-		return val
-	}
-	return fallback
-}
+// Deprecated: use pkg/defaults.String.
+func String(val, fallback string) string { return defaults.String(val, fallback) }
 
-// Int returns val if it is greater than zero, otherwise fallback.
-func Int(val, fallback int) int {
-	if val > 0 {
-		return val
-	}
-	return fallback
-}
+// Deprecated: use pkg/defaults.Int.
+func Int(val, fallback int) int { return defaults.Int(val, fallback) }
 
-// Float64 returns val if it is greater than zero, otherwise fallback.
-func Float64(val, fallback float64) float64 {
-	if val > 0 {
-		return val
-	}
-	return fallback
-}
+// Deprecated: use pkg/defaults.Float64.
+func Float64(val, fallback float64) float64 { return defaults.Float64(val, fallback) }

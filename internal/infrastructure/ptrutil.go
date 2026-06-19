@@ -1,20 +1,18 @@
-// Package ptrutil provides utilities for working with pointer types.
+// Package ptrutil provides pointer utilities.
+//
+// Deprecated: use pkg/ptrutil instead. This file delegates to the canonical
+// implementation in pkg/ptrutil/ so call sites can migrate incrementally.
 package platform
 
-// BoolDefault returns the value of the bool pointer, or the default value if nil.
-func BoolDefault(v *bool, def bool) bool {
-	if v == nil {
-		return def
-	}
-	return *v
-}
+import (
+	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
+)
 
-// Bool returns a pointer to the given bool value.
-func Bool(v bool) *bool {
-	return &v
-}
+// Deprecated: use pkg/ptrutil.Ptr.
+func Bool(v bool) *bool { return ptrutil.Ptr(v) }
 
-// Str returns a pointer to the given string value.
-func Str(v string) *string {
-	return &v
-}
+// Deprecated: use pkg/ptrutil.Ptr.
+func Str(v string) *string { return ptrutil.Ptr(v) }
+
+// Deprecated: use pkg/ptrutil.DerefOr.
+func BoolDefault(v *bool, def bool) bool { return ptrutil.DerefOr(v, def) }
