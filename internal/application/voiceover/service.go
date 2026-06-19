@@ -6,10 +6,11 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/audioasset"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
@@ -41,7 +42,13 @@ type Service struct {
 	log               *zap.Logger
 	driveUploader     *drive.Uploader
 	assetDestResolver destination.Resolver
-	audioProcessor    *audioasset.Processor
+	// audioProcessor (PR-D.5.3): was concrete *audioasset.Processor from
+	// internal/media/audioasset/. The os/exec sidecar was extracted to
+	// internal/infrastructure/audio/ and the contract lives in
+	// internal/core/audio. Processor. We hold the interface so a future
+	// hosted-TTS adapter (cloud API, sidecar server) can be swapped in
+	// without touching voiceover.
+	audioProcessor audio.Processor
 	lifecycleService  *lifecycle.Service
 	semanticTagger    SemanticTaggerFunc
 	clipIndexer       ClipIndexFunc  // optional: triggers embedding + Qdrant upsert

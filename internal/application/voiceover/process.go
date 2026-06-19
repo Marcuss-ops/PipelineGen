@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/audioasset"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
