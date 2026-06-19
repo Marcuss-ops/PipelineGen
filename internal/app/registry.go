@@ -11,7 +11,7 @@ import (
 	lessonsapi "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	searchqueriesapi "github.com/Marcuss-ops/PipelineGen/internal/api/searchqueries"
+	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
@@ -181,7 +181,7 @@ func WireRegistry(
 	// ── Realtime ───────────────────────────────────────────────────────
 	if coreDeps.RealtimeService != nil {
 		handler := realtimeapi.NewMatchHandler(coreDeps.RealtimeService, log)
-		mod := realtimeapi.NewModule(cfg, log, handler)
+		mod := sourcesapi.NewRealtimeModule(cfg, log, handler)
 		registerModule(registry, log, mod)
 	}
 
@@ -209,7 +209,7 @@ func WireRegistry(
 	// ── SearchQueries ──────────────────────────────────────────────────
 	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
 		repo := searchqueriesrepo.NewRepository(coreDeps.DB.DB)
-		mod := searchqueriesapi.NewModule(log, repo)
+		mod := sourcesapi.NewSearchQueriesModule(log, repo)
 		registerModule(registry, log, mod)
 	}
 
