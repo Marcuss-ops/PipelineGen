@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
