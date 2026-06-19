@@ -9,7 +9,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
@@ -20,7 +19,6 @@ import (
 type backgroundJobs struct {
 	channelMonitor    *monitor.ChannelMonitor
 	driveSyncSchedule *scheduler.DriveSyncScheduler
-	indexingService   *indexing.Service
 	jobRunner         *svcjobs.Runner
 	jobScanner        *svcjobs.Scanner
 	scriptsRepo       *scriptrepo.ScriptRepository
@@ -289,7 +287,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	return &backgroundJobs{
 		channelMonitor:    channelMon,
 		driveSyncSchedule: driveSyncSched,
-		indexingService:   svcs.indexingService,
 		jobRunner:         jobRunner,
 		jobScanner:        jobScanner,
 		scriptsRepo:       svcs.scriptsRepo,

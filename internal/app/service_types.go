@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
@@ -33,8 +32,6 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
-	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/scheduler"
@@ -58,7 +55,6 @@ type services struct {
 	monitorsRepo       *monitors.Repository
 	voiceoverService   *voiceover.Service
 	voiceoverSync      *voiceoversync.Service
-	indexingService    *indexing.Service
 	clipIndexerService *clipindexer.Service
 	catalogRepo        *catalog.Repository
 	catalogSync        *catalogsync.Service
@@ -102,8 +98,6 @@ type services struct {
 	// Asset satellite tables (canonical model completion, PR0)
 	assetLocationsRepo  assets.LocationRepository
 	assetProcessingRepo assets.ProcessingRepository
-	assetRelationsRepo  *assetrelations.Repository
-	assetTagsRepo       *assettags.Repository
 	assetVersionsRepo   assets.VersionRepository
 
 	assetsSvc *assets.Service

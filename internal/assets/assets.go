@@ -2,6 +2,7 @@ package assets
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"time"
@@ -14,6 +15,23 @@ var ErrNotFound = errors.New("not found")
 var ErrAlreadyExists = errors.New("asset already exists")
 var ErrInvalidID = errors.New("invalid asset ID")
 var ErrSoftDeleted = errors.New("asset is soft-deleted")
+
+// ── AssetStoreSQLite ────────────────────────────────────────────────
+
+// AssetStoreSQLite is the SQLite-backed implementation of the Store interface.
+// It also provides folder, location, processing, and version repositories.
+type AssetStoreSQLite struct {
+	db  *sql.DB
+	log *zap.Logger
+}
+
+// NewAssetStoreSQLite creates a new AssetStoreSQLite with the given database and logger.
+func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &AssetStoreSQLite{db: db, log: log}
+}
 
 // ── Types ───────────────────────────────────────────────────────────
 

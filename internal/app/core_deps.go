@@ -23,7 +23,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
@@ -64,7 +63,6 @@ type CoreDeps struct {
 	VoiceoverRepo      *voiceovers.Repository
 	VoiceoverService   *voiceover.Service
 	VoiceoverSync      *voiceoversync.Service
-	IndexingService    *indexing.Service
 	ClipIndexerService *clipindexer.Service
 	CatalogSyncService *catalogsync.Service
 	ChannelMonitor     *monitor.ChannelMonitor

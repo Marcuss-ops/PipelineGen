@@ -16,13 +16,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	"github.com/Marcuss-ops/PipelineGen/internal/outboxhandlers"
-	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
-	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -57,7 +54,6 @@ func composeIntegration(
 	assetResolver := assetindex.NewResolver(core.AssetIndexService, resolverCfg, log)
 	log.Info("asset resolver initialized")
 
-	indexingService := indexing.NewService(log)
 	catalogRepo := catalog.NewRepository(core.ClipsOnlyRepo, core.ClipsOnlyRepo, core.ClipsOnlyRepo)
 
 	assocService := association.NewService(cfg.Storage.DataDir, "node-scraper", cfg.Paths.PythonScriptsDir,
@@ -244,8 +240,6 @@ func composeIntegration(
 	// ── Asset Satellite Repositories (canonical model completion, PR0) ────
 	assetLocRepo := core.AssetsSvc.LocationRepository()
 	assetProcRepo := core.AssetsSvc.ProcessingRepository()
-	assetRelRepo := assetrelations.NewRepository(dbs.main.DB)
-	assetTagRepo := assettags.NewRepository(dbs.main.DB)
 	assetVerRepo := core.AssetsSvc.VersionRepository()
 
 	// Wire asset lifecycle repos into YouTube service (late-binding).
@@ -273,7 +267,6 @@ func composeIntegration(
 		monitorsRepo:       mediaDomain.MonitorsRepo,
 		voiceoverService:   mediaDomain.VoiceoverService,
 		voiceoverSync:      voiceoverSync,
-		indexingService:    indexingService,
 		clipIndexerService: core.ClipIndexerService,
 		catalogRepo:        catalogRepo,
 		catalogSync:        catalogSync,
@@ -307,8 +300,6 @@ func composeIntegration(
 
 		assetLocationsRepo:  assetLocRepo,
 		assetProcessingRepo: assetProcRepo,
-		assetRelationsRepo:  assetRelRepo,
-		assetTagsRepo:       assetTagRepo,
 		assetVersionsRepo:   assetVerRepo,
 		assetsSvc:           assetsSvc,
 	}, nil
