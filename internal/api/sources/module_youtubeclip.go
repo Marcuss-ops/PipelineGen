@@ -4,19 +4,23 @@ import (
 	"context"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
 	"go.uber.org/zap"
 )
 
-// NewClipsModule creates the canonical clips module for YouTube download and processing.
+// NewClipsModule creates the canonical clips module for YouTube download
+// and processing. The YouTubeClipHandler now lives in the youtube
+// subpackage (PR-A Phase 2) so this module factory takes the new type
+// directly.
 func NewClipsModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	service *youtube.Service,
-	handler *YouTubeClipHandler,
+	service *domainyoutube.Service,
+	handler *youtube.YouTubeClipHandler,
 	jobsSvc *jobservice.Service,
 ) *api.RouteModule {
 	return api.NewRouteModule(
