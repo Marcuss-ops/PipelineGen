@@ -1,6 +1,7 @@
 package api
 
 import (
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -9,7 +10,7 @@ import (
 func NewStockPipelineModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *StockHandler,
+	handler *sources.StockHandler,
 ) *RouteModule {
 	return NewRouteModule(
 		"stock-pipeline",

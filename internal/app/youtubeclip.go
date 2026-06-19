@@ -1,7 +1,7 @@
 package app
 
 import (
-	sources "github.com/Marcuss-ops/PipelineGen/internal/api"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"

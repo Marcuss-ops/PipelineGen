@@ -4,8 +4,8 @@ import (
 	"go.uber.org/zap"
 
 	"fmt"
-	sources "github.com/Marcuss-ops/PipelineGen/internal/api"
-	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	sourcespkg "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -16,7 +16,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
@@ -44,7 +43,7 @@ func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *a
 
 // AssetsWiring holds the Assets module wiring
 type AssetsWiring struct {
-	Handler     *sources.Handler
+	Handler     *sourcespkg.SourcesHandler
 	Module      module.Module
 	DeletionSvc *media.DeletionService
 }
@@ -91,7 +90,7 @@ func WireAssets(
 		log,
 	)
 
-	handler := sources.NewSourcesHandler(
+	handler := sourcespkg.NewSourcesHandler(
 		cfg,
 		artlistSvc,
 		youtubeSvc,
@@ -145,8 +144,8 @@ func WireAssets(
 	if coreDeps.Assets != nil {
 		handler.SetAssetRepo(coreDeps.Assets.Repository())
 	}
-	thin := sourcesapi.NewHandler(handler)
-	mod := sourcesapi.NewModule(cfg, log, thin)
+	thin := sourcespkg.NewRouteHandler(handler)
+	mod := module.NewSourcesModule(cfg, log, thin)
 	log.Info("created unified Assets module")
 
 	return &AssetsWiring{
