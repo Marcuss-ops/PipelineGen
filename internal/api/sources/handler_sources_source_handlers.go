@@ -191,7 +191,7 @@ func NewSourcesHandler(
 		log,
 	)
 	h.SoundEffect = NewSoundEffectHandler(clipsRepo, driveUploader, h.metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
-	h.clipsDelete = clipsources.NewDeleteHandler(deletionSvc, log)
+	h.clipsDelete = clipsources.NewDeleteHandler(deletionSvc)
 
 	// Register job handlers for this package (bulk upload, etc.)
 	if jobsSvc != nil {
