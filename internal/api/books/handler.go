@@ -3,16 +3,15 @@ package books
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler is the thin HTTP transport for /api/books endpoints.
 type Handler struct {
-	inner *api.BooksHandler
+	inner *BooksHandler
 }
 
 // NewHandler creates a new books Handler.
-func NewHandler(inner *api.BooksHandler) *Handler {
+func NewHandler(inner *BooksHandler) *Handler {
 	return &Handler{inner: inner}
 }
 

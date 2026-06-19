@@ -1,6 +1,7 @@
-package api
+package lessons
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"net/http"
 	"time"
@@ -56,27 +57,27 @@ type GenerateLessonRequest struct {
 // GenerateLesson handles POST /api/lessons/generate.
 // Processes source text into a structured lesson with chapters, images, and PDF.
 func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
-	if !handlerutil.RequireService(c, h.svc, "lessons service") {
+	if !api.RequireService(c, h.svc, "lessons service") {
 		return
 	}
 
-	req, ok := BindJSON[GenerateLessonRequest](c)
+	req, ok := api.BindJSON[GenerateLessonRequest](c)
 	if !ok {
 		return
 	}
 
 	if req.SourceText == "" {
-		apiutil.BadRequest(c, "source_text is required")
+		api.BadRequest(c, "source_text is required")
 		return
 	}
 
 	// Async mode: enqueue background job
 	if req.Async {
-		if !handlerutil.RequireService(c, h.jobsSvc, "job system") {
+		if !api.RequireService(c, h.jobsSvc, "job system") {
 			return
 		}
 		h.log.Info("enqueuing async lesson generate job", zap.String("title", req.Title))
-		handlerutil.EnqueueAsync(c, h.jobsSvc, &EnqueueInput{
+		api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
 			Type: jobs.JobTypeLessonsProcess,
 			Payload: map[string]any{
 				"source_text":     req.SourceText,
@@ -128,16 +129,16 @@ func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
 	})
 	if err != nil {
 		h.log.Error("lesson generation failed", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
 	if !result.Success {
-		apiutil.Error(c, http.StatusInternalServerError, result.Error)
+		api.Error(c, http.StatusInternalServerError, result.Error)
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	api.OK(c, gin.H{
 		"ok":            true,
 		"success":       true,
 		"title":         result.Title,
@@ -153,16 +154,16 @@ func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
 // ListJobs returns all lesson generation jobs.
 // GET /api/lessons/jobs?status=queued&limit=20&offset=0
 func (h *LessonsHandler) ListJobs(c *gin.Context) {
-	if !handlerutil.RequireService(c, h.jobsSvc, "job system") {
+	if !api.RequireService(c, h.jobsSvc, "job system") {
 		return
 	}
 
-	pag := handlerutil.ParsePagination(c, 20, 1000)
+	pag := api.ParsePagination(c, 20, 1000)
 	jobType := jobs.JobTypeLessonsProcess
 
 	filter := jobs.Filter{
 		Type:   &jobType,
-		Status: (*jobs.Status)(handlerutil.ParseJobStatusFilter(c)),
+		Status: (*jobs.Status)(api.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}
@@ -170,11 +171,11 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 	jobsList, err := h.jobsSvc.List(c.Request.Context(), filter)
 	if err != nil {
 		h.log.Error("failed to list lesson jobs", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	handlerutil.ListJobsResponse(c, handlerutil.BuildJobSummaries(jobsList))
+	api.ListJobsResponse(c, api.BuildJobSummaries(jobsList))
 }
 
 // processAsync enqueues a background job for lesson generation.

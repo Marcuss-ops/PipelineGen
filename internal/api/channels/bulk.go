@@ -1,6 +1,7 @@
-package api
+package channels
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -47,7 +48,7 @@ type BulkUpsertResponse struct {
 func (h *ChannelsHandler) BulkUpsert(c *gin.Context) {
 	var req BulkUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 

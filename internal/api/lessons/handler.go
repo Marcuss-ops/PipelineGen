@@ -3,16 +3,15 @@ package lessons
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler is the thin HTTP transport for /api/lessons endpoints.
 type Handler struct {
-	inner *api.LessonsHandler
+	inner *LessonsHandler
 }
 
 // NewHandler creates a new lessons Handler.
-func NewHandler(inner *api.LessonsHandler) *Handler {
+func NewHandler(inner *LessonsHandler) *Handler {
 	return &Handler{inner: inner}
 }
 

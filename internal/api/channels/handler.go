@@ -3,16 +3,15 @@ package channels
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler is the thin HTTP transport for /api/channels endpoints.
 type Handler struct {
-	inner *api.ChannelsHandler
+	inner *ChannelsHandler
 }
 
 // NewHandler creates a new channels Handler.
-func NewHandler(inner *api.ChannelsHandler) *Handler {
+func NewHandler(inner *ChannelsHandler) *Handler {
 	return &Handler{inner: inner}
 }
 

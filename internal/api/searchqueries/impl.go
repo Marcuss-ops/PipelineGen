@@ -1,7 +1,8 @@
 // Package searchqueries provides HTTP handlers for managing scheduled topic searches.
-package api
+package searchqueries
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -37,10 +38,10 @@ func (h *SearchqueriesHandler) ListAll(c *gin.Context) {
 	queries, err := h.repo.ListAll(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list search queries", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"queries": queries})
+	api.OK(c, gin.H{"queries": queries})
 }
 
 // ListActive returns all active search queries.
@@ -48,27 +49,27 @@ func (h *SearchqueriesHandler) ListActive(c *gin.Context) {
 	queries, err := h.repo.ListActive(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list active search queries", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"queries": queries})
+	api.OK(c, gin.H{"queries": queries})
 }
 
 // GetByID returns a single search query by ID.
 func (h *SearchqueriesHandler) GetByID(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		apiutil.BadRequest(c, "id parameter is required")
+		api.BadRequest(c, "id parameter is required")
 		return
 	}
 
 	q, err := h.repo.GetByID(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get search query", zap.String("id", id), zap.Error(err))
-		apiutil.NotFound(c, "search query not found")
+		api.NotFound(c, "search query not found")
 		return
 	}
-	apiutil.OK(c, q)
+	api.OK(c, q)
 }
 
 // SearchQueryUpsertRequest is the JSON body for creating or updating a search query.
@@ -89,7 +90,7 @@ type SearchQueryUpsertRequest struct {
 func (h *SearchqueriesHandler) Upsert(c *gin.Context) {
 	var req SearchQueryUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 
@@ -108,7 +109,7 @@ func (h *SearchqueriesHandler) Upsert(c *gin.Context) {
 
 	if err := h.repo.Upsert(c.Request.Context(), q); err != nil {
 		h.log.Error("failed to upsert search query", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
@@ -122,32 +123,32 @@ func (h *SearchqueriesHandler) Upsert(c *gin.Context) {
 func (h *SearchqueriesHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		apiutil.BadRequest(c, "id parameter is required")
+		api.BadRequest(c, "id parameter is required")
 		return
 	}
 
 	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to delete search query", zap.String("id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{"ok": true, "deleted_id": id})
+	api.OK(c, gin.H{"ok": true, "deleted_id": id})
 }
 
 // ListResults returns all processed results for a search query.
 func (h *SearchqueriesHandler) ListResults(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		apiutil.BadRequest(c, "id parameter is required")
+		api.BadRequest(c, "id parameter is required")
 		return
 	}
 
 	results, err := h.repo.ListResultsByQuery(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to list search query results", zap.String("id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"results": results})
+	api.OK(c, gin.H{"results": results})
 }

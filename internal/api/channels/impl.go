@@ -1,7 +1,8 @@
 // Package channels provides HTTP handlers for managing category↔channel associations.
-package api
+package channels
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -37,10 +38,10 @@ func (h *ChannelsHandler) ListAll(c *gin.Context) {
 	channels, err := h.repo.ListAll(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list channels", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"channels": channels})
+	api.OK(c, gin.H{"channels": channels})
 }
 
 // ListCategories returns all distinct categories that have channels assigned.
@@ -48,27 +49,27 @@ func (h *ChannelsHandler) ListCategories(c *gin.Context) {
 	categories, err := h.repo.ListCategories(c.Request.Context())
 	if err != nil {
 		h.log.Error("failed to list categories", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
-	apiutil.OK(c, gin.H{"categories": categories})
+	api.OK(c, gin.H{"categories": categories})
 }
 
 // GetByID returns a single channel association by ID.
 func (h *ChannelsHandler) GetByID(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		apiutil.BadRequest(c, "id parameter is required")
+		api.BadRequest(c, "id parameter is required")
 		return
 	}
 
 	ch, err := h.repo.GetByID(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get channel", zap.String("id", id), zap.Error(err))
-		apiutil.NotFound(c, "channel not found")
+		api.NotFound(c, "channel not found")
 		return
 	}
-	apiutil.OK(c, ch)
+	api.OK(c, ch)
 }
 
 // UpsertRequest is the JSON body for creating or updating a channel association.
@@ -90,7 +91,7 @@ type UpsertRequest struct {
 func (h *ChannelsHandler) Upsert(c *gin.Context) {
 	var req UpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 
@@ -110,7 +111,7 @@ func (h *ChannelsHandler) Upsert(c *gin.Context) {
 
 	if err := h.repo.Upsert(c.Request.Context(), ch); err != nil {
 		h.log.Error("failed to upsert channel", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
@@ -124,24 +125,24 @@ func (h *ChannelsHandler) Upsert(c *gin.Context) {
 func (h *ChannelsHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		apiutil.BadRequest(c, "id parameter is required")
+		api.BadRequest(c, "id parameter is required")
 		return
 	}
 
 	// Check if channel exists before deleting
 	existing, err := h.repo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		apiutil.NotFound(c, "channel not found")
+		api.NotFound(c, "channel not found")
 		return
 	}
 
 	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to delete channel", zap.String("id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	api.OK(c, gin.H{
 		"ok":              true,
 		"deleted_channel": existing,
 	})

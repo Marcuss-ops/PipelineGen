@@ -1,7 +1,7 @@
 package app
 
 import (
-	jobshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	jobshandler "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"

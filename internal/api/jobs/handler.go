@@ -3,16 +3,15 @@ package jobs
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 )
 
 // Handler is the thin HTTP transport for /api/jobs endpoints.
 type Handler struct {
-	inner *api.JobsHandler
+	inner *JobsHandler
 }
 
 // NewHandler creates a new jobs Handler.
-func NewHandler(inner *api.JobsHandler) *Handler {
+func NewHandler(inner *JobsHandler) *Handler {
 	return &Handler{inner: inner}
 }
 

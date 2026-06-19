@@ -1,6 +1,7 @@
-package api
+package books
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"net/http"
 	"time"
@@ -59,28 +60,28 @@ type ProcessBookRequest struct {
 // ProcessBook handles POST /api/books/process
 // Processes a PDF/EPUB book using the book_summarizer.py script
 func (h *BooksHandler) ProcessBook(c *gin.Context) {
-	if !handlerutil.RequireService(c, h.svc, "books service") {
+	if !api.RequireService(c, h.svc, "books service") {
 		return
 	}
 
 	var req ProcessBookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 
 	if req.FilePath == "" && req.GoogleDocURL == "" {
-		apiutil.BadRequest(c, "file_path or google_doc_url is required")
+		api.BadRequest(c, "file_path or google_doc_url is required")
 		return
 	}
 
 	// Check if async processing is requested
 	if req.Async {
-		if !handlerutil.RequireService(c, h.jobsSvc, "job system") {
+		if !api.RequireService(c, h.jobsSvc, "job system") {
 			return
 		}
 		h.log.Info("enqueuing async book process job", zap.String("file", req.FilePath))
-			handlerutil.EnqueueAsync(c, h.jobsSvc, &EnqueueInput{
+			api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
 			Type: jobs.JobTypeBooksProcess,
 			Payload: map[string]any{
 				"file_path":       req.FilePath,
@@ -133,16 +134,16 @@ func (h *BooksHandler) ProcessBook(c *gin.Context) {
 
 	if err != nil {
 		h.log.Error("book processing failed", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
 	if !result.Success {
-		apiutil.Error(c, http.StatusInternalServerError, result.Error)
+		api.Error(c, http.StatusInternalServerError, result.Error)
 		return
 	}
 
-	apiutil.OK(c, gin.H{
+	api.OK(c, gin.H{
 		"ok":               true,
 		"success":          true,
 		"output_path":      result.OutputPath,
@@ -159,16 +160,16 @@ func (h *BooksHandler) ProcessBook(c *gin.Context) {
 // ListJobs returns all book processing jobs with status, progress, and results.
 // GET /api/books/jobs?status=queued&limit=20&offset=0
 func (h *BooksHandler) ListJobs(c *gin.Context) {
-	if !handlerutil.RequireService(c, h.jobsSvc, "job system") {
+	if !api.RequireService(c, h.jobsSvc, "job system") {
 		return
 	}
 
-	pag := handlerutil.ParsePagination(c, 20, 1000)
+	pag := api.ParsePagination(c, 20, 1000)
 	jobType := jobs.JobTypeBooksProcess
 
 	filter := jobs.Filter{
 		Type:   &jobType,
-		Status: (*jobs.Status)(handlerutil.ParseJobStatusFilter(c)),
+		Status: (*jobs.Status)(api.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}
@@ -176,11 +177,11 @@ func (h *BooksHandler) ListJobs(c *gin.Context) {
 	jobsList, err := h.jobsSvc.List(c.Request.Context(), filter)
 	if err != nil {
 		h.log.Error("failed to list book jobs", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	handlerutil.ListJobsResponse(c, handlerutil.BuildJobSummaries(jobsList))
+	api.ListJobsResponse(c, api.BuildJobSummaries(jobsList))
 }
 
 // ProcessBookFromDriveRequest is the input for processing a book from a Drive file URL.
@@ -208,18 +209,18 @@ type ProcessBookFromDriveRequest struct {
 // ProcessBookFromDrive handles POST /api/books/process-from-drive
 // Downloads a PDF/EPUB from Google Drive, processes it, and optionally generates voiceover.
 func (h *BooksHandler) ProcessBookFromDrive(c *gin.Context) {
-	if !handlerutil.RequireService(c, h.svc, "books service") {
+	if !api.RequireService(c, h.svc, "books service") {
 		return
 	}
 
 	var req ProcessBookFromDriveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
+		api.BadRequest(c, err.Error())
 		return
 	}
 
 	if req.DriveFileURL == "" {
-		apiutil.BadRequest(c, "drive_file_url is required")
+		api.BadRequest(c, "drive_file_url is required")
 		return
 	}
 
@@ -253,12 +254,12 @@ func (h *BooksHandler) ProcessBookFromDrive(c *gin.Context) {
 
 	if err != nil {
 		h.log.Error("book processing from drive failed", zap.Error(err))
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
 	if !result.Success {
-		apiutil.Error(c, http.StatusInternalServerError, result.Error)
+		api.Error(c, http.StatusInternalServerError, result.Error)
 		return
 	}
 
@@ -287,5 +288,5 @@ func (h *BooksHandler) ProcessBookFromDrive(c *gin.Context) {
 		resp["voiceover_error"] = result.VoiceoverError
 	}
 
-	apiutil.OK(c, resp)
+	api.OK(c, resp)
 }
