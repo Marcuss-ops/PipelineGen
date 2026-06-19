@@ -6,14 +6,19 @@
 package clips
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 )
+
+// AllSources is the canonical list of clip source names covered by the
+// multi-source AdvancedSearch fan-out. Adding a new source? Append once
+// here, then add the matching repository field on SearchHandler.
+var AllSources = []string{"youtube", "artlist", "stock"}
 
 // SearchHandler owns the clip search / discovery endpoints. The single
 // endpoint currently mounted is AdvancedSearch (POST /search/advanced),
@@ -72,7 +77,7 @@ type AdvancedSearchRequest struct {
 func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 	var req AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid request: " + err.Error()})
+		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
@@ -104,7 +109,7 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 		"stock":   h.stockRepo,
 	}
 
-	sources := []string{"youtube", "artlist", "stock"}
+	sources := AllSources
 	if repoReq.Source != "" && repoReq.Source != "all" {
 		sources = []string{repoReq.Source}
 	}
@@ -147,7 +152,7 @@ func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 		allClips = allClips[:limit]
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	internal.APIUtil.OK(c, gin.H{
 		"ok":     true,
 		"total":  totalCount,
 		"count":  len(allClips),
