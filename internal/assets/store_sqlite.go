@@ -32,8 +32,8 @@ func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
 
 var _ Store = (*AssetStoreSQLite)(nil)
 
-// Get retrieves a single asset, joining with its primary/available locations.
-func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Asset, error) {
+// Get retrieves a single asset, joining with its primary/available locations, processing records, and versions.
+func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Details, error) {
 	if id == "" {
 		return nil, errors.New("invalid id")
 	}
@@ -157,59 +157,130 @@ func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Asset, error) {
 
 	// Load physical locations
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT location_kind, uri, external_id, web_view_link, download_url, file_hash
+		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at
 		FROM asset_locations WHERE asset_id = ?
 	`, id)
+	var locations []*Location
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
-			var kind, uri, extID, webLink, dlURL, hash sql.NullString
-			if err := rows.Scan(&kind, &uri, &extID, &webLink, &dlURL, &hash); err == nil {
-				if kind.Valid {
-					if kind.String == "local" {
-						a.SetLocalPath(uri.String)
-						if hash.Valid && hash.String != "" {
-							a.SetFileHash(hash.String)
-						}
-					} else if kind.String == "drive" {
-						a.SetDriveFileID(extID.String)
-						a.SetDriveLink(webLink.String)
-						a.SetDownloadLink(dlURL.String)
-						if a.FileHash() == "" && hash.Valid {
-							a.SetFileHash(hash.String)
-						}
+			var loc Location
+			var kind, uri, extID, webLink, dlURL, mime, hash, createdAtStr, updatedAtStr sql.NullString
+			var isPrimaryInt sql.NullInt64
+			if err := rows.Scan(&loc.ID, &loc.AssetID, &kind, &uri, &extID, &webLink, &dlURL, &mime, &loc.FileSizeBytes, &hash, &isPrimaryInt, &createdAtStr, &updatedAtStr); err == nil {
+				loc.LocationKind = LocationKind(kind.String)
+				loc.URI = uri.String
+				loc.ExternalID = extID.String
+				loc.AccessURL = webLink.String
+				loc.DownloadURL = dlURL.String
+				loc.MimeType = mime.String
+				loc.FileHash = hash.String
+				loc.IsPrimary = isPrimaryInt.Int64 == 1
+				loc.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
+				loc.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr.String)
+				locations = append(locations, &loc)
+
+				if loc.LocationKind == "local" {
+					a.SetLocalPath(loc.URI)
+					if loc.FileHash != "" {
+						a.SetFileHash(loc.FileHash)
+					}
+				} else if loc.LocationKind == "drive" {
+					a.SetDriveFileID(loc.ExternalID)
+					a.SetDriveLink(loc.AccessURL)
+					a.SetDownloadLink(loc.DownloadURL)
+					if a.FileHash() == "" {
+						a.SetFileHash(loc.FileHash)
 					}
 				}
 			}
 		}
 	}
 
-	return &a, nil
+	// Load processing records
+	var processing []*ProcessingRecord
+	rowsProc, err := s.db.QueryContext(ctx, `
+		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
+		FROM asset_processing WHERE asset_id = ?
+	`, id)
+	if err == nil {
+		defer rowsProc.Close()
+		for rowsProc.Next() {
+			var proc ProcessingRecord
+			var statusStr, errStr, metaStr, startStr, compStr sql.NullString
+			if err := rowsProc.Scan(&proc.AssetID, &proc.Step, &statusStr, &startStr, &compStr, &errStr, &proc.AttemptCount, &metaStr); err == nil {
+				proc.Status = ProcessingStatus(statusStr.String)
+				proc.ErrorMessage = errStr.String
+				proc.MetadataJSON = metaStr.String
+				if startStr.Valid && startStr.String != "" {
+					t := timeutil.ParseRFC3339(startStr.String)
+					proc.StartedAt = &t
+				}
+				if compStr.Valid && compStr.String != "" {
+					t := timeutil.ParseRFC3339(compStr.String)
+					proc.CompletedAt = &t
+				}
+				processing = append(processing, &proc)
+			}
+		}
+	}
+
+	// Load versions
+	var versions []*Version
+	rowsVer, err := s.db.QueryContext(ctx, `
+		SELECT id, asset_id, version_number, source_uri, file_hash, file_size_bytes, mime_type, metadata_json, created_at
+		FROM asset_versions WHERE asset_id = ?
+	`, id)
+	if err == nil {
+		defer rowsVer.Close()
+		for rowsVer.Next() {
+			var ver Version
+			var sourceURI, fileHash, mimeType, metaStr, createdAtStr sql.NullString
+			if err := rowsVer.Scan(&ver.ID, &ver.AssetID, &ver.VersionNumber, &sourceURI, &fileHash, &ver.FileSizeBytes, &mimeType, &metaStr, &createdAtStr); err == nil {
+				ver.SourceURI = sourceURI.String
+				ver.FileHash = fileHash.String
+				ver.MimeType = mimeType.String
+				ver.MetadataJSON = metaStr.String
+				ver.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
+				versions = append(versions, &ver)
+			}
+		}
+	}
+
+	return &Details{
+		Asset:      &a,
+		Locations:  locations,
+		Processing: processing,
+		Versions:   versions,
+	}, nil
 }
 
 // List queries assets based on filter.
-func (s *AssetStoreSQLite) List(ctx context.Context, filter Filter) ([]*Asset, error) {
+func (s *AssetStoreSQLite) List(ctx context.Context, filter Filter) ([]*Summary, error) {
 	conds := []string{"1=1"}
 	args := []any{}
 
 	if filter.Source != "" {
-		conds = append(conds, "source = ?")
+		conds = append(conds, "a.source = ?")
 		args = append(args, filter.Source)
 	}
 	if filter.Category != "" {
-		conds = append(conds, "category = ?")
+		conds = append(conds, "a.category = ?")
 		args = append(args, filter.Category)
 	}
 	if filter.Group != "" {
-		conds = append(conds, "group_name = ?")
+		conds = append(conds, "a.group_name = ?")
 		args = append(args, filter.Group)
 	}
 
 	query := `
-		SELECT id
-		FROM media_assets
+		SELECT a.id, COALESCE(a.source, '') AS source, COALESCE(a.name, '') AS name, COALESCE(a.filename, '') AS filename,
+			COALESCE(a.media_type, '') AS media_type, COALESCE(a.category, '') AS category, COALESCE(a.lifecycle_state, 'ready') AS lifecycle_state,
+			COALESCE(l.uri, '') AS primary_uri, a.created_at, a.updated_at
+		FROM media_assets a
+		LEFT JOIN asset_locations l ON a.id = l.asset_id AND l.is_primary = 1
 		WHERE ` + strings.Join(conds, " AND ") + `
-		ORDER BY created_at DESC
+		ORDER BY a.created_at DESC
 	`
 	if filter.Limit > 0 {
 		query += " LIMIT ?"
@@ -226,28 +297,30 @@ func (s *AssetStoreSQLite) List(ctx context.Context, filter Filter) ([]*Asset, e
 	}
 	defer rows.Close()
 
-	var out []*Asset
+	var out []*Summary
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var sObj Summary
+		var srcStr, mediaStr, lifecycleStr, primaryURI, createdAtStr, updatedAtStr sql.NullString
+		if err := rows.Scan(&sObj.ID, &srcStr, &sObj.Name, &sObj.Filename, &mediaStr, &sObj.Category, &lifecycleStr, &primaryURI, &createdAtStr, &updatedAtStr); err != nil {
 			return nil, err
 		}
-		a, err := s.Get(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if a != nil {
-			out = append(out, a)
-		}
+		sObj.Source = Source(srcStr.String)
+		sObj.MediaType = MediaType(mediaStr.String)
+		sObj.LifecycleState = LifecycleState(lifecycleStr.String)
+		sObj.PrimaryURI = primaryURI.String
+		sObj.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)
+		sObj.UpdatedAt = timeutil.ParseRFC3339(updatedAtStr.String)
+		out = append(out, &sObj)
 	}
 	return out, nil
 }
 
-// Save inserts or updates an asset, writing to media_assets and asset_locations.
-func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
-	if a == nil || a.ID == "" {
-		return errors.New("invalid asset")
+// Save inserts or updates an asset aggregate (media_assets, asset_locations, asset_processing, asset_versions).
+func (s *AssetStoreSQLite) Save(ctx context.Context, details *Details) error {
+	if details == nil || details.Asset == nil || details.Asset.ID == "" {
+		return errors.New("invalid details or asset")
 	}
+	a := details.Asset
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -263,6 +336,25 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 	}
 	a.UpdatedAt = now
 
+	// Sync local location variables from locations list if primary
+	for _, loc := range details.Locations {
+		if loc.IsPrimary || len(details.Locations) == 1 {
+			if loc.LocationKind == "local" {
+				a.SetLocalPath(loc.URI)
+				if loc.FileHash != "" {
+					a.SetFileHash(loc.FileHash)
+				}
+			} else if loc.LocationKind == "drive" {
+				a.SetDriveFileID(loc.ExternalID)
+				a.SetDriveLink(loc.AccessURL)
+				a.SetDownloadLink(loc.DownloadURL)
+				if a.FileHash() == "" {
+					a.SetFileHash(loc.FileHash)
+				}
+			}
+		}
+	}
+
 	tagsJSON, _ := json.Marshal(a.Tags)
 	searchTermsJSON, _ := json.Marshal(a.SearchTerms)
 	metadataJSON, _ := json.Marshal(a.Metadata)
@@ -271,13 +363,6 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 	if a.DeletedAt != nil {
 		deletedAtStr = timeutil.FormatRFC3339(*a.DeletedAt)
 	}
-
-	// Sync local location variables
-	localPath := a.LocalPath()
-	fileHash := a.FileHash()
-	driveFileID := a.DriveFileID()
-	driveLink := a.DriveLink()
-	downloadLink := a.DownloadLink()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
@@ -329,51 +414,71 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 		return fmt.Errorf("assets: save asset row: %w", err)
 	}
 
-	// Sync local location
-	if localPath != "" {
-		_, err = tx.ExecContext(ctx, `
-			INSERT INTO asset_locations (asset_id, location_kind, uri, file_hash, is_primary, created_at, updated_at)
-			VALUES (?, 'local', ?, ?, 1, ?, ?)
-			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
-				uri = excluded.uri,
-				file_hash = excluded.file_hash,
-				is_primary = excluded.is_primary,
-				updated_at = excluded.updated_at
-		`, a.ID, localPath, fileHash, nowStr, nowStr)
-		if err != nil {
-			return fmt.Errorf("assets: save local location: %w", err)
+	// Save locations
+	for _, loc := range details.Locations {
+		if loc.CreatedAt.IsZero() {
+			loc.CreatedAt = now
 		}
-	} else {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = 'local'`, a.ID)
-	}
-
-	// Sync drive location
-	if driveFileID != "" || driveLink != "" {
-		uri := "drive://" + driveFileID
-		if driveFileID == "" {
-			uri = driveLink
-		}
-		isPrimary := 0
-		if localPath == "" {
-			isPrimary = 1
+		isPrimaryVal := 0
+		if loc.IsPrimary {
+			isPrimaryVal = 1
 		}
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, file_hash, is_primary, created_at, updated_at)
-			VALUES (?, 'drive', ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
 				uri = excluded.uri,
 				external_id = excluded.external_id,
 				web_view_link = excluded.web_view_link,
 				download_url = excluded.download_url,
+				mime_type = excluded.mime_type,
+				file_size_bytes = excluded.file_size_bytes,
 				file_hash = excluded.file_hash,
 				is_primary = excluded.is_primary,
 				updated_at = excluded.updated_at
-		`, a.ID, uri, driveFileID, driveLink, downloadLink, fileHash, isPrimary, nowStr, nowStr)
+		`, a.ID, string(loc.LocationKind), loc.URI, loc.ExternalID, loc.AccessURL, loc.DownloadURL, loc.MimeType, loc.FileSizeBytes, loc.FileHash, isPrimaryVal, timeutil.FormatRFC3339(loc.CreatedAt), nowStr)
 		if err != nil {
-			return fmt.Errorf("assets: save drive location: %w", err)
+			return fmt.Errorf("assets: save location %s: %w", loc.LocationKind, err)
 		}
-	} else {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM asset_locations WHERE asset_id = ? AND location_kind = 'drive'`, a.ID)
+	}
+
+	// Save processing records
+	for _, proc := range details.Processing {
+		var startStr, compStr sql.NullString
+		if proc.StartedAt != nil {
+			startStr = sql.NullString{String: timeutil.FormatRFC3339(*proc.StartedAt), Valid: true}
+		}
+		if proc.CompletedAt != nil {
+			compStr = sql.NullString{String: timeutil.FormatRFC3339(*proc.CompletedAt), Valid: true}
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO asset_processing (asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(asset_id, step) DO UPDATE SET
+				status = excluded.status,
+				started_at = excluded.started_at,
+				completed_at = excluded.completed_at,
+				error_message = excluded.error_message,
+				attempt_count = excluded.attempt_count,
+				metadata_json = excluded.metadata_json
+		`, a.ID, proc.Step, string(proc.Status), startStr, compStr, proc.ErrorMessage, proc.AttemptCount, proc.MetadataJSON)
+		if err != nil {
+			return fmt.Errorf("assets: save processing %s: %w", proc.Step, err)
+		}
+	}
+
+	// Save versions
+	for _, ver := range details.Versions {
+		if ver.CreatedAt.IsZero() {
+			ver.CreatedAt = now
+		}
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO asset_versions (asset_id, version_number, source_uri, file_hash, file_size_bytes, mime_type, metadata_json, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, a.ID, ver.VersionNumber, ver.SourceURI, ver.FileHash, ver.FileSizeBytes, ver.MimeType, ver.MetadataJSON, timeutil.FormatRFC3339(ver.CreatedAt))
+		if err != nil {
+			return fmt.Errorf("assets: save version %d: %w", ver.VersionNumber, err)
+		}
 	}
 
 	// Write outbox event
