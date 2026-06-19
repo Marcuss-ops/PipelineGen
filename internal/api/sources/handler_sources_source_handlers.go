@@ -72,7 +72,8 @@ type SourcesHandler struct {
 	// Sub-handlers
 	Voiceover    *VoiceoverHandler
 	SoundEffect  *SoundEffectHandler
-	clipsDelete  *clipsources.DeleteHandler // PR-A Phase 4: clip trash/delete endpoints
+	clipsDelete  *clipsources.DeleteHandler // PR-A Phase 4-min: clip trash/delete endpoints
+	clipsSearch  *clipsources.SearchHandler // PR-A Phase 4 sub-2: clip advanced search endpoint
 }
 
 // SetRealtimeService sets the realtime service for semantic search.
@@ -192,6 +193,7 @@ func NewSourcesHandler(
 	)
 	h.SoundEffect = NewSoundEffectHandler(clipsRepo, driveUploader, h.metaWriter, cfg.Drive.SoundEffectsRootFolder, log)
 	h.clipsDelete = clipsources.NewDeleteHandler(deletionSvc)
+	h.clipsSearch = clipsources.NewSearchHandler(clipsRepo, artlistRepo, stockRepo, log)
 
 	// Register job handlers for this package (bulk upload, etc.)
 	if jobsSvc != nil {
@@ -238,7 +240,7 @@ func (h *SourcesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// Source-level endpoints
 	r.GET("/search", h.Search)
 	r.GET("/semantic-search", h.SemanticSearch)
-	r.POST("/search/advanced", h.AdvancedSearch)
+	r.POST("/search/advanced", h.clipsSearch.AdvancedSearch)
 	r.POST("/recommend", h.RecommendClips)
 	r.GET("/:source/clips", h.ListClips)
 	r.POST("/:source/reconcile", h.Reconcile)

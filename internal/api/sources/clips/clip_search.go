@@ -1,4 +1,9 @@
-package sources
+// Package clips hosts the HTTP handlers for the clip search / discovery
+// endpoints. PR-A Phase 4 sub-2: clip_search.go exits the flat
+// handler_sources_clip_search_handlers.go and lands in the new clips
+// subpackage so callers can `internal/api/sources/clips`'s register the
+// route instead of `*sources.SourcesHandler` carrying the method.
+package clips
 
 import (
 	"net/http"
@@ -6,8 +11,34 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
 )
+
+// SearchHandler owns the clip search / discovery endpoints. The single
+// endpoint currently mounted is AdvancedSearch (POST /search/advanced),
+// which dispatches a multi-source filter query across the YouTube,
+// Artlist, and Stock clip repositories.
+//
+// Methods are extracted from the legacy flat
+// handler_sources_clip_search_handlers.go — same behavior, same wire
+// shape, just a fresh receiver and subpackage.
+type SearchHandler struct {
+	clipsRepo   *clips.Repository
+	artlistRepo *clips.Repository
+	stockRepo   *clips.Repository
+	log         *zap.Logger
+}
+
+// NewSearchHandler builds the SearchHandler.
+func NewSearchHandler(clipsRepo, artlistRepo, stockRepo *clips.Repository, log *zap.Logger) *SearchHandler {
+	return &SearchHandler{
+		clipsRepo:   clipsRepo,
+		artlistRepo: artlistRepo,
+		stockRepo:   stockRepo,
+		log:         log,
+	}
+}
 
 // AdvancedSearchRequest is the JSON body for POST /api/media/search/advanced.
 type AdvancedSearchRequest struct {
@@ -26,19 +57,22 @@ type AdvancedSearchRequest struct {
 	Offset        int    `json:"offset"`
 }
 
-// AdvancedSearch godoc
-// @Summary      Advanced clip search with filters
-// @Description  Search media assets with structured filters (category, date range, duration, transcript, source, Drive link).
-// @Tags         search
-// @Accept       json
-// @Produce      json
-// @Param        body body AdvancedSearchRequest true "Filter request"
-// @Success      200  {object} object
-// @Router       /api/media/search/advanced [post]
-func (h *Handler) AdvancedSearch(c *gin.Context) {
+// AdvancedSearch performs an advanced multi-source clip search with
+// structured filters.
+//
+//	@Summary		Advanced clip search with filters
+//	@Description	Search media assets with structured filters (category, date range,
+//	@Description	duration, transcript, source, Drive link).
+//	@Tags			search
+//	@Accept			json
+//	@Produce		json
+//	@Param			body body AdvancedSearchRequest true "Filter request"
+//	@Success		200  {object} object
+//	@Router			/api/media/search/advanced [post]
+func (h *SearchHandler) AdvancedSearch(c *gin.Context) {
 	var req AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, "invalid request: "+err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid request: " + err.Error()})
 		return
 	}
 
@@ -121,4 +155,9 @@ func (h *Handler) AdvancedSearch(c *gin.Context) {
 		"offset": repoReq.Offset,
 		"clips":  allClips,
 	})
+}
+
+// RegisterRoutes mounts AdvancedSearch onto the supplied gin router group.
+func (h *SearchHandler) RegisterRoutes(r *gin.RouterGroup) {
+	r.POST("/search/advanced", h.AdvancedSearch)
 }
