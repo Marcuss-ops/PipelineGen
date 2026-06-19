@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
@@ -139,28 +139,28 @@ func (h *SystemHandler) checkStorageDeep(ctx context.Context, resp *DoctorRespon
 
 func (h *SystemHandler) checkExternalTools(ctx context.Context, resp *DoctorResponse) {
 	// Ollama
-	if _, err := exec.LookPath("ollama"); err != nil {
+	if !executil.CommandExists("ollama") {
 		resp.Checks["ollama"] = "not_installed"
 	} else {
 		resp.Checks["ollama"] = "ok"
 	}
 
 	// yt-dlp
-	if _, err := exec.LookPath("yt-dlp"); err != nil {
+	if !executil.CommandExists("yt-dlp") {
 		resp.Checks["yt_dlp"] = "not_installed"
 	} else {
 		resp.Checks["yt_dlp"] = "ok"
 	}
 
 	// ffmpeg
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	if !executil.CommandExists("ffmpeg") {
 		resp.Checks["ffmpeg"] = "not_installed"
 	} else {
 		resp.Checks["ffmpeg"] = "ok"
 	}
 
 	// python3
-	if _, err := exec.LookPath("python3"); err != nil {
+	if !executil.CommandExists("python3") {
 		resp.Checks["python3"] = "not_installed"
 	} else {
 		resp.Checks["python3"] = "ok"
@@ -220,8 +220,7 @@ func (h *SystemHandler) checkVoiceover(ctx context.Context, resp *DoctorResponse
 	}
 
 	// Check edge-tts package
-	cmd := exec.CommandContext(ctx, "python3", "-c", "import edge_tts")
-	if err := cmd.Run(); err != nil {
+	if _, err := executil.RunSimple(ctx, "python3", "-c", "import edge_tts"); err != nil {
 		resp.Checks["voiceover_library"] = "missing_edge_tts"
 		resp.Fixes = append(resp.Fixes, "pip install edge-tts")
 	} else {

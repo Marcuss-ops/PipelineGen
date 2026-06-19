@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"go.uber.org/zap"
+
+	executil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 // transcriptResult holds the parsed JSON output from transcribe_detect_lang.py.
@@ -48,10 +49,9 @@ func (h *Handler) transcribeAudio(ctx context.Context, localPath string, log *za
 	}
 
 	// Build command: python3 scripts/tools/transcribe_detect_lang.py --transcribe --model tiny --json-only <file>
-	cmd := exec.CommandContext(ctx, pythonBin, scriptPath,
+	execResult, err := executil.RunSimple(ctx, pythonBin, scriptPath,
 		"--transcribe", "--model", "tiny", "--json-only", localPath,
 	)
-	output, err := cmd.Output()
 	if err != nil {
 		log.Warn("transcription failed for clip (non-fatal)",
 			zap.String("path", localPath),
@@ -60,8 +60,8 @@ func (h *Handler) transcribeAudio(ctx context.Context, localPath string, log *za
 		return "", ""
 	}
 
-	var result transcriptResult
-	if err := json.Unmarshal(output, &result); err != nil {
+	var tsResult transcriptResult
+	if err := json.Unmarshal([]byte(execResult.Output), &tsResult); err != nil {
 		log.Warn("failed to parse transcription JSON",
 			zap.String("path", localPath),
 			zap.Error(err),
@@ -69,23 +69,23 @@ func (h *Handler) transcribeAudio(ctx context.Context, localPath string, log *za
 		return "", ""
 	}
 
-	if result.Error != "" {
+	if tsResult.Error != "" {
 		log.Warn("transcription error from whisper",
 			zap.String("path", localPath),
-			zap.String("error", result.Error),
+			zap.String("error", tsResult.Error),
 		)
 		return "", ""
 	}
 
-	transcript = strings.TrimSpace(result.TranscriptFull)
-	language = strings.TrimSpace(result.Language)
+	transcript = strings.TrimSpace(tsResult.TranscriptFull)
+	language = strings.TrimSpace(tsResult.Language)
 
 	log.Info("clip transcribed",
 		zap.String("path", localPath),
 		zap.String("language", language),
-		zap.Float64("probability", result.Probability),
-		zap.Int("transcript_len", result.TranscriptLength),
-		zap.Float64("time_sec", result.TranscriptionTimeSec),
+		zap.Float64("probability", tsResult.Probability),
+		zap.Int("transcript_len", tsResult.TranscriptLength),
+		zap.Float64("time_sec", tsResult.TranscriptionTimeSec),
 	)
 
 	return transcript, language
