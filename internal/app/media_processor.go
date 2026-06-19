@@ -29,7 +29,7 @@ func initMediaProcessor(
 ) processor.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
-	ffmpegProc := ffmpeg.New(cfg)
+	ffmpegProc := ffmpeg.NewFromConfig(cfg)
 	clipsRegistry := artifacts.NewClipsRegistry(db, assetsRepo, querySvc, locations, processing)
 
 	return mediaasset.NewProcessor(
