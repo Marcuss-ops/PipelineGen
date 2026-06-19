@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api"
-	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -143,7 +143,7 @@ func composeIntegration(
 	log.Info("Gemma Memory Gate service initialized")
 
 	engine := scriptcore.NewEngine(core.ScriptGen, memorySvc, mediaDomain.ScriptsRepo, log)
-	scriptFlowHandler := handlers.NewScriptFlowHandler(
+	scriptFlowHandler := scriptpkg.NewScriptFlowHandler(
 		core.ScriptGen, engine, mediaDomain.ImageService, realtimeSvc, assocService,
 		mediaDomain.VoiceoverService, core.AssetTreeService, core.DocClient, core.DriveUploader,
 		jobsService, mediaDomain.ScriptsRepo, memorySvc,

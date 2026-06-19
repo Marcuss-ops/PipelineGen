@@ -1,11 +1,8 @@
 // Package script provides the HTTP transport layer for script generation endpoints.
 //
-// This package is intentionally thin — it contains only the Handler struct,
-// route registration, and request/response mappings. Business orchestration
-// (generation, curation, scene planning, document building) lives in
-// internal/application/scriptflow/.
-//
-// See docs/api-package-boundaries.md for the full architecture.
+// This package contains the ScriptFlowHandler (business logic) and Handler
+// (thin HTTP transport wrapper). All handler_script_handlers_*.go files were
+// migrated from package api into this package.
 package script
 
 import (
@@ -20,14 +17,14 @@ import (
 // Handler is the HTTP transport for /api/script endpoints.
 // Generation endpoints delegate to the application-layer GenerationService;
 // remaining endpoints (curate, catalog, job status) delegate to the inner
-// ScriptFlowHandler until extracted in future PRs.
+// ScriptFlowHandler.
 type Handler struct {
-	inner    *api.ScriptFlowHandler
+	inner    *ScriptFlowHandler
 	generate *generate.GenerationService
 }
 
 // NewHandler creates a new script Handler.
-func NewHandler(inner *api.ScriptFlowHandler, gen *generate.GenerationService) *Handler {
+func NewHandler(inner *ScriptFlowHandler, gen *generate.GenerationService) *Handler {
 	return &Handler{inner: inner, generate: gen}
 }
 
@@ -39,7 +36,7 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 		api.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
 		return
 	}
-	req, ok := api.BindJSON[api.GenerateFromClipsRequest](c)
+	req, ok := api.BindJSON[GenerateFromClipsRequest](c)
 	if !ok {
 		return
 	}
@@ -48,7 +45,7 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 		api.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	api.OK(c, api.GenerateFromClipsResponse{
+	api.OK(c, GenerateFromClipsResponse{
 		OK:        result.OK,
 		JobID:     result.JobID,
 		Status:    result.Status,
@@ -62,7 +59,7 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 		api.Error(c, http.StatusServiceUnavailable, "generation service not initialized")
 		return
 	}
-	req, ok := api.BindJSON[api.GenerateWithImagesRequest](c)
+	req, ok := api.BindJSON[GenerateWithImagesRequest](c)
 	if !ok {
 		return
 	}
@@ -71,7 +68,7 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 		api.Error(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	api.OK(c, api.GenerateFromClipsResponse{
+	api.OK(c, GenerateFromClipsResponse{
 		OK:        result.OK,
 		JobID:     result.JobID,
 		Status:    result.Status,
@@ -80,15 +77,11 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 }
 
 // GenerateBatch handles POST /api/script/generate-batch.
-// Async path delegates to GenerationService; sync path delegates to inner
-// ScriptFlowHandler (to be extracted in PR 4).
 func (h *Handler) GenerateBatch(c *gin.Context) {
 	if h.inner == nil {
 		api.Error(c, http.StatusServiceUnavailable, "script handler not initialized")
 		return
 	}
-	// Delegate to inner ScriptFlowHandler for both async and sync paths.
-	// PR 4 will extract this orchestration.
 	h.inner.GenerateBatch(c)
 }
 
@@ -104,16 +97,12 @@ func (h *Handler) GetBatchProgress(c *gin.Context) {
 // ── Route registration ─────────────────────────────────────────────────────
 
 // RegisterRoutes registers /api/script routes.
-// Generation endpoints run on the thin Handler; remaining endpoints delegate
-// to the inner ScriptFlowHandler.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
-	// Generation endpoints — thin transport
 	r.POST("/generate-from-clips", h.GenerateFromClips)
 	r.POST("/generate-with-images", h.GenerateWithImages)
 	r.POST("/generate-batch", h.GenerateBatch)
 	r.GET("/generate-batch/progress", h.GetBatchProgress)
 
-	// Remaining endpoints — delegate to inner
 	if h.inner != nil {
 		h.inner.RegisterRoutesRemaining(r)
 	}
@@ -121,7 +110,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 // ── Request mapping helpers ─────────────────────────────────────────────────
 
-func mapFromClipsRequest(req *api.GenerateFromClipsRequest) *generate.FromClipsCommand {
+func mapFromClipsRequest(req *GenerateFromClipsRequest) *generate.FromClipsCommand {
 	return &generate.FromClipsCommand{
 		Topic:                req.Topic,
 		SourceText:           req.SourceText,
@@ -162,7 +151,7 @@ func mapFromClipsRequest(req *api.GenerateFromClipsRequest) *generate.FromClipsC
 	}
 }
 
-func mapWithImagesRequest(req *api.GenerateWithImagesRequest) *generate.WithImagesCommand {
+func mapWithImagesRequest(req *GenerateWithImagesRequest) *generate.WithImagesCommand {
 	return &generate.WithImagesCommand{
 		Topic:                req.Topic,
 		SourceText:           req.SourceText,
