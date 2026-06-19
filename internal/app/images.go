@@ -2,6 +2,7 @@ package app
 
 import (
 	imghandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 
@@ -22,14 +23,8 @@ func WireImages(
 ) (*ImagesWiring, error) {
 	handler := imghandler.NewImagesHandler(coreDeps.ImageService)
 
-	mod := module.NewRouteModule(
-		"images",
-		func(cfg *config.Config) bool { return cfg.Features.ImagesEnabled },
-		"/images",
-		handler,
-		log,
-	)
-	log.Info("created Images module using RouteModule")
+	mod := imagesapi.NewModule(cfg, log, imagesapi.NewHandler(handler))
+	log.Info("created Images module using api/images")
 
 	return &ImagesWiring{
 		Handler: handler,

@@ -1,18 +1,19 @@
-package api
+package lessons
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
 
-// NewLessonsModule creates a new /api/lessons module for lesson generation.
-func NewLessonsModule(
+// NewModule creates the Lessons module for the API registry.
+func NewModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *LessonsHandler,
-) *RouteModule {
-	return NewRouteModule(
+	handler *Handler,
+) *api.RouteModule {
+	return api.NewRouteModule(
 		"lessons",
 		func(cfg *config.Config) bool { return cfg.Lessons.Enabled },
 		"/lessons",
