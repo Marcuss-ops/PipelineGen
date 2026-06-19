@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // globalNvidiaSem limits concurrent NVIDIA NIM/flux image generation requests system-wide to avoid overloading GPU/VRAM.

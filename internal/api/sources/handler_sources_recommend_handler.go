@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	defaults "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // RecommendRequest is the input for the clip recommendation endpoint.

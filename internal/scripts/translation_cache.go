@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 
 	_ "github.com/mattn/go-sqlite3"

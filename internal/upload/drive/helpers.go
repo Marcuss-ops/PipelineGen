@@ -1,10 +1,10 @@
 package drive
 
-import platform "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+import urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 // FileIDFromLink extracts a Google Drive file or folder ID from a URL.
 func FileIDFromLink(link string) string {
-	id, _ := platform.FileIDFromDriveLink(link)
+	id, _ := urlutil.FileIDFromDriveLink(link)
 	return id
 }
 

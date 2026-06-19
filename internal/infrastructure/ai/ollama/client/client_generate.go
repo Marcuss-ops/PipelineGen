@@ -12,7 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"
 )

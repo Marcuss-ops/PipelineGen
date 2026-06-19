@@ -5,7 +5,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ClipDriveAssociation cerca clip specifiche nel database delle clip scaricate.

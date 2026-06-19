@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // GenerateSmartImage generates an AI image exclusively via Google Slides.

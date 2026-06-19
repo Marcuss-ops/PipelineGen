@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ParseTags parses a string of tags that might be JSON array or CSV.

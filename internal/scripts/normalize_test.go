@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // ─── Block 1: Duration formula ────────────────────────────────────────

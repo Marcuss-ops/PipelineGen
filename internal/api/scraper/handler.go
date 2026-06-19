@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 type ScraperHandler struct {
@@ -97,7 +97,7 @@ func (h *ScraperHandler) Search(c *gin.Context) {
 		"--limit", strconv.Itoa(limit),
 	}
 
-	result, err := executil.Run(ctx, "node", args, executil.ExecOptions{
+	result, err := executil.Run(ctx, "node", args, executil.Options{
 		WorkDir:        scraperDir,
 		CombinedOutput: false,
 	})

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // resolveDownloadedPath finds the actual file yt-dlp wrote, handling
@@ -55,7 +55,7 @@ func cutVideoSegment(inputPath, outputPath string, startSec, endSec float64) err
 		"-avoid_negative_ts", "make_zero",
 		outputPath,
 	}
-	result, err := executil.Run(context.Background(), "ffmpeg", args, executil.DefaultExecOptions())
+	result, err := executil.Run(context.Background(), "ffmpeg", args, executil.DefaultOptions())
 	if err != nil {
 		return fmt.Errorf("ffmpeg cut failed: %w, output: %s", err, strings.TrimSpace(result.Output))
 	}

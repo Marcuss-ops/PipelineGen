@@ -7,7 +7,7 @@ import (
 	"time"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 func (s *Service) buildFilename(req *BatchRequest, language, textHash string) string {

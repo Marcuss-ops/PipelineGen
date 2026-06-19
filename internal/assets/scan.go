@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // mediaAssetScanner abstracts away sql.Rows vs sql.Row so callers

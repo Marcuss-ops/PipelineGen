@@ -70,3 +70,20 @@ func FormatPtrRFC3339(t *time.Time) any {
 	}
 	return FormatRFC3339(*t)
 }
+
+// DerefString returns the value of a *string or "" if nil.
+func DerefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// ParseYouTubeUploadDate parses yt-dlp's upload_date YYYYMMDD format.
+func ParseYouTubeUploadDate(dateStr string) (time.Time, error) {
+	if len(dateStr) >= 8 {
+		return time.Parse("20060102", dateStr[:8])
+	}
+	return time.Parse("20060102", dateStr)
+}
+

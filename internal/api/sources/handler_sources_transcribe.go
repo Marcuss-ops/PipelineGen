@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // transcriptResult holds the parsed JSON output from transcribe_detect_lang.py.

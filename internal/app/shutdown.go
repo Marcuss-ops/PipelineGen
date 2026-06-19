@@ -5,8 +5,10 @@ import (
 	"sync"
 	"time"
 
-	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // buildCleanup constructs a cleanup function that stops background jobs,
@@ -26,14 +28,14 @@ func buildCleanup(dbs *databases, jobs *backgroundJobs, cancel context.CancelFun
 
 		if jobs.channelMonitor != nil {
 			wg.Add(1)
-			pf.SafeGo("cleanup-channel-monitor", func() {
+			concurrent.SafeGo("cleanup-channel-monitor", func() {
 				defer wg.Done()
 				jobs.channelMonitor.Stop()
 			})
 		}
 		if jobs.driveSyncSchedule != nil {
 			wg.Add(1)
-			pf.SafeGo("cleanup-drive-sync", func() {
+			concurrent.SafeGo("cleanup-drive-sync", func() {
 				defer wg.Done()
 				jobs.driveSyncSchedule.Stop()
 			})

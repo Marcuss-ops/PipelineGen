@@ -16,8 +16,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	retry "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 )
 

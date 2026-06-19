@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 	
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 func (s *AssetStoreSQLite) GetFolderChildren(ctx context.Context, parentID string) ([]*Asset, error) {

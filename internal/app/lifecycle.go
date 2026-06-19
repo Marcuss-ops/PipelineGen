@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
@@ -25,6 +25,9 @@ import (
 
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 type backgroundJobs struct {
@@ -81,7 +84,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			log.Info("Job runner created", zap.Int("workers", runnerConfig.Workers))
 
 			jobScanner = svcjobs.NewScanner(svcs.jobsRepo, log)
-			pf.SafeGo("job-scanner", func() { jobScanner.Start(ctx, 5*time.Minute) })
+			concurrent.SafeGo("job-scanner", func() { jobScanner.Start(ctx, 5*time.Minute) })
 			log.Info("Job scanner started")
 
 			// Refresh queue / oldest-pending / stale-assets gauges every 30s so
@@ -111,7 +114,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				channelMon.SetSearchRateLimit(cfg.Jobs.SearchRateLimit)
 			}
 
-			pf.SafeGo("channel-monitor", func() { channelMon.Start(ctx) })
+			concurrent.SafeGo("channel-monitor", func() { channelMon.Start(ctx) })
 			log.Info("Channel monitor started")
 		}
 
@@ -130,7 +133,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 				log,
 				syncInterval,
 			)
-			pf.SafeGo("drive-sync-scheduler", func() { driveSyncSched.Start(ctx) })
+			concurrent.SafeGo("drive-sync-scheduler", func() { driveSyncSched.Start(ctx) })
 			log.Info("Drive sync scheduler started", zap.Duration("interval", syncInterval))
 		}
 	}
@@ -152,7 +155,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		// Actually schedule maintenance and backup jobs via the job system
 		if svcs.jobsService != nil {
 			scheduleMaintenanceJob := func(interval time.Duration, label string) {
-				pf.SafeGo("maintenance-scheduler-"+label, func() {
+				concurrent.SafeGo("maintenance-scheduler-"+label, func() {
 					select {
 					case <-ctx.Done():
 						return
@@ -192,7 +195,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 	if runScheduler && svcs.youtubeClipService != nil {
 		// Warm the YouTube metadata cache L1 at startup
-		pf.SafeGo("yt-cache-prewarm", func() {
+		concurrent.SafeGo("yt-cache-prewarm", func() {
 			select {
 			case <-ctx.Done():
 				return
@@ -206,7 +209,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		})
 
 		// Schedule nightly pre-warming (every 24 hours)
-		pf.SafeGo("yt-nightly-prewarm", func() {
+		concurrent.SafeGo("yt-nightly-prewarm", func() {
 			ticker := time.NewTicker(24 * time.Hour)
 			defer ticker.Stop()
 			for {
@@ -229,28 +232,28 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	if runMaintenance {
 		// Sweep stale research_cache rows once per 6 hours.
 		if svcs.scriptsRepo != nil {
-			pf.SafeGo("research-cache-sweeper", func() {
+			concurrent.SafeGo("research-cache-sweeper", func() {
 				startResearchCacheSweeper(ctx, svcs.scriptsRepo, log)
 			})
 		}
 
 		// Sweep gemma memory tables.
 		if svcs.memoryRepo != nil {
-			pf.SafeGo("gemma-memory-sweeper", func() {
+			concurrent.SafeGo("gemma-memory-sweeper", func() {
 				startGemmaMemorySweeper(ctx, svcs.memoryRepo, log)
 			})
 		}
 
 		// Qdrant stale points cleaner — every 12 hours.
 		if svcs.vectorSvc != nil && svcs.driveUploader != nil {
-			pf.SafeGo("qdrant-cleaner", func() {
+			concurrent.SafeGo("qdrant-cleaner", func() {
 				startQdrantCleaner(ctx, svcs.vectorSvc, svcs.driveUploader, log)
 			})
 		}
 
 		// Clip dedup sweeper — every 30 minutes.
 		if svcs.clipsRepo != nil {
-			pf.SafeGo("clip-dedup-sweeper", func() {
+			concurrent.SafeGo("clip-dedup-sweeper", func() {
 				log.Info("clip dedup sweeper starting (interval=30m)")
 				startClipDedupSweeper(ctx, svcs.clipsRepo, log)
 			})
@@ -258,7 +261,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 		// VLM Auto-Tag sweeper — every 15 minutes.
 		if svcs.autotagService != nil {
-			pf.SafeGo("vlm-autotag-sweeper", func() {
+			concurrent.SafeGo("vlm-autotag-sweeper", func() {
 				log.Info("VLM auto-tag sweeper starting (interval=15m)")
 				startVLMAutoTagSweeper(ctx, svcs.autotagService, log)
 			})
@@ -270,7 +273,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		// startQdrantCleaner (Drive-link validity) for full
 		// catalog-store convergence.
 		if svcs.vectorSvc != nil && dbs.main != nil && dbs.main.DB != nil {
-			pf.SafeGo("qdrant-ghost-sweeper", func() {
+			concurrent.SafeGo("qdrant-ghost-sweeper", func() {
 				db := dbs.main.DB
 				log.Info("Qdrant ghost-points sweeper starting (interval=24h, initialDelay=10m)")
 				startQdrantGhostSweeper(ctx, svcs.vectorSvc, db, log)
@@ -281,7 +284,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	// ── Health monitoring (lightweight, always runs) ───────────────────
 	// Qdrant health monitor — every 60s, updates Prometheus gauge.
 	if svcs.vectorSvc != nil {
-		pf.SafeGo("qdrant-health-monitor", func() {
+		concurrent.SafeGo("qdrant-health-monitor", func() {
 			log.Info("Qdrant health monitor starting (interval=60s)")
 			startQdrantHealthMonitor(ctx, svcs.vectorSvc, log)
 		})
@@ -514,7 +517,7 @@ func startQdrantCleaner(ctx context.Context, vectorSvc *vectorstore.Service, dri
 			fileID := driveFileID
 			if fileID == "" {
 				var err error
-				fileID, err = pf.FileIDFromDriveLink(driveLink)
+				fileID, err = urlutil.FileIDFromDriveLink(driveLink)
 				if err != nil || fileID == "" {
 					return false, fmt.Errorf("cannot extract file ID from link %q: %w", driveLink, err)
 				}

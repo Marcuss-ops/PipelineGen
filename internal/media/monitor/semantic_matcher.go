@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"go.uber.org/zap"
 )

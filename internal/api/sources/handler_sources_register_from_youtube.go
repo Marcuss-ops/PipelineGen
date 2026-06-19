@@ -14,8 +14,8 @@ import (
 
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // SafeFolderName replaces filesystem-unsafe characters with spaces.

@@ -7,7 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // DriveStockAssociation cerca cartelle nel catalogo locale dello stock.

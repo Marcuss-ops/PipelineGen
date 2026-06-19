@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // PixabayProvider searches Pixabay's free video API as a fallback source.

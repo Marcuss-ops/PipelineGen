@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 type versionRepositoryAdapter struct {

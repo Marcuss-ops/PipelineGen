@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // RunOrchestratorService coordina l'esecuzione dei run Artlist

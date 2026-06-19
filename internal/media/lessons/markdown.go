@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // AssembleLesson produces the complete Markdown content for a lesson result.

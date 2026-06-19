@@ -23,7 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -55,6 +55,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 	gdrive "google.golang.org/api/drive/v3"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
 // CleanupFunc is returned by initialization functions to handle teardown.
@@ -240,7 +243,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		startJobRunner: func() {
 			if jobs.jobRunner != nil {
 				svcs.jobsDispatcher.Freeze()
-				pf.SafeGo("job-runner", func() { jobs.jobRunner.Start(ctx) })
+				concurrent.SafeGo("job-runner", func() { jobs.jobRunner.Start(ctx) })
 				log.Info("Job runner started after full wiring",
 					zap.Int("workers", cfg.Jobs.MaxParallelPerProject))
 			}
@@ -272,7 +275,7 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gd
 		}
 
 		// 3. Cache in DB to make future startups near-instantaneous
-		now := pf.FormatRFC3339(time.Now())
+		now := timeutil.FormatRFC3339(time.Now())
 		searchKey := strings.ToLower(source + name)
 		searchKey = strings.ReplaceAll(searchKey, " ", "")
 		_, _ = db.ExecContext(ctx, `
@@ -322,7 +325,7 @@ func resolveDynamicDriveFolders(ctx context.Context, db *sql.DB, driveClient *gd
 				log.Warn("Failed to create scripts subfolder on Drive", zap.String("name", name), zap.Error(err))
 				return ""
 			}
-			now := pf.FormatRFC3339(time.Now())
+			now := timeutil.FormatRFC3339(time.Now())
 			searchKey := strings.ToLower(source + name)
 			searchKey = strings.ReplaceAll(searchKey, " ", "")
 			_, _ = db.ExecContext(ctx, `INSERT OR IGNORE INTO clip_folders (id, source, source_url, folder_id, folder_path, group_name, created_at, updated_at, search_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
