@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
@@ -41,7 +41,7 @@ type Repository struct {
 }
 
 // Compile-time interface check.
-var _ asset.Repository = (*Repository)(nil)
+var _ assets.Repository = (*Repository)(nil)
 
 // New returns a Repository backed by db.
 func New(db *sql.DB, log *zap.Logger) *Repository {
@@ -64,12 +64,12 @@ func New(db *sql.DB, log *zap.Logger) *Repository {
 //
 // UpsertTx is the tx-aware variant — same logic without starting its own
 // transaction or emitting outbox (caller controls both).
-func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
+func (r *Repository) Upsert(ctx context.Context, m *assets.Asset) error {
 	if m == nil {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 	if m.ID == "" {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -103,7 +103,7 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 	}
 
 	// Synchronise asset_locations from the deprecated location fields.
-	// These fields are still on asset.MediaAsset for backward compat but
+	// These fields are still on assets.Asset for backward compat but
 	// the canonical home is asset_locations.
 	if err := upsertLocationRows(ctx, tx, m, nowStr); err != nil {
 		return fmt.Errorf("assetrepo.Upsert(%s) locations: %w", m.ID, err)
@@ -120,11 +120,11 @@ func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
 }
 
 // Get reads a single media_asset row by id. Returns (nil, nil) when missing.
-// Soft-deleted rows return (nil, asset.ErrSoftDeleted) so callers can
+// Soft-deleted rows return (nil, assets.ErrSoftDeleted) so callers can
 // distinguish "not found" from "deleted".
-func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, error) {
+func (r *Repository) Get(ctx context.Context, id string) (*assets.Asset, error) {
 	if id == "" {
-		return nil, asset.ErrInvalidID
+		return nil, assets.ErrInvalidID
 	}
 	row := r.db.QueryRowContext(ctx, `SELECT `+selectColumns+` FROM media_assets WHERE id = ?`, id)
 	m, err := scanAsset(row)
@@ -134,14 +134,14 @@ func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, err
 	if err != nil {
 		return nil, fmt.Errorf("assetrepo.Get(%s): %w", id, err)
 	}
-	if m.LifecycleState == asset.StateDeleted {
-		return nil, asset.ErrSoftDeleted
+	if m.LifecycleState == assets.StateDeleted {
+		return nil, assets.ErrSoftDeleted
 	}
 	return m, nil
 }
 
 // List returns assets matching filter. Uses real columns; no json_extract.
-func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.MediaAsset, error) {
+func (r *Repository) List(ctx context.Context, filter assets.Filter) ([]*assets.Asset, error) {
 	args := []any{}
 	conds := []string{"1=1"}
 	if filter.Source != "" {
@@ -192,7 +192,7 @@ func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.Me
 	}
 	defer rows.Close()
 
-	var out []*asset.MediaAsset
+	var out []*assets.Asset
 	for rows.Next() {
 		m, err := scanAsset(rows)
 		if err != nil {
@@ -207,7 +207,7 @@ func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.Me
 }
 
 // Count returns the number of rows matching filter (no pagination).
-func (r *Repository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
+func (r *Repository) Count(ctx context.Context, filter assets.Filter) (int64, error) {
 	args := []any{}
 	conds := []string{"1=1"}
 	if filter.Source != "" {
@@ -236,7 +236,7 @@ func (r *Repository) Count(ctx context.Context, filter asset.Filter) (int64, err
 // and writes "asset.deleted" outbox event in the same transaction.
 func (r *Repository) SoftDelete(ctx context.Context, id string) error {
 	if id == "" {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -249,12 +249,12 @@ func (r *Repository) SoftDelete(ctx context.Context, id string) error {
 		UPDATE media_assets
 		SET lifecycle_state = ?, deleted_at = ?, updated_at = ?
 		WHERE id = ? AND lifecycle_state != ?
-	`, asset.StateDeleted, nowStr, nowStr, id, asset.StateDeleted)
+	`, assets.StateDeleted, nowStr, nowStr, id, assets.StateDeleted)
 	if err != nil {
 		return fmt.Errorf("assetrepo.SoftDelete(%s): %w", id, err)
 	}
 	if affected, _ := res.RowsAffected(); affected == 0 {
-		return asset.ErrNotFound
+		return assets.ErrNotFound
 	}
 	if err := writeOutbox(ctx, tx, id, "asset.deleted", nil); err != nil {
 		return fmt.Errorf("assetrepo.SoftDelete outbox: %w", err)
@@ -265,7 +265,7 @@ func (r *Repository) SoftDelete(ctx context.Context, id string) error {
 // Restore reverses a soft-delete. Idempotent: a non-deleted asset is a no-op.
 func (r *Repository) Restore(ctx context.Context, id string) error {
 	if id == "" {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -278,12 +278,12 @@ func (r *Repository) Restore(ctx context.Context, id string) error {
 		UPDATE media_assets
 		SET lifecycle_state = ?, deleted_at = '', updated_at = ?
 		WHERE id = ? AND lifecycle_state = ?
-	`, asset.StateReady, nowStr, id, asset.StateDeleted)
+	`, assets.StateReady, nowStr, id, assets.StateDeleted)
 	if err != nil {
 		return fmt.Errorf("assetrepo.Restore(%s): %w", id, err)
 	}
 	if affected, _ := res.RowsAffected(); affected == 0 {
-		return asset.ErrNotFound
+		return assets.ErrNotFound
 	}
 	if err := writeOutbox(ctx, tx, id, "asset.restored", nil); err != nil {
 		return fmt.Errorf("assetrepo.Restore outbox: %w", err)
@@ -296,7 +296,7 @@ func (r *Repository) Restore(ctx context.Context, id string) error {
 // observers can clean up before the parent row vanishes.
 func (r *Repository) HardDelete(ctx context.Context, id string) error {
 	if id == "" {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -360,10 +360,10 @@ func (r *Repository) WithTx(ctx context.Context, fn func(*Tx) error) error {
 // dropped from media_assets in PR2.
 //
 // The caller controls the transaction and outbox emission.
-func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, tagsJSON, searchTermsJSON, nowStr string) error {
+func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *assets.Asset, tagsJSON, searchTermsJSON, nowStr string) error {
 	lifecycle := string(m.LifecycleState)
 	if lifecycle == "" {
-		lifecycle = string(asset.StateReady)
+		lifecycle = string(assets.StateReady)
 	}
 	deletedAtStr := ""
 	if m.DeletedAt != nil {
@@ -448,9 +448,9 @@ func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, t
 			drive_folder_id = excluded.drive_folder_id,
 			thumb_url       = excluded.thumb_url
 	`,
-		m.ID, m.Source, m.Name, m.Filename, m.MediaType, m.Category, m.Group,
+		m.ID, string(m.Source), m.Name, m.Filename, string(m.MediaType), m.Category, m.Group,
 		m.SourceURL, m.ClipPageURL, m.ThumbnailURL,		m.ExternalURL(),
-		m.DurationMs, tagsJSON, searchTermsJSON, m.SearchText,
+		m.Duration.Milliseconds(), tagsJSON, searchTermsJSON, m.SearchText,
 		lifecycle, deletedAtStr,
 		m.QualityScore(), m.ReuseCount(), m.LastUsedAt(),
 		m.SceneType(), metadataJSON, boolToInt(m.IsFolder()), m.Depth(),
@@ -458,7 +458,7 @@ func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, t
 		usableForJSON, avoidForJSON, m.PHash(), m.ChildCount(),
 		m.DriveFileID(), m.DriveLink(), m.DownloadLink(), m.LocalPath(), m.LocalPath(), m.FileHash(),
 		m.EmbeddingJSON(), m.VisualEmbedding(), m.TranscriptEmbedding(), m.VisualEmbeddingJSON(),
-		tagsNorm(m.Tags), m.FolderID, m.ThumbnailURL,
+		tagsNorm(m.Tags), m.FolderID(), m.ThumbnailURL,
 		nowStr, nowStr,
 	)
 	if err != nil {
@@ -471,12 +471,12 @@ func upsertMediaAssetRow(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, t
 // insert/update + asset_locations sync, but does NOT start its own transaction
 // or emit outbox events. The caller owns the transaction lifecycle and outbox
 // emission. Use this when composing multi-table writes atomically.
-func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset) error {
+func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, m *assets.Asset) error {
 	if m == nil {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 	if m.ID == "" {
-		return asset.ErrInvalidID
+		return assets.ErrInvalidID
 	}
 
 	now := time.Now().UTC()
@@ -502,7 +502,7 @@ func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, m *asset.MediaAss
 }
 
 // upsertLocationRows writes location data from the deprecated fields on
-// asset.MediaAsset into the asset_locations satellite table. It runs
+// assets.Asset into the asset_locations satellite table. It runs
 // inside the caller's transaction.
 //
 // Mapping:
@@ -517,7 +517,7 @@ func (r *Repository) UpsertTx(ctx context.Context, tx *sql.Tx, m *asset.MediaAss
 // Before upserting, stale rows whose deprecated field is now empty are
 // deleted, and all other rows for this asset have is_primary cleared so
 // the INSERT's is_primary value is the sole authority.
-func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *asset.MediaAsset, nowStr string) error {
+func upsertLocationRows(ctx context.Context, tx *sql.Tx, m *assets.Asset, nowStr string) error {
 	// ── Local location ──────────────────────────────────────────────
 	if m.LocalPath() != "" {
 		// Reset any previous primary before setting the new one.

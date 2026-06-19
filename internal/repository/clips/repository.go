@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -136,19 +136,19 @@ func NewRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical *assetrepo.Re
 
 // ── asset.Repository interface (PR1: always delegated to canonical) ────
 
-func (r *Repository) Upsert(ctx context.Context, m *asset.MediaAsset) error {
+func (r *Repository) Upsert(ctx context.Context, m *assets.Asset) error {
 	return r.canonical.Upsert(ctx, m)
 }
 
-func (r *Repository) Get(ctx context.Context, id string) (*asset.MediaAsset, error) {
+func (r *Repository) Get(ctx context.Context, id string) (*assets.Asset, error) {
 	return r.canonical.Get(ctx, id)
 }
 
-func (r *Repository) List(ctx context.Context, filter asset.Filter) ([]*asset.MediaAsset, error) {
+func (r *Repository) List(ctx context.Context, filter assets.Filter) ([]*assets.Asset, error) {
 	return r.canonical.List(ctx, filter)
 }
 
-func (r *Repository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
+func (r *Repository) Count(ctx context.Context, filter assets.Filter) (int64, error) {
 	return r.canonical.Count(ctx, filter)
 }
 
@@ -170,7 +170,7 @@ func (r *Repository) Canonical() *assetrepo.Repository {
 	return r.canonical
 }
 
-// ── Legacy write methods (PR2: converted to canonical *asset.MediaAsset) ─
+// ── Legacy write methods (PR2: converted to canonical *assets.Asset) ─
 
 // SoftDeleteFilter returns the SQL WHERE fragment that excludes soft-deleted clips.
 func (r *Repository) SoftDeleteFilter() string {
@@ -186,12 +186,12 @@ func (r *Repository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx,
 
 // UpsertClip inserts or updates a media asset. PR1: always delegates to
 // the canonical assetrepo.Repository. Same semantics as before.
-func (r *Repository) UpsertClip(ctx context.Context, clip *asset.MediaAsset) error {
+func (r *Repository) UpsertClip(ctx context.Context, clip *assets.Asset) error {
 	return r.canonical.Upsert(ctx, clip)
 }
 
 // GetByDriveFileID is a legacy alias for GetClipByDriveFileID.
-func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.MediaAsset, error) {
+func (r *Repository) GetByDriveFileID(ctx context.Context, fileID string) (*assets.Asset, error) {
 	return r.GetClipByDriveFileID(ctx, fileID)
 }
 
@@ -205,7 +205,7 @@ func (r *Repository) GetClipFolderByVideoID(ctx context.Context, videoID string)
 // UpsertClipTx is the tx-aware variant of UpsertClip. PR1: delegates to
 // the canonical assetrepo.Repository.UpsertTx. The caller owns the
 // transaction lifecycle and outbox emission.
-func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
+func (r *Repository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *assets.Asset) error {
 	return r.canonical.UpsertTx(ctx, tx, clip)
 }
 

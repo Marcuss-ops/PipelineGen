@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // SearchByTerms searches clips using the indexed clip_search_terms table.
@@ -14,7 +14,7 @@ import (
 //
 // Splits cleanly from search.go so the fast-path index lookup can evolve
 // independently of the LIKE fallback in SearchClips.
-func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*asset.MediaAsset, error) {
+func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords []string, limit int) ([]*assets.Asset, error) {
 	filtered := make([]string, 0, len(keywords))
 	for _, k := range keywords {
 		k = strings.TrimSpace(k)
@@ -23,7 +23,7 @@ func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords 
 		}
 	}
 	if len(filtered) == 0 {
-		return []*asset.MediaAsset{}, nil
+		return []*assets.Asset{}, nil
 	}
 
 	placeholders := make([]string, len(filtered))
@@ -59,7 +59,7 @@ func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords 
 	}
 
 	if len(clipIDs) == 0 {
-		return []*asset.MediaAsset{}, nil
+		return []*assets.Asset{}, nil
 	}
 	if limit > 0 && len(clipIDs) > limit {
 		clipIDs = clipIDs[:limit]
@@ -72,9 +72,9 @@ func (r *Repository) SearchByTerms(ctx context.Context, source string, keywords 
 // Private to this file because callers should always go through
 // SearchByTerms (which respects the search_terms index); batch-fetch helpers
 // belong only with the search path that knows the index schema.
-func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs []string) ([]*asset.MediaAsset, error) {
+func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs []string) ([]*assets.Asset, error) {
 	if len(clipIDs) == 0 {
-		return []*asset.MediaAsset{}, nil
+		return []*assets.Asset{}, nil
 	}
 
 	idPlaceholders := make([]string, len(clipIDs))
@@ -96,7 +96,7 @@ func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs
 		}
 		defer rows.Close()
 
-		var results []*asset.MediaAsset
+		var results []*assets.Asset
 		for rows.Next() {
 			clip, err := scanCanonicalAssetRows(rows)
 			if err != nil {
@@ -114,7 +114,7 @@ func (r *Repository) fetchClipsByIDs(ctx context.Context, source string, clipIDs
 	}
 	defer rows.Close()
 
-	var results []*asset.MediaAsset
+	var results []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {

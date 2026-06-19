@@ -9,25 +9,25 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type clipStoreAdapter struct {
 	db         *sql.DB
-	assets     asset.Repository
+	assets     assets.Repository
 	querySvc   *assetquery.Service
-	locations  asset.LocationRepository
-	processing asset.ProcessingRepository
+	locations  assets.LocationRepository
+	processing assets.ProcessingRepository
 }
 
 func NewClipStoreAdapter(
 	db *sql.DB,
-	assets asset.Repository,
+	assets assets.Repository,
 	querySvc *assetquery.Service,
-	locations asset.LocationRepository,
-	processing asset.ProcessingRepository,
+	locations assets.LocationRepository,
+	processing assets.ProcessingRepository,
 ) lifecycle.AssetRecordStore {
 	return &clipStoreAdapter{
 		db:         db,
@@ -39,18 +39,18 @@ func NewClipStoreAdapter(
 }
 
 func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
-	m := &asset.MediaAsset{
+	m := &assets.Asset{
 		ID:             rec.ID,
-		Source:         rec.Source,
+		Source:         assets.Source(rec.Source),
 		Name:           rec.Name,
 		Filename:       rec.Filename,
-		MediaType:      rec.MediaType,
+		MediaType:      assets.MediaType(rec.MediaType),
 		Category:       rec.Category,
 		Group:          rec.Group,
 		SourceURL:      rec.ExternalURL,
-		DurationMs:     int64(rec.Duration),
+		Duration:       time.Duration(rec.Duration) * time.Millisecond,
 		Tags:           append([]string(nil), rec.Tags...),
-		LifecycleState: asset.StateReady,
+		LifecycleState: assets.StateReady,
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
@@ -62,7 +62,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	m.SetMetadataJSON(rec.Metadata)
 
 	if rec.Status == "deleted" {
-		m.LifecycleState = asset.StateDeleted
+		m.LifecycleState = assets.StateDeleted
 	}
 
 	if err := a.assets.Upsert(ctx, m); err != nil {
@@ -71,9 +71,9 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 
 	// Write locations
 	if rec.LocalPath != "" {
-		loc := &asset.Location{
+		loc := &assets.Location{
 			AssetID:      rec.ID,
-			LocationKind: asset.LocationKindLocal,
+			LocationKind: assets.LocationKindLocal,
 			URI:          rec.LocalPath,
 			FileHash:     rec.FileHash,
 			IsPrimary:    true,
@@ -83,9 +83,9 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 		}
 	}
 	if rec.DriveLink != "" || rec.DriveFileID != "" {
-		loc := &asset.Location{
+		loc := &assets.Location{
 			AssetID:      rec.ID,
-			LocationKind: asset.LocationKindDrive,
+			LocationKind: assets.LocationKindDrive,
 			URI:          "drive://" + rec.DriveFileID,
 			ExternalID:   rec.DriveFileID,
 			AccessURL:    rec.DriveLink,
@@ -99,9 +99,9 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 
 	// Write status/processing step if present
 	if rec.Status != "" {
-		step := string(asset.StageUpload)
+		step := string(assets.StageUpload)
 		if rec.MediaType == "audio" {
-			step = string(asset.StageDownload)
+			step = string(assets.StageDownload)
 		}
 		if rec.Status == "failed" {
 			_ = a.processing.Start(ctx, rec.ID, step)
@@ -120,7 +120,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 func (a *clipStoreAdapter) Get(ctx context.Context, id string) (*artifacts.MediaRecord, error) {
 	details, err := a.querySvc.Get(ctx, id)
 	if err != nil {
-		if err == asset.ErrNotFound {
+		if err == assets.ErrNotFound {
 			return nil, nil
 		}
 		return nil, err
@@ -236,25 +236,25 @@ func detailsToMediaRecord(details *assetquery.Details) *artifacts.MediaRecord {
 		ID:                  details.Asset.ID,
 		Name:                details.Asset.Name,
 		Filename:            details.Asset.Filename,
-		Source:              details.Asset.Source,
+		Source:              string(details.Asset.Source),
 		Category:            details.Asset.Category,
-		MediaType:           details.Asset.MediaType,
+		MediaType:           string(details.Asset.MediaType),
 		ExternalURL:         details.Asset.ExternalURL(),
 		FolderID:            details.Asset.FolderID(),
 		FolderPath:          details.Asset.FolderPath(),
 		Group:               details.Asset.Group,
 		Tags:                append([]string(nil), details.Asset.Tags...),
-		Duration:            int(details.Asset.DurationMs),
+		Duration:            int(details.Asset.Duration.Milliseconds()),
 		VisualEmbeddingJSON: details.Asset.VisualEmbeddingJSON(),
 		SourceID:            textutil.FirstNonEmpty(details.Asset.ExternalURL(), details.Asset.Filename, details.Asset.ID),
 	}
 	rec.Metadata = details.Asset.MetadataJSON()
 
 	for _, loc := range details.Locations {
-		if loc.LocationKind == asset.LocationKindLocal {
+		if loc.LocationKind == assets.LocationKindLocal {
 			rec.LocalPath = loc.URI
 			rec.FileHash = loc.FileHash
-		} else if loc.LocationKind == asset.LocationKindDrive {
+		} else if loc.LocationKind == assets.LocationKindDrive {
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL
 			rec.DownloadLink = loc.DownloadURL
@@ -262,13 +262,13 @@ func detailsToMediaRecord(details *assetquery.Details) *artifacts.MediaRecord {
 	}
 
 	for _, proc := range details.Processing {
-		if proc.Status == asset.StatusFailed {
+		if proc.Status == assets.StatusFailed {
 			rec.Status = "failed"
 			rec.Error = proc.ErrorMessage
 			break
-		} else if proc.Status == asset.StatusRunning {
+		} else if proc.Status == assets.StatusRunning {
 			rec.Status = "processing"
-		} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
+		} else if rec.Status == "" && proc.Status == assets.StatusCompleted {
 			rec.Status = "ready"
 		}
 	}

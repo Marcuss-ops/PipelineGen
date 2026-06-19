@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -33,7 +33,7 @@ func cleanTranscriptJSON(raw string) (string, string) {
 }
 
 // buildEvidence converts a MediaAsset to ClipEvidence, applying validation rules.
-func (b *ClipSourceBuilder) buildEvidence(asset *asset.MediaAsset, opts *ClipGenerationOptions) ClipEvidence {
+func (b *ClipSourceBuilder) buildEvidence(asset *assets.Asset, opts *ClipGenerationOptions) ClipEvidence {
 	ev := ClipEvidence{
 		ClipID:       asset.ID,
 		Title:        asset.Name,
@@ -43,7 +43,7 @@ func (b *ClipSourceBuilder) buildEvidence(asset *asset.MediaAsset, opts *ClipGen
 		DriveLink:    asset.DriveLink(),
 		Hook:         asset.GetMetadataString("hook"),
 		Language:     asset.GetMetadataString("language"),
-		DurationSec:  int(asset.DurationMs / 1000),
+		DurationSec:  int(asset.Duration.Seconds()),
 	}
 
 	// DriveLink fallback: check metadata if struct field is empty

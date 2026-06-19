@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/downloader"
 )
 
@@ -13,7 +13,7 @@ import (
 
 // ymDescription returns a cleaned YouTube description for human-readable metadata.
 // It intentionally strips sponsor/link boilerplate so Drive metadata stays clip-focused.
-func ymDescription(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) string {
+func ymDescription(ym *downloader.YouTubeMetadata, clip *assets.Asset) string {
 	if ym != nil && ym.Description != "" {
 		return compactYouTubeDescription(ym.Description)
 	}
@@ -25,7 +25,7 @@ func ymDescription(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) stri
 }
 
 // ymTags returns tags from ym or falls back to clip DB metadata.
-func ymTags(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) []string {
+func ymTags(ym *downloader.YouTubeMetadata, clip *assets.Asset) []string {
 	if ym != nil && len(ym.Tags) > 0 {
 		return normalizeClipTagList(ym.Tags)
 	}
@@ -44,7 +44,7 @@ func ymTags(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) []string {
 }
 
 // ymCategories returns categories from ym or falls back to clip DB metadata.
-func ymCategories(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) []string {
+func ymCategories(ym *downloader.YouTubeMetadata, clip *assets.Asset) []string {
 	if ym != nil && len(ym.Categories) > 0 {
 		return ym.Categories
 	}
@@ -58,7 +58,7 @@ func ymCategories(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) []str
 }
 
 // ymViewCount returns view count from ym or falls back to clip DB metadata.
-func ymViewCount(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) int64 {
+func ymViewCount(ym *downloader.YouTubeMetadata, clip *assets.Asset) int64 {
 	if ym != nil {
 		return ym.ViewCount
 	}
@@ -72,7 +72,7 @@ func ymViewCount(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) int64 
 }
 
 // ymUploadDate returns upload date from ym or falls back to clip DB metadata.
-func ymUploadDate(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) string {
+func ymUploadDate(ym *downloader.YouTubeMetadata, clip *assets.Asset) string {
 	if ym != nil && ym.UploadDate != "" {
 		return ym.UploadDate
 	}
@@ -80,7 +80,7 @@ func ymUploadDate(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) strin
 }
 
 // ymThumbnailURL returns the thumbnail URL from ym or falls back to clip DB metadata.
-func ymThumbnailURL(ym *downloader.YouTubeMetadata, clip *models.MediaAsset) string {
+func ymThumbnailURL(ym *downloader.YouTubeMetadata, clip *assets.Asset) string {
 	if ym != nil && ym.ThumbnailURL != "" {
 		return ym.ThumbnailURL
 	}

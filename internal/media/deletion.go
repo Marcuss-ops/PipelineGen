@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -100,7 +100,7 @@ func (s *DeletionService) DeleteClip(ctx context.Context, source string, clipID 
 			driveFileID = driveutil.FileIDFromLink(clip.DownloadLink())
 		}
 	} else if repo != nil {
-		var clip *asset.MediaAsset
+		var clip *assets.Asset
 		clip, err = repo.Get(ctx, clipID)
 		if err != nil {
 			return fmt.Errorf("clip not found: %w", err)
@@ -170,7 +170,7 @@ func (s *DeletionService) DeleteByDriveFile(ctx context.Context, fileID string, 
 }
 
 // FindClipByDriveFileID searches for a clip across repositories.
-func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*asset.MediaAsset, string, error) {
+func (s *DeletionService) FindClipByDriveFileID(ctx context.Context, fileID string, sourceLimit string) (*assets.Asset, string, error) {
 	repos := map[string]any{
 		"artlist":   s.artlistRepo,
 		"clips":     s.clipsRepo,

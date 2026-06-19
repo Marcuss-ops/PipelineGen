@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
@@ -308,9 +308,9 @@ func convertMediaAsset(details *assetquery.Details) *resolvedAsset {
 	driveLink := ""
 	downloadLink := ""
 	for _, loc := range details.Locations {
-		if loc.LocationKind == asset.LocationKindLocal {
+		if loc.LocationKind == assets.LocationKindLocal {
 			localPath = loc.URI
-		} else if loc.LocationKind == asset.LocationKindDrive {
+		} else if loc.LocationKind == assets.LocationKindDrive {
 			driveLink = loc.AccessURL
 			downloadLink = loc.DownloadURL
 		}

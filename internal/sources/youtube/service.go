@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
@@ -54,13 +54,13 @@ type Service struct {
 	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
 	// When wired, dispatchOrIndex prefers it over the dispatcher and the
 	// legacy clipsRepository path: it converts the legacy *models.MediaAsset
-	// to *asset.MediaAsset via toAssetDomain and routes through
+	// to *assets.Asset via toAssetDomain and routes through
 	// assetrepo.Upsert — which writes both legacy and canonical columns in
 	// the same row and emits the asset.upserted outbox event in the same
 	// transaction.
 	assetRepo *assetrepo.Repository
 	// assetProcessing tracks clip processing state (download_and_cut step).
-	assetProcessing asset.ProcessingRepository
+	assetProcessing assets.ProcessingRepository
 	// assetVersions records file identity on successful processing.
 	assetVersions *assetversions.Repository
 }
@@ -77,7 +77,7 @@ func NewService(
 	indexer *clipindexer.Service,
 	assetDestResolver destination.Resolver,
 	ollamaClient *client.Client,
-	assetProcRepo asset.ProcessingRepository,
+	assetProcRepo assets.ProcessingRepository,
 	assetVerRepo *assetversions.Repository,
 ) *Service {
 	// Create folder memory service
@@ -103,7 +103,7 @@ func NewService(
 
 // SetAssetRepos injects the asset lifecycle repositories (late-binding).
 // Called from composeIntegration after the repos are constructed.
-func (s *Service) SetAssetRepos(assetProc asset.ProcessingRepository, assetVer *assetversions.Repository) {
+func (s *Service) SetAssetRepos(assetProc assets.ProcessingRepository, assetVer *assetversions.Repository) {
 	s.assetProcessing = assetProc
 	s.assetVersions = assetVer
 }
@@ -152,7 +152,7 @@ func (s *Service) SetAssetRepo(r *assetrepo.Repository) {
 //
 // Used by enrichment.go + segment.go so both call sites share the same
 // crash-safety contract.
-func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.MediaAsset, hash string) error {
+func (s *Service) dispatchOrIndex(ctx context.Context, clip *assets.Asset, hash string) error {
 	if s.assetRepo != nil {
 		return s.assetRepo.Upsert(ctx, clip)
 	}

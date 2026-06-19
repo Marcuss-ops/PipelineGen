@@ -1,11 +1,11 @@
 package clipresolver
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // ApplyOntologyBoost applies boosts from ontology rules.
-func ApplyOntologyBoost(scorer OntologyScorer, score float64, clip *asset.MediaAsset, topic string) float64 {
+func ApplyOntologyBoost(scorer OntologyScorer, score float64, clip *assets.Asset, topic string) float64 {
 	if scorer == nil {
 		return score
 	}

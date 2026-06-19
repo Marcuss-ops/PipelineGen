@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -62,7 +62,7 @@ func (o *RunOrchestratorService) stageDiscoverClips(ctx context.Context, req *Ru
 
 // stageBuildProcessInputs builds clip work items and process inputs from discovered clips.
 // Returns the work items slice and the resolved root folder ID.
-func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, req *RunTagRequest, resp *RunTagResponse, clips []asset.MediaAsset) []clipWork {
+func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, req *RunTagRequest, resp *RunTagResponse, clips []assets.Asset) []clipWork {
 	workItems := make([]clipWork, 0, len(clips))
 
 	for _, clip := range clips {
@@ -260,7 +260,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		existingClip.SetFileHash(item.FileHash)
 		existingClip.SetDownloadLink(item.DownloadLink)
 		existingClip.SetMetadataString("status", "processed")
-		existingClip.LifecycleState = asset.StateReady
+		existingClip.LifecycleState = assets.StateReady
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
 		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash())

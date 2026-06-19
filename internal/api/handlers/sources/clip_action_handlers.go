@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
@@ -58,7 +58,7 @@ func (h *Handler) ReprocessClip(c *gin.Context) {
 		Name:      clip.Name,
 		SourceURL: clip.SourceURL,
 		FolderID:  clip.FolderID(),
-		Duration:  int(clip.DurationMs),
+		Duration:  int(clip.Duration.Milliseconds()),
 		Metadata: map[string]any{
 			"source": source,
 			"tags":   clip.Tags,
@@ -107,7 +107,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	var clip *asset.MediaAsset
+	var clip *assets.Asset
 
 	// Handle Voiceover source — use canonical converter directly.
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {

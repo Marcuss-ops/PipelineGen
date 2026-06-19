@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // ListClips returns clips for a source (or all sources when source is empty
 // / "all" / "unified"). No pagination — callers needing paged reads should
 // use ListClipsPaged instead.
-func (r *Repository) ListClips(ctx context.Context, source string) ([]*asset.MediaAsset, error) {
+func (r *Repository) ListClips(ctx context.Context, source string) ([]*assets.Asset, error) {
 	query := r.buildMediaAssetQuery(source)
 	args := []any{}
 	if source != "" && source != "all" && source != "unified" {
@@ -24,7 +24,7 @@ func (r *Repository) ListClips(ctx context.Context, source string) ([]*asset.Med
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
@@ -38,7 +38,7 @@ func (r *Repository) ListClips(ctx context.Context, source string) ([]*asset.Med
 // ListClipsPaged returns clips with pagination and optional search.
 // If q is non-empty, performs a search via SearchClips and ignores the
 // pagination input (result still capped at the configured limit).
-func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*asset.MediaAsset, error) {
+func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, offset int, q string) ([]*assets.Asset, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -66,7 +66,7 @@ func (r *Repository) ListClipsPaged(ctx context.Context, source string, limit, o
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {

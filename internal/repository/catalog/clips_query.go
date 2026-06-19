@@ -25,9 +25,9 @@ func (r *Repository) SearchClips(ctx context.Context, q string) ([]CatalogRecord
 		Link:      clip.DriveLink(),
 			Source:    "clip_drive",
 			DriveID:   clip.ID,
-			MediaType: clip.MediaType,
+			MediaType: string(clip.MediaType),
 			Tags:      clip.Tags,
-			Duration:  int(clip.DurationMs / 1000),
+			Duration:  int(clip.Duration.Seconds()),
 		}
 		results = append(results, rec)
 	}

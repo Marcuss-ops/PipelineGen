@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
@@ -19,7 +19,7 @@ import (
 //  1. LLM semantic tagger → search_text, tags, subjects
 //  2. Clip indexer → embedding computation
 //  3. Vector store (Qdrant) upsert
-func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *asset.MediaAsset, source string) {
+func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *assets.Asset, source string) {
 	// Apply a 3-minute timeout to prevent runaway goroutines
 	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -38,7 +38,7 @@ func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *asset.MediaAsset
 		payload, _, err := h.metaWriter.GeneratePayload(enrichCtx, semantic.WriteRequest{
 			AssetID:   clip.ID,
 			AssetType: "clip",
-			MediaType: clip.MediaType,
+			MediaType: string(clip.MediaType),
 			Source:    source,
 			Generator: "api_create",
 			Style:     clip.Category,
@@ -94,7 +94,7 @@ func (h *Handler) enrichAndIndexClip(ctx context.Context, clip *asset.MediaAsset
 			LocalPath:  clip.LocalPath(),
 			DriveLink:  clip.DriveLink(),
 			Category:   clip.Category,
-			MediaType:  clip.MediaType,
+			MediaType:  string(clip.MediaType),
 			SearchText: clip.SearchText,
 			Tags:       clip.Tags,
 		}
@@ -253,12 +253,12 @@ func (h *Handler) ReindexClip(c *gin.Context) {
 	if h.vectorStore != nil && clip.SearchText != "" {
 		asset := vectorstore.VectorAsset{
 			AssetID:    clip.ID,
-			Source:     clip.Source,
+			Source:     string(clip.Source),
 			Name:       clip.Name,
 			LocalPath:  clip.LocalPath(),
 			DriveLink:  clip.DriveLink(),
 			Category:   clip.Category,
-			MediaType:  clip.MediaType,
+			MediaType:  string(clip.MediaType),
 			SearchText: clip.SearchText,
 			Tags:       clip.Tags,
 		}

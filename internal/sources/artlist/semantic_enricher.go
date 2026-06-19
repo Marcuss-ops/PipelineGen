@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
@@ -58,7 +58,7 @@ func NewSemanticEnricher(repo *clips.Repository, clipIndexer *clipindexer.Servic
 // EnrichAsync avvia l'enrichment in background (fire-and-forget).
 // Usa context.WithoutCancel per preservare il tracing anche dopo che
 // il contesto HTTP è scaduto, ma con un timeout proprio per evitare leak.
-func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *asset.MediaAsset, term string) {
+func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *assets.Asset, term string) {
 	if clip == nil || clip.ID == "" {
 		return
 	}
@@ -91,7 +91,7 @@ func (e *SemanticEnricher) SetDispatcher(d *outbox.Dispatcher) {
 // The decision logic lives in dispatchBridge (dispatch_bridge.go) so this
 // method is a thin alias and can be removed in a follow-up once all
 // callers route directly through the bridge.
-func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *asset.MediaAsset, hash string) {
+func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *assets.Asset, hash string) {
 	e.newDispatchBridge().EnqueueOrFallback(ctx, clip, hash)
 }
 
@@ -112,7 +112,7 @@ func (e *SemanticEnricher) newDispatchBridge() *dispatchBridge {
 // Enrich esegue il tagger e aggiorna il DB con i metadati semantici.
 // Restituisce errore solo se il tagger stesso fallisce; aggiornamenti parziali
 // sono tollerati (il clip è già salvato, il metadata è un bonus).
-func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, term string) error {
+func (e *SemanticEnricher) Enrich(ctx context.Context, clip *assets.Asset, term string) error {
 	if e.metaWriter == nil {
 		return fmt.Errorf("metadata writer not configured")
 	}
@@ -215,7 +215,7 @@ func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.MediaAsset, t
 			"term":                 term,
 			"filename":             existing.Filename,
 			"file_hash":            existing.FileHash(),
-			"duration_sec":         existing.DurationMs / 1000,
+			"duration_sec":         existing.Duration.Seconds(),
 			"created_at":           existing.CreatedAt.Format(time.RFC3339),
 			"drive_file_id":        existing.DriveFileID(),
 			"drive_link":           existing.DriveLink(),

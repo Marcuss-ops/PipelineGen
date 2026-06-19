@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/repository/assettree"
@@ -36,9 +36,9 @@ func (h *Handler) resolveRepo(source string) *clips.Repository {
 	return resolver.ResolveRepo(source)
 }
 
-// clipToAssetNode converts a canonical asset.MediaAsset to assettree.AssetNode
+// clipToAssetNode converts a canonical assets.Asset to assettree.AssetNode
 // for unified tree handling.
-func clipToAssetNode(clip *asset.MediaAsset) *assettreerepo.AssetNode {
+func clipToAssetNode(clip *assets.Asset) *assettreerepo.AssetNode {
 	if clip == nil {
 		return nil
 	}
@@ -46,12 +46,12 @@ func clipToAssetNode(clip *asset.MediaAsset) *assettreerepo.AssetNode {
 	if clip.IsFolder() {
 		nodeType = "folder"
 	} else if clip.MediaType != "" {
-		nodeType = clip.MediaType
+		nodeType = string(clip.MediaType)
 	}
 
 	return &assettreerepo.AssetNode{
 		ID:          clip.ID,
-		Source:      clip.Source,
+		Source:      string(clip.Source),
 		AssetID:     clip.ID,
 		Name:        clip.Name,
 		Type:        nodeType,
@@ -91,17 +91,17 @@ func voiceoverRecordToAssetNode(r *voiceovers.Record) *assettreerepo.AssetNode {
 }
 
 // voiceoverRecordToClip delegates to the canonical converter in artifacts.
-func voiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
+func voiceoverRecordToClip(rec *voiceovers.Record) *assets.Asset {
 	return artifacts.VoiceoverRecordToClip(rec)
 }
 
 // imageAssetToClip uses the canonical converter from artifacts.
-func imageAssetToClip(a *models.ImageAsset) *asset.MediaAsset {
+func imageAssetToClip(a *models.ImageAsset) *assets.Asset {
 	return artifacts.ImageAssetToClip(a)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *asset.MediaAsset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *clips.Repository, clip *assets.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

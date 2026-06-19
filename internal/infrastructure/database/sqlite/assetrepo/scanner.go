@@ -1,7 +1,7 @@
 // Package assetrepo provides the SQLite implementation of asset.Repository.
 //
 // This repository reads from typed columns in media_assets, NOT from
-// metadata_json for canonical fields. It returns asset.MediaAsset from
+// metadata_json for canonical fields. It returns assets.Asset from
 // core/domain/asset, never models.MediaAsset.
 package assetrepo
 
@@ -9,8 +9,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -66,9 +67,9 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-// scanAsset scans a single asset.MediaAsset from any SQL scanner.
-func scanAsset(s scanner) (*asset.MediaAsset, error) {
-	var a asset.MediaAsset
+// scanAsset scans a single assets.Asset from any SQL scanner.
+func scanAsset(s scanner) (*assets.Asset, error) {
+	var a assets.Asset
 	var tagsJSON, searchTermsJSON, usableForJSON, avoidForJSON sql.NullString
 	var metadataStr sql.NullString
 	var embeddingJSON, visualEmb, transcriptEmb, visualEmbJSON sql.NullString
@@ -107,13 +108,13 @@ func scanAsset(s scanner) (*asset.MediaAsset, error) {
 	}
 
 	if grp.Valid { a.Group = grp.String }
-	if duration.Valid { a.DurationMs = duration.Int64 }
+	if duration.Valid { a.Duration = time.Duration(duration.Int64) * time.Millisecond }
 	if depth.Valid { a.SetDepth(int(depth.Int64)) }
 	if isFolder.Valid { a.SetIsFolder(isFolder.Int64 != 0) }
 	if qualityScore.Valid { a.SetQualityScore(qualityScore.Float64) }
 	if reuseCount.Valid { a.SetReuseCount(int(reuseCount.Int64)) }
 	if childCount.Valid { a.SetChildCount(int(childCount.Int64)) }
-	if lifecycleStr.Valid { a.LifecycleState = asset.LifecycleState(lifecycleStr.String) }
+	if lifecycleStr.Valid { a.LifecycleState = assets.LifecycleState(lifecycleStr.String) }
 
 	if deletedAtStr.Valid && deletedAtStr.String != "" {
 		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() { a.DeletedAt = &t }

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // BulkAddTags adds a set of tags to multiple clips efficiently.
@@ -110,21 +110,21 @@ func (r *Repository) BulkRemoveTags(ctx context.Context, ids []string, tags []st
 }
 
 // GetClipByFolderAndFilename retrieves a clip by folder and filename (canonical columns after migration 059).
-func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*asset.MediaAsset, error) {
+func (r *Repository) GetClipByFolderAndFilename(ctx context.Context, folderID, filename string) (*assets.Asset, error) {
 	query := buildMediaAssetQuery("") + " AND folder_id = ? AND filename = ? LIMIT 1"
 	row := r.db.QueryRowContext(ctx, query, folderID, filename)
 	return r.scanCanonicalAssetRow(row)
 }
 
 // GetClip retrieves a clip by ID. PR1: delegates to canonical assetrepo,
-// which returns (nil, asset.ErrSoftDeleted) for soft-deleted assets.
-func (r *Repository) GetClip(ctx context.Context, id string) (*asset.MediaAsset, error) {
+// which returns (nil, assets.ErrSoftDeleted) for soft-deleted assets.
+func (r *Repository) GetClip(ctx context.Context, id string) (*assets.Asset, error) {
 	return r.canonical.Get(ctx, id)
 }
 
 // GetClipByDriveFileID finds a clip by Drive file ID (searches canonical columns drive_file_id, drive_link, download_link).
 // Returns nil, nil if not found.
-func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*asset.MediaAsset, error) {
+func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*assets.Asset, error) {
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
 		return nil, fmt.Errorf("drive file id is required")
@@ -141,7 +141,7 @@ func (r *Repository) GetClipByDriveFileID(ctx context.Context, fileID string) (*
 }
 
 // FindClipsByHash returns all clips with the given file hash (canonical column after migration 059).
-func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*asset.MediaAsset, error) {
+func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*assets.Asset, error) {
 	query := buildMediaAssetQuery("") + " AND file_hash = ?"
 	rows, err := r.db.QueryContext(ctx, query, hash)
 	if err != nil {
@@ -149,7 +149,7 @@ func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*asset
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
@@ -161,7 +161,7 @@ func (r *Repository) FindClipsByHash(ctx context.Context, hash string) ([]*asset
 }
 
 // GetAllWithDriveFileID returns all clips that have a non-empty drive_file_id (canonical column).
-func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*asset.MediaAsset, error) {
+func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*assets.Asset, error) {
 	query := buildMediaAssetQuery("") + " AND drive_file_id IS NOT NULL AND drive_file_id != ''"
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
@@ -169,7 +169,7 @@ func (r *Repository) GetAllWithDriveFileID(ctx context.Context) ([]*asset.MediaA
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {

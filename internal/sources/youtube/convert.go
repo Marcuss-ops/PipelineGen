@@ -1,18 +1,18 @@
 package youtube
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
-// toAssetDomainSlice converts a slice of asset.MediaAsset to asset.MediaAsset (passthrough).
-func toAssetDomainSlice(items []asset.MediaAsset) []asset.MediaAsset {
-	out := make([]asset.MediaAsset, len(items))
+// toAssetDomainSlice converts a slice of assets.Asset to assets.Asset (passthrough).
+func toAssetDomainSlice(items []assets.Asset) []assets.Asset {
+	out := make([]assets.Asset, len(items))
 	copy(out, items)
 	return out
 }
 
 // toAssetDomain is now a passthrough — the legacy models.MediaAsset has been deleted.
-// Callers already pass *asset.MediaAsset; this function exists for compatibility.
-func toAssetDomain(m *asset.MediaAsset) *asset.MediaAsset {
+// Callers already pass *assets.Asset; this function exists for compatibility.
+func toAssetDomain(m *assets.Asset) *assets.Asset {
 	return m
 }

@@ -90,47 +90,52 @@ func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Asset, error) {
 		return nil, fmt.Errorf("assets: get %s: %w", id, err)
 	}
 
+	// Load metadata_json first
+	if metadataStr.Valid && metadataStr.String != "" {
+		_ = json.Unmarshal([]byte(metadataStr.String), &a.Metadata)
+	}
+
 	if grp.Valid {
 		a.Group = grp.String
 	}
 	if duration.Valid {
-		a.DurationMs = duration.Int64
+		a.Duration = time.Duration(duration.Int64) * time.Millisecond
 	}
 	if folderID.Valid {
-		a.FolderID = folderID.String
+		a.SetFolderID(folderID.String)
 	}
 	if parentFolderID.Valid {
-		a.ParentFolderID = parentFolderID.String
+		a.SetParentFolderID(parentFolderID.String)
 	}
 	if folderPath.Valid {
-		a.FolderPath = folderPath.String
+		a.SetFolderPath(folderPath.String)
 	}
 	if depth.Valid {
-		a.Metadata = map[string]any{"depth": int(depth.Int64)}
+		a.SetDepth(int(depth.Int64))
 	}
 	if sceneType.Valid {
-		a.SceneType = sceneType.String
+		a.SetSceneType(sceneType.String)
 	}
 	if phash.Valid {
-		a.PHash = phash.String
+		a.SetPHash(phash.String)
 	}
 	if lastUsedAt.Valid {
-		a.LastUsedAt = lastUsedAt.String
+		a.SetLastUsedAt(lastUsedAt.String)
 	}
 	if qualityScore.Valid {
-		a.QualityScore = qualityScore.Float64
+		a.SetQualityScore(qualityScore.Float64)
 	}
 	if reuseCount.Valid {
-		a.ReuseCount = int(reuseCount.Int64)
+		a.SetReuseCount(int(reuseCount.Int64))
 	}
 	if embeddingJSON.Valid {
-		a.EmbeddingJSON = embeddingJSON.String
+		a.SetEmbeddingJSON(embeddingJSON.String)
 	}
 	if visualEmb.Valid {
-		a.VisualEmbedding = visualEmb.String
+		a.SetVisualEmbedding(visualEmb.String)
 	}
 	if transcriptEmb.Valid {
-		a.TranscriptEmbedding = transcriptEmb.String
+		a.SetTranscriptEmbedding(transcriptEmb.String)
 	}
 
 	a.LifecycleState = LifecycleState(lifecycleStr.String)
@@ -150,11 +155,6 @@ func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Asset, error) {
 		_ = json.Unmarshal([]byte(searchTermsJSON.String), &a.SearchTerms)
 	}
 
-	// Load metadata_json
-	if metadataStr.Valid && metadataStr.String != "" {
-		_ = json.Unmarshal([]byte(metadataStr.String), &a.Metadata)
-	}
-
 	// Load physical locations
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT location_kind, uri, external_id, web_view_link, download_url, file_hash
@@ -167,16 +167,16 @@ func (s *AssetStoreSQLite) Get(ctx context.Context, id string) (*Asset, error) {
 			if err := rows.Scan(&kind, &uri, &extID, &webLink, &dlURL, &hash); err == nil {
 				if kind.Valid {
 					if kind.String == "local" {
-						a.LocalPath = uri.String
+						a.SetLocalPath(uri.String)
 						if hash.Valid && hash.String != "" {
-							a.FileHash = hash.String
+							a.SetFileHash(hash.String)
 						}
 					} else if kind.String == "drive" {
-						a.DriveFileID = extID.String
-						a.DriveLink = webLink.String
-						a.DownloadLink = dlURL.String
-						if a.FileHash == "" && hash.Valid {
-							a.FileHash = hash.String
+						a.SetDriveFileID(extID.String)
+						a.SetDriveLink(webLink.String)
+						a.SetDownloadLink(dlURL.String)
+						if a.FileHash() == "" && hash.Valid {
+							a.SetFileHash(hash.String)
 						}
 					}
 				}
@@ -272,6 +272,13 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 		deletedAtStr = timeutil.FormatRFC3339(*a.DeletedAt)
 	}
 
+	// Sync local location variables
+	localPath := a.LocalPath()
+	fileHash := a.FileHash()
+	driveFileID := a.DriveFileID()
+	driveLink := a.DriveLink()
+	downloadLink := a.DownloadLink()
+
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type, category, group_name,
@@ -311,19 +318,19 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 			visual_embedding = excluded.visual_embedding,
 			transcript_embedding = excluded.transcript_embedding
 	`,
-		a.ID, a.Source, a.Name, a.Filename, a.MediaType, a.Category, a.Group,
-		a.SourceURL, a.ClipPageURL, a.ThumbnailURL, a.DurationMs, string(tagsJSON), string(searchTermsJSON),
+		a.ID, string(a.Source), a.Name, a.Filename, string(a.MediaType), a.Category, a.Group,
+		a.SourceURL, a.ClipPageURL, a.ThumbnailURL, a.Duration.Milliseconds(), string(tagsJSON), string(searchTermsJSON),
 		a.SearchText, string(a.LifecycleState), deletedAtStr, string(metadataJSON),
-		timeutil.FormatRFC3339(a.CreatedAt), nowStr, a.FolderID, a.ParentFolderID, a.FolderPath,
-		a.SceneType, a.PHash, a.LastUsedAt, a.QualityScore, a.ReuseCount,
-		a.EmbeddingJSON, a.VisualEmbedding, a.TranscriptEmbedding,
+		timeutil.FormatRFC3339(a.CreatedAt), nowStr, a.FolderID(), a.ParentFolderID(), a.FolderPath(),
+		a.SceneType(), a.PHash(), a.LastUsedAt(), a.QualityScore(), a.ReuseCount(),
+		a.EmbeddingJSON(), a.VisualEmbedding(), a.TranscriptEmbedding(),
 	)
 	if err != nil {
 		return fmt.Errorf("assets: save asset row: %w", err)
 	}
 
 	// Sync local location
-	if a.LocalPath != "" {
+	if localPath != "" {
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO asset_locations (asset_id, location_kind, uri, file_hash, is_primary, created_at, updated_at)
 			VALUES (?, 'local', ?, ?, 1, ?, ?)
@@ -332,7 +339,7 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 				file_hash = excluded.file_hash,
 				is_primary = excluded.is_primary,
 				updated_at = excluded.updated_at
-		`, a.ID, a.LocalPath, a.FileHash, nowStr, nowStr)
+		`, a.ID, localPath, fileHash, nowStr, nowStr)
 		if err != nil {
 			return fmt.Errorf("assets: save local location: %w", err)
 		}
@@ -341,13 +348,13 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 	}
 
 	// Sync drive location
-	if a.DriveFileID != "" || a.DriveLink != "" {
-		uri := "drive://" + a.DriveFileID
-		if a.DriveFileID == "" {
-			uri = a.DriveLink
+	if driveFileID != "" || driveLink != "" {
+		uri := "drive://" + driveFileID
+		if driveFileID == "" {
+			uri = driveLink
 		}
 		isPrimary := 0
-		if a.LocalPath == "" {
+		if localPath == "" {
 			isPrimary = 1
 		}
 		_, err = tx.ExecContext(ctx, `
@@ -361,7 +368,7 @@ func (s *AssetStoreSQLite) Save(ctx context.Context, a *Asset) error {
 				file_hash = excluded.file_hash,
 				is_primary = excluded.is_primary,
 				updated_at = excluded.updated_at
-		`, a.ID, uri, a.DriveFileID, a.DriveLink, a.DownloadLink, a.FileHash, isPrimary, nowStr, nowStr)
+		`, a.ID, uri, driveFileID, driveLink, downloadLink, fileHash, isPrimary, nowStr, nowStr)
 		if err != nil {
 			return fmt.Errorf("assets: save drive location: %w", err)
 		}

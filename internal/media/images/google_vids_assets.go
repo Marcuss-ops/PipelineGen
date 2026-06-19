@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/pkg/media/audio"
@@ -72,11 +72,11 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 		}
 	}
 
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:          id,
 		Name:        name,
-		Source:      source,
-		MediaType:   "video",
+		Source:      assets.Source(source),
+		MediaType:   assets.MediaType("video"),
 		CreatedAt:   time.Now(),
 	}
 	clip.SetDriveFileID(driveFileID)
@@ -229,12 +229,12 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 		s.log.Warn("registerAudioClip: metadata writer failed", zap.Error(err))
 	}
 
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:          videoID + "_audio",
 		Name:        description + " (audio)",
-		Source:      source,
-		MediaType:   "sound_effect",
-		DurationMs:  3000,
+		Source:      assets.Source(source),
+		MediaType:   assets.MediaType("sound_effect"),
+		Duration:    3000 * time.Millisecond,
 		CreatedAt:   time.Now(),
 		SearchText:  searchText,
 		Tags:        tags,

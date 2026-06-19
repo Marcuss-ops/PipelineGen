@@ -4,14 +4,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // scoreClips scores and sorts clips based on keyword match quality, quality score,
 // duplicate penalty, sponsor penalty, and search visibility.
-func scoreClips(clips []*asset.MediaAsset, keywords []string) []*asset.MediaAsset {
+func scoreClips(clips []*assets.Asset, keywords []string) []*assets.Asset {
 	type scoredClip struct {
-		clip  *asset.MediaAsset
+		clip  *assets.Asset
 		score float64
 	}
 
@@ -112,7 +112,7 @@ func scoreClips(clips []*asset.MediaAsset, keywords []string) []*asset.MediaAsse
 	})
 
 	// Extract sorted clips
-	result := make([]*asset.MediaAsset, len(scored))
+	result := make([]*assets.Asset, len(scored))
 	for i, s := range scored {
 		result[i] = s.clip
 	}
@@ -121,7 +121,7 @@ func scoreClips(clips []*asset.MediaAsset, keywords []string) []*asset.MediaAsse
 }
 
 // isSponsorSegment checks if a clip is a sponsor segment based on metadata.
-func isSponsorSegment(clip *asset.MediaAsset) bool {
+func isSponsorSegment(clip *assets.Asset) bool {
 	if clip.Metadata == nil {
 		return false
 	}
@@ -131,7 +131,7 @@ func isSponsorSegment(clip *asset.MediaAsset) bool {
 	return false
 }
 
-func searchableClipText(clip *asset.MediaAsset) string {
+func searchableClipText(clip *assets.Asset) string {
 	if clip == nil {
 		return ""
 	}
@@ -153,14 +153,14 @@ func searchableClipText(clip *asset.MediaAsset) string {
 	return strings.Join(parts, "\n")
 }
 
-func isDuplicateClip(clip *asset.MediaAsset) bool {
+func isDuplicateClip(clip *assets.Asset) bool {
 	if clip == nil || clip.Metadata == nil {
 		return false
 	}
 	return metadataBool(clip.Metadata, "is_duplicate") || metadataString(clip.Metadata, "duplicate_of") != ""
 }
 
-func isBestVersionClip(clip *asset.MediaAsset) bool {
+func isBestVersionClip(clip *assets.Asset) bool {
 	if clip == nil || clip.Metadata == nil {
 		return false
 	}

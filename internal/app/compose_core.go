@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assetrepo"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -46,9 +46,9 @@ type CoreInfra struct {
 	DriveDests    *DriveDestinations // resolved Drive folder IDs (immutable Config)
 
 	ClipsOnlyRepo      *clips.Repository
-	AssetRepo          asset.Repository
-	AssetLocationRepo  asset.LocationRepository
-	AssetProcessingRepo asset.ProcessingRepository
+	AssetRepo          assets.Repository
+	AssetLocationRepo  assets.LocationRepository
+	AssetProcessingRepo assets.ProcessingRepository
 	AssetQueryService   *assetquery.Service
 	MediaProcessor     processor.Processor
 	AssetIndexService  *assetindex.Service

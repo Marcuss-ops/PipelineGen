@@ -3,7 +3,7 @@ package ontology
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -18,7 +18,7 @@ func NewScorer(registry *Registry) *Scorer {
 }
 
 // Apply applies the ontology rules for a given topic to the clip score.
-func (s *Scorer) Apply(score float64, clip *asset.MediaAsset, topic string) float64 {
+func (s *Scorer) Apply(score float64, clip *assets.Asset, topic string) float64 {
 	if s.registry == nil || topic == "" {
 		return score
 	}
@@ -50,7 +50,7 @@ func (s *Scorer) Apply(score float64, clip *asset.MediaAsset, topic string) floa
 	return finalScore
 }
 
-func (s *Scorer) matchesAny(clip *asset.MediaAsset, terms []string) bool {
+func (s *Scorer) matchesAny(clip *assets.Asset, terms []string) bool {
 	if len(terms) == 0 {
 		return false
 	}
@@ -64,7 +64,7 @@ func (s *Scorer) matchesAny(clip *asset.MediaAsset, terms []string) bool {
 	return false
 }
 
-func (s *Scorer) matchesAnySynonym(clip *asset.MediaAsset, synonyms [][]string) bool {
+func (s *Scorer) matchesAnySynonym(clip *assets.Asset, synonyms [][]string) bool {
 	for _, group := range synonyms {
 		if s.matchesAny(clip, group) {
 			return true
@@ -73,7 +73,7 @@ func (s *Scorer) matchesAnySynonym(clip *asset.MediaAsset, synonyms [][]string) 
 	return false
 }
 
-func (s *Scorer) matchesCategory(clip *asset.MediaAsset, categories []string) bool {
+func (s *Scorer) matchesCategory(clip *assets.Asset, categories []string) bool {
 	if clip.Category == "" || len(categories) == 0 {
 		return false
 	}
@@ -86,7 +86,7 @@ func (s *Scorer) matchesCategory(clip *asset.MediaAsset, categories []string) bo
 	return false
 }
 
-func (s *Scorer) getSearchText(clip *asset.MediaAsset) string {
+func (s *Scorer) getSearchText(clip *assets.Asset) string {
 	var sb strings.Builder
 	sb.WriteString(strings.ToLower(clip.Name))
 	sb.WriteString(" ")

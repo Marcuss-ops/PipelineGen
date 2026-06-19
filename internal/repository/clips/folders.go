@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -96,7 +96,7 @@ func (r *Repository) GetFolderByVideoID(ctx context.Context, videoID string) (*m
 }
 
 // ListByFolderID returns all clips for a given folder ID (canonical column after migration 059).
-func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*asset.MediaAsset, error) {
+func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*assets.Asset, error) {
 	query := r.buildMediaAssetQuery("") + " AND folder_id = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderID)
 	if err != nil {
@@ -104,7 +104,7 @@ func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*as
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
@@ -116,7 +116,7 @@ func (r *Repository) ListByFolderID(ctx context.Context, folderID string) ([]*as
 }
 
 // ListByFolderPath returns all clips for a given folder path (canonical column).
-func (r *Repository) ListByFolderPath(ctx context.Context, folderPath string) ([]*asset.MediaAsset, error) {
+func (r *Repository) ListByFolderPath(ctx context.Context, folderPath string) ([]*assets.Asset, error) {
 	query := r.buildMediaAssetQuery("") + " AND folder_path = ? ORDER BY created_at ASC"
 	rows, err := r.db.QueryContext(ctx, query, folderPath)
 	if err != nil {
@@ -124,7 +124,7 @@ func (r *Repository) ListByFolderPath(ctx context.Context, folderPath string) ([
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {

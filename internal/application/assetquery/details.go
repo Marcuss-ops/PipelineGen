@@ -6,11 +6,11 @@
 // pulled fields off models.MediaAsset (LocalPath, DriveLink, Status, etc.).
 // New code MUST obtain Details via Service.Get and read from there; it MUST
 // NOT import internal/media/models, MUST NOT call LocationEnricher directly,
-// and MUST NOT add fields back onto asset.MediaAsset.
+// and MUST NOT add fields back onto assets.Asset.
 package assetquery
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // Details is the aggregated read-only view of a single media asset.
@@ -20,7 +20,7 @@ import (
 type Details struct {
 	// Asset is the canonical media_asset row.
 	//
-	// The deprecated fields on asset.MediaAsset (LocalPath, DriveLink,
+	// The deprecated fields on assets.Asset (LocalPath, DriveLink,
 	// DriveFileID, DownloadLink, FileHash, Status, Error) MUST be
 	// considered transitional: source-of-truth lives in Locations and
 	// Processing below. They are still populated today because
@@ -29,19 +29,19 @@ type Details struct {
 	// MUST read from Details.LocalLocation / DriveLocation /
 	// ProcessingStep instead, even if the deprecated fields look
 	// non-empty, so that PR2 is transparent at the call site.
-	Asset *asset.MediaAsset
+	Asset *assets.Asset
 
 	// Locations is every asset_locations row for the asset. Primary
 	// locations are first.
-	Locations []*asset.Location
+	Locations []*assets.Location
 
 	// Processing is every asset_processing row for the asset.
-	Processing []asset.ProcessingRecord
+	Processing []assets.ProcessingRecord
 
 	// CurrentVersion is the latest asset_versions row, or nil when the
 	// asset has no versions yet (asset_versions table is still
 	// scheduled for a follow-up migration).
-	CurrentVersion *asset.Version
+	CurrentVersion *assets.Version
 }
 
 // LocalLocation returns the local Location for the asset.
@@ -52,7 +52,7 @@ type Details struct {
 //  3. nil when no local Location exists
 //
 // Returns nil when d is nil or Locations is empty.
-func (d *Details) LocalLocation() *asset.Location {
+func (d *Details) LocalLocation() *assets.Location {
 	if d == nil {
 		return nil
 	}
@@ -60,12 +60,12 @@ func (d *Details) LocalLocation() *asset.Location {
 		if loc == nil {
 			continue
 		}
-		if loc.IsPrimary && loc.LocationKind == asset.LocationKindLocal {
+		if loc.IsPrimary && loc.LocationKind == assets.LocationKindLocal {
 			return loc
 		}
 	}
 	for _, loc := range d.Locations {
-		if loc != nil && loc.LocationKind == asset.LocationKindLocal {
+		if loc != nil && loc.LocationKind == assets.LocationKindLocal {
 			return loc
 		}
 	}
@@ -80,7 +80,7 @@ func (d *Details) LocalLocation() *asset.Location {
 //  3. nil when no drive Location exists
 //
 // Returns nil when d is nil or Locations is empty.
-func (d *Details) DriveLocation() *asset.Location {
+func (d *Details) DriveLocation() *assets.Location {
 	if d == nil {
 		return nil
 	}
@@ -88,12 +88,12 @@ func (d *Details) DriveLocation() *asset.Location {
 		if loc == nil {
 			continue
 		}
-		if loc.IsPrimary && loc.LocationKind == asset.LocationKindDrive {
+		if loc.IsPrimary && loc.LocationKind == assets.LocationKindDrive {
 			return loc
 		}
 	}
 	for _, loc := range d.Locations {
-		if loc != nil && loc.LocationKind == asset.LocationKindDrive {
+		if loc != nil && loc.LocationKind == assets.LocationKindDrive {
 			return loc
 		}
 	}
@@ -107,7 +107,7 @@ func (d *Details) DriveLocation() *asset.Location {
 // step match is exact (case-sensitive). Use the canonical
 // asset.StageDownload / StageIndexing / ... constants so step names stay
 // aligned with the domain.
-func (d *Details) ProcessingStep(step string) *asset.ProcessingRecord {
+func (d *Details) ProcessingStep(step string) *assets.ProcessingRecord {
 	if d == nil {
 		return nil
 	}

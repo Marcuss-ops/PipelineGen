@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
@@ -215,15 +215,15 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 	}
 
 	// 6. Save metadata record to SQLite DB
-	clip := domainasset.MediaAsset{
+	clip := assets.Asset{
 		ID:             "sfx_" + hashStr[:12],
 		Name:           name,
 		Filename:       filepath.Base(dest.LocalPath),
 		Group:          name,
-		MediaType:      "sound_effect",
-		Source:         "sound_effect",
-		DurationMs:     int64(duration * 1000),
-		LifecycleState: domainasset.StateReady,
+		MediaType:      assets.MediaType("sound_effect"),
+		Source:         assets.Source("sound_effect"),
+		Duration:       time.Duration(duration) * time.Second,
+		LifecycleState: assets.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		Tags:           tags,
@@ -249,7 +249,7 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 		"local":     clip.LocalPath(),
 		"drive_id":  clip.DriveFileID(),
 		"drive_url": clip.DriveLink(),
-		"duration":  clip.DurationMs,
+		"duration":  clip.Duration.Milliseconds(),
 		"tags":      clip.Tags,
 	})
 }

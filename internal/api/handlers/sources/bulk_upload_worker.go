@@ -13,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
@@ -303,16 +303,16 @@ func (h *Handler) processOneClip(
 		category = strings.SplitN(cand.Subdir, "/", 2)[0]
 	}
 
-	clip := &domainasset.MediaAsset{
+	clip := &assets.Asset{
 		ID:             clipID,
 		Name:           cand.DisplayName(),
 		Filename:       filepath.Base(cand.LocalPath),
-		Source:         source,
+		Source:         assets.Source(source),
 		Category:       category,
-		MediaType:      "video",
+		MediaType:      assets.MediaType("video"),
 		SearchText:     deriveSearchText(cand),
-		LifecycleState: domainasset.StateReady,
-		DurationMs:     int64(extractIntFromManifest(cand.Manifest, "duration_sec")) * 1000,
+		LifecycleState: assets.StateReady,
+		Duration:       time.Duration(extractIntFromManifest(cand.Manifest, "duration_sec")) * time.Second,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
@@ -425,12 +425,12 @@ func (h *Handler) processOneClip(
 			// Direct vector store upsert (fallback)
 			asset := vectorstore.VectorAsset{
 				AssetID:    clip.ID,
-				Source:     clip.Source,
+				Source:     string(clip.Source),
 				Name:       clip.Name,
 				LocalPath:  clip.LocalPath(),
 				DriveLink:  clip.DriveLink(),
 				Category:   clip.Category,
-				MediaType:  clip.MediaType,
+				MediaType:  string(clip.MediaType),
 				SearchText: clip.SearchText,
 				Tags:       clip.Tags,
 			}

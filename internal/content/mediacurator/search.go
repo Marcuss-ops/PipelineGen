@@ -249,7 +249,7 @@ func (s *Service) likeSearchClips(ctx context.Context, query string, source stri
 			ClipID:    a.ID,
 			Name:      a.Name,
 			Score:     score,
-			Source:    a.Source,
+			Source:    string(a.Source),
 			DriveLink: driveLink,
 		})
 	}

@@ -261,7 +261,7 @@ func composeIntegration(
 	// ── Asset Query Service (canonical aggregate reader) ────────────────
 	// The assetquery.Service is the single entry point for read access to
 	// an asset's full state (identity + locations + processing + version).
-	// It replaces direct reads of deprecated fields on asset.MediaAsset.
+	// It replaces direct reads of deprecated fields on assets.Asset.
 	assetQuerySvc := assetquery.New(
 		core.AssetRepo,
 		assetLocRepo,

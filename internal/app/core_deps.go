@@ -8,7 +8,6 @@ import (
 	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/handlers/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/handlers/script/handlers"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -63,9 +62,9 @@ type CoreDeps struct {
 	ImageService       *imgservice.Service
 	ClipsRepo          *clips.Repository // canonical unified clips repository (replaces StockDriveRepo + ArtlistRepo + ClipsOnlyRepo)
 	AssetStore         *assets.AssetStoreSQLite // canonical asset persistence (media_assets table)
-	AssetRepo          asset.Repository
-	AssetLocationRepo  asset.LocationRepository
-	AssetProcessingRepo asset.ProcessingRepository
+	AssetRepo          assets.Repository
+	AssetLocationRepo  assets.LocationRepository
+	AssetProcessingRepo assets.ProcessingRepository
 	AssetVersionsRepo   *assetversions.Repository
 	AssetQueryService   *assetquery.Service
 	MonitorsRepo       *monitors.Repository

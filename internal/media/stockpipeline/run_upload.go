@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -122,16 +122,16 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 		tags = append(tags, q)
 	}
 
-	clip := &domainasset.MediaAsset{
+	clip := &assets.Asset{
 		ID:         upResult.FileID,
 		Name:       chunkTitle + ".mp4",
 		Filename:   chunkTitle + ".mp4",
 		Group:      "stock",
-		MediaType:  "video",
+		MediaType:  assets.MediaType("video"),
 		Tags:       tags,
-		Source:     "stock",
+		Source:     assets.Source("stock"),
 		Category:   "file",
-		DurationMs: int64(videoCfg.ChunkDuration) * 1000,
+		Duration:   time.Duration(videoCfg.ChunkDuration) * time.Second,
 		SearchText: semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStrings(chunkRes.SourceIDs...), " ")),
 		CreatedAt:  time.Now().UTC(),
 		UpdatedAt:  time.Now().UTC(),
@@ -173,13 +173,13 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 // job would hit the legacy branch. Both branches produce equivalent
 // visible state (the only difference is Qdrant indexing fire-right vs.
 // worker-pulled), so this is benign — the system is never crash-unsafe.
-func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *domainasset.MediaAsset) error {
+func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *assets.Asset) error {
 	// Always update search terms FIRST against the canonical row so the
 	// tags_norm / search_text columns never lag the embeddable record.
 	// Skipped for folder rows because UpdateSearchTerms rejects them in
 	// clips.Repository.
 	if clip.SearchText != "" && !clip.IsFolder() && s.clipsRepo != nil {
-		if err := s.clipsRepo.UpdateSearchTerms(ctx, clip.ID, clip.Source, clip.Name, clip.Tags, clip.SearchText); err != nil {
+		if err := s.clipsRepo.UpdateSearchTerms(ctx, clip.ID, string(clip.Source), clip.Name, clip.Tags, clip.SearchText); err != nil {
 			s.log.Warn("failed to update search terms for stock clip", zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	}

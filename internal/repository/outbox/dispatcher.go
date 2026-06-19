@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outboxevents"
 )
@@ -29,7 +29,7 @@ import (
 // Defined as an interface so unit tests can substitute a fake without
 // pulling the full clips.Repository dependency.
 type ClipsUpserter interface {
-	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error
+	UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *assets.Asset) error
 }
 
 // Dispatcher is the ingestion entry point for the canonical
@@ -107,7 +107,7 @@ type indexRequestPayload struct {
 //     returns error → outboxevents Pool calls MarkFailed (retry with
 //     backoff, or dead_letter after max attempts)
 //   - Qdrant unreachable → same retry/dead_letter pattern
-func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.MediaAsset, contentHash string) error {
+func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *assets.Asset, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}
@@ -185,7 +185,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.MediaAsset
 		if d.log != nil {
 			d.log.Debug("dispatcher enqueued asset for outbox_events indexing",
 				zap.String("asset_id", clip.ID),
-				zap.String("source", clip.Source),
+				zap.String("source", string(clip.Source)),
 				zap.String("content_hash_prefix", shortHashPrefix(contentHash)),
 			)
 		}
@@ -250,7 +250,7 @@ func NewMultiClipsUpserter(repos map[string]ClipsUpserter, defaultRepo ClipsUpse
 
 // UpsertClipTx routes the call based on clip.Source. See type doc for routing
 // rules. tx is forwarded untouched to the chosen repository.
-func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.MediaAsset) error {
+func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *assets.Asset) error {
 	if m == nil {
 		return errors.New("outbox.MultiClipsUpserter is nil")
 	}
@@ -260,7 +260,7 @@ func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip 
 	var repo ClipsUpserter
 	var matched bool
 	if clip.Source != "" {
-		if r, ok := m.repos[clip.Source]; ok && r != nil {
+		if r, ok := m.repos[string(clip.Source)]; ok && r != nil {
 			repo = r
 			matched = true
 		}
@@ -270,13 +270,13 @@ func (m *MultiClipsUpserter) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip 
 		// clip.Source strings show up in dev/staging without paying the
 		// cost of an error log in prod.
 		m.log.Debug("MultiClipsUpserter: using default repo for unknown source",
-			zap.String("source", clip.Source),
+			zap.String("source", string(clip.Source)),
 			zap.String("asset_id", clip.ID),
 		)
 		repo = m.defaultRepo
 	}
 	if repo == nil {
-		return fmt.Errorf("outbox.MultiClipsUpserter: no repository for source %q and no default configured", clip.Source)
+		return fmt.Errorf("outbox.MultiClipsUpserter: no repository for source %q and no default configured", string(clip.Source))
 	}
 	return repo.UpsertClipTx(ctx, tx, clip)
 }

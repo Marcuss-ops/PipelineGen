@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"time"
 
-	
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -64,27 +64,30 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 
 	// Map onto canonical Asset.
 	a.ID = idNull.String
-	a.Source = sourceNull.String
+	a.Source = Source(sourceNull.String)
 	a.Name = nameNull.String
 	if duration.Valid {
-		a.DurationMs = duration.Int64
+		a.Duration = time.Duration(duration.Int64) * time.Millisecond
 	}
 	a.SourceURL = urlNull.String
-	a.SetExternalURL(urlNull.String)
-	a.MediaType = mediaTypeNull.String
-	a.LocalPath = localPathNull.String
-	a.DriveFileID = driveFileIDNull.String
-	a.DriveLink = driveLinkNull.String
-	a.DownloadLink = downloadLinkNull.String
-	a.FileHash = fileHashNull.String
+	a.MediaType = MediaType(mediaTypeNull.String)
+
+	// Parse metadata_json first so other setters write into it.
+	a.SetMetadataJSON(metadataStr.String)
+
+	a.SetLocalPath(localPathNull.String)
+	a.SetDriveFileID(driveFileIDNull.String)
+	a.SetDriveLink(driveLinkNull.String)
+	a.SetDownloadLink(downloadLinkNull.String)
+	a.SetFileHash(fileHashNull.String)
 	if embeddingJSON.Valid {
-		a.EmbeddingJSON = embeddingJSON.String
+		a.SetEmbeddingJSON(embeddingJSON.String)
 	}
 	if visualEmb.Valid {
-		a.VisualEmbedding = visualEmb.String
+		a.SetVisualEmbedding(visualEmb.String)
 	}
 	if transcriptEmb.Valid {
-		a.TranscriptEmbedding = transcriptEmb.String
+		a.SetTranscriptEmbedding(transcriptEmb.String)
 	}
 
 	// Timestamps.
@@ -102,30 +105,23 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 		}
 	}
 
-	if widthNull.Valid {
-		_ = widthNull.Int64 // width not on canonical struct
-	}
-	if heightNull.Valid {
-		_ = heightNull.Int64
-	}
-
 	// Canonical columns from migration 059.
-	a.FolderID = folderIDNull.String
-	a.ParentFolderID = parentFolderIDNull.String
-	a.FolderPath = folderPathNull.String
+	a.SetFolderID(folderIDNull.String)
+	a.SetParentFolderID(parentFolderIDNull.String)
+	a.SetFolderPath(folderPathNull.String)
 	a.Category = category.String
 	a.Filename = filename.String
 	a.ThumbnailURL = thumbURL.String
-	a.PHash = phash.String
+	a.SetPHash(phash.String)
 	a.SearchText = searchText.String
-	a.SceneType = sceneType.String
+	a.SetSceneType(sceneType.String)
 	if qualityScore.Valid {
-		a.QualityScore = qualityScore.Float64
+		a.SetQualityScore(qualityScore.Float64)
 	}
 	if reuseCount.Valid {
-		a.ReuseCount = int(reuseCount.Int64)
+		a.SetReuseCount(int(reuseCount.Int64))
 	}
-	a.LastUsedAt = lastUsedAtNull.String
+	a.SetLastUsedAt(lastUsedAtNull.String)
 	if deletedAtStr.Valid && strings.TrimSpace(deletedAtStr.String) != "" {
 		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() {
 			a.DeletedAt = &t
@@ -136,8 +132,8 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 	}
 
 	// Legacy fallback: drive_folder_id → folder_id.
-	if a.FolderID == "" && driveFolderID.Valid && driveFolderID.String != "" {
-		a.FolderID = driveFolderID.String
+	if a.FolderID() == "" && driveFolderID.Valid && driveFolderID.String != "" {
+		a.SetFolderID(driveFolderID.String)
 	}
 
 	// Parse tags.
@@ -145,10 +141,7 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 		_ = json.Unmarshal([]byte(tagsNull.String), &a.Tags)
 	}
 
-	// Parse metadata_json for non-canonical extras only.
-	a.SetMetadataJSON(metadataStr.String)
-
-	// group_name from metadata_json.
+	// group_name from metadata_json or field.
 	if a.Group == "" {
 		a.Group = a.GetMetadataString("group_name")
 	}

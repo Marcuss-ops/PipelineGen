@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -34,7 +34,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	var clip asset.MediaAsset
+	var clip assets.Asset
 	if err := c.ShouldBindJSON(&clip); err != nil {
 		apiutil.BadRequest(c, "invalid clip data: "+err.Error())
 		return
@@ -45,7 +45,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		clip.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 	if clip.Source == "" {
-		clip.Source = source
+		clip.Source = assets.Source(source)
 	}
 
 	ctx := c.Request.Context()

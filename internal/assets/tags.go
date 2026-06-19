@@ -117,7 +117,7 @@ func (s *AssetStoreSQLite) GetClipByFolderAndFilename(ctx context.Context, folde
 }
 
 // GetClip retrieves a clip by ID. PR1: delegates to canonical assetrepo,
-// which returns (nil, asset.ErrSoftDeleted) for soft-deleted assets.
+// which returns (nil, assets.ErrSoftDeleted) for soft-deleted assets.
 func (s *AssetStoreSQLite) GetClip(ctx context.Context, id string) (*Asset, error) {
 	return s.Get(ctx, id)
 }

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
 )
 
@@ -73,13 +73,13 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 6. Salva nel DB stock (fallback)
 	if s.stockRepo != nil {
-		clip := &domainasset.MediaAsset{
+		clip := &assets.Asset{
 			ID:             "ai_" + imageHash,
 			Name:           "AI Animation: " + asset.SubjectID,
-			MediaType:      "video",
-			Source:         "nvidia-animation",
+			MediaType:      assets.MediaType("video"),
+			Source:         assets.Source("nvidia-animation"),
 			CreatedAt:      time.Now(),
-			LifecycleState: domainasset.StateReady,
+			LifecycleState: assets.StateReady,
 		}
 		clip.SetDriveFileID(driveVideoID)
 		clip.SetDriveLink(driveLink)

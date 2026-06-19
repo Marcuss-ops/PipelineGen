@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
@@ -77,7 +77,7 @@ func TestDeleteClip(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	err := repo.UpsertClip(ctx, &asset.MediaAsset{
+	err := repo.UpsertClip(ctx, &assets.Asset{
 		ID:        "clip_1",
 		Name:      "Test Clip",
 		Filename:  "test.mp4",
@@ -128,7 +128,7 @@ func TestRestoreClip(t *testing.T) {
 	defer db.Close()
 	repo := NewRepository(db, zap.NewNop())
 
-	_ = repo.UpsertClip(ctx, &asset.MediaAsset{
+	_ = repo.UpsertClip(ctx, &assets.Asset{
 		ID:        "clip_res",
 		Name:      "Restore Clip",
 		Tags:      []string{"restore"},
@@ -161,7 +161,7 @@ func TestDeleteClipByDriveLink(t *testing.T) {
 
 	repo := NewRepository(db, zap.NewNop())
 
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:        "clip_2",
 		Name:      "Drive Clip",
 		CreatedAt: time.Now(),

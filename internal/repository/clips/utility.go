@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*asset.MediaAsset, error) {
+func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]*assets.Asset, error) {
 	query := `SELECT ` + mediaAssetColumns + `
 		FROM media_assets
 		WHERE ` + r.SoftDeleteFilter() + ` AND parent_folder_id = ?
@@ -23,7 +23,7 @@ func (r *Repository) GetFolderChildren(ctx context.Context, parentID string) ([]
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
