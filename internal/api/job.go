@@ -19,7 +19,7 @@ import (
 // AsyncJobResponse builds the standard async job response used by all
 // handlers that support background processing.
 func AsyncJobResponse(c *gin.Context, j *jobs.Job, message string) {
-	apiutil.OK(c, gin.H{
+	OK(c, gin.H{
 		"ok":         true,
 		"async":      true,
 		"job_id":     j.ID,
@@ -47,7 +47,7 @@ type EnqueueInput struct {
 // EnqueueAsync enqueues a job and writes the standard async response.
 func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message string) bool {
 	if enqueuer == nil {
-		apiutil.InternalError(c, fmt.Errorf("job system not available"))
+		InternalError(c, fmt.Errorf("job system not available"))
 		return false
 	}
 
@@ -67,7 +67,7 @@ func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message s
 
 	j, err := enqueuer.Enqueue(c.Request.Context(), req)
 	if err != nil {
-		apiutil.InternalError(c, err)
+		InternalError(c, err)
 		return false
 	}
 

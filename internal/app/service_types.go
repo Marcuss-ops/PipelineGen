@@ -1,7 +1,7 @@
 package app
 
 import (
-	common "github.com/Marcuss-ops/PipelineGen/internal/api"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"

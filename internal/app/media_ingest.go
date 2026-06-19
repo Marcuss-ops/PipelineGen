@@ -3,20 +3,20 @@ package app
 import (
 	"strings"
 
-	mediaingest "github.com/Marcuss-ops/PipelineGen/internal/api"
+	mediaingest "github.com/Marcuss-ops/PipelineGen/internal/api/mediaingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	imgreg "github.com/Marcuss-ops/PipelineGen/internal/media/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	voingsvc "github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
-	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	api "github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"go.uber.org/zap"
 )
 
 type MediaIngestWiring struct {
 	Handler *mediaingest.MediaingestHandler
-	Module  module.Module
+	Module  api.Module
 	Service *ingest.Service
 }
 
@@ -120,7 +120,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 	})
 
 	handler := mediaingest.NewMediaingestHandler(svc)
-	mod := module.NewMediaIngestModule(cfg, log, handler)
+	mod := mediaingest.NewMediaIngestModule(cfg, log, handler)
 
 	return &MediaIngestWiring{
 		Handler: handler,

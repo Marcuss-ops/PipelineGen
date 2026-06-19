@@ -1,7 +1,7 @@
 package app
 
 import (
-	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	fullimageshandler "github.com/Marcuss-ops/PipelineGen/internal/api/fullimages"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"

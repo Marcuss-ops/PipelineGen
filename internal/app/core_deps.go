@@ -4,7 +4,7 @@ import (
 	"context"
 
 	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api/books"
-	common "github.com/Marcuss-ops/PipelineGen/internal/api"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"

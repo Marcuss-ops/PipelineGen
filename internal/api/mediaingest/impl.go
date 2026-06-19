@@ -1,6 +1,7 @@
-package api
+package mediaingest
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,24 +23,24 @@ func (h *MediaingestHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 func (h *MediaingestHandler) Ingest(c *gin.Context) {
-	req, ok := BindJSON[ingest.Request](c)
+	req, ok := api.BindJSON[ingest.Request](c)
 	if !ok {
 		return
 	}
 	if strings.TrimSpace(req.Kind) == "" {
-		apiutil.BadRequest(c, "kind is required")
+		api.BadRequest(c, "kind is required")
 		return
 	}
 
 	result, err := h.service.Ingest(c.Request.Context(), &req)
 	if err != nil {
 		if textutil.ContainsCI(err.Error(), "required") {
-			apiutil.BadRequest(c, err.Error())
+			api.BadRequest(c, err.Error())
 			return
 		}
-		apiutil.InternalError(c, err)
+		api.InternalError(c, err)
 		return
 	}
 
-	apiutil.OK(c, result)
+	api.OK(c, result)
 }

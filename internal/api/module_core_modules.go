@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -12,14 +13,14 @@ type UtilityModule struct {
 	name    string
 	cfg     *config.Config
 	log     *zap.Logger
-	handler *UtilityHandler
+	handler *common.UtilityHandler
 }
 
 // NewUtilityModule creates a new Utility module.
 func NewUtilityModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *UtilityHandler,
+	handler *common.UtilityHandler,
 ) *UtilityModule {
 	return &UtilityModule{
 		name:    "utility",
