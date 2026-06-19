@@ -170,22 +170,37 @@ func (h *ScriptFlowHandler) SetHarvestService(svc AutoHarvestService) {
 	h.clipServices.HarvestSvc = svc
 }
 
-// RegisterRoutes mounts the script generation endpoints.
+// RegisterRoutes mounts ALL script generation endpoints (full-fat registration).
 //
-// Active endpoints:
-//   - POST /generate-from-clips    — canonical: text-only or clip-aware script generation
-//     (uses GenerateFromClipsRequest, job: script.generate_from_clips)
-//   - POST /generate-from-catalog  — catalog query variant
-//   - POST /generate-batch         — multi-topic batch
-//   - POST /curate                 — natural-language query → clip compilation
-//
-// Removed (June 2026 cleanup):
-//   - POST /generate — merged into /generate-from-clips
+// DEPRECATED: PR 2-3 moved generation routes to api/script/handler.go.
+// This method remains for backward compatibility with callers that register
+// ScriptFlowHandler directly (e.g., tests). Use RegisterRoutesRemaining for
+// the new split routing.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate-batch", h.GenerateBatch)
 	r.GET("/generate-batch/progress", h.GetBatchProgress)
 	r.POST("/generate-from-clips", h.GenerateFromClips)
 	r.POST("/generate-with-images", h.GenerateWithImages)
+	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
+	r.POST("/curate", h.Curate)
+	r.GET("/jobs/:job_id", h.GetJobStatus)
+	r.GET("/jobs/:job_id/full", h.GetJobFullStatus)
+	r.POST("/:id/sections/:section_id/regenerate", h.RegenerateSection)
+	r.POST("/cache/evict", h.EvictCache)
+}
+
+// RegisterRoutesRemaining mounts the non-generation endpoints only.
+// Generation routes (/generate-from-clips, /generate-with-images,
+// /generate-batch) are handled by the thin Handler in api/script/.
+//
+// Active endpoints:
+//   - POST /generate-from-catalog  — catalog query variant
+//   - POST /curate                 — natural-language query → clip compilation
+//   - GET  /jobs/:job_id           — job status lookup
+//   - GET  /jobs/:job_id/full      — full job status
+//   - POST /:id/sections/:section_id/regenerate — section regeneration
+//   - POST /cache/evict            — cache eviction
+func (h *ScriptFlowHandler) RegisterRoutesRemaining(r *gin.RouterGroup) {
 	r.POST("/generate-from-catalog", h.GenerateFromCatalog)
 	r.POST("/curate", h.Curate)
 	r.GET("/jobs/:job_id", h.GetJobStatus)

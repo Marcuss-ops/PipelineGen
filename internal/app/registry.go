@@ -17,6 +17,7 @@ import (
 	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/repository/searchqueries"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/generate"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
@@ -91,7 +92,8 @@ func WireRegistry(
 			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
 			handler.SetHarvestService(harvestSvc)
 		}
-		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler))
+		genSvc := generate.NewGenerationService(coreDeps.JobsService, cfg, log)
+		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler, genSvc))
 		registerModule(registry, log, mod)
 	}
 
