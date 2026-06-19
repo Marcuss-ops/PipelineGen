@@ -1,7 +1,7 @@
 package app
 
 import (
-	sourcesHandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	sources "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"

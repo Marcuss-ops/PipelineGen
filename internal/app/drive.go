@@ -12,7 +12,7 @@ import (
 
 // DriveWiring holds the Drive module wiring
 type DriveWiring struct {
-	Handler   *drivehandler.Handler
+	Handler   *drivehandler.DriveHandler
 	Module    module.Module
 	Reconcile *drivecleanup.Service
 }
@@ -36,7 +36,7 @@ func WireDrive(
 		log.Info("drive reconcile service initialized")
 	}
 
-	handler := drivehandler.NewHandler(reconcileSvc, driveUploader)
+	handler := drivehandler.NewDriveHandler(reconcileSvc, driveUploader)
 	mod := module.NewDriveModule(cfg, log, handler)
 	log.Info("created Drive module")
 
