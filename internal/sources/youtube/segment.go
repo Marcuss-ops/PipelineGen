@@ -10,18 +10,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	retry "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
-
-	"go.uber.org/zap"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 )
+
+// Compile-time check: checkExistingClip and buildClipMetadata moved to
+// segment_cache.go and segment_lifecycle.go respectively. Keep the
+// package boundary minimal.
+var _ = (&Service{}).checkExistingClip
+var _ = buildClipMetadata
+var _ = fileSizeFromPath
 
 // processSegment processes a single segment: validates timestamps, checks cache,
 // downloads via video pipeline (or cuts from pre-downloaded file), runs lifecycle,
@@ -305,57 +310,6 @@ func (s *Service) processSegment(
 	return item
 }
 
-// checkExistingClip checks if a clip already exists in DB and handles cache strategies.
-// Returns true if the item was resolved from cache (caller should skip further processing).
-func (s *Service) checkExistingClip(ctx context.Context, req *ExtractRequest, clipID string, item *ExtractItem, outDir string) bool {
-	if req.Strategy == "replace" || s.clipsRepo == nil {
-		return false
-	}
-
-	existingClip, err := s.clipsRepo.GetClip(ctx, clipID)
-	if err != nil || existingClip == nil {
-		return false
-	}
-
-	expectedPath := filepath.Join(outDir, item.Filename)
-	if existingClip.LocalPath() != expectedPath {
-		s.log.Info("cached clip local path mismatch, forcing re-processing for new folder",
-			zap.String("clip_id", clipID),
-			zap.String("existing_path", existingClip.LocalPath()),
-			zap.String("expected_path", expectedPath))
-		return false
-	}
-
-	if req.Strategy == "skip" {
-		item.LocalPath = existingClip.LocalPath()
-		item.DriveLink = existingClip.DriveLink()
-		item.DriveFileID = existingClip.DriveFileID()
-		item.DownloadLink = existingClip.DownloadLink()
-		item.Status = "skipped"
-		return true
-	}
-
-	// Default strategy: verify file exists
-	if ok, clipErr := fileutil.UsableCachedClip(existingClip.LocalPath()); clipErr == nil && ok {
-		item.LocalPath = existingClip.LocalPath()
-		item.DriveLink = existingClip.DriveLink()
-		item.DriveFileID = existingClip.DriveFileID()
-		item.DownloadLink = existingClip.DownloadLink()
-		item.Status = "skipped"
-		return true
-	}
-
-	// Stale record — clean up before reprocessing
-	s.log.Warn("stale youtube clip record detected, removing it before reprocessing",
-		zap.String("clip_id", clipID),
-		zap.String("local_path", existingClip.LocalPath()))
-	if existingClip.LocalPath() != "" {
-		_ = os.Remove(existingClip.LocalPath())
-	}
-	_ = s.clipsRepo.DeleteClip(ctx, clipID)
-	return false
-}
-
 // processLifecycle handles the lifecycle processing (dedupe + upload + persist) or falls back.
 func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.FinalizeInput, localPath, fileHash string, item *ExtractItem) {
 	if s.lifecycleService == nil {
@@ -386,18 +340,6 @@ func (s *Service) processLifecycle(ctx context.Context, metadata *lifecycle.Fina
 	item.Status = "processed"
 }
 
-// fileSizeFromPath returns the file size in bytes, or 0 if the file cannot be stat'd.
-func fileSizeFromPath(path string) int64 {
-	if path == "" {
-		return 0
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	return fi.Size()
-}
-
 // buildClipFilename creates a deterministic, unique filename for a YouTube clip.
 // Format: yt_{videoID}_{startSec}_{endSec}_{slug}.mp4
 // This ensures every clip has a unique file on Drive regardless of segment name collisions.
@@ -411,102 +353,4 @@ func buildClipFilename(videoID string, startSec, endSec int, name string) string
 		slug = "c_" + slug
 	}
 	return fmt.Sprintf("yt_%s_%d_%d_%s.mp4", videoID, startSec, endSec, slug)
-}
-
-// buildClipMetadata creates the lifecycle.FinalizeInput for a processed clip.
-// If youtubeMeta is provided, includes YouTube video metadata (title, description, tags, language).
-func buildClipMetadata(clipID, name, localPath, videoID, start, end string,
-	startSec, endSec, duration int, folderSlug string,
-	shouldNormalize, keepAudio bool,
-	driveFolderID, resolvedPath, fileHash string,
-	dest *DestinationRequest,
-	youtubeMeta *downloader.YouTubeMetadata,
-	seg *Segment) *lifecycle.FinalizeInput {
-
-	metadataMap := map[string]any{
-		"video_id":         videoID,
-		"start":            start,
-		"end":              end,
-		"start_seconds":    startSec,
-		"end_seconds":      endSec,
-		"duration_seconds": duration,
-		"folder_slug":      folderSlug,
-		"normalized":       shouldNormalize,
-		"keep_audio":       keepAudio,
-	}
-
-	// Include custom metadata from request if provided
-	if seg != nil {
-		if seg.Summary != "" {
-			metadataMap["clip_summary"] = seg.Summary
-		}
-		if len(seg.Topics) > 0 {
-			metadataMap["topics"] = seg.Topics
-		}
-		if len(seg.Speakers) > 0 {
-			metadataMap["speakers"] = seg.Speakers
-		}
-		if len(seg.MentionedPeople) > 0 {
-			metadataMap["mentioned_people"] = seg.MentionedPeople
-		}
-		if seg.Hook != "" {
-			metadataMap["hook"] = seg.Hook
-		}
-		if seg.QualityScore > 0 {
-			metadataMap["quality_score"] = seg.QualityScore
-		}
-		if seg.SearchVisibility != "" {
-			metadataMap["search_visibility"] = seg.SearchVisibility
-		}
-		if len(seg.Tags) > 0 {
-			metadataMap["segment_tags"] = seg.Tags
-		}
-	}
-
-	// Include YouTube video metadata if available (from yt-dlp --dump-json)
-	if youtubeMeta != nil {
-		metadataMap["youtube_title"] = youtubeMeta.Title
-		metadataMap["youtube_description"] = youtubeMeta.Description
-		metadataMap["youtube_language"] = youtubeMeta.Language
-		metadataMap["youtube_uploader"] = youtubeMeta.Uploader
-		metadataMap["youtube_upload_date"] = youtubeMeta.UploadDate
-		metadataMap["youtube_view_count"] = youtubeMeta.ViewCount
-		metadataMap["youtube_duration"] = youtubeMeta.Duration
-		metadataMap["youtube_video_id"] = youtubeMeta.ID
-		metadataMap["youtube_url"] = fmt.Sprintf("https://www.youtube.com/watch?v=%s", youtubeMeta.ID)
-		if len(youtubeMeta.Tags) > 0 {
-			metadataMap["youtube_tags"] = youtubeMeta.Tags
-		}
-		if len(youtubeMeta.Chapters) > 0 {
-			metadataMap["youtube_chapters"] = youtubeMeta.Chapters
-		}
-	}
-	metadataBytes, _ := json.Marshal(metadataMap)
-
-	folderPath := resolvedPath
-	if folderPath == "" && dest != nil {
-		folderPath = dest.FolderPath
-	}
-
-	return &lifecycle.FinalizeInput{
-		ID:           clipID,
-		Name:         name,
-		Filename:     filepath.Base(localPath),
-		Kind:         lifecycle.AssetKindVideo,
-		Source:       "youtube",
-		Group:        getGroupFromDestination(dest),
-		Subfolder:    "",
-		LocalPath:    localPath,
-		FolderID:     driveFolderID,
-		FolderPath:   folderPath,
-		DriveLink:    "",
-		DriveFileID:  "",
-		DownloadLink: "",
-		FileHash:     fileHash,
-		Metadata:     string(metadataBytes),
-		RequireLocal: true,
-		RequireHash:  true,
-		RequireDrive: driveFolderID != "",
-		VerifyDB:     true,
-	}
 }
