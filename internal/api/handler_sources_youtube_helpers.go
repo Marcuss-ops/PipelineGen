@@ -102,8 +102,8 @@ func formatDuration(sec float64) string {
 
 var driveFolderIDRegex = regexp.MustCompile(`/folders/([a-zA-Z0-9_-]+)`)
 
-// extractDriveFolderID extracts the folder ID from a Google Drive URL or returns the input if it's already a raw ID.
-func extractDriveFolderID(input string) string {
+// ExtractDriveFolderID extracts the folder ID from a Google Drive URL or returns the input if it's already a raw ID.
+func ExtractDriveFolderID(input string) string {
 	if input == "" {
 		return ""
 	}

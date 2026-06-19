@@ -1,7 +1,7 @@
 package app
 
 import (
-	drivehandler "github.com/Marcuss-ops/PipelineGen/internal/api"
+	driveapi "github.com/Marcuss-ops/PipelineGen/internal/api/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database/drivecleanup"
@@ -12,7 +12,7 @@ import (
 
 // DriveWiring holds the Drive module wiring
 type DriveWiring struct {
-	Handler   *drivehandler.DriveHandler
+	Handler   *driveapi.DriveHandler
 	Module    module.Module
 	Reconcile *drivecleanup.Service
 }
@@ -36,8 +36,8 @@ func WireDrive(
 		log.Info("drive reconcile service initialized")
 	}
 
-	handler := drivehandler.NewDriveHandler(reconcileSvc, driveUploader)
-	mod := module.NewDriveModule(cfg, log, handler)
+	handler := driveapi.NewDriveHandler(reconcileSvc, driveUploader)
+	mod := driveapi.NewModule(cfg, log, handler)
 	log.Info("created Drive module")
 
 	return &DriveWiring{
