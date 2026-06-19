@@ -13,7 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
