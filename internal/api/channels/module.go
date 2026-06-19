@@ -13,12 +13,11 @@ func NewModule(
 	log *zap.Logger,
 	repo *channelsrepo.Repository,
 ) *api.RouteModule {
-	inner := NewChannelsHandler(repo, log)
 	return api.NewRouteModule(
 		"channels",
 		func(cfg *config.Config) bool { return repo != nil },
 		"/channels",
-		NewHandler(inner),
+		NewChannelsHandler(repo, log),
 		log,
 	)
 }

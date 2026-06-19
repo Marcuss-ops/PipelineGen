@@ -11,7 +11,7 @@ import (
 func NewModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *Handler,
+	handler *LessonsHandler,
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"lessons",

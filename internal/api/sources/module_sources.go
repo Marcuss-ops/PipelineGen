@@ -14,7 +14,7 @@ import (
 func NewSourcesModule(
 	cfg *config.Config,
 	log *zap.Logger,
-	handler *RouteHandler,
+	handler *SourcesHandler,
 ) *api.RouteModule {
 	return api.NewRouteModule(
 		"assets",
