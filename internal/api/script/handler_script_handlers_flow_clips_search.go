@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 )
 
 // ── SearchScriptAssets ───────────────────────────────────────────────────────

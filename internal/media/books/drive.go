@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	urlutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
