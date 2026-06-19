@@ -2,11 +2,13 @@ package generate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -30,87 +32,46 @@ func NewGenerationService(jobsSvc *jobs.Service, cfg *config.Config, log *zap.Lo
 	}
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
-
-// clipScriptDefaults holds the shared request defaults for clip/script generation.
-type clipScriptDefaults struct {
-	hasClips            bool
-	extractEntities     bool
-	generateSceneImages bool
-	generateMetadata    bool
-	generateVoiceover   bool
+// FromClipsResult is the application-layer result for clip-source generation.
+type FromClipsResult struct {
+	OK        bool
+	JobID     string
+	Status    string
+	ClipCount int
 }
+
+// ── Public API ──────────────────────────────────────────────────────────────
 
 // EnqueueFromClips validates, applies defaults, builds the payload, and
 // enqueues a clip-source script generation job.
-func (s *GenerationService) EnqueueFromClips(ctx context.Context, cmd *FromClipsCommand) (*FromClipsResult, error) {
+func (s *GenerationService) EnqueueFromClips(ctx context.Context, spec scriptjobs.GenerationSpec) (*FromClipsResult, error) {
 	scriptsCfg := s.getScriptsConfig()
-	hasClips := len(cmd.ClipIDs) > 0 || cmd.NumClips > 0
 
-	if err := validateClipScript(cmd.Topic, cmd.SourceText, cmd.ClipIDs, hasClips); err != nil {
+	if err := validateGeneration(&spec); err != nil {
 		return nil, err
 	}
 
-	applyDefaultsFromClips(cmd, scriptsCfg)
+	applyDefaultsFromClips(&spec, scriptsCfg)
 
-	if cmd.GenerateMetadata {
-		cmd.ExtractEntities = true
+	if spec.GenerateMetadata {
+		spec.ExtractEntities = true
 	}
 
-	return s.enqueueClipScript(ctx, cmd.Topic, cmd.SourceText, cmd.Guidelines,
-		cmd.ClipIDs, cmd.NumClips, cmd.Title, cmd.OutputName,
-		cmd.Language, cmd.Tone, cmd.Model, cmd.DriveFolderID,
-		cmd.TargetWords, cmd.Duration, cmd.MinWords,
-		cmd.SentencesPerImage, cmd.ImagesPerScene,
-		cmd.Style, cmd.ArtlistSearch, cmd.StockSearch,
-		cmd.Languages, cmd.TranscriptPolicy, cmd.OrderingStrategy,
-		cmd.SaveToDB, cmd.GenerateTimeline, cmd.ForceRefresh,
-		cmd.PromptVersion, cmd.EditorPromptVersion, cmd.QAPromptVersion,
-		cmd.VoiceoverGroup, cmd.VoiceoverFolderID,
-		cmd.MinQualityScore, cmd.MinTranscriptWords,
-		clipScriptDefaults{
-			hasClips:            hasClips,
-			extractEntities:     cmd.ExtractEntities,
-			generateSceneImages: cmd.GenerateSceneImages,
-			generateMetadata:    cmd.GenerateMetadata,
-			generateVoiceover:   cmd.GenerateVoiceover,
-		},
-		"unified",
-	)
+	return s.enqueue(ctx, spec, scriptjobs.PresetCustom, "unified")
 }
 
 // EnqueueWithImages validates, applies defaults, builds the payload, and
 // enqueues a generate-with-images job.
-func (s *GenerationService) EnqueueWithImages(ctx context.Context, cmd *WithImagesCommand) (*FromClipsResult, error) {
+func (s *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptjobs.GenerationSpec) (*FromClipsResult, error) {
 	scriptsCfg := s.getScriptsConfig()
-	hasClips := len(cmd.ClipIDs) > 0 || cmd.NumClips > 0
 
-	if err := validateClipScript(cmd.Topic, cmd.SourceText, cmd.ClipIDs, hasClips); err != nil {
+	if err := validateGeneration(&spec); err != nil {
 		return nil, err
 	}
 
-	applyDefaultsWithImages(cmd, scriptsCfg)
+	applyDefaultsWithImages(&spec, scriptsCfg)
 
-	return s.enqueueClipScript(ctx, cmd.Topic, cmd.SourceText, cmd.Guidelines,
-		cmd.ClipIDs, cmd.NumClips, cmd.Title, cmd.OutputName,
-		cmd.Language, cmd.Tone, cmd.Model, cmd.DriveFolderID,
-		cmd.TargetWords, cmd.Duration, cmd.MinWords,
-		cmd.SentencesPerImage, cmd.ImagesPerScene,
-		cmd.Style, cmd.ArtlistSearch, cmd.StockSearch,
-		cmd.Languages, cmd.TranscriptPolicy, cmd.OrderingStrategy,
-		cmd.SaveToDB, cmd.GenerateTimeline, cmd.ForceRefresh,
-		cmd.PromptVersion, cmd.EditorPromptVersion, cmd.QAPromptVersion,
-		cmd.VoiceoverGroup, cmd.VoiceoverFolderID,
-		cmd.MinQualityScore, cmd.MinTranscriptWords,
-		clipScriptDefaults{
-			hasClips:            hasClips,
-			extractEntities:     false, // forced for this endpoint
-			generateSceneImages: true,  // forced for this endpoint
-			generateMetadata:    false, // forced for this endpoint
-			generateVoiceover:   cmd.GenerateVoiceover,
-		},
-		"generate-with-images",
-	)
+	return s.enqueue(ctx, spec, scriptjobs.PresetWithImages, "generate-with-images")
 }
 
 // ── Batch ───────────────────────────────────────────────────────────────────
@@ -120,8 +81,18 @@ func (s *GenerationService) EnqueueWithImages(ctx context.Context, cmd *WithImag
 // use the handler's ExecuteBatchGeneration directly (PR 4 will extract this).
 //
 // TODO(PR-4): implement when batch async path is extracted from ScriptFlowHandler.
-func (s *GenerationService) EnqueueBatch(ctx context.Context, cmd *FromClipsCommand) (*BatchResult, error) {
+func (s *GenerationService) EnqueueBatch(ctx context.Context, spec scriptjobs.GenerationSpec) (*BatchResult, error) {
 	return nil, fmt.Errorf("not implemented — PR 4 will extract batch async path from ScriptFlowHandler")
+}
+
+// BatchResult is the application-layer result for an async batch enqueue.
+type BatchResult struct {
+	OK        bool
+	Async     bool
+	JobID     string
+	Status    string
+	Message   string
+	StatusURL string
 }
 
 // ── Config & defaults ──────────────────────────────────────────────────────
@@ -133,158 +104,113 @@ func (s *GenerationService) getScriptsConfig() config.ScriptsConfig {
 	return config.ScriptsConfig{}
 }
 
-func applyDefaultsFromClips(cmd *FromClipsCommand, scriptsCfg config.ScriptsConfig) {
-	if cmd.Language == "" {
-		cmd.Language = scriptsCfg.DefaultLanguage
+func applyDefaultsFromClips(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfig) {
+	if spec.Language == "" {
+		spec.Language = scriptsCfg.DefaultLanguage
 	}
-	if cmd.Tone == "" {
-		cmd.Tone = scriptsCfg.DefaultTone
+	if spec.Tone == "" {
+		spec.Tone = scriptsCfg.DefaultTone
 	}
-	if cmd.TranscriptPolicy == "" {
-		cmd.TranscriptPolicy = "auto"
+	if spec.TranscriptPolicy == "" {
+		spec.TranscriptPolicy = "auto"
 	}
-	if cmd.OrderingStrategy == "" {
-		cmd.OrderingStrategy = "auto"
+	if spec.OrderingStrategy == "" {
+		spec.OrderingStrategy = "auto"
 	}
-	if cmd.SentencesPerImage <= 0 {
-		cmd.SentencesPerImage = 8
+	if spec.SentencesPerImage <= 0 {
+		spec.SentencesPerImage = 8
 	}
-	if cmd.ImagesPerScene <= 0 {
-		cmd.ImagesPerScene = 1
+	if spec.ImagesPerScene <= 0 {
+		spec.ImagesPerScene = 1
 	}
-	cmd.GenerateSceneImages = true
+	spec.GenerateSceneImages = true
 
-	title, outputName := resolveTitleAndOutputName(cmd.Title, cmd.Topic)
-	cmd.Title = title
-	cmd.OutputName = outputName
+	title, outputName := resolveTitleAndOutputName(spec.Title, spec.Topic)
+	spec.Title = title
+	spec.OutputName = outputName
 
-	cmd.TargetWords = resolveTargetWords(cmd.TargetWords, cmd.MinWords, cmd.Duration, scriptsCfg.MinWordFloor)
+	spec.TargetWords = resolveTargetWords(spec.TargetWords, spec.MinWords, spec.Duration, scriptsCfg.MinWordFloor)
 }
 
-func applyDefaultsWithImages(cmd *WithImagesCommand, scriptsCfg config.ScriptsConfig) {
-	if cmd.Language == "" {
-		cmd.Language = scriptsCfg.DefaultLanguage
+func applyDefaultsWithImages(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfig) {
+	if spec.Language == "" {
+		spec.Language = scriptsCfg.DefaultLanguage
 	}
-	if cmd.Tone == "" {
-		cmd.Tone = scriptsCfg.DefaultTone
+	if spec.Tone == "" {
+		spec.Tone = scriptsCfg.DefaultTone
 	}
-	if cmd.TranscriptPolicy == "" {
-		cmd.TranscriptPolicy = "auto"
+	if spec.TranscriptPolicy == "" {
+		spec.TranscriptPolicy = "auto"
 	}
-	if cmd.OrderingStrategy == "" {
-		cmd.OrderingStrategy = "auto"
+	if spec.OrderingStrategy == "" {
+		spec.OrderingStrategy = "auto"
 	}
-	if cmd.SentencesPerImage <= 0 {
-		cmd.SentencesPerImage = 8
+	if spec.SentencesPerImage <= 0 {
+		spec.SentencesPerImage = 8
 	}
-	if cmd.ImagesPerScene <= 0 {
-		cmd.ImagesPerScene = 1
+	if spec.ImagesPerScene <= 0 {
+		spec.ImagesPerScene = 1
 	}
-	cmd.GenerateVoiceover = true
+	spec.GenerateVoiceover = true
 
-	title, outputName := resolveTitleAndOutputName(cmd.Title, cmd.Topic)
-	cmd.Title = title
-	cmd.OutputName = outputName
+	title, outputName := resolveTitleAndOutputName(spec.Title, spec.Topic)
+	spec.Title = title
+	spec.OutputName = outputName
 
-	cmd.TargetWords = resolveTargetWords(cmd.TargetWords, cmd.MinWords, cmd.Duration, scriptsCfg.MinWordFloor)
+	spec.TargetWords = resolveTargetWords(spec.TargetWords, spec.MinWords, spec.Duration, scriptsCfg.MinWordFloor)
 }
 
 // ── Shared validation & enqueue ────────────────────────────────────────────
 
-func validateClipScript(topic, sourceText string, clipIDs []string, hasClips bool) error {
-	hasTopic := strings.TrimSpace(topic) != "" || strings.TrimSpace(sourceText) != ""
-	if !hasClips && !hasTopic {
+func validateGeneration(spec *scriptjobs.GenerationSpec) error {
+	hasClips := spec.HasClips()
+	hasText := spec.HasText()
+	if !hasClips && !hasText {
 		return fmt.Errorf("provide clip_ids/num_clips for clip-aware mode, or topic/source_text for text-only mode")
 	}
-	if len(clipIDs) > 50 {
+	if len(spec.ClipIDs) > 50 {
 		return fmt.Errorf("clip_ids cannot exceed 50 clips")
 	}
 	return nil
 }
 
-// enqueueClipScript is the shared job enqueue path for FromClips and WithImages.
-// Both endpoints produce a script.generate_from_clips job with the same shape.
-func (s *GenerationService) enqueueClipScript(
+// enqueue builds the GeneratePayload, converts it to the job system's
+// map[string]any format, and enqueues the script.generate_from_clips job.
+func (s *GenerationService) enqueue(
 	ctx context.Context,
-	topic, sourceText, guidelines string,
-	clipIDs []string, numClips int,
-	title, outputName, language, tone, model, driveFolderID string,
-	targetWords, duration, minWords, sentencesPerImage, imagesPerScene int,
-	style string, artlistSearch, stockSearch bool,
-	languages []string, transcriptPolicy, orderingStrategy string,
-	saveToDB, generateTimeline, forceRefresh bool,
-	promptVersion, editorPromptVersion, qaPromptVersion string,
-	voiceoverGroup, voiceoverFolderID string,
-	minQualityScore *float64, minTranscriptWords *int,
-	flags clipScriptDefaults,
+	spec scriptjobs.GenerationSpec,
+	preset scriptjobs.Preset,
 	logLabel string,
 ) (*FromClipsResult, error) {
 	if s.jobsSvc == nil {
 		return nil, fmt.Errorf("jobs service not initialized")
 	}
 
-	payload := map[string]any{
-		"topic":                 topic,
-		"source_text":           sourceText,
-		"guidelines":            guidelines,
-		"clip_ids":              clipIDs,
-		"num_clips":             numClips,
-		"title":                 title,
-		"output_name":           outputName,
-		"language":              language,
-		"tone":                  tone,
-		"model":                 model,
-		"target_words":          targetWords,
-		"duration":              duration,
-		"min_words":             minWords,
-		"extract_entities":      flags.extractEntities,
-		"generate_scene_images": flags.generateSceneImages,
-		"generate_metadata":     flags.generateMetadata,
-		"style":                 style,
-		"artlist_search":        artlistSearch,
-		"stock_search":          stockSearch,
-		"languages":             languages,
-		"transcript_policy":     transcriptPolicy,
-		"ordering_strategy":     orderingStrategy,
-		"save_to_db":            saveToDB,
-		"generate_timeline":     generateTimeline,
-		"force_refresh":         forceRefresh,
-		"prompt_version":        promptVersion,
-		"editor_prompt_version": editorPromptVersion,
-		"qa_prompt_version":     qaPromptVersion,
-		"drive_folder_id":       driveFolderID,
-		"sentences_per_image":   sentencesPerImage,
-		"images_per_scene":      imagesPerScene,
-		"generate_voiceover":    flags.generateVoiceover,
-		"voiceover_group":       voiceoverGroup,
-		"voiceover_folder_id":   voiceoverFolderID,
-	}
-	if minQualityScore != nil {
-		payload["min_quality_score"] = *minQualityScore
-	}
-	if minTranscriptWords != nil {
-		payload["min_transcript_words"] = *minTranscriptWords
+	payload := scriptjobs.NewGeneratePayload(preset, spec)
+	payloadMap, err := toMap(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize payload: %w", err)
 	}
 
 	mode := "text-only"
-	if flags.hasClips {
+	if spec.HasClips() {
 		mode = "clip-aware"
 	}
 	s.log.Info("enqueuing "+logLabel+" job",
 		zap.String("mode", mode),
-		zap.Int("clip_count", len(clipIDs)),
-		zap.String("title", title),
-		zap.Bool("extract_entities", flags.extractEntities),
-		zap.Bool("artlist_search", artlistSearch),
-		zap.Bool("stock_search", stockSearch),
-		zap.Bool("generate_metadata", flags.generateMetadata),
-		zap.Int("images_per_scene", imagesPerScene),
-		zap.Int("sentences_per_image", sentencesPerImage),
+		zap.Int("clip_count", len(spec.ClipIDs)),
+		zap.String("title", spec.Title),
+		zap.Bool("extract_entities", spec.ExtractEntities),
+		zap.Bool("artlist_search", spec.ArtlistSearch),
+		zap.Bool("stock_search", spec.StockSearch),
+		zap.Bool("generate_metadata", spec.GenerateMetadata),
+		zap.Int("images_per_scene", spec.ImagesPerScene),
+		zap.Int("sentences_per_image", spec.SentencesPerImage),
 	)
 
 	job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
-		Type:       "script.generate_from_clips",
-		Payload:    payload,
+		Type:       scriptjobs.JobTypeGenerateFromClips,
+		Payload:    payloadMap,
 		MaxRetries: 2,
 	})
 	if err != nil {
@@ -292,9 +218,9 @@ func (s *GenerationService) enqueueClipScript(
 		return nil, err
 	}
 
-	clipCount := len(clipIDs)
-	if clipCount == 0 && numClips > 0 {
-		clipCount = numClips
+	clipCount := len(spec.ClipIDs)
+	if clipCount == 0 && spec.NumClips > 0 {
+		clipCount = spec.NumClips
 	}
 
 	return &FromClipsResult{
@@ -303,6 +229,21 @@ func (s *GenerationService) enqueueClipScript(
 		Status:    string(job.Status),
 		ClipCount: clipCount,
 	}, nil
+}
+
+// toMap converts a typed value to map[string]any via JSON round-trip.
+// Used to bridge the typed GenerationSpec contract with the job system's
+// map[string]any Payload field.
+func toMap(v interface{}) (map[string]any, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────────────

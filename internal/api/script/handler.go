@@ -6,12 +6,14 @@
 package script
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/generate"
+	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 )
 
 // Handler is the HTTP transport for /api/script endpoints.
@@ -20,12 +22,23 @@ import (
 // ScriptFlowHandler.
 type Handler struct {
 	inner    *ScriptFlowHandler
-	generate *generate.GenerationService
+	generate GenerationService
 }
 
 // NewHandler creates a new script Handler.
-func NewHandler(inner *ScriptFlowHandler, gen *generate.GenerationService) *Handler {
+// The gen parameter is the concrete *generate.GenerationService, which
+// satisfies the GenerationService interface defined below.
+func NewHandler(inner *ScriptFlowHandler, gen GenerationService) *Handler {
 	return &Handler{inner: inner, generate: gen}
+}
+
+// GenerationService is a local interface adapter for the application-layer
+// generation use case, decoupling the HTTP transport from the concrete
+// package. This avoids an import cycle when commands.go is removed and
+// the service accepts scriptjobs.GenerationSpec directly.
+type GenerationService interface {
+	EnqueueFromClips(ctx context.Context, spec scriptjobs.GenerationSpec) (*generate.FromClipsResult, error)
+	EnqueueWithImages(ctx context.Context, spec scriptjobs.GenerationSpec) (*generate.FromClipsResult, error)
 }
 
 // ── Generation endpoints (thin transport) ───────────────────────────────────
@@ -40,7 +53,7 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.generate.EnqueueFromClips(c.Request.Context(), mapFromClipsRequest(&req))
+	result, err := h.generate.EnqueueFromClips(c.Request.Context(), fromClipsRequestToSpec(&req))
 	if err != nil {
 		api.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -63,7 +76,7 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.generate.EnqueueWithImages(c.Request.Context(), mapWithImagesRequest(&req))
+	result, err := h.generate.EnqueueWithImages(c.Request.Context(), withImagesRequestToSpec(&req))
 	if err != nil {
 		api.Error(c, http.StatusInternalServerError, err.Error())
 		return
@@ -110,8 +123,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 // ── Request mapping helpers ─────────────────────────────────────────────────
 
-func mapFromClipsRequest(req *GenerateFromClipsRequest) *generate.FromClipsCommand {
-	return &generate.FromClipsCommand{
+func fromClipsRequestToSpec(req *GenerateFromClipsRequest) scriptjobs.GenerationSpec {
+	return scriptjobs.GenerationSpec{
 		Topic:                req.Topic,
 		SourceText:           req.SourceText,
 		Guidelines:           req.Guidelines,
@@ -151,8 +164,8 @@ func mapFromClipsRequest(req *GenerateFromClipsRequest) *generate.FromClipsComma
 	}
 }
 
-func mapWithImagesRequest(req *GenerateWithImagesRequest) *generate.WithImagesCommand {
-	return &generate.WithImagesCommand{
+func withImagesRequestToSpec(req *GenerateWithImagesRequest) scriptjobs.GenerationSpec {
+	return scriptjobs.GenerationSpec{
 		Topic:                req.Topic,
 		SourceText:           req.SourceText,
 		Guidelines:           req.Guidelines,

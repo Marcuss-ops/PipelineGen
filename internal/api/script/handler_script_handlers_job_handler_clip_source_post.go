@@ -1,12 +1,12 @@
 package script
 
 import (
-
 	"context"
 	"encoding/json"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
@@ -15,7 +15,7 @@ import (
 // Returns the raw entities JSON, structured insights, and per-language video metadata.
 func (h *ScriptFlowHandler) handlePostGeneration(
 	ctx context.Context,
-	payload *jobPayloadUnified,
+	payload *scriptjobs.GenerationSpec,
 	pathResult *clipSourcePathResult,
 ) (entitiesJSON string, insights ScriptInsights, videoMetadata []VideoMetadata) {
 	if !payload.ExtractEntities && !payload.GenerateMetadata {
@@ -63,7 +63,7 @@ func (h *ScriptFlowHandler) handlePostGeneration(
 // handleCreateDoc builds the Google Doc content and creates the document.
 func (h *ScriptFlowHandler) handleCreateDoc(
 	ctx context.Context,
-	payload *jobPayloadUnified,
+	payload *scriptjobs.GenerationSpec,
 	pathResult *clipSourcePathResult,
 	entitiesJSON string,
 	insights ScriptInsights,
@@ -101,7 +101,7 @@ func (h *ScriptFlowHandler) handleCreateDoc(
 
 // buildFinalResult assembles the final result map sent back to the client.
 func (h *ScriptFlowHandler) buildFinalResult(
-	payload *jobPayloadUnified,
+	payload *scriptjobs.GenerationSpec,
 	pathResult *clipSourcePathResult,
 	entitiesJSON string,
 	insights ScriptInsights,
