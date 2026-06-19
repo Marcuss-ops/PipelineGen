@@ -4,6 +4,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -20,6 +21,6 @@ func NewModule(
 		"/script",
 		handler,
 		log,
-		api.WithMiddleware(api.ScriptDocsEnabled(cfg)),
+		api.WithMiddleware(middleware.ScriptDocsEnabled(cfg)),
 	)
 }

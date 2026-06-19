@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/gin-gonic/gin"
@@ -47,7 +48,7 @@ func (m *ScriptHistoryModule) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 
 	group := rg.Group("/scripts")
-	group.Use(ScriptClipsEnabled(m.cfg))
+	group.Use(middleware.ScriptClipsEnabled(m.cfg))
 	m.handler.RegisterRoutes(group)
 }
 

@@ -15,12 +15,13 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 )
 
 // Router holds the API router configuration
 type Router struct {
 	cfg                 *config.Config
-	rateLimitMiddleware *RateLimitMiddleware
+	rateLimitMiddleware *middleware.RateLimitMiddleware
 	registry            *Registry
 	workerHandler       interface{ RegisterRoutes(*gin.RouterGroup) }
 	ctx                 context.Context
@@ -86,9 +87,9 @@ func (r *Router) Setup() *gin.Engine {
 	engine := gin.New()
 
 	// Global middleware
-	engine.Use(RequestID())
-	engine.Use(Logger())
-	engine.Use(Recovery())
+	engine.Use(middleware.RequestID())
+	engine.Use(middleware.Logger())
+	engine.Use(middleware.Recovery())
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	// Root redirect to health
@@ -108,8 +109,8 @@ func (r *Router) Setup() *gin.Engine {
 	healthHandler := NewHealthHandler(r.cfg)
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/api/health", healthHandler.Health)
-	engine.GET("/api/health/deep", Auth(r.cfg), healthHandler.DeepHealth)
-	engine.GET("/api/health/ollama-timeout", Auth(r.cfg), healthHandler.OllamaTimeout)
+	engine.GET("/api/health/deep", middleware.Auth(r.cfg), healthHandler.DeepHealth)
+	engine.GET("/api/health/ollama-timeout", middleware.Auth(r.cfg), healthHandler.OllamaTimeout)
 
 	// Prometheus metrics endpoint — protected if METRICS_AUTH_TOKEN is set
 	metricsHandler := gin.WrapH(promhttp.Handler())
@@ -135,10 +136,10 @@ func (r *Router) Setup() *gin.Engine {
 	{
 		// Protected routes — Auth + RateLimit + WorkspaceScope
 		protected := api.Group("")
-		protected.Use(Auth(r.cfg))
-		r.rateLimitMiddleware = RateLimit(r.cfg)
+		protected.Use(middleware.Auth(r.cfg))
+		r.rateLimitMiddleware = middleware.RateLimit(r.cfg)
 		protected.Use(r.rateLimitMiddleware.Handler)
-		protected.Use(WorkspaceScopeMiddleware())
+		protected.Use(middleware.WorkspaceScopeMiddleware())
 		{
 			// Use module registry for route registration
 			if r.registry != nil {
@@ -151,7 +152,7 @@ func (r *Router) Setup() *gin.Engine {
 	}
 
 	internalGroup := engine.Group("/internal/v1")
-	internalGroup.Use(Auth(r.cfg))
+	internalGroup.Use(middleware.Auth(r.cfg))
 	{
 		if r.workerHandler != nil {
 			r.workerHandler.RegisterRoutes(internalGroup)

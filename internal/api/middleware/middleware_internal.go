@@ -1,4 +1,4 @@
-package api
+package middleware
 
 import (
 	"net/http"
@@ -19,7 +19,7 @@ func RequireServiceToken() gin.HandlerFunc {
 			return
 		}
 
-		apiutil.Error(c, http.StatusForbidden, "internal endpoint: admin or worker token required")
+		c.JSON(http.StatusForbidden, gin.H{"ok": false, "error": "internal endpoint: admin or worker token required"})
 		c.Abort()
 	}
 }
@@ -35,7 +35,7 @@ func RequireAdmin() gin.HandlerFunc {
 			return
 		}
 
-		apiutil.Error(c, http.StatusForbidden, "admin token required")
+		c.JSON(http.StatusForbidden, gin.H{"ok": false, "error": "admin token required"})
 		c.Abort()
 	}
 }
