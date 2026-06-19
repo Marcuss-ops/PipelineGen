@@ -57,7 +57,29 @@ CREATE TABLE jobs_new (
     revision        INTEGER NOT NULL DEFAULT 1
 );
 
-INSERT INTO jobs_new SELECT * FROM jobs;
+-- Column-explicit INSERT: jobs and jobs_new have 22 vs 23 columns and the
+-- column ORDER differs (correlation_id, progress, worker_id and several
+-- timestamps moved).  COALESCE bridges the four nullable-source columns
+-- (payload_json, result_json, error, worker_id) to the new schema's NOT
+-- NULL defaults; revision falls back to DEFAULT 1.
+INSERT INTO jobs_new (
+    id, type, status, priority, project, video_name, active_key,
+    correlation_id, payload_json, result_json, progress, error,
+    retry_count, max_retries, worker_id, lease_id, lease_expiry,
+    created_at, updated_at, started_at, completed_at, cancelled_at
+) SELECT
+    id, type, status, priority, project, video_name, active_key,
+    correlation_id,
+    COALESCE(payload_json, '{}'),
+    COALESCE(result_json, '{}'),
+    progress,
+    COALESCE(error, ''),
+    retry_count, max_retries,
+    COALESCE(worker_id, ''),
+    lease_id, lease_expiry,
+    created_at, updated_at,
+    started_at, completed_at, cancelled_at
+FROM jobs;
 
 DROP TABLE jobs;
 ALTER TABLE jobs_new RENAME TO jobs;
