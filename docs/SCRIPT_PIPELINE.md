@@ -119,8 +119,8 @@
 | `internal/service/gemmamemory/repository.go` | **Memory repository**: CRUD su tabelle gemma |
 | `internal/media/voiceover/service.go` | **Voiceover**: `GenerateWithDestination`, `SemanticTaggerFunc` |
 | `internal/upload/drive/doc_client.go` | **Google Docs**: `CreateDoc`, `UpdateDoc`, `ShareDoc` |
-| `internal/repository/scripts/scripts.go` | **Script repository**: CRUD scripts + research cache |
-| `internal/repository/scripts/types.go` | **Script types**: `ScriptRecord`, `ScriptSectionRecord` |
+| `Removed: scripts/scripts.go` | **Script repository**: CRUD scripts + research cache |
+| `Removed: scripts/types.go` | **Script types**: `ScriptRecord`, `ScriptSectionRecord` |
 | `internal/jobs/service.go` | **Job service**: `Enqueue`, `Get`, `List`, `Cancel`, `Retry` |
 | `internal/jobs/worker.go` | **Job worker**: poll + lease + dispatch + retry backoff + DLQ |
 | `internal/jobs/types.go` | **Job types**: `EnqueueRequest`, `HandlerFunc`, `Dispatcher` |

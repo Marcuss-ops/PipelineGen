@@ -1,15 +1,15 @@
-package artifacts
+﻿package artifacts
 
 import (
 	"path/filepath"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // VoiceoverRecordToClip converts a voiceover.Record to assets.Asset.
-func VoiceoverRecordToClip(rec *voiceovers.Record) *assets.Asset {
+func VoiceoverRecordToClip(rec *sqlite.Record) *assets.Asset {
 	if rec == nil {
 		return nil
 	}
@@ -41,8 +41,8 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *assets.Asset {
 	return clip
 }
 
-// ImageAssetToClip converts an models.ImageAsset to assets.Asset.
-func ImageAssetToClip(assetItem *models.ImageAsset) *assets.Asset {
+// ImageAssetToClip converts an media.ImageAsset to assets.Asset.
+func ImageAssetToClip(assetItem *media.ImageAsset) *assets.Asset {
 	if assetItem == nil {
 		return nil
 	}
@@ -71,4 +71,5 @@ func ImageAssetToClip(assetItem *models.ImageAsset) *assets.Asset {
 	clip.SetLocalPath(assetItem.PathRel)
 	return clip
 }
+
 

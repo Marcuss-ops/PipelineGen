@@ -8,18 +8,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // ChannelsHandler handles CRUD operations for category_channels (channel subscriptions per Drive folder).
 type ChannelsHandler struct {
-	repo *channelsrepo.Repository
+	repo *sqlite.ChannelsRepository
 	log  *zap.Logger
 }
 
 // NewHandler creates a new channels API handler.
-func NewChannelsHandler(repo *channelsrepo.Repository, log *zap.Logger) *ChannelsHandler {
+func NewChannelsHandler(repo *sqlite.ChannelsRepository, log *zap.Logger) *ChannelsHandler {
 	return &ChannelsHandler{repo: repo, log: log}
 }
 
@@ -95,7 +95,7 @@ func (h *ChannelsHandler) Upsert(c *gin.Context) {
 		return
 	}
 
-	ch := &models.CategoryChannel{
+	ch := &media.CategoryChannel{
 		ID:               req.ID,
 		Category:         req.Category,
 		ChannelURL:       req.ChannelURL,

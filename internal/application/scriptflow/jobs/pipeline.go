@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
@@ -36,7 +36,7 @@ type Pipeline struct {
 
 	// PostGeneration runs entity extraction and metadata generation.
 	// Returns entities JSON, insights (any for JSON-agnostic transport), and video metadata.
-	postGeneration func(ctx context.Context, spec *scriptjobs.GenerationSpec, script string) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata)
+	postGeneration func(ctx context.Context, spec *script.GenerationSpec, script string) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata)
 
 	// ResolveFolder resolves a folder name/ID to a Drive folder ID.
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error)
@@ -48,7 +48,7 @@ func NewPipeline(
 	jobID string,
 	scenesSvc *scenes.Service,
 	docsSvc *documents.Service,
-	postGeneration func(ctx context.Context, spec *scriptjobs.GenerationSpec, script string) (string, any, []documents.VideoMetadata),
+	postGeneration func(ctx context.Context, spec *script.GenerationSpec, script string) (string, any, []documents.VideoMetadata),
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
 ) *Pipeline {
 	return &Pipeline{
@@ -78,7 +78,7 @@ type RunResult struct {
 // tools provides progress/event callbacks.
 func (p *Pipeline) Run(
 	ctx context.Context,
-	spec *scriptjobs.GenerationSpec,
+	spec *script.GenerationSpec,
 	script string,
 	tools *jobservice.JobTools,
 ) (*RunResult, error) {
@@ -216,7 +216,7 @@ func (p *Pipeline) Run(
 // createDoc builds the Google Doc content and creates it.
 func (p *Pipeline) createDoc(
 	ctx context.Context,
-	spec *scriptjobs.GenerationSpec,
+	spec *script.GenerationSpec,
 	script string,
 	entitiesJSON string,
 	insights any,

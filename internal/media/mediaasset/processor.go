@@ -141,7 +141,7 @@ func (p *Processor) Process(ctx context.Context, input *processor.ProcessInput) 
 			result.DownloadLink = existing.DownloadLink
 			result.Status = "duplicate"
 
-			// Clean up local files to avoid duplicate storage.
+			// Clean up local files to avoid duplicate drive.
 			_ = os.Remove(actualRawPath)
 			_ = os.Remove(processedPath)
 

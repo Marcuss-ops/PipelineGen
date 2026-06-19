@@ -3,13 +3,13 @@ package youtube
 import (
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	similarity "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // ── Semantic text builder ──────────────────────────────────────────────
 
-func buildManifestSemanticText(item models.ClipManifestItem) string {
+func buildManifestSemanticText(item media.ClipManifestItem) string {
 	parts := []string{
 		item.CleanTitle,
 		item.ClipSummary,
@@ -78,7 +78,7 @@ func tokenSetFromStrings(values ...[]string) map[string]struct{} {
 
 // ── Duplicate detection ────────────────────────────────────────────────
 
-func shouldMarkDuplicate(a, b *models.ClipManifestItem, ra, rb *clipIntelligenceRecord) bool {
+func shouldMarkDuplicate(a, b *media.ClipManifestItem, ra, rb *clipIntelligenceRecord) bool {
 	if a == nil || b == nil || a.ID == "" || b.ID == "" || a.ID == b.ID {
 		return false
 	}
@@ -100,7 +100,7 @@ func shouldMarkDuplicate(a, b *models.ClipManifestItem, ra, rb *clipIntelligence
 	return false
 }
 
-func duplicateSimilarityScore(a, b *models.ClipManifestItem) float64 {
+func duplicateSimilarityScore(a, b *media.ClipManifestItem) float64 {
 	if a == nil || b == nil {
 		return 0
 	}

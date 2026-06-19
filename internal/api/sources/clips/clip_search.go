@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // AllSources is the canonical list of clip source names covered by the
@@ -29,7 +29,7 @@ var AllSources = []string{"youtube", "artlist", "stock"}
 //	@Success		200  {object} object
 //	@Router			/api/media/search/advanced [post]
 func (h *Handler) AdvancedSearch(c *gin.Context) {
-	var req clips.AdvancedSearchRequest
+	var req sqlite.AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
 		return
@@ -39,7 +39,7 @@ func (h *Handler) AdvancedSearch(c *gin.Context) {
 	req.Q = strings.TrimSpace(req.Q)
 
 	// Build the per-source repo lookup. nil repos are skipped (no error).
-	repos := map[string]*clips.Repository{
+	repos := map[string]*sqlite.ClipsRepository{
 		"youtube": h.clipsRepo,
 		"artlist": h.artlistRepo,
 		"stock":   h.stockRepo,

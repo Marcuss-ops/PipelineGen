@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
-func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {
+func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*media.ImageAsset, error) {
 	// Enrich tags and subject from prompt if needed
 	promptSubject, promptTags := extractSubjectAndTags(description)
 	if slug == "" || slug == "unknown" {
@@ -30,7 +30,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	// 1. Trova Soggetto (o crealo)
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
 	if err != nil || subject == nil {
-		subject = &models.Subject{
+		subject = &media.Subject{
 			Slug:        slug,
 			DisplayName: slug,
 		}
@@ -46,12 +46,12 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 
 	// Create request for resolver
-	// Source is a typed string (storage.SourceType = models.SourceType);
+	// Source is a typed string (drive.SourceType = media.SourceType);
 	// the caller-supplied `source` is a plain string (e.g. "google-flow"),
 	// so we explicitly cast to satisfy the literal.
-	req := storage.AssetDestinationRequest{
-		Source:       storage.SourceType(source), // Use the provided source (e.g. google-flow)
-		MediaType:    storage.MediaTypeImage,
+	req := drive.AssetDestinationRequest{
+		Source:       drive.SourceType(source), // Use the provided source (e.g. google-flow)
+		MediaType:    drive.MediaTypeImage,
 		Subject:      slug, // Prompt slug
 		Hash:         hash,
 		Ext:          ext,
@@ -137,7 +137,7 @@ func (s *Service) ingestDirect(ctx context.Context, slug, style, genID string, c
 	}
 
 	// 8. Crea record DB con dimensioni reali
-	asset := &models.ImageAsset{
+	asset := &media.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      relPath,

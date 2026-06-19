@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
@@ -18,7 +18,7 @@ import (
 // the catalog sync should not overwrite (hash, local_path, metadata, tags).
 // Routes through the canonical outbox dispatcher when available, so the
 // media_assets UPDATE and the outbox_events INSERT commit atomically.
-func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *assets.Asset) error {
+func (s *Service) upsertPreservingExisting(ctx context.Context, repo *sqlite.ClipsRepository, clip *assets.Asset) error {
 	if repo == nil || clip == nil {
 		return nil
 	}

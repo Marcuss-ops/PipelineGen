@@ -1,19 +1,19 @@
-package voiceover
+﻿package voiceover
 
 import (
 	"context"
 	"encoding/json"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	timeutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type voiceoverRegistryAdapter struct {
-	repo *voiceovers.Repository
+	repo *sqlite.VoiceoversRepository
 }
 
-func NewVoiceoverRegistryAdapter(repo *voiceovers.Repository) artifacts.Registry {
+func NewVoiceoverRegistryAdapter(repo *sqlite.VoiceoversRepository) artifacts.Registry {
 	return &voiceoverRegistryAdapter{repo: repo}
 }
 
@@ -52,11 +52,11 @@ func (a *voiceoverRegistryAdapter) GetAllWithDriveFileID(ctx context.Context) ([
 }
 
 func (a *voiceoverRegistryAdapter) FindByPHash(ctx context.Context, phash string) (string, error) {
-	// Voiceovers are audio — pHash is not applicable.
+	// Voiceovers are audio â€” pHash is not applicable.
 	return "", nil
 }
 
-func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *voiceovers.Record {
+func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *sqlite.Record {
 	var meta struct {
 		TextHash    string `json:"text_hash"`
 		TextPreview string `json:"text_preview"`
@@ -70,7 +70,7 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *voiceovers.Record 
 	}
 	_ = json.Unmarshal([]byte(mediaRec.Metadata), &meta)
 
-	rec := &voiceovers.Record{
+	rec := &sqlite.Record{
 		ID:           mediaRec.ID,
 		RequestID:    meta.RequestID,
 		TextHash:     meta.TextHash,
@@ -102,7 +102,7 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) *voiceovers.Record 
 	return rec
 }
 
-func voiceoverToMediaRecord(rec *voiceovers.Record) *artifacts.MediaRecord {
+func voiceoverToMediaRecord(rec *sqlite.Record) *artifacts.MediaRecord {
 	meta := map[string]any{
 		"text_hash":    rec.TextHash,
 		"text_preview": rec.TextPreview,
@@ -134,3 +134,4 @@ func voiceoverToMediaRecord(rec *voiceovers.Record) *artifacts.MediaRecord {
 		Metadata:     string(metaJSON),
 	}
 }
+

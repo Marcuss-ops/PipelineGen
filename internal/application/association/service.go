@@ -9,8 +9,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	termutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -22,9 +22,9 @@ import (
 type Service struct {
 	dataDir        string
 	nodeScraperDir string
-	stockRepo      *clips.Repository
-	artlistRepo    *clips.Repository
-	clipsRepo      *clips.Repository
+	stockRepo      *sqlite.ClipsRepository
+	artlistRepo    *sqlite.ClipsRepository
+	clipsRepo      *sqlite.ClipsRepository
 	catalogRepo    *catalog.Repository
 	engine         *Engine
 	clipSearch     *ClipSearchAssociation
@@ -46,7 +46,7 @@ func (s *Service) SetEmbedder(e embedding.Embedder) {
 }
 
 // NewService creates an association service with the default engine and sources.
-func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRepo, clipsRepo *clips.Repository, catalogRepo *catalog.Repository) *Service {
+func NewService(dataDir, nodeScraperDir, scriptsDir string, stockRepo, artlistRepo, clipsRepo *sqlite.ClipsRepository, catalogRepo *catalog.Repository) *Service {
 	s := &Service{
 		dataDir:        dataDir,
 		nodeScraperDir: nodeScraperDir,

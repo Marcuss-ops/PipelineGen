@@ -14,12 +14,12 @@ import (
 type SearchService struct {
 	service *Service
 	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
-	// When nil, UpsertClip falls back to the legacy clips.Repository path so
+	// When nil, UpsertClip falls back to the legacy sqlite.ClipsRepository path so
 	// existing callers/tests continue to work. When wired, UpsertClip converts
 	// the legacy *models.MediaAsset to *asset.MediaAsset via toDomain, then
 	// routes through assetrepo.Upsert — which writes both the new canonical
 	// columns and the legacy columns in the same row so legacy readers
-	// (clips.Repository) continue to see the data unchanged.
+	// (sqlite.ClipsRepository) continue to see the data unchanged.
 	assetRepo assets.Repository
 }
 
@@ -262,17 +262,17 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*assets
 // UpsertClip inserts or updates a clip in the database.
 //
 // PR12b: when ss.assetRepo is wired (via SetAssetRepo), this method routes
-// through toDomain + assetrepo.Upsert instead of the legacy clips.Repository path.
+// through toDomain + assetrepo.Upsert instead of the legacy sqlite.ClipsRepository path.
 // assetrepo.Upsert writes both new canonical columns (lifecycle_state, category,
 // quality_score, scene_type, ...) and the legacy columns (drive_file_id,
 // drive_link, download_link, local_path, file_hash, ...) in the same row, so
-// legacy readers (clips.Repository.Get) still observe unchanged data. The
+// legacy readers (sqlite.ClipsRepository.Get) still observe unchanged data. The
 // asset.upserted outbox event is emitted in the same transaction so downstream
 // consumers (semantic_enricher, dispatcher, search indexers) see the canonical
 // pointer.
 //
 // When ss.assetRepo is nil (default boot path), behavior is unchanged:
-// clip is written via clips.Repository.UpsertClip with no outbox event.
+// clip is written via sqlite.ClipsRepository.UpsertClip with no outbox event.
 func (ss *SearchService) UpsertClip(ctx context.Context, clip *assets.Asset) error {
 	if ss.assetRepo != nil {
 		return ss.assetRepo.Upsert(ctx, clip)

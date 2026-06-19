@@ -1,4 +1,4 @@
-package voiceoversync
+﻿package voiceoversync
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
@@ -20,12 +20,12 @@ const folderMimeType = "application/vnd.google-apps.folder"
 type Service struct {
 	uploader     *driveup.Uploader
 	log          *zap.Logger
-	repo         *voiceovers.Repository
+	repo         *sqlite.VoiceoversRepository
 	assetTreeSvc *assettree.Service
 	rootFolderID string
 }
 
-func NewService(uploader *driveup.Uploader, repo *voiceovers.Repository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
+func NewService(uploader *driveup.Uploader, repo *sqlite.VoiceoversRepository, assetTreeSvc *assettree.Service, rootFolderID string, log *zap.Logger) *Service {
 	return &Service{
 		uploader:     uploader,
 		log:          log,
@@ -173,7 +173,7 @@ func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, file
 	}
 
 	now := time.Now().UTC()
-	rec := &voiceovers.Record{
+	rec := &sqlite.Record{
 		ID:           id,
 		RequestID:    "sync_" + time.Now().Format("20060102"),
 		TextHash:     file.ID, // Use drive file ID as hash for synced files
@@ -285,3 +285,4 @@ func (s *Service) extractLanguage(filename string) string {
 	}
 	return "unknown"
 }
+

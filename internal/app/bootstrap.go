@@ -23,16 +23,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/deliveries"
 	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/monitors"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
+
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
@@ -45,7 +44,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
-	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
@@ -107,12 +106,12 @@ type CoreDeps struct {
 	Utility            *common.UtilityHandler
 	DB                 *storage.SQLiteDB // Unified database (scripts, jobs, asset index, media assets)
 	ScriptsRepo        *scriptcore.ScriptRepository
-	ImageRepo          *images.Repository
+	ImageRepo          *sqlite.ImagesRepository
 	ImageService       *imgservice.Service
-	ClipsRepo          *clips.Repository // canonical unified clips repository
+	ClipsRepo          *sqlite.ClipsRepository // canonical unified clips repository
 	Assets             *assets.Service   // unified assets service authority (PR2)
-	MonitorsRepo       *monitors.Repository
-	VoiceoverRepo      *voiceovers.Repository
+	MonitorsRepo       *sqlite.MonitorsRepository
+	VoiceoverRepo      *sqlite.VoiceoversRepository
 	VoiceoverService   *voiceover.Service
 	VoiceoverSync      *voiceoversync.Service
 	ClipIndexerService *clipindexer.Service
@@ -140,9 +139,6 @@ type CoreDeps struct {
 	LessonsHandler     *lessonsHandler.LessonsHandler
 	MediaStore         *mediastorage.Store
 	ArtifactService    *artifacts.Service
-	DeliveryService    *deliveries.Service
-	DeliveryRunner     *deliveries.Runner
-
 	// startJobRunner is set by initCoreMinimal and invoked by WireServices
 	// after WireRegistry completes, ensuring all job handlers are registered
 	// before workers begin claiming jobs.
@@ -200,7 +196,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 	jobs := startBackgroundJobs(ctx, cfg, dbs, svcs, log, mode)
 
 	// 6. Create VoiceoverRepo
-	voRepo := voiceovers.NewRepository(dbs.main.DB)
+	voRepo := sqlite.NewVoiceoversRepository(dbs.main.DB)
 
 	// 7. Cleanup
 	cleanup := buildCleanup(dbs, jobs, cancel, log)

@@ -209,7 +209,7 @@ package lessons
 import (
     "database/sql"
     "github.com/Marcuss-ops/PipelineGen/internal/ml/ollama"
-    imgservice "github.com/Marcuss-ops/PipelineGen/internal/media/images"
+    imgservice "github.com/Marcuss-ops/PipelineGen/docs/images"
     "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
     "go.uber.org/zap"
 )
@@ -598,7 +598,7 @@ lessonsSvc := lessons.NewService(
 | **Ollama Client** | `internal/ml/ollama/client/` | Chat API con retry, fallback, circuit breaker |
 | **Generator** | `internal/ml/ollama/generate.go` | `GenerateScript()`, `TranslateText()` |
 | **ParallelMap** | `pkg/concurrent/` | Concorrenza capitoli (già usato in `job_handler.go`) |
-| **Image Generation** | `internal/media/images/` | `GenerateSmartImage()` (Google Vids → NVIDIA) |
+| **Image Generation** | `docs/images/` | `GenerateSmartImage()` (Google Vids → NVIDIA) |
 | **Drive Upload** | `internal/upload/drive/` | Google Docs & Drive files |
 | **Doc Client** | `drive.DocClient` | `CreateDoc()` per Google Docs |
 | **Job System** | `internal/jobs/` | Elaborazione asincrona con progress |

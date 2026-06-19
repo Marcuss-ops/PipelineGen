@@ -38,11 +38,11 @@ func TestPersistentLoggerMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Create an in-memory SQLite database for testing
-	db := storage.NewTestDB(t, &storage.TestDBOpts{InMemory: true})
+	db := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
 	defer db.Close()
 
 	// Set up the api_requests table (simulating migration 008)
-	storage.MustExec(t, db, `
+	drive.MustExec(t, db, `
 		CREATE TABLE api_requests (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			ts DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -126,7 +126,7 @@ func TestLoggerBackpressure(t *testing.T) {
 	})
 
 	// Set a mock logDB directly WITHOUT calling SetLogDB (to not start writer)
-	dummyDB := storage.NewTestDB(t, &storage.TestDBOpts{InMemory: true})
+	dummyDB := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
 	defer dummyDB.Close()
 	logDB = dummyDB
 

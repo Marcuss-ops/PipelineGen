@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
@@ -107,7 +107,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	return rootSummary, err
 }
 
-func (s *Service) syncFolderRecursive(ctx context.Context, repo *clips.Repository, folderID, rootID, folderPath string, target Target, seenFolderIDs map[string]struct{}) (int, int, int, error) {
+func (s *Service) syncFolderRecursive(ctx context.Context, repo *sqlite.ClipsRepository, folderID, rootID, folderPath string, target Target, seenFolderIDs map[string]struct{}) (int, int, int, error) {
 	children, err := s.listChildren(ctx, folderID)
 	if err != nil {
 		return 0, 0, 1, err

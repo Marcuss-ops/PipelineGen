@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -28,7 +28,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-	var children []*models.AssetNode
+	var children []*media.AssetNode
 	var err error
 
 	if h.assetTreeSvc != nil {
@@ -41,7 +41,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 			err = treeErr
 		}
 	} else {
-		children = []*models.AssetNode{}
+		children = []*media.AssetNode{}
 		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
 		if clipErr == nil {
 			for _, clip := range clipChildren {
@@ -86,7 +86,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 		return
 	}
 
-	var children []*models.AssetNode
+	var children []*media.AssetNode
 	for _, tn := range treeNodes {
 		children = append(children, treeNodeToAssetNode(tn))
 	}

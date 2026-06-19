@@ -17,10 +17,10 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
@@ -29,7 +29,7 @@ import (
 
 // ImageService captures the image generation method the scenes package needs.
 type ImageService interface {
-	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*models.ImageAsset, error)
+	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*media.ImageAsset, error)
 }
 
 // VoiceoverService captures the voiceover generation method the scenes package needs.
@@ -105,7 +105,7 @@ type ProgressReporter func(pct int, msg string)
 // GenerateImages splits the script into scenes and generates AI images.
 func (s *Service) GenerateImages(
 	ctx context.Context,
-	spec *scriptjobs.GenerationSpec,
+	spec *script.GenerationSpec,
 	script string,
 	reportProgress ProgressReporter,
 ) []SceneImage {
@@ -252,7 +252,7 @@ func (s *Service) GenerateImages(
 // GenerateVoiceovers generates voiceovers for each scene in parallel.
 func (s *Service) GenerateVoiceovers(
 	ctx context.Context,
-	spec *scriptjobs.GenerationSpec,
+	spec *script.GenerationSpec,
 	scenes []SceneImage,
 ) []SceneVoiceover {
 	if s.voSvc == nil || !spec.GenerateVoiceover || len(scenes) == 0 {

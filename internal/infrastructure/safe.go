@@ -11,3 +11,8 @@ func SafeGo(name string, fn func()) { pkgconcurrent.SafeGo(name, fn) }
 
 // Deprecated: use pkg/concurrent.SafeGoFunc.
 func SafeGoFunc[T any](name string, arg T, fn func(T)) { pkgconcurrent.SafeGoFunc(name, arg, fn) }
+
+// Deprecated: use pkg/concurrent.ParallelMap.
+func ParallelMap[T, R any](items []T, concurrency int, fn func(int, T) R) []R {
+	return pkgconcurrent.ParallelMap(items, concurrency, fn)
+}

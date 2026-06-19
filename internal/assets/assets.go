@@ -4,21 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
-
-// ErrNotFound is re-exported from the domain package for backward compatibility.
-var ErrNotFound = asset.ErrNotFound
-
-// ErrAlreadyExists is re-exported from the domain package for backward compatibility.
-var ErrAlreadyExists = asset.ErrAlreadyExists
-
-// ErrInvalidID is re-exported from the domain package for backward compatibility.
-var ErrInvalidID = asset.ErrInvalidID
-
-// ErrSoftDeleted is re-exported from the domain package for backward compatibility.
-var ErrSoftDeleted = asset.ErrSoftDeleted
 
 // ── AssetStoreSQLite ────────────────────────────────────────────────
 
@@ -35,16 +22,6 @@ func NewAssetStoreSQLite(db *sql.DB, log *zap.Logger) *AssetStoreSQLite {
 		log = zap.NewNop()
 	}
 	return &AssetStoreSQLite{db: db, log: log}
-}
-
-// ── Store Interface (assets-specific, not in domain) ────────────────
-
-// Store represents the unified CRUD repository for assets with nested entities.
-type Store interface {
-	Get(ctx context.Context, id string) (*Details, error)
-	List(ctx context.Context, filter Filter) ([]*Summary, error)
-	Save(ctx context.Context, details *Details) error
-	Delete(ctx context.Context, id string) error
 }
 
 // ── Service Class ───────────────────────────────────────────────────

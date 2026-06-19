@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type contextKey string
@@ -138,7 +138,7 @@ func (s *Service) tagImageMetadata(ctx context.Context, prompt, style, generator
 // uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
 // Uses a pre-computed semantic.WriteResult — does NOT call the tagger again.
 // This avoids duplicating the Python subprocess call that tagImageMetadata already made.
-func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDestinationRequest, result *semantic.WriteResult) {
+func (s *Service) uploadImageMetadata(ctx context.Context, req drive.AssetDestinationRequest, result *semantic.WriteResult) {
 	if result == nil || result.LocalPath == "" {
 		s.log.Warn("uploadImageMetadata: nil result or empty local path")
 		return
@@ -165,7 +165,7 @@ func (s *Service) uploadImageMetadata(ctx context.Context, req storage.AssetDest
 }
 
 // UploadBatchMetadata writes a single metadata.json for a group of assets.
-func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*models.ImageAsset) {
+func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*media.ImageAsset) {
 	s.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
 	if s.metaWriter == nil {
 		s.log.Warn("UploadBatchMetadata: metadata writer not configured")
@@ -213,9 +213,9 @@ func (s *Service) UploadBatchMetadata(ctx context.Context, genID, slug, style, p
 	}
 
 	// Upload metadata.json via Drive
-	req := storage.AssetDestinationRequest{
-		Source:       storage.SourceImage,
-		MediaType:    storage.MediaTypeImage,
+	req := drive.AssetDestinationRequest{
+		Source:       drive.SourceImage,
+		MediaType:    drive.MediaTypeImage,
 		Subject:      slug,
 		GenerationID: genID,
 		Style:        style,

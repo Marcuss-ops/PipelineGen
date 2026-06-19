@@ -17,9 +17,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
+
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -35,9 +35,9 @@ import (
 // future dep additions non-breaking.
 type Deps struct {
 	AssetRepo      assets.Repository
-	ClipsRepo      *clips.Repository
-	StockRepo      *clips.Repository
-	ArtlistRepo    *clips.Repository
+	ClipsRepo      *sqlite.ClipsRepository
+	StockRepo      *sqlite.ClipsRepository
+	ArtlistRepo    *sqlite.ClipsRepository
 	DeletionSvc    *media.DeletionService
 	DriveUploader  *drive.Uploader
 	MediaProcessor processor.Processor
@@ -50,11 +50,11 @@ type Deps struct {
 	Log            *zap.Logger
 	// VoiceoverRepo enables the voiceover-source branch in DownloadClip.
 	// Nil-tolerated so absence of voiceover wiring never crashes the chain.
-	VoiceoverRepo *voiceovers.Repository
+	VoiceoverRepo *sqlite.VoiceoversRepository
 	// ImagesRepo enables the "source=images" branch in ListClips.
 	// Nil-tolerated; nil means GET /:source/clips for that source returns 400.
-	ImagesRepo *images.Repository
-	// ArtifactSvc streams uploaded files through content-addressed storage.
+	ImagesRepo *sqlite.ImagesRepository
+	// ArtifactSvc streams uploaded files through content-addressed drive.
 	// Used by UploadVideoClip. Nil means POST /upload-video returns 500.
 	ArtifactSvc *artifacts.Service
 	// FolderMemSvc runs the legacy folder heuristic for manifest regen.
@@ -66,9 +66,9 @@ type Deps struct {
 // no nested struct fan-out.
 type Handler struct {
 	assetRepo      assets.Repository
-	clipsRepo      *clips.Repository
-	stockRepo      *clips.Repository
-	artlistRepo    *clips.Repository
+	clipsRepo      *sqlite.ClipsRepository
+	stockRepo      *sqlite.ClipsRepository
+	artlistRepo    *sqlite.ClipsRepository
 	deletionSvc    *media.DeletionService
 	driveUploader  *drive.Uploader
 	mediaProcessor processor.Processor
@@ -83,9 +83,9 @@ type Handler struct {
 	// or post-construction SetVoiceoverRepo. Both paths keep the same
 	// repo reference; switching mid-process picks up the new repo on the
 	// next handler invocation.
-	voiceoverRepo *voiceovers.Repository
+	voiceoverRepo *sqlite.VoiceoversRepository
 	// imagesRepo mirrors Deps.ImagesRepo. Same late-binding semantics.
-	imagesRepo *images.Repository
+	imagesRepo *sqlite.ImagesRepository
 	// artifactSvc mirrors Deps.ArtifactSvc. Same late-binding semantics.
 	artifactSvc *artifacts.Service
 	// folderMemSvc mirrors Deps.FolderMemSvc. Same late-binding semantics.
@@ -120,20 +120,20 @@ func NewHandler(d Deps) *Handler {
 
 // SetVoiceoverRepo is a post-construction setter for late-binding the
 // voiceover repository. SourcesHandler.SetVoiceoverRepo delegates here.
-func (h *Handler) SetVoiceoverRepo(repo *voiceovers.Repository) {
+func (h *Handler) SetVoiceoverRepo(repo *sqlite.VoiceoversRepository) {
 	h.voiceoverRepo = repo
 }
 
 // SetImagesRepo is a post-construction setter for the images repository.
 // Mirrors SourcesHandler.SetImagesRepo. clips.Handler reads it in
 // ListClips for the "source=images" branch.
-func (h *Handler) SetImagesRepo(repo *images.Repository) {
+func (h *Handler) SetImagesRepo(repo *sqlite.ImagesRepository) {
 	h.imagesRepo = repo
 }
 
 // SetArtifactSvc is a post-construction setter for the artifact service.
 // Mirrors SourcesHandler.SetArtifactSvc. clips.Handler uses it in
-// UploadVideoClip for content-addressed blob storage.
+// UploadVideoClip for content-addressed blob drive.
 func (h *Handler) SetArtifactSvc(svc *artifacts.Service) {
 	h.artifactSvc = svc
 }
@@ -147,7 +147,7 @@ func (h *Handler) SetFolderMemSvc(svc *foldermemory.Service) {
 
 // resolveRepo standardizes source-string → sqliteclips.Repository dispatch.
 // Returns nil for unknown sources (callers must validate before use).
-func (h *Handler) resolveRepo(source string) *clips.Repository {
+func (h *Handler) resolveRepo(source string) *sqlite.ClipsRepository {
 	switch source {
 	case "youtube":
 		return h.clipsRepo

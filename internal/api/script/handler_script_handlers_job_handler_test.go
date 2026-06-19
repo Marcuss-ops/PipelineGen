@@ -499,7 +499,7 @@ func setupResearchCacheDB(t *testing.T) (*sql.DB, *scripts.ScriptRepository, con
 		CREATE INDEX IF NOT EXISTS idx_research_cache_last_used ON research_cache(last_used);
 	`
 
-	db := storage.NewTestDBWithSchema(t, schema)
+	db := drive.NewTestDBWithSchema(t, schema)
 
 	repo := scripts.NewScriptRepository(db)
 	ctx := context.Background()

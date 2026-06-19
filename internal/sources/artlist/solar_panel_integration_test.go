@@ -12,14 +12,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // solarTestSchema composes the canonical media_assets CREATE TABLE
 // (see internal/storage/canonical.go) plus the companion clip_search_terms
 // table. Same composition rationale as artlistTestSchema.
-const solarTestSchema = storage.CanonicalMediaAssetsSchema + `
+const solarTestSchema = drive.CanonicalMediaAssetsSchema + `
 	CREATE TABLE IF NOT EXISTS clip_search_terms (
 		clip_id TEXT NOT NULL,
 		term TEXT NOT NULL,
@@ -99,11 +99,11 @@ process.stdout.write(JSON.stringify({
 func TestSolarPanelSearch(t *testing.T) {
 	scraperDir := writeFakeSolarScraper(t)
 	tmpDir := t.TempDir()
-	db := storage.NewTestDBWithSchema(t, solarTestSchema)
+	db := drive.NewTestDBWithSchema(t, solarTestSchema)
 	defer db.Close()
 
 	logger := zap.NewNop()
-	repo := clips.NewRepository(db, logger)
+	repo := sqlite.NewClipsRepository(db, logger)
 
 	cfg := &config.Config{
 		Storage: config.StorageConfig{DataDir: tmpDir},

@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -59,7 +59,7 @@ type Service struct {
 	youtubeSvc  *youtube.Service
 	clipIndexer *clipindexer.Service
 	metaWriter  *semantic.MetadataWriter
-	clipsRepo   *clips.Repository
+	clipsRepo   *sqlite.ClipsRepository
 	// dispatcher is set after construction via SetDispatcher so the
 	// atomic upsert+outbox-enqueue path is used for stock uploads. nil is
 	// tolerated for back-compat (tests, partial wiring); Upload falls
@@ -88,7 +88,7 @@ func NewService(cfg *config.Config, log *zap.Logger, driveSvc *gdrive.Service) *
 }
 
 // SetClipsRepo injects the clips repository dependency.
-func (s *Service) SetClipsRepo(repo *clips.Repository) {
+func (s *Service) SetClipsRepo(repo *sqlite.ClipsRepository) {
 	s.clipsRepo = repo
 }
 

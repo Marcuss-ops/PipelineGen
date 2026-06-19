@@ -390,8 +390,8 @@ cat google-accounting/logs/sync.log | grep 'Dedicated Vids project'
 | File | Ruolo |
 |------|-------|
 | `pkg/googleaccounting/models.go` | `VidsImageRequest` con campo `Isolated *bool` |
-| `internal/media/images/google_generate.go` | `GenerateSmartImage()` — `Isolated: true` |
-| `internal/media/images/google_vids.go` | `GenerateVidsImage()` — `Isolated: true` |
+| `docs/images/google_generate.go` | `GenerateSmartImage()` — `Isolated: true` |
+| `docs/images/google_vids.go` | `GenerateVidsImage()` — `Isolated: true` |
 | `internal/api/handlers/script/handlers/job_handler_clip_source.go` | `HandleClipScriptGenerateJob` (pipeline unificata) |
 
 ### Python (google-accounting)

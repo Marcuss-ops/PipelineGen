@@ -11,8 +11,8 @@ import (
 	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
-	clipsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	searchqueriesrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/searchqueries"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
@@ -101,7 +101,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 
 			// Wire search queries repo for topic-based searches
 			if dbForChannels != nil {
-				sqRepo := searchqueriesrepo.NewRepository(dbForChannels)
+				sqRepo := sqlite.NewSearchQueriesRepository(dbForChannels)
 				channelMon.SetSearchQueriesRepo(sqRepo)
 				log.Info("Search queries repo wired to channel monitor")
 			}
@@ -287,13 +287,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		})
 	}
 
-	// ── Delivery runner (always runs if deliveries service exists) ────
-	if svcs.DeliveryService != nil && svcs.DeliveryRunner != nil {
-		pf.SafeGo("delivery-runner", func() {
-			log.Info("Delivery runner starting")
-			svcs.DeliveryRunner.Start(ctx)
-		})
-	}
 
 	return &backgroundJobs{
 		channelMonitor:    channelMon,
@@ -398,7 +391,7 @@ func startQdrantHealthMonitor(ctx context.Context, vectorSvc *vectorstore.Servic
 // share the same youtube_video_id (and matching start/end if present).
 // For each group with >1 entries, the most-recently-created clip is kept
 // and the rest are soft-deleted. Runs every 30 minutes by default.
-func startClipDedupSweeper(ctx context.Context, clipsRepo *clipsrepo.Repository, log *zap.Logger) {
+func startClipDedupSweeper(ctx context.Context, clipsRepo *sqlite.ClipsRepository, log *zap.Logger) {
 	const (
 		initialDelay = 2 * time.Minute
 		interval     = 30 * time.Minute
@@ -440,7 +433,7 @@ func startClipDedupSweeper(ctx context.Context, clipsRepo *clipsrepo.Repository,
 // soft-deletes all but the newest entry. Returns the number of clips
 // soft-deleted. Safe to call concurrently — it uses soft-delete
 // (metadata_json.deleted_at), not HARD DELETE.
-func runDedupSweep(ctx context.Context, clipsRepo *clipsrepo.Repository, log *zap.Logger) (int, error) {
+func runDedupSweep(ctx context.Context, clipsRepo *sqlite.ClipsRepository, log *zap.Logger) (int, error) {
 	// Pull the list of distinct youtube_video_ids with duplicates.
 	rows, err := clipsRepo.DB().QueryContext(ctx, `
 		SELECT json_extract(metadata_json, '$.youtube_video_id') AS vid, COUNT(*) AS n

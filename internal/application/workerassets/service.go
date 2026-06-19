@@ -14,16 +14,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type Service struct {
 	assetIndex    *assetindex.Service
 	querySvc      *assets.Service
-	imagesRepo    *images.Repository
-	voiceoverRepo *voiceovers.Repository
+	imagesRepo    *sqlite.ImagesRepository
+	voiceoverRepo *sqlite.VoiceoversRepository
 	uploadRoot    string
 	httpClient    *http.Client
 	log           *zap.Logger
@@ -42,11 +42,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, log *zap.Logger) *Service {
+func NewService(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *sqlite.ImagesRepository, voiceoverRepo *sqlite.VoiceoversRepository, log *zap.Logger) *Service {
 	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *images.Repository, voiceoverRepo *voiceovers.Repository, uploadRoot string, log *zap.Logger) *Service {
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *sqlite.ImagesRepository, voiceoverRepo *sqlite.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}

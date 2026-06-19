@@ -66,7 +66,7 @@ Chiamati dal backend Go via `exec.Command`.
 | `index_clips.py` | `internal/media/clipindexer/service.go` | sentence-transformers, spacy, yake |
 | `generate_embedding.py` | `internal/media/association/embeddings.go` | sentence-transformers |
 | `tts_edge.py` | `internal/media/audioasset/processor.go` | edge-tts |
-| `animate_image.py` | `internal/media/images/animate.go` | ffmpeg |
+| `animate_image.py` | `docs/images/animate.go` | ffmpeg |
 
 ---
 

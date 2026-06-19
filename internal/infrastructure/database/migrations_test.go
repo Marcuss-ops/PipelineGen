@@ -288,7 +288,7 @@ func TestGetMigrationStatus(t *testing.T) {
 }
 
 // TestRunMigration059CanonicalMediaColumns verifies, end-to-end through the
-// storage.RunMigrations runner, that migration 059 (Blocco 3 / Task 9)
+// drive.RunMigrations runner, that migration 059 (Blocco 3 / Task 9)
 //
 //  1. Adds the 16 canonical columns (lifecycle_state, deleted_at, folder_id,
 //     parent_folder_id, folder_path, category, filename, error, thumb_url,
@@ -314,7 +314,7 @@ func TestGetMigrationStatus(t *testing.T) {
 // SHA-256 hash check (TestMigration059DiskSync) enforces that.
 //
 // IMPORTANT: the inline SQL must NOT include BEGIN/COMMIT —
-// storage.RunMigrations wraps each migration in an outer transaction, and
+// drive.RunMigrations wraps each migration in an outer transaction, and
 // a nested BEGIN inside the runner tx would fail with "cannot start a
 // transaction within a transaction".
 func TestRunMigration059CanonicalMediaColumns(t *testing.T) {

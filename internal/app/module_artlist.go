@@ -18,7 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/ontology"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/storage"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -79,9 +79,9 @@ func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Servic
 
 func wireAssetDestinationResolver(cfg *config.Config, coreDeps *CoreDeps, log *zap.Logger) destination.Resolver {
 	if coreDeps.DriveClient != nil {
-		storageResolver := storage.NewResolver(storage.MediaRoot(cfg.Storage.MediaPath()), storage.DriveRoot(cfg.Drive.RootFolder()))
-		mediaStore := storage.NewStore(storageResolver, &driveutil.Uploader{Service: coreDeps.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
-		return storage.NewDestinationResolver(mediaStore)
+		storageResolver := drive.NewResolver(drive.MediaRoot(cfg.Storage.MediaPath()), drive.DriveRoot(cfg.Drive.RootFolder()))
+		mediaStore := drive.NewStore(storageResolver, &driveutil.Uploader{Service: coreDeps.DriveClient, Log: log}, cfg.Drive.RootFolder(), "", "", cfg.Drive.SoundEffectsFolder(), log)
+		return drive.NewDestinationResolver(mediaStore)
 	}
 	return nil
 }

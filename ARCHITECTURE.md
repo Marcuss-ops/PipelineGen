@@ -53,7 +53,7 @@ unified job queue; HTTP traffic is served by Gin.
 │                  │                              │                    │
 │                  ▼                              ▼                    │
 │       ┌──────────────────────────────────────────────────────┐      │
-│       │ internal/repository/* (scripts, jobs, clips, ...)    │      │
+│       │ Removed: * (scripts, jobs, clips, ...)    │      │
 │       └──────────┬────────────────────────────┬──────────────┘      │
 │                  │                            │                      │
 │                  ▼                            ▼                      │
@@ -282,7 +282,7 @@ and follow the OAuth flow. CI: `.github/workflows/`.
 |--------------|------------|
 | Add an HTTP endpoint | handler in `internal/api/handlers/<domain>/`, register in `routes.go` or via `internal/module/<domain>.go` |
 | Add a background job | `internal/jobs` (register handler) + `internal/api/handlers/<domain>/job_handler.go` (entry point) |
-| Add a DB table | `migrations/sqlite/0xx_*.sql` + `internal/repository/<domain>/` |
+| Add a DB table | `migrations/sqlite/0xx_*.sql` + `Removed: <domain>/` |
 | Add a CLI admin command | `cmd/admin/<command>.go` (shim) + `internal/admin/<subpkg>/` (body) |
 | Change a Drive folder | `internal/config/drive.go` (struct + resolver methods) |
 | Tune concurrency | `cfg.Scripts.*`, `cfg.Jobs.MaxParallelPerProject`, `cfg.Jobs.LeaseTTLSeconds` |

@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	channelsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"go.uber.org/zap"
@@ -75,7 +75,7 @@ func runSeedChannels(args []string) error {
 		return fmt.Errorf("parse config file: %w", err)
 	}
 
-	repo := channelsrepo.NewRepository(sqliteDB.DB)
+	repo := sqlite.NewChannelsRepository(sqliteDB.DB)
 
 	imported := 0
 	skipped := 0
@@ -104,7 +104,7 @@ func runSeedChannels(args []string) error {
 			semanticKeywordsJSON = string(b)
 		}
 
-		channel := &models.CategoryChannel{
+		channel := &media.CategoryChannel{
 			ID:               id,
 			Category:         ch.Category,
 			ChannelURL:       ch.URL,

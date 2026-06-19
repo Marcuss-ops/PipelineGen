@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
@@ -113,7 +113,7 @@ func isLikelyNonEntityWord(name string) bool {
 	return false
 }
 
-func populateEntityImage(img *ScriptEntityImage, asset *models.ImageAsset, forcedSource string) {
+func populateEntityImage(img *ScriptEntityImage, asset *media.ImageAsset, forcedSource string) {
 	img.ImageHash = asset.Hash
 	img.ImageURL = asset.SourceURL
 	img.PathRel = asset.PathRel

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
@@ -71,7 +71,7 @@ func (s *Service) resolveDriveDestination(ctx context.Context, req *ExtractReque
 
 // loadClipFolder loads an existing clip folder from DB or creates a new one.
 func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFolderID, resolvedPath string,
-	resp *ExtractResponse, req *ExtractRequest) *models.ClipFolder {
+	resp *ExtractResponse, req *ExtractRequest) *media.ClipFolder {
 	if s.clipsRepo == nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFold
 		return existingFolder
 	}
 
-	clipFolder := &models.ClipFolder{
+	clipFolder := &media.ClipFolder{
 		ID:               folderID,
 		Source:           "youtube",
 		SourceURL:        resp.SourceURL,
@@ -115,9 +115,9 @@ func (s *Service) loadClipFolder(ctx context.Context, videoID, outDir, driveFold
 }
 
 // loadManifest loads an existing clip manifest from disk or creates a new one.
-func (s *Service) loadManifest(clipFolder *models.ClipFolder, folderSlug, outDir, driveFolderID, resolvedPath, sourceURL, youtubeVideoID string, mergeExisting bool) *models.ClipManifest {
+func (s *Service) loadManifest(clipFolder *media.ClipFolder, folderSlug, outDir, driveFolderID, resolvedPath, sourceURL, youtubeVideoID string, mergeExisting bool) *media.ClipManifest {
 	folderID := fmt.Sprintf("clipfolder_youtube_%s", folderSlug)
-	manifest := &models.ClipManifest{
+	manifest := &media.ClipManifest{
 		ID:              folderID,
 		FolderID:        driveFolderID,
 		FolderPath:      resolvedPath,
@@ -126,7 +126,7 @@ func (s *Service) loadManifest(clipFolder *models.ClipFolder, folderSlug, outDir
 		VideoID:         youtubeVideoID,
 		FolderSlug:      folderSlug,
 		LocalFolderPath: outDir,
-		Clips:           []models.ClipManifestItem{},
+		Clips:           []media.ClipManifestItem{},
 	}
 
 	if !mergeExisting || clipFolder == nil || clipFolder.ManifestJSONPath == "" {
@@ -164,7 +164,7 @@ func (s *Service) loadManifest(clipFolder *models.ClipFolder, folderSlug, outDir
 
 // saveManifest writes the manifest JSON and TXT files, uploads the manifest
 // to Drive as a single combined metadata file, and updates the clip folder in DB.
-func (s *Service) saveManifest(ctx context.Context, clipFolder *models.ClipFolder, manifest *models.ClipManifest,
+func (s *Service) saveManifest(ctx context.Context, clipFolder *media.ClipFolder, manifest *media.ClipManifest,
 	req *ExtractRequest, outDir string) {
 	if clipFolder == nil {
 		return
@@ -350,7 +350,7 @@ func defaultConcurrency(reqConcurrency int) int {
 }
 
 // updateMonitoredSourceStatus sets the final status on the monitored source record.
-func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *models.MonitoredSource, resp *ExtractResponse) {
+func (s *Service) updateMonitoredSourceStatus(ctx context.Context, ms *media.MonitoredSource, resp *ExtractResponse) {
 	if s.monitoredRepo == nil {
 		return
 	}

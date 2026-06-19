@@ -10,7 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 
 	"go.uber.org/zap"
 )
@@ -159,7 +159,7 @@ type ClipGenerationOptions struct {
 
 // ClipSourceBuilder orchestrates the Clip→Script pipeline.
 type ClipSourceBuilder struct {
-	clipsRepo   *clips.Repository
+	clipsRepo   *sqlite.ClipsRepository
 	ollamaCli   *client.Client
 	vectorSvc   *vectorstore.Service
 	rerankerCli *reranker.Client
@@ -167,7 +167,7 @@ type ClipSourceBuilder struct {
 }
 
 // NewClipSourceBuilder creates a ClipSourceBuilder.
-func NewClipSourceBuilder(clipsRepo *clips.Repository, ollamaCli *client.Client, log *zap.Logger) *ClipSourceBuilder {
+func NewClipSourceBuilder(clipsRepo *sqlite.ClipsRepository, ollamaCli *client.Client, log *zap.Logger) *ClipSourceBuilder {
 	return &ClipSourceBuilder{
 		clipsRepo: clipsRepo,
 		ollamaCli: ollamaCli,

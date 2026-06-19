@@ -33,7 +33,7 @@ func NewService(blobs BlobStore, repo Repository, log *zap.Logger) *Service {
 // CreateAndVerify handles the full staging→verification→promotion flow
 // for a new artifact. The caller provides the content via r, and the
 // service streams it to staging, verifies the SHA-256, and promotes it
-// to canonical storage.
+// to canonical drive.
 //
 // Returns the promoted artifact with status READY, or an error if
 // verification fails or storage is unavailable.

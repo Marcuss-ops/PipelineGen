@@ -88,7 +88,7 @@ internal/api/
 | Package | Status | Replacement |
 |---------|--------|-------------|
 | `database/sql` | 🚫 | Pass through use-case interface |
-| `github.com/Marcuss-ops/PipelineGen/internal/repository/` | 🚫 | Pass through use-case interface |
+| `github.com/Marcuss-ops/PipelineGen/Removed: ` | 🚫 | Pass through use-case interface |
 | `google.golang.org/api/drive/v3` | 🚫 | Pass through use-case interface |
 | `github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg` | 🚫 | Pass through use-case interface |
 | `os/exec` | 🚫 | Pass through use-case interface |
@@ -166,7 +166,7 @@ internal/application/scriptflow/
 
 The application layer is the **only** layer that orchestrates across
 services. It imports `internal/media/`, `internal/sources/`,
-`internal/repository/`, `internal/upload/`, etc.
+`Removed: `, `internal/upload/`, etc.
 
 ## Module rules
 

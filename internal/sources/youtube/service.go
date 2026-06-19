@@ -18,8 +18,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/monitors"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
@@ -31,8 +31,8 @@ type VideoPipeline interface {
 type Service struct {
 	cfg               *config.Config
 	log               *zap.Logger
-	clipsRepo         *clips.Repository
-	monitoredRepo     *monitors.Repository
+	clipsRepo         *sqlite.ClipsRepository
+	monitoredRepo     *sqlite.MonitorsRepository
 	driveClient       *driveapi.Service
 	assetDestResolver destination.Resolver
 	mediaProcessor    processor.Processor
@@ -66,8 +66,8 @@ type Service struct {
 func NewService(
 	cfg *config.Config,
 	log *zap.Logger,
-	clipsRepo *clips.Repository,
-	monitoredRepo *monitors.Repository,
+	clipsRepo *sqlite.ClipsRepository,
+	monitoredRepo *sqlite.MonitorsRepository,
 	driveClient *driveapi.Service,
 	mediaProcessor processor.Processor,
 	videoPipeline VideoPipeline,

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // SyncAll synchronizes every configured target.
@@ -69,7 +69,7 @@ func (s *Service) SyncSource(ctx context.Context, source string) (*RootSummary, 
 //
 //	POST /api/media/sync-drive-folder
 //	{ "drive_folder_id": "1ll2RlTa...", "source": "youtube", "name": "MyFolder" }
-func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, mediaType string, repo *clips.Repository) (*RootSummary, error) {
+func (s *Service) SyncFolderID(ctx context.Context, folderID, source, name, mediaType string, repo *sqlite.ClipsRepository) (*RootSummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

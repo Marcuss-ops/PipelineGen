@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
-func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*models.ImageAsset, error) {
+func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*media.ImageAsset, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", imgURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -36,7 +36,7 @@ func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, so
 	return s.IngestImage(ctx, slug, style, "", resp.Body, filepath.Base(imgURL), imgURL, description, tags, false, false)
 }
 
-func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*models.ImageAsset, error) {
+func (s *Service) IngestImage(ctx context.Context, slug, style, genID string, data io.Reader, filename, sourceURL, description string, tags []string, skipDrive, skipMetadata bool) (*media.ImageAsset, error) {
 	// Use a detached context for all database and remote operations in IngestImage.
 	// This ensures that once the image data is successfully acquired, the ingestion,
 	// database recording, metadata writing, Drive upload, and vector store indexing

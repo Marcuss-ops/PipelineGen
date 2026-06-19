@@ -8,7 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assettree"
+	assettreerepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"github.com/stretchr/testify/assert"
@@ -21,11 +21,11 @@ func TestMaintenancePruning(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 
 	// 1. Create in-memory DB with all needed schemas
-	db := storage.NewTestDB(t, &storage.TestDBOpts{InMemory: true})
+	db := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
 	defer db.Close()
 
 	// Setup necessary schemas for assettree if repository creation performs checks
-	storage.MustExec(t, db, `
+	drive.MustExec(t, db, `
 		CREATE TABLE IF NOT EXISTS asset_nodes (
 			id TEXT PRIMARY KEY,
 			parent_id TEXT NOT NULL DEFAULT '',
@@ -41,7 +41,7 @@ func TestMaintenancePruning(t *testing.T) {
 	`)
 
 	// Setup schema for asset_index to satisfy orphan file cleanup checks
-	storage.MustExec(t, db, `
+	drive.MustExec(t, db, `
 		CREATE TABLE IF NOT EXISTS asset_index (
 			asset_id TEXT PRIMARY KEY,
 			asset_type TEXT NOT NULL DEFAULT '',
@@ -63,7 +63,7 @@ func TestMaintenancePruning(t *testing.T) {
 	`)
 
 	// 2. Setup api_requests table
-	storage.MustExec(t, db, `
+	drive.MustExec(t, db, `
 		CREATE TABLE api_requests (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			ts DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -82,7 +82,7 @@ func TestMaintenancePruning(t *testing.T) {
 	`)
 
 	// 3. Seed old, recent, and current requests
-	storage.MustExec(t, db, `
+	drive.MustExec(t, db, `
 		INSERT INTO api_requests (ts, method, path, status) VALUES 
 		(datetime('now', '-35 days'), 'GET', '/old', 200),
 		(datetime('now', '-10 days'), 'GET', '/recent', 200),
@@ -100,7 +100,7 @@ func TestMaintenancePruning(t *testing.T) {
 	cfg.Jobs.RetentionDays = 30
 
 	// Set up simple asset tree service
-	treeRepo, err := assettreerepo.NewRepository(db, logger)
+	treeRepo, err := sqlite.NewAssetTreeRepository(db, logger)
 	require.NoError(t, err)
 	treeSvc := assettree.NewService(treeRepo, logger)
 

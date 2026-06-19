@@ -119,7 +119,7 @@ registry.RegisterClipSource(assetSourceArtlist, artlistRepo)
 
 ### 5. Job System
 
-**Canonical Interface**: `internal/jobs/` + `internal/repository/jobs/`
+**Canonical Interface**: `internal/jobs/` + `Removed: jobs/`
 
 **When to use**: For async or long-running operations (> 3 seconds)
 

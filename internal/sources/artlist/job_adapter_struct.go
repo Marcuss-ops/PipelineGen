@@ -14,7 +14,7 @@ func NewJobAdapter(s *Service) *JobAdapter {
 	return &JobAdapter{service: s}
 }
 
-// jobToResponse converts a job.Job to RunTagResponse using the codec.
+// jobToResponse converts a jobs.Job to RunTagResponse using the codec.
 func (a *JobAdapter) jobToResponse(j *job.Job) *RunTagResponse {
 	if j == nil {
 		return &RunTagResponse{OK: false, Status: "not_found", Error: "job not found"}
@@ -22,7 +22,7 @@ func (a *JobAdapter) jobToResponse(j *job.Job) *RunTagResponse {
 	return (&JobCodec{}).ResponseFromJob(j)
 }
 
-// JobToRunTagResponse converts a job.Job to RunTagResponse using the codec.
+// JobToRunTagResponse converts a jobs.Job to RunTagResponse using the codec.
 func JobToRunTagResponse(j *job.Job) *RunTagResponse {
 	return (&JobCodec{}).ResponseFromJob(j)
 }

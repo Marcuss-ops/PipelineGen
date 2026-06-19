@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
@@ -133,7 +133,7 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 
 	// ── Phase 2: Segment discovery ────────────────────────────────
 	now := timeutil.FormatRFC3339(time.Now())
-	monitoredSource := &models.MonitoredSource{
+	monitoredSource := &media.MonitoredSource{
 		ID:           "youtube_" + videoID,
 		Source:       "youtube",
 		ExternalID:   videoID,
@@ -255,14 +255,14 @@ func (s *Service) Extract(ctx context.Context, req *ExtractRequest) (*ExtractRes
 			Sem      chan struct{}
 			Result   chan segResult
 			Mu       *sync.Mutex
-			Manifest *models.ClipManifest
+			Manifest *media.ClipManifest
 		}{Idx: i, Seg: seg, Sem: sem, Result: resultCh, Mu: &manifestMu, Manifest: manifest}, func(arg struct {
 			Idx      int
 			Seg      Segment
 			Sem      chan struct{}
 			Result   chan segResult
 			Mu       *sync.Mutex
-			Manifest *models.ClipManifest
+			Manifest *media.ClipManifest
 		}) {
 			defer wg.Done()
 			defer func() { <-arg.Sem }() // release semaphore

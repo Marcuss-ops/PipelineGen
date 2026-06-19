@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // TestResearchToWriteScriptPipeline simulates the full integration flow that
@@ -410,7 +412,7 @@ func TestResearchPipelineCacheKeyStability(t *testing.T) {
 			"First moon landing in 1969",
 			"ISS launched in 1998",
 		},
-		Sources: []ResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://nasa.gov", Title: "NASA"},
 		},
 	}
@@ -421,7 +423,7 @@ func TestResearchPipelineCacheKeyStability(t *testing.T) {
 			"First moon landing in 1969",
 			"ISS launched in 1998",
 		},
-		Sources: []ResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://nasa.gov", Title: "NASA"},
 		},
 	}
@@ -461,7 +463,7 @@ func TestResearchPipelineJSONRoundTrip(t *testing.T) {
 		Warnings: []string{
 			"Bias in training data",
 		},
-		Sources: []ResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://example.com/ai", Title: "AI History", SourceType: "web"},
 		},
 	}

@@ -10,9 +10,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
@@ -22,9 +22,9 @@ type clipSourcePathResult struct {
 	WriteResult       *scripts.WriteScriptResult
 	ClipScenes        []scripts.ClipScene
 	SourceFingerprint string
-	SearchResults     []mediacurator.SearchResultInfo
+	SearchResults     []curation.SearchResultInfo
 	NarrativePlan     *scripts.NarrativePlan
-	CurateTimings     mediacurator.CurateTimings
+	CurateTimings     curation.CurateTimings
 }
 
 // stageLog wraps a pipeline phase with structured start/complete logs so
@@ -57,7 +57,7 @@ var scriptGenSemaphore = make(chan struct{}, 2)
 // handlePostGeneration has access to all path result fields.
 func (h *ScriptFlowHandler) wrapPostGeneration(
 	ctx context.Context,
-	spec *scriptjobs.GenerationSpec,
+	spec *script.GenerationSpec,
 	script string,
 ) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata) {
 	return h.wrapPostGenerationWithPath(ctx, spec, script, nil)
@@ -67,7 +67,7 @@ func (h *ScriptFlowHandler) wrapPostGeneration(
 // real pathResult so handlePostGeneration has access to all path result fields.
 func (h *ScriptFlowHandler) wrapPostGenerationWithPath(
 	ctx context.Context,
-	spec *scriptjobs.GenerationSpec,
+	spec *script.GenerationSpec,
 	script string,
 	pathResult *clipSourcePathResult,
 ) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata) {
@@ -123,7 +123,7 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 
 	startAll := time.Now()
 
-	genPayload, err := scriptjobs.DecodeGeneratePayload(job.Payload)
+	genPayload, err := script.DecodeGeneratePayload(job.Payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode job payload: %w", err)
 	}

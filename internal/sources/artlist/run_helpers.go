@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
 // RunDefaults holds default values for request normalization.
@@ -68,7 +68,7 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 	}
 
 	// Normalize strategy
-	req.Strategy = string(models.NormalizeStrategy(req.Strategy, false))
+	req.Strategy = string(media.NormalizeStrategy(req.Strategy, false))
 
 	// Normalize concurrency
 	if req.Concurrency <= 0 {

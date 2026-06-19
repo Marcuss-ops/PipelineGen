@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 type clipIntelligenceRecord struct {
-	item         *models.ClipManifestItem
+	item         *media.ClipManifestItem
 	semanticText string
 	tokenSet     map[string]struct{}
 	topicSet     map[string]struct{}
@@ -60,7 +60,7 @@ func (u *unionFind) union(a, b int) {
 	u.rank[ra]++
 }
 
-func (s *Service) enrichManifestIntelligence(ctx context.Context, clipFolder *models.ClipFolder, manifest *models.ClipManifest) {
+func (s *Service) enrichManifestIntelligence(ctx context.Context, clipFolder *media.ClipFolder, manifest *media.ClipManifest) {
 	if s == nil || s.clipsRepo == nil || clipFolder == nil || manifest == nil || len(manifest.Clips) == 0 {
 		return
 	}

@@ -327,9 +327,9 @@ func TestAuth_NeverPersistsTokenValue(t *testing.T) {
 	}
 
 	// In-memory api_requests table.
-	db := storage.NewTestDB(t, &storage.TestDBOpts{InMemory: true})
+	db := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
 	defer db.Close()
-	storage.MustExec(t, db, `
+	drive.MustExec(t, db, `
 		CREATE TABLE api_requests (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			ts DATETIME DEFAULT CURRENT_TIMESTAMP,

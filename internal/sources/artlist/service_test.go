@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
@@ -30,10 +30,10 @@ import (
 // (see internal/storage/canonical.go::CanonicalMediaAssetsSchema) plus
 // the companion clip_search_terms table used by artlist Search indexing.
 // Composing the canonical block keeps this fixture in lockstep with
-// production migrations and clips.Repository.mediaAssetColumns: a new
+// production migrations and sqlite.ClipsRepository.mediaAssetColumns: a new
 // canonical column added by migration 060 only requires touching one
 // place, not every fixture.
-const artlistTestSchema = storage.CanonicalMediaAssetsSchema + `
+const artlistTestSchema = drive.CanonicalMediaAssetsSchema + `
 	CREATE TABLE IF NOT EXISTS clip_search_terms (
 		clip_id TEXT NOT NULL,
 		term TEXT NOT NULL,
@@ -44,7 +44,7 @@ const artlistTestSchema = storage.CanonicalMediaAssetsSchema + `
 // createTestDB creates a temporary SQLite database for testing
 func createTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	return storage.NewTestDBWithSchema(t, artlistTestSchema)
+	return drive.NewTestDBWithSchema(t, artlistTestSchema)
 }
 
 // insertTestClip inserts a test clip into the database
@@ -57,7 +57,7 @@ func insertTestClip(t *testing.T, db *sql.DB, clip *assets.Asset) {
 		clip.Metadata = make(map[string]any)
 	}
 
-	repo := clips.NewRepository(db, zap.NewNop())
+	repo := sqlite.NewClipsRepository(db, zap.NewNop())
 	if err := repo.UpsertClip(context.Background(), clip); err != nil {
 		t.Fatalf("failed to insert test clip: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 	}
 
 	logger, _ := zap.NewDevelopment()
-	artlistRepo := clips.NewRepository(db, logger)
+	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Create service with minimal dependencies
 	svc, err := NewService(cfg, db, db, artlistRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
@@ -125,7 +125,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 
 	cfg := &config.Config{}
 	logger, _ := zap.NewDevelopment()
-	artlistRepo := clips.NewRepository(db, logger)
+	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	svc, err := NewService(cfg, db, db, artlistRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, logger)
 	if err != nil {
@@ -345,7 +345,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	defer db.Close()
 
 	logger := zap.NewNop()
-	artlistRepo := clips.NewRepository(db, logger)
+	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
 	clip := &assets.Asset{
@@ -429,7 +429,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	defer db.Close()
 
 	logger := zap.NewNop()
-	artlistRepo := clips.NewRepository(db, logger)
+	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
 	clip := &assets.Asset{
@@ -515,7 +515,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	defer db.Close()
 
 	logger := zap.NewNop()
-	artlistRepo := clips.NewRepository(db, logger)
+	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
 	clip := &assets.Asset{

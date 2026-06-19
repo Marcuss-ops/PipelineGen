@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/content/mediacurator"
+// duplicate curation import removed
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
@@ -21,7 +21,7 @@ import (
 
 // Service handles background script.curate jobs.
 type Service struct {
-	mediaCurator    *mediacurator.Service
+	mediaCurator    *curation.MediaCurator
 	voService       *voiceover.Service
 	cfg             *config.Config
 	log             *zap.Logger
@@ -32,7 +32,7 @@ type Service struct {
 
 // NewService creates a new curation job service.
 func NewService(
-	mediaCurator *mediacurator.Service,
+	mediaCurator *curation.MediaCurator,
 	voService *voiceover.Service,
 	cfg *config.Config,
 	log *zap.Logger,
@@ -76,7 +76,7 @@ func (s *Service) HandleCurateJob(ctx context.Context, job *jobservice.Job, tool
 		tools.Progress(5, fmt.Sprintf("Searching clips for: %s", payload.Query))
 	}
 
-	req := mediacurator.CurateRequest{
+	req := curation.CurateRequest{
 		Query:             payload.Query,
 		Title:             payload.Title,
 		Language:          payload.Language,

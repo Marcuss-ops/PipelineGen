@@ -9,14 +9,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	vorepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/voiceovers"
+	vorepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 type voiceoverStoreAdapter struct {
-	repo *vorepo.Repository
+	repo *vorepo.VoiceoversRepository
 }
 
-func NewVoiceoverStoreAdapter(repo *vorepo.Repository) lifecycle.AssetRecordStore {
+func NewVoiceoverStoreAdapter(repo *vorepo.VoiceoversRepository) lifecycle.AssetRecordStore {
 	return &voiceoverStoreAdapter{repo: repo}
 }
 

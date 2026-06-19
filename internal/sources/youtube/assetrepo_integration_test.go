@@ -1,6 +1,6 @@
 // PR12b integration test: verifies that youtube.Service.dispatchOrIndex,
 // when wired with an assets.Repository via SetAssetRepo, routes through
-// the canonical writer AND legacy readers (clips.Repository) observe the
+// the canonical writer AND legacy readers (sqlite.ClipsRepository) observe the
 // same row data.
 //
 // Schema matches the production `media_assets` columns written by
@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
@@ -118,12 +118,12 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown.
-func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *clips.Repository, assetRepo assets.Repository) {
+func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo assets.Repository) {
 	t.Helper()
-	db = storage.NewTestDBWithSchema(t, pr12bYoutubeSchema)
+	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
-	clipsRepo = clips.NewRepository(db, log)
+	clipsRepo = sqlite.NewClipsRepository(db, log)
 	assetStore := assets.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return

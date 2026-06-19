@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 
 	"go.uber.org/zap"
@@ -39,7 +39,7 @@ func (s *Service) buildArtlistFolderCandidates(ctx context.Context) ([]FolderCan
 	return candidates, nil
 }
 
-func (s *Service) loadClipsFromDB(ctx context.Context, repo *clips.Repository, sourceFilter string) ([]catalog.StockClipRef, error) {
+func (s *Service) loadClipsFromDB(ctx context.Context, repo *sqlite.ClipsRepository, sourceFilter string) ([]catalog.StockClipRef, error) {
 	if repo == nil {
 		return nil, nil
 	}

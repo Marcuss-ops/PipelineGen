@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
@@ -43,34 +43,34 @@ type FromClipsResult struct {
 
 // EnqueueFromClips validates, applies defaults, builds the payload, and
 // enqueues a clip-source script generation job.
-func (s *GenerationService) EnqueueFromClips(ctx context.Context, spec scriptjobs.GenerationSpec) (*FromClipsResult, error) {
+func (s *GenerationService) EnqueueFromClips(ctx context.Context, spec script.GenerationSpec) (*FromClipsResult, error) {
 	scriptsCfg := s.getScriptsConfig()
 
 	if err := validateGeneration(&spec); err != nil {
 		return nil, err
 	}
 
-	applyPreset(&spec, scriptsCfg, scriptjobs.PresetCustom)
+	applyPreset(&spec, scriptsCfg, script.PresetCustom)
 
 	if spec.GenerateMetadata {
 		spec.ExtractEntities = true
 	}
 
-	return s.enqueue(ctx, spec, scriptjobs.PresetCustom, "unified")
+	return s.enqueue(ctx, spec, script.PresetCustom, "unified")
 }
 
 // EnqueueWithImages validates, applies defaults, builds the payload, and
 // enqueues a generate-with-images job.
-func (s *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptjobs.GenerationSpec) (*FromClipsResult, error) {
+func (s *GenerationService) EnqueueWithImages(ctx context.Context, spec script.GenerationSpec) (*FromClipsResult, error) {
 	scriptsCfg := s.getScriptsConfig()
 
 	if err := validateGeneration(&spec); err != nil {
 		return nil, err
 	}
 
-	applyPreset(&spec, scriptsCfg, scriptjobs.PresetWithImages)
+	applyPreset(&spec, scriptsCfg, script.PresetWithImages)
 
-	return s.enqueue(ctx, spec, scriptjobs.PresetWithImages, "generate-with-images")
+	return s.enqueue(ctx, spec, script.PresetWithImages, "generate-with-images")
 }
 
 // ── Config & defaults ──────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ func (s *GenerationService) getScriptsConfig() config.ScriptsConfig {
 // PresetWithImages: forces generate_scene_images=true, generate_voiceover=true,
 // extract_entities=false, generate_metadata=false per the
 // /generate-with-images endpoint contract.
-func applyPreset(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfig, preset scriptjobs.Preset) {
+func applyPreset(spec *script.GenerationSpec, scriptsCfg config.ScriptsConfig, preset script.Preset) {
 	// Common defaults.
 	if spec.Language == "" {
 		spec.Language = scriptsCfg.DefaultLanguage
@@ -124,26 +124,26 @@ func applyPreset(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfi
 
 	// Preset-specific feature flags.
 	switch preset {
-	case scriptjobs.PresetWithImages:
+	case script.PresetWithImages:
 		spec.GenerateSceneImages = true
 		spec.GenerateVoiceover = true
 		spec.ExtractEntities = false
 		spec.GenerateMetadata = false
-	case scriptjobs.PresetCustom:
+	case script.PresetCustom:
 		// No forced feature flags — the caller controls every flag.
 	}
 }
 
 // ── Shared validation & enqueue ────────────────────────────────────────────
 
-func validateGeneration(spec *scriptjobs.GenerationSpec) error {
+func validateGeneration(spec *script.GenerationSpec) error {
 	hasClips := spec.HasClips()
 	hasText := spec.HasText()
 	if !hasClips && !hasText {
-		return fmt.Errorf("%w: provide clip_ids/num_clips for clip-aware mode, or topic/source_text for text-only mode", scriptjobs.ErrValidation)
+		return fmt.Errorf("%w: provide clip_ids/num_clips for clip-aware mode, or topic/source_text for text-only mode", script.ErrValidation)
 	}
 	if len(spec.ClipIDs) > 50 {
-		return fmt.Errorf("%w: clip_ids cannot exceed 50 clips", scriptjobs.ErrValidation)
+		return fmt.Errorf("%w: clip_ids cannot exceed 50 clips", script.ErrValidation)
 	}
 	return nil
 }
@@ -152,15 +152,15 @@ func validateGeneration(spec *scriptjobs.GenerationSpec) error {
 // script.generate_from_clips job with the typed payload.
 func (s *GenerationService) enqueue(
 	ctx context.Context,
-	spec scriptjobs.GenerationSpec,
-	preset scriptjobs.Preset,
+	spec script.GenerationSpec,
+	preset script.Preset,
 	logLabel string,
 ) (*FromClipsResult, error) {
 	if s.jobsSvc == nil {
 		return nil, fmt.Errorf("jobs service not initialized")
 	}
 
-	payload := scriptjobs.NewGeneratePayload(preset, spec)
+	payload := script.NewGeneratePayload(preset, spec)
 
 	mode := "text-only"
 	if spec.HasClips() {
@@ -179,7 +179,7 @@ func (s *GenerationService) enqueue(
 	)
 
 	job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
-		Type:       scriptjobs.JobTypeGenerateFromClips,
+		Type:       script.JobTypeGenerateFromClips,
 		Payload:    payload,
 		MaxRetries: 2,
 	})

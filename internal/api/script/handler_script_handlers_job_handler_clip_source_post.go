@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/contracts/scriptjobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
@@ -15,7 +15,7 @@ import (
 // Returns the raw entities JSON, structured insights, and per-language video metadata.
 func (h *ScriptFlowHandler) handlePostGeneration(
 	ctx context.Context,
-	payload *scriptjobs.GenerationSpec,
+	payload *script.GenerationSpec,
 	pathResult *clipSourcePathResult,
 ) (entitiesJSON string, insights ScriptInsights, videoMetadata []VideoMetadata) {
 	if !payload.ExtractEntities && !payload.GenerateMetadata {
@@ -62,7 +62,7 @@ func (h *ScriptFlowHandler) handlePostGeneration(
 
 // buildFinalResult assembles the final result map sent back to the client.
 func (h *ScriptFlowHandler) buildFinalResult(
-	payload *scriptjobs.GenerationSpec,
+	payload *script.GenerationSpec,
 	pathResult *clipSourcePathResult,
 	entitiesJSON string,
 	insights ScriptInsights,
