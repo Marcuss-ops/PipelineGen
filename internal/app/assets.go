@@ -5,6 +5,7 @@ import (
 
 	"fmt"
 	sources "github.com/Marcuss-ops/PipelineGen/internal/api"
+	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -144,7 +145,8 @@ func WireAssets(
 	if coreDeps.Assets != nil {
 		handler.SetAssetRepo(coreDeps.Assets.Repository())
 	}
-	mod := module.NewAssetsModule(cfg, log, handler)
+	thin := sourcesapi.NewHandler(handler)
+	mod := sourcesapi.NewModule(cfg, log, thin)
 	log.Info("created unified Assets module")
 
 	return &AssetsWiring{
