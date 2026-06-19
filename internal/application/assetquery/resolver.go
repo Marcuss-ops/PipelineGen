@@ -12,12 +12,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // ErrNoReadableLocation is returned when ResolveReadable cannot find any
 // usable Location matching the preferences and no fallback applies. It is
-// distinct from asset.ErrNotFound: the asset exists but has no usable
+// distinct from assets.ErrNotFound: the asset exists but has no usable
 // storage location.
 var ErrNoReadableLocation = errors.New("assetquery: no readable location found")
 
@@ -26,11 +26,11 @@ var ErrNoReadableLocation = errors.New("assetquery: no readable location found")
 // present, else fall back to Drive" logic that today is duplicated across
 // clipresolver, ontology, and image pipelines.
 type Resolver struct {
-	locations asset.LocationRepository
+	locations assets.LocationRepository
 }
 
 // NewResolver returns a Resolver backed by locRepo.
-func NewResolver(locRepo asset.LocationRepository) *Resolver {
+func NewResolver(locRepo assets.LocationRepository) *Resolver {
 	return &Resolver{locations: locRepo}
 }
 
@@ -48,19 +48,19 @@ func NewResolver(locRepo asset.LocationRepository) *Resolver {
 //     at all.
 //
 // Errors:
-//   - asset.ErrInvalidID if assetID is empty
+//   - assets.ErrInvalidID if assetID is empty
 //   - ErrNoReadableLocation when the asset has zero locations
 //   - any transport error returned by the underlying LocationRepository
 func (r *Resolver) ResolveReadable(
 	ctx context.Context,
 	assetID string,
-	preferences []asset.LocationKind,
-) (*asset.Location, error) {
+	preferences []assets.LocationKind,
+) (*assets.Location, error) {
 	if r == nil || r.locations == nil {
 		return nil, fmt.Errorf("assetquery.Resolver: missing dependency (nil locRepo)")
 	}
 	if assetID == "" {
-		return nil, asset.ErrInvalidID
+		return nil, assets.ErrInvalidID
 	}
 
 	locs, err := r.locations.ListByAsset(ctx, assetID)
@@ -98,8 +98,8 @@ func (r *Resolver) ResolveReadable(
 // preferPrimary is true it short-circuits on the primary; when false it
 // returns the first non-nil match so the caller can fall back if the
 // preferred kind exists only as non-primary.
-func pickKind(locs []*asset.Location, kind asset.LocationKind, preferPrimary bool) *asset.Location {
-	var fallback *asset.Location
+func pickKind(locs []*assets.Location, kind assets.LocationKind, preferPrimary bool) *assets.Location {
+	var fallback *assets.Location
 	for _, loc := range locs {
 		if loc == nil || loc.LocationKind != kind {
 			continue
@@ -115,7 +115,7 @@ func pickKind(locs []*asset.Location, kind asset.LocationKind, preferPrimary boo
 }
 
 // primaryLocation returns the first location flagged is_primary=1, or nil.
-func primaryLocation(locs []*asset.Location) *asset.Location {
+func primaryLocation(locs []*assets.Location) *assets.Location {
 	for _, loc := range locs {
 		if loc != nil && loc.IsPrimary {
 			return loc

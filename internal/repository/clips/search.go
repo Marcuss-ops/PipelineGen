@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
@@ -24,7 +24,7 @@ import (
 //   - search_terms.go  — SearchByTerms + fetchClipsByIDs (indexed lookup).
 //   - search_stock.go  — SearchStockByKeywords (source='stock' shortcut).
 //   - list_clips.go    — list ops + LastUpdatedAtForTerm.
-func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*asset.MediaAsset, error) {
+func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*assets.Asset, error) {
 	keywords := strings.Fields(tag)
 	if len(keywords) == 0 {
 		keywords = []string{tag}
@@ -41,7 +41,7 @@ func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*as
 	columns := clipSearchColumns()
 	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
 	if conditionSQL == "" {
-		return []*asset.MediaAsset{}, nil
+		return []*assets.Asset{}, nil
 	}
 
 	query := r.buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
@@ -58,7 +58,7 @@ func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*as
 	}
 	defer rows.Close()
 
-	var results []*asset.MediaAsset
+	var results []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
@@ -109,15 +109,15 @@ func (r *Repository) SearchClips(ctx context.Context, source, tag string) ([]*as
 }
 
 // SearchClipsByKeywords searches clips by keywords using LIKE on the media_assets table.
-func (r *Repository) SearchClipsByKeywords(ctx context.Context, source string, keywords []string, limit int) ([]*asset.MediaAsset, error) {
+func (r *Repository) SearchClipsByKeywords(ctx context.Context, source string, keywords []string, limit int) ([]*assets.Asset, error) {
 	if len(keywords) == 0 {
-		return []*asset.MediaAsset{}, nil
+		return []*assets.Asset{}, nil
 	}
 
 	columns := clipSearchColumns()
 	conditionSQL, args := sqlutil.BuildFallbackLikeConditions(keywords, columns)
 	if conditionSQL == "" {
-		return []*asset.MediaAsset{}, nil
+		return []*assets.Asset{}, nil
 	}
 
 	query := fmt.Sprintf("%s AND (%s) LIMIT ?", r.buildMediaAssetQuery(source), conditionSQL)
@@ -134,7 +134,7 @@ func (r *Repository) SearchClipsByKeywords(ctx context.Context, source string, k
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
@@ -244,7 +244,7 @@ func (r *Repository) SearchClipsAdvanced(ctx context.Context, req AdvancedSearch
 	}
 	defer rows.Close()
 
-	var clips []*asset.MediaAsset
+	var clips []*assets.Asset
 	for rows.Next() {
 		clip, err := scanCanonicalAssetRows(rows)
 		if err != nil {
@@ -280,7 +280,7 @@ type AdvancedSearchRequest struct {
 
 // AdvancedSearchResult is the response for advanced clip search.
 type AdvancedSearchResult struct {
-	Clips  []*asset.MediaAsset `json:"clips"`
+	Clips  []*assets.Asset `json:"clips"`
 	Total  int                  `json:"total"`
 	Limit  int                  `json:"limit"`
 	Offset int                  `json:"offset"`

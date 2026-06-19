@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 func TestResolver_EmptyID(t *testing.T) {
 	r := NewResolver(&mockLocationRepo{})
 	_, err := r.ResolveReadable(context.Background(), "", nil)
-	if !errors.Is(err, asset.ErrInvalidID) {
+	if !errors.Is(err, assets.ErrInvalidID) {
 		t.Fatalf("expected ErrInvalidID, got %v", err)
 	}
 }
@@ -34,62 +34,62 @@ func TestResolver_ListError(t *testing.T) {
 }
 
 func TestResolver_PrefersLocalOverDrive(t *testing.T) {
-	locs := []*asset.Location{
-		{AssetID: "abc", LocationKind: asset.LocationKindDrive, IsPrimary: true},
-		{AssetID: "abc", LocationKind: asset.LocationKindLocal, IsPrimary: true},
+	locs := []*assets.Location{
+		{AssetID: "abc", LocationKind: assets.LocationKindDrive, IsPrimary: true},
+		{AssetID: "abc", LocationKind: assets.LocationKindLocal, IsPrimary: true},
 	}
 	r := NewResolver(&mockLocationRepo{locs: locs})
 	got, err := r.ResolveReadable(context.Background(), "abc",
-		[]asset.LocationKind{asset.LocationKindLocal, asset.LocationKindDrive})
+		[]assets.LocationKind{assets.LocationKindLocal, assets.LocationKindDrive})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.LocationKind != asset.LocationKindLocal || !got.IsPrimary {
+	if got.LocationKind != assets.LocationKindLocal || !got.IsPrimary {
 		t.Fatalf("expected primary local, got %+v", got)
 	}
 }
 
 func TestResolver_PrefersPrimaryThenFallsBackToNonPrimary(t *testing.T) {
-	locs := []*asset.Location{
-		{AssetID: "abc", LocationKind: asset.LocationKindLocal}, // not primary
+	locs := []*assets.Location{
+		{AssetID: "abc", LocationKind: assets.LocationKindLocal}, // not primary
 	}
 	r := NewResolver(&mockLocationRepo{locs: locs})
 	got, err := r.ResolveReadable(context.Background(), "abc",
-		[]asset.LocationKind{asset.LocationKindLocal})
+		[]assets.LocationKind{assets.LocationKindLocal})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got == nil || got.LocationKind != asset.LocationKindLocal {
+	if got == nil || got.LocationKind != assets.LocationKindLocal {
 		t.Fatalf("expected non-primary local, got %+v", got)
 	}
 }
 
 func TestResolver_FallbackPrimaryWhenNoPreferenceMatches(t *testing.T) {
-	locs := []*asset.Location{
-		{AssetID: "abc", LocationKind: asset.LocationKindDrive, IsPrimary: true},
+	locs := []*assets.Location{
+		{AssetID: "abc", LocationKind: assets.LocationKindDrive, IsPrimary: true},
 	}
 	r := NewResolver(&mockLocationRepo{locs: locs})
 	got, err := r.ResolveReadable(context.Background(), "abc",
-		[]asset.LocationKind{asset.LocationKindLocal})
+		[]assets.LocationKind{assets.LocationKindLocal})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.LocationKind != asset.LocationKindDrive || !got.IsPrimary {
+	if got.LocationKind != assets.LocationKindDrive || !got.IsPrimary {
 		t.Fatalf("expected fallback to primary drive, got %+v", got)
 	}
 }
 
 func TestResolver_FallbackToFirstNonNil(t *testing.T) {
-	locs := []*asset.Location{
+	locs := []*assets.Location{
 		nil,
-		{AssetID: "abc", LocationKind: asset.LocationKindObjectStorage},
+		{AssetID: "abc", LocationKind: assets.LocationKindObjectStorage},
 	}
 	r := NewResolver(&mockLocationRepo{locs: locs})
 	got, err := r.ResolveReadable(context.Background(), "abc", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got == nil || got.LocationKind != asset.LocationKindObjectStorage {
+	if got == nil || got.LocationKind != assets.LocationKindObjectStorage {
 		t.Fatalf("expected fallback to first non-nil, got %+v", got)
 	}
 }

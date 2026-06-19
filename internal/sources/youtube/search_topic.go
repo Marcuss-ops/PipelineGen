@@ -9,7 +9,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -96,11 +96,11 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 		wg.Add(1)
 		concurrent.SafeGoFunc("youtube-topic-enrich", struct {
 			Idx  int
-			Clip asset.MediaAsset
+			Clip assets.Asset
 			Sem  chan struct{}
 		}{Idx: i, Clip: base, Sem: sem}, func(arg struct {
 			Idx  int
-			Clip asset.MediaAsset
+			Clip assets.Asset
 			Sem  chan struct{}
 		}) {
 			defer wg.Done()
@@ -176,7 +176,7 @@ func (s *Service) SearchTopicVideosWithFilter(ctx context.Context, query string,
 	return s.SearchByTopicWithFilter(ctx, query, limit, sortMode, publishedAfter)
 }
 
-func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asset.MediaAsset) (TopicSearchResult, error) {
+func (s *Service) enrichTopicResult(ctx context.Context, query string, clip assets.Asset) (TopicSearchResult, error) {
 	videoURL := directYouTubeLink(clip)
 	if videoURL == "" {
 		return TopicSearchResult{}, fmt.Errorf("missing youtube url for clip %s", clip.ID)
@@ -204,7 +204,7 @@ func (s *Service) enrichTopicResult(ctx context.Context, query string, clip asse
 	}, nil
 }
 
-func directYouTubeLink(clip asset.MediaAsset) string {
+func directYouTubeLink(clip assets.Asset) string {
 	if strings.TrimSpace(clip.ExternalURL()) != "" {
 		return clip.ExternalURL()
 	}

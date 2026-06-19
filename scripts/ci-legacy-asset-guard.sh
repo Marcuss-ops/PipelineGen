@@ -35,7 +35,7 @@ if [[ -n "$NEW_FILES" ]]; then
     echo "  FAIL: new files reference models.MediaAsset (not in allowlist):"
     echo "$NEW_FILES" | sed 's/^/    /'
     echo ""
-    echo "  → Migrate these files to core/domain/asset.MediaAsset or add to allowlist."
+    echo "  → Migrate these files to core/domain/assets.Asset or add to allowlist."
     EXIT_CODE=1
 fi
 

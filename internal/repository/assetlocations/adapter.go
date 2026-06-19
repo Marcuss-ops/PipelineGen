@@ -3,28 +3,28 @@ package assetlocations
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
-// Adapter implements asset.LocationRepository by wrapping the concrete *Repository
+// Adapter implements assets.LocationRepository by wrapping the concrete *Repository
 // and performing necessary conversions between domain entities and repository types.
 type Adapter struct {
 	inner *Repository
 }
 
-// NewAdapter wraps a concrete *Repository as an asset.LocationRepository.
+// NewAdapter wraps a concrete *Repository as an assets.LocationRepository.
 func NewAdapter(inner *Repository) *Adapter {
 	return &Adapter{inner: inner}
 }
 
-func toDomain(loc *AssetLocation) *asset.Location {
+func toDomain(loc *AssetLocation) *assets.Location {
 	if loc == nil {
 		return nil
 	}
-	return &asset.Location{
+	return &assets.Location{
 		ID:            loc.ID,
 		AssetID:       loc.AssetID,
-		LocationKind:  asset.LocationKind(loc.LocationKind),
+		LocationKind:  assets.LocationKind(loc.LocationKind),
 		URI:           loc.URI,
 		ExternalID:    loc.ExternalID,
 		AccessURL:     loc.WebViewLink,
@@ -38,7 +38,7 @@ func toDomain(loc *AssetLocation) *asset.Location {
 	}
 }
 
-func toRepo(loc *asset.Location) AssetLocation {
+func toRepo(loc *assets.Location) AssetLocation {
 	if loc == nil {
 		return AssetLocation{}
 	}
@@ -59,11 +59,11 @@ func toRepo(loc *asset.Location) AssetLocation {
 	}
 }
 
-func (a *Adapter) Upsert(ctx context.Context, loc *asset.Location) error {
+func (a *Adapter) Upsert(ctx context.Context, loc *assets.Location) error {
 	return a.inner.Upsert(ctx, toRepo(loc))
 }
 
-func (a *Adapter) GetPrimary(ctx context.Context, assetID string) (*asset.Location, error) {
+func (a *Adapter) GetPrimary(ctx context.Context, assetID string) (*assets.Location, error) {
 	loc, err := a.inner.GetPrimary(ctx, assetID)
 	if err != nil {
 		return nil, err
@@ -71,23 +71,23 @@ func (a *Adapter) GetPrimary(ctx context.Context, assetID string) (*asset.Locati
 	return toDomain(loc), nil
 }
 
-func (a *Adapter) ListByAsset(ctx context.Context, assetID string) ([]*asset.Location, error) {
+func (a *Adapter) ListByAsset(ctx context.Context, assetID string) ([]*assets.Location, error) {
 	locs, err := a.inner.GetByAssetID(ctx, assetID)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]*asset.Location, len(locs))
+	res := make([]*assets.Location, len(locs))
 	for i := range locs {
 		res[i] = toDomain(&locs[i])
 	}
 	return res, nil
 }
 
-func (a *Adapter) SetPrimary(ctx context.Context, assetID string, kind asset.LocationKind) error {
+func (a *Adapter) SetPrimary(ctx context.Context, assetID string, kind assets.LocationKind) error {
 	return a.inner.SetPrimary(ctx, assetID, LocationKind(kind))
 }
 
-func (a *Adapter) Delete(ctx context.Context, assetID string, kind asset.LocationKind) error {
+func (a *Adapter) Delete(ctx context.Context, assetID string, kind assets.LocationKind) error {
 	return a.inner.Delete(ctx, assetID, LocationKind(kind))
 }
 

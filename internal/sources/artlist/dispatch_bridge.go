@@ -23,7 +23,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/outbox"
@@ -68,7 +68,7 @@ func (s *Service) newDispatchBridge() *dispatchBridge {
 // each call site. After this consolidation runs in production for one
 // release, the legacy path is expected to be removed and this helper
 // will become a no-op pass-through to dispatcher.EnqueueAndIndex.
-func (b *dispatchBridge) EnqueueOrFallback(ctx context.Context, clip *asset.MediaAsset, hash string) {
+func (b *dispatchBridge) EnqueueOrFallback(ctx context.Context, clip *assets.Asset, hash string) {
 	if clip == nil || clip.ID == "" {
 		return
 	}

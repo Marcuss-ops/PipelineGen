@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -153,7 +153,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	var allClips []*models.MediaAsset
+	var allClips []*assets.Asset
 	sourceLower = strings.ToLower(source)
 
 	if sourceLower == "images" && h.imagesRepo != nil {

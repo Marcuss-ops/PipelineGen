@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -18,7 +18,7 @@ import (
 // the catalog sync should not overwrite (hash, local_path, metadata, tags).
 // Routes through the canonical outbox dispatcher when available, so the
 // media_assets UPDATE and the outbox_events INSERT commit atomically.
-func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *models.MediaAsset) error {
+func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repository, clip *assets.Asset) error {
 	if repo == nil || clip == nil {
 		return nil
 	}
@@ -102,14 +102,14 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *clips.Repo
 // to rolling back the canonical outbox state. Identical payload across
 // dispatcher + legacy paths — extracted here so the two branches in
 // upsertPreservingExisting stay in lockstep.
-func (s *Service) writeAssetIndex(ctx context.Context, clip *models.MediaAsset) {
+func (s *Service) writeAssetIndex(ctx context.Context, clip *assets.Asset) {
 	if s.assetIndex == nil {
 		return
 	}
 	rec := &assetindex.AssetRecord{
-		AssetID:   clip.Source + "_" + clip.ID,
-		AssetType: clip.MediaType,
-		Source:    clip.Source,
+		AssetID:   string(clip.Source) + "_" + clip.ID,
+		AssetType: string(clip.MediaType),
+		Source:    string(clip.Source),
 		SourceID:  clip.ID,
 		GroupName: clip.Group,
 		LocalPath: clip.LocalPath(),

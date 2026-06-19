@@ -1,5 +1,5 @@
 // Package assetversions — adapter.go implements the canonical
-// asset.VersionRepository interface backed by the concrete *Repository.
+// assets.VersionRepository interface backed by the concrete *Repository.
 // The Adapter wraps the concrete type and delegates directly — since
 // the concrete Repository already uses domain-compatible types, only
 // lightweight field mapping is needed.
@@ -9,22 +9,22 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
-// Adapter implements asset.VersionRepository by delegating to the
+// Adapter implements assets.VersionRepository by delegating to the
 // concrete SQLite *Repository.
 type Adapter struct {
 	inner *Repository
 }
 
-// NewAdapter wraps a concrete *Repository as an asset.VersionRepository.
+// NewAdapter wraps a concrete *Repository as an assets.VersionRepository.
 func NewAdapter(inner *Repository) *Adapter {
 	return &Adapter{inner: inner}
 }
 
 // GetCurrent returns the latest Version for the asset, or (nil, nil).
-func (a *Adapter) GetCurrent(ctx context.Context, assetID string) (*asset.Version, error) {
+func (a *Adapter) GetCurrent(ctx context.Context, assetID string) (*assets.Version, error) {
 	v, err := a.inner.GetCurrent(ctx, assetID)
 	if err != nil {
 		return nil, err
@@ -36,12 +36,12 @@ func (a *Adapter) GetCurrent(ctx context.Context, assetID string) (*asset.Versio
 }
 
 // List returns all Versions for the asset, newest first.
-func (a *Adapter) List(ctx context.Context, assetID string) ([]asset.Version, error) {
+func (a *Adapter) List(ctx context.Context, assetID string) ([]assets.Version, error) {
 	vs, err := a.inner.List(ctx, assetID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]asset.Version, len(vs))
+	out := make([]assets.Version, len(vs))
 	for i, v := range vs {
 		out[i] = *convertVersion(&v)
 	}
@@ -50,7 +50,7 @@ func (a *Adapter) List(ctx context.Context, assetID string) ([]asset.Version, er
 
 // Append inserts a new Version row. Uses CreateNext for atomic version
 // allocation inside a transaction — no race conditions with concurrent callers.
-func (a *Adapter) Append(ctx context.Context, v *asset.Version) error {
+func (a *Adapter) Append(ctx context.Context, v *assets.Version) error {
 	metaJSON := v.MetadataJSON
 	// Merge SourceURI into MetadataJSON so it survives round-trips.
 	if v.SourceURI != "" {
@@ -88,9 +88,9 @@ func mergeSourceURI(existingJSON, sourceURI string) string {
 	return string(b)
 }
 
-// convertVersion maps a concrete Version to the domain asset.Version.
-func convertVersion(v *Version) *asset.Version {
-	dv := &asset.Version{
+// convertVersion maps a concrete Version to the domain assets.Version.
+func convertVersion(v *Version) *assets.Version {
+	dv := &assets.Version{
 		ID:            int64(v.Version),
 		AssetID:       v.AssetID,
 		VersionNumber: v.Version,
@@ -113,4 +113,4 @@ func convertVersion(v *Version) *asset.Version {
 }
 
 // Compile-time check.
-var _ asset.VersionRepository = (*Adapter)(nil)
+var _ assets.VersionRepository = (*Adapter)(nil)

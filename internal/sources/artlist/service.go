@@ -9,7 +9,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/jobs"
@@ -51,18 +51,18 @@ type Service struct {
 	semanticEnricher *SemanticEnricher
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
-	assetProcessing asset.ProcessingRepository
+	assetProcessing assets.ProcessingRepository
 	assetVersions   *assetversions.Repository
 
 	// Asset locations: canonical source of truth for local/drive paths.
-	assetLocRepo asset.LocationRepository
+	assetLocRepo assets.LocationRepository
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *clips.Repository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
-	assetProcRepo asset.ProcessingRepository,
+	assetProcRepo assets.ProcessingRepository,
 	assetVerRepo *assetversions.Repository,
-	assetLocRepo asset.LocationRepository,
+	assetLocRepo assets.LocationRepository,
 	log *zap.Logger,
 ) (*Service, error) {
 	s := &Service{
@@ -147,7 +147,7 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 }
 
 // SearchClips cerca clip nel database locale.
-func (s *Service) SearchClips(ctx context.Context, term string) []*asset.MediaAsset {
+func (s *Service) SearchClips(ctx context.Context, term string) []*assets.Asset {
 	return s.searchService.SearchClips(ctx, term)
 }
 

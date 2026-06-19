@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -218,14 +218,14 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 8. Build the MediaAsset record
 	now := time.Now().UTC()
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:         clipID,
 		Name:       name,
 		Filename:   driveFilename,
-		Source:     source,
+		Source:     assets.Source(source),
 		Category:   category,
 		Group:      group,
-		MediaType:  "video",
+		MediaType:  assets.MediaType("video"),
 		Tags:       tags,
 		SearchText: description,
 		CreatedAt:  now,
@@ -289,7 +289,7 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 		Tags:        tags,
 		LocalPath:   localPath,
 		Indexed:     hasIndexer,
-		Duration:    int(clip.DurationMs),
+		Duration:    int(clip.Duration.Milliseconds()),
 	})
 }
 
@@ -302,7 +302,7 @@ type driveUploadResult struct {
 
 // probeDuration probes the video file for duration using ffprobe.
 // Falls back to 0 if unavailable.
-func probeDuration(ctx context.Context, localPath string, clip *asset.MediaAsset, log *zap.Logger) {
+func probeDuration(ctx context.Context, localPath string, clip *assets.Asset, log *zap.Logger) {
 	if clip == nil {
 		return
 	}
@@ -310,14 +310,14 @@ func probeDuration(ctx context.Context, localPath string, clip *asset.MediaAsset
 	// Try ffprobe
 	probe := probeFFprobe(ctx, localPath)
 	if probe != nil && probe.Duration > 0 {
-		clip.DurationMs = int64(probe.Duration * 1000)
+		clip.Duration = time.Duration(probe.Duration * float64(time.Second))
 		return
 	}
 
 	// Fallback: try mediainfo if available
 	dur := probeMediaInfo(ctx, localPath)
 	if dur > 0 {
-		clip.DurationMs = int64(dur * 1000)
+		clip.Duration = time.Duration(dur) * time.Second
 		return
 	}
 

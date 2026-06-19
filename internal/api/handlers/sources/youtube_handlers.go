@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -239,7 +239,7 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 	// Search across all clip repositories
 	ctx := c.Request.Context()
 	repos := h.getAllClipRepos()
-	var allClips []*models.MediaAsset
+	var allClips []*assets.Asset
 	total := 0
 
 	for source, repo := range repos {

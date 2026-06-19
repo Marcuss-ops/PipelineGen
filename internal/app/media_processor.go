@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assetquery"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
@@ -21,17 +21,17 @@ import (
 func initMediaProcessor(
 	cfg *config.Config,
 	db *sql.DB,
-	assets asset.Repository,
+	assetsRepo assets.Repository,
 	querySvc *assetquery.Service,
-	locations asset.LocationRepository,
-	processing asset.ProcessingRepository,
+	locations assets.LocationRepository,
+	processing assets.ProcessingRepository,
 	log *zap.Logger,
 	driveUploader *drive.Uploader,
 ) processor.Processor {
 	ytDLPDownloader := downloader.NewYTDLP(cfg)
 	httpDL := downloader.NewHTTPDownloader(5 * time.Minute)
 	ffmpegProc := ffmpeg.New(cfg)
-	clipsRegistry := artifacts.NewClipsRegistry(db, assets, querySvc, locations, processing)
+	clipsRegistry := artifacts.NewClipsRegistry(db, assetsRepo, querySvc, locations, processing)
 
 	return mediaasset.NewProcessor(
 		ytDLPDownloader,

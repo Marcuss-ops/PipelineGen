@@ -11,19 +11,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
 )
 
 type Service struct {
 	db          *sql.DB
-	repo        asset.Repository
+	repo        assets.Repository
 	vlmClient   *vlm.Client
 	vectorStore clipindexer.VectorStoreIndexer
 	log         *zap.Logger
 }
 
-func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
+func NewService(db *sql.DB, repo assets.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
 	return &Service{
 		db:        db,
 		repo:      repo,
@@ -63,9 +63,9 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 	}
 	defer rows.Close()
 
-	var assets []*asset.MediaAsset
+	var batch []*assets.Asset
 	for rows.Next() {
-		a := &asset.MediaAsset{}
+		a := &assets.Asset{}
 		var tagsJSON, metaJSON, localPath string
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &localPath, &a.MediaType, &metaJSON); err != nil {
 			return 0, fmt.Errorf("scan asset: %w", err)
@@ -73,17 +73,17 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 		json.Unmarshal([]byte(tagsJSON), &a.Tags)
 		a.SetLocalPath(localPath)
 		a.SetMetadataJSON(metaJSON)
-		assets = append(assets, a)
+		batch = append(batch, a)
 	}
 
-	if len(assets) == 0 {
+	if len(batch) == 0 {
 		return 0, nil
 	}
 
-	s.log.Info("starting auto-tagging batch", zap.Int("count", len(assets)))
+	s.log.Info("starting auto-tagging batch", zap.Int("count", len(batch)))
 
 	processed := 0
-	for _, a := range assets {
+	for _, a := range batch {
 		if err := s.TagAsset(ctx, a); err != nil {
 			s.log.Warn("failed to tag asset", zap.String("id", a.ID), zap.Error(err))
 			continue
@@ -95,11 +95,11 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 }
 
 // TagAsset analyzes a single asset with VLM and updates its metadata in DB and Qdrant.
-func (s *Service) TagAsset(ctx context.Context, a *asset.MediaAsset) error {
+func (s *Service) TagAsset(ctx context.Context, a *assets.Asset) error {
 	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath()))
 
 	// 1. Call VLM sidecar
-	vTags, err := s.vlmClient.AutoTagLocal(ctx, a.LocalPath(), a.MediaType)
+	vTags, err := s.vlmClient.AutoTagLocal(ctx, a.LocalPath(), string(a.MediaType))
 	if err != nil {
 		// Mark as skipped in metadata so we don't keep retrying if it's a permanent failure (e.g. file corrupt)
 		a.SetMetadataString("vlm_tag_error", err.Error())

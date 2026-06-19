@@ -12,8 +12,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
@@ -108,7 +109,7 @@ func newTestRepo(t *testing.T) *Repository {
 	return New(db, nil)
 }
 
-func mustUpsert(t *testing.T, r *Repository, m *asset.MediaAsset) {
+func mustUpsert(t *testing.T, r *Repository, m *assets.Asset) {
 	t.Helper()
 	if err := r.Upsert(context.Background(), m); err != nil {
 		t.Fatalf("Upsert(%s) failed: %v", m.ID, err)
@@ -120,7 +121,7 @@ func mustUpsert(t *testing.T, r *Repository, m *asset.MediaAsset) {
 func TestUpsertGetRoundTrip(t *testing.T) {
 	r := newTestRepo(t)
 	ctx := context.Background()
-	m := &asset.MediaAsset{
+	m := &assets.Asset{
 		ID:             "asset_rt_001",
 		Source:         "youtube",
 		Name:           "Round Trip Test",
@@ -128,9 +129,9 @@ func TestUpsertGetRoundTrip(t *testing.T) {
 		MediaType:      "video",
 		Category:       "demo",
 		SourceURL:      "https://youtube.com/watch?v=rt_001",
-		DurationMs:     12345,
+		Duration:       12345 * time.Millisecond,
 		Tags:           []string{"a", "b"},
-		LifecycleState: asset.StateReady,
+		LifecycleState: assets.StateReady,
 	}
 	m.SetQualityScore(0.92)
 	mustUpsert(t, r, m)
@@ -142,7 +143,7 @@ func TestUpsertGetRoundTrip(t *testing.T) {
 	if got == nil {
 		t.Fatalf("Get(%s): nil result", m.ID)
 	}
-	if got.Source != m.Source || got.DurationMs != m.DurationMs || got.QualityScore() != m.QualityScore() {
+	if got.Source != m.Source || got.Duration != m.Duration || got.QualityScore() != m.QualityScore() {
 		t.Errorf("round-trip mismatch:\n want=%+v\n  got=%+v", m, got)
 	}
 }
@@ -161,7 +162,7 @@ func TestGetNotFoundReturnsNil(t *testing.T) {
 func TestGetInvalidID(t *testing.T) {
 	r := newTestRepo(t)
 	_, err := r.Get(context.Background(), "")
-	if err != asset.ErrInvalidID {
+	if err != assets.ErrInvalidID {
 		t.Errorf("expected ErrInvalidID for empty id, got %v", err)
 	}
 }
@@ -169,11 +170,11 @@ func TestGetInvalidID(t *testing.T) {
 func TestListBySource(t *testing.T) {
 	r := newTestRepo(t)
 	ctx := context.Background()
-	mustUpsert(t, r, &asset.MediaAsset{ID: "a1", Source: "youtube", Name: "A1", LifecycleState: asset.StateReady})
-	mustUpsert(t, r, &asset.MediaAsset{ID: "a2", Source: "artlist", Name: "A2", LifecycleState: asset.StateReady})
-	mustUpsert(t, r, &asset.MediaAsset{ID: "a3", Source: "youtube", Name: "A3", LifecycleState: asset.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "a1", Source: "youtube", Name: "A1", LifecycleState: assets.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "a2", Source: "artlist", Name: "A2", LifecycleState: assets.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "a3", Source: "youtube", Name: "A3", LifecycleState: assets.StateReady})
 
-	out, err := r.List(ctx, asset.Filter{Source: "youtube"})
+	out, err := r.List(ctx, assets.Filter{Source: "youtube"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -190,10 +191,10 @@ func TestListBySource(t *testing.T) {
 func TestCountBySource(t *testing.T) {
 	r := newTestRepo(t)
 	ctx := context.Background()
-	mustUpsert(t, r, &asset.MediaAsset{ID: "a1", Source: "youtube", Name: "A1", LifecycleState: asset.StateReady})
-	mustUpsert(t, r, &asset.MediaAsset{ID: "a2", Source: "youtube", Name: "A2", LifecycleState: asset.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "a1", Source: "youtube", Name: "A1", LifecycleState: assets.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "a2", Source: "youtube", Name: "A2", LifecycleState: assets.StateReady})
 
-	n, err := r.Count(ctx, asset.Filter{Source: "youtube"})
+	n, err := r.Count(ctx, assets.Filter{Source: "youtube"})
 	if err != nil {
 		t.Fatalf("Count: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestCountBySource(t *testing.T) {
 func TestSoftDeleteRoundTrip(t *testing.T) {
 	r := newTestRepo(t)
 	ctx := context.Background()
-	mustUpsert(t, r, &asset.MediaAsset{ID: "del_001", Source: "youtube", LifecycleState: asset.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "del_001", Source: "youtube", LifecycleState: assets.StateReady})
 
 	if err := r.SoftDelete(ctx, "del_001"); err != nil {
 		t.Fatalf("SoftDelete: %v", err)
@@ -213,7 +214,7 @@ func TestSoftDeleteRoundTrip(t *testing.T) {
 
 	// Get should now return ErrSoftDeleted, distinguishing delete from missing.
 	_, err := r.Get(ctx, "del_001")
-	if err != asset.ErrSoftDeleted {
+	if err != assets.ErrSoftDeleted {
 		t.Errorf("expected ErrSoftDeleted, got %v", err)
 	}
 
@@ -233,7 +234,7 @@ func TestSoftDeleteRoundTrip(t *testing.T) {
 func TestOutboxEmitOnUpsert(t *testing.T) {
 	r := newTestRepo(t)
 	ctx := context.Background()
-	mustUpsert(t, r, &asset.MediaAsset{ID: "tx_001", Source: "youtube", LifecycleState: asset.StateReady})
+	mustUpsert(t, r, &assets.Asset{ID: "tx_001", Source: "youtube", LifecycleState: assets.StateReady})
 
 	var n int
 	row := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = 'tx_001' AND event_type = 'asset.upserted'`)
@@ -251,7 +252,7 @@ func TestOutboxNotEmittedOnRollback(t *testing.T) {
 
 	// Use WithTx to provoke a rollback and assert no outbox row is written.
 	err := repo.WithTx(ctx, func(tx *Tx) error {
-		m := &asset.MediaAsset{ID: "rb_001", Source: "youtube", LifecycleState: asset.StateReady}
+		m := &assets.Asset{ID: "rb_001", Source: "youtube", LifecycleState: assets.StateReady}
 		// Emit outbox event, but don't commit.
 		if err := tx.OnCommit(ctx, m.ID, "asset.upserted", m); err != nil {
 			return err
@@ -277,13 +278,13 @@ func TestNoMetadataJSONExtractForCanonicalFields(t *testing.T) {
 	// NEVER from json_extract(metadata_json, '$.field').
 	r := newTestRepo(t)
 	ctx := context.Background()
-	m := &asset.MediaAsset{
+	m := &assets.Asset{
 		ID:             "no_extract_001",
 		Source:         "youtube",
 		Name:           "NoExtract",
 		Category:       "explicit_category",
 		SearchText:     "explicit_search_text",
-		LifecycleState: asset.StateReady,
+		LifecycleState: assets.StateReady,
 		Metadata:       map[string]any{"category": "wrong_via_metadata"},
 	}
 	mustUpsert(t, r, m)

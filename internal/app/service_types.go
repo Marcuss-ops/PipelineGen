@@ -33,7 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 	gdrive "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	assetrelations "github.com/Marcuss-ops/PipelineGen/internal/repository/assetrelations"
 	assettags "github.com/Marcuss-ops/PipelineGen/internal/repository/assettags"
 	assetversions "github.com/Marcuss-ops/PipelineGen/internal/repository/assetversions"
@@ -55,7 +55,7 @@ type services struct {
 	imageRepo          *images.Repository
 	imageService       *imgservice.Service
 	clipsRepo          *clips.Repository // unified (replaces stockDriveRepo, artlistRepo, clipsOnlyRepo)
-	assetRepo          asset.Repository
+	assetRepo          assets.Repository
 	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
 	monitorsRepo       *monitors.Repository
 	voiceoverService   *voiceover.Service
@@ -102,8 +102,8 @@ type services struct {
 	outboxEventsRegistry *outboxevents.HandlerRegistry
 
 	// Asset satellite tables (canonical model completion, PR0)
-	assetLocationsRepo  asset.LocationRepository
-	assetProcessingRepo asset.ProcessingRepository
+	assetLocationsRepo  assets.LocationRepository
+	assetProcessingRepo assets.ProcessingRepository
 	assetRelationsRepo  *assetrelations.Repository
 	assetTagsRepo       *assettags.Repository
 	assetVersionsRepo   *assetversions.Repository

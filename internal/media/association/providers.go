@@ -50,7 +50,7 @@ func (s *Service) loadClipsFromDB(ctx context.Context, repo *clips.Repository, s
 
 	var records []catalog.StockClipRef
 	for _, c := range allClips {
-		if sourceFilter != "" && c.Source != sourceFilter && c.MediaType != sourceFilter {
+		if sourceFilter != "" && string(c.Source) != sourceFilter && string(c.MediaType) != sourceFilter {
 			continue
 		}
 		records = append(records, catalog.StockClipRef{
@@ -59,7 +59,7 @@ func (s *Service) loadClipsFromDB(ctx context.Context, repo *clips.Repository, s
 			FolderID:   c.FolderID(),
 			FolderPath: c.FolderPath(),
 			DriveLink:  c.DriveLink(),
-			MediaType:  c.MediaType,
+			MediaType:  string(c.MediaType),
 			Group:      c.Group,
 		})
 	}

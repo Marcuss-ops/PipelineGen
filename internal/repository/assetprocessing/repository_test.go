@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/database"
 )
 
@@ -345,7 +345,7 @@ func TestUpsert_InvalidJSON(t *testing.T) {
 	repo, cleanup := newTestRepo(t)
 	defer cleanup()
 
-	err := repo.Upsert(ctx, asset.ProcessingRecord{
+	err := repo.Upsert(ctx, assets.ProcessingRecord{
 		AssetID:      "asset_json",
 		Step:         "download",
 		Status:       asset.StatusPending,
@@ -361,7 +361,7 @@ func TestUpsert_ValidJSON(t *testing.T) {
 	repo, cleanup := newTestRepo(t)
 	defer cleanup()
 
-	err := repo.Upsert(ctx, asset.ProcessingRecord{
+	err := repo.Upsert(ctx, assets.ProcessingRecord{
 		AssetID:      "asset_valid_json",
 		Step:         "download",
 		Status:       asset.StatusPending,
@@ -389,7 +389,7 @@ func TestStart_ValidJSONPreserved(t *testing.T) {
 	defer cleanup()
 
 	// Upsert with valid JSON metadata, then Start to mark it running.
-	err := repo.Upsert(ctx, asset.ProcessingRecord{
+	err := repo.Upsert(ctx, assets.ProcessingRecord{
 		AssetID:      "asset_meta",
 		Step:         "embedding",
 		Status:       asset.StatusPending,
@@ -416,7 +416,7 @@ func TestUpsert_EmptyJSONAllowed(t *testing.T) {
 	defer cleanup()
 
 	// Empty string should be allowed (default JSON).
-	err := repo.Upsert(ctx, asset.ProcessingRecord{
+	err := repo.Upsert(ctx, assets.ProcessingRecord{
 		AssetID:      "asset_empty_json",
 		Step:         "download",
 		Status:       asset.StatusPending,
@@ -438,7 +438,7 @@ func TestUpsert_EmptyObjectJSONAllowed(t *testing.T) {
 	defer cleanup()
 
 	// "{}" should be allowed (empty JSON object).
-	err := repo.Upsert(ctx, asset.ProcessingRecord{
+	err := repo.Upsert(ctx, assets.ProcessingRecord{
 		AssetID:      "asset_empty_obj",
 		Step:         "download",
 		Status:       asset.StatusPending,

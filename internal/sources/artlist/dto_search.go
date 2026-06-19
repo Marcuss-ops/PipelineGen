@@ -1,6 +1,6 @@
 package artlist
 
-import "github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+import "github.com/Marcuss-ops/PipelineGen/internal/assets"
 
 // SearchRequest represents a search request
 type SearchRequest struct {
@@ -14,6 +14,6 @@ type SearchResponse struct {
 	OK     bool               `json:"ok"`
 	Term   string             `json:"term"`
 	Source string             `json:"source"`
-	Clips  []asset.MediaAsset `json:"clips"`
+	Clips  []assets.Asset `json:"clips"`
 	Error  string             `json:"error,omitempty"`
 }

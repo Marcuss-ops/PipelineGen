@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
@@ -168,11 +168,11 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 					"video_id":      videoID,
 					"name":          existingClip.Name,
 					"filename":      existingClip.Filename,
-					"duration_sec":  existingClip.DurationMs / 1000,
+					"duration_sec":  int64(existingClip.Duration.Seconds()),
 					"drive_link":    existingClip.DriveLink(),
 					"drive_file_id": existingClip.DriveFileID(),
 					"file_hash":     existingClip.FileHash(),
-					"source":        existingClip.Source,
+					"source":        string(existingClip.Source),
 					"category":      existingClip.Category,
 					"tags":          existingClip.Tags,
 					"local_path":    existingClip.LocalPath(),
@@ -491,18 +491,18 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	// 7. Create MediaAsset record
 	now := time.Now().UTC()
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:         clipID,
 		Name:       name,
 		Filename:   driveFilename,
-		Source:     source,
+		Source:     assets.Source(source),
 		Category:   req.Category,
 		Group:      group,
-		MediaType:  "video",
+		MediaType:  assets.MediaType("video"),
 		Tags:       req.Tags,
 		SearchText: description,
 		SourceURL:  req.URL,
-		DurationMs: int64(duration) * 1000,
+		Duration:   time.Duration(duration) * time.Second,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}

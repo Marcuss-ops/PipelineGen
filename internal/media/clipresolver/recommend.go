@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -131,7 +132,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 										Breakdown:    &ScoreBreakdown{},
 										MatchedTerms: make([]string, 0),
 									}
-									clipScores[globalID].Clip.MediaType = source
+									clipScores[globalID].Clip.MediaType = assets.MediaType(source)
 								}
 
 								entry := clipScores[globalID]
@@ -179,7 +180,7 @@ func (s *Service) Recommend(ctx context.Context, req *RecommendRequest) (*Recomm
 						Breakdown:    &ScoreBreakdown{},
 						MatchedTerms: make([]string, 0),
 					}
-					clipScores[globalID].Clip.MediaType = source
+					clipScores[globalID].Clip.MediaType = assets.MediaType(source)
 				}
 
 				entry := clipScores[globalID]

@@ -8,24 +8,24 @@
 //
 // PR-by-PR migration rule: new consumers MUST obtain Details via
 // Service.Get, MUST NOT import internal/media/models, and MUST NOT add
-// fields back onto asset.MediaAsset.
+// fields back onto assets.Asset.
 package assetquery
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 // Service provides aggregated reads of media assets with their locations,
 // processing records, and current version. It does NOT do write-side
 // orchestration (that lives in application/assetservice/ — PR2).
 type Service struct {
-	assets     asset.Repository
-	locations  asset.LocationRepository
-	processing asset.ProcessingRepository
-	versions   asset.VersionRepository
+	assets     assets.Repository
+	locations  assets.LocationRepository
+	processing assets.ProcessingRepository
+	versions   assets.VersionRepository
 }
 
 // New returns a Service backed by the four canonical repositories.
@@ -35,10 +35,10 @@ type Service struct {
 // Get call rather than panicking, so callers fail loudly rather than
 // reading incomplete Details.
 func New(
-	assets asset.Repository,
-	locations asset.LocationRepository,
-	processing asset.ProcessingRepository,
-	versions asset.VersionRepository,
+	assets assets.Repository,
+	locations assets.LocationRepository,
+	processing assets.ProcessingRepository,
+	versions assets.VersionRepository,
 ) *Service {
 	return &Service{
 		assets:     assets,
@@ -51,9 +51,9 @@ func New(
 // Get returns the aggregated Details for a single asset by ID.
 //
 // Errors:
-//   - asset.ErrInvalidID if id is empty
-//   - asset.ErrNotFound if no row exists
-//   - asset.ErrSoftDeleted if the asset is soft-deleted (bubbled up
+//   - assets.ErrInvalidID if id is empty
+//   - assets.ErrNotFound if no row exists
+//   - assets.ErrSoftDeleted if the asset is soft-deleted (bubbled up
 //     from asset.Repository.Get; consumers decide whether to translate
 //     it into a 404 or surface it)
 //   - any storage/transport error returned by the underlying repositories,
@@ -65,7 +65,7 @@ func New(
 // no rows in those tables yet (mid-migration state).
 func (s *Service) Get(ctx context.Context, id string) (*Details, error) {
 	if id == "" {
-		return nil, asset.ErrInvalidID
+		return nil, assets.ErrInvalidID
 	}
 	if s.assets == nil || s.locations == nil || s.processing == nil || s.versions == nil {
 		return nil, fmt.Errorf("assetquery.Service: missing dependency (nil repo pointer)")
@@ -73,12 +73,12 @@ func (s *Service) Get(ctx context.Context, id string) (*Details, error) {
 
 	a, err := s.assets.Get(ctx, id)
 	if err != nil {
-		// Includes asset.ErrSoftDeleted — bubble up unchanged so callers
-		// can errors.Is(err, asset.ErrSoftDeleted).
+		// Includes assets.ErrSoftDeleted — bubble up unchanged so callers
+		// can errors.Is(err, assets.ErrSoftDeleted).
 		return nil, fmt.Errorf("assetquery.Get(%s) load asset: %w", id, err)
 	}
 	if a == nil {
-		return nil, asset.ErrNotFound
+		return nil, assets.ErrNotFound
 	}
 
 	locs, err := s.locations.ListByAsset(ctx, id)

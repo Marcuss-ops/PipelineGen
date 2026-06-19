@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
@@ -159,7 +159,7 @@ func (r *Resolver) resolveVoiceoverFromDB(ctx context.Context, id string) (*Asse
 }
 
 // clipToAssetRecord converts a models.Clip to an AssetRecord
-func clipToAssetRecord(source string, clip *asset.MediaAsset) *AssetRecord {
+func clipToAssetRecord(source string, clip *assets.Asset) *AssetRecord {
 	rec := &AssetRecord{
 		AssetID:   source + "_" + clip.ID,
 		AssetType: getAssetTypeFromSource(source),

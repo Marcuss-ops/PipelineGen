@@ -6,7 +6,7 @@
 // own lifecycle state.
 //
 // Canonical domain types live in internal/core/domain/asset.
-// The Adapter (adapter.go) implements asset.ProcessingRepository.
+// The Adapter (adapter.go) implements assets.ProcessingRepository.
 package assetprocessing
 
 import (
@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -33,7 +33,7 @@ func NewRepository(db *sql.DB) *Repository {
 // Upsert inserts or updates a processing record. On conflict (asset_id, step),
 // non-status fields are updated but status remains unchanged unless the caller
 // explicitly uses Transition, Start, Complete, or Fail.
-func (r *Repository) Upsert(ctx context.Context, record asset.ProcessingRecord) error {
+func (r *Repository) Upsert(ctx context.Context, record assets.ProcessingRecord) error {
 	if record.MetadataJSON != "" && record.MetadataJSON != "{}" && !json.Valid([]byte(record.MetadataJSON)) {
 		return fmt.Errorf("assetprocessing.Upsert(%s, %s): metadata_json is not valid JSON", record.AssetID, record.Step)
 	}
@@ -83,7 +83,7 @@ func (r *Repository) Start(ctx context.Context, assetID, step string) error {
 
 // Transition atomically transitions a processing step from one status to
 // another. Returns error if no row matches (wrong expected status).
-func (r *Repository) Transition(ctx context.Context, assetID, step string, from, to asset.ProcessingStatus) error {
+func (r *Repository) Transition(ctx context.Context, assetID, step string, from, to assets.ProcessingStatus) error {
 	if err := validateTransition(from, to); err != nil {
 		return fmt.Errorf("assetprocessing.Transition(%s, %s): %w", assetID, step, err)
 	}
@@ -112,22 +112,22 @@ func (r *Repository) Transition(ctx context.Context, assetID, step string, from,
 
 // validateTransition checks whether the state transition is valid per the
 // canonical state machine.
-func validateTransition(from, to asset.ProcessingStatus) error {
+func validateTransition(from, to assets.ProcessingStatus) error {
 	switch from {
-	case asset.StatusPending:
-		if to == asset.StatusRunning {
+	case assets.StatusPending:
+		if to == assets.StatusRunning {
 			return nil
 		}
-	case asset.StatusRunning:
-		if to == asset.StatusCompleted || to == asset.StatusFailed {
+	case assets.StatusRunning:
+		if to == assets.StatusCompleted || to == assets.StatusFailed {
 			return nil
 		}
-	case asset.StatusFailed:
-		if to == asset.StatusRunning {
+	case assets.StatusFailed:
+		if to == assets.StatusRunning {
 			return nil
 		}
-	case asset.StatusCompleted:
-		if to == asset.StatusRunning {
+	case assets.StatusCompleted:
+		if to == assets.StatusRunning {
 			return nil
 		}
 	}
@@ -173,7 +173,7 @@ func (r *Repository) Fail(ctx context.Context, assetID, step, errMsg string) err
 }
 
 // Get returns a single processing record for an asset + step.
-func (r *Repository) Get(ctx context.Context, assetID, step string) (*asset.ProcessingRecord, error) {
+func (r *Repository) Get(ctx context.Context, assetID, step string) (*assets.ProcessingRecord, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 		FROM asset_processing
@@ -183,7 +183,7 @@ func (r *Repository) Get(ctx context.Context, assetID, step string) (*asset.Proc
 }
 
 // GetByAssetID returns all processing records for an asset.
-func (r *Repository) GetByAssetID(ctx context.Context, assetID string) ([]asset.ProcessingRecord, error) {
+func (r *Repository) GetByAssetID(ctx context.Context, assetID string) ([]assets.ProcessingRecord, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 		FROM asset_processing
@@ -198,7 +198,7 @@ func (r *Repository) GetByAssetID(ctx context.Context, assetID string) ([]asset.
 }
 
 // GetFailed returns all failed processing records across all assets.
-func (r *Repository) GetFailed(ctx context.Context) ([]asset.ProcessingRecord, error) {
+func (r *Repository) GetFailed(ctx context.Context) ([]assets.ProcessingRecord, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 		FROM asset_processing
@@ -234,8 +234,8 @@ func (r *Repository) DeleteAll(ctx context.Context, assetID string) error {
 
 // ── helpers ───────────────────────────────────────────────────────────
 
-func scanProcessing(s interface{ Scan(dest ...any) error }) (*asset.ProcessingRecord, error) {
-	r := &asset.ProcessingRecord{}
+func scanProcessing(s interface{ Scan(dest ...any) error }) (*assets.ProcessingRecord, error) {
+	r := &assets.ProcessingRecord{}
 	var startedAtStr, completedAtStr sql.NullString
 	err := s.Scan(&r.AssetID, &r.Step, (*string)(&r.Status),
 		&startedAtStr, &completedAtStr, &r.ErrorMessage, &r.AttemptCount, &r.MetadataJSON)
@@ -257,8 +257,8 @@ func scanProcessing(s interface{ Scan(dest ...any) error }) (*asset.ProcessingRe
 	return r, nil
 }
 
-func scanProcessings(rows *sql.Rows) ([]asset.ProcessingRecord, error) {
-	var out []asset.ProcessingRecord
+func scanProcessings(rows *sql.Rows) ([]assets.ProcessingRecord, error) {
+	var out []assets.ProcessingRecord
 	for rows.Next() {
 		r, err := scanProcessing(rows)
 		if err != nil {

@@ -147,7 +147,7 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 		t.Fatalf("UpsertClip via assetRepo failed: %v", err)
 	}
 
-	// ── Assert 1: canonical reader sees the row via asset.MediaAsset ──
+	// ── Assert 1: canonical reader sees the row via assets.Asset ──
 	canonical, err := assetRepo.Get(ctx, clip.ID)
 	if err != nil {
 		t.Fatalf("assetRepo.Get(%q) failed: %v", clip.ID, err)

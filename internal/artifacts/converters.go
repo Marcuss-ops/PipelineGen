@@ -3,13 +3,13 @@ package artifacts
 import (
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/models"
 	"github.com/Marcuss-ops/PipelineGen/internal/repository/voiceovers"
 )
 
-// VoiceoverRecordToClip converts a voiceover.Record to asset.MediaAsset.
-func VoiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
+// VoiceoverRecordToClip converts a voiceover.Record to assets.Asset.
+func VoiceoverRecordToClip(rec *voiceovers.Record) *assets.Asset {
 	if rec == nil {
 		return nil
 	}
@@ -20,7 +20,7 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
 			name = name[:50]
 		}
 	}
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:          rec.ID,
 		Name:        name,
 		Filename:    rec.Filename,
@@ -41,8 +41,8 @@ func VoiceoverRecordToClip(rec *voiceovers.Record) *asset.MediaAsset {
 	return clip
 }
 
-// ImageAssetToClip converts an models.ImageAsset to asset.MediaAsset.
-func ImageAssetToClip(assetItem *models.ImageAsset) *asset.MediaAsset {
+// ImageAssetToClip converts an models.ImageAsset to assets.Asset.
+func ImageAssetToClip(assetItem *models.ImageAsset) *assets.Asset {
 	if assetItem == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func ImageAssetToClip(assetItem *models.ImageAsset) *asset.MediaAsset {
 	if id == "" {
 		id = assetItem.Hash
 	}
-	clip := &asset.MediaAsset{
+	clip := &assets.Asset{
 		ID:          id,
 		Name:        name,
 		Filename:    filepath.Base(assetItem.PathRel),

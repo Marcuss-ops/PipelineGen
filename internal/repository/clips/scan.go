@@ -4,8 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -16,11 +17,11 @@ type mediaAssetScanner interface {
 	Scan(dest ...any) error
 }
 
-// scanMediaAsset scans a canonical asset.MediaAsset directly from any SQL scanner.
+// scanMediaAsset scans a canonical assets.Asset directly from any SQL scanner.
 // The SELECT list (mediaAssetColumns in repository.go) covers all typed columns plus
 // metadata_json for non-canonical extras.
-func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
-	var a asset.MediaAsset
+func scanMediaAsset(s mediaAssetScanner) (*assets.Asset, error) {
+	var a assets.Asset
 	var (
 		idNull, sourceNull, nameNull, tagsNull, tagsNormNull sql.NullString
 		embeddingJSON                                        sql.NullString
@@ -62,16 +63,16 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
 		return nil, err
 	}
 
-	// Map onto canonical asset.MediaAsset.
+	// Map onto canonical assets.Asset.
 	a.ID = idNull.String
-	a.Source = sourceNull.String
+	a.Source = assets.Source(sourceNull.String)
 	a.Name = nameNull.String
 	if duration.Valid {
-		a.DurationMs = duration.Int64
+		a.Duration = time.Duration(duration.Int64) * time.Millisecond
 	}
 	a.SourceURL = urlNull.String
 	a.SetExternalURL(urlNull.String)
-	a.MediaType = mediaTypeNull.String
+	a.MediaType = assets.MediaType(mediaTypeNull.String)
 	a.SetLocalPath(localPathNull.String)
 	a.SetDriveFileID(driveFileIDNull.String)
 	a.SetDriveLink(driveLinkNull.String)
@@ -132,7 +133,7 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
 		}
 	}
 	if lifecycle.Valid {
-		a.LifecycleState = asset.LifecycleState(lifecycle.String)
+		a.LifecycleState = assets.LifecycleState(lifecycle.String)
 	}
 
 	// Legacy fallback: drive_folder_id → folder_id.
@@ -157,11 +158,11 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.MediaAsset, error) {
 }
 
 // scanCanonicalAssetRows scans a canonical asset from sql.Rows.
-func scanCanonicalAssetRows(rows *sql.Rows) (*asset.MediaAsset, error) {
+func scanCanonicalAssetRows(rows *sql.Rows) (*assets.Asset, error) {
 	return scanMediaAsset(rows)
 }
 
 // scanCanonicalAssetRow scans a single canonical asset from sql.Row.
-func (r *Repository) scanCanonicalAssetRow(row *sql.Row) (*asset.MediaAsset, error) {
+func (r *Repository) scanCanonicalAssetRow(row *sql.Row) (*assets.Asset, error) {
 	return scanMediaAsset(row)
 }

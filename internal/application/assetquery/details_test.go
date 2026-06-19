@@ -3,14 +3,14 @@ package assetquery
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 )
 
 func TestDetailsLocalLocation_PrefersPrimary(t *testing.T) {
 	d := &Details{
-		Locations: []*asset.Location{
-			{LocationKind: asset.LocationKindLocal, IsPrimary: false},
-			{LocationKind: asset.LocationKindLocal, IsPrimary: true},
+		Locations: []*assets.Location{
+			{LocationKind: assets.LocationKindLocal, IsPrimary: false},
+			{LocationKind: assets.LocationKindLocal, IsPrimary: true},
 		},
 	}
 	got := d.LocalLocation()
@@ -21,21 +21,21 @@ func TestDetailsLocalLocation_PrefersPrimary(t *testing.T) {
 
 func TestDetailsLocalLocation_FallbackToNonPrimary(t *testing.T) {
 	d := &Details{
-		Locations: []*asset.Location{
-			{LocationKind: asset.LocationKindDrive, IsPrimary: true},
-			{LocationKind: asset.LocationKindLocal},
+		Locations: []*assets.Location{
+			{LocationKind: assets.LocationKindDrive, IsPrimary: true},
+			{LocationKind: assets.LocationKindLocal},
 		},
 	}
 	got := d.LocalLocation()
-	if got == nil || got.LocationKind != asset.LocationKindLocal {
+	if got == nil || got.LocationKind != assets.LocationKindLocal {
 		t.Fatalf("expected local, got %+v", got)
 	}
 }
 
 func TestDetailsLocalLocation_Absent(t *testing.T) {
 	d := &Details{
-		Locations: []*asset.Location{
-			{LocationKind: asset.LocationKindDrive},
+		Locations: []*assets.Location{
+			{LocationKind: assets.LocationKindDrive},
 		},
 	}
 	if got := d.LocalLocation(); got != nil {
@@ -52,9 +52,9 @@ func TestDetailsLocalLocation_NilDetails(t *testing.T) {
 
 func TestDetailsLocalLocation_SkipsNilEntries(t *testing.T) {
 	d := &Details{
-		Locations: []*asset.Location{
+		Locations: []*assets.Location{
 			nil,
-			{LocationKind: asset.LocationKindLocal, IsPrimary: true},
+			{LocationKind: assets.LocationKindLocal, IsPrimary: true},
 		},
 	}
 	got := d.LocalLocation()
@@ -65,21 +65,21 @@ func TestDetailsLocalLocation_SkipsNilEntries(t *testing.T) {
 
 func TestDetailsDriveLocation_PrefersPrimary(t *testing.T) {
 	d := &Details{
-		Locations: []*asset.Location{
-			{LocationKind: asset.LocationKindLocal, IsPrimary: true},
-			{LocationKind: asset.LocationKindDrive, IsPrimary: true},
+		Locations: []*assets.Location{
+			{LocationKind: assets.LocationKindLocal, IsPrimary: true},
+			{LocationKind: assets.LocationKindDrive, IsPrimary: true},
 		},
 	}
 	got := d.DriveLocation()
-	if got == nil || got.LocationKind != asset.LocationKindDrive || !got.IsPrimary {
+	if got == nil || got.LocationKind != assets.LocationKindDrive || !got.IsPrimary {
 		t.Fatalf("expected primary drive, got %+v", got)
 	}
 }
 
 func TestDetailsDriveLocation_Absent(t *testing.T) {
 	d := &Details{
-		Locations: []*asset.Location{
-			{LocationKind: asset.LocationKindLocal, IsPrimary: true},
+		Locations: []*assets.Location{
+			{LocationKind: assets.LocationKindLocal, IsPrimary: true},
 		},
 	}
 	if got := d.DriveLocation(); got != nil {
@@ -89,7 +89,7 @@ func TestDetailsDriveLocation_Absent(t *testing.T) {
 
 func TestDetailsProcessingStep_Found(t *testing.T) {
 	d := &Details{
-		Processing: []asset.ProcessingRecord{
+		Processing: []assets.ProcessingRecord{
 			{Step: string(asset.StageDownload), Status: asset.StatusCompleted},
 			{Step: string(asset.StageIndexing), Status: asset.StatusRunning},
 		},
@@ -102,7 +102,7 @@ func TestDetailsProcessingStep_Found(t *testing.T) {
 
 func TestDetailsProcessingStep_NotFound(t *testing.T) {
 	d := &Details{
-		Processing: []asset.ProcessingRecord{
+		Processing: []assets.ProcessingRecord{
 			{Step: string(asset.StageDownload), Status: asset.StatusCompleted},
 		},
 	}
