@@ -56,7 +56,7 @@ import (
 	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	concurrent "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	pf "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 )
 
@@ -800,7 +800,7 @@ func composeIntegration(
 
 	// ── Lifecycle Scheduler ────────────────────────────────────────────
 	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, jobsService, log)
-	concurrent.SafeGo("lifecycle-scheduler", func() { lifecycleScheduler.Start(ctx) })
+	pf.SafeGo("lifecycle-scheduler", func() { lifecycleScheduler.Start(ctx) })
 
 	// ── Outbox Events Pool (PR5 — canonical outbox for async events) ───
 	// The outbox_events Pool replaces the legacy media_index_outbox Worker.
@@ -833,10 +833,10 @@ func composeIntegration(
 		ReclaimInterval: cfgReclaim,
 	}
 	outboxEventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, outboxEventsRegistry, log, outboxEventsCfg)
-	concurrent.SafeGo("outbox-events-pool", func() {
+	pf.SafeGo("outbox-events-pool", func() {
 		outboxEventsPool.Start(ctx, 1)
 	})
-	concurrent.SafeGo("outbox-events-shutdown", func() {
+	pf.SafeGo("outbox-events-shutdown", func() {
 		<-ctx.Done()
 		if err := outboxEventsPool.Stop(15 * time.Second); err != nil {
 			log.Warn("outbox events pool stop returned error", zap.Error(err))

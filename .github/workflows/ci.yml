@@ -53,6 +53,7 @@ jobs:
     - name: Build all binaries
       run: |
         go build -o /dev/null ./cmd/server/
+        go build -o /dev/null ./cmd/worker/
         go build -o /dev/null ./cmd/admin/
         go build -o /dev/null ./cmd/gen-api-docs/
 
