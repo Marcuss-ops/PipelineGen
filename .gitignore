@@ -176,3 +176,6 @@ profiles/
 comic-video-maker/
 .env
 local.env
+
+# Gemini CLI workspace metadata (local-only)
+.zai/
