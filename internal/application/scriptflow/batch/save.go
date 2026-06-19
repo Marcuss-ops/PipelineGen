@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -39,8 +39,8 @@ type batchDBRecord struct {
 
 // saveBatchScript persists a batch script to the scripts repository.
 // Returns the script ID if saved, or 0 when saving is skipped or fails.
-func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBatchRequest, rec *batchDBRecord, researchSources []scripts.ScriptResearchSource) int64 {
-	if !req.SaveToDB || h.scriptsRepo == nil {
+func (s *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRequest, rec *batchDBRecord, researchSources []scripts.ScriptResearchSource) int64 {
+	if !req.SaveToDB || s.scriptsRepo == nil {
 		return 0
 	}
 
@@ -69,20 +69,20 @@ func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBa
 	}
 	metadataJSON, marshalErr := json.Marshal(metadata)
 	if marshalErr != nil {
-		h.log.Warn("failed to marshal batch metadata", zap.Error(marshalErr))
+		s.log.Warn("failed to marshal batch metadata", zap.Error(marshalErr))
 		metadataJSON = []byte("{}")
 	}
 
 	version := 1
-	if nextVersion, versionErr := h.scriptsRepo.NextVersionForTopic(ctx, rec.docTitle, req.Language, "book"); versionErr != nil {
-		h.log.Warn("failed to compute batch version, falling back to 1", zap.Error(versionErr))
+	if nextVersion, versionErr := s.scriptsRepo.NextVersionForTopic(ctx, rec.docTitle, req.Language, "book"); versionErr != nil {
+		s.log.Warn("failed to compute batch version, falling back to 1", zap.Error(versionErr))
 	} else {
 		version = nextVersion
 	}
 
 	ollamaBaseURL := ""
-	if h.cfg != nil {
-		ollamaBaseURL = h.cfg.External.OllamaURL
+	if s.cfg != nil {
+		ollamaBaseURL = s.cfg.External.OllamaURL
 	}
 
 	// Clean markdown artifacts from each section so DB content is consistent
@@ -91,7 +91,7 @@ func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBa
 		rec.sections[i].Content = textutil.CleanForVoiceover(rec.sections[i].Content)
 	}
 
-	scriptID, saveErr := h.scriptsRepo.SaveScript(ctx, &scripts.ScriptRecord{
+	scriptID, saveErr := s.scriptsRepo.SaveScript(ctx, &scripts.ScriptRecord{
 		Topic:          rec.docTitle,
 		Title:          rec.docTitle,
 		Duration:       req.Duration,
@@ -110,7 +110,7 @@ func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBa
 		Version:        version,
 	}, rec.sections, nil)
 	if saveErr != nil {
-		h.log.Warn("failed to save batch script to DB", zap.Error(saveErr), zap.String("title", rec.docTitle))
+		s.log.Warn("failed to save batch script to DB", zap.Error(saveErr), zap.String("title", rec.docTitle))
 		return 0
 	}
 
@@ -119,8 +119,8 @@ func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBa
 		for i := range researchSources {
 			researchSources[i].ScriptID = scriptID
 		}
-		if srcErr := h.scriptsRepo.SaveResearchSources(ctx, scriptID, researchSources); srcErr != nil {
-			h.log.Warn("failed to save research sources", zap.Error(srcErr), zap.Int64("script_id", scriptID))
+		if srcErr := s.scriptsRepo.SaveResearchSources(ctx, scriptID, researchSources); srcErr != nil {
+			s.log.Warn("failed to save research sources", zap.Error(srcErr), zap.Int64("script_id", scriptID))
 		}
 	}
 
@@ -129,8 +129,8 @@ func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBa
 		for i := range rec.outlineSections {
 			rec.outlineSections[i].ScriptID = scriptID
 		}
-		if outlineErr := h.scriptsRepo.SaveOutlineSections(ctx, scriptID, rec.outlineSections); outlineErr != nil {
-			h.log.Warn("failed to save outline sections", zap.Error(outlineErr), zap.Int64("script_id", scriptID))
+		if outlineErr := s.scriptsRepo.SaveOutlineSections(ctx, scriptID, rec.outlineSections); outlineErr != nil {
+			s.log.Warn("failed to save outline sections", zap.Error(outlineErr), zap.Int64("script_id", scriptID))
 		}
 	}
 
@@ -140,12 +140,12 @@ func (h *ScriptFlowHandler) saveBatchScript(ctx context.Context, req *GenerateBa
 			rec.generationLogs[i].ScriptID = scriptID
 		}
 		for _, logEntry := range rec.generationLogs {
-			if logErr := h.scriptsRepo.SaveGenerationLog(ctx, logEntry); logErr != nil {
-				h.log.Warn("failed to save generation log", zap.Error(logErr), zap.Int64("script_id", scriptID))
+			if logErr := s.scriptsRepo.SaveGenerationLog(ctx, logEntry); logErr != nil {
+				s.log.Warn("failed to save generation log", zap.Error(logErr), zap.Int64("script_id", scriptID))
 			}
 		}
 	}
 
-	h.log.Info("batch script saved to DB", zap.Int64("script_id", scriptID), zap.String("title", rec.docTitle))
+	s.log.Info("batch script saved to DB", zap.Int64("script_id", scriptID), zap.String("title", rec.docTitle))
 	return scriptID
 }

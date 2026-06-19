@@ -77,43 +77,6 @@ type VideoMetadata struct {
 	Tags        []string `json:"tags"`
 }
 
-// ── Typed Response Structs ───────────────────────────────────────────────────
-
-// BatchGenerateResponse is the typed response for POST /api/script/generate-batch.
-// The previous implementation returned map[string]any from buildBatchResponse,
-// which was an opaque blob that forced every caller to type-assert every field.
-type BatchGenerateResponse struct {
-	OK                    bool                      `json:"ok"`
-	Title                 string                    `json:"title"`
-	Script                string                    `json:"script"`
-	DocURL                string                    `json:"doc_url"`
-	Translations          map[string]map[string]any `json:"translations,omitempty"`
-	Guidelines            string                    `json:"guidelines,omitempty"`
-	ChapterStructure      *ChapterStructure         `json:"chapter_structure,omitempty"`
-	TargetWordsPerItem    int                       `json:"target_words_per_item"`
-	TargetWordsPerChapter int                       `json:"target_words_per_chapter"`
-	SourcePreprocessing   *SourcePreprocessing      `json:"source_preprocessing,omitempty"`
-	PromptVersion         string                    `json:"prompt_version,omitempty"`
-	EditorPromptVersion   string                    `json:"editor_prompt_version,omitempty"`
-	QAPromptVersion       string                    `json:"qa_prompt_version,omitempty"`
-	Timings               []chapterTiming           `json:"timings,omitempty"`
-	FailedChapters        []string                  `json:"failed_chapters,omitempty"`
-	FailedChapterCount    int                       `json:"failed_chapter_count"`
-	FailedLanguages       []string                  `json:"failed_languages,omitempty"`
-	FailedLanguageCount   int                       `json:"failed_language_count"`
-	VoiceoverLink         string                    `json:"voiceover_link,omitempty"`
-	VoiceoverStatus       string                    `json:"voiceover_status,omitempty"`
-	VoiceoverNote         string                    `json:"voiceover_note,omitempty"`
-}
-
-// SourcePreprocessing describes how many items were in the original batch
-// vs. how many were created after source-text splitting.
-type SourcePreprocessing struct {
-	OriginalItems int `json:"original_items"`
-	ExpandedItems int `json:"expanded_items"`
-	SplitItems    int `json:"split_items"`
-}
-
 // ── Struct → map Utility ────────────────────────────────────────────────────
 
 // ToMap converts any struct to map[string]any using reflection.
@@ -217,9 +180,4 @@ func convertValue(v any) any {
 	}
 }
 
-// ToMap converts BatchGenerateResponse to map[string]any for use with
-// the job system (which expects map payloads). This avoids the previous
-// double JSON marshal/unmarshal round-trip in HandleBatchScriptGenerateJob.
-func (r BatchGenerateResponse) ToMap() map[string]any {
-	return structToMap(r)
-}
+

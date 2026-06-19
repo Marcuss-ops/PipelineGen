@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -43,7 +43,7 @@ type genChapterResult struct {
 // This delegates every work item to generateSingleChapterFromWorkItem, which is the
 // engine-backed unified chapter writer. The duplication between the inline goroutine
 // and the helper was eliminated so the writing logic lives in a single place.
-func (h *ScriptFlowHandler) generateBatchChapters(
+func (s *BatchService) generateBatchChapters(
 	ctx context.Context,
 	req *GenerateBatchRequest,
 	workItems []batchWorkItem,
@@ -60,8 +60,8 @@ func (h *ScriptFlowHandler) generateBatchChapters(
 	var failedChapterCount int
 
 	chapterConcurrency := 3
-	if h.cfg != nil {
-		chapterConcurrency = h.cfg.Scripts.WithDefaults().BatchChapterConcurrency
+	if s.cfg != nil {
+		chapterConcurrency = s.cfg.Scripts.WithDefaults().BatchChapterConcurrency
 	}
 	sem := make(chan struct{}, chapterConcurrency)
 
@@ -71,7 +71,7 @@ func (h *ScriptFlowHandler) generateBatchChapters(
 			defer chWg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					h.log.Error("panic in parallel chapter generation goroutine",
+					s.log.Error("panic in parallel chapter generation goroutine",
 						zap.Any("recover", r),
 						zap.Int("chapter", idx+1),
 						zap.String("topic", workItem.topic))
@@ -84,7 +84,7 @@ func (h *ScriptFlowHandler) generateBatchChapters(
 			default:
 			}
 
-			scriptContent, timing, genErr := h.generateSingleChapterFromWorkItem(
+			scriptContent, timing, genErr := s.generateSingleChapterFromWorkItem(
 				ctx, sem, req, workItem, idx, len(workItems), channelID, guidelinesBlock, targetWordsPerChapter,
 			)
 

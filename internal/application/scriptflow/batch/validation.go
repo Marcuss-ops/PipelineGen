@@ -1,10 +1,10 @@
-package api
+package batch
 
 import (
 	"strings"
 )
 
-func supportedScriptLanguages(cfgLangs []string, sourceLang string) map[string]struct{} {
+func SupportedScriptLanguages(cfgLangs []string, sourceLang string) map[string]struct{} {
 	supported := make(map[string]struct{}, len(cfgLangs)+1)
 	if sourceLang = strings.TrimSpace(strings.ToLower(sourceLang)); sourceLang != "" {
 		supported[sourceLang] = struct{}{}

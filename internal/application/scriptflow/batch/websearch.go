@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -29,21 +29,21 @@ type searchResultWithContext struct {
 // parallelBatchWebSearch runs parallel web searches for each batch item.
 // Returns workItems (expanded via source resolution + splitting), research sources,
 // and splitItemCount.
-func (h *ScriptFlowHandler) parallelBatchWebSearch(ctx context.Context, req *GenerateBatchRequest, batchItems []BatchTopic) ([]batchWorkItem, []scripts.ScriptResearchSource, int, error) {
+func (s *BatchService) parallelBatchWebSearch(ctx context.Context, req *GenerateBatchRequest, batchItems []BatchTopic) ([]batchWorkItem, []scripts.ScriptResearchSource, int, error) {
 	webSearchTimeout := 15 * time.Second
-	if h.cfg != nil && h.cfg.External.WebSearchTimeoutSeconds > 0 {
-		webSearchTimeout = time.Duration(h.cfg.External.WebSearchTimeoutSeconds) * time.Second
+	if s.cfg != nil && s.cfg.External.WebSearchTimeoutSeconds > 0 {
+		webSearchTimeout = time.Duration(s.cfg.External.WebSearchTimeoutSeconds) * time.Second
 	}
 
 	var futures []searchFuture
 	var ws *client.WebSearcher
-	if h.generator != nil && h.generator.GetClient() != nil {
-		ws = h.generator.GetClient().WebSearcher()
+	if s.generator != nil && s.generator.GetClient() != nil {
+		ws = s.generator.GetClient().WebSearcher()
 	}
 	if ws != nil {
 		webSearchConcurrency := 4
-		if h.cfg != nil {
-			webSearchConcurrency = h.cfg.Scripts.WithDefaults().BatchWebSearchConcurrency
+		if s.cfg != nil {
+			webSearchConcurrency = s.cfg.Scripts.WithDefaults().BatchWebSearchConcurrency
 		}
 		sem := make(chan struct{}, webSearchConcurrency)
 		for _, bt := range batchItems {
@@ -117,11 +117,11 @@ func (h *ScriptFlowHandler) parallelBatchWebSearch(ctx context.Context, req *Gen
 		resolvedSourceText := strings.TrimSpace(future.sourceText)
 		sourceOrigin := "inline_text"
 		if resolvedSourceText != "" {
-			if normalizedSourceText, normalizedOrigin, sourceErr := h.resolveSourceText(ctx, resolvedSourceText); sourceErr == nil && strings.TrimSpace(normalizedSourceText) != "" {
+			if normalizedSourceText, normalizedOrigin, sourceErr := ResolveBatchSourceText(ctx, s.cfg, resolvedSourceText); sourceErr == nil && strings.TrimSpace(normalizedSourceText) != "" {
 				resolvedSourceText = strings.TrimSpace(normalizedSourceText)
 				sourceOrigin = normalizedOrigin
 			} else if sourceErr != nil {
-				h.log.Warn("failed to normalize batch source text", zap.String("topic", topicClean), zap.Error(sourceErr))
+				s.log.Warn("failed to normalize batch source text", zap.String("topic", topicClean), zap.Error(sourceErr))
 				if strings.TrimSpace(future.sourceText) == "" {
 					sourceOrigin = "empty"
 				} else if isYouTubeSourceURL(future.sourceText) {
@@ -135,7 +135,7 @@ func (h *ScriptFlowHandler) parallelBatchWebSearch(ctx context.Context, req *Gen
 		items := buildBatchWorkItems(topicClean, resolvedSourceText, sourceOrigin, webContext, searchStart, searchEnd, targetWordsPerChapter)
 		if len(items) > 1 {
 			splitItemCount += len(items) - 1
-			h.log.Info("batch source split into items", zap.String("topic", topicClean), zap.Int("items", len(items)), zap.String("source_origin", sourceOrigin))
+			s.log.Info("batch source split into items", zap.String("topic", topicClean), zap.Int("items", len(items)), zap.String("source_origin", sourceOrigin))
 		}
 		workItems = append(workItems, items...)
 	}

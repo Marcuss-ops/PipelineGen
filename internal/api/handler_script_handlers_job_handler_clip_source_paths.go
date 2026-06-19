@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
@@ -219,9 +220,9 @@ func (h *ScriptFlowHandler) handleClipPathTextOnly(ctx context.Context, payload 
 		topic, payload.SourceText, payload.Guidelines, title,
 		payload.Language, payload.Tone, payload.Model,
 		payload.ForceRefresh, payload.SaveToDB, payload.TargetWords,
-		defaults.String(payload.PromptVersion, defaultTextPromptVersion),
-		defaults.String(payload.EditorPromptVersion, defaultTextEditorPromptVersion),
-		defaults.String(payload.QAPromptVersion, defaultTextQAPromptVersion),
+		defaults.String(payload.PromptVersion, batch.DefaultTextPromptVersion),
+		defaults.String(payload.EditorPromptVersion, batch.DefaultTextEditorPromptVersion),
+		defaults.String(payload.QAPromptVersion, batch.DefaultTextQAPromptVersion),
 	)
 
 	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{

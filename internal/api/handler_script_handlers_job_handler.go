@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 
 	"go.uber.org/zap"
@@ -28,7 +29,7 @@ func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 // HandleBatchScriptGenerateJob processes the background job for script.generate_batch
 func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_batch job", zap.String("job_id", job.ID))
-	var req GenerateBatchRequest
+	var req batch.GenerateBatchRequest
 	if err := json.Unmarshal(job.Payload, &req); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job payload: %w", err)
 	}
@@ -43,7 +44,10 @@ func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, jo
 		}
 	}
 
-	resp, err := h.ExecuteBatchGeneration(ctx, &req, progressFunc)
+	if h.batchService == nil {
+		return nil, fmt.Errorf("batch service not initialized")
+	}
+	resp, err := h.batchService.Execute(ctx, &req, progressFunc)
 	if err != nil {
 		return nil, err
 	}

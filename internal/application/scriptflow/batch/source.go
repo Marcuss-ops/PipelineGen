@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -29,7 +29,7 @@ type youtubeMetadata struct {
 	} `json:"chapters"`
 }
 
-func resolveBatchSourceText(ctx context.Context, cfg *config.Config, raw string) (string, string, error) {
+func ResolveBatchSourceText(ctx context.Context, cfg *config.Config, raw string) (string, string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "empty", nil

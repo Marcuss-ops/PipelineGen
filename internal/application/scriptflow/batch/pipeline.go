@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -57,7 +57,7 @@ import (
 //     splitting inside the web search phase
 //   - err:            non-nil only on a fatal error (ctx cancelled
 //     before any work began)
-func (h *ScriptFlowHandler) pipelineWebSearchAndChapters(
+func (s *BatchService) pipelineWebSearchAndChapters(
 	ctx context.Context,
 	req *GenerateBatchRequest,
 	batchItems []BatchTopic,
@@ -82,8 +82,8 @@ func (h *ScriptFlowHandler) pipelineWebSearchAndChapters(
 	// hard-coded defaults of 4 web searches and 3 chapters.
 	webSearchConcurrency := 4
 	chapterConcurrency := 3
-	if h.cfg != nil {
-		s := h.cfg.Scripts.WithDefaults()
+	if s.cfg != nil {
+		s := s.cfg.Scripts.WithDefaults()
 		webSearchConcurrency = s.BatchWebSearchConcurrency
 		chapterConcurrency = s.BatchChapterConcurrency
 	}
@@ -92,16 +92,16 @@ func (h *ScriptFlowHandler) pipelineWebSearchAndChapters(
 	// honours request cancellation. The chapter helper has its own
 	// 10-minute per-chapter context.
 	webSearchTimeout := 15 * time.Second
-	if h.cfg != nil && h.cfg.External.WebSearchTimeoutSeconds > 0 {
-		webSearchTimeout = time.Duration(h.cfg.External.WebSearchTimeoutSeconds) * time.Second
+	if s.cfg != nil && s.cfg.External.WebSearchTimeoutSeconds > 0 {
+		webSearchTimeout = time.Duration(s.cfg.External.WebSearchTimeoutSeconds) * time.Second
 	}
 
 	// Resolve the web searcher once. If the generator or its client
 	// isn't wired up, the per-topic web search is skipped (webContext
 	// stays empty) but the rest of the pipeline still runs.
 	var ws *client.WebSearcher
-	if h.generator != nil && h.generator.GetClient() != nil {
-		ws = h.generator.GetClient().WebSearcher()
+	if s.generator != nil && s.generator.GetClient() != nil {
+		ws = s.generator.GetClient().WebSearcher()
 	}
 
 	// indexedWork pairs a workItem with its global index in the flat
@@ -170,7 +170,7 @@ func (h *ScriptFlowHandler) pipelineWebSearchAndChapters(
 			resolvedSourceText := strings.TrimSpace(arg.St)
 			sourceOrigin := "inline_text"
 			if resolvedSourceText != "" {
-				if normalizedSourceText, normalizedOrigin, sourceErr := h.resolveSourceText(ctx, resolvedSourceText); sourceErr == nil && strings.TrimSpace(normalizedSourceText) != "" {
+				if normalizedSourceText, normalizedOrigin, sourceErr := ResolveBatchSourceText(ctx, s.cfg, resolvedSourceText); sourceErr == nil && strings.TrimSpace(normalizedSourceText) != "" {
 					resolvedSourceText = strings.TrimSpace(normalizedSourceText)
 					sourceOrigin = normalizedOrigin
 				} else if sourceErr != nil {
@@ -230,7 +230,7 @@ func (h *ScriptFlowHandler) pipelineWebSearchAndChapters(
 					return
 				default:
 				}
-				content, timing, genErr := h.generateSingleChapterFromWorkItem(
+				content, timing, genErr := s.generateSingleChapterFromWorkItem(
 					ctx, chapterSem, req, iw.workItem, iw.globalIdx, len(batchItems),
 					channelID, guidelinesBlock, targetWordsPerChapter,
 				)
