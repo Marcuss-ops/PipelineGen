@@ -23,8 +23,8 @@ unified job queue; HTTP traffic is served by Gin.
 | Binary | Source | Purpose |
 |--------|--------|---------|
 | `pipelinegen` | `cmd/server/main.go` | HTTP server + background workers. Default `--mode all`. |
-| `admin` | `cmd/admin/main.go` | One-shot CLI: backfills, resets, verifications, sync. |
-| `gen-api-docs` | `cmd/gen-api-docs/main.go` | Regenerates API documentation. |
+| `pipelinegen-worker` | `cmd/worker/main.go` | Standalone worker (connects to broker via HTTP). |
+| `admin` | `cmd/admin/main.go` | One-shot CLI: backfills, resets, migrations, benchmarks, API docs. |
 
 ## 2. System at a glance
 
@@ -247,8 +247,8 @@ production token MUST NOT be checked in.
 ```bash
 # Build
 go build -o pipelinegen ./cmd/server/
+go build -o pipelinegen-worker ./cmd/worker/
 go build -o admin ./cmd/admin/
-go build -o gen-api-docs ./cmd/gen-api-docs/
 
 # Run
 ./pipelinegen --mode all         # HTTP + workers
@@ -256,8 +256,10 @@ go build -o gen-api-docs ./cmd/gen-api-docs/
 ./pipelinegen --mode workers     # workers only
 
 # Admin CLI
-./admin backfill-asset-index
-./admin sync-outros
+./admin seed-channels
+./admin migrate-status
+./admin benchmark
+./admin gen-api-docs
 
 # Tests
 go test ./...                                    # full suite
@@ -268,7 +270,7 @@ go test -run TestDriveConfig ./internal/config/  # single test
 bash scripts/ci-architectural-checks.sh
 
 # Docs
-./gen-api-docs
+./admin gen-api-docs
 ```
 
 OAuth/Drive token: if Drive auth fails, run `python3 scripts/generate_drive_token.py`
