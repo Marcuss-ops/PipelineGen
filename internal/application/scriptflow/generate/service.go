@@ -51,7 +51,7 @@ func (s *GenerationService) EnqueueFromClips(ctx context.Context, spec scriptjob
 		return nil, err
 	}
 
-	applyDefaultsFromClips(&spec, scriptsCfg)
+	applyPreset(&spec, scriptsCfg, scriptjobs.PresetCustom)
 
 	if spec.GenerateMetadata {
 		spec.ExtractEntities = true
@@ -69,30 +69,9 @@ func (s *GenerationService) EnqueueWithImages(ctx context.Context, spec scriptjo
 		return nil, err
 	}
 
-	applyDefaultsWithImages(&spec, scriptsCfg)
+	applyPreset(&spec, scriptsCfg, scriptjobs.PresetWithImages)
 
 	return s.enqueue(ctx, spec, scriptjobs.PresetWithImages, "generate-with-images")
-}
-
-// ── Batch ───────────────────────────────────────────────────────────────────
-
-// EnqueueBatch validates, applies defaults, builds the payload, and enqueues
-// an async batch generation job. For sync batch execution, the caller should
-// use the handler's ExecuteBatchGeneration directly (PR 4 will extract this).
-//
-// TODO(PR-4): implement when batch async path is extracted from ScriptFlowHandler.
-func (s *GenerationService) EnqueueBatch(ctx context.Context, spec scriptjobs.GenerationSpec) (*BatchResult, error) {
-	return nil, fmt.Errorf("not implemented — PR 4 will extract batch async path from ScriptFlowHandler")
-}
-
-// BatchResult is the application-layer result for an async batch enqueue.
-type BatchResult struct {
-	OK        bool
-	Async     bool
-	JobID     string
-	Status    string
-	Message   string
-	StatusURL string
 }
 
 // ── Config & defaults ──────────────────────────────────────────────────────
@@ -104,7 +83,21 @@ func (s *GenerationService) getScriptsConfig() config.ScriptsConfig {
 	return config.ScriptsConfig{}
 }
 
-func applyDefaultsFromClips(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfig) {
+// applyPreset applies the preset-specific defaults and feature flags.
+//
+// Common defaults (applied regardless of preset):
+//   - language, tone, transcript_policy, ordering_strategy
+//   - sentences_per_image, images_per_scene
+//   - title/output_name, target_words
+//
+// PresetCustom: no feature flags are forced — the caller's values are
+// respected (the HTTP layer maps every field from the request body).
+//
+// PresetWithImages: forces generate_scene_images=true, generate_voiceover=true,
+// extract_entities=false, generate_metadata=false per the
+// /generate-with-images endpoint contract.
+func applyPreset(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfig, preset scriptjobs.Preset) {
+	// Common defaults.
 	if spec.Language == "" {
 		spec.Language = scriptsCfg.DefaultLanguage
 	}
@@ -123,44 +116,23 @@ func applyDefaultsFromClips(spec *scriptjobs.GenerationSpec, scriptsCfg config.S
 	if spec.ImagesPerScene <= 0 {
 		spec.ImagesPerScene = 1
 	}
-	spec.GenerateSceneImages = true
 
 	title, outputName := resolveTitleAndOutputName(spec.Title, spec.Topic)
 	spec.Title = title
 	spec.OutputName = outputName
 
 	spec.TargetWords = resolveTargetWords(spec.TargetWords, spec.MinWords, spec.Duration, scriptsCfg.MinWordFloor)
-}
 
-func applyDefaultsWithImages(spec *scriptjobs.GenerationSpec, scriptsCfg config.ScriptsConfig) {
-	if spec.Language == "" {
-		spec.Language = scriptsCfg.DefaultLanguage
+	// Preset-specific feature flags.
+	switch preset {
+	case scriptjobs.PresetWithImages:
+		spec.GenerateSceneImages = true
+		spec.GenerateVoiceover = true
+		spec.ExtractEntities = false
+		spec.GenerateMetadata = false
+	case scriptjobs.PresetCustom:
+		// No forced feature flags — the caller controls every flag.
 	}
-	if spec.Tone == "" {
-		spec.Tone = scriptsCfg.DefaultTone
-	}
-	if spec.TranscriptPolicy == "" {
-		spec.TranscriptPolicy = "auto"
-	}
-	if spec.OrderingStrategy == "" {
-		spec.OrderingStrategy = "auto"
-	}
-	if spec.SentencesPerImage <= 0 {
-		spec.SentencesPerImage = 8
-	}
-	if spec.ImagesPerScene <= 0 {
-		spec.ImagesPerScene = 1
-	}
-	spec.GenerateSceneImages = true
-	spec.GenerateVoiceover = true
-	spec.ExtractEntities = false
-	spec.GenerateMetadata = false
-
-	title, outputName := resolveTitleAndOutputName(spec.Title, spec.Topic)
-	spec.Title = title
-	spec.OutputName = outputName
-
-	spec.TargetWords = resolveTargetWords(spec.TargetWords, spec.MinWords, spec.Duration, scriptsCfg.MinWordFloor)
 }
 
 // ── Shared validation & enqueue ────────────────────────────────────────────
@@ -169,10 +141,10 @@ func validateGeneration(spec *scriptjobs.GenerationSpec) error {
 	hasClips := spec.HasClips()
 	hasText := spec.HasText()
 	if !hasClips && !hasText {
-		return fmt.Errorf("provide clip_ids/num_clips for clip-aware mode, or topic/source_text for text-only mode")
+		return fmt.Errorf("%w: provide clip_ids/num_clips for clip-aware mode, or topic/source_text for text-only mode", scriptjobs.ErrValidation)
 	}
 	if len(spec.ClipIDs) > 50 {
-		return fmt.Errorf("clip_ids cannot exceed 50 clips")
+		return fmt.Errorf("%w: clip_ids cannot exceed 50 clips", scriptjobs.ErrValidation)
 	}
 	return nil
 }

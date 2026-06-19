@@ -1,7 +1,7 @@
 package script
 
 import (
-
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
@@ -34,7 +34,6 @@ type GenerateFromClipsRequest struct {
 	Duration          int `json:"duration,omitempty"`
 	MinWords          int `json:"min_words,omitempty"`
 	SentencesPerImage int `json:"sentences_per_image,omitempty"`
-	LinesPerImage     int `json:"lines_per_image,omitempty"`
 	ImagesPerScene    int `json:"images_per_scene,omitempty"`
 
 	// ── Feature flags (all selectable individually) ────────────────────────
@@ -134,12 +133,12 @@ type GenerateWithImagesRequest struct {
 	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
 }
 
-// ScriptSceneImage represents a scene text and its corresponding AI generated image.
+// ScriptSceneImage is an alias for scenes.SceneImage (canonical type in application layer).
 //
 // Kind + NarrationRole were added (June 2026, generate-from-clips
 // endpoint-compat request) so the user-facing `scenes[]` array always carries
 // machine-detectable intro/outro labels regardless of whether the writer LLM
-// emitted [Narration: ...] markers. The helper `markScenesIntroOutro`
+// emitted [Narration: ...] markers. The helper `scenes.markScenesIntroOutro`
 // (flow_scene_intro_outro.go) labels the first scene as intro and the last as
 // outro — see that file for the exact policy.
 //
@@ -149,21 +148,10 @@ type GenerateWithImagesRequest struct {
 //
 // omitempty on both fields so existing clients reading `text/image/images`
 // without these new fields keep working unchanged.
-type ScriptSceneImage struct {
-	Text          string   `json:"text"`
-	Image         string   `json:"image,omitempty"`
-	Images        []string `json:"images,omitempty"`
-	Kind          string   `json:"kind,omitempty"`
-	NarrationRole string   `json:"narration_role,omitempty"`
-}
+type ScriptSceneImage = scenes.SceneImage
 
-// SceneVoiceover holds the voiceover result for a single scene (returned separately from scenes).
-type SceneVoiceover struct {
-	SceneIndex int    `json:"scene_index"`
-	Link       string `json:"link"`
-	LocalPath  string `json:"local_path,omitempty"`
-	Status     string `json:"status"`
-}
+// SceneVoiceover is an alias for scenes.SceneVoiceover (canonical type in application layer).
+type SceneVoiceover = scenes.SceneVoiceover
 
 // ClipScriptJobResult is the result stored in the job system after completion.
 type ClipScriptJobResult struct {
