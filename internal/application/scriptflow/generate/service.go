@@ -151,7 +151,10 @@ func applyDefaultsWithImages(spec *scriptjobs.GenerationSpec, scriptsCfg config.
 	if spec.ImagesPerScene <= 0 {
 		spec.ImagesPerScene = 1
 	}
+	spec.GenerateSceneImages = true
 	spec.GenerateVoiceover = true
+	spec.ExtractEntities = false
+	spec.GenerateMetadata = false
 
 	title, outputName := resolveTitleAndOutputName(spec.Title, spec.Topic)
 	spec.Title = title
