@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"encoding/json"
@@ -11,12 +11,12 @@ import (
 
 // Default prompt-version identifiers used across script/batch/book handlers.
 const (
-	defaultTextPromptVersion       = "text_writer_v1"
-	defaultTextEditorPromptVersion = "text_editor_v1"
-	defaultTextQAPromptVersion     = "text_qa_v1"
-	defaultBookPromptVersion       = "book_writer_v3"
-	defaultBookEditorPromptVersion = "book_editor_v2"
-	defaultBookQAPromptVersion     = "qa_book_v1"
+	DefaultTextPromptVersion       = "text_writer_v1"
+	DefaultTextEditorPromptVersion = "text_editor_v1"
+	DefaultTextQAPromptVersion     = "text_qa_v1"
+	DefaultBookPromptVersion       = "book_writer_v3"
+	DefaultBookEditorPromptVersion = "book_editor_v2"
+	DefaultBookQAPromptVersion     = "qa_book_v1"
 )
 
 type BatchTopic struct {
@@ -37,7 +37,34 @@ type ChapterStructure struct {
 }
 
 type GenerateBatchRequest struct {
-	BaseGenerateRequest
+	// Inlined from BaseGenerateRequest (api package — avoid import cycle)
+	Language      string   `json:"language,omitempty"`
+	Tone          string   `json:"tone,omitempty"`
+	Model         string   `json:"model,omitempty"`
+	ChannelID     string   `json:"channel_id,omitempty"`
+	Duration      int      `json:"duration,omitempty"`
+	MinWords      int      `json:"min_words,omitempty"`
+	Guidelines    string   `json:"guidelines,omitempty"`
+	Languages     []string `json:"languages,omitempty"`
+	PromptVersion       string `json:"prompt_version,omitempty"`
+	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
+	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
+	SaveToDB      bool   `json:"save_to_db,omitempty"`
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
+	UseMemory     *bool `json:"use_memory,omitempty"`
+	ForceRefresh  bool  `json:"force_refresh,omitempty"`
+	RequestTimeout int  `json:"request_timeout_seconds,omitempty"`
+
+	// Batch-specific fields
+	Source            string   `json:"source,omitempty"`
+	MediaType         string   `json:"media_type,omitempty"`
+	NumClips          int      `json:"num_clips,omitempty"`
+	MinScore          float64  `json:"min_score,omitempty"`
+	SelectableClips   int      `json:"selectable_clips,omitempty"`
+	MaxCharsPerScene  int      `json:"max_chars_per_scene,omitempty"`
+	Style             string   `json:"style,omitempty"`
+	Type              string   `json:"type,omitempty"`
+	StyleInstructions string   `json:"style_instructions,omitempty"`
 
 	Items                 []BatchTopic      `json:"items,omitempty"`
 	BatchTopics           []BatchTopic      `json:"batch_topics,omitempty"`
@@ -91,7 +118,7 @@ type generatedPart struct {
 	timing  chapterTiming
 }
 
-func validateGenerateBatchRequest(req *GenerateBatchRequest, effectiveFolderID string, supported map[string]struct{}) []string {
+func ValidateGenerateBatchRequest(req *GenerateBatchRequest, effectiveFolderID string, supported map[string]struct{}) []string {
 	var errs []string
 
 	if strings.TrimSpace(req.DocTitle) == "" {
@@ -335,4 +362,49 @@ type ChapterPlan struct {
 
 type ChapterPlanList struct {
 	Chapters []ChapterPlan `json:"chapters"`
+}
+
+// BatchGenerateResponse is the typed response for POST /api/script/generate-batch.
+type BatchGenerateResponse struct {
+	OK                    bool                      `json:"ok"`
+	Title                 string                    `json:"title"`
+	Script                string                    `json:"script"`
+	DocURL                string                    `json:"doc_url"`
+	Translations          map[string]map[string]any `json:"translations,omitempty"`
+	Guidelines            string                    `json:"guidelines,omitempty"`
+	ChapterStructure      *ChapterStructure         `json:"chapter_structure,omitempty"`
+	TargetWordsPerItem    int                       `json:"target_words_per_item"`
+	TargetWordsPerChapter int                       `json:"target_words_per_chapter"`
+	SourcePreprocessing   *SourcePreprocessing      `json:"source_preprocessing,omitempty"`
+	PromptVersion         string                    `json:"prompt_version,omitempty"`
+	EditorPromptVersion   string                    `json:"editor_prompt_version,omitempty"`
+	QAPromptVersion       string                    `json:"qa_prompt_version,omitempty"`
+	Timings               []chapterTiming           `json:"timings,omitempty"`
+	FailedChapters        []string                  `json:"failed_chapters,omitempty"`
+	FailedChapterCount    int                       `json:"failed_chapter_count"`
+	FailedLanguages       []string                  `json:"failed_languages,omitempty"`
+	FailedLanguageCount   int                       `json:"failed_language_count"`
+	VoiceoverLink         string                    `json:"voiceover_link,omitempty"`
+	VoiceoverStatus       string                    `json:"voiceover_status,omitempty"`
+	VoiceoverNote         string                    `json:"voiceover_note,omitempty"`
+}
+
+// SourcePreprocessing describes how many items were in the original batch
+// vs. how many were created after source-text splitting.
+type SourcePreprocessing struct {
+	OriginalItems int `json:"original_items"`
+	ExpandedItems int `json:"expanded_items"`
+	SplitItems    int `json:"split_items"`
+}
+
+// ToMap converts BatchGenerateResponse to map[string]any for use with
+// the job system (which expects map payloads). This avoids the previous
+// double JSON marshal/unmarshal round-trip.
+func (r BatchGenerateResponse) ToMap() map[string]any {
+	// Simple JSON round-trip — the batch response is small enough that
+	// this is faster than a reflection-based struct→map walk.
+	var out map[string]any
+	b, _ := json.Marshal(r)
+	_ = json.Unmarshal(b, &out)
+	return out
 }

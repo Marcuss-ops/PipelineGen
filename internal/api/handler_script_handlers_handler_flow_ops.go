@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/platform/ai/ollama/types"
+	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
 type RegenerateSectionRequest struct {
@@ -134,19 +136,18 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 			if docID != "" && h.docClient != nil {
 				h.log.Info("updating associated google doc", zap.String("doc_id", docID))
 				// Prepare generated parts to reconstruct HTML
-				parts := make([]generatedPart, len(updatedSections))
-				for idx, s := range updatedSections {
-					parts[idx] = generatedPart{
-						topic:   s.SectionTitle,
-						content: s.Content,
-					}
-				}
-				noChapters, _ := meta["no_chapters"].(bool)
-				language := script.Language
-				if language == "" {
-					language = "en"
-				}
-				htmlMergedContent := buildBatchGoogleDocHTML(script.Topic, parts, noChapters, language)
+			titles := make([]string, len(updatedSections))
+			contents := make([]string, len(updatedSections))
+			for idx, s := range updatedSections {
+				titles[idx] = s.SectionTitle
+				contents[idx] = s.Content
+			}
+			noChapters, _ := meta["no_chapters"].(bool)
+			language := script.Language
+			if language == "" {
+				language = "en"
+			}
+			htmlMergedContent := buildSectionDocHTML(script.Topic, titles, contents, noChapters, language)
 				// Re-upload/update the document
 				docErr := h.docClient.UpdateDoc(c.Request.Context(), docID, script.Topic, htmlMergedContent)
 				if docErr != nil {
@@ -166,6 +167,63 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 
 type EvictCacheRequest struct {
 	Titles []string `json:"titles,omitempty"`
+}
+
+// buildSectionDocHTML generates Google Doc HTML from section titles and contents.
+// Mirrors the logic in application/scriptflow/batch/doc.go but operates on
+// plain string slices instead of batch-internal types.
+func buildSectionDocHTML(title string, sectionTitles []string, sectionContents []string, noChapters bool, language string) string {
+	cl := "Chapter"
+	switch language {
+	case "it":
+		cl = "Capitolo"
+	case "fr":
+		cl = "Chapitre"
+	case "es":
+		cl = "Capítulo"
+	case "de":
+		cl = "Kapitel"
+	}
+
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
+	b.WriteString(fmt.Sprintf("<h1>%s</h1>", html.EscapeString(strings.TrimSpace(title))))
+
+	if !noChapters {
+		b.WriteString(fmt.Sprintf("<h2>%s</h2>", html.EscapeString("Table of Contents")))
+		b.WriteString("<ol>")
+		for idx := range sectionTitles {
+			b.WriteString(fmt.Sprintf("<li><a href=\"#ch-%d\">%s %d: %s</a></li>", idx+1, cl, idx+1, html.EscapeString(strings.TrimSpace(sectionTitles[idx]))))
+		}
+		b.WriteString("</ol>")
+		b.WriteString("<hr>")
+	}
+	for idx := range sectionTitles {
+		if !noChapters {
+			b.WriteString(fmt.Sprintf("<section id=\"ch-%d\">", idx+1))
+			b.WriteString(fmt.Sprintf("<h2>%s %d: %s</h2>", cl, idx+1, html.EscapeString(strings.TrimSpace(sectionTitles[idx]))))
+		}
+		for _, para := range strings.Split(sectionContents[idx], "\n\n") {
+			para = strings.TrimSpace(para)
+			if para == "" {
+				continue
+			}
+			para = textutil.CleanForVoiceover(para)
+			para = html.EscapeString(para)
+			para = strings.ReplaceAll(para, "\n", "<br>")
+			b.WriteString(fmt.Sprintf("<p>%s</p>", para))
+		}
+		if !noChapters {
+			b.WriteString("</section>")
+			if idx < len(sectionTitles)-1 {
+				b.WriteString("<hr>")
+			}
+		} else {
+			b.WriteString("<br>")
+		}
+	}
+	b.WriteString("</body></html>")
+	return b.String()
 }
 
 func (h *ScriptFlowHandler) EvictCache(c *gin.Context) {

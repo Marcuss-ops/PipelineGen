@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -27,12 +27,12 @@ const qaTolerancePercent = 10
 // qaPass runs a global quality check on the full merged script.
 // It verifies factual accuracy, opening/closing strength, generic endings,
 // and global redundancy without adding new facts.
-func (h *ScriptFlowHandler) qaPass(
+func (s *BatchService) qaPass(
 	ctx context.Context,
 	req *GenerateBatchRequest,
 	script string,
 ) (string, error) {
-	if h.generator == nil || strings.TrimSpace(script) == "" {
+	if s.generator == nil || strings.TrimSpace(script) == "" {
 		return script, nil
 	}
 
@@ -57,7 +57,7 @@ func (h *ScriptFlowHandler) qaPass(
 	var res *ollamatypes.GenerationResult
 	genErr := retry.Do(qaCtx, func() error {
 		var innerErr error
-		res, innerErr = h.generator.GenerateScript(qaCtx, ollamatypes.TextGenerationRequest{
+		res, innerErr = s.generator.GenerateScript(qaCtx, ollamatypes.TextGenerationRequest{
 			Language:   req.Language,
 			Tone:       req.Tone,
 			Model:      req.Model,
@@ -87,7 +87,7 @@ func (h *ScriptFlowHandler) qaPass(
 	correctedWords := textutil.CountWords(corrected)
 	deviation := abs(correctedWords - originalWords)
 	if originalWords > 0 && (deviation*100/originalWords) > qaTolerancePercent {
-		h.log.Warn("qa pass deviated too much from original word count, falling back",
+		s.log.Warn("qa pass deviated too much from original word count, falling back",
 			zap.Int("original", originalWords),
 			zap.Int("corrected", correctedWords),
 			zap.Int("deviation_percent", deviation*100/originalWords),

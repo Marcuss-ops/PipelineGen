@@ -1,4 +1,4 @@
-package api
+package batch
 
 // buildBatchResponse constructs the final typed response for ExecuteBatchGeneration.
 func buildBatchResponse(

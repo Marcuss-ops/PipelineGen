@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -24,6 +25,7 @@ import (
 type ScriptFlowHandler struct {
 	generator         *ollama.Generator
 	engine            *scripts.Engine
+	batchService      *batch.BatchService
 	imgService        *images.Service
 	realtimeSvc       *realtime.Service
 	associationSvc    *association.Service
@@ -160,7 +162,7 @@ func (h *ScriptFlowHandler) SetMediaCurator(m *mediacurator.Service) {
 
 func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResolver {
 	return func(ctx context.Context, raw string) (string, string, error) {
-		return resolveBatchSourceText(ctx, h.cfg, raw)
+		return batch.ResolveBatchSourceText(ctx, h.cfg, raw)
 	}
 }
 
@@ -168,6 +170,11 @@ func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResol
 func (h *ScriptFlowHandler) SetHarvestService(svc AutoHarvestService) {
 	h.harvestSvc = svc
 	h.clipServices.HarvestSvc = svc
+}
+
+// SetBatchService sets the batch generation service.
+func (h *ScriptFlowHandler) SetBatchService(svc *batch.BatchService) {
+	h.batchService = svc
 }
 
 // RegisterRoutes mounts ALL script generation endpoints (full-fat registration).
@@ -211,5 +218,5 @@ func (h *ScriptFlowHandler) resolveSourceText(ctx context.Context, raw string) (
 	if h.sourceResolver != nil {
 		return h.youTubeAwareSourceResolver()(ctx, raw)
 	}
-	return resolveBatchSourceText(ctx, h.cfg, raw)
+	return batch.ResolveBatchSourceText(ctx, h.cfg, raw)
 }

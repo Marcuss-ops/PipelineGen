@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -46,7 +46,7 @@ import (
 // caller (generateBatchChapters) keeps ownership of: the panic
 // recovery, the ctx-done check, the mutex-protected results slice,
 // the mutex-protected failedChapters counter, and the chWg WaitGroup.
-func (h *ScriptFlowHandler) generateSingleChapterFromWorkItem(
+func (s *BatchService) generateSingleChapterFromWorkItem(
 	ctx context.Context,
 	sem chan struct{},
 	req *GenerateBatchRequest,
@@ -101,7 +101,7 @@ func (h *ScriptFlowHandler) generateSingleChapterFromWorkItem(
 
 	// Memory gate check via Engine (nil-safe, handles exact/reference/enriched).
 	if useMem && !req.ForceRefresh {
-		memCtx, gateErr := h.engine.CheckMemoryGate(chapterCtx, channelID, topicClean, basePromptText, req.Language, "text", useMem, req.ForceRefresh)
+		memCtx, gateErr := s.engine.CheckMemoryGate(chapterCtx, channelID, topicClean, basePromptText, req.Language, "text", useMem, req.ForceRefresh)
 		if gateErr == nil && memCtx != nil && memCtx.CacheHit && memCtx.ExactOutput != nil {
 			cacheStatus = "exact_hit"
 			ollamaCalled = false
@@ -113,7 +113,7 @@ func (h *ScriptFlowHandler) generateSingleChapterFromWorkItem(
 		} else if gateErr == nil && memCtx != nil && memCtx.CacheHit {
 			cacheStatus = "reference_hit"
 			ollamaCalled = true
-			generationPromptText = h.engine.ResolvePrompt(basePromptText, memCtx)
+			generationPromptText = s.engine.ResolvePrompt(basePromptText, memCtx)
 		} else if gateErr == nil && memCtx != nil && memCtx.EnrichedPrompt != "" {
 			generationPromptText = memCtx.EnrichedPrompt
 		}
@@ -163,7 +163,7 @@ func (h *ScriptFlowHandler) generateSingleChapterFromWorkItem(
 			UseMemory:  useMem,
 			NumPredict: predictLimit,
 		}
-		genResult, attempts, err := h.engine.GenerateAndNormalizeWithRetry(chapterCtx, genReq, guidelinesBlock, 3)
+		genResult, attempts, err := s.engine.GenerateAndNormalizeWithRetry(chapterCtx, genReq, guidelinesBlock, 3)
 		retryCount = attempts
 		genErr = err
 		if genResult != nil {
@@ -181,7 +181,7 @@ func (h *ScriptFlowHandler) generateSingleChapterFromWorkItem(
 			}
 		}
 		if genErr == nil && strings.TrimSpace(scriptContent) != "" {
-			h.engine.SaveMemory(chapterCtx, channelID, "text", req.Language, topicClean, basePromptText, req.Model, scriptContent, wordCount)
+			s.engine.SaveMemory(chapterCtx, channelID, "text", req.Language, topicClean, basePromptText, req.Model, scriptContent, wordCount)
 		}
 	}
 

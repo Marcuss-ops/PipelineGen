@@ -6,6 +6,7 @@ import (
 	handlers "github.com/Marcuss-ops/PipelineGen/internal/api"
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	booksapi "github.com/Marcuss-ops/PipelineGen/internal/api/books"
+	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	lessonsapi "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
@@ -85,6 +86,9 @@ func WireRegistry(
 			coreDeps.DriveUploader, coreDeps.JobsService, coreDeps.ScriptsRepo, memorySvc,
 			cfg.Drive.ScriptsGenFolder(), cfg, log,
 		)
+
+		batchSvc := batchpkg.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, coreDeps.ScriptsRepo)
+		handler.SetBatchService(batchSvc)
 
 		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore,
 			coreDeps.ClipsRepo, engine, cfg, log)

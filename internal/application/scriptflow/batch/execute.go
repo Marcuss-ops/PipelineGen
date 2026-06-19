@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -13,10 +13,10 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/internal/platform"
 )
 
-func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *GenerateBatchRequest, onProgress func(int, string)) (BatchGenerateResponse, error) {
+func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *GenerateBatchRequest, onProgress func(int, string)) (BatchGenerateResponse, error) {
 	scriptsCfg := config.ScriptsConfig{}
-	if h.cfg != nil {
-		scriptsCfg = h.cfg.Scripts.WithDefaults()
+	if s.cfg != nil {
+		scriptsCfg = s.cfg.Scripts.WithDefaults()
 	}
 	docTitle := strings.TrimSpace(req.DocTitle)
 	if docTitle == "" {
@@ -39,7 +39,7 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 	}
 	batchItems := normalizedBatchItems(req)
 	if len(batchItems) == 0 && strings.TrimSpace(req.OutlineTopic) != "" {
-		if err := h.generateBatchOutline(ctx, req); err != nil {
+		if err := s.generateBatchOutline(ctx, req); err != nil {
 			return BatchGenerateResponse{}, err
 		}
 		batchItems = normalizedBatchItems(req)
@@ -48,7 +48,7 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 		return BatchGenerateResponse{}, fmt.Errorf("either items/topics list or outline_topic is required")
 	}
 
-	workItems, researchSources, splitItemCount, err := h.parallelBatchWebSearch(ctx, req, batchItems)
+	workItems, researchSources, splitItemCount, err := s.parallelBatchWebSearch(ctx, req, batchItems)
 	if err != nil {
 		return BatchGenerateResponse{}, err
 	}
@@ -58,12 +58,12 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 
 	if onProgress != nil {
 		chapterConcurrency := 3
-		if h.cfg != nil {
-			chapterConcurrency = h.cfg.Scripts.WithDefaults().BatchChapterConcurrency
+		if s.cfg != nil {
+			chapterConcurrency = s.cfg.Scripts.WithDefaults().BatchChapterConcurrency
 		}
 		onProgress(5, fmt.Sprintf("Generating %d chapters in parallel (concurrency=%d)...", len(workItems), chapterConcurrency))
 	}
-	results, failedChapters, failedChapterCount, genErr := h.generateBatchChapters(ctx, req, workItems, channelID, guidelinesBlock, targetWordsPerChapter, onProgress)
+	results, failedChapters, failedChapterCount, genErr := s.generateBatchChapters(ctx, req, workItems, channelID, guidelinesBlock, targetWordsPerChapter, onProgress)
 	if genErr != nil {
 		return BatchGenerateResponse{}, genErr
 	}
@@ -87,9 +87,9 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 	if onProgress != nil {
 		onProgress(85, "Running coherence pass on merged script...")
 	}
-	coherentScript, coherenceErr := h.coherencePass(ctx, req, mergedScriptStr)
+	coherentScript, coherenceErr := s.coherencePass(ctx, req, mergedScriptStr)
 	if coherenceErr != nil {
-		h.log.Warn("coherence pass failed, using merged script as-is", zap.Error(coherenceErr))
+		s.log.Warn("coherence pass failed, using merged script as-is", zap.Error(coherenceErr))
 	} else if coherentScript != "" && coherentScript != mergedScriptStr {
 		mergedScriptStr = coherentScript
 		generatedParts = rebuildGeneratedPartsFromMergedScript(docTitle, coherentScript, req.NoChapters, req.Language)
@@ -122,9 +122,9 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 	if onProgress != nil {
 		onProgress(88, "Running global QA pass on merged script...")
 	}
-	qaScript, qaErr := h.qaPass(ctx, req, mergedScriptStr)
+	qaScript, qaErr := s.qaPass(ctx, req, mergedScriptStr)
 	if qaErr != nil {
-		h.log.Warn("qa pass failed, using script as-is", zap.Error(qaErr))
+		s.log.Warn("qa pass failed, using script as-is", zap.Error(qaErr))
 	} else if qaScript != "" && qaScript != mergedScriptStr {
 		mergedScriptStr = qaScript
 		generatedParts = rebuildGeneratedPartsFromMergedScript(docTitle, qaScript, req.NoChapters, req.Language)
@@ -159,25 +159,25 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 	if onProgress != nil {
 		onProgress(92, "Creating Google Doc...")
 	}
-	docURL, docID := h.createBatchDoc(ctx, docTitle, generatedParts, req.NoChapters, req.Language, effectiveFolderID)
+	docURL, docID := s.createBatchDoc(ctx, docTitle, generatedParts, req.NoChapters, req.Language, effectiveFolderID)
 
-	if req.Voiceover && h.voService != nil {
+	if req.Voiceover && s.voService != nil {
 		if onProgress != nil {
 			onProgress(94, "Spawning async voiceover for base language...")
 		}
-		h.log.Info("batch generation: spawning async voiceover for base language", zap.String("lang", req.Language))
+		s.log.Info("batch generation: spawning async voiceover for base language", zap.String("lang", req.Language))
 		voFilename := fmt.Sprintf("%s_%s.mp3", docTitle, req.Language)
-		voFolderID := strings.TrimSpace(h.cfg.Drive.VoiceoverFolder())
+		voFolderID := strings.TrimSpace(s.cfg.Drive.VoiceoverFolder())
 		if voFolderID == "" {
 			voFolderID = effectiveFolderID
 		}
-		h.spawnBatchVoiceover(ctx, cleanScript, req.Language, docTitle, voFolderID, voFilename)
+		s.spawnBatchVoiceover(ctx, cleanScript, req.Language, docTitle, voFolderID, voFilename)
 	}
 
 	if onProgress != nil {
 		onProgress(95, "Translating...")
 	}
-	translations, failedLanguages := h.translateBatch(ctx, req, generatedParts, docTitle, effectiveFolderID)
+	translations, failedLanguages := s.translateBatch(ctx, req, generatedParts, docTitle, effectiveFolderID)
 
 	if onProgress != nil {
 		onProgress(97, "Saving script to database...")
@@ -232,7 +232,7 @@ func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *Gen
 		})
 	}
 
-	_ = h.saveBatchScript(ctx, req, &batchDBRecord{
+	_ = s.saveBatchScript(ctx, req, &batchDBRecord{
 		docTitle:           docTitle,
 		mergedScript:       cleanScript,
 		docURL:             docURL,

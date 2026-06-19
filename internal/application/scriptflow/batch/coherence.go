@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -28,12 +28,12 @@ const coherenceTolerancePercent = 10
 // coherencePass runs a post-merge coherence check on the full script.
 // It asks the LLM to remove repetitions, strengthen transitions, and
 // ensure tonal consistency without adding new facts.
-func (h *ScriptFlowHandler) coherencePass(
+func (s *BatchService) coherencePass(
 	ctx context.Context,
 	req *GenerateBatchRequest,
 	mergedScript string,
 ) (string, error) {
-	if h.generator == nil || strings.TrimSpace(mergedScript) == "" {
+	if s.generator == nil || strings.TrimSpace(mergedScript) == "" {
 		return mergedScript, nil
 	}
 
@@ -61,7 +61,7 @@ func (h *ScriptFlowHandler) coherencePass(
 	var res *ollamatypes.GenerationResult
 	genErr := retry.Do(coherenceCtx, func() error {
 		var innerErr error
-		res, innerErr = h.generator.GenerateScript(coherenceCtx, ollamatypes.TextGenerationRequest{
+		res, innerErr = s.generator.GenerateScript(coherenceCtx, ollamatypes.TextGenerationRequest{
 			Language:   req.Language,
 			Tone:       req.Tone,
 			Model:      req.Model,
@@ -91,7 +91,7 @@ func (h *ScriptFlowHandler) coherencePass(
 	correctedWords := textutil.CountWords(corrected)
 	deviation := abs(correctedWords - originalWords)
 	if originalWords > 0 && (deviation*100/originalWords) > coherenceTolerancePercent {
-		h.log.Warn("coherence pass deviated too much from original word count, falling back",
+		s.log.Warn("coherence pass deviated too much from original word count, falling back",
 			zap.Int("original", originalWords),
 			zap.Int("corrected", correctedWords),
 			zap.Int("deviation_percent", deviation*100/originalWords),

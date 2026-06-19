@@ -1,4 +1,4 @@
-package api
+package batch
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 
 // generateBatchOutline generates auto-outline topics from outline_topic field.
 // Populates req.BatchTopics and req.Chapters (ScriptPlan) with the generated chapters.
-func (h *ScriptFlowHandler) generateBatchOutline(ctx context.Context, req *GenerateBatchRequest) error {
+func (s *BatchService) generateBatchOutline(ctx context.Context, req *GenerateBatchRequest) error {
 	if len(req.BatchTopics) > 0 || strings.TrimSpace(req.OutlineTopic) == "" {
 		return nil
 	}
@@ -27,7 +27,7 @@ func (h *ScriptFlowHandler) generateBatchOutline(ctx context.Context, req *Gener
 		num = 15
 	}
 
-	h.log.Info("batch generation: generating ScriptPlan outline for macro-topic", zap.String("topic", req.OutlineTopic), zap.Int("items", num))
+	s.log.Info("batch generation: generating ScriptPlan outline for macro-topic", zap.String("topic", req.OutlineTopic), zap.Int("items", num))
 
 	prompt := fmt.Sprintf(
 		`Devi creare un piano di scrittura (ScriptPlan) composto da esattamente %d capitoli sequenziali per un libro o script sul tema: '%s'.
@@ -48,7 +48,7 @@ Non aggiungere introduzioni, note o altro testo al di fuori del JSON.`,
 		num, req.OutlineTopic,
 	)
 
-	res, err := h.generator.GenerateScript(ctx, ollamatypes.TextGenerationRequest{
+	res, err := s.generator.GenerateScript(ctx, ollamatypes.TextGenerationRequest{
 		Language: req.Language,
 		Duration: 30,
 		Tone:     "outline",
@@ -82,7 +82,7 @@ Non aggiungere introduzioni, note o altro testo al di fuori del JSON.`,
 				SourceText: "",
 			}
 		}
-		h.log.Info("batch generation: outline ScriptPlan successfully generated and parsed", zap.Int("chapters", len(plan.Chapters)))
+		s.log.Info("batch generation: outline ScriptPlan successfully generated and parsed", zap.Int("chapters", len(plan.Chapters)))
 		return nil
 	}
 
