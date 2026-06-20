@@ -50,7 +50,6 @@ var formatKeywords = map[string][]string{
 	"live":        {"live", "livestream", "stream", "broadcast"},
 	"reaction":    {"reaction", "reactions", "response"},
 	"documentary": {"documentary", "doc", "feature"},
-	"news":        {"news", "report", "reporting"},
 	"panel":       {"panel", "discussion", "roundtable"},
 	"lecture":     {"lecture", "talk", "presentation", "seminar"},
 }

@@ -215,7 +215,7 @@ func TestAssetIndexFindReadyByGroup(t *testing.T) {
 			AssetID:   "asset-g1-1",
 			AssetType: "clip",
 			Source:    "artlist",
-			GroupName: "news",
+			GroupName: "comedy",
 			Subfolder: "politics",
 			Status:    "ready",
 			CreatedAt: now,
@@ -225,7 +225,7 @@ func TestAssetIndexFindReadyByGroup(t *testing.T) {
 			AssetID:   "asset-g1-2",
 			AssetType: "clip",
 			Source:    "artlist",
-			GroupName: "news",
+			GroupName: "comedy",
 			Subfolder: "sports",
 			Status:    "ready",
 			CreatedAt: now,
@@ -244,7 +244,7 @@ func TestAssetIndexFindReadyByGroup(t *testing.T) {
 			AssetID:   "asset-pending",
 			AssetType: "clip",
 			Source:    "artlist",
-			GroupName: "news",
+			GroupName: "comedy",
 			Status:    "pending",
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -258,15 +258,15 @@ func TestAssetIndexFindReadyByGroup(t *testing.T) {
 		}
 	}
 
-	// Find ready assets by group "news"
-	found, err := svc.FindReadyByGroup(ctx, "news", "")
+	// Find ready assets by group "comedy"
+	found, err := svc.FindReadyByGroup(ctx, "comedy", "")
 	if err != nil {
 		t.Fatalf("failed to find by group: %v", err)
 	}
 	assertEqual(t, 2, len(found))
 
-	// Find ready assets by group "news" and subfolder "politics"
-	found, err = svc.FindReadyByGroup(ctx, "news", "politics")
+	// Find ready assets by group "comedy" and subfolder "politics"
+	found, err = svc.FindReadyByGroup(ctx, "comedy", "politics")
 	if err != nil {
 		t.Fatalf("failed to find by group/subfolder: %v", err)
 	}
