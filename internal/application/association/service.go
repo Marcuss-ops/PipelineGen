@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
-	termutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
