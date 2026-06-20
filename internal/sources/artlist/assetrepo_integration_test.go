@@ -1,5 +1,5 @@
 // PR12b integration test: verifies that artlist.SearchService.UpsertClip,
-// when wired with an assets.Repository via SetAssetRepo, routes through
+// when wired with an asset.Repository via SetAssetRepo, routes through
 // the canonical writer AND legacy readers (sqlite.ClipsRepository) observe the
 // same row data.
 package artlist
@@ -12,13 +12,13 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // pr12bArtlistSchema is the full `media_assets` schema the canonical
-// assets.Upsert writes (40 columns) plus the `outbox_events` table the
+// asset.Upsert writes (40 columns) plus the `outbox_events` table the
 // same transaction emits to. Mirrors the production tables created by
 // migrations up to `062_asset_locations_backfill.sql`.
 const pr12bArtlistSchema = `
@@ -157,13 +157,13 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 // setupArtlistPR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown. Returns the DB
 // handle so tests can also query outbox_events directly.
-func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo assets.Repository) {
+func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bArtlistSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = sqlite.NewClipsRepository(db, log)
-	assetStore := assets.NewAssetStoreSQLite(db, log)
+	assetStore := asset.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return
 }
@@ -178,19 +178,19 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 	db, clipsRepo, assetRepo := setupArtlistPR12b(t)
 
 	now := time.Now().UTC().Truncate(time.Second)
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "pr12b-artlist-001",
 		Name:           "PR12b Canonical Writer Test",
-		Source:         assets.Source("artlist"),
+		Source:         asset.Source("artlist"),
 		Filename:       "pr12b-artlist-001.mp4",
 		Group:          "artlist-fixtures",
-		MediaType:      assets.MediaType("video"),
+		MediaType:      asset.MediaType("video"),
 		Tags:           []string{"pr12b", "canonical-writer"},
 		SourceURL:      "https://artlist.io/clip/pr12b-artlist-001",
 		ClipPageURL:    "https://artlist.io/clip/pr12b-artlist-001",
 		ThumbnailURL:   "https://artlist.io/thumb/pr12b-artlist-001.jpg",
 		Duration:       30 * time.Second,
-		LifecycleState: assets.LifecycleState("ready"),
+		LifecycleState: asset.LifecycleState("ready"),
 		CreatedAt:      now,
 		UpdatedAt:      now,
 		DeletedAt:      &zeroTime, // non-nil pointer → non-NULL binding
@@ -210,7 +210,7 @@ func TestArtlistPR12b_UpsertClipRoutesThroughAssetRepo(t *testing.T) {
 		t.Fatalf("UpsertClip via assetRepo failed: %v", err)
 	}
 
-	// ── Assert 1: canonical reader sees the row via assets.Asset ──
+	// ── Assert 1: canonical reader sees the row via asset.Asset ──
 	canonical, err := assetRepo.Get(ctx, clip.ID)
 	if err != nil {
 		t.Fatalf("assetRepo.Get(%q) failed: %v", clip.ID, err)
@@ -289,12 +289,12 @@ func TestArtlistPR12b_UpsertClipWithoutAssetRepoFallsBack(t *testing.T) {
 	ss := NewSearchService(svc)
 	// (No SetAssetRepo call)
 
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "pr12b-artlist-fallback-001",
 		Name:           "Fallback Test",
-		Source:         assets.Source("artlist"),
+		Source:         asset.Source("artlist"),
 		ClipPageURL:    "https://artlist.io/clip/fallback",
-		LifecycleState: assets.LifecycleState("ready"),
+		LifecycleState: asset.LifecycleState("ready"),
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 		DeletedAt:      &zeroTime,

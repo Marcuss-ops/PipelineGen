@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
 	"go.uber.org/zap"
 )
 
 type searchL1Entry struct {
-	Results []assets.Asset
+	Results []asset.Asset
 	AddedAt time.Time
 }
 
@@ -28,7 +28,7 @@ type metadataL1Entry struct {
 
 // SearchLive performs a live YouTube search using yt-dlp.
 // sort can be "views" for most viewed videos.
-func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]assets.Asset, error) {
+func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort string) ([]asset.Asset, error) {
 	// Parse limit from query if present (e.g., "query -15")
 	if strings.Contains(query, " -") {
 		parts := strings.Split(query, " -")
@@ -119,7 +119,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 	}
 
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	results := make([]assets.Asset, 0, len(lines))
+	results := make([]asset.Asset, 0, len(lines))
 
 	for _, line := range lines {
 		if line == "" {
@@ -153,7 +153,7 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 			"video_id": item.ID,
 		}
 
-		results = append(results, assets.Asset{
+		results = append(results, asset.Asset{
 			ID:           "youtube_" + item.ID,
 			Name:         item.Title,
 			Source:       "youtube",

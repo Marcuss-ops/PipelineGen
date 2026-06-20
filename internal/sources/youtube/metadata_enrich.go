@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 
@@ -25,7 +25,7 @@ import (
 // the full YouTube description — making it useful for semantic search.
 // Fix C: Each clip gets a UNIQUE metadata filename (metadata_<clip_id>.json) so
 // that multiple clips in the same Drive folder don't overwrite each other.
-func (s *Service) writeClipMetadataFile(ctx context.Context, clip *assets.Asset, ym *downloader.YouTubeMetadata) {
+func (s *Service) writeClipMetadataFile(ctx context.Context, clip *asset.Asset, ym *downloader.YouTubeMetadata) {
 	if clip == nil || clip.LocalPath() == "" {
 		return
 	}

@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
@@ -58,7 +58,7 @@ func NewSemanticEnricher(repo *sqlite.ClipsRepository, clipIndexer *clipindexer.
 // EnrichAsync avvia l'enrichment in background (fire-and-forget).
 // Usa context.WithoutCancel per preservare il tracing anche dopo che
 // il contesto HTTP è scaduto, ma con un timeout proprio per evitare leak.
-func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *assets.Asset, term string) {
+func (e *SemanticEnricher) EnrichAsync(parentCtx context.Context, clip *asset.Asset, term string) {
 	if clip == nil || clip.ID == "" {
 		return
 	}
@@ -91,7 +91,7 @@ func (e *SemanticEnricher) SetDispatcher(d *outbox.Dispatcher) {
 // The decision logic lives in dispatchBridge (dispatch_bridge.go) so this
 // method is a thin alias and can be removed in a follow-up once all
 // callers route directly through the bridge.
-func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *assets.Asset, hash string) {
+func (e *SemanticEnricher) dispatchOrIndexAndUpsert(ctx context.Context, clip *asset.Asset, hash string) {
 	e.newDispatchBridge().EnqueueOrFallback(ctx, clip, hash)
 }
 
@@ -112,7 +112,7 @@ func (e *SemanticEnricher) newDispatchBridge() *dispatchBridge {
 // Enrich esegue il tagger e aggiorna il DB con i metadati semantici.
 // Restituisce errore solo se il tagger stesso fallisce; aggiornamenti parziali
 // sono tollerati (il clip è già salvato, il metadata è un bonus).
-func (e *SemanticEnricher) Enrich(ctx context.Context, clip *assets.Asset, term string) error {
+func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term string) error {
 	if e.metaWriter == nil {
 		return fmt.Errorf("metadata writer not configured")
 	}

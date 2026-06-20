@@ -5,23 +5,23 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 type ClipsRegistry struct {
 	db         *sql.DB
-	assets     assets.Repository
-	querySvc   *assets.Service
-	locations  assets.LocationRepository
-	processing assets.ProcessingRepository
+	assets     asset.Repository
+	querySvc   *asset.Service
+	locations  asset.LocationRepository
+	processing asset.ProcessingRepository
 }
 
 func NewClipsRegistry(
 	db *sql.DB,
-	assets assets.Repository,
-	querySvc *assets.Service,
-	locations assets.LocationRepository,
-	processing assets.ProcessingRepository,
+	assets asset.Repository,
+	querySvc *asset.Service,
+	locations asset.LocationRepository,
+	processing asset.ProcessingRepository,
 ) *ClipsRegistry {
 	return &ClipsRegistry{
 		db:         db,
@@ -33,18 +33,18 @@ func NewClipsRegistry(
 }
 
 func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
-	m := &assets.Asset{
+	m := &asset.Asset{
 		ID:             rec.ID,
-		Source:         assets.Source(rec.Source),
+		Source:         asset.Source(rec.Source),
 		Name:           rec.Name,
 		Filename:       rec.Filename,
-		MediaType:      assets.MediaType(rec.MediaType),
+		MediaType:      asset.MediaType(rec.MediaType),
 		Category:       rec.Category,
 		Group:          rec.Group,
 		SourceURL:      rec.ExternalURL,
 		Duration:       time.Duration(rec.Duration) * time.Millisecond,
 		Tags:           append([]string(nil), rec.Tags...),
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
@@ -56,7 +56,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	m.SetMetadataJSON(rec.Metadata)
 
 	if rec.Status == "deleted" {
-		m.LifecycleState = assets.StateDeleted
+		m.LifecycleState = asset.StateDeleted
 	}
 
 	if err := r.assets.Upsert(ctx, m); err != nil {
@@ -65,9 +65,9 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 
 	// Write locations
 	if rec.LocalPath != "" {
-		loc := &assets.Location{
+		loc := &asset.Location{
 			AssetID:      rec.ID,
-			LocationKind: assets.LocationKindLocal,
+			LocationKind: asset.LocationKindLocal,
 			URI:          rec.LocalPath,
 			FileHash:     rec.FileHash,
 			IsPrimary:    true,
@@ -77,9 +77,9 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 		}
 	}
 	if rec.DriveLink != "" || rec.DriveFileID != "" {
-		loc := &assets.Location{
+		loc := &asset.Location{
 			AssetID:      rec.ID,
-			LocationKind: assets.LocationKindDrive,
+			LocationKind: asset.LocationKindDrive,
 			URI:          "drive://" + rec.DriveFileID,
 			ExternalID:   rec.DriveFileID,
 			AccessURL:    rec.DriveLink,
@@ -93,9 +93,9 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 
 	// Write status/processing step if present
 	if rec.Status != "" {
-		step := string(assets.StageUpload)
+		step := string(asset.StageUpload)
 		if rec.MediaType == "audio" {
-			step = string(assets.StageDownload)
+			step = string(asset.StageDownload)
 		}
 		if rec.Status == "failed" {
 			_ = r.processing.Start(ctx, rec.ID, step)
@@ -114,7 +114,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, error) {
 	details, err := r.querySvc.Get(ctx, id)
 	if err != nil {
-		if err == assets.ErrNotFound {
+		if err == asset.ErrNotFound {
 			return nil, nil
 		}
 		return nil, err
@@ -178,7 +178,7 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 	return id, nil
 }
 
-func detailsToMediaRecord(details *assets.Details) *MediaRecord {
+func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 	if details == nil || details.Asset == nil {
 		return nil
 	}
@@ -200,10 +200,10 @@ func detailsToMediaRecord(details *assets.Details) *MediaRecord {
 	rec.Metadata = details.Asset.MetadataJSON()
 
 	for _, loc := range details.Locations {
-		if loc.LocationKind == assets.LocationKindLocal {
+		if loc.LocationKind == asset.LocationKindLocal {
 			rec.LocalPath = loc.URI
 			rec.FileHash = loc.FileHash
-		} else if loc.LocationKind == assets.LocationKindDrive {
+		} else if loc.LocationKind == asset.LocationKindDrive {
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL
 			rec.DownloadLink = loc.DownloadURL
@@ -212,13 +212,13 @@ func detailsToMediaRecord(details *assets.Details) *MediaRecord {
 
 	for _, proc := range details.Processing {
 		if proc != nil {
-			if proc.Status == assets.StatusFailed {
+			if proc.Status == asset.StatusFailed {
 				rec.Status = "failed"
 				rec.Error = proc.ErrorMessage
 				break
-			} else if proc.Status == assets.StatusRunning {
+			} else if proc.Status == asset.StatusRunning {
 				rec.Status = "processing"
-			} else if rec.Status == "" && proc.Status == assets.StatusCompleted {
+			} else if rec.Status == "" && proc.Status == asset.StatusCompleted {
 				rec.Status = "ready"
 			}
 		}

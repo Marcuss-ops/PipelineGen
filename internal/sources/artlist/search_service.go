@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
@@ -20,13 +20,13 @@ type SearchService struct {
 	// routes through assetrepo.Upsert — which writes both the new canonical
 	// columns and the legacy columns in the same row so legacy readers
 	// (sqlite.ClipsRepository) continue to see the data unchanged.
-	assetRepo assets.Repository
+	assetRepo asset.Repository
 }
 
 // SetAssetRepo injects the canonical assetRepo. Mirrors the
 // SetDispatcher pattern already used in youtube.Service. Idempotent and
 // safe to call once during composition root wiring.
-func (ss *SearchService) SetAssetRepo(r assets.Repository) {
+func (ss *SearchService) SetAssetRepo(r asset.Repository) {
 	ss.assetRepo = r
 }
 
@@ -80,7 +80,7 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 		clipsList = clipsList[:limit]
 	}
 
-	resp.Clips = make([]assets.Asset, 0, len(clipsList))
+	resp.Clips = make([]asset.Asset, 0, len(clipsList))
 	for _, c := range clipsList {
 		if a := toDomain(c); a != nil {
 			resp.Clips = append(resp.Clips, *a)
@@ -107,7 +107,7 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		return nil, err
 	}
 
-	resp := &SearchResponse{OK: true, Term: originalTerm, Source: "live", Clips: make([]assets.Asset, 0, len(clips))}
+	resp := &SearchResponse{OK: true, Term: originalTerm, Source: "live", Clips: make([]asset.Asset, 0, len(clips))}
 
 	for _, c := range clips {
 		// Handle both clip_id (new format) and id (old format)
@@ -125,11 +125,11 @@ func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm str
 		// Store the original full query in tags/search_terms so the user's
 		// intent is never lost.  The normalized (shorter) term is used only
 		// for the search/cache key, not for metadata.
-		clip := &assets.Asset{
+		clip := &asset.Asset{
 			ID:          id,
 			Name:        name,
-			Source:      assets.Source("artlist"),
-			MediaType:   assets.MediaType("video"), // Artlist content is always video
+			Source:      asset.Source("artlist"),
+			MediaType:   asset.MediaType("video"), // Artlist content is always video
 			Tags:        []string{originalTerm},
 			SearchTerms: []string{originalTerm},
 			SourceURL:   c.PrimaryURL,
@@ -248,7 +248,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 }
 
 // SearchClips searches clips in the database
-func (ss *SearchService) SearchClips(ctx context.Context, term string) []*assets.Asset {
+func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.Asset {
 	s := ss.service
 	term = normalizeSearchTerm(term)
 	clips, err := s.artlistRepo.SearchClips(ctx, "artlist", term)
@@ -273,7 +273,7 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*assets
 //
 // When ss.assetRepo is nil (default boot path), behavior is unchanged:
 // clip is written via sqlite.ClipsRepository.UpsertClip with no outbox event.
-func (ss *SearchService) UpsertClip(ctx context.Context, clip *assets.Asset) error {
+func (ss *SearchService) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	if ss.assetRepo != nil {
 		return ss.assetRepo.Upsert(ctx, clip)
 	}

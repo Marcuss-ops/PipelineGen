@@ -8,7 +8,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -51,18 +51,18 @@ type Service struct {
 	semanticEnricher *SemanticEnricher
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
-	assetProcessing assets.ProcessingRepository
-	assetVersions   assets.VersionRepository
+	assetProcessing asset.ProcessingRepository
+	assetVersions   asset.VersionRepository
 
 	// Asset locations: canonical source of truth for local/drive paths.
-	assetLocRepo assets.LocationRepository
+	assetLocRepo asset.LocationRepository
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
 func NewService(cfg *config.Config, mainDB *sql.DB, artlistDB *sql.DB, artlistRepo *sqlite.ClipsRepository, mediaProcessor processor.Processor, lifecycleService *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexer *clipindexer.Service, jobsSvc *jobs.Service, driveSvc *driveapi.Service,
-	assetProcRepo assets.ProcessingRepository,
-	assetVerRepo assets.VersionRepository,
-	assetLocRepo assets.LocationRepository,
+	assetProcRepo asset.ProcessingRepository,
+	assetVerRepo asset.VersionRepository,
+	assetLocRepo asset.LocationRepository,
 	log *zap.Logger,
 ) (*Service, error) {
 	s := &Service{
@@ -147,7 +147,7 @@ func (s *Service) Diagnostics(ctx context.Context, term string) (*DiagnosticsRes
 }
 
 // SearchClips cerca clip nel database locale.
-func (s *Service) SearchClips(ctx context.Context, term string) []*assets.Asset {
+func (s *Service) SearchClips(ctx context.Context, term string) []*asset.Asset {
 	return s.searchService.SearchClips(ctx, term)
 }
 

@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -48,7 +48,7 @@ func createTestDB(t *testing.T) *sql.DB {
 }
 
 // insertTestClip inserts a test clip into the database
-func insertTestClip(t *testing.T, db *sql.DB, clip *assets.Asset) {
+func insertTestClip(t *testing.T, db *sql.DB, clip *asset.Asset) {
 	t.Helper()
 
 	clip.CreatedAt = time.Now().UTC()
@@ -136,12 +136,12 @@ func TestArtlistSearchRequest(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert test clip
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "artlist_search_001",
 		Name:           "Search Test Clip",
 		SourceURL:      "https://artlist.io/clip/search",
 		Source:         "artlist",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Tags:           []string{"search"},
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/search.m3u8")
@@ -163,12 +163,12 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 	defer db.Close()
 
 	// Insert a clip directly
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "artlist_store_001",
 		Name:           "Store Test Clip",
 		SourceURL:      "https://artlist.io/clip/store",
 		Source:         "artlist",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Tags:           []string{"store"},
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/store.m3u8")
@@ -201,12 +201,12 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	defer db.Close()
 
 	// Insert a clip with drive link
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "artlist_drive_001",
 		Name:           "Drive Link Test Clip",
 		SourceURL:      "https://artlist.io/clip/drive",
 		Source:         "artlist",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Tags:           []string{"drive"},
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/drive.m3u8")
@@ -348,12 +348,12 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "clip-1",
 		Name:           "City Night",
 		SourceURL:      "https://cdn.artlist.io/video.m3u8",
 		Source:         "artlist",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Tags:           []string{"city", "night"},
 	}
 	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
@@ -432,12 +432,12 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "clip-1",
 		Name:           "City Night",
 		SourceURL:      "https://cdn.artlist.io/video.m3u8",
 		Source:         "artlist",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Tags:           []string{"city", "night"},
 	}
 	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")
@@ -518,12 +518,12 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	artlistRepo := sqlite.NewClipsRepository(db, logger)
 
 	// Insert test clip with valid Artlist HLS URL
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "clip-1",
 		Name:           "City Night",
 		SourceURL:      "https://cdn.artlist.io/video.m3u8",
 		Source:         "artlist",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Tags:           []string{"city", "night"},
 	}
 	clip.SetDownloadLink("https://cdn.artlist.io/video.m3u8")

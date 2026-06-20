@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -202,7 +202,7 @@ func (s *Service) processSegment(
 		versionHash, _ := hashutil.MD5File(result.LocalPath)
 		fileSize := fileSizeFromPath(result.LocalPath)
 		if versionHash != "" {
-			v := &assets.Version{
+			v := &asset.Version{
 				AssetID:       clipID,
 				FileHash:      versionHash,
 				FileSizeBytes: fileSize,

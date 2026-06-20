@@ -34,7 +34,7 @@ import (
 	"net/http"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -75,7 +75,7 @@ type services struct {
 	imageRepo          *sqlite.ImagesRepository
 	imageService       *imgservice.Service
 	clipsRepo          *sqlite.ClipsRepository // unified (replaces stockDriveRepo, artlistRepo, clipsOnlyRepo)
-	assetRepo          assets.Repository
+	assetRepo          asset.Repository
 	driveDests         *DriveDestinations // resolved Drive folder IDs (immutable Config)
 	monitorsRepo       *sqlite.MonitorsRepository
 	voiceoverService   *voiceover.Service
@@ -122,11 +122,11 @@ type services struct {
 	outboxEventsRegistry *outboxevents.HandlerRegistry
 
 	// Asset satellite tables (canonical model completion, PR0)
-	assetLocationsRepo  assets.LocationRepository
-	assetProcessingRepo assets.ProcessingRepository
-	assetVersionsRepo   assets.VersionRepository
+	assetLocationsRepo  asset.LocationRepository
+	assetProcessingRepo asset.ProcessingRepository
+	assetVersionsRepo   asset.VersionRepository
 
-	assetsSvc *assets.Service
+	assetsSvc *asset.Service
 }
 
 // initServices initializes the full service graph by delegating to three
@@ -265,10 +265,10 @@ type CoreInfra struct {
 	DriveDests    *DriveDestinations // resolved Drive folder IDs (immutable Config)
 
 	ClipsOnlyRepo       *sqlite.ClipsRepository
-	AssetRepo           assets.Repository
-	AssetLocationRepo   assets.LocationRepository
-	AssetProcessingRepo assets.ProcessingRepository
-	AssetsSvc           *assets.Service
+	AssetRepo           asset.Repository
+	AssetLocationRepo   asset.LocationRepository
+	AssetProcessingRepo asset.ProcessingRepository
+	AssetsSvc           *asset.Service
 	MediaProcessor      processor.Processor
 	AssetIndexService   *assetindex.Service
 	AssetTreeService    *assettree.Service
@@ -373,8 +373,8 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	}
 
 	// 4. Media Processing
-	assetsStore := assets.NewAssetStoreSQLite(dbs.main.DB, log)
-	assetsSvc := assets.NewService(assetsStore, log)
+	assetsStore := asset.NewAssetStoreSQLite(dbs.main.DB, log)
+	assetsSvc := asset.NewService(assetsStore, log)
 
 	assetRepo := assetsSvc.Repository()
 	clipsOnlyRepo := sqlite.NewClipsRepositoryCanonical(dbs.main.DB, log, assetRepo)
@@ -927,7 +927,7 @@ func composeIntegration(
 
 	// ── Asset Query Service (canonical aggregate reader) ────────────────
 	assetsSvc := core.AssetsSvc
-	log.Info("assets.Service wired (canonical aggregate reader)")
+	log.Info("asset.Service wired (canonical aggregate reader)")
 
 	return &services{
 		scriptGen:          core.ScriptGen,
