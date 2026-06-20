@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -55,14 +55,14 @@ const mediaAssetColumns = `
 	COALESCE(last_used_at, '') AS last_used_at`
 
 type ClipsRepository struct {
-	*assets.AssetStoreSQLite
+	*asset.AssetStoreSQLite
 	db  *sql.DB
 	log *zap.Logger
 }
 
 func NewClipsRepository(db *sql.DB, log *zap.Logger) *ClipsRepository {
 	return &ClipsRepository{
-		AssetStoreSQLite: assets.NewAssetStoreSQLite(db, log),
+		AssetStoreSQLite: asset.NewAssetStoreSQLite(db, log),
 		db:               db,
 		log:              log,
 	}
@@ -72,11 +72,11 @@ func NewClipsRepositoryCanonical(db *sql.DB, log *zap.Logger, canonical any) *Cl
 	return NewClipsRepository(db, log)
 }
 
-func (r *ClipsRepository) Upsert(ctx context.Context, m *assets.Asset) error {
-	return r.AssetStoreSQLite.Save(ctx, &assets.Details{Asset: m})
+func (r *ClipsRepository) Upsert(ctx context.Context, m *asset.Asset) error {
+	return r.AssetStoreSQLite.Save(ctx, &asset.Details{Asset: m})
 }
 
-func (r *ClipsRepository) Get(ctx context.Context, id string) (*assets.Asset, error) {
+func (r *ClipsRepository) Get(ctx context.Context, id string) (*asset.Asset, error) {
 	details, err := r.AssetStoreSQLite.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -87,11 +87,11 @@ func (r *ClipsRepository) Get(ctx context.Context, id string) (*assets.Asset, er
 	return details.Asset, nil
 }
 
-func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*assets.Asset, error) {
+func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
 	return r.Get(ctx, id)
 }
 
-func (r *ClipsRepository) Count(ctx context.Context, filter assets.Filter) (int64, error) {
+func (r *ClipsRepository) Count(ctx context.Context, filter asset.Filter) (int64, error) {
 	args := []any{}
 	conds := []string{"1=1"}
 	if filter.Source != "" {
@@ -156,11 +156,11 @@ func (r *ClipsRepository) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sq
 	return r.db.BeginTx(ctx, opts)
 }
 
-func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *assets.Asset) error {
+func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	return r.Upsert(ctx, clip)
 }
 
-func (r *ClipsRepository) GetByDriveFileID(ctx context.Context, fileID string) (*assets.Asset, error) {
+func (r *ClipsRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.Asset, error) {
 	return r.GetClipByDriveFileID(ctx, fileID)
 }
 
@@ -168,7 +168,7 @@ func (r *ClipsRepository) GetClipFolderByVideoID(ctx context.Context, videoID st
 	return r.GetFolderByVideoID(ctx, videoID)
 }
 
-func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *assets.Asset) error {
+func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *asset.Asset) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	tagsJSON, _ := json.Marshal(clip.Tags)
 	searchTermsJSON, _ := json.Marshal(clip.SearchTerms)
@@ -286,7 +286,7 @@ func (r *ClipsRepository) ListIndexedIDs(ctx context.Context, limit int) ([]stri
 	return out, rows.Err()
 }
 
-func (r *ClipsRepository) List(ctx context.Context, filter assets.Filter) ([]*assets.Asset, error) {
+func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*asset.Asset, error) {
 	args := []any{}
 	conds := []string{"1=1"}
 	if filter.Source != "" {
@@ -341,9 +341,9 @@ func (r *ClipsRepository) List(ctx context.Context, filter assets.Filter) ([]*as
 	}
 	defer rows.Close()
 
-	var out []*assets.Asset
+	var out []*asset.Asset
 	for rows.Next() {
-		m, err := assets.ScanCanonicalAssetRowsPublic(rows)
+		m, err := asset.ScanCanonicalAssetRowsPublic(rows)
 		if err != nil {
 			return nil, fmt.Errorf("clips.List scan: %w", err)
 		}
@@ -357,7 +357,7 @@ func (r *ClipsRepository) UpsertFolder(ctx context.Context, folder *media.ClipFo
 	if err != nil {
 		return err
 	}
-	var assetsFolder assets.ClipFolder
+	var assetsFolder asset.ClipFolder
 	if err := json.Unmarshal(mBytes, &assetsFolder); err != nil {
 		return err
 	}
@@ -442,8 +442,8 @@ func inClause(n int, col string, notOpt ...string) string {
 	return col + " " + op + " (" + strings.Join(placeholders, ",") + ")"
 }
 
-type AdvancedSearchRequest = assets.AdvancedSearchRequest
-type AdvancedSearchResult = assets.AdvancedSearchResult
-type SegmentEmbeddingRecord = assets.SegmentEmbeddingRecord
+type AdvancedSearchRequest = asset.AdvancedSearchRequest
+type AdvancedSearchResult = asset.AdvancedSearchResult
+type SegmentEmbeddingRecord = asset.SegmentEmbeddingRecord
 
 

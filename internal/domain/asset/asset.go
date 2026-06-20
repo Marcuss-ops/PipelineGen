@@ -30,7 +30,14 @@
 //     for deletion.go + ingest/adapter_clip.go — neither uses
 //     assets.Artifact* (the actual Frammento (c) targets), so alias
 //     migration is lossless.
-//   - Phase 2 PR-4: internal/infrastructure/ — final PR of phase 2.
+//   - Phase 2 PR-4 (this PR): internal/infrastructure/ migrated
+//     (4 files). Aliases extended YAGNI: +7 entries — {
+//     AdvancedSearchRequest, AdvancedSearchResult, AssetStoreSQLite,
+//     NewAssetStoreSQLite, ClipFolder, SegmentEmbeddingRecord,
+//     ScanCanonicalAssetRowsPublic}. Five struct alias hard-
+//     references and two function-as-var re-bindings. The smallest
+//     of the four bounded contexts; completes the 73 importer
+//     Verdetto. Parity covered by asset_test.go.
 //   - Phase 3: convergence with internal/domain/media (MediaType
 //     constants, LifecycleState promotion, etc.) — DEFERRED.
 //
@@ -151,6 +158,36 @@ type (
 	// adapter_clip.go writes Start/Complete/Fail events through this
 	// interface as part of the ingest path's status ledger.
 	ProcessingRepository = assets.ProcessingRepository
+
+	// AdvancedSearchRequest is the per-call DTO for repository-level
+	// full-text scoring (project / channel / keyword / topic / score
+	// filters). Hard alias; YAGNI added in Wave 12 follow-up Phase 2
+	// PR-4 (final) because internal/infrastructure/database/sqlite/
+	// clips_repository.go builds these structs internally for the
+	// repository public API. Will not graduate to a real type because
+	// the field set is owned by internal/assets/search.go.
+	AdvancedSearchRequest = assets.AdvancedSearchRequest
+
+	// AdvancedSearchResult is the scored-search response DTO. Hard
+	// alias; same call-site rationale as AdvancedSearchRequest.
+	AdvancedSearchResult = assets.AdvancedSearchResult
+
+	// AssetStoreSQLite is the sqlite-backed AssetStore façade. Hard
+	// alias; YAGNI added in PR-4 because clips_repository.go returns
+	// it from its constructor (see NewAssetStoreSQLite below).
+	AssetStoreSQLite = assets.AssetStoreSQLite
+
+	// ClipFolder is the per-asset folder row materialized by the
+	// asset-tree scan. Hard alias; YAGNI added in PR-4 because
+	// clips_repository.go's UpsertFolder / FolderID lookups reference
+	// it. Field set owned by internal/assets/clipfolder.go.
+	ClipFolder = assets.ClipFolder
+
+	// SegmentEmbeddingRecord is the per-clip segment embedding row
+	// written by the vectorstore indexing path. Hard alias; YAGNI
+	// added in PR-4 because clips_repository.go's segment-embedding
+	// upsert path materializes this struct.
+	SegmentEmbeddingRecord = assets.SegmentEmbeddingRecord
 )
 
 // ── LifecycleState constants ────────────────────────────────────────
@@ -208,3 +245,21 @@ const (
 // path matches `err == assets.ErrNotFound` to surface a nil record
 // rather than propagating the error.
 var ErrNotFound = assets.ErrNotFound
+
+// ── Function re-bindings (PR-4) ────────────────────────────────────────
+//
+// Go allows function re-bindings via `var X = assets.X` because
+// functions are first-class values; the underlying callable is the
+// same pointer so call-site semantics are preserved. Each of these
+// is currently used by clips_repository.go (a Path-3 consumer) so the
+// alias is paid for by real usage, not speculative YAGNI drift.
+
+// NewAssetStoreSQLite is the constructor for the AssetStoreSQLite
+// façade. Re-binding — call sites see the same constructor signature
+// and behavior as the legacy helper.
+var NewAssetStoreSQLite = assets.NewAssetStoreSQLite
+
+// ScanCanonicalAssetRowsPublic is the public version of the row-scan
+// helper that materializes a media_assets row into an *assets.Asset.
+// Re-binding — callers invoke the same helper with the same shape.
+var ScanCanonicalAssetRowsPublic = assets.ScanCanonicalAssetRowsPublic
