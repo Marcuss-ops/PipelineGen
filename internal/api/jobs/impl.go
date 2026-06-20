@@ -1,23 +1,24 @@
 package jobs
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	appjobs	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // JobsHandler exposes HTTP endpoints for job lifecycle management.
 type JobsHandler struct {
-	service *jobs.Service
+	service *appjobs.Service
 	log     *zap.Logger
 }
 
-// NewHandler creates a new jobs HTTP handler.
-func NewJobsHandler(service *jobs.Service, log *zap.Logger) *JobsHandler {
+// NewJobsHandler creates a new jobs HTTP handler.
+func NewJobsHandler(service *appjobs.Service, log *zap.Logger) *JobsHandler {
 	return &JobsHandler{service: service, log: log}
 }
 
@@ -34,7 +35,7 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 }
 
 func (h *JobsHandler) Enqueue(c *gin.Context) {
-	req, ok := api.BindJSON[jobs.EnqueueRequest](c)
+	req, ok := api.BindJSON[appjobs.EnqueueRequest](c)
 	if !ok {
 		return
 	}
@@ -51,7 +52,7 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		"job": gin.H{
 			"id":       j.ID,
 			"type":     j.Type,
-			"status":   j.job.Status,
+			"status":   j.Status,
 			"project":  j.Project,
 			"progress": j.Progress,
 		},
@@ -71,11 +72,11 @@ func (h *JobsHandler) Get(c *gin.Context) {
 }
 
 func (h *JobsHandler) List(c *gin.Context) {
-	var filter job.Filter
+	var filter domainjob.Filter
 
 	if status := c.Query("status"); status != "" {
-		s := job.job.Status(status)
-		filter.job.Status = &s
+		s := domainjob.Status(status)
+		filter.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
 		filter.Type = &jobType
@@ -162,20 +163,28 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 		return
 	}
 
-	events, err := h.service.ListEvents(c.Request.Context(), id)
-	if err != nil {
+	// On error, fall back to an empty slice so the response shape stays stable;
+	// clients polling /full already expect events to be an array (never null).
+	// The canonical Event type lives in domain/job.
+	events := []domainjob.Event{}
+	if eventsList, err := h.service.ListEvents(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
-		events = make([]job.Event, 0)
+	} else {
+		events = eventsList
 	}
 
 	retryable := j.CanRetry()
 
 	api.OK(c, gin.H{
-		"id":           j.ID,
-		"type":         j.Type,
-		"status":       j.job.Status,
-		"progress":     j.Progress,
-		"current_step": j.job.Status,
+		"id":       j.ID,
+		"type":     j.Type,
+		"status":   j.Status,
+		"progress": j.Progress,
+		// current_step is preserved as j.Status for backward compatibility with
+		// clients that already poll /full. A real "current step" (last event
+		// message or workflow node) will be wired in a follow-up; do not remove
+		// the field without bumping the API contract.
+		"current_step": j.Status,
 		"events":       events,
 		"result":       j.Result,
 		"retryable":    retryable,
