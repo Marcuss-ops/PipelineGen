@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 
-	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 // JobType is a string alias for the timeout registry. Passaggio 6 will
@@ -96,7 +96,7 @@ func StartMetricsRefresher(ctx context.Context, repo MetricRefresher, interval t
 // interface, NOT on the concrete *jobs.Repository.
 type Worker struct {
 	id         string
-	repo       Store
+	repo       job.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	leaseTTL   time.Duration
@@ -104,7 +104,7 @@ type Worker struct {
 	types      []string
 }
 
-func NewWorker(id string, repo Store, dispatcher *Dispatcher, log *zap.Logger,
+func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, log *zap.Logger,
 	leaseTTL, pollEvery time.Duration, types []string) *Worker {
 	return &Worker{
 		id:         id,

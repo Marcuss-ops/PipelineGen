@@ -16,6 +16,7 @@ import (
 
 	"go.uber.org/zap"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
 
@@ -33,9 +34,10 @@ func NewSQLiteStore(db *sql.DB, log *zap.Logger) *SQLiteStore {
 }
 
 // Compile-time guarantee that the SQLiteStore alias still satisfies the
-// canonical Store interface (defined in this package as `type Store = job.Store`
-// in types.go — aliased to domainjob.Store).
-var _ Store = (*SQLiteStore)(nil)
+// canonical job.Store interface defined in internal/domain/job. After the
+// Wave 5 PR 3 removal of the application-layer `Store` type alias, this
+// references the canonical interface directly.
+var _ job.Store = (*SQLiteStore)(nil)
 
 // ── Application-layer aliases ──────────────────────────────────────────────
 //
