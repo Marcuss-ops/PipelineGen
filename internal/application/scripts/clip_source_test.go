@@ -47,7 +47,12 @@ func TestBuildPack_AllValid(t *testing.T) {
 
 	// Insert clips with metadata directly via the repo upsert path.
 	// clean_transcript is stored in metadata_json — we set it via SetMetadataString.
-	for _, clip := range []struct {
+	//
+	// Note: outer loop var is named `spec` (the test template), and the
+	// inner asset struct is named `clip`. Renamed in Wave 12 follow-up
+	// Phase 2 PR-2 hotfix after the original `asset := ...` shadowed
+	// the `internal/domain/asset` package alias.
+	for _, spec := range []struct {
 		id           string
 		name         string
 		duration     int
@@ -92,23 +97,23 @@ func TestBuildPack_AllValid(t *testing.T) {
 			language:     "en",
 		},
 	} {
-		asset := &asset.Asset{
-			ID:             clip.id,
-			Name:           clip.name,
+		clip := &asset.Asset{
+			ID:             spec.id,
+			Name:           spec.name,
 			Source:         "youtube",
-			Duration:       time.Duration(clip.duration) * time.Second,
+			Duration:       time.Duration(spec.duration) * time.Second,
 			Tags:           []string{"documentary"},
 			LifecycleState: asset.StateReady,
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
-		asset.SetQualityScore(clip.qualityScore)
-		asset.SetMetadataString("clean_transcript", clip.transcript)
-		asset.SetMetadataString("clip_summary", clip.summary)
-		asset.SetMetadataString("topics", clip.topics)
-		asset.SetMetadataString("hook", clip.hook)
-		asset.SetMetadataString("language", clip.language)
-		insertTestClip(t, repo, asset)
+		clip.SetQualityScore(spec.qualityScore)
+		clip.SetMetadataString("clean_transcript", spec.transcript)
+		clip.SetMetadataString("clip_summary", spec.summary)
+		clip.SetMetadataString("topics", spec.topics)
+		clip.SetMetadataString("hook", spec.hook)
+		clip.SetMetadataString("language", spec.language)
+		insertTestClip(t, repo, clip)
 	}
 
 	opts := &ClipGenerationOptions{
@@ -244,7 +249,7 @@ func TestBuildPack_ExcludesQualityTooLow(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "low-quality",
 		Name:           "Low Quality Clip",
 		Source:         "youtube",
@@ -254,9 +259,9 @@ func TestBuildPack_ExcludesQualityTooLow(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetQualityScore(0.3)
-	asset.SetMetadataString("clean_transcript", "This is a transcript with enough words to pass the minimum threshold.")
-	insertTestClip(t, repo, asset)
+	clip.SetQualityScore(0.3)
+	clip.SetMetadataString("clean_transcript", "This is a transcript with enough words to pass the minimum threshold.")
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language:        "en",
@@ -284,7 +289,7 @@ func TestBuildPack_ExcludesTranscriptTooShort(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "short-transcript",
 		Name:           "Short Transcript Clip",
 		Source:         "youtube",
@@ -294,10 +299,10 @@ func TestBuildPack_ExcludesTranscriptTooShort(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetQualityScore(0.9)
+	clip.SetQualityScore(0.9)
 	// Very short transcript
-	asset.SetMetadataString("clean_transcript", "Only three words here.")
-	insertTestClip(t, repo, asset)
+	clip.SetMetadataString("clean_transcript", "Only three words here.")
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language:           "en",
@@ -359,7 +364,7 @@ func TestBuildPack_MixedValidity(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// 2 valid, 1 no-transcript, 1 nonexistent = 2 accepted, 2 excluded
-	asset := &asset.Asset{
+	clip1 := &asset.Asset{
 		ID:             "valid-1",
 		Name:           "Valid Clip One",
 		Source:         "youtube",
@@ -369,11 +374,11 @@ func TestBuildPack_MixedValidity(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetQualityScore(0.8)
-	asset.SetMetadataString("clean_transcript", "This is a valid transcript for the first clip. It has enough words.")
-	insertTestClip(t, repo, asset)
+	clip1.SetQualityScore(0.8)
+	clip1.SetMetadataString("clean_transcript", "This is a valid transcript for the first clip. It has enough words.")
+	insertTestClip(t, repo, clip1)
 
-	asset2 := &asset.Asset{
+	clip2 := &asset.Asset{
 		ID:             "valid-2",
 		Name:           "Valid Clip Two",
 		Source:         "youtube",
@@ -383,9 +388,9 @@ func TestBuildPack_MixedValidity(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset2.SetQualityScore(0.9)
-	asset2.SetMetadataString("clean_transcript", "This is a valid transcript for the second clip. It also has enough words to pass.")
-	insertTestClip(t, repo, asset2)
+	clip2.SetQualityScore(0.9)
+	clip2.SetMetadataString("clean_transcript", "This is a valid transcript for the second clip. It also has enough words to pass.")
+	insertTestClip(t, repo, clip2)
 
 	// No transcript — will be excluded
 	clip3 := &asset.Asset{
@@ -469,7 +474,7 @@ func TestBuildPack_TranscriptFallback(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// clean_transcript empty → fall back to "transcript"
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "fallback-clip",
 		Name:           "Fallback Clip",
 		Source:         "youtube",
@@ -478,8 +483,8 @@ func TestBuildPack_TranscriptFallback(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetMetadataString("transcript", "This is the secondary transcript field used as fallback.")
-	insertTestClip(t, repo, asset)
+	clip.SetMetadataString("transcript", "This is the secondary transcript field used as fallback.")
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language: "en",
@@ -505,7 +510,7 @@ func TestBuildPack_SpeakersAndPeople(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "people-clip",
 		Name:           "Interview Clip",
 		Source:         "youtube",
@@ -514,10 +519,10 @@ func TestBuildPack_SpeakersAndPeople(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetMetadataString("clean_transcript", "This is an interview transcript with speakers mentioned.")
-	asset.SetMetadataString("speakers", `["Dr. Smith","Prof. Jones"]`)
-	asset.SetMetadataString("mentioned_people", `["Julius Caesar","Cleopatra"]`)
-	insertTestClip(t, repo, asset)
+	clip.SetMetadataString("clean_transcript", "This is an interview transcript with speakers mentioned.")
+	clip.SetMetadataString("speakers", `["Dr. Smith","Prof. Jones"]`)
+	clip.SetMetadataString("mentioned_people", `["Julius Caesar","Cleopatra"]`)
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language: "en",
@@ -554,7 +559,7 @@ func TestBuildPack_YouTubeTitle(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "yt-clip",
 		Name:           "Local Name",
 		Source:         "youtube",
@@ -563,9 +568,9 @@ func TestBuildPack_YouTubeTitle(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetMetadataString("clean_transcript", "Transcript for YouTube clip.")
-	asset.SetMetadataString("youtube_title", "The Original YouTube Title")
-	insertTestClip(t, repo, asset)
+	clip.SetMetadataString("clean_transcript", "Transcript for YouTube clip.")
+	clip.SetMetadataString("youtube_title", "The Original YouTube Title")
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language: "en",
@@ -591,7 +596,7 @@ func TestBuildPack_EvidenceChunksFromMultiParagraph(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "multi-para",
 		Name:           "Multi Paragraph Clip",
 		Source:         "youtube",
@@ -600,8 +605,8 @@ func TestBuildPack_EvidenceChunksFromMultiParagraph(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetMetadataString("clean_transcript", "First paragraph about the introduction.\n\nSecond paragraph with more details.\n\nThird paragraph concluding the topic.")
-	insertTestClip(t, repo, asset)
+	clip.SetMetadataString("clean_transcript", "First paragraph about the introduction.\n\nSecond paragraph with more details.\n\nThird paragraph concluding the topic.")
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language: "en",
@@ -659,7 +664,7 @@ func TestBuildPack_EvidenceChunksWithoutDuration(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// Clip with Duration = 0 — chunks should still be created but with zero timestamps
-	asset := &asset.Asset{
+	clip := &asset.Asset{
 		ID:             "no-duration",
 		Name:           "No Duration Clip",
 		Source:         "youtube",
@@ -668,8 +673,8 @@ func TestBuildPack_EvidenceChunksWithoutDuration(t *testing.T) {
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
-	asset.SetMetadataString("clean_transcript", "Paragraph one.\n\nParagraph two.")
-	insertTestClip(t, repo, asset)
+	clip.SetMetadataString("clean_transcript", "Paragraph one.\n\nParagraph two.")
+	insertTestClip(t, repo, clip)
 
 	opts := &ClipGenerationOptions{
 		Language: "en",
