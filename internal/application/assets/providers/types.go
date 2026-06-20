@@ -23,7 +23,7 @@ package providers
 import (
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // Capability is a tag describing what a Provider can do.
@@ -66,7 +66,7 @@ type SearchFilters struct {
 	// Sort declares the requested ordering.
 	Sort SortMode
 	// MediaTypes filters by media type. Empty list means "any".
-	MediaTypes []assets.MediaType
+	MediaTypes []asset.MediaType
 	// MinDuration clamps out content shorter than this.
 	MinDuration time.Duration
 	// MaxDuration clamps out content longer than this.
@@ -82,15 +82,24 @@ type SearchRequest struct {
 	// Limit caps the number of Candidate items returned.
 	// 0 means "use provider default".
 	Limit int
-	// PageToken is an opaque cursor returned in a prior response.
-	// Empty on first call.
-	PageToken string
 	// TopicOnly is a hint: when true, providers with a dedicated
 	// topic path (e.g. YouTube SearchByTopic) prefer it.
 	TopicOnly bool
 	// Filters carries typed provider-specific predicates. Empty
 	// SearchFilters == "no preference".
 	Filters SearchFilters
+}
+
+// SearchResult is the canonical reply to a Search.
+//
+// NextPageToken is the empty string when the underlying source has
+// no more results or lacks cursor support (artlist, youtube).
+// Providers that paginate set NextPageToken to an opaque string
+// echoed back via SearchRequest on the next call. The contract
+// is intentionally symmetric: callers treat "" as "last page".
+type SearchResult struct {
+	Candidates    []Candidate
+	NextPageToken string
 }
 
 // Candidate is a single search hit normalized at the boundary.
@@ -102,7 +111,7 @@ type Candidate struct {
 	Title        string
 	PreviewURL   string
 	ThumbnailURL string
-	MediaType    assets.MediaType
+	MediaType    asset.MediaType
 	Duration     time.Duration
 	PublishedAt  *time.Time
 	Score        float64
@@ -120,7 +129,7 @@ type FetchRequest struct {
 // FetchedAsset carries the result of a successful Fetch.
 type FetchedAsset struct {
 	// Asset is the canonical representation of the staged asset.
-	Asset *assets.Asset
+	Asset *asset.Asset
 	// LocalPath is the on-disk location where the bytes were staged.
 	// The caller is responsible for any subsequent upload.
 	LocalPath string

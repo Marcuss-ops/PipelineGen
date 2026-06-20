@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
@@ -77,6 +78,17 @@ type SourcesHandler struct {
 	artifactSvc    *artifacts.Service
 	assetRepo      assets.Repository
 	log            *zap.Logger
+
+	// providerRegistry is the canonical providers.Registry populated by
+	// the composition root (internal/app/registry.go::WireRegistry) AFTER
+	// NewSourcesHandler returns, so it is wired via SetProviderRegistry
+	// rather than the constructor. When non-nil, search handlers
+	// (handler_sources_search_handlers.go) prefer ByCapability dispatch
+	// over the legacy artlistSvc/youtubeSvc direct calls — every
+	// registered SearchProvider is fanned out uniformly. When nil,
+	// search handlers fall back to the legacy singleton dispatch.
+	// Late-binding matches the existing Set* setter pattern.
+	providerRegistry *providers.Registry
 
 	// downloadCache prevents re-downloading the same YouTube video when
 	// registering multiple segments (clips) from it. Key: videoID, Value: local path.
@@ -168,6 +180,18 @@ func (h *SourcesHandler) SetImagesRepo(repo *sqlite.ImagesRepository) {
 	if h.clips != nil {
 		h.clips.SetImagesRepo(repo)
 	}
+}
+
+// SetProviderRegistry wires the canonical providers.Registry after
+// composition. Search handlers (handler_sources_search_handlers.go)
+// prefer ByCapability(CapabilitySearch) when this is non-nil and
+// fall back to legacy artlistSvc/youtubeSvc direct dispatch when nil.
+// Late-binding matches the existing Set* setter pattern (see
+// SetRealtimeService, SetClipIndexer, etc. above); the registry is
+// constructed AFTER WireAssets in internal/app/registry.go so a
+// constructor parameter would not work without reordering wiring.
+func (h *SourcesHandler) SetProviderRegistry(reg *providers.Registry) {
+	h.providerRegistry = reg
 }
 
 // SetFolderMemSvc sets the folder memory service. clips.Handler reads it

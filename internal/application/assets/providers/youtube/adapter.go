@@ -1,17 +1,19 @@
 // Package youtube adapts internal/sources/youtube.Service to the
-// canonical providers.Provider contract in
+// canonical providers.SearchProvider contract in
 // internal/application/assets/providers.
 //
 // Spec: Agent 3 / PR 3F — single entry point replaces the four legacy
 // SearchByTopic / SearchByTopicWithFilter / SearchTopicVideos /
 // SearchTopicVideosWithFilter entry points at the application-layer
 // boundary. The wrapper duplicates are removed in the same commit;
-// callers route through providers.Provider instead.
+// callers route through providers.SearchProvider instead.
 //
 // CapabilityFetch is intentionally NOT declared: YouTube asset
 // download lives in the channel-monitor / clipresolver pipeline
 // (yt-dlp extraction + Drive upload) which is out of scope for the
-// Provider contract.
+// Provider contract. As a result this adapter ONLY satisfies
+// SearchProvider — it has no Fetch method and the registry must
+// not return it for ByCapability(CapabilityFetch).
 package youtube
 
 import (
@@ -24,13 +26,15 @@ import (
 	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// Compile-time assertion: *Adapter satisfies providers.Provider.
-// Catches interface drift at build time.
-var _ providers.Provider = (*Adapter)(nil)
+// Compile-time assertion: *Adapter satisfies providers.SearchProvider.
+// Catches interface drift at build time. Adapter intentionally does
+// NOT implement FetchProvider (YouTube download lives in
+// channel-monitor; see package doc).
+var _ providers.SearchProvider = (*Adapter)(nil)
 
 // ErrSourceNotWired is returned by Search when the Adapter has no
 // underlying searcher wired (nil interface OR typed-nil pointer).
@@ -39,7 +43,7 @@ var ErrSourceNotWired = errors.New("youtube adapter: source not wired")
 // youtubeMediaType is the canonical MediaType assigned to every
 // YouTube search candidate. YouTube live search returns video
 // content only.
-var youtubeMediaType = assets.MediaType("clip")
+var youtubeMediaType = asset.MediaType("clip")
 
 // searcher is the minimal internal interface the adapter depends on.
 // Defining it private to this package lets the unit tests inject a
@@ -97,7 +101,6 @@ func (a *Adapter) Capabilities() []providers.Capability {
 //   - req.Query               -> search term (required, non-empty).
 //   - req.Limit               -> native limit. 0 / negative clamped
 //                                to default 10; > 50 clamped to 50.
-//   - req.PageToken           -> unsupported (no native cursor).
 //   - req.TopicOnly           -> ignored (YouTube IS topic-based).
 //   - req.Filters.Sort        -> native sortMode string.
 //                                SortByRelevance + empty both map
@@ -120,12 +123,16 @@ func (a *Adapter) Capabilities() []providers.Capability {
 // adapter combines as similarity*70 + format*30 (max 10000) then
 // normalizes to a [0,1] float. SourceRef is the YouTube VideoID
 // so downstream ingest can reconstruct the canonical URL.
-func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) ([]providers.Candidate, error) {
+//
+// Pagination: NextPageToken in the returned SearchResult is always
+// empty — YouTube has no native cursor. Callers treat empty as
+// "no more pages available".
+func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (providers.SearchResult, error) {
 	if err := a.checkWired(); err != nil {
-		return nil, err
+		return providers.SearchResult{}, err
 	}
 	if req.Query == "" {
-		return nil, fmt.Errorf("youtube: query is required")
+		return providers.SearchResult{}, fmt.Errorf("youtube: query is required")
 	}
 
 	limit := clampLimit(req.Limit)
@@ -134,15 +141,15 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) ([]pr
 
 	resp, err := a.src.SearchByTopicWithFilter(ctx, req.Query, limit, sortMode, publishedAfter)
 	if err != nil {
-		return nil, fmt.Errorf("youtube search: %w", err)
+		return providers.SearchResult{}, fmt.Errorf("youtube search: %w", err)
 	}
 	if resp == nil {
-		return nil, nil
+		return providers.SearchResult{}, nil
 	}
 
-	out := make([]providers.Candidate, 0, len(resp.Results))
+	candidates := make([]providers.Candidate, 0, len(resp.Results))
 	for _, r := range resp.Results {
-		out = append(out, providers.Candidate{
+		candidates = append(candidates, providers.Candidate{
 			SourceName:   a.Name(),
 			SourceRef:    r.VideoID,
 			Title:        r.Title,
@@ -154,19 +161,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) ([]pr
 			Score:        combinedScore(r.SimilarityScore, r.FormatMatchPercent),
 		})
 	}
-	return out, nil
-}
-
-// Fetch implements providers.Provider.
-//
-// Not declared in Capabilities(): callers MUST NOT route through it
-// (Registry.ByCapability(CapabilityFetch) will never return this
-// adapter). A direct interface call returns a plain unrecoverable
-// error; no sentinel is exported per PR 3E.
-func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*providers.FetchedAsset, error) {
-	_ = ctx
-	_ = req
-	return nil, errors.New("youtube: fetch not supported (CapabilityFetch not declared; download lives in channel-monitor)")
+	return providers.SearchResult{Candidates: candidates}, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────

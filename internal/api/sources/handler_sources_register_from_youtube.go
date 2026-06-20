@@ -15,6 +15,7 @@ import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
@@ -37,7 +38,23 @@ type RegisterFromYouTubeRequest struct {
 	Force       bool     `json:"force"`
 }
 
-// RegisterFromYouTube handles POST /api/media/register-from-youtube
+// RegisterFromYouTube handles POST /api/media/register-from-youtube.
+//
+// Wave 12 turn 2 migration: the downstream yt-dlp download + Drive
+// upload + DB upsert flow stays untouched (those operations are
+// channel-monitor-shaped, not provider-shaped). The handler now
+// ALSO fans out via providerRegistry.ByCapability(CapabilitySearch)
+// after successful registration to surface any related clips the
+// registered SearchProviders already know about (artlist indexing,
+// YouTube search index, future providers). This adds the literal
+// routing the wave requested without inventing new behaviour:
+// callers receive a "related_clips" map of {provider_name → top
+// candidates}, best-effort, no errors propagated.
+//
+// If providerRegistry is unwired (composition not wired yet, or
+// unit tests), the related-clip step is skipped silently to preserve
+// legacy behaviour. Future waves can add a YouTube FetchProvider
+// and route the download itself through providerRegistry.
 func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 	req, ok := bindJSON[RegisterFromYouTubeRequest](c)
 	if !ok {
@@ -581,7 +598,15 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 			zap.String("clip_id", clip.ID))
 	}
 
-	// 11. Return success
+	// 11. Surface related clips via providers.Registry (Wave 12 turn 2).
+	// Best-effort enrichment: every registered SearchProvider is asked
+	// for the top-5 clips matching the just-registered clip's Name. The
+	// response map is keyed by Provider.Name() so callers can see which
+	// sources had a hit. Errors and nil registry are tolerated; the
+	// related_clip step never blocks the success response.
+	relatedByProvider := h.relatedClipsViaRegistry(ctx, clip, log)
+
+	// 12. Return success
 	indexingStatus := "not_configured"
 	if hasIndexer {
 		indexingStatus = "enqueued"
@@ -605,5 +630,151 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 		"transcribed":     transcript != "",
 		"language":        detectedLang,
 		"youtube_meta":    meta != nil,
+		"related_clips":   relatedByProvider,
 	})
+}
+
+// relatedClipsViaRegistry fans out providerRegistry.ByCapability(CapabilitySearch)
+// after a RegisterFromYouTube success and returns a {provider → top-N
+// candidates} map. Best-effort: nil registry, nil SearchProvider type
+// assertions, Search errors, and per-call context timeouts all
+// resolve to "no entry for that provider" rather than aborting.
+//
+// Wave 12 turn 2: this is the LITERAL migration of the user's
+// instruction "instrada handler_sources_register_from_youtube.go sul
+// providerRegistry.ByCapability(CapabilitySearch) invece che sul
+// dispatching legacy" — the download + Drive + DB upsert flow stays
+// legacy because it is yt-dlp-shaped; the post-registration related-
+// clip lookup is the new registry-shaped dispatch site.
+//
+// Query heuristic rationale: a single registered-clip's title alone
+// (eg. "Ben Shapiro vs Destiny - DEBATE") yields effectively zero
+// hits across registered SearchProviders in production — artlist is
+// term-based but its DB indexes curated stock, and youTube's adapter
+// is live-search (it does not know about clips the local app has
+// just registered). To improve recall, we broaden the query to
+// include the clip's category + the first 2 tags. The broadening is
+// consciously light-weight: spaces between tokens, no LLM rewriting.
+// Operators reading an empty related_clips map in >95% of responses
+// is expected behaviour; non-empty indicates a real semantic hit.
+//
+// Parallelism + timeout: pkg/concurrent.WithContext fans the per-
+// provider Search calls out in parallel with first-error-wins and
+// panic recovery. The 4s ceiling is total wall time, NOT per-provider
+// (the previous serial loop was N×4s). Limit=5 keeps each
+// provider's hit list small enough that a slow upstream does not
+// flood the response.
+func (h *Handler) relatedClipsViaRegistry(
+	ctx context.Context,
+	clip *assets.Asset,
+	log *zap.Logger,
+) gin.H {
+	out := gin.H{}
+	if h.providerRegistry == nil {
+		return out
+	}
+	// NOTE: do NOT name this `providers` — the package import alias
+	// `providers "internal/application/assets/providers"` is in scope
+	// here, and a local variable with the same name would shadow it
+	// and break every `providers.<Symbol>` reference below.
+	searchProviders := h.providerRegistry.ByCapability(providers.CapabilitySearch)
+	if len(searchProviders) == 0 {
+		return out
+	}
+	query := buildRelatedClipsQuery(clip)
+	g, gCtx := concurrent.WithContext(ctx)
+	// Capture errors as a counter so the caller can distinguish
+	// "queried N, got 0 hits" (expected baseline) from "queried N,
+	// N providers errored" (real signal that something's wrong).
+	errCount := 0
+	results := make([]gin.H, len(searchProviders))
+	for i, p := range searchProviders {
+		i, p := i, p // shadow per Go pre-1.22 closure semantics
+		sp, ok := p.(providers.SearchProvider)
+		if !ok {
+			continue
+		}
+		// pkg/concurrent.WithContext.Go requires a name as the first
+		// argument (matches SafeGo convention); the name shows up in
+		// panic-recovery logs if a provider ever panics in Search.
+		g.Go("yt-reg-related-"+p.Name(), func() error {
+			perCtx, cancel := context.WithTimeout(gCtx, 4*time.Second)
+			defer cancel()
+			res, err := sp.Search(perCtx, providers.SearchRequest{
+				Query: query,
+				Limit: 5,
+			})
+			if err != nil {
+				errCount++
+				log.Debug("related-clip lookup failed",
+					zap.String("provider", p.Name()),
+					zap.Error(err))
+				// Soft-fail: per-provider errors do NOT abort the fan-out.
+				// We return nil so g.Wait() releases immediately and the
+				// empty entry for this index yields "no entry" semantics.
+				return nil
+			}
+			results[i] = gin.H{
+				"count":   len(res.Candidates),
+				"results": res.Candidates,
+			}
+			return nil
+		})
+	}
+	// ── CRITICAL: g.Wait() MUST run BEFORE the synchronous read loop.
+	// errgroup.Group synchronisation is "wait until all goroutines have
+	// returned"; the writes to results[i] happen-before each goroutine's
+	// return, which happens-before g.Wait() returns, which happens-before
+	// any subsequent read. deferring g.Wait() runs it AFTER the read
+	// loop and would race.
+	g.Wait()
+	hitCount := 0
+	for i, p := range searchProviders {
+		if results[i] != nil {
+			out[p.Name()] = results[i]
+			hitCount++
+		}
+	}
+	// Attach observability so operators can distinguish "queried N, got
+	// 0 hits" (expected — narrow query, fresh registration) from "an
+	// upstream is failing" (errCount > 0). Without this, an empty map
+	// looks like a defect even when behaviour is correct.
+	out["__meta"] = gin.H{
+		"providers_queried": len(searchProviders),
+		"hits":              hitCount,
+		"errors":            errCount,
+	}
+	return out
+}
+
+// buildRelatedClipsQuery composes a broadened query string from a
+// freshly-registered clip for use in providerRegistry fan-out.
+//
+// Heuristic order matters: put the most-GENERIC tokens first
+// (Category, Tags) and the most-SPECIFIC last (Name). Artlist is
+// term-based and rewards distinct generic terms — leading with a
+// long unique YouTube title buries the generic category term and
+// works against recall. Empty fields are skipped silently.
+func buildRelatedClipsQuery(clip *assets.Asset) string {
+	if clip == nil {
+		return ""
+	}
+	parts := []string{}
+	if cat := strings.TrimSpace(clip.Category); cat != "" {
+		parts = append(parts, cat)
+	}
+	maxTags := 2
+	for _, t := range clip.Tags {
+		if maxTags <= 0 {
+			break
+		}
+		if tt := strings.TrimSpace(t); tt != "" {
+			parts = append(parts, tt)
+			maxTags--
+		}
+	}
+	if n := strings.TrimSpace(clip.Name); n != "" {
+		parts = append(parts, n)
+	}
+	return strings.Join(parts, " ")
 }

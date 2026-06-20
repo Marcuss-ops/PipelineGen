@@ -22,6 +22,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
+	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -62,6 +66,15 @@ type RegistryWiring struct {
 	Assets        *AssetsWiring
 	FullImages    *FullImagesWiring
 	StockPipeline *StockPipelineWiring
+
+	// ProviderRegistry is the canonical Provider registry (Agent 3
+	// contract cleanup). It is constructed and frozen at the end
+	// of WireRegistry so it is ready before the job runner starts.
+	// Adapters register here via RegisterSearch / RegisterFetch —
+	// downstream consumers (Stock PR, channel-monitor YouTube fetch)
+	// resolve providers from this registry rather than wiring
+	// through the legacy modules directly.
+	ProviderRegistry *providers.Registry
 }
 
 func registerModule(registry *module.Registry, log *zap.Logger, mod module.Module) {
@@ -198,6 +211,73 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			log.Info("injected DeletionService into MaintenanceService")
 		}
 	}
+
+	// ── Provider Registry (Agent 3 — providers.SearchProvider wiring) ─
+	// Build the canonical providers.Registry and register every
+	// available source adapter here so downstream consumers
+	// (Stock PR, semantic-search callers, channel-monitor fetch
+	// integration) can resolve providers from one frozen catalog
+	// instead of bypassing the registry via legacy packages.
+	//
+	// Each registration is best-effort: missing services just skip
+	// (the source wasn't wired), and a registration error is logged
+	// but does NOT fail composition (operators get a warning, the
+	// app still boots).
+	providerReg := providers.NewRegistry()
+	if wiring.ArtlistSvc != nil && wiring.ArtlistSvc.Service != nil {
+		if err := providerReg.RegisterSearch(artlistadapter.NewAdapter(wiring.ArtlistSvc.Service)); err != nil {
+			log.Warn("failed to register artlist provider", zap.Error(err))
+		} else {
+			log.Info("registered artlist provider in providers.Registry")
+		}
+	} else {
+		log.Info("artlist service unavailable — skipping provider registration")
+	}
+	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Service != nil {
+		if err := providerReg.RegisterSearch(youtubeadapter.NewAdapter(wiring.YouTubeClip.Service)); err != nil {
+			log.Warn("failed to register youtube provider", zap.Error(err))
+		} else {
+			log.Info("registered youtube provider in providers.Registry")
+		}
+	} else {
+		log.Info("youtube clip service unavailable — skipping provider registration")
+	}
+	// ── Stock FetchProvider (Wave 12 turn 2: FIRST real FetchProvider) ──
+	// Stock is the first adapter in the codebase to satisfy providers.FetchProvider
+	// (artlist and youtube implement SearchProvider only — see adapter.go
+	// preambles). The Stock service is composed earlier in the loop, so
+	// wiring.StockPipeline.Service is already available at this point.
+	if wiring.StockPipeline != nil && wiring.StockPipeline.Service != nil {
+		if err := providerReg.RegisterFetch(stockadapter.NewAdapter(wiring.StockPipeline.Service)); err != nil {
+			log.Warn("failed to register stock fetch provider", zap.Error(err))
+		} else {
+			log.Info("registered stock fetch provider in providers.Registry")
+		}
+	} else {
+		log.Info("stock pipeline service unavailable — skipping fetch provider registration")
+	}
+	// Freeze so lookups become effectively wait-free and no further
+	// Register calls succeed. Mirrors the freeze timing of the
+	// module registry (see bootstrap.go's WireServices).
+	providerReg.Freeze()
+	wiring.ProviderRegistry = providerReg
+	// Also expose via CoreDeps so cross-cutting code that doesn't
+	// have access to the wiring struct (eg. background jobs that
+	// only see CoreDeps) can resolve providers from the same frozen
+	// catalog.
+	coreDeps.ProviderRegistry = providerReg
+	// Wire registry into the already-constructed SourcesHandler so
+	// search handlers (handler_sources_search_handlers.go) can
+	// dispatch via ByCapability(CapabilitySearch) instead of legacy
+	// artlistSvc/youtubeSvc direct calls. Late-binding matches the
+	// existing Set* setter pattern (SetRealtimeService,
+	// SetClipIndexer, etc.).
+	if wiring.Assets != nil && wiring.Assets.Handler != nil {
+		wiring.Assets.Handler.SetProviderRegistry(providerReg)
+		log.Info("wired providers.Registry into SourcesHandler for Search dispatch")
+	}
+	log.Info("providers.Registry wired and frozen",
+		zap.Int("providers", len(providerReg.All())))
 
 	return wiring, nil
 }

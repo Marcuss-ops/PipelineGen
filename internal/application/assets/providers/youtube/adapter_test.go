@@ -66,14 +66,26 @@ func TestAdapter_Capabilities(t *testing.T) {
 	}
 }
 
+// Adapter must NOT implement FetchProvider — interface segregation
+// guarantee (Agent 3 contract cleanup).
+func TestAdapter_DoesNotImplementFetchProvider(t *testing.T) {
+	var sp providers.SearchProvider = (*Adapter)(nil)
+	if _, ok := sp.(providers.FetchProvider); ok {
+		t.Fatal("youtube Adapter must NOT satisfy FetchProvider")
+	}
+}
+
 func TestSearch_NilInterfaceSource(t *testing.T) {
 	a := &Adapter{} // src == nil interface value
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
 	if !errors.Is(err, ErrSourceNotWired) {
 		t.Fatalf("expected ErrSourceNotWired, got %v", err)
 	}
-	if got != nil {
-		t.Errorf("expected nil candidates, got %v", got)
+	if res.Candidates != nil {
+		t.Errorf("expected nil candidates, got %v", res.Candidates)
+	}
+	if res.NextPageToken != "" {
+		t.Errorf("expected empty NextPageToken, got %q", res.NextPageToken)
 	}
 }
 
@@ -82,23 +94,23 @@ func TestSearch_TypedNilSource(t *testing.T) {
 	// interface holding a nil concrete pointer must also be
 	// rejected.
 	a := &Adapter{src: (*fakeSearcher)(nil)}
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
 	if !errors.Is(err, ErrSourceNotWired) {
 		t.Fatalf("expected ErrSourceNotWired on typed-nil, got %v", err)
 	}
-	if got != nil {
-		t.Errorf("expected nil candidates, got %v", got)
+	if res.Candidates != nil {
+		t.Errorf("expected nil candidates, got %v", res.Candidates)
 	}
 }
 
 func TestSearch_EmptyQuery(t *testing.T) {
 	a := newAdapterWith(&fakeSearcher{resp: &youtubesrc.TopicSearchResponse{}})
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: ""})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: ""})
 	if err == nil {
-		t.Fatalf("expected error on empty query, got nil (results=%v)", got)
+		t.Fatalf("expected error on empty query, got nil (results=%v)", res)
 	}
-	if got != nil {
-		t.Errorf("expected nil candidates on empty query, got %v", got)
+	if res.Candidates != nil {
+		t.Errorf("expected nil candidates on empty query, got %v", res.Candidates)
 	}
 }
 
@@ -118,12 +130,15 @@ func TestSearch_LimitClamping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &fakeSearcher{resp: &youtubesrc.TopicSearchResponse{}}
 			a := newAdapterWith(stub)
-			_, err := a.Search(context.Background(), providers.SearchRequest{
+			res, err := a.Search(context.Background(), providers.SearchRequest{
 				Query: "x",
 				Limit: tc.inLimit,
 			})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if res.Candidates == nil {
+				t.Fatalf("expected non-nil candidates, got %v", res)
 			}
 			if stub.lastCall.Limit != tc.want {
 				t.Errorf("forwarded Limit=%d, want %d", stub.lastCall.Limit, tc.want)
@@ -150,13 +165,16 @@ func TestSearch_SortModeMapping(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &fakeSearcher{resp: &youtubesrc.TopicSearchResponse{}}
 			a := newAdapterWith(stub)
-			_, err := a.Search(context.Background(), providers.SearchRequest{
+			res, err := a.Search(context.Background(), providers.SearchRequest{
 				Query:   "x",
 				Limit:   5,
 				Filters: providers.SearchFilters{Sort: tc.inSort},
 			})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if res.Candidates == nil {
+				t.Fatalf("expected non-nil candidates, got %v", res)
 			}
 			if stub.lastCall.SortMode != tc.wantSort {
 				t.Errorf("forwarded SortMode=%q, want %q", stub.lastCall.SortMode, tc.wantSort)
@@ -169,12 +187,15 @@ func TestSearch_PublishedAfterForwarding(t *testing.T) {
 	t.Run("nil filters publishedAfter forwarded as empty string", func(t *testing.T) {
 		stub := &fakeSearcher{resp: &youtubesrc.TopicSearchResponse{}}
 		a := newAdapterWith(stub)
-		_, err := a.Search(context.Background(), providers.SearchRequest{
+		res, err := a.Search(context.Background(), providers.SearchRequest{
 			Query: "x",
 			Limit: 5,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Candidates == nil {
+			t.Fatalf("expected non-nil candidates, got %v", res)
 		}
 		if stub.lastCall.PublishedAfter != "" {
 			t.Errorf("expected empty PublishedAfter, got %q", stub.lastCall.PublishedAfter)
@@ -185,7 +206,7 @@ func TestSearch_PublishedAfterForwarding(t *testing.T) {
 		want := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
 		stub := &fakeSearcher{resp: &youtubesrc.TopicSearchResponse{}}
 		a := newAdapterWith(stub)
-		_, err := a.Search(context.Background(), providers.SearchRequest{
+		res, err := a.Search(context.Background(), providers.SearchRequest{
 			Query: "x",
 			Limit: 5,
 			Filters: providers.SearchFilters{
@@ -194,6 +215,9 @@ func TestSearch_PublishedAfterForwarding(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if res.Candidates == nil {
+			t.Fatalf("expected non-nil candidates, got %v", res)
 		}
 		if stub.lastCall.PublishedAfter == "" {
 			t.Fatalf("expected non-empty PublishedAfter, got empty")
@@ -248,14 +272,14 @@ func TestSearch_CandidateTranslation(t *testing.T) {
 		},
 	}
 	a := newAdapterWith(stub)
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: "x", Limit: 5})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "x", Limit: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 candidate, got %d", len(got))
+	if len(res.Candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(res.Candidates))
 	}
-	c := got[0]
+	c := res.Candidates[0]
 
 	if c.SourceName != "youtube" {
 		t.Errorf("SourceName=%q want \"youtube\"", c.SourceName)
@@ -286,6 +310,9 @@ func TestSearch_CandidateTranslation(t *testing.T) {
 	if c.Score != 0.74 {
 		t.Errorf("Score=%v want 0.74", c.Score)
 	}
+	if res.NextPageToken != "" {
+		t.Errorf("NextPageToken=%q want \"\"", res.NextPageToken)
+	}
 }
 
 func TestSearch_CandidateTranslation_UnparseableUploadDateIsNil(t *testing.T) {
@@ -301,27 +328,30 @@ func TestSearch_CandidateTranslation_UnparseableUploadDateIsNil(t *testing.T) {
 		},
 	}
 	a := newAdapterWith(stub)
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
 	if err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 candidate, got %d", len(got))
+	if len(res.Candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(res.Candidates))
 	}
-	if got[0].PublishedAt != nil {
-		t.Errorf("expected nil PublishedAt on unparseable upload_date, got %v", got[0].PublishedAt)
+	if res.Candidates[0].PublishedAt != nil {
+		t.Errorf("expected nil PublishedAt on unparseable upload_date, got %v", res.Candidates[0].PublishedAt)
 	}
 }
 
 func TestSearch_NilResponseReturnsNilCandidates(t *testing.T) {
 	stub := &fakeSearcher{resp: nil}
 	a := newAdapterWith(stub)
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
 	if err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}
-	if got != nil {
-		t.Errorf("expected nil candidates on nil response, got %v", got)
+	if res.Candidates != nil {
+		t.Errorf("expected nil candidates on nil response, got %v", res.Candidates)
+	}
+	if res.NextPageToken != "" {
+		t.Errorf("expected empty NextPageToken on nil response, got %q", res.NextPageToken)
 	}
 }
 
@@ -329,32 +359,16 @@ func TestSearch_PropagatesUpstreamError(t *testing.T) {
 	sentinel := errors.New("upstream failure")
 	stub := &fakeSearcher{err: sentinel}
 	a := newAdapterWith(stub)
-	got, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
+	res, err := a.Search(context.Background(), providers.SearchRequest{Query: "x"})
 	if err == nil {
 		t.Fatalf("expected error propagating upstream failure")
 	}
 	if !errors.Is(err, sentinel) {
 		t.Errorf("expected errors.Is(err, sentinel) true; got %v", err)
 	}
-	if got != nil {
-		t.Errorf("expected nil candidates on error, got %v", got)
+	if res.Candidates != nil {
+		t.Errorf("expected nil candidates on error, got %v", res.Candidates)
 	}
-}
-
-func TestFetch_ReturnsPlainError_NoSentinel(t *testing.T) {
-	a := newAdapterWith(&fakeSearcher{})
-	got, err := a.Fetch(context.Background(), providers.FetchRequest{SourceRef: "v123"})
-	if err == nil {
-		t.Fatal("expected error from Fetch on a source that declares no CapabilityFetch")
-	}
-	if got != nil {
-		t.Errorf("expected nil FetchedAsset, got %v", got)
-	}
-	if err.Error() == "" {
-		t.Errorf("expected descriptive error message")
-	}
-	// Per PR 3E: there is NO sentinel for "fetch unsupported".
-	// Switching on err.Error() must not be the supported approach.
 }
 
 func TestNewAdapter_NilService_SearchReturnsErrSourceNotWired(t *testing.T) {

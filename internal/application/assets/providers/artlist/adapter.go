@@ -1,17 +1,16 @@
 // Package artlist adapts internal/sources/artlist.Service to the
-// canonical providers.Provider in internal/application/assets/providers.
+// canonical providers.SearchProvider contract in
+// internal/application/assets/providers.
 //
 // Wave 12 scope: this adapter is transitional. The contract will not
 // change when artlist migrates to a real domain/application layer,
 // but the import path will. Adapter owners update the import path;
-// downstream consumers keep using providers.Provider unchanged.
+// downstream consumers keep using providers.SearchProvider
+// unchanged.
 //
-// CapabilityFetch is intentionally NOT declared in Capabilities():
-// the artlist service has no public fetch binary path, and the
-// download pipeline (videomuscles + drive upload) is out of scope
-// for the Provider contract. Fetch returns ErrFetchNotImplemented
-// only to satisfy the interface; callers should NOT reach it
-// (ByCapability(CapabilityFetch) will not return this adapter).
+// Layout note (post-Agent-3 cleanup): artlist lives at
+// providers/artlist/adapter.go, parallel to youtube/adapter.go. The
+// historical nesting under providers/adapters/<src>/ is removed.
 package artlist
 
 import (
@@ -23,15 +22,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 )
 
-// Compile-time assertion: *Adapter satisfies providers.Provider.
-// Catches interface drift at build time.
-var _ providers.Provider = (*Adapter)(nil)
+// Compile-time assertion: *Adapter satisfies providers.SearchProvider.
+// Catches interface drift at build time. The Adapter intentionally
+// does NOT implement FetchProvider (artlist has no public fetch
+// binary path; the download pipeline lives in stockpipeline +
+// drive upload, out of scope for the Provider contract).
+var _ providers.SearchProvider = (*Adapter)(nil)
 
 // ErrSourceNotWired is returned when an Adapter is constructed
 // without a non-nil underlying artlist.Service.
 var ErrSourceNotWired = errors.New("artlist adapter: source not wired")
 
-// Adapter wraps artlist.Service and presents it as a Provider.
+// Adapter wraps artlist.Service and presents it as a SearchProvider.
 // It does NOT introduce new search semantics: it translates the
 // canonical providers.SearchRequest into the service's native
 // request at the boundary, and translates the SearchResponse back
@@ -49,7 +51,10 @@ func (a *Adapter) Name() string { return "artlist" }
 
 // Capabilities implements providers.Provider.
 // CapabilityFetch is intentionally omitted: artlist's download
-// pipeline (videomuscles + drive upload) is not a Provider concern.
+// pipeline (videomuscles + drive upload) is not a Provider
+// concern. The Search/Fetch split means this adapter ONLY
+// satisfies SearchProvider and the registry must not return it
+// for ByCapability(CapabilityFetch).
 func (a *Adapter) Capabilities() []providers.Capability {
 	return []providers.Capability{
 		providers.CapabilitySearch,
@@ -58,28 +63,30 @@ func (a *Adapter) Capabilities() []providers.Capability {
 	}
 }
 
-// Search implements providers.Provider.
+// Search implements providers.SearchProvider.
 //
 // Mapping rules:
 //
 //   - req.Query               -> artlist SearchRequest.Term
 //   - req.Limit               -> artlist SearchRequest.Limit
-//   - req.PageToken           -> not supported (artlist has no cursor)
 //   - req.TopicOnly           -> not supported (artlist is term-based)
 //   - req.Filters.PublishedAfter/Sort/MinDuration/MaxDuration
 //     -> not supported on artlist (single global order via the scraper)
 //   - req.Filters.MediaTypes  -> not honoured; artlist always returns
 //     video/music regardless.
 //
+// NextPageToken is always empty in the returned SearchResult:
+// artlist has no cursor. Callers treat empty as "no more pages".
+//
 // Why the response is already close to canonical: artlist's
-// SearchResponse uses []assets.Asset directly (see
+// SearchResponse uses the Asset struct directly (see
 // internal/sources/artlist/dto_search.go), so the loop maps each
 // Asset into a typed Candidate without inventing new fields. Asset
 // canonicalization is the downstream ingest use case's
 // responsibility — this adapter returns raw findings only.
-func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) ([]providers.Candidate, error) {
+func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (providers.SearchResult, error) {
 	if a.src == nil {
-		return nil, ErrSourceNotWired
+		return providers.SearchResult{}, ErrSourceNotWired
 	}
 
 	native := &artlistsrc.SearchRequest{
@@ -90,16 +97,16 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) ([]pr
 
 	resp, err := a.src.Search(ctx, native)
 	if err != nil {
-		return nil, fmt.Errorf("artlist search: %w", err)
+		return providers.SearchResult{}, fmt.Errorf("artlist search: %w", err)
 	}
 	if resp == nil {
-		return nil, nil
+		return providers.SearchResult{}, nil
 	}
 
-	out := make([]providers.Candidate, 0, len(resp.Clips))
+	candidates := make([]providers.Candidate, 0, len(resp.Clips))
 	for i := range resp.Clips {
 		asset := &resp.Clips[i]
-		out = append(out, providers.Candidate{
+		candidates = append(candidates, providers.Candidate{
 			SourceName:   a.Name(),
 			SourceRef:    asset.ID,
 			Title:        asset.Name,
@@ -111,18 +118,5 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) ([]pr
 			Score:        0,
 		})
 	}
-	return out, nil
-}
-
-// Fetch implements providers.Provider.
-//
-// Per PR 3E, this adapter does NOT advertise CapabilityFetch in
-// Capabilities(): the proper route is Registry.ByCapability, which
-// will never return this adapter. If a direct interface call
-// reaches here anyway, the method returns a plain unrecoverable
-// error - no sentinel is exported, callers MUST not switch on it.
-func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*providers.FetchedAsset, error) {
-	_ = ctx
-	_ = req
-	return nil, errors.New("artlist: fetch not supported (CapabilityFetch not declared)")
+	return providers.SearchResult{Candidates: candidates}, nil
 }
