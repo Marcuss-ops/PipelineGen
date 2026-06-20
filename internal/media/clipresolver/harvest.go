@@ -7,8 +7,13 @@ import (
 )
 
 // YouTubeHarvestService abstracts YouTube search + download for auto-harvest.
+//
+// PR-3F: the legacy SearchTopicVideos wrapper was removed from
+// internal/sources/youtube in favour of the single canonical entry
+// point SearchByTopicWithFilter. Callers that need to satisfy this
+// interface now expose SearchByTopicWithFilter directly.
 type YouTubeHarvestService interface {
-	SearchTopicVideos(ctx context.Context, query string, limit int, sort string) (any, error)
+	SearchByTopicWithFilter(ctx context.Context, query string, limit int, sort, publishedAfter string) (any, error)
 }
 
 func (s *Service) enqueueHarvestForTerms(ctx context.Context, terms []string) []string {
@@ -44,7 +49,9 @@ func (s *Service) enqueueYouTubeHarvest(ctx context.Context, terms []string, you
 			continue
 		}
 		// Search YouTube for top 3 videos matching the term
-		results, err := youtubeSvc.SearchTopicVideos(ctx, term, 3, "")
+		// PR-3F: routed through the surviving SearchByTopicWithFilter
+		// (SearchTopicVideos wrapper was deleted).
+		results, err := youtubeSvc.SearchByTopicWithFilter(ctx, term, 3, "", "")
 		if err != nil || results == nil {
 			continue
 		}

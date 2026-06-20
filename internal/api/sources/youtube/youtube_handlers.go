@@ -84,7 +84,9 @@ func (h *YouTubeClipHandler) SearchTopics(c *gin.Context) {
 		req.Limit = 50
 	}
 
-	resp, err := h.service.SearchTopicVideos(c.Request.Context(), req.Q, req.Limit, req.Sort)
+	// PR-3F: SearchTopicVideos wrapper was deleted; route through the
+	// single canonical SearchByTopicWithFilter entry point.
+	resp, err := h.service.SearchByTopicWithFilter(c.Request.Context(), req.Q, req.Limit, req.Sort, "")
 	if err != nil {
 		internal.APIUtil.InternalError(c, err)
 		return
