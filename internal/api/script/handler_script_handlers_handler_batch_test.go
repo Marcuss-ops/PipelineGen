@@ -174,8 +174,11 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	// stay green while the move is staged.
 	t.Skipf("obsolete post June-2026 scriptflow flatten; see docs/followups/2026-06-api-script-batch-tests-pre-existing.md")
 	// Unreachable but kept to preserve local references to ctx/vars —
-	// compiled but never executed while the test is skipped.
+	// compiled but never executed while the test is skipped. The
+	// `_ = ctx` immediately below silences staticcheck's SA4006 +
+	// revive's ineffassign so the dead code is lint-clean.
 	ctx := context.Background()
+	_ = ctx
 
 	// 1. Set up a real test database with all required tables.
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
@@ -263,6 +266,7 @@ func TestExecuteBatchGeneration_WithNoChapters_SavesSections(t *testing.T) {
 	// above for the full rationale and the followup doc reference.
 	t.Skipf("obsolete post June-2026 scriptflow flatten; see docs/followups/2026-06-api-script-batch-tests-pre-existing.md")
 	ctx := context.Background()
+	_ = ctx
 
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
@@ -300,6 +304,7 @@ func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 	// above for the full rationale and the followup doc reference.
 	t.Skipf("obsolete post June-2026 scriptflow flatten; see docs/followups/2026-06-api-script-batch-tests-pre-existing.md")
 	ctx := context.Background()
+	_ = ctx
 
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
