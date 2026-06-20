@@ -213,6 +213,68 @@ Per‑directory migration manifests live in `docs/migration-maps/<dir>.md`.
 
 
 
+## Rebase-Conflict Lesson (June 2026)
+
+When `git pull --rebase` hits a conflict on a **test file** (or any
+file where both local and remote added independent hunks), prefer
+**manual merge inspection** over `git checkout --ours` / `--theirs`.
+
+Why this matters:
+
+- Test files are usually **append-only**: local adds `t.Skipf` +
+  a lint-silencer, remote adds a civic nit + an extra subtest.
+  The correct merge keeps **both** sets of additions, not a
+  blanket "mine wins".
+- `git checkout --ours` silently drops the remote's polish round
+  (citations, acceptance criteria, lint fixes) — the next agent
+  will have to redo them.
+- `git checkout --theirs` silently drops the local skip — the
+  obsolete test runs and fails on CI again.
+
+Safe procedure when a **test file** conflicts during rebase:
+
+1. `git rebase --abort` and start fresh.
+2. `git diff --name-only origin/<branch> HEAD` to list the conflict
+   candidates.
+3. For test files (`*_test.go`), open both sides with a three-way
+   diff tool and **re-read the intent of each hunk first** (what
+   is it asserting? what is now obsolete?) — only then **combine
+   hunks manually**. Additive hunks (different functions, different
+   constants) merge cleanly; contradictory hunks (both sides edited
+   the same line in incompatible ways) need human review before
+   resolution.
+4. For non-test files where one side is clearly the canonical
+   version (e.g. a followup doc rewritten with `write_file`),
+   `git checkout --ours <file>` is acceptable **only after**
+   visual confirmation (grep for the marker strings the previous
+   reviewer asked for).
+5. `git add <file> && git rebase --continue`.
+
+**Anti-pattern**: a loop of
+`pull --rebase, conflict, checkout --ours, commit --amend, push, non-fast-forward, ...`.
+Each `commit --amend` creates a fresh commit hash that re-diverges
+from `origin/<branch>` and triggers the next failure. If you find
+yourself in that loop:
+
+- **First, try the cheap exit**: stop amending, run a clean
+  `git fetch && git rebase origin/<branch>`. If the resulting tree
+  is a clean fast-forward over `origin/<branch>`, an ordinary
+  `git push origin <branch>` will land it — no force-push needed.
+- **Only if the tree is genuinely divergent** (e.g. you and
+  another agent both landed on the same branch in the interim) is
+  `git push --force-with-lease origin <branch>` appropriate, and
+  then **only after** running
+  `git fetch && git log --oneline HEAD..@{u}` to confirm no
+  in-flight commit from another agent (commits in `origin/<branch>`
+  that you don't have locally) is about to be clobbered. The
+  reverse view, `git log --oneline @{u}..HEAD`, lists your own
+  unpushed commits — useful for an audit, **not** a clobber-check.
+
+Canonical reference: the obsolete-batch-tests disposition shipped
+in commits `39071b40` + `a55e38f1` is the case where this lesson
+was learned.
+
+
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 `context.Background()` in `internal/api/` handlers. The following sites are
 **intentionally exempt** per ARCHITECTURE.md §7:
