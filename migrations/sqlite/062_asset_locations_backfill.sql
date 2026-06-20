@@ -89,7 +89,6 @@ ALTER TABLE media_assets ADD COLUMN deleted_at      TEXT    NOT NULL DEFAULT '';
 
 -- Post-condition audit: actually setup fails if some columns didn't get added;
 -- this is just a runtime confirmation of STEP 1's effect.
-SELECT name, type, dflt_value, notnull AS is_not_null
 FROM pragma_table_info('media_assets')
 WHERE name IN (
     'filename', 'category', 'thumbnail_url', 'clip_page_url', 'search_text',
