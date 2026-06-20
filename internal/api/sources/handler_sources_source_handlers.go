@@ -8,7 +8,6 @@ package sources
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -82,10 +81,6 @@ type SourcesHandler struct {
 	// source-level search returns no results (unit test mode).
 	// Late-binding matches the existing Set* setter pattern.
 	providerRegistry *providers.Registry
-
-	// downloadCache prevents re-downloading the same YouTube video when
-	// registering multiple segments (clips) from it. Key: videoID, Value: local path.
-	downloadCache sync.Map
 
 	// Sub-handlers
 	Voiceover   *VoiceoverHandler
