@@ -6,27 +6,28 @@ import (
 	"fmt"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 type Broker struct {
-	jobs   job.Store
+	jobs    appjobs.Store
 	workers *sqlite.WorkerNodesRepository
 }
 
-func New(jobs job.Store, workers *sqlite.WorkerNodesRepository) *Broker {
+func New(jobs appjobs.Store, workers *sqlite.WorkerNodesRepository) *Broker {
 	return &Broker{jobs: jobs, workers: workers}
 }
 
-func (b *Broker) RegisterWorker(ctx context.Context, cmd job.RegisterWorkerCommand) (*job.WorkerSession, error) {
+func (b *Broker) RegisterWorker(ctx context.Context, cmd appjobs.RegisterWorkerCommand) (*appjobs.WorkerSession, error) {
 	if b.workers == nil {
 		return nil, fmt.Errorf("worker repository not configured")
 	}
 	return b.workers.Register(ctx, cmd)
 }
 
-func (b *Broker) Heartbeat(ctx context.Context, cmd job.HeartbeatCommand) error {
+func (b *Broker) Heartbeat(ctx context.Context, cmd appjobs.HeartbeatCommand) error {
 	if b.workers == nil {
 		return nil
 	}
@@ -34,7 +35,7 @@ func (b *Broker) Heartbeat(ctx context.Context, cmd job.HeartbeatCommand) error 
 	return err
 }
 
-func (b *Broker) Claim(ctx context.Context, cmd job.ClaimCommand) (*job.Lease, error) {
+func (b *Broker) Claim(ctx context.Context, cmd appjobs.ClaimCommand) (*appjobs.Lease, error) {
 	if err := b.ensureSession(ctx, cmd.WorkerID, cmd.WorkerSessionID); err != nil {
 		return nil, err
 	}
@@ -53,7 +54,7 @@ func (b *Broker) Claim(ctx context.Context, cmd job.ClaimCommand) (*job.Lease, e
 			return nil, err
 		}
 		if claimed != nil {
-			return &job.Lease{Job: claimed, LeaseID: claimed.LeaseID, ExpiresAt: time.Now().UTC().Add(wait)}, nil
+			return &appjobs.Lease{Job: claimed, LeaseID: claimed.LeaseID, ExpiresAt: time.Now().UTC().Add(wait)}, nil
 		}
 		if time.Now().UTC().After(deadline) {
 			return nil, nil
@@ -66,7 +67,7 @@ func (b *Broker) Claim(ctx context.Context, cmd job.ClaimCommand) (*job.Lease, e
 	}
 }
 
-func (b *Broker) Renew(ctx context.Context, cmd job.RenewCommand) (*job.Lease, error) {
+func (b *Broker) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.Lease, error) {
 	if err := b.ensureSession(ctx, cmd.WorkerID, cmd.WorkerSessionID); err != nil {
 		return nil, err
 	}
@@ -80,24 +81,24 @@ func (b *Broker) Renew(ctx context.Context, cmd job.RenewCommand) (*job.Lease, e
 	if err != nil || j == nil {
 		return nil, err
 	}
-	return &job.Lease{Job: j, LeaseID: j.LeaseID, ExpiresAt: time.Now().UTC().Add(cmd.LeaseTTL)}, nil
+	return &appjobs.Lease{Job: j, LeaseID: j.LeaseID, ExpiresAt: time.Now().UTC().Add(cmd.LeaseTTL)}, nil
 }
 
-func (b *Broker) Progress(ctx context.Context, cmd job.ProgressCommand) error {
+func (b *Broker) Progress(ctx context.Context, cmd appjobs.ProgressCommand) error {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return err
 	}
 	return b.jobs.SetProgress(ctx, cmd.JobID, cmd.Progress, cmd.Message)
 }
 
-func (b *Broker) Complete(ctx context.Context, cmd job.CompleteCommand) error {
+func (b *Broker) Complete(ctx context.Context, cmd appjobs.CompleteCommand) error {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return err
 	}
 	return b.jobs.Complete(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.ExpectedRevision, cmd.Result)
 }
 
-func (b *Broker) Fail(ctx context.Context, cmd job.FailCommand) error {
+func (b *Broker) Fail(ctx context.Context, cmd appjobs.FailCommand) error {
 	if err := b.ensureJobSession(ctx, cmd.WorkerID, cmd.WorkerSessionID, cmd.JobID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func (b *Broker) IsCancelled(ctx context.Context, jobID string, leaseID string) 
 	if err != nil || j == nil {
 		return false, err
 	}
-	return j.Status == job.StatusCancelled, nil
+	return j.Status == domainjob.StatusCancelled, nil
 }
 
 func (b *Broker) ensureSession(ctx context.Context, workerID, sessionID string) error {
