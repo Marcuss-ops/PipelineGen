@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -68,14 +68,14 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
 
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "test_clip_001",
 		Source:         "youtube",
 		Name:           "Test clip",
 		MediaType:      "video",
 		Tags:           []string{"nature"},
 		Group:          "youtube",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 	}
 	clip.SetIsFolder(false)
 	clip.SetFileHash("abc123")
@@ -87,7 +87,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	stored, err := repo.GetClip(ctx, "test_clip_001")
 	require.NoError(t, err)
 	require.NotNil(t, stored)
-	assert.Equal(t, assets.Source("youtube"), stored.Source)
+	assert.Equal(t, asset.Source("youtube"), stored.Source)
 	assert.Equal(t, "Test clip", stored.Name)
 	assert.Equal(t, "abc123", stored.FileHash())
 	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink())
@@ -118,11 +118,11 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 	svc := &Service{log: zap.NewNop()}
 	svc.SetDispatcher(dispatcher)
 
-	folder := &assets.Asset{
+	folder := &asset.Asset{
 		ID:             "test_folder_001",
 		Source:         "youtube",
 		Name:           "Root Folder",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 	}
 	folder.SetIsFolder(true)
 	folder.SetFolderID("test_folder_001")
@@ -158,12 +158,12 @@ func TestUpsertPreservingExisting_NilDispatcherLegacyPath(t *testing.T) {
 	svc := &Service{log: zap.NewNop()}
 	// Note: SetDispatcher NOT called.
 
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "legacy_clip_001",
 		Source:         "youtube",
 		Name:           "Legacy clip",
 		MediaType:      "video",
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 	}
 	clip.SetIsFolder(false)
 	clip.SetFileHash("legacy_hash")

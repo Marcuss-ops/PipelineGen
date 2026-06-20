@@ -21,8 +21,16 @@
 //     typed consts (LocationKindDrive/Local). Every other symbol
 //     application/ uses was already covered by PR-1's alias set.
 //     Parity covered by asset_test.go (TestLocationKind*).
-//   - Phase 2 PR-3-4: internal/media/, internal/infrastructure/
-//     — bounded-context batched, one PR each.
+//   - Phase 2 PR-3 (this PR): internal/media/ migrated (17 files).
+//     Aliases extended YAGNI: +9 entries — {Location,
+//     LocationRepository, ProcessingRepository, StageUpload,
+//     StageDownload, StatusRunning, StatusCompleted, StatusFailed,
+//     ErrNotFound}. Largest importer subset of the 73-importer
+//     Verdetto. Recon lifted the user's flagged Frammento-(c) deferral
+//     for deletion.go + ingest/adapter_clip.go — neither uses
+//     assets.Artifact* (the actual Frammento (c) targets), so alias
+//     migration is lossless.
+//   - Phase 2 PR-4: internal/infrastructure/ — final PR of phase 2.
 //   - Phase 3: convergence with internal/domain/media (MediaType
 //     constants, LifecycleState promotion, etc.) — DEFERRED.
 //
@@ -126,6 +134,23 @@ type (
 	// reads `loc.LocationKind == asset.LocationKindLocal` / `Drive`,
 	// where `loc.LocationKind` is a field of this typed enum.
 	LocationKind = assets.LocationKind
+
+	// Location is the per-asset filesystem/GDrive fingerprint: where
+	// the asset lives on LocalPath or DriveLink, with optional hashes.
+	// Hard alias; YAGNI added in Wave 12 follow-up Phase 2 PR-3
+	// because internal/media/ingest/adapter_clip.go writes location
+	// rows during the ingest path's Upsert.
+	Location = assets.Location
+
+	// LocationRepository is the persistence contract for asset
+	// location rows. Hard alias; same call-site as Location.
+	LocationRepository = assets.LocationRepository
+
+	// ProcessingRepository tracks per-asset processing steps (upload,
+	// transcode, etc.). Hard alias; YAGNI added in PR-3 because
+	// adapter_clip.go writes Start/Complete/Fail events through this
+	// interface as part of the ingest path's status ledger.
+	ProcessingRepository = assets.ProcessingRepository
 )
 
 // ── LifecycleState constants ────────────────────────────────────────
@@ -156,3 +181,30 @@ const (
 	LocationKindDrive = assets.LocationKindDrive
 	LocationKindLocal = assets.LocationKindLocal
 )
+
+// ── Processing constants ──────────────────────────────────────────────
+//
+// Re-declared from internal/assets/processing_types.go because Go
+// const-group re-exports aren't possible through type aliases. Values
+// track the legacy package; drift will surface as undefined references
+// during build. YAGNI added in Wave 12 follow-up Phase 2 PR-3 because
+// internal/media/ingest/adapter_clip.go records upload/transcode events
+// via Stage* and Status* when ingesting MediaRecord rows.
+
+const (
+	StageUpload   = assets.StageUpload
+	StageDownload = assets.StageDownload
+
+	StatusRunning   = assets.StatusRunning
+	StatusCompleted = assets.StatusCompleted
+	StatusFailed    = assets.StatusFailed
+)
+
+// ErrNotFound is the canonical "not found" error returned by
+// *assets.Repository.Get(...). Sentinel-error pattern preserved by
+// sharing the underlying *errors.errorString pointer with the assets
+// package, so callers may compare via == directly. YAGNI added in
+// Wave 12 follow-up Phase 2 PR-3 because adapter_clip.go's Get
+// path matches `err == assets.ErrNotFound` to surface a nil record
+// rather than propagating the error.
+var ErrNotFound = assets.ErrNotFound

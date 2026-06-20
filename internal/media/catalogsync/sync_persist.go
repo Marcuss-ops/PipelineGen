@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -18,7 +18,7 @@ import (
 // the catalog sync should not overwrite (hash, local_path, metadata, tags).
 // Routes through the canonical outbox dispatcher when available, so the
 // media_assets UPDATE and the outbox_events INSERT commit atomically.
-func (s *Service) upsertPreservingExisting(ctx context.Context, repo *sqlite.ClipsRepository, clip *assets.Asset) error {
+func (s *Service) upsertPreservingExisting(ctx context.Context, repo *sqlite.ClipsRepository, clip *asset.Asset) error {
 	if repo == nil || clip == nil {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *sqlite.Cli
 // to rolling back the canonical outbox state. Identical payload across
 // dispatcher + legacy paths — extracted here so the two branches in
 // upsertPreservingExisting stay in lockstep.
-func (s *Service) writeAssetIndex(ctx context.Context, clip *assets.Asset) {
+func (s *Service) writeAssetIndex(ctx context.Context, clip *asset.Asset) {
 	if s.assetIndex == nil {
 		return
 	}
