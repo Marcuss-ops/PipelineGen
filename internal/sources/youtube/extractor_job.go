@@ -6,12 +6,20 @@ import (
 	"fmt"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	"go.uber.org/zap"
 )
 
 // HandleJob processes a youtube_clip.extract job.
-func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+//
+// PR fix: `jobservice.JobTools` was undefined because JobTools lives
+// in internal/application/jobs (not internal/domain/job, which only
+// hosts the Job entity). HandlerFunc in
+// internal/application/jobs/types.go has the canonical signature
+//   func(ctx context.Context, j *job.Job, tools *JobTools)
+// and we mirror it here.
+func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	s.log.Info("handling youtube_clip.extract job",
 		zap.String("job_id", job.ID),
 	)
