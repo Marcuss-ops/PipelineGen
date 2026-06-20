@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ParseResearchPack attempts to parse the agent output as a ResearchPack JSON.
 // If the output is not valid JSON, it falls back to wrapping the raw text in a
 // ResearchPack with RawText set — this handles the transitional period where
 // the Python agent has not yet been updated to emit structured output.
-func ParseResearchPack(raw string) (*ResearchPack, error) {
+func ParseResearchPack(raw string) (*script.ResearchPack, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, fmt.Errorf("empty research output")
@@ -22,7 +24,7 @@ func ParseResearchPack(raw string) (*ResearchPack, error) {
 	jsonEnd := strings.LastIndex(raw, "}")
 
 	// Try full-document parse first
-	var pack ResearchPack
+	var pack script.ResearchPack
 	if jsonStart == 0 && jsonEnd == len(raw)-1 {
 		if err := json.Unmarshal([]byte(raw), &pack); err == nil {
 			// Only accept if it has at least one research field filled
@@ -43,7 +45,7 @@ func ParseResearchPack(raw string) (*ResearchPack, error) {
 	}
 
 	// Fallback: wrap raw text
-	return &ResearchPack{
+	return &script.ResearchPack{
 		Topic:   extractTopic(raw),
 		RawText: raw,
 	}, nil
@@ -51,7 +53,7 @@ func ParseResearchPack(raw string) (*ResearchPack, error) {
 
 // FormatResearchContext formats a ResearchPack into a human-readable text
 // block suitable for injecting into the LLM prompt as WebContext.
-func FormatResearchContext(pack *ResearchPack) string {
+func FormatResearchContext(pack *script.ResearchPack) string {
 	if pack == nil {
 		return ""
 	}

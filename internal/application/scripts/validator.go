@@ -3,6 +3,8 @@ package scripts
 import (
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ValidationScore holds a single post-generation quality score.
@@ -22,18 +24,18 @@ type ValidateResult struct {
 // ValidateScript runs all post-generation checks against the script and plan.
 // It never blocks on an LLM call — all checks are rule-based / statistical.
 // Returns a ValidateResult with per-check scores.
-func ValidateScript(script string, plan *ScriptGenerationPlan) *ValidateResult {
-	if script == "" {
+func ValidateScript(scr string, plan *script.ScriptGenerationPlan) *ValidateResult {
+	if scr == "" {
 		return &ValidateResult{AllPass: false}
 	}
 
 	scores := []ValidationScore{
-		checkWordCount(script, plan),
-		checkNoMarkdown(script),
-		checkNoStageDirections(script),
-		checkRepetition(script),
-		checkHookStrength(script),
-		checkCTAPresent(script),
+		checkWordCount(scr, plan),
+		checkNoMarkdown(scr),
+		checkNoStageDirections(scr),
+		checkRepetition(scr),
+		checkHookStrength(scr),
+		checkCTAPresent(scr),
 	}
 
 	allPass := true
@@ -49,8 +51,8 @@ func ValidateScript(script string, plan *ScriptGenerationPlan) *ValidateResult {
 // ── Individual checks ──────────────────────────────────────────────────────
 
 // checkWordCount verifies the script length is within tolerance.
-func checkWordCount(script string, plan *ScriptGenerationPlan) ValidationScore {
-	words := len(strings.Fields(strings.TrimSpace(script)))
+func checkWordCount(scr string, plan *script.ScriptGenerationPlan) ValidationScore {
+	words := len(strings.Fields(strings.TrimSpace(scr)))
 	if words == 0 {
 		return ValidationScore{
 			Check: "word_count_ok", Passed: false, Value: 0,

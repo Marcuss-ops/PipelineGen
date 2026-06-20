@@ -60,10 +60,12 @@ type StockMatch struct {
 type ResearchSource struct {
 	ID             int64     `json:"id"`
 	ScriptID       int64     `json:"script_id"`
+	Source         string    `json:"source,omitempty"`
 	Query          string    `json:"query"`
 	URL            string    `json:"url"`
 	Title          string    `json:"title"`
 	Snippet        string    `json:"snippet"`
+	Excerpt        string    `json:"excerpt,omitempty"`
 	SourceType     string    `json:"source_type"`
 	UsedInSections string    `json:"used_in_sections"`
 	RelevanceScore float64   `json:"relevance_score"`

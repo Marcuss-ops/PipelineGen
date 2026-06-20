@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -165,7 +165,7 @@ func buildTextOnlyScriptPlan(
 	topic, sourceText, guidelines, title, language, tone, model string,
 	forceRefresh, saveToDB bool, targetWords int,
 	promptVersion, editorPromptVersion, qaPromptVersion string,
-) *scripts.ScriptGenerationPlan {
+) *script.ScriptGenerationPlan {
 	if topic == "" {
 		topic = sourceText
 	}
@@ -173,7 +173,7 @@ func buildTextOnlyScriptPlan(
 		title = topic
 	}
 
-	plan := &scripts.ScriptGenerationPlan{
+	plan := &script.ScriptGenerationPlan{
 		Title:       title,
 		Topic:       topic,
 		Language:    language,

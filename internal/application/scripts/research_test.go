@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── ParseResearchPack: valid JSON ─────────────────────────────────────────
@@ -233,13 +234,13 @@ func TestParseResearchPack_JSONWithOnlyExtraFields(t *testing.T) {
 // ── FormatResearchContext ─────────────────────────────────────────────────
 
 func TestFormatResearchContext_WithParsedPack(t *testing.T) {
-	pack := &ResearchPack{
+	pack := &script.ResearchPack{
 		Topic: "Roman Empire",
 		KeyFacts: []string{
 			"Lasted over 500 years",
 			"Capital was Rome",
 		},
-		Timeline: []TimelineEntry{
+		Timeline: []script.TimelineEntry{
 			{Date: "753 BCE", Event: "Founding of Rome"},
 			{Date: "476 CE", Event: "Fall of Western Empire"},
 		},
@@ -247,7 +248,7 @@ func TestFormatResearchContext_WithParsedPack(t *testing.T) {
 		ImportantQuotes: []string{"All roads lead to Rome"},
 		SuggestedAngles: []string{"Military innovations"},
 		Warnings:        []string{"Bias in Roman historical sources"},
-		Sources: []ScriptResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://example.com/rome", Title: "Roman History"},
 		},
 	}
@@ -284,7 +285,7 @@ func TestFormatResearchContext_WithParsedPack(t *testing.T) {
 
 func TestFormatResearchContext_RawTextFallback(t *testing.T) {
 	raw := "This is raw text from the agent without JSON."
-	pack := &ResearchPack{RawText: raw}
+	pack := &script.ResearchPack{RawText: raw}
 
 	output := FormatResearchContext(pack)
 	if output != raw {
@@ -300,7 +301,7 @@ func TestFormatResearchContext_NilPack(t *testing.T) {
 }
 
 func TestFormatResearchContext_EmptyPack(t *testing.T) {
-	pack := &ResearchPack{}
+	pack := &script.ResearchPack{}
 	output := FormatResearchContext(pack)
 	if output != "" {
 		t.Errorf("expected empty string for empty pack, got %q", output)
@@ -309,7 +310,7 @@ func TestFormatResearchContext_EmptyPack(t *testing.T) {
 
 func TestFormatResearchContext_EmptySections(t *testing.T) {
 	// Pack with Topic set but all sections empty — should only render topic line
-	pack := &ResearchPack{
+	pack := &script.ResearchPack{
 		Topic: "Only Topic",
 	}
 
@@ -322,9 +323,9 @@ func TestFormatResearchContext_EmptySections(t *testing.T) {
 func TestFormatResearchContext_TimelineWithoutDates(t *testing.T) {
 	// Timeline entries may omit the Date field. In that case they should be
 	// rendered as bare event bullets without a date prefix.
-	pack := &ResearchPack{
+	pack := &script.ResearchPack{
 		Topic: "Persian Empire",
-		Timeline: []TimelineEntry{
+		Timeline: []script.TimelineEntry{
 			{Event: "Cyrus the Great unites Persia"},
 			{Event: "Persian wars against Greek city-states"},
 			{Event: "Alexander the Great conquers Persia"},
@@ -366,9 +367,9 @@ func TestFormatResearchContext_TimelineWithoutDates(t *testing.T) {
 func TestFormatResearchContext_MixedTimelineDatesAndNoDates(t *testing.T) {
 	// Realistic scenario: some timeline entries have dates, others don't.
 	// The function must handle each entry individually.
-	pack := &ResearchPack{
+	pack := &script.ResearchPack{
 		Topic: "Renaissance Art",
-		Timeline: []TimelineEntry{
+		Timeline: []script.TimelineEntry{
 			{Date: "1300", Event: "Proto-Renaissance begins in Italy"},
 			{Event: "Da Vinci's Mona Lisa is painted"},
 			{Date: "1508", Event: "Michelangelo starts Sistine Chapel ceiling"},

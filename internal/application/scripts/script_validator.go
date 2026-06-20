@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+
 	"go.uber.org/zap"
 )
 
@@ -183,17 +185,17 @@ func ParseScenes(script string) []ParsedScene {
 //     caller decides whether to use the result.
 //   - "hard" (future): same checks; the caller should skip SaveMemory
 //     when result.Valid is false.
-func ValidateScriptWithPack(script string, plan *ScriptGenerationPlan, pack *ClipSourcePack, allowNarration bool, maxCharsPerScene int) *ScriptValidationResult {
+func ValidateScriptWithPack(sc string, plan *script.ScriptGenerationPlan, pack *ClipSourcePack, allowNarration bool, maxCharsPerScene int) *ScriptValidationResult {
 	res := &ScriptValidationResult{Valid: true}
 
-	if script == "" {
+	if sc == "" {
 		res.Valid = false
 		res.StructuralWarnings = append(res.StructuralWarnings, "script is empty")
 		return res
 	}
 
 	// Always run the statistical checks (existing ValidateScript)
-	stat := ValidateScript(script, plan)
+	stat := ValidateScript(sc, plan)
 	for _, s := range stat.Scores {
 		if !s.Passed {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s: %s", s.Check, s.Message))
@@ -211,7 +213,7 @@ func ValidateScriptWithPack(script string, plan *ScriptGenerationPlan, pack *Cli
 		accepted[c.ClipID] = true
 	}
 
-	scenes := ParseScenes(script)
+	scenes := ParseScenes(sc)
 	res.SceneCount = countClipScenes(scenes)
 
 	// Expected scene count.

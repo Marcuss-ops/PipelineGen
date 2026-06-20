@@ -2,10 +2,12 @@ package scripts
 
 import (
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 func TestValidateScript_Empty(t *testing.T) {
-	result := ValidateScript("", NewPlan())
+	result := ValidateScript("", script.NewPlan())
 	if result.AllPass {
 		t.Error("expected AllPass=false for empty script")
 	}
@@ -67,7 +69,7 @@ Diplomacy played a crucial role in maintaining the vast Persian Empire. Rather t
 
 If you enjoyed learning about the Persian Empire please subscribe for more ancient history content. Share this video with fellow history enthusiasts and let us know your thoughts in the comments below.`
 
-	plan := NewPlan()
+	plan := script.NewPlan()
 	plan.TargetWords = 700
 	plan.Duration = 0
 
@@ -88,14 +90,14 @@ func TestCheckWordCount(t *testing.T) {
 	tests := []struct {
 		name     string
 		script   string
-		plan     *ScriptGenerationPlan
+		plan     *script.ScriptGenerationPlan
 		wantPass bool
 		wantVal  int
 	}{
 		{
 			name:     "empty script",
 			script:   "",
-			plan:     NewPlan(),
+			plan:     script.NewPlan(),
 			wantPass: false,
 			wantVal:  0,
 		},
@@ -123,7 +125,7 @@ func TestCheckWordCount(t *testing.T) {
 		{
 			name:     "no target configured",
 			script:   words(50),
-			plan:     &ScriptGenerationPlan{}, // no Duration, no TargetWords
+			plan:     &script.ScriptGenerationPlan{}, // no Duration, no TargetWords
 			wantPass: true,
 			wantVal:  50,
 		},
@@ -317,7 +319,7 @@ func TestCheckCTAPresent(t *testing.T) {
 
 func TestValidationResultJSONTags(t *testing.T) {
 	// Quick compile-time check that the struct has proper JSON tags
-	result := ValidateScript("test", NewPlan())
+	result := ValidateScript("test", script.NewPlan())
 	if len(result.Scores) == 0 {
 		t.Fatal("expected scores")
 	}
@@ -343,12 +345,12 @@ func words(n int) string {
 	return string(out)
 }
 
-func planWithTarget(target int) *ScriptGenerationPlan {
-	return &ScriptGenerationPlan{TargetWords: target}
+func planWithTarget(target int) *script.ScriptGenerationPlan {
+	return &script.ScriptGenerationPlan{TargetWords: target}
 }
 
-func planWithDuration(minutes int) *ScriptGenerationPlan {
-	return &ScriptGenerationPlan{
+func planWithDuration(minutes int) *script.ScriptGenerationPlan {
+	return &script.ScriptGenerationPlan{
 		DurationMin: minutes,
 		Duration:    minutes * 60,
 	}

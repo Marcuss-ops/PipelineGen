@@ -9,9 +9,10 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -88,7 +89,7 @@ func (s *Service) HandleCatalogScriptGenerateJob(ctx context.Context, job *job.J
 	}
 
 	writeResult, err := s.engine.WriteScript(ctx, scripts.WriteScriptRequest{
-		Plan: &scripts.ScriptGenerationPlan{
+		Plan: &script.ScriptGenerationPlan{
 			Title:       plan.Title,
 			Topic:       plan.Title,
 			Language:    opts.Language,

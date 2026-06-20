@@ -75,7 +75,7 @@ func (h *ScriptFlowHandler) handleClipPathExplicit(ctx context.Context, payload 
 	}
 
 	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{
-		Plan: &scripts.ScriptGenerationPlan{
+		Plan: &script.ScriptGenerationPlan{
 			Title:       plan.Title,
 			Topic:       plan.Title,
 			Language:    opts.Language,

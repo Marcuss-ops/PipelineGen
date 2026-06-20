@@ -3,6 +3,8 @@ package scripts
 import (
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── ParseScenes ───────────────────────────────────────────────────────────
@@ -84,8 +86,8 @@ func makeValidationPack() *ClipSourcePack {
 	}
 }
 
-func makeValidationPlan() *ScriptGenerationPlan {
-	return &ScriptGenerationPlan{TargetWords: 200}
+func makeValidationPlan() *script.ScriptGenerationPlan {
+	return &script.ScriptGenerationPlan{TargetWords: 200}
 }
 
 func TestValidateScriptWithPack_AllPass(t *testing.T) {
