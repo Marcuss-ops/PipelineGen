@@ -29,13 +29,13 @@ func chapterLabelForLang(lang string) string {
 	}
 }
 
-func buildBatchGoogleDocHTML(title string, parts []generatedPart, noChapters bool, language string) string {
-	return buildBatchGoogleDocHTMLWithTranslations(title, parts, noChapters, language, nil)
+func BuildBatchGoogleDocHTML(title string, parts []GeneratedPart, noChapters bool, language string) string {
+	return BuildBatchGoogleDocHTMLWithTranslations(title, parts, noChapters, language, nil)
 }
 
-// buildBatchGoogleDocHTMLWithTranslations generates the Google Doc HTML, optionally using translated topics
+// BuildBatchGoogleDocHTMLWithTranslations generates the Google Doc HTML, optionally using translated topics
 // when translatedTopics is provided (one per part).
-func buildBatchGoogleDocHTMLWithTranslations(title string, parts []generatedPart, noChapters bool, language string, translatedTopics []string) string {
+func BuildBatchGoogleDocHTMLWithTranslations(title string, parts []GeneratedPart, noChapters bool, language string, translatedTopics []string) string {
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
 	b.WriteString(fmt.Sprintf("<h1>%s</h1>", html.EscapeString(strings.TrimSpace(title))))
@@ -89,12 +89,12 @@ func buildBatchGoogleDocHTMLWithTranslations(title string, parts []generatedPart
 // ── Phase: Google Doc Creation ───────────────────────────────────────────────
 
 // createBatchDoc creates a Google Doc for the batch and returns its URL and ID.
-func (s *BatchService) createBatchDoc(ctx context.Context, docTitle string, generatedParts []generatedPart, noChapters bool, language string, folderID string) (string, string) {
+func (s *BatchService) createBatchDoc(ctx context.Context, docTitle string, GeneratedParts []GeneratedPart, noChapters bool, language string, folderID string) (string, string) {
 	if s.docClient == nil {
 		return "", ""
 	}
 
-	htmlContent := buildBatchGoogleDocHTML(docTitle, generatedParts, noChapters, language)
+	htmlContent := BuildBatchGoogleDocHTML(docTitle, GeneratedParts, noChapters, language)
 	doc, docErr := s.docClient.CreateDoc(ctx, docTitle, htmlContent, folderID)
 	if docErr != nil {
 		s.log.Warn("failed to create batch Google Doc", zap.Error(docErr), zap.String("folder_id", folderID))

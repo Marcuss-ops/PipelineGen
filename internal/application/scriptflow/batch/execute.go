@@ -82,7 +82,7 @@ func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 		}
 	}
 
-	generatedParts, mergedScriptStr, timings, sections := mergeBatchResults(docTitle, results, req.NoChapters, req.Language)
+	GeneratedParts, mergedScriptStr, timings, sections := mergeBatchResults(docTitle, results, req.NoChapters, req.Language)
 
 	if onProgress != nil {
 		onProgress(85, "Running coherence pass on merged script...")
@@ -92,9 +92,9 @@ func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 		s.log.Warn("coherence pass failed, using merged script as-is", zap.Error(coherenceErr))
 	} else if coherentScript != "" && coherentScript != mergedScriptStr {
 		mergedScriptStr = coherentScript
-		generatedParts = rebuildGeneratedPartsFromMergedScript(docTitle, coherentScript, req.NoChapters, req.Language)
-		sections = make([]scripts.ScriptSectionRecord, 0, len(generatedParts))
-		for idx, part := range generatedParts {
+		GeneratedParts = rebuildGeneratedPartsFromMergedScript(docTitle, coherentScript, req.NoChapters, req.Language)
+		sections = make([]scripts.ScriptSectionRecord, 0, len(GeneratedParts))
+		for idx, part := range GeneratedParts {
 			status := "completed"
 			if part.timing.Status == "failed" {
 				status = "failed"
@@ -127,9 +127,9 @@ func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 		s.log.Warn("qa pass failed, using script as-is", zap.Error(qaErr))
 	} else if qaScript != "" && qaScript != mergedScriptStr {
 		mergedScriptStr = qaScript
-		generatedParts = rebuildGeneratedPartsFromMergedScript(docTitle, qaScript, req.NoChapters, req.Language)
-		sections = make([]scripts.ScriptSectionRecord, 0, len(generatedParts))
-		for idx, part := range generatedParts {
+		GeneratedParts = rebuildGeneratedPartsFromMergedScript(docTitle, qaScript, req.NoChapters, req.Language)
+		sections = make([]scripts.ScriptSectionRecord, 0, len(GeneratedParts))
+		for idx, part := range GeneratedParts {
 			status := "completed"
 			if part.timing.Status == "failed" {
 				status = "failed"
@@ -159,7 +159,7 @@ func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 	if onProgress != nil {
 		onProgress(92, "Creating Google Doc...")
 	}
-	docURL, docID := s.createBatchDoc(ctx, docTitle, generatedParts, req.NoChapters, req.Language, effectiveFolderID)
+	docURL, docID := s.createBatchDoc(ctx, docTitle, GeneratedParts, req.NoChapters, req.Language, effectiveFolderID)
 
 	if req.Voiceover && s.voService != nil {
 		if onProgress != nil {
@@ -177,7 +177,7 @@ func (s *BatchService) ExecuteBatchGeneration(ctx context.Context, req *Generate
 	if onProgress != nil {
 		onProgress(95, "Translating...")
 	}
-	translations, failedLanguages := s.translateBatch(ctx, req, generatedParts, docTitle, effectiveFolderID)
+	translations, failedLanguages := s.translateBatch(ctx, req, GeneratedParts, docTitle, effectiveFolderID)
 
 	if onProgress != nil {
 		onProgress(97, "Saving script to database...")

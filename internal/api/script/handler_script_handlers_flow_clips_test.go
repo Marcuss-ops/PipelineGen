@@ -1,7 +1,6 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"database/sql"
 	"testing"
@@ -10,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	translations "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	translations "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 )
 
 // ── topicRelevant ─────────────────────────────────────────────────────────

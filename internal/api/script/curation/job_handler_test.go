@@ -1,7 +1,6 @@
 package curation
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"strings"
 	"testing"
 

@@ -1,6 +1,8 @@
 package script
 
 import (
+	"fmt"
+
 	"context"
 	"strings"
 
@@ -271,4 +273,16 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 	}
 	docsSvc := documents.NewService(h.docClient, h.log, h.driveFolderID)
 	return docsSvc.CreateDoc(ctx, title, content, h.resolveDriveFolderID, folderID)
+}
+
+// ExecuteBatchGeneration is a thin wrapper that delegates the batch
+// generation request to the underlying *batch.BatchService. It exists
+// so tests and API code can call batch generation through the unified
+// ScriptFlowHandler receiver instead of constructing a BatchService
+// directly. Returns the canonical BatchGenerateResponse.
+func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *batch.GenerateBatchRequest, onProgress func(int, string)) (batch.BatchGenerateResponse, error) {
+	if h.batchService == nil {
+		return batch.BatchGenerateResponse{}, fmt.Errorf("batch service not initialized on ScriptFlowHandler")
+	}
+	return h.batchService.ExecuteBatchGeneration(ctx, req, onProgress)
 }

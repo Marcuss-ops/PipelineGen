@@ -112,7 +112,7 @@ type chapterTiming struct {
 	TargetWordCount      int    `json:"target_word_count,omitempty"`
 }
 
-type generatedPart struct {
+type GeneratedPart struct {
 	topic   string
 	content string
 	timing  chapterTiming

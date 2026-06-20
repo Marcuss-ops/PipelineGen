@@ -115,10 +115,10 @@ func abs(a int) int {
 var chapterHeaderPattern = regexp.MustCompile(`(?m)^##\s+(?:Chapter|Capitolo|Chapitre|Capítulo|Kapitel)\s+\d+:\s*(.*)$`)
 
 // rebuildGeneratedPartsFromMergedScript parses a merged script back into a
-// slice of generatedPart so that the Doc, translations, and DB save all use
+// slice of GeneratedPart so that the Doc, translations, and DB save all use
 // the same coherent text.  For noChapters mode the entire script (minus the
 // title line) becomes a single part.
-func rebuildGeneratedPartsFromMergedScript(docTitle, script string, noChapters bool, language string) []generatedPart {
+func rebuildGeneratedPartsFromMergedScript(docTitle, script string, noChapters bool, language string) []GeneratedPart {
 	if strings.TrimSpace(script) == "" {
 		return nil
 	}
@@ -131,7 +131,7 @@ func rebuildGeneratedPartsFromMergedScript(docTitle, script string, noChapters b
 	}
 
 	if noChapters {
-		return []generatedPart{{
+		return []GeneratedPart{{
 			topic:   docTitle,
 			content: script,
 		}}
@@ -140,13 +140,13 @@ func rebuildGeneratedPartsFromMergedScript(docTitle, script string, noChapters b
 	matches := chapterHeaderPattern.FindAllStringIndex(script, -1)
 	if len(matches) == 0 {
 		// No chapter headers found — treat as a single coherent part.
-		return []generatedPart{{
+		return []GeneratedPart{{
 			topic:   docTitle,
 			content: script,
 		}}
 	}
 
-	var parts []generatedPart
+	var parts []GeneratedPart
 	for i, match := range matches {
 		headerStart := match[0]
 		headerEnd := match[1]
@@ -168,7 +168,7 @@ func rebuildGeneratedPartsFromMergedScript(docTitle, script string, noChapters b
 		if content == "" {
 			continue
 		}
-		parts = append(parts, generatedPart{
+		parts = append(parts, GeneratedPart{
 			topic:   topic,
 			content: content,
 		})

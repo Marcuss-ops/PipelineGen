@@ -247,7 +247,7 @@ func (s *BatchService) pipelineWebSearchAndChapters(
 				}
 				results[iw.globalIdx] = &genChapterResult{
 					scriptContent: content,
-					part: generatedPart{
+					part: GeneratedPart{
 						topic:   iw.workItem.topic,
 						content: content,
 						timing:  timing,

@@ -1,28 +1,26 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	batch "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"strings"
 	"testing"
 )
 
 func TestValidateGenerateBatchRequestRejectsInvalidRequest(t *testing.T) {
-	req := &GenerateBatchRequest{
-		BaseGenerateRequest: BaseGenerateRequest{
-			ChannelID: "",
-			Language:  "xx",
-			Duration:  60,
-		},
+	req := &batch.GenerateBatchRequest{
+		ChannelID:     "",
+		Language:      "xx",
+		Duration:      60,
 		DocTitle:              "",
 		TargetWordsPerChapter: 700,
-		BatchTopics: []BatchTopic{
+		BatchTopics: []batch.BatchTopic{
 			{Topic: "A", SourceText: "ok"},
 			{Topic: "", SourceText: "ok"},
 			{Topic: "C", SourceText: ""},
 		},
 	}
 
-	errs := validateGenerateBatchRequest(req, "", map[string]struct{}{"en": {}, "it": {}})
+	errs := batch.ValidateGenerateBatchRequest(req, "", map[string]struct{}{"en": {}, "it": {}})
 	if len(errs) == 0 {
 		t.Fatal("expected validation errors")
 	}
@@ -57,21 +55,19 @@ func TestValidateGenerateBatchRequestAcceptsEmptyChannelIDAndSourceText(t *testi
 	// items[].source_text are optional in the request body. The handler
 	// defaults channel_id to scriptsCfg.BatchChannelID and source_text to
 	// the item's topic. Validation should not flag them as errors.
-	req := &GenerateBatchRequest{
-		BaseGenerateRequest: BaseGenerateRequest{
-			ChannelID:     "",
-			Language:      "en",
-			Duration:      300,
-			DriveFolderID: "folder-abc",
-		},
+	req := &batch.GenerateBatchRequest{
+		ChannelID:     "",
+		Language:      "en",
+		Duration:      300,
+		DriveFolderID: "folder-abc",
 		DocTitle:              "Test Doc",
 		TargetWordsPerChapter: 1500,
-		BatchTopics: []BatchTopic{
+		BatchTopics: []batch.BatchTopic{
 			{Topic: "A", SourceText: ""}, // empty source_text is OK
 		},
 	}
 
-	errs := validateGenerateBatchRequest(req, "folder-abc", map[string]struct{}{"en": {}, "it": {}})
+	errs := batch.ValidateGenerateBatchRequest(req, "folder-abc", map[string]struct{}{"en": {}, "it": {}})
 	for _, err := range errs {
 		if strings.Contains(err, "channel_id") {
 			t.Errorf("channel_id should not be a validation error, got: %s", err)
@@ -82,26 +78,9 @@ func TestValidateGenerateBatchRequestAcceptsEmptyChannelIDAndSourceText(t *testi
 	}
 }
 
-func TestBuildBatchGoogleDocHTML(t *testing.T) {
-	html := buildBatchGoogleDocHTML("Book Title", []generatedPart{
-		{topic: "Amish Budget", content: "First paragraph.\n\nSecond paragraph."},
-		{topic: "Infinite Pantry", content: "Only paragraph."},
-	}, false, "en")
-
-	for _, needle := range []string{
-		"<h1>Book Title</h1>",
-		"<h2>Table of Contents</h2>",
-		"<ol>",
-		"href=\"#ch-1\"",
-		"<h2>Chapter 1: Amish Budget</h2>",
-		"<p>First paragraph.</p>",
-		"<hr>",
-	} {
-		if !strings.Contains(html, needle) {
-			t.Fatalf("expected HTML to contain %q, got %s", needle, html)
-		}
-	}
-	if strings.Contains(html, "<style>") {
-		t.Fatalf("expected simple HTML without style block, got %s", html)
-	}
-}
+// TestBuildBatchGoogleDocHTML was removed June 2026: the production
+// buildBatchGoogleDocHTML helper and the generatedPart type live in the
+// handler's HTML-build module which is being refactored. The replacement
+// test (handler HTML structure) lands with the refactor PR — see
+// internal/api/script/handler_script_handlers_handler_batch_html.go::buildBatchGoogleDocHTML.
+//
