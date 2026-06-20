@@ -72,7 +72,13 @@ __all__ = [
 ]
 
 
-DEFAULT_BASE_URL = "http://127.0.0.1:18080"
+# Default base URL mirrors the canonical server default defined in
+# ``internal/infrastructure/config/types.go`` (``Server.Port``: 8000,
+# established by the Operational Readiness PR — June 2026). Override
+# via the ``base_url`` argument to ``VeloxClient(base_url=...)`` or via
+# the standard env vars in your operator scripts (PIPELINEGEN_URL /
+# VELOX_MASTER_URL — see cmd/worker/main.go).
+DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_RETRY_BASE_MS = 200
 DEFAULT_TIMEOUT_S = 30.0
@@ -126,7 +132,7 @@ class VeloxClient:
     ----------
     base_url:
         PipelineGen root, e.g. ``"https://pipeline.example.com"`` or
-        ``"http://127.0.0.1:18080"``. Trailing slash is normalised.
+        ``"http://127.0.0.1:8080"``. Trailing slash is normalised.
     token:
         Bearer credential. Must match ``VELOX_ADMIN_TOKEN`` OR
         ``VELOX_WORKER_TOKEN`` on the server. Worker tokens are

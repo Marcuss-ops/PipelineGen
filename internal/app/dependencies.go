@@ -1,6 +1,8 @@
 package app
 
 import (
+	"strings"
+
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -39,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"context"
 	"fmt"
+	"net/http"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
@@ -857,7 +860,37 @@ func composeIntegration(
 	//   - delivery / metadata_export / provider_sync (stubs — return errors
 	//     so events retry until dead_letter for operator visibility)
 	outboxEventsRegistry := outboxevents.NewHandlerRegistry()
-	if err := jobsoutbox.RegisterAll(outboxEventsRegistry, log, core.ClipIndexerService); err != nil {
+	// Wire the canonical real outbox handlers (delivery,
+	// asset.metadata_export, provider.sync) plus workflow_step.* and the
+	// optional IndexingHandler. Each handler is constructed with its
+	// minimum-viable deps; nil ops are tolerated for unit-test wiring.
+	// See internal/application/jobs/outbox/registry.go::Deps for the
+	// dependency contract — introduced in the Operational Readiness PR.
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	// HMAC secrets for delivery.requested signing. The current secret
+	// comes first so the verify path short-circuits on the common path;
+	// the previous secret is kept around for the rotation window (per
+	// dictate (1) in the Operational Readiness PR). The config layer's
+	// Validate() enforces ≥32 bytes in production unless the dev escape
+	// VELOX_ALLOW_INSECURE_DEV=true is set.
+	var hmacSecrets [][]byte
+	if cur := strings.TrimSpace(cfg.Security.DeliveryHMACSecret); cur != "" {
+		hmacSecrets = append(hmacSecrets, []byte(cur))
+	}
+	if prev := strings.TrimSpace(cfg.Security.DeliveryHMACSecretPrevious); prev != "" {
+		hmacSecrets = append(hmacSecrets, []byte(prev))
+	}
+
+	outboxDeps := &jobsoutbox.Deps{
+		DB:          dbs.main.DB,
+		HTTPClient:  httpClient,
+		MetadataDir: cfg.Storage.FullPath("asset_metadata"),
+		HMACSecrets: hmacSecrets,
+		InsecureDev: cfg.Security.DeliveryInsecureDev,
+		Jobs:        jobsService, // provider.sync dispatches onto jobs.Service for drive|youtube
+	}
+	if err := jobsoutbox.RegisterAll(outboxEventsRegistry, log, core.ClipIndexerService, outboxDeps); err != nil {
 		log.Warn("failed to register outbox events handlers", zap.Error(err))
 	}
 	cfgPoll := 500 * time.Millisecond

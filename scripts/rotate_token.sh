@@ -15,7 +15,7 @@
 #   - systemd unit named "pipelinegen" (or --unit NAME)
 #   - openssl in PATH for rand -hex 32
 #   - binary alive on http://127.0.0.1:$PORT — pass --port to override the
-#     default 18080 if the service binds elsewhere
+#     default 8080 if the service binds elsewhere
 #
 # Usage:
 #   sudo scripts/rotate_token.sh
@@ -34,7 +34,7 @@ Flags:
   --dry-run            Print the plan only; do not write or restart
   --env-file PATH      Override env file location (default: auto-detect)
   --unit NAME          systemd unit name (default: pipelinegen)
-  --port NNNN          Health-check port (default: 18080, or VELOX_PORT
+  --port NNNN          Health-check port (default: 8080, or VELOX_PORT
                        from the env file). Used for /api/health + auth probes.
   --keep-backups N     How many recent .bak.* files to keep (default: 5)
   --help               Show this message
@@ -52,6 +52,12 @@ ALSO_WORKER=0
 ENV_FILE_OVERRIDE=""
 UNIT_NAME="${PIPELINEGEN_UNIT:-pipelinegen}"
 PORT_OVERRIDE="${VELOX_PORT:-}"
+# Canonical default: 8080 (see internal/infrastructure/config/types.go
+# `Server.Port`). Operators that run the server on a non-default port
+# pass --port or set VELOX_PORT in the env file; both are honoured
+# above. Keeping the `-${VELOX_PORT:-8080}` fallback inline ensures the
+# rotation probe targets the right broker even when the systemd
+# EnvironmentFile is missing.
 KEEP_BACKUPS="${ROTATE_KEEP_BACKUPS:-5}"
 
 while [ "${1:-}" != "" ]; do
@@ -98,7 +104,7 @@ if [ -z "$PORT_OVERRIDE" ] && [ -n "$ENV_FILE" ] && [ -r "$ENV_FILE" ]; then
   EF_PORT="$(grep -E '^VELOX_PORT=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   if [ -n "$EF_PORT" ]; then PORT_OVERRIDE="$EF_PORT"; fi
 fi
-PORT="${PORT_OVERRIDE:-18080}"
+PORT="${PORT_OVERRIDE:-8080}"
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 JOBS_URL="http://127.0.0.1:${PORT}/api/jobs?limit=1"
 
@@ -189,7 +195,7 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   echo "ERROR: $UNIT_NAME did not become healthy within 20s at $HEALTH_URL" >&2
   echo "  newest token applied to $ENV_FILE, but service is unreachable." >&2
   echo "  inspect: journalctl -u $UNIT_NAME -n 50" >&2
-  echo "  hint: pass --port NNNN or set VELOX_PORT in the env file if 18080 is wrong" >&2
+  echo "  hint: pass --port NNNN or set VELOX_PORT in the env file if 8080 is wrong" >&2
   exit 1
 fi
 

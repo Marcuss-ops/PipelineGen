@@ -52,12 +52,13 @@ potente, separato, isolato. WorkerToken esiste apposta per loro.
 Tipici pattern (scegline uno):
 
 - **Sulla stessa macchina del server** (dev / CI):
-  `http://127.0.0.1:18080`
-- **Stessa LAN, niente TLS**: `http://192.168.1.42:18080`
+  `http://127.0.0.1:8080`
+- **Stessa LAN, niente TLS**: `http://192.168.1.42:8080`
 - **Internet, dietro reverse proxy con TLS**:
   `https://pipeline.tuodominio.com`
 
-> **Attenzione:** su questa macchina la porta standard è `:18080`; `:8080`
+> **Attenzione:** su questa macchina la porta standard è `:8080` (configurabile via `VELOX_PORT`),
+> override con `VELOX_BROKER_URL=http://host:port`.
 > può essere occupato da SearXNG o altri servizi. Per scoprire la porta
 > del pipelinegen in esecuzione:
 >
@@ -233,7 +234,7 @@ NEW=$(./scripts/generate_worker_token.sh)
 sudo systemctl edit pipelinegen
 # → Environment="VELOX_WORKER_TOKEN=$NEW"   (EnvFile= /etc/pipelinegen.env)
 sudo systemctl restart pipelinegen
-curl -sS http://127.0.0.1:18080/api/health   # OK
+curl -sS http://127.0.0.1:8080/api/health   # OK
 
 # 3) Aggiorna env su TUTTI i worker remoti (fai in batch — ci sono
 #    molti modi; uno è Ansible, uno è Vault, uno è un .env deploy script)
@@ -278,7 +279,7 @@ curl -fsS -X POST "$PIPELINEGEN_URL/api/script/generate-with-images" \
 
 ```bash
 chmod +x submit.sh
-VELOX_WORKER_TOKEN="..." PIPELINEGEN_URL="http://192.168.1.42:18080" \
+VELOX_WORKER_TOKEN="..." PIPELINEGEN_URL="http://192.168.1.42:8080" \
   ./submit.sh "storia di Roma"
 ```
 

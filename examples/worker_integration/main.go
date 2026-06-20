@@ -10,8 +10,7 @@
 //
 // Run it with:
 //
-//	go run ./examples/worker_integration \
-//	  -url "http://127.0.0.1:18080" \
+//	go run ./examples/worker_integration \//  -url "http://127.0.0.1:8080" \
 //	  -token "$(cat ~/.config/pipelinegen/worker_token)" \
 //	  -topic "the great barrier reef" \
 //	  -video-name reef-documentary -language en
@@ -38,7 +37,7 @@ import (
 
 func main() {
 	var (
-		baseURL    = flag.String("url", envDefault("PIPELINEGEN_URL", "http://127.0.0.1:18080"), "pipelinegen base URL")
+		baseURL    = flag.String("url", envDefault("PIPELINEGEN_URL", envDefault("VELOX_MASTER_URL", "http://127.0.0.1:8000")), "pipelinegen base URL (or env PIPELINEGEN_URL / VELOX_MASTER_URL)")
 		token      = flag.String("token", os.Getenv("VELOX_WORKER_TOKEN"), "bearer token (or env VELOX_WORKER_TOKEN)")
 		topic      = flag.String("topic", "the great barrier reef", "script topic")
 		videoName  = flag.String("video-name", "reef-documentary", "video name used to namespace the script")

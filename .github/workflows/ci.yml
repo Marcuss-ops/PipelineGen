@@ -54,20 +54,24 @@ jobs:
       run: go build ./...
 
     - name: Build all binaries
-      # cmd/server/ was removed in Onda 5 (replaced by internal/app composition
-      # root). The canonical binaries are cmd/admin (orchestrator), cmd/worker
-      # (long-running pipeline worker) and cmd/gen-api-docs (docs generator).
+      # Canonical binaries: cmd/server (long-running HTTP server),
+      # cmd/admin (one-shot CLI + `admin gen-api-docs` subcommand),
+      # cmd/worker (cross-host worker process). `cmd/gen-api-docs` was
+      # folded into `cmd/admin gen-api-docs` (see cmd/admin/main.go).
       run: |
+        go build -o /dev/null ./cmd/server/
         go build -o /dev/null ./cmd/worker/
         go build -o /dev/null ./cmd/admin/
-        go build -o /dev/null ./cmd/gen-api-docs/
 
     - name: Generate API docs
+      # `admin gen-api-docs` writes the canonical markdown snapshot of the
+      # currently-registered HTTP routes. CI then diffs the snapshot to
+      # fail the build when a route was added without regenerating docs.
       run: |
-        go run ./cmd/gen-api-docs/ docs/api/ACTIVE_API_GENERATED.md
+        go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md
 
     - name: Verify generated docs are up to date
-      run: git diff --exit-code docs/api/ACTIVE_API_GENERATED.md || { echo "❌ Generated API docs are out of date. Run: go run ./cmd/gen-api-docs/ docs/api/ACTIVE_API_GENERATED.md"; exit 1; }
+      run: git diff --exit-code docs/api/ACTIVE_API_GENERATED.md || { echo "❌ Generated API docs are out of date. Run: go run ./cmd/admin gen-api-docs docs/api/ACTIVE_API_GENERATED.md"; exit 1; }
 
     - name: Run Unit Tests (with race detector)
       run: go test -race -v ./internal/... ./pkg/...
