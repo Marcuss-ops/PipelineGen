@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	uploaddrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -50,13 +50,13 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	}
 
 	now := time.Now().UTC()
-	rootClip := &assets.Asset{
+	rootClip := &asset.Asset{
 		ID:             target.RootFolderID,
 		Name:           rootName,
 		Filename:       rootName,
 		Group:          target.Source,
-		MediaType:      assets.MediaType(target.MediaType),
-		Source:         assets.Source(target.Source),
+		MediaType:      asset.MediaType(target.MediaType),
+		Source:         asset.Source(target.Source),
 		Category:       "folder",
 		Tags:           []string{},
 		CreatedAt:      now,
@@ -143,13 +143,13 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *sqlite.ClipsRep
 		}
 
 		now := time.Now().UTC()
-		clip := &assets.Asset{
+		clip := &asset.Asset{
 			ID:             child.ID,
 			Name:           childName,
 			Filename:       childName,
 			Group:          target.Source,
-			MediaType:      assets.MediaType(target.MediaType),
-			Source:         assets.Source(target.Source),
+			MediaType:      asset.MediaType(target.MediaType),
+			Source:         asset.Source(target.Source),
 			Category:       category,
 			Tags:           []string{},
 			CreatedAt:      now,

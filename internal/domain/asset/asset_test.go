@@ -80,6 +80,51 @@ func TestLocationKindIsHardAlias(t *testing.T) {
 	}
 }
 
+// TestProcessingConstantsMatchAssets asserts that the Stage*/Status*
+// const re-declarations and the ErrNotFound sentinel-error var stay
+// in lockstep with the canonical definitions in
+// internal/assets/processing_types.go and internal/assets/errors.go.
+// Drift here would be SILENT under go build because of const+var
+// re-declaration-by-value semantics — only this test surfaces it.
+// Mirrors the discipline of TestStateConstantsMatchAssets and
+// TestLocationKindConstantsMatchAssets. Wave 12 follow-up Phase 2
+// PR-3 added these alongside the Stage*/Status* aliases.
+func TestProcessingConstantsMatchAssets(t *testing.T) {
+	// ProcessingStage / ProcessingStatus — typed string consts.
+	// Use `any` rather than concrete types so a single table covers
+	// both Stage* (assets.ProcessingStage) and Status* (assets.ProcessingStatus).
+	// `%q` formats both string-based types identically for diagnostics.
+	cases := []struct {
+		name     string
+		actual   any
+		expected any
+	}{
+		{"StageUpload", StageUpload, assets.StageUpload},
+		{"StageDownload", StageDownload, assets.StageDownload},
+		{"StatusRunning", StatusRunning, assets.StatusRunning},
+		{"StatusCompleted", StatusCompleted, assets.StatusCompleted},
+		{"StatusFailed", StatusFailed, assets.StatusFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.actual != tc.expected {
+				t.Errorf("drift detected: asset=%q internal/assets=%q",
+					tc.actual, tc.expected)
+			}
+		})
+	}
+	// ErrNotFound — sentinel-error VAR re-binding. Compare via pointer
+	// equality: `var ErrNotFound = assets.ErrNotFound` re-binds the
+	// same *errors.errorString, so `==` works for `errors.Is`-compatible
+	// comparisons. If internal/assets/errors.go swaps the sentinel for a
+	// customErr type that breaks `==`, this test surfaces the drift.
+	t.Run("ErrNotFound", func(t *testing.T) {
+		if ErrNotFound != assets.ErrNotFound {
+			t.Errorf("ErrNotFound drift: asset and internal/assets must point to same sentinel")
+		}
+	})
+}
+
 // TestAssetIsHardAlias confirms that asset.Asset is a type alias for
 // assets.Asset (i.e. the same type, not a named type struct holding
 // assets.Asset). If a future maintainer accidentally changes the

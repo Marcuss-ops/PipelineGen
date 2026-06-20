@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -122,14 +122,14 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 		tags = append(tags, q)
 	}
 
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:         upResult.FileID,
 		Name:       chunkTitle + ".mp4",
 		Filename:   chunkTitle + ".mp4",
 		Group:      "stock",
-		MediaType:  assets.MediaType("video"),
+		MediaType:  asset.MediaType("video"),
 		Tags:       tags,
-		Source:     assets.Source("stock"),
+		Source:     asset.Source("stock"),
 		Category:   "file",
 		Duration:   time.Duration(videoCfg.ChunkDuration) * time.Second,
 		SearchText: semantic.MergeMetadataSearchText(chunkTitle, input.FolderName, input.Subfolder, strings.Join(input.SearchQueries, " "), strings.Join(textutil.UniqueStringsVar(chunkRes.SourceIDs...), " ")),
@@ -173,7 +173,7 @@ func (s *Service) indexChunkToClipsDB(ctx context.Context, chunkIdx int, chunkTi
 // job would hit the legacy branch. Both branches produce equivalent
 // visible state (the only difference is Qdrant indexing fire-right vs.
 // worker-pulled), so this is benign — the system is never crash-unsafe.
-func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *assets.Asset) error {
+func (s *Service) upsertChunkAndDispatch(ctx context.Context, clip *asset.Asset) error {
 	// Always update search terms FIRST against the canonical row so the
 	// tags_norm / search_text columns never lag the embeddable record.
 	// Skipped for folder rows because UpdateSearchTerms rejects them in

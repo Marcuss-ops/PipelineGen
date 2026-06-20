@@ -11,19 +11,19 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 )
 
 type Service struct {
 	db          *sql.DB
-	repo        assets.Repository
+	repo        asset.Repository
 	vlmClient   *vlm.Client
 	vectorStore clipindexer.VectorStoreIndexer
 	log         *zap.Logger
 }
 
-func NewService(db *sql.DB, repo assets.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
+func NewService(db *sql.DB, repo asset.Repository, vlmClient *vlm.Client, log *zap.Logger) *Service {
 	return &Service{
 		db:        db,
 		repo:      repo,
@@ -63,9 +63,9 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 	}
 	defer rows.Close()
 
-	var batch []*assets.Asset
+	var batch []*asset.Asset
 	for rows.Next() {
-		a := &assets.Asset{}
+		a := &asset.Asset{}
 		var tagsJSON, metaJSON, localPath string
 		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &tagsJSON, &localPath, &a.MediaType, &metaJSON); err != nil {
 			return 0, fmt.Errorf("scan asset: %w", err)
@@ -95,7 +95,7 @@ func (s *Service) ProcessUntagged(ctx context.Context, limit int) (int, error) {
 }
 
 // TagAsset analyzes a single asset with VLM and updates its metadata in DB and Qdrant.
-func (s *Service) TagAsset(ctx context.Context, a *assets.Asset) error {
+func (s *Service) TagAsset(ctx context.Context, a *asset.Asset) error {
 	s.log.Info("auto-tagging asset", zap.String("id", a.ID), zap.String("path", a.LocalPath()))
 
 	// 1. Call VLM sidecar
