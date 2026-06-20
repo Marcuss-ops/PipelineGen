@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
@@ -82,7 +82,7 @@ func (h *BooksHandler) ProcessBook(c *gin.Context) {
 		}
 		h.log.Info("enqueuing async book process job", zap.String("file", req.FilePath))
 			api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
-			Type: job.TypeBooksProcess,
+			Type: jobs.TypeBooksProcess,
 			Payload: map[string]any{
 				"file_path":       req.FilePath,
 				"google_doc_url":  req.GoogleDocURL,
@@ -165,11 +165,11 @@ func (h *BooksHandler) ListJobs(c *gin.Context) {
 	}
 
 	pag := api.ParsePagination(c, 20, 1000)
-	jobType := job.TypeBooksProcess
+	jobType := jobs.TypeBooksProcess
 
-	filter := job.Filter{
+	filter := jobs.Filter{
 		Type:   &jobType,
-		job.Status: (*job.job.Status)(api.ParseJobStatusFilter(c)),
+		Status: (*jobs.Status)(api.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}
@@ -181,7 +181,14 @@ func (h *BooksHandler) ListJobs(c *gin.Context) {
 		return
 	}
 
-	api.ListJobsResponse(c, api.BuildJobSummaries(jobsList))
+	// Dereference []*job.Job → []job.Job for BuildJobSummaries
+	jobVals := make([]jobs.Job, len(jobsList))
+	for i, j := range jobsList {
+		if j != nil {
+			jobVals[i] = *j
+		}
+	}
+	api.ListJobsResponse(c, api.BuildJobSummaries(jobVals))
 }
 
 // ProcessBookFromDriveRequest is the input for processing a book from a Drive file URL.

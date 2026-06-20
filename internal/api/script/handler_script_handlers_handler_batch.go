@@ -79,7 +79,7 @@ func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
 
 	resp := gin.H{
 		"job_id":         job.ID,
-		"status":         job.job.Status,
+		"status":         job.Status,
 		"progress":       job.Progress,
 		"current_phase":  currentPhase,
 		"translations":   translationProgress,
@@ -87,11 +87,11 @@ func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {
 		"chapters_done":  chaptersDone,
 	}
 
-	if job.job.Status == jobservice.StatusFailed && job.Error != "" {
+	if job.Status == jobservice.StatusFailed && job.Error != "" {
 		resp["error"] = job.Error
 	}
 
-	if job.job.Status == jobservice.StatusSucceeded && len(job.Result) > 0 {
+	if job.Status == jobservice.StatusSucceeded && len(job.Result) > 0 {
 		var resultObj map[string]any
 		if err := json.Unmarshal(job.Result, &resultObj); err == nil {
 			summary := gin.H{}
@@ -234,7 +234,7 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 			"ok":         true,
 			"async":      true,
 			"job_id":     job.ID,
-			"status":     string(job.job.Status),
+			"status":     string(job.Status),
 			"message":    "Batch script generation enqueued. Poll /api/jobs/" + job.ID + "/full for status.",
 			"status_url": "/api/jobs/" + job.ID + "/full",
 		})

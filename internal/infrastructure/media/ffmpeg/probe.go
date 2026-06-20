@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // MediaInfo holds the probed metadata for a media file.
@@ -65,7 +65,7 @@ func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) 
 		path,
 	}
 
-	out, err := platform.Run(ctx, probePath, args, platform.ExecOptions{
+	res, err := process.Run(ctx, probePath, args, process.Options{
 		Timeout:        2 * time.Minute,
 		CombinedOutput: false,
 	})
@@ -74,7 +74,7 @@ func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) 
 	}
 
 	var result ffprobeOutput
-	if err := json.Unmarshal(out, &result); err != nil {
+	if err := json.Unmarshal([]byte(res.Stdout), &result); err != nil {
 		return nil, fmt.Errorf("ffprobe parse: %w", err)
 	}
 

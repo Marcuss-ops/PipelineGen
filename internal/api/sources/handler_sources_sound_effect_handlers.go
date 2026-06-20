@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"

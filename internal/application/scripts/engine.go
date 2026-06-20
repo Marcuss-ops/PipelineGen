@@ -18,11 +18,11 @@ import (
 type Engine struct {
 	generator   *ollama.Generator
 	memorySvc   *gemmamemory.Service
-	scriptsRepo *ScriptRepository
+	scriptsRepo ScriptRepository
 	log         *zap.Logger
 }
 
-func NewEngine(gen *ollama.Generator, memSvc *gemmamemory.Service, repo *ScriptRepository, log *zap.Logger) *Engine {
+func NewEngine(gen *ollama.Generator, memSvc *gemmamemory.Service, repo ScriptRepository, log *zap.Logger) *Engine {
 	return &Engine{
 		generator:   gen,
 		memorySvc:   memSvc,

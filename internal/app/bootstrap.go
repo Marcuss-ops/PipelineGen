@@ -29,6 +29,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 
 
@@ -108,7 +110,7 @@ type CoreDeps struct {
 	DriveClient        *gdrive.Service
 	Utility            *common.UtilityHandler
 	DB                 *storage.SQLiteDB // Unified database (scripts, jobs, asset index, media assets)
-	ScriptsRepo        *scriptcore.ScriptRepository
+	ScriptsRepo        *sqlitescripts.ScriptRepository
 	ImageRepo          *sqlite.ImagesRepository
 	ImageService       *imgservice.Service
 	ClipsRepo          *sqlite.ClipsRepository // canonical unified clips repository
@@ -123,6 +125,7 @@ type CoreDeps struct {
 	CatalogRepo        *catalog.Repository
 	AssocService       *association.Service
 	JobsService        *appjobs.Service
+	JobServiceFacade   *job.Service // domain facade wrapping JobsService
 	MediaProcessor     processor.Processor
 	YoutubeClipService *youtube.Service
 	AssetIndexService  *assetindex.Service
@@ -229,6 +232,7 @@ func initCoreMinimalWithContext(cfg *config.Config, log *zap.Logger, mode string
 		CatalogRepo:        svcs.catalogRepo,
 		AssocService:       svcs.assocService,
 		JobsService:        svcs.jobsService,
+		JobServiceFacade:   svcs.jobServiceFacade,
 		MediaProcessor:     svcs.mediaProcessor,
 		YoutubeClipService: svcs.youtubeClipService,
 		AssetIndexService:  svcs.assetIndexService,

@@ -43,7 +43,7 @@ type ScriptFlowHandler struct {
 	docClient         drive.DocClient
 	driveUploader     *drive.Uploader
 	jobsSvc           *jobservice.Service
-	scriptsRepo       *scripts.ScriptRepository
+	scriptsRepo       scripts.ScriptRepository
 	memorySvc         *gemmamemory.Service
 	sourceResolver    *scripts.SourceResolver
 	harvestSvc        AutoHarvestService
@@ -58,7 +58,7 @@ type AutoHarvestService interface {
 	EnqueueHarvest(ctx context.Context, term string, limit int, preset string) (string, error)
 }
 
-func NewScriptFlowHandler(gen *ollama.Generator, engine *scripts.Engine, imgSvc *images.Service, realtimeSvc *realtime.Service, assocSvc *association.Service, voSvc *voiceover.Service, assetTreeSvc *assettree.Service, docClient drive.DocClient, driveUploader *drive.Uploader, jobsSvc *jobservice.Service, scriptsRepo *scripts.ScriptRepository, memorySvc *gemmamemory.Service, driveFolderID string, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
+func NewScriptFlowHandler(gen *ollama.Generator, engine *scripts.Engine, imgSvc *images.Service, realtimeSvc *realtime.Service, assocSvc *association.Service, voSvc *voiceover.Service, assetTreeSvc *assettree.Service, docClient drive.DocClient, driveUploader *drive.Uploader, jobsSvc *jobservice.Service, scriptsRepo scripts.ScriptRepository, memorySvc *gemmamemory.Service, driveFolderID string, cfg *config.Config, log *zap.Logger) *ScriptFlowHandler {
 	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
 	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
 		metaModel = mm

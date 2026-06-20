@@ -233,7 +233,7 @@ func (s *CurationService) Curate(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{
 		"ok":        true,
 		"job_id":    job.ID,
-		"status":    string(job.job.Status),
+		"status":    string(job.Status),
 		"query":     req.Query,
 		"max_clips": req.MaxClips,
 	})

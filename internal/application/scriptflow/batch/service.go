@@ -30,7 +30,7 @@ type BatchService struct {
 	engine      *scripts.Engine
 	docClient   drive.DocClient
 	voService   *voiceover.Service
-	scriptsRepo *scripts.ScriptRepository
+	scriptsRepo scripts.ScriptRepository
 }
 
 // NewBatchService creates a new BatchService.
@@ -41,7 +41,7 @@ func NewBatchService(
 	engine *scripts.Engine,
 	docClient drive.DocClient,
 	voSvc *voiceover.Service,
-	scriptsRepo *scripts.ScriptRepository,
+	scriptsRepo scripts.ScriptRepository,
 ) *BatchService {
 	return &BatchService{
 		cfg:         cfg,

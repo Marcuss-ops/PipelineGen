@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"

@@ -92,19 +92,20 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 	if coreDeps.ScriptGen != nil && coreDeps.ImageService != nil {
 		memoryRepo := gemmamemory.NewRepository(coreDeps.DB.DB)
 		memorySvc := gemmamemory.NewService(memoryRepo, log)
-		engine := scriptcore.NewEngine(coreDeps.ScriptGen, memorySvc, coreDeps.ScriptsRepo, log)
-		handler := scriptapi.NewScriptFlowHandler(coreDeps.ScriptGen, engine, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.AssocService, coreDeps.VoiceoverService, coreDeps.AssetTreeService, coreDeps.DocClient, coreDeps.DriveUploader, coreDeps.JobsService, coreDeps.ScriptsRepo, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log)
-		batchSvc := batch.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, coreDeps.ScriptsRepo)
+		scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(coreDeps.ScriptsRepo)
+		engine := scriptcore.NewEngine(coreDeps.ScriptGen, memorySvc, scriptsRepoAdapter, log)
+		handler := scriptapi.NewScriptFlowHandler(coreDeps.ScriptGen, engine, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.AssocService, coreDeps.VoiceoverService, coreDeps.AssetTreeService, coreDeps.DocClient, coreDeps.DriveUploader, coreDeps.JobServiceFacade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log)
+		batchSvc := batch.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, scriptsRepoAdapter)
 		handler.SetBatchService(batchSvc)
 		curationSvc := curation.NewCurationService(nil, coreDeps.JobsService, log)
 		handler.SetCurationService(curationSvc)
 		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore, coreDeps.ClipsRepo, engine, cfg, log)
 		if coreDeps.JobsService != nil {
 			presetsConfig, _ := artlistpkg.LoadPresets("config/presets.yaml")
-			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
+			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobServiceFacade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 			handler.SetHarvestService(harvestSvc)
 		}
-		genSvc := generate.NewGenerationService(coreDeps.JobsService, cfg, log)
+		genSvc := generate.NewGenerationService(coreDeps.JobServiceFacade, cfg, log)
 		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler, genSvc))
 		registerModule(registry, log, mod)
 	}
@@ -143,10 +144,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		registerModule(registry, log, sourcesapi.NewRealtimeModule(cfg, log, realtimeapi.NewMatchHandler(coreDeps.RealtimeService, log)))
 	}
 	if coreDeps.BooksService != nil {
-		registerModule(registry, log, booksapi.NewModule(cfg, log, booksapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobsService, log)))
+		registerModule(registry, log, booksapi.NewModule(cfg, log, booksapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobServiceFacade, log)))
 	}
 	if coreDeps.LessonsService != nil {
-		registerModule(registry, log, lessonsapi.NewModule(cfg, log, lessonsapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobsService, log)))
+		registerModule(registry, log, lessonsapi.NewModule(cfg, log, lessonsapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobServiceFacade, log)))
 	}
 	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
 		registerModule(registry, log, channelsapi.NewModule(log, sqlite.NewChannelsRepository(coreDeps.DB.DB)))
@@ -164,7 +165,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		log.Info("injected MediaIngest service into ImagesHandler and ImagesService")
 	}
 	if coreDeps.ScriptsRepo != nil {
-		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(coreDeps.ScriptsRepo, log)))
+		registerModule(registry, log, scriptapi.NewScriptHistoryModule(cfg, log, scriptapi.NewScriptHistoryHandler(scriptcore.NewRepositoryAdapter(coreDeps.ScriptsRepo), log)))
 	}
 	registerModule(registry, log, module.NewUtilityModule(cfg, log, coreDeps.Utility))
 

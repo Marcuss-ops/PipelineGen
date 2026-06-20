@@ -11,12 +11,12 @@ import (
 
 // ScriptHistoryHandler handles script history endpoints
 type ScriptHistoryHandler struct {
-	repo *scripts.ScriptRepository
+	repo scripts.ScriptRepository
 	log  *zap.Logger
 }
 
 // NewScriptHistoryHandler creates a new script history handler
-func NewScriptHistoryHandler(repo *scripts.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
+func NewScriptHistoryHandler(repo scripts.ScriptRepository, log *zap.Logger) *ScriptHistoryHandler {
 	return &ScriptHistoryHandler{
 		repo: repo,
 		log:  log,
@@ -53,7 +53,7 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 	}
 	offset = api.ClampLimit(offset, 0, 0)
 
-	scriptRecords, total, err := h.repo.ListScripts(limit, offset, language, template)
+	scriptRecords, err := h.repo.ListScripts(c.Request.Context(), scripts.ScriptListFilter{Limit: limit, Offset: offset, Language: language, Status: template})
 	if err != nil {
 		h.log.Error("Failed to list scripts", zap.Error(err))
 		api.InternalError(c, err)
@@ -69,17 +69,17 @@ func (h *ScriptHistoryHandler) ListScripts(c *gin.Context) {
 			"language":   s.Language,
 			"template":   s.Template,
 			"mode":       s.Mode,
-			"model_used": s.ModelUsed,
+			"model_used": s.Model,
 			"created_at": s.CreatedAt,
 			"updated_at": s.UpdatedAt,
 			"version":    s.Version,
-			"parent_id":  s.ParentScriptID,
+			"parent_id":  "",
 		})
 	}
 
 	api.OK(c, gin.H{
 		"scripts": scriptsRes,
-		"total":   total,
+		"total":   len(scriptRecords),
 		"limit":   limit,
 		"offset":  offset,
 	})

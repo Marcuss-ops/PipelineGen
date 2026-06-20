@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -32,7 +31,7 @@ func AsyncJobResponse(c *gin.Context, j *job.Job, message string) {
 
 // Enqueuer is the minimal interface consumed by EnqueueAsync.
 type Enqueuer interface {
-	Enqueue(ctx context.Context, req *appjobs.EnqueueRequest) (*job.Job, error)
+	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
 }
 
 // EnqueueInput parameterises EnqueueAsync.
@@ -52,7 +51,7 @@ func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message s
 		return false
 	}
 
-	req := &appjobs.EnqueueRequest{
+	req := &job.EnqueueRequest{
 		Type:          in.Type,
 		Payload:       in.Payload,
 		Priority:      in.Priority,

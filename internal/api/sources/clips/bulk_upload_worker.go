@@ -13,25 +13,26 @@ import (
 
 	"go.uber.org/zap"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
 // HandleBulkUploadYouTubeClipsJob is the worker entry point. Wired up by
 // RegisterJobHandlers (called from NewHandler).
-func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	// Job-level deadline so abandoned jobs can't sit half-done forever.
 	// Worker ctx only times out on shutdown, which leaves orphans otherwise.
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Hour)
 	defer cancel()
 
-	payload := &jobservice.BulkUploadYouTubeClipsPayload{}
-	if err := json.Unmarshal(job.Payload, payload); err != nil {
+	payload := &appjobs.BulkUploadYouTubeClipsPayload{}
+	if err := json.Unmarshal(j.Payload, payload); err != nil {
 		return nil, fmt.Errorf("invalid payload: %w", err)
 	}
-	log := h.log.With(zap.String("job_id", job.ID), zap.String("handler", "bulk-upload-worker"))
+	log := h.log.With(zap.String("job_id", j.ID), zap.String("handler", "bulk-upload-worker"))
 
 	log.Info("bulk upload job started",
 		zap.String("local_folder", payload.LocalFolder),
@@ -202,7 +203,7 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, job *jobs
 //  6. Push to Qdrant (handled automatically by clipIndexer.IndexClip unless skip_qdrant)
 func (h *Handler) processOneClip(
 	ctx context.Context,
-	payload *jobservice.BulkUploadYouTubeClipsPayload,
+	payload *appjobs.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
 	resolveSubdirFolderID func(ctx context.Context, subdir string) (string, error),
 	uploaded, indexed, pushed, skipped, failed *atomic.Int64,

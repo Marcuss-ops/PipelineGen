@@ -63,7 +63,7 @@ func (h *Handler) GenerateFromClips(c *gin.Context) {
 	api.OK(c, GenerateFromClipsResponse{
 		OK:        result.OK,
 		JobID:     result.JobID,
-		Status:    result.Status,
+		Status:    result.JobStatus,
 		ClipCount: result.ClipCount,
 	})
 }
@@ -87,7 +87,7 @@ func (h *Handler) GenerateWithImages(c *gin.Context) {
 	api.OK(c, GenerateFromClipsResponse{
 		OK:        result.OK,
 		JobID:     result.JobID,
-		Status:    result.Status,
+		Status:    result.JobStatus,
 		ClipCount: result.ClipCount,
 	})
 }

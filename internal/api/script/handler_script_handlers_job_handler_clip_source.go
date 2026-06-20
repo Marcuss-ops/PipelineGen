@@ -11,7 +11,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
@@ -106,7 +107,7 @@ func (h *ScriptFlowHandler) wrapPostGenerationWithPath(
 //
 // Each phase emits pipeline_stage_started / _completed zap logs with
 // duration_ms so operators can pinpoint exactly where a job is stalled.
-func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	h.log.Info("handling unified script generation job", zap.String("job_id", job.ID))
 
 	h.log.Info("waiting for script generation slot (max 2 concurrent)", zap.String("job_id", job.ID))

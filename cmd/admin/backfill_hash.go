@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"go.uber.org/zap"
 	"golang.org/x/oauth2/google"
 	driveapi "google.golang.org/api/drive/v3"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -154,14 +153,6 @@ func runBackfillHashV2(args []string) error {
 
 	fmt.Printf("Done. Updated %d clips with file_hash\n", updated)
 	return nil
-}
-
-func productionLogger() (*zap.Logger, func(), error) {
-	log, err := zap.NewProduction()
-	if err != nil {
-		return nil, nil, err
-	}
-	return log, func() { _ = log.Sync() }, nil
 }
 
 func extractFileID(link string) string {

@@ -68,7 +68,7 @@ func wireArtlistHandler(cfg *config.Config, artlistSvc *artlistPkg.Service, core
 	if artlistSvc == nil {
 		return nil
 	}
-	return artsources.NewArtlistHandler(artlistSvc, coreDeps.CatalogSyncService, coreDeps.JobsService, clipResolver, "node-scraper", log, cfg)
+	return artsources.NewArtlistHandler(artlistSvc, coreDeps.CatalogSyncService, coreDeps.JobServiceFacade, clipResolver, "node-scraper", log, cfg)
 }
 
 func wireArtlistLifecycle(coreDeps *CoreDeps, log *zap.Logger) *lifecycle.Service {
@@ -91,7 +91,7 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 	}
 	var harvestSvc clipresolver.ArtlistHarvestService
 	if coreDeps.JobsService != nil {
-		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobsService, log, presetsConfig, cfg.Drive.ArtlistFolder())
+		harvestSvc = clipresolver.NewJobHarvestService(coreDeps.JobServiceFacade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 	}
 	matchingCfg, err := config.LoadMatchingConfig("config/matching.yaml")
 	if err != nil {
@@ -138,12 +138,12 @@ func wireClipResolver(cfg *config.Config, coreDeps *CoreDeps, clipCatalogRepo *c
 }
 
 func wireArtlistService(cfg *config.Config, coreDeps *CoreDeps, artlistLifecycle *lifecycle.Service, assetDestResolver destination.Resolver, clipIndexerSvc *clipindexer.Service, log *zap.Logger) (*artlistPkg.Service, error) {
-	artlistSvc, err := artlistPkg.NewService(cfg, coreDeps.DB.DB, coreDeps.DB.DB, coreDeps.ClipsRepo, coreDeps.MediaProcessor, artlistLifecycle, assetDestResolver, clipIndexerSvc, coreDeps.JobsService, coreDeps.DriveClient, coreDeps.Assets.ProcessingRepository(), coreDeps.Assets.VersionRepository(), coreDeps.Assets.LocationRepository(), log)
+	artlistSvc, err := artlistPkg.NewService(cfg, coreDeps.DB.DB, coreDeps.DB.DB, coreDeps.ClipsRepo, coreDeps.MediaProcessor, artlistLifecycle, assetDestResolver, clipIndexerSvc, coreDeps.JobServiceFacade, coreDeps.DriveClient, coreDeps.Assets.ProcessingRepository(), coreDeps.Assets.VersionRepository(), coreDeps.Assets.LocationRepository(), log)
 	if err != nil {
 		return nil, err
 	}
 	if artlistSvc != nil && coreDeps.JobsService != nil {
-		coreDeps.JobsService.RegisterHandler(svcjobs.JobTypeArtlistRun, artlistSvc.HandleJob)
+		coreDeps.JobsService.RegisterHandler(svcjobs.TypeArtlistRun, artlistSvc.HandleJob)
 		log.Info("registered artlist job handler")
 	}
 	return artlistSvc, nil
