@@ -51,7 +51,6 @@ domain_job:
   rationale: Job, Lease, WorkerSession, WorkerCapabilities, WorkerCredentials, Store, ScriptGenerationPayload.
   migrated_from:
     - internal/domain/worker
-    - internal/domain/outbox
     - internal/contracts/scriptjobs
     - internal/jobs/domain_types.go
     - internal/jobs/domain_commands.go

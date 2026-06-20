@@ -102,13 +102,11 @@
   title: Job, Worker, Outbox contracts into domain/job
   status: in_progress
   from:
-    - internal/domain/worker
-    - internal/domain/outbox
     - internal/contracts
     - internal/jobs/domain_types.go
     - internal/jobs/domain_commands.go
   to: internal/domain/job
-  exit_gate: "rg 'internal/(domain/worker|domain/outbox|contracts|jobs/domain_)' --type go returns zero."# ── Wave 4C — Remove core + legacy domain/media ──────────────────────────────
+  exit_gate: "rg 'internal/(contracts|jobs/domain_)' --type go returns zero."# ── Wave 4C — Remove core + legacy domain/media ──────────────────────────────
 
 - id: "4C"
   title: Remove internal/core + internal/domain/media

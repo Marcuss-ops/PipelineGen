@@ -171,7 +171,47 @@ python3 scripts/generate_drive_token.py
 
 ---
 
-## Context.Background() Policy
+## Legacy Directories Policy
+
+These directories are **migration‑only**: they should disappear from the
+codebase once their consumers have been moved. Each new PR that touches
+one of them must be a *migration* (moving symbols outward) or a
+*removal* — never an addition.
+
+**Rule of thumb**: a directory on this list **cannot receive**:
+
+- new files,
+- new exported types,
+- new repositories,
+- new handlers,
+- new business logic of any kind.
+
+It **may receive**:
+
+- edits to existing files that migrate a symbol outward,
+- deletions (this is the desired direction),
+- tests that cover the migration surface.
+
+The deny‑list is enforced by `scripts/ci-architectural-checks.sh` Check 13.
+A PR that tries to add a new `.go` file in any of these directories will fail
+the CI guard with the migration target printed inline.
+
+| Legacy directory | Migration target | Owner |
+|---|---|---|
+| `internal/core/`                  | `internal/domain/asset/` (contracts) or `internal/infrastructure/<X>/` (concrete) | TBD |
+| `internal/media/<feature>/`       | `internal/domain/asset/<feature>/` (model) or `internal/application/<feature>/` (use case) | TBD |
+| `internal/assets/`                | `internal/domain/asset/`                                       | TBD |
+| `internal/artifacts/`             | `internal/domain/job/` (artifacts is interface‑wrap; eliminate entirely) | TBD |
+| `internal/sources/{youtube,artlist}/` | `internal/application/assets/providers/<provider>/`        | TBD |
+| `internal/upload/drive/`          | `internal/infrastructure/drive/`                               | TBD |
+| `internal/application/scriptflow/` | `internal/application/scripts/{batch,curation,generate,...}/` | TBD |
+| `internal/domain/media/`          | `internal/domain/asset/`                                       | TBD |
+| `internal/domain/worker/`         | `internal/domain/job/`                                         | TBD |
+| `internal/domain/outbox/`         | `internal/domain/lifecycle/`                                   | TBD |
+
+Per‑directory migration manifests live in `docs/migration-maps/<dir>.md`.
+
+
 
 The CI check (`scripts/ci-architectural-checks.sh` Check 1) bans bare
 `context.Background()` in `internal/api/` handlers. The following sites are
