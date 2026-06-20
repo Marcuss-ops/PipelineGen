@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+	"go.uber.org/zap"
 )
 
 // callSemanticTagger RIMOSSO: usa semantic.Tagger() o semantic.MetadataWriter.Write() direttamente.

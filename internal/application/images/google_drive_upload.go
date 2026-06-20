@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // UploadToStyleDrive carica un'immagine su Drive in una subfolder per stile.

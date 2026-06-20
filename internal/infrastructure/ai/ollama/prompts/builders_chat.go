@@ -3,6 +3,7 @@ package prompts
 import (
 	"fmt"
 	"strings"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 

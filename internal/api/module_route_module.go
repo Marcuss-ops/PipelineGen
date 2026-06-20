@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // RouteModule is a generic module for simple route-only modules.

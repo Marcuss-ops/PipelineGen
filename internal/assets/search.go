@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
@@ -281,8 +280,7 @@ type AdvancedSearchRequest struct {
 // AdvancedSearchResult is the response for advanced clip search.
 type AdvancedSearchResult struct {
 	Clips  []*Asset `json:"clips"`
-	Total  int                  `json:"total"`
-	Limit  int                  `json:"limit"`
-	Offset int                  `json:"offset"`
+	Total  int      `json:"total"`
+	Limit  int      `json:"limit"`
+	Offset int      `json:"offset"`
 }
-

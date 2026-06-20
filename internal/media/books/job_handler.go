@@ -1,15 +1,14 @@
 package books
 
 import (
-
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )

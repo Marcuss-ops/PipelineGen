@@ -1,7 +1,6 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,14 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
+	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 func (h *ScriptFlowHandler) GetBatchProgress(c *gin.Context) {

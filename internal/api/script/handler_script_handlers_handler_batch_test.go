@@ -13,13 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	ollama "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	scriptsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	scriptsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 )
 
 // minimalTestSchema is a minimal subset of the production schema covering
@@ -163,7 +162,7 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	// 1. Set up a real test database with all required tables.
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
-		repoConcrete := scriptsqlite.NewScriptRepository(db)
+	repoConcrete := scriptsqlite.NewScriptRepository(db)
 	repo := scripts.ScriptRepository(newTestRepoImpl(db))
 	_ = repoConcrete
 
@@ -173,8 +172,8 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 
 	// 3. Create a batch request with SaveToDB=true.
 	req := scripts.GenerateBatchRequest{
-				DocTitle: "Test Batch Script",
-		BatchTopics: []BatchTopic{
+		DocTitle: "Test Batch Script",
+		BatchTopics: []scripts.BatchTopic{
 			{Topic: "Chapter One"},
 			{Topic: "Chapter Two"},
 		},
@@ -252,8 +251,8 @@ func TestExecuteBatchGeneration_WithNoChapters_SavesSections(t *testing.T) {
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
 	req := scripts.GenerateBatchRequest{
-				DocTitle: "No-Chapters Test",
-		BatchTopics: []BatchTopic{
+		DocTitle: "No-Chapters Test",
+		BatchTopics: []scripts.BatchTopic{
 			{Topic: "Topic A"},
 		},
 		NoChapters: true,
@@ -286,8 +285,8 @@ func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
 	req := scripts.GenerateBatchRequest{
-				DocTitle: "Skip DB Test",
-		BatchTopics: []BatchTopic{
+		DocTitle: "Skip DB Test",
+		BatchTopics: []scripts.BatchTopic{
 			{Topic: "Only Topic"},
 		},
 		NoChapters: false,

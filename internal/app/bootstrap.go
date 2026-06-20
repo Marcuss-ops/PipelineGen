@@ -14,6 +14,7 @@ import (
 	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
@@ -22,20 +23,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
-
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -46,13 +46,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
-	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
@@ -66,6 +64,7 @@ import (
 // Callers should defer or schedule cleanup to release resources and cancel
 // background goroutines on shutdown. Nil is a valid CleanupFunc (no-op).
 type CleanupFunc func()
+
 // databases holds the single SQLite database connection.
 // All data (scripts, jobs, asset index, media assets) is consolidated
 // into a single file at data/media/media.db.sqlite.
@@ -89,6 +88,7 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		main: mainDB,
 	}, nil
 }
+
 // runAllMigrations applies database migrations to each database.
 // Each database gets only the migrations relevant to its purpose.
 func runAllMigrations(dbs *databases, log *zap.Logger) error {
@@ -101,6 +101,7 @@ func runAllMigrations(dbs *databases, log *zap.Logger) error {
 
 	return nil
 }
+
 // CoreDeps holds the core dependencies of the system.
 type CoreDeps struct {
 	Context            context.Context
@@ -114,7 +115,7 @@ type CoreDeps struct {
 	ImageRepo          *sqlite.ImagesRepository
 	ImageService       *imgservice.Service
 	ClipsRepo          *sqlite.ClipsRepository // canonical unified clips repository
-	Assets             *assets.Service   // unified assets service authority (PR2)
+	Assets             *assets.Service         // unified assets service authority (PR2)
 	MonitorsRepo       *sqlite.MonitorsRepository
 	VoiceoverRepo      *sqlite.VoiceoversRepository
 	VoiceoverService   *voiceover.Service
@@ -156,6 +157,7 @@ type CoreDeps struct {
 	// before workers begin claiming jobs.
 	startJobRunner func()
 }
+
 // InitCore bootstraps the core dependency graph.
 func InitCore(cfg *config.Config, log *zap.Logger) (*CoreDeps, CleanupFunc, error) {
 	return initCoreMinimal(cfg, log, "")
@@ -412,6 +414,7 @@ func migrateLegacyScriptDocs(ctx context.Context, driveClient *gdrive.Service, c
 		zap.Int("total", len(files.Files)),
 	)
 }
+
 // AppDeps holds the minimal initialized dependencies for the server.
 type AppDeps struct {
 	Registry *module.Registry

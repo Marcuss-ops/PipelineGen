@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/gin-gonic/gin"
 )
 
 func TestFeatureFlagCheckerDisabled(t *testing.T) {

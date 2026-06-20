@@ -9,17 +9,18 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // ── Pipeline ────────────────────────────────────────────────────────────────
 
 // Pipeline runs the post-script-generation phases of a clip script job:
-//   Phase 2 (parallel): entity_metadata ‖ scene_images
-//   Phase 3 (sequential):   scene_voiceovers
-//   Phase 4 (sequential):   google_doc
+//
+//	Phase 2 (parallel): entity_metadata ‖ scene_images
+//	Phase 3 (sequential):   scene_voiceovers
+//	Phase 4 (sequential):   google_doc
 //
 // It does NOT handle path dispatch (Phase 1) or semaphore acquisition —
 // those remain in the HTTP handler. Pipeline is constructed with function

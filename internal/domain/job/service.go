@@ -26,13 +26,13 @@ import (
 // real implementation is available; until then every method returns
 // ErrNotWired so mis-wiring is loud during development.
 type Service struct {
-	EnqueueFn          func(ctx context.Context, req *EnqueueRequest) (*Job, error)
-	GetFn              func(ctx context.Context, id string) (*Job, error)
-	CancelFn           func(ctx context.Context, id string) error
-	ListFn             func(ctx context.Context, filter Filter) ([]*Job, error)
-	IsTerminalFn       func(status Status) bool
-	RegisterHandlerFn  func(jobType string, handler any) error
-	ListEventsFn       func(ctx context.Context, jobID string) ([]Event, error)
+	EnqueueFn         func(ctx context.Context, req *EnqueueRequest) (*Job, error)
+	GetFn             func(ctx context.Context, id string) (*Job, error)
+	CancelFn          func(ctx context.Context, id string) error
+	ListFn            func(ctx context.Context, filter Filter) ([]*Job, error)
+	IsTerminalFn      func(status Status) bool
+	RegisterHandlerFn func(jobType string, handler any) error
+	ListEventsFn      func(ctx context.Context, jobID string) ([]Event, error)
 }
 
 // ErrNotWired is the typed sentinel returned by Service methods when

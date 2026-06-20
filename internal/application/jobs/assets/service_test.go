@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	database "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 )
 
 func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func()) {

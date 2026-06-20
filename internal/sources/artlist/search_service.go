@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"go.uber.org/zap"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
+	"go.uber.org/zap"
 )
 
 // SearchService gestisce tutte le operazioni di ricerca Artlist.

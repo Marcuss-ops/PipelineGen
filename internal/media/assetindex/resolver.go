@@ -1,4 +1,4 @@
-﻿package assetindex
+package assetindex
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-
-
 )
 
 // Resolver provides a unified way to resolve assets across all databases.

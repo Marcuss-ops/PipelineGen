@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
@@ -50,4 +49,3 @@ func (s *AssetStoreSQLite) SearchStockByKeywords(ctx context.Context, keywords [
 	}
 	return clips, rows.Err()
 }
-

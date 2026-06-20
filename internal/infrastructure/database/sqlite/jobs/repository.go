@@ -16,9 +16,9 @@ import (
 
 	"go.uber.org/zap"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type SQLiteStore struct {
@@ -165,7 +165,7 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 
 // JobStats holds aggregated job statistics.
 type JobStats struct {
-	Total      int                       `json:"total"`
+	Total      int                           `json:"total"`
 	ByStatus   map[job.Status]int            `json:"by_status"`
 	ByType     map[string]map[job.Status]int `json:"by_type"`
 	DurationMs struct {

@@ -8,18 +8,18 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -136,19 +136,19 @@ func (s *Service) SetAssetRepo(r assets.Repository) {
 // preference order is fully explicit so callers reading the function can
 // reason about which path is active:
 //
-//   1. assetRepo wired (PR12b): convert via toAssetDomain and call
-//      assetrepo.Upsert. Writes legacy + canonical columns in one row, emits
-//      the asset.upserted outbox event in the same transaction, and DOES NOT
-//      touch the legacy indexer (the fresh-media Qdrant side-effect is now
-//      owned by outboxhandlers reading the event).
+//  1. assetRepo wired (PR12b): convert via toAssetDomain and call
+//     assetrepo.Upsert. Writes legacy + canonical columns in one row, emits
+//     the asset.upserted outbox event in the same transaction, and DOES NOT
+//     touch the legacy indexer (the fresh-media Qdrant side-effect is now
+//     owned by outboxhandlers reading the event).
 //
-//   2. dispatcher wired (PR3-5b.4): EnqueueAndIndex does UpsertClip +
-//      IndexClip atomically through the outbox_events. The carry-over from
-//      before PR12b.
+//  2. dispatcher wired (PR3-5b.4): EnqueueAndIndex does UpsertClip +
+//     IndexClip atomically through the outbox_events. The carry-over from
+//     before PR12b.
 //
-//   3. legacy fallback: clipsRepo.Upsert. No outbox, no Qdrant side-effect.
-//      Only reached when neither assetRepo nor dispatcher is wired (which is
-//      the case for tests that don't construct the full composition root).
+//  3. legacy fallback: clipsRepo.Upsert. No outbox, no Qdrant side-effect.
+//     Only reached when neither assetRepo nor dispatcher is wired (which is
+//     the case for tests that don't construct the full composition root).
 //
 // Used by enrichment.go + segment.go so both call sites share the same
 // crash-safety contract.

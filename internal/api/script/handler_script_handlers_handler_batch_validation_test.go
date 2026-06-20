@@ -1,19 +1,20 @@
 package script
 
 import (
-	batch "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 func TestValidateGenerateBatchRequestRejectsInvalidRequest(t *testing.T) {
 	req := &scripts.GenerateBatchRequest{
-		ChannelID:     "",
-		Language:      "xx",
-		Duration:      60,
+		ChannelID:             "",
+		Language:              "xx",
+		Duration:              60,
 		DocTitle:              "",
 		TargetWordsPerChapter: 700,
-		BatchTopics: []BatchTopic{
+		BatchTopics: []scripts.BatchTopic{
 			{Topic: "A", SourceText: "ok"},
 			{Topic: "", SourceText: "ok"},
 			{Topic: "C", SourceText: ""},
@@ -56,13 +57,13 @@ func TestValidateGenerateBatchRequestAcceptsEmptyChannelIDAndSourceText(t *testi
 	// defaults channel_id to scriptsCfg.BatchChannelID and source_text to
 	// the item's topic. Validation should not flag them as errors.
 	req := &scripts.GenerateBatchRequest{
-		ChannelID:     "",
-		Language:      "en",
-		Duration:      300,
-		DriveFolderID: "folder-abc",
+		ChannelID:             "",
+		Language:              "en",
+		Duration:              300,
+		DriveFolderID:         "folder-abc",
 		DocTitle:              "Test Doc",
 		TargetWordsPerChapter: 1500,
-		BatchTopics: []BatchTopic{
+		BatchTopics: []scripts.BatchTopic{
 			{Topic: "A", SourceText: ""}, // empty source_text is OK
 		},
 	}

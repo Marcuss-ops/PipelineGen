@@ -4,61 +4,62 @@ import (
 	"strings"
 
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/books"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	gdrive "google.golang.org/api/drive/v3"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"context"
 	"fmt"
 	"net/http"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
+	"go.uber.org/zap"
+	gdrive "google.golang.org/api/drive/v3"
 
 	"os"
 	"time"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
-	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -126,8 +127,8 @@ type services struct {
 	assetVersionsRepo   assets.VersionRepository
 
 	assetsSvc *assets.Service
-
 }
+
 // initServices initializes the full service graph by delegating to three
 // domain-specific composers in dependency order:
 //
@@ -157,6 +158,7 @@ func initServices(ctx context.Context, cfg *config.Config, dbs *databases, log *
 	// entry points stay green by skipping the late-binding step.
 	return composeIntegration(ctx, cfg, dbs, log, core, mediaDomain, registryWiring)
 }
+
 // initVoiceoverService sets up the voiceover service and its repository.
 func initVoiceoverService(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger,
 	driveClient *gdrive.Service, driveUploader *drive.Uploader,
@@ -251,6 +253,7 @@ func initImageService(ctx context.Context, cfg *config.Config, log *zap.Logger,
 
 	return imageService, metaWriter
 }
+
 // CoreInfra holds core infrastructure services produced by composeCoreInfra.
 type CoreInfra struct {
 	OllamaClient  *client.Client
@@ -267,13 +270,13 @@ type CoreInfra struct {
 	AssetProcessingRepo assets.ProcessingRepository
 	AssetsSvc           *assets.Service
 	MediaProcessor      processor.Processor
-	AssetIndexService  *assetindex.Service
-	AssetTreeService   *assettree.Service
-	ClipIndexerService *clipindexer.Service
-	VLMClient          *vlm.Client
-	VectorSvc          *vectorstore.Service
-	MediaStore         *drive.Store
-	DestResolver       destination.Resolver
+	AssetIndexService   *assetindex.Service
+	AssetTreeService    *assettree.Service
+	ClipIndexerService  *clipindexer.Service
+	VLMClient           *vlm.Client
+	VectorSvc           *vectorstore.Service
+	MediaStore          *drive.Store
+	DestResolver        destination.Resolver
 }
 
 // composeCoreInfra initializes all core infrastructure services.
@@ -494,13 +497,13 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 		AssetProcessingRepo: assetProcRepo,
 		AssetsSvc:           assetsSvc,
 		MediaProcessor:      mediaProcessor,
-		AssetIndexService:  assetIndexService,
-		AssetTreeService:   assetTreeService,
-		ClipIndexerService: clipIndexerService,
-		VLMClient:          vlmClient,
-		VectorSvc:          vectorSvc,
-		MediaStore:         mediaStore,
-		DestResolver:       destResolver,
+		AssetIndexService:   assetIndexService,
+		AssetTreeService:    assetTreeService,
+		ClipIndexerService:  clipIndexerService,
+		VLMClient:           vlmClient,
+		VectorSvc:           vectorSvc,
+		MediaStore:          mediaStore,
+		DestResolver:        destResolver,
 	}, nil
 }
 
@@ -532,6 +535,7 @@ func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Lo
 	)
 	return realtimeSvc
 }
+
 // MediaDomain holds media-specific services produced by composeMediaDomain.
 type MediaDomain struct {
 	YoutubeClipService *youtube.Service
@@ -645,6 +649,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 		MonitorsRepo:       monitorsRepo,
 	}, nil
 }
+
 // composeIntegration initializes cross-domain integration services and builds the final services struct.
 func composeIntegration(
 	ctx context.Context,

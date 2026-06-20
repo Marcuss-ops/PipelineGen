@@ -3,8 +3,8 @@ package mediaasset
 import (
 	"context"
 
-	"go.uber.org/zap"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"go.uber.org/zap"
 )
 
 // hashStep calculates the MD5 hash of the processed file.

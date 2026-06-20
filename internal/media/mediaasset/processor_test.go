@@ -55,7 +55,7 @@ func (f *fakeFFmpeg) Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo,
 		Width:      1920,
 		Height:     1080,
 		FPS:        30,
-		VideoCodec:  "h264",
+		VideoCodec: "h264",
 	}, nil
 }
 

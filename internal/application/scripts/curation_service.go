@@ -20,9 +20,13 @@ import (
 )
 
 // HTTP response helpers (avoid import cycle with internal/api/).
-func badRequest(c *gin.Context, msg string)         { c.JSON(http.StatusBadRequest, gin.H{"error": msg}) }
-func svcUnavailable(c *gin.Context, msg string)     { c.JSON(http.StatusServiceUnavailable, gin.H{"error": msg}) }
-func internalError(c *gin.Context, err error)       { c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()}) }
+func badRequest(c *gin.Context, msg string) { c.JSON(http.StatusBadRequest, gin.H{"error": msg}) }
+func svcUnavailable(c *gin.Context, msg string) {
+	c.JSON(http.StatusServiceUnavailable, gin.H{"error": msg})
+}
+func internalError(c *gin.Context, err error) {
+	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+}
 
 // CurationService handles clip source and curate HTTP endpoints.
 type CurationService struct {

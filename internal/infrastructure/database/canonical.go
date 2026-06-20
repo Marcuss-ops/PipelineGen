@@ -25,12 +25,13 @@ package storage
 // Test fixtures that call drive.NewTestDBWithSchema MUST embed this
 // constant so their schema stays in lockstep with the production
 // schema. When migration adds another canonical column it should:
-//  - append a column definition here, AND
-//  - append a matching mediaAssetColumns entry in
-//    internal/infrastructure/database/sqlite/clips_repository.go
-//    (the INSERT projection used by UpsertClipTx), AND
-//  - append a matching scan target in the same file
-//    (the SELECT projection used by reading rows).
+//   - append a column definition here, AND
+//   - append a matching mediaAssetColumns entry in
+//     internal/infrastructure/database/sqlite/clips_repository.go
+//     (the INSERT projection used by UpsertClipTx), AND
+//   - append a matching scan target in the same file
+//     (the SELECT projection used by reading rows).
+//
 // Keeping these three edits in lockstep prevents drift. Do NOT
 // recreate the same column list inline in any other file.
 //

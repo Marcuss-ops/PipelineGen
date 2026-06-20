@@ -2,8 +2,8 @@ package clips
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // ClipToAssetNode converts a canonical asset.Asset to sqlite.AssetNode

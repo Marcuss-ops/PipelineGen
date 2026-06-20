@@ -51,20 +51,20 @@
 //     Disposition preliminarily registered below for the 7 PR-4
 //     aliases (alongside the PR-3 disposition already detailed in
 //     the alias-doc comments):
-//       * AdvancedSearchRequest / AdvancedSearchResult — stay in
-//         domain/asset until phase 3 absorbs the search domain
-//         (internal/domain/search).
-//       * AssetStoreSQLite + NewAssetStoreSQLite — graduate to
-//         internal/domain/store when the store domain materializes.
-//       * ClipFolder — stay in domain/asset until phase 3 absorbs
-//         the folder domain (internal/domain/folder).
-//       * SegmentEmbeddingRecord — stay in domain/asset until phase
-//         3 absorbs the embedding domain (internal/domain/embedding).
-//       * ScanCanonicalAssetRowsPublic — absorbed into the public
-//         assets.Repository scan path in phase 3 (drop the alias; the
-//         function graduates to a method or stays in assets.Repository).
+//   - AdvancedSearchRequest / AdvancedSearchResult — stay in
+//     domain/asset until phase 3 absorbs the search domain
+//     (internal/domain/search).
+//   - AssetStoreSQLite + NewAssetStoreSQLite — graduate to
+//     internal/domain/store when the store domain materializes.
+//   - ClipFolder — stay in domain/asset until phase 3 absorbs
+//     the folder domain (internal/domain/folder).
+//   - SegmentEmbeddingRecord — stay in domain/asset until phase
+//     3 absorbs the embedding domain (internal/domain/embedding).
+//   - ScanCanonicalAssetRowsPublic — absorbed into the public
+//     assets.Repository scan path in phase 3 (drop the alias; the
+//     function graduates to a method or stays in assets.Repository).
 //
-// IMPORTANT — MediaType semantic conflict
+// # IMPORTANT — MediaType semantic conflict
 //
 // This package re-exports `asset.MediaType` as a HARD alias of
 // `internal/assets.MediaType` (a plain string type used as

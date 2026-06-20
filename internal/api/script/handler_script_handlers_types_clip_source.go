@@ -154,19 +154,19 @@ type SceneVoiceover = scripts.SceneVoiceover
 
 // ClipScriptJobResult is the result stored in the job system after completion.
 type ClipScriptJobResult struct {
-	OK                bool                       `json:"ok"`
-	ScriptID          int64                      `json:"script_id,omitempty"`
-	Title             string                     `json:"title,omitempty"`
-	Script            string                     `json:"script,omitempty"`
-	WordCount         int                        `json:"word_count,omitempty"`
-	Language          string                     `json:"language,omitempty"`
-	SourceFingerprint string                     `json:"source_fingerprint,omitempty"`
+	OK                bool                    `json:"ok"`
+	ScriptID          int64                   `json:"script_id,omitempty"`
+	Title             string                  `json:"title,omitempty"`
+	Script            string                  `json:"script,omitempty"`
+	WordCount         int                     `json:"word_count,omitempty"`
+	Language          string                  `json:"language,omitempty"`
+	SourceFingerprint string                  `json:"source_fingerprint,omitempty"`
 	ClipCoverage      *scripts.ClipCoverage   `json:"clip_coverage,omitempty"`
 	Sections          []scripts.ScriptSection `json:"sections,omitempty"`
 	ExcludedClips     []scripts.ClipEvidence  `json:"excluded_clips,omitempty"`
-	Warnings          []string                   `json:"warnings,omitempty"`
-	DocURL            string                     `json:"doc_url,omitempty"`
-	DocID             string                     `json:"doc_id,omitempty"`
+	Warnings          []string                `json:"warnings,omitempty"`
+	DocURL            string                  `json:"doc_url,omitempty"`
+	DocID             string                  `json:"doc_id,omitempty"`
 
 	// Entity/insight fields (populated when extract_entities is true)
 	EntitiesJSON           string                        `json:"entities_json,omitempty"`

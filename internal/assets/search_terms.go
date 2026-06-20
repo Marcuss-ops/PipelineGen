@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	
 )
 
 // SearchByTerms searches clips using the indexed clip_search_terms table.
@@ -246,4 +244,3 @@ func (s *AssetStoreSQLite) RebuildSearchTerms(ctx context.Context, source string
 
 	return total, rows.Err()
 }
-

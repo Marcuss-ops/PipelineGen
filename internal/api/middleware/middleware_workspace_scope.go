@@ -3,8 +3,8 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/workspace"
+	"github.com/gin-gonic/gin"
 )
 
 // WorkspaceScopeMiddleware extracts workspace and project IDs from headers or query params.

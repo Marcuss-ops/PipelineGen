@@ -1,4 +1,4 @@
-﻿package sqlite
+package sqlite
 
 import (
 	"context"
@@ -215,5 +215,3 @@ func scanFields(scanner interface{ Scan(dest ...any) error }) (*media.CategoryCh
 	ch.UpdatedAt = updatedAt.String
 	return ch, nil
 }
-
-

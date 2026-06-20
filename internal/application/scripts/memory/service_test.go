@@ -79,7 +79,7 @@ func TestBuildEnrichedPrompt_CapsOldOutputsAndTotalSize(t *testing.T) {
 		Prompt:   "some prompt",
 		Language: "en",
 		Policy: MemoryPolicy{
-			MaxMemories:  2,
+			MaxMemories:    2,
 			MaxMemoryChars: 300,
 		},
 	}

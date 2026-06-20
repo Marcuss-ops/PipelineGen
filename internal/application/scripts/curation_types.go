@@ -1,6 +1,5 @@
 package scripts
 
-
 // GenerateFromCatalogRequest is the input for catalog-first script generation.
 type GenerateFromCatalogRequest struct {
 	Topic       string  `json:"topic" binding:"required"`

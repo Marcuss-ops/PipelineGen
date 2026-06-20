@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // ── SearchArtlistClips ───────────────────────────────────────────────────────

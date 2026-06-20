@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	
-	
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -225,4 +223,3 @@ func (s *AssetStoreSQLite) SearchFolders(ctx context.Context, keyword string) ([
 // GetFolderChildren returns all clips that are children of the given parent_folder_id.
 // parent_folder_id is stored in metadata_json.
 // Pass an empty string to get root folders.
-

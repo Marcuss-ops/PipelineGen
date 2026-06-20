@@ -8,22 +8,22 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	_ "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
 	"go.uber.org/zap"
@@ -165,8 +165,8 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 					case <-time.After(2 * time.Minute):
 					}
 					for {
-					_, err := svcs.jobsService.Enqueue(ctx, &appjobs.EnqueueRequest{
-						Type:     "system.cleanup",
+						_, err := svcs.jobsService.Enqueue(ctx, &appjobs.EnqueueRequest{
+							Type:     "system.cleanup",
 							Priority: 5,
 							Payload: map[string]any{
 								"label":  label,
@@ -292,7 +292,6 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			startQdrantHealthMonitor(ctx, svcs.vectorSvc, log)
 		})
 	}
-
 
 	return &backgroundJobs{
 		channelMonitor:    channelMon,

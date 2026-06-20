@@ -1,4 +1,4 @@
-﻿package sqlite
+package sqlite
 
 import (
 	"context"
@@ -124,5 +124,3 @@ func (r *MonitorsRepository) IncrementProcessed(ctx context.Context, id string) 
 	`, timeutil.FormatRFC3339(time.Now()), id)
 	return err
 }
-
-

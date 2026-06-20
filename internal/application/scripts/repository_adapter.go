@@ -332,5 +332,3 @@ func (a *sqliteRepoAdapter) ListScripts(ctx context.Context, filter ScriptListFi
 	}
 	return out, nil
 }
-
-

@@ -8,9 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/stockpipeline"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // stockPayloadToMap converts a StockRunPayload to map[string]any for job enqueue.

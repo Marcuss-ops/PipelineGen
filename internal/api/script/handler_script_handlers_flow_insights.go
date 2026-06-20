@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"strings"
 
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
+	"go.uber.org/zap"
 )
 
 // ── ScriptInsightBuilder ──────────────────────────────────────────────────────

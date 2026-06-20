@@ -38,7 +38,9 @@ import (
 //	DB            : *sql.DB backing store. Required for the
 //	                                 MetadataExportHandler (snapshot reads
 //	                                 across media_assets / voiceover /
-////	                                 image / delivery_log) and for the
+//
+// //	                                 image / delivery_log) and for the
+//
 //	                                 DeliveryHandler (delivery_log
 //	                                 writes). Also feeds the
 //	                                 ProviderSyncHandler fallback paths
@@ -85,13 +87,13 @@ type Deps struct {
 //   - registry : the HandlerRegistry to populate.
 //   - log      : zap logger — nil-safe (handlers use zap.NewNop on nil).
 //   - indexer  : IndexClipper dependency for the IndexingHandler.
-//                Pass nil to skip the IndexingHandler (tests, partial
-//                wiring). The handler is optional, not mandatory.
+//     Pass nil to skip the IndexingHandler (tests, partial
+//     wiring). The handler is optional, not mandatory.
 //   - deps     : Deps bundle. Each field is optional; the corresponding
-//                handler is registered as long as its CRITICAL field is
-//                present (DB for metadata_export, HTTPClient or DB for
-//                delivery, Jobs for provider_sync's drive|youtube path,
-//                HMACSecrets OR InsecureDev for delivery).
+//     handler is registered as long as its CRITICAL field is
+//     present (DB for metadata_export, HTTPClient or DB for
+//     delivery, Jobs for provider_sync's drive|youtube path,
+//     HMACSecrets OR InsecureDev for delivery).
 //
 // Returns: the first registration error (duplicate event type, nil
 // handler, empty EventType).

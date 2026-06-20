@@ -1,10 +1,11 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

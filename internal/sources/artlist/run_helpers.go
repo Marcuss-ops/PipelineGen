@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // RunDefaults holds default values for request normalization.

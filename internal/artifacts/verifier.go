@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	driveapi "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	driveupload "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 type DriveVerifier interface {

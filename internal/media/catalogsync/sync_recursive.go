@@ -51,16 +51,16 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 
 	now := time.Now().UTC()
 	rootClip := &asset.Asset{
-		ID:             target.RootFolderID,
-		Name:           rootName,
-		Filename:       rootName,
-		Group:          target.Source,
-		MediaType:      asset.MediaType(target.MediaType),
-		Source:         asset.Source(target.Source),
-		Category:       "folder",
-		Tags:           []string{},
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:        target.RootFolderID,
+		Name:      rootName,
+		Filename:  rootName,
+		Group:     target.Source,
+		MediaType: asset.MediaType(target.MediaType),
+		Source:    asset.Source(target.Source),
+		Category:  "folder",
+		Tags:      []string{},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 	rootClip.SetFolderID(target.RootFolderID)
 	rootClip.SetParentFolderID("")
@@ -144,16 +144,16 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *sqlite.ClipsRep
 
 		now := time.Now().UTC()
 		clip := &asset.Asset{
-			ID:             child.ID,
-			Name:           childName,
-			Filename:       childName,
-			Group:          target.Source,
-			MediaType:      asset.MediaType(target.MediaType),
-			Source:         asset.Source(target.Source),
-			Category:       category,
-			Tags:           []string{},
-			CreatedAt:      now,
-			UpdatedAt:      now,
+			ID:        child.ID,
+			Name:      childName,
+			Filename:  childName,
+			Group:     target.Source,
+			MediaType: asset.MediaType(target.MediaType),
+			Source:    asset.Source(target.Source),
+			Category:  category,
+			Tags:      []string{},
+			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		clip.SetFolderID(child.ID)
 		clip.SetParentFolderID(folderID)

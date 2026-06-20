@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // SetProgress updates progress percentage and emits an event.

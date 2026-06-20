@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
-
-	
 )
 
 // Store is the legacy wrapper sitting between the image/audio upload
@@ -225,4 +223,3 @@ func (s *Store) ResolveDest(req AssetDestinationRequest) (*ResolvedDest, error) 
 	}
 	return &ResolvedDest{}, nil
 }
-

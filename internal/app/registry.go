@@ -13,23 +13,23 @@ import (
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
+	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	artlistadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock"
-	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 
-
-
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
@@ -39,8 +39,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/mediaasset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
@@ -132,13 +130,62 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		name string
 		fn   func() (module.Module, error)
 	}{
-		{"Jobs", func() (module.Module, error) { w, e := WireJobs(cfg, log, coreDeps); wiring.Jobs = w; if w != nil { return w.Module, e }; return nil, e }},
-		{"Images", func() (module.Module, error) { w, e := WireImages(cfg, log, coreDeps); wiring.Images = w; if w != nil { return w.Module, e }; return nil, e }},
-		{"MediaIngest", func() (module.Module, error) { w, e := WireMediaIngest(cfg, log, coreDeps); wiring.MediaIngest = w; if w != nil { return w.Module, e }; return nil, e }},
-		{"Drive", func() (module.Module, error) { w, e := WireDrive(cfg, log, coreDeps); wiring.Drive = w; if w != nil { return w.Module, e }; return nil, e }},
-		{"Scraper", func() (module.Module, error) { w, e := WireScraper(cfg, log); wiring.Scraper = w; if w != nil { return w.Module, e }; return nil, e }},
-		{"FullImages", func() (module.Module, error) { w, e := WireFullImages(cfg, log, coreDeps); wiring.FullImages = w; if w != nil { return w.Module, e }; return nil, e }},
-		{"StockPipeline", func() (module.Module, error) { w, e := WireStockPipeline(cfg, log, coreDeps); wiring.StockPipeline = w; if w != nil { return w.Module, e }; return nil, e }},
+		{"Jobs", func() (module.Module, error) {
+			w, e := WireJobs(cfg, log, coreDeps)
+			wiring.Jobs = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
+		{"Images", func() (module.Module, error) {
+			w, e := WireImages(cfg, log, coreDeps)
+			wiring.Images = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
+		{"MediaIngest", func() (module.Module, error) {
+			w, e := WireMediaIngest(cfg, log, coreDeps)
+			wiring.MediaIngest = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
+		{"Drive", func() (module.Module, error) {
+			w, e := WireDrive(cfg, log, coreDeps)
+			wiring.Drive = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
+		{"Scraper", func() (module.Module, error) {
+			w, e := WireScraper(cfg, log)
+			wiring.Scraper = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
+		{"FullImages", func() (module.Module, error) {
+			w, e := WireFullImages(cfg, log, coreDeps)
+			wiring.FullImages = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
+		{"StockPipeline", func() (module.Module, error) {
+			w, e := WireStockPipeline(cfg, log, coreDeps)
+			wiring.StockPipeline = w
+			if w != nil {
+				return w.Module, e
+			}
+			return nil, e
+		}},
 	} {
 		mod, err := m.fn()
 		if err != nil {
@@ -304,9 +351,9 @@ type DriveDestinations struct {
 	MediaRoot, VideoAIRoot, SoundEffectsRoot, imagesFolder, videoAIFolder string
 }
 
-func (d *DriveDestinations) RootFolder() string     { return d.MediaRoot }
-func (d *DriveDestinations) ImagesFolder() string   { return d.imagesFolder }
-func (d *DriveDestinations) VideoAIFolder() string  { return d.videoAIFolder }
+func (d *DriveDestinations) RootFolder() string    { return d.MediaRoot }
+func (d *DriveDestinations) ImagesFolder() string  { return d.imagesFolder }
+func (d *DriveDestinations) VideoAIFolder() string { return d.videoAIFolder }
 
 func resolveRuntimeDestinations(ctx context.Context, db *sql.DB, driveClient *gdrive.Service, cfg *config.Config, log *zap.Logger) *DriveDestinations {
 	return &DriveDestinations{MediaRoot: cfg.Drive.RootFolder(), VideoAIRoot: cfg.Drive.VideoAIRootFolder, SoundEffectsRoot: cfg.Drive.SoundEffectsRootFolder, imagesFolder: cfg.Drive.ImagesFolder(), videoAIFolder: cfg.Drive.VideoAIFolder()}

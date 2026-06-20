@@ -24,20 +24,20 @@ import "time"
 // without hitting Ollama again. The id field follows the format
 // "gen_<12-char prefix>" — see SaveGeneration below.
 type GenerationOutput struct {
-	ID             string    `json:"id"`
-	ChannelID      string    `json:"channel_id"`
-	Mode           string    `json:"mode"`
-	Language       string    `json:"language"`
-	Title          string    `json:"title"`
-	Prompt         string    `json:"prompt"`
-	NormalizedInput string   `json:"normalized_input"`
-	InputHash      string    `json:"input_hash"`
-	OutputText     string    `json:"output_text"`
-	OutputJSON     string    `json:"output_json"` // raw JSON blob for structured outputs
-	Model          string    `json:"model"`
-	JobID          string    `json:"job_id"`
-	WordCount      int       `json:"word_count"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              string    `json:"id"`
+	ChannelID       string    `json:"channel_id"`
+	Mode            string    `json:"mode"`
+	Language        string    `json:"language"`
+	Title           string    `json:"title"`
+	Prompt          string    `json:"prompt"`
+	NormalizedInput string    `json:"normalized_input"`
+	InputHash       string    `json:"input_hash"`
+	OutputText      string    `json:"output_text"`
+	OutputJSON      string    `json:"output_json"` // raw JSON blob for structured outputs
+	Model           string    `json:"model"`
+	JobID           string    `json:"job_id"`
+	WordCount       int       `json:"word_count"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // MemoryEntry is one row of `gemma_memory_entries`. The schema tracks
@@ -46,18 +46,18 @@ type GenerationOutput struct {
 // DESC query. last_used_at is updated by TouchMemory (model of
 // usefulness decay) — see migrations/sqlite/020_gemma_memory_last_used.sql.
 type MemoryEntry struct {
-	ID                  string    `json:"id"`
-	ChannelID           string    `json:"channel_id"`
-	MemoryType          string    `json:"memory_type"`
-	TopicKey            string    `json:"topic_key"`
-	Title               string    `json:"title"`
-	Summary             string    `json:"summary"`
-	ContentText         string    `json:"content_text"`
-	ContentJSON         string    `json:"content_json"`
-	SourceGenerationID  string    `json:"source_generation_id"`
-	SourceJobID         string    `json:"source_job_id"`
-	UsefulnessScore     float64   `json:"usefulness_score"`
-	CreatedAt           time.Time `json:"created_at"`
+	ID                 string    `json:"id"`
+	ChannelID          string    `json:"channel_id"`
+	MemoryType         string    `json:"memory_type"`
+	TopicKey           string    `json:"topic_key"`
+	Title              string    `json:"title"`
+	Summary            string    `json:"summary"`
+	ContentText        string    `json:"content_text"`
+	ContentJSON        string    `json:"content_json"`
+	SourceGenerationID string    `json:"source_generation_id"`
+	SourceJobID        string    `json:"source_job_id"`
+	UsefulnessScore    float64   `json:"usefulness_score"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // ScriptChunk is one row of `gemma_script_chunks`. The search_text
@@ -85,16 +85,16 @@ type ScriptChunk struct {
 // inline — they vary per channel style and must be derived against
 // the same canonicaliser that produced the row in the first place.
 type SaveGenerationInput struct {
-	ChannelID   string `json:"channel_id"`
-	Mode        string `json:"mode"`
-	Language    string `json:"language"`
-	Title       string `json:"title"`
-	Prompt      string `json:"prompt"`
-	Model       string `json:"model"`
-	JobID       string `json:"job_id"`
-	OutputText  string `json:"output_text"`
-	OutputJSON  string `json:"output_json"`
-	WordCount   int    `json:"word_count"`
+	ChannelID  string `json:"channel_id"`
+	Mode       string `json:"mode"`
+	Language   string `json:"language"`
+	Title      string `json:"title"`
+	Prompt     string `json:"prompt"`
+	Model      string `json:"model"`
+	JobID      string `json:"job_id"`
+	OutputText string `json:"output_text"`
+	OutputJSON string `json:"output_json"`
+	WordCount  int    `json:"word_count"`
 }
 
 // SaveMemoryInput is the argument bundle for SaveMemory. It mirrors

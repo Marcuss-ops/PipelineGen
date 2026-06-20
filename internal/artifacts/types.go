@@ -36,23 +36,23 @@ const (
 
 // Artifact is the domain model for a stored artifact.
 type Artifact struct {
-	ID             string     `json:"id"`
-	JobID          string     `json:"job_id,omitempty"`
-	Kind           string     `json:"kind"` // video, audio, thumbnail, image
-	Status         Status     `json:"status"`
-	StorageBackend string     `json:"storage_backend"` // local, s3
-	StorageKey     string     `json:"storage_key"`     // canonical blob path
-	SHA256         string     `json:"sha256"`
-	SizeBytes      int64      `json:"size_bytes"`
-	MimeType       string     `json:"mime_type"`
+	ID             string `json:"id"`
+	JobID          string `json:"job_id,omitempty"`
+	Kind           string `json:"kind"` // video, audio, thumbnail, image
+	Status         Status `json:"status"`
+	StorageBackend string `json:"storage_backend"` // local, s3
+	StorageKey     string `json:"storage_key"`     // canonical blob path
+	SHA256         string `json:"sha256"`
+	SizeBytes      int64  `json:"size_bytes"`
+	MimeType       string `json:"mime_type"`
 	// Media-specific metadata (PR3: carried in from assetregistry.Asset).
-	DurationMs int        `json:"duration_ms,omitempty"`
-	Width      int        `json:"width,omitempty"`
-	Height     int        `json:"height,omitempty"`
+	DurationMs int `json:"duration_ms,omitempty"`
+	Width      int `json:"width,omitempty"`
+	Height     int `json:"height,omitempty"`
 	// Timestamps.
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	VerifiedAt    *time.Time `json:"verified_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	VerifiedAt     *time.Time `json:"verified_at,omitempty"`
 	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
 }
 
@@ -72,12 +72,12 @@ type ArtifactSource struct {
 
 // JobArtifact links an artifact to a job with a role and ordinal (PR3: was assetregistry.JobAsset).
 type JobArtifact struct {
-	JobID     string    `json:"job_id"`
-	ArtifactID string   `json:"artifact_id"`
-	Role      string    `json:"role"`
-	Ordinal   int       `json:"ordinal"`
-	Required  bool      `json:"required"`
-	CreatedAt time.Time `json:"created_at"`
+	JobID      string    `json:"job_id"`
+	ArtifactID string    `json:"artifact_id"`
+	Role       string    `json:"role"`
+	Ordinal    int       `json:"ordinal"`
+	Required   bool      `json:"required"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // ── BlobStore ──────────────────────────────────────────────────────
@@ -153,9 +153,9 @@ type Repository interface {
 
 // Reference is a parsed asset URI like "velox-asset://ast_01ARZ3..."
 type Reference struct {
-	Scheme   string // velox-asset, drive, https, file
+	Scheme     string // velox-asset, drive, https, file
 	ArtifactID string
-	Raw      string // original URI string
+	Raw        string // original URI string
 }
 
 // Resolver opens artifact content for a given URI scheme.
@@ -339,30 +339,30 @@ func isUnderDir(path, dir string) bool {
 
 // MediaRecord is a legacy unified media record absorbed from media/assetregistry.
 type MediaRecord struct {
-	ID           string
-	Name         string
-	Filename     string
-	Source       string
-	Category     string
-	MediaType    string
-	ExternalURL  string
-	FolderID     string
-	FolderPath   string
-	Group        string
-	LocalPath    string
-	DriveLink    string
-	DriveFileID  string
-	DownloadLink string
-	FileHash     string
-	ContentHash  string
-	Metadata     string
-	Duration     int
-	Tags         []string
-	Status       string
-	Error        string
-	SourceID     string
-	Subfolder    string
-	PHash        string
+	ID                  string
+	Name                string
+	Filename            string
+	Source              string
+	Category            string
+	MediaType           string
+	ExternalURL         string
+	FolderID            string
+	FolderPath          string
+	Group               string
+	LocalPath           string
+	DriveLink           string
+	DriveFileID         string
+	DownloadLink        string
+	FileHash            string
+	ContentHash         string
+	Metadata            string
+	Duration            int
+	Tags                []string
+	Status              string
+	Error               string
+	SourceID            string
+	Subfolder           string
+	PHash               string
 	VisualEmbeddingJSON string
 }
 
@@ -382,6 +382,7 @@ type FinalizeResult struct {
 	Error         string
 	Record        *MediaRecord
 }
+
 func splitPath(p string) []string {
 	var segs []string
 	start := 0

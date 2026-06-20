@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/gin-gonic/gin"
 )
 
 // FeatureFlagChecker returns a gin.HandlerFunc that checks if a feature is enabled

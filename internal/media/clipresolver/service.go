@@ -3,8 +3,8 @@ package clipresolver
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 	matchingconfig "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/clipcatalog"
 )
 
 // Service provides clip recommendation functionality.

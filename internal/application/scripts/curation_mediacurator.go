@@ -17,8 +17,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
 // ── Style Presets (caricati da config/style_presets.yaml) ────────────────
@@ -60,18 +60,18 @@ func loadStylePresets(path string) (map[string]string, error) {
 
 // CurateResult is the output of a successful curation.
 type CurateResult struct {
-	Title             string                    `json:"title"`
-	Script            string                    `json:"script"`
-	WordCount         int                       `json:"word_count"`
-	ClipScenes        []ClipScene    `json:"clip_scenes,omitempty"`
-	AcceptedClipIDs   []string                  `json:"accepted_clip_ids,omitempty"`
-	NarrativePlan     *NarrativePlan `json:"narrative_plan,omitempty"`
-	SourceText        string                    `json:"source_text,omitempty"`
-	SourceFingerprint string                    `json:"source_fingerprint,omitempty"`
-	SearchResults     []SearchResultInfo        `json:"search_results,omitempty"`
-	CacheStatus       string                    `json:"cache_status,omitempty"`
-	DocLink           string                    `json:"doc_link,omitempty"`
-	Timings           CurateTimings             `json:"timings,omitempty"`
+	Title             string             `json:"title"`
+	Script            string             `json:"script"`
+	WordCount         int                `json:"word_count"`
+	ClipScenes        []ClipScene        `json:"clip_scenes,omitempty"`
+	AcceptedClipIDs   []string           `json:"accepted_clip_ids,omitempty"`
+	NarrativePlan     *NarrativePlan     `json:"narrative_plan,omitempty"`
+	SourceText        string             `json:"source_text,omitempty"`
+	SourceFingerprint string             `json:"source_fingerprint,omitempty"`
+	SearchResults     []SearchResultInfo `json:"search_results,omitempty"`
+	CacheStatus       string             `json:"cache_status,omitempty"`
+	DocLink           string             `json:"doc_link,omitempty"`
+	Timings           CurateTimings      `json:"timings,omitempty"`
 }
 
 // SearchResultInfo describes a clip found during Qdrant search.

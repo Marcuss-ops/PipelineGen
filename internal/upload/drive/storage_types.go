@@ -1,4 +1,4 @@
-﻿// package drive is the legacy destination/upload facade that the team's
+// package drive is the legacy destination/upload facade that the team's
 // PR-Phase 7 refactor removed without updating the 13 dangling call sites.
 //
 // Context: in PR-Phase 7 the team merged versions of this package into
@@ -116,4 +116,3 @@ type Destination struct {
 	RemotePath  string `json:"remote_path,omitempty"`
 	WebViewLink string `json:"web_view_link,omitempty"`
 }
-

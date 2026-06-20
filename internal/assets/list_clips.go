@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"strings"
-
-	
 )
 
 // ListClips returns clips for a source (or all sources when source is empty
@@ -108,4 +106,3 @@ func (s *AssetStoreSQLite) LastUpdatedAtForTerm(ctx context.Context, term string
 	}
 	return &lastUpdated.String, nil
 }
-

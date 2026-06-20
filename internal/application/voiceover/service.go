@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 
@@ -48,11 +48,11 @@ type Service struct {
 	// internal/core/audio. Processor. We hold the interface so a future
 	// hosted-TTS adapter (cloud API, sidecar server) can be swapped in
 	// without touching voiceover.
-	audioProcessor audio.Processor
-	lifecycleService  *lifecycle.Service
-	semanticTagger    SemanticTaggerFunc
-	clipIndexer       ClipIndexFunc  // optional: triggers embedding + Qdrant upsert
-	translator        TranslatorFunc // optional: translates text to target language
+	audioProcessor   audio.Processor
+	lifecycleService *lifecycle.Service
+	semanticTagger   SemanticTaggerFunc
+	clipIndexer      ClipIndexFunc  // optional: triggers embedding + Qdrant upsert
+	translator       TranslatorFunc // optional: translates text to target language
 }
 
 // TranslatorFunc translates text to a target language. Used by GeneratePromo.

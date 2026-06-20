@@ -2,10 +2,11 @@ package api
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
+
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // UtilityModule is a registrable module for internal utility endpoints.
@@ -52,5 +53,3 @@ func (m *UtilityModule) Start(context.Context) error { return nil }
 
 // Stop performs shutdown tasks.
 func (m *UtilityModule) Stop(context.Context) error { return nil }
-
-

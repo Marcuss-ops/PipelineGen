@@ -3,12 +3,12 @@ package script
 import (
 	"context"
 
-	"go.uber.org/zap"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"go.uber.org/zap"
 )
 
 // ── Service Interfaces ───────────────────────────────────────────────────────

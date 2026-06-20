@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/core/embedding"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/termutil"

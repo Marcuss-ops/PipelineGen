@@ -134,4 +134,3 @@ func (s *AssetStoreSQLite) UpsertSegmentEmbedding(ctx context.Context, rec *Segm
 	}
 	return nil
 }
-

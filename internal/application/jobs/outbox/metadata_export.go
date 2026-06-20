@@ -35,7 +35,7 @@
 //   - 2xx-equivalent (write succeeded)        → MarkCompleted.
 //   - 4xx-equivalent (terminal envelope fail) → MarkCompleted (no retry).
 //   - 5xx/network/db error during write/query → non-nil error → outbox
-//                                               pool retries.
+//     pool retries.
 //
 // Atomicity: the .tmp + os.Rename pattern is the POSIX-standard atomic
 // rename (same directory → atomic on linux/macos). The .tmp is created
@@ -132,8 +132,8 @@ type metadataExportRequest struct {
 	TraceID       string   `json:"trace_id,omitempty"`
 	JobID         string   `json:"job_id,omitempty"`
 	AssetIDs      []string `json:"asset_ids,omitempty"`
-	Format        string   `json:"format"`               // json|jsonl|csv (allowlist)
-	Include       []string `json:"include,omitempty"`    // allowlist
+	Format        string   `json:"format"`            // json|jsonl|csv (allowlist)
+	Include       []string `json:"include,omitempty"` // allowlist
 	Destination   struct {
 		Provider string `json:"provider"` // filesystem|drive
 		Path     string `json:"path,omitempty"`

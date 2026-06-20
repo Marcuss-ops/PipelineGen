@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.uber.org/zap"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"go.uber.org/zap"
 )
 
 // WriteRequest is the unified input for creating metadata.json for any media asset.

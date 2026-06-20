@@ -10,27 +10,27 @@ import (
 // sync.RWMutex was decorative (fields were mutated directly without locking)
 // so it has been removed to avoid a false guarantee of thread safety.
 type Config struct {
-	Server          ServerConfig          `yaml:"server"`
-	Logging         LoggingConfig         `yaml:"logging"`
-	Storage         StorageConfig         `yaml:"storage"`
-	Security        SecurityConfig        `yaml:"security"`
-	External        ExternalConfig        `yaml:"external"`
-	Paths           PathsConfig           `yaml:"paths"`
-	Drive           DriveConfig           `yaml:"drive"`
-	Jobs            JobsConfig            `yaml:"jobs"`
-	Workers         WorkersConfig         `yaml:"workers"`
-	Video           VideoConfig           `yaml:"video"`
-	Features        FeaturesConfig        `yaml:"features"`
+	Server           ServerConfig           `yaml:"server"`
+	Logging          LoggingConfig          `yaml:"logging"`
+	Storage          StorageConfig          `yaml:"storage"`
+	Security         SecurityConfig         `yaml:"security"`
+	External         ExternalConfig         `yaml:"external"`
+	Paths            PathsConfig            `yaml:"paths"`
+	Drive            DriveConfig            `yaml:"drive"`
+	Jobs             JobsConfig             `yaml:"jobs"`
+	Workers          WorkersConfig          `yaml:"workers"`
+	Video            VideoConfig            `yaml:"video"`
+	Features         FeaturesConfig         `yaml:"features"`
 	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
-	ClipIndexer     ClipIndexerConfig     `yaml:"clip_indexer"`
-	VectorSearch    VectorSearchConfig    `yaml:"vector_search"`
-	Reranker        RerankerConfig        `yaml:"reranker"`
-	Books           BooksConfig           `yaml:"books"`
-	VLM             VLMConfig             `yaml:"vlm"`
-	Lessons         LessonsConfig         `yaml:"lessons"`
-	Multilingual    MultilingualConfig    `yaml:"multilingual"`
-	Scripts         ScriptsConfig         `yaml:"scripts"`
-	Outbox          OutboxConfig          `yaml:"outbox"`
+	ClipIndexer      ClipIndexerConfig      `yaml:"clip_indexer"`
+	VectorSearch     VectorSearchConfig     `yaml:"vector_search"`
+	Reranker         RerankerConfig         `yaml:"reranker"`
+	Books            BooksConfig            `yaml:"books"`
+	VLM              VLMConfig              `yaml:"vlm"`
+	Lessons          LessonsConfig          `yaml:"lessons"`
+	Multilingual     MultilingualConfig     `yaml:"multilingual"`
+	Scripts          ScriptsConfig          `yaml:"scripts"`
+	Outbox           OutboxConfig           `yaml:"outbox"`
 }
 
 // GoogleAccountingConfig configures the Google Accounting sidecar used for
@@ -146,11 +146,11 @@ func (s StorageConfig) ImagesPath() string { return s.mediaSubPath("images") }
 // that haven't yet rolled their key cache can keep verifying. Rotation
 // flow:
 //
-//   1. Receiver gets a new secret in their secret manager / vault.
-//   2. Receiver rolls their verifier to accept (new + old).
-//   3. Operator updates DeliveryHMACSecret here, moves the OLD value to
-//      DeliveryHMACSecretPrevious.
-//   4. Receivers having rolled can stop accepting the old secret.
+//  1. Receiver gets a new secret in their secret manager / vault.
+//  2. Receiver rolls their verifier to accept (new + old).
+//  3. Operator updates DeliveryHMACSecret here, moves the OLD value to
+//     DeliveryHMACSecretPrevious.
+//  4. Receivers having rolled can stop accepting the old secret.
 //
 // Replay protection: every signed POST includes X-Velox-Timestamp so
 // receivers enforce a 5-minute window by default (see DeliveryReplayWindow).
@@ -223,7 +223,7 @@ type ExternalConfig struct {
 	NodeScraperDir string `yaml:"node_scraper_dir" env:"VELOX_NODE_SCRAPER_DIR" default:"node-scraper"`
 
 	// YouTube cookies + JS runtime for yt-dlp.
-	YouTubeCookiesPath  string `yaml:"youtube_cookies_path" env:"YT_COOKIES_PATH" default:"cookies.txt"`
+	YouTubeCookiesPath   string `yaml:"youtube_cookies_path" env:"YT_COOKIES_PATH" default:"cookies.txt"`
 	YouTubeJSRuntimePath string `yaml:"youtube_js_runtime_path" env:"YT_JS_RUNTIME_PATH" default:"node"`
 
 	// SearXNG — strictly OPTIONAL sidecar for LLM RAG augmentation.
@@ -243,9 +243,9 @@ type ExternalConfig struct {
 	// and skip starting the sidecar (most production deployments). The
 	// system reports "SearXNG unavailable" in /api/system/doctor and the
 	// affected code paths are documented in AGENTS.md.
-	SearxngURL string `yaml:"searxng_url" env:"SEARXNG_URL" default:"http://127.0.0.1:18080"`
-	SearxngMaxResults     int    `yaml:"searxng_max_results"     env:"SEARXNG_MAX_RESULTS"     default:"5"`
-	WebSearchTimeoutSeconds int `yaml:"web_search_timeout_seconds" env:"SEARXNG_TIMEOUT" default:"15"`
+	SearxngURL              string `yaml:"searxng_url" env:"SEARXNG_URL" default:"http://127.0.0.1:18080"`
+	SearxngMaxResults       int    `yaml:"searxng_max_results"     env:"SEARXNG_MAX_RESULTS"     default:"5"`
+	WebSearchTimeoutSeconds int    `yaml:"web_search_timeout_seconds" env:"SEARXNG_TIMEOUT" default:"15"`
 
 	// Artlist scraper optimizations
 	ArtlistScraperServerURL        string `yaml:"artlist_scraper_server_url" env:"ARTLIST_SCRAPER_SERVER_URL" default:""`

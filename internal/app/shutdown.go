@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"

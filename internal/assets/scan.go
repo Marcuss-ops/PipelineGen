@@ -168,5 +168,3 @@ func ScanCanonicalAssetRowsPublic(rows *sql.Rows) (*Asset, error) {
 func (s *AssetStoreSQLite) ScanCanonicalAssetRowPublic(row *sql.Row) (*Asset, error) {
 	return s.scanCanonicalAssetRow(row)
 }
-
-

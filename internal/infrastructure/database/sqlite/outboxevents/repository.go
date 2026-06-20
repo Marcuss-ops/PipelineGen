@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"github.com/google/uuid"
 )
 
 // ErrLeaseLost is returned by MarkCompleted and MarkFailed when the

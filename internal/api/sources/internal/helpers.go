@@ -1,11 +1,11 @@
 // Package internal contains shared HTTP helpers used by all api/sources/
 // subpackages (youtube, artlist, clips, root) and the legacy sources
 // root. Lives here (rather than in the sources root or pkg/apiutil) to:
-//   1. Avoid the import cycle that pkg/apiutil would create if any
-//      sources subpackage tried to import the api root package.
-//   2. Let each subpackage import the same binding helpers from one
-//      canonical location, instead of duplicating bindJSON/apiutil
-//      across each subpackage's own helpers.go.
+//  1. Avoid the import cycle that pkg/apiutil would create if any
+//     sources subpackage tried to import the api root package.
+//  2. Let each subpackage import the same binding helpers from one
+//     canonical location, instead of duplicating bindJSON/apiutil
+//     across each subpackage's own helpers.go.
 //
 // The legacy sources/helpers.go keeps duplicate definitions for
 // callers that still use the package sources directly; new handlers

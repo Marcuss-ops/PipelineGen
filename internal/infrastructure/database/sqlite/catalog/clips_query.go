@@ -21,8 +21,8 @@ func (r *Repository) SearchClips(ctx context.Context, q string) ([]CatalogRecord
 		rec := CatalogRecord{
 			ID:        clip.ID,
 			Name:      clip.Name,
-		Path:      clip.FolderPath(),
-		Link:      clip.DriveLink(),
+			Path:      clip.FolderPath(),
+			Link:      clip.DriveLink(),
 			Source:    "clip_drive",
 			DriveID:   clip.ID,
 			MediaType: string(clip.MediaType),

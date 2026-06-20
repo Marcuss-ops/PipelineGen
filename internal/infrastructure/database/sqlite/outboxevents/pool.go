@@ -16,13 +16,13 @@ type WorkerPollConfig struct {
 }
 
 type Pool struct {
-	name      string
-	repo      *Repository
-	registry  *HandlerRegistry
-	log       *zap.Logger
-	cfg       WorkerPollConfig
-	stopChan  chan struct{}
-	wg        sync.WaitGroup
+	name     string
+	repo     *Repository
+	registry *HandlerRegistry
+	log      *zap.Logger
+	cfg      WorkerPollConfig
+	stopChan chan struct{}
+	wg       sync.WaitGroup
 }
 
 func NewPool(name string, repo *Repository, registry *HandlerRegistry, log *zap.Logger, cfg WorkerPollConfig) *Pool {

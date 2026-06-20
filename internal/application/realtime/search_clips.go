@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 )
 
 func (s *Service) SearchClips(ctx context.Context, query string, source string, mediaType string, limit int, minScore float64) ([]MatchAsset, error) {

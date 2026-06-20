@@ -321,9 +321,9 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		args = append(args, "-o", outputTemplate)
 		args = append(args, req.URL)
 
-	_, err := process.Run(ctx, d.path, args, process.Options{
-		Timeout:        10 * time.Minute,
-		CombinedOutput: true,
+		_, err := process.Run(ctx, d.path, args, process.Options{
+			Timeout:        10 * time.Minute,
+			CombinedOutput: true,
 		})
 		if err != nil {
 			return results, fmt.Errorf("failed to download section %d: %w", i, err)

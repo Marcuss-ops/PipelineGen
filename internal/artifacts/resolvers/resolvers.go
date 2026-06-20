@@ -33,9 +33,9 @@ func init() {
 		"172.16.0.0/12",  // Private B
 		"192.168.0.0/16", // Private C
 		"198.18.0.0/15",  // Benchmarking (RFC 2544)
-		"::1/128",         // IPv6 loopback
-		"fe80::/10",       // IPv6 link-local
-		"fc00::/7",        // IPv6 unique local
+		"::1/128",        // IPv6 loopback
+		"fe80::/10",      // IPv6 link-local
+		"fc00::/7",       // IPv6 unique local
 	}
 	for _, cidr := range blocks {
 		_, block, _ := net.ParseCIDR(cidr)

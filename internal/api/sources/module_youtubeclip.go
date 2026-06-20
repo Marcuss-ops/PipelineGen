@@ -4,9 +4,9 @@ import (
 	"context"
 
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ytsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/youtube"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
 	"go.uber.org/zap"

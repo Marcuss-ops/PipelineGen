@@ -12,19 +12,19 @@
 //   - artifact.artifact_id and artifact.sha256 are required so receivers
 //     can verify integrity before accepting the payload.
 //   - destination.provider switches the dispatch path:
-//       • "webhook"  → real HTTP POST with HMAC-SHA256 (mandatory in
-//         production via config.Security.DeliveryHMACSecret; dev escape
-//         only with VELOX_ALLOW_INSECURE_DEV=true and operator warning).
-//       • "drive"    → responsibility of the upload pipeline
-//         (internal/upload/drive); the handler emits an audit-log
-//         acknowledgement ("upload_pipeline_handles_drive") and returns
-//         nil so the outbox event marks Completed. This avoids double
-//         logic: the upload pipeline is THE source of truth for
-//         Drive uploads; the outbox delivery row is a tracker.
-//       • "youtube"  → responsibility of the YouTube upload pipeline;
-//         same audit-ack pattern as drive.
-//       • unknown    → terminal error (no retry) so a producer typo is
-//         obvious in dead-letter rather than a silent re-route.
+//   - "webhook"  → real HTTP POST with HMAC-SHA256 (mandatory in
+//     production via config.Security.DeliveryHMACSecret; dev escape
+//     only with VELOX_ALLOW_INSECURE_DEV=true and operator warning).
+//   - "drive"    → responsibility of the upload pipeline
+//     (internal/upload/drive); the handler emits an audit-log
+//     acknowledgement ("upload_pipeline_handles_drive") and returns
+//     nil so the outbox event marks Completed. This avoids double
+//     logic: the upload pipeline is THE source of truth for
+//     Drive uploads; the outbox delivery row is a tracker.
+//   - "youtube"  → responsibility of the YouTube upload pipeline;
+//     same audit-ack pattern as drive.
+//   - unknown    → terminal error (no retry) so a producer typo is
+//     obvious in dead-letter rather than a silent re-route.
 //   - HMAC signing string is the canonical
 //     <event_timestamp>.<event_id>.<raw_body> via pkg/hmacsign; the
 //     receiver is expected to enforce a 5-min replay window. The
@@ -36,9 +36,9 @@
 //
 //   - 2xx                 → MarkCompleted, delivery_log row written.
 //   - 4xx                 → MarkCompleted (terminal; receiver rejected
-//                           the payload; retrying won't help).
+//     the payload; retrying won't help).
 //   - 5xx / network error → non-nil error → outbox retries up to
-//                           max_attempts, then dead_letter.
+//     max_attempts, then dead_letter.
 //
 // Concurrency: outboxevents.Pool calls Handle from N goroutines. The
 // handler is concurrency-safe (http.Client documented safe for
@@ -176,16 +176,16 @@ type DeliveryHandler struct {
 //   - log         nil → nop.
 //   - client      nil → 30s timeout default.
 //   - db          nil → no delivery_log writes (handler still POSTs and
-//                 signs).
+//     signs).
 //   - hmacSecrets rotated secret keys; current secret FIRST, then the
-//                 previous secret (if any). Empty slice + insecureDev
-//                 false → the handler refuses every event with a
-//                 terminal error (defence in depth against a config
-//                 typo that disables auth silently).
+//     previous secret (if any). Empty slice + insecureDev
+//     false → the handler refuses every event with a
+//     terminal error (defence in depth against a config
+//     typo that disables auth silently).
 //   - insecureDev true only when VELOX_ALLOW_INSECURE_DEV=true. The
-//                 handler logs a structured warn on every signed-or-not
-//                 POST so the dev escape hatch is impossible to mistake
-//                 for production behaviour.
+//     handler logs a structured warn on every signed-or-not
+//     POST so the dev escape hatch is impossible to mistake
+//     for production behaviour.
 func NewDeliveryHandler(log *zap.Logger, client *http.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
 	if log == nil {
 		log = zap.NewNop()

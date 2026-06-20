@@ -2,8 +2,9 @@
 package searchqueries
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"net/http"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

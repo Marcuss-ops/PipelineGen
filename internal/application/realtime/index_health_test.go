@@ -17,9 +17,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
+
 	// drive alias matches internal/application/scripts/clip_source_test.go
 	// which uses `drive.CanonicalMediaAssetsSchema`. The package's actual
 	// name is `storage` (see internal/infrastructure/database/canonical.go::package storage),
@@ -85,7 +86,9 @@ func (s *indexHealthStore) ListPointIDs(ctx context.Context, limit int) ([]strin
 	return s.ids, nil
 }
 func (s *indexHealthStore) DeletePoints(ctx context.Context, ids []string) error { return nil }
-func (s *indexHealthStore) ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error { return nil }
+func (s *indexHealthStore) ScrollAssetIDsPage(ctx context.Context, batchSize int, fn func([]string) error) error {
+	return nil
+}
 func (s *indexHealthStore) CleanupStalePoints(context.Context, func(string, string, string) (bool, error)) (int, error) {
 	return 0, nil
 }

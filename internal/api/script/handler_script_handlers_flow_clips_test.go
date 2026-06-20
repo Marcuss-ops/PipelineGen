@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	translations "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // ── topicRelevant ─────────────────────────────────────────────────────────

@@ -13,9 +13,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // SystemHandler handles system diagnostic endpoints

@@ -44,8 +44,8 @@ type stagingFile struct {
 }
 
 func (s *stagingFile) Write(p []byte) (int, error) { return s.f.Write(p) }
-func (s *stagingFile) Close() error                 { return s.f.Close() }
-func (s *stagingFile) Key() string                  { return s.key }
+func (s *stagingFile) Close() error                { return s.f.Close() }
+func (s *stagingFile) Key() string                 { return s.key }
 
 // Stage creates a temp file in the staging directory and returns a writer.
 // The caller writes the blob content and calls Close() to finalize.

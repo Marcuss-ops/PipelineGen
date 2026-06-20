@@ -148,9 +148,9 @@ func (s *Service) SearchLive(ctx context.Context, query string, limit int, sort 
 		}
 
 		metadata := map[string]any{
-			"uploader":  item.Uploader,
-			"duration":  item.Duration,
-			"video_id":  item.ID,
+			"uploader": item.Uploader,
+			"duration": item.Duration,
+			"video_id": item.ID,
 		}
 
 		results = append(results, assets.Asset{

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

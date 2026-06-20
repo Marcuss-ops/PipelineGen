@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/gin-gonic/gin"
 )
 
 // tokenBucketRateLimiter implements a simple token-bucket per IP.

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── ClaimNext ───────────────────────────────────────────────────────────
