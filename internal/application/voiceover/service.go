@@ -142,7 +142,7 @@ func (s *Service) GenerateWithDestination(ctx context.Context, text, language, f
 
 	item := resp.Items[0]
 	if item.Error != "" {
-		return nil, fmt.Errorf("%s (status: %s)", item.Error, item.job.Status)
+		return nil, fmt.Errorf("%s (status: %s)", item.Error, item.Status)
 	}
 
 	return &VoiceoverResult{

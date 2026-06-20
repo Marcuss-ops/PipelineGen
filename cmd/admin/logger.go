@@ -1,9 +1,13 @@
+// Package main — admin CLI for one-shot operator tasks
+// (seed-channels, stock-reset, summarize-book, migrate-status, ...).
+// logger.go centralises the (cfg, log, cleanup) tuple that every
+// command needs up front.
 package main
 
 import (
 	"go.uber.org/zap"
 
-	"velox/go-master/internal/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 )
 
 // appLogger loads the production config and a zap production logger;
@@ -14,6 +18,15 @@ import (
 // The cleanup callback is safe to call multiple times — zap.Sync is
 // returns-nil-on-already-flushed, so an extra defer cleanup is harmless
 // during exit.
+//
+// NOTE: there used to be a `velox/go-master/internal/config` import
+// here (pre-Upstream commit 66c646b5 the handler migrated here under
+// that path). It was wrong from the start of the PipelineGen module:
+// velox/go-master/internal/config is a stdlib-shaped path that Go
+// resolves to $GOROOT/src/velox/go-master/internal/config, not to any
+// repo package. The canonical local config lives at
+// internal/infrastructure/config, which provides `func Get() *Config`
+// — the right replacement.
 func appLogger() (*config.Config, *zap.Logger, func(), error) {
 	cfg := config.Get()
 	log, err := zap.NewProduction()
