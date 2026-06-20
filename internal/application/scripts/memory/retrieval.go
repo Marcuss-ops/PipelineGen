@@ -11,7 +11,7 @@ import (
 // Level 1: channel style rules
 // Level 2: topic-specific memories + similar chunks
 // Level 3: recent successful outputs as structural reference
-func RetrieveRelevantContext(ctx context.Context, repo *Repository, q MemoryGateRequest) []MemoryHit {
+func RetrieveRelevantContext(ctx context.Context, repo Repository, q MemoryGateRequest) []MemoryHit {
 	topicKey := BuildTopicKey(q.Title, q.Prompt)
 	tokens := ExtractSearchTokens(q.Title + " " + q.Prompt)
 	var hits []MemoryHit

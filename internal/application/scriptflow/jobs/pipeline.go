@@ -165,7 +165,7 @@ func (p *Pipeline) Run(
 		voiceovers = p.scenes.GenerateVoiceovers(ctx, spec, phase2Scenes)
 		okVoices := 0
 		for _, v := range voiceovers {
-			if v.job.Status == "completed" {
+			if v.Status == "completed" {
 				okVoices++
 			}
 		}

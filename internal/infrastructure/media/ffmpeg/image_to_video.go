@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // ImageToVideoOptions configures how a still image is converted to a video.
@@ -86,7 +86,7 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 		outputVideo,
 	}
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: time.Duration(opts.Duration+30) * time.Second,
 	})
 	return err

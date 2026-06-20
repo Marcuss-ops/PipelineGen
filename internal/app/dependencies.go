@@ -24,11 +24,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	gdrive "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
@@ -36,6 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	"context"
+	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
@@ -66,7 +69,7 @@ type services struct {
 	driveUploader      *drive.Uploader
 	driveClient        *gdrive.Service
 	utility            *common.UtilityHandler
-	scriptsRepo        *scripts.ScriptRepository
+	scriptsRepo        *sqlitescripts.ScriptRepository
 	imageRepo          *sqlite.ImagesRepository
 	imageService       *imgservice.Service
 	clipsRepo          *sqlite.ClipsRepository // unified (replaces stockDriveRepo, artlistRepo, clipsOnlyRepo)
@@ -81,6 +84,7 @@ type services struct {
 	assocService       *association.Service
 	jobsRepo           *appjobs.SQLiteStore
 	jobsService        *appjobs.Service
+	jobServiceFacade   *job.Service
 	jobsDispatcher     *appjobs.Dispatcher
 	memoryRepo         *gemmamemory.Repository
 	mediaProcessor     processor.Processor
@@ -290,7 +294,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 	}
 
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	translationCache := scripts.NewCache(dbs.main.DB)
+	translationCache := sqlitescripts.NewCache(dbs.main.DB)
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
@@ -506,7 +510,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 // realtime.IndexHealth can run the canonical sqlite<->qdrant cross-check.
 // Both are optional — the service logs a WARN at startup if missing and the
 // cross-check falls back to zeros — but production wiring MUST pass non-nil.
-func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *sqlite.ClipsRepository, outboxEventsRepo *outboxevents.Repository, jobsService *appjobs.Service) *realtime.Service {
+func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *sqlite.ClipsRepository, outboxEventsRepo *outboxevents.Repository, jobsService *job.Service) *realtime.Service {
 	embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
 	jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
 	rerankerClient := reranker.NewClient(reranker.Config{
@@ -534,7 +538,7 @@ type MediaDomain struct {
 	VoiceoverRepo      *sqlite.VoiceoversRepository
 	BooksService       *books.Service
 	ClipsRepo          *sqlite.ClipsRepository // single shared repository (replaces ClipsRepo + ArtlistRepo)
-	ScriptsRepo        *scripts.ScriptRepository
+	ScriptsRepo        *sqlitescripts.ScriptRepository
 	ImageRepo          *sqlite.ImagesRepository
 	ImageService       *imgservice.Service
 	MetaWriter         *semantic.MetadataWriter
@@ -548,7 +552,7 @@ func composeMediaDomain(ctx context.Context, cfg *config.Config, dbs *databases,
 	// compose_media previously created separate clipsRepo and artlistRepo instances
 	// on the same DB; PR 7 unified them into one shared pointer.
 	clipsRepo := core.ClipsOnlyRepo
-	scriptsRepo := scripts.NewScriptRepository(dbs.main.DB)
+	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
 	imageRepo := sqlite.NewImagesRepository(dbs.main.DB)
 
 	// YouTube Lifecycle & Video Pipeline
@@ -692,6 +696,44 @@ func composeIntegration(
 	jobsDispatcher := appjobs.NewDispatcher()
 	jobsService := appjobs.NewService(jobsRepo, jobsDispatcher, log)
 
+	// Create domain job.Service facade wrapping appjobs.Service so that
+	// consumers expecting *job.Service (realtime, scriptpkg, scheduler, artlist)
+	// can still wire through the delegate-fn struct pattern.
+	jobServiceFacade := job.NewUnwiredService()
+	jobServiceFacade.EnqueueFn = func(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+		return jobsService.Enqueue(ctx, &appjobs.EnqueueRequest{
+			Type:          req.Type,
+			Project:       req.Project,
+			VideoName:     req.VideoName,
+			Payload:       req.Payload,
+			Priority:      req.Priority,
+			MaxRetries:    req.MaxRetries,
+			ActiveKey:     req.ActiveKey,
+			CorrelationID: req.CorrelationID,
+		})
+	}
+	jobServiceFacade.GetFn = jobsService.Get
+	jobServiceFacade.CancelFn = jobsService.Cancel
+	jobServiceFacade.ListFn = func(ctx context.Context, filter job.Filter) ([]*job.Job, error) {
+		jobs, err := jobsService.List(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]*job.Job, len(jobs))
+		for i := range jobs {
+			result[i] = &jobs[i]
+		}
+		return result, nil
+	}
+	jobServiceFacade.IsTerminalFn = func(status job.Status) bool { return status.IsTerminal() }
+	jobServiceFacade.SetRegisterHandler(func(jobType string, handler any) error {
+		h, ok := handler.(appjobs.HandlerFunc)
+		if !ok {
+			return fmt.Errorf("job.Service.RegisterHandler: handler must be appjobs.HandlerFunc, got %T", handler)
+		}
+		return jobsService.RegisterHandler(jobType, h)
+	})
+
 	// Register Job Handlers
 	catalogSync.RegisterHandler(jobsService)
 	catalogSync.RegisterDriveFolderSyncHandler(jobsService)
@@ -742,7 +784,7 @@ func composeIntegration(
 	// ── Real-time Matching Service ───────────────────────────────────
 	var realtimeSvc *realtime.Service
 	if cfg.VectorSearch.Enabled && cfg.VectorSearch.RealtimeEnabled && core.VectorSvc != nil {
-		realtimeSvc = composeRealtimeService(ctx, cfg, log, core.VectorSvc, core.ClipsOnlyRepo, outboxEventsRepo, jobsService)
+		realtimeSvc = composeRealtimeService(ctx, cfg, log, core.VectorSvc, core.ClipsOnlyRepo, outboxEventsRepo, jobServiceFacade)
 	}
 
 	// ── Books API Handler ──────────────────────────────────────────────
@@ -755,16 +797,21 @@ func composeIntegration(
 	memorySvc := gemmamemory.NewService(memoryRepo, log)
 	log.Info("Gemma Memory Gate service initialized")
 
-	engine := scriptcore.NewEngine(core.ScriptGen, memorySvc, mediaDomain.ScriptsRepo, log)
+	// Create adapter so the concrete sqlitescripts.ScriptRepository can be used
+	// as a scripts.ScriptRepository interface by the engine, script flow handler,
+	// and batch service.
+	scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(mediaDomain.ScriptsRepo)
+
+	engine := scriptcore.NewEngine(core.ScriptGen, memorySvc, scriptsRepoAdapter, log)
 	scriptFlowHandler := scriptpkg.NewScriptFlowHandler(
 		core.ScriptGen, engine, mediaDomain.ImageService, realtimeSvc, assocService,
 		mediaDomain.VoiceoverService, core.AssetTreeService, core.DocClient, core.DriveUploader,
-		jobsService, mediaDomain.ScriptsRepo, memorySvc,
+		jobServiceFacade, scriptsRepoAdapter, memorySvc,
 		cfg.Drive.ScriptsGenFolder(), cfg, log,
 	)
 
 	// ── Batch Service ───────────────────────────────────────────────────
-	batchSvc := batchpkg.NewBatchService(cfg, log, core.ScriptGen, engine, core.DocClient, mediaDomain.VoiceoverService, mediaDomain.ScriptsRepo)
+	batchSvc := batchpkg.NewBatchService(cfg, log, core.ScriptGen, engine, core.DocClient, mediaDomain.VoiceoverService, scriptsRepoAdapter)
 	scriptFlowHandler.SetBatchService(batchSvc)
 
 	// ── Curation Service ───────────────────────────────────────────────
@@ -773,7 +820,7 @@ func composeIntegration(
 
 	// ── ClipSourceBuilder (Clip→Script + Catalog→Script) ───────────────
 	wireScriptFlowExtras(scriptFlowHandler, core.OllamaClient, core.VectorSvc, core.ClipsOnlyRepo, engine, cfg, log)
-	scriptFlowHandler.RegisterJobHandlers(jobsService)
+	scriptFlowHandler.RegisterJobHandlers(jobServiceFacade)
 
 	// ── Auto-Tagging Service ───────────────────────────────────────────
 	autotagSvc := autotag.NewService(dbs.main.DB, core.AssetRepo, core.VLMClient, log)
@@ -797,7 +844,7 @@ func composeIntegration(
 	}
 
 	// ── Lifecycle Scheduler ────────────────────────────────────────────
-	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, jobsService, log)
+	lifecycleScheduler := scheduler.NewLifecycleScheduler(cfg, jobServiceFacade, log)
 	concurrent.SafeGo("lifecycle-scheduler", func() { lifecycleScheduler.Start(ctx) })
 
 	// ── Outbox Events Pool (PR5 — canonical outbox for async events) ───
@@ -896,6 +943,7 @@ func composeIntegration(
 		assocService:       assocService,
 		jobsRepo:           jobsRepo,
 		jobsService:        jobsService,
+		jobServiceFacade:   jobServiceFacade,
 		jobsDispatcher:     jobsDispatcher,
 		memoryRepo:         memoryRepo,
 		mediaProcessor:     core.MediaProcessor,

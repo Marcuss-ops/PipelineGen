@@ -26,11 +26,13 @@ import (
 // real implementation is available; until then every method returns
 // ErrNotWired so mis-wiring is loud during development.
 type Service struct {
-	EnqueueFn    func(ctx context.Context, req *EnqueueRequest) (*Job, error)
-	GetFn        func(ctx context.Context, id string) (*Job, error)
-	CancelFn     func(ctx context.Context, id string) error
-	ListFn       func(ctx context.Context, filter Filter) ([]*Job, error)
-	IsTerminalFn func(status Status) bool
+	EnqueueFn          func(ctx context.Context, req *EnqueueRequest) (*Job, error)
+	GetFn              func(ctx context.Context, id string) (*Job, error)
+	CancelFn           func(ctx context.Context, id string) error
+	ListFn             func(ctx context.Context, filter Filter) ([]*Job, error)
+	IsTerminalFn       func(status Status) bool
+	RegisterHandlerFn  func(jobType string, handler any) error
+	ListEventsFn       func(ctx context.Context, jobID string) ([]Event, error)
 }
 
 // ErrNotWired is the typed sentinel returned by Service methods when
@@ -130,6 +132,40 @@ func (s *Service) IsTerminal(status Status) bool {
 		return status.IsTerminal()
 	}
 	return s.IsTerminalFn(status)
+}
+
+// SetRegisterHandler wires the handler registration delegate.
+func (s *Service) SetRegisterHandler(fn func(jobType string, handler any) error) *Service {
+	if s == nil {
+		s = NewUnwiredService()
+	}
+	s.RegisterHandlerFn = fn
+	return s
+}
+
+// SetListEvents wires the event listing delegate.
+func (s *Service) SetListEvents(fn func(ctx context.Context, jobID string) ([]Event, error)) *Service {
+	if s == nil {
+		s = NewUnwiredService()
+	}
+	s.ListEventsFn = fn
+	return s
+}
+
+// ListEvents lists events for a job.
+func (s *Service) ListEvents(ctx context.Context, jobID string) ([]Event, error) {
+	if s == nil || s.ListEventsFn == nil {
+		return nil, fmt.Errorf("%w (job_id=%s)", ErrNotWired, jobID)
+	}
+	return s.ListEventsFn(ctx, jobID)
+}
+
+// RegisterHandler registers a handler for the given job type.
+func (s *Service) RegisterHandler(jobType string, handler any) error {
+	if s == nil || s.RegisterHandlerFn == nil {
+		return fmt.Errorf("%w (job_type=%s)", ErrNotWired, jobType)
+	}
+	return s.RegisterHandlerFn(jobType, handler)
 }
 
 // IsWired reports whether the orchestrator has injected a real impl.

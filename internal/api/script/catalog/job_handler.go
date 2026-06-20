@@ -7,8 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -35,7 +36,7 @@ func NewService(
 }
 
 // HandleCatalogScriptGenerateJob processes a background script.generate_from_catalog job.
-func (s *Service) HandleCatalogScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleCatalogScriptGenerateJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("handling script.generate_from_catalog job", zap.String("job_id", job.ID))
 
 	clipSvc := s.clipSourceBuilder

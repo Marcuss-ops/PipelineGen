@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 

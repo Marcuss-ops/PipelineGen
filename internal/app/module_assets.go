@@ -39,7 +39,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps, artlist
 		driveCleanupSvc = drivecleanup.NewService()
 	}
 	deletionSvc := media.NewDeletionService(coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.VoiceoverRepo, coreDeps.ImageRepo, driveUploader, coreDeps.AssetTreeService, coreDeps.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, artlistSvc, youtubeSvc, voiceoverSvc, voiceoverSync, jobsSvc, catalogRepo, assetIndexSvc, coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.ClipsRepo, driveCleanupSvc, folderMemSvc, coreDeps.AssetTreeService, driveUploader, coreDeps.MediaProcessor, deletionSvc, coreDeps.CatalogSyncService, maintenanceSvc, log)
+	handler := sourcesapi.NewSourcesHandler(cfg, artlistSvc, youtubeSvc, voiceoverSvc, voiceoverSync, coreDeps.JobServiceFacade, catalogRepo, assetIndexSvc, coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.ClipsRepo, driveCleanupSvc, folderMemSvc, coreDeps.AssetTreeService, driveUploader, coreDeps.MediaProcessor, deletionSvc, coreDeps.CatalogSyncService, maintenanceSvc, log)
 	if coreDeps.VoiceoverRepo != nil {
 		handler.SetVoiceoverRepo(coreDeps.VoiceoverRepo)
 	}

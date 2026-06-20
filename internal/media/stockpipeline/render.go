@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	platform "github.com/Marcuss-ops/PipelineGen/pkg/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 )
 
@@ -259,7 +259,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 	}
 
 	s.log.Info("rendering complex chunk with ffmpeg", zap.Int("chunk", chunkIdx), zap.String("output_path", outputPath))
-	_, err = platform.Run(ctx, s.ffmpegProc.Path(), args, platform.ExecOptions{
+	_, err = process.Run(ctx, s.ffmpegProc.Path(), args, process.Options{
 		Timeout: 20 * time.Minute,
 	})
 	if err != nil {

@@ -11,8 +11,9 @@ import (
 
 	"go.uber.org/zap"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -52,7 +53,7 @@ func NewService(
 }
 
 // HandleCurateJob processes a background script.curate job.
-func (s *Service) HandleCurateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleCurateJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("handling script.curate job", zap.String("job_id", job.ID))
 
 	curator := s.mediaCurator

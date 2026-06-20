@@ -12,14 +12,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	svcjobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	_ "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/monitor"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
@@ -33,9 +36,9 @@ import (
 type backgroundJobs struct {
 	channelMonitor    *monitor.ChannelMonitor
 	driveSyncSchedule *scheduler.DriveSyncScheduler
-	jobRunner         *svcjobs.Runner
-	jobScanner        *svcjobs.Scanner
-	scriptsRepo       *scripts.ScriptRepository
+	jobRunner         *appjobs.Runner
+	jobScanner        *sqlitejobs.Scanner
+	scriptsRepo       *sqlitescripts.ScriptRepository
 }
 
 func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases, svcs *services, log *zap.Logger, mode string) *backgroundJobs {
@@ -55,8 +58,8 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 		zap.Bool("scheduler", runScheduler),
 		zap.Bool("maintenance", runMaintenance))
 
-	var jobRunner *svcjobs.Runner
-	var jobScanner *svcjobs.Scanner
+	var jobRunner *appjobs.Runner
+	var jobScanner *sqlitejobs.Scanner
 	var channelMon *monitor.ChannelMonitor
 	var driveSyncSched *scheduler.DriveSyncScheduler
 
@@ -71,25 +74,25 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 			if leaseTTL <= 0 {
 				leaseTTL = 5 * time.Minute
 			}
-			runnerConfig := svcjobs.RunnerConfig{
+			runnerConfig := appjobs.RunnerConfig{
 				Workers:   workers,
 				PollEvery: 2 * time.Second,
 				LeaseTTL:  leaseTTL,
 				JobTypes:  nil, // all types
 			} // The concrete repo now directly implements job.Repository (PR4).
-			jobRunner = svcjobs.NewRunner(svcs.jobsRepo, svcs.jobsDispatcher, log, runnerConfig)
+			jobRunner = appjobs.NewRunner(svcs.jobsRepo, svcs.jobsDispatcher, log, runnerConfig)
 			// Job runner is NOT started here — it will be started in WireServices
 			// after WireRegistry completes and all job handlers are registered.
 			// See startJobRunner() for the actual start call.
 			log.Info("Job runner created", zap.Int("workers", runnerConfig.Workers))
 
-			jobScanner = svcjobs.NewScanner(svcs.jobsRepo, log)
+			jobScanner = sqlitejobs.NewScanner(svcs.jobsRepo, log)
 			concurrent.SafeGo("job-scanner", func() { jobScanner.Start(ctx, 5*time.Minute) })
 			log.Info("Job scanner started")
 
 			// Refresh queue / oldest-pending / stale-assets gauges every 30s so
 			// Prometheus has fresh data instead of leaving the gauges at zero.
-			svcjobs.StartMetricsRefresher(ctx, svcs.jobsRepo, 30*time.Second, log)
+			appjobs.StartMetricsRefresher(ctx, svcs.jobsRepo, 30*time.Second, log)
 		}
 	}
 
@@ -162,8 +165,8 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 					case <-time.After(2 * time.Minute):
 					}
 					for {
-						_, err := svcs.jobsService.Enqueue(ctx, &svcjobs.EnqueueRequest{
-							Type:     svcjobs.JobTypeSystemCleanup,
+					_, err := svcs.jobsService.Enqueue(ctx, &appjobs.EnqueueRequest{
+						Type:     "system.cleanup",
 							Priority: 5,
 							Payload: map[string]any{
 								"label":  label,
@@ -303,7 +306,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 // startResearchCacheSweeper deletes research_cache rows whose last_used is
 // older than 30 days. Runs every 6 hours; logs a warning on error. The
 // short initial delay avoids contention during server bootstrap.
-func startResearchCacheSweeper(ctx context.Context, repo *scripts.ScriptRepository, log *zap.Logger) {
+func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRepository, log *zap.Logger) {
 	const (
 		initialDelay = 30 * time.Second
 		interval     = 6 * time.Hour

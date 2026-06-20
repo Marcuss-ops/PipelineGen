@@ -43,7 +43,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) 
 	)
 	svc.SetMetadataWriter(metaWriter)
 	log.Info("metadata writer wired into stock pipeline")
-	handler := sources.NewStockHandler(svc, coreDeps.JobsService, log)
+	handler := sources.NewStockHandler(svc, coreDeps.JobServiceFacade, log)
 	mod := sources.NewStockPipelineModule(cfg, log, handler)
 	svc.RegisterHandler(coreDeps.JobsService)
 	return &StockPipelineWiring{Handler: handler, Module: mod, Service: svc}, nil

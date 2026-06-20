@@ -67,10 +67,9 @@ func (s *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRe
 		"failed_chapters":      rec.failedChapters,
 		"failed_chapter_count": rec.failedChapterCount,
 	}
-	metadataJSON, marshalErr := json.Marshal(metadata)
+	_, marshalErr := json.Marshal(metadata)
 	if marshalErr != nil {
 		s.log.Warn("failed to marshal batch metadata", zap.Error(marshalErr))
-		metadataJSON = []byte("{}")
 	}
 
 	version := 1
@@ -78,11 +77,6 @@ func (s *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRe
 		s.log.Warn("failed to compute batch version, falling back to 1", zap.Error(versionErr))
 	} else {
 		version = nextVersion
-	}
-
-	ollamaBaseURL := ""
-	if s.cfg != nil {
-		ollamaBaseURL = s.cfg.External.OllamaURL
 	}
 
 	// Clean markdown artifacts from each section so DB content is consistent
@@ -104,9 +98,6 @@ func (s *BatchService) saveBatchScript(ctx context.Context, req *GenerateBatchRe
 		Status:         "completed",
 		NarrativeText:  rec.mergedScript,
 		FullDocument:   rec.mergedScript,
-		MetadataJSON:   string(metadataJSON),
-		ModelUsed:      req.Model,
-		OllamaBaseURL:  ollamaBaseURL,
 		Version:        version,
 	}, rec.sections, nil)
 	if saveErr != nil {

@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -78,7 +78,7 @@ func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
 		}
 		h.log.Info("enqueuing async lesson generate job", zap.String("title", req.Title))
 		api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
-			Type: job.TypeLessonsProcess,
+			Type: jobs.TypeLessonsProcess,
 			Payload: map[string]any{
 				"source_text":     req.SourceText,
 				"title":           req.Title,
@@ -159,11 +159,11 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 	}
 
 	pag := api.ParsePagination(c, 20, 1000)
-	jobType := job.TypeLessonsProcess
+	jobType := jobs.TypeLessonsProcess
 
-	filter := job.Filter{
+	filter := jobs.Filter{
 		Type:   &jobType,
-		job.Status: (*job.job.Status)(api.ParseJobStatusFilter(c)),
+		Status: (*jobs.Status)(api.ParseJobStatusFilter(c)),
 		Limit:  pag.Limit,
 		Offset: pag.Offset,
 	}
@@ -175,7 +175,14 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 		return
 	}
 
-	api.ListJobsResponse(c, api.BuildJobSummaries(jobsList))
+	// Dereference []*job.Job → []job.Job for BuildJobSummaries
+	jobVals := make([]jobs.Job, len(jobsList))
+	for i, j := range jobsList {
+		if j != nil {
+			jobVals[i] = *j
+		}
+	}
+	api.ListJobsResponse(c, api.BuildJobSummaries(jobVals))
 }
 
 // processAsync enqueues a background job for lesson generation.

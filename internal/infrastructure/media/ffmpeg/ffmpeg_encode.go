@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
@@ -85,7 +85,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	args = append(args, "-vsync", "cfr")
 	args = append(args, output)
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 15 * time.Minute,
 	})
 	return err
@@ -143,7 +143,7 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 		output,
 	)
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})
 	return err
@@ -198,7 +198,7 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	args = append(args, "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-vsync", "cfr")
 	args = append(args, output)
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})
 	return err
@@ -287,7 +287,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		args = append(args, j.Output)
 	}
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 15 * time.Minute,
 	})
 	return err
@@ -359,7 +359,7 @@ func (p *Processor) ApplyWatermark(ctx context.Context, input, output string, op
 		output,
 	}
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 5 * time.Minute,
 	})
 	return err

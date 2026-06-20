@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -174,21 +173,22 @@ func buildTextOnlyScriptPlan(
 		title = topic
 	}
 
-	plan := scripts.NewPlan()
-	plan.Title = title
-	plan.Topic = topic
-	plan.Language = language
-	plan.Tone = tone
-	plan.Model = model
-	plan.Mode = gemmamemory.ModeGenerate
-	plan.UseMemory = !forceRefresh
-	plan.SaveToDB = saveToDB
-	plan.TargetWords = targetWords
-	plan.Prompt = topic
-	plan.SourceText = sourceText
-	plan.Guidelines = guidelines
-	plan.PromptVersion = promptVersion
-	plan.EditorPromptVersion = editorPromptVersion
-	plan.QAPromptVersion = qaPromptVersion
+	plan := &scripts.ScriptGenerationPlan{
+		Title:       title,
+		Topic:       topic,
+		Language:    language,
+		Tone:        tone,
+		Model:       model,
+		Mode:        "generate",
+		UseMemory:   !forceRefresh,
+		SaveToDB:    saveToDB,
+		TargetWords: targetWords,
+		Prompt:      topic,
+		SourceText:  sourceText,
+		Guidelines:  guidelines,
+		PromptVersion:       promptVersion,
+		EditorPromptVersion: editorPromptVersion,
+		QAPromptVersion:     qaPromptVersion,
+	}
 	return plan
 }

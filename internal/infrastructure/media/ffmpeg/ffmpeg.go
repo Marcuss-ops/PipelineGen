@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // ── Processor ───────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ func (p *Processor) CutCopy(ctx context.Context, input, output, start, end strin
 		"-reset_timestamps", "1",
 		output,
 	)
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})
 	return err
@@ -152,12 +152,12 @@ func (p *Processor) MergeInputs(ctx context.Context, inputs []string, output str
 	}
 	if len(inputs) == 1 {
 		// Single input: just copy/normalize
-		_, err := platform.Run(ctx, p.path, []string{
+		_, err := process.Run(ctx, p.path, []string{
 			"-y", "-hide_banner", "-loglevel", "warning",
 			"-i", inputs[0],
 			"-c", "copy",
 			output,
-		}, platform.ExecOptions{Timeout: 10 * time.Minute})
+		}, process.Options{Timeout: 10 * time.Minute})
 		return err
 	}
 
@@ -185,14 +185,14 @@ func (p *Processor) MergeInputs(ctx context.Context, inputs []string, output str
 	}
 	tmpFile.Close()
 
-	_, err = platform.Run(ctx, p.path, []string{
+	_, err = process.Run(ctx, p.path, []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 		"-f", "concat",
 		"-safe", "0",
 		"-i", tmpFile.Name(),
 		"-c", "copy",
 		output,
-	}, platform.ExecOptions{Timeout: 10 * time.Minute})
+	}, process.Options{Timeout: 10 * time.Minute})
 	return err
 }
 
@@ -215,7 +215,7 @@ func ExtractClip(ctx context.Context, ffmpegPath, input, output string, maxDur i
 		output,
 	}
 
-	_, err := platform.Run(ctx, ffmpegPath, args, platform.ExecOptions{
+	_, err := process.Run(ctx, ffmpegPath, args, process.Options{
 		Timeout:        10 * time.Minute,
 		CombinedOutput: true,
 	})
@@ -236,7 +236,7 @@ func RemoveSilence(ctx context.Context, ffmpegPath, input, output string) error 
 		output,
 	}
 
-	_, err := platform.Run(ctx, ffmpegPath, args, platform.ExecOptions{
+	_, err := process.Run(ctx, ffmpegPath, args, process.Options{
 		Timeout:        10 * time.Minute,
 		CombinedOutput: true,
 	})
@@ -256,7 +256,7 @@ func (p *Processor) ExtractFrame(ctx context.Context, input, output string, time
 		output,
 	}
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})
 	return err
@@ -277,7 +277,7 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 		output,
 	}
 
-	_, err := platform.Run(ctx, p.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 15 * time.Minute,
 	})
 	return err

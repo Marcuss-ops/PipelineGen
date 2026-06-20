@@ -18,10 +18,10 @@ type YouTubeClipWiring struct {
 
 // WireYouTubeClip creates the YouTube Clip handler and module.
 func WireYouTubeClip(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*YouTubeClipWiring, error) {
-	handler := ytsources.NewYouTubeClipHandler(coreDeps.YoutubeClipService, log, coreDeps.JobsService)
+	handler := ytsources.NewYouTubeClipHandler(coreDeps.YoutubeClipService, log, coreDeps.JobServiceFacade)
 	var mod module.Module
 	if coreDeps.YoutubeClipService != nil {
-		mod = sources.NewClipsModule(cfg, log, coreDeps.YoutubeClipService, handler, coreDeps.JobsService)
+		mod = sources.NewClipsModule(cfg, log, coreDeps.YoutubeClipService, handler, coreDeps.JobServiceFacade)
 		log.Info("created Clips module")
 		coreDeps.YoutubeClipService.RegisterHandler(coreDeps.JobsService)
 	}

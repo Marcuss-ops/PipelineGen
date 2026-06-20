@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // JobCodec handles conversion between Artlist types and job payload/result maps.
@@ -159,28 +159,28 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 
 // ResponseFromJob converts a domain job.Job to RunTagResponse.
 // (domain job.Result is json.RawMessage, so we unmarshal it first)
-func (c *JobCodec) ResponseFromJob(job *job.Job) *RunTagResponse {
+func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 	resp := &RunTagResponse{
-		OK:        job.Status != job.StatusFailed,
-		RunID:     job.ID,
-		Status:    string(job.Status),
-		Error:     job.Error,
+		OK:        j.Status != job.StatusFailed,
+		RunID:     j.ID,
+		Status:    string(j.Status),
+		Error:     j.Error,
 		Found:     0,
 		Processed: 0,
 		Skipped:   0,
 		Failed:    0,
 	}
-	if job.StartedAt != nil {
-		started := job.StartedAt.Format("2006-01-02T15:04:05Z07:00")
+	if j.StartedAt != nil {
+		started := j.StartedAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.StartedAt = &started
 	}
-	if job.CompletedAt != nil {
-		ended := job.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
+	if j.CompletedAt != nil {
+		ended := j.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.EndedAt = &ended
 	}
-	if job.Payload != nil {
+	if j.Payload != nil {
 		var payload map[string]any
-		if err := json.Unmarshal(job.Payload, &payload); err == nil {
+		if err := json.Unmarshal(j.Payload, &payload); err == nil {
 			if v, ok := payload["term"].(string); ok {
 				resp.Term = v
 			}
@@ -196,9 +196,9 @@ func (c *JobCodec) ResponseFromJob(job *job.Job) *RunTagResponse {
 		}
 	}
 	// domain job.Result is json.RawMessage — unmarshal before indexing
-	if len(job.Result) > 0 {
+	if len(j.Result) > 0 {
 		var result map[string]any
-		if err := json.Unmarshal(job.Result, &result); err == nil {
+		if err := json.Unmarshal(j.Result, &result); err == nil {
 			resp.Found = getIntFromResult(result, "found")
 			resp.Processed = getIntFromResult(result, "processed")
 			resp.Skipped = getIntFromResult(result, "skipped")

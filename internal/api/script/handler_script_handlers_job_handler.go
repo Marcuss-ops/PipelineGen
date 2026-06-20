@@ -6,20 +6,21 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
 )
 
 // RegisterJobHandlers registers the handlers for script jobs
-func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
+func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *job.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(jobservice.JobTypeBatchScriptGenerate, h.HandleBatchScriptGenerateJob)
+		jobsSvc.RegisterHandler(job.TypeBatchScriptGenerate, h.HandleBatchScriptGenerateJob)
 		h.log.Info("registered script.generate_batch job handler")
-		jobsSvc.RegisterHandler(jobservice.JobTypeClipScriptGenerate, h.HandleClipScriptGenerateJob)
+		jobsSvc.RegisterHandler(job.TypeClipScriptGenerate, h.HandleClipScriptGenerateJob)
 		h.log.Info("registered script.generate_from_clips job handler")
 		if h.catalogJobService != nil {
-			jobsSvc.RegisterHandler(jobservice.JobTypeCatalogScriptGenerate, h.catalogJobService.HandleCatalogScriptGenerateJob)
+			jobsSvc.RegisterHandler(job.TypeCatalogScriptGenerate, h.catalogJobService.HandleCatalogScriptGenerateJob)
 			h.log.Info("registered script.generate_from_catalog job handler")
 		}
 		if h.curationJobService != nil {
@@ -30,7 +31,7 @@ func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *jobservice.Service) {
 }
 
 // HandleBatchScriptGenerateJob processes the background job for script.generate_batch
-func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_batch job", zap.String("job_id", job.ID))
 	var req batch.GenerateBatchRequest
 	if err := json.Unmarshal(job.Payload, &req); err != nil {

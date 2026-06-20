@@ -59,7 +59,7 @@ func TestBuildFreshVariantPrompt_HandlesEmptyExact(t *testing.T) {
 }
 
 func TestBuildEnrichedPrompt_CapsOldOutputsAndTotalSize(t *testing.T) {
-	// 6 hits with long summaries, but only 2 past scripts shown (MaxOldOutputs=2).
+	// 6 hits with long summaries, but only 2 past scripts shown (MaxMemories=2).
 	// Need MaxMemoryChars low enough that the output exceeds it.
 	// 2 past scripts × ~170 chars + preamble ~200 + user_request ~60 = ~430 chars.
 	// Set MaxMemoryChars=300 to force truncation.
@@ -79,7 +79,7 @@ func TestBuildEnrichedPrompt_CapsOldOutputsAndTotalSize(t *testing.T) {
 		Prompt:   "some prompt",
 		Language: "en",
 		Policy: MemoryPolicy{
-			MaxOldOutputs:  2,
+			MaxMemories:  2,
 			MaxMemoryChars: 300,
 		},
 	}
@@ -97,7 +97,7 @@ func TestBuildEnrichedPrompt_CapsOldOutputsAndTotalSize(t *testing.T) {
 	}
 	bullets := strings.Count(section, "\n- [script_structure]")
 	if bullets != 2 {
-		t.Fatalf("expected exactly %d script_structure bullets in RELEVANT PAST SCRIPTS, got %d", req.Policy.MaxOldOutputs, bullets)
+		t.Fatalf("expected exactly %d script_structure bullets in RELEVANT PAST SCRIPTS, got %d", req.Policy.MaxMemories, bullets)
 	}
 	if !strings.Contains(got, "memory context truncated") {
 		t.Fatalf("expected truncation marker when prompt exceeds cap, got:\n%s", got)

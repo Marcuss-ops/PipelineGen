@@ -8,7 +8,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // SyncDriveFolderRequest is the JSON body for POST /api/media/sync-drive-folder.
@@ -71,7 +73,7 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 	)
 
 	// Marshal payload for job
-	payload := jobservice.DriveFolderSyncPayload{
+	payload := appjobs.DriveFolderSyncPayload{
 		DriveFolderID: folderID,
 		Source:        source,
 		Name:          req.Name,

@@ -146,6 +146,16 @@ func BuildFreshVariantPrompt(basePrompt string, output *GenerationOutput) string
 	return basePrompt
 }
 
+// EvictExactOutputs removes cache entries whose titles match the given
+// list. Returns the number of deleted rows.
+//
+// STUB: the cache table is empty until the real implementation lands.
+func (s *Service) EvictExactOutputs(ctx context.Context, titles []string) (int64, error) {
+	_ = ctx
+	_ = titles
+	return 0, nil
+}
+
 // SweepAll is a no-op. The background gemma-memory sweeper (every 6h)
 // will report zero deletions.
 //

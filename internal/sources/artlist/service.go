@@ -7,6 +7,7 @@ import (
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
@@ -14,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 )
 
@@ -151,11 +152,11 @@ func (s *Service) SearchClips(ctx context.Context, term string) []*assets.Asset 
 }
 
 // HandleJob gestisce un job dalla coda.
-func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
-	return s.jobAdapter.HandleJob(ctx, job, tools)
+func (s *Service) HandleJob(ctx context.Context, j *jobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
+	return s.jobAdapter.HandleJob(ctx, j, tools)
 }
 
 // GetJobByRunID ottiene un job per run ID.
-func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*job.Job, error) {
+func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*jobs.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
 }
