@@ -153,6 +153,24 @@
         - "internal/infrastructure/jobs/local/broker.go — internal/jobs deleted-path replaced by internal/application/jobs (Store/Command types as appjobs.*, ErrLeaseLost as appjobs.ErrLeaseLost); StatusCancelled routed to domainjob.StatusCancelled since application/jobs does not re-export the Status* constants"
         - "internal/infrastructure/remote/jobbrokerclient/client.go — transitive dep of cmd/worker (NOT in user spec, but sits in same migration wave and breaks cmd/worker compile); HTTP client migrated to appjobs.* types symmetric to handler.go Broker interface"
         - "internal/api/workers/handler.go — workerassets deleted-path replaced by internal/application/jobs/assets (UploadResponse lives there as assets.UploadResponse); Broker interface and request structs migrated to appjobs.* to match the local broker implementation"
+    - id: 5_PR3
+      title: "Jobs canonical — remove application-layer type aliases"
+      status: in_progress
+      description: |
+        Removes the three zero-copy forwarding type aliases from
+        internal/application/jobs/types.go (Store, StartJob, RequeueResult)
+        and migrates the single known consumer (internal/infrastructure/jobs/local/broker.go)
+        to import domain/job directly. Sets the precedent for Wave 16
+        zero-redundancy strict mode. Application-layer Runner.NewRunner
+        is re-typed to take the canonical job.Store interface. SQLiteStore
+        alias in internal/application/jobs/store.go is intentionally
+        deferred to Wave 16 (single solid call site, low blast radius,
+        but architecturally equivalent — not dropping here to keep PR
+        surface minimal).
+      exit_gate: "rg '^\\s*type\\s+(Store|StartJob|RequeueResult)\\s*=' internal/application/jobs/types.go --type go returns zero."
+      fixed_files:
+        - internal/application/jobs/types.go
+        - internal/infrastructure/jobs/local/broker.go
   from:
     - internal/jobs
     - internal/outboxhandlers
