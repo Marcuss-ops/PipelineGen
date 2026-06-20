@@ -3,14 +3,16 @@ package providers
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"sync"
 )
 
 // Sentinel errors for the registry.
 var (
-	// ErrAlreadyRegistered is returned when a provider with the same
-	// Name is already present. The returned error is wrapped with
-	// %w so errors.Is(err, ErrAlreadyRegistered) matches.
+	// ErrAlreadyRegistered is returned when a provider with the
+	// same Name is already present. The returned error is wrapped
+	// with %w so errors.Is(err, ErrAlreadyRegistered) matches.
 	ErrAlreadyRegistered = errors.New("providers: provider already registered")
 
 	// ErrFrozen is returned when Register is called after Freeze.
@@ -19,16 +21,23 @@ var (
 	// ErrNilProvider is returned when Register is called with a nil
 	// Provider interface value.
 	ErrNilProvider = errors.New("providers: nil provider")
+
+	// ErrEmptyName is returned when Register is called with a
+	// provider whose Name() returns "".
+	ErrEmptyName = errors.New("providers: provider name is empty")
 )
 
 // Registry is a one-shot, freezeable provider catalog.
-// Register/Freeze are expected to run once during composition root
-// wiring; after Freeze() any call to Register() returns ErrFrozen.
+// Register/Freeze run once during composition root wiring; after
+// Freeze() any call to Register() returns ErrFrozen.
 //
 // Concurrency: writes use sync.RWMutex.Lock; lookups (Get, All,
 // ByCapability, IsFrozen) use RLock and are effectively wait-free
-// after Freeze. Freeze is naturally idempotent: concurrent calls
+// after Freeze. Freeze is naturally idempotent — concurrent calls
 // converge on the same final state with no data dependency.
+//
+// Determinism: All() and ByCapability() return slices sorted by
+// Name() so callers can rely on a stable iteration order.
 type Registry struct {
 	mu      sync.RWMutex
 	entries map[string]Provider
@@ -41,19 +50,34 @@ func NewRegistry() *Registry {
 }
 
 // Register adds a provider under its Name(). Returns:
-//   - ErrNilProvider        if p is nil;
+//   - ErrNilProvider        if p is the zero Provider value;
+//   - ErrEmptyName          if p.Name() returns "";
 //   - ErrFrozen             if the registry is already frozen;
 //   - ErrAlreadyRegistered  if a provider with the same Name exists.
+//
+// The ErrEmptyName check runs before Lock to short-circuit malformed
+// providers without acquiring the registry's mutex.
 func (r *Registry) Register(p Provider) error {
 	if p == nil {
 		return ErrNilProvider
+	}
+	// Detect typed-nil interfaces: `var p Provider = someNilPtr`
+	// produces a non-nil interface whose underlying pointer is nil;
+	// calling a method on it would panic. The Kind==Ptr guard
+	// short-circuits non-pointer kinds where IsNil would itself
+	// panic.
+	if rv := reflect.ValueOf(p); rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return ErrNilProvider
+	}
+	name := p.Name()
+	if name == "" {
+		return ErrEmptyName
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.frozen {
 		return ErrFrozen
 	}
-	name := p.Name()
 	if _, exists := r.entries[name]; exists {
 		return fmt.Errorf("%w: %q", ErrAlreadyRegistered, name)
 	}
@@ -61,9 +85,9 @@ func (r *Registry) Register(p Provider) error {
 	return nil
 }
 
-// Freeze locks the registry. Idempotent: safe to call multiple
-// times. After Freeze, Register returns ErrFrozen and lookups
-// become effectively wait-free.
+// Freeze locks the registry. Idempotent: safe to call multiple times.
+// After Freeze, Register returns ErrFrozen and lookups become
+// effectively wait-free.
 func (r *Registry) Freeze() {
 	r.mu.Lock()
 	r.frozen = true
@@ -80,7 +104,7 @@ func (r *Registry) Get(name string) (Provider, bool) {
 }
 
 // ByCapability returns every registered provider advertising the
-// given capability. Order is not guaranteed.
+// given capability, sorted by Name() for deterministic iteration.
 func (r *Registry) ByCapability(cap Capability) []Provider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -93,11 +117,12 @@ func (r *Registry) ByCapability(cap Capability) []Provider {
 			}
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
 	return out
 }
 
-// All returns a snapshot of every registered provider. The returned
-// slice and its elements must not be mutated by the caller.
+// All returns every registered provider, sorted by Name() for
+// deterministic iteration.
 func (r *Registry) All() []Provider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -105,6 +130,7 @@ func (r *Registry) All() []Provider {
 	for _, p := range r.entries {
 		out = append(out, p)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
 	return out
 }
 
