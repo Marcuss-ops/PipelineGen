@@ -22,8 +22,6 @@
   artifacts:
     - architecture/ownership.yaml
     - architecture/migration.yaml
-    - architecture/packages-before.txt
-    - architecture/imports-before.txt
     - scripts/archcheck/baseline.json
   exit_gate: "All artifacts present; archcheck captures baseline.json."
 
@@ -397,8 +395,6 @@
     - go test -race ./...
     - go run ./scripts/archcheck
     - dupl -t 100 ./internal/... ./pkg/...
-  structural_diff:
-    - "Compare-Object architecture/packages-before.txt architecture/packages-after.txt"
-    - "Compare-Object architecture/imports-before.txt architecture/imports-after.txt"
+  structural_diff: []  # referenced files removed; see cleanup-wave-05-pr1-land followup dangle-ref cleanup
   blocked_by: ["16"]
   tag: architecture-clean-v1
