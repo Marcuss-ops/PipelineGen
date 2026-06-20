@@ -21,7 +21,7 @@ func TestValidateGenerateBatchRequestRejectsInvalidRequest(t *testing.T) {
 		},
 	}
 
-	errs := ValidateGenerateBatchRequest(req, "", map[string]struct{}{"en": {}, "it": {}})
+	errs := scripts.ValidateGenerateBatchRequest(req, "", map[string]struct{}{"en": {}, "it": {}})
 	if len(errs) == 0 {
 		t.Fatal("expected validation errors")
 	}
@@ -68,7 +68,7 @@ func TestValidateGenerateBatchRequestAcceptsEmptyChannelIDAndSourceText(t *testi
 		},
 	}
 
-	errs := ValidateGenerateBatchRequest(req, "folder-abc", map[string]struct{}{"en": {}, "it": {}})
+	errs := scripts.ValidateGenerateBatchRequest(req, "folder-abc", map[string]struct{}{"en": {}, "it": {}})
 	for _, err := range errs {
 		if strings.Contains(err, "channel_id") {
 			t.Errorf("channel_id should not be a validation error, got: %s", err)
