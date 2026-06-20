@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
@@ -33,13 +34,23 @@ var _ providers.SearchProvider = (*Adapter)(nil)
 // without a non-nil underlying artlist.Service.
 var ErrSourceNotWired = errors.New("artlist adapter: source not wired")
 
-// Adapter wraps artlist.Service and presents it as a SearchProvider.
-// It does NOT introduce new search semantics: it translates the
-// canonical providers.SearchRequest into the service's native
-// request at the boundary, and translates the SearchResponse back
-// into canonical providers.Candidate values.
+// searcher is the minimal internal interface the adapter depends on
+// for Search. Defining it private to this package lets the unit tests
+// inject a stub without constructing a full *artlistsrc.Service.
+//
+// *artlistsrc.Service satisfies searcher via its public Search method.
+type searcher interface {
+	Search(ctx context.Context, req *artlistsrc.SearchRequest) (*artlistsrc.SearchResponse, error)
+}
+
+// Adapter wraps an artlist searcher (production: *artlistsrc.Service)
+// and presents it as a SearchProvider. It does NOT introduce new
+// search semantics: it translates the canonical
+// providers.SearchRequest into the service's native request at the
+// boundary, and translates the SearchResponse back into canonical
+// providers.Candidate values.
 type Adapter struct {
-	src *artlistsrc.Service
+	src searcher
 }
 
 // NewAdapter returns an Adapter wrapping the given service. The
@@ -85,8 +96,8 @@ func (a *Adapter) Capabilities() []providers.Capability {
 // canonicalization is the downstream ingest use case's
 // responsibility — this adapter returns raw findings only.
 func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (providers.SearchResult, error) {
-	if a.src == nil {
-		return providers.SearchResult{}, ErrSourceNotWired
+	if err := a.checkWired(); err != nil {
+		return providers.SearchResult{}, err
 	}
 
 	native := &artlistsrc.SearchRequest{
@@ -119,4 +130,19 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 		})
 	}
 	return providers.SearchResult{Candidates: candidates}, nil
+}
+
+// checkWired returns ErrSourceNotWired when the adapter has no
+// usable searcher. Guards against both nil interface and typed-nil
+// pointer (matches the registry's typed-nil convention, consistent
+// with youtube/adapter.go).
+func (a *Adapter) checkWired() error {
+	if a.src == nil {
+		return ErrSourceNotWired
+	}
+	rv := reflect.ValueOf(a.src)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return ErrSourceNotWired
+	}
+	return nil
 }

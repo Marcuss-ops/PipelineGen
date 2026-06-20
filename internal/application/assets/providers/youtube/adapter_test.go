@@ -10,6 +10,8 @@ import (
 	youtubesrc "github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 )
 
 // ── Test double ─────────────────────────────────────────────────────
@@ -42,6 +44,144 @@ func (f *fakeSearcher) SearchByTopicWithFilter(
 }
 
 func newAdapterWith(s searcher) *Adapter { return &Adapter{src: s, fetcher: nil} }
+
+func newFetchAdapterWith(s searcher, f fetcher) *Adapter { return &Adapter{src: s, fetcher: f} }
+
+// ── Fetch test double ───────────────────────────────────────────────
+
+type fakeFetcher struct {
+	lastReq videomuscles.YouTubeCutRequest
+	result   *videomuscles.YouTubeCutResult
+	err      error
+}
+
+func (f *fakeFetcher) DownloadAndCut(_ context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error) {
+	f.lastReq = req
+	return f.result, f.err
+}
+
+func TestFetch_NilFetcher_ReturnsError(t *testing.T) {
+	a := &Adapter{src: &fakeSearcher{}, fetcher: nil}
+	_, err := a.Fetch(context.Background(), providers.FetchRequest{
+		SourceRef: "https://www.youtube.com/watch?v=abc",
+	})
+	if err == nil {
+		t.Fatal("expected error on nil fetcher")
+	}
+}
+
+func TestFetch_EmptySourceRef_ReturnsError(t *testing.T) {
+	a := newFetchAdapterWith(&fakeSearcher{}, &fakeFetcher{})
+	_, err := a.Fetch(context.Background(), providers.FetchRequest{
+		SourceRef: "",
+	})
+	if err == nil {
+		t.Fatal("expected error on empty SourceRef")
+	}
+}
+
+func TestFetch_FullVideo_UsesSentinelDuration(t *testing.T) {
+	ff := &fakeFetcher{
+		result: &videomuscles.YouTubeCutResult{
+			LocalPath: "/tmp/yt_full.mp4",
+			Metadata: &downloader.YouTubeMetadata{
+				Title:    "Full Video Title",
+				Uploader: "Test Channel",
+				Duration: 300.0,
+			},
+		},
+	}
+	a := newFetchAdapterWith(&fakeSearcher{}, ff)
+	res, err := a.Fetch(context.Background(), providers.FetchRequest{
+		AssetID:   "test-full",
+		SourceRef: "https://www.youtube.com/watch?v=abc",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.LocalPath != "/tmp/yt_full.mp4" {
+		t.Errorf("LocalPath=%q", res.LocalPath)
+	}
+	if res.Asset.Name != "Full Video Title" {
+		t.Errorf("Asset.Name=%q", res.Asset.Name)
+	}
+	if ff.lastReq.Duration != 86400 {
+		t.Errorf("expected sentinel Duration=86400 for full video, got %v", ff.lastReq.Duration)
+	}
+	if ff.lastReq.Start != 0 {
+		t.Errorf("expected Start=0 for full video, got %v", ff.lastReq.Start)
+	}
+}
+
+func TestFetch_SegmentExtraction_SetsBounds(t *testing.T) {
+	ff := &fakeFetcher{
+		result: &videomuscles.YouTubeCutResult{
+			LocalPath: "/tmp/yt_segment.mp4",
+			Metadata: &downloader.YouTubeMetadata{
+				Title:    "Segment Title",
+				Duration: 60.0,
+			},
+		},
+	}
+	a := newFetchAdapterWith(&fakeSearcher{}, ff)
+	res, err := a.Fetch(context.Background(), providers.FetchRequest{
+		AssetID:      "test-segment",
+		SourceRef:    "https://www.youtube.com/watch?v=abc",
+		SegmentStart: 10 * time.Second,
+		SegmentEnd:   70 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.LocalPath != "/tmp/yt_segment.mp4" {
+		t.Errorf("LocalPath=%q", res.LocalPath)
+	}
+	if ff.lastReq.Start != 10 {
+		t.Errorf("expected Start=10, got %v", ff.lastReq.Start)
+	}
+	if ff.lastReq.Duration != 60 {
+		t.Errorf("expected Duration=60, got %v", ff.lastReq.Duration)
+	}
+}
+
+func TestFetch_NilMetadata_FallsBackToAssetID(t *testing.T) {
+	// Cache hits in the pipeline return Metadata: nil.
+	ff := &fakeFetcher{
+		result: &videomuscles.YouTubeCutResult{
+			LocalPath: "/tmp/yt_cached.mp4",
+			Metadata:  nil,
+		},
+	}
+	a := newFetchAdapterWith(&fakeSearcher{}, ff)
+	res, err := a.Fetch(context.Background(), providers.FetchRequest{
+		AssetID:   "my-asset-id",
+		SourceRef: "https://www.youtube.com/watch?v=abc",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Asset.Name != "my-asset-id" {
+		t.Errorf("expected Asset.Name to fall back to AssetID, got %q", res.Asset.Name)
+	}
+	if res.Asset.Source != "youtube" {
+		t.Errorf("expected Source=youtube, got %q", res.Asset.Source)
+	}
+}
+
+func TestFetch_PropagatesUpstreamError(t *testing.T) {
+	sentinel := errors.New("yt-dlp download failed")
+	ff := &fakeFetcher{err: sentinel}
+	a := newFetchAdapterWith(&fakeSearcher{}, ff)
+	_, err := a.Fetch(context.Background(), providers.FetchRequest{
+		SourceRef: "https://www.youtube.com/watch?v=abc",
+	})
+	if err == nil {
+		t.Fatal("expected error propagating upstream failure")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Errorf("expected errors.Is(err, sentinel) true; got %v", err)
+	}
+}
 
 // ── Tests ──────────────────────────────────────────────────────────
 
