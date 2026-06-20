@@ -6,47 +6,37 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"go.uber.org/zap"
 )
 
 // ── Store / command types ───────────────────────────────────────────────────
 //
-// DTOs are aliases re-exporting canonical sql-jobs types (single home is infra
-// per PR 2 migration plan; zero-copy forwarding so application-layer callers do
-// not need to import internal/infrastructure/.../jobs directly).
-
-// Store is the canonical job persistence contract (alias for the
-// domain.Store interface promoted in PR 1). Worker / claims / service
-// all reference *SQLiteStore via this contract.
-type Store = job.Store
-
-// StartJob is an alias for the canonical sql-jobs StartJob DTO defined in
-// internal/infrastructure/database/sqlite/jobs/repository_commands.go.
-// Aliased in the application layer so callers can write `jobs.StartJob` without
-// importing the infrastructure package (zero-copy forwarding).
-type StartJob = sqljobs.StartJob
-
-// RequeueResult is an alias for the canonical sql-jobs RequeueResult DTO.
-// Single home is in the infrastructure package; this alias prevents the
-// duplicate-struct drift that previously caused confusion about which
-// package's `StartJob` was the canonical one (see PR 2 reviewer blocker).
-type RequeueResult = sqljobs.RequeueResult
+// Wave 5 PR 3 (June 2026): removed the three zero-copy forwarding type
+// aliases formerly aliased here (Store, StartJob, RequeueResult). Callers
+// must now import the canonical home directly:
+//   • jobs.Store                 → domain/job.Store
+//   • jobs.StartJob              → internal/infrastructure/database/sqlite/jobs.StartJob
+//   • jobs.RequeueResult         → internal/infrastructure/database/sqlite/jobs.RequeueResult
+// The single in-tree consumer that switched to direct imports is
+// internal/infrastructure/jobs/local/broker.go. The application-layer
+// Runner/NewRunner are now typed against the canonical job.Store interface.
+// SQLiteStore type alias (in store.go) is intentionally retained and
+// scheduled for removal in Wave 16.
 
 // ── HTTP-layer DTOs ─────────────────────────────────────────────────────
 
 // EnqueueRequest is the HTTP-layer DTO for enqueueing a job.
 // Type uses string for domain compatibility.
 type EnqueueRequest struct {
-	Type          string         `json:"type"`
-	Project       string         `json:"project,omitempty"`
-	VideoName     string         `json:"video_name,omitempty"`
+	Type          string `json:"type"`
+	Project       string `json:"project,omitempty"`
+	VideoName     string `json:"video_name,omitempty"`
 	Payload       any    `json:"payload"`
-	Priority      int            `json:"priority,omitempty"`
-	MaxRetries    int            `json:"max_retries,omitempty"`
-	ActiveKey     string         `json:"active_key,omitempty"`
-	CorrelationID string         `json:"correlation_id,omitempty"`
+	Priority      int    `json:"priority,omitempty"`
+	MaxRetries    int    `json:"max_retries,omitempty"`
+	ActiveKey     string `json:"active_key,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 // JobTools provides callbacks that handlers use to report progress,
@@ -118,14 +108,14 @@ type RunnerConfig struct {
 // Runner manages a pool of Workers. Depends on the domain Repository
 // interface — NOT on the concrete *jobs.Repository.
 type Runner struct {
-	repo       Store
+	repo       job.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
 	workers    []*Worker
 }
 
-func NewRunner(repo Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
+func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
 		dispatcher: dispatcher,

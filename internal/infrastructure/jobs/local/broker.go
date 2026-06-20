@@ -12,11 +12,11 @@ import (
 )
 
 type Broker struct {
-	jobs    appjobs.Store
+	jobs    domainjob.Store
 	workers *sqlite.WorkerNodesRepository
 }
 
-func New(jobs appjobs.Store, workers *sqlite.WorkerNodesRepository) *Broker {
+func New(jobs domainjob.Store, workers *sqlite.WorkerNodesRepository) *Broker {
 	return &Broker{jobs: jobs, workers: workers}
 }
 
@@ -146,7 +146,7 @@ func (b *Broker) ensureLease(ctx context.Context, jobID, workerID, leaseID strin
 		return errors.New("job not found")
 	}
 	if j.WorkerID != workerID || j.LeaseID != leaseID || j.Revision != expectedRevision {
-		return job.ErrLeaseLost
+		return appjobs.ErrLeaseLost
 	}
 	return nil
 }
