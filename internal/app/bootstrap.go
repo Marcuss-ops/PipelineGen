@@ -10,9 +10,8 @@ import (
 	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	booksHandler "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
-	lessonsHandler "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
+	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
@@ -141,9 +140,9 @@ type CoreDeps struct {
 	ScriptEngine       *scriptcore.Engine
 	ScriptFlowHandler  *scriptpkg.ScriptFlowHandler
 	BooksService       *booksService.Service
-	BooksHandler       *booksHandler.BooksHandler
+	BooksHandler       *contentapi.BooksHandler
 	LessonsService     *lessonsService.Service
-	LessonsHandler     *lessonsHandler.LessonsHandler
+	LessonsHandler     *contentapi.LessonsHandler
 	MediaStore         *mediastorage.Store
 	ArtifactService    *artifacts.Service
 

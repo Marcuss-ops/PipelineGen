@@ -1,7 +1,6 @@
-package lessons
+package content
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"net/http"
 	"time"
@@ -9,19 +8,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	lessonsService "github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // LessonsHandler exposes lesson generation endpoints.
+// It is a sub-handler of the consolidated content/ package; routes
+// remain mounted under /api/lessons/* for backward compatibility with
+// existing clients.
 type LessonsHandler struct {
 	svc     *lessonsService.Service
 	jobsSvc *jobs.Service
 	log     *zap.Logger
 }
 
-// NewHandler creates a new lessons handler.
+// NewLessonsHandler creates a new lessons handler.
 func NewLessonsHandler(svc *lessonsService.Service, jobsSvc *jobs.Service, log *zap.Logger) *LessonsHandler {
 	return &LessonsHandler{
 		svc:     svc,
@@ -31,6 +34,9 @@ func NewLessonsHandler(svc *lessonsService.Service, jobsSvc *jobs.Service, log *
 }
 
 // RegisterRoutes registers /api/lessons routes.
+//
+//	POST /api/lessons/generate
+//	GET  /api/lessons/jobs
 func (h *LessonsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/generate", h.GenerateLesson)
 	r.GET("/jobs", h.ListJobs)
@@ -71,7 +77,7 @@ func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
 		return
 	}
 
-	// Async mode: enqueue background job
+	// Async path: enqueue a background job and return immediately.
 	if req.Async {
 		if !api.RequireService(c, h.jobsSvc, "job system") {
 			return
@@ -100,7 +106,7 @@ func (h *LessonsHandler) GenerateLesson(c *gin.Context) {
 		return
 	}
 
-	// Sync mode: process with timeout
+	// Sync path: 30-minute ceiling.
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Minute)
 	defer cancel()
 
@@ -175,7 +181,7 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 		return
 	}
 
-	// Dereference []*job.Job → []job.Job for BuildJobSummaries
+	// Dereference []*job.Job → []job.Job for BuildJobSummaries.
 	jobVals := make([]jobs.Job, len(jobsList))
 	for i, j := range jobsList {
 		if j != nil {
@@ -184,5 +190,3 @@ func (h *LessonsHandler) ListJobs(c *gin.Context) {
 	}
 	api.ListJobsResponse(c, api.BuildJobSummaries(jobVals))
 }
-
-// processAsync enqueues a background job for lesson generation.
