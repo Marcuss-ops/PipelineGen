@@ -52,9 +52,19 @@ vet:
 swagger:
 	swag init -g cmd/server/main.go
 
-# Clean build artifacts
+# Clean build artifacts on the project root.
+# Covers primary Linux/macOS binaries, cross-compiled Windows .exe, test
+# binaries, stale backups, the accidental `nul` sink, coverage reports, and
+# the scratch tmp/ dir.
+# NOTE: Local secrets (credentials.json, token.json, token_full.json) are
+# intentionally NOT removed — they are user-owned runtime data, not build
+# artifacts. Move them to a secure backup if you really must drop them.
 clean:
-	rm -f server
+	rm -f server admin pipelinegen
+	rm -f server.exe admin.exe pipelinegen.exe worker.exe
+	rm -f *.test.exe
+	rm -f nul
+	rm -f *.bak
 	rm -f coverage.out coverage.html
 	rm -rf tmp/
 
