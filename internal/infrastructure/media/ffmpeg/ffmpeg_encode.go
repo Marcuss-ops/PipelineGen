@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
 )
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).

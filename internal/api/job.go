@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -23,7 +24,7 @@ func AsyncJobResponse(c *gin.Context, j *job.Job, message string) {
 		"ok":         true,
 		"async":      true,
 		"job_id":     j.ID,
-		"status":     string(j.job.Status),
+		"status":     string(j.Status),
 		"message":    message + " Poll /api/jobs/" + j.ID + "/full for status.",
 		"status_url": "/api/jobs/" + j.ID + "/full",
 	})
@@ -31,7 +32,7 @@ func AsyncJobResponse(c *gin.Context, j *job.Job, message string) {
 
 // Enqueuer is the minimal interface consumed by EnqueueAsync.
 type Enqueuer interface {
-	Enqueue(ctx context.Context, req *jobs.EnqueueRequest) (*job.Job, error)
+	Enqueue(ctx context.Context, req *appjobs.EnqueueRequest) (*job.Job, error)
 }
 
 // EnqueueInput parameterises EnqueueAsync.
@@ -51,7 +52,7 @@ func EnqueueAsync(c *gin.Context, enqueuer Enqueuer, in *EnqueueInput, message s
 		return false
 	}
 
-	req := &jobs.EnqueueRequest{
+	req := &appjobs.EnqueueRequest{
 		Type:          in.Type,
 		Payload:       in.Payload,
 		Priority:      in.Priority,
@@ -109,16 +110,16 @@ func ParsePagination(c *gin.Context, defaultLimit, maxLimit int) Pagination {
 
 // JobSummary is the standard job summary struct used by /api/*/jobs endpoints.
 type JobSummary struct {
-	ID          string    `json:"id"`
-	Type        string    `json:"type"`
-	job.Status      job.job.Status `json:"status"`
-	Progress    int       `json:"progress"`
+	ID          string         `json:"id"`
+	Type        string         `json:"type"`
+	Status      job.Status     `json:"status"`
+	Progress    int            `json:"progress"`
 	Payload     map[string]any `json:"payload,omitempty"`
 	Result      map[string]any `json:"result,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	CreatedAt   string    `json:"created_at"`
-	UpdatedAt   string    `json:"updated_at"`
-	CompletedAt *string   `json:"completed_at,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+	CompletedAt *string        `json:"completed_at,omitempty"`
 }
 
 // BuildJobSummaries converts a slice of Job models into the standard
@@ -129,7 +130,7 @@ func BuildJobSummaries(jobsList []job.Job) []JobSummary {
 		s := JobSummary{
 			ID:        j.ID,
 			Type:      j.Type,
-			job.Status:    j.job.Status,
+			Status:    j.Status,
 			Progress:  j.Progress,
 			Error:     j.Error,
 			CreatedAt: timeutil.FormatRFC3339(j.CreatedAt),
@@ -165,9 +166,9 @@ func ListJobsResponse(c *gin.Context, summaries []JobSummary) {
 }
 
 // ParseJobStatusFilter parses an optional status query parameter.
-func ParseJobStatusFilter(c *gin.Context) *job.job.Status {
+func ParseJobStatusFilter(c *gin.Context) *job.Status {
 	if status := c.Query("status"); status != "" {
-		s := job.job.Status(strings.TrimSpace(status))
+		s := job.Status(strings.TrimSpace(status))
 		return &s
 	}
 	return nil

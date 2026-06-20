@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	"github.com/Marcuss-ops/PipelineGen/pkg/platform"
 )
 
 // MediaInfo holds the probed metadata for a media file.
@@ -44,11 +44,11 @@ type ffprobeFormat struct {
 }
 
 type ffprobeStream struct {
-	CodecType     string `json:"codec_type"` // "video" | "audio"
-	CodecName     string `json:"codec_name"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	AvgFrameRate  string `json:"avg_frame_rate"` // e.g. "30000/1001" or "25/1"
+	CodecType    string `json:"codec_type"` // "video" | "audio"
+	CodecName    string `json:"codec_name"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
+	AvgFrameRate string `json:"avg_frame_rate"` // e.g. "30000/1001" or "25/1"
 }
 
 // Probe interrogates a media file using ffprobe and returns its MediaInfo.
@@ -74,7 +74,7 @@ func (p *Processor) Probe(ctx context.Context, path string) (*MediaInfo, error) 
 	}
 
 	var result ffprobeOutput
-	if err := json.Unmarshal([]byte(out.Stdout), &result); err != nil {
+	if err := json.Unmarshal(out, &result); err != nil {
 		return nil, fmt.Errorf("ffprobe parse: %w", err)
 	}
 
