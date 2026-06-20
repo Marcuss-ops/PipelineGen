@@ -1,4 +1,18 @@
-package assets
+// Package termutil provides text term and name utilities used by script
+// generation and asset matching. All functions are leaf-only — they import
+// ONLY pkg/leaf utilities and have zero dependency on internal/.
+//
+// This package exists because AGENTS.md declares pkg/termutil as the canonical
+// home for SubjectMatchesTopic, ExtractLikelyNames, TermsFromText, TopicTokens
+// (utility row of section 🧰 Utilities to prefer). The functions were
+// originally embedded in internal/application/assets/terms.go during Onda 3,
+// but the migration to pkg/termutil was never completed and the parent
+// internal/infrastructure package was kept alive as a sentinel (doc.go) so the
+// orphan alias `termutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"`
+// would still resolve. Blocco A.3 finally completes the migration: the
+// functions live here, the sentinel is gone, and the lone external consumer
+// (internal/application/association/service.go) imports this package directly.
+package termutil
 
 import (
 	"strings"
