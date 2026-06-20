@@ -1,5 +1,4 @@
-// Package mediaingest provides the MediaIngest module factory.
-package mediaingest
+package assets
 
 import (
 	api "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -8,10 +7,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// NewMediaIngestModule creates the MediaIngest module factory for the API registry.
-// The handler is the canonical MediaingestHandler defined in this same package
-// (impl.go). It is NOT an api.MediaingestHandler alias because that would create
-// an import cycle (api → mediaingest → api).
+// NewMediaIngestModule creates the MediaIngest module for the API
+// registry. Mounted at /api/media/*; preserves the historical URL
+// subtree.
 func NewMediaIngestModule(
 	cfg *config.Config,
 	log *zap.Logger,
