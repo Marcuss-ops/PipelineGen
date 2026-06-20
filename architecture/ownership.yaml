@@ -1,0 +1,221 @@
+# PipelineGen — Canonical Ownership Map
+# -----------------------------------------------------------------------------
+# Each capability has exactly ONE canonical owner. This file is the SSOT for
+# "where does X live?". When waves reach their exit gates, this map is the source
+# of truth; migration.yaml tracks the actual progress.
+#
+# Status: target architecture (post Onda 17). Real-state drift is tracked in
+# migration.yaml. Last baseline: cleanup-wave-00-final.
+# -----------------------------------------------------------------------------
+
+version: 1
+target_root: internal/
+
+allowed_internal_roots:
+  - api
+  - app
+  - application
+  - domain
+  - infrastructure
+
+# ── Transport (HTTP) ─────────────────────────────────────────────────────────
+
+http_entrypoint:
+  owner: cmd/server
+  rationale: Composition root + main() for the HTTP server binary.
+
+http_transport:
+  owner: internal/api
+  rule: api imports ONLY application + domain. Never infrastructure/database/sql, never os/exec, never google.golang.org/api/drive/v3.
+  target_subdirs:
+    - api/assets
+    - api/content
+    - api/images
+    - api/jobs
+    - api/scripts
+    - api/system
+    - api/middleware
+    - api/transport
+
+# ── Composition ──────────────────────────────────────────────────────────────
+
+composition_root:
+  owner: internal/app
+  rule: Only place where concrete adapters (DB, Drive, exec) are instantiated.
+  target_files: [app.go, bootstrap.go, lifecycle.go, shutdown.go, modules/*.go]
+
+# ── Domain (canonical contracts + types) ─────────────────────────────────────
+
+domain_job:
+  owner: internal/domain/job
+  rationale: Job, Lease, WorkerSession, WorkerCapabilities, WorkerCredentials, Store, ScriptGenerationPayload.
+  migrated_from:
+    - internal/domain/worker
+    - internal/domain/outbox
+    - internal/contracts/scriptjobs
+    - internal/jobs/domain_types.go
+    - internal/jobs/domain_commands.go
+
+domain_script:
+  owner: internal/domain/script
+  rationale: Script, Plan, GenerationSpec, Payload, Codec error types.
+
+domain_asset:
+  owner: internal/domain/asset
+  rationale: Asset, Artifact, Delivery, Location, LifecycleState, Processor, Destination, EmbeddingPort, AudioPort.
+  absorbs_from_core_wave_4C:
+    - Repository (from internal/core/assetop)
+    - Processor (from internal/core/processor)
+    - Destination (from internal/core/destination)
+    - EmbeddingPort (from internal/core/embedding)
+    - AudioPort (from internal/core/audio)
+  migrated_from:
+    - internal/domain/media
+    - internal/assets
+    - internal/artifacts
+    - internal/core/assetop
+    - internal/core/audio
+    - internal/core/destination
+    - internal/core/embedding
+    - internal/core/processor
+    - internal/core/scoring
+
+# Canonical contract ports — these are MANDATORY per AGENTS.md, used by adapters
+# in internal/infrastructure/* and consumed by internal/application/*. Live at
+# internal/core today; will land in internal/domain/asset during Wave 4C.
+domain_core_ports:
+  owner: internal/core/{destination,processor,embedding,audio}
+  rationale: "AGENTS.md mandates all modules use the canonical contracts via adapters: core/destination.Resolver, core/processor.Processor, core/embedding.EmbeddingPort, core/audio.AudioPort."
+  port_files:
+    - internal/core/destination
+    - internal/core/processor
+    - internal/core/embedding
+    - internal/core/audio
+  migration_target: "internal/domain/asset (Wave 4C) — these ports become embedded fields of the asset domain"
+
+# ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
+  owner: internal/application/jobs
+  rationale: Job registry + worker execution + claims + lease + payloads + codec + outbox dispatcher.
+  target_subdirs:
+    - jobs/assets         # worker asset ops (renamed from old application/workerassets)
+    - jobs/outbox         # outbox dispatcher (migrated from internal/outboxhandlers in Wave 5)
+
+application_scripts:
+  owner: internal/application/scripts
+  rationale: Script-generation orchestration (batch, curation, documents, scenes, generate, memory).
+  target_subdirs:
+    - scripts/batch
+    - scripts/curation
+    - scripts/documents
+    - scripts/generate
+    - scripts/jobs
+    - scripts/scenes
+    - scripts/memory
+  current_drift: Code still split between internal/scripts/ and internal/application/scriptflow/.
+
+application_assets:
+  owner: internal/application/assets
+  rationale: Catalog, indexing, classification, providers registry, association & realtime search.
+  target_subdirs:
+    - assets/catalog
+    - assets/tree
+    - assets/index
+    - assets/resolve
+    - assets/ingest
+    - assets/classification
+    - assets/enrichment
+    - assets/ontology
+    - assets/sync
+    - assets/monitor
+    - assets/providers/{artlist,youtube,stock}
+    - assets/realtime
+    - assets/association
+
+application_images:
+  owner: internal/application/images
+  target_subdirs: [images/service, images/generation, images/search, images/ingest, images/styles]
+
+application_voiceover:
+  owner: internal/application/voiceover
+  target_subdirs: [voiceover/service, voiceover/sync]
+
+application_content:
+  owner: internal/application/content
+  rationale: Books + lessons; produces Markdown/PDF deliverables.
+  target_subdirs: [content/books, content/lessons]
+
+# ── Infrastructure (adapters to external systems) ────────────────────────────
+
+infrastructure_db:
+  owner: internal/infrastructure/database/sqlite
+  rule: ONLY place where Go SQL drivers / SQLite schema live.
+
+infrastructure_drive:
+  owner: internal/infrastructure/drive
+  rationale: Google Drive uploader + DocClient.
+  migrated_from: internal/upload/drive
+
+infrastructure_files:
+  owner: internal/infrastructure/files
+  rationale: Filesystem utilities (path, hash, JSON I/O).
+
+infrastructure_process:
+  owner: internal/infrastructure/process
+  rationale: External command execution (yt-dlp, ffmpeg wrappers).
+  rule: ONLY place where os/exec is allowed.
+
+infrastructure_ai:
+  owner: internal/infrastructure/ai
+  sub_dirs: [ai/ollama, ai/reranker, ai/vlm, ai/images]
+
+infrastructure_qdrant:
+  owner: internal/infrastructure/qdrant
+  migrated_from: internal/media/vectorstore
+
+infrastructure_media:
+  owner: internal/infrastructure/media/processor
+  rationale: yt-dlp, ffmpeg, download, normalization, temporary filesystem.
+  migrated_from: internal/media/mediaasset
+
+infrastructure_jobs:
+  owner: internal/infrastructure/jobs
+  rationale: Local in-process broker (replaces internal/application/jobbroker/local).
+  target_subdirs: [jobs/local]
+  decomposed_into:
+    jobs_local:
+      owner: internal/infrastructure/jobs/local
+    jobs_remote_clients:
+      owner: internal/infrastructure/remote
+      clients:
+        - assettransferclient   # HTTP client for asset transfer (worker side)
+        - jobbrokerclient       # HTTP client for job broker (worker side)
+
+infrastructure_observability:
+  owner: internal/infrastructure/observability
+  rationale: metrics, tracing, health checks.
+
+infrastructure_config:
+  owner: internal/infrastructure/config
+  rationale: Resolved configuration + folder IDs.
+  rule: ONLY place where os.Getenv (env-driven config) is allowed (alongside cmd/* binaries).
+
+# ── Shared leaf utilities ────────────────────────────────────────────────────
+
+pkg:
+  rule: Leaf-only — zero imports from internal/.
+  packages:
+    - pkg/concurrent
+    - pkg/corid
+    - pkg/defaults
+    - pkg/hashutil
+    - pkg/pathutil
+    - pkg/ptrutil
+    - pkg/retry
+    - pkg/similarity
+    - pkg/sliceutil
+    - pkg/sqlutil
+    - pkg/testutil
+    - pkg/textutil
+    - pkg/timeutil
+    - pkg/urlutil
+    - pkg/veloxclient

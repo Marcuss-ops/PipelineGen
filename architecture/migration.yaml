@@ -1,0 +1,401 @@
+# PipelineGen — Active Migration Plan
+# -----------------------------------------------------------------------------
+# Each wave maps a current legacy path to its canonical owner (see
+# ownership.yaml). Status decreases monotonically: pending → in_progress → done.
+#
+# Rules:
+#   - The number of `pending` entries MUST decrease over time.
+#   - Each wave carries an exit_gate that the ratchet checker can verify.
+#   - No backwards entry: once a wave is done, it does not reappear.
+#
+# Last baseline: cleanup-wave-00-final.
+# Version: 1 (YAML list of waves; metadata embedded in comment header above).
+# Policy ref: architecture/ownership.yaml.
+# Note: top-level is a YAML LIST (not a mapping) so the per-wave `- id:` flow stays valid.
+# -----------------------------------------------------------------------------
+
+# ── Wave 0 — Baseline snapshot ───────────────────────────────────────────────
+
+- id: 0
+  title: Baseline snapshot
+  status: in_progress
+  artifacts:
+    - architecture/ownership.yaml
+    - architecture/migration.yaml
+    - architecture/packages-before.txt
+    - architecture/imports-before.txt
+    - scripts/archcheck/baseline.json
+  exit_gate: "All artifacts present; archcheck captures baseline.json."
+
+# ── Wave 1 — Ratchet guardrail ───────────────────────────────────────────────
+
+- id: 1
+  title: Ratcheting cleanup guard
+  status: done
+  description: |
+    scripts/archcheck runs in ratchet mode: accepts current violations only,
+    forbids new directories, new aliases, new wrappers, new os/exec calls.
+    ratchet count is monotone-decreasing per rule.
+  implemented_in: scripts/archcheck/main.go
+  exit_gate: "go run ./scripts/archcheck exits 0 baseline-on-baseline."
+  blocked_by: [0]
+
+# ── Wave 2 — Empty directories removal ───────────────────────────────────────
+
+- id: 2
+  title: Empty directories removal
+  status: in_progress
+  candidates:
+    - ./internal/admin
+    - ./internal/media/repository
+    - ./.blackboxcli  # kept: external tool artifact, not part of repo
+  exit_gate: "find . -type d -empty -not -path './.git/*' -not -path './data/*' returns only ./.blackboxcli."
+
+# ── Wave 3 — Mega-package infrastructure → pkg/* ─────────────────────────────
+
+- id: 3
+  title: infrastructure root → pkg/*
+  status: done
+  rationale: |
+    Files at internal/infrastructure/<root>.go (corid, retry, ptrutil, defaults,
+    sliceutil, sqlutil, textutil, timeutil, urlutil, group, safe, concurrent,
+    similarity, etc.) were extracted into pkg/<x> with zero wrappers.
+  pkg_packages:
+    - pkg/concurrent
+    - pkg/corid
+    - pkg/defaults
+    - pkg/hashutil
+    - pkg/pathutil
+    - pkg/ptrutil
+    - pkg/retry
+    - pkg/similarity
+    - pkg/sliceutil
+    - pkg/sqlutil
+    - pkg/testutil
+    - pkg/textutil
+    - pkg/timeutil
+    - pkg/urlutil
+    - pkg/veloxclient
+  exit_gate: "find internal/infrastructure -maxdepth 1 -name '*.go' returns empty."
+
+# ── Wave 4A — Asset/Media domain unification ─────────────────────────────────
+
+- id: "4A"
+  title: Canonical asset model + ports
+  status: pending
+  from:
+    - internal/assets
+    - internal/artifacts
+    - internal/domain/media
+    - internal/core/assetop
+    - internal/core/audio
+    - internal/core/destination
+    - internal/core/embedding
+    - internal/core/processor
+    - internal/core/scoring
+  to:
+    - internal/domain/asset
+    - internal/application/assets
+  exit_gate: "rg 'internal/(assets|artifacts|domain/media|core/assetop|core/audio|core/destination|core/embedding|core/processor|core/scoring)' --type go returns zero."
+
+# ── Wave 4B — Job/Worker/Outbox contracts consolidation ──────────────────────
+
+- id: "4B"
+  title: Job, Worker, Outbox contracts into domain/job
+  status: in_progress
+  from:
+    - internal/domain/worker
+    - internal/domain/outbox
+    - internal/contracts
+    - internal/jobs/domain_types.go
+    - internal/jobs/domain_commands.go
+  to: internal/domain/job
+  exit_gate: "rg 'internal/(domain/worker|domain/outbox|contracts|jobs/domain_)' --type go returns zero."# ── Wave 4C — Remove core + legacy domain/media ──────────────────────────────
+
+- id: "4C"
+  title: Remove internal/core + internal/domain/media
+  status: pending
+  blocked_by: ["4A", "4B"]
+  moves:
+    - {from: internal/core/lifecycle,   to: internal/application/assets/lifecycle.go}
+    - {from: internal/core/maintenance, to: internal/application/assets/maintenance.go}
+    - {from: internal/core/workspace,   to: internal/domain/job/workspace.go}
+    - {from: internal/core/analysis.go, to: internal/domain/asset/analysis.go}
+  exit_gate: "rg 'internal/core' --type go returns zero; rg 'internal/domain/media' --type go returns zero."
+
+# ── Wave 5 — Jobs consolidation ──────────────────────────────────────────────
+
+- id: 5
+  title: Full jobs consolidation
+  status: in_progress
+  subwaves:
+    - id: 5_PR1
+      title: Domain & Types Recovery
+      status: ready_to_commit
+      merged_in_commit: null
+      resolved_in_tag: cleanup-wave-00-final  # applied to working tree at this tag, awaiting next commit
+      status_note: "Logic & syntax fully fixed; code applied to working tree at cleanup-wave-00-final but NOT yet in a commit. Next step is to amend or land a `chores(jobs): onda 5 pr1 land` commit after the next gofmt + go build gate passes."
+      fixed:
+        - "internal/domain/job/store.go — promoted rich 12-method Store with fencing"
+        - "internal/api/job.go — fixed 5 perl-sed syntax errors (j.job.Status, jobs.EnqueueRequest, etc.)"
+        - "internal/api/workers/handler.go — migrated to appjobs alias + assets package"
+        - "internal/infrastructure/database/sqlite/workernodes_repository.go — fixed invalid field name + migrated to appjobs"
+        - "internal/application/jobs/assets/service.go — package workerassets → assets"
+        - "internal/application/jobs/assets/service_test.go — package rename + drive→database fix"
+        - "internal/application/jobs/types.go — fixed job.Event syntax error"
+        - "internal/application/jobs/lease.go — added type Job = job.Job alias"
+    - id: 5_PR2
+      title: Application composition wiring (app/dependencies.go, cmd/*)
+      status: pending
+      needs:
+        - "internal/app/dependencies.go — fix alias jobservice → appjobs + replace scripts/jobbroker paths"
+        - "cmd/server/main.go — replace alias workerassets → internal/application/jobs/assets"
+        - "cmd/worker/main.go — ensure appjobs alias"
+        - "internal/infrastructure/media/ffmpeg dependency injection"
+  from:
+    - internal/jobs
+    - internal/outboxhandlers
+    - internal/application/jobbroker
+    - internal/application/workerassets
+  to:
+    - internal/application/jobs
+    - internal/infrastructure/jobs/local
+    - internal/application/jobs/assets
+  exit_gate: "rg 'internal/(jobs/|outboxhandlers|application/jobbroker|application/workerassets)' --type go returns zero."
+
+# ── Wave 6 — Scripts consolidation ───────────────────────────────────────────
+
+- id: 6
+  title: Scripts domain + use-case + persistence consolidation
+  status: pending
+  from:
+    - internal/scripts/{models,repository,generators,validators,normalize,write_script}
+    - internal/application/scriptflow/{batch,curation,documents,generate,jobs,scenes}
+  to:
+    - internal/domain/script
+    - internal/application/scripts
+    - internal/infrastructure/database/sqlite/scripts
+  exit_gate: "rg 'internal/(scripts|application/scriptflow)' --type go returns zero."
+
+# ── Wave 7 — Assets + Artifacts + Registry unification ───────────────────────
+
+- id: 7
+  title: Assets + Artifacts + Registry unification
+  status: pending
+  blocked_by: ["4A"]
+  from:
+    - internal/artifacts
+    - internal/assets
+  to:
+    - internal/application/assets
+    - internal/infrastructure/blob
+    - internal/infrastructure/database/sqlite/{assets,artifacts}
+  exit_gate: "rg 'internal/(artifacts|^internal/assets$)' --type go returns zero."
+
+# ── Wave 8 — Association + Realtime → assets search/sync ─────────────────────
+
+- id: 8
+  title: Association + Realtime consolidation
+  status: pending
+  from:
+    - internal/application/association
+    - internal/application/realtime
+  to:
+    - internal/application/assets/association
+    - internal/application/assets/realtime
+  exit_gate: "rg 'internal/application/(association|realtime)' --type go returns zero."
+
+# ── Wave 9 — Images + Content + Voiceover ────────────────────────────────────
+
+- id: 9
+  title: Images, Books, Lessons, VoiceoverSync consolidation
+  status: pending
+  from:
+    - internal/media/fullimages
+    - internal/media/generation
+    - internal/media/books
+    - internal/media/lessons
+    - internal/media/voiceoversync
+  to:
+    - internal/application/images
+    - internal/application/content/{books,lessons}
+    - internal/application/voiceover/{sync.go}
+  exit_gate: "rg 'internal/media/(fullimages|generation|books|lessons|voiceoversync)' --type go returns zero."
+
+# ── Wave 10 — Storage + Drive + Qdrant adapters ──────────────────────────────
+
+- id: 10
+  title: Media storage, Drive, Qdrant adapter consolidation
+  status: pending
+  from:
+    - internal/media/mediaasset
+    - internal/media/vectorstore
+    - internal/media/storage
+    - internal/upload
+  to:
+    - internal/infrastructure/media/processor
+    - internal/infrastructure/qdrant
+    - internal/infrastructure/drive
+    - internal/infrastructure/files/storage
+  exit_gate: "rg 'internal/(media/(mediaasset|vectorstore|storage)|upload)' --type go returns zero."
+
+# ── Wave 11 — Catalog + Intelligence ─────────────────────────────────────────
+
+- id: 11
+  title: Catalog, indexing, enrichment, sync consolidation
+  status: pending
+  from:
+    - internal/media/assetindex
+    - internal/media/assettree
+    - internal/media/clipcatalog
+    - internal/media/clipindexer
+    - internal/media/clipresolver
+    - internal/media/foldermemory
+    - internal/media/ingest
+    - internal/media/deletion.go
+    - internal/media/{autotag,classifier,ontology,semantic,catalogsync,monitor}
+  to:
+    - internal/application/assets/{catalog,tree,index,resolve,ingest,manifest,delete}
+    - internal/application/assets/{classification,enrichment,ontology,tags,sync,monitor}
+    - internal/infrastructure/database/sqlite/assets
+    - internal/infrastructure/ai/{semantic,classification}
+  exit_gate: "rg 'internal/media/(assetindex|assettree|clipcatalog|clipindexer|clipresolver|foldermemory|ingest|autotag|classifier|ontology|semantic|catalogsync|monitor)' --type go returns zero."
+
+# ── Wave 12 — Providers + Sources ────────────────────────────────────────────
+
+- id: 12
+  title: Provider registry + source consolidation
+  status: pending
+  from:
+    - internal/sources/artlist
+    - internal/sources/youtube
+    - internal/media/stockpipeline
+    - internal/media/videomuscles
+    - node-scraper
+  to:
+    - internal/application/assets/providers/{artlist,youtube,stock}
+    - scripts/artlist-scraper
+  registry_contract: |
+    type Provider interface {
+      Name() string
+      Capabilities() []Capability
+      Search(context.Context, SearchRequest) ([]asset.Asset, error)
+    }
+    registry.Freeze() called once during bootstrap.
+  exit_gate: "switch source outside provider registry returns zero."
+
+# ── Wave 13 — Eliminate internal/media ───────────────────────────────────────
+
+- id: 13
+  title: Eliminate internal/media namespace
+  status: pending
+  blocked_by: ["4A", "11", "10"]
+  from: internal/media
+  classification:
+    - types → internal/domain/{asset,job,script}
+    - use_cases → internal/application/{assets,images,content,voiceover}
+    - adapters → internal/infrastructure/{ai,database,qdrant}
+    - transport → internal/api/{assets,images,content}
+    - wiring → internal/app
+  exit_gate: "rg 'internal/media' --type go returns zero."
+
+# ── Wave 14 — API compaction ─────────────────────────────────────────────────
+
+- id: 14
+  title: API transport modules consolidation
+  status: pending
+  target_subdirs:
+    - api/assets
+    - api/channels
+    - api/content
+    - api/images
+    - api/jobs
+    - api/middleware
+    - api/scripts
+    - api/system
+    - api/transport
+    - api/routes.go
+    - api/server.go
+  merges:
+    - {from: internal/api/drive,        to: internal/api/assets}
+    - {from: internal/api/mediaingest,  to: internal/api/assets}
+    - {from: internal/api/realtime,     to: internal/api/assets}
+    - {from: internal/api/scraper,      to: internal/api/assets}
+    - {from: internal/api/searchqueries,to: internal/api/assets}
+    - {from: internal/api/sources,      to: internal/api/assets}
+    - {from: internal/api/books,        to: internal/api/content}
+    - {from: internal/api/lessons,      to: internal/api/content}
+    - {from: internal/api/fullimages,   to: internal/api/images}
+    - {from: internal/api/workers,      to: internal/api/jobs}
+    - {from: internal/api/script,       to: internal/api/scripts}
+  rule: "Each module exposes at most 1 Handler + 1 RegisterRoutes. API layer has ONLY transport; no SQL/sqlite/direct-exec/goroutine-orchestration."
+  blocked_by: ["13"]
+  exit_gate: "internal/api root contains ≤ 15 files; each api/<feature> dir ≤ 40 files."
+
+# ── Wave 15 — Composition root alignment ─────────────────────────────────────
+
+- id: 15
+  title: App composition root with capability modules
+  status: pending
+  target_structure:
+    - internal/app/app.go
+    - internal/app/bootstrap.go
+    - internal/app/lifecycle.go
+    - internal/app/shutdown.go
+    - internal/app/modules/{assets,content,images,jobs,scripts,system,voiceover}.go
+  rule: |
+    - max 8-10 dependencies per module
+    - no single mega-Struct Dependencies with 40 fields
+    - no NewService inside API packages
+    - app is the ONLY place where concrete adapters are built
+  blocked_by: ["14"]
+  exit_gate: "internal/app/modules has ≤ 10 files; per-module dependency count ≤ 10."
+
+# ── Wave 16 — Zero-redundancy strict mode ────────────────────────────────────
+
+- id: 16
+  title: Zero-redundancy strict architecture
+  status: pending
+  target_metrics:
+    forbidden_internal_roots: 0
+    legacy_imports: 0
+    type_aliases: 0
+    compatibility_wrappers: 0
+    pass_through_services: 0
+    go_files_at_infrastructure_root: 0
+    sql_outside_infrastructure_database: 0
+    gin_outside_api: 0
+    os_getenv_outside_config_app: 0
+    os_exec_outside_infrastructure_process: 0
+    map_string_any_in_domain_application: 0
+    provider_switch_outside_registry: 0
+    duplicate_blocks_above_threshold: 0
+    architecture_exceptions: 0
+  exit_gate: "All target_metrics are zero. archcheck exits 0 in strict mode (no ratchet)."
+  removes:
+    - architecture/migration.yaml
+    - allowlist temporanee
+    - compat.go / aliases.go / legacy.go wrappers
+    - migration TODO comments
+  blocked_by: ["15"]
+
+# ── Wave 17 — Final verification + tag ───────────────────────────────────────
+
+- id: 17
+  title: Final verification + canonical tag
+  status: pending
+  gate:
+    - gofmt -w .
+    - go mod tidy
+    - go list ./...
+    - go build ./...
+    - go vet ./...
+    - go test ./...
+    - go test -race ./...
+    - go run ./scripts/archcheck
+    - dupl -t 100 ./internal/... ./pkg/...
+  structural_diff:
+    - "Compare-Object architecture/packages-before.txt architecture/packages-after.txt"
+    - "Compare-Object architecture/imports-before.txt architecture/imports-after.txt"
+  blocked_by: ["16"]
+  tag: architecture-clean-v1
