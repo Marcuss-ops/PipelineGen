@@ -23,6 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -145,6 +146,12 @@ type CoreDeps struct {
 	LessonsHandler     *lessonsHandler.LessonsHandler
 	MediaStore         *mediastorage.Store
 	ArtifactService    *artifacts.Service
+
+	// ProviderRegistry is the canonical providers.Registry populated
+	// by WireRegistry and frozen before the job runner starts. It
+	// resolves SearchProvider / FetchProvider instances by name and
+	// capability — see internal/application/assets/providers.
+	ProviderRegistry *providers.Registry
 	// startJobRunner is set by initCoreMinimal and invoked by WireServices
 	// after WireRegistry completes, ensuring all job handlers are registered
 	// before workers begin claiming jobs.

@@ -1,0 +1,62 @@
+package asset
+
+import (
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+)
+
+// ── Parity between this package and the legacy home ────────────────
+
+// TestStateConstantsMatchAssets asserts that the State* lifecycle
+// constants re-declared in this package stay in lockstep with the
+// canonical definitions in internal/assets. If a future change to
+// internal/assets tweaks a value, this test surfaces the drift in CI
+// instead of letting it silently diverge.
+//
+// Until phase 3 of Wave 12 follow-up removes the legacy package,
+// THIS test is the single source of truth that the two views agree.
+// Once phase 3 deletes internal/assets, this test trivially
+// degenerates (constants equal themselves) — that is the desired
+// terminal state.
+func TestStateConstantsMatchAssets(t *testing.T) {
+	cases := []struct {
+		name     string
+		actual   assets.LifecycleState
+		expected assets.LifecycleState
+	}{
+		{"StateStaging", StateStaging, assets.StateStaging},
+		{"StateProcessing", StateProcessing, assets.StateProcessing},
+		{"StateActive", StateActive, assets.StateActive},
+		{"StateDeleted", StateDeleted, assets.StateDeleted},
+		{"StateReady", StateReady, assets.StateReady},
+		{"StatePending", StatePending, assets.StatePending},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.actual != tc.expected {
+				t.Errorf("drift detected: asset=%q internal/assets=%q",
+					tc.actual, tc.expected)
+			}
+		})
+	}
+	// Per reviewer: %q prints LifecycleState as a string natively,
+	// so no explicit string(...) casts needed in the format args.
+}
+
+// TestAssetIsHardAlias confirms that asset.Asset is a type alias for
+// assets.Asset (i.e. the same type, not a named type struct holding
+// assets.Asset). If a future maintainer accidentally changes the
+// declaration to `type Asset struct { Item assets.Asset; ... }`,
+// the round-trip below would still compile but no longer be a
+// zero-cost identity, breaking interchangeability between the two
+// packages. The round-trip via assignability without conversion is
+// the structural test.
+func TestAssetIsHardAlias(t *testing.T) {
+	a := Asset{ID: "test-asset"}
+	var legacy assets.Asset = a // no conversion: same type via alias
+	var back Asset = legacy      // no conversion: same type via alias
+	if back.ID != "test-asset" {
+		t.Errorf("round-trip ID mismatch: got %q want %q", back.ID, "test-asset")
+	}
+}

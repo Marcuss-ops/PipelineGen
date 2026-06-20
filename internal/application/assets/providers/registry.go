@@ -140,3 +140,27 @@ func (r *Registry) IsFrozen() bool {
 	defer r.mu.RUnlock()
 	return r.frozen
 }
+
+// RegisterSearch is a typed helper that accepts a SearchProvider
+// and forwards it to Register. The compile-time interface check
+// guarantees p.Search is implemented; intent at wiring time is
+// also clearer ("this slot is a search slot").
+//
+// Use this over Register(p) whenever the adapter is guaranteed
+// search-only — the registry's runtime behaviour is identical
+// (filter via ByCapability(CapabilitySearch)), but the call site
+// is self-documenting.
+func (r *Registry) RegisterSearch(p SearchProvider) error {
+	return r.Register(p)
+}
+
+// RegisterFetch is a typed helper that accepts a FetchProvider
+// and forwards it to Register. The compile-time interface check
+// guarantees p.Fetch is implemented.
+//
+// No adapter implements FetchProvider as of this commit; the
+// helper exists so the Stock Provider PR can wire
+// RegisterFetch(...) without introducing a new registry API.
+func (r *Registry) RegisterFetch(p FetchProvider) error {
+	return r.Register(p)
+}

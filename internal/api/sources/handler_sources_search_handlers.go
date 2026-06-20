@@ -8,6 +8,7 @@ import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 )
 
 // SearchRequest represents a search request
@@ -18,7 +19,31 @@ type SearchRequest struct {
 	Sort  string `form:"sort"`
 }
 
-// Search godoc
+// Search godoc.
+//
+// Wave 12 turn 2 migration: when h.providerRegistry is wired
+// (composition root calls SetProviderRegistry after NewSourcesHandler
+// constructs the handler), this handler dispatches via
+// providerRegistry.ByCapability(CapabilitySearch) instead of the
+// legacy artlistSvc/youtubeSvc direct singleton calls. Every registered
+// SearchProvider is fanned out uniformly and the response shape is
+// keyed by Provider.Name().
+//
+// Capability filtering (req.Type):
+//
+//   - "" / "all" / "video" → every SearchProvider (matches legacy);
+//   - "audio"              → providers advertising CapabilityMusic;
+//   - "image"              → providers advertising CapabilityImage.
+//
+// Legacy fallback (artlistSvc + youtubeSvc direct calls) runs ONLY when
+// providerRegistry is nil — i.e. composition root has not wired it yet
+// (eg. unit tests or rollback scenarios). Kept intentionally for
+// backward-compat; once registry wiring is the default, the fallback
+// can be removed in a future wave.
+//
+// Local DB searches (catalogRepo, clipsRepo) are NOT routed via the
+// registry: they are internal-state queries, not source providers.
+// They remain direct dispatches.
 func (h *Handler) Search(c *gin.Context) {
 	var req SearchRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -38,50 +63,109 @@ func (h *Handler) Search(c *gin.Context) {
 
 	results := gin.H{}
 
-	// Search YouTube clips
-	if h.youtubeSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
-		// YouTube search is live and supports the "-N" limit suffix internally in s.SearchLive
-		ytResults, err := h.youtubeSvc.SearchLive(c.Request.Context(), req.Q, req.Limit, req.Sort)
-		if err != nil {
-			h.log.Warn("youtube search failed", zap.Error(err))
-			results["youtube"] = gin.H{
-				"count":   0,
-				"results": []any{},
-				"error":   err.Error(),
+	// ── Source-level search dispatch ──────────────────────────────────
+	// Preferred path: providerRegistry.ByCapability(CapabilitySearch)
+	// fans out to every registered SearchProvider uniformly. The legacy
+	// branches below (YouTube + Artlist) run only when the registry is
+	// nil (composition not wired yet).
+	if h.providerRegistry != nil {
+		for _, p := range h.providerRegistry.ByCapability(providers.CapabilitySearch) {
+			if !typeAllowed(p.Capabilities(), req.Type) {
+				// Surface silent filter rejections so CI / operator logs
+				// catch typos like req.Type="vidio" early. Debug level
+				// (not Warn) keeps the boot path quiet for the expected
+				// ""/"all"/"video" defaults.
+				h.log.Debug("provider excluded by SearchRequest.Type filter",
+					zap.String("provider", p.Name()),
+					zap.String("requested_type", req.Type))
+				continue
 			}
-		} else {
-			results["youtube"] = gin.H{
-				"count":   len(ytResults),
-				"results": ytResults,
-				"source":  "live",
+			sp, ok := p.(providers.SearchProvider)
+			if !ok {
+				// Defensive: ByCapability already filtered to SearchProvider-capable
+				// adapters in practice, but a future registry bug could surface here.
+				h.log.Warn("provider asserted CapabilitySearch but not SearchProvider interface",
+					zap.String("provider", p.Name()))
+				continue
+			}
+			sr := providers.SearchRequest{
+				Query: req.Q,
+				Limit: req.Limit,
+				Filters: providers.SearchFilters{
+					Sort: providers.SortMode(req.Sort),
+				},
+			}
+			out, err := sp.Search(c.Request.Context(), sr)
+			source := p.Name()
+			if err != nil {
+				h.log.Warn("provider search failed", zap.String("provider", source), zap.Error(err))
+				results[source] = gin.H{
+					"count":   0,
+					"results": []any{},
+					"error":   err.Error(),
+				}
+				continue
+			}
+			results[source] = gin.H{
+				"count":   len(out.Candidates),
+				"results": out.Candidates,
+				"source":  source,
+				// NextPageToken is exposed for callers that want
+				// cursor-based pagination. Empty string means "no
+				// more pages" per the providers.SearchResult contract.
+				"next_page_token": out.NextPageToken,
+			}
+		}
+	} else {
+		// Legacy fallback: per-source singleton dispatch.
+		if h.youtubeSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
+			ytResults, err := h.youtubeSvc.SearchLive(c.Request.Context(), req.Q, req.Limit, req.Sort)
+			if err != nil {
+				h.log.Warn("youtube search failed", zap.Error(err))
+				results["youtube"] = gin.H{
+					"count":   0,
+					"results": []any{},
+					"error":   err.Error(),
+				}
+			} else {
+				results["youtube"] = gin.H{
+					"count":   len(ytResults),
+					"results": ytResults,
+					"source":  "live",
+				}
+			}
+		}
+		if h.artlistSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
+			// Legacy Artlist dispatch kept so older clients / unit tests
+			// can still reach artlist when the registry is unwired. Uses
+			// the artlist package's native SearchRequest/SearchResponse
+			// types directly (not the providers.Registry contract).
+			searchReq := &artlist.SearchRequest{
+				Term:  req.Q,
+				Limit: req.Limit,
+			}
+			searchResp, err := h.artlistSvc.Search(c.Request.Context(), searchReq)
+			if err != nil {
+				h.log.Warn("artlist search failed", zap.Error(err))
+				results["artlist"] = gin.H{
+					"count":   0,
+					"results": []any{},
+					"error":   err.Error(),
+				}
+			} else if searchResp != nil {
+				results["artlist"] = gin.H{
+					"count":   len(searchResp.Clips),
+					"results": searchResp.Clips,
+					"source":  searchResp.Source,
+				}
 			}
 		}
 	}
 
-	// Search Artlist clips
-	if h.artlistSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
-		searchReq := &artlist.SearchRequest{
-			Term:  req.Q,
-			Limit: req.Limit,
-		}
-		searchResp, err := h.artlistSvc.Search(c.Request.Context(), searchReq)
-		if err != nil {
-			h.log.Warn("artlist search failed", zap.Error(err))
-			results["artlist"] = gin.H{
-				"count":   0,
-				"results": []any{},
-				"error":   err.Error(),
-			}
-		} else if searchResp != nil {
-			results["artlist"] = gin.H{
-				"count":   len(searchResp.Clips),
-				"results": searchResp.Clips,
-				"source":  searchResp.Source,
-			}
-		}
-	}
-
-	// Search Catalog folders
+	// ── Local DB searches (registry-independent) ──────────────────────
+	// Catalog + media_assets table queries are NOT provider-shaped —
+	// they are internal-state lookups. Kept as direct dispatches
+	// outside the ByCapability loop.
 	if h.catalogRepo != nil {
 		catalogResults, err := h.catalogRepo.SearchAll(c.Request.Context(), req.Q)
 		if err != nil {
@@ -94,7 +178,6 @@ func (h *Handler) Search(c *gin.Context) {
 		}
 	}
 
-	// Unified Local Search (media_assets table)
 	if h.clipsRepo != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
 		localClips, err := h.clipsRepo.SearchClips(c.Request.Context(), "all", req.Q)
 		if err != nil {
@@ -112,6 +195,38 @@ func (h *Handler) Search(c *gin.Context) {
 		"type":    req.Type,
 		"results": results,
 	})
+}
+
+// typeAllowed decides whether a provider advertising the given
+// capabilities should run for the user-requested SearchRequest.Type.
+//
+// Mapping rationale:
+//   - "" / "all" / "video": no filter (matches legacy Search
+//     behaviour which always allowed video+music upstreams);
+//   - "audio": only providers with CapabilityMusic (voice/music
+//     branches defer to ingest use case later);
+//   - "image": only providers with CapabilityImage.
+//
+// Providers declaring other capabilities (eg. voice) are not
+// currently returned by Search and so are not considered here.
+func typeAllowed(caps []providers.Capability, reqType string) bool {
+	switch reqType {
+	case "", "all", "video":
+		return true
+	case "audio":
+		for _, c := range caps {
+			if c == providers.CapabilityMusic {
+				return true
+			}
+		}
+	case "image":
+		for _, c := range caps {
+			if c == providers.CapabilityImage {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Stats godoc
