@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"time"
 
@@ -27,14 +28,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/videomuscles"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
-// Compile-time assertion: *Adapter satisfies providers.SearchProvider.
-// Catches interface drift at build time. Adapter intentionally does
-// NOT implement FetchProvider (YouTube download lives in
-// channel-monitor; see package doc).
-var _ providers.SearchProvider = (*Adapter)(nil)
+// Compile-time assertions: *Adapter satisfies both SearchProvider and
+// FetchProvider. Catches interface drift at build time.
+var (
+	_ providers.SearchProvider = (*Adapter)(nil)
+	_ providers.FetchProvider  = (*Adapter)(nil)
+)
 
 // ErrSourceNotWired is returned by Search when the Adapter has no
 // underlying searcher wired (nil interface OR typed-nil pointer).
@@ -45,10 +48,9 @@ var ErrSourceNotWired = errors.New("youtube adapter: source not wired")
 // content only.
 var youtubeMediaType = asset.MediaType("clip")
 
-// searcher is the minimal internal interface the adapter depends on.
-// Defining it private to this package lets the unit tests inject a
-// stub without constructing a full *youtubesrc.Service (which carries
-// a heavy scraper + repository + config chain).
+// searcher is the minimal internal interface the adapter depends on
+// for Search. Defining it private to this package lets the unit tests
+// inject a stub without constructing a full *youtubesrc.Service.
 //
 // *youtubesrc.Service satisfies searcher via its public
 // SearchByTopicWithFilter method.
@@ -56,21 +58,32 @@ type searcher interface {
 	SearchByTopicWithFilter(ctx context.Context, query string, limit int, sortMode, publishedAfter string) (*youtubesrc.TopicSearchResponse, error)
 }
 
-// Adapter wraps a searcher (production: *youtubesrc.Service) and
-// exposes it as a providers.Provider. The Adapter does NOT invent
-// new search semantics: discovery logic stays in
-// internal/sources/youtube, and this layer only normalises the
+// fetcher is the minimal internal interface for Fetch (download).
+// Separate from searcher so providers that only fetch (no search)
+// can implement it without pulling in search dependencies.
+//
+// *youtubesrc.Service satisfies fetcher via its public
+// DownloadAndCut method (added Punto 6).
+type fetcher interface {
+	DownloadAndCut(ctx context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error)
+}
+
+// Adapter wraps a searcher + fetcher (production: both are the same
+// *youtubesrc.Service) and exposes them as a providers.Provider.
+// The Adapter does NOT invent new semantics: discovery logic stays
+// in internal/sources/youtube, and this layer only normalises the
 // boundary request/response shapes.
 type Adapter struct {
-	src searcher
+	src     searcher
+	fetcher fetcher
 }
 
 // NewAdapter returns a production Adapter wrapping the given YouTube
-// service. Composition-root responsibility to pass a fully wired
-// *youtubesrc.Service; a nil pointer is tolerated by the runtime
-// search guard but should be avoided.
+// service as both searcher and fetcher. Composition-root responsibility
+// to pass a fully wired *youtubesrc.Service; a nil pointer is tolerated
+// by the runtime guards but should be avoided.
 func NewAdapter(src *youtubesrc.Service) *Adapter {
-	return &Adapter{src: src}
+	return &Adapter{src: src, fetcher: src}
 }
 
 // Name implements providers.Provider. Stable across calls.
@@ -80,14 +93,12 @@ func (a *Adapter) Name() string { return "youtube" }
 
 // Capabilities implements providers.Provider.
 //
-// CapabilityFetch is intentionally omitted: yt-dlp extraction +
-// Drive upload is the channel-monitor's responsibility, NOT a
-// Provider concern. Direct calls to Fetch always return a plain
-// unrecoverable error (no sentinel — PR 3E forbids sentinels for
-// "fetch unsupported").
+// CapabilityFetch is now declared: the adapter exposes
+// yt-dlp download + segment extraction via Fetch().
 func (a *Adapter) Capabilities() []providers.Capability {
 	return []providers.Capability{
 		providers.CapabilitySearch,
+		providers.CapabilityFetch,
 		providers.CapabilityVideo,
 	}
 }
@@ -162,6 +173,127 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 		})
 	}
 	return providers.SearchResult{Candidates: candidates}, nil
+}
+
+// Fetch implements providers.FetchProvider.
+//
+// Translation rules:
+//
+//   - req.SourceRef           -> YouTube URL (required).
+//   - req.SegmentStart/.End   -> optional segment bounds.
+//     0 for both means "full video" (downloads entire content).
+//   - req.DestinationID       -> not used; output lands in a temp dir.
+//     The caller is responsible for subsequent upload.
+//
+// The returned FetchedAsset carries:
+//   - Asset: canonical representation with metadata (title, duration,
+//     tags, language, etc.) sourced from yt-dlp.
+//   - LocalPath: absolute path to the downloaded + cut file.
+//   - Bytes: file size in bytes.
+func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*providers.FetchedAsset, error) {
+	if err := a.checkFetchWired(); err != nil {
+		return nil, err
+	}
+	if req.SourceRef == "" {
+		return nil, fmt.Errorf("youtube fetch: SourceRef (URL) is required")
+	}
+
+	// Build the YouTubeCutRequest from the canonical FetchRequest.
+	//
+	// Segment extraction:
+	//   - SegmentStart > 0 && SegmentEnd > SegmentStart: download that
+	//     exact segment via yt-dlp DownloadSections.
+	//   - Both 0: download the full video by setting a sentinel
+	//     duration of 86400s (24h). yt-dlp clips to the actual video
+	//     duration internally, so this effectively means "full video".
+	var startSec, durationSec float64
+	if req.SegmentStart > 0 || req.SegmentEnd > 0 {
+		startSec = req.SegmentStart.Seconds()
+		if req.SegmentEnd > req.SegmentStart {
+			durationSec = (req.SegmentEnd - req.SegmentStart).Seconds()
+		}
+	} else {
+		// Full video: sentinel duration so yt-dlp downloads everything.
+		durationSec = 86400
+	}
+
+	safeName := req.AssetID
+	if safeName == "" {
+		safeName = fmt.Sprintf("yt_fetch_%d", time.Now().UnixNano())
+	}
+
+	cutReq := videomuscles.YouTubeCutRequest{
+		URL:        req.SourceRef,
+		VideoID:    req.AssetID,
+		Start:      startSec,
+		Duration:   durationSec,
+		OutputName: safeName,
+		KeepAudio:  true,
+		Normalize:  false, // raw fetch — caller normalizes downstream
+		Strategy:   "replace",
+	}
+
+	result, err := a.fetcher.DownloadAndCut(ctx, cutReq)
+	if err != nil {
+		return nil, fmt.Errorf("youtube fetch: %w", err)
+	}
+
+	// Resolve file size from disk
+	var byteSize int64
+	if fi, statErr := os.Stat(result.LocalPath); statErr == nil {
+		byteSize = fi.Size()
+	}
+
+	// Build the canonical Asset from video metadata.
+	// Metadata can be nil when the pipeline returns a cached clip
+	// (Drive cache hit — no yt-dlp metadata fetch).
+	meta := result.Metadata
+	assetName := safeName
+	if meta != nil && meta.Title != "" {
+		assetName = meta.Title
+	}
+	assetRecord := &asset.Asset{
+		ID:        req.AssetID,
+		Name:      assetName,
+		Source:    "youtube",
+		SourceURL: req.SourceRef,
+		MediaType: asset.MediaType("video"),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	assetRecord.SetLocalPath(result.LocalPath)
+
+	if meta != nil {
+		assetRecord.SetMetadataString("youtube_title", meta.Title)
+		assetRecord.SetMetadataString("youtube_uploader", meta.Uploader)
+		assetRecord.SetMetadataString("youtube_description", meta.Description)
+		assetRecord.SetMetadataString("youtube_language", meta.Language)
+		if meta.UploadDate != "" {
+			assetRecord.SetMetadataString("youtube_upload_date", meta.UploadDate)
+		}
+		if meta.Duration > 0 {
+			assetRecord.Duration = time.Duration(meta.Duration * float64(time.Second))
+		}
+	}
+
+	return &providers.FetchedAsset{
+		Asset:     assetRecord,
+		LocalPath: result.LocalPath,
+		FetchedAt: time.Now(),
+		Bytes:     byteSize,
+	}, nil
+}
+
+// checkFetchWired returns an error when the adapter has no usable fetcher.
+func (a *Adapter) checkFetchWired() error {
+	if a.fetcher == nil {
+		return fmt.Errorf("youtube fetch: fetcher not wired")
+	}
+	rv := reflect.ValueOf(a.fetcher)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return fmt.Errorf("youtube fetch: fetcher not wired")
+	}
+	return nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────

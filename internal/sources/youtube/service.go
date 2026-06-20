@@ -213,6 +213,16 @@ func (s *Service) GetOrCreateChannelFolder(ctx context.Context, channelName, par
 	return folderID, nil
 }
 
+// DownloadAndCut delegates to the video pipeline for YouTube download +
+// segment extraction. Exposed so the providers/youtube adapter can route
+// Fetch calls through the canonical service instead of bypassing it.
+func (s *Service) DownloadAndCut(ctx context.Context, req videomuscles.YouTubeCutRequest) (*videomuscles.YouTubeCutResult, error) {
+	if s.videoPipeline == nil {
+		return nil, fmt.Errorf("youtube: video pipeline not wired")
+	}
+	return s.videoPipeline.DownloadAndCutYouTubeVideo(ctx, req)
+}
+
 // Config returns the service configuration. Used by diagnostics endpoint.
 func (s *Service) Config() *config.Config {
 	return s.cfg

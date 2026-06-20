@@ -41,7 +41,7 @@ func (f *fakeSearcher) SearchByTopicWithFilter(
 	return f.resp, f.err
 }
 
-func newAdapterWith(s searcher) *Adapter { return &Adapter{src: s} }
+func newAdapterWith(s searcher) *Adapter { return &Adapter{src: s, fetcher: nil} }
 
 // ── Tests ──────────────────────────────────────────────────────────
 
@@ -61,17 +61,18 @@ func TestAdapter_Capabilities(t *testing.T) {
 	if !slices.Contains(caps, providers.CapabilityVideo) {
 		t.Errorf("Capabilities() missing CapabilityVideo: %v", caps)
 	}
-	if slices.Contains(caps, providers.CapabilityFetch) {
-		t.Errorf("Capabilities() must NOT declare CapabilityFetch (download lives in channel-monitor): %v", caps)
+	if !slices.Contains(caps, providers.CapabilityFetch) {
+		t.Errorf("Capabilities() missing CapabilityFetch (added Punto 6): %v", caps)
 	}
 }
 
-// Adapter must NOT implement FetchProvider — interface segregation
-// guarantee (Agent 3 contract cleanup).
-func TestAdapter_DoesNotImplementFetchProvider(t *testing.T) {
-	var sp providers.SearchProvider = (*Adapter)(nil)
-	if _, ok := sp.(providers.FetchProvider); ok {
-		t.Fatal("youtube Adapter must NOT satisfy FetchProvider")
+// Adapter MUST implement FetchProvider — verified at compile time
+// and tested here as a runtime assertion for the adapter instance.
+func TestAdapter_ImplementsFetchProvider(t *testing.T) {
+	a := &Adapter{src: &fakeSearcher{}, fetcher: nil}
+	var sp providers.SearchProvider = a
+	if _, ok := sp.(providers.FetchProvider); !ok {
+		t.Fatal("youtube Adapter must satisfy FetchProvider (Punto 6)")
 	}
 }
 
