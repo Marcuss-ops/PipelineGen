@@ -174,6 +174,30 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 		if trimmed == "" {
 			continue
 		}
+		// Pre-flight skip: standalone BEGIN/BEGIN TRANSACTION/BEGIN IMMEDIATE/
+		// COMMIT/ROLLBACK appear inside migration files the author wrote
+		// expecting to need explicit tx boundaries. Within the outer Go-level
+		// `tx` from `db.Begin()` these statements are no-ops, but more
+		// importantly SQLite treats a stray `COMMIT` as terminating the
+		// underlying transaction — which leaves Go's `*sql.Tx` open against a
+		// closed SQLite handle. The eventual `tx.Commit()` then errors with
+		// "cannot commit - no transaction is active".  Skipping before
+		// exec() guarantees the driver never sees the lifecycle command,
+		// fixes fresh DBs, and — because the SQL files are unchanged —
+		// preserves the SHA-256 ledger invariant on existing databases.
+		//
+		// This is the ONLY `isNestedTransactionControl` check in the runner:
+		// the previous post-error check inside `if err != nil` was deleted
+		// because it relied on the driver erroring (which SQLite doesn't do
+		// for `COMMIT` inside an active tx — it silently closes the handle).
+		if isNestedTransactionControl(trimmed) {
+			log.Info("skipping nested transaction control (handled by outer runner tx)",
+				zap.Int("version", version),
+				zap.String("filename", filename),
+				zap.Int("statement", i+1),
+			)
+			continue
+		}
 		if _, err := tx.Exec(trimmed); err != nil {
 			if isDuplicateColumnError(err.Error(), trimmed) {
 				// Soft-skip: ALTER TABLE … ADD COLUMN collided with a column
@@ -181,20 +205,6 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 				// retrofitted to add columns that 017 also adds). This makes
 				// migrations idempotent against retrofitted column lists.
 				log.Info("skipping duplicate ADD COLUMN (already exists from prior migration)",
-					zap.Int("version", version),
-					zap.String("filename", filename),
-					zap.Int("statement", i+1),
-				)
-				continue
-			}
-			if isNestedTransactionControl(trimmed) {
-				// Soft-skip: standalone BEGIN/BEGIN TRANSACTION/BEGIN IMMEDIATE/
-				// COMMIT/ROLLBACK would otherwise attempt to nest inside the
-				// runner's outer per-migration transaction and fail with
-				// "cannot start a transaction within a transaction".
-				// Within the outer tx these statements are no-ops; the
-				// migration author intended them as documentation.
-				log.Info("skipping nested transaction control (handled by outer runner tx)",
 					zap.Int("version", version),
 					zap.String("filename", filename),
 					zap.Int("statement", i+1),
