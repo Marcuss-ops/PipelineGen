@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
+	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"
 )
@@ -62,7 +63,7 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, mes
 		attemptedAny = true
 
 		attempt := 0
-		resp, err := platform.DoWithValue(ctx, func() (string, error) {
+		resp, err := retry.DoWithValue(ctx, func() (string, error) {
 			idx := attempt
 			attempt++
 			r, e := c.doChatRequest(ctx, model, messages, options)
@@ -74,7 +75,7 @@ func (c *Client) chatWithRetryAndFallback(ctx context.Context, model string, mes
 				)
 			}
 			return r, e
-		}, platform.RetryOptions{
+		}, retry.RetryOptions{
 			MaxAttempts:    maxRetries,
 			InitialBackoff: 2 * time.Second,
 			BackoffFactor:  1.0,
