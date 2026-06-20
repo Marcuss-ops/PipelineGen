@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/api/mediaingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	imgapp "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
@@ -15,7 +15,7 @@ import (
 
 // MediaIngestWiring holds the MediaIngest module wiring.
 type MediaIngestWiring struct {
-	Handler *mediaingest.MediaingestHandler
+	Handler *assets.MediaingestHandler
 	Module  module.Module
 	Service *ingest.Service
 }
@@ -42,8 +42,8 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps) (*
 		ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},
 		ingest.KindStock:     {Kind: ingest.KindStock, DefaultSource: "stock", RootFolderID: cfg.Drive.StockFolder(), Lifecycle: stockLifecycle},
 	})
-	handler := mediaingest.NewMediaingestHandler(svc)
-	mod := mediaingest.NewMediaIngestModule(cfg, log, handler)
+	handler := assets.NewMediaingestHandler(svc)
+	mod := assets.NewMediaIngestModule(cfg, log, handler)
 	return &MediaIngestWiring{Handler: handler, Module: mod, Service: svc}, nil
 }
 

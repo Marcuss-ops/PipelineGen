@@ -1,4 +1,4 @@
-package scraper
+package assets
 
 import (
 	"context"
@@ -16,14 +16,21 @@ import (
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
+// ScraperHandler exposes the Node-based Artlist search endpoint.
+// It is a sub-handler of the consolidated assets/ package; routes
+// remain mounted under /api/scraper/* for backward compatibility.
 type ScraperHandler struct {
 	nodeScraperDir string
 }
 
+// NewScraperHandler creates a new scraper handler.
 func NewScraperHandler(nodeScraperDir string) *ScraperHandler {
 	return &ScraperHandler{nodeScraperDir: nodeScraperDir}
 }
 
+// RegisterRoutes registers /api/scraper routes.
+//
+//	POST /api/scraper/search
 func (h *ScraperHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/search", h.Search)
 }
