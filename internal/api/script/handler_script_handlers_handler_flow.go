@@ -9,9 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -21,15 +19,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type ScriptFlowHandler struct {
 	generator         *ollama.Generator
 	engine            *scripts.Engine
-	batchService      *batch.BatchService
-	curationService   *curation.CurationService
+	batchService      *scripts.BatchService
+	curationService   *scripts.CurationService
 	curationJobService CurationJobService
 	catalogJobService  CatalogJobService
 	imgService        *images.Service
@@ -39,7 +36,7 @@ type ScriptFlowHandler struct {
 	assetTreeSvc      *assettree.Service
 	groupsResolver    *voiceover.GroupsResolver
 	clipSourceBuilder *scripts.ClipSourceBuilder
-	mediaCurator      *curation.MediaCurator
+	mediaCurator      *scripts.MediaCurator
 	insightBuilder    *ScriptInsightBuilder
 	clipServices      ClipServices
 	docClient         drive.DocClient
@@ -162,13 +159,13 @@ func (h *ScriptFlowHandler) SetClipSourceBuilder(b *scripts.ClipSourceBuilder) {
 }
 
 // SetMediaCurator sets the MediaCurator for query-based compilation generation.
-func (h *ScriptFlowHandler) SetMediaCurator(m *curation.MediaCurator) {
+func (h *ScriptFlowHandler) SetMediaCurator(m *scripts.MediaCurator) {
 	h.mediaCurator = m
 }
 
 func (h *ScriptFlowHandler) youTubeAwareSourceResolver() scripts.SourceTextResolver {
 	return func(ctx context.Context, raw string) (string, string, error) {
-		return batch.ResolveBatchSourceText(ctx, h.cfg, raw)
+		return scripts.ResolveBatchSourceText(ctx, h.cfg, raw)
 	}
 }
 
@@ -179,12 +176,12 @@ func (h *ScriptFlowHandler) SetHarvestService(svc AutoHarvestService) {
 }
 
 // SetBatchService sets the batch generation service.
-func (h *ScriptFlowHandler) SetBatchService(svc *batch.BatchService) {
+func (h *ScriptFlowHandler) SetBatchService(svc *scripts.BatchService) {
 	h.batchService = svc
 }
 
 // SetCurationService sets the curation (catalog + curate) service.
-func (h *ScriptFlowHandler) SetCurationService(svc *curation.CurationService) {
+func (h *ScriptFlowHandler) SetCurationService(svc *scripts.CurationService) {
 	h.curationService = svc
 }
 
@@ -248,7 +245,7 @@ func (h *ScriptFlowHandler) resolveSourceText(ctx context.Context, raw string) (
 	if h.sourceResolver != nil {
 		return h.youTubeAwareSourceResolver()(ctx, raw)
 	}
-	return batch.ResolveBatchSourceText(ctx, h.cfg, raw)
+	return scripts.ResolveBatchSourceText(ctx, h.cfg, raw)
 }
 
 // GetVoiceoverService returns the voiceover service for wiring job services.
@@ -271,18 +268,18 @@ func (h *ScriptFlowHandler) MaybeCreateGoogleDoc(ctx context.Context, title, con
 	if !createDoc {
 		return "", ""
 	}
-	docsSvc := documents.NewService(h.docClient, h.log, h.driveFolderID)
+	docsSvc := scripts.NewDocumentsService(h.docClient, h.log, h.driveFolderID)
 	return docsSvc.CreateDoc(ctx, title, content, h.resolveDriveFolderID, folderID)
 }
 
 // ExecuteBatchGeneration is a thin wrapper that delegates the batch
-// generation request to the underlying *batch.BatchService. It exists
+// generation request to the underlying *scripts.BatchService. It exists
 // so tests and API code can call batch generation through the unified
 // ScriptFlowHandler receiver instead of constructing a BatchService
 // directly. Returns the canonical BatchGenerateResponse.
-func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *batch.GenerateBatchRequest, onProgress func(int, string)) (batch.BatchGenerateResponse, error) {
+func (h *ScriptFlowHandler) ExecuteBatchGeneration(ctx context.Context, req *scripts.GenerateBatchRequest, onProgress func(int, string)) (scripts.BatchGenerateResponse, error) {
 	if h.batchService == nil {
-		return batch.BatchGenerateResponse{}, fmt.Errorf("batch service not initialized on ScriptFlowHandler")
+		return scripts.BatchGenerateResponse{}, fmt.Errorf("batch service not initialized on ScriptFlowHandler")
 	}
 	return h.batchService.ExecuteBatchGeneration(ctx, req, onProgress)
 }

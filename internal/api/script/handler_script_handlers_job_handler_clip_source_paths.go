@@ -7,13 +7,11 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
@@ -135,7 +133,7 @@ func (h *ScriptFlowHandler) handleClipPathAutoSearch(ctx context.Context, payloa
 		tools.Progress(10, "Searching for clips and generating script...")
 	}
 
-	curateReq := curation.CurateRequest{
+	curateReq := scripts.CurateRequest{
 		Query:             payload.Topic,
 		Title:             payload.Title,
 		Language:          payload.Language,
@@ -226,9 +224,9 @@ func (h *ScriptFlowHandler) handleClipPathTextOnly(ctx context.Context, payload 
 		topic, payload.SourceText, payload.Guidelines, title,
 		payload.Language, payload.Tone, payload.Model,
 		payload.ForceRefresh, payload.SaveToDB, payload.TargetWords,
-		defaults.String(payload.PromptVersion, batch.DefaultTextPromptVersion),
-		defaults.String(payload.EditorPromptVersion, batch.DefaultTextEditorPromptVersion),
-		defaults.String(payload.QAPromptVersion, batch.DefaultTextQAPromptVersion),
+		defaults.String(payload.PromptVersion, scripts.DefaultTextPromptVersion),
+		defaults.String(payload.EditorPromptVersion, scripts.DefaultTextEditorPromptVersion),
+		defaults.String(payload.QAPromptVersion, scripts.DefaultTextQAPromptVersion),
 	)
 
 	writeResult, err := h.engine.WriteScript(ctx, scripts.WriteScriptRequest{

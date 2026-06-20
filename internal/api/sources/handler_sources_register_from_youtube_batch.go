@@ -102,7 +102,7 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	})
 }
 
-// processBatchClip processes a single clip within a batch.
+// processBatchClip processes a single clip within a 
 // It captures the RegisterFromYouTube handler output by redirecting
 // the response to a buffer, then parses the JSON result.
 func (h *Handler) processBatchClip(ctx context.Context, clip RegisterFromYouTubeRequest) BatchClipResult {

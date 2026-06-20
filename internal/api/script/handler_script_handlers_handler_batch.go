@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -126,7 +126,7 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		scriptsCfg = h.cfg.Scripts.WithDefaults()
 	}
 
-	req, ok := api.BindJSON[batch.GenerateBatchRequest](c)
+	req, ok := api.BindJSON[scripts.GenerateBatchRequest](c)
 	if !ok {
 		return
 	}
@@ -142,9 +142,9 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 	if req.Model == "" && h.cfg != nil {
 		req.Model = h.cfg.External.OllamaModel
 	}
-	req.PromptVersion = defaults.String(req.PromptVersion, batch.DefaultBookPromptVersion)
-	req.EditorPromptVersion = defaults.String(req.EditorPromptVersion, batch.DefaultBookEditorPromptVersion)
-	req.QAPromptVersion = defaults.String(req.QAPromptVersion, batch.DefaultBookQAPromptVersion)
+	req.PromptVersion = defaults.String(req.PromptVersion, scripts.DefaultBookPromptVersion)
+	req.EditorPromptVersion = defaults.String(req.EditorPromptVersion, scripts.DefaultBookEditorPromptVersion)
+	req.QAPromptVersion = defaults.String(req.QAPromptVersion, scripts.DefaultBookQAPromptVersion)
 
 	// ChannelID: optional in the request. Default to the batch channel from config
 	// (cfg.scripts.batch_channel_id, default "default-batch") so a simpler request
@@ -172,9 +172,9 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		docTitle = "Untitled Batch Script"
 	}
 
-	supportedLanguages := batch.SupportedScriptLanguages(nil, "")
+	supportedLanguages := scripts.SupportedScriptLanguages(nil, "")
 	if h.cfg != nil {
-		supportedLanguages = batch.SupportedScriptLanguages(h.cfg.Multilingual.TranslateLanguages, h.cfg.Multilingual.SourceLanguage)
+		supportedLanguages = scripts.SupportedScriptLanguages(h.cfg.Multilingual.TranslateLanguages, h.cfg.Multilingual.SourceLanguage)
 	}
 	effectiveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if effectiveFolderID == "" {
@@ -186,7 +186,7 @@ func (h *ScriptFlowHandler) GenerateBatch(c *gin.Context) {
 		}
 	}
 
-	if validationErrs := batch.ValidateGenerateBatchRequest(&req, effectiveFolderID, supportedLanguages); len(validationErrs) > 0 {
+	if validationErrs := scripts.ValidateGenerateBatchRequest(&req, effectiveFolderID, supportedLanguages); len(validationErrs) > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid_request", "details": validationErrs})
 		return
 	}

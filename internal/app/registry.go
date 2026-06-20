@@ -13,9 +13,7 @@ import (
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/generate"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
@@ -107,9 +105,9 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		scriptsRepoAdapter := scriptcore.NewRepositoryAdapter(coreDeps.ScriptsRepo)
 		engine := scriptcore.NewEngine(coreDeps.ScriptGen, memorySvc, scriptsRepoAdapter, log)
 		handler := scriptapi.NewScriptFlowHandler(coreDeps.ScriptGen, engine, coreDeps.ImageService, coreDeps.RealtimeService, coreDeps.AssocService, coreDeps.VoiceoverService, coreDeps.AssetTreeService, coreDeps.DocClient, coreDeps.DriveUploader, coreDeps.JobServiceFacade, scriptsRepoAdapter, memorySvc, cfg.Drive.ScriptsGenFolder(), cfg, log)
-		batchSvc := batch.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, scriptsRepoAdapter)
+		batchSvc := scripts.NewBatchService(cfg, log, coreDeps.ScriptGen, engine, coreDeps.DocClient, coreDeps.VoiceoverService, scriptsRepoAdapter)
 		handler.SetBatchService(batchSvc)
-		curationSvc := curation.NewCurationService(nil, coreDeps.JobsService, log)
+		curationSvc := scripts.NewCurationService(nil, coreDeps.JobsService, log)
 		handler.SetCurationService(curationSvc)
 		wireScriptFlowExtras(handler, coreDeps.ScriptGen.GetClient(), coreDeps.VectorStore, coreDeps.ClipsRepo, engine, cfg, log)
 		if coreDeps.JobsService != nil {
@@ -117,7 +115,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 			harvestSvc := clipresolver.NewJobHarvestService(coreDeps.JobServiceFacade, log, presetsConfig, cfg.Drive.ArtlistFolder())
 			handler.SetHarvestService(harvestSvc)
 		}
-		genSvc := generate.NewGenerationService(coreDeps.JobServiceFacade, cfg, log)
+		genSvc := scripts.NewGenerationService(coreDeps.JobServiceFacade, cfg, log)
 		mod := scriptapi.NewModule(cfg, log, scriptapi.NewHandler(handler, genSvc))
 		registerModule(registry, log, mod)
 	}
@@ -297,7 +295,7 @@ func wireScriptFlowExtras(handler *scriptapi.ScriptFlowHandler, ollamaClient *cl
 	handler.SetClipSourceBuilder(clipSourceBuilder)
 	handler.SetCurationClipSourceBuilder(clipSourceBuilder)
 	if (vectorStore != nil || clipsOnlyRepo != nil) && engine != nil {
-		handler.SetMediaCurator(curation.NewMediaCurator(vectorStore, cfg.ClipIndexer.ServerURL, clipsOnlyRepo, clipSourceBuilder, engine, log))
+		handler.SetMediaCurator(scripts.NewMediaCurator(vectorStore, cfg.ClipIndexer.ServerURL, clipsOnlyRepo, clipSourceBuilder, engine, log))
 	}
 }
 

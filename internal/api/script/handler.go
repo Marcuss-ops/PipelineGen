@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/generate"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -27,7 +27,7 @@ type Handler struct {
 }
 
 // NewHandler creates a new script Handler.
-// The gen parameter is the concrete *generate.GenerationService, which
+// The gen parameter is the concrete *scripts.GenerationService, which
 // satisfies the GenerationService interface defined below.
 func NewHandler(inner *ScriptFlowHandler, gen GenerationService) *Handler {
 	return &Handler{inner: inner, generate: gen}
@@ -38,8 +38,8 @@ func NewHandler(inner *ScriptFlowHandler, gen GenerationService) *Handler {
 // package. This avoids an import cycle when commands.go is removed and
 // the service accepts script.GenerationSpec directly.
 type GenerationService interface {
-	EnqueueFromClips(ctx context.Context, spec script.GenerationSpec) (*generate.FromClipsResult, error)
-	EnqueueWithImages(ctx context.Context, spec script.GenerationSpec) (*generate.FromClipsResult, error)
+	EnqueueFromClips(ctx context.Context, spec script.GenerationSpec) (*scripts.FromClipsResult, error)
+	EnqueueWithImages(ctx context.Context, spec script.GenerationSpec) (*scripts.FromClipsResult, error)
 }
 
 // ── Generation endpoints (thin transport) ───────────────────────────────────
@@ -111,7 +111,7 @@ func mapErrorToHTTP(err error) (int, string) {
 	}
 }
 
-// GenerateBatch handles POST /api/script/generate-batch.
+// GenerateBatch handles POST /api/script/generate-
 func (h *Handler) GenerateBatch(c *gin.Context) {
 	if h.inner == nil {
 		api.Error(c, http.StatusServiceUnavailable, "script handler not initialized")
