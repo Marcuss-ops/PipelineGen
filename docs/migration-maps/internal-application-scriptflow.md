@@ -2,11 +2,20 @@
 
 ## Status
 
-**pending** — in-progress. Target: `internal/application/scripts/{batch,curation,generate,...}/`.
+**done** — completed as a single flat-merge PR (commits `ce1f7189`, `43ec726d`
+on origin/main). The legacy `internal/application/scriptflow/` tree was
+absorbed entirely into the flat `internal/application/scripts/` package.
+Sub-package layering (batch/curation/generate/scenes/documents/jobs)
+was preserved only in spirit — at source level, the symbols now live
+at the top level of the flat `scripts` package (e.g. `BatchService`,
+`Curator`, `Engine`, `GeminiMemory`, etc.). The doc as it was originally
+drafted (sub-package-preserving moves) is kept below for historical
+context, but the planned cut-over recipe is **superseded** by the
+flat-merge that actually shipped.
 
-## What exists
+## What existed (pre-merge)
 
-`internal/application/scriptflow/` contains 6 sub-packages:
+`internal/application/scriptflow/` contained 6 sub-packages:
 
 | Sub-package | Public surface | Live importers |
 |---|---|---|
@@ -17,9 +26,9 @@
 | `scriptflow/scenes/`    | `SceneBuilder`, scene-image generator | ~3 |
 | `scriptflow/documents/` | Google Docs builder | ~2 |
 
-## Migration target
+## Original migration target (superseded)
 
-| Legacy sub-package | Target |
+| Legacy sub-package | Target (pre-merge plan) |
 |---|---|
 | `scriptflow/batch/`     | `internal/application/scripts/batch/` |
 | `scriptflow/curation/`  | `internal/application/scripts/curation/` |
@@ -28,7 +37,7 @@
 | `scriptflow/scenes/`    | `internal/application/scripts/scenes/` |
 | `scriptflow/documents/` | merge into `internal/infrastructure/google/docs/` |
 
-## Cut-over recipe
+## Original cut-over recipe (superseded)
 
 1. Move `scriptflow/batch/` first — it has the most importers and is the most
    cohesive. Use `git mv` (intra-non-legacy rename, so the CI guard
@@ -42,14 +51,37 @@
 6. Drop `internal/application/scriptflow/`. Update
    `architecture/migration.yaml`.
 
-## Subtlety: the target directory `internal/application/scripts/` already exists
+## Actual outcome (June 2026)
 
-`internal/application/scripts/` already contains `Engine`, `Repository`,
-`gemmamemory/`, and the canonical `Repository` adapter. After this migration
-it will also own `batch/`, `curation/`, `generate/`, `scenes/`. That's the
-direction — `scripts/` becomes the single coherent home for ALL script
-generation logic.
+The 6 sub-packages were flattened into the **single** `scripts/` package in
+two PRs on origin/main:
+
+1. `ce1f7189` — book/lessons consolidation into content layer.
+2. `43ec726d` — flat-merge of `scriptflow/{batch,curation,generate,
+   documents,jobs,scenes}/*` → `scripts/*`. After this:
+   - `scripts/batch_types.go` owns `BatchTopic`, `GenerateBatchRequest`,
+     `ValidateGenerateBatchRequest` (formerly in `scriptflow/batch`).
+   - `scripts/batch_service.go` owns `BatchService` /
+     `ExecuteBatchGeneration`.
+   - `scripts/engine.go`, `scripts/source.go`, `scripts/normalize.go`,
+     `scripts/clip_source_evidence.go`, `scripts/write_script.go` —
+     top-level scriptflow functions now flat.
+   - `scripts/curate.go`, `scripts/mediacurator.go`, `scripts/search.go`
+     (formerly `scriptflow/curation/*`) live alongside `engine.go`.
+   - Pre-flatten test files in the importing packages that referenced
+     `scriptflow/batch.X` (e.g. `handler_batch_validation_test.go`,
+     `handler_batch_test.go`) were updated to call
+     `scripts.<X>` directly. The `batch` and `batchpkg` aliases were
+     dropped because the flat package name is `scripts`.
+
+## Subtlety: `internal/application/scripts/` was already a real package
+
+`internal/application/scripts/` already contained `Engine`, `Repository`,
+`gemmamemory/`, and the canonical `Repository` adapter. After the flat-merge
+it also owns the scriptflow subset. `scripts/` is now the single coherent
+home for **all** script generation logic, with a single `package scripts`
+declaration and no nested sub-packages.
 
 ## Owner
 
-Wave-15 follow-up. Estimated effort: 5 PRs in dependency order.
+Completed. Future cleanup, if any, lives in the burn-down backlog.
