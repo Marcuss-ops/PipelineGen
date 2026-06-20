@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
@@ -73,7 +73,7 @@ func (m *mockQdrantStore) ScrollAssetIDsPage(ctx context.Context, batchSize int,
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 // insertTestClipFrom is a helper to insert a test clip into the DB.
-func insertTestClipFrom(t *testing.T, repo *sqlite.ClipsRepository, clip *assets.Asset) {
+func insertTestClipFrom(t *testing.T, repo *sqlite.ClipsRepository, clip *asset.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -82,14 +82,14 @@ func insertTestClipFrom(t *testing.T, repo *sqlite.ClipsRepository, clip *assets
 }
 
 // makeClip creates a MediaAsset with a transcript, suitable for catalog search.
-func makeClip(id, name, transcript, summary, topics string) *assets.Asset {
-	clip := &assets.Asset{
+func makeClip(id, name, transcript, summary, topics string) *asset.Asset {
+	clip := &asset.Asset{
 		ID:             id,
 		Name:           name,
 		Source:         "youtube",
 		Duration:       120 * time.Second,
 		Tags:           []string{},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -486,13 +486,13 @@ func TestSelectClipsForTopic_FiltersClipsWithoutTranscript(t *testing.T) {
 	builder, repo := newCatalogTestBuilder(t)
 
 	// Clip without transcript — should be filtered out by toSearchSummary
-	noTranscript := &assets.Asset{
+	noTranscript := &asset.Asset{
 		ID:             "no-transcript-tag",
 		Name:           "No Transcript Pompeii",
 		Source:         "youtube",
 		Duration:       120 * time.Second,
 		Tags:           []string{},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -632,7 +632,7 @@ func TestToSearchSummary_FiltersNoTranscript(t *testing.T) {
 	_ = repo // not needed for this test
 
 	// Clip without transcript → nil
-	noTranscript := &assets.Asset{
+	noTranscript := &asset.Asset{
 		ID:   "no-tx",
 		Name: "No Transcript",
 	}
@@ -642,7 +642,7 @@ func TestToSearchSummary_FiltersNoTranscript(t *testing.T) {
 	}
 
 	// Clip with transcript → non-nil summary
-	withTranscript := &assets.Asset{
+	withTranscript := &asset.Asset{
 		ID:   "has-tx",
 		Name: "Has Transcript",
 	}

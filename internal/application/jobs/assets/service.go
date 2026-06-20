@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -21,7 +21,7 @@ import (
 
 type Service struct {
 	assetIndex    *assetindex.Service
-	querySvc      *assets.Service
+	querySvc      *asset.Service
 	imagesRepo    *sqlite.ImagesRepository
 	voiceoverRepo *sqlite.VoiceoversRepository
 	uploadRoot    string
@@ -42,11 +42,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *sqlite.ImagesRepository, voiceoverRepo *sqlite.VoiceoversRepository, log *zap.Logger) *Service {
+func NewService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *sqlite.ImagesRepository, voiceoverRepo *sqlite.VoiceoversRepository, log *zap.Logger) *Service {
 	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *assets.Service, imagesRepo *sqlite.ImagesRepository, voiceoverRepo *sqlite.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *sqlite.ImagesRepository, voiceoverRepo *sqlite.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}
@@ -300,16 +300,16 @@ func convertAssetRecord(assetID, localPath, driveLink, downloadLink, fallbackID 
 	}
 }
 
-func convertMediaAsset(details *assets.Details) *resolvedAsset {
+func convertMediaAsset(details *asset.Details) *resolvedAsset {
 	assetItem := details.Asset
 	filename := assetItem.Filename
 	localPath := ""
 	driveLink := ""
 	downloadLink := ""
 	for _, loc := range details.Locations {
-		if loc.LocationKind == assets.LocationKindLocal {
+		if loc.LocationKind == asset.LocationKindLocal {
 			localPath = loc.URI
-		} else if loc.LocationKind == assets.LocationKindDrive {
+		} else if loc.LocationKind == asset.LocationKindDrive {
 			driveLink = loc.AccessURL
 			downloadLink = loc.DownloadURL
 		}

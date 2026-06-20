@@ -8,7 +8,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
@@ -21,7 +21,7 @@ import (
 const clipSourceTestSchema = drive.CanonicalMediaAssetsSchema
 
 // insertTestClip is a helper to insert a test clip into the DB.
-func insertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *assets.Asset) {
+func insertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *asset.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -92,13 +92,13 @@ func TestBuildPack_AllValid(t *testing.T) {
 			language:     "en",
 		},
 	} {
-		asset := &assets.Asset{
+		asset := &asset.Asset{
 			ID:             clip.id,
 			Name:           clip.name,
 			Source:         "youtube",
 			Duration:       time.Duration(clip.duration) * time.Second,
 			Tags:           []string{"documentary"},
-			LifecycleState: assets.StateReady,
+			LifecycleState: asset.StateReady,
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
@@ -197,13 +197,13 @@ func TestBuildPack_ExcludesMissingTranscript(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// Clip with no transcript set at all
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "no-transcript",
 		Name:           "No Transcript Clip",
 		Source:         "youtube",
 		Duration:       120 * time.Second,
 		Tags:           []string{},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})
@@ -244,13 +244,13 @@ func TestBuildPack_ExcludesQualityTooLow(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "low-quality",
 		Name:           "Low Quality Clip",
 		Source:         "youtube",
 		Duration:       120 * time.Second,
 		Tags:           []string{},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -284,13 +284,13 @@ func TestBuildPack_ExcludesTranscriptTooShort(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "short-transcript",
 		Name:           "Short Transcript Clip",
 		Source:         "youtube",
 		Duration:       120 * time.Second,
 		Tags:           []string{},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -359,13 +359,13 @@ func TestBuildPack_MixedValidity(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// 2 valid, 1 no-transcript, 1 nonexistent = 2 accepted, 2 excluded
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "valid-1",
 		Name:           "Valid Clip One",
 		Source:         "youtube",
 		Duration:       100 * time.Second,
 		Tags:           []string{"documentary"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -373,13 +373,13 @@ func TestBuildPack_MixedValidity(t *testing.T) {
 	asset.SetMetadataString("clean_transcript", "This is a valid transcript for the first clip. It has enough words.")
 	insertTestClip(t, repo, asset)
 
-	asset2 := &assets.Asset{
+	asset2 := &asset.Asset{
 		ID:             "valid-2",
 		Name:           "Valid Clip Two",
 		Source:         "youtube",
 		Duration:       200 * time.Second,
 		Tags:           []string{"documentary"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -388,12 +388,12 @@ func TestBuildPack_MixedValidity(t *testing.T) {
 	insertTestClip(t, repo, asset2)
 
 	// No transcript — will be excluded
-	clip3 := &assets.Asset{
+	clip3 := &asset.Asset{
 		ID:             "no-transcript",
 		Name:           "No Transcript",
 		Source:         "youtube",
 		Duration:       150 * time.Second,
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -469,12 +469,12 @@ func TestBuildPack_TranscriptFallback(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// clean_transcript empty → fall back to "transcript"
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "fallback-clip",
 		Name:           "Fallback Clip",
 		Source:         "youtube",
 		Duration:       60 * time.Second,
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -505,12 +505,12 @@ func TestBuildPack_SpeakersAndPeople(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "people-clip",
 		Name:           "Interview Clip",
 		Source:         "youtube",
 		Duration:       300 * time.Second,
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -554,12 +554,12 @@ func TestBuildPack_YouTubeTitle(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "yt-clip",
 		Name:           "Local Name",
 		Source:         "youtube",
 		Duration:       120 * time.Second,
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -591,12 +591,12 @@ func TestBuildPack_EvidenceChunksFromMultiParagraph(t *testing.T) {
 	ctx := context.Background()
 	builder, repo := newClipSourceBuilder(t)
 
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "multi-para",
 		Name:           "Multi Paragraph Clip",
 		Source:         "youtube",
 		Duration:       180 * time.Second, // 3 minutes = 180s
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -659,12 +659,12 @@ func TestBuildPack_EvidenceChunksWithoutDuration(t *testing.T) {
 	builder, repo := newClipSourceBuilder(t)
 
 	// Clip with Duration = 0 — chunks should still be created but with zero timestamps
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "no-duration",
 		Name:           "No Duration Clip",
 		Source:         "youtube",
 		Duration:       0,
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

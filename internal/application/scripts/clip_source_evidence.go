@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -33,7 +33,7 @@ func cleanTranscriptJSON(raw string) (string, string) {
 }
 
 // buildEvidence converts a MediaAsset to ClipEvidence, applying validation rules.
-func (b *ClipSourceBuilder) buildEvidence(asset *assets.Asset, opts *ClipGenerationOptions) ClipEvidence {
+func (b *ClipSourceBuilder) buildEvidence(asset *asset.Asset, opts *ClipGenerationOptions) ClipEvidence {
 	ev := ClipEvidence{
 		ClipID:       asset.ID,
 		Title:        asset.Name,
