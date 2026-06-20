@@ -1,7 +1,7 @@
 package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -13,20 +13,20 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
 	var payload map[string]any
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		internal.APIUtil.BadRequest(c, "invalid payload")
+		apiutil.BadRequest(c, "invalid payload")
 		return
 	}
 
 	ctx := c.Request.Context()
 	clip, err := repo.GetClip(ctx, clipID)
 	if err != nil {
-		internal.APIUtil.NotFound(c, "clip not found")
+		apiutil.NotFound(c, "clip not found")
 		return
 	}
 
@@ -78,7 +78,7 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 	}
 
 	if err := repo.UpsertClip(ctx, clip); err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -90,7 +90,7 @@ func (h *Handler) UpdateClip(c *gin.Context) {
 		}
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
 		"clip_id": clipID,

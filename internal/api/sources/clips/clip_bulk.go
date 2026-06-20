@@ -2,8 +2,7 @@ package clips
 
 import (
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,23 +14,23 @@ func (h *Handler) BulkAddTags(c *gin.Context) {
 		Tags []string `json:"tags"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
 	if len(req.IDs) == 0 || len(req.Tags) == 0 {
-		internal.APIUtil.OK(c, gin.H{"ok": true, "message": "no items or tags provided"})
+		apiutil.OK(c, gin.H{"ok": true, "message": "no items or tags provided"})
 		return
 	}
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
 	if err := repo.BulkAddTags(c.Request.Context(), req.IDs, req.Tags); err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -46,7 +45,7 @@ func (h *Handler) BulkAddTags(c *gin.Context) {
 		}
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
 		"count":   len(req.IDs),
@@ -62,23 +61,23 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		Tags []string `json:"tags"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, err.Error())
+		apiutil.BadRequest(c, err.Error())
 		return
 	}
 
 	if len(req.IDs) == 0 || len(req.Tags) == 0 {
-		internal.APIUtil.OK(c, gin.H{"ok": true, "message": "no items or tags provided"})
+		apiutil.OK(c, gin.H{"ok": true, "message": "no items or tags provided"})
 		return
 	}
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
 	if err := repo.BulkRemoveTags(c.Request.Context(), req.IDs, req.Tags); err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -93,7 +92,7 @@ func (h *Handler) BulkRemoveTags(c *gin.Context) {
 		}
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
 		"count":   len(req.IDs),

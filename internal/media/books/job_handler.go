@@ -1,6 +1,7 @@
 package books
 
 import (
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,12 +10,14 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
 // HandleJob processes the background job for book summarization.
 // After the Python script finishes, uploads output files to Drive if they
 // weren't already uploaded by the script (fallback).
-func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("handling book.process job", zap.String("job_id", job.ID))
 
 	var req ProcessRequest
@@ -112,7 +115,7 @@ func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result 
 }
 
 // RegisterJobHandler registers the handler for book processing jobs
-func (s *Service) RegisterJobHandler(jobsSvc *jobs.Service) {
+func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
 		jobsSvc.RegisterHandler(job.TypeBooksProcess, s.HandleJob)
 		s.log.Info("registered book.process job handler")

@@ -13,13 +13,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipresolver"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // ArtlistHandler owns the HTTP transport for Artlist operations:
@@ -84,13 +83,13 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 
 // RunTagPipeline executes the full Artlist flow for a tag.
 func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
-	req, ok := internal.BindJSON[artlist.RunTagRequest](c)
+	req, ok := apiutil.BindJSON[artlist.RunTagRequest](c)
 	if !ok {
 		return
 	}
 
 	if strings.TrimSpace(req.Term) == "" {
-		internal.APIUtil.BadRequest(c, "term is required")
+		apiutil.BadRequest(c, "term is required")
 		return
 	}
 
@@ -100,7 +99,7 @@ func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 		MaxLimit:            500,
 	})
 	if strings.TrimSpace(req.RootFolderID) == "" {
-		internal.APIUtil.BadRequest(c, "artlist root folder is not configured")
+		apiutil.BadRequest(c, "artlist root folder is not configured")
 		return
 	}
 
@@ -118,7 +117,7 @@ func (h *ArtlistHandler) RunTagPipeline(c *gin.Context) {
 // enqueueArtlistRun is the single enqueue path for all Artlist runs
 func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagRequest) {
 	if h.jobsService == nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("jobs service not configured"))
+		apiutil.InternalError(c, fmt.Errorf("jobs service not configured"))
 		return
 	}
 
@@ -131,59 +130,59 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 	})
 	if err != nil {
 		h.log.Error("failed to enqueue artlist job", zap.Error(err))
-		internal.APIUtil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
+		apiutil.InternalError(c, fmt.Errorf("failed to enqueue job: %w", err))
 		return
 	}
-	internal.APIUtil.Accepted(c, artlist.JobToRunTagResponse(job))
+	apiutil.Accepted(c, artlist.JobToRunTagResponse(job))
 }
 
 // RunStatus returns the tracked status for a background artlist run
 func (h *ArtlistHandler) RunStatus(c *gin.Context) {
 	runID := strings.TrimSpace(c.Param("run_id"))
 	if runID == "" {
-		internal.APIUtil.BadRequest(c, "run_id is required")
+		apiutil.BadRequest(c, "run_id is required")
 		return
 	}
 
 	resp, err := h.service.GetRunTag(c.Request.Context(), runID)
 	if err != nil {
-		internal.APIUtil.NotFound(c, err.Error())
+		apiutil.NotFound(c, err.Error())
 		return
 	}
 
-	internal.APIUtil.OK(c, resp)
+	apiutil.OK(c, resp)
 }
 
 // Stats returns statistics about Artlist clips and search terms
 func (h *ArtlistHandler) Stats(c *gin.Context) {
 	stats, err := h.service.GetStats(c.Request.Context())
 	if err != nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("failed to get stats: %v", err))
+		apiutil.InternalError(c, fmt.Errorf("failed to get stats: %v", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, stats)
+	apiutil.OK(c, stats)
 }
 
 // Search searches for Artlist clips in the database
 func (h *ArtlistHandler) Search(c *gin.Context) {
-	req, ok := internal.BindJSON[artlist.SearchRequest](c)
+	req, ok := apiutil.BindJSON[artlist.SearchRequest](c)
 	if !ok {
 		return
 	}
 
 	if strings.TrimSpace(req.Term) == "" {
-		internal.APIUtil.BadRequest(c, "term is required")
+		apiutil.BadRequest(c, "term is required")
 		return
 	}
 
 	resp, err := h.service.Search(c.Request.Context(), &req)
 	if err != nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("search failed: %v", err))
+		apiutil.InternalError(c, fmt.Errorf("search failed: %v", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, resp)
+	apiutil.OK(c, resp)
 }
 
 // Diagnostics returns Artlist system diagnostics
@@ -195,11 +194,11 @@ func (h *ArtlistHandler) Diagnostics(c *gin.Context) {
 
 	resp, err := h.service.Diagnostics(c.Request.Context(), term)
 	if err != nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("diagnostics failed: %v", err))
+		apiutil.InternalError(c, fmt.Errorf("diagnostics failed: %v", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, resp)
+	apiutil.OK(c, resp)
 }
 
 // SearchLive performs a live search using the Node.js scraper
@@ -215,28 +214,28 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 	}
 
 	if term == "" {
-		internal.APIUtil.BadRequest(c, "term is required")
+		apiutil.BadRequest(c, "term is required")
 		return
 	}
 
 	clips, err := h.service.SearchLive(c.Request.Context(), term, limit)
 	if err != nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("live search failed: %v", err))
+		apiutil.InternalError(c, fmt.Errorf("live search failed: %v", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, gin.H{"clips": clips})
+	apiutil.OK(c, gin.H{"clips": clips})
 }
 
 // Recommend handles the recommendation endpoint using clipresolver
 func (h *ArtlistHandler) Recommend(c *gin.Context) {
-	req, ok := internal.BindJSON[clipresolver.RecommendRequest](c)
+	req, ok := apiutil.BindJSON[clipresolver.RecommendRequest](c)
 	if !ok {
 		return
 	}
 
 	if h.clipResolver == nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("clip resolver service not available"))
+		apiutil.InternalError(c, fmt.Errorf("clip resolver service not available"))
 		return
 	}
 
@@ -250,17 +249,17 @@ func (h *ArtlistHandler) Recommend(c *gin.Context) {
 	resp, err := h.clipResolver.Recommend(c.Request.Context(), &req)
 	if err != nil {
 		h.log.Error("clip resolver recommend failed", zap.Error(err))
-		internal.APIUtil.InternalError(c, fmt.Errorf("recommend failed: %v", err))
+		apiutil.InternalError(c, fmt.Errorf("recommend failed: %v", err))
 		return
 	}
 
-	internal.APIUtil.OK(c, resp)
+	apiutil.OK(c, resp)
 }
 
 // SyncCatalogs synchronizes all artlist catalogs.
 func (h *ArtlistHandler) SyncCatalogs(c *gin.Context) {
 	if h.catalogSync == nil {
-		internal.APIUtil.Error(c, http.StatusServiceUnavailable, "catalog sync service not configured")
+		apiutil.Error(c, http.StatusServiceUnavailable, "catalog sync service not configured")
 		return
 	}
 
@@ -270,5 +269,5 @@ func (h *ArtlistHandler) SyncCatalogs(c *gin.Context) {
 		return
 	}
 
-	internal.APIUtil.OK(c, summary)
+	apiutil.OK(c, summary)
 }
