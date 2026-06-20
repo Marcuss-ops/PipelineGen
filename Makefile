@@ -9,9 +9,15 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 # Default target
 all: build
 
-# Build the server with version info
+# Build the entry-point binaries. Outputs land in ./bin/ to keep the project
+# root clean (see `make clean`). The admin CLI is the canonical orchestrator
+# entry — it exposes subcommands for the server, worker, and admin flows
+# (see cmd/admin/main.go for the available modes). The worker binary covers
+# the long-running pipeline worker process.
 build:
-	go build -ldflags "$(LDFLAGS)" -v ./cmd/server
+	@mkdir -p bin
+	go build -ldflags "$(LDFLAGS)" -v -o bin/admin ./cmd/admin
+	go build -ldflags "$(LDFLAGS)" -v -o bin/worker ./cmd/worker
 
 # Run all tests
 test: test-unit

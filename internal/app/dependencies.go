@@ -28,10 +28,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	gdrive "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/scheduler"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
@@ -53,7 +53,7 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 
