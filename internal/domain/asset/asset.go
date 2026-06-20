@@ -12,10 +12,17 @@
 //   - Phase 1 (Wave 12 turn 2): foundation. Aliases = {Asset, MediaType}.
 //     providers contract (internal/application/assets/providers) is
 //     already on this package.
-//   - Phase 2 PR-1 (this PR): internal/api/sources/ migrated (16 files).
+//   - Phase 2 PR-1: internal/api/sources/ migrated (16 files).
 //     Aliases extended YAGNI = {Source, Repository, Filter}.
-//   - Phase 2 PR-2-4: internal/application/, internal/media/,
-//     internal/infrastructure/ — bounded-context batched, one PR each.
+//   - Phase 2 PR-2 (this PR): internal/application/ migrated (10 files).
+//     Aliases extended YAGNI: now 5 entries — {Details, Service,
+//     LocationKind, LocationKindDrive, LocationKindLocal}. Two structs
+//     (Details, Service), one type alias (LocationKind), and two
+//     typed consts (LocationKindDrive/Local). Every other symbol
+//     application/ uses was already covered by PR-1's alias set.
+//     Parity covered by asset_test.go (TestLocationKind*).
+//   - Phase 2 PR-3-4: internal/media/, internal/infrastructure/
+//     — bounded-context batched, one PR each.
 //   - Phase 3: convergence with internal/domain/media (MediaType
 //     constants, LifecycleState promotion, etc.) — DEFERRED.
 //
@@ -94,6 +101,31 @@ type (
 	// PR-1 (used by clips/clip_read.go). The struct's field set is
 	// owned by internal/assets until phase 3 absorbs it.
 	Filter = assets.Filter
+
+	// Details is the per-asset diagnostic payload: license info,
+	// provenance chain, fetch timestamps. Hard alias; YAGNI added in
+	// Wave 12 follow-up Phase 2 PR-2 (internal/application/ migration)
+	// because internal/application/jobs/assets/service.go stores
+	// pipeline outcomes in Asset.Details during job execution.
+	Details = assets.Details
+
+	// Service is the asset-management façade — a struct that bundles
+	// repositories (clips / locations / processing / versions / store /
+	// artifact / delivery) for transactional composition. Hard alias;
+	// YAGNI added in Wave 12 follow-up Phase 2 PR-2 because the same
+	// file (internal/application/jobs/assets/service.go) constructs
+	// it. Will be promoted to an interface in phase 3 when the job
+	// runner stops reaching into a concrete façade.
+	Service = assets.Service
+
+	// LocationKind is the typed enum behind
+	// internal/assets.Locations[].LocationKind (see
+	// internal/assets/details.go). Hard alias; YAGNI added in Wave 12
+	// follow-up Phase 2 PR-2 because the migrated job-runner path in
+	// internal/application/jobs/assets/service.go::convertMediaAsset
+	// reads `loc.LocationKind == asset.LocationKindLocal` / `Drive`,
+	// where `loc.LocationKind` is a field of this typed enum.
+	LocationKind = assets.LocationKind
 )
 
 // ── LifecycleState constants ────────────────────────────────────────
@@ -110,4 +142,17 @@ const (
 	StateDeleted    = assets.StateDeleted
 	StateReady      = assets.StateReady
 	StatePending    = assets.StatePending
+)
+
+// ── LocationKind constants ───────────────────────────────────────────
+//
+// Re-declared from internal/assets/location.go because Go const-group
+// re-exports aren't possible through type aliases. Values match the
+// legacy package; parity is asserted indirectly via go build (any drift
+// surfaces as an unresolved-reference error in the migrated callers).
+// YAGNI added in Wave 12 follow-up Phase 2 PR-2.
+
+const (
+	LocationKindDrive = assets.LocationKindDrive
+	LocationKindLocal = assets.LocationKindLocal
 )

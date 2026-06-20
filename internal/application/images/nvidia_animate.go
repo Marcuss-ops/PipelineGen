@@ -9,18 +9,21 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {
 	// 1. Get image from repo
-	asset, err := s.repo.GetImageByHash(ctx, imageHash)
+	// NOTE: renamed from `asset` to `img` to avoid shadowing the
+	// `internal/domain/asset` package alias (Wave 12 follow-up
+	// Phase 2 PR-2 migration).
+	img, err := s.repo.GetImageByHash(ctx, imageHash)
 	if err != nil {
 		return "", fmt.Errorf("image not found: %w", err)
 	}
 
-	fullPath := filepath.Join(s.imagesDir, asset.PathRel)
+	fullPath := filepath.Join(s.imagesDir, img.PathRel)
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("local file not found: %s", fullPath)
 	}
@@ -57,10 +60,10 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 		fileID, wl, err := s.mediaStore.UploadToDrive(ctx, drive.AssetDestinationRequest{
 			Source:    drive.SourceImage,
 			MediaType: drive.MediaTypeImageVideo,
-			Subject:   asset.SubjectID,
+			Subject:   img.SubjectID,
 			Hash:      imageHash,
 			Ext:       ".mp4",
-			Style:     asset.SubjectID,
+			Style:     img.SubjectID,
 		}, outputPath)
 		if err != nil {
 			s.log.Warn("Drive video upload failed", zap.Error(err))
@@ -73,13 +76,13 @@ func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration i
 
 	// 6. Salva nel DB stock (fallback)
 	if s.stockRepo != nil {
-		clip := &assets.Asset{
+		clip := &asset.Asset{
 			ID:             "ai_" + imageHash,
-			Name:           "AI Animation: " + asset.SubjectID,
-			MediaType:      assets.MediaType("video"),
-			Source:         assets.Source("nvidia-animation"),
+			Name:           "AI Animation: " + img.SubjectID,
+			MediaType:      asset.MediaType("video"),
+			Source:         asset.Source("nvidia-animation"),
 			CreatedAt:      time.Now(),
-			LifecycleState: assets.StateReady,
+			LifecycleState: asset.StateReady,
 		}
 		clip.SetDriveFileID(driveVideoID)
 		clip.SetDriveLink(driveLink)

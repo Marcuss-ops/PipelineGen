@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
@@ -20,7 +20,7 @@ import (
 const testSchema = drive.CanonicalMediaAssetsSchema
 
 // insertTestClip is a helper to insert a test clip into the DB.
-func insertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *assets.Asset) {
+func insertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *asset.Asset) {
 	t.Helper()
 	ctx := context.Background()
 	if err := repo.UpsertClip(ctx, clip); err != nil {
@@ -49,23 +49,23 @@ func TestLikeSearch_FindsByExactName(t *testing.T) {
 	ctx := context.Background()
 	svc, repo := newFallbackService(t)
 
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_parenting",
 		Name:           "Funny Actors Parenting Stories",
 		Source:         "youtube",
 		Duration:       300 * time.Second,
 		Tags:           []string{"comedy", "parenting"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_other",
 		Name:           "Roman Architecture Documentary",
 		Source:         "youtube",
 		Duration:       500 * time.Second,
 		Tags:           []string{"history", "architecture"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})
@@ -108,23 +108,23 @@ func TestLikeSearch_FindsByKeyword(t *testing.T) {
 	ctx := context.Background()
 	svc, repo := newFallbackService(t)
 
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_comedy",
 		Name:           "Stand-up Comedy Night",
 		Source:         "youtube",
 		Duration:       600 * time.Second,
 		Tags:           []string{"comedy", "standup"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_drama",
 		Name:           "Drama Series Review",
 		Source:         "youtube",
 		Duration:       400 * time.Second,
 		Tags:           []string{"drama", "review"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})
@@ -176,13 +176,13 @@ func TestLikeSearch_RespectsLimit(t *testing.T) {
 	// Insert 5 clips all matching "funny"
 	for i := 1; i <= 5; i++ {
 		id := fmt.Sprintf("clip_funny_%d", i)
-		insertTestClip(t, repo, &assets.Asset{
+		insertTestClip(t, repo, &asset.Asset{
 			ID:             id,
 			Name:           fmt.Sprintf("Funny Clip Number %d", i),
 			Source:         "youtube",
 			Duration:       100 * time.Second,
 			Tags:           []string{"funny"},
-			LifecycleState: assets.StateReady,
+			LifecycleState: asset.StateReady,
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		})
@@ -207,13 +207,13 @@ func TestLikeSearch_NoMatch(t *testing.T) {
 	ctx := context.Background()
 	svc, repo := newFallbackService(t)
 
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_science",
 		Name:           "Quantum Physics Explained",
 		Source:         "youtube",
 		Duration:       900 * time.Second,
 		Tags:           []string{"science", "physics"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})
@@ -252,13 +252,13 @@ func TestLikeSearch_FindsByMetadata(t *testing.T) {
 	svc, repo := newFallbackService(t)
 
 	// Clip with matching metadata (clip_summary, topics) but non-matching name
-	asset := &assets.Asset{
+	asset := &asset.Asset{
 		ID:             "clip_metadata",
 		Name:           "Generic Title",
 		Source:         "youtube",
 		Duration:       200 * time.Second,
 		Tags:           []string{},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -301,13 +301,13 @@ func TestSearchClips_FallsBackToLikeWhenEmbedderNil(t *testing.T) {
 	// Since vectorSvc is nil, searchClips goes directly to LIKE fallback
 	svc := NewMediaCurator(nil, "", repo, nil, nil, zap.NewNop())
 
-	insertTestClip(t, repo, &assets.Asset{
+	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_search",
 		Name:           "Search Test Clip",
 		Source:         "youtube",
 		Duration:       150 * time.Second,
 		Tags:           []string{"search", "test"},
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	})

@@ -44,6 +44,42 @@ func TestStateConstantsMatchAssets(t *testing.T) {
 	// so no explicit string(...) casts needed in the format args.
 }
 
+// TestLocationKindConstantsMatchAssets asserts that the LocationKind*
+// constants re-declared in this package stay in lockstep with the
+// canonical definitions in internal/assets/location.go. Parity test
+// added in Wave 12 follow-up Phase 2 PR-2; see internal/domain/asset/asset.go
+// preamble for the migration rationale.
+func TestLocationKindConstantsMatchAssets(t *testing.T) {
+	cases := []struct {
+		name     string
+		actual   assets.LocationKind
+		expected assets.LocationKind
+	}{
+		{"LocationKindDrive", LocationKindDrive, assets.LocationKindDrive},
+		{"LocationKindLocal", LocationKindLocal, assets.LocationKindLocal},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.actual != tc.expected {
+				t.Errorf("drift detected: asset=%q internal/assets=%q",
+					tc.actual, tc.expected)
+			}
+		})
+	}
+}
+
+// TestLocationKindIsHardAlias confirms the LocationKind type alias is
+// a true identity (not a wrapper). Same structural test as
+// TestAssetIsHardAlias but for the LocationKind enum.
+func TestLocationKindIsHardAlias(t *testing.T) {
+	var a LocationKind = LocationKindDrive
+	var legacy assets.LocationKind = a // no conversion: same type
+	var back LocationKind = legacy
+	if back != LocationKindDrive {
+		t.Errorf("round-trip mismatch: got %q want %q", back, LocationKindDrive)
+	}
+}
+
 // TestAssetIsHardAlias confirms that asset.Asset is a type alias for
 // assets.Asset (i.e. the same type, not a named type struct holding
 // assets.Asset). If a future maintainer accidentally changes the
