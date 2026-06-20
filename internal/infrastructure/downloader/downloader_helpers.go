@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // VideoInfo contains basic info from yt-dlp --flat-playlist.
@@ -67,7 +67,7 @@ func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string)
 
 	args = append(args, videoURL)
 
-	result, err := platform.Run(ctx, d.path, args, platform.ExecOptions{
+	result, err := process.Run(ctx, d.path, args, process.Options{
 		Timeout: 30 * time.Second,
 	})
 	if err != nil {
@@ -129,7 +129,7 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 		channelURL,
 	}
 
-	result, err := platform.Run(ctx, d.path, args, platform.ExecOptions{
+	result, err := process.Run(ctx, d.path, args, process.Options{
 		Timeout: 60 * time.Second,
 	})
 	if err != nil {
@@ -159,16 +159,16 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 
 // Check checks if yt-dlp is available.
 func (d *YTDLPDownloader) Check() bool {
-	return platform.CommandExists(d.path)
+	return process.CommandExists(d.path)
 }
 
 // Version returns the yt-dlp version.
 func (d *YTDLPDownloader) Version(ctx context.Context) (string, error) {
-	result, err := platform.Run(ctx, d.path, []string{"--version"}, platform.ExecOptions{
+	result, err := process.Run(ctx, d.path, []string{"--version"}, process.Options{
 		Timeout: 10 * time.Second,
 	})
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(result.Output), nil
+	return strings.TrimSpace(result.Stdout), nil
 }

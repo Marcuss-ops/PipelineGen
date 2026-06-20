@@ -6,14 +6,15 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 )
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.
@@ -190,7 +191,7 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		timeout = 10 * time.Minute
 	}
 
-	_, err := platform.Run(ctx, d.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, d.path, args, process.Options{
 		Timeout:        timeout,
 		CombinedOutput: true,
 	})
@@ -213,7 +214,7 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	// Create output directory if needed
 	outputDir := filepath.Dir(req.OutputPath)
 	if outputDir != "." && outputDir != "" {
-		if _, err := platform.RunSimple(ctx, "mkdir", "-p", outputDir); err != nil {
+		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			return "", fmt.Errorf("failed to create output dir: %w", err)
 		}
 	}
@@ -244,7 +245,7 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	args = append(args, "-o", outputTemplate)
 	args = append(args, req.URL)
 
-	_, err := platform.Run(ctx, d.path, args, platform.ExecOptions{
+	_, err := process.Run(ctx, d.path, args, process.Options{
 		Timeout:        10 * time.Minute,
 		CombinedOutput: true,
 	})
@@ -276,7 +277,7 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 	// Create output directory if needed
 	outputDir := filepath.Dir(req.OutputPath)
 	if outputDir != "." && outputDir != "" {
-		if _, err := platform.RunSimple(ctx, "mkdir", "-p", outputDir); err != nil {
+		if err := os.MkdirAll(outputDir, 0o755); err != nil {
 			return nil, fmt.Errorf("failed to create output dir: %w", err)
 		}
 	}
@@ -320,9 +321,9 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		args = append(args, "-o", outputTemplate)
 		args = append(args, req.URL)
 
-		_, err := platform.Run(ctx, d.path, args, platform.ExecOptions{
-			Timeout:        10 * time.Minute,
-			CombinedOutput: true,
+	_, err := process.Run(ctx, d.path, args, process.Options{
+		Timeout:        10 * time.Minute,
+		CombinedOutput: true,
 		})
 		if err != nil {
 			return results, fmt.Errorf("failed to download section %d: %w", i, err)
