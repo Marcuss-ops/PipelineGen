@@ -56,8 +56,13 @@ echo "Check 3: pkg/ import purity"
 #   pkg/media/ffmpeg/ → internal/config
 # New violations are forbidden; existing ones must be migrated.
 KNOWN_PKG_VIOLATIONS="pkg/handlerutil|pkg/media/downloader|pkg/media/ffmpeg"
+# In-line comments (doc and otherwise) frequently mention paths like
+# `github.com/Marcuss-ops/PipelineGen/internal/...` for context. Those
+# MUST NOT count as import violations. Filter them out by rejecting
+# any rg hit whose content starts with whitespace + `//`.
 if rg -n '"github.com/Marcuss-ops/PipelineGen/internal/' pkg/ --glob '*.go' 2>/dev/null \
-  | grep -vE "$KNOWN_PKG_VIOLATIONS"; then
+  | grep -vE "$KNOWN_PKG_VIOLATIONS" \
+  | grep -vE ':[0-9]+:[[:space:]]*//'; then
     echo "FAIL: new pkg/ imports internal/"
     echo "pkg/ must be leaf-only (zero import from internal/)."
     echo "Known violations to migrate: pkg/handlerutil, pkg/media/downloader, pkg/media/ffmpeg"
@@ -220,6 +225,40 @@ ROOT_INFRA_IMPORT=$(rg -l '"github\.com/Marcuss-ops/PipelineGen/internal/infrast
   | wc -l || true)
 echo "  Files importing internal/infrastructure root (tracked): ${ROOT_INFRA_IMPORT:-0}"
 echo "  Migration target: 0 (use pkg/ or internal/infrastructure/<sub>/)."
+
+# ── Check 13: transport-layer boundary (tracked) ─────────────────────
+echo ""
+echo "Check 13: transport-layer boundary (tracked)"
+# After commits 2-7 of the API-surface consolidation (see
+# docs/CHANGELOG_2026-06-03.md), every consolidated module under
+# internal/api/{assets,channels,content,images,jobs,scripts,system}/
+# MUST NOT import:
+#   - database/sql or mattn/go-sqlite3   → go through repository/services
+#   - os/exec                            → go through internal/infrastructure/process
+#   - google.golang.org/api/drive/v3     → go through drive.Uploader / DocClient
+#
+# Handlers in those modules should be one-liners that call
+# transport.JSON(c, useCase, errorMapper), with useCase + errorMapper
+# injected by the composition root (internal/app/registry.go).
+#
+# This check TRACKS the count and reports it. It does NOT fail the build.
+# When migration completes (commits 2-7 land), this gets promoted to a
+# hard fail with a focused allowlist.
+TARGET_DIRS="internal/api/assets internal/api/channels internal/api/content internal/api/images internal/api/jobs internal/api/scripts internal/api/system internal/api/transport"
+EXISTING=""
+for d in $TARGET_DIRS; do
+    [ -d "$d" ] && EXISTING="$EXISTING $d"
+done
+if [ -z "$EXISTING" ]; then
+    echo "  No consolidated modules yet — check is N/A (will activate after commit 2)."
+else
+    VIOLATIONS=$(rg -c '"database/sql"|"os/exec"|"mattn/go-sqlite3"|"google\.golang\.org/api/drive/v3"' \
+        $EXISTING --glob '*.go' 2>/dev/null \
+        | grep -v '_test.go' \
+        | awk -F: '{sum+=$2} END {print sum+0}')
+    echo "  Import statements violating transport-layer boundary (tracked): ${VIOLATIONS:-0}"
+    echo "  Migration target: 0."
+fi
 
 # ── Check 12: testing import in production files ──────────────────
 echo ""
