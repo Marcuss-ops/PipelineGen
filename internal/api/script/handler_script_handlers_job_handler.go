@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
@@ -33,7 +33,7 @@ func (h *ScriptFlowHandler) RegisterJobHandlers(jobsSvc *job.Service) {
 // HandleBatchScriptGenerateJob processes the background job for script.generate_batch
 func (h *ScriptFlowHandler) HandleBatchScriptGenerateJob(ctx context.Context, job *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	h.log.Info("handling script.generate_batch job", zap.String("job_id", job.ID))
-	var req batch.GenerateBatchRequest
+	var req scripts.GenerateBatchRequest
 	if err := json.Unmarshal(job.Payload, &req); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal job payload: %w", err)
 	}

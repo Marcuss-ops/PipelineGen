@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -48,7 +47,7 @@ func (s *Service) HandleCatalogScriptGenerateJob(ctx context.Context, job *job.J
 		return nil, fmt.Errorf("script engine not initialized")
 	}
 
-	var payload curation.JobPayloadCatalogScript
+	var payload scripts.JobPayloadCatalogScript
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		return nil, fmt.Errorf("failed to parse job payload: %w", err)
 	}

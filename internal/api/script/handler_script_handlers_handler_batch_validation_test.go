@@ -7,27 +7,27 @@ import (
 )
 
 func TestValidateGenerateBatchRequestRejectsInvalidRequest(t *testing.T) {
-	req := &batch.GenerateBatchRequest{
+	req := &scripts.GenerateBatchRequest{
 		ChannelID:     "",
 		Language:      "xx",
 		Duration:      60,
 		DocTitle:              "",
 		TargetWordsPerChapter: 700,
-		BatchTopics: []batch.BatchTopic{
+		BatchTopics: []BatchTopic{
 			{Topic: "A", SourceText: "ok"},
 			{Topic: "", SourceText: "ok"},
 			{Topic: "C", SourceText: ""},
 		},
 	}
 
-	errs := batch.ValidateGenerateBatchRequest(req, "", map[string]struct{}{"en": {}, "it": {}})
+	errs := ValidateGenerateBatchRequest(req, "", map[string]struct{}{"en": {}, "it": {}})
 	if len(errs) == 0 {
 		t.Fatal("expected validation errors")
 	}
 
 	// Note: "channel_id is required" and "items[2].source_text is empty" are
 	// no longer hard errors — the handler defaults them to scriptsCfg.BatchChannelID
-	// and the item's topic respectively. See handler_batch.go::GenerateBatch.
+	// and the item's topic respectively. See handler_go::GenerateBatch.
 	want := []string{
 		"doc_title is required",
 		"duration must be at least 120 seconds",
@@ -55,19 +55,19 @@ func TestValidateGenerateBatchRequestAcceptsEmptyChannelIDAndSourceText(t *testi
 	// items[].source_text are optional in the request body. The handler
 	// defaults channel_id to scriptsCfg.BatchChannelID and source_text to
 	// the item's topic. Validation should not flag them as errors.
-	req := &batch.GenerateBatchRequest{
+	req := &scripts.GenerateBatchRequest{
 		ChannelID:     "",
 		Language:      "en",
 		Duration:      300,
 		DriveFolderID: "folder-abc",
 		DocTitle:              "Test Doc",
 		TargetWordsPerChapter: 1500,
-		BatchTopics: []batch.BatchTopic{
+		BatchTopics: []BatchTopic{
 			{Topic: "A", SourceText: ""}, // empty source_text is OK
 		},
 	}
 
-	errs := batch.ValidateGenerateBatchRequest(req, "folder-abc", map[string]struct{}{"en": {}, "it": {}})
+	errs := ValidateGenerateBatchRequest(req, "folder-abc", map[string]struct{}{"en": {}, "it": {}})
 	for _, err := range errs {
 		if strings.Contains(err, "channel_id") {
 			t.Errorf("channel_id should not be a validation error, got: %s", err)

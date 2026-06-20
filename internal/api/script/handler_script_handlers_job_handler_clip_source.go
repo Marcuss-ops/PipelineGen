@@ -7,14 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/documents"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 // clipSourcePathResult is the result produced by a single script generation path.
@@ -23,9 +19,9 @@ type clipSourcePathResult struct {
 	WriteResult       *scripts.WriteScriptResult
 	ClipScenes        []scripts.ClipScene
 	SourceFingerprint string
-	SearchResults     []curation.SearchResultInfo
+	SearchResults     []scripts.SearchResultInfo
 	NarrativePlan     *scripts.NarrativePlan
-	CurateTimings     curation.CurateTimings
+	CurateTimings     scripts.CurateTimings
 }
 
 // stageLog wraps a pipeline phase with structured start/complete logs so
@@ -53,14 +49,14 @@ func stageLog(log *zap.Logger, jobID, stage string) func(extra ...zap.Field) {
 var scriptGenSemaphore = make(chan struct{}, 2)
 
 // wrapPostGeneration adapts handlePostGeneration to the Pipeline's callback
-// signature (returns any instead of ScriptInsights, []documents.VideoMetadata
+// signature (returns any instead of ScriptInsights, []scripts.VideoMetadata
 // instead of []VideoMetadata). The real pathResult is passed through so
 // handlePostGeneration has access to all path result fields.
 func (h *ScriptFlowHandler) wrapPostGeneration(
 	ctx context.Context,
 	spec *script.GenerationSpec,
 	script string,
-) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata) {
+) (entitiesJSON string, insights any, videoMetadata []scripts.VideoMetadata) {
 	return h.wrapPostGenerationWithPath(ctx, spec, script, nil)
 }
 
@@ -71,7 +67,7 @@ func (h *ScriptFlowHandler) wrapPostGenerationWithPath(
 	spec *script.GenerationSpec,
 	script string,
 	pathResult *clipSourcePathResult,
-) (entitiesJSON string, insights any, videoMetadata []documents.VideoMetadata) {
+) (entitiesJSON string, insights any, videoMetadata []scripts.VideoMetadata) {
 	if pathResult == nil {
 		pathResult = &clipSourcePathResult{
 			WriteResult: &scripts.WriteScriptResult{Script: script},
@@ -79,9 +75,9 @@ func (h *ScriptFlowHandler) wrapPostGenerationWithPath(
 	}
 	ents, ins, meta := h.handlePostGeneration(ctx, spec, pathResult)
 
-	docMeta := make([]documents.VideoMetadata, len(meta))
+	docMeta := make([]scripts.VideoMetadata, len(meta))
 	for i, m := range meta {
-		docMeta[i] = documents.VideoMetadata{
+		docMeta[i] = scripts.VideoMetadata{
 			Language:    m.Language,
 			Title:       m.Title,
 			Description: m.Description,
@@ -132,7 +128,7 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 
 	// Construct application-layer services using dependencies available
 	// on the handler. This avoids touching app wiring.
-	scenesSvc := scenes.NewService(
+	scenesSvc := scripts.NewScenesService(
 		h.clipServices.ImgSvc,
 		h.clipServices.VoSvc,
 		h.log,
@@ -141,8 +137,8 @@ func (h *ScriptFlowHandler) HandleClipScriptGenerateJob(ctx context.Context, job
 		h.groupsResolver,
 		0, // use VELOX_SCENE_PARALLELISM env var
 	)
-	docsSvc := documents.NewService(h.docClient, h.log, h.driveFolderID)
-	pipeline := jobs.NewPipeline(
+	docsSvc := scripts.NewDocumentsService(h.docClient, h.log, h.driveFolderID)
+	pipeline := scripts.NewPipeline(
 		h.log,
 		job.ID,
 		scenesSvc,

@@ -1,7 +1,6 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
@@ -133,7 +132,7 @@ type GenerateWithImagesRequest struct {
 	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
 }
 
-// ScriptSceneImage is an alias for scenes.SceneImage (canonical type in application layer).
+// ScriptSceneImage is an alias for scripts.SceneImage (canonical type in application layer).
 //
 // Kind + NarrationRole were added (June 2026, generate-from-clips
 // endpoint-compat request) so the user-facing `scenes[]` array always carries
@@ -148,10 +147,10 @@ type GenerateWithImagesRequest struct {
 //
 // omitempty on both fields so existing clients reading `text/image/images`
 // without these new fields keep working unchanged.
-type ScriptSceneImage = scenes.SceneImage
+type ScriptSceneImage = scripts.SceneImage
 
-// SceneVoiceover is an alias for scenes.SceneVoiceover (canonical type in application layer).
-type SceneVoiceover = scenes.SceneVoiceover
+// SceneVoiceover is an alias for scripts.SceneVoiceover (canonical type in application layer).
+type SceneVoiceover = scripts.SceneVoiceover
 
 // ClipScriptJobResult is the result stored in the job system after completion.
 type ClipScriptJobResult struct {

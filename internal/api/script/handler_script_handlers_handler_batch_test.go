@@ -172,9 +172,9 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
 	// 3. Create a batch request with SaveToDB=true.
-	req := batch.GenerateBatchRequest{
+	req := scripts.GenerateBatchRequest{
 				DocTitle: "Test Batch Script",
-		BatchTopics: []batch.BatchTopic{
+		BatchTopics: []BatchTopic{
 			{Topic: "Chapter One"},
 			{Topic: "Chapter Two"},
 		},
@@ -251,9 +251,9 @@ func TestExecuteBatchGeneration_WithNoChapters_SavesSections(t *testing.T) {
 	scriptText := "A single flowing script without chapter headings. It reads as one continuous narrative from start to finish."
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
-	req := batch.GenerateBatchRequest{
+	req := scripts.GenerateBatchRequest{
 				DocTitle: "No-Chapters Test",
-		BatchTopics: []batch.BatchTopic{
+		BatchTopics: []BatchTopic{
 			{Topic: "Topic A"},
 		},
 		NoChapters: true,
@@ -285,9 +285,9 @@ func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 	scriptText := "Short text for skip test."
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
-	req := batch.GenerateBatchRequest{
+	req := scripts.GenerateBatchRequest{
 				DocTitle: "Skip DB Test",
-		BatchTopics: []batch.BatchTopic{
+		BatchTopics: []BatchTopic{
 			{Topic: "Only Topic"},
 		},
 		NoChapters: false,

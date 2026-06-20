@@ -32,7 +32,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	_ "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	gdrive "google.golang.org/api/drive/v3"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
@@ -57,8 +56,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
-	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
-	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
@@ -785,11 +783,11 @@ func composeIntegration(
 	)
 
 	// ── Batch Service ───────────────────────────────────────────────────
-	batchSvc := batchpkg.NewBatchService(cfg, log, core.ScriptGen, engine, core.DocClient, mediaDomain.VoiceoverService, scriptsRepoAdapter)
+	batchSvc := scripts.NewBatchService(cfg, log, core.ScriptGen, engine, core.DocClient, mediaDomain.VoiceoverService, scriptsRepoAdapter)
 	scriptFlowHandler.SetBatchService(batchSvc)
 
 	// ── Curation Service ───────────────────────────────────────────────
-	curationSvc := curationpkg.NewCurationService(nil, jobsService, log)
+	curationSvc := scripts.NewCurationService(nil, jobsService, log)
 	scriptFlowHandler.SetCurationService(curationSvc)
 
 	// ── ClipSourceBuilder (Clip→Script + Catalog→Script) ───────────────
