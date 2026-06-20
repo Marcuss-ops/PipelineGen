@@ -54,14 +54,17 @@ var formatKeywords = map[string][]string{
 	"lecture":     {"lecture", "talk", "presentation", "seminar"},
 }
 
-// SearchByTopic ranks YouTube search results for a topic and enriches them with metadata.
-func (s *Service) SearchByTopic(ctx context.Context, query string, limit int, sortMode string) (*TopicSearchResponse, error) {
-	return s.SearchByTopicWithFilter(ctx, query, limit, sortMode, "")
-}
-
 // SearchByTopicWithFilter ranks YouTube search results with an optional publishedAfter date filter.
+//
 // publishedAfter: RFC3339 date string (e.g. "2025-01-01T00:00:00Z") or empty for no filter.
 // When set, only videos published after this date are returned.
+//
+// PR-3F: this is the SINGLE surviving YouTube search entry point at
+// the application-layer boundary. The Application-layer YouTube
+// provider (internal/application/assets/providers/youtube) translates
+// providers.SearchRequest into a single call to this method. The
+// legacy SearchByTopic / SearchTopicVideos / SearchTopicVideosWithFilter
+// wrappers were removed in the same PR.
 func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, limit int, sortMode string, publishedAfter string) (*TopicSearchResponse, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -165,16 +168,10 @@ func (s *Service) SearchByTopicWithFilter(ctx context.Context, query string, lim
 	}, nil
 }
 
-// SearchTopicVideos is a convenience wrapper used by API handlers.
-func (s *Service) SearchTopicVideos(ctx context.Context, query string, limit int, sortMode string) (*TopicSearchResponse, error) {
-	return s.SearchByTopic(ctx, query, limit, sortMode)
-}
-
-// SearchTopicVideosWithFilter is a convenience wrapper with publishedAfter filter.
-func (s *Service) SearchTopicVideosWithFilter(ctx context.Context, query string, limit int, sortMode string, publishedAfter string) (*TopicSearchResponse, error) {
-	return s.SearchByTopicWithFilter(ctx, query, limit, sortMode, publishedAfter)
-}
-
+// enrichTopicResult fetches the metadata for a single topic search
+// candidate and packs it into a YouTube-shaped result row.
+// PR-3F: helpers below remain internal to the youtube package; the
+// only externally visible search entry point is SearchByTopicWithFilter.
 func (s *Service) enrichTopicResult(ctx context.Context, query string, clip assets.Asset) (TopicSearchResult, error) {
 	videoURL := directYouTubeLink(clip)
 	if videoURL == "" {
