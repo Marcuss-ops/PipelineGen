@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 
@@ -62,17 +62,17 @@ func voiceoverRecordToAssetNode(r *sqlite.Record) *sqlite.AssetNode {
 }
 
 // voiceoverRecordToClip delegates to the canonical converter in artifacts.
-func voiceoverRecordToClip(rec *sqlite.Record) *assets.Asset {
+func voiceoverRecordToClip(rec *sqlite.Record) *asset.Asset {
 	return artifacts.VoiceoverRecordToClip(rec)
 }
 
 // imageAssetToClip uses the canonical converter from artifacts.
-func imageAssetToClip(a *media.ImageAsset) *assets.Asset {
+func imageAssetToClip(a *media.ImageAsset) *asset.Asset {
 	return artifacts.ImageAssetToClip(a)
 }
 
 // verifyClip performs verification of a single clip and returns the result map.
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *assets.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *asset.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

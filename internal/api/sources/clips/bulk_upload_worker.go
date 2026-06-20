@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
@@ -304,15 +304,15 @@ func (h *Handler) processOneClip(
 		category = strings.SplitN(cand.Subdir, "/", 2)[0]
 	}
 
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             clipID,
 		Name:           cand.DisplayName(),
 		Filename:       filepath.Base(cand.LocalPath),
-		Source:         assets.Source(source),
+		Source:         asset.Source(source),
 		Category:       category,
-		MediaType:      assets.MediaType("video"),
+		MediaType:      asset.MediaType("video"),
 		SearchText:     deriveSearchText(cand),
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		Duration:       time.Duration(extractIntFromManifest(cand.Manifest, "duration_sec")) * time.Second,
 		CreatedAt:      now,
 		UpdatedAt:      now,

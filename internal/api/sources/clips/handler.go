@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
@@ -34,7 +34,7 @@ import (
 // rather than 14 positional arguments makes wiring sites readable and
 // future dep additions non-breaking.
 type Deps struct {
-	AssetRepo      assets.Repository
+	AssetRepo      asset.Repository
 	ClipsRepo      *sqlite.ClipsRepository
 	StockRepo      *sqlite.ClipsRepository
 	ArtlistRepo    *sqlite.ClipsRepository
@@ -65,7 +65,7 @@ type Deps struct {
 // Handler owns every clip-related HTTP method. One receiver per method;
 // no nested struct fan-out.
 type Handler struct {
-	assetRepo      assets.Repository
+	assetRepo      asset.Repository
 	clipsRepo      *sqlite.ClipsRepository
 	stockRepo      *sqlite.ClipsRepository
 	artlistRepo    *sqlite.ClipsRepository

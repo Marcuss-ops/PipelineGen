@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
@@ -33,7 +33,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		return
 	}
 
-	var clip assets.Asset
+	var clip asset.Asset
 	if err := c.ShouldBindJSON(&clip); err != nil {
 		apiutil.BadRequest(c, "invalid clip data: "+err.Error())
 		return
@@ -44,7 +44,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		clip.ID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 	if clip.Source == "" {
-		clip.Source = assets.Source(source)
+		clip.Source = asset.Source(source)
 	}
 
 	ctx := c.Request.Context()

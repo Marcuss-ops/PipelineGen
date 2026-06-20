@@ -14,7 +14,7 @@ import (
 
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -509,14 +509,14 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 
 	// 7. Create MediaAsset record
 	now := time.Now().UTC()
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:         clipID,
 		Name:       name,
 		Filename:   driveFilename,
-		Source:     assets.Source(source),
+		Source:     asset.Source(source),
 		Category:   req.Category,
 		Group:      group,
-		MediaType:  assets.MediaType("video"),
+		MediaType:  asset.MediaType("video"),
 		Tags:       req.Tags,
 		SearchText: description,
 		SourceURL:  req.URL,
@@ -666,7 +666,7 @@ func (h *Handler) RegisterFromYouTube(c *gin.Context) {
 // flood the response.
 func (h *Handler) relatedClipsViaRegistry(
 	ctx context.Context,
-	clip *assets.Asset,
+	clip *asset.Asset,
 	log *zap.Logger,
 ) gin.H {
 	out := gin.H{}
@@ -755,7 +755,7 @@ func (h *Handler) relatedClipsViaRegistry(
 // term-based and rewards distinct generic terms — leading with a
 // long unique YouTube title buries the generic category term and
 // works against recall. Empty fields are skipped silently.
-func buildRelatedClipsQuery(clip *assets.Asset) string {
+func buildRelatedClipsQuery(clip *asset.Asset) string {
 	if clip == nil {
 		return ""
 	}

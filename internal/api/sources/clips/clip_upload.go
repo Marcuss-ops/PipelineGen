@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	process "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -217,14 +217,14 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 
 	// 8. Build the MediaAsset record
 	now := time.Now().UTC()
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:         clipID,
 		Name:       name,
 		Filename:   driveFilename,
-		Source:     assets.Source(source),
+		Source:     asset.Source(source),
 		Category:   category,
 		Group:      group,
-		MediaType:  assets.MediaType("video"),
+		MediaType:  asset.MediaType("video"),
 		Tags:       tags,
 		SearchText: description,
 		CreatedAt:  now,
@@ -303,7 +303,7 @@ type DriveUploadResult struct {
 
 // probeDuration probes the video file for duration using ffprobe.
 // Falls back to 0 if unavailable.
-func probeDuration(ctx context.Context, localPath string, clip *assets.Asset, log *zap.Logger) {
+func probeDuration(ctx context.Context, localPath string, clip *asset.Asset, log *zap.Logger) {
 	if clip == nil {
 		return
 	}

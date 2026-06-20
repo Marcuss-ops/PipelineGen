@@ -1,16 +1,16 @@
 package clips
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 )
 
-// ClipToAssetNode converts a canonical assets.Asset to sqlite.AssetNode
+// ClipToAssetNode converts a canonical asset.Asset to sqlite.AssetNode
 // for unified tree handling. Exported so the sibling sources package
 // (handler_sources_register_from_youtube.go) can build asset-tree nodes
 // without depending on clips package internals.
-func ClipToAssetNode(clip *assets.Asset) *sqlite.AssetNode {
+func ClipToAssetNode(clip *asset.Asset) *sqlite.AssetNode {
 	if clip == nil {
 		return nil
 	}

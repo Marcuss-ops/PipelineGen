@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
@@ -19,7 +19,7 @@ import (
 //  1. LLM semantic tagger → search_text, tags, subjects
 //  2. Clip indexer → embedding computation
 //  3. Vector store (Qdrant) upsert
-func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *assets.Asset, source string) {
+func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
 	// Apply a 3-minute timeout to prevent runaway goroutines
 	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()

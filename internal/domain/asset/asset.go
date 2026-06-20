@@ -1,14 +1,23 @@
 // Package asset is the canonical domain home for the Asset model that
 // sits at the application-provider boundary.
 //
-// Wave 12 follow-up scope (phase 1 of 3): this file is a thin alias
-// layer over the legacy internal/assets package. Type aliases give us
-// the formal "asset = canonical domain entity" position with zero
-// consumer churn — every existing internal/assets importer still
-// compiles because underlying types are identical. Future waves
-// (phase 2: incremental migration of the 73 importers; phase 3:
-// convergence with internal/domain/media) will absorb the actual
-// types and their helper methods into this package.
+// Wave 12 follow-up scope: this file is a thin alias layer over the
+// legacy internal/assets package. Type aliases give us the formal
+// "asset = canonical domain entity" position with zero consumer
+// churn — every existing internal/assets importer still compiles
+// because underlying types are identical.
+//
+// Migration progress against the 73-importer Verdetto:
+//
+//   - Phase 1 (Wave 12 turn 2): foundation. Aliases = {Asset, MediaType}.
+//     providers contract (internal/application/assets/providers) is
+//     already on this package.
+//   - Phase 2 PR-1 (this PR): internal/api/sources/ migrated (16 files).
+//     Aliases extended YAGNI = {Source, Repository, Filter}.
+//   - Phase 2 PR-2-4: internal/application/, internal/media/,
+//     internal/infrastructure/ — bounded-context batched, one PR each.
+//   - Phase 3: convergence with internal/domain/media (MediaType
+//     constants, LifecycleState promotion, etc.) — DEFERRED.
 //
 // IMPORTANT — MediaType semantic conflict
 //
@@ -56,11 +65,35 @@ type (
 	// internal/assets for the field-level definition and accessor
 	// methods. Hard alias — callers may pass *assets.Asset
 	// interchangeably with *asset.Asset at zero cost.
+	//
+	// Wave 12 follow-up (Sonnet): Asset is the foundation alias
+	// from Phase 1 (Wave 12 turn 2).
 	Asset = assets.Asset
 
 	// MediaType classifies the content kind of a media asset (see
 	// the package doc above for the cross-package conflict note).
 	MediaType = assets.MediaType
+
+	// Source is the per-asset origin tag (e.g. "youtube", "artlist",
+	// "stock"). Hard alias; YAGNI added in Wave 12 follow-up Phase 2
+	// PR-1 (internal/api/sources/ migration) since every clip-flow
+	// handler instantiates it via assets.Source("<label>"). Will be
+	// promoted to a typed enum with constants in phase 3 alongside
+	// MediaType convergence.
+	Source = assets.Source
+
+	// Repository is the canonical asset persistence contract.
+	// YAGNI added in Wave 12 follow-up Phase 2 PR-1.
+	// `*assets.Repository` implementations (sqlite-backed ClipsRepository)
+	// remain in internal/assets; this alias is the type-level
+	// anchor for the new domain package.
+	Repository = assets.Repository
+
+	// Filter is the cross-source query predicate honored by
+	// internal/assets.Repository.List / Count. YAGNI added in Phase 2
+	// PR-1 (used by clips/clip_read.go). The struct's field set is
+	// owned by internal/assets until phase 3 absorbs it.
+	Filter = assets.Filter
 )
 
 // ── LifecycleState constants ────────────────────────────────────────
