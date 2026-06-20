@@ -35,6 +35,7 @@ config.yaml
 pipelinegen
 server
 /admin
+worker
 *.exe
 *.dll
 *.so
