@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // TestResearchToWriteScriptPipeline simulates the full integration flow that
@@ -135,7 +136,7 @@ func TestResearchToWriteScriptPipeline(t *testing.T) {
 
 	// ── Step 4: Build ScriptGenerationPlan ────────────────────────────────
 	// This is what phase_research.go does after receiving the structured pack.
-	plan := &ScriptGenerationPlan{
+	plan := &script.ScriptGenerationPlan{
 		Topic:         "Roman Empire Collapse",
 		Title:         "The Fall of Rome",
 		Language:      "en",
@@ -371,7 +372,7 @@ and political corruption.`
 	}
 
 	// ── Build plan with raw text as WebContext ──
-	plan := &ScriptGenerationPlan{
+	plan := &script.ScriptGenerationPlan{
 		Topic:         "Roman Empire",
 		Title:         "Roman Empire",
 		Language:      "en",
@@ -405,24 +406,24 @@ and political corruption.`
 // context produces stable cache keys. Two identical research packs should
 // produce identical formatted output.
 func TestResearchPipelineCacheKeyStability(t *testing.T) {
-	pack1 := &ResearchPack{
+	pack1 := &script.ResearchPack{
 		Topic: "Space Exploration",
 		KeyFacts: []string{
 			"First moon landing in 1969",
 			"ISS launched in 1998",
 		},
-		Sources: []ScriptResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://nasa.gov", Title: "NASA"},
 		},
 	}
 
-	pack2 := &ResearchPack{
+	pack2 := &script.ResearchPack{
 		Topic: "Space Exploration",
 		KeyFacts: []string{
 			"First moon landing in 1969",
 			"ISS launched in 1998",
 		},
-		Sources: []ScriptResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://nasa.gov", Title: "NASA"},
 		},
 	}
@@ -440,13 +441,13 @@ func TestResearchPipelineCacheKeyStability(t *testing.T) {
 // This ensures compatibility between the Go ResearchPack struct and the Python
 // agent's JSON output format.
 func TestResearchPipelineJSONRoundTrip(t *testing.T) {
-	original := &ResearchPack{
+	original := &script.ResearchPack{
 		Topic: "Artificial Intelligence",
 		KeyFacts: []string{
 			"Turing test proposed in 1950",
 			"Deep Blue defeated Kasparov in 1997",
 		},
-		Timeline: []TimelineEntry{
+		Timeline: []script.TimelineEntry{
 			{Date: "1950", Event: "Turing test proposed"},
 			{Date: "1997", Event: "Deep Blue beats Kasparov"},
 		},
@@ -462,7 +463,7 @@ func TestResearchPipelineJSONRoundTrip(t *testing.T) {
 		Warnings: []string{
 			"Bias in training data",
 		},
-		Sources: []ScriptResearchSource{
+		Sources: []script.ResearchSource{
 			{URL: "https://example.com/ai", Title: "AI History", SourceType: "web"},
 		},
 	}

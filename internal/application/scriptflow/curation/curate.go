@@ -8,8 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -147,7 +148,7 @@ func (s *MediaCurator) Curate(ctx context.Context, req CurateRequest) (*CurateRe
 	sourceFingerprint := s.clipBuilder.ComputeFingerprint(clipIDs, pack, opts, scriptcore.NewFingerprintContext(opts.Model, opts.Model))
 
 	writeResult, err := s.engine.WriteScript(ctx, scriptcore.WriteScriptRequest{
-		Plan: &scriptcore.ScriptGenerationPlan{
+		Plan: &script.ScriptGenerationPlan{
 			Title:       plan.Title,
 			Topic:       plan.Title,
 			Language:    opts.Language,

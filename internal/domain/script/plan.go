@@ -68,6 +68,7 @@ type ScriptGenerationPlan struct {
 // a JSON object that the Go handler can parse and pass to the plan.
 type ResearchPack struct {
 	Topic           string           `json:"topic"`
+	Summary         string           `json:"summary,omitempty"`
 	KeyFacts        []string         `json:"key_facts"`
 	Timeline        []TimelineEntry  `json:"timeline,omitempty"`
 	Controversies   []string         `json:"controversies,omitempty"`
@@ -75,6 +76,7 @@ type ResearchPack struct {
 	Sources         []ResearchSource `json:"sources,omitempty"`
 	SuggestedAngles []string         `json:"suggested_angles,omitempty"`
 	Warnings        []string         `json:"warnings,omitempty"`
+	WordCount       int              `json:"word_count,omitempty"`
 
 	// Fallback: when the agent cannot produce structured output
 	// (old version, error during parsing), this holds the raw text.

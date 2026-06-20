@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -15,7 +16,7 @@ import (
 )
 
 type WriteScriptRequest struct {
-	Plan *ScriptGenerationPlan
+	Plan *script.ScriptGenerationPlan
 
 	Topic        string
 	Title        string
