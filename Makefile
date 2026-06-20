@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet swagger run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -53,10 +53,6 @@ fmt:
 # Run go vet
 vet:
 	go vet ./...
-
-# Generate Swagger docs
-swagger:
-	swag init -g cmd/server/main.go
 
 # Clean build artifacts on the project root.
 # Covers primary Linux/macOS binaries, cross-compiled Windows .exe, test
