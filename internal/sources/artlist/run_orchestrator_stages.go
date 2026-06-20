@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -61,7 +61,7 @@ func (o *RunOrchestratorService) stageDiscoverClips(ctx context.Context, req *Ru
 
 // stageBuildProcessInputs builds clip work items and process inputs from discovered clips.
 // Returns the work items slice and the resolved root folder ID.
-func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, req *RunTagRequest, resp *RunTagResponse, clips []assets.Asset) []clipWork {
+func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, req *RunTagRequest, resp *RunTagResponse, clips []asset.Asset) []clipWork {
 	workItems := make([]clipWork, 0, len(clips))
 
 	for _, clip := range clips {
@@ -200,7 +200,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			// Track asset version: create version record for the processed file.
 			if o.svc.assetVersions != nil && result.FileHash != "" {
 				fileSize := fileSizeFromPath(result.LocalPath)
-				v := &assets.Version{
+				v := &asset.Version{
 					AssetID:       arg.w.item.ClipID,
 					FileHash:      result.FileHash,
 					FileSizeBytes: fileSize,
@@ -259,7 +259,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		existingClip.SetFileHash(item.FileHash)
 		existingClip.SetDownloadLink(item.DownloadLink)
 		existingClip.SetMetadataString("status", "processed")
-		existingClip.LifecycleState = assets.StateReady
+		existingClip.LifecycleState = asset.StateReady
 		existingClip.Source = "artlist"
 		existingClip.MediaType = "video" // ensure media_type is always set for Artlist clips
 		o.svc.newDispatchBridge().EnqueueOrFallback(ctx, existingClip, existingClip.FileHash())

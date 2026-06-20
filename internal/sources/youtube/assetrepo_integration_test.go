@@ -1,10 +1,10 @@
 // PR12b integration test: verifies that youtube.Service.dispatchOrIndex,
-// when wired with an assets.Repository via SetAssetRepo, routes through
+// when wired with an asset.Repository via SetAssetRepo, routes through
 // the canonical writer AND legacy readers (sqlite.ClipsRepository) observe the
 // same row data.
 //
 // Schema matches the production `media_assets` columns written by
-// `internal/infrastructure/database/sqlite/assets.Upsert` (40 columns)
+// `internal/infrastructure/database/sqlite/asset.Upsert` (40 columns)
 // PLUS the legacy columns that `internal/infrastructure/database/sqlite.ClipsRepository.UpsertClip`
 // reads and writes (`tags_norm`, `embedding_json`, `visual_embedding`,
 // `transcript_embedding`, `relative_path`, `drive_folder_id`, `width`,
@@ -20,7 +20,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
@@ -118,13 +118,13 @@ CREATE INDEX IF NOT EXISTS idx_outbox_aggregate_id ON outbox_events(aggregate_id
 
 // setupYoutubePR12b creates a fresh SQLite DB with the full PR12b schema,
 // wires clips + assetrepo repos, and registers teardown.
-func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo assets.Repository) {
+func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsRepository, assetRepo asset.Repository) {
 	t.Helper()
 	db = drive.NewTestDBWithSchema(t, pr12bYoutubeSchema)
 	t.Cleanup(func() { _ = db.Close() })
 	log := zap.NewNop()
 	clipsRepo = sqlite.NewClipsRepository(db, log)
-	assetStore := assets.NewAssetStoreSQLite(db, log)
+	assetStore := asset.NewAssetStoreSQLite(db, log)
 	assetRepo = assetStore.AssetRepository()
 	return
 }
@@ -138,7 +138,7 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 	db, clipsRepo, assetRepo := setupYoutubePR12b(t)
 
 	now := time.Now().UTC().Truncate(time.Second)
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "pr12b-youtube-001",
 		Name:           "PR12b Canonical Writer Test (YouTube)",
 		Source:         "youtube",
@@ -150,8 +150,8 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 		ClipPageURL:    "https://youtube.com/watch?v=pr12b-youtube-001",
 		ThumbnailURL:   "https://i.ytimg.com/vi/pr12b-youtube-001/hqdefault.jpg",
 		Duration:       120 * time.Millisecond,
-		LifecycleState: assets.StateReady,
-		Metadata: assets.Metadata{
+		LifecycleState: asset.StateReady,
+		Metadata: asset.Metadata{
 			"download_link": "https://youtube.com/download/pr12b-youtube-001.mp4",
 			"local_path":    "data/youtube/pr12b-youtube-001.mp4",
 			"drive_link":    "https://drive.google.com/file/d/pr12b-youtube-001",
@@ -245,13 +245,13 @@ func TestYoutubePR12b_DispatchOrIndexWithoutAssetRepoFallsBack(t *testing.T) {
 	}
 	// (No SetAssetRepo, no SetDispatcher calls)
 
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:             "pr12b-youtube-fallback-001",
 		Name:           "Fallback Test",
 		Source:         "youtube",
 		SourceURL:      "https://youtube.com/watch?v=fallback",
-		LifecycleState: assets.StateReady,
-		Metadata: assets.Metadata{
+		LifecycleState: asset.StateReady,
+		Metadata: asset.Metadata{
 			"download_link": "https://youtube.com/fallback",
 		},
 		CreatedAt: time.Now().UTC(),

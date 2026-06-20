@@ -9,7 +9,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
@@ -53,15 +53,15 @@ type Service struct {
 	// assetRepo is the canonical writer (PR12b). Late-bound via SetAssetRepo.
 	// When wired, dispatchOrIndex prefers it over the dispatcher and the
 	// legacy clipsRepository path: it converts the legacy *models.MediaAsset
-	// to *assets.Asset via toAssetDomain and routes through
+	// to *asset.Asset via toAssetDomain and routes through
 	// assetrepo.Upsert — which writes both legacy and canonical columns in
 	// the same row and emits the asset.upserted outbox event in the same
 	// transaction.
-	assetRepo assets.Repository
+	assetRepo asset.Repository
 	// assetProcessing tracks clip processing state (download_and_cut step).
-	assetProcessing assets.ProcessingRepository
+	assetProcessing asset.ProcessingRepository
 	// assetVersions records file identity on successful processing.
-	assetVersions assets.VersionRepository
+	assetVersions asset.VersionRepository
 }
 
 func NewService(
@@ -76,8 +76,8 @@ func NewService(
 	indexer *clipindexer.Service,
 	assetDestResolver destination.Resolver,
 	ollamaClient *client.Client,
-	assetProcRepo assets.ProcessingRepository,
-	assetVerRepo assets.VersionRepository,
+	assetProcRepo asset.ProcessingRepository,
+	assetVerRepo asset.VersionRepository,
 ) *Service {
 	// Create folder memory service
 	folderMemory := foldermemory.NewService(log, clipsRepo)
@@ -103,7 +103,7 @@ func NewService(
 // SetAssetRepos injects the asset lifecycle repositories (late-binding).
 // Called from composeIntegration after the repos are constructed.
 // In tests, assetVer can be nil/mocked if version tracking is disabled.
-func (s *Service) SetAssetRepos(assetProc assets.ProcessingRepository, assetVer assets.VersionRepository) {
+func (s *Service) SetAssetRepos(assetProc asset.ProcessingRepository, assetVer asset.VersionRepository) {
 	s.assetProcessing = assetProc
 	s.assetVersions = assetVer
 }
@@ -128,7 +128,7 @@ func (s *Service) SetDispatcher(d *outbox.Dispatcher) {
 // When wired, dispatchOrIndex prefers assetRepo over dispatcher so the
 // canonical SQL upsert writes both legacy + canonical columns + outbox row
 // in a single transaction.
-func (s *Service) SetAssetRepo(r assets.Repository) {
+func (s *Service) SetAssetRepo(r asset.Repository) {
 	s.assetRepo = r
 }
 
@@ -152,7 +152,7 @@ func (s *Service) SetAssetRepo(r assets.Repository) {
 //
 // Used by enrichment.go + segment.go so both call sites share the same
 // crash-safety contract.
-func (s *Service) dispatchOrIndex(ctx context.Context, clip *assets.Asset, hash string) error {
+func (s *Service) dispatchOrIndex(ctx context.Context, clip *asset.Asset, hash string) error {
 	if s.assetRepo != nil {
 		return s.assetRepo.Upsert(ctx, clip)
 	}

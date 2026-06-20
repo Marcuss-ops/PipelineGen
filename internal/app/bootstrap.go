@@ -20,7 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 
@@ -115,7 +115,7 @@ type CoreDeps struct {
 	ImageRepo          *sqlite.ImagesRepository
 	ImageService       *imgservice.Service
 	ClipsRepo          *sqlite.ClipsRepository // canonical unified clips repository
-	Assets             *assets.Service         // unified assets service authority (PR2)
+	Assets             *asset.Service         // unified assets service authority (PR2)
 	MonitorsRepo       *sqlite.MonitorsRepository
 	VoiceoverRepo      *sqlite.VoiceoversRepository
 	VoiceoverService   *voiceover.Service

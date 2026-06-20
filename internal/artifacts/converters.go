@@ -3,13 +3,13 @@ package artifacts
 import (
 	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
-// VoiceoverRecordToClip converts a voiceover.Record to assets.Asset.
-func VoiceoverRecordToClip(rec *sqlite.Record) *assets.Asset {
+// VoiceoverRecordToClip converts a voiceover.Record to asset.Asset.
+func VoiceoverRecordToClip(rec *sqlite.Record) *asset.Asset {
 	if rec == nil {
 		return nil
 	}
@@ -20,7 +20,7 @@ func VoiceoverRecordToClip(rec *sqlite.Record) *assets.Asset {
 			name = name[:50]
 		}
 	}
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:          rec.ID,
 		Name:        name,
 		Filename:    rec.Filename,
@@ -41,8 +41,8 @@ func VoiceoverRecordToClip(rec *sqlite.Record) *assets.Asset {
 	return clip
 }
 
-// ImageAssetToClip converts an media.ImageAsset to assets.Asset.
-func ImageAssetToClip(assetItem *media.ImageAsset) *assets.Asset {
+// ImageAssetToClip converts an media.ImageAsset to asset.Asset.
+func ImageAssetToClip(assetItem *media.ImageAsset) *asset.Asset {
 	if assetItem == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func ImageAssetToClip(assetItem *media.ImageAsset) *assets.Asset {
 	if id == "" {
 		id = assetItem.Hash
 	}
-	clip := &assets.Asset{
+	clip := &asset.Asset{
 		ID:          id,
 		Name:        name,
 		Filename:    filepath.Base(assetItem.PathRel),
