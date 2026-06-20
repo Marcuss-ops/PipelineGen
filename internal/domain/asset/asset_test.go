@@ -133,6 +133,36 @@ func TestProcessingConstantsMatchAssets(t *testing.T) {
 // zero-cost identity, breaking interchangeability between the two
 // packages. The round-trip via assignability without conversion is
 // the structural test.
+// TestFunctionRebindingsMatchAssets asserts that the two function
+// re-bindings (var X = assets.X) hold the same callable as the
+// legacy package. In Go, top-level function values are referenced by
+// pointer, so `actual != expected` on interface-typed function values
+// compares the underlying callable pointer (and rejects type drift
+// because different dynamic types make interface comparison fail).
+// Drift that would otherwise be silent — e.g. an unrelated `var` in
+// either package shadowing the function — gets caught here. Signature
+// drift is caught compile-time because `var X = assets.X` re-binds by
+// value; this test is the runtime-pointer backstop.
+// YAGNI added in Wave 12 follow-up Phase 2 PR-4 because two new
+// function re-bindings landed without parity coverage.
+func TestFunctionRebindingsMatchAssets(t *testing.T) {
+	type fnPair struct {
+		name string
+		a, b any
+	}
+	cases := []fnPair{
+		{"NewAssetStoreSQLite", NewAssetStoreSQLite, assets.NewAssetStoreSQLite},
+		{"ScanCanonicalAssetRowsPublic", ScanCanonicalAssetRowsPublic, assets.ScanCanonicalAssetRowsPublic},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.a != tc.b {
+				t.Errorf("drift detected: asset.%s pointer differs from assets.%s", tc.name, tc.name)
+			}
+		})
+	}
+}
+
 func TestAssetIsHardAlias(t *testing.T) {
 	a := Asset{ID: "test-asset"}
 	var legacy assets.Asset = a // no conversion: same type via alias

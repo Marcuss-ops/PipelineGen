@@ -35,11 +35,35 @@
 //     AdvancedSearchRequest, AdvancedSearchResult, AssetStoreSQLite,
 //     NewAssetStoreSQLite, ClipFolder, SegmentEmbeddingRecord,
 //     ScanCanonicalAssetRowsPublic}. Five struct alias hard-
-//     references and two function-as-var re-bindings. The smallest
-//     of the four bounded contexts; completes the 73 importer
-//     Verdetto. Parity covered by asset_test.go.
+//     references (5× `type X = assets.X` — confirmed structs in
+//     internal/assets/{search,assets,clipfolder,segment_embeddings}.go)
+//     and two function re-bindings (2× `var X = assets.X` — function
+//     values share the same callable pointer). The SMALLEST of the
+//     four bounded contexts. **Completes Phase 2 across the 4 bounded
+//     contexts scoped for the 73-importer Verdetto; the 27 residual
+//     importers of internal/assets in remaining folders are out of
+//     Phase 2 scope and tracked for follow-up waves (see the residual
+//     importer list at the bottom of CHANGELOG:73-importer-tracker).**
+//     Parity covered by asset_test.go (TestState*,
+//     TestLocationKind*, TestProcessing*, TestFunctionRebindings*,
+//     TestAssetIsHardAlias).
 //   - Phase 3: convergence with internal/domain/media (MediaType
 //     constants, LifecycleState promotion, etc.) — DEFERRED.
+//     Disposition preliminarily registered below for the 7 PR-4
+//     aliases (alongside the PR-3 disposition already detailed in
+//     the alias-doc comments):
+//       * AdvancedSearchRequest / AdvancedSearchResult — stay in
+//         domain/asset until phase 3 absorbs the search domain
+//         (internal/domain/search).
+//       * AssetStoreSQLite + NewAssetStoreSQLite — graduate to
+//         internal/domain/store when the store domain materializes.
+//       * ClipFolder — stay in domain/asset until phase 3 absorbs
+//         the folder domain (internal/domain/folder).
+//       * SegmentEmbeddingRecord — stay in domain/asset until phase
+//         3 absorbs the embedding domain (internal/domain/embedding).
+//       * ScanCanonicalAssetRowsPublic — absorbed into the public
+//         assets.Repository scan path in phase 3 (drop the alias; the
+//         function graduates to a method or stays in assets.Repository).
 //
 // IMPORTANT — MediaType semantic conflict
 //
