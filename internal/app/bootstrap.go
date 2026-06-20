@@ -33,7 +33,7 @@ import (
 
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -122,7 +122,7 @@ type CoreDeps struct {
 	ChannelMonitor     *monitor.ChannelMonitor
 	CatalogRepo        *catalog.Repository
 	AssocService       *association.Service
-	JobsService        *jobservice.Service
+	JobsService        *appjobs.Service
 	MediaProcessor     processor.Processor
 	YoutubeClipService *youtube.Service
 	AssetIndexService  *assetindex.Service

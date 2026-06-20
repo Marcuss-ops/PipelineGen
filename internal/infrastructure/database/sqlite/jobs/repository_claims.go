@@ -17,7 +17,7 @@ import (
 
 // ClaimNext atomically claims the oldest queued job, transitioning it to
 // running (via Start). Returns (nil, nil) on empty queue.
-// Implements Repository.ClaimNext.
+// Implements Store.ClaimNext.
 func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*job.Job, error) {
 	r.claimMu.Lock()
 	defer r.claimMu.Unlock()
@@ -29,7 +29,7 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 	// is the atomic claim + start, so we select from queued).
 	query := `SELECT ` + jobColumns + ` FROM jobs
 		WHERE status = 'queued' ORDER BY priority DESC, created_at ASC LIMIT 1`
-	args := []any{}
+	var args []any
 	if len(types) > 0 {
 		placeholders := make([]string, len(types))
 		for i, t := range types {
@@ -167,11 +167,11 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
 	if retryCount < maxRetries {
 		// leased → queued (claimed but never started), running → retry_wait (was executing)
-		targetStatus := StatusRetryWait
+		targetStatus := job.StatusRetryWait
 		eventType := "job_retry_wait"
 		eventMsg := "Lease expired, retrying"
-		if currentStatus == StatusLeased {
-			targetStatus = StatusQueued
+		if currentStatus == job.StatusLeased {
+			targetStatus = job.StatusQueued
 			eventType = "job_queued"
 			eventMsg = "Lease expired, re-queued"
 		}
@@ -200,7 +200,7 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		evtID, jobID, "job_failed", "Max retries exhausted", "{}", nowStr)
 	tx.Commit()
-	return RequeueResult{JobID: jobID, NewStatus: StatusFailed}
+	return RequeueResult{JobID: jobID, NewStatus: job.StatusFailed}
 }
 
 func mustRowsAffected(res sql.Result) int {

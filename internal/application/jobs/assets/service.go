@@ -1,4 +1,4 @@
-package workerassets
+package assets
 
 import (
 	"context"

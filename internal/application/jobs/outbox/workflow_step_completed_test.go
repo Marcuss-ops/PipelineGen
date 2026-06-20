@@ -1,4 +1,4 @@
-package outboxhandlers_test
+package outbox_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
-	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/outboxhandlers"
+	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 

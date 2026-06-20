@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"go.uber.org/zap"
 )
 
 // HandleJob processes a voiceover job from the queue.
-func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("processing voiceover batch job",
 		zap.String("job_id", job.ID),
 		zap.String("type", job.Type))

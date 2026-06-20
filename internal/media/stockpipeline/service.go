@@ -11,7 +11,7 @@ import (
 	gdrive "google.golang.org/api/drive/v3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
@@ -54,7 +54,7 @@ type Service struct {
 	ytdlp       *downloader.YTDLPDownloader
 	ffmpegProc  *ffmpeg.Processor
 	pcfg        PipelineConfig
-	jobsSvc     *jobservice.Service
+	jobsSvc     *appjobs.Service
 	assetIndex  *assetindex.Service
 	youtubeSvc  *youtube.Service
 	clipIndexer *clipindexer.Service
@@ -93,7 +93,7 @@ func (s *Service) SetClipsRepo(repo *sqlite.ClipsRepository) {
 }
 
 // SetJobsSvc injects the jobs service dependency.
-func (s *Service) SetJobsSvc(jobsSvc *jobservice.Service) {
+func (s *Service) SetJobsSvc(jobsSvc *appjobs.Service) {
 	s.jobsSvc = jobsSvc
 }
 
@@ -128,15 +128,15 @@ func (s *Service) SetMetadataWriter(w *semantic.MetadataWriter) {
 }
 
 // RegisterHandler registers the stock pipeline job handler with the jobs system.
-func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(jobservice.JobTypeMediaStock, s.HandleJob)
-		s.log.Info("registered media.stock job handler", zap.String("type", jobservice.JobTypeMediaStock))
+		jobsSvc.RegisterHandler(appjobs.TypeMediaStock, s.HandleJob)
+		s.log.Info("registered media.stock job handler", zap.String("type", appjobs.TypeMediaStock))
 	}
 }
 
 // HandleJob handles a stock pipeline job from the job queue.
-func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	var payload StockRunPayload
 	if len(job.Payload) > 0 {
 		if err := json.Unmarshal(job.Payload, &payload); err != nil {

@@ -99,27 +99,27 @@ type RequeueResult struct {
 // canonical 7-state machine.
 func ValidateTransition(current, next job.Status) error {
 	switch current {
-	case StatusQueued:
+	case job.StatusQueued:
 		switch next {
-		case StatusLeased, StatusCancelled:
+		case job.StatusLeased, job.StatusCancelled:
 			return nil
 		}
-	case StatusLeased:
+	case job.StatusLeased:
 		switch next {
-		case StatusRunning, StatusQueued, StatusCancelled:
+		case job.StatusRunning, job.StatusQueued, job.StatusCancelled:
 			return nil
 		}
-	case StatusRunning:
+	case job.StatusRunning:
 		switch next {
-		case StatusSucceeded, StatusRetryWait, StatusFailed, StatusCancelled:
+		case job.StatusSucceeded, job.StatusRetryWait, job.StatusFailed, job.StatusCancelled:
 			return nil
 		}
-	case StatusRetryWait:
+	case job.StatusRetryWait:
 		switch next {
-		case StatusQueued, StatusFailed, StatusCancelled:
+		case job.StatusQueued, job.StatusFailed, job.StatusCancelled:
 			return nil
 		}
-	case StatusSucceeded, StatusFailed, StatusCancelled:
+	case job.StatusSucceeded, job.StatusFailed, job.StatusCancelled:
 		return fmt.Errorf("cannot transition from terminal status %q to %q", current, next)
 	}
 	return fmt.Errorf("invalid transition: %q → %q", current, next)

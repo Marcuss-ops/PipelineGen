@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-type Handler func(ctx context.Context, j *job.Job, tools *Tools) (map[string]any, error)
+type Handler func(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error)
 
 type Registry struct {
 	mu       sync.RWMutex
@@ -35,7 +35,7 @@ func (r *Registry) Register(jobType string, h Handler) error {
 	return nil
 }
 
-func (r *Registry) Dispatch(ctx context.Context, j *job.Job, tools *Tools) (map[string]any, error) {
+func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools) (map[string]any, error) {
 	r.mu.RLock()
 	h, ok := r.handlers[j.Type]
 	r.mu.RUnlock()

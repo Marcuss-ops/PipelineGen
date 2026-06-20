@@ -361,9 +361,9 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 
 	// Set depth for currently-observed type × status combinations.
 	allStatuses := []job.Status{
-		StatusQueued, StatusLeased, StatusRunning,
-		StatusRetryWait,
-		StatusFailed, StatusSucceeded, StatusCancelled,
+		job.StatusQueued, job.StatusLeased, job.StatusRunning,
+		job.StatusRetryWait,
+		job.StatusFailed, job.StatusSucceeded, job.StatusCancelled,
 	}
 	depthSeen := make(map[string]bool)
 	rows, err := r.db.QueryContext(ctx, `SELECT type, status, COUNT(*) FROM jobs GROUP BY type, status`)

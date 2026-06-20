@@ -1,4 +1,4 @@
-package workerassets
+package assets
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	database "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func()) {
@@ -39,7 +39,7 @@ func setupWorkerAssetsTest(t *testing.T) (*Service, *assetindex.Service, func())
 		updated_at TEXT NOT NULL
 	);
 	`
-	db := drive.NewTestDBWithSchema(t, schema)
+	db := database.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)
 	svc := assetindex.NewService(repo)
 	workerSvc := NewService(svc, nil, nil, nil, zap.NewNop())

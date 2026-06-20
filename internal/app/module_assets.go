@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
 	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"
@@ -28,7 +28,7 @@ type AssetsWiring struct {
 }
 
 // WireAssets creates the unified Assets handler and module.
-func WireAssets(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps, artlistSvc *artlistpkg.Service, youtubeSvc *youtube.Service, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, jobsSvc *jobservice.Service, catalogRepo *catalog.Repository, assetIndexSvc *assetindex.Service, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps, artlistSvc *artlistpkg.Service, youtubeSvc *youtube.Service, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, jobsSvc *appjobs.Service, catalogRepo *catalog.Repository, assetIndexSvc *assetindex.Service, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
 	folderMemSvc := foldermemory.NewService(log, coreDeps.ClipsRepo)
 	var driveUploader *driveutil.Uploader
 	if coreDeps.DriveClient != nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
 )
 
@@ -28,14 +28,14 @@ func internalError(c *gin.Context, err error)       { c.JSON(http.StatusInternal
 // CurationService handles clip source and curate HTTP endpoints.
 type CurationService struct {
 	clipSourceBuilder *scripts.ClipSourceBuilder
-	jobsSvc           *jobservice.Service
+	jobsSvc           *appjobs.Service
 	log               *zap.Logger
 }
 
 // NewCurationService creates a new CurationService.
 func NewCurationService(
 	clipSourceBuilder *scripts.ClipSourceBuilder,
-	jobsSvc *jobservice.Service,
+	jobsSvc *appjobs.Service,
 	log *zap.Logger,
 ) *CurationService {
 	return &CurationService{
@@ -124,7 +124,7 @@ func (s *CurationService) GenerateFromCatalog(c *gin.Context) {
 		zap.Float64("coverage", catalogReport.CoverageScore),
 	)
 
-	job, err := s.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+	job, err := s.jobsSvc.Enqueue(c.Request.Context(), &appjobs.EnqueueRequest{
 		Type:    "script.generate_from_catalog",
 		Payload: payloadMap,
 	})
@@ -219,7 +219,7 @@ func (s *CurationService) Curate(c *gin.Context) {
 		zap.Int("max_clips", req.MaxClips),
 	)
 
-	job, err := s.jobsSvc.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
+	job, err := s.jobsSvc.Enqueue(c.Request.Context(), &appjobs.EnqueueRequest{
 		Type:       "script.curate",
 		Payload:    payload,
 		MaxRetries: 2,

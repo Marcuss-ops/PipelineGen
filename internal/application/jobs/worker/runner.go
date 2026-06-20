@@ -11,11 +11,11 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
 type Runner struct {
-	broker      job.Broker
+	broker      appjobs.Broker
 	registry    *Registry
 	workspace   *Workspace
 	assetClient AssetClient
@@ -25,7 +25,7 @@ type Runner struct {
 	caps        []string
 }
 
-func NewRunner(broker job.Broker, registry *Registry, workspace *Workspace, assetClient AssetClient, log *zap.Logger, workerID, sessionID string, caps []string) *Runner {
+func NewRunner(broker appjobs.Broker, registry *Registry, workspace *Workspace, assetClient AssetClient, log *zap.Logger, workerID, sessionID string, caps []string) *Runner {
 	return &Runner{
 		broker:      broker,
 		registry:    registry,
@@ -48,7 +48,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		lease, err := r.broker.Claim(ctx, job.ClaimCommand{
+		lease, err := r.broker.Claim(ctx, appjobs.ClaimCommand{
 			WorkerID:        r.workerID,
 			WorkerSessionID: r.sessionID,
 			Capabilities:    r.caps,
@@ -68,7 +68,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-func (r *Runner) runLease(parent context.Context, lease *job.Lease) error {
+func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	jobCtx, cancel := context.WithCancel(parent)
 	defer cancel()
 
@@ -103,7 +103,7 @@ func (r *Runner) runLease(parent context.Context, lease *job.Lease) error {
 	if err := r.uploadOutputs(jobCtx, lease.Job.ID, handlerResult); err != nil {
 		return r.fail(jobCtx, lease, err)
 	}
-	return r.broker.Complete(jobCtx, job.CompleteCommand{
+	return r.broker.Complete(jobCtx, appjobs.CompleteCommand{
 		WorkerID:         r.workerID,
 		WorkerSessionID:  r.sessionID,
 		JobID:            lease.Job.ID,
@@ -113,8 +113,8 @@ func (r *Runner) runLease(parent context.Context, lease *job.Lease) error {
 	})
 }
 
-func (r *Runner) fail(ctx context.Context, lease *job.Lease, err error) error {
-	return r.broker.Fail(ctx, job.FailCommand{
+func (r *Runner) fail(ctx context.Context, lease *appjobs.Lease, err error) error {
+	return r.broker.Fail(ctx, appjobs.FailCommand{
 		WorkerID:         r.workerID,
 		WorkerSessionID:  r.sessionID,
 		JobID:            lease.Job.ID,
