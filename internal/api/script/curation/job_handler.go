@@ -16,7 +16,7 @@ import (
 // duplicate curation import removed
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 // Service handles background script.curate jobs.

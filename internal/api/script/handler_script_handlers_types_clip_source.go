@@ -2,7 +2,7 @@ package script
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/scenes"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 // GenerateFromClipsRequest is the unified input for POST /api/script/generate-from-clips.

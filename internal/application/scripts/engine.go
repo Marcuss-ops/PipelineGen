@@ -9,7 +9,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"

@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 )
 
 // clipSourcePathResult is the result produced by a single script generation path.

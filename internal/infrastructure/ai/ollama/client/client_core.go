@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 	"go.uber.org/zap"
 )

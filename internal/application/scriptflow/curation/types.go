@@ -1,6 +1,6 @@
 package curation
 
-import "github.com/Marcuss-ops/PipelineGen/internal/scripts"
+import "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 
 // GenerateFromCatalogRequest is the input for catalog-first script generation.
 type GenerateFromCatalogRequest struct {

@@ -8,8 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
