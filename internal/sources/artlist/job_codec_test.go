@@ -40,7 +40,7 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 	resp := &RunTagResponse{
 		OK:          true,
 		Term:        "city",
-		job.Status:      "completed",
+		Status:      "completed",
 		Found:       2,
 		Processed:   1,
 		Skipped:     1,
@@ -51,7 +51,7 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 				ClipID:       "clip1",
 				Name:         "City skyline",
 				Filename:     "city.mp4",
-				job.Status:       "completed",
+				Status:       "completed",
 				DriveLink:    "https://drive.google.com/file/d/abc",
 				LocalPath:    "/tmp/city.mp4",
 				FileHash:     "hash123",
@@ -78,7 +78,7 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 	job := &domainjob.Job{
 		ID:     "test-job",
 		Type:   "artlist.run",
-		job.Status: domainjob.StatusSucceeded,
+		Status: domainjob.StatusSucceeded,
 	}
 	jsonPayload, _ := json.Marshal(codec.PayloadFromRequest(&RunTagRequest{Term: "city"}))
 	job.Payload = jsonPayload

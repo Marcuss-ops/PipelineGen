@@ -9,10 +9,10 @@ import (
 
 // ── Phase: Merge Results ─────────────────────────────────────────────────────
 
-// mergeBatchResults reconstructs the ordered generatedParts and mergedScript
+// mergeBatchResults reconstructs the ordered GeneratedParts and mergedScript
 // from the parallel chapter generation results.
-func mergeBatchResults(docTitle string, results []*genChapterResult, noChapters bool, language string) ([]generatedPart, string, []chapterTiming, []scripts.ScriptSectionRecord) {
-	var generatedParts []generatedPart
+func mergeBatchResults(docTitle string, results []*genChapterResult, noChapters bool, language string) ([]GeneratedPart, string, []chapterTiming, []scripts.ScriptSectionRecord) {
+	var GeneratedParts []GeneratedPart
 	var mergedScript strings.Builder
 	mergedScript.WriteString(fmt.Sprintf("# %s\n\n", docTitle))
 
@@ -20,7 +20,7 @@ func mergeBatchResults(docTitle string, results []*genChapterResult, noChapters 
 		if res == nil {
 			continue
 		}
-		generatedParts = append(generatedParts, res.part)
+		GeneratedParts = append(GeneratedParts, res.part)
 		if res.scriptContent != "" {
 			chapterLabel := chapterLabelForLang(language)
 			if noChapters {
@@ -31,9 +31,9 @@ func mergeBatchResults(docTitle string, results []*genChapterResult, noChapters 
 		}
 	}
 
-	timings := make([]chapterTiming, 0, len(generatedParts))
-	sections := make([]scripts.ScriptSectionRecord, 0, len(generatedParts))
-	for idx, part := range generatedParts {
+	timings := make([]chapterTiming, 0, len(GeneratedParts))
+	sections := make([]scripts.ScriptSectionRecord, 0, len(GeneratedParts))
+	for idx, part := range GeneratedParts {
 		timings = append(timings, part.timing)
 		status := "completed"
 		if part.timing.Status == "failed" {
@@ -49,5 +49,5 @@ func mergeBatchResults(docTitle string, results []*genChapterResult, noChapters 
 		})
 	}
 
-	return generatedParts, mergedScript.String(), timings, sections
+	return GeneratedParts, mergedScript.String(), timings, sections
 }

@@ -1,7 +1,6 @@
-package script
+package batch
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"strings"
 	"testing"
 	"time"

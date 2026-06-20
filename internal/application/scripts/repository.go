@@ -118,32 +118,40 @@ type ScriptGenerationLog struct {
 
 // ScriptGenerationPlan is the pre-write structured outline emitted by
 // the planner LLM. The writer consumes it scene-by-scene.
+//
+// Note (June 2026): this struct diverges from the canonical plan in
+// internal/domain/script/plan.go::ScriptGenerationPlan. Both define an
+// `AgentResearch *ResearchPack` field, but they reference distinct
+// ResearchPack types (local vs. domain). Cross-package tests rely on
+// the local type; consolidation is tracked as a follow-up. New callers
+// should usually prefer the canonical domain struct.
 type ScriptGenerationPlan struct {
-	Title              string
-	Topic              string
-	Language           string
-	Tone               string
-	Model              string
-	Mode               string
-	ChannelID          string
-	UseMemory          bool
+	Title               string
+	Topic               string
+	Language            string
+	Tone                string
+	Model               string
+	Mode                string
+	ChannelID           string
+	UseMemory           bool
 	ForceRefresh        bool
-	SaveToDB           bool
-	TargetWords        int
-	Duration           int
-	DurationMin        int
-	NumPredict         int
-	Temperature        float64
-	Prompt             string
-	SourceText         string
-	WebContext         string
-	Guidelines         string
-	PromptVersion      string
+	SaveToDB            bool
+	TargetWords         int
+	Duration            int
+	DurationMin         int
+	NumPredict          int
+	Temperature         float64
+	Prompt              string
+	SourceText          string
+	WebContext          string
+	Guidelines          string
+	AgentResearch       *ResearchPack
+	PromptVersion       string
 	EditorPromptVersion string
-	QAPromptVersion    string
-	Scenes             []PlannedScene
-	TotalWords         int
-	Version            int
+	QAPromptVersion     string
+	Scenes              []PlannedScene
+	TotalWords          int
+	Version             int
 }
 
 // ScriptRecord is the canonical row of the scripts table — identity +
@@ -190,23 +198,43 @@ type PlannedScene struct {
 	TargetWords int
 }
 
+// NewPlan returns a *ScriptGenerationPlan with sensible defaults mirroring
+// internal/domain/script/plan.go::NewPlan. We keep a copy in package scripts
+// because validator.go lives here and consumes the LOCAL struct (not the
+// canonical domain one), which has script-engine-specific fields the
+// validator reads (e.g. TargetWords, Duration).
+//
+// TODO(cleanup): two ScriptGenerationPlan structs (here and at
+// internal/domain/script/plan.go) have drifted — both define
+// AgentResearch but reference distinct ResearchPack types. Consolidate by
+// moving the local consumers to the canonical domain struct and deleting
+// this duplicate.
+func NewPlan() *ScriptGenerationPlan {
+	return &ScriptGenerationPlan{
+		Language:  "en",
+		Tone:      "documentary",
+		Duration:  600, // 10 minutes default
+		UseMemory: true,
+	}
+}
+
 // ResearchPack is the structured research summary emitted by the
 // research LLM pass before the writer LLM is invoked. research.go's
 // ParseResearchPack function unmarshals the agent output into this
 // shape; FormatResearchContext renders it back to text for the writer.
 type ResearchPack struct {
-	RawText        string
-	Topic          string
-	Summary        string
-	KeyFacts       []string           `json:"key_facts,omitempty"`
-	Timeline       []TimelineEntry    `json:"timeline,omitempty"`
-	Controversies  []string           `json:"controversies,omitempty"`
+	RawText         string
+	Topic           string
+	Summary         string
+	KeyFacts        []string          `json:"key_facts,omitempty"`
+	Timeline        []TimelineEntry   `json:"timeline,omitempty"`
+	Controversies   []string          `json:"controversies,omitempty"`
 	ImportantQuotes []string          `json:"important_quotes,omitempty"`
 	SuggestedAngles []string          `json:"suggested_angles,omitempty"`
-	Warnings       []string           `json:"warnings,omitempty"`
-	Sources        []ScriptResearchSource
-	WordCount      int
-	CreatedAt      time.Time
+	Warnings        []string          `json:"warnings,omitempty"`
+	Sources         []ScriptResearchSource
+	WordCount       int
+	CreatedAt       time.Time
 }
 
 // TimelineEntry is a single item in the research timeline.

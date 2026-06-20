@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // ── ParseResearchPack: valid JSON ─────────────────────────────────────────
@@ -248,7 +247,7 @@ func TestFormatResearchContext_WithParsedPack(t *testing.T) {
 		ImportantQuotes: []string{"All roads lead to Rome"},
 		SuggestedAngles: []string{"Military innovations"},
 		Warnings:        []string{"Bias in Roman historical sources"},
-		Sources: []script.ResearchSource{
+		Sources: []ScriptResearchSource{
 			{URL: "https://example.com/rome", Title: "Roman History"},
 		},
 	}

@@ -1,7 +1,6 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"encoding/json"
 	"errors"
@@ -76,7 +75,7 @@ type jobserviceEnqueueRequest struct {
 func (m *mockJobEnqueuer) Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*jobservice.Job, error) {
 	m.enqueued = append(m.enqueued, &jobserviceEnqueueRequest{
 		Type:       req.Type,
-		Payload:    req.Payload,
+		Payload:    req.Payload.(map[string]any),
 		MaxRetries: req.MaxRetries,
 	})
 	return &jobservice.Job{ID: "test-job"}, nil

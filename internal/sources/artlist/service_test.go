@@ -18,11 +18,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/pkg/testutil"
 )
 
@@ -295,7 +295,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.Proce
 	if f.err != nil {
 		return &processor.ProcessResult{
 			ID:     input.ID,
-			job.Status: "failed",
+			Status: "failed",
 			Error:  f.err.Error(),
 		}, f.err
 	}
@@ -309,7 +309,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *processor.Proce
 		Filename:  input.Name + ".mp4",
 		LocalPath: input.OutputDir + "/" + input.Name + ".mp4",
 		FileHash:  "hash-test",
-		job.Status:    "processed",
+		Status:    "processed",
 	}, nil
 }
 
@@ -393,7 +393,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, 1, resp.Failed)
 	require.Len(t, resp.Items, 1)
-	assert.Equal(t, "media_process_failed", resp.Items[0].job.Status)
+	assert.Equal(t, "media_process_failed", resp.Items[0].Status)
 	assert.Contains(t, resp.Items[0].Error, "download failed")
 }
 
@@ -556,8 +556,8 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	payload := testutil.MustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})
 	job := &domainjob.Job{
 		ID:        "test-job-1",
-		Type:      string(domainjob.JobTypeArtlistRun),
-		job.Status:    domainjob.StatusRunning,
+		Type:      "artlist.run",
+		Status:    domainjob.StatusRunning,
 		Payload:   payload,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),

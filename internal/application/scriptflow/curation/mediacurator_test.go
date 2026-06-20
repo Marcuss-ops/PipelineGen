@@ -1,4 +1,4 @@
-package curation_test
+package curation
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // testSchema composes the canonical media_assets CREATE TABLE from
@@ -28,10 +28,10 @@ func insertTestClip(t *testing.T, repo *sqlite.ClipsRepository, clip *asset.Asse
 	}
 }
 
-// newFallbackService creates a curation.MediaCurator with embedder=nil and vectorSvc=nil,
+// newFallbackCurator creates a MediaCurator with embedder=nil and vectorSvc=nil,
 // forcing the LIKE fallback path in searchClips. It returns the service and the clips repo
 // so the test can insert test data.
-func newFallbackService(t *testing.T) (*Service, *sqlite.ClipsRepository) {
+func newFallbackCurator(t *testing.T) (*MediaCurator, *sqlite.ClipsRepository) {
 	t.Helper()
 	db := drive.NewTestDBWithSchema(t, testSchema)
 	t.Cleanup(func() { db.Close() })
@@ -47,7 +47,7 @@ func newFallbackService(t *testing.T) (*Service, *sqlite.ClipsRepository) {
 
 func TestLikeSearch_FindsByExactName(t *testing.T) {
 	ctx := context.Background()
-	svc, repo := newFallbackService(t)
+	svc, repo := newFallbackCurator(t)
 
 	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_parenting",
@@ -106,7 +106,7 @@ func TestLikeSearch_FindsByExactName(t *testing.T) {
 
 func TestLikeSearch_FindsByKeyword(t *testing.T) {
 	ctx := context.Background()
-	svc, repo := newFallbackService(t)
+	svc, repo := newFallbackCurator(t)
 
 	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_comedy",
@@ -171,7 +171,7 @@ func TestLikeSearch_FindsByKeyword(t *testing.T) {
 
 func TestLikeSearch_RespectsLimit(t *testing.T) {
 	ctx := context.Background()
-	svc, repo := newFallbackService(t)
+	svc, repo := newFallbackCurator(t)
 
 	// Insert 5 clips all matching "funny"
 	for i := 1; i <= 5; i++ {
@@ -205,7 +205,7 @@ func TestLikeSearch_RespectsLimit(t *testing.T) {
 
 func TestLikeSearch_NoMatch(t *testing.T) {
 	ctx := context.Background()
-	svc, repo := newFallbackService(t)
+	svc, repo := newFallbackCurator(t)
 
 	insertTestClip(t, repo, &asset.Asset{
 		ID:             "clip_science",
@@ -233,7 +233,7 @@ func TestLikeSearch_NoMatch(t *testing.T) {
 func TestLikeSearch_NoRepo(t *testing.T) {
 	ctx := context.Background()
 
-	// Service WITHOUT clipsRepo — should return error
+	// *MediaCurator WITHOUT clipsRepo — should return error
 	svc := NewMediaCurator(nil, "", nil, nil, nil, zap.NewNop())
 
 	_, err := svc.searchClips(ctx, "test query", "", "", 10, 0)
@@ -249,7 +249,7 @@ func TestLikeSearch_NoRepo(t *testing.T) {
 
 func TestLikeSearch_FindsByMetadata(t *testing.T) {
 	ctx := context.Background()
-	svc, repo := newFallbackService(t)
+	svc, repo := newFallbackCurator(t)
 
 	// Clip with matching metadata (clip_summary, topics) but non-matching name
 	asset := &asset.Asset{

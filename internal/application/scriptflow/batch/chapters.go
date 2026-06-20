@@ -34,7 +34,7 @@ func failedChapterMarker(language, topic string) string {
 // genChapterResult holds the output of a single parallel chapter generation goroutine.
 type genChapterResult struct {
 	scriptContent string
-	part          generatedPart
+	part          GeneratedPart
 }
 
 // generateBatchChapters runs all work items in parallel with a semaphore (capacity 3).
@@ -98,7 +98,7 @@ func (s *BatchService) generateBatchChapters(
 
 			results[idx] = &genChapterResult{
 				scriptContent: scriptContent,
-				part: generatedPart{
+				part: GeneratedPart{
 					topic:   workItem.topic,
 					content: scriptContent,
 					timing:  timing,

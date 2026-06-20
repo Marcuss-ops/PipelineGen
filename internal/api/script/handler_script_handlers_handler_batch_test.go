@@ -1,8 +1,8 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,8 +16,10 @@ import (
 	ollama "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	scriptsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 )
 
 // minimalTestSchema is a minimal subset of the production schema covering
@@ -134,7 +136,7 @@ func newMockOllamaServer(scriptText string) *httptest.Server {
 // for the full generation pipeline (memory gate, generation, normalization,
 // save). This replaces the legacy pattern where engine was nil and the
 // handler fell back to direct generator calls.
-func newTestHandlerWithMockOllama(t *testing.T, scriptText string, repo *scripts.ScriptRepository) *ScriptFlowHandler {
+func newTestHandlerWithMockOllama(t *testing.T, scriptText string, repo scripts.ScriptRepository) *ScriptFlowHandler {
 	t.Helper()
 	srv := newMockOllamaServer(scriptText)
 	t.Cleanup(srv.Close)
@@ -161,23 +163,18 @@ func TestExecuteBatchGeneration_SavesToDB_WithAllIntermediateTables(t *testing.T
 	// 1. Set up a real test database with all required tables.
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
-	repo := scripts.NewScriptRepository(db)
+		repoConcrete := scriptsqlite.NewScriptRepository(db)
+	repo := scripts.ScriptRepository(newTestRepoImpl(db))
+	_ = repoConcrete
 
 	// 2. Build handler with mock Ollama backend.
 	scriptText := "This is a generated chapter about testing. It contains several sentences to ensure the word count is meaningful and the script appears substantial for the test."
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
 	// 3. Create a batch request with SaveToDB=true.
-	req := GenerateBatchRequest{
-		BaseGenerateRequest: BaseGenerateRequest{
-			Language: "en",
-			Tone:     "documentary",
-			Duration: 600,
-			Model:    "test-model",
-			SaveToDB: true,
-		},
-		DocTitle: "Test Batch Script",
-		BatchTopics: []BatchTopic{
+	req := batch.GenerateBatchRequest{
+				DocTitle: "Test Batch Script",
+		BatchTopics: []batch.BatchTopic{
 			{Topic: "Chapter One"},
 			{Topic: "Chapter Two"},
 		},
@@ -249,21 +246,14 @@ func TestExecuteBatchGeneration_WithNoChapters_SavesSections(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
-	repo := scripts.NewScriptRepository(db)
+	repo := scripts.ScriptRepository(newTestRepoImpl(db))
 
 	scriptText := "A single flowing script without chapter headings. It reads as one continuous narrative from start to finish."
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
-	req := GenerateBatchRequest{
-		BaseGenerateRequest: BaseGenerateRequest{
-			Language: "it",
-			Tone:     "narrative",
-			Duration: 300,
-			Model:    "test-model",
-			SaveToDB: true,
-		},
-		DocTitle: "No-Chapters Test",
-		BatchTopics: []BatchTopic{
+	req := batch.GenerateBatchRequest{
+				DocTitle: "No-Chapters Test",
+		BatchTopics: []batch.BatchTopic{
 			{Topic: "Topic A"},
 		},
 		NoChapters: true,
@@ -290,21 +280,14 @@ func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 
 	db := drive.NewTestDBWithSchema(t, minimalTestSchema)
 	defer db.Close()
-	repo := scripts.NewScriptRepository(db)
+	repo := scripts.ScriptRepository(newTestRepoImpl(db))
 
 	scriptText := "Short text for skip test."
 	handler := newTestHandlerWithMockOllama(t, scriptText, repo)
 
-	req := GenerateBatchRequest{
-		BaseGenerateRequest: BaseGenerateRequest{
-			Language: "en",
-			Tone:     "documentary",
-			Duration: 600,
-			Model:    "test-model",
-			SaveToDB: false,
-		},
-		DocTitle: "Skip DB Test",
-		BatchTopics: []BatchTopic{
+	req := batch.GenerateBatchRequest{
+				DocTitle: "Skip DB Test",
+		BatchTopics: []batch.BatchTopic{
 			{Topic: "Only Topic"},
 		},
 		NoChapters: false,
@@ -316,4 +299,116 @@ func TestExecuteBatchGeneration_SaveToDBFalse_SkipsPersistence(t *testing.T) {
 
 	scriptCount := drive.CountRows(t, db, "SELECT COUNT(*) FROM scripts WHERE topic = ?", req.DocTitle)
 	assert.Equal(t, 0, scriptCount, "should not persist script when SaveToDB=false")
+}
+
+// testRepoImpl is a scripts.ScriptRepository implementation that writes through
+// to the real *sql.DB used by the test (the same DB scriptsqlite.NewScriptRepository
+// is given). It satisfies the application-layer interface so the handler’s
+// scriptsRepo field can accept it; and because the underlying SaveScript /
+// SaveOutlineSections / SaveGenerationLog paths execute real INSERTs, the
+// test’s db.QueryRow and drive.CountRows assertions can find the rows.
+//
+// The four methods exercised by TestExecuteBatchGeneration_SavesToDB are
+// implemented below with the same column lists the production scriptsqlite
+// schema in handler_batch_test.go::minimalTestSchema declares. The other
+// seven interface methods are no-ops because the batch path does not call them.
+type testRepoImpl struct {
+	db *sql.DB
+}
+
+// compile-time assertion: testRepoImpl satisfies scripts.ScriptRepository
+var _ scripts.ScriptRepository = (*testRepoImpl)(nil)
+
+func newTestRepoImpl(db *sql.DB) *testRepoImpl { return &testRepoImpl{db: db} }
+
+func (r *testRepoImpl) SaveScript(ctx context.Context, rec *scripts.ScriptRecord, sections []scripts.ScriptSectionRecord, matches []scripts.ScriptStockMatchRecord) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `INSERT INTO scripts (topic, title, duration, language, mode, tone, target_words, final_word_count, status, full_document, model_used, version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		rec.Topic, rec.Title, rec.Duration, rec.Language, rec.Mode, rec.Tone, rec.TargetWords, rec.FinalWordCount, rec.Status, rec.FullDocument, rec.ModelUsed, rec.Version,
+	)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	for i, s := range sections {
+		_, err := tx.ExecContext(ctx, `INSERT INTO script_sections (script_id, section_type, section_title, content, sort_order, word_count, status) VALUES (?,?,?,?,?,?,?)`,
+			id, s.SectionType, s.SectionTitle, s.Content, s.SortOrder, s.WordCount, s.Status,
+		)
+		if err != nil {
+			return 0, err
+		}
+		_ = i
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func (r *testRepoImpl) SaveOutlineSections(ctx context.Context, scriptID int64, sections []scripts.ScriptOutlineSectionRecord) error {
+	for i, s := range sections {
+		_, err := r.db.ExecContext(ctx, `INSERT INTO script_outline_sections (script_id, section_index, title, purpose, target_words, key_points_json, emotional_role) VALUES (?,?,?,?,?,?,?)`,
+			scriptID, s.SectionIndex, s.Title, s.Purpose, s.TargetWords, s.KeyPointsJSON, s.EmotionalRole,
+		)
+		if err != nil {
+			return err
+		}
+		_ = i
+	}
+	return nil
+}
+
+func (r *testRepoImpl) SaveResearchSources(ctx context.Context, scriptID int64, sources []scripts.ScriptResearchSource) error {
+	for _, s := range sources {
+		_, err := r.db.ExecContext(ctx, `INSERT INTO script_research_sources (script_id, query, url, title, snippet, used_in_sections, source_type) VALUES (?,?,?,?,?,?,?)`,
+			scriptID, s.Query, s.URL, s.Title, s.Snippet, s.UsedInSections, s.SourceType,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *testRepoImpl) SaveGenerationLog(ctx context.Context, log scripts.ScriptGenerationLog) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO script_generation_logs (script_id, phase, model, input_words, output_words, duration_ms, retry_count, cache_status, prompt_hash, error) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+		log.ScriptID, log.Phase, log.Model, log.InputWords, log.OutputWords, log.DurationMs, log.RetryCount, log.CacheStatus, "", log.Error,
+	)
+	return err
+}
+
+func (r *testRepoImpl) UpdateScriptFinalContent(ctx context.Context, id int64, text string, wordCount int, status, metadata, model, baseURL string, version int) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE scripts SET full_document=?, final_word_count=?, status=? WHERE id=?`, text, wordCount, status, id)
+	return err
+}
+
+func (r *testRepoImpl) NextVersionForTopic(ctx context.Context, topic, language, mode string) (int, error) {
+	return 1, nil
+}
+
+func (r *testRepoImpl) GetSectionByID(ctx context.Context, sectionID int64) (*scripts.ScriptSectionRecord, error) {
+	return nil, nil
+}
+
+func (r *testRepoImpl) GetScriptByID(id int64) (*scripts.ScriptRecord, []scripts.ScriptSectionRecord, []scripts.ScriptStockMatchRecord, error) {
+	return nil, nil, nil, nil
+}
+
+func (r *testRepoImpl) GetAdjacentSections(ctx context.Context, scriptID int64, sortOrder int) (*scripts.ScriptSectionRecord, *scripts.ScriptSectionRecord, error) {
+	return nil, nil, nil
+}
+
+func (r *testRepoImpl) UpdateSectionContent(ctx context.Context, sectionID int64, content string) error {
+	return nil
+}
+
+func (r *testRepoImpl) ListScripts(ctx context.Context, filter scripts.ScriptListFilter) ([]*scripts.ScriptRecord, error) {
+	return nil, nil
 }

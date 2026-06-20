@@ -93,7 +93,7 @@ func looksTranslated(text, targetLang, sourceLang string) bool {
 func (s *BatchService) translateBatch(
 	ctx context.Context,
 	req *GenerateBatchRequest,
-	parts []generatedPart,
+	parts []GeneratedPart,
 	docTitle, effectiveFolderID string,
 ) (map[string]map[string]any, []string) {
 	translations := make(map[string]map[string]any)
@@ -105,7 +105,7 @@ func (s *BatchService) translateBatch(
 		translatedTopicsByLang   = make(map[string][]string)
 	)
 
-	translateOneLang := func(lang string, getSource func(pi int, part generatedPart) (sourceText string, topicSource string)) {
+	translateOneLang := func(lang string, getSource func(pi int, part GeneratedPart) (sourceText string, topicSource string)) {
 		defer transWg.Done()
 
 		select {
@@ -242,15 +242,15 @@ func (s *BatchService) translateBatch(
 
 		var transDocURL string
 		if s.docClient != nil {
-			translatedParts := make([]generatedPart, len(translatedChapters))
+			translatedParts := make([]GeneratedPart, len(translatedChapters))
 			for i, ch := range translatedChapters {
 				topicTitle := parts[i].topic
 				if i < len(translatedTopics) && translatedTopics[i] != "" {
 					topicTitle = translatedTopics[i]
 				}
-				translatedParts[i] = generatedPart{topic: topicTitle, content: ch}
+				translatedParts[i] = GeneratedPart{topic: topicTitle, content: ch}
 			}
-			htmlMergedContent := buildBatchGoogleDocHTMLWithTranslations(
+			htmlMergedContent := BuildBatchGoogleDocHTMLWithTranslations(
 				transDocTitle,
 				translatedParts, req.NoChapters, lang, nil,
 			)
@@ -303,7 +303,7 @@ func (s *BatchService) translateBatch(
 		transWg.Add(1)
 		lang := lang
 		concurrent.SafeGo(fmt.Sprintf("translate-batch[%s]", lang), func() {
-			translateOneLang(lang, func(pi int, part generatedPart) (string, string) {
+			translateOneLang(lang, func(pi int, part GeneratedPart) (string, string) {
 				return strings.TrimSpace(part.content), part.topic
 			})
 		})
@@ -318,7 +318,7 @@ func (s *BatchService) translateBatch(
 		)
 
 		transWg.Add(1)
-		translateOneLang(lang, func(pi int, part generatedPart) (string, string) {
+		translateOneLang(lang, func(pi int, part GeneratedPart) (string, string) {
 			sourceLang := req.TranslationSourceLang
 			transMu.Lock()
 			sc, hasCh := translatedChaptersByLang[sourceLang]
