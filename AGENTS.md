@@ -1,7 +1,17 @@
 # AGENTS.md - PipelineGen System Documentation
 
 ## Overview
-PipelineGen is a Go-based backend service that manages media processing pipelines for YouTube clips and Artlist assets. It runs as a systemd service on **port 18080** (NOT 8080 — port 8080 on the same host is consumed by SearXNG). The dev binary binds to `127.0.0.1:18080` by default; override via `VELOX_PORT`.
+PipelineGen is a Go-based backend service that manages media processing pipelines for YouTube clips and Artlist assets. It runs as a systemd service on **port 8080** by default. Override at runtime via `VELOX_PORT`; the in-tree default is set by `internal/infrastructure/config/types.go::Server.Port` and mirrored by every client (`pkg/veloxclient`, worker fallback, scripts) so a single env var changes both sides.
+
+### Port policy (Operational Readiness PR, June 2026)
+
+The HTTP listen port is configurable via `VELOX_PORT` (server) and `VELOX_BROKER_URL` (worker + clients). No port number is hard-coded outside `cfg.Server.Port`'s default tag. Operator overrides are honoured at:
+
+- `cmd/server` (the canonical binary) via `cfg.Server.Port`.
+- `cmd/worker` via `VELOX_BROKER_URL` (fallback: `VELOX_PORT`-derived URL).
+- `pkg/veloxclient` via `baseURL` argument or `VeloxClient(base_url=...)` in `scripts/velox_client.py`.
+- Shell scripts (`scripts/diagnostics/marker_audit.sh`, `scripts/rotate_token.sh`, `Makefile` `doctor`/`artlist` targets) honour `API_BASE` / `VELOX_PORT` env vars.
+
 
 ## Documentation Map
 

@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE - This is the single source of truth for API documentation.
 **Last Updated:** 2026-05-03
-**Base URL:** `http://127.0.0.1:18080`
+**Base URL:** `http://127.0.0.1:8080` (configurable via `VELOX_PORT`)
 
 ## Authentication
 

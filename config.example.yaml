@@ -1,5 +1,8 @@
 server:
   host: "127.0.0.1"
+  # Port is configurable via VELOX_PORT env var at runtime; the yaml
+  # default stays 8080 to match Client defaults in pkg/veloxclient,
+  # scripts/velox_client.py and Makefile `doctor`/`artlist` targets.
   port: 8080
   gin_mode: "release"
 
@@ -12,11 +15,15 @@ storage:
   temp_dir: "tmp"
 
 security:
-  # IMPORTANT: Enable auth and set admin_token for production use.
-  # Default is true - you MUST set an admin_token.
+  # CRITICAL (Operational Readiness PR, June 2026):
+  # PipelineGen refuses to start when admin_token or worker_token equal
+  # the literals below. Set via env vars (VELOX_ADMIN_TOKEN /
+  # VELOX_WORKER_TOKEN) or edit this file before booting. See
+  # internal/infrastructure/config/config.go::Config.Validate() for
+  # the exact check.
   enable_auth: true
-  admin_token: "YOUR_SECURE_TOKEN_HERE"  # Or set VELOX_ADMIN_TOKEN env var
-  worker_token: "YOUR_WORKER_TOKEN_HERE"
+  admin_token: "YOUR_SECURE_TOKEN_HERE"  # REPLACE before boot or set VELOX_ADMIN_TOKEN env var
+  worker_token: "YOUR_WORKER_TOKEN_HERE"  # REPLACE before boot or set VELOX_WORKER_TOKEN env var
   # CORS origins - leave empty to block all cross-origin requests
   cors_origins: []
   rate_limit_enabled: true

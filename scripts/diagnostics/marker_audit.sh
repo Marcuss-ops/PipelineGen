@@ -29,7 +29,12 @@ CURR_FILE="$WORK_DIR/curr.json"
 HELPER="$WORK_DIR/helper.py"
 
 # ── Config (overridable via env) ───────────────────────────────────────
-API_BASE="${API_BASE:-127.0.0.1:18080}"
+# Default API base host:port. 8080 matches the canonical server
+# default (`internal/infrastructure/config/types.go` `Server.Port`).
+# Override via `API_BASE=127.0.0.1:NNNN ./marker_audit.sh` — keep the
+# `host:port` (NOT `http://host:port`) shape since the script appends
+# the rest of the URL itself.
+API_BASE="${API_BASE:-127.0.0.1:8080}"
 TOKEN_FILE="${TOKEN_FILE:-/tmp/velox.env}"
 TOPIC="${TOPIC:-Jackie Chan Cinematic Stunt Legend Speaks}"
 TITLE="${TITLE:-Jackie Chan The Cinematic Stunt Legend}"

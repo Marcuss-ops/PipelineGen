@@ -4,10 +4,55 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// minHMACSecretLen guards against operators shipping a too-short HMAC
+// key. 32 bytes = 256 bits matches the user's directive ("≥32 byte casuali
+// provenienti da secret manager"); smaller values are sane for toy dev
+// but a foot-gun in production.
+const minHMACSecretLen = 32
+
+// placeholderPatterns matches anything that smells like a stock
+// placeholder value the operator forgot to replace. We block on these
+// at boot instead of silently allowing them into production tokens.
+//
+//	YOUR_*_HERE          — the canonical config.example.yaml marker
+//	CHANGE_ME_*          — common alternative
+//	TODO_SECRET*         — explicit "fix this before deploy" marker
+//	PLACEHOLDER*         — generic placeholder
+//	REPLACE_ME*, FIXME — generic reminder markers
+//
+// The match is intentionally case-insensitive (PLACEHOLDER_TOK in some
+// tooling, lowercase "change_me" in others).
+var placeholderPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)^YOUR_[A-Z0-9_]+_HERE$`),
+	regexp.MustCompile(`(?i)^CHANGE[_-]?ME[_A-Z0-9]*$`),
+	regexp.MustCompile(`(?i)^TODO_SECRET.*$`),
+	regexp.MustCompile(`(?i)^PLACEHOLDER.*$`),
+	regexp.MustCompile(`(?i)^FIXME.*$`),
+	regexp.MustCompile(`(?i)^REPLACE[_-]?ME.*$`),
+	regexp.MustCompile(`(?i)^XXX$`),
+}
+
+// IsPlaceholderValue returns true if v matches any known placeholder
+// pattern. Used by Validate() to reject tokens, secrets and HMAC keys.
+// Empty string is NOT a placeholder (empty means "not configured").
+func IsPlaceholderValue(v string) bool {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return false
+	}
+	for _, p := range placeholderPatterns {
+		if p.MatchString(v) {
+			return true
+		}
+	}
+	return false
+}
 
 func Get() *Config {
 	cfg, err := GetFromPath("config.yaml")
@@ -91,7 +136,22 @@ func hostPortConflict(a, b string) bool {
 	return pa == pb && pa != ""
 }
 
-// Validate performs a minimal sanity check of the loaded configuration.
+// devEscapeHmac returns true when the operator has explicitly opted out
+// of the HMAC ≥32-bytes rule via VELOX_ALLOW_INSECURE_DEV=true. The escape
+// is logged at WARN by Validate(). NEVER meant for production.
+func devEscapeHmac(c *Config) bool {
+	return c != nil && c.Security.DeliveryInsecureDev
+}
+
+// Validate performs a comprehensive sanity check of the loaded
+// configuration. Fail-fast and loud — never silent.
+//
+// In addition to the legacy checks (port range, timeouts, host bind,
+// auth enablement) the Operational Readiness PR June 2026 added:
+//
+//   - placeholder-pattern rejection for tokens, secrets, HMAC keys;
+//   - mandatory ≥32-byte HMAC secret (256-bit) in production;
+//   - dev escape hatch only with VELOX_ALLOW_INSECURE_DEV=true.
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
@@ -108,6 +168,16 @@ func (c *Config) Validate() error {
 	if c.External.OllamaURL == "" {
 		return fmt.Errorf("ollama url is required")
 	}
+	if c.External.VeloxMasterURL != "" {
+		if _, err := url.Parse(c.External.VeloxMasterURL); err != nil {
+			return fmt.Errorf("invalid velox_master_url %q: %w", c.External.VeloxMasterURL, err)
+		}
+		if u, perr := url.Parse(c.External.VeloxMasterURL); perr == nil {
+			if u.Scheme != "http" && u.Scheme != "https" {
+				return fmt.Errorf("velox_master_url must use http or https (got scheme=%q)", u.Scheme)
+			}
+		}
+	}
 
 	// Security: prevent production from starting with auth disabled on a public interface
 	isPublicInterface := c.Server.Host == "0.0.0.0" || c.Server.Host == "" || strings.HasPrefix(c.Server.Host, "::")
@@ -121,6 +191,52 @@ func (c *Config) Validate() error {
 	// Security: warn against real Drive folder IDs in production config (if committed)
 	if c.Drive.MediaRootFolder != "" && strings.HasPrefix(c.Drive.MediaRootFolder, "1") {
 		// Heuristic: real Google Drive IDs are 33 chars, but allow empty for dynamic resolution
+	}
+
+	// Placeholder rejection — Operational Readiness PR June 2026.
+	// Hard reject in CI/staging/production. Dev escape EXCLUSIVELY via
+	// VELOX_ALLOW_PLACEHOLDERS=true (governance contract: this flag is
+	// NEVER meant for production deployments).
+	allowPlaceholders := strings.EqualFold(strings.TrimSpace(os.Getenv("VELOX_ALLOW_PLACEHOLDERS")), "true")
+
+	if !allowPlaceholders {
+		if IsPlaceholderValue(c.Security.AdminToken) {
+			return fmt.Errorf("refusing to start: security.admin_token is a placeholder value (YOUR_*_HERE / CHANGE_ME_* / TODO_SECRET / PLACEHOLDER). Set VELOX_ADMIN_TOKEN in the environment or replace the value before booting (escape: VELOX_ALLOW_PLACEHOLDERS=true)")
+		}
+		if IsPlaceholderValue(c.Security.WorkerToken) {
+			return fmt.Errorf("refusing to start: security.worker_token is a placeholder value (YOUR_*_HERE / CHANGE_ME_* / TODO_SECRET / PLACEHOLDER). Set VELOX_WORKER_TOKEN in the environment or replace the value (escape: VELOX_ALLOW_PLACEHOLDERS=true)")
+		}
+		if IsPlaceholderValue(c.Security.WebhookSecret) {
+			return fmt.Errorf("refusing to start: security.webhook_secret is a placeholder value. Replace before booting (escape: VELOX_ALLOW_PLACEHOLDERS=true)")
+		}
+		if IsPlaceholderValue(c.Security.DeliveryHMACSecret) {
+			return fmt.Errorf("refusing to start: security.delivery_hmac_secret matches a placeholder pattern (YOUR_*_HERE / CHANGE_ME_* / TODO_SECRET / PLACEHOLDER). Generate ≥32 bytes random from a secret manager; never use a placeholder")
+		}
+		if IsPlaceholderValue(c.Security.DeliveryHMACSecretPrevious) {
+			return fmt.Errorf("refusing to start: security.delivery_hmac_secret_previous is a placeholder. Set or remove it; never use a placeholder for any secret")
+		}
+	}
+
+	// HMAC secret ≥32 bytes mandatory in production. Dev escape hatch via
+	// VELOX_ALLOW_INSECURE_DEV=true is the ONLY override and logs an
+	// unmistakable warning. The escape is NEVER a substitute for a real
+	// secret in CI/staging/production.
+	if !devEscapeHmac(c) {
+		curLen := len(strings.TrimSpace(c.Security.DeliveryHMACSecret))
+		prevLen := len(strings.TrimSpace(c.Security.DeliveryHMACSecretPrevious))
+		switch {
+		case curLen == 0:
+			return fmt.Errorf("refusing to start: security.delivery_hmac_secret is required (≥32 bytes random). Set VELOX_DELIVERY_HMAC_SECRET. Dev escape: VELOX_ALLOW_INSECURE_DEV=true")
+		case curLen < minHMACSecretLen:
+			return fmt.Errorf("refusing to start: security.delivery_hmac_secret is too short (got %d bytes, need ≥%d). Generate ≥32 bytes random from a secret manager", curLen, minHMACSecretLen)
+		case prevLen > 0 && prevLen < minHMACSecretLen:
+			return fmt.Errorf("refusing to start: security.delivery_hmac_secret_previous is too short (got %d bytes, need ≥%d)", prevLen, minHMACSecretLen)
+		}
+	}
+
+	// Replay window bounds.
+	if c.Security.DeliveryReplayWindowSec < 0 {
+		return fmt.Errorf("invalid delivery_replay_window_seconds: %d (must be ≥0, 0 = no protection)", c.Security.DeliveryReplayWindowSec)
 	}
 
 	// Validate that there is no port conflict between configured external services

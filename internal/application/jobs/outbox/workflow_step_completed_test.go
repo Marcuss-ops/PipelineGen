@@ -109,15 +109,25 @@ func TestWorkflowStepFailedHandler_NoHook_StillSucceeds(t *testing.T) {
 	}
 }
 
+// RealHandlers_EventType asserts the EventType of the three real
+// handlers (delivery / metadata_export / provider_sync) matches the
+// canonical outboxevents constants. Replaces the legacy TestStubHandlers_*
+// that referenced DeliveryHandlerStub / MetadataExportHandlerStub /
+// ProviderSyncHandlerStub — those types were removed in the
+// Operational Readiness PR alongside stubs.go.
+//
+// The regression intent ("the canonical event types must be wired")
+// is preserved by the new no_stubs_test.go::TestRealHandlersRegistered_NotStubs
+// and by this assertion.
 func TestStubHandlers_EventType(t *testing.T) {
 	cases := []struct {
 		name string
 		h    outboxevents.Handler
 		want string
 	}{
-		{"delivery", outboxhandlers.NewDeliveryHandlerStub(zap.NewNop()), outboxevents.EventDeliveryRequested},
-		{"metadata_export", outboxhandlers.NewMetadataExportHandlerStub(zap.NewNop()), outboxevents.EventAssetMetadataExportRequested},
-		{"provider_sync", outboxhandlers.NewProviderSyncHandlerStub(zap.NewNop()), outboxevents.EventProviderSyncRequested},
+		{"delivery", outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false), outboxevents.EventDeliveryRequested},
+		{"metadata_export", outboxhandlers.NewMetadataExportHandler(zap.NewNop(), nil, t.TempDir()), outboxevents.EventAssetMetadataExportRequested},
+		{"provider_sync", outboxhandlers.NewProviderSyncHandler(zap.NewNop(), nil), outboxevents.EventProviderSyncRequested},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,26 +138,33 @@ func TestStubHandlers_EventType(t *testing.T) {
 	}
 }
 
+// RealHandlers_InvalidPayload_ReturnsError exercises the real
+// handlers' input-validation contract on a deliberately empty payload.
+// The legacy stub tests asserted "stubs always error" — that was the
+// legacy behaviour (always dead_letter, never do useful work). Now the
+// real handlers accept valid payloads and only error on malformed ones,
+// which is what we want. Validating this contract keeps a regression
+// guard against a future PR accidentally removing the input-validation
+// (which would silently route events to operations with empty payloads).
 func TestStubHandlers_ReturnError(t *testing.T) {
 	cases := []struct {
 		name string
 		h    outboxevents.Handler
 	}{
-		{"delivery", outboxhandlers.NewDeliveryHandlerStub(zap.NewNop())},
-		{"metadata_export", outboxhandlers.NewMetadataExportHandlerStub(zap.NewNop())},
-		{"provider_sync", outboxhandlers.NewProviderSyncHandlerStub(zap.NewNop())},
+		{"delivery", outboxhandlers.NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)},
+		{"metadata_export", outboxhandlers.NewMetadataExportHandler(zap.NewNop(), nil, t.TempDir())},
+		{"provider_sync", outboxhandlers.NewProviderSyncHandler(zap.NewNop(), nil)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			evt := outboxevents.Event{
-				ID:            1,
-				EventType:     tc.h.EventType(),
-				AggregateID:   "agg-stub",
-				AggregateType: "stub",
-				PayloadJSON:   `{"k":"v"}`,
+				ID:          1,
+				EventType:   tc.h.EventType(),
+				AggregateID: "agg-real",
+				PayloadJSON: `{}`, // empty payload — handlers must reject with error
 			}
 			if err := tc.h.Handle(context.Background(), evt); err == nil {
-				t.Errorf("stub handler should return error (not nil) so events go to dead_letter for operator visibility")
+				t.Errorf("handler must reject empty payload (got nil error → would silently route to operations with empty data)")
 			}
 		})
 	}

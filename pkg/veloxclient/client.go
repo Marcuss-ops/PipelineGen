@@ -56,7 +56,13 @@ func WithRetryOptions(opts retry.Options) Option {
 func New(baseURL, token string, opts ...Option) *Client {
 	baseURL = strings.TrimSpace(baseURL)
 	if baseURL == "" {
-		baseURL = "http://127.0.0.1:18080"
+		// Canonical default aligns with internal/infrastructure/config/types.go
+		// `Server.Port` default (8000, established by the Operational
+		// Readiness PR — June 2026 — to free up port 8080 for unrelated
+		// services and align with the cross-worker-compose patterns).
+		// Operators override via the baseURL argument, env (New caller
+		// wires it), or VELOX_MASTER_URL / VELOX_PORT in the shell.
+		baseURL = "http://127.0.0.1:8000"
 	}
 	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
 		baseURL = "http://" + baseURL
