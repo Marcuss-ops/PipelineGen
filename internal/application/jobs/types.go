@@ -7,8 +7,34 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
+
+// ── Store / command types ───────────────────────────────────────────────────
+//
+// DTOs are aliases re-exporting canonical sql-jobs types (single home is infra
+// per PR 2 migration plan; zero-copy forwarding so application-layer callers do
+// not need to import internal/infrastructure/.../jobs directly).
+
+// Store is the canonical job persistence contract (alias for the
+// domain.Store interface promoted in PR 1). Worker / claims / service
+// all reference *SQLiteStore via this contract.
+type Store = job.Store
+
+// StartJob is an alias for the canonical sql-jobs StartJob DTO defined in
+// internal/infrastructure/database/sqlite/jobs/repository_commands.go.
+// Aliased in the application layer so callers can write `jobs.StartJob` without
+// importing the infrastructure package (zero-copy forwarding).
+type StartJob = sqljobs.StartJob
+
+// RequeueResult is an alias for the canonical sql-jobs RequeueResult DTO.
+// Single home is in the infrastructure package; this alias prevents the
+// duplicate-struct drift that previously caused confusion about which
+// package's `StartJob` was the canonical one (see PR 2 reviewer blocker).
+type RequeueResult = sqljobs.RequeueResult
+
+// ── HTTP-layer DTOs ─────────────────────────────────────────────────────
 
 // EnqueueRequest is the HTTP-layer DTO for enqueueing a job.
 // Type uses string for domain compatibility.
@@ -27,7 +53,7 @@ type EnqueueRequest struct {
 // record events, and check for cancellation.
 type JobTools struct {
 	Progress    func(progress int, message string)
-	job.Event       func(eventType string, message string, data map[string]any)
+	Event       func(eventType string, message string, data map[string]any)
 	IsCancelled func() bool
 }
 

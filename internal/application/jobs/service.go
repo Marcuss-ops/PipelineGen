@@ -120,7 +120,7 @@ func (s *Service) Enqueue(ctx context.Context, req *EnqueueRequest) (*job.Job, e
 	j := &job.Job{
 		ID:            generateJobID(),
 		Type:          req.Type,
-		job.Status:        StatusQueued,
+		Status:        job.StatusQueued,
 		Priority:      req.Priority,
 		Project:       req.Project,
 		VideoName:     req.VideoName,

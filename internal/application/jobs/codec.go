@@ -3,7 +3,6 @@ package jobs
 import (
 	"encoding/json"
 	"fmt"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Codec defines a typed interface for encoding/decoding job payloads and

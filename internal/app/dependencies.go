@@ -4,7 +4,7 @@ import (
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
@@ -50,7 +50,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/lessons"
-	"github.com/Marcuss-ops/PipelineGen/internal/outboxhandlers"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	batchpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/batch"
 	curationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
@@ -79,9 +79,9 @@ type services struct {
 	catalogRepo        *catalog.Repository
 	catalogSync        *catalogsync.Service
 	assocService       *association.Service
-	jobsRepo           *jobservice.SQLiteStore
-	jobsService        *jobservice.Service
-	jobsDispatcher     *jobservice.Dispatcher
+	jobsRepo           *appjobs.SQLiteStore
+	jobsService        *appjobs.Service
+	jobsDispatcher     *appjobs.Dispatcher
 	memoryRepo         *gemmamemory.Repository
 	mediaProcessor     processor.Processor
 	ollamaClient       *client.Client
@@ -506,7 +506,7 @@ func composeCoreInfra(ctx context.Context, cfg *config.Config, dbs *databases, l
 // realtime.IndexHealth can run the canonical sqlite<->qdrant cross-check.
 // Both are optional — the service logs a WARN at startup if missing and the
 // cross-check falls back to zeros — but production wiring MUST pass non-nil.
-func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *sqlite.ClipsRepository, outboxEventsRepo *outboxevents.Repository, jobsService *jobservice.Service) *realtime.Service {
+func composeRealtimeService(ctx context.Context, cfg *config.Config, log *zap.Logger, vectorSvc *vectorstore.Service, clipsRepo *sqlite.ClipsRepository, outboxEventsRepo *outboxevents.Repository, jobsService *appjobs.Service) *realtime.Service {
 	embedder := realtime.NewPythonEmbeddingAdapter(cfg.ClipIndexer.ServerURL)
 	jobAdapter := realtime.NewJobServiceAdapter(jobsService, log)
 	rerankerClient := reranker.NewClient(reranker.Config{
@@ -688,9 +688,9 @@ func composeIntegration(
 	}
 
 	// ── Jobs System ────────────────────────────────────────────────────
-	jobsRepo := jobservice.NewSQLiteStore(dbs.main.DB, log)
-	jobsDispatcher := jobservice.NewDispatcher()
-	jobsService := jobservice.NewService(jobsRepo, jobsDispatcher, log)
+	jobsRepo := appjobs.NewSQLiteStore(dbs.main.DB, log)
+	jobsDispatcher := appjobs.NewDispatcher()
+	jobsService := appjobs.NewService(jobsRepo, jobsDispatcher, log)
 
 	// Register Job Handlers
 	catalogSync.RegisterHandler(jobsService)
@@ -810,7 +810,7 @@ func composeIntegration(
 	//   - delivery / metadata_export / provider_sync (stubs — return errors
 	//     so events retry until dead_letter for operator visibility)
 	outboxEventsRegistry := outboxevents.NewHandlerRegistry()
-	if err := outboxhandlers.RegisterAll(outboxEventsRegistry, log, core.ClipIndexerService); err != nil {
+	if err := jobsoutbox.RegisterAll(outboxEventsRegistry, log, core.ClipIndexerService); err != nil {
 		log.Warn("failed to register outbox events handlers", zap.Error(err))
 	}
 	cfgPoll := 500 * time.Millisecond

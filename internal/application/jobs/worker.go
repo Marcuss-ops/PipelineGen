@@ -194,7 +194,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 					zap.Error(err))
 			}
 		},
-		job.Event: func(eventType string, message string, data map[string]any) {
+		Event: func(eventType string, message string, data map[string]any) {
 			if err := w.repo.AddEvent(jobCtx, j.ID, eventType, message, data); err != nil {
 				w.log.Warn("failed to record event",
 					zap.String("job_id", j.ID),
@@ -207,7 +207,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			if err != nil {
 				return false
 			}
-			return domJob != nil && domJob.Status == StatusCancelled
+			return domJob != nil && domJob.Status == job.StatusCancelled
 		},
 	}
 

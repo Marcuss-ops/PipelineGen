@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
@@ -37,7 +37,7 @@ type Service struct {
 	assetIndexSvc  *assetindex.Service
 	assetTreeSvc   *assettree.Service
 	deletionSvc    *media.DeletionService
-	jobsSvc        *jobservice.Service
+	jobsSvc        *appjobs.Service
 	driveFileCheck DriveFileChecker
 	dbs            []*sql.DB
 	// deepCleanupBatch caps how many rows per pass to keep the maintenance
@@ -52,7 +52,7 @@ func NewService(
 	assetIndexSvc *assetindex.Service,
 	assetTreeSvc *assettree.Service,
 	deletionSvc *media.DeletionService,
-	jobsSvc *jobservice.Service,
+	jobsSvc *appjobs.Service,
 	dbs ...*sql.DB,
 ) *Service {
 	return &Service{
@@ -85,7 +85,7 @@ func (s *Service) SetDeepCleanupBatch(n int) {
 }
 
 // HandleJob processes system maintenance jobs.
-func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("Handling maintenance job", zap.String("job_id", job.ID))
 
 	var payload struct {
@@ -117,7 +117,7 @@ func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *job
 // RegisterHandler registers the maintenance job handler.
 func (s *Service) RegisterHandler() error {
 	if s.jobsSvc != nil {
-		if err := s.jobsSvc.RegisterHandler(jobservice.JobTypeSystemCleanup, s.HandleJob); err != nil {
+		if err := s.jobsSvc.RegisterHandler(appjobs.TypeSystemCleanup, s.HandleJob); err != nil {
 			return err
 		}
 		s.log.Info("Registered system maintenance job handler")

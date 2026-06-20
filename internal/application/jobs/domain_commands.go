@@ -3,7 +3,6 @@ package jobs
 import (
 	"encoding/json"
 	"time"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // WorkerCapabilities is the worker registration payload stored by the

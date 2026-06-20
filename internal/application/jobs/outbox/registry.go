@@ -16,7 +16,7 @@
 //
 // All handlers MUST be safe for concurrent invocation. The outbox
 // worker pool calls them from N goroutines.
-package outboxhandlers
+package outbox
 
 import (
 	"go.uber.org/zap"

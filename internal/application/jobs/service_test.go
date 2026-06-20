@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
@@ -81,8 +82,8 @@ func TestCreateJobStoresPendingJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
-	if j.Status != StatusQueued {
-		t.Errorf("expected status %s, got %s", StatusQueued, j.Status)
+	if j.Status != job.StatusQueued {
+		t.Errorf("expected status %s, got %s", job.StatusQueued, j.Status)
 	}
 	if j.ID == "" {
 		t.Error("expected non-empty job ID")
@@ -94,7 +95,7 @@ func TestJobMovesToCompleted(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	job, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
 		Type: "test_job",
 	})
 	if err != nil {
@@ -102,17 +103,17 @@ func TestJobMovesToCompleted(t *testing.T) {
 	}
 
 	result := map[string]any{"output": "done"}
-	err = svc.Complete(ctx, job.ID, result)
+	err = svc.Complete(ctx, submitted.ID, result)
 	if err != nil {
 		t.Fatalf("failed to complete job: %v", err)
 	}
 
-	updated, err := svc.Get(ctx, job.ID)
+	updated, err := svc.Get(ctx, submitted.ID)
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if updated.Status != StatusSucceeded {
-		t.Errorf("expected status %s, got %s", StatusSucceeded, updated.Status)
+	if updated.Status != job.StatusSucceeded {
+		t.Errorf("expected status %s, got %s", job.StatusSucceeded, updated.Status)
 	}
 }
 
@@ -121,24 +122,24 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	job, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
 		Type: "test_job",
 	})
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
 
-	err = svc.Fail(ctx, job.ID, fmt.Errorf("something went wrong"))
+	err = svc.Fail(ctx, submitted.ID, fmt.Errorf("something went wrong"))
 	if err != nil {
 		t.Fatalf("failed to fail job: %v", err)
 	}
 
-	updated, err := svc.Get(ctx, job.ID)
+	updated, err := svc.Get(ctx, submitted.ID)
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
-	if updated.Status != StatusFailed {
-		t.Errorf("expected status %s, got %s", StatusFailed, updated.Status)
+	if updated.Status != job.StatusFailed {
+		t.Errorf("expected status %s, got %s", job.StatusFailed, updated.Status)
 	}
 }
 
@@ -148,7 +149,7 @@ func TestJobPayloadRoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 	payload := map[string]any{"key": "value", "number": float64(42)}
-	job, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
 		Type:    "test_job",
 		Payload: payload,
 	})
@@ -156,7 +157,7 @@ func TestJobPayloadRoundTrip(t *testing.T) {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
 
-	retrieved, err := svc.Get(ctx, job.ID)
+	retrieved, err := svc.Get(ctx, submitted.ID)
 	if err != nil {
 		t.Fatalf("failed to get job: %v", err)
 	}
@@ -171,15 +172,15 @@ func TestUnknownJobTypeFailsClearly(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	job, err := svc.Enqueue(ctx, &EnqueueRequest{
+	submitted, err := svc.Enqueue(ctx, &EnqueueRequest{
 		Type: "unknown_type",
 	})
 	if err != nil {
 		t.Fatalf("enqueue should not fail for unknown type: %v", err)
 	}
 
-	if job.Type != "unknown_type" {
-		t.Errorf("expected job type 'unknown_type', got %s", job.Type)
+	if submitted.Type != "unknown_type" {
+		t.Errorf("expected job type 'unknown_type', got %s", submitted.Type)
 	}
 }
 
@@ -207,7 +208,7 @@ func TestConcurrentJobCreationDoesNotRace(t *testing.T) {
 	wg.Wait()
 
 	// Verify all jobs were created
-	jobs, err := svc.List(ctx, Filter{})
+	jobs, err := svc.List(ctx, job.Filter{})
 	if err != nil {
 		t.Fatalf("failed to list jobs: %v", err)
 	}
@@ -228,8 +229,8 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	oldTime := time.Now().UTC().Add(-30 * time.Minute)
 	oldJob := &Job{
 		ID:        "job-old-running",
-		Type:      JobTypeArtlistRun,
-		Status:    StatusRunning,
+		Type:      TypeArtlistRun,
+		Status:    job.StatusRunning,
 		UpdatedAt: oldTime,
 		CreatedAt: oldTime,
 		Payload:   []byte("{}"),
@@ -239,8 +240,8 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	// Insert fresh running job
 	freshJob := &Job{
 		ID:        "job-fresh-running",
-		Type:      JobTypeArtlistRun,
-		Status:    StatusRunning,
+		Type:      TypeArtlistRun,
+		Status:    job.StatusRunning,
 		UpdatedAt: time.Now().UTC(),
 		CreatedAt: time.Now().UTC(),
 		Payload:   []byte("{}"),
@@ -250,8 +251,8 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	// Insert completed job (should not be affected)
 	completedJob := &Job{
 		ID:        "job-completed",
-		Type:      JobTypeArtlistRun,
-		Status:    StatusSucceeded,
+		Type:      TypeArtlistRun,
+		Status:    job.StatusSucceeded,
 		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute),
 		CreatedAt: time.Now().UTC().Add(-30 * time.Minute),
 		Payload:   []byte("{}"),
@@ -266,18 +267,18 @@ func TestJobsMarkStaleRunningJobsFailed(t *testing.T) {
 	// Verify old job is now failed
 	oldJobGot, err := svc.Get(ctx, oldJob.ID)
 	require.NoError(t, err)
-	assert.Equal(t, StatusFailed, oldJobGot.Status)
+	assert.Equal(t, job.StatusFailed, oldJobGot.Status)
 	assert.Contains(t, oldJobGot.Error, "stale")
 
 	// Verify fresh job is still running
 	freshJobGot, err := svc.Get(ctx, freshJob.ID)
 	require.NoError(t, err)
-	assert.Equal(t, StatusRunning, freshJobGot.Status)
+	assert.Equal(t, job.StatusRunning, freshJobGot.Status)
 
 	// Verify completed job is still succeeded
 	completedJobGot, err := svc.Get(ctx, completedJob.ID)
 	require.NoError(t, err)
-	assert.Equal(t, StatusSucceeded, completedJobGot.Status)
+	assert.Equal(t, job.StatusSucceeded, completedJobGot.Status)
 }
 
 // TestEnqueueDuplicateCorrelationID verifies the core
@@ -306,7 +307,7 @@ func TestEnqueue_Idempotence_DuplicateCorrelationID(t *testing.T) {
 	assert.Equal(t, j1.ID, j2.ID, "duplicate enqueue must return same job_id")
 
 	// The DB now has exactly one row.
-	all, err := svc.List(ctx, Filter{})
+	all, err := svc.List(ctx, job.Filter{})
 	require.NoError(t, err)
 	count := 0
 	for _, j := range all {
@@ -380,7 +381,7 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, j1.ID, j2.ID, "resubmit with same key after completion must return same job_id")
-	assert.Equal(t, StatusSucceeded, j2.Status, "status of the returned job must be the terminal completion")
+	assert.Equal(t, job.StatusSucceeded, j2.Status, "status of the returned job must be the terminal completion")
 }
 
 // TestEnqueueConcurrentSameCorrelationConverges stresses the
@@ -419,7 +420,7 @@ func TestEnqueue_Idempotence_ConcurrentSameCorrelation(t *testing.T) {
 		assert.Equal(t, first, ids[i], "all concurrent enqueues with same correlation_id must converge to one job_id")
 	}
 
-	all, err := svc.List(ctx, Filter{})
+	all, err := svc.List(ctx, job.Filter{})
 	require.NoError(t, err)
 	count := 0
 	for _, j := range all {
@@ -484,7 +485,7 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	assert.Equal(t, ids[0], ids[1], "both Service instances must converge on one job_id (rescue branch returns the winner)")
 
 	// And only one row exists in the DB.
-	all, err := svcA.List(ctxA, Filter{})
+	all, err := svcA.List(ctxA, job.Filter{})
 	require.NoError(t, err)
 	count := 0
 	for _, j := range all {

@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── Registry ────────────────────────────────────────────────────────────

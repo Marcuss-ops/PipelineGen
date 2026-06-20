@@ -9,7 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
 type AssetClient interface {
@@ -18,7 +19,7 @@ type AssetClient interface {
 }
 
 type Tools struct {
-	broker      job.Broker
+	broker      appjobs.Broker
 	workerID    string
 	sessionID   string
 	jobID       string
@@ -28,7 +29,7 @@ type Tools struct {
 	assetClient AssetClient
 }
 
-func NewTools(broker job.Broker, workerID, sessionID string, j *job.Job, workspace string, assetClient AssetClient) *Tools {
+func NewTools(broker appjobs.Broker, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
 	return &Tools{
 		broker:      broker,
 		workerID:    workerID,
@@ -42,7 +43,7 @@ func NewTools(broker job.Broker, workerID, sessionID string, j *job.Job, workspa
 }
 
 func (t *Tools) Progress(ctx context.Context, progress int, message string) error {
-	return t.broker.Progress(ctx, job.ProgressCommand{
+	return t.broker.Progress(ctx, appjobs.ProgressCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,
@@ -58,7 +59,7 @@ func (t *Tools) IsCancelled(ctx context.Context) (bool, error) {
 }
 
 func (t *Tools) Renew(ctx context.Context, leaseTTL time.Duration) error {
-	lease, err := t.broker.Renew(ctx, job.RenewCommand{
+	lease, err := t.broker.Renew(ctx, appjobs.RenewCommand{
 		WorkerID:         t.workerID,
 		WorkerSessionID:  t.sessionID,
 		JobID:            t.jobID,

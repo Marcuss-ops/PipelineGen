@@ -8,12 +8,12 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // HandleJob processes a catalog.sync job.
-func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("handling catalog.sync job", zap.String("job_id", job.ID))
 
 	var payload struct {
@@ -65,24 +65,24 @@ func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *job
 }
 
 // RegisterHandler registers this service as a handler for catalog.sync jobs.
-func (s *Service) RegisterHandler(jobsSvc *jobservice.Service) {
+func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(jobservice.JobTypeCatalogSync, s.HandleJob)
+		jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, s.HandleJob)
 		s.log.Info("registered catalog.sync job handler")
 	}
 }
 
 // RegisterDriveFolderSyncHandler registers the handler for async drive.folder.sync jobs.
-func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *jobservice.Service) {
+func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *appjobs.Service) {
 	if jobsSvc != nil {
-		jobsSvc.RegisterHandler(jobservice.JobTypeDriveFolderSync, s.HandleDriveFolderSyncJob)
+		jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, s.HandleDriveFolderSyncJob)
 		s.log.Info("registered drive.folder.sync job handler")
 	}
 }
 
 // HandleDriveFolderSyncJob processes an async drive.folder.sync job.
 // It wraps SyncFolderID with progress reporting and mutex serialization.
-func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *jobservice.Job, tools *jobservice.JobTools) (map[string]any, error) {
+func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	var payload struct {
 		DriveFolderID string `json:"drive_folder_id"`
 		Source        string `json:"source,omitempty"`

@@ -1,6 +1,16 @@
 package jobs
 
-import "time"
+import (
+	"time"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+)
+
+// Job is a type alias for the canonical domain Job entity.
+// Allows Lease.Job (declared as *Job) to satisfy the post-refactor
+// application-layer Lease struct without forcing every caller to
+// rewrite `*job.Job` as a fully-qualified pointer.
+type Job = job.Job
 
 // WorkerSession identifies a registered worker identity. A new registration
 // always produces a new session ID.

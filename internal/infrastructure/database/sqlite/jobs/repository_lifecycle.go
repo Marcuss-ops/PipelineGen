@@ -55,7 +55,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		return fmt.Errorf("complete: select: %w", err)
 	}
 	if err := validateOwnership(id, status, curWorkerID, curLeaseID, revision,
-		workerID, leaseID, int64(expectedRevision), StatusRunning); err != nil {
+		workerID, leaseID, int64(expectedRevision), job.StatusRunning); err != nil {
 		return err
 	}
 
@@ -110,7 +110,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		return fmt.Errorf("fail: select: %w", err)
 	}
 	if err := validateOwnership(id, status, curWorkerID, curLeaseID, revision,
-		workerID, leaseID, int64(expectedRevision), StatusRunning); err != nil {
+		workerID, leaseID, int64(expectedRevision), job.StatusRunning); err != nil {
 		return err
 	}
 
@@ -246,7 +246,7 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	if j.RetryCount >= j.MaxRetries {
 		return nil, fmt.Errorf("retry: exhausted (%d/%d)", j.RetryCount, j.MaxRetries)
 	}
-	if j.Status != StatusRetryWait && j.Status != StatusFailed {
+	if j.Status != job.StatusRetryWait && j.Status != job.StatusFailed {
 		return nil, fmt.Errorf("retry: invalid status %q", j.Status)
 	}
 

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type Scanner struct {

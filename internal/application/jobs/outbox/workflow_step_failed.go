@@ -1,4 +1,4 @@
-package outboxhandlers
+package outbox
 
 import (
 	"context"
