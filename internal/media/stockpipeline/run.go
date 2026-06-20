@@ -337,7 +337,7 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	}
 
 	metaPath := filepath.Join(tempDir, "metadata.json")
-	metaBytes, _ := jsonMarshalIndent(meta)
+	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
 	if err := os.WriteFile(metaPath, metaBytes, 0644); err != nil {
 		s.log.Error("failed to write pipeline metadata JSON", zap.Error(err))
 	} else {
@@ -362,6 +362,3 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 	return result, nil
 }
 
-func jsonMarshalIndent(v any) ([]byte, error) {
-	return json.MarshalIndent(v, "", "  ")
-}

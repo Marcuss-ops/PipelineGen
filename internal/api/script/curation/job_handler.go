@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scriptflow/curation"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-// duplicate curation import removed
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
@@ -231,7 +231,7 @@ func buildVoiceoverDestination(
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
 	groupsResolver *voiceover.GroupsResolver,
 ) *voiceover.DestinationRequest {
-	subfolderName := slugifyWithMax(title, 40)
+	subfolderName := textutil.SlugifyWithMax(title, 40)
 
 	if folderID := strings.TrimSpace(voiceoverFolderID); folderID != "" {
 		return &voiceover.DestinationRequest{
@@ -323,7 +323,7 @@ func generateSceneVoiceovers(
 		if sceneText == "" {
 			continue
 		}
-		sceneSlug := slugifyWithMax(sceneText, 30)
+		sceneSlug := textutil.SlugifyWithMax(sceneText, 30)
 		filename := sceneSlug
 
 		if onProgress != nil && len(scenes) > 0 {
@@ -344,28 +344,6 @@ func generateSceneVoiceovers(
 		}
 	}
 	return successCount
-}
-
-func slugifyWithMax(s string, max int) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			b.WriteRune(r)
-		} else if r == ' ' || r == '_' {
-			b.WriteRune('-')
-		}
-	}
-	result := b.String()
-	result = strings.Trim(result, "-")
-	if len(result) > max {
-		result = result[:max]
-		result = strings.TrimRight(result, "-")
-	}
-	return result
 }
 
 // buildCurateDocContent builds HTML content for a Google Doc from curate output.

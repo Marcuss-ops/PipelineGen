@@ -3,9 +3,8 @@
 package clips
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 )
 
 // deleteClip is the shared body for both Trash and Delete endpoints.
@@ -18,10 +17,10 @@ func (h *Handler) deleteClip(c *gin.Context, hardDelete bool) {
 		action = "deleted"
 	}
 	if err := h.deletionSvc.DeleteClip(c.Request.Context(), source, clipID, hardDelete); err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"action":  action,
 		"source":  source,

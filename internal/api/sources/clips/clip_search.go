@@ -7,9 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // AllSources is the canonical list of clip source names covered by the
@@ -31,7 +30,7 @@ var AllSources = []string{"youtube", "artlist", "stock"}
 func (h *Handler) AdvancedSearch(c *gin.Context) {
 	var req sqlite.AdvancedSearchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		internal.APIUtil.BadRequest(c, "invalid request: "+err.Error())
+		apiutil.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 
@@ -92,7 +91,7 @@ func (h *Handler) AdvancedSearch(c *gin.Context) {
 		allClips = allClips[:limit]
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":     true,
 		"total":  totalCount,
 		"count":  len(allClips),

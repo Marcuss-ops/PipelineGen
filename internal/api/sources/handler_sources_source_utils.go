@@ -4,8 +4,6 @@ import (
 	"context"
 	"os"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -13,6 +11,7 @@ import (
 
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -23,7 +22,7 @@ import (
 //	if !ValidateSource(c, source) { return }
 func ValidateSource(c *gin.Context, source string) bool {
 	if !artifacts.IsValidSource(source) {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return false
 	}
 	return true

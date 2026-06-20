@@ -11,6 +11,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // Uploader handles Google Drive file operations.
@@ -42,39 +43,33 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 	return u.UploadFileWithDescription(ctx, localPath, folderID, filename, "")
 }
 
-// UploadFileWithDescription uploads a file to the specified Drive folder with a description.
+// UploadFileWithDescription uploads a file to the Google Drive folder with a description.
 // The description is visible in the Google Drive UI under file details.
+//
+// Retries up to 3 times with exponential backoff (2s, 4s) on transient errors
+// (rate limit 429, server 503, timeouts) via pkg/retry. Keeps the retry policy
+// uniform with the other call sites in the codebase that already use pkg/retry
+// (segment.go, veloxclient, ollama client, script batch QA/coherence, engine.go).
+// Non-retryable errors short-circuit immediately via the IsRetryable predicate.
 func (u *Uploader) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error) {
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			backoff := time.Duration(1<<uint(attempt-1)) * 2 * time.Second
-			u.Log.Info("retrying drive upload",
+	result, err := retry.DoWithValue(ctx, func() (*UploadResult, error) {
+		return u.doUploadFile(ctx, localPath, folderID, filename, description)
+	}, retry.Options{
+		MaxAttempts:    3,
+		InitialBackoff: 2 * time.Second,
+		IsRetryable:    isRetryableDriveErr,
+		OnRetry: func(attempt int, err error) {
+			u.Log.Warn("transient drive upload error, retrying",
 				zap.String("filename", filename),
 				zap.Int("attempt", attempt+1),
-				zap.Duration("backoff", backoff),
+				zap.Error(err),
 			)
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(backoff):
-			}
-		}
-		result, err := u.doUploadFile(ctx, localPath, folderID, filename, description)
-		if err == nil {
-			return result, nil
-		}
-		lastErr = err
-		if !isRetryableDriveErr(err) {
-			return nil, err
-		}
-		u.Log.Warn("transient drive upload error",
-			zap.String("filename", filename),
-			zap.Int("attempt", attempt+1),
-			zap.Error(err),
-		)
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("drive upload failed after 3 attempts: %w", err)
 	}
-	return nil, fmt.Errorf("drive upload failed after 3 attempts: %w", lastErr)
+	return result, nil
 }
 
 // doUploadFile performs a single upload attempt without retry.

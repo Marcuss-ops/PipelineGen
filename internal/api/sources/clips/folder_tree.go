@@ -2,9 +2,8 @@ package clips
 
 import (
 	"strconv"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -20,7 +19,7 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 
 	repo := h.resolveRepo(source)
 	if repo == nil {
-		internal.APIUtil.BadRequest(c, "invalid source: "+source)
+		apiutil.BadRequest(c, "invalid source: "+source)
 		return
 	}
 
@@ -53,11 +52,11 @@ func (h *Handler) GetFolderChildren(c *gin.Context) {
 	}
 
 	if err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":       true,
 		"source":   source,
 		"count":    len(children),
@@ -75,14 +74,14 @@ func (h *Handler) GetTree(c *gin.Context) {
 	}
 
 	if h.assetTreeSvc == nil {
-		internal.APIUtil.InternalError(c, nil)
+		apiutil.InternalError(c, nil)
 		return
 	}
 
 	treeNodes, err := h.assetTreeSvc.ListChildren(c.Request.Context(), source, parentID)
 	if err != nil {
 		h.log.Error("failed to list children", zap.Error(err), zap.String("source", source), zap.String("parent_id", parentID))
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -102,7 +101,7 @@ func (h *Handler) GetTree(c *gin.Context) {
 			}
 		}
 	}
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":       true,
 		"source":   source,
 		"children": children,
@@ -115,23 +114,23 @@ func (h *Handler) GetBreadcrumb(c *gin.Context) {
 	id := c.Query("id")
 
 	if id == "" {
-		internal.APIUtil.BadRequest(c, "missing id parameter")
+		apiutil.BadRequest(c, "missing id parameter")
 		return
 	}
 
 	if h.assetTreeSvc == nil {
-		internal.APIUtil.InternalError(c, nil)
+		apiutil.InternalError(c, nil)
 		return
 	}
 
 	breadcrumb, err := h.assetTreeSvc.GetBreadcrumb(c.Request.Context(), id)
 	if err != nil {
 		h.log.Error("failed to get breadcrumb", zap.Error(err), zap.String("source", source), zap.String("id", id))
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":         true,
 		"source":     source,
 		"breadcrumb": breadcrumb,

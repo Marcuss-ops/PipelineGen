@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -25,18 +24,18 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	// Validate source param exists
 	if source == "" {
-		internal.APIUtil.BadRequest(c, "source is required")
+		apiutil.BadRequest(c, "source is required")
 		return
 	}
 
 	if h.assetRepo == nil {
-		internal.APIUtil.InternalError(c, fmt.Errorf("asset repository not available"))
+		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
 
 	var clip assets.Asset
 	if err := c.ShouldBindJSON(&clip); err != nil {
-		internal.APIUtil.BadRequest(c, "invalid clip data: "+err.Error())
+		apiutil.BadRequest(c, "invalid clip data: "+err.Error())
 		return
 	}
 
@@ -52,7 +51,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 
 	// 1. Save to DB via canonical asset.Repository (no converter needed).
 	if err := h.assetRepo.Upsert(ctx, &clip); err != nil {
-		internal.APIUtil.InternalError(c, err)
+		apiutil.InternalError(c, err)
 		return
 	}
 
@@ -74,7 +73,7 @@ func (h *Handler) CreateClip(c *gin.Context) {
 		})
 	}
 
-	internal.APIUtil.OK(c, gin.H{
+	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,
 		"clip_id": clip.ID,
