@@ -15,7 +15,7 @@ import (
 
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
@@ -76,7 +76,7 @@ type SourcesHandler struct {
 	vectorStore    *vectorstore.Service
 	metaWriter     *semantic.MetadataWriter
 	artifactSvc    *artifacts.Service
-	assetRepo      assets.Repository
+	assetRepo      asset.Repository
 	log            *zap.Logger
 
 	// providerRegistry is the canonical providers.Registry populated by
@@ -150,13 +150,13 @@ func (h *SourcesHandler) SetArtifactService(svc *artifacts.Service) {
 }
 
 // SetAssetRepo sets the canonical asset repository (replaces sqlite.ClipsRepository
-// for handlers that have been migrated to use assets.Asset directly). The
+// for handlers that have been migrated to use asset.Asset directly). The
 // assetRepo lives only on SourcesHandler because clips.Handler received it
 // at construction time via Deps — late rebinding here does NOT update
 // h.clips (the clips.Handler assetRepo is unchanged). Callers that need to
-// rewire assets.Repository across both must rebuild h.clips; in practice
+// rewire asset.Repository across both must rebuild h.clips; in practice
 // assetRepo is set once at startup so this limitation is theoretical.
-func (h *SourcesHandler) SetAssetRepo(repo assets.Repository) {
+func (h *SourcesHandler) SetAssetRepo(repo asset.Repository) {
 	h.assetRepo = repo
 }
 

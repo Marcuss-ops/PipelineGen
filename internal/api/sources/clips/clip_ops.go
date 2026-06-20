@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
@@ -114,7 +114,7 @@ func (h *Handler) Cleanup(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	var allClips []*assets.Asset
+	var allClips []*asset.Asset
 
 	if sourceLower == "images" && h.imagesRepo != nil {
 		imgs, _ := h.imagesRepo.ListAll(ctx)
@@ -215,7 +215,7 @@ func (h *Handler) VerifyClip(c *gin.Context) {
 // imageAssetToClip / voiceoverRecordToClip private methods were dropped
 // in favor of the canonical artifacts.* converters.
 
-func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *assets.Asset) gin.H {
+func (h *Handler) verifyClip(ctx context.Context, source string, repo *sqlite.ClipsRepository, clip *asset.Asset) gin.H {
 	result := gin.H{
 		"ok":      true,
 		"source":  source,

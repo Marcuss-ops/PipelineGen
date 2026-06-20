@@ -14,7 +14,7 @@ import (
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
@@ -215,15 +215,15 @@ func (h *SoundEffectHandler) Generate(c *gin.Context) {
 	}
 
 	// 6. Save metadata record to SQLite DB
-	clip := assets.Asset{
+	clip := asset.Asset{
 		ID:             "sfx_" + hashStr[:12],
 		Name:           name,
 		Filename:       filepath.Base(dest.LocalPath),
 		Group:          name,
-		MediaType:      assets.MediaType("sound_effect"),
-		Source:         assets.Source("sound_effect"),
+		MediaType:      asset.MediaType("sound_effect"),
+		Source:         asset.Source("sound_effect"),
 		Duration:       time.Duration(duration) * time.Second,
-		LifecycleState: assets.StateReady,
+		LifecycleState: asset.StateReady,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 		Tags:           tags,

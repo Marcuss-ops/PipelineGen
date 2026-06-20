@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/processor"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -106,7 +106,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
-	var clip *assets.Asset
+	var clip *asset.Asset
 
 	// Handle Voiceover source — use canonical converter directly.
 	if strings.ToLower(source) == "voiceover" && h.voiceoverRepo != nil {

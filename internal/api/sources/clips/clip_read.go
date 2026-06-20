@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -106,7 +106,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 	q := c.Query("q")
 
 	ctx := c.Request.Context()
-	var allClips []*assets.Asset
+	var allClips []*asset.Asset
 
 	if sourceLower == "voiceover" {
 		if h.voiceoverRepo == nil {
@@ -141,7 +141,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 		}
 		if q == "" {
 			// No search — use canonical List with pagination.
-			clips, err := h.assetRepo.List(ctx, assets.Filter{
+			clips, err := h.assetRepo.List(ctx, asset.Filter{
 				Source: source,
 				Limit:  limit,
 				Offset: offset,
@@ -152,7 +152,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 			}
 			allClips = clips
 		} else {
-			// Text search — fall back to legacy clipsRepo (assets.Filter has no search yet).
+			// Text search — fall back to legacy clipsRepo (asset.Filter has no search yet).
 			repo := h.resolveRepo(source)
 			if repo == nil {
 				apiutil.BadRequest(c, "invalid source: "+source)
@@ -163,7 +163,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 				apiutil.InternalError(c, err)
 				return
 			}
-			allClips = make([]*assets.Asset, len(legacyClips))
+			allClips = make([]*asset.Asset, len(legacyClips))
 			for i, lc := range legacyClips {
 				allClips[i] = lc
 			}
@@ -174,7 +174,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 	if sourceLower == "voiceover" || sourceLower == "images" {
 		total = len(allClips)
 		if offset >= len(allClips) {
-			allClips = []*assets.Asset{}
+			allClips = []*asset.Asset{}
 		} else {
 			end := offset + limit
 			if end > len(allClips) {
@@ -186,7 +186,7 @@ func (h *Handler) ListClips(c *gin.Context) {
 		repo := h.resolveRepo(source)
 		if repo != nil {
 			if q == "" {
-				n, err := h.assetRepo.Count(ctx, assets.Filter{Source: source})
+				n, err := h.assetRepo.Count(ctx, asset.Filter{Source: source})
 				if err == nil {
 					total = int(n)
 				}

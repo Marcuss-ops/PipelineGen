@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -218,7 +218,7 @@ func groupByActorLocal(clips []localClip) map[string][]localClip {
 	return groups
 }
 
-func loadMetaFromFile(clip *assets.Asset, path string) {
+func loadMetaFromFile(clip *asset.Asset, path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
