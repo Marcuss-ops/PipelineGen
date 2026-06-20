@@ -12,8 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
@@ -28,7 +26,7 @@ type AssetsWiring struct {
 }
 
 // WireAssets creates the unified Assets handler and module.
-func WireAssets(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps, artlistSvc *artlistpkg.Service, youtubeSvc *youtube.Service, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, jobsSvc *appjobs.Service, catalogRepo *catalog.Repository, assetIndexSvc *assetindex.Service, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
+func WireAssets(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps, voiceoverSvc *voiceoverpkg.Service, voiceoverSync *voiceoversync.Service, jobsSvc *appjobs.Service, catalogRepo *catalog.Repository, assetIndexSvc *assetindex.Service, maintenanceSvc *maintenance.Service) (*AssetsWiring, error) {
 	folderMemSvc := foldermemory.NewService(log, coreDeps.ClipsRepo)
 	var driveUploader *driveutil.Uploader
 	if coreDeps.DriveClient != nil {
@@ -39,7 +37,7 @@ func WireAssets(cfg *config.Config, log *zap.Logger, coreDeps *CoreDeps, artlist
 		driveCleanupSvc = drivecleanup.NewService()
 	}
 	deletionSvc := media.NewDeletionService(coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.VoiceoverRepo, coreDeps.ImageRepo, driveUploader, coreDeps.AssetTreeService, coreDeps.AssetIndexService, log)
-	handler := sourcesapi.NewSourcesHandler(cfg, artlistSvc, youtubeSvc, voiceoverSvc, voiceoverSync, coreDeps.JobServiceFacade, catalogRepo, assetIndexSvc, coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.ClipsRepo, driveCleanupSvc, folderMemSvc, coreDeps.AssetTreeService, driveUploader, coreDeps.MediaProcessor, deletionSvc, coreDeps.CatalogSyncService, maintenanceSvc, log)
+	handler := sourcesapi.NewSourcesHandler(cfg, voiceoverSvc, voiceoverSync, coreDeps.JobServiceFacade, catalogRepo, assetIndexSvc, coreDeps.ClipsRepo, coreDeps.ClipsRepo, coreDeps.ClipsRepo, driveCleanupSvc, folderMemSvc, coreDeps.AssetTreeService, driveUploader, coreDeps.MediaProcessor, deletionSvc, coreDeps.CatalogSyncService, maintenanceSvc, log)
 	if coreDeps.VoiceoverRepo != nil {
 		handler.SetVoiceoverRepo(coreDeps.VoiceoverRepo)
 	}

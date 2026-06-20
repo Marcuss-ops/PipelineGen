@@ -7,7 +7,6 @@ import (
 
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 )
 
@@ -19,27 +18,15 @@ type SearchRequest struct {
 	Sort  string `form:"sort"`
 }
 
-// Search godoc.
-//
-// Wave 12 turn 2 migration: when h.providerRegistry is wired
-// (composition root calls SetProviderRegistry after NewSourcesHandler
-// constructs the handler), this handler dispatches via
-// providerRegistry.ByCapability(CapabilitySearch) instead of the
-// legacy artlistSvc/youtubeSvc direct singleton calls. Every registered
-// SearchProvider is fanned out uniformly and the response shape is
-// keyed by Provider.Name().
+// Search dispatches source-level searches via the canonical
+// providers.Registry. Every registered SearchProvider is fanned
+// out uniformly and the response is keyed by Provider.Name().
 //
 // Capability filtering (req.Type):
 //
-//   - "" / "all" / "video" → every SearchProvider (matches legacy);
+//   - "" / "all" / "video" → every SearchProvider;
 //   - "audio"              → providers advertising CapabilityMusic;
 //   - "image"              → providers advertising CapabilityImage.
-//
-// Legacy fallback (artlistSvc + youtubeSvc direct calls) runs ONLY when
-// providerRegistry is nil — i.e. composition root has not wired it yet
-// (eg. unit tests or rollback scenarios). Kept intentionally for
-// backward-compat; once registry wiring is the default, the fallback
-// can be removed in a future wave.
 //
 // Local DB searches (catalogRepo, clipsRepo) are NOT routed via the
 // registry: they are internal-state queries, not source providers.
@@ -64,101 +51,56 @@ func (h *Handler) Search(c *gin.Context) {
 	results := gin.H{}
 
 	// ── Source-level search dispatch ──────────────────────────────────
-	// Preferred path: providerRegistry.ByCapability(CapabilitySearch)
-	// fans out to every registered SearchProvider uniformly. The legacy
-	// branches below (YouTube + Artlist) run only when the registry is
-	// nil (composition not wired yet).
-	if h.providerRegistry != nil {
-		for _, p := range h.providerRegistry.ByCapability(providers.CapabilitySearch) {
-			if !typeAllowed(p.Capabilities(), req.Type) {
-				// Surface silent filter rejections so CI / operator logs
-				// catch typos like req.Type="vidio" early. Debug level
-				// (not Warn) keeps the boot path quiet for the expected
-				// ""/"all"/"video" defaults.
-				h.log.Debug("provider excluded by SearchRequest.Type filter",
-					zap.String("provider", p.Name()),
-					zap.String("requested_type", req.Type))
-				continue
-			}
-			sp, ok := p.(providers.SearchProvider)
-			if !ok {
-				// Defensive: ByCapability already filtered to SearchProvider-capable
-				// adapters in practice, but a future registry bug could surface here.
-				h.log.Warn("provider asserted CapabilitySearch but not SearchProvider interface",
-					zap.String("provider", p.Name()))
-				continue
-			}
-			sr := providers.SearchRequest{
-				Query: req.Q,
-				Limit: req.Limit,
-				Filters: providers.SearchFilters{
-					Sort: providers.SortMode(req.Sort),
-				},
-			}
-			out, err := sp.Search(c.Request.Context(), sr)
-			source := p.Name()
-			if err != nil {
-				h.log.Warn("provider search failed", zap.String("provider", source), zap.Error(err))
-				results[source] = gin.H{
-					"count":   0,
-					"results": []any{},
-					"error":   err.Error(),
-				}
-				continue
-			}
+	// Fan out to every registered SearchProvider via the canonical
+	// providers.Registry. When providerRegistry is nil (e.g. unit
+	// tests that construct the handler without a registry), the
+	// loop body simply never executes — no results returned for
+	// source-level searches.
+	for _, p := range h.providers() {
+		if !typeAllowed(p.Capabilities(), req.Type) {
+			// Surface silent filter rejections so CI / operator logs
+			// catch typos like req.Type="vidio" early. Debug level
+			// (not Warn) keeps the boot path quiet for the expected
+			// ""/"all"/"video" defaults.
+			h.log.Debug("provider excluded by SearchRequest.Type filter",
+				zap.String("provider", p.Name()),
+				zap.String("requested_type", req.Type))
+			continue
+		}
+		sp, ok := p.(providers.SearchProvider)
+		if !ok {
+			// Defensive: ByCapability already filtered to SearchProvider-capable
+			// adapters in practice, but a future registry bug could surface here.
+			h.log.Warn("provider asserted CapabilitySearch but not SearchProvider interface",
+				zap.String("provider", p.Name()))
+			continue
+		}
+		sr := providers.SearchRequest{
+			Query: req.Q,
+			Limit: req.Limit,
+			Filters: providers.SearchFilters{
+				Sort: providers.SortMode(req.Sort),
+			},
+		}
+		out, err := sp.Search(c.Request.Context(), sr)
+		source := p.Name()
+		if err != nil {
+			h.log.Warn("provider search failed", zap.String("provider", source), zap.Error(err))
 			results[source] = gin.H{
-				"count":   len(out.Candidates),
-				"results": out.Candidates,
-				"source":  source,
-				// NextPageToken is exposed for callers that want
-				// cursor-based pagination. Empty string means "no
-				// more pages" per the providers.SearchResult contract.
-				"next_page_token": out.NextPageToken,
+				"count":   0,
+				"results": []any{},
+				"error":   err.Error(),
 			}
+			continue
 		}
-	} else {
-		// Legacy fallback: per-source singleton dispatch.
-		if h.youtubeSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
-			ytResults, err := h.youtubeSvc.SearchLive(c.Request.Context(), req.Q, req.Limit, req.Sort)
-			if err != nil {
-				h.log.Warn("youtube search failed", zap.Error(err))
-				results["youtube"] = gin.H{
-					"count":   0,
-					"results": []any{},
-					"error":   err.Error(),
-				}
-			} else {
-				results["youtube"] = gin.H{
-					"count":   len(ytResults),
-					"results": ytResults,
-					"source":  "live",
-				}
-			}
-		}
-		if h.artlistSvc != nil && (req.Type == "" || req.Type == "video" || req.Type == "all") {
-			// Legacy Artlist dispatch kept so older clients / unit tests
-			// can still reach artlist when the registry is unwired. Uses
-			// the artlist package's native SearchRequest/SearchResponse
-			// types directly (not the providers.Registry contract).
-			searchReq := &artlist.SearchRequest{
-				Term:  req.Q,
-				Limit: req.Limit,
-			}
-			searchResp, err := h.artlistSvc.Search(c.Request.Context(), searchReq)
-			if err != nil {
-				h.log.Warn("artlist search failed", zap.Error(err))
-				results["artlist"] = gin.H{
-					"count":   0,
-					"results": []any{},
-					"error":   err.Error(),
-				}
-			} else if searchResp != nil {
-				results["artlist"] = gin.H{
-					"count":   len(searchResp.Clips),
-					"results": searchResp.Clips,
-					"source":  searchResp.Source,
-				}
-			}
+		results[source] = gin.H{
+			"count":   len(out.Candidates),
+			"results": out.Candidates,
+			"source":  source,
+			// NextPageToken is exposed for callers that want
+			// cursor-based pagination. Empty string means "no
+			// more pages" per the providers.SearchResult contract.
+			"next_page_token": out.NextPageToken,
 		}
 	}
 
@@ -209,6 +151,15 @@ func (h *Handler) Search(c *gin.Context) {
 //
 // Providers declaring other capabilities (eg. voice) are not
 // currently returned by Search and so are not considered here.
+// providers returns the search-capable providers registered in the
+// canonical registry, or an empty slice when no registry is wired.
+func (h *Handler) providers() []providers.Provider {
+	if h.providerRegistry == nil {
+		return nil
+	}
+	return h.providerRegistry.ByCapability(providers.CapabilitySearch)
+}
+
 func typeAllowed(caps []providers.Capability, reqType string) bool {
 	switch reqType {
 	case "", "all", "video":

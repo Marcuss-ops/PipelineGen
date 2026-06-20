@@ -37,8 +37,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
-	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
@@ -52,8 +50,6 @@ import (
 // singletons that both sub-handlers and clips.Handler need.
 type SourcesHandler struct {
 	cfg            *config.Config
-	artlistSvc     *artlist.Service
-	youtubeSvc     *youtube.Service
 	voiceoverSvc   *voiceover.Service
 	jobsSvc        *jobservice.Service
 	catalogRepo    *catalog.Repository
@@ -82,11 +78,9 @@ type SourcesHandler struct {
 	// providerRegistry is the canonical providers.Registry populated by
 	// the composition root (internal/app/registry.go::WireRegistry) AFTER
 	// NewSourcesHandler returns, so it is wired via SetProviderRegistry
-	// rather than the constructor. When non-nil, search handlers
-	// (handler_sources_search_handlers.go) prefer ByCapability dispatch
-	// over the legacy artlistSvc/youtubeSvc direct calls — every
-	// registered SearchProvider is fanned out uniformly. When nil,
-	// search handlers fall back to the legacy singleton dispatch.
+	// rather than the constructor. Search handlers fan out to every
+	// registered SearchProvider via ByCapability dispatch. When nil,
+	// source-level search returns no results (unit test mode).
 	// Late-binding matches the existing Set* setter pattern.
 	providerRegistry *providers.Registry
 
@@ -184,8 +178,8 @@ func (h *SourcesHandler) SetImagesRepo(repo *sqlite.ImagesRepository) {
 
 // SetProviderRegistry wires the canonical providers.Registry after
 // composition. Search handlers (handler_sources_search_handlers.go)
-// prefer ByCapability(CapabilitySearch) when this is non-nil and
-// fall back to legacy artlistSvc/youtubeSvc direct dispatch when nil.
+// use ByCapability(CapabilitySearch) dispatch when wired; when nil,
+// source-level search returns no results.
 // Late-binding matches the existing Set* setter pattern (see
 // SetRealtimeService, SetClipIndexer, etc. above); the registry is
 // constructed AFTER WireAssets in internal/app/registry.go so a
@@ -208,16 +202,18 @@ func (h *SourcesHandler) SetFolderMemSvc(svc *foldermemory.Service) {
 // embedded in this SourcesHandler is wired from the same dep singletons
 // so it shares the repos/uploads/jobs as the legacy in-package methods.
 //
+// Source-level search dispatch uses the providers.Registry (wired later
+// via SetProviderRegistry). The youtube/artlist singletons are no longer
+// stored directly — their adapters register in the registry instead.
+//
 // params:
 //
-//	cfg, artlistSvc, youtubeSvc, voiceoverSvc, voiceoverSync, jobsSvc,
+//	cfg, voiceoverSvc, voiceoverSync, jobsSvc,
 //	catalogRepo, assetIndexSvc, artlistRepo, clipsRepo, stockRepo,
 //	cleanupSvc, folderMemSvc, assetTreeSvc, driveUploader,
 //	mediaProcessor, deletionSvc, catalogSync, maintenanceSvc, log
 func NewSourcesHandler(
 	cfg *config.Config,
-	artlistSvc *artlist.Service,
-	youtubeSvc *youtube.Service,
 	voiceoverSvc *voiceover.Service,
 	voiceoverSync *voiceoversync.Service,
 	jobsSvc *jobservice.Service,
@@ -236,8 +232,6 @@ func NewSourcesHandler(
 ) *SourcesHandler {
 	h := &SourcesHandler{
 		cfg:            cfg,
-		artlistSvc:     artlistSvc,
-		youtubeSvc:     youtubeSvc,
 		voiceoverSvc:   voiceoverSvc,
 		jobsSvc:        jobsSvc,
 		catalogRepo:    catalogRepo,
