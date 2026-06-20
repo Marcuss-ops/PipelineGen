@@ -8,9 +8,8 @@ import (
 	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	booksapi "github.com/Marcuss-ops/PipelineGen/internal/api/books"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
-	lessonsapi "github.com/Marcuss-ops/PipelineGen/internal/api/lessons"
+	contentapi "github.com/Marcuss-ops/PipelineGen/internal/api/content"
 	realtimeapi "github.com/Marcuss-ops/PipelineGen/internal/api/realtime"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
@@ -157,10 +156,10 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		registerModule(registry, log, sourcesapi.NewRealtimeModule(cfg, log, realtimeapi.NewMatchHandler(coreDeps.RealtimeService, log)))
 	}
 	if coreDeps.BooksService != nil {
-		registerModule(registry, log, booksapi.NewModule(cfg, log, booksapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobServiceFacade, log)))
+		registerModule(registry, log, contentapi.NewBooksModule(cfg, log, contentapi.NewBooksHandler(coreDeps.BooksService, coreDeps.JobServiceFacade, log)))
 	}
 	if coreDeps.LessonsService != nil {
-		registerModule(registry, log, lessonsapi.NewModule(cfg, log, lessonsapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobServiceFacade, log)))
+		registerModule(registry, log, contentapi.NewLessonsModule(cfg, log, contentapi.NewLessonsHandler(coreDeps.LessonsService, coreDeps.JobServiceFacade, log)))
 	}
 	if coreDeps.DB != nil && coreDeps.DB.DB != nil {
 		registerModule(registry, log, channelsapi.NewModule(log, sqlite.NewChannelsRepository(coreDeps.DB.DB)))

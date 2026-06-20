@@ -1,7 +1,6 @@
-package books
+package content
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"context"
 	"net/http"
 	"time"
@@ -9,18 +8,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	booksService "github.com/Marcuss-ops/PipelineGen/internal/media/books"
 )
 
-// BooksHandler exposes book processing endpoints
+// BooksHandler exposes book processing endpoints.
+// It is a sub-handler of the consolidated content/ package; routes
+// remain mounted under /api/books/* for backward compatibility with
+// existing clients.
 type BooksHandler struct {
 	svc     *booksService.Service
 	jobsSvc *jobs.Service
 	log     *zap.Logger
 }
 
-// NewHandler creates a new books handler
+// NewBooksHandler creates a new books handler.
 func NewBooksHandler(svc *booksService.Service, jobsSvc *jobs.Service, log *zap.Logger) *BooksHandler {
 	return &BooksHandler{
 		svc:     svc,
@@ -29,7 +32,12 @@ func NewBooksHandler(svc *booksService.Service, jobsSvc *jobs.Service, log *zap.
 	}
 }
 
-// RegisterRoutes registers /api/books routes
+// RegisterRoutes registers /api/books routes.
+//
+//	POST /api/books/process
+//	POST /api/books/generate           (alias for /process)
+//	POST /api/books/process-from-drive
+//	GET  /api/books/jobs
 func (h *BooksHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.ProcessBook)
 	r.POST("/generate", h.ProcessBook) // alias for consistency with other endpoints
@@ -37,7 +45,7 @@ func (h *BooksHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/jobs", h.ListJobs)
 }
 
-// ProcessBookRequest is the input for book processing
+// ProcessBookRequest is the input for book processing.
 type ProcessBookRequest struct {
 	FilePath      string `json:"file_path"`                 // Path to PDF/EPUB file (required if no GoogleDocURL)
 	GoogleDocURL  string `json:"google_doc_url"`            // Google Docs URL to download and process
@@ -57,8 +65,8 @@ type ProcessBookRequest struct {
 	PDFStyle      string `json:"pdf_style,omitempty"`       // Style theme for PDF (default: modern)
 }
 
-// ProcessBook handles POST /api/books/process
-// Processes a PDF/EPUB book using the book_summarizer.py script
+// ProcessBook handles POST /api/books/process.
+// Processes a PDF/EPUB book using the book_summarizer.py script.
 func (h *BooksHandler) ProcessBook(c *gin.Context) {
 	if !api.RequireService(c, h.svc, "books service") {
 		return
@@ -75,13 +83,13 @@ func (h *BooksHandler) ProcessBook(c *gin.Context) {
 		return
 	}
 
-	// Check if async processing is requested
+	// Async path: enqueue a background job and return immediately.
 	if req.Async {
 		if !api.RequireService(c, h.jobsSvc, "job system") {
 			return
 		}
 		h.log.Info("enqueuing async book process job", zap.String("file", req.FilePath))
-			api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
+		api.EnqueueAsync(c, h.jobsSvc, &api.EnqueueInput{
 			Type: jobs.TypeBooksProcess,
 			Payload: map[string]any{
 				"file_path":       req.FilePath,
@@ -105,7 +113,7 @@ func (h *BooksHandler) ProcessBook(c *gin.Context) {
 		return
 	}
 
-	// Synchronous processing with timeout
+	// Sync path: 30-minute ceiling to keep the request reasonable.
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Minute)
 	defer cancel()
 
@@ -213,8 +221,9 @@ type ProcessBookFromDriveRequest struct {
 	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"` // Drive folder for voiceover upload
 }
 
-// ProcessBookFromDrive handles POST /api/books/process-from-drive
-// Downloads a PDF/EPUB from Google Drive, processes it, and optionally generates voiceover.
+// ProcessBookFromDrive handles POST /api/books/process-from-drive.
+// Downloads a PDF/EPUB from Google Drive, processes it, and optionally
+// generates a voiceover.
 func (h *BooksHandler) ProcessBookFromDrive(c *gin.Context) {
 	if !api.RequireService(c, h.svc, "books service") {
 		return
@@ -270,7 +279,6 @@ func (h *BooksHandler) ProcessBookFromDrive(c *gin.Context) {
 		return
 	}
 
-	// Build response
 	resp := gin.H{
 		"ok":      true,
 		"success": true,
