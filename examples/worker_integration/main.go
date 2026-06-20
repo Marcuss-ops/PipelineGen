@@ -33,7 +33,7 @@ import (
 	"time"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	veloxclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
+	veloxclient "github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
 
 func main() {

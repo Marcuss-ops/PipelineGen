@@ -47,8 +47,8 @@ import (
 	mediastorage "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts/gemmamemory"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 
