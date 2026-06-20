@@ -310,6 +310,18 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, core
 		wiring.Assets.Handler.SetProviderRegistry(providerReg)
 		log.Info("wired providers.Registry into SourcesHandler for Search dispatch")
 	}
+	// Wire registry into the YouTubeClip handler. This advances
+	// docs/migration-maps/internal-sources.md cut-over step 1:
+	// "finish provider-registry migration" by reducing the legacy
+	// direct callers of internal/sources/youtube.Service from the
+	// HTTP transport layer. The handler falls back to the direct
+	// call if SetProviderRegistry fails to resolve a "youtube"
+	// SearchProvider, so a missing provider never regresses the
+	// endpoint.
+	if wiring.YouTubeClip != nil && wiring.YouTubeClip.Handler != nil {
+		wiring.YouTubeClip.Handler.SetProviderRegistry(providerReg)
+		log.Info("wired providers.Registry into YouTubeClipHandler for Search dispatch")
+	}
 	log.Info("providers.Registry wired and frozen",
 		zap.Int("providers", len(providerReg.All())))
 
