@@ -6,16 +6,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
+	"go.uber.org/zap"
 
-
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 // DeletionService handles synchronized deletion between database and cloud drive.

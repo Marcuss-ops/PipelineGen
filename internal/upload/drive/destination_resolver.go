@@ -1,4 +1,4 @@
-﻿package drive
+package drive
 
 import (
 	"context"
@@ -66,11 +66,11 @@ func (d *destinationResolverAdapter) Resolve(_ context.Context, req *destination
 	// useful LocalPath. The Resolver returns sensible paths for empty
 	// subjects/exts.
 	assetReq := AssetDestinationRequest{
-		Source:   SourceType(req.Source),
-		Subject:  req.SubfolderName,
-		Style:    req.Group,
-		Hash:     req.AssetID,
-		Group:    req.Group,
+		Source:  SourceType(req.Source),
+		Subject: req.SubfolderName,
+		Style:   req.Group,
+		Hash:    req.AssetID,
+		Group:   req.Group,
 	}
 	if d.store.resolver != nil {
 		if resolved, err := d.store.resolver.Resolve(assetReq); err == nil && resolved != nil {
@@ -92,4 +92,3 @@ func (d *destinationResolverAdapter) Resolve(_ context.Context, req *destination
 		FolderID:     folderID,
 	}, nil
 }
-

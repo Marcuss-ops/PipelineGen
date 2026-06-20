@@ -13,21 +13,21 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // Service handles background script.curate jobs.
 type Service struct {
-	mediaCurator    *scripts.MediaCurator
-	voService       *voiceover.Service
-	cfg             *config.Config
-	log             *zap.Logger
-	resolveFolder   func(ctx context.Context, input, defaultRootID string) (string, error)
-	groupsResolver  *voiceover.GroupsResolver
-	maybeCreateDoc  func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string)
+	mediaCurator   *scripts.MediaCurator
+	voService      *voiceover.Service
+	cfg            *config.Config
+	log            *zap.Logger
+	resolveFolder  func(ctx context.Context, input, defaultRootID string) (string, error)
+	groupsResolver *voiceover.GroupsResolver
+	maybeCreateDoc func(ctx context.Context, title, content, folderID string, createDoc bool) (string, string)
 }
 
 // NewService creates a new curation job service.

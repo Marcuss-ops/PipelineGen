@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"github.com/Marcuss-ops/PipelineGen/internal/core"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
 	"go.uber.org/zap"
 )
 

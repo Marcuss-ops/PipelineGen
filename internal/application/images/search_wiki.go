@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"go.uber.org/zap"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 func (s *Service) searchWikidata(query, lang string) (string, string, string) {

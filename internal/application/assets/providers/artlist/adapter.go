@@ -18,8 +18,8 @@ import (
 	"errors"
 	"fmt"
 
-	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	artlistsrc "github.com/Marcuss-ops/PipelineGen/internal/sources/artlist"
 )
 
 // Compile-time assertion: *Adapter satisfies providers.SearchProvider.

@@ -1,4 +1,4 @@
-﻿package artifacts
+package artifacts
 
 import (
 	"path/filepath"
@@ -71,5 +71,3 @@ func ImageAssetToClip(assetItem *media.ImageAsset) *assets.Asset {
 	clip.SetLocalPath(assetItem.PathRel)
 	return clip
 }
-
-

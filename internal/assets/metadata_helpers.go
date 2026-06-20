@@ -96,4 +96,3 @@ func metadataStringSliceText(meta map[string]any, key string) string {
 	values := metadataStringSlice(meta, key)
 	return strings.Join(values, " ")
 }
-

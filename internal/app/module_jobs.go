@@ -28,11 +28,12 @@ type JobsWiring struct {
 // and then projected onto services{} via flat pointer fields. After Phase B,
 // they are constructed once by BuildJobsBundle in this file, returned as a
 // typed bundle, and consumed by:
+//
 //   - composeIntegration / late-binding cross-injections
 //     (CatalogSync.RegisterHandler, YouTubeClip/Voiceover/Books/Lessons
 //     RegisterHandler, Realtime adapter, ...)
 //
-//	- the surrounding HTTP wiring (WireJobs, via CoreDeps.JobsService)
+//   - the surrounding HTTP wiring (WireJobs, via CoreDeps.JobsService)
 //
 // Each module MUST consume only the values it needs; never bundle-as-API.
 // Follow-up PRs will turn WireJobs itself into a bundle-only consumer and

@@ -1,4 +1,4 @@
-﻿package sqlite
+package sqlite
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"go.uber.org/zap"
 )
 
 const mediaAssetColumns = `
@@ -445,5 +445,3 @@ func inClause(n int, col string, notOpt ...string) string {
 type AdvancedSearchRequest = asset.AdvancedSearchRequest
 type AdvancedSearchResult = asset.AdvancedSearchResult
 type SegmentEmbeddingRecord = asset.SegmentEmbeddingRecord
-
-

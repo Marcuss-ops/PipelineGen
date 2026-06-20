@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 

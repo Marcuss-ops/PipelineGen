@@ -1,13 +1,14 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -137,18 +138,18 @@ func (h *ScriptFlowHandler) RegenerateSection(c *gin.Context) {
 			if docID != "" && h.docClient != nil {
 				h.log.Info("updating associated google doc", zap.String("doc_id", docID))
 				// Prepare generated parts to reconstruct HTML
-			titles := make([]string, len(updatedSections))
-			contents := make([]string, len(updatedSections))
-			for idx, s := range updatedSections {
-				titles[idx] = s.SectionTitle
-				contents[idx] = s.Content
-			}
-			noChapters, _ := meta["no_chapters"].(bool)
-			language := script.Language
-			if language == "" {
-				language = "en"
-			}
-			htmlMergedContent := buildSectionDocHTML(script.Topic, titles, contents, noChapters, language)
+				titles := make([]string, len(updatedSections))
+				contents := make([]string, len(updatedSections))
+				for idx, s := range updatedSections {
+					titles[idx] = s.SectionTitle
+					contents[idx] = s.Content
+				}
+				noChapters, _ := meta["no_chapters"].(bool)
+				language := script.Language
+				if language == "" {
+					language = "en"
+				}
+				htmlMergedContent := buildSectionDocHTML(script.Topic, titles, contents, noChapters, language)
 				// Re-upload/update the document
 				docErr := h.docClient.UpdateDoc(c.Request.Context(), docID, script.Topic, htmlMergedContent)
 				if docErr != nil {

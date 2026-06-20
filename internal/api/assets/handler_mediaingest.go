@@ -3,6 +3,8 @@ package assets
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"

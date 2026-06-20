@@ -3,8 +3,8 @@ package lifecycle
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 )
 
 type AssetKind string

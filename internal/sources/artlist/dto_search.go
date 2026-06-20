@@ -11,9 +11,9 @@ type SearchRequest struct {
 
 // SearchResponse represents a search response with canonical asset types.
 type SearchResponse struct {
-	OK     bool               `json:"ok"`
-	Term   string             `json:"term"`
-	Source string             `json:"source"`
+	OK     bool           `json:"ok"`
+	Term   string         `json:"term"`
+	Source string         `json:"source"`
 	Clips  []assets.Asset `json:"clips"`
-	Error  string             `json:"error,omitempty"`
+	Error  string         `json:"error,omitempty"`
 }

@@ -1,12 +1,12 @@
-﻿package sqlite
+package sqlite
 
 import (
 	"context"
 	"database/sql"
 	"time"
 
-	"go.uber.org/zap"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"go.uber.org/zap"
 )
 
 // AssetNode represents a node in the asset tree hierarchy
@@ -206,7 +206,3 @@ func (r *AssetTreeRepository) scanNode(scanner interface{ Scan(dest ...any) erro
 
 	return &node, nil
 }
-
-
-
-

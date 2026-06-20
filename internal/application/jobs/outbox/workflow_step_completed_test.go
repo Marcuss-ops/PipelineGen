@@ -5,10 +5,10 @@ import (
 	"sync"
 	"testing"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 	outboxhandlers "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestWorkflowStepCompletedHandler_EventType(t *testing.T) {

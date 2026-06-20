@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	
+
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -79,4 +79,3 @@ func (s *AssetStoreSQLite) MarkClipsUsed(ctx context.Context, clipIDs []string) 
 	}
 	return nil
 }
-

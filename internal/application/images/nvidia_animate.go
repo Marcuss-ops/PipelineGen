@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"go.uber.org/zap"
 )
 
 func (s *Service) AnimateImage(ctx context.Context, imageHash string, duration int) (string, error) {

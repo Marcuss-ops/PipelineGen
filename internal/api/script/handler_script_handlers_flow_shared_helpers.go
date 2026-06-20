@@ -19,7 +19,6 @@ type voiceoverSceneItem struct {
 	SceneIndex int
 }
 
-
 // generateSceneVoiceovers generates voiceovers for each scene item.
 // Returns the number of successful generations.
 func generateSceneVoiceovers(
@@ -174,18 +173,18 @@ func buildTextOnlyScriptPlan(
 	}
 
 	plan := &script.ScriptGenerationPlan{
-		Title:       title,
-		Topic:       topic,
-		Language:    language,
-		Tone:        tone,
-		Model:       model,
-		Mode:        "generate",
-		UseMemory:   !forceRefresh,
-		SaveToDB:    saveToDB,
-		TargetWords: targetWords,
-		Prompt:      topic,
-		SourceText:  sourceText,
-		Guidelines:  guidelines,
+		Title:               title,
+		Topic:               topic,
+		Language:            language,
+		Tone:                tone,
+		Model:               model,
+		Mode:                "generate",
+		UseMemory:           !forceRefresh,
+		SaveToDB:            saveToDB,
+		TargetWords:         targetWords,
+		Prompt:              topic,
+		SourceText:          sourceText,
+		Guidelines:          guidelines,
 		PromptVersion:       promptVersion,
 		EditorPromptVersion: editorPromptVersion,
 		QAPromptVersion:     qaPromptVersion,

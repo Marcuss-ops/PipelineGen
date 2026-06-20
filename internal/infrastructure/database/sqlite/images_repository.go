@@ -1,4 +1,4 @@
-﻿// package sqlite provides the ImagesRepository for image assets.
+// package sqlite provides the ImagesRepository for image assets.
 package sqlite
 
 import (
@@ -351,5 +351,3 @@ func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, emb
 	`, status, assetID)
 	return err
 }
-
-

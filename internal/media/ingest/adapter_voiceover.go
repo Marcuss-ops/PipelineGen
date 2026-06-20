@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	vorepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 

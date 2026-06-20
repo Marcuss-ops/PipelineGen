@@ -171,4 +171,3 @@ func (s *AssetStoreSQLite) FindDuplicatesByYouTubeID(ctx context.Context, videoI
 	}
 	return ids, rows.Err()
 }
-

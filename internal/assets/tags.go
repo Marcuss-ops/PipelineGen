@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	
 )
 
 // BulkAddTags adds a set of tags to multiple clips efficiently.
@@ -204,4 +202,3 @@ func (s *AssetStoreSQLite) UpdateFileHash(ctx context.Context, clipID, hash stri
 	_, err := s.db.ExecContext(ctx, "UPDATE media_assets SET file_hash = ? WHERE id=?", hash, clipID)
 	return err
 }
-

@@ -5,9 +5,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"go.uber.org/zap"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 )
 
 // SearchRequest represents a search request

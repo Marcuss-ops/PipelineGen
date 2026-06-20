@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"go.uber.org/zap"
 )
 
 // Service provides high-level operations over the Store interface.

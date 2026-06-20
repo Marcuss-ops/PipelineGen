@@ -11,8 +11,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )

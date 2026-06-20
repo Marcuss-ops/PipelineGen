@@ -1,4 +1,4 @@
-﻿// package sqlite provides persistence for scheduled YouTube topic searches.
+// package sqlite provides persistence for scheduled YouTube topic searches.
 package sqlite
 
 import (
@@ -229,5 +229,3 @@ func scanResult(scanner interface {
 	r.ProcessedAt = processedAt.String
 	return r, nil
 }
-
-

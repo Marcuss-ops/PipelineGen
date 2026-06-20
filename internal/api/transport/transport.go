@@ -61,11 +61,11 @@ type ErrorMapper func(err error) (status int, msg string)
 
 // JSON is the canonical handler pipeline for JSON-bound use cases:
 //
-//	1. bind   — parse JSON body (400 on failure)
-//	2. validate — call Validate() if implemented (400 on failure)
-//	3. invoke — call uc.Handle with the request context
-//	4. map    — translate domain errors via mapper (or 500)
-//	5. respond — write JSON via api.OK (2xx) or api.Error (mapped status)
+//  1. bind   — parse JSON body (400 on failure)
+//  2. validate — call Validate() if implemented (400 on failure)
+//  3. invoke — call uc.Handle with the request context
+//  4. map    — translate domain errors via mapper (or 500)
+//  5. respond — write JSON via api.OK (2xx) or api.Error (mapped status)
 //
 // Handlers in internal/api/<domain>/ should be one-liners that call
 // transport.JSON with a use case injected by the composition root.
@@ -115,16 +115,16 @@ func bindJSON(c *gin.Context, dst any) bool {
 // Mapping rules:
 //
 //   - nil mapper           → 500 + err.Error() (msg only used for tracing;
-//                              the wire body comes from api.Error).
+//     the wire body comes from api.Error).
 //   - mapper status == 0   → fallback 500.
 //   - mapper msg    == ""   → status >= 500 → err.Error() (safe for ops
-//                              since 5xx body is an error string anyway
-//                              and the mapped public message has already
-//                              been overridden by err.Error()).
-//                            status <  500 → safe generic message
-//                              ("request rejected") — NEVER err.Error(),
-//                              since 4xx responses go through api.Error
-//                              which echoes the string directly to clients.
+//     since 5xx body is an error string anyway
+//     and the mapped public message has already
+//     been overridden by err.Error()).
+//     status <  500 → safe generic message
+//     ("request rejected") — NEVER err.Error(),
+//     since 4xx responses go through api.Error
+//     which echoes the string directly to clients.
 //
 // The 4xx safe default prevents wrapped DB / driver error messages
 // from leaking to clients when a mapper returns an empty message.

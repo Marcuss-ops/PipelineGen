@@ -13,8 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // pr12bArtlistSchema is the full `media_assets` schema the canonical
@@ -170,7 +170,7 @@ func setupArtlistPR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsReposit
 
 // zeroTime is the canonical zero-time used by DeletedAt fixtures so that
 // timeutil.FormatPtrRFC3339 binds a non-NULL string (which the test schema's
-// `deleted_at TEXT NOT NULL DEFAULT ''` accepts). Without this, nil pointer
+// `deleted_at TEXT NOT NULL DEFAULT ”` accepts). Without this, nil pointer
 // formatting binds SQL NULL and trips the NOT NULL constraint.
 var zeroTime = time.Time{}
 

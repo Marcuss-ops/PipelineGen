@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"go.uber.org/zap"
 )
 
 func (s *Service) downloadAndIngest(ctx context.Context, slug, imgURL, style, source, query, description string, tags []string) (*media.ImageAsset, error) {

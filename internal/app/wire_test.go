@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"go.uber.org/zap"
 )
 
 func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {

@@ -5,10 +5,10 @@ package clips
 import (
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // AllSources is the canonical list of clip source names covered by the

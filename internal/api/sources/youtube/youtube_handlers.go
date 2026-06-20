@@ -19,8 +19,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/sources/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
+	executil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/sources/youtube"
 )
 
@@ -37,9 +37,9 @@ type YouTubeClipHandler struct {
 
 // NewYouTubeClipHandler builds the YouTubeClipHandler.
 //
-//		service - YouTube service used by this handler.
-//		log     - zap logger for diagnostics.
-//		jobsSvc - job system used by the async extract endpoint.
+//	service - YouTube service used by this handler.
+//	log     - zap logger for diagnostics.
+//	jobsSvc - job system used by the async extract endpoint.
 func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc *jobservice.Service) *YouTubeClipHandler {
 	return &YouTubeClipHandler{
 		service: service,

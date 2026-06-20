@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
-	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // RegisterVideoAsset uploada su Drive e crea un record in media_assets per un video generato.
@@ -73,11 +73,11 @@ func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description,
 	}
 
 	clip := &asset.Asset{
-		ID:          id,
-		Name:        name,
-		Source:      asset.Source(source),
-		MediaType:   asset.MediaType("video"),
-		CreatedAt:   time.Now(),
+		ID:        id,
+		Name:      name,
+		Source:    asset.Source(source),
+		MediaType: asset.MediaType("video"),
+		CreatedAt: time.Now(),
 	}
 	clip.SetDriveFileID(driveFileID)
 	clip.SetDriveLink(driveLink)
@@ -230,14 +230,14 @@ func (s *Service) registerAudioClip(ctx context.Context, videoPath, description,
 	}
 
 	clip := &asset.Asset{
-		ID:          videoID + "_audio",
-		Name:        description + " (audio)",
-		Source:      asset.Source(source),
-		MediaType:   asset.MediaType("sound_effect"),
-		Duration:    3000 * time.Millisecond,
-		CreatedAt:   time.Now(),
-		SearchText:  searchText,
-		Tags:        tags,
+		ID:         videoID + "_audio",
+		Name:       description + " (audio)",
+		Source:     asset.Source(source),
+		MediaType:  asset.MediaType("sound_effect"),
+		Duration:   3000 * time.Millisecond,
+		CreatedAt:  time.Now(),
+		SearchText: searchText,
+		Tags:       tags,
 	}
 	clip.SetLocalPath(audioPath)
 	clip.SetDriveFileID(fileID)

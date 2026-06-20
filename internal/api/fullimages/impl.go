@@ -2,9 +2,9 @@ package fullimages
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	mediafullimages "github.com/Marcuss-ops/PipelineGen/internal/media/fullimages"
 )
 
 // FullImagesHandler exposes the FullImages endpoint under /images/video/generate.
@@ -25,15 +25,15 @@ func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 // GenerateFullImagesRequest is the JSON body for the endpoint.
 type GenerateFullImagesRequest struct {
 	Sections []mediafullimages.Section `json:"sections" binding:"required,min=1"`
-	Topic    string               `json:"topic" example:"Medieval Europe"`
-	Language string               `json:"language" example:"en"`
+	Topic    string                    `json:"topic" example:"Medieval Europe"`
+	Language string                    `json:"language" example:"en"`
 	// DefaultStyle is applied to every section that doesn't specify its own style.
 	DefaultStyle string `json:"default_style" example:"medievale"`
 }
 
 // GenerateFullImagesResponse is returned on success.
 type GenerateFullImagesResponse struct {
-	OK     bool                      `json:"ok"`
+	OK     bool                           `json:"ok"`
 	Videos []mediafullimages.SectionVideo `json:"videos"`
 }
 

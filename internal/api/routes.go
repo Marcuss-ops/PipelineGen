@@ -13,10 +13,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	common "github.com/Marcuss-ops/PipelineGen/internal/api/common"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"go.uber.org/zap"
 )
 
 // Router holds the API router configuration

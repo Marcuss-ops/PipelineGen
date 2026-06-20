@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
 )
@@ -17,7 +17,9 @@ import (
 // in internal/application/jobs (not internal/domain/job, which only
 // hosts the Job entity). HandlerFunc in
 // internal/application/jobs/types.go has the canonical signature
-//   func(ctx context.Context, j *job.Job, tools *JobTools)
+//
+//	func(ctx context.Context, j *job.Job, tools *JobTools)
+//
 // and we mirror it here.
 func (s *Service) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	s.log.Info("handling youtube_clip.extract job",

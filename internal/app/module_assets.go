@@ -3,6 +3,8 @@ package app
 import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	sourcesapi "github.com/Marcuss-ops/PipelineGen/internal/api/sources"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"
@@ -12,8 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/media/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	"go.uber.org/zap"
 )

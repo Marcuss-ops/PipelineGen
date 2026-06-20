@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 
 	"go.uber.org/zap"

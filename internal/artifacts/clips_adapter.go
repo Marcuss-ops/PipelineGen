@@ -183,18 +183,18 @@ func detailsToMediaRecord(details *assets.Details) *MediaRecord {
 		return nil
 	}
 	rec := &MediaRecord{
-		ID:       details.Asset.ID,
-		Name:     details.Asset.Name,
-		Filename: details.Asset.Filename,
-		Source:   string(details.Asset.Source),
-		Category: details.Asset.Category,
-		MediaType: string(details.Asset.MediaType),
-		ExternalURL: details.Asset.ExternalURL(),
-		FolderID:  details.Asset.FolderID(),
-		FolderPath: details.Asset.FolderPath(),
-		Group:    details.Asset.Group,
-		Tags:     append([]string(nil), details.Asset.Tags...),
-		Duration: int(details.Asset.Duration.Milliseconds()),
+		ID:                  details.Asset.ID,
+		Name:                details.Asset.Name,
+		Filename:            details.Asset.Filename,
+		Source:              string(details.Asset.Source),
+		Category:            details.Asset.Category,
+		MediaType:           string(details.Asset.MediaType),
+		ExternalURL:         details.Asset.ExternalURL(),
+		FolderID:            details.Asset.FolderID(),
+		FolderPath:          details.Asset.FolderPath(),
+		Group:               details.Asset.Group,
+		Tags:                append([]string(nil), details.Asset.Tags...),
+		Duration:            int(details.Asset.Duration.Milliseconds()),
 		VisualEmbeddingJSON: details.Asset.VisualEmbeddingJSON(),
 	}
 	rec.Metadata = details.Asset.MetadataJSON()

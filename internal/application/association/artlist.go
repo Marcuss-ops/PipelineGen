@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/scoring"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // ArtlistStockAssociation searches in the Artlist clip database using multiple terms.

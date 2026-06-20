@@ -12,15 +12,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // RegisterFromYouTubeRequest is the JSON body for registering a clip from a YouTube URL.

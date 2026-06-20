@@ -9,47 +9,47 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/association"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/gemmamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 type ScriptFlowHandler struct {
-	generator         *ollama.Generator
-	engine            *scripts.Engine
-	batchService      *scripts.BatchService
-	curationService   *scripts.CurationService
+	generator          *ollama.Generator
+	engine             *scripts.Engine
+	batchService       *scripts.BatchService
+	curationService    *scripts.CurationService
 	curationJobService CurationJobService
 	catalogJobService  CatalogJobService
-	imgService        *images.Service
-	realtimeSvc       *realtime.Service
-	associationSvc    *association.Service
-	voService         *voiceover.Service
-	assetTreeSvc      *assettree.Service
-	groupsResolver    *voiceover.GroupsResolver
-	clipSourceBuilder *scripts.ClipSourceBuilder
-	mediaCurator      *scripts.MediaCurator
-	insightBuilder    *ScriptInsightBuilder
-	clipServices      ClipServices
-	docClient         drive.DocClient
-	driveUploader     *drive.Uploader
-	jobsSvc           *jobservice.Service
-	scriptsRepo       scripts.ScriptRepository
-	memorySvc         *gemmamemory.Service
-	sourceResolver    *scripts.SourceResolver
-	harvestSvc        AutoHarvestService
-	driveFolderID     string
-	cfg               *config.Config
-	log               *zap.Logger
-	metadataModel     string
+	imgService         *images.Service
+	realtimeSvc        *realtime.Service
+	associationSvc     *association.Service
+	voService          *voiceover.Service
+	assetTreeSvc       *assettree.Service
+	groupsResolver     *voiceover.GroupsResolver
+	clipSourceBuilder  *scripts.ClipSourceBuilder
+	mediaCurator       *scripts.MediaCurator
+	insightBuilder     *ScriptInsightBuilder
+	clipServices       ClipServices
+	docClient          drive.DocClient
+	driveUploader      *drive.Uploader
+	jobsSvc            *jobservice.Service
+	scriptsRepo        scripts.ScriptRepository
+	memorySvc          *gemmamemory.Service
+	sourceResolver     *scripts.SourceResolver
+	harvestSvc         AutoHarvestService
+	driveFolderID      string
+	cfg                *config.Config
+	log                *zap.Logger
+	metadataModel      string
 }
 
 // AutoHarvestService abstracts the clip harvest functionality.

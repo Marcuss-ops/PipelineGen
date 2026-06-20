@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	EventAssetIndexRequested         = "asset.index.requested"
-	EventDeliveryRequested           = "delivery.requested"
+	EventAssetIndexRequested          = "asset.index.requested"
+	EventDeliveryRequested            = "delivery.requested"
 	EventAssetMetadataExportRequested = "asset.metadata_export.requested"
-	EventProviderSyncRequested       = "provider.sync.requested"
-	EventWorkflowStepCompleted       = "workflow.step.completed"
-	EventWorkflowStepFailed          = "workflow.step.failed"
+	EventProviderSyncRequested        = "provider.sync.requested"
+	EventWorkflowStepCompleted        = "workflow.step.completed"
+	EventWorkflowStepFailed           = "workflow.step.failed"
 )
 
 type Handler interface {

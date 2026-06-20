@@ -17,9 +17,9 @@ import (
 // It coordinates between the BlobStore (content-addressed storage) and
 // the Repository (metadata persistence).
 type Service struct {
-	blobs  BlobStore
-	repo   Repository
-	log    *zap.Logger
+	blobs BlobStore
+	repo  Repository
+	log   *zap.Logger
 }
 
 // NewService creates a new artifact service.

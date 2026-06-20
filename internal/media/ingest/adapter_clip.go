@@ -6,15 +6,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/assetop"
 	"github.com/Marcuss-ops/PipelineGen/internal/core/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type clipStoreAdapter struct {
-	db         *sql.DB
+	db *sql.DB
 	// repo was renamed from `assets` in Wave 12 follow-up
 	// Phase 2 PR-3 — the original name collided with the
 	// `internal/domain/asset` package alias after the sed

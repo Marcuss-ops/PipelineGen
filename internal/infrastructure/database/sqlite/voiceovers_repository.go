@@ -1,4 +1,4 @@
-﻿package sqlite
+package sqlite
 
 import (
 	"context"
@@ -295,5 +295,3 @@ func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 	}
 	return records, rows.Err()
 }
-
-

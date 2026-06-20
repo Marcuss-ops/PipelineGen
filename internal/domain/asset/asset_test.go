@@ -187,7 +187,7 @@ func TestFunctionRebindingsMatchAssets(t *testing.T) {
 func TestAssetIsHardAlias(t *testing.T) {
 	a := Asset{ID: "test-asset"}
 	var legacy assets.Asset = a // no conversion: same type via alias
-	var back Asset = legacy      // no conversion: same type via alias
+	var back Asset = legacy     // no conversion: same type via alias
 	if back.ID != "test-asset" {
 		t.Errorf("round-trip ID mismatch: got %q want %q", back.ID, "test-asset")
 	}

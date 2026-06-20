@@ -3,8 +3,6 @@ package assets
 import (
 	"sort"
 	"strings"
-
-	
 )
 
 // scoreClips scores and sorts clips based on keyword match quality, quality score,
@@ -181,4 +179,3 @@ func searchVisibilityBonus(meta map[string]any) float64 {
 		return 0
 	}
 }
-

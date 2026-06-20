@@ -271,4 +271,3 @@ func (c *ClipManifestItem) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
-

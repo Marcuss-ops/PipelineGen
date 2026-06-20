@@ -2,9 +2,10 @@ package drive
 
 import (
 	"fmt"
-	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 	"strings"
 	"sync"
+
+	clipsources "github.com/Marcuss-ops/PipelineGen/internal/api/sources/clips"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/drivecleanup"

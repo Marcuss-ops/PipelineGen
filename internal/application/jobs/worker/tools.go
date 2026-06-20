@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type AssetClient interface {

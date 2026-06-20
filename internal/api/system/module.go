@@ -46,4 +46,3 @@ func (m *Module) Start(context.Context) error { return nil }
 
 // Stop performs shutdown tasks.
 func (m *Module) Stop(context.Context) error { return nil }
-

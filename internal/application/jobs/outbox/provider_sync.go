@@ -8,36 +8,41 @@
 //
 //   - schema_version MUST be exactly "provider.sync.requested.v1". Other
 //     values are terminal (no retry — producer upgrades).
+//
 //   - provider switch (allowlist: drive|youtube|stock):
-//       • stock     → ack nil + reason="fetch_only_by_design".
-//                     Stock is fetch-only by design (its CapabilitySearch
-//                     is intentionally absent); no inbound sync path
-//                     exists. Validating the envelope + emitting the
-//                     audit log is the only correct action. Producers
-//                     must not retry.
-//       • drive | youtube → enqueue a real sync job onto jobs.Service
-//                     (the canonical async pipeline) with JobType
-//                     "provider.sync.drive" / "provider.sync.youtube".
-//                     If jobs.Service is unavailable, OR the enqueue
-//                     fails, the handler returns an error → outbox
-//                     retries per the pool's backoff. The outbox pool
-//                     dead-letters the event after max_attempts; the
-//                     operator then sees a sync that couldn't even be
-//                     enqueued.
-//       • unknown   → terminal error wrapped with ErrUnknownProvider
-//                     so a producer typo is loud, not silent.
+//
+//   - stock     → ack nil + reason="fetch_only_by_design".
+//     Stock is fetch-only by design (its CapabilitySearch
+//     is intentionally absent); no inbound sync path
+//     exists. Validating the envelope + emitting the
+//     audit log is the only correct action. Producers
+//     must not retry.
+//
+//   - drive | youtube → enqueue a real sync job onto jobs.Service
+//     (the canonical async pipeline) with JobType
+//     "provider.sync.drive" / "provider.sync.youtube".
+//     If jobs.Service is unavailable, OR the enqueue
+//     fails, the handler returns an error → outbox
+//     retries per the pool's backoff. The outbox pool
+//     dead-letters the event after max_attempts; the
+//     operator then sees a sync that couldn't even be
+//     enqueued.
+//
+//   - unknown   → terminal error wrapped with ErrUnknownProvider
+//     so a producer typo is loud, not silent.
 //
 //   - account_id is INTERNAL — credentials NEVER appear in the payload.
 //     The handler resolves them through jobs.Service → internal/credentials
 //     (existing pipeline). For now we just pass account_id through
 //     opaquely.
+//
 //   - cursor is used ONLY in mode=incremental. mode=full ignores cursor.
 //
 // Behaviour summary:
 //   - stock / enqueue-success            → MarkCompleted.
 //   - enqueue-failure on drive|youtube   → non-nil error → retry.
 //   - terminal schema / provider errors  → non-nil error → outbox pool
-//                                          dead-letters.
+//     dead-letters.
 package outbox
 
 import (
@@ -49,8 +54,8 @@ import (
 
 	"go.uber.org/zap"
 
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
@@ -100,8 +105,8 @@ type providerSyncRequest struct {
 	EventID       string `json:"event_id"`
 	RequestedAt   string `json:"requested_at,omitempty"` // RFC3339 UTC
 	TraceID       string `json:"trace_id,omitempty"`
-	Provider      string `json:"provider"`           // drive|youtube|stock
-	Mode          string `json:"mode"`               // incremental|full
+	Provider      string `json:"provider"` // drive|youtube|stock
+	Mode          string `json:"mode"`     // incremental|full
 	Scope         struct {
 		AccountID   string   `json:"account_id,omitempty"`
 		Resource    string   `json:"resource"` // assets|channels|deliveries|folders

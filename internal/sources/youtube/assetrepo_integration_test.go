@@ -21,8 +21,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 )
 
 // pr12bYoutubeSchema mirrors the full production table definitions for testing.
@@ -131,7 +131,7 @@ func setupYoutubePR12b(t *testing.T) (db *sql.DB, clipsRepo *sqlite.ClipsReposit
 
 // zeroTime is the canonical zero-time used by DeletedAt fixtures so that
 // timeutil.FormatPtrRFC3339 binds a non-NULL string (which the test schema's
-// `deleted_at TEXT NOT NULL DEFAULT ''` accepts).
+// `deleted_at TEXT NOT NULL DEFAULT ”` accepts).
 var zeroTime = time.Time{}
 
 func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
@@ -156,9 +156,9 @@ func TestYoutubePR12b_DispatchOrIndexRoutesThroughAssetRepo(t *testing.T) {
 			"local_path":    "data/youtube/pr12b-youtube-001.mp4",
 			"drive_link":    "https://drive.google.com/file/d/pr12b-youtube-001",
 		},
-		CreatedAt:      now,
-		UpdatedAt:      now,
-		DeletedAt:      &zeroTime,
+		CreatedAt: now,
+		UpdatedAt: now,
+		DeletedAt: &zeroTime,
 	}
 
 	svc := &Service{
@@ -254,9 +254,9 @@ func TestYoutubePR12b_DispatchOrIndexWithoutAssetRepoFallsBack(t *testing.T) {
 		Metadata: assets.Metadata{
 			"download_link": "https://youtube.com/fallback",
 		},
-		CreatedAt:      time.Now().UTC(),
-		UpdatedAt:      time.Now().UTC(),
-		DeletedAt:      &zeroTime,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+		DeletedAt: &zeroTime,
 	}
 
 	ctx := context.Background()

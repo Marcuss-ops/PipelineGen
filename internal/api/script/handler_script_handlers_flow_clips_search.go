@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/realtime"
+	"go.uber.org/zap"
 )
 
 // ── SearchScriptAssets ───────────────────────────────────────────────────────

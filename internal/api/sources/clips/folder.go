@@ -5,10 +5,10 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // ListFolders lists all folders for a source.

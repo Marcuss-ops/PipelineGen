@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // ScriptEntityImage represents an enriched image for a named entity.

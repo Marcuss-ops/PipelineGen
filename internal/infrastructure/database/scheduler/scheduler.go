@@ -3,9 +3,9 @@ package scheduler
 import (
 	"context"
 
-	"go.uber.org/zap"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
+	"go.uber.org/zap"
 )
 
 // DriveSyncScheduler is a minimal compatibility shim that preserves the

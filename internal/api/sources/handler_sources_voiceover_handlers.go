@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
+	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	voiceoversync "github.com/Marcuss-ops/PipelineGen/internal/media/voiceoversync"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // VoiceoverHandler is the unified handler for all voiceover operations:

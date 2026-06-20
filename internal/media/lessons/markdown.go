@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.uber.org/zap"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // AssembleLesson produces the complete Markdown content for a lesson result.

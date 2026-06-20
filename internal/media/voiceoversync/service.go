@@ -1,4 +1,4 @@
-﻿package voiceoversync
+package voiceoversync
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/media/assettree"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
+	storedrive "github.com/Marcuss-ops/PipelineGen/internal/upload/drive"
 )
 
 const folderMimeType = "application/vnd.google-apps.folder"
@@ -285,4 +285,3 @@ func (s *Service) extractLanguage(filename string) string {
 	}
 	return "unknown"
 }
-

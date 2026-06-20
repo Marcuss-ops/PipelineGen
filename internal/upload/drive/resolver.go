@@ -1,4 +1,4 @@
-﻿package drive
+package drive
 
 import (
 	"path/filepath"
@@ -83,4 +83,3 @@ func (r *Resolver) Resolve(req AssetDestinationRequest) (*ResolvedDest, error) {
 		LocalPath:    filepath.Join(r.mediaRoot, rel),
 	}, nil
 }
-

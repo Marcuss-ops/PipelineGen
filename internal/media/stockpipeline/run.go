@@ -361,4 +361,3 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 
 	return result, nil
 }
-

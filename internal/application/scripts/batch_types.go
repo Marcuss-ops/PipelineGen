@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
 )
 
 // Default prompt-version identifiers used across script/batch/book handlers.
@@ -37,33 +36,33 @@ type ChapterStructure struct {
 
 type GenerateBatchRequest struct {
 	// Inlined from BaseGenerateRequest (api package — avoid import cycle)
-	Language      string   `json:"language,omitempty"`
-	Tone          string   `json:"tone,omitempty"`
-	Model         string   `json:"model,omitempty"`
-	ChannelID     string   `json:"channel_id,omitempty"`
-	Duration      int      `json:"duration,omitempty"`
-	MinWords      int      `json:"min_words,omitempty"`
-	Guidelines    string   `json:"guidelines,omitempty"`
-	Languages     []string `json:"languages,omitempty"`
-	PromptVersion       string `json:"prompt_version,omitempty"`
-	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
-	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
-	SaveToDB      bool   `json:"save_to_db,omitempty"`
-	DriveFolderID string `json:"drive_folder_id,omitempty"`
-	UseMemory     *bool `json:"use_memory,omitempty"`
-	ForceRefresh  bool  `json:"force_refresh,omitempty"`
-	RequestTimeout int  `json:"request_timeout_seconds,omitempty"`
+	Language            string   `json:"language,omitempty"`
+	Tone                string   `json:"tone,omitempty"`
+	Model               string   `json:"model,omitempty"`
+	ChannelID           string   `json:"channel_id,omitempty"`
+	Duration            int      `json:"duration,omitempty"`
+	MinWords            int      `json:"min_words,omitempty"`
+	Guidelines          string   `json:"guidelines,omitempty"`
+	Languages           []string `json:"languages,omitempty"`
+	PromptVersion       string   `json:"prompt_version,omitempty"`
+	EditorPromptVersion string   `json:"editor_prompt_version,omitempty"`
+	QAPromptVersion     string   `json:"qa_prompt_version,omitempty"`
+	SaveToDB            bool     `json:"save_to_db,omitempty"`
+	DriveFolderID       string   `json:"drive_folder_id,omitempty"`
+	UseMemory           *bool    `json:"use_memory,omitempty"`
+	ForceRefresh        bool     `json:"force_refresh,omitempty"`
+	RequestTimeout      int      `json:"request_timeout_seconds,omitempty"`
 
 	// Batch-specific fields
-	Source            string   `json:"source,omitempty"`
-	MediaType         string   `json:"media_type,omitempty"`
-	NumClips          int      `json:"num_clips,omitempty"`
-	MinScore          float64  `json:"min_score,omitempty"`
-	SelectableClips   int      `json:"selectable_clips,omitempty"`
-	MaxCharsPerScene  int      `json:"max_chars_per_scene,omitempty"`
-	Style             string   `json:"style,omitempty"`
-	Type              string   `json:"type,omitempty"`
-	StyleInstructions string   `json:"style_instructions,omitempty"`
+	Source            string  `json:"source,omitempty"`
+	MediaType         string  `json:"media_type,omitempty"`
+	NumClips          int     `json:"num_clips,omitempty"`
+	MinScore          float64 `json:"min_score,omitempty"`
+	SelectableClips   int     `json:"selectable_clips,omitempty"`
+	MaxCharsPerScene  int     `json:"max_chars_per_scene,omitempty"`
+	Style             string  `json:"style,omitempty"`
+	Type              string  `json:"type,omitempty"`
+	StyleInstructions string  `json:"style_instructions,omitempty"`
 
 	Items                 []BatchTopic      `json:"items,omitempty"`
 	BatchTopics           []BatchTopic      `json:"batch_topics,omitempty"`

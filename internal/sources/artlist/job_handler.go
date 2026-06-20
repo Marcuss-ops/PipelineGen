@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"go.uber.org/zap"
 )
 
 var jobCodec = &JobCodec{}
@@ -35,7 +35,7 @@ func (a *JobAdapter) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.J
 	req = &normalized
 
 	if strings.TrimSpace(req.RootFolderID) == "" {
-		s.log.Warn("skipping artlist job because no root folder is configured",		zap.String("job_id", j.ID), zap.String("term", req.Term))
+		s.log.Warn("skipping artlist job because no root folder is configured", zap.String("job_id", j.ID), zap.String("term", req.Term))
 		tools.Event("warning", "artlist job skipped: no root folder configured", map[string]any{
 			"term": req.Term,
 		})

@@ -100,23 +100,23 @@ func (a *Adapter) Capabilities() []providers.Capability {
 //
 //   - req.Query               -> search term (required, non-empty).
 //   - req.Limit               -> native limit. 0 / negative clamped
-//                                to default 10; > 50 clamped to 50.
+//     to default 10; > 50 clamped to 50.
 //   - req.TopicOnly           -> ignored (YouTube IS topic-based).
 //   - req.Filters.Sort        -> native sortMode string.
-//                                SortByRelevance + empty both map
-//                                to the native default (""); other
-//                                known modes pass through verbatim.
+//     SortByRelevance + empty both map
+//     to the native default (""); other
+//     known modes pass through verbatim.
 //   - req.Filters.PublishedAfter
-//                              -> RFC3339 string forwarded to the
-//                                underlying service. Nil = no filter.
+//     -> RFC3339 string forwarded to the
+//     underlying service. Nil = no filter.
 //   - req.Filters.MediaTypes  -> not honoured; YouTube returns
-//                                video content always. Producers
-//                                may filter downstream by
-//                                Candidate.MediaType.
+//     video content always. Producers
+//     may filter downstream by
+//     Candidate.MediaType.
 //   - req.Filters.MinDuration / MaxDuration
-//                              -> not honoured as a pre-filter;
-//                                YouTube live search has no
-//                                duration-range filter.
+//     -> not honoured as a pre-filter;
+//     YouTube live search has no
+//     duration-range filter.
 //
 // Result scoring: the underlying service returns raw integers
 // (SimilarityScore 0..100, FormatMatchPercent 0..100) which the

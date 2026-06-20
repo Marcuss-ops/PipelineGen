@@ -2,6 +2,7 @@ package association
 
 import (
 	"strings"
+
 	sliceutil "github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
 

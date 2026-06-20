@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/yaml.v3"
 	domainmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"gopkg.in/yaml.v3"
 )
 
 // StyleRegistry manages a collection of generation styles

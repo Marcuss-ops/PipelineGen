@@ -1,4 +1,4 @@
-﻿package voiceover
+package voiceover
 
 import (
 	"context"
@@ -134,4 +134,3 @@ func voiceoverToMediaRecord(rec *sqlite.Record) *artifacts.MediaRecord {
 		Metadata:     string(metaJSON),
 	}
 }
-

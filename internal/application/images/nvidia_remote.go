@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	googleaccounting "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/googleaccounting"
+	"go.uber.org/zap"
 )
 
 // RemoteImageJob represents the job status response from the remote image endpoint.
