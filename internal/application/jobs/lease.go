@@ -12,16 +12,11 @@ import (
 // rewrite `*job.Job` as a fully-qualified pointer.
 type Job = job.Job
 
-// WorkerSession identifies a registered worker identity. A new registration
-// always produces a new session ID.
-type WorkerSession struct {
-	WorkerID         string             `json:"worker_id"`
-	SessionID        string             `json:"session_id"`
-	SessionExpiresAt time.Time          `json:"session_expires_at"`
-	Capabilities     WorkerCapabilities `json:"capabilities"`
-	Version          string             `json:"version"`
-	Hostname         string             `json:"hostname"`
-}
+// WorkerSession is a type alias to the canonical domain WorkerSession entity.
+// The canonical struct lives in internal/domain/job so that infrastructure and
+// other cross-layer consumers can refer to job.WorkerSession without importing
+// the application layer.
+type WorkerSession = job.WorkerSession
 
 // Lease represents a claimed job lease.
 type Lease struct {

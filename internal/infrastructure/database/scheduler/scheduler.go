@@ -27,11 +27,11 @@ func (s *DriveSyncScheduler) Stop() {}
 // LifecycleScheduler handles recurring lifecycle events and cleanup tasks.
 type LifecycleScheduler struct {
 	cfg         *config.Config
-	jobsService *jobs.Service
+	jobsService *job.Service
 	log         *zap.Logger
 }
 
-func NewLifecycleScheduler(cfg *config.Config, jobsService *jobs.Service, log *zap.Logger) *LifecycleScheduler {
+func NewLifecycleScheduler(cfg *config.Config, jobsService *job.Service, log *zap.Logger) *LifecycleScheduler {
 	return &LifecycleScheduler{
 		cfg:         cfg,
 		jobsService: jobsService,

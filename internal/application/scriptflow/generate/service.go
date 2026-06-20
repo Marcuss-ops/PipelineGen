@@ -17,13 +17,13 @@ import (
 // It owns validation, defaults, payload construction, and job enqueue
 // for GenerateFromClips, GenerateWithImages, and GenerateBatch (async path).
 type GenerationService struct {
-	jobsSvc *jobs.Service
+	jobsSvc *job.Service
 	cfg     *config.Config
 	log     *zap.Logger
 }
 
 // NewGenerationService creates a new GenerationService.
-func NewGenerationService(jobsSvc *jobs.Service, cfg *config.Config, log *zap.Logger) *GenerationService {
+func NewGenerationService(jobsSvc *job.Service, cfg *config.Config, log *zap.Logger) *GenerationService {
 	return &GenerationService{
 		jobsSvc: jobsSvc,
 		cfg:     cfg,
@@ -178,7 +178,7 @@ func (s *GenerationService) enqueue(
 		zap.Int("sentences_per_image", spec.SentencesPerImage),
 	)
 
-	job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
+	job, err := s.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
 		Type:       script.JobTypeGenerateFromClips,
 		Payload:    payload,
 		MaxRetries: 2,
