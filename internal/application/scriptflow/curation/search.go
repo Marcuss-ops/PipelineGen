@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/media/vectorstore"
-	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 

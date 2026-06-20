@@ -4,7 +4,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"strconv"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

@@ -1,4 +1,4 @@
-.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet swagger run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci
+.PHONY: all build test test-unit coverage coverage-check clean lint fmt vet swagger run doctor artlist dev google-accounting-run comic-video-maker-run deps tidy-check vuln bench docker-build docker-run ci rebuild
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -9,9 +9,15 @@ LDFLAGS  = -X main.buildVersion=$(VERSION) -X main.commitHash=$(COMMIT)
 # Default target
 all: build
 
-# Build the server with version info
+# Build the entry-point binaries. Outputs land in ./bin/ to keep the project
+# root clean (see `make clean`). The admin CLI is the canonical orchestrator
+# entry — it exposes subcommands for the server, worker, and admin flows
+# (see cmd/admin/main.go for the available modes). The worker binary covers
+# the long-running pipeline worker process.
 build:
-	go build -ldflags "$(LDFLAGS)" -v ./cmd/server
+	@mkdir -p bin
+	go build -ldflags "$(LDFLAGS)" -v -o bin/admin ./cmd/admin
+	go build -ldflags "$(LDFLAGS)" -v -o bin/worker ./cmd/worker
 
 # Run all tests
 test: test-unit
@@ -68,9 +74,18 @@ clean:
 	rm -f coverage.out coverage.html
 	rm -rf tmp/
 
+# Rebuild: clean + build in one shot.
+# Use after switching branches, pulling new code, or whenever the prior
+# build output is suspected to be stale. Idempotent and reproducible:
+# `make rebuild` is exactly equivalent to `make clean && make build`,
+# so the cleanup-to-rebuild sequence is reproducible from a single command
+# and works in CI as well as locally.
+rebuild: clean build
+	@echo "Rebuild complete: ./bin/admin and ./bin/worker"
+
 # Run the server
 run: build
-	./server
+	./bin/admin
 
 # Run system doctor check
 # Fails explicitly if the server is not running.

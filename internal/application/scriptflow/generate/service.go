@@ -35,7 +35,7 @@ func NewGenerationService(jobsSvc *jobs.Service, cfg *config.Config, log *zap.Lo
 type FromClipsResult struct {
 	OK        bool
 	JobID     string
-	job.Status    string
+	JobStatus     string
 	ClipCount int
 }
 
@@ -196,7 +196,7 @@ func (s *GenerationService) enqueue(
 	return &FromClipsResult{
 		OK:        true,
 		JobID:     job.ID,
-		job.Status:    string(job.job.Status),
+		JobStatus:     string(job.Status),
 		ClipCount: clipCount,
 	}, nil
 }
