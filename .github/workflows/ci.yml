@@ -54,8 +54,10 @@ jobs:
       run: go build ./...
 
     - name: Build all binaries
+      # cmd/server/ was removed in Onda 5 (replaced by internal/app composition
+      # root). The canonical binaries are cmd/admin (orchestrator), cmd/worker
+      # (long-running pipeline worker) and cmd/gen-api-docs (docs generator).
       run: |
-        go build -o /dev/null ./cmd/server/
         go build -o /dev/null ./cmd/worker/
         go build -o /dev/null ./cmd/admin/
         go build -o /dev/null ./cmd/gen-api-docs/
