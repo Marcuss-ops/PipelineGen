@@ -1,170 +1,206 @@
 package memory
 
-// ─── Memory types (what we store and retrieve) ───
+import (
+	"context"
 
-const (
-	MemoryTypeChannelStyle     = "channel_style"
-	MemoryTypeScriptStructure  = "script_structure"
-	MemoryTypeTopicResearch    = "topic_research"
-	MemoryTypeCharacterProfile = "character_profile"
-	MemoryTypeSuccessfulHook   = "successful_hook"
-	MemoryTypeBadPattern       = "bad_pattern"
-	MemoryTypeImagePromptStyle = "image_prompt_style"
-	MemoryTypeReusableIntro    = "reusable_intro"
-	MemoryTypeReusableCTA      = "reusable_cta"
+	scriptrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 )
 
-const (
-	ModeGenerate     = "generate"
-	ModeClipToScript = "clip_to_script"
-)
+// ── Type aliases — keep the application layer talking the same names ────────
 
-// GenerationOutput represents a saved generation in gemma_script_outputs.
-type GenerationOutput struct {
-	ID              string
-	ChannelID       string
-	Mode            string
-	Language        string
-	Title           string
-	Prompt          string
-	NormalizedInput string
-	InputHash       string
-	OutputText      string
-	OutputJSON      string
-	Model           string
-	JobID           string
-	WordCount       int
-	CreatedAt       string // TEXT in SQLite, not time.Time
-}
+// MemoryEntry is the canonical memory row exposed to the Memory Gate.
+// Type alias keeps the consumer code in `application/scripts/` readable:
+// callers don't have to write `scriptrepo.MemoryEntry` everywhere.
+type MemoryEntry = scriptrepo.MemoryEntry
 
-// MemoryEntry represents a reusable memory in gemma_memory_entries.
-type MemoryEntry struct {
-	ID                 string
-	ChannelID          string
-	MemoryType         string
-	TopicKey           string
-	Title              string
-	Summary            string
-	ContentText        string
-	ContentJSON        string
-	SourceGenerationID string
-	SourceJobID        string
-	UsefulnessScore    float64
-	CreatedAt          string // TEXT in SQLite
-}
+// GenerationOutput is the Level-1 exact-cache row.
+type GenerationOutput = scriptrepo.GenerationOutput
 
-// ScriptChunk represents a segment of a script in gemma_script_chunks.
-type ScriptChunk struct {
-	ID            string
-	GenerationID  string
-	ChannelID     string
-	ChunkIndex    int
-	ChunkType     string
-	TopicKey      string
-	Title         string
-	Text          string
-	SearchText    string
-	EmbeddingJSON string
-	CreatedAt     string // TEXT in SQLite
-}
+// ScriptChunk is the Level-2 chunk used for LIKE similarity search.
+// We re-export it here so retrieval.go can compose projections
+// (MemoryHit{Entry: MemoryEntry from a chunk}) without cross-package noise.
+type ScriptChunk = scriptrepo.ScriptChunk
 
-// ─── Request/Response types ───
+// SaveGenerationInput re-exports the upsert payload used by SaveAfterGeneration.
+type SaveGenerationInput = scriptrepo.SaveGenerationInput
 
-// MemoryPolicy bounds how much old memory/output can be reused during a single
-// generation. Defaults are conservative to prevent near-duplicate runs while
-// keeping the cache useful as context.
+// SaveMemoryInput re-exports the memory upsert payload.
+type SaveMemoryInput = scriptrepo.SaveMemoryInput
+
+// ── Memory type taxonomy ────────────────────────────────────────────────────
+//
+// These constants are the strings persisted in `gemma_memory_entries.memory_type`
+// AND broadcasted across the application as `MemoryHit.MemoryType = X`.
+// They are stable across releases — adding new types is allowed, renaming is a
+// breaking migration.
+
+// MemoryPolicy is the canonical gate-policy blob. prompt_builders.go and
+// similarity.go both branch on its fields; introducing this type as a
+// struct (rather than per-flag parameters) makes the cross-package
+// surface auditable and lets the worker pool pass a single struct
+// across the gemma / ollama boundary.
+//
+// Fields:
+//
+//	UseMemory              — gate is enabled at all (master switch)
+//	ForceRefresh           — bypass Level-1 cache (treat every request as cache miss)
+//	MaxMemoryChars         — cap on EnrichedPrompt length (chars ≠ bytes for multi-byte scripts)
+//	MaxMemories            — cap on MemoryHits returned by CheckGate
+//	MaxChunks              — cap on script_chunk hits the LIKE search may surface
+//	FreshVariantEnabled    — when true, exact-cache hits are rewritten through
+//	                        BuildFreshVariantPrompt so the LLM sees a NEW prompt
+//	                        (prevents user perception of "duplicate output")
+//	CacheHitLimit          — number of recent exact-cache hits allowed before
+//	                        a single topic triggers a forced refresh
 type MemoryPolicy struct {
-	// MaxOldOutputs caps the number of "recent" / past-script memory items
-	// injected into the writer prompt. 0 = use default (2).
-	MaxOldOutputs int `json:"max_old_outputs"`
-
-	// MaxMemoryChars caps the total size of the enriched memory context that
-	// gets prepended to the writer prompt. 0 = use default (1800 chars,
-	// roughly 450 tokens).
-	MaxMemoryChars int `json:"max_memory_chars"`
-
-	// SimilarityThreshold (0.0-1.0) is the n-gram Jaccard score above which a
-	// freshly generated text is flagged as "near-duplicate" of a previous
-	// output. 0 = use default (0.72).
-	SimilarityThreshold float64 `json:"similarity_threshold"`
-
-	// CacheHitLimit is the number of consecutive exact cache hits on the
-	// same topic after which the system forces a fresh generation
-	// (ForceRefresh=true) instead of returning a variant of the cached
-	// output. 0 = use default (2). Set to -1 to never force-refresh.
-	// This prevents the "same script loop" where every variant is still
-	// too close to the original because the LLM keeps seeing the same
-	// avoid list at low temperature.
-	CacheHitLimit int `json:"cache_hit_limit"`
+	UseMemory           bool
+	ForceRefresh        bool
+	MaxMemoryChars      int
+	MaxMemories         int
+	MaxChunks           int
+	FreshVariantEnabled bool
+	CacheHitLimit       int
+	SimilarityThreshold float64
 }
 
-// DefaultMemoryPolicy returns the conservative defaults.
+// DefaultMemoryPolicy is the policy used when one is not supplied via
+// request context. Tuned for the pre-66c646b5 baseline: gate on,
+// force-refresh off, 8 memories + 5 chunks per cascade plus a 12 KB
+// ceiling on the enriched prompt so the writer LLM never sees a context
+// block larger than its effective window preamble.
+var DefaultMemoryPolicyValue = MemoryPolicy{
+	UseMemory:           true,
+	ForceRefresh:        false,
+	MaxMemoryChars:      12000,
+	MaxMemories:         8,
+	MaxChunks:           5,
+	FreshVariantEnabled: false,
+	CacheHitLimit:       3,
+	SimilarityThreshold: 0.78,
+}
+
+// NewMemoryPolicy returns a pointer to DefaultMemoryPolicy. Callers that
+// need to override one field can &DefaultMemoryPolicy then set the field.
+func NewMemoryPolicy() *MemoryPolicy {
+	p := DefaultMemoryPolicyValue
+	return &p
+}
+
+// DefaultMemoryPolicy returns the canonical policy as a value (not
+// pointer). prompt_builders.go and similarity.go call it as a function
+// (`policy = DefaultMemoryPolicy()`) — a matching var declaration in
+// the same package would shadow this function. Keeping both the var
+// (`DefaultMemoryPolicyValue`) AND the function (this one) lets
+// changing-a-flag callers and value-copy callers coexist.
 func DefaultMemoryPolicy() MemoryPolicy {
-	return MemoryPolicy{
-		MaxOldOutputs:       2,
-		MaxMemoryChars:      1800,
-		SimilarityThreshold: 0.72,
-		CacheHitLimit:       2,
+	return DefaultMemoryPolicyValue
+}
+
+// NewMemoryGateRequest constructs a MemoryGateRequest pre-populated
+// with DefaultMemoryPolicy. Without this constructor, callers that
+// build a MemoryGateRequest literal silently get Policy=zero (gate
+// disabled). Promoting through this constructor means the gate stays
+// on by default — the pre-66c646b5 baseline.
+func NewMemoryGateRequest(channelID, title, prompt, language, mode string) MemoryGateRequest {
+	return MemoryGateRequest{
+		ChannelID: channelID,
+		Title:     title,
+		Prompt:    prompt,
+		Language:  language,
+		Mode:      mode,
+		UseMemory: true,
+		Policy:    DefaultMemoryPolicyValue,
 	}
 }
 
-// MemoryGateRequest is the input to the memory gate before generation.
+const (
+	// MemoryTypeChannelStyle holds per-channel style rules (always relevant).
+	MemoryTypeChannelStyle = "channel_style"
+
+	// MemoryTypeTopicResearch is a topic-specific research blob.
+	MemoryTypeTopicResearch = "topic_research"
+
+	// MemoryTypeCharacterProfile is a recurring character / person / entity.
+	MemoryTypeCharacterProfile = "character_profile"
+
+	// MemoryTypeSuccessfulHook holds hooks proven to land well for the topic.
+	MemoryTypeSuccessfulHook = "successful_hook"
+
+	// MemoryTypeScriptStructure holds structural templates proven to work.
+	MemoryTypeScriptStructure = "script_structure"
+
+	// MemoryTypeBadPattern holds anti-patterns to avoid.
+	MemoryTypeBadPattern = "bad_pattern"
+
+	// MemoryTypeReusableCTA holds CTA templates proven to convert.
+	MemoryTypeReusableCTA = "reusable_cta"
+
+	// MemoryTypeScriptChunk is synthesised at retrieval time from
+	// gemma_script_chunks; never persisted into gemma_memory_entries.
+	MemoryTypeScriptChunk = "script_chunk"
+)
+
+// ── Gate types ──────────────────────────────────────────────────────────────
+
+// MemoryGateRequest is the input contract for Service.CheckGate.
+// The repository has no opinion on UseMemory / ForceRefresh — those are
+// gate-level decisions owned by the engine.
+//
+// The Policy field was added during Stage 2 closure to thread the new
+// MemoryPolicy struct (declared above) through the gate. Pre-66c646b5
+// the gate accepted per-flag parameters; consolidating them into a
+// MemoryPolicy blob keeps prompt_builders.go and similarity.go on the
+// same shape and reduces cross-package surface to one struct.
 type MemoryGateRequest struct {
-	ChannelID    string       `json:"channel_id"`
-	Title        string       `json:"title"`
-	Prompt       string       `json:"prompt"`
-	Language     string       `json:"language"`
-	Mode         string       `json:"mode"` // "generate" or "clip_to_script"
-	ForceRefresh bool         `json:"force_refresh"`
-	UseMemory    bool         `json:"use_memory"` // default true
-	Policy       MemoryPolicy `json:"policy"`
+	ChannelID    string
+	Title        string
+	Prompt       string
+	Language     string
+	Mode         string
+	UseMemory    bool
+	ForceRefresh bool
+	Policy       MemoryPolicy
 }
 
-// MemoryGateResult is the output of the memory gate check.
+// MemoryGateResult is the output contract for Service.CheckGate.
+// CacheHit + ExactOutput represent the Level-1 fast path;
+// MemoryHits + EnrichedPrompt represent the Level-2 enrichment path.
 type MemoryGateResult struct {
-	// Level 1: exact cache
-	CacheHit           bool              `json:"cache_hit"`
-	SourceGenerationID string            `json:"source_generation_id,omitempty"`
-	ExactOutput        *GenerationOutput `json:"exact_output,omitempty"`
-
-	// Level 2+3: context for the prompt
-	MemoryHits     []MemoryHit   `json:"memory_hits,omitempty"`
-	SimilarChunks  []ScriptChunk `json:"similar_chunks,omitempty"`
-	EnrichedPrompt string        `json:"enriched_prompt,omitempty"`
-}
-
-// MemoryHit is a single memory retrieval result with relevance info.
-type MemoryHit struct {
-	Entry     MemoryEntry `json:"entry"`
-	Relevance float64     `json:"relevance"`
-	Source    string      `json:"source"` // "channel_style", "topic_key", "search", "recent"
-}
-
-// ─── Save input types ───
-
-// SaveGenerationInput is the data to save after a completed generation.
-type SaveGenerationInput struct {
-	ChannelID  string
-	Mode       string
-	Language   string
-	Title      string
-	Prompt     string
-	JobID      string
-	Model      string
-	OutputText string
-	OutputJSON string
-	WordCount  int
-}
-
-// SaveMemoryInput is the data to extract and save as reusable memory.
-type SaveMemoryInput struct {
-	ChannelID          string
-	MemoryType         string
-	TopicKey           string
-	Title              string
-	Summary            string
-	ContentText        string
-	ContentJSON        string
+	CacheHit           bool
+	EnrichedPrompt     string
+	MemoryHits         []MemoryHit
 	SourceGenerationID string
-	SourceJobID        string
+	ExactOutput        *GenerationOutput
+}
+
+// MemoryHit represents one synthesised match returned by Level 1-3
+// retrieval. The Entry is always a MemoryEntry (the script_chunk
+// variant is synthesised from a ScriptChunk row before projection).
+type MemoryHit struct {
+	// Source is a label identifying the retrieval channel:
+	//   "channel_style" | "topic_key" | "cross_channel" | "search" | "recent"
+	Source string
+	// Entry is the MemoryEntry payload carried by this hit.
+	Entry MemoryEntry
+	// Relevance is in [0, 1]; used for sorting and limiting the cascade.
+	Relevance float64
+}
+
+// ── Repository contract ─────────────────────────────────────────────────────
+
+// Repository is the narrow interface Service depends on for the Memory Gate.
+// The concrete implementation is *scriptrepo.MemoryRepository (in
+// /internal/infrastructure/database/sqlite/scripts/memory.go), but the
+// interface lets retrieval.go be tested with a fake.
+type Repository interface {
+	FindExactOutput(ctx context.Context, channelID, mode, inputHash string) (*GenerationOutput, error)
+	FindMemoryByChannel(ctx context.Context, channelID, memoryType string, limit int) ([]MemoryEntry, error)
+	FindMemoryByTopicKey(ctx context.Context, channelID, topicKey string, limit int) ([]MemoryEntry, error)
+	FindMemoryCrossChannel(ctx context.Context, excludeChannelID, memoryType string, limit int) ([]MemoryEntry, error)
+	FindSimilarChunksBySearchText(ctx context.Context, channelID string, tokens []string, limit int) ([]ScriptChunk, error)
+	SaveGeneration(ctx context.Context, input SaveGenerationInput, normalizedInput, inputHash string) (string, error)
+	SaveChunks(ctx context.Context, generationID, channelID, title, topicKey string, chunks []string) error
+	SaveMemory(ctx context.Context, input SaveMemoryInput) (string, error)
+	CountExactOutputsByTitle(ctx context.Context, channelID, mode, title string) (int, error)
+	DeleteExactOutputsByTitles(ctx context.Context, titles []string) (int64, error)
 }

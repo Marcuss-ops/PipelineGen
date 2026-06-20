@@ -108,7 +108,7 @@ func (c *JobCodec) ResultFromResponse(resp *RunTagResponse) map[string]any {
 				"clip_id":       item.ClipID,
 				"name":          item.Name,
 				"filename":      item.Filename,
-				"status":        item.job.Status,
+				"status":        item.Status,
 				"drive_link":    item.DriveLink,
 				"drive_file_id": item.DriveFileID,
 				"download_link": item.DownloadLink,
@@ -134,7 +134,7 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 		item.Filename = v
 	}
 	if v, ok := itemMap["status"].(string); ok {
-		item.job.Status = v
+		item.Status = v
 	}
 	if v, ok := itemMap["drive_link"].(string); ok {
 		item.DriveLink = v
@@ -161,9 +161,9 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 // (domain job.Result is json.RawMessage, so we unmarshal it first)
 func (c *JobCodec) ResponseFromJob(job *job.Job) *RunTagResponse {
 	resp := &RunTagResponse{
-		OK:        job.job.Status != job.StatusFailed,
+		OK:        job.Status != job.StatusFailed,
 		RunID:     job.ID,
-		job.Status:    string(job.job.Status),
+		Status:    string(job.Status),
 		Error:     job.Error,
 		Found:     0,
 		Processed: 0,

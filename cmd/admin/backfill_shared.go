@@ -1,27 +1,18 @@
+// Package main — backfill command helpers shared across the
+// `backfill-*` admin sub-commands.
+//
+// The shared appLogger used to live in this file but was a duplicate
+// of the canonical one in logger.go (same package, same signature).
+// Keeping both caused `cmd/admin` to fail with "appLogger redeclared
+// in this block" once logger.go was fixed. The canonical helper now
+// lives in logger.go; this file keeps only the file-path sniffing
+// helper the backfill commands actually need.
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
-
-	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/config"
-	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 )
-
-// appLogger initializes the application config and logger for admin commands.
-func appLogger() (*config.Config, *zap.Logger, func(), error) {
-	cfg := config.Get()
-	if err := cfg.Validate(); err != nil {
-		return nil, nil, nil, fmt.Errorf("invalid configuration: %w", err)
-	}
-
-	logger.Init(cfg.GetLogLevel(), cfg.GetLogFormat())
-	log := logger.Get()
-	return cfg, log, func() { _ = logger.Sync() }, nil
-}
 
 // isFilePath checks whether a path string looks like a file path (has a media extension).
 func isFilePath(path string) bool {
